@@ -5,7 +5,9 @@ The cases these tests must cover are in [Test Cases](test-cases.md).
 - **Test data**: `make test` uses in-memory repository fakes from `tests/` behind a fake unit-of-work factory, injected
   through `create_app()` together with a fake credential check, see [Architecture](architecture.md).
   - The fakes implement the same Protocols as the real repositories, and raise `DuplicateNameError` for the four unique
-    name constraints and `DuplicateSubjectError` for `auth_subject`.
+    names and `DuplicateSubjectError` for `auth_subject`. The names of md_documents, tabs and folders are unique among live
+    rows only, and the name of a user always.
+  - The fakes hide deleted rows and the children of deleted parents, in the same way as the real repositories.
   - The fake unit of work restores a snapshot of the in-memory data when it exits without a commit, so a forgotten commit
     also fails in `make test`.
   - They do not reproduce check constraints, foreign keys, isolation between concurrent transactions or `now()`.
@@ -24,7 +26,7 @@ The cases these tests must cover are in [Test Cases](test-cases.md).
   `podman` marker.
 - **Contract tests**: one suite runs against the fakes and against the real repositories (`podman`), so drift between them
   shows up when `make test-podman` runs. The suite covers only what both sides implement: returned data,
-  `DuplicateNameError`, `DuplicateSubjectError`, commit and rollback. Foreign keys and check constraints are covered only by the integration tests.
+  `DuplicateNameError`, `DuplicateSubjectError`, hiding deleted rows, commit and rollback. Foreign keys and check constraints are covered only by the integration tests.
 - **Integration tests**: services and repositories against a real PostgreSQL (testcontainers). `make test-podman` runs
   these tests and sets `DOCKER_HOST` to the Podman socket and `TESTCONTAINERS_RYUK_DISABLED=true`; both can be overridden
   from the environment.

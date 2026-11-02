@@ -49,6 +49,44 @@ REST and MCP, including:
 
 - An admin's own rights show `manage` on every folder and ignore their stored rows.
 - The rights of a folder and all rights show the stored rows, including rows with no effect.
+- Every rights list leaves out deleted folders, and the rights of a folder and all rights leave out a stray row of a deleted
+  user.
+
+## Delete and Restore
+
+The rules are in [Entity Rules](entity-rules.md#deleting-and-restoring-content) and
+[Deleted Items](request-checks.md#deleted-items).
+
+- A deleted md_document, tab and folder each give the same full 404 body as a missing one on REST, and the same full tool
+  error text on MCP, on read, update, rename, move and a second delete.
+- An item inside a deleted tab or folder gives the same response, by ID and in lists.
+- An admin gets the same 404 for a deleted folder, on every operation except restore.
+- A deleted tab as the target of a move or a create gets the same 404 as a missing tab.
+- Restoring a tab or folder brings back its content, and an item deleted before it stays deleted.
+- A deleted name can be used again, and restoring the old item then gets `NameConflictError`.
+- Restoring an item that is not deleted gets 404, and restoring a md_document whose tab is deleted gets 404 until the tab is
+  restored.
+- The rights on a deleted folder apply again after its restore, and until then a user with such a right gets 404.
+- The matrix under [Visibility](#visibility) covers deleting md_documents and tabs, the deleted list and restore: `manage`
+  and admin pass, `read` and `write` get 403, and no right gets 404.
+- The deleted list holds items with their own `deleted_at` under a live parent, and has no `content_md`.
+- A non-admin who lists deleted folders or restores a folder gets 403, also for a folder that does not exist.
+- A non-admin who deletes a folder gets 404 with no right on it and 403 with a right, and the tool list on MCP has no such
+  tool.
+
+## Deactivating and Deleting Users
+
+The rules are in [Entity Rules](entity-rules.md#deactivating-and-deleting-users).
+
+- A deactivated user gets the same 401 as a token with no linked user, on the next request, on REST and MCP.
+- A reactivated user gets through again, with the same rights and without a new link.
+- Deactivating twice keeps the first `deactivated_at`, and reactivating an active user changes nothing.
+- A deleted user gets 401 for the old subject, and that subject can be linked to a new user.
+- Deleting a user removes their folder right rows, and the rights they assigned to others stay.
+- The content of a deleted user keeps its `created_by`, and the user stays in the list of all users with both timestamps.
+- Changing `is_admin` or `auth_subject`, deactivating, reactivating or deleting a deleted user, and assigning a right to one,
+  all get 404.
+- An admin can assign a right to a deactivated user and change their link.
 
 ## Public Routes
 
@@ -143,3 +181,10 @@ The rules are in [Authentication](authentication.md#token-check).
 - A service result can be read after the commit, which fails without `expire_on_commit=False` if an ORM object reaches it.
 - `SafeText` is needed: writing NUL or a lone surrogate through SQLAlchemy and asyncpg raises `DBAPIError`, so a change in
   this behaviour shows up.
+- The checks reject a deleted default tab, a deactivated or deleted root admin and a deleted user with an `auth_subject`.
+- A name can be used again after a delete, and restoring the old item gets `NameConflictError`, against the real partial
+  unique indexes. The name of a deleted user stays taken.
+- Two concurrent deletes of one item give one success and one 404, and an update racing a delete gets 404.
+- A md_document created in a tab while it is being deleted is hidden, and comes back when the tab is restored.
+- Deleting a user sets `deleted_at`, clears `auth_subject` and removes the rights in one transaction, and nothing is left
+  changed after a rollback.

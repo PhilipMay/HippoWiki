@@ -31,13 +31,16 @@ These rights exist:
   - can change the name of md_documents which are in the folder the user has this right on
   - can move md_documents to another tab in the folder the user has this right on
   - can revert changes on folder and md_document level
+  - can delete md_documents and tabs, except for the default tab, in the folder the user has this right on
+  - can list the deleted md_documents and tabs of the folder the user has this right on, and restore them
 
 Notes:
 
-- at the moment a delete operation is not available - this will change later
+- what deleting does is defined in [Entity Rules](entity-rules.md#deleting-and-restoring-content)
 - implicit default access: a user with no assigned right has no access
 - all users can see their own full rights with folder name
-  - this list shows effective rights: an admin gets `manage` on every folder, and their stored rows are ignored
+  - this list shows effective rights: an admin gets `manage` on every live folder, and their stored rows are ignored
+  - deleted folders are left out
   - each entry has the folder and the right only, because an implicit right has no `assigned_by` or `assigned_at`
 - what can be moved where is limited by the [entity rules](entity-rules.md#folders-tabs-and-md-documents)
 
@@ -50,12 +53,14 @@ These are the operations allowed for users with `is_admin == True`, and they are
 - change or remove the linked Keycloak account of other users, except for the root admin, see [Entity Rules](entity-rules.md#user-linking)
 - create new folders
 - rename folders
+- delete folders, list deleted folders and restore them
 - assign user rights for folders
 - delete user rights for folders
 - can list the rights of a folder
 - can list all rights of all folders
-- can list all users
-- an admin has an implicit "manage" right on all folders
+- can list all users, including deactivated and deleted users
+- deactivate, reactivate and delete other users, except for the root admin, see [Entity Rules](entity-rules.md#deactivating-and-deleting-users)
+- an admin has an implicit "manage" right on all live folders
   - it comes from `is_admin` and is not stored as rows
   - an assigned right of an admin has no effect while `is_admin` is true, and applies again if the flag is removed
 - an admin can change the `is_admin` flag of other users, except for the root admin
@@ -64,5 +69,4 @@ These are the operations allowed for users with `is_admin == True`, and they are
 Notes:
 
 - the responses to these operations for non-admins, and to rejected `is_admin` changes, are defined in [Request Checks](request-checks.md)
-- at the moment a user can not be deleted or deactivated - this will change later
-- Listing rights: the rights of a folder and all rights of all folders show the stored rows that admins assign and delete, including rows that have no effect while the user is an admin
+- Listing rights: the rights of a folder and all rights of all folders show the stored rows that admins assign and delete, including rows that have no effect while the user is an admin. Rows on deleted folders and rows of deleted users are left out

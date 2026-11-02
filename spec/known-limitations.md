@@ -11,16 +11,18 @@ In this order, because the later steps depend on the decisions of the earlier on
    - Define the revision tables and the `version` column that `VersionConflictError` relies on.
    - `updated_at`: [Time](time.md) describes how it is set, but no table has the column. Decide whether tables get it or revisions replace it.
    - Number of revisions to keep: any limit has to be reconciled with the goal of a full history.
-3. **Delete and deactivate**: define how md_documents, tabs, folders and users can be deleted, how users can be deactivated, which right allows it and what happens to the revision history.
-   - No column supports deactivation yet, and the credential check must reject deactivated users.
-   - The root admin can never be deleted or deactivated, see [Entity Rules](entity-rules.md#root-admin).
-   - `created_by` and `assigned_by`: decide their nullability together with user deletion, because `ON DELETE SET NULL` needs the column to be nullable.
-4. **Size limits**: set the maximum document size, then the request body limit.
+   - [Deleting](entity-rules.md#deleting-and-restoring-content) sets these requirements:
+     - Delete never removes revisions, and the author of a revision is never null, because users are never removed.
+     - Delete and restore each add one revision atomically, on the deleted item only. Its children get none, because their rows do not change.
+     - The history of a deleted item needs `manage`, or admin for a folder.
+     - Revert on a deleted item gets 404, so it is restored first.
+     - Still open: whether delete and restore check `version` under optimistic locking.
+3. **Size limits**: set the maximum document size, then the request body limit.
    - The [Auth Middleware](auth-middleware.md#request-body-limit) answers 413 for a body over the limit, but its value is still open.
    - It has to leave room for the largest allowed document.
    - The reverse proxy needs a matching limit.
    - The SDK limits MCP bodies to 4 MiB by itself and answers with its own 413 body (`transport_security.py:15`). So the limit stays at or below that, or `max_request_body_size` is set as well.
-5. **REST and MCP planning**: define the REST endpoints and the MCP tools.
+4. **REST and MCP planning**: define the REST endpoints and the MCP tools.
    - Lists: a list can be arbitrarily large, and on MCP a large tool result goes straight into the context of an AI client. Define the page size, a maximum, cursor or offset, and whether lists return `content_md`. [Time](time.md) already has the tie-breaker rule that a stable order needs.
    - Own account: users can not read their own user record, and non-admins can not list users, so a `created_by` ID can not be turned into a name. Define how they find both.
 
@@ -33,7 +35,7 @@ The login method is defined in [Authentication](authentication.md), but the loca
 - The changing loopback port of Claude Code works with a fixed client, and which kind of client it needs.
 - Both clients keep working after a token refresh, and the session lifetimes are long enough that nobody has to log in again every day.
 - Both clients accept 405 on `GET /mcp`, see [Serving the MCP App](mcp.md#serving-the-mcp-app).
-- How each client reacts to the 401 for a valid login with no linked user, in case it keeps retrying the login.
+- How each client reacts to the 401 for a valid login with no linked user or a deactivated user, in case it keeps retrying the login.
 - How each client reacts to the 403 for an admin account, see [Admin Accounts](mcp.md#admin-accounts), and whether the person sees why.
 
 If a client does not work this way, turn on the Keycloak features `cimd` and `resource-indicators` for it. If that also fails, evaluate [Logto](https://docs.logto.io/use-cases/ai/mcp-server-enable-third-party-ai-agent-access).
@@ -46,6 +48,7 @@ If a client does not work this way, turn on the Keycloak features `cimd` and `re
 - Reverse proxy: [Deployment](deployment.md) requires one with TLS for remote MCP access, but the product is not chosen and `compose.yaml` has no service for it.
 - Backup and restore: [Deployment](deployment.md) names `pg_dump`, but the schedule, the retention and a tested restore are open.
 - Database monitoring: health reports liveness only, so a database outage does not show up in it.
+- Erasure: deleted content and the names of deleted users are never physically erased, so storage only grows and personal data stays. A permanent purge, a retention period and the handling of personal data need a design, including what happens to the revisions.
 
 ## Out of Scope for Now
 

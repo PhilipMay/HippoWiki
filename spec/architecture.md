@@ -73,6 +73,8 @@ REST, see [Auth Concept](auth-concept.md#rules).
 - `services/` are stateless and get the unit-of-work factory when they are built.
 - `repositories/` do DB access only; they contain no permission or business logic. They get their session from the unit
   of work.
+- Deleted rows: repository methods return only live rows, unless a method is named for deleted ones, so a service can not
+  forget the filter. See [Entity Rules](entity-rules.md#deleting-and-restoring-content).
 - Name conflicts: repositories flush after each write, so a unique violation surfaces inside the repository, and they
   translate it into `DuplicateNameError`. Services turn that into `NameConflictError`. Services do not check for
   duplicates up front, so concurrent requests get the same answer. PostgreSQL has then aborted the transaction, so the
@@ -101,12 +103,14 @@ REST, see [Auth Concept](auth-concept.md#rules).
   - Leaving a unit of work without a commit rolls it back, also when a domain error passes through.
   - Public service methods do not call each other inside a transaction. Shared steps take the open unit of work as a
     parameter.
-  - A document update and its revision rows are written atomically, and so are a new folder and its default tab.
+  - A document update and its revision rows are written atomically, and so are a delete or restore and its revision, a
+    new folder and its default tab, and a deleted user and the removal of their rights.
   - The credential lookup in the auth middleware uses its own short unit of work, separate from the transaction of the
     service call.
   - Stale principal: the principal's `is_admin` is a snapshot from that lookup, so a request already running when an admin
-    is demoted can still finish as admin. This is accepted, because it ends with that request. Services read folder rights
-    inside their own transaction.
+    is demoted can still finish as admin, and a request already running when a user is deactivated or deleted can still
+    finish as that user. This is accepted, because it ends with that request. Services read folder rights inside their own
+    transaction.
 - **Logging**: stdlib `logging`, structured (JSON) in production; log who changed what. `logs.py` has a small JSON
   formatter, so no new dependency is needed, and Uvicorn's loggers go through the same handler, so all output has one
   format.
