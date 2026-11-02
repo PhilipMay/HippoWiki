@@ -20,6 +20,7 @@ document lists the combinations that are easy to miss, and the cases of other do
 - A target tab in another folder gets the same 404 as a missing one, whatever the rights of the user on its folder.
 - Each row of [Rejected Operations](request-checks.md#rejected-operations) gets its response.
 - A name conflict is reported only after domain validation.
+- A stale version together with a name that is taken gets `VersionConflictError`.
 - An authenticated request with a body over the limit gets 413, and an unauthenticated one gets 401.
 - A chunked body over the limit, so with no declared length, gets the same 413 on a REST route, on MCP and on an unknown
   route. A test with a declared length would pass with the wrong implementation.
@@ -91,6 +92,11 @@ The rules are in [History and Revisions](history-revisions.md).
   folder.
 - A revert adds new revisions pointing at the target and leaves the earlier ones unchanged, and reverting a revert works.
 - A revert with a stale version gets `VersionConflictError`, and one to the current state adds no revision.
+- A content update, rename or move with a stale version gets `VersionConflictError`, and one without a version gets 422.
+- A write that would change nothing gets `VersionConflictError` with a stale version, and adds no revision with the current
+  one.
+- A delete and a restore need no version, and both grow it.
+- Reads and write results of a md_document return its version.
 - A revision of another item or folder gets the same 404 as a missing one.
 - A md_document revert brings back content, name and tab.
 - A md_document revert gets 404 for a md_document that is not live and for a target tab that is not live, 403 for a target
@@ -210,10 +216,13 @@ The rules are in [Authentication](authentication.md#token-check).
 - A name can be used again after a delete, and restoring the old item gets `NameConflictError`, against the real partial
   unique indexes. The name of a deleted user stays taken.
 - Two concurrent deletes of one item give one success and one 404, and an update racing a delete gets 404.
-- A md_document created in a tab while it is being deleted is hidden, and comes back when the tab is restored.
+- A md_document created in a tab while it is being deleted waits for the lock on the folder row: it gets 404 when the delete
+  commits first, and otherwise it is hidden and comes back when the tab is restored.
 - Deleting a user sets `deleted_at`, clears `auth_subject` and removes the rights in one transaction, and nothing is left
   changed after a rollback.
 - A folder revert that swaps the names of two tabs or two md_documents succeeds against the real partial unique indexes.
 - A folder revert that fails leaves nothing changed after the rollback, and the revision counter stays as it was.
 - Concurrent changes in one folder get consecutive revision numbers, and a folder revert racing a change gets
+  `VersionConflictError`.
+- An update racing a folder revert ends without a deadlock, and two updates racing with one version give one success and one
   `VersionConflictError`.

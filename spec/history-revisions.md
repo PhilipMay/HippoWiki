@@ -1,7 +1,7 @@
 # History and Revisions
 
-This document defines which changes HippoWiki tracks, who can see them and how a user reverts them. The tables are still
-open, see [Known Limitations](known-limitations.md#next-steps). History and revert are available only on REST, see
+This document defines which changes HippoWiki tracks, who can see them and how a user reverts them. The tables are in
+[Tables and Entities](entities.md#folder-history-entry). History and revert are available only on REST, see
 [MCP](mcp.md#history-and-revert).
 
 ## Tracked Changes
@@ -33,7 +33,10 @@ open, see [Known Limitations](known-limitations.md#next-steps). History and reve
 - a write that changes nothing adds no revision
 - all revisions are kept, with no limit, and a delete never removes one. Erasure is open, see
   [Known Limitations](known-limitations.md#later)
-- an entry in a history holds the kind of change, the item, its old and new name or tab, the time and the author
+- an entry in a history holds the kind of change, its number, the time and the author
+  - a normal entry has one revision, which gives the item and its old and new name or tab
+  - a folder revert has one revision per changed item, so a history list shows its number, target and author, and its
+    changed items come when that entry is fetched
 - the author is returned as user ID and user name, because non-admins can not turn an ID into a name
   - the author is never null, because users are never removed, and the name of a deleted user stays reserved
 - a history list returns metadata only, and the content comes only when one revision is fetched
@@ -45,9 +48,27 @@ open, see [Known Limitations](known-limitations.md#next-steps). History and reve
 - a md_document has a version, which grows with each of its revisions and orders its history
 - a folder has a revision counter, which grows with each change in the folder and orders its history
   - a transaction that adds revisions increments the counter once, so a folder revert shows up as one number
-  - the increment locks the folder row until the transaction ends, so writes within one folder wait for each other, and
-    other folders are not affected
+  - every write locks the folder row first, until the transaction ends, so writes within one folder wait for each other,
+    and other folders are not affected
 - the state of a folder at a number is, for each item, its latest revision up to that number
+
+## Optimistic Locking
+
+- a content update, rename or move of a md_document carries the version the client saw, on REST and MCP
+  - a missing version gets 422, and any other version than the current one gets `VersionConflictError`
+  - reads and write results of a md_document return its version
+- delete and restore do not check the version, because both can be undone and lose nothing. They still add a revision, so
+  the version grows
+- tabs and folders have no version of their own, so their renames stay last write wins
+
+A write runs in this order, after the visibility and right checks of [Request Checks](request-checks.md#check-order):
+
+1. Lock the folder row with `SELECT ... FOR NO KEY UPDATE`. The same order everywhere rules out a deadlock with a folder
+   revert, and this lock mode does not block the foreign key checks of `folder_rights`.
+2. Read the item, its version and a target tab, so nothing can change them until the commit.
+3. Compare the version, so a stale version gets the conflict even when the write would change nothing.
+4. Stop without a revision if the write changes nothing.
+5. Write the item, increment the counter and add the entry and its revision.
 
 ## Who Can See What
 
@@ -69,8 +90,9 @@ The responses are defined in [Deleted Items](request-checks.md#deleted-items).
   reverted too
 - a revert carries the version the user saw, the version of the md_document or the revision counter of the folder, and any
   other version gets `VersionConflictError`
-  - a folder revert takes the lock on the folder row before it compares, so a concurrent change can not slip in between
-- reverting to the state that is already current succeeds and adds no revision
+  - a revert compares under the lock on the folder row, see [Optimistic Locking](#optimistic-locking), so a concurrent change
+    can not slip in between
+- reverting to the state that is already current with the current version succeeds and adds no revision
 - a revision that belongs to another item or folder gets the same 404 as a missing one
 - the responses are defined in [Rejected Operations](request-checks.md#rejected-operations)
 

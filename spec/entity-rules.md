@@ -20,12 +20,13 @@ Who can do this is defined in [Auth Concept](auth-concept.md). Which response a 
 - an item is live when it and all its parents have `deleted_at` null
 - a tab or folder is deleted with its content: only its own row gets `deleted_at`, and the items in it are hidden through it (service)
   - there are no cascading writes, so restoring it brings back exactly what was visible before, and an item deleted earlier stays deleted
-  - a create or move into a tab that is being deleted at the same time needs no lock: the item is hidden and comes back on restore
+  - a create or move into a tab that is being deleted at the same time waits for the [lock on the folder row](history-revisions.md#optimistic-locking): after the delete it gets 404, and before it the item is hidden and comes back on restore
   - a deleted folder keeps its default tab, live but hidden
 - a deleted name can be used again, because the unique names apply only to live rows
 - restoring an item whose name is taken gets `NameConflictError`, and the live item has to be renamed or deleted first
 - restoring an item whose parent is deleted is rejected, so the parent is restored first (service)
 - writes use `WHERE deleted_at IS NULL` and a restore uses `WHERE deleted_at IS NOT NULL`, and a statement that changes no row gets `NotFoundError`, so a racing update or a second delete behaves correctly
+  - a version mismatch is found before that, under the [lock on the folder row](history-revisions.md#optimistic-locking), so it gets `VersionConflictError` and not this `NotFoundError`
 - the rights on a deleted folder stay and apply again on restore, and changing them needs a restore first
 - deleted content is never physically erased, see [Known Limitations](known-limitations.md#later)
 

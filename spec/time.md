@@ -5,25 +5,28 @@ representation of that.**
 
 - **Instants** (points in time) are PostgreSQL `timestamptz`, never plain `timestamp`. Columns are
   `NOT NULL DEFAULT now()` unless null has a meaning (e.g. `deleted_at`). Column names end in `_at`
-  (`created_at`, `updated_at`, `deleted_at`). Server and connection time zone are set to `UTC`: `compose.yaml` sets
+  (`created_at`, `deleted_at`). Server and connection time zone are set to `UTC`: `compose.yaml` sets
   `timezone=UTC` on the server and `db/engine.py` passes `server_settings={"timezone": "UTC"}`. asyncpg returns UTC
   whatever the session time zone, so this only affects `psql` output and text casts in SQL.
 - **One clock: the database.** Persisted timestamps are set with `now()` (column default `now()`, updates set
-  `updated_at = now()`), never taken from clients and never from the app host clock. `now()` is the start of the
+  `deleted_at = now()`), never taken from clients and never from the app host clock. `now()` is the start of the
   transaction, so all rows written together share the exact same timestamp. The app host clock is only for values
   that are not persisted, such as log lines. An expiry stored in the database is compared with `now()`. Import follows
   the same rule: `created_at` means "entered this system", and dates from the source stay in the frontmatter.
 - **Ordering**: timestamps are for humans and filters, not for ordering guarantees. `now()` is the transaction
   start and the clock is not monotonic, so timestamp order is not commit order, and rows from one transaction tie
-  exactly. Revisions are ordered by version number, and sorted lists use the primary key as a tie-breaker.
+  exactly. Revisions are ordered by version or folder number, and sorted lists use the primary key as a tie-breaker.
+- **Last change**: no table stores it. The `created_at` of the latest [history entry](entities.md#folder-history-entry)
+  of an item gives it, so a second timestamp could only disagree.
 - **Python** uses only timezone-aware `datetime` objects in UTC (`datetime.now(UTC)` if the app ever needs "now");
   a naive `datetime` is a bug. ruff's `DTZ` rules (included in `select = ["ALL"]`) catch common mistakes but are not
   a guarantee: they miss non-UTC offsets and values returned by libraries. One shared type and tests enforce the
   rest.
 - **SQLAlchemy** columns use `DateTime(timezone=True)`, set once through
   `type_annotation_map = {datetime: DateTime(timezone=True)}`, because a bare `Mapped[datetime]` would be naive.
-  `updated_at` uses `onupdate=func.now()`. Mappers use `eager_defaults=True`, because the default `"auto"` only
-  fetches server-set values after INSERT, and reading one after UPDATE would trigger implicit IO in async code.
+  Mappers use `eager_defaults=True`, because the default `"auto"` only fetches server-set values after INSERT, and
+  reading one after UPDATE, such as `deleted_at = now()` or the incremented `revision_counter`, would trigger implicit
+  IO in async code.
   Sessions use `expire_on_commit=False` for the same reason: the default expires loaded objects on commit, and the next
   attribute access raises `MissingGreenlet`. The fakes expire nothing, so only `make test-podman` can notice this. A
   test fails on any naive datetime column. asyncpg returns aware UTC datetimes and reads a naive parameter as host

@@ -5,13 +5,17 @@ This document defines the tables and what their constraints enforce. The rules t
 
 ## Entities
 
-| Entity       | Table         | Notes                           |
-| ------------ | ------------- | ------------------------------- |
-| md_document  | md_documents  | a Markdown document             |
-| tab          | tabs          |                                 |
-| folder       | folders       |                                 |
-| user         | users         |                                 |
-| folder_right | folder_rights | the right of a user on a folder |
+| Entity               | Table                  | Notes                           |
+| -------------------- | ---------------------- | ------------------------------- |
+| md_document          | md_documents           | a Markdown document             |
+| tab                  | tabs                   |                                 |
+| folder               | folders                |                                 |
+| user                 | users                  |                                 |
+| folder_right         | folder_rights          | the right of a user on a folder |
+| folder_history_entry | folder_history_entries | one numbered change in a folder |
+| md_document_revision | md_document_revisions  | a snapshot of a md_document     |
+| tab_revision         | tab_revisions          | a snapshot of a tab             |
+| folder_revision      | folder_revisions       | a snapshot of a folder          |
 
 Time columns such as `created_at` follow the rules in [Time](time.md). The meaning of the rights is defined in
 [Auth Concept](auth-concept.md).
@@ -22,15 +26,16 @@ Foreign keys have no `ON DELETE` action, because md_documents, tabs, folders and
 
 ### MD Document
 
-| Column       | Type                   | Notes                                  |
-| ------------ | ---------------------- | -------------------------------------- |
-| `id`         | uuid, PK               |                                        |
-| `name`       | text, not null         |                                        |
-| `content_md` | text, not null         | the Markdown text, '' when empty       |
-| `tab_id`     | uuid → tabs, not null  | the tab the md_document is assigned to |
-| `created_by` | uuid → users, not null |                                        |
-| `created_at` | timestamptz            |                                        |
-| `deleted_at` | timestamptz            | null while the md_document is live     |
+| Column       | Type                   | Notes                                                                              |
+| ------------ | ---------------------- | ---------------------------------------------------------------------------------- |
+| `id`         | uuid, PK               |                                                                                    |
+| `name`       | text, not null         |                                                                                    |
+| `content_md` | text, not null         | the Markdown text, '' when empty                                                   |
+| `tab_id`     | uuid → tabs, not null  | the tab the md_document is assigned to                                             |
+| `version`    | integer, not null      | 1 at the create, see [Order and Versions](history-revisions.md#order-and-versions) |
+| `created_by` | uuid → users, not null |                                                                                    |
+| `created_at` | timestamptz            |                                                                                    |
+| `deleted_at` | timestamptz            | null while the md_document is live                                                 |
 
 A partial unique index on `(tab_id, name) WHERE deleted_at IS NULL` enforces that the name is unique among the live md_documents of a tab.
 A check constraint `name <> ''` enforces that the name is not empty.
@@ -54,13 +59,14 @@ Together with the not null name, these three constraints allow at most one defau
 
 ### Folder
 
-| Column       | Type                   | Notes                         |
-| ------------ | ---------------------- | ----------------------------- |
-| `id`         | uuid, PK               |                               |
-| `name`       | text, not null         |                               |
-| `created_by` | uuid → users, not null |                               |
-| `created_at` | timestamptz            |                               |
-| `deleted_at` | timestamptz            | null while the folder is live |
+| Column             | Type                   | Notes                                                                              |
+| ------------------ | ---------------------- | ---------------------------------------------------------------------------------- |
+| `id`               | uuid, PK               |                                                                                    |
+| `name`             | text, not null         |                                                                                    |
+| `revision_counter` | integer, not null      | 1 at the create, see [Order and Versions](history-revisions.md#order-and-versions) |
+| `created_by`       | uuid → users, not null |                                                                                    |
+| `created_at`       | timestamptz            |                                                                                    |
+| `deleted_at`       | timestamptz            | null while the folder is live                                                      |
 
 A partial unique index on `name WHERE deleted_at IS NULL` enforces that the name is unique among the live folders.
 A check constraint `name <> ''` enforces that the name is not empty.
@@ -104,3 +110,58 @@ An index on `folder_id` supports listing the rights of a folder. The primary key
 Notes:
 
 - the column is not named `right` because `RIGHT` is a reserved word in PostgreSQL
+
+### Folder History Entry
+
+The behaviour is defined in [History and Revisions](history-revisions.md). An entry is one numbered change in a folder.
+
+| Column        | Type                     | Notes                                                                       |
+| ------------- | ------------------------ | --------------------------------------------------------------------------- |
+| `folder_id`   | uuid → folders, not null |                                                                             |
+| `number`      | integer, not null        | the value of `revision_counter` of the folder after this change             |
+| `kind`        | text, not null           | the kind of change                                                          |
+| `reverted_to` | integer                  | a version for `revert`, a folder number for `folder_revert`, otherwise null |
+| `created_by`  | uuid → users, not null   | the author                                                                  |
+| `created_at`  | timestamptz              |                                                                             |
+
+The composite primary key is `(folder_id, number)`.
+A check constraint limits `kind` to `create`, `update`, `delete`, `restore`, `revert` and `folder_revert`, so a write that changes both name and content is one `update`.
+A check constraint `(reverted_to IS NOT NULL) = (kind IN ('revert', 'folder_revert'))` enforces that only a revert has a target.
+
+### Revisions
+
+Each revision has a foreign key `(folder_id, number)` to its entry, so author and time live on the entry, and the old name or tab is read from the previous revision of the item. A normal entry has exactly one revision, and a `folder_revert` entry has one per changed item. The default tab gets no revision, because it never changes and a folder revert skips it.
+
+MD document revision, with the composite primary key `(md_document_id, version)`:
+
+| Column           | Type                          | Notes                               |
+| ---------------- | ----------------------------- | ----------------------------------- |
+| `md_document_id` | uuid → md_documents, not null |                                     |
+| `version`        | integer, not null             | the version this revision created   |
+| `folder_id`      | uuid → folders, not null      |                                     |
+| `number`         | integer, not null             | the folder number of the entry      |
+| `name`           | text, not null                |                                     |
+| `content_md`     | text, not null                | the full text, not a difference     |
+| `tab_id`         | uuid → tabs, not null         |                                     |
+| `is_deleted`     | bool, not null                | true when `deleted_at` was set then |
+
+Tab revision, with the composite primary key `(tab_id, number)`:
+
+| Column       | Type                     | Notes                               |
+| ------------ | ------------------------ | ----------------------------------- |
+| `tab_id`     | uuid → tabs, not null    |                                     |
+| `folder_id`  | uuid → folders, not null |                                     |
+| `number`     | integer, not null        | the folder number of the entry      |
+| `name`       | text, not null           |                                     |
+| `is_deleted` | bool, not null           | true when `deleted_at` was set then |
+
+Folder revision, with the composite primary key `(folder_id, number)`:
+
+| Column       | Type                     | Notes                               |
+| ------------ | ------------------------ | ----------------------------------- |
+| `folder_id`  | uuid → folders, not null |                                     |
+| `number`     | integer, not null        | the folder number of the entry      |
+| `name`       | text, not null           |                                     |
+| `is_deleted` | bool, not null           | true when `deleted_at` was set then |
+
+An index on `(folder_id, number)` of `md_document_revisions` and of `tab_revisions` supports the folder history and the state of a folder at a number. The primary key of `folder_revisions` already covers it.

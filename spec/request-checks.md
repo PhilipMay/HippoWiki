@@ -9,23 +9,23 @@ A user only learns that a folder exists if they have a right on it. Every reques
 in this order, and the first one that fails decides the response. Services raise the same domain errors for REST and MCP,
 and each adapter translates them. The last row is not a check: it covers any other exception.
 
-| Check              | Rejects                                                                                               | Domain error                     | REST     | MCP                                |
-| ------------------ | ----------------------------------------------------------------------------------------------------- | -------------------------------- | -------- | ---------------------------------- |
-| Credential lookup  | a request with credentials that can not be checked, because the lookup failed                         | none, rejected by the middleware | 503      | rejected before the tools run      |
-| Authentication     | an unauthenticated request                                                                            | none, rejected by the middleware | 401      | rejected before the tools run      |
-| Admin on MCP       | a request to MCP by an admin, see [MCP](mcp.md#admin-accounts)                                        | none, rejected by the middleware | allowed  | HTTP 403, before the tools run     |
-| Body size          | a request body over the limit                                                                         | none, rejected by the middleware | 413      | rejected before the tools run      |
-| Routing            | an unknown route (404), a known route with the wrong method (405)                                     | none, rejected by the framework  | 404, 405 | see [MCP](mcp.md#errors)           |
-| Schema validation  | malformed JSON, an unparsable body, wrong types, missing or unknown fields                            | none, rejected by the adapter    | 422      | see [MCP](mcp.md#errors)           |
-| Visibility         | a user with no right on the folder or a deleted folder, also for any tab or md_document in it         | `NotFoundError`                  | 404      | tool error `not_found`             |
-| Required right     | a user whose right on the folder is too low for the operation                                         | `ForbiddenError`                 | 403      | tool error `forbidden`             |
-| Target lookup      | a missing or deleted tab, md_document or user, or a missing folder right, also when named in the body | `NotFoundError`                  | 404      | tool error `not_found`             |
-| Target rules       | an operation the target does not allow, see [below](#rejected-operations)                             | `ForbiddenError`                 | 403      | tool error `forbidden`             |
-| Domain validation  | a name or size that breaks the domain rules                                                           | `DomainValidationError`          | 422      | tool error `domain_validation`     |
-| Conflicts: name    | a name conflict                                                                                       | `NameConflictError`              | 409      | tool error `name_conflict`         |
-| Conflicts: subject | a Keycloak account that is already linked to another user                                             | `SubjectConflictError`           | 409      | no such tool, admin operation      |
-| Conflicts: version | a version conflict, once optimistic locking exists                                                    | `VersionConflictError`           | 409      | tool error `version_conflict`      |
-| Unexpected         | any other exception                                                                                   | none                             | 500      | generic tool error without details |
+| Check              | Rejects                                                                                                          | Domain error                     | REST     | MCP                                |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------- | -------------------------------- | -------- | ---------------------------------- |
+| Credential lookup  | a request with credentials that can not be checked, because the lookup failed                                    | none, rejected by the middleware | 503      | rejected before the tools run      |
+| Authentication     | an unauthenticated request                                                                                       | none, rejected by the middleware | 401      | rejected before the tools run      |
+| Admin on MCP       | a request to MCP by an admin, see [MCP](mcp.md#admin-accounts)                                                   | none, rejected by the middleware | allowed  | HTTP 403, before the tools run     |
+| Body size          | a request body over the limit                                                                                    | none, rejected by the middleware | 413      | rejected before the tools run      |
+| Routing            | an unknown route (404), a known route with the wrong method (405)                                                | none, rejected by the framework  | 404, 405 | see [MCP](mcp.md#errors)           |
+| Schema validation  | malformed JSON, an unparsable body, wrong types, missing or unknown fields                                       | none, rejected by the adapter    | 422      | see [MCP](mcp.md#errors)           |
+| Visibility         | a user with no right on the folder or a deleted folder, also for any tab or md_document in it                    | `NotFoundError`                  | 404      | tool error `not_found`             |
+| Required right     | a user whose right on the folder is too low for the operation                                                    | `ForbiddenError`                 | 403      | tool error `forbidden`             |
+| Target lookup      | a missing or deleted tab, md_document or user, or a missing folder right, also when named in the body            | `NotFoundError`                  | 404      | tool error `not_found`             |
+| Target rules       | an operation the target does not allow, see [below](#rejected-operations)                                        | `ForbiddenError`                 | 403      | tool error `forbidden`             |
+| Domain validation  | a name or size that breaks the domain rules                                                                      | `DomainValidationError`          | 422      | tool error `domain_validation`     |
+| Conflicts: version | a version conflict, compared before the write, see [Optimistic Locking](history-revisions.md#optimistic-locking) | `VersionConflictError`           | 409      | tool error `version_conflict`      |
+| Conflicts: name    | a name conflict, which surfaces at the write                                                                     | `NameConflictError`              | 409      | tool error `name_conflict`         |
+| Conflicts: subject | a Keycloak account that is already linked to another user                                                        | `SubjectConflictError`           | 409      | no such tool, admin operation      |
+| Unexpected         | any other exception                                                                                              | none                             | 500      | generic tool error without details |
 
 ## Rules
 
@@ -114,32 +114,33 @@ What deleting does is defined in [Entity Rules](entity-rules.md#deleting-and-res
 
 These rules from [Entity Rules](entity-rules.md) reject an operation, whatever the rights of the user:
 
-| Rule                                                         | Domain error                              | REST | Check              |
-| ------------------------------------------------------------ | ----------------------------------------- | ---- | ------------------ |
-| rename a default tab                                         | `ForbiddenError`                          | 403  | Target rules       |
-| delete a default tab                                         | `ForbiddenError`                          | 403  | Target rules       |
-| change own `is_admin` flag                                   | `ForbiddenError`                          | 403  | Target rules       |
-| change the `is_admin` flag of the root admin                 | `ForbiddenError`                          | 403  | Target rules       |
-| change own `auth_subject`                                    | `ForbiddenError`                          | 403  | Target rules       |
-| change the `auth_subject` of the root admin                  | `ForbiddenError`                          | 403  | Target rules       |
-| delete or deactivate the root admin                          | `ForbiddenError`                          | 403  | Target rules       |
-| delete or deactivate own user                                | `ForbiddenError`                          | 403  | Target rules       |
-| revert a md_document to a revision that records its deletion | `ForbiddenError`                          | 403  | Target rules       |
-| move a md_document to a tab in another folder                | `NotFoundError`                           | 404  | Target lookup      |
-| restore an item that is not deleted                          | `NotFoundError`                           | 404  | Target lookup      |
-| restore a md_document whose tab is deleted                   | `NotFoundError`                           | 404  | Target lookup      |
-| any operation on a deleted user                              | `NotFoundError`                           | 404  | Target lookup      |
-| revert a md_document that is not live                        | `NotFoundError`                           | 404  | Target lookup      |
-| revert to a revision of another item or folder               | `NotFoundError`                           | 404  | Target lookup      |
-| revert a md_document to a tab that is not live               | `NotFoundError`                           | 404  | Target lookup      |
-| move a tab, rename a user, set `is_default` or `is_root`     | none, the request model has no such field | 422  | Schema validation  |
-| create or rename anything with the name ""                   | `DomainValidationError`                   | 422  | Domain validation  |
-| create a user named `admin`                                  | `NameConflictError`                       | 409  | Conflicts: name    |
-| create a user with the name of a deleted user                | `NameConflictError`                       | 409  | Conflicts: name    |
-| restore an item whose name is taken                          | `NameConflictError`                       | 409  | Conflicts: name    |
-| revert a md_document to a name that is taken                 | `NameConflictError`                       | 409  | Conflicts: name    |
-| revert with a version that is not the current one            | `VersionConflictError`                    | 409  | Conflicts: version |
-| set an `auth_subject` of "" or one that is too long          | `DomainValidationError`                   | 422  | Domain validation  |
+| Rule                                                                      | Domain error                              | REST | Check              |
+| ------------------------------------------------------------------------- | ----------------------------------------- | ---- | ------------------ |
+| rename a default tab                                                      | `ForbiddenError`                          | 403  | Target rules       |
+| delete a default tab                                                      | `ForbiddenError`                          | 403  | Target rules       |
+| change own `is_admin` flag                                                | `ForbiddenError`                          | 403  | Target rules       |
+| change the `is_admin` flag of the root admin                              | `ForbiddenError`                          | 403  | Target rules       |
+| change own `auth_subject`                                                 | `ForbiddenError`                          | 403  | Target rules       |
+| change the `auth_subject` of the root admin                               | `ForbiddenError`                          | 403  | Target rules       |
+| delete or deactivate the root admin                                       | `ForbiddenError`                          | 403  | Target rules       |
+| delete or deactivate own user                                             | `ForbiddenError`                          | 403  | Target rules       |
+| revert a md_document to a revision that records its deletion              | `ForbiddenError`                          | 403  | Target rules       |
+| move a md_document to a tab in another folder                             | `NotFoundError`                           | 404  | Target lookup      |
+| restore an item that is not deleted                                       | `NotFoundError`                           | 404  | Target lookup      |
+| restore a md_document whose tab is deleted                                | `NotFoundError`                           | 404  | Target lookup      |
+| any operation on a deleted user                                           | `NotFoundError`                           | 404  | Target lookup      |
+| revert a md_document that is not live                                     | `NotFoundError`                           | 404  | Target lookup      |
+| revert to a revision of another item or folder                            | `NotFoundError`                           | 404  | Target lookup      |
+| revert a md_document to a tab that is not live                            | `NotFoundError`                           | 404  | Target lookup      |
+| move a tab, rename a user, set `is_default` or `is_root`                  | none, the request model has no such field | 422  | Schema validation  |
+| update, rename or move a md_document without a version                    | none, the request model requires it       | 422  | Schema validation  |
+| create or rename anything with the name ""                                | `DomainValidationError`                   | 422  | Domain validation  |
+| create a user named `admin`                                               | `NameConflictError`                       | 409  | Conflicts: name    |
+| create a user with the name of a deleted user                             | `NameConflictError`                       | 409  | Conflicts: name    |
+| restore an item whose name is taken                                       | `NameConflictError`                       | 409  | Conflicts: name    |
+| revert a md_document to a name that is taken                              | `NameConflictError`                       | 409  | Conflicts: name    |
+| update, rename, move or revert with a version that is not the current one | `VersionConflictError`                    | 409  | Conflicts: version |
+| set an `auth_subject` of "" or one that is too long                       | `DomainValidationError`                   | 422  | Domain validation  |
 
 ## REST Error Format
 
