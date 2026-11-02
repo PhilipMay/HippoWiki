@@ -108,8 +108,8 @@ this text. The tool error that the SDK produces itself for an unknown tool has n
   answers directly, without a redirect.
 - Lifespan: the session manager runs in the lifespan of the FastAPI app.
 - Methods: only `POST` reaches the SDK. Every other method gets 405 problem+json with `Allow: POST`, after
-  authentication, as MCP allows for a server without a server-initiated stream. A test with real connectors has to check
-  that the target clients accept this.
+  authentication, as MCP allows for a server without a server-initiated stream. Whether the target clients accept this
+  is part of the [Connector Test](roadmap.md#connector-test).
 - Host check: the allowed hosts and origins are settings (`HIPPOWIKI_MCP_ALLOWED_HOSTS`,
   `HIPPOWIKI_MCP_ALLOWED_ORIGINS`). A foreign `Host` gets 421 and a foreign `Origin` gets 403. Only an authenticated
   `POST` reaches the SDK, which runs this check before it parses the body, see the
