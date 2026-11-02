@@ -18,6 +18,7 @@ These rights exist:
   - can see the folder (ID and name) and find it in the folder list
   - can read all tabs of the folder
   - can read all md_documents of the folder
+  - can see history of changes on folder and md_document level
 - write
   - can do everything that can be done with read
   - can add md_documents to a tab in a folder the user has this right on
@@ -29,6 +30,7 @@ These rights exist:
   - can change the name of tabs in the folder the user has this right on
   - can change the name of md_documents which are in the folder the user has this right on
   - can move md_documents to another tab in the folder the user has this right on
+  - can revert changes on folder and md_document level
 
 Notes:
 
