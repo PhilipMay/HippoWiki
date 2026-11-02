@@ -81,6 +81,9 @@ Foreign keys have no `ON DELETE` action, because md_documents, tabs, folders and
 `folder_rights` rows are physically deleted. So `created_by` and `assigned_by` are never null, and the root admin can
 refer to itself because a foreign key is checked at the end of the statement.
 
+The `name` columns of `md_documents`, `tabs`, `folders` and `users` use `COLLATE "C"`, because [lists](rest.md#lists)
+are sorted by them, see [Implementation Notes](rest.md#implementation-notes).
+
 ### MD Document
 
 | Column       | Type                   | Notes                                                                              |
@@ -96,6 +99,7 @@ refer to itself because a foreign key is checked at the end of the statement.
 
 - A partial unique index on `(tab_id, name) WHERE deleted_at IS NULL` enforces that the name is unique among the live
   md_documents of a tab.
+- A partial index on `(tab_id, name, id) WHERE deleted_at IS NOT NULL` supports the deleted list.
 - A check constraint `name <> ''` enforces that the name is not empty.
 
 ### Tab
@@ -112,6 +116,7 @@ refer to itself because a foreign key is checked at the end of the statement.
 
 - A partial unique index on `(folder_id, name) WHERE deleted_at IS NULL` enforces that the name is unique among the live
   tabs of a folder.
+- A partial index on `(folder_id, name, id) WHERE deleted_at IS NOT NULL` supports the deleted list.
 - A check constraint `is_default = (name = '')` enforces that the default tab is named "" and that no other tab has this
   name.
 - A check constraint `NOT is_default OR deleted_at IS NULL` enforces that the default tab is never deleted, also under

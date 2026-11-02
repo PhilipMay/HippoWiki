@@ -29,11 +29,46 @@ them, so a call gets the tool error for an unknown tool.
 - MCP tools get the principal through a resolver passed to the server factory. The production resolver reads it from the
   ASGI scope of the HTTP request in the tool context and fails closed if there is none.
 
+## Tools
+
+Each tool makes one service call and answers like its REST route, see [REST](rest.md). The rights are the same as there,
+and the fields of the results are in [Response Fields](rest.md#response-fields).
+
+| Tool                        | Arguments                                                   | REST route                                      |
+| --------------------------- | ----------------------------------------------------------- | ----------------------------------------------- |
+| `get_own_user`              |                                                             | `GET /me`                                       |
+| `list_own_rights`           | `limit`, `cursor`                                           | `GET /me/rights`                                |
+| `list_folders`              | `limit`, `cursor`                                           | `GET /folders`                                  |
+| `get_folder`                | `folder_id`                                                 | `GET /folders/{folder_id}`                      |
+| `list_tabs`                 | `folder_id`, `limit`, `cursor`                              | `GET /folders/{folder_id}/tabs`                 |
+| `get_tab`                   | `tab_id`                                                    | `GET /tabs/{tab_id}`                            |
+| `create_tab`                | `folder_id`, `name`                                         | `POST /folders/{folder_id}/tabs`                |
+| `rename_tab`                | `tab_id`, `name`                                            | `PATCH /tabs/{tab_id}`                          |
+| `delete_tab`                | `tab_id`                                                    | `DELETE /tabs/{tab_id}`                         |
+| `list_deleted_tabs`         | `folder_id`, `limit`, `cursor`                              | `GET /folders/{folder_id}/tabs/deleted`         |
+| `restore_tab`               | `tab_id`                                                    | `POST /tabs/{tab_id}/restore`                   |
+| `list_md_documents`         | `folder_id`, `tab_id`, `limit`, `cursor`                    | `GET /folders/{folder_id}/md-documents`         |
+| `get_md_document`           | `md_document_id`                                            | `GET /md-documents/{md_document_id}`            |
+| `create_md_document`        | `folder_id`, `name`, `content_md`, `tab_id`                 | `POST /folders/{folder_id}/md-documents`        |
+| `update_md_document`        | `md_document_id`, `version`, `content_md`, `name`, `tab_id` | `PATCH /md-documents/{md_document_id}`          |
+| `delete_md_document`        | `md_document_id`                                            | `DELETE /md-documents/{md_document_id}`         |
+| `list_deleted_md_documents` | `folder_id`, `limit`, `cursor`                              | `GET /folders/{folder_id}/md-documents/deleted` |
+| `restore_md_document`       | `md_document_id`                                            | `POST /md-documents/{md_document_id}/restore`   |
+
+- Lists follow the rules of [Lists](rest.md#lists), so `get_md_document` is the only tool that returns `content_md`.
+- A result is one JSON text block, so it reaches the context of an AI client only once.
+- A left-out optional argument and `null` both mean "not given", because AI clients often send `null`. No tool has an
+  argument where `null` has a meaning of its own.
+- `update_md_document` with no field to change gets a tool error with the code `schema_validation`.
+- Tools carry annotations: `readOnlyHint` on the list and get tools and `destructiveHint` on the delete tools.
+- A single large md_document still goes into the context in full. Its size is bounded only by the maximum document size,
+  see [Roadmap](roadmap.md#next-steps).
+
 ## Tool Arguments
 
 Tools take flat arguments, such as `{"folder_id": "...", "name": "..."}`. The tool signatures repeat the fields, and
-share the field types from `schemas/`, such as `SafeText` and `UtcDatetime`, so the validation stays the same as on
-REST.
+share the field types from `schemas/`, such as `SafeText`, `UtcDatetime` and the types for `limit` and the cursors, so
+the validation stays the same as on REST.
 
 - A tool taking a request model has to be called as `{"req": {...}}`, which would make the name of that parameter part
   of the interface AI clients see.
@@ -88,6 +123,9 @@ The SDK line numbers refer to `mcp` 2.3.0.
 - Input schema: the generated `input_schema` has no `additionalProperties: false`, so the wrapper sets it.
 - Invalid arguments: the SDK's error contains `input_value=...` and a pydantic.dev link, so the wrapper replaces it.
 - Tool errors: a domain error that is not translated would be masked by the SDK as `Error executing tool <name>`.
+- Tool results: tools register with `structured_output=False`. With a typed return the SDK sends the data twice, as
+  `content` and as `structured_content` (`func_metadata.py:209-226`), and adds an output schema to every tool
+  description.
 - Routes: mounted at `/mcp`, `POST /mcp` gets a 307 redirect whatever `streamable_http_path` is set to. The `Location`
   of this redirect is built from the request, so behind a TLS proxy it depends on trusting forwarded headers, and MCP
   clients would have to follow it on a POST. `streamable_http_path` keeps its default of `/mcp`

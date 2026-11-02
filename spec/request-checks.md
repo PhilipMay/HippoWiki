@@ -1,7 +1,7 @@
 # Request Checks
 
-This document defines how denied requests and errors behave on REST and MCP. The REST endpoints and MCP tools themselves
-are not planned yet, see [Roadmap](roadmap.md#next-steps).
+This document defines how denied requests and errors behave on REST and MCP. The routes are in [REST](rest.md) and the
+tools in [MCP](mcp.md#tools).
 
 ## Check Order
 
@@ -17,7 +17,7 @@ and MCP, and each adapter translates them. The last row is not a check: it cover
 | Body size          | a request body over the limit                                                                                    | none, rejected by the middleware | 413           | rejected before the tools run      |
 | Routing            | an unknown route (404), a known route with the wrong method (405)                                                | none, rejected by the framework  | 404, 405      | see [MCP](mcp.md#errors)           |
 | Host check         | a foreign `Host` (421) or `Origin` (403), see [MCP](mcp.md#serving-the-mcp-app)                                  | none, rejected by the SDK        | no such check | HTTP 421 or 403                    |
-| Schema validation  | malformed JSON, an unparsable body, wrong types, missing or unknown fields                                       | none, rejected by the adapter    | 422           | see [MCP](mcp.md#errors)           |
+| Schema validation  | malformed JSON, an unparsable body, wrong types, missing or unknown fields, an invalid `limit` or `cursor`       | none, rejected by the adapter    | 422           | see [MCP](mcp.md#errors)           |
 | Visibility         | a user with no right on the folder or a deleted folder, also for any tab or md_document in it                    | `NotFoundError`                  | 404           | tool error `not_found`             |
 | Required right     | a user whose right on the folder is too low for the operation                                                    | `ForbiddenError`                 | 403           | tool error `forbidden`             |
 | Target lookup      | a missing or deleted tab, md_document or user, or a missing folder right, also when named in the body            | `NotFoundError`                  | 404           | tool error `not_found`             |
@@ -76,8 +76,8 @@ What deleting does is defined in [Entities](entities.md#deleting-and-restoring-c
 - a deleted md_document, tab or folder, and any item inside a deleted tab or folder, gets the same 404 as a missing
   item, for every operation except the deleted list, restore and history. This also holds for admins
 - deleting a deleted item gets this 404 as well, in the same way as deleting a right that does not exist
-- the deleted list of a folder holds the md_documents and tabs that have their own `deleted_at` and a live parent, with
-  metadata only, and follows the check order on the folder
+- a folder has two deleted lists, one for md_documents and one for tabs. They hold the items that have their own
+  `deleted_at` and a live parent, with metadata only, and follow the check order on the folder
 - restoring a md_document or tab, and reading the history of a md_document that is not live or the content of one of its
   revisions, resolves its ID among the deleted rows too, then runs the check order on its folder.
   [Rights on Folders](users-and-rights.md#rights-on-folders) gives the result
@@ -116,6 +116,7 @@ gets `DomainValidationError`, and a violated unique name gets `NameConflictError
 | restore a md_document whose tab is deleted                | `NotFoundError`                           | 404  | Target lookup      |
 | move a tab or set `is_default`                            | none, the request model has no such field | 422  | Schema validation  |
 | update, rename or move a md_document without a version    | none, the request model requires it       | 422  | Schema validation  |
+| update anything with no field to change                   | none, the request model requires one      | 422  | Schema validation  |
 | create or rename anything with the name ""                | `DomainValidationError`                   | 422  | Domain validation  |
 | update, rename or move with a version that is not current | `VersionConflictError`                    | 409  | Conflicts: version |
 | restore an item whose name is taken                       | `NameConflictError`                       | 409  | Conflicts: name    |

@@ -118,6 +118,35 @@ transport behaviour.
 - A folder revert soft deletes newer items, restores items deleted later and keeps items deleted at the target deleted.
   It keeps the current folder name and the rights, and the rename stays in the history.
 
+### Lists
+
+- Paging through a whole list returns each row once and in order, on the fakes and on the real repositories.
+- A list with exactly `limit` rows gets a null `next_cursor`, with no empty page after it.
+- Hidden and deleted rows neither reduce a page nor appear, also behind a crafted cursor.
+- A cursor with bad base64, a wrong shape or a NUL gets 422 on REST and a tool error on MCP, not a 500. It gets the same
+  response for a hidden, a missing and a readable folder.
+- A `limit` of 0 and of 101 get 422, and 1 and 100 are accepted.
+- Paging goes on when the row named by the cursor is deleted between two pages.
+- Tab names outside ASCII sort the same on the fakes and on the real repositories.
+- Names that repeat, among deleted rows and across the tabs of a folder, are neither skipped nor repeated between pages.
+- No list has `content_md`, and neither has the result of a create or update of a md_document.
+- A folder revert with more changed items than `limit` returns all of them across pages.
+
+### Own Account
+
+- Every user gets their own user, without `auth_subject`, on REST and on MCP.
+- `created_by` and `assigned_by` have ID and name, also for a deleted user.
+- A non-admin gets 403 on every `/users` route, also for their own ID.
+
+### Combined Updates
+
+- A user with `write` and `name` or `tab_id` in the update gets 403, also for an unchanged value, and with only
+  `content_md` gets through.
+- A `PATCH` with no field to change gets 422 and a `null` for a field gets 422, except `auth_subject`, where `null`
+  removes the link.
+- In the tool tests, `update_md_document` treats a `null` argument as not given, so `null` for `name` needs only
+  `write`.
+
 ### Users and Linking
 
 - A deactivated user gets the same 401 as a token with no linked user, on the next request, on REST and MCP.
@@ -169,6 +198,8 @@ transport behaviour.
 - In the tool tests, each domain error a tool can raise gives its stable code.
 - In the tool tests, the tool list has no [admin operation](users-and-rights.md#admin-operations), no history and no
   revert tool.
+- In the tool tests, a result has one text block and no `structured_content`, and the tool description has no output
+  schema.
 - On the transport, an admin, including the root admin, gets 403 problem+json with the code `forbidden` and no
   `WWW-Authenticate` on `POST /mcp` and `GET /mcp`, on both protocol paths, and no tool runs.
 - On the transport, an admin with a body over the limit gets 403, not 413.

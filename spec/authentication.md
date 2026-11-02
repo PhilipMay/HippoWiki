@@ -140,7 +140,8 @@ Hosted MCP connectors log in with OAuth 2.1 and PKCE, because the clients named 
 
 Public routes are the only ones the middleware lets through without authentication:
 
-- health: liveness only, with a fixed status body, no database access and no version or configuration details
+- health: `GET /health`, liveness only, with a fixed status body, no database access and no version or configuration
+  details
 - protected resource metadata (RFC 9728): `/.well-known/oauth-protected-resource` and its form for the MCP path,
   `/.well-known/oauth-protected-resource/mcp`, with a body built from the settings and no database access. Its
   `authorization_servers` lists the Keycloak issuer, and its `resource` equals the MCP URL as a user enters it in a

@@ -14,7 +14,8 @@ Read these in order for a first overview:
 5. [History and Revisions](history-revisions.md): tracked changes, versions and revert.
 6. [Request Checks](request-checks.md): check order, rejected operations and error format.
 7. [Authentication](authentication.md): login, token check and the auth middleware.
-8. [MCP](mcp.md): what is specific to the MCP adapter.
+8. [REST](rest.md): the routes, the response fields and how lists page.
+9. [MCP](mcp.md): the tools and what else is specific to the MCP adapter.
 
 Look these up when you need them:
 

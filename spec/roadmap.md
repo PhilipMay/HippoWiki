@@ -16,12 +16,7 @@ In this order, because the later steps depend on the decisions of the earlier on
    - The reverse proxy needs a matching limit.
    - The SDK limits MCP bodies to 4 MiB by itself and answers with its own 413 body (`transport_security.py:15`). So the
      limit stays at or below that, or `max_request_body_size` is set as well.
-3. **REST and MCP planning**: define the REST endpoints and the MCP tools.
-   - Lists: a list can be arbitrarily large, and on MCP a large tool result goes straight into the context of an AI
-     client. Define the page size, a maximum, cursor or offset, and whether lists return `content_md`. [Time](time.md)
-     already has the tie-breaker rule that a stable order needs.
-   - Own account: users can not read their own user record, and non-admins can not list users, so a `created_by` ID can
-     not be turned into a name. Define how they find both.
+   - On MCP the maximum document size also bounds what one `get_md_document` puts into the context of an AI client.
 
 ## Connector Test
 
@@ -47,6 +42,7 @@ fails, evaluate [Logto](https://docs.logto.io/use-cases/ai/mcp-server-enable-thi
 
 - MCP resources: the first version has tools only. Adding resources needs their errors, the identical 404 and tests
   defined, because a failed resource read is a protocol error in the SDK.
+- Partial reads: reading part of a large md_document, so a tool result does not have to hold all of it.
 - Conflicting edits: a merge strategy for conflicting AI and human edits, beyond optimistic locking.
 - Browser clients: same origin only for now. A preflight `OPTIONS` carries no credentials, so the auth middleware would
   reject it with 401. If origins get allowed, CORS wraps outside the auth middleware and is configured by an allowlist

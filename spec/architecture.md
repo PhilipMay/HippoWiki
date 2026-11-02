@@ -72,7 +72,7 @@ src/hippowiki/
 │                        # create_production_app(): real factory and credential check, lifespan (DB engine)
 ├── cli.py               # CLI: hippowiki migrate, hippowiki init, hippowiki link-root-admin
 ├── config.py            # Settings (pydantic-settings)
-├── domain.py            # frozen dataclasses exchanged by repositories, services and adapters
+├── domain.py            # frozen dataclasses exchanged by repositories, services and adapters, including Page and UserRef
 ├── logs.py              # JSON log formatter and logging setup, also for Uvicorn's loggers
 ├── problem.py           # RFC 9457 problem+json helper, used by auth/middleware.py, api/errors.py and mcp/server.py
 ├── db/
@@ -80,6 +80,7 @@ src/hippowiki/
 │   ├── models.py        # SQLAlchemy ORM models
 │   └── migrations/      # Alembic env.py, script.py.mako and versions/, shipped inside the package
 ├── schemas/             # Pydantic request and response models for REST, response models and field types shared with MCP
+│   ├── paging.py        # types for limit and the cursors of lists
 │   ├── text.py          # SafeText
 │   └── time.py          # UtcDatetime
 ├── repositories/        # DB access only, no business rules
@@ -194,4 +195,5 @@ src/hippowiki/
 - **Validation and errors**: see [Request Checks](request-checks.md).
 - **Time**: UTC everywhere, see [Time](time.md).
 - **Auth**: see [Users and Rights](users-and-rights.md) and [Authentication](authentication.md).
+- **REST adapter and lists**: see [REST](rest.md).
 - **MCP adapter**: see [MCP](mcp.md).

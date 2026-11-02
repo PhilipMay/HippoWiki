@@ -44,6 +44,23 @@ in [Entities](entities.md#deleting-and-restoring-content), and what can be moved
 
 The current right applies to all revisions, also to those from before the user got it.
 
+### Combined Updates
+
+One [update of a md_document](rest.md#md-documents) can change its content, name and tab together:
+
+- with only `content_md` present it needs `write`
+- with `name` or `tab_id` present it needs `manage`, also when the value would not change, because the right check comes
+  before the item is read, see [Check Order](request-checks.md#check-order) (service)
+
+## Own Account
+
+- every user can read their own user and their [own rights](#assigning-and-listing-rights), on REST and on MCP
+- the own user has only the ID, name, `is_admin` and `created_at`, so no `auth_subject`
+- every response names a user as ID and name together, so `created_by` needs no lookup
+  - a name appears only next to something the user can already read, so nothing can be enumerated, and there is no route
+    that turns an ID into a name
+  - a deleted user keeps their name here, because [the name stays reserved](#deactivating-and-deleting-users)
+
 ## Admin Operations
 
 A user with `is_admin` set can do these, only on REST. The responses for non-admins are in
@@ -51,7 +68,7 @@ A user with `is_admin` set can do these, only on REST. The responses for non-adm
 
 - users:
   - create users, each linked to a Keycloak account, and create a user as an admin directly
-  - list all users, including deactivated and deleted users
+  - list all users, including deactivated and deleted users, and read one user who is not deleted
   - change or remove the linked Keycloak account of other users, except for the root admin
   - deactivate and delete other users, except for the root admin, and reactivate users
   - change the `is_admin` flag of other users, except for the root admin
@@ -110,8 +127,7 @@ Keycloak accounts and HippoWiki users are connected only through `users.auth_sub
   - a user can be deleted without being deactivated first
 - every other operation on a deleted user fails as if the user did not exist, also when the user is the target of a
   right (service)
-- a deleted user stays in the list of all users, with both timestamps, so that an ID in the history can be turned into a
-  name
+- a deleted user stays in the list of all users, with both timestamps, so that admins can still see who they were
 - what a user did stays: their content stays attributed to them, and the rights they assigned stay in force
 - a right assigned while its user is being deleted can leave a row behind. This is accepted, because the row has no
   effect, and the rights lists leave out rows of deleted users

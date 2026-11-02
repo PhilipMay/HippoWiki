@@ -21,7 +21,8 @@ implementation.
 - time rules: `spec/time.md`
 - login method, tokens, authentication middleware and public routes: `spec/authentication.md`
 - check order, denied requests and errors: `spec/request-checks.md`
-- MCP adapter: `spec/mcp.md`
+- REST routes, response fields and lists: `spec/rest.md`
+- MCP tools and adapter: `spec/mcp.md`
 - testing strategy and required test cases: `spec/testing.md`
 - deployment: `spec/deployment.md`
 - next steps and open points: `spec/roadmap.md`
