@@ -9,17 +9,17 @@ left out. The core rules on rights, check order and rejected operations are larg
 
 These are small contradictions and loose ends.
 
-- **Wrong wording on user names** (`api.md:39-40`): "only admins ... change folder and user names" contradicts "users can
+- **Wrong wording on user names** (`api.md:42-43`): "only admins ... change folder and user names" contradicts "users can
   not be renamed" (`entities.md:74`). Conflicts come from creating folders and users and from renaming folders.
 - **`id` tie-breaker does not fit every table** (`time.md:17`): `folder_rights` has no `id`, only the composite key
   (`entities.md:86`), and "list all rights of all folders" is such a list.
-- **Infrastructure wording** (`goals.md:13`, `architecture.md:36`, `deployment.md:10`)
+- **Infrastructure wording** (`goals.md:13`, `architecture.md:36`, `deployment.md:12`)
   - A reverse proxy is required for remote MCP, while PostgreSQL is called the only infrastructure dependency and
     everything between clients and PostgreSQL is said to run in one process.
   - "Pure Python" also does not hold for dependencies such as asyncpg and pydantic-core, which are compiled.
-- **Second access path without a principal** (`architecture.md:110-112`, `:128`): `create_root_admin` is called "the one
+- **Second access path without a principal** (`architecture.md:117-119`, `:148-149`): `create_root_admin` is called "the one
   exception", but the credential lookup also runs without a principal. The layer rules do not say which layer it uses.
-- **Generic 401 header** (`api.md:86`): RFC 9110 requires `WWW-Authenticate` on a 401, and MCP clients use it to find the
+- **Generic 401 header** (`api.md:92`): RFC 9110 requires `WWW-Authenticate` on a 401, and MCP clients use it to find the
   login method. The spec only defines the body.
 - **ID generation is undefined** (`entities.md:20`, `:49`, `:60`, `:64`)
   - The spec does not say whether the app or the database generates IDs, or which UUID version they use. PostgreSQL 16
@@ -28,15 +28,15 @@ These are small contradictions and loose ends.
 - **Replacing a right and `created_at`** (`entities.md:112`, `time.md:10-14`): `DEFAULT now()` does not fire on
   `ON CONFLICT DO UPDATE`, so an upsert keeps the old time unless it sets the column. `created_at` also has a different
   meaning here than "entered this system".
-- **Read right and the folder itself** (`auth-concept.md:20-22`, `api.md:7`, `:41`): `read` lists tabs and md_documents,
+- **Read right and the folder itself** (`auth-concept.md:20-22`, `api.md:7`, `:44`): `read` lists tabs and md_documents,
   but not listing or reading the folder, although that is how a user finds it.
-- **Browser clients** (`goals.md:8`, `architecture.md:142-146`): REST is meant for web clients, but CORS is not mentioned.
+- **Browser clients** (`goals.md:8`, `architecture.md:164-168`): REST is meant for web clients, but CORS is not mentioned.
   A preflight `OPTIONS` carries no credentials, so the middleware would reject it with 401.
-- **User deletion is promised but not tracked** (`auth-concept.md:8`, `:63`, `known-limitations.md:8-9`)
+- **User deletion is promised but not tracked** (`auth-concept.md:8`, `:65`, `known-limitations.md:8-9`)
   - Deleting and deactivating users "will change later", but the open question on deletion names only md_documents, tabs
     and folders, and no column supports deactivation.
   - "Disabled" and "deactivated" are used for the same thing.
-- **Components without a specified use** (`architecture.md:51`, `:54-55`, `:90-91`, `time.md:17-18`, `time.md:39-40`)
+- **Components without a specified use** (`architecture.md:51`, `:54-55`, `:96-97`, `time.md:17-18`, `time.md:39-40`)
   - `parse.py` extracts titles and sections, but no entity has a title and no specified operation uses sections.
   - Frontmatter is only needed for import and export, which are not planned yet.
   - `time.md` refers to "sync", which appears nowhere else.
@@ -44,7 +44,7 @@ These are small contradictions and loose ends.
   `infinity` comes back naive (`tests/test_time_asyncpg.py:70-71`). A sentence that such values are not allowed would
   close this.
 - **Token assumption in the time rules** (`time.md:13`, `:34`): they assume host clock token validation and JWT claims,
-  while the login method is still open (`known-limitations.md:28`). A stored token with a persisted expiry would fall
+  while the login method is still open (`known-limitations.md:45`). A stored token with a persisted expiry would fall
   under the database clock rule instead.
 - **Owner of the UTC setting** (`time.md:8`): server and connection time zone are "set to UTC", but neither
   `deployment.md` nor the engine description says where.
@@ -55,10 +55,10 @@ These are small contradictions and loose ends.
   covers renaming and moving (`auth-concept.md:28-33`). The names invite mistakes, and something like `manage` would be
   clearer for the top level. The values appear in `entities.md:82` and `:87`.
 - **`md_document` versus `document`**: the code layout and validation text use `document` (`DocumentService`,
-  `documents.py`, `architecture.md:78`, `:85`, `:127`, `:133`), while all other documents use `md_document`.
-- **Redundant name rule** (`architecture.md:133`): `a-z0-9-` already excludes `/`.
+  `documents.py`, `architecture.md:83`, `:91`, `:147`, `:153`), while all other documents use `md_document`.
+- **Redundant name rule** (`architecture.md:153`): `a-z0-9-` already excludes `/`.
 - **`known-limitations.md`**
-  - Typos: "contraints" (`:5`), "plannning" (`:13`), "seperately" (`:37`).
+  - Typos: "contraints" (`:5`), "plannning" (`:13`), "seperately" (`:54`).
   - `:5` and `:10` both cover name rules, and `:7` repeats itself.
 - **`CLAUDE.md`**: typo "kown limitations" in the document list.
 
