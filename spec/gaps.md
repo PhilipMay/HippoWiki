@@ -12,10 +12,7 @@ These gaps leave a response undefined, so the fix decides how the system behaves
 - Gap: [Admin Operations](users-and-rights.md#admin-operations) lets an admin reactivate only other users, and not the
   root admin. [Rejected Operations](request-checks.md#users-and-rights) has rows only for deleting and deactivating, so
   no response is defined for these two requests.
-- Suggested fix: reject both with `ForbiddenError` (403, Target rules), by changing the two rows to "delete, deactivate
-  or reactivate the root admin" and "delete, deactivate or reactivate own user".
-- Why: it matches the existing text, and the requests have no use. The root admin is never deactivated, and a
-  deactivated admin can not authenticate to reactivate themselves.
+- Suggested fix: change this in the spec: the root admin can not be deactivated
 
 ### Folder Revert to an Unknown Number
 
