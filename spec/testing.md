@@ -18,8 +18,10 @@
 - **CI**: `make format`, `make check` and `make test` must stay green locally; CI runs `make check`, `make test` and
   `make test-podman` in parallel as three separate GitHub Actions workflows (`check.yml`, `test.yml` and
   `test-podman.yml`). `test-podman.yml` starts the Podman socket of the runner and sets `DOCKER_HOST` to it, so it does
-  not use the `podman machine` call in the `Makefile`. Table constraints, atomic writes, migrations and real SQL run
-  only in `make test-podman`, so run it locally as well after such changes.
+  not use the `podman machine` call in the `Makefile`. It also adds an AppArmor rule that lets Podman signal `pasta`, as
+  a workaround for [Ubuntu bug 2154379](https://bugs.launchpad.net/ubuntu/+source/passt/+bug/2154379), which otherwise
+  fails container removal on Ubuntu 26.04. Table constraints, atomic writes, migrations and real SQL run only in
+  `make test-podman`, so run it locally as well after such changes.
 
 ## Test Kinds
 

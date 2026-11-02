@@ -32,6 +32,14 @@ jobs:
     - name: Install
       run: uv sync --locked
 
+    # Ubuntu 26.04 AppArmor blocks the SIGTERM from podman to pasta, which fails container removal.
+    # Remove this step once it is fixed: https://bugs.launchpad.net/ubuntu/+source/passt/+bug/2154379
+    - name: Allow Podman to signal pasta
+      run: |
+        sudo sed -i '/include <abstractions\/pasta>/a\  signal (receive) set=(term) peer=podman,' /etc/apparmor.d/usr.bin.pasta
+        grep -q 'peer=podman' /etc/apparmor.d/usr.bin.pasta
+        sudo apparmor_parser -r /etc/apparmor.d/usr.bin.pasta
+
     # Linux has no podman machine, so DOCKER_HOST has to be set before make runs
     - name: Start Podman socket
       run: |
