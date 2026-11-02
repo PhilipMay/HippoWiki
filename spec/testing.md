@@ -122,6 +122,7 @@ transport behaviour.
 
 - A deactivated user gets the same 401 as a token with no linked user, on the next request, on REST and MCP.
 - A reactivated user gets through again, with the same rights and without a new link.
+- Reactivating the root admin or your own user succeeds and changes nothing.
 - A deleted user gets 401 for the old subject, and that subject can be linked to a new user.
 - An `auth_subject` of 256 characters gets `DomainValidationError`.
 - A duplicate `auth_subject` gets `SubjectConflictError`, on create and on change.
@@ -180,6 +181,8 @@ transport behaviour.
 - On the transport, `POST /mcp` answers without a redirect.
 - On the transport, an authenticated `GET /mcp` gets 405 with `Allow: POST` and an unauthenticated one gets 401.
 - On the transport, a foreign `Host` gets 421 and a foreign `Origin` gets 403, and the configured ones are accepted.
+- On the transport, an unauthenticated request with a foreign `Host` gets 401, and an authenticated one with an invalid
+  body and a foreign `Host` gets 421.
 
 ### Time
 

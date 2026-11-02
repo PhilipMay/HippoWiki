@@ -42,7 +42,7 @@ in [Deleted Items](request-checks.md#deleted-items).
   - a create or move into a tab that is being deleted at the same time waits for the
     [lock on the folder row](history-revisions.md#optimistic-locking): after the delete it gets 404, and before it the
     item is hidden and comes back on restore
-  - a deleted folder keeps its default tab, live but hidden
+  - a deleted folder keeps its default tab, whose own `deleted_at` stays null, and the tab is hidden through the folder
 - a deleted name can be used again, because the unique names apply only to live rows
 - restoring an item whose name is taken is rejected, and the live item has to be renamed or deleted first
 - restoring an item whose parent is deleted is rejected, so the parent is restored first (service)

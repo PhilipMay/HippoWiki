@@ -9,23 +9,24 @@ A user only learns that a folder exists if they have a right on it. Every reques
 checks in this order, and the first one that fails decides the response. Services raise the same domain errors for REST
 and MCP, and each adapter translates them. The last row is not a check: it covers any other exception.
 
-| Check              | Rejects                                                                                                          | Domain error                     | REST     | MCP                                |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------- | -------------------------------- | -------- | ---------------------------------- |
-| Credential lookup  | a request with credentials that can not be checked, because the lookup failed                                    | none, rejected by the middleware | 503      | rejected before the tools run      |
-| Authentication     | an unauthenticated request                                                                                       | none, rejected by the middleware | 401      | rejected before the tools run      |
-| Admin on MCP       | a request to MCP by an admin, see [MCP](mcp.md#admin-accounts)                                                   | none, rejected by the middleware | allowed  | HTTP 403, before the tools run     |
-| Body size          | a request body over the limit                                                                                    | none, rejected by the middleware | 413      | rejected before the tools run      |
-| Routing            | an unknown route (404), a known route with the wrong method (405)                                                | none, rejected by the framework  | 404, 405 | see [MCP](mcp.md#errors)           |
-| Schema validation  | malformed JSON, an unparsable body, wrong types, missing or unknown fields                                       | none, rejected by the adapter    | 422      | see [MCP](mcp.md#errors)           |
-| Visibility         | a user with no right on the folder or a deleted folder, also for any tab or md_document in it                    | `NotFoundError`                  | 404      | tool error `not_found`             |
-| Required right     | a user whose right on the folder is too low for the operation                                                    | `ForbiddenError`                 | 403      | tool error `forbidden`             |
-| Target lookup      | a missing or deleted tab, md_document or user, or a missing folder right, also when named in the body            | `NotFoundError`                  | 404      | tool error `not_found`             |
-| Target rules       | an operation the target does not allow, see [below](#rejected-operations)                                        | `ForbiddenError`                 | 403      | tool error `forbidden`             |
-| Domain validation  | a name or size that breaks the domain rules                                                                      | `DomainValidationError`          | 422      | tool error `domain_validation`     |
-| Conflicts: version | a version conflict, compared before the write, see [Optimistic Locking](history-revisions.md#optimistic-locking) | `VersionConflictError`           | 409      | tool error `version_conflict`      |
-| Conflicts: name    | a name conflict, which surfaces at the write                                                                     | `NameConflictError`              | 409      | tool error `name_conflict`         |
-| Conflicts: subject | a Keycloak account that is already linked to another user                                                        | `SubjectConflictError`           | 409      | no such tool, admin operation      |
-| Unexpected         | any other exception                                                                                              | none                             | 500      | generic tool error without details |
+| Check              | Rejects                                                                                                          | Domain error                     | REST          | MCP                                |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------- | -------------------------------- | ------------- | ---------------------------------- |
+| Credential lookup  | a request with credentials that can not be checked, because the lookup failed                                    | none, rejected by the middleware | 503           | rejected before the tools run      |
+| Authentication     | an unauthenticated request                                                                                       | none, rejected by the middleware | 401           | rejected before the tools run      |
+| Admin on MCP       | a request to MCP by an admin, see [MCP](mcp.md#admin-accounts)                                                   | none, rejected by the middleware | allowed       | HTTP 403, before the tools run     |
+| Body size          | a request body over the limit                                                                                    | none, rejected by the middleware | 413           | rejected before the tools run      |
+| Routing            | an unknown route (404), a known route with the wrong method (405)                                                | none, rejected by the framework  | 404, 405      | see [MCP](mcp.md#errors)           |
+| Host check         | a foreign `Host` (421) or `Origin` (403), see [MCP](mcp.md#serving-the-mcp-app)                                  | none, rejected by the SDK        | no such check | HTTP 421 or 403                    |
+| Schema validation  | malformed JSON, an unparsable body, wrong types, missing or unknown fields                                       | none, rejected by the adapter    | 422           | see [MCP](mcp.md#errors)           |
+| Visibility         | a user with no right on the folder or a deleted folder, also for any tab or md_document in it                    | `NotFoundError`                  | 404           | tool error `not_found`             |
+| Required right     | a user whose right on the folder is too low for the operation                                                    | `ForbiddenError`                 | 403           | tool error `forbidden`             |
+| Target lookup      | a missing or deleted tab, md_document or user, or a missing folder right, also when named in the body            | `NotFoundError`                  | 404           | tool error `not_found`             |
+| Target rules       | an operation the target does not allow, see [below](#rejected-operations)                                        | `ForbiddenError`                 | 403           | tool error `forbidden`             |
+| Domain validation  | a name, `auth_subject` or size that breaks the domain rules                                                      | `DomainValidationError`          | 422           | tool error `domain_validation`     |
+| Conflicts: version | a version conflict, compared before the write, see [Optimistic Locking](history-revisions.md#optimistic-locking) | `VersionConflictError`           | 409           | tool error `version_conflict`      |
+| Conflicts: name    | a name conflict, which surfaces at the write                                                                     | `NameConflictError`              | 409           | tool error `name_conflict`         |
+| Conflicts: subject | a Keycloak account that is already linked to another user                                                        | `SubjectConflictError`           | 409           | no such tool, admin operation      |
+| Unexpected         | any other exception                                                                                              | none                             | 500           | generic tool error without details |
 
 ## Rules
 
@@ -33,7 +34,8 @@ and MCP, and each adapter translates them. The last row is not a check: it cover
 
 - two kinds of validation:
   - schema validation in the adapters: shape and types through the Pydantic models, without database access
-  - domain validation in the services: the [name rules](entities.md#names), maximum document size
+  - domain validation in the services: the [name rules](entities.md#names), the
+    [`auth_subject` length](users-and-rights.md#user-linking), maximum document size
 - schema validation leaks nothing: it depends only on the request and never reads the database, so a hidden, a missing
   and a readable folder give the same 422, and validators must not do lookups
 - unknown fields: request models forbid them (`extra="forbid"`), so they get 422 instead of being silently ignored. For
@@ -126,6 +128,7 @@ gets `DomainValidationError`, and a violated unique name gets `NameConflictError
 | revert a md_document that is not live                        | `NotFoundError`        | 404  | Target lookup      |
 | revert to a revision of another item or folder               | `NotFoundError`        | 404  | Target lookup      |
 | revert a md_document to a tab that is not live               | `NotFoundError`        | 404  | Target lookup      |
+| revert a folder to a number that is not in its history       | `NotFoundError`        | 404  | Target lookup      |
 | revert with a version that is not the current one            | `VersionConflictError` | 409  | Conflicts: version |
 | revert a md_document to a name that is taken                 | `NameConflictError`    | 409  | Conflicts: name    |
 

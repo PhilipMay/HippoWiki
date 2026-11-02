@@ -81,7 +81,8 @@ A write runs in this order, after the visibility and right checks of [Request Ch
   compares it under the lock on the folder row, see [Optimistic Locking](#optimistic-locking), so a concurrent change
   can not slip in between
 - reverting to the state that is already current with the current version succeeds and adds no revision
-- a revision that belongs to another item or folder is treated as a missing one
+- a revision that belongs to another item or folder is treated as a missing one, and so is a number that is not in the
+  history of the folder
 
 ### MD Document Revert
 

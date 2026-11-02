@@ -51,7 +51,9 @@ REST.
 The [check order](request-checks.md#check-order) defines which tool error each check gives. Routing and schema
 validation are reported differently depending on where they fail:
 
-- routing: an unknown tool gets a tool error, and an unknown JSON-RPC method gets a protocol error
+- routing: an unknown tool gets a tool error, and an unknown JSON-RPC method gets a protocol error. Both are found
+  inside the SDK, so after the [host check](#serving-the-mcp-app), which comes after routing only for the HTTP path and
+  method
 - schema validation: malformed JSON gets a protocol error and never reaches a tool. Invalid or unknown tool arguments
   get a tool error, and the tool does not run
 
@@ -70,7 +72,9 @@ this text. The tool error that the SDK produces itself for an unknown tool has n
   authentication, as MCP allows for a server without a server-initiated stream. A test with real connectors has to check
   that the target clients accept this.
 - Host check: the allowed hosts and origins are settings (`HIPPOWIKI_MCP_ALLOWED_HOSTS`,
-  `HIPPOWIKI_MCP_ALLOWED_ORIGINS`). A foreign `Host` gets 421 and a foreign `Origin` gets 403.
+  `HIPPOWIKI_MCP_ALLOWED_ORIGINS`). A foreign `Host` gets 421 and a foreign `Origin` gets 403. Only an authenticated
+  `POST` reaches the SDK, which runs this check before it parses the body, see the
+  [check order](request-checks.md#check-order).
 
 ## Implementation Notes
 
@@ -94,7 +98,8 @@ The SDK line numbers refer to `mcp` 2.3.0.
   nothing uses.
 - Host check: by default the SDK enables DNS rebinding protection that allows only localhost hosts and origins
   (`lowlevel/server.py:753`). Behind the required reverse proxy, real requests would be rejected, which is why these are
-  settings. The transport tests send these headers explicitly, because a local port would not notice otherwise.
+  settings. The transport tests send these headers explicitly, because a local port would not notice otherwise. That the
+  check comes before schema validation is an assumption about the SDK, which a transport test confirms.
 - Protocol versions: the SDK sends requests with protocol version `2026-07-28` through a separate path
   (`handle_modern_request`, from `streamable_http_manager.py:194`), before it looks at the stateless setting. The
   transport tests cover both paths.

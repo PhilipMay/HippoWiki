@@ -11,8 +11,8 @@ of that.**
 - **One clock: the database.** Persisted timestamps are set with `now()` (column default `now()`, updates set
   `deleted_at = now()`), never taken from clients and never from the app host clock. `now()` is the start of the
   transaction, so all rows written together share the exact same timestamp. The app host clock is only for values that
-  are not persisted, such as log lines. An expiry stored in the database is compared with `now()`. Import follows the
-  same rule: `created_at` means "entered this system", and dates from the source stay in the frontmatter.
+  are not persisted, such as log lines. Import follows the same rule: `created_at` means "entered this system", and
+  dates from the source stay in the frontmatter.
 - **Ordering**: timestamps are for humans and filters, not for ordering guarantees. `now()` is the transaction start and
   the clock is not monotonic, so timestamp order is not commit order, and rows from one transaction tie exactly.
   Revisions are ordered by version or folder number, and sorted lists use the primary key as a tie-breaker.
@@ -30,7 +30,7 @@ of that.**
 - **Time ranges** (e.g. list filters, and later search filters) are half-open: `[since, until)`.
 - **Calendar dates** without a time of day (e.g. a "published" date) are `date` / `YYYY-MM-DD`, column names end in
   `_on`. A date is never encoded as midnight UTC.
-- **Durations** (config, TTLs, limits) are integers with the unit in the name, e.g. `token_ttl_seconds`.
+- **Durations** (config, TTLs, limits) are integers with the unit in the name, e.g. `jwks_refetch_interval_seconds`.
 - **Frontmatter** stays verbatim in `content_md`. If it is ever extracted into `jsonb`, dates and times are kept as
   strings by turning off PyYAML's timestamp parsing.
 - **Logs** use UTC, RFC 3339 with `Z`.

@@ -22,7 +22,6 @@ Look these up when you need them:
 - [Testing](testing.md): the test kinds and the cases that are easy to miss.
 - [Deployment](deployment.md): containers, Keycloak, the reverse proxy and backups.
 - [Roadmap](roadmap.md): next steps and open points.
-- [Gaps](gaps.md): open gaps in the specification, with suggested fixes.
 
 ## Glossary
 

@@ -53,7 +53,7 @@ A user with `is_admin` set can do these, only on REST. The responses for non-adm
   - create users, each linked to a Keycloak account, and create a user as an admin directly
   - list all users, including deactivated and deleted users
   - change or remove the linked Keycloak account of other users, except for the root admin
-  - deactivate, reactivate and delete other users, except for the root admin
+  - deactivate and delete other users, except for the root admin, and reactivate users
   - change the `is_admin` flag of other users, except for the root admin
 - folders: create and rename folders, delete them, list deleted folders and restore them
 - rights: assign and delete the rights of a folder, list them, and list all rights of all folders
@@ -100,6 +100,8 @@ Keycloak accounts and HippoWiki users are connected only through `users.auth_sub
   [Token Check](authentication.md#token-check)
   - the link and the rights stay, and apply again after reactivation
   - deactivating and reactivating are idempotent, and `deactivated_at` keeps its first value
+  - reactivating an active user succeeds and changes nothing, which is always the case for the root admin and the
+    admin's own user
   - a deactivated user can still get rights and a changed link from an admin
 - deleting is final, and a deleted user can not be restored or reactivated (service)
   - in one transaction it sets `deleted_at`, clears `auth_subject` and removes the folder right rows of the user

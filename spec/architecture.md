@@ -38,8 +38,8 @@ access. Clients log in at Keycloak, a separate service that issues the tokens, s
 
 Key idea: **MCP and REST are thin adapters** over the same service layer. All domain rules (domain validation,
 permissions, versioning) live in exactly one place, so both interfaces always behave identically. The adapters only
-check the shape of the input. The one exception is access: admins and admin operations exist only on REST, see
-[MCP](mcp.md#admin-accounts).
+check the shape of the input. The one exception is that some things exist only on REST: admins, admin operations,
+history and revert, see [Admin Accounts](mcp.md#admin-accounts) and [History and Revert](mcp.md#history-and-revert).
 
 ## Technology Stack
 

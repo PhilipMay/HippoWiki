@@ -25,7 +25,6 @@ implementation.
 - testing strategy and required test cases: `spec/testing.md`
 - deployment: `spec/deployment.md`
 - next steps and open points: `spec/roadmap.md`
-- open gaps in the specification, with suggested fixes: `spec/gaps.md`
 
 ## Commands
 
