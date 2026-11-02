@@ -1,0 +1,73 @@
+[project]
+name = "hippowiki"
+version = "0.1.0"
+description = "A knowledge management system for AI and natural intelligence."
+readme = "README.md"
+license = "MIT"
+authors = [
+    { name = "PhilipMay", email = "eniak.info@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "asyncpg>=0.32.0",
+    "pydantic>=2.14.2",
+    "pyyaml>=6.0.3",
+]
+
+[project.scripts]
+hippowiki = "hippowiki.demo:main"
+
+[build-system]
+requires = ["uv_build>=0.13.6,<0.14.0"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["--strict-markers"]
+markers = [
+    "podman: needs a running Podman machine, run with make test-podman",
+]
+
+[dependency-groups]
+dev = [
+    "asyncpg-stubs>=0.32.0",
+    "black>=26.10.1",
+    "mdformat>=1.0.0",
+    "mdformat-gfm>=1.0.0",
+    "mypy>=2.4.1",
+    "pytest>=9.2.0",
+    "ruff>=0.17.3",
+    "testcontainers>=4.15.0",
+    "types-pyyaml>=6.0.12.20261030",
+]
+
+[tool.black]
+line-length = 120
+target-version = ["py313"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "CPY001",  # copyright is covered by the LICENSE file, no per-file headers
+]
+fixable = ["I"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/hippowiki/demo.py" = ["T201"]  # the demo CLI prints its output
+"tests/**" = [
+    "D",
+    "S101",    # pytest uses plain assert
+    "INP001",  # tests are not a package
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+files = ["src", "tests"]
