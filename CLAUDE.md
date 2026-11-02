@@ -20,7 +20,6 @@ The current objective is to document a clear initial plan for the project and to
 - testing strategy: `spec/testing.md`
 - deployment: `spec/deployment.md`
 - known limitations: `spec/known-limitations.md`
-- open review findings: `spec/review-findings.md`
 
 ## Commands
 
