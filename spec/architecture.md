@@ -20,9 +20,9 @@ The scope of the project is defined in [Goals and Non-Goals](goals.md). See also
  └──────┬──────┘          └───────┬───────┘
         └────────────┬────────────┘
                      ▼
-           ┌───────────────────┐    ┌──────────┐
-           │ Service layer     │───►│ Markdown │
-           └─────────┬─────────┘    └──────────┘
+           ┌───────────────────┐    ┌──────────────────┐
+           │ Service layer     │───►│ Markdown (later) │
+           └─────────┬─────────┘    └──────────────────┘
                      ▼
            ┌───────────────────┐
            │ Repositories      │
@@ -33,7 +33,8 @@ The scope of the project is defined in [Goals and Non-Goals](goals.md). See also
            └───────────────────┘
 ```
 
-Everything between the clients and PostgreSQL runs in a single ASGI process.
+All application code between the clients and PostgreSQL runs in a single ASGI process, behind a reverse proxy for remote
+access.
 
 Key idea: **MCP and REST are thin adapters** over the same service layer. All domain rules (domain validation,
 permissions, versioning) live in exactly one place, so both interfaces always behave identically. The adapters only
@@ -41,20 +42,20 @@ check the shape of the input.
 
 ## Technology Stack
 
-| Area                 | Choice                                                                                                                   | Why                                                                                          |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
-| Language / tooling   | Python 3.13, uv, black, ruff, mypy, mdformat, pytest                                                                     | Already set up in this repo                                                                  |
-| Web framework        | **FastAPI** + **Uvicorn**                                                                                                | Async, ASGI, automatic OpenAPI docs, Pydantic integration                                    |
-| Schemas / validation | **Pydantic v2**                                                                                                          | Shared request/response models for REST and MCP tool inputs; they check shape and types only |
-| Configuration        | **pydantic-settings**                                                                                                    | Typed config from environment variables / `.env`                                             |
-| MCP                  | Official **`mcp` Python SDK** 2.x (`MCPServer` API)                                                                      | Reference implementation; streamable HTTP transport; can be mounted into FastAPI             |
-| Database             | **PostgreSQL 16+**                                                                                                       | Robust, JSONB, built-in full-text search, `pg_trgm`, later `pgvector`                        |
-| ORM / DB access      | **SQLAlchemy 2.0** (async, fully typed) + **asyncpg**                                                                    | Works well with strict mypy, mature                                                          |
-| Migrations           | **Alembic**                                                                                                              | Standard for SQLAlchemy                                                                      |
-| Markdown             | **markdown-it-py**                                                                                                       | CommonMark-compliant parser, token stream for extracting headings                            |
-| Frontmatter          | **PyYAML**                                                                                                               | Optional YAML frontmatter on import/export                                                   |
-| Tests                | **pytest-asyncio**, **httpx** (`AsyncClient`), **testcontainers** (PostgreSQL)                                           | Fakes for most tests, a real Postgres for integration tests                                  |
-| Packaging / deploy   | Container image (`Containerfile`) built with uv and **Podman**, `compose.yaml` run via `podman compose` (app + Postgres) | Simple self-hosting                                                                          |
+| Area                 | Choice                                                                                                                   | Why                                                                                                    |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| Language / tooling   | Python 3.13, uv, black, ruff, mypy, mdformat, pytest                                                                     | Already set up in this repo                                                                            |
+| Web framework        | **FastAPI** + **Uvicorn**                                                                                                | Async, ASGI, automatic OpenAPI docs, Pydantic integration                                              |
+| Schemas / validation | **Pydantic v2**                                                                                                          | Shared request/response models for REST and MCP tool inputs; they check shape and types only           |
+| Configuration        | **pydantic-settings**                                                                                                    | Typed config from environment variables / `.env`                                                       |
+| MCP                  | Official **`mcp` Python SDK** 2.x (`MCPServer` API)                                                                      | Reference implementation; streamable HTTP transport; can be mounted into FastAPI                       |
+| Database             | **PostgreSQL 16+**                                                                                                       | Robust, transactional, enforces the table constraints                                                  |
+| ORM / DB access      | **SQLAlchemy 2.0** (async, fully typed) + **asyncpg**                                                                    | Works well with strict mypy, mature                                                                    |
+| Migrations           | **Alembic**                                                                                                              | Standard for SQLAlchemy                                                                                |
+| Markdown             | **markdown-it-py**                                                                                                       | Later, for import and export: CommonMark-compliant parser, token stream for extracting headings        |
+| Frontmatter          | **PyYAML**                                                                                                               | Later, for import and export: optional YAML frontmatter. A dev dependency for the pin tests until then |
+| Tests                | **pytest-asyncio**, **httpx** (`AsyncClient`), **testcontainers** (PostgreSQL)                                           | Fakes for most tests, a real Postgres for integration tests                                            |
+| Packaging / deploy   | Container image (`Containerfile`) built with uv and **Podman**, `compose.yaml` run via `podman compose` (app + Postgres) | Simple self-hosting                                                                                    |
 
 All chosen libraries have type hints, which matters because `make check` runs mypy in strict mode. PyYAML and
 asyncpg do not ship their own, so they use the dev dependencies `types-pyyaml` and `asyncpg-stubs`.
@@ -70,7 +71,7 @@ src/hippowiki/
 ├── config.py            # Settings (pydantic-settings)
 ├── problem.py           # RFC 9457 problem+json helper, used by auth/middleware.py and api/errors.py
 ├── db/
-│   ├── engine.py        # async engine + session factory
+│   ├── engine.py        # async engine (server_settings={"timezone": "UTC"}) + session factory
 │   ├── models.py        # SQLAlchemy ORM models
 │   └── migrations/      # Alembic env.py, script.py.mako and versions/, shipped inside the package
 ├── schemas/             # Pydantic request/response models shared by REST and MCP tool inputs
@@ -80,7 +81,7 @@ src/hippowiki/
 │   ├── unit_of_work.py  # UnitOfWork over one DB session, gives access to the repositories on that session
 │   ├── folders.py
 │   ├── tabs.py
-│   ├── documents.py
+│   ├── md_documents.py
 │   ├── revisions.py
 │   ├── folder_rights.py
 │   └── users.py
@@ -88,23 +89,24 @@ src/hippowiki/
 │   ├── errors.py        # domain errors
 │   ├── folders.py       # FolderService
 │   ├── tabs.py          # TabService
-│   ├── documents.py     # DocumentService
+│   ├── md_documents.py  # MdDocumentService
 │   ├── folder_rights.py # FolderRightService
 │   ├── search.py        # SearchService, later, see Goals
 │   └── users.py         # UserService
-├── markdown/            # pure functions, no I/O
+├── markdown/            # later, for import and export: pure functions, no I/O
 │   ├── parse.py         # title extraction, headings, sections
 │   └── frontmatter.py   # split / join YAML frontmatter
 ├── auth/
-│   ├── middleware.py    # ASGI middleware: rejects with 401 or 503, or stores the principal in the scope
-│   └── principal.py     # Principal abstraction (user / admin), placeholder resolution
+│   ├── credentials.py   # credential check: looks up the user through the unit-of-work factory, not a service
+│   ├── middleware.py    # ASGI middleware: rejects with 401, 413 or 503, or stores the principal in the scope
+│   └── principal.py     # Principal abstraction (user / admin)
 ├── api/                 # REST adapter
 │   ├── routers/
 │   ├── deps.py          # FastAPI dependencies (principal from the scope, services)
 │   └── errors.py        # domain exceptions, request validation errors and framework errors → RFC 9457 problem+json
 └── mcp/                 # MCP adapter
-    ├── server.py        # MCPServer factory (takes the services and the principal resolver), transport setup
-    └── tools.py         # tool definitions wrapping services
+    ├── server.py        # MCPServer factory (takes the services and the principal resolver), stateless transport setup
+    └── tools.py         # tool definitions wrapping services, shared wrapper: forbids unknown arguments, raises ToolError
 ```
 
 ### Layer rules
@@ -114,9 +116,11 @@ src/hippowiki/
   the DB, sessions or repositories directly.
 - `api/` and `mcp/` make exactly one service call per request or tool call.
 - `schemas/` imports no other HippoWiki package, which keeps validators free of lookups.
-- `services/` receive a `Principal` on every call and enforce access rules.
-  - The one exception is `UserService.create_root_admin`, because no principal exists yet at system initialization. Only
-    `hippowiki init` calls it, and no adapter exposes it.
+- `services/` receive a `Principal` on every call and enforce access rules. There are two exceptions, because no principal
+  exists yet:
+  - `UserService.create_root_admin` at system initialization. Only `hippowiki init` calls it, and no adapter exposes it.
+  - The credential check in `auth/credentials.py`, which produces the principal. It is not a service, and reads users
+    through the unit-of-work factory and the repository Protocol.
 - `services/` use repositories only through the Protocols in `repositories/interfaces.py`, and reach them through a
   unit of work.
 - `services/` are stateless and get the unit-of-work factory when they are built.
@@ -130,8 +134,9 @@ src/hippowiki/
 - Name conflicts: repositories flush after each write, so a unique violation surfaces inside the repository, and they
   translate it into `DuplicateNameError`. Services turn that into `NameConflictError`. Services do not check for
   duplicates up front, so concurrent requests get the same answer. PostgreSQL has then aborted the transaction, so the
-  service does not continue in it.
-- `markdown/` is pure and side-effect free, therefore easy to unit test.
+  service does not continue in it. The names `""` and `admin` are fixed rules instead, see
+  [Tables, Entities and Rules](entities.md), because they would hit a check constraint.
+- `markdown/` is pure and side-effect free, therefore easy to unit test, once it exists.
 - Domain errors (`NotFoundError`, `ForbiddenError`, `NameConflictError`, `VersionConflictError`,
   `DomainValidationError`) are defined in `services/errors.py` and translated by each adapter (HTTP status codes for REST,
   tool errors for MCP).
@@ -150,17 +155,21 @@ src/hippowiki/
 - **Logging**: stdlib `logging`, structured (JSON) in production; log who changed what.
 - **Validation**: two kinds, in the order defined in [API](api.md).
   - Schema validation in the adapters: shape and types through the Pydantic models, without database access.
-  - Domain validation in the services: folder and document name rules (lowercase `a-z0-9-`, no `/`), maximum document
-    size.
+  - Domain validation in the services: folder and md_document name rules (lowercase `a-z0-9-`, at least one character),
+    maximum document size.
 - **Time**: UTC everywhere, see [Time](time.md).
 - **Auth**: authentication and folder-level rights, see [Auth Concept](auth-concept.md).
   - Authentication is one pure ASGI middleware, not `BaseHTTPMiddleware`, because MCP streams its responses.
   - It wraps REST and the mounted MCP app, since FastAPI dependencies do not reach mounted apps.
   - It stores the principal in the ASGI scope, and the OpenAPI security scheme is declared separately.
+  - After authentication it rejects a request body over the limit with 413, before anything parses it, see [API](api.md).
   - The credential check returns a principal or nothing. An exception means the lookup failed, and the middleware fails
     closed, see [API](api.md).
   - MCP tools get the principal through a resolver passed to the server factory. The production resolver reads it from
     the ASGI scope of the HTTP request in the tool context and fails closed if there is none.
+  - The MCP app runs with `stateless_http=True`. The SDK compares session owners only if the scope holds its own
+    `AuthenticatedUser`, so with our principal in the scope any authenticated user holding a session ID would pass. MCP is
+    tools only for now, so nothing needs a session, see [Known Limitations](known-limitations.md).
   - Public routes are the only ones the middleware lets through without authentication, as allowed by
     [Goals](goals.md):
     - health: liveness only, with a fixed status body, no database access and no version or configuration details

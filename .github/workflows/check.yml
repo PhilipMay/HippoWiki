@@ -17,10 +17,6 @@ concurrency:
 
 jobs:
   make-check:
-    env:
-      src: "src/hippowiki"
-      other_src: "tests"
-
     runs-on: ubuntu-latest
 
     steps:

@@ -19,7 +19,8 @@ The current objective is to document a clear initial plan for the project and to
 - REST API and MCP planning: `spec/api.md`
 - testing strategy: `spec/testing.md`
 - deployment: `spec/deployment.md`
-- kown limitations: `spec/known-limitations.md`
+- known limitations: `spec/known-limitations.md`
+- open review findings: `spec/review-findings.md`
 
 ## Commands
 

@@ -5,7 +5,7 @@
 - root admin
   - the system has exactly one root admin, a user called `admin`
   - it is generated at system initialization by `hippowiki init`, see [Deployment](deployment.md)
-  - it can never be disabled or deleted
+  - it can never be deactivated or deleted
   - its admin role can never be removed
   - apart from that it has the same rights as any other admin
 - user rights are assigned on the level of folders - not on the level of tabs or md_documents
@@ -18,6 +18,7 @@
 These rights exist:
 
 - read
+  - can see the folder (ID and name) and find it in the folder list
   - can read all tabs of the folder
   - can read all md_documents of the folder
 - write
@@ -25,7 +26,7 @@ These rights exist:
   - can add md_documents to a tab in a folder the user has this right on
   - can update the content of md_documents which are part of the folder the user has this right on
   - can add tabs to the folder the user has this right on
-- update
+- manage
   - can do everything that can be done with read
   - can do everything that can be done with write
   - can change the name of tabs in the folder the user has this right on
@@ -37,8 +38,8 @@ Notes:
 - at the moment a delete operation is not available - this will change later
 - implicit default access: a user with no assigned right has no access
 - all users can see their own full rights with folder name
-  - this list shows effective rights: an admin gets `update` on every folder, and their stored rows are ignored
-  - each entry has the folder and the right only, because an implicit right has no `created_by` or `created_at`
+  - this list shows effective rights: an admin gets `manage` on every folder, and their stored rows are ignored
+  - each entry has the folder and the right only, because an implicit right has no `assigned_by` or `assigned_at`
 - a tab can never be moved to an other folder
 - a md_document can never be moved to an other tab which is part of an other folder
 
@@ -55,7 +56,7 @@ These are the operations allowed for users with `is_admin == True`:
 - can list the rights of a folder
 - can list all rights of all folders
 - can list all users
-- an admin has an implicit "update" right on all folders
+- an admin has an implicit "manage" right on all folders
 - an admin can change the `is_admin` flag of other users, except for the root admin
 - an admin can not change the `is_admin` flag of its own user
 

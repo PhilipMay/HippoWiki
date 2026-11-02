@@ -10,7 +10,7 @@
 - **Authenticated access only**: every request needs an authenticated user, there is no public or anonymous access to
   md_documents, tabs, folders, users or the API description. The only exceptions are the health route and the routes the
   login method needs, which expose no content. They are listed in [Architecture](architecture.md).
-- **Pure Python** implementation, PostgreSQL as the only infrastructure dependency.
+- Implemented in **Python**, with PostgreSQL as the only data store.
 - Full **revision history** of every md_document, tab and folder (important when AI agents edit content).
 
 ## Non-Goals (for now)
