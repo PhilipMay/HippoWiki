@@ -1,9 +1,9 @@
-# Tables and Entities
+# Entities
 
-This document defines the tables and what their constraints enforce. The rules that go beyond the constraints are in
-[Entity Rules](entity-rules.md).
-
-## Entities
+This document defines the content rules and the database tables. Rules marked (service) can not be expressed by table
+constraints, so the service layer enforces them. The rules for users and rights are in
+[Users and Rights](users-and-rights.md), and the responses to rejected operations are in
+[Rejected Operations](request-checks.md#rejected-operations).
 
 | Entity               | Table                  | Notes                           |
 | -------------------- | ---------------------- | ------------------------------- |
@@ -17,12 +17,68 @@ This document defines the tables and what their constraints enforce. The rules t
 | tab_revision         | tab_revisions          | a snapshot of a tab             |
 | folder_revision      | folder_revisions       | a snapshot of a folder          |
 
-Time columns such as `created_at` follow the rules in [Time](time.md). The meaning of the rights is defined in
-[Auth Concept](auth-concept.md).
+## Folders, Tabs and MD Documents
 
-IDs are UUIDv4. The services generate them with `uuid.uuid4()` and pass them to the repositories, so the real repositories and the fakes behave the same. The root admin refers to itself, so it uses the same value for `id` and `created_by`. UUIDv4 needs no new dependency and reveals nothing, while a UUIDv7 would put the host clock into stored data, against [Time](time.md). A random ID is fine as a tie-breaker, which only needs to be stable.
+- a folder always has exactly one default tab
+  - creating a folder also creates its default tab in the same transaction, named "" (empty string) (service)
+  - the default tab can not be deleted or renamed (service)
+  - `is_default` of a tab never changes after creation (service)
+- a tab can not be moved to another folder, so `folder_id` of a tab never changes (service)
+- a new md_document without an explicit tab is assigned to the default tab of its folder (service)
+- a md_document can only be moved to a tab in the same folder (service)
 
-Foreign keys have no `ON DELETE` action, because md_documents, tabs, folders and users are never removed, see [Entity Rules](entity-rules.md#deleting-and-restoring-content). Only `folder_rights` rows are physically deleted. So `created_by` and `assigned_by` are never null, and the root admin can refer to itself because a foreign key is checked at the end of the statement.
+## Deleting and Restoring Content
+
+Who can do this is defined in [Rights on Folders](users-and-rights.md#rights-on-folders). Which response a deleted item
+gets is defined in [Deleted Items](request-checks.md#deleted-items).
+
+- deleting a md_document, tab or folder sets its `deleted_at` and removes no row, so it can be restored (service)
+- an item is live when it and all its parents have `deleted_at` null
+- a tab or folder is deleted with its content: only its own row gets `deleted_at`, and the items in it are hidden
+  through it (service)
+  - there are no cascading writes, so restoring it brings back exactly what was visible before, and an item deleted
+    earlier stays deleted
+  - a create or move into a tab that is being deleted at the same time waits for the
+    [lock on the folder row](history-revisions.md#optimistic-locking): after the delete it gets 404, and before it the
+    item is hidden and comes back on restore
+  - a deleted folder keeps its default tab, live but hidden
+- a deleted name can be used again, because the unique names apply only to live rows
+- restoring an item whose name is taken is rejected, and the live item has to be renamed or deleted first
+- restoring an item whose parent is deleted is rejected, so the parent is restored first (service)
+- writes use `WHERE deleted_at IS NULL` and a restore uses `WHERE deleted_at IS NOT NULL`, and a statement that changes
+  no row gets `NotFoundError`, so a racing update or a second delete behaves correctly
+  - a version mismatch is found before that, under the
+    [lock on the folder row](history-revisions.md#optimistic-locking), so it gets `VersionConflictError` and not this
+    `NotFoundError`
+- the rights on a deleted folder stay and apply again on restore, and changing them needs a restore first
+- deleted content is never physically erased, see [Roadmap](roadmap.md#later)
+
+## Names
+
+- every name is required, and only the default tab has the name "" (empty string)
+- folders, md_documents and users: `^[a-z0-9]+(-[a-z0-9]+)*$`, so lowercase ASCII words joined by single hyphens, with
+  at most 100 characters
+  - this also rules out a user who looks like the root admin, such as `Admin` or a name with a lookalike character
+- tabs: at most 100 characters, no control characters and no leading or trailing whitespace, so a name of only spaces is
+  not valid
+- a create or rename request with the name "" is rejected for every entity, because PostgreSQL runs check constraints
+  before unique indexes and a check violation would otherwise become a 500
+- the name `admin` for a new user is rejected, because the root admin exists whenever someone can authenticate
+  - this is a fixed rule for the same reason, not an up-front duplicate check, so it does not conflict with the
+    [layer rules](architecture.md#layer-rules)
+
+## Tables
+
+Time columns such as `created_at` follow the rules in [Time](time.md).
+
+IDs are UUIDv4. The services generate them with `uuid.uuid4()` and pass them to the repositories, so the real
+repositories and the fakes behave the same. The root admin refers to itself, so it uses the same value for `id` and
+`created_by`. UUIDv4 needs no new dependency and reveals nothing, while a UUIDv7 would put the host clock into stored
+data, against [Time](time.md). A random ID is fine as a tie-breaker, which only needs to be stable.
+
+Foreign keys have no `ON DELETE` action, because md_documents, tabs, folders and users are never removed. Only
+`folder_rights` rows are physically deleted. So `created_by` and `assigned_by` are never null, and the root admin can
+refer to itself because a foreign key is checked at the end of the statement.
 
 ### MD Document
 
@@ -37,8 +93,9 @@ Foreign keys have no `ON DELETE` action, because md_documents, tabs, folders and
 | `created_at` | timestamptz            |                                                                                    |
 | `deleted_at` | timestamptz            | null while the md_document is live                                                 |
 
-A partial unique index on `(tab_id, name) WHERE deleted_at IS NULL` enforces that the name is unique among the live md_documents of a tab.
-A check constraint `name <> ''` enforces that the name is not empty.
+- A partial unique index on `(tab_id, name) WHERE deleted_at IS NULL` enforces that the name is unique among the live
+  md_documents of a tab.
+- A check constraint `name <> ''` enforces that the name is not empty.
 
 ### Tab
 
@@ -52,10 +109,13 @@ A check constraint `name <> ''` enforces that the name is not empty.
 | `created_at` | timestamptz              |                                        |
 | `deleted_at` | timestamptz              | null while the tab is live             |
 
-A partial unique index on `(folder_id, name) WHERE deleted_at IS NULL` enforces that the name is unique among the live tabs of a folder.
-A check constraint `is_default = (name = '')` enforces that the default tab is named "" and that no other tab has this name.
-A check constraint `NOT is_default OR deleted_at IS NULL` enforces that the default tab is never deleted, also under concurrent transactions.
-Together with the not null name, these three constraints allow at most one default tab per folder.
+- A partial unique index on `(folder_id, name) WHERE deleted_at IS NULL` enforces that the name is unique among the live
+  tabs of a folder.
+- A check constraint `is_default = (name = '')` enforces that the default tab is named "" and that no other tab has this
+  name.
+- A check constraint `NOT is_default OR deleted_at IS NULL` enforces that the default tab is never deleted, also under
+  concurrent transactions.
+- Together with the not null name, these three constraints allow at most one default tab per folder.
 
 ### Folder
 
@@ -68,8 +128,8 @@ Together with the not null name, these three constraints allow at most one defau
 | `created_at`       | timestamptz            |                                                                                    |
 | `deleted_at`       | timestamptz            | null while the folder is live                                                      |
 
-A partial unique index on `name WHERE deleted_at IS NULL` enforces that the name is unique among the live folders.
-A check constraint `name <> ''` enforces that the name is not empty.
+- A partial unique index on `name WHERE deleted_at IS NULL` enforces that the name is unique among the live folders.
+- A check constraint `name <> ''` enforces that the name is not empty.
 
 ### User
 
@@ -85,15 +145,21 @@ A check constraint `name <> ''` enforces that the name is not empty.
 | `deactivated_at` | timestamptz                   | null while the user is active                                              |
 | `deleted_at`     | timestamptz                   | null while the user is not deleted                                         |
 
-A check constraint `name <> ''` enforces that the name is not empty.
-A check constraint `auth_subject <> ''` enforces that a link is not empty. Null means that nobody can log in as this user, see [Authentication](authentication.md#user-linking). There is no issuer column, because there is one issuer.
-A check constraint `is_root = (name = 'admin')` enforces that the user named `admin` is the root admin and that no other user is.
-Together with the unique, not null name, this allows at most one root admin.
-A check constraint `NOT is_root OR is_admin` enforces that the root admin always has the admin role, also under concurrent transactions.
-A check constraint `NOT is_root OR (deactivated_at IS NULL AND deleted_at IS NULL)` enforces that the root admin is never deactivated or deleted, also under concurrent transactions.
-A check constraint `deleted_at IS NULL OR auth_subject IS NULL` enforces that a deleted user has no link, so nobody can log in as this user.
+- A check constraint `name <> ''` enforces that the name is not empty.
+- A check constraint `auth_subject <> ''` enforces that a link is not empty. Null means that nobody can log in as this
+  user, see [User Linking](authentication.md#user-linking). There is no issuer column, because there is one issuer.
+- A check constraint `is_root = (name = 'admin')` enforces that the user named `admin` is the root admin and that no
+  other user is. Together with the unique, not null name, this allows at most one root admin.
+- A check constraint `NOT is_root OR is_admin` enforces that the root admin always has the admin role, also under
+  concurrent transactions.
+- A check constraint `NOT is_root OR (deactivated_at IS NULL AND deleted_at IS NULL)` enforces that the root admin is
+  never deactivated or deleted, also under concurrent transactions.
+- A check constraint `deleted_at IS NULL OR auth_subject IS NULL` enforces that a deleted user has no link, so nobody
+  can log in as this user.
 
 ### Folder Right
+
+The meaning of the rights is defined in [Users and Rights](users-and-rights.md).
 
 | Column         | Type                     | Notes                            |
 | -------------- | ------------------------ | -------------------------------- |
@@ -103,13 +169,11 @@ A check constraint `deleted_at IS NULL OR auth_subject IS NULL` enforces that a 
 | `assigned_by`  | uuid → users, not null   | the admin who assigned the right |
 | `assigned_at`  | timestamptz              | when the right was assigned      |
 
-The composite primary key `(user_id, folder_id)` allows one row per user and folder, since each right includes the lower ones.
-A check constraint limits `access_right` to `read`, `write` and `manage`.
-An index on `folder_id` supports listing the rights of a folder. The primary key already covers lookups by user.
-
-Notes:
-
-- the column is not named `right` because `RIGHT` is a reserved word in PostgreSQL
+- The composite primary key `(user_id, folder_id)` allows one row per user and folder, since each right includes the
+  lower ones.
+- A check constraint limits `access_right` to `read`, `write` and `manage`.
+- An index on `folder_id` supports listing the rights of a folder. The primary key already covers lookups by user.
+- The column is not named `right` because `RIGHT` is a reserved word in PostgreSQL.
 
 ### Folder History Entry
 
@@ -124,13 +188,18 @@ The behaviour is defined in [History and Revisions](history-revisions.md). An en
 | `created_by`  | uuid → users, not null   | the author                                                                  |
 | `created_at`  | timestamptz              |                                                                             |
 
-The composite primary key is `(folder_id, number)`.
-A check constraint limits `kind` to `create`, `update`, `delete`, `restore`, `revert` and `folder_revert`, so a write that changes both name and content is one `update`.
-A check constraint `(reverted_to IS NOT NULL) = (kind IN ('revert', 'folder_revert'))` enforces that only a revert has a target.
+- The composite primary key is `(folder_id, number)`.
+- A check constraint limits `kind` to `create`, `update`, `delete`, `restore`, `revert` and `folder_revert`, so a write
+  that changes both name and content is one `update`.
+- A check constraint `(reverted_to IS NOT NULL) = (kind IN ('revert', 'folder_revert'))` enforces that only a revert has
+  a target.
 
 ### Revisions
 
-Each revision has a foreign key `(folder_id, number)` to its entry, so author and time live on the entry, and the old name or tab is read from the previous revision of the item. A normal entry has exactly one revision, and a `folder_revert` entry has one per changed item. The default tab gets no revision, because it never changes and a folder revert skips it.
+Each revision has a foreign key `(folder_id, number)` to its entry, so author and time live on the entry, and the old
+name or tab is read from the previous revision of the item. A normal entry has exactly one revision, and a
+`folder_revert` entry has one per changed item. The default tab gets no revision, because it never changes and a folder
+revert skips it.
 
 MD document revision, with the composite primary key `(md_document_id, version)`:
 
@@ -164,4 +233,5 @@ Folder revision, with the composite primary key `(folder_id, number)`:
 | `name`       | text, not null           |                                     |
 | `is_deleted` | bool, not null           | true when `deleted_at` was set then |
 
-An index on `(folder_id, number)` of `md_document_revisions` and of `tab_revisions` supports the folder history and the state of a folder at a number. The primary key of `folder_revisions` already covers it.
+An index on `(folder_id, number)` of `md_document_revisions` and of `tab_revisions` supports the folder history and the
+state of a folder at a number. The primary key of `folder_revisions` already covers it.

@@ -4,20 +4,30 @@
 
 - A **knowledge management server** whose content consists of **Markdown documents**.
 - **One core, two front doors**:
-  - **MCP** (Model Context Protocol) so that AI systems like Claude and ChatGPT can list, read and write knowledge. It is
-    not open to admins and offers no admin operations.
+  - **MCP** (Model Context Protocol) so that AI systems like Claude and ChatGPT can list, read and write knowledge. It
+    is not open to admins and offers no admin operations.
   - **REST API** so that web clients, scripts and other services can do the same. It is the only way to administer the
     system.
 - **Multi-user** with an **admin** role and a permanent **root admin**.
 - **Authenticated access only**: every request needs an authenticated user, there is no public or anonymous access to
-  md_documents, tabs, folders, users or the API description. The only exceptions are the health route and the protected
-  resource metadata, which expose no content. They are listed in [Auth Middleware](auth-middleware.md#public-routes).
+  md_documents, tabs, folders, users or the API description. The only exceptions are the
+  [public routes](authentication.md#public-routes), which expose no content.
 - Implemented in **Python**, with PostgreSQL as the only data store.
 - Full **revision history** of every md_document, tab and folder (important when AI agents edit content).
 
 ## Non-Goals (for now)
 
+These need a design once they come into scope.
+
 - No web UI. The REST API is designed so that any frontend can be built on top of it later.
-- No search.
+- No search, including `SearchService`, its filters and multi-language search.
+- No multi-language content.
 - No file-based storage. Markdown lives in the database.
-- No file storage like images or other documents like .doc or .ppt files.
+- No attachments or other files like images, pdf, .doc or .ppt. A design has to cover their storage (DB, filesystem, S3)
+  and how Markdown references them.
+- No import or export (Markdown folder, Obsidian vault, frontmatter mapping).
+  - It adds a `markdown/` package used by the services, pure and without I/O so it is easy to unit test, for title,
+    heading and section extraction and for splitting and joining optional YAML frontmatter.
+  - It uses markdown-it-py (CommonMark-compliant, token stream for extracting headings) and PyYAML in `src/`.
+
+What comes next is in the [Roadmap](roadmap.md).

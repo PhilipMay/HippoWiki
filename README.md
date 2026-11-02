@@ -4,7 +4,7 @@ This is a knowledge management system for AI and natural intelligence.
 
 ## Specification
 
-The design and planning documents are in [spec/](spec/).
+The design and planning documents are in [spec/](spec/README.md).
 
 ## Development
 
