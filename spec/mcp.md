@@ -60,8 +60,8 @@ The tool error that the SDK produces itself for an unknown tool has no code.
   `:185`).
 - Methods: only `POST` reaches the SDK. Every other method gets 405 problem+json with `Allow: POST`, after authentication,
   as MCP allows for a server without a server-initiated stream. Otherwise `GET /mcp` answers 200 `text/event-stream` in
-  stateless mode and holds a connection open that nothing uses. The [real connector test](implementation-plan.md#steps)
-  checks that the target clients accept this.
+  stateless mode and holds a connection open that nothing uses. A test with real connectors has to check that the target
+  clients accept this.
 - Host check: by default the SDK enables DNS rebinding protection that allows only localhost hosts and origins
   (`lowlevel/server.py:753`). Behind the required reverse proxy, real requests would be rejected, so the allowed hosts and
   origins are settings (`HIPPOWIKI_MCP_ALLOWED_HOSTS`, `HIPPOWIKI_MCP_ALLOWED_ORIGINS`). A foreign `Host` gets 421 and a

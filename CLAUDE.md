@@ -26,7 +26,6 @@ The current objective is to document a clear initial plan for the project and to
 - required test cases: `spec/test-cases.md`
 - deployment: `spec/deployment.md`
 - known limitations: `spec/known-limitations.md`
-- implementation plan: `spec/implementation-plan.md`
 
 ## Commands
 

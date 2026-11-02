@@ -1,6 +1,6 @@
 # Known Limitations
 
-This documents what still needs to be done and is missing, most urgent first. The [Implementation Plan](implementation-plan.md) says which code waits for which of these decisions.
+This documents what still needs to be done and is missing, most urgent first.
 
 ## Next Steps
 
@@ -30,7 +30,7 @@ Decided: hosted MCP connectors log in with OAuth 2.1 and PKCE, because the clien
 
 - ChatGPT needs OAuth for an authenticated server: protected resource metadata, an authorization server with discovery metadata, and the authorization code flow with PKCE and S256. It can not present API keys or customer mTLS certificates, and does not support machine-to-machine grants ([OpenAI: Authentication](https://developers.openai.com/plugins/build/auth)). The tools declare `securitySchemes`, and the `resource` parameter sets the audience of the tokens ([OpenAI: full documentation](https://developers.openai.com/plugins/llms-full.txt)).
 - Claude documents OAuth with discovery from a 401 carrying `WWW-Authenticate: Bearer resource_metadata=...` ([Claude: connector authentication](https://claude.com/docs/connectors/building/authentication.md), [Claude: custom connectors](https://support.claude.com/en/articles/11503834-building-custom-connectors-via-remote-mcp-servers)). It also lists authless servers, which [Goals](goals.md) rules out, and a request-header option whose details could not be confirmed.
-- The local transport tests can not show whether this works, so the [real connector test](implementation-plan.md#steps) comes early.
+- The local transport tests can not show whether this works, so a test with real connectors has to come early.
 
 Still open:
 

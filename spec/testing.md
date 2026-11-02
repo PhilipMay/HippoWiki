@@ -12,9 +12,9 @@ The cases these tests must cover are in [Test Cases](test-cases.md).
 - **Marker**: only tests against a real PostgreSQL carry the `podman` marker. These are the integration tests and the real
   side of the contract tests. All other test kinds below run in `make test`.
 - **Accepted trade-off**: table constraints, atomic writes, migrations and real SQL run only in `make test-podman`, which
-  CI does not run, so it has to be run locally after such changes. Reconsider this when the repositories arrive, see
-  [Implementation Plan](implementation-plan.md#steps), because reading after commit and text PostgreSQL rejects only show up
-  there. `DOCKER_HOST` can already be overridden, so CI would not need the `podman machine` call in the `Makefile`.
+  CI does not run, so it has to be run locally after such changes. Reconsider this when the repositories arrive, because
+  reading after commit and text PostgreSQL rejects only show up there. `DOCKER_HOST` can already be overridden, so CI would
+  not need the `podman machine` call in the `Makefile`.
 - **Unit tests**: pure code, such as `UtcDatetime`.
 - **Time and pinned library tests**: `UtcDatetime` on input and output, a test that fails on any naive datetime column, and
   the tests in `tests/test_time_*.py` that pin the library behaviour [Time](time.md) relies on. The asyncpg ones carry the
