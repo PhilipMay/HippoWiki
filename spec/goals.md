@@ -8,8 +8,8 @@
   - **REST API** so that web clients, scripts and other services can do the same.
 - **Multi-user** with an **admin** role and a permanent **root admin**.
 - **Authenticated access only**: every request needs an authenticated user, there is no public or anonymous access to
-  md_documents, tabs, folders, users or the API description. The only exceptions are the health route and the routes the
-  login method needs, which expose no content. They are listed in [Auth Middleware](auth-middleware.md#public-routes).
+  md_documents, tabs, folders, users or the API description. The only exceptions are the health route and the protected
+  resource metadata, which expose no content. They are listed in [Auth Middleware](auth-middleware.md#public-routes).
 - Implemented in **Python**, with PostgreSQL as the only data store.
 - Full **revision history** of every md_document, tab and folder (important when AI agents edit content).
 

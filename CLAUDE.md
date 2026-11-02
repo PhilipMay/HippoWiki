@@ -18,6 +18,7 @@ The current objective is to document a clear initial plan for the project and to
 - database tables and constraints: `spec/entities.md`
 - rules beyond the table constraints: `spec/entity-rules.md`
 - time rules: `spec/time.md`
+- login method, tokens and user linking: `spec/authentication.md`
 - rights and admin operations: `spec/auth-concept.md`
 - authentication middleware and public routes: `spec/auth-middleware.md`
 - check order, denied requests and errors: `spec/request-checks.md`

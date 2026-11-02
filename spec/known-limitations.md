@@ -6,7 +6,7 @@ This documents what still needs to be done and is missing, most urgent first.
 
 In this order, because the later steps depend on the decisions of the earlier ones:
 
-1. **Authentication**: finish the open points of the login method, see [Authentication](#authentication).
+1. **Connector test**: try the login method of [Authentication](authentication.md) with the real clients, see [Connector Test](#connector-test).
 2. **Revisions and optimistic locking**: [Goals](goals.md) asks for a full revision history of md_documents, tabs and folders, but [Tables and Entities](entities.md) has no revision table and no `version` column yet.
    - Define the revision tables and the `version` column that `VersionConflictError` relies on.
    - `updated_at`: [Time](time.md) describes how it is set, but no table has the column. Decide whether tables get it or revisions replace it.
@@ -24,23 +24,18 @@ In this order, because the later steps depend on the decisions of the earlier on
    - Lists: a list can be arbitrarily large, and on MCP a large tool result goes straight into the context of an AI client. Define the page size, a maximum, cursor or offset, and whether lists return `content_md`. [Time](time.md) already has the tie-breaker rule that a stable order needs.
    - Own account: users can not read their own user record, and non-admins can not list users, so a `created_by` ID can not be turned into a name. Define how they find both.
 
-## Authentication
+## Connector Test
 
-Decided: hosted MCP connectors log in with OAuth 2.1 and PKCE, because the clients named in [Goals](goals.md) need it, and HippoWiki is the protected resource.
+The login method is defined in [Authentication](authentication.md), but the local transport tests can not show whether it works with the real clients, so this test comes before the other implementation work. It checks:
 
-- ChatGPT needs OAuth for an authenticated server: protected resource metadata, an authorization server with discovery metadata, and the authorization code flow with PKCE and S256. It can not present API keys or customer mTLS certificates, and does not support machine-to-machine grants ([OpenAI: Authentication](https://developers.openai.com/plugins/build/auth)). The tools declare `securitySchemes`, and the `resource` parameter sets the audience of the tokens ([OpenAI: full documentation](https://developers.openai.com/plugins/llms-full.txt)).
-- Claude documents OAuth with discovery from a 401 carrying `WWW-Authenticate: Bearer resource_metadata=...` ([Claude: connector authentication](https://claude.com/docs/connectors/building/authentication.md), [Claude: custom connectors](https://support.claude.com/en/articles/11503834-building-custom-connectors-via-remote-mcp-servers)). It also lists authless servers, which [Goals](goals.md) rules out, and a request-header option whose details could not be confirmed.
-- The local transport tests can not show whether this works, so a test with real connectors has to come early.
+- ChatGPT logs in with the fixed client while Keycloak ignores the `resource` parameter.
+- The option "Use your own OAuth client" of Claude works for a connector added by a user, without approval by Anthropic. The documentation does not say.
+- The changing loopback port of Claude Code works with a fixed client, and which kind of client it needs.
+- Both clients keep working after a token refresh, and the session lifetimes are long enough that nobody has to log in again every day.
+- Both clients accept 405 on `GET /mcp`, see [Serving the MCP App](mcp.md#serving-the-mcp-app).
+- How each client reacts to the 401 for a valid login with no linked user, in case it keeps retrying the login.
 
-Still open:
-
-- Authorization server: run one or use an external identity provider. This decides the login routes among the public routes, and how clients register: ChatGPT can use Client ID Metadata Documents, dynamic client registration or a predefined client ([OpenAI: custom MCP server](https://developers.openai.com/api/docs/guides/custom-mcp-server)). OpenAI's pages disagree on the redirect URI, so copy it from the management page when setting this up.
-- Scripts and web clients: decide whether REST also accepts API tokens, or OAuth only.
-- User mapping: decide how a token maps to a row in `users`, which still has no column for this. The credential check in `auth/credentials.py` depends on it, and it must check the audience of the token.
-- Root admin credential: `hippowiki init` creates the user without a credential until this is decided. Define how the root admin gets a credential, how a lost one is recovered, and that credential changes can not lock it out, since revoking its credentials would effectively deactivate it.
-- Token lifecycle: define expiry and revocation, and hashed storage for anything HippoWiki stores itself. A revoked right has to take effect on the next request, so a token must not carry rights that are not checked again.
-- AI agents: decide whether an agent acts as its user or has its own account, and whether a token can have fewer rights than its user, such as read-only.
-- Login protection and audit: specify password hashing and rate limiting if HippoWiki handles passwords itself, and log logins and rights changes.
+If a client does not work this way, turn on the Keycloak features `cimd` and `resource-indicators` for it. If that also fails, evaluate [Logto](https://docs.logto.io/use-cases/ai/mcp-server-enable-third-party-ai-agent-access).
 
 ## Later
 
@@ -64,5 +59,6 @@ These need a design once they come into scope, see [Goals](goals.md).
 
 ## Ideas
 
+- Record the client of the token (the `azp` claim) in revisions, to tell AI edits from human edits made with the same account. To be decided in the revisions step.
 - Split the frontmatter and store it separately. [Time](time.md) keeps it verbatim in `content_md` for now.
 - `md_document_links`: rebuilt for a md_document on every save. It enables **backlinks** ("what links here") and detection of **broken links**. When a md_document is created, dangling links pointing to it get resolved. md_documents have no path, only a folder, tab and name, so the link format has to be defined first.

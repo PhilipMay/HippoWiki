@@ -4,8 +4,8 @@ The cases these tests must cover are in [Test Cases](test-cases.md).
 
 - **Test data**: `make test` uses in-memory repository fakes from `tests/` behind a fake unit-of-work factory, injected
   through `create_app()` together with a fake credential check, see [Architecture](architecture.md).
-  - The fakes implement the same Protocols as the real repositories and raise `DuplicateNameError` for the four unique
-    constraints.
+  - The fakes implement the same Protocols as the real repositories, and raise `DuplicateNameError` for the four unique
+    name constraints and `DuplicateSubjectError` for `auth_subject`.
   - The fake unit of work restores a snapshot of the in-memory data when it exits without a commit, so a forgotten commit
     also fails in `make test`.
   - They do not reproduce check constraints, foreign keys, isolation between concurrent transactions or `now()`.
@@ -16,12 +16,15 @@ The cases these tests must cover are in [Test Cases](test-cases.md).
   reading after commit and text PostgreSQL rejects only show up there. `DOCKER_HOST` can already be overridden, so CI would
   not need the `podman machine` call in the `Makefile`.
 - **Unit tests**: pure code, such as `UtcDatetime`.
+- **Token tests**: `auth/tokens.py` against locally generated keys and a fake key source, so `make test` needs no Keycloak.
+  Most other tests keep the fake credential check. The real Keycloak is covered by the
+  [Connector Test](known-limitations.md#connector-test).
 - **Time and pinned library tests**: `UtcDatetime` on input and output, a test that fails on any naive datetime column, and
   the tests in `tests/test_time_*.py` that pin the library behaviour [Time](time.md) relies on. The asyncpg ones carry the
   `podman` marker.
 - **Contract tests**: one suite runs against the fakes and against the real repositories (`podman`), so drift between them
   shows up when `make test-podman` runs. The suite covers only what both sides implement: returned data,
-  `DuplicateNameError`, commit and rollback. Foreign keys and check constraints are covered only by the integration tests.
+  `DuplicateNameError`, `DuplicateSubjectError`, commit and rollback. Foreign keys and check constraints are covered only by the integration tests.
 - **Integration tests**: services and repositories against a real PostgreSQL (testcontainers). `make test-podman` runs
   these tests and sets `DOCKER_HOST` to the Podman socket and `TESTCONTAINERS_RYUK_DISABLED=true`; both can be overridden
   from the environment.

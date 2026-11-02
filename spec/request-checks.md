@@ -22,6 +22,7 @@ and each adapter translates them. The last row is not a check: it covers any oth
 | Target rules       | an operation the target does not allow, see [below](#rejected-operations)     | `ForbiddenError`                 | 403      | tool error `forbidden`             |
 | Domain validation  | a name or size that breaks the domain rules                                   | `DomainValidationError`          | 422      | tool error `domain_validation`     |
 | Conflicts: name    | a name conflict                                                               | `NameConflictError`              | 409      | tool error `name_conflict`         |
+| Conflicts: subject | a Keycloak account that is already linked to another user                     | `SubjectConflictError`           | 409      | tool error `subject_conflict`      |
 | Conflicts: version | a version conflict, once optimistic locking exists                            | `VersionConflictError`           | 409      | tool error `version_conflict`      |
 | Unexpected         | any other exception                                                           | none                             | 500      | generic tool error without details |
 
@@ -58,7 +59,7 @@ and each adapter translates them. The last row is not a check: it covers any oth
 - no conflict leaks: a user without the required right gets 403 before any name or version conflict or domain validation
   error is reported
 - conflicts leak nothing: tab and md_document names conflict only inside a folder the user already has the right on, and
-  only admins, who see everything, create folders and users and rename folders
+  only admins, who see everything, create folders and users, rename folders and link Keycloak accounts
 
 ### Targets
 
@@ -76,7 +77,7 @@ and each adapter translates them. The last row is not a check: it covers any oth
   - operations on an existing folder (rename the folder, assign or delete its rights, list its rights) follow the checks
     above: 404 with no right on the folder, otherwise 403
   - all other admin operations (such as create users, create folders, list users, list all rights of all folders, change
-    the `is_admin` flag of a user) get 403 after schema validation and before their target is looked at or their input is
+    the `is_admin` flag or the `auth_subject` of a user) get 403 after schema validation and before their target is looked at or their input is
     checked against domain rules, so user and folder names can not be probed
 
 ## Rejected Operations
@@ -89,11 +90,14 @@ These rules from [Entity Rules](entity-rules.md) reject an operation, whatever t
 | delete a default tab, once delete exists                 | `ForbiddenError`                          | 403  | Target rules      |
 | change own `is_admin` flag                               | `ForbiddenError`                          | 403  | Target rules      |
 | change the `is_admin` flag of the root admin             | `ForbiddenError`                          | 403  | Target rules      |
+| change own `auth_subject`                                | `ForbiddenError`                          | 403  | Target rules      |
+| change the `auth_subject` of the root admin              | `ForbiddenError`                          | 403  | Target rules      |
 | delete or deactivate the root admin, once these exist    | `ForbiddenError`                          | 403  | Target rules      |
 | move a md_document to a tab in another folder            | `NotFoundError`                           | 404  | Target lookup     |
 | move a tab, rename a user, set `is_default` or `is_root` | none, the request model has no such field | 422  | Schema validation |
 | create or rename anything with the name ""               | `DomainValidationError`                   | 422  | Domain validation |
 | create a user named `admin`                              | `NameConflictError`                       | 409  | Conflicts: name   |
+| set an `auth_subject` of "" or one that is too long      | `DomainValidationError`                   | 422  | Domain validation |
 
 ## REST Error Format
 
@@ -110,17 +114,17 @@ Every REST error uses RFC 9457 problem+json, built by one shared helper:
 `type` stays `about:blank`. Every body has a `code` extension, so a client can tell apart errors with the same status,
 such as the two 409s, which need different reactions. It uses the same stable codes as MCP where both have them:
 
-| Status | `code`                                     |
-| ------ | ------------------------------------------ |
-| 401    | `unauthenticated`                          |
-| 403    | `forbidden`                                |
-| 404    | `not_found`                                |
-| 405    | `method_not_allowed`                       |
-| 409    | `name_conflict` or `version_conflict`      |
-| 413    | `body_too_large`                           |
-| 422    | `schema_validation` or `domain_validation` |
-| 500    | `internal_error`                           |
-| 503    | `service_unavailable`                      |
+| Status | `code`                                                    |
+| ------ | --------------------------------------------------------- |
+| 401    | `unauthenticated`                                         |
+| 403    | `forbidden`                                               |
+| 404    | `not_found`                                               |
+| 405    | `method_not_allowed`                                      |
+| 409    | `name_conflict`, `subject_conflict` or `version_conflict` |
+| 413    | `body_too_large`                                          |
+| 422    | `schema_validation` or `domain_validation`                |
+| 500    | `internal_error`                                          |
+| 503    | `service_unavailable`                                     |
 
 A 404 body has no `instance` and no ID, because a hidden and a missing item have different IDs and their bodies must be
 identical.
@@ -128,6 +132,7 @@ identical.
 Two responses need a header as well as the body:
 
 - The 401 carries `WWW-Authenticate: Bearer resource_metadata="..."`, because RFC 9110 requires the header and MCP clients
-  use it to find the [protected resource metadata](auth-middleware.md#public-routes).
+  use it to find the [protected resource metadata](auth-middleware.md#public-routes). When a token was presented, the
+  header also carries `error="invalid_token"`, as RFC 6750 asks for.
 - The 405 carries `Allow`, because RFC 9110 requires it. The framework error handler keeps `exc.headers`, so rebuilding the
   response does not lose it.

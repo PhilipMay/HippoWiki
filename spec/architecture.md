@@ -34,7 +34,7 @@ The scope of the project is defined in [Goals and Non-Goals](goals.md). See also
 ```
 
 All application code between the clients and PostgreSQL runs in a single ASGI process, behind a reverse proxy for remote
-access.
+access. Clients log in at Keycloak, a separate service that issues the tokens, see [Authentication](authentication.md).
 
 Key idea: **MCP and REST are thin adapters** over the same service layer. All domain rules (domain validation,
 permissions, versioning) live in exactly one place, so both interfaces always behave identically. The adapters only
@@ -56,11 +56,14 @@ check the shape of the input.
 - `services/` never import `schemas/`, and take plain arguments.
 - `auth/`:
   - `auth/principal.py` imports only `domain.py`, and the adapters, the services and the rest of `auth/` may import it.
-  - `auth/credentials.py` uses only `repositories/interfaces.py` and `auth/principal.py`.
+  - `auth/tokens.py` imports no other HippoWiki package, and gets its settings as parameters.
+  - `auth/credentials.py` uses only `repositories/interfaces.py`, `auth/principal.py` and `auth/tokens.py`.
   - `auth/middleware.py` uses only `auth/principal.py` and `problem.py`, and gets the credential check as a parameter.
-- `services/` receive a `Principal` on every call and enforce access rules. There are two exceptions, because no principal
+- `services/` receive a `Principal` on every call and enforce access rules. There are three exceptions, because no principal
   exists yet:
   - `UserService.create_root_admin` at system initialization. Only `hippowiki init` calls it, and no adapter exposes it.
+  - `UserService.link_root_admin`, which gives the root admin its login. Only `hippowiki link-root-admin` calls it, and no
+    adapter exposes it.
   - The credential check in `auth/credentials.py`, which produces the principal. It is not a service, and reads users
     through the unit-of-work factory and the repository Protocol.
 - `services/` use repositories only through the Protocols in `repositories/interfaces.py`, and reach them through a
@@ -73,7 +76,9 @@ check the shape of the input.
   duplicates up front, so concurrent requests get the same answer. PostgreSQL has then aborted the transaction, so the
   service does not continue in it. The names `""` and `admin` are fixed rules instead, see
   [Entity Rules](entity-rules.md#names), because they would hit a check constraint.
-- Domain errors (`NotFoundError`, `ForbiddenError`, `NameConflictError`, `VersionConflictError`,
+- Subject conflicts work the same way: a unique violation of `auth_subject` becomes `DuplicateSubjectError` in the
+  repository and `SubjectConflictError` in the service.
+- Domain errors (`NotFoundError`, `ForbiddenError`, `NameConflictError`, `SubjectConflictError`, `VersionConflictError`,
   `DomainValidationError`) are defined in `services/errors.py` and translated by each adapter (HTTP status codes for REST,
   tool errors for MCP).
 - Enforcement: `make check` runs [import-linter](https://import-linter.readthedocs.io/), with its contracts in
@@ -105,5 +110,6 @@ check the shape of the input.
   format.
 - **Validation and errors**: see [Request Checks](request-checks.md).
 - **Time**: UTC everywhere, see [Time](time.md).
-- **Auth**: see [Auth Concept](auth-concept.md) for rights and [Auth Middleware](auth-middleware.md) for authentication.
+- **Auth**: see [Auth Concept](auth-concept.md) for rights, [Authentication](authentication.md) for the login method and
+  [Auth Middleware](auth-middleware.md) for rejecting requests.
 - **MCP adapter**: see [MCP](mcp.md).

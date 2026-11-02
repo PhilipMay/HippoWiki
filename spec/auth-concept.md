@@ -4,7 +4,8 @@
 
 - the system has exactly one root admin, see [Entity Rules](entity-rules.md#root-admin)
 - user rights are assigned on the level of folders - not on the level of tabs or md_documents
-- authentication: see [Auth Middleware](auth-middleware.md)
+- authentication: see [Authentication](authentication.md) for the login method and [Auth Middleware](auth-middleware.md) for rejecting requests
+- AI agents: an agent acts as the account it logged in with and has no rights of its own, see [Authentication](authentication.md#ai-agents)
 - no leaks: services must filter by the current user everywhere, so an unreadable md_document never leaks through a list, and later through a search snippet
 - denied requests: which response a denied request gets (404 or 403) is defined in [Request Checks](request-checks.md)
 
@@ -41,8 +42,9 @@ Notes:
 
 These are the operations allowed for users with `is_admin == True`:
 
-- create new users
+- create new users, each linked to a Keycloak account
 - a user can be created as an admin directly
+- change or remove the linked Keycloak account of other users, except for the root admin, see [Entity Rules](entity-rules.md#user-linking)
 - create new folders
 - rename folders
 - assign user rights for folders

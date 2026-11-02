@@ -53,10 +53,33 @@ REST and MCP, including:
 
 - Without credentials and with a unit-of-work factory that fails when called, health returns its fixed body.
 - The same holds for the protected resource metadata routes, with the body built from the settings.
-- Under the same conditions, every route except health, the protected resource metadata and the login routes gets 401,
-  including MCP and `/openapi.json`.
+- The protected resource metadata lists the configured issuer in `authorization_servers`, and its `resource` equals the
+  configured audience.
+- Under the same conditions, every route except health and the protected resource metadata gets 401, including MCP and
+  `/openapi.json`.
 - A public path with a trailing slash or a path below it gets 401.
 - `/docs` and `/redoc` get 404 when authenticated.
+
+## Token Check
+
+The rules are in [Authentication](authentication.md#token-check).
+
+- A valid token of a linked user gives the principal of that user.
+- These tokens each get 401: expired, wrong issuer, wrong audience, bad signature, `alg=none`, HS256 signed with the public
+  key as the secret, no `sub`, and a valid token with no linked user.
+- A token that fails with an unknown `kid` gets 401 after one refetch, and further unknown `kid`s within the rate limit
+  cause no further fetch.
+- An unreachable key source gets 503 when a key is needed, and a cached key keeps working while the key source is down.
+- A 401 for a presented token carries `error="invalid_token"`, and a 401 without a token does not.
+
+## User Linking
+
+- Creating a user without `auth_subject` gets 422, and an `auth_subject` of "" or of 256 characters gets
+  `DomainValidationError`.
+- A duplicate `auth_subject` gets `SubjectConflictError`, on create and on change.
+- After an admin removes or changes the link of a user, the old subject gets 401 on the next request.
+- `hippowiki link-root-admin` run twice with the same subject changes nothing, a new subject replaces the link, and a
+  subject that another user has is rejected.
 
 ## Other ASGI Scopes
 
@@ -67,8 +90,8 @@ REST and MCP, including:
 
 - The 401, the 404 for an unknown route, the 405, the 413, the 422 from schema validation, the 422 for an unparsable body,
   the 500 and the 503 are problem+json.
-- Each of them carries the `code` from [REST Error Format](request-checks.md#rest-error-format), and a name conflict and a
-  version conflict can be told apart by it.
+- Each of them carries the `code` from [REST Error Format](request-checks.md#rest-error-format), and a name conflict, a
+  subject conflict and a version conflict can be told apart by it.
 - A 404 body has no `instance` and no ID.
 - The 401 carries `WWW-Authenticate` with `resource_metadata` and the 405 carries `Allow`.
 
@@ -104,7 +127,8 @@ REST and MCP, including:
 - Writes are atomic, such as a folder with its default tab.
 - A unique violation surfaces inside the repository call.
 - Time-dependent behaviour works in separate committed transactions.
-- `hippowiki migrate` followed by `hippowiki init` twice leaves one root admin.
+- `hippowiki migrate` followed by `hippowiki init` twice leaves one root admin, and it stays unlinked until
+  `hippowiki link-root-admin` runs.
 - Creating or renaming anything to the name `""` gets `DomainValidationError` and creating a user named `admin` gets
   `NameConflictError`, not a check violation.
 - Assigning a right twice updates `assigned_by` and `assigned_at`, also in separate committed transactions.

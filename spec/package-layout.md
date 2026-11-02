@@ -8,7 +8,7 @@ src/hippowiki/
 ├── app.py               # ASGI composition: create_app(unit-of-work factory, credential check), services, FastAPI app + MCP routes,
 │                        # lifespan (MCP session manager)
 │                        # create_production_app(): real factory and credential check, lifespan (DB engine)
-├── cli.py               # CLI: hippowiki migrate, hippowiki init
+├── cli.py               # CLI: hippowiki migrate, hippowiki init, hippowiki link-root-admin
 ├── config.py            # Settings (pydantic-settings)
 ├── domain.py            # frozen dataclasses exchanged by repositories, services and adapters
 ├── logs.py              # JSON log formatter and logging setup, also for Uvicorn's loggers
@@ -21,7 +21,7 @@ src/hippowiki/
 │   ├── text.py          # SafeText
 │   └── time.py          # UtcDatetime
 ├── repositories/        # DB access only, no business rules
-│   ├── interfaces.py    # one typing.Protocol per repository, UnitOfWork Protocol, DuplicateNameError
+│   ├── interfaces.py    # one typing.Protocol per repository, UnitOfWork Protocol, DuplicateNameError, DuplicateSubjectError
 │   ├── unit_of_work.py  # UnitOfWork over one DB session, gives access to the repositories on that session
 │   ├── folders.py
 │   ├── tabs.py
@@ -37,6 +37,7 @@ src/hippowiki/
 │   ├── folder_rights.py # FolderRightService
 │   └── users.py         # UserService
 ├── auth/
+│   ├── tokens.py        # token check: verifies the JWT and returns its subject, caches the signing keys of Keycloak
 │   ├── credentials.py   # credential check: looks up the user through the unit-of-work factory, not a service
 │   ├── middleware.py    # ASGI middleware: rejects with 401, 413 or 503, buffers the body, or stores the principal in the scope
 │   └── principal.py     # Principal abstraction (user / admin)

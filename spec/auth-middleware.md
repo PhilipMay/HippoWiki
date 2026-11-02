@@ -1,7 +1,7 @@
 # Auth Middleware
 
 This document covers how requests are authenticated. The rights themselves are in [Auth Concept](auth-concept.md), and the
-login method is described in [Known Limitations](known-limitations.md#authentication).
+login method and the token check are in [Authentication](authentication.md).
 
 - Authentication is one pure ASGI middleware, not `BaseHTTPMiddleware`, because MCP streams its responses.
 - It wraps REST and the MCP routes, since FastAPI dependencies do not reach the MCP routes.
@@ -18,8 +18,10 @@ Public routes are the only ones the middleware lets through without authenticati
 
 - health: liveness only, with a fixed status body, no database access and no version or configuration details
 - protected resource metadata (RFC 9728): `/.well-known/oauth-protected-resource` and its form for the MCP path,
-  `/.well-known/oauth-protected-resource/mcp`, with a body built from the settings and no database access
-- whatever else the login method needs, see [Known Limitations](known-limitations.md#authentication)
+  `/.well-known/oauth-protected-resource/mcp`, with a body built from the settings and no database access. Its
+  `authorization_servers` lists the Keycloak issuer, and its `resource` equals the MCP URL as a user enters it in a client
+
+There are no login routes, because the login pages are on Keycloak.
 
 A public route matches on the exact path, so a trailing slash or a path below it is not public.
 
@@ -42,8 +44,8 @@ The middleware reads the body up to the limit before it calls the app, and then 
 
 ## Failed Credential Lookup
 
-When the credential lookup fails, for example because the database is down, the middleware can not tell whether the
-credentials are valid, so it fails closed:
+When the credential lookup fails, for example because the database is down or a needed signing key can not be fetched from
+Keycloak, the middleware can not tell whether the credentials are valid, so it fails closed:
 
 - the response is 503 problem+json from the [shared helper](request-checks.md#rest-error-format) and contains no exception details
 - it is never a 401, because the credentials may be valid and a client must not discard them

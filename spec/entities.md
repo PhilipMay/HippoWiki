@@ -60,16 +60,18 @@ A check constraint `name <> ''` enforces that the name is not empty.
 
 ### User
 
-| Column       | Type                          | Notes                               |
-| ------------ | ----------------------------- | ----------------------------------- |
-| `id`         | uuid, PK                      |                                     |
-| `name`       | text, not null, unique        |                                     |
-| `is_admin`   | bool, not null, default false | Admin role                          |
-| `is_root`    | bool, not null, default false | true for the root admin             |
-| `created_by` | uuid → users                  | the root admin is created by itself |
-| `created_at` | timestamptz                   |                                     |
+| Column         | Type                          | Notes                                                                      |
+| -------------- | ----------------------------- | -------------------------------------------------------------------------- |
+| `id`           | uuid, PK                      |                                                                            |
+| `name`         | text, not null, unique        |                                                                            |
+| `auth_subject` | text, unique                  | the `sub` claim of the linked Keycloak account, null when no one is linked |
+| `is_admin`     | bool, not null, default false | Admin role                                                                 |
+| `is_root`      | bool, not null, default false | true for the root admin                                                    |
+| `created_by`   | uuid → users                  | the root admin is created by itself                                        |
+| `created_at`   | timestamptz                   |                                                                            |
 
 A check constraint `name <> ''` enforces that the name is not empty.
+A check constraint `auth_subject <> ''` enforces that a link is not empty. Null means that nobody can log in as this user, see [Authentication](authentication.md#user-linking). There is no issuer column, because there is one issuer.
 A check constraint `is_root = (name = 'admin')` enforces that the user named `admin` is the root admin and that no other user is.
 Together with the unique, not null name, this allows at most one root admin.
 A check constraint `NOT is_root OR is_admin` enforces that the root admin always has the admin role, also under concurrent transactions.

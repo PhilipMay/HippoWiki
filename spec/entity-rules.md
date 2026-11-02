@@ -25,6 +25,18 @@ These rules add to the constraints in [Tables and Entities](entities.md). Table 
 - a violated unique name is reported as `NameConflictError`
 - users can not be renamed, which keeps the root admin in place, and `is_root` of a user never changes after creation (service)
 
+## User Linking
+
+The login method is defined in [Authentication](authentication.md#user-linking).
+
+- creating a user requires `auth_subject`, and only the root admin is created without one (service)
+- `auth_subject` has at most 255 characters
+- an `auth_subject` of "" or one that is too long gets `DomainValidationError`, because the "" would otherwise hit the check constraint and become a 500
+- an admin can change or remove `auth_subject` of another user, and removing it blocks that user on the next request (service)
+- an admin changing their own `auth_subject` is rejected, because it could lock them out (service)
+- changing `auth_subject` of the root admin through REST or MCP is rejected, because an admin could otherwise take over the root admin (service)
+- a violated unique `auth_subject` is reported as `SubjectConflictError`
+
 ## Rights
 
 The meaning of the rights is defined in [Auth Concept](auth-concept.md).
@@ -41,10 +53,12 @@ The meaning of the rights is defined in [Auth Concept](auth-concept.md).
 - system initialization creates the root admin, a user named `admin` with `is_root` and `is_admin` set to true
   - `hippowiki init` runs it, see [Deployment](deployment.md)
   - it is idempotent: an existing root admin is left alone, and a concurrent run is caught by the unique name
+- system initialization leaves it unlinked, and `hippowiki link-root-admin` links it, see [Authentication](authentication.md#root-admin-credential)
+  - it is idempotent: linking the same subject again changes nothing, and a subject that another user already has is rejected
 - the root admin can never be deleted or deactivated, so these operations are rejected once they exist (service)
 - the `is_admin` flag of the root admin can never be removed, so changing it is rejected (service)
 - apart from that the root admin has the same rights as any other admin
 - an admin changing their own `is_admin` flag is rejected (service)
 - after system initialization at least one admin always exists, because the root admin always stays an admin
   - this also holds under concurrent transactions and needs no lock: admins who demote each other at the same time can not affect the root admin
-  - before system initialization nobody can authenticate, so every request to a non-public route gets 401
+  - before system initialization, and until an account is linked to the root admin, nobody can authenticate, so every request to a non-public route gets 401
