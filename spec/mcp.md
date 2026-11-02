@@ -25,7 +25,8 @@ are reported differently depending on where they fail:
 - schema validation: malformed JSON gets a protocol error and never reaches a tool. Invalid or unknown tool arguments get a
   tool error, and the tool does not run
 
-MCP keeps the same distinction as REST, and a hidden item gets the same `NotFoundError` as one that does not exist.
+MCP keeps the distinction REST makes between 404 and 403 through `not_found` and `forbidden`, and a hidden item gets the
+same `NotFoundError` as one that does not exist.
 
 Tool errors are plain text, so `mcp/tools.py` raises a `ToolError` whose message starts with the stable code of the domain
 error. A domain error that is not translated would be masked by the SDK as `Error executing tool <name>`.
@@ -37,7 +38,7 @@ Tool errors that the SDK produces itself, for an unknown tool or invalid argumen
 
 Mounting needs more than the rest of the spec describes so far:
 
-- Lifespan: `app.py` lists only the DB engine, but the session manager must run in the lifespan of the parent app,
+- Lifespan: the `app.py` entry in [Package Layout](package-layout.md) lists only the DB engine, but the session manager must run in the lifespan of the parent app,
   because Starlette does not run the lifespan of mounted apps. Otherwise requests fail with "Task group is not
   initialized" (`streamable_http_manager.py:140-146`, `:185`).
 - Path: `streamable_http_path` defaults to `/mcp`, so mounting at `/mcp` results in `/mcp/mcp`

@@ -24,7 +24,8 @@ document lists the combinations that are easy to miss, and the cases of other do
 
 ## Visibility
 
-These cover the rules from [Request Checks](request-checks.md) and [Auth Concept](auth-concept.md), on REST and MCP.
+The rules from [Request Checks](request-checks.md) and [Auth Concept](auth-concept.md) on what a user can see are tested on
+REST and MCP, including:
 
 - A hidden and a missing item give an identical response, comparing the full 404 body on REST and the full tool error text
   on MCP.
@@ -53,10 +54,10 @@ These cover the rules from [Request Checks](request-checks.md) and [Auth Concept
 
 ## MCP Tools and Transport
 
-- An unknown argument gets a tool error from the shared wrapper, which pins how it uses the SDK.
-- Each domain error gives its stable code.
-- Responses on the transport carry no `Mcp-Session-Id`.
-- Each user's tool calls run under their own principal.
+- In the tool tests, an unknown argument gets a tool error from the shared wrapper, which pins how it uses the SDK.
+- In the tool tests, each domain error gives its stable code.
+- On the transport, responses carry no `Mcp-Session-Id`.
+- On the transport, each user's tool calls run under their own principal.
 
 ## Integration (`podman`)
 

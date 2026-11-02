@@ -1,6 +1,6 @@
 # Tables and Entities
 
-This document defines the tables and what their constraints enforce. Everything the constraints can not express is in
+This document defines the tables and what their constraints enforce. The rules that go beyond the constraints are in
 [Entity Rules](entity-rules.md).
 
 ## Entities

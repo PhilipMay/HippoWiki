@@ -31,7 +31,7 @@ document size, and its value is still open, see [Known Limitations](known-limita
 When the credential lookup fails, for example because the database is down, the middleware can not tell whether the
 credentials are valid, so it fails closed:
 
-- the response is 503 problem+json from the shared helper and contains no exception details
+- the response is 503 problem+json from the [shared helper](request-checks.md#rest-error-format) and contains no exception details
 - it is never a 401, because the credentials may be valid and a client must not discard them
 - the request does not go on without a principal, so it reaches neither adapter
 - MCP clients get the same HTTP 503, because the middleware runs before the MCP app

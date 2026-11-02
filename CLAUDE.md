@@ -16,7 +16,7 @@ The current objective is to document a clear initial plan for the project and to
 - technology stack: `spec/tech-stack.md`
 - package layout: `spec/package-layout.md`
 - database tables and constraints: `spec/entities.md`
-- rules the table constraints can not express: `spec/entity-rules.md`
+- rules beyond the table constraints: `spec/entity-rules.md`
 - time rules: `spec/time.md`
 - rights and admin operations: `spec/auth-concept.md`
 - authentication middleware and public routes: `spec/auth-middleware.md`
