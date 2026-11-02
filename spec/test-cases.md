@@ -60,7 +60,7 @@ The rules are in [Entity Rules](entity-rules.md#deleting-and-restoring-content) 
 - A deleted md_document, tab and folder each give the same full 404 body as a missing one on REST, and the same full tool
   error text on MCP, on read, update, rename, move and a second delete.
 - An item inside a deleted tab or folder gives the same response, by ID and in lists.
-- An admin gets the same 404 for a deleted folder, on every operation except restore.
+- An admin gets the same 404 for a deleted folder, on every operation except restore and history.
 - A deleted tab as the target of a move or a create gets the same 404 as a missing tab.
 - Restoring a tab or folder brings back its content, and an item deleted before it stays deleted.
 - A deleted name can be used again, and restoring the old item then gets `NameConflictError`.
@@ -73,6 +73,31 @@ The rules are in [Entity Rules](entity-rules.md#deleting-and-restoring-content) 
 - A non-admin who lists deleted folders or restores a folder gets 403, also for a folder that does not exist.
 - A non-admin who deletes a folder gets 404 with no right on it and 403 with a right, and the tool list on MCP has no such
   tool.
+
+## History and Revert
+
+The rules are in [History and Revisions](history-revisions.md).
+
+- Each tracked change adds one revision, and a write that changes nothing adds none.
+- A delete or restore adds a revision on the deleted item only.
+- Tab changes appear in the folder history, and changes of a md_document appear in both histories.
+- An entry has the author's ID and name, also for a deleted user, and a history list has no `content_md`.
+- Changes to folder rights add no entry.
+- The matrix under [Visibility](#visibility) covers history and revert: `read` and `write` read the history of live items and
+  get 403 on revert, `manage` and admin pass, and no right gets 404.
+- A `read` user sees the entries of items that are not live in the folder history with metadata only, and gets 403 on their
+  md_document history and revision content. `manage` gets both.
+- An admin reads the history of a deleted folder, and every other user with a right on it gets the same 404 as for a missing
+  folder.
+- A revert adds new revisions pointing at the target and leaves the earlier ones unchanged, and reverting a revert works.
+- A revert with a stale version gets `VersionConflictError`, and one to the current state adds no revision.
+- A revision of another item or folder gets the same 404 as a missing one.
+- A md_document revert brings back content, name and tab.
+- A md_document revert gets 404 for a md_document that is not live and for a target tab that is not live, 403 for a target
+  revision that records its deletion, and `NameConflictError` for a name that is taken.
+- A folder revert soft deletes newer items, restores items deleted later, and keeps items deleted at the target deleted.
+- A folder revert keeps the current folder name and the rights, and the rename stays in the history.
+- The tool list on MCP has no history and no revert tool.
 
 ## Deactivating and Deleting Users
 
@@ -188,3 +213,7 @@ The rules are in [Authentication](authentication.md#token-check).
 - A md_document created in a tab while it is being deleted is hidden, and comes back when the tab is restored.
 - Deleting a user sets `deleted_at`, clears `auth_subject` and removes the rights in one transaction, and nothing is left
   changed after a rollback.
+- A folder revert that swaps the names of two tabs or two md_documents succeeds against the real partial unique indexes.
+- A folder revert that fails leaves nothing changed after the rollback, and the revision counter stays as it was.
+- Concurrent changes in one folder get consecutive revision numbers, and a folder revert racing a change gets
+  `VersionConflictError`.

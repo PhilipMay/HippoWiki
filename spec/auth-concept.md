@@ -7,6 +7,7 @@
 - authentication: see [Authentication](authentication.md) for the login method and [Auth Middleware](auth-middleware.md) for rejecting requests
 - AI agents: an agent acts as the account it logged in with and has no rights of its own, see [Authentication](authentication.md#ai-agents)
 - admins and MCP: an admin can connect only through REST, never through MCP, and admin operations exist only on REST, see [MCP](mcp.md#admin-accounts)
+- history and revert: both exist only on REST, for every right, see [History and Revisions](history-revisions.md)
 - no leaks: services must filter by the current user everywhere, so an unreadable md_document never leaks through a list, and later through a search snippet
 - denied requests: which response a denied request gets (404 or 403) is defined in [Request Checks](request-checks.md)
 
@@ -18,7 +19,7 @@ These rights exist:
   - can see the folder (ID and name) and find it in the folder list
   - can read all tabs of the folder
   - can read all md_documents of the folder
-  - can see history of changes on folder and md_document level
+  - can see history of changes on folder and md_document level, with metadata only for items that are not live
 - write
   - can do everything that can be done with read
   - can add md_documents to a tab in a folder the user has this right on
@@ -30,6 +31,7 @@ These rights exist:
   - can change the name of tabs in the folder the user has this right on
   - can change the name of md_documents which are in the folder the user has this right on
   - can move md_documents to another tab in the folder the user has this right on
+  - can see the history and revision content of md_documents that are not live
   - can revert changes on folder and md_document level
   - can delete md_documents and tabs, except for the default tab, in the folder the user has this right on
   - can list the deleted md_documents and tabs of the folder the user has this right on, and restore them

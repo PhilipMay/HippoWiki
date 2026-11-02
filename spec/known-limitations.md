@@ -7,16 +7,10 @@ This documents what still needs to be done and is missing, most urgent first.
 In this order, because the later steps depend on the decisions of the earlier ones:
 
 1. **Connector test**: try the login method of [Authentication](authentication.md) with the real clients, see [Connector Test](#connector-test).
-2. **Revisions and optimistic locking**: [Goals](goals.md) asks for a full revision history of md_documents, tabs and folders, but [Tables and Entities](entities.md) has no revision table and no `version` column yet.
-   - Define the revision tables and the `version` column that `VersionConflictError` relies on.
+2. **Revisions and optimistic locking**: [History and Revisions](history-revisions.md) defines the behaviour, but [Tables and Entities](entities.md) has no revision table, no `version` column and no folder revision counter yet.
+   - Define the revision tables, the `version` column that `VersionConflictError` relies on and the folder revision counter.
    - `updated_at`: [Time](time.md) describes how it is set, but no table has the column. Decide whether tables get it or revisions replace it.
-   - Number of revisions to keep: any limit has to be reconciled with the goal of a full history.
-   - [Deleting](entity-rules.md#deleting-and-restoring-content) sets these requirements:
-     - Delete never removes revisions, and the author of a revision is never null, because users are never removed.
-     - Delete and restore each add one revision atomically, on the deleted item only. Its children get none, because their rows do not change.
-     - The history of a deleted item needs `manage`, or admin for a folder.
-     - Revert on a deleted item gets 404, so it is restored first.
-     - Still open: whether delete and restore check `version` under optimistic locking.
+   - Decide whether delete and restore check `version` under optimistic locking.
 3. **Size limits**: set the maximum document size, then the request body limit.
    - The [Auth Middleware](auth-middleware.md#request-body-limit) answers 413 for a body over the limit, but its value is still open.
    - It has to leave room for the largest allowed document.

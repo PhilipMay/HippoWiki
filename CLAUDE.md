@@ -17,6 +17,7 @@ The current objective is to document a clear initial plan for the project and to
 - package layout: `spec/package-layout.md`
 - database tables and constraints: `spec/entities.md`
 - rules beyond the table constraints: `spec/entity-rules.md`
+- history, revisions and revert: `spec/history-revisions.md`
 - time rules: `spec/time.md`
 - login method, tokens and user linking: `spec/authentication.md`
 - rights and admin operations: `spec/auth-concept.md`

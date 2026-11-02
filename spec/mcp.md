@@ -16,6 +16,11 @@ MCP is only for users who are not admins, see [Auth Concept](auth-concept.md#rul
   no longer an admin gets it back.
 - A person who is an admin uses a separate account for connectors, see [AI Agents](authentication.md#ai-agents).
 
+## History and Revert
+
+[History and revert](history-revisions.md) are available only on REST, for every right. The adapter has no tools for them, so
+a call gets the tool error for an unknown tool.
+
 ## Sessions and Principal
 
 - The MCP app runs with `stateless_http=True`. The SDK compares session owners only if the scope holds its own

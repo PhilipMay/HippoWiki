@@ -76,7 +76,7 @@ and each adapter translates them. The last row is not a check: it covers any oth
 What deleting does is defined in [Entity Rules](entity-rules.md#deleting-and-restoring-content).
 
 - a deleted md_document, tab or folder, and any item inside a deleted tab or folder, gets the same 404 as a missing item,
-  for every operation except the deleted list and restore. This also holds for admins
+  for every operation except the deleted list, restore and history. This also holds for admins
 - deleting a deleted item gets this 404 as well, in the same way as deleting a right that does not exist
 - the deleted list of a folder holds the md_documents and tabs that have their own `deleted_at` and a live parent, with
   metadata only. It needs `manage`, and follows the check order on the folder
@@ -84,6 +84,14 @@ What deleting does is defined in [Entity Rules](entity-rules.md#deleting-and-res
   - no right on the folder, or a deleted folder, gets 404
   - a right below `manage` gets 403
   - an item that is not deleted, or a md_document whose tab is deleted, gets 404
+- reading the history of a md_document that is not live, or the content of one of its revisions, resolves its ID among the
+  deleted rows too, then runs the check order on its folder, see
+  [Who Can See What](history-revisions.md#who-can-see-what):
+  - no right on the folder, or a deleted folder, gets 404, except for an admin
+  - a right below `manage` gets 403
+- the history of a deleted folder and the revisions in it need admin, and every other user gets the same 404 as for a missing
+  folder
+- a revert follows the first rule, so a deleted folder or a md_document that is not live gets 404
 - accepted leak: a user with a right below `manage` gets 403 for an ID in their folder and 404 for an unknown ID, so they
   can tell a deleted item from one that never existed. This is accepted, because the user has a right on the folder and
   the random UUIDs make it hard to exploit
@@ -106,26 +114,32 @@ What deleting does is defined in [Entity Rules](entity-rules.md#deleting-and-res
 
 These rules from [Entity Rules](entity-rules.md) reject an operation, whatever the rights of the user:
 
-| Rule                                                     | Domain error                              | REST | Check             |
-| -------------------------------------------------------- | ----------------------------------------- | ---- | ----------------- |
-| rename a default tab                                     | `ForbiddenError`                          | 403  | Target rules      |
-| delete a default tab                                     | `ForbiddenError`                          | 403  | Target rules      |
-| change own `is_admin` flag                               | `ForbiddenError`                          | 403  | Target rules      |
-| change the `is_admin` flag of the root admin             | `ForbiddenError`                          | 403  | Target rules      |
-| change own `auth_subject`                                | `ForbiddenError`                          | 403  | Target rules      |
-| change the `auth_subject` of the root admin              | `ForbiddenError`                          | 403  | Target rules      |
-| delete or deactivate the root admin                      | `ForbiddenError`                          | 403  | Target rules      |
-| delete or deactivate own user                            | `ForbiddenError`                          | 403  | Target rules      |
-| move a md_document to a tab in another folder            | `NotFoundError`                           | 404  | Target lookup     |
-| restore an item that is not deleted                      | `NotFoundError`                           | 404  | Target lookup     |
-| restore a md_document whose tab is deleted               | `NotFoundError`                           | 404  | Target lookup     |
-| any operation on a deleted user                          | `NotFoundError`                           | 404  | Target lookup     |
-| move a tab, rename a user, set `is_default` or `is_root` | none, the request model has no such field | 422  | Schema validation |
-| create or rename anything with the name ""               | `DomainValidationError`                   | 422  | Domain validation |
-| create a user named `admin`                              | `NameConflictError`                       | 409  | Conflicts: name   |
-| create a user with the name of a deleted user            | `NameConflictError`                       | 409  | Conflicts: name   |
-| restore an item whose name is taken                      | `NameConflictError`                       | 409  | Conflicts: name   |
-| set an `auth_subject` of "" or one that is too long      | `DomainValidationError`                   | 422  | Domain validation |
+| Rule                                                         | Domain error                              | REST | Check              |
+| ------------------------------------------------------------ | ----------------------------------------- | ---- | ------------------ |
+| rename a default tab                                         | `ForbiddenError`                          | 403  | Target rules       |
+| delete a default tab                                         | `ForbiddenError`                          | 403  | Target rules       |
+| change own `is_admin` flag                                   | `ForbiddenError`                          | 403  | Target rules       |
+| change the `is_admin` flag of the root admin                 | `ForbiddenError`                          | 403  | Target rules       |
+| change own `auth_subject`                                    | `ForbiddenError`                          | 403  | Target rules       |
+| change the `auth_subject` of the root admin                  | `ForbiddenError`                          | 403  | Target rules       |
+| delete or deactivate the root admin                          | `ForbiddenError`                          | 403  | Target rules       |
+| delete or deactivate own user                                | `ForbiddenError`                          | 403  | Target rules       |
+| revert a md_document to a revision that records its deletion | `ForbiddenError`                          | 403  | Target rules       |
+| move a md_document to a tab in another folder                | `NotFoundError`                           | 404  | Target lookup      |
+| restore an item that is not deleted                          | `NotFoundError`                           | 404  | Target lookup      |
+| restore a md_document whose tab is deleted                   | `NotFoundError`                           | 404  | Target lookup      |
+| any operation on a deleted user                              | `NotFoundError`                           | 404  | Target lookup      |
+| revert a md_document that is not live                        | `NotFoundError`                           | 404  | Target lookup      |
+| revert to a revision of another item or folder               | `NotFoundError`                           | 404  | Target lookup      |
+| revert a md_document to a tab that is not live               | `NotFoundError`                           | 404  | Target lookup      |
+| move a tab, rename a user, set `is_default` or `is_root`     | none, the request model has no such field | 422  | Schema validation  |
+| create or rename anything with the name ""                   | `DomainValidationError`                   | 422  | Domain validation  |
+| create a user named `admin`                                  | `NameConflictError`                       | 409  | Conflicts: name    |
+| create a user with the name of a deleted user                | `NameConflictError`                       | 409  | Conflicts: name    |
+| restore an item whose name is taken                          | `NameConflictError`                       | 409  | Conflicts: name    |
+| revert a md_document to a name that is taken                 | `NameConflictError`                       | 409  | Conflicts: name    |
+| revert with a version that is not the current one            | `VersionConflictError`                    | 409  | Conflicts: version |
+| set an `auth_subject` of "" or one that is too long          | `DomainValidationError`                   | 422  | Domain validation  |
 
 ## REST Error Format
 
