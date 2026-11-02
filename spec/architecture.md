@@ -53,7 +53,7 @@ check the shape of the input.
 | Migrations           | **Alembic**                                                                                                              | Standard for SQLAlchemy                                                                      |
 | Markdown             | **markdown-it-py**                                                                                                       | CommonMark-compliant parser, token stream for extracting headings                            |
 | Frontmatter          | **PyYAML**                                                                                                               | Optional YAML frontmatter on import/export                                                   |
-| Tests                | **pytest-asyncio**, **httpx** (`AsyncClient`), **testcontainers** (PostgreSQL)                                           | Realistic tests against a real Postgres                                                      |
+| Tests                | **pytest-asyncio**, **httpx** (`AsyncClient`), **testcontainers** (PostgreSQL)                                           | Fakes for most tests, a real Postgres for integration tests                                  |
 | Packaging / deploy   | Container image (`Containerfile`) built with uv and **Podman**, `compose.yaml` run via `podman compose` (app + Postgres) | Simple self-hosting                                                                          |
 
 All chosen libraries have type hints, which matters because `make check` runs mypy in strict mode. PyYAML and
@@ -64,21 +64,27 @@ asyncpg do not ship their own, so they use the dev dependencies `types-pyyaml` a
 ```text
 src/hippowiki/
 ├── __init__.py
-├── app.py               # ASGI composition: FastAPI app + mounted MCP app, lifespan (DB engine)
-├── cli.py               # CLI
+├── app.py               # ASGI composition: create_app(repositories, credential check), FastAPI app + mounted MCP app, lifespan (DB engine)
+├── cli.py               # CLI: hippowiki migrate, hippowiki init
 ├── config.py            # Settings (pydantic-settings)
+├── problem.py           # RFC 9457 problem+json helper, used by auth/middleware.py and api/errors.py
 ├── db/
 │   ├── engine.py        # async engine + session factory
 │   └── models.py        # SQLAlchemy ORM models
 ├── repositories/        # DB access only, no business rules
+│   ├── interfaces.py    # one typing.Protocol per repository, DuplicateNameError
 │   ├── folders.py
+│   ├── tabs.py
 │   ├── documents.py
 │   ├── revisions.py
+│   ├── folder_rights.py
 │   └── users.py
 ├── services/            # business logic + access checks, used by REST and MCP
 │   ├── folders.py       # FolderService
+│   ├── tabs.py          # TabService
 │   ├── documents.py     # DocumentService
-│   ├── search.py        # SearchService
+│   ├── folder_rights.py # FolderRightService
+│   ├── search.py        # SearchService, later, see Goals
 │   └── users.py         # UserService
 ├── markdown/            # pure functions, no I/O
 │   ├── parse.py         # title extraction, headings, sections
@@ -90,9 +96,9 @@ src/hippowiki/
 │   ├── routers/
 │   ├── schemas.py       # Pydantic request/response models
 │   ├── deps.py          # FastAPI dependencies (session, principal from the scope, services)
-│   └── errors.py        # domain exceptions and request validation errors → RFC 9457 problem+json
+│   └── errors.py        # domain exceptions, request validation errors and framework errors → RFC 9457 problem+json
 └── mcp/                 # MCP adapter
-    ├── server.py        # MCPServer instance, transport setup
+    ├── server.py        # MCPServer factory (takes the principal resolver), transport setup
     ├── tools.py         # tool definitions wrapping services
     └── resources.py
 ```
@@ -102,14 +108,22 @@ src/hippowiki/
 - The auth middleware rejects unauthenticated requests on every non-public route before they reach `api/` or `mcp/`.
 - `api/` and `mcp/` call **only** `services/`. They never touch the DB or repositories directly.
 - `services/` receive a `Principal` on every call and enforce access rules.
+  - The one exception is `UserService.create_root_admin`, because no principal exists yet at system initialization. Only
+    `hippowiki init` calls it, and no adapter exposes it.
+- `services/` use repositories only through the Protocols in `repositories/interfaces.py`.
 - `repositories/` do DB access only; they contain no permission or business logic.
+- Name conflicts: repositories translate unique violations into `DuplicateNameError`, and services turn that into
+  `NameConflictError`. Services do not check for duplicates up front, so concurrent requests get the same answer.
 - `markdown/` is pure and side-effect free, therefore easy to unit test.
-- Domain errors (`NotFoundError`, `ForbiddenError`, `VersionConflictError`, `DomainValidationError`) are defined in the
-  service layer and translated by each adapter (HTTP status codes for REST, tool errors for MCP).
+- Domain errors (`NotFoundError`, `ForbiddenError`, `NameConflictError`, `VersionConflictError`,
+  `DomainValidationError`) are defined in the service layer and translated by each adapter (HTTP status codes for REST,
+  tool errors for MCP).
 
 ## Cross-Cutting Concerns
 
 - **Configuration**: environment variables via pydantic-settings (`HIPPOWIKI_DATABASE_URL`, …).
+- **Composition**: `create_app()` takes the repositories and the credential check, because FastAPI dependencies do not
+  reach the mounted MCP app. Production passes the real ones, tests pass fakes, see [Testing Strategy](testing.md).
 - **Transactions**: one DB session/transaction per request or tool call; a document update and its revision rows are
   written atomically. The credential lookup in the auth middleware uses its own short session, separate from this
   transaction.
@@ -123,6 +137,8 @@ src/hippowiki/
   - Authentication is one pure ASGI middleware, not `BaseHTTPMiddleware`, because MCP streams its responses.
   - It wraps REST and the mounted MCP app, since FastAPI dependencies do not reach mounted apps.
   - It stores the principal in the ASGI scope, and the OpenAPI security scheme is declared separately.
+  - MCP tools get the principal through a resolver passed to the server factory. The production resolver reads it from
+    the ASGI scope of the HTTP request in the tool context and fails closed if there is none.
   - Public routes are the only ones the middleware lets through without authentication, as allowed by
     [Goals](goals.md):
     - health: liveness only, with a fixed status body, no database access and no version or configuration details

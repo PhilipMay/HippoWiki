@@ -105,6 +105,7 @@ Notes:
 - the folder name must be unique
 - the tab name must be unique per folder
 - the md_document name must be unique per tab
+- a violated unique name is reported as `NameConflictError`, see [API](api.md)
 - a user has at most one right per folder
   - a user with no row for a folder has no access to it
   - rights are ordered: `read` < `write` < `update`
@@ -114,12 +115,15 @@ Notes:
   - it comes from `is_admin` and is not stored as rows
   - an assigned right of an admin has no effect while `is_admin` is true, and applies again if the flag is removed
 - system initialization creates the root admin, a user named `admin` with `is_root` and `is_admin` set to true
+  - `hippowiki init` runs it, see [Deployment](deployment.md)
+  - it is idempotent: an existing root admin is left alone, and a concurrent run is caught by the unique name
   - the root admin can never be deleted or deactivated
   - the `is_admin` flag of the root admin can never be removed
-- at least one admin always exists, because the root admin always stays an admin
+- after system initialization at least one admin always exists, because the root admin always stays an admin
   - this also holds under concurrent transactions and needs no lock: admins who demote each other at the same time can not affect the root admin
+  - before system initialization nobody can authenticate, so every request to a non-public route gets 401
 
-Table constraints can not express the following rules, so the service layer enforces them:
+Table constraints can not express the following rules, so the service layer enforces them. The responses to rejected operations are defined in [Rejected Operations](api.md#rejected-operations):
 
 - creating a folder also creates its default tab in the same transaction
 - deleting a default tab is rejected

@@ -32,7 +32,7 @@ representation of that.**
   input it accepts only strings with an explicit offset (`Z` or `+02:00`), rejects values without offset and Unix
   timestamps, and converts to UTC. Pydantic's `AwareDatetime` alone is not enough, because it keeps the offset and
   accepts Unix timestamps. HTTP headers (HTTP-date) and JWT claims (Unix seconds) follow their own standards.
-- **Time ranges** (e.g. list and search filters) are half-open: `[since, until)`.
+- **Time ranges** (e.g. list filters, and later search filters) are half-open: `[since, until)`.
 - **Calendar dates** without a time of day (e.g. a "published" date) are `date` / `YYYY-MM-DD`, column names end
   in `_on`. A date is never encoded as midnight UTC.
 - **Durations** (config, TTLs, limits) are integers with the unit in the name, e.g. `token_ttl_seconds`.

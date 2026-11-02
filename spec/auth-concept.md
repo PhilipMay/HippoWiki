@@ -4,13 +4,13 @@
 
 - root admin
   - the system has exactly one root admin, a user called `admin`
-  - it is generated at system initialization
+  - it is generated at system initialization by `hippowiki init`, see [Deployment](deployment.md)
   - it can never be disabled or deleted
   - its admin role can never be removed
   - apart from that it has the same rights as any other admin
 - user rights are assigned on the level of folders - not on the level of tabs or md_documents
 - early rejection: an ASGI middleware rejects unauthenticated requests before the request body is read and before they reach the adapters or services, on both REST and MCP, on every route except the public ones listed in [Architecture](architecture.md)
-- no leaks: services must filter by the current user everywhere, so an unreadable md_document never leaks through a search snippet
+- no leaks: services must filter by the current user everywhere, so an unreadable md_document never leaks through a list, and later through a search snippet
 - denied requests: which response a denied request gets (404 or 403) is defined in [API](api.md)
 
 ## Rights on md_documents, tabs and folders
@@ -50,7 +50,8 @@ These are the operations allowed for users with `is_admin == True`:
 - rename folders
 - assign user rights for folders
 - delete user rights for folders
-- can read all user rights
+- can list the rights of a folder
+- can list all rights of all folders
 - can list all users
 - an admin has an implicit "update" right on all folders
 - an admin can change the `is_admin` flag of other users, except for the root admin
@@ -58,6 +59,7 @@ These are the operations allowed for users with `is_admin == True`:
 
 Notes:
 
+- the responses to these operations for non-admins, and to rejected `is_admin` changes, are defined in [API](api.md)
 - at the moment a user can not be deleted or deactivated - this will change later, but never for the root admin
 - Changing a right: assigning a right (to a user for a folder) replaces the user's existing one on that folder
 - at least one admin always exists: the root admin

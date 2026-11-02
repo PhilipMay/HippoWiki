@@ -4,7 +4,7 @@
 
 - A **knowledge management server** whose content consists of **Markdown documents**.
 - **One core, two front doors**:
-  - **MCP** (Model Context Protocol) so that AI systems like Claude and ChatGPT can list, search, read and write knowledge.
+  - **MCP** (Model Context Protocol) so that AI systems like Claude and ChatGPT can list, read and write knowledge.
   - **REST API** so that web clients, scripts and other services can do the same.
 - **Multi-user** with an **admin** role and a permanent **root admin**.
 - **Authenticated access only**: every request needs an authenticated user, there is no public or anonymous access to

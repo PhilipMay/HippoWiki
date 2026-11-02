@@ -27,7 +27,8 @@ Use the Makefile targets; run them whenever relevant, and always run `make forma
 and `make test` after changing code, before considering the work done.
 
 `make test` needs no Podman. `make test-podman` runs the tests marked `podman` against a real PostgreSQL and needs a
-running Podman machine; also run it after changes that touch the database or time handling.
+running Podman machine; also run it after changes that touch the database, the repositories or their fakes, or time
+handling.
 
 ## Document Style
 
