@@ -23,22 +23,6 @@ These affect the design or would break the implementation as specified.
     explicitly. Otherwise SQLAlchemy raises it later, outside the repository.
   - Suggestion: add a unit-of-work Protocol and pass `create_app()` a factory for it. Each adapter opens one per request
     or tool call, and the fakes implement it too.
-- **Unknown fields are not rejected on MCP** (`api.md:11`, `:28`, `architecture.md:38-39`, `testing.md:30`)
-  - The spec says request models forbid unknown fields and that both interfaces behave identically.
-  - In `mcp` 2.3.0 the generated argument model has no `extra="forbid"` (`mcpserver/utilities/func_metadata.py:96-112`),
-    so unknown top-level tool arguments are silently dropped. An AI client that misspells an optional argument gets
-    success instead of an error.
-  - Suggestion: decide whether to enforce this on MCP, for example with a wrapper, or document it as an accepted
-    difference. Add a test either way, because the check order tests only cover "the body".
-- **Mounting the MCP app needs more than the spec describes** (`architecture.md:50`, `:67`, `deployment.md:10`)
-  - Lifespan: `app.py` lists only the DB engine, but the session manager must run in the lifespan of the parent app,
-    because Starlette does not run the lifespan of mounted apps. Otherwise requests fail with "Task group is not
-    initialized" (`streamable_http_manager.py:140-146`, `:185`).
-  - Path: `streamable_http_path` defaults to `/mcp`, so mounting at `/mcp` results in `/mcp/mcp`
-    (`mcpserver/server.py:1291`).
-  - Host check: by default the SDK enables DNS rebinding protection that allows only localhost hosts and origins
-    (`mcpserver/server.py:1164-1168`). Behind the required reverse proxy, real requests would be rejected. The MCP
-    transport tests run on a local port and can not notice this, so it needs a setting in the configuration.
 - **The shared Pydantic models have no shared place** (`architecture.md:48`, `:97`, `:109`, `time.md:30`)
   - The models are described as shared between REST and MCP tool inputs, but they live in `api/schemas.py`, the REST
     adapter. `mcp/tools.py` would have to import from another adapter, while the layer rules say adapters call only
