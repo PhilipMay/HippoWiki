@@ -15,6 +15,10 @@ These rules add to the constraints in [Tables and Entities](entities.md). Table 
 ## Names
 
 - every name is required, and only the default tab has the name "" (empty string)
+- folders, md_documents and users: `^[a-z0-9]+(-[a-z0-9]+)*$`, so lowercase ASCII words joined by single hyphens, with at most 100 characters
+  - this also rules out a user who looks like the root admin, such as `Admin` or a name with a lookalike character
+- tabs: at most 100 characters, no control characters and no leading or trailing whitespace, so a name of only spaces is not valid
+- a name that breaks these rules gets `DomainValidationError`, see [Request Checks](request-checks.md#validation)
 - a create or rename request with the name "" gets `DomainValidationError`, for every entity, because PostgreSQL runs check constraints before unique indexes and a check violation would otherwise become a 500
 - the name `admin` for a new user gets `NameConflictError`, because the root admin exists whenever someone can authenticate
   - this is a fixed rule for the same reason, not an up-front duplicate check, so it does not conflict with the [layer rules](architecture.md#layer-rules)

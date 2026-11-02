@@ -11,10 +11,11 @@ and each adapter translates them. The last row is not a check: it covers any oth
 
 | Check              | Rejects                                                                       | Domain error                     | REST     | MCP                                |
 | ------------------ | ----------------------------------------------------------------------------- | -------------------------------- | -------- | ---------------------------------- |
+| Credential lookup  | a request with credentials that can not be checked, because the lookup failed | none, rejected by the middleware | 503      | rejected before the tools run      |
 | Authentication     | an unauthenticated request                                                    | none, rejected by the middleware | 401      | rejected before the tools run      |
 | Body size          | a request body over the limit                                                 | none, rejected by the middleware | 413      | rejected before the tools run      |
 | Routing            | an unknown route (404), a known route with the wrong method (405)             | none, rejected by the framework  | 404, 405 | see [MCP](mcp.md#errors)           |
-| Schema validation  | malformed JSON, wrong types, missing fields or unknown fields                 | none, rejected by the adapter    | 422      | see [MCP](mcp.md#errors)           |
+| Schema validation  | malformed JSON, an unparsable body, wrong types, missing or unknown fields    | none, rejected by the adapter    | 422      | see [MCP](mcp.md#errors)           |
 | Visibility         | a user with no right on the folder, also for any tab or md_document in it     | `NotFoundError`                  | 404      | tool error `not_found`             |
 | Required right     | a user whose right on the folder is too low for the operation                 | `ForbiddenError`                 | 403      | tool error `forbidden`             |
 | Target lookup      | a missing tab, md_document, user or folder right, also when named in the body | `NotFoundError`                  | 404      | tool error `not_found`             |
@@ -30,13 +31,19 @@ and each adapter translates them. The last row is not a check: it covers any oth
 
 - two kinds of validation:
   - schema validation in the adapters: shape and types through the Pydantic models, without database access
-  - domain validation in the services: folder and md_document name rules (lowercase `a-z0-9-`, at least one character),
-    maximum document size
+  - domain validation in the services: the [name rules](entity-rules.md#names), maximum document size
 - schema validation leaks nothing: it depends only on the request and never reads the database, so a hidden, a missing
   and a readable folder give the same 422, and validators must not do lookups
 - unknown fields: request models forbid them (`extra="forbid"`), so they get 422 instead of being silently ignored. For MCP
   see [Tool Arguments](mcp.md#tool-arguments)
 - malformed IDs: an ID in the path with the wrong format gets 422, since it can not identify anything
+- unparsable bodies: a body with invalid UTF-8 or JSON nested too deeply counts as malformed JSON and gets 422, see
+  [REST Error Format](#rest-error-format)
+- text PostgreSQL can not store: Pydantic's `str` accepts NUL and lone surrogates, but writing them raises a `DBAPIError`,
+  which is not an `IntegrityError` and would end as a 500. One shared type, `SafeText` in `schemas/text.py`, rejects both
+  and is used for every string field of the request models and every string argument of the MCP tools, including
+  `content_md`. It depends only on the request, so the result is the normal 422 and tool error. The fakes store any
+  string, so only `make test-podman` can show what the type protects against
 
 ### Leaks
 
@@ -45,6 +52,8 @@ and each adapter translates them. The last row is not a check: it covers any oth
   unknown route, so routes can not be probed
 - identical 404: a hidden folder, tab or md_document gets the same status and the same message as one that does not
   exist, so a client can not tell them apart
+- timing: a hidden item may take a different time to answer than a missing one. This is accepted, because the random
+  UUIDs make it hard to exploit
 - lists: list operations return only what the user can read, so hidden items are left out instead of causing an error
 - no conflict leaks: a user without the required right gets 403 before any name or version conflict or domain validation
   error is reported
@@ -95,10 +104,30 @@ Every REST error uses RFC 9457 problem+json, built by one shared helper:
 - The 422 from schema validation is not a domain error, so FastAPI's default 422 body has to be replaced.
 - Framework errors (404 for unknown routes, 405, 500) go through a handler, since they return a different body by
   default. A 500 body contains no exception details.
+- FastAPI turns any exception during body parsing into a 400 (`fastapi/routing.py:495-497` in FastAPI 0.162.0). The
+  application raises no 400 of its own, so the same handler answers it with the 422 for an unparsable body.
+
+`type` stays `about:blank`. Every body has a `code` extension, so a client can tell apart errors with the same status,
+such as the two 409s, which need different reactions. It uses the same stable codes as MCP where both have them:
+
+| Status | `code`                                     |
+| ------ | ------------------------------------------ |
+| 401    | `unauthenticated`                          |
+| 403    | `forbidden`                                |
+| 404    | `not_found`                                |
+| 405    | `method_not_allowed`                       |
+| 409    | `name_conflict` or `version_conflict`      |
+| 413    | `body_too_large`                           |
+| 422    | `schema_validation` or `domain_validation` |
+| 500    | `internal_error`                           |
+| 503    | `service_unavailable`                      |
+
+A 404 body has no `instance` and no ID, because a hidden and a missing item have different IDs and their bodies must be
+identical.
 
 Two responses need a header as well as the body:
 
-- The 401 carries `WWW-Authenticate`, because RFC 9110 requires it and MCP clients use it to find the login method. The
-  login method sets its scheme.
+- The 401 carries `WWW-Authenticate: Bearer resource_metadata="..."`, because RFC 9110 requires the header and MCP clients
+  use it to find the [protected resource metadata](auth-middleware.md#public-routes).
 - The 405 carries `Allow`, because RFC 9110 requires it. The framework error handler keeps `exc.headers`, so rebuilding the
   response does not lose it.

@@ -5,7 +5,7 @@
 HippoWiki is a knowledge management system for AI and natural intelligence. It is at an early stage:
 a uv-managed Python 3.13 package (src layout, `src/hippowiki/`).
 
-# Objective
+## Objective
 
 The current objective is to document a clear initial plan for the project and to plan the first steps of the actual implementation.
 
@@ -26,6 +26,7 @@ The current objective is to document a clear initial plan for the project and to
 - required test cases: `spec/test-cases.md`
 - deployment: `spec/deployment.md`
 - known limitations: `spec/known-limitations.md`
+- implementation plan: `spec/implementation-plan.md`
 
 ## Commands
 

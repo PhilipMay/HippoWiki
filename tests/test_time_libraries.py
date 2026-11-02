@@ -39,6 +39,23 @@ def test_aware_datetime_rejects_values_without_offset(value: str) -> None:
         AWARE.validate_python(value)
 
 
+@pytest.mark.parametrize("value", ["0001-01-01T00:00:00+14:00", "9999-12-31T23:59:59-14:00"])
+def test_converting_an_extreme_value_to_utc_overflows(value: str) -> None:
+    parsed = AWARE.validate_python(value)
+    with pytest.raises(OverflowError):
+        parsed.astimezone(UTC)
+
+
+def test_aware_datetime_truncates_to_six_fractional_digits() -> None:
+    truncated = datetime(2026, 10, 30, 14, 5, 9, 123456, tzinfo=UTC)
+    assert AWARE.validate_python("2026-10-30T14:05:09.123456789Z") == truncated
+
+
+@pytest.mark.parametrize("value", ["2026-10-30t14:05:09z", "2026-10-30 14:05:09Z", "2026-10-30T14:05Z"])
+def test_aware_datetime_accepts_formats_utc_datetime_has_to_reject(value: str) -> None:
+    assert AWARE.validate_python(value).utcoffset() == timedelta(0)
+
+
 @pytest.mark.parametrize(
     ("microsecond", "expected"),
     [

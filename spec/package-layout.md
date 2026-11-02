@@ -5,16 +5,20 @@ The rules between these packages are the [layer rules](architecture.md#layer-rul
 ```text
 src/hippowiki/
 ├── __init__.py
-├── app.py               # ASGI composition: create_app(unit-of-work factory, credential check), services, FastAPI app + mounted MCP app
+├── app.py               # ASGI composition: create_app(unit-of-work factory, credential check), services, FastAPI app + MCP routes,
+│                        # lifespan (MCP session manager)
 │                        # create_production_app(): real factory and credential check, lifespan (DB engine)
 ├── cli.py               # CLI: hippowiki migrate, hippowiki init
 ├── config.py            # Settings (pydantic-settings)
-├── problem.py           # RFC 9457 problem+json helper, used by auth/middleware.py and api/errors.py
+├── domain.py            # frozen dataclasses exchanged by repositories, services and adapters
+├── logs.py              # JSON log formatter and logging setup, also for Uvicorn's loggers
+├── problem.py           # RFC 9457 problem+json helper, used by auth/middleware.py, api/errors.py and mcp/server.py
 ├── db/
-│   ├── engine.py        # async engine (server_settings={"timezone": "UTC"}) + session factory
+│   ├── engine.py        # async engine (server_settings={"timezone": "UTC"}) + session factory (expire_on_commit=False)
 │   ├── models.py        # SQLAlchemy ORM models
 │   └── migrations/      # Alembic env.py, script.py.mako and versions/, shipped inside the package
-├── schemas/             # Pydantic request/response models shared by REST and MCP tool inputs
+├── schemas/             # Pydantic request and response models for REST, response models and field types shared with MCP
+│   ├── text.py          # SafeText
 │   └── time.py          # UtcDatetime
 ├── repositories/        # DB access only, no business rules
 │   ├── interfaces.py    # one typing.Protocol per repository, UnitOfWork Protocol, DuplicateNameError
@@ -34,13 +38,14 @@ src/hippowiki/
 │   └── users.py         # UserService
 ├── auth/
 │   ├── credentials.py   # credential check: looks up the user through the unit-of-work factory, not a service
-│   ├── middleware.py    # ASGI middleware: rejects with 401, 413 or 503, or stores the principal in the scope
+│   ├── middleware.py    # ASGI middleware: rejects with 401, 413 or 503, buffers the body, or stores the principal in the scope
 │   └── principal.py     # Principal abstraction (user / admin)
 ├── api/                 # REST adapter
 │   ├── routers/
 │   ├── deps.py          # FastAPI dependencies (principal from the scope, services)
 │   └── errors.py        # domain exceptions, request validation errors and framework errors → RFC 9457 problem+json
 └── mcp/                 # MCP adapter
-    ├── server.py        # MCPServer factory (takes the services and the principal resolver), stateless transport setup
+    ├── server.py        # MCPServer factory (takes the services and the principal resolver), stateless transport setup,
+    │                    # routes for app.py, 405 for everything except POST
     └── tools.py         # tool definitions wrapping services, shared wrapper: forbids unknown arguments, raises ToolError
 ```

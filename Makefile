@@ -8,6 +8,7 @@ check:
 	uv run black $(src) $(other-src) --check --diff
 	uv run ruff check $(src) $(other-src)
 	uv run mypy $(src) $(other-src)
+	uv run lint-imports
 	uv run mdformat $(md-src) --check
 
 format:
@@ -24,4 +25,4 @@ test-podman:
 	uv run pytest $(other-src) -m podman
 
 install:
-	uv lock && uv sync --all-extras
+	uv sync --locked

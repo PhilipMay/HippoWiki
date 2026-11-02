@@ -21,6 +21,19 @@ document lists the combinations that are easy to miss, and the cases of other do
 - Each row of [Rejected Operations](request-checks.md#rejected-operations) gets its response.
 - A name conflict is reported only after domain validation.
 - An authenticated request with a body over the limit gets 413, and an unauthenticated one gets 401.
+- A chunked body over the limit, so with no declared length, gets the same 413 on a REST route, on MCP and on an unknown
+  route. A test with a declared length would pass with the wrong implementation.
+- A body under the limit reaches the route unchanged after the replay.
+- A body with invalid UTF-8 and a deeply nested JSON array get the same 422 as ordinary malformed JSON.
+- A string field or tool argument with NUL or a lone surrogate gets 422 on REST and a tool error on MCP, including
+  `content_md`.
+
+## Names
+
+- Each entity with a [name rule](entity-rules.md#names) gets `DomainValidationError` for a name that is too long, and accepts
+  one of exactly 100 characters.
+- `-`, `--`, `a--b`, `-a`, `a-` and `Admin` get `DomainValidationError` for folders, md_documents and users.
+- A tab name of only spaces, with a control character or with leading or trailing whitespace gets `DomainValidationError`.
 
 ## Visibility
 
@@ -39,12 +52,25 @@ REST and MCP, including:
 ## Public Routes
 
 - Without credentials and with a unit-of-work factory that fails when called, health returns its fixed body.
-- Under the same conditions, every route except health and the login routes gets 401, including MCP and the OpenAPI docs.
+- The same holds for the protected resource metadata routes, with the body built from the settings.
+- Under the same conditions, every route except health, the protected resource metadata and the login routes gets 401,
+  including MCP and `/openapi.json`.
+- A public path with a trailing slash or a path below it gets 401.
+- `/docs` and `/redoc` get 404 when authenticated.
+
+## Other ASGI Scopes
+
+- `lifespan` passes through the middleware, so startup and shutdown still run.
+- A `websocket` scope is closed without reaching the app.
 
 ## Error Format
 
-- The 401, the 404 for an unknown route, the 405, the 413, the 422 from schema validation and the 500 are problem+json.
-- The 401 carries `WWW-Authenticate` and the 405 carries `Allow`.
+- The 401, the 404 for an unknown route, the 405, the 413, the 422 from schema validation, the 422 for an unparsable body,
+  the 500 and the 503 are problem+json.
+- Each of them carries the `code` from [REST Error Format](request-checks.md#rest-error-format), and a name conflict and a
+  version conflict can be told apart by it.
+- A 404 body has no `instance` and no ID.
+- The 401 carries `WWW-Authenticate` with `resource_metadata` and the 405 carries `Allow`.
 
 ## Failed Credential Lookup
 
@@ -55,9 +81,22 @@ REST and MCP, including:
 ## MCP Tools and Transport
 
 - In the tool tests, an unknown argument gets a tool error from the shared wrapper, which pins how it uses the SDK.
+- In the tool tests, the advertised `input_schema` has `additionalProperties: false`.
+- In the tool tests, invalid arguments give `schema_validation`, and the text has no `input_value` and no pydantic.dev link.
 - In the tool tests, each domain error gives its stable code.
-- On the transport, responses carry no `Mcp-Session-Id`.
-- On the transport, each user's tool calls run under their own principal.
+- On the transport, responses carry no `Mcp-Session-Id`, on both protocol paths from
+  [Serving the MCP App](mcp.md#serving-the-mcp-app).
+- On the transport, each user's tool calls run under their own principal, on both protocol paths.
+- On the transport, `POST /mcp` answers without a redirect.
+- On the transport, an authenticated `GET /mcp` gets 405 with `Allow: POST` and an unauthenticated one gets 401.
+- On the transport, a foreign `Host` gets 421 and a foreign `Origin` gets 403, and the configured ones are accepted.
+
+## Time
+
+- `UtcDatetime` accepts the strict profile from [Time](time.md) and converts to UTC.
+- `0001-01-01T00:00:00+14:00` and `9999-12-31T23:59:59-14:00` get 422, not a 500.
+- `2026-10-30t14:05:09z`, `2026-10-30 14:05:09Z`, `2026-10-30T14:05Z`, `2026-10-30T14:05:09.123456789Z` and Unix timestamps
+  get 422.
 
 ## Integration (`podman`)
 
@@ -69,3 +108,6 @@ REST and MCP, including:
 - Creating or renaming anything to the name `""` gets `DomainValidationError` and creating a user named `admin` gets
   `NameConflictError`, not a check violation.
 - Assigning a right twice updates `assigned_by` and `assigned_at`, also in separate committed transactions.
+- A service result can be read after the commit, which fails without `expire_on_commit=False` if an ORM object reaches it.
+- `SafeText` is needed: writing NUL or a lone surrogate through SQLAlchemy and asyncpg raises `DBAPIError`, so a change in
+  this behaviour shows up.

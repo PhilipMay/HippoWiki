@@ -31,6 +31,7 @@ markers = [
 dev = [
     "asyncpg-stubs>=0.32.0",
     "black>=26.10.1",
+    "import-linter>=2.15",
     "mdformat>=1.0.0",
     "mdformat-gfm>=1.0.0",
     "mypy>=2.4.1",
@@ -39,6 +40,24 @@ dev = [
     "ruff>=0.17.3",
     "testcontainers>=4.15.0",
     "types-pyyaml>=6.0.12.20261030",
+]
+
+# The layer rules from spec/architecture.md. Layers are optional until their packages exist, and a layer may
+# import any layer below it. The stricter rules need "forbidden" contracts, which do not allow missing modules, so
+# they come with the first code, see spec/implementation-plan.md.
+[tool.importlinter]
+root_package = "hippowiki"
+
+[[tool.importlinter.contracts]]
+name = "Layer rules"
+type = "layers"
+containers = ["hippowiki"]
+layers = [
+    "(app) | (cli)",
+    "(api) | (mcp) | (auth.middleware)",
+    "(services) | (auth.credentials)",
+    "(repositories)",
+    "(db)",
 ]
 
 [tool.black]

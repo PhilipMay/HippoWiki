@@ -23,17 +23,23 @@ representation of that.**
 - **SQLAlchemy** columns use `DateTime(timezone=True)`, set once through
   `type_annotation_map = {datetime: DateTime(timezone=True)}`, because a bare `Mapped[datetime]` would be naive.
   `updated_at` uses `onupdate=func.now()`. Mappers use `eager_defaults=True`, because the default `"auto"` only
-  fetches server-set values after INSERT, and reading one after UPDATE would trigger implicit IO in async code. A
+  fetches server-set values after INSERT, and reading one after UPDATE would trigger implicit IO in async code.
+  Sessions use `expire_on_commit=False` for the same reason: the default expires loaded objects on commit, and the next
+  attribute access raises `MissingGreenlet`. The fakes expire nothing, so only `make test-podman` can notice this. A
   test fails on any naive datetime column. asyncpg returns aware UTC datetimes and reads a naive parameter as host
   local time, so a naive value silently stores the wrong instant. `infinity` comes back naive, so it is not a valid
   value: columns only get `now()`, and input validation rejects it.
 - **Wire format** (REST, MCP, export) is RFC 3339 (a profile of ISO 8601) in UTC with `Z` and always six fractional
   digits, e.g. `2026-10-30T14:05:09.123456Z`. REST and MCP share one `UtcDatetime` annotated type from
   `schemas/time.py`. On output it writes the fixed format, because Pydantic's default omits the fraction when microseconds are exactly zero. On
-  input it accepts only strings with an explicit offset (`Z` or `+02:00`), rejects values without offset and Unix
-  timestamps, and converts to UTC. Pydantic's `AwareDatetime` alone is not enough, because it keeps the offset and
-  accepts Unix timestamps. HTTP headers (HTTP-date) and JWT claims (Unix seconds), if the login method uses them, follow
-  their own standards.
+  input it accepts only strings in a strict profile of RFC 3339: `YYYY-MM-DDTHH:MM:SS`, optionally a fraction of one to
+  six digits, then `Z` or an offset such as `+02:00`. It rejects values without offset or seconds, a lowercase `t` or `z`,
+  a space as the separator, Unix timestamps and more than six fractional digits, which it does not truncate. It converts
+  to UTC, and a value that overflows there, such as `0001-01-01T00:00:00+14:00`, is a validation error: Pydantic only
+  turns `ValueError` and `AssertionError` into validation errors, so the validator has to catch the `OverflowError`, which
+  would otherwise become a 500. Pydantic's `AwareDatetime` alone is not enough, because it keeps the offset, accepts Unix
+  timestamps and the formats above, and truncates the fraction. HTTP headers (HTTP-date) and JWT claims (Unix seconds)
+  follow their own standards.
 - **Time ranges** (e.g. list filters, and later search filters) are half-open: `[since, until)`.
 - **Calendar dates** without a time of day (e.g. a "published" date) are `date` / `YYYY-MM-DD`, column names end
   in `_on`. A date is never encoded as midnight UTC.

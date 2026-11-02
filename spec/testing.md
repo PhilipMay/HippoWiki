@@ -12,7 +12,9 @@ The cases these tests must cover are in [Test Cases](test-cases.md).
 - **Marker**: only tests against a real PostgreSQL carry the `podman` marker. These are the integration tests and the real
   side of the contract tests. All other test kinds below run in `make test`.
 - **Accepted trade-off**: table constraints, atomic writes, migrations and real SQL run only in `make test-podman`, which
-  CI does not run, so it has to be run locally after such changes.
+  CI does not run, so it has to be run locally after such changes. Reconsider this when the repositories arrive, see
+  [Implementation Plan](implementation-plan.md#steps), because reading after commit and text PostgreSQL rejects only show up
+  there. `DOCKER_HOST` can already be overridden, so CI would not need the `podman machine` call in the `Makefile`.
 - **Unit tests**: pure code, such as `UtcDatetime`.
 - **Time and pinned library tests**: `UtcDatetime` on input and output, a test that fails on any naive datetime column, and
   the tests in `tests/test_time_*.py` that pin the library behaviour [Time](time.md) relies on. The asyncpg ones carry the
@@ -30,6 +32,8 @@ The cases these tests must cover are in [Test Cases](test-cases.md).
 - **MCP transport tests**: an MCP client over streamable HTTP against the full ASGI app with the auth middleware, served
   by Uvicorn on a local port, because `httpx.ASGITransport` buffers responses and can not stream. All authentication and
   check order tests on MCP run this way.
+- **Import contracts**: `make check` runs import-linter on the [layer rules](architecture.md#layer-rules). A layer is
+  optional until its package exists.
 - `make format`, `make check` and `make test` must stay green locally; CI runs `make check` and `make test` in parallel
   as two separate GitHub Actions workflows (`check.yml` and `test.yml`). `make test-podman` runs locally only, CI does
   not run it.
