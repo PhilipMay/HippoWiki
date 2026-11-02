@@ -2,16 +2,11 @@
 
 ## Rules
 
-- root admin
-  - the system has exactly one root admin, a user called `admin`
-  - it is generated at system initialization by `hippowiki init`, see [Deployment](deployment.md)
-  - it can never be deactivated or deleted
-  - its admin role can never be removed
-  - apart from that it has the same rights as any other admin
+- the system has exactly one root admin, see [Entity Rules](entity-rules.md#root-admin)
 - user rights are assigned on the level of folders - not on the level of tabs or md_documents
-- early rejection: an ASGI middleware rejects unauthenticated requests before the request body is read and before they reach the adapters or services, on both REST and MCP, on every route except the public ones listed in [Architecture](architecture.md)
+- authentication: see [Auth Middleware](auth-middleware.md)
 - no leaks: services must filter by the current user everywhere, so an unreadable md_document never leaks through a list, and later through a search snippet
-- denied requests: which response a denied request gets (404 or 403) is defined in [API](api.md)
+- denied requests: which response a denied request gets (404 or 403) is defined in [Request Checks](request-checks.md)
 
 ## Rights on md_documents, tabs and folders
 
@@ -40,8 +35,7 @@ Notes:
 - all users can see their own full rights with folder name
   - this list shows effective rights: an admin gets `manage` on every folder, and their stored rows are ignored
   - each entry has the folder and the right only, because an implicit right has no `assigned_by` or `assigned_at`
-- a tab can never be moved to an other folder
-- a md_document can never be moved to an other tab which is part of an other folder
+- what can be moved where is limited by the [entity rules](entity-rules.md#folders-tabs-and-md-documents)
 
 ## Admin Rights
 
@@ -57,14 +51,13 @@ These are the operations allowed for users with `is_admin == True`:
 - can list all rights of all folders
 - can list all users
 - an admin has an implicit "manage" right on all folders
+  - it comes from `is_admin` and is not stored as rows
+  - an assigned right of an admin has no effect while `is_admin` is true, and applies again if the flag is removed
 - an admin can change the `is_admin` flag of other users, except for the root admin
 - an admin can not change the `is_admin` flag of its own user
 
 Notes:
 
-- the responses to these operations for non-admins, and to rejected `is_admin` changes, are defined in [API](api.md)
-- at the moment a user can not be deleted or deactivated - this will change later, but never for the root admin
-- Changing a right: assigning a right (to a user for a folder) replaces the user's existing one on that folder
+- the responses to these operations for non-admins, and to rejected `is_admin` changes, are defined in [Request Checks](request-checks.md)
+- at the moment a user can not be deleted or deactivated - this will change later
 - Listing rights: the rights of a folder and all rights of all folders show the stored rows that admins assign and delete, including rows that have no effect while the user is an admin
-- at least one admin always exists: the root admin
-- users can not be renamed

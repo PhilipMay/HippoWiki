@@ -12,12 +12,18 @@ The current objective is to document a clear initial plan for the project and to
 ## Documents
 
 - project goals and non-goals: `spec/goals.md`
-- general software architecture planning: `spec/architecture.md`
-- database and entities planning: `spec/entities.md`
+- general software architecture and layer rules: `spec/architecture.md`
+- technology stack: `spec/tech-stack.md`
+- package layout: `spec/package-layout.md`
+- database tables and constraints: `spec/entities.md`
+- rules the table constraints can not express: `spec/entity-rules.md`
 - time rules: `spec/time.md`
-- authentication and rights: `spec/auth-concept.md`
-- REST API and MCP planning: `spec/api.md`
+- rights and admin operations: `spec/auth-concept.md`
+- authentication middleware and public routes: `spec/auth-middleware.md`
+- check order, denied requests and errors: `spec/request-checks.md`
+- MCP adapter: `spec/mcp.md`
 - testing strategy: `spec/testing.md`
+- required test cases: `spec/test-cases.md`
 - deployment: `spec/deployment.md`
 - known limitations: `spec/known-limitations.md`
 

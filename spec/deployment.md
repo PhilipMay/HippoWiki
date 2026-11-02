@@ -11,5 +11,5 @@
   deployment.
 - Reverse proxy with TLS (e.g. Caddy or Traefik) in front, required for remote MCP connectors.
 - Container and reverse proxy health checks use the public health route, so they need no credentials. It reports
-  liveness only, see [Architecture](architecture.md).
+  liveness only, see [Auth Middleware](auth-middleware.md#public-routes).
 - Backups via standard PostgreSQL tooling (`pg_dump`).

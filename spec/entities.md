@@ -1,4 +1,7 @@
-# Tables, Entities and Rules
+# Tables and Entities
+
+This document defines the tables and what their constraints enforce. Everything the constraints can not express is in
+[Entity Rules](entity-rules.md).
 
 ## Entities
 
@@ -68,12 +71,8 @@ A check constraint `name <> ''` enforces that the name is not empty.
 
 A check constraint `name <> ''` enforces that the name is not empty.
 A check constraint `is_root = (name = 'admin')` enforces that the user named `admin` is the root admin and that no other user is.
-Together with the unique, not null name, this allows at most one root admin. The rule that users can not be renamed keeps the root admin in place.
+Together with the unique, not null name, this allows at most one root admin.
 A check constraint `NOT is_root OR is_admin` enforces that the root admin always has the admin role, also under concurrent transactions.
-
-Notes:
-
-- users can not be renamed
 
 ### Folder Right
 
@@ -92,54 +91,3 @@ An index on `folder_id` supports listing the rights of a folder. The primary key
 Notes:
 
 - the column is not named `right` because `RIGHT` is a reserved word in PostgreSQL
-
-## Rules and Relations
-
-- a folder always has exactly one default tab
-  - the default tab is created together with the folder and is named "" (empty string)
-  - the default tab can not be deleted
-  - the default tab can not be renamed
-- a tab is always assigned to exactly one folder
-- a md_document is always assigned to exactly one tab
-  - by default a md_document is assigned to the default tab of its folder
-- every name is required
-  - only the default tab has the name "" (empty string)
-  - a create or rename request with the name "" gets `DomainValidationError`, for every entity, because PostgreSQL runs check constraints before unique indexes and a check violation would otherwise become a 500
-- the name `admin` for a new user gets `NameConflictError`, because the root admin exists whenever someone can authenticate
-  - this is a fixed rule for the same reason, not an up-front duplicate check, so it does not conflict with [Architecture](architecture.md)
-- the folder name must be unique
-- the tab name must be unique per folder
-- the md_document name must be unique per tab
-- a violated unique name is reported as `NameConflictError`, see [API](api.md)
-- a user has at most one right per folder
-  - a user with no row for a folder has no access to it
-  - rights are ordered: `read` < `write` < `manage`
-  - assigning a right replaces the existing row with `ON CONFLICT DO UPDATE SET access_right, assigned_by, assigned_at = now()`, so `assigned_by` and `assigned_at` describe the current assignment
-    - the statement sets `assigned_at` itself, because `DEFAULT now()` does not fire on the update
-    - delete and insert is not an alternative, because two concurrent first assignments would then hit the primary key
-  - deleting a right removes the row, and deleting a right that does not exist gets 404, see [API](api.md)
-- an admin has an implicit `manage` right on all folders
-  - it comes from `is_admin` and is not stored as rows
-  - an assigned right of an admin has no effect while `is_admin` is true, and applies again if the flag is removed
-  - which rights list operation shows stored rows and which shows effective rights is defined in [Auth Concept](auth-concept.md)
-- system initialization creates the root admin, a user named `admin` with `is_root` and `is_admin` set to true
-  - `hippowiki init` runs it, see [Deployment](deployment.md)
-  - it is idempotent: an existing root admin is left alone, and a concurrent run is caught by the unique name
-  - the root admin can never be deleted or deactivated
-  - the `is_admin` flag of the root admin can never be removed
-- after system initialization at least one admin always exists, because the root admin always stays an admin
-  - this also holds under concurrent transactions and needs no lock: admins who demote each other at the same time can not affect the root admin
-  - before system initialization nobody can authenticate, so every request to a non-public route gets 401
-
-Table constraints can not express the following rules, so the service layer enforces them. The responses to rejected operations are defined in [Rejected Operations](api.md#rejected-operations):
-
-- creating a folder also creates its default tab in the same transaction
-- deleting a default tab is rejected
-- renaming a default tab is rejected, and `is_default` of a tab never changes after creation
-- a new md_document without an explicit tab is assigned to the default tab of its folder
-- a tab can not be moved to another folder, so `folder_id` of a tab never changes
-- a md_document can only be moved to a tab in the same folder
-- an admin changing their own `is_admin` flag is rejected
-- changing the `is_admin` flag of the root admin is rejected
-- deleting or deactivating the root admin is rejected, once these operations exist
-- renaming a user is rejected, and `is_root` of a user never changes after creation
