@@ -82,6 +82,10 @@ transport behaviour.
 - A chunked body over the limit, so with no declared length, gets the same 413 on a REST route, on MCP and on an unknown
   route. A test with a declared length would pass with the wrong implementation.
 - A body under the limit reaches the route unchanged after the replay.
+- A body of exactly the limit reaches the route on REST and MCP, and one byte more gets the problem+json 413 of the
+  middleware, also on MCP.
+- `6 * MAX_CONTENT_MD_BYTES < MAX_REQUEST_BODY_BYTES <= DEFAULT_MAX_REQUEST_BODY_SIZE` holds, so a change on either side
+  or in the SDK gets noticed.
 - A body with invalid UTF-8 and a deeply nested JSON array get the same 422 as ordinary malformed JSON.
 - A string field or tool argument with NUL or a lone surrogate gets 422 on REST and a tool error on MCP, including
   `content_md`.
@@ -93,6 +97,17 @@ transport behaviour.
 - `-`, `--`, `a--b`, `-a`, `a-` and `Admin` get `DomainValidationError` for folders, md_documents and users.
 - A tab name of only spaces, with a control character or with leading or trailing whitespace gets
   `DomainValidationError`.
+
+### Document Size
+
+- A `content_md` of exactly 262,144 bytes is accepted and one byte more gets `DomainValidationError`, on create and
+  update, on REST and MCP.
+- The [size](entities.md#document-size) counts bytes: 131,073 `ä` are rejected, although that is fewer characters than
+  the limit.
+- The worst case fits: a largest document made only of U+0001, sent escaped together with the longest name, passes the
+  body check on REST and MCP.
+- A user without the required right who sends a `content_md` over the limit gets 403.
+- A rename, move, restore and revert of a md_document whose stored `content_md` is over the limit succeed.
 
 ### Hidden and Deleted Items
 

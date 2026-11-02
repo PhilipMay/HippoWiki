@@ -152,8 +152,8 @@ src/hippowiki/
   - `auth/principal.py` imports only `domain.py`, and the adapters, the services and the rest of `auth/` may import it.
   - `auth/tokens.py` imports no other HippoWiki package, and gets its settings as parameters.
   - `auth/credentials.py` uses only `repositories/interfaces.py`, `auth/principal.py` and `auth/tokens.py`.
-  - `auth/middleware.py` uses only `auth/principal.py` and `problem.py`, and gets the credential check and the MCP path
-    as parameters.
+  - `auth/middleware.py` uses only `auth/principal.py` and `problem.py`, and gets the credential check, the MCP path and
+    the [request body limit](authentication.md#request-body-limit) as parameters.
 - **Conflicts**:
   - Repositories flush after each write, so a unique violation surfaces inside the repository. It becomes
     `DuplicateNameError` or, for `auth_subject`, `DuplicateSubjectError`, and the service turns these into

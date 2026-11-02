@@ -61,8 +61,12 @@ and the fields of the results are in [Response Fields](rest.md#response-fields).
   argument where `null` has a meaning of its own.
 - `update_md_document` with no field to change gets a tool error with the code `schema_validation`.
 - Tools carry annotations: `readOnlyHint` on the list and get tools and `destructiveHint` on the delete tools.
-- A single large md_document still goes into the context in full. Its size is bounded only by the maximum document size,
-  see [Roadmap](roadmap.md#next-steps).
+- A single large md_document still goes into the context in full. Its size is bounded only by the
+  [maximum document size](entities.md#document-size) of 256 KiB, very roughly 65,000 to 85,000 tokens. Reading only a
+  part of it is [for later](roadmap.md#later).
+- `get_md_document` sets no `anthropic/maxResultSizeChars`, so Claude Code keeps its default: a text result over 50,000
+  characters goes to a file instead of the context, see its [MCP documentation](https://code.claude.com/docs/en/mcp).
+  How other clients behave is part of the [Connector Test](roadmap.md#connector-test).
 
 ## Tool Arguments
 
@@ -141,3 +145,5 @@ The SDK line numbers refer to `mcp` 2.3.0.
 - Protocol versions: the SDK sends requests with protocol version `2026-07-28` through a separate path
   (`handle_modern_request`, from `streamable_http_manager.py:194`), before it looks at the stateless setting. The
   transport tests cover both paths.
+- Body size: the SDK has its own limit of 4 MiB, which our lower [limit](authentication.md#request-body-limit) never
+  reaches, so `max_request_body_size` stays unset (`transport_security.py:15`).

@@ -23,9 +23,10 @@
   - HippoWiki gets `HIPPOWIKI_OAUTH_ISSUER`, the public URL of the realm, `HIPPOWIKI_OAUTH_AUDIENCE`, the MCP URL, and
     `HIPPOWIKI_OAUTH_JWKS_URL`, so signing keys can be fetched inside the container network.
 - Reverse proxy with TLS (e.g. Caddy or Traefik) in front, required for remote MCP connectors. MCP tool calls can answer
-  as a stream, so its idle timeout has to be longer than the slowest tool call, and it needs a body limit that matches
-  the [Request Body Limit](authentication.md#request-body-limit). It exposes Keycloak's login paths (`/realms/` and
-  `/resources/`), but not its admin console.
+  as a stream, so its idle timeout has to be longer than the slowest tool call. Its body limit is the same 2 MiB as the
+  [Request Body Limit](authentication.md#request-body-limit), and never lower, because a lower one would reject
+  documents the app allows. Over the limit a client may get the proxy's own 413 body instead of problem+json, which is
+  accepted. It exposes Keycloak's login paths (`/realms/` and `/resources/`), but not its admin console.
 - HippoWiki and Keycloak must both be reachable from the public internet, including Anthropic's range `160.79.104.0/21`,
   because Claude connects from there. A firewall in front of Keycloak can break the login.
 - Container and reverse proxy health checks use the [public health route](authentication.md#public-routes), so they need

@@ -168,8 +168,16 @@ the SDK nor a tool is reached:
 ## Request Body Limit
 
 After authentication and before anything parses the body, the middleware rejects a request body over the limit with 413.
-It checks this on the declared length and while reading, whatever the route. This limit is separate from the maximum
-document size, and its value is still open, see [Roadmap](roadmap.md#next-steps).
+It checks this on the declared length and while reading, whatever the route. The limit is 2 MiB (2,097,152 bytes), and a
+body of exactly this size passes.
+
+The limit is separate from the [maximum document size](entities.md#document-size) of 256 KiB, but has to leave room for
+it. JSON escaping can grow one UTF-8 byte to six, because U+0001 becomes `\u0001` and `SafeText` allows it, so the
+largest document can need 1.5 MiB. The other 512 KiB covers the name, the IDs and the JSON-RPC envelope.
+
+The value is fixed in the code and not a setting. `app.py` holds it as `MAX_REQUEST_BODY_BYTES` and passes it to the
+middleware, while `services/md_documents.py` holds `MAX_CONTENT_MD_BYTES`. The [reverse proxy](deployment.md) needs a
+matching limit.
 
 The middleware reads the body up to the limit before it calls the app, and then replays it. Memory is bounded by the
 limit, and after the replay `receive` goes to the original one again, so the app still gets `http.disconnect`.
@@ -196,3 +204,6 @@ discarded, and any later failure is unexpected.
   into a 400, and a route that reads no body would answer 404, although the Body size check comes before Routing in the
   [check order](request-checks.md#check-order). So the body is read up front and replayed.
 - The SDK's `RequestBodyLimitMiddleware` (`transport_security.py:126`) works the same way.
+- The SDK limits MCP bodies to 4 MiB by itself (`transport_security.py:15`) and answers with a plain text 413. Our limit
+  is lower, so the middleware always answers first and `max_request_body_size` stays unset. The line numbers refer to
+  `mcp` 2.3.0.

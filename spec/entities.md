@@ -68,6 +68,18 @@ in [Deleted Items](request-checks.md#deleted-items).
   - this is a fixed rule for the same reason, not an up-front duplicate check, so it does not conflict with the
     [layer rules](architecture.md#layer-rules)
 
+## Document Size
+
+- `content_md` has at most 256 KiB (262,144 bytes) in UTF-8, and a document of exactly this size is accepted (service)
+  - it counts bytes, not characters, because bytes bound both the storage and the
+    [request body](authentication.md#request-body-limit)
+- the size is checked only when a client sends `content_md`, so on a create and an update (service)
+  - a rename, a move, a restore and a revert bring no new content and are not checked, so a limit lowered later can not
+    block recovery or make a folder revert fail
+- the value is fixed in the code, like the name lengths, and not a setting, because the request body limit and the
+  reverse proxy depend on it
+- there is no check constraint, so changing the value needs no migration
+
 ## Tables
 
 Time columns such as `created_at` follow the rules in [Time](time.md).

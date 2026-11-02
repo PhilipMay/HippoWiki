@@ -35,7 +35,7 @@ and MCP, and each adapter translates them. The last row is not a check: it cover
 - two kinds of validation:
   - schema validation in the adapters: shape and types through the Pydantic models, without database access
   - domain validation in the services: the [name rules](entities.md#names), the
-    [`auth_subject` length](users-and-rights.md#user-linking), maximum document size
+    [`auth_subject` length](users-and-rights.md#user-linking), [maximum document size](entities.md#document-size)
 - schema validation leaks nothing: it depends only on the request and never reads the database, so a hidden, a missing
   and a readable folder give the same 422, and validators must not do lookups
 - unknown fields: request models forbid them (`extra="forbid"`), so they get 422 instead of being silently ignored. For
@@ -107,19 +107,20 @@ gets `DomainValidationError`, and a violated unique name gets `NameConflictError
 
 ### Content
 
-| Rule                                                      | Domain error                              | REST | Check              |
-| --------------------------------------------------------- | ----------------------------------------- | ---- | ------------------ |
-| rename a default tab                                      | `ForbiddenError`                          | 403  | Target rules       |
-| delete a default tab                                      | `ForbiddenError`                          | 403  | Target rules       |
-| move a md_document to a tab in another folder             | `NotFoundError`                           | 404  | Target lookup      |
-| restore an item that is not deleted                       | `NotFoundError`                           | 404  | Target lookup      |
-| restore a md_document whose tab is deleted                | `NotFoundError`                           | 404  | Target lookup      |
-| move a tab or set `is_default`                            | none, the request model has no such field | 422  | Schema validation  |
-| update, rename or move a md_document without a version    | none, the request model requires it       | 422  | Schema validation  |
-| update anything with no field to change                   | none, the request model requires one      | 422  | Schema validation  |
-| create or rename anything with the name ""                | `DomainValidationError`                   | 422  | Domain validation  |
-| update, rename or move with a version that is not current | `VersionConflictError`                    | 409  | Conflicts: version |
-| restore an item whose name is taken                       | `NameConflictError`                       | 409  | Conflicts: name    |
+| Rule                                                                                                  | Domain error                              | REST | Check              |
+| ----------------------------------------------------------------------------------------------------- | ----------------------------------------- | ---- | ------------------ |
+| rename a default tab                                                                                  | `ForbiddenError`                          | 403  | Target rules       |
+| delete a default tab                                                                                  | `ForbiddenError`                          | 403  | Target rules       |
+| move a md_document to a tab in another folder                                                         | `NotFoundError`                           | 404  | Target lookup      |
+| restore an item that is not deleted                                                                   | `NotFoundError`                           | 404  | Target lookup      |
+| restore a md_document whose tab is deleted                                                            | `NotFoundError`                           | 404  | Target lookup      |
+| move a tab or set `is_default`                                                                        | none, the request model has no such field | 422  | Schema validation  |
+| update, rename or move a md_document without a version                                                | none, the request model requires it       | 422  | Schema validation  |
+| update anything with no field to change                                                               | none, the request model requires one      | 422  | Schema validation  |
+| create or rename anything with the name ""                                                            | `DomainValidationError`                   | 422  | Domain validation  |
+| create or update a md_document with a `content_md` over the [maximum size](entities.md#document-size) | `DomainValidationError`                   | 422  | Domain validation  |
+| update, rename or move with a version that is not current                                             | `VersionConflictError`                    | 409  | Conflicts: version |
+| restore an item whose name is taken                                                                   | `NameConflictError`                       | 409  | Conflicts: name    |
 
 ### Revert
 

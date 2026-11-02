@@ -5,18 +5,8 @@ This documents what still needs to be done and is missing, most urgent first. Wh
 
 ## Next Steps
 
-In this order, because the later steps depend on the decisions of the earlier ones:
-
-1. **Connector test**: try the login method of [Authentication](authentication.md) with the real clients, see
-   [Connector Test](#connector-test).
-2. **Size limits**: set the maximum document size, then the request body limit.
-   - The middleware answers 413 for a [body over the limit](authentication.md#request-body-limit), but its value is
-     still open.
-   - It has to leave room for the largest allowed document.
-   - The reverse proxy needs a matching limit.
-   - The SDK limits MCP bodies to 4 MiB by itself and answers with its own 413 body (`transport_security.py:15`). So the
-     limit stays at or below that, or `max_request_body_size` is set as well.
-   - On MCP the maximum document size also bounds what one `get_md_document` puts into the context of an AI client.
+- **Connector test**: try the login method of [Authentication](authentication.md) with the real clients, see
+  [Connector Test](#connector-test).
 
 ## Connector Test
 
@@ -34,6 +24,8 @@ it works with the real clients, so this test comes before the other implementati
   retrying the login.
 - How each client reacts to the 403 for an admin account, see [Admin Accounts](mcp.md#admin-accounts), and whether the
   person sees why.
+- What each client does with a `get_md_document` result at the [maximum document size](entities.md#document-size), which
+  is more than some clients put into the context at once.
 
 If a client does not work this way, turn on the Keycloak features `cimd` and `resource-indicators` for it. If that also
 fails, evaluate [Logto](https://docs.logto.io/use-cases/ai/mcp-server-enable-third-party-ai-agent-access).
