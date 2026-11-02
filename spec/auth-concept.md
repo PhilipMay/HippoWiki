@@ -37,6 +37,8 @@ Notes:
 - at the moment a delete operation is not available - this will change later
 - implicit default access: a user with no assigned right has no access
 - all users can see their own full rights with folder name
+  - this list shows effective rights: an admin gets `update` on every folder, and their stored rows are ignored
+  - each entry has the folder and the right only, because an implicit right has no `created_by` or `created_at`
 - a tab can never be moved to an other folder
 - a md_document can never be moved to an other tab which is part of an other folder
 
@@ -62,5 +64,6 @@ Notes:
 - the responses to these operations for non-admins, and to rejected `is_admin` changes, are defined in [API](api.md)
 - at the moment a user can not be deleted or deactivated - this will change later, but never for the root admin
 - Changing a right: assigning a right (to a user for a folder) replaces the user's existing one on that folder
+- Listing rights: the rights of a folder and all rights of all folders show the stored rows that admins assign and delete, including rows that have no effect while the user is an admin
 - at least one admin always exists: the root admin
 - users can not be renamed

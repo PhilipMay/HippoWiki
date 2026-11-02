@@ -64,15 +64,20 @@ asyncpg do not ship their own, so they use the dev dependencies `types-pyyaml` a
 ```text
 src/hippowiki/
 ├── __init__.py
-├── app.py               # ASGI composition: create_app(repositories, credential check), FastAPI app + mounted MCP app, lifespan (DB engine)
+├── app.py               # ASGI composition: create_app(unit-of-work factory, credential check), services, FastAPI app + mounted MCP app
+│                        # create_production_app(): real factory and credential check, lifespan (DB engine)
 ├── cli.py               # CLI: hippowiki migrate, hippowiki init
 ├── config.py            # Settings (pydantic-settings)
 ├── problem.py           # RFC 9457 problem+json helper, used by auth/middleware.py and api/errors.py
 ├── db/
 │   ├── engine.py        # async engine + session factory
-│   └── models.py        # SQLAlchemy ORM models
+│   ├── models.py        # SQLAlchemy ORM models
+│   └── migrations/      # Alembic env.py, script.py.mako and versions/, shipped inside the package
+├── schemas/             # Pydantic request/response models shared by REST and MCP tool inputs
+│   └── time.py          # UtcDatetime
 ├── repositories/        # DB access only, no business rules
-│   ├── interfaces.py    # one typing.Protocol per repository, DuplicateNameError
+│   ├── interfaces.py    # one typing.Protocol per repository, UnitOfWork Protocol, DuplicateNameError
+│   ├── unit_of_work.py  # UnitOfWork over one DB session, gives access to the repositories on that session
 │   ├── folders.py
 │   ├── tabs.py
 │   ├── documents.py
@@ -80,6 +85,7 @@ src/hippowiki/
 │   ├── folder_rights.py
 │   └── users.py
 ├── services/            # business logic + access checks, used by REST and MCP
+│   ├── errors.py        # domain errors
 │   ├── folders.py       # FolderService
 │   ├── tabs.py          # TabService
 │   ├── documents.py     # DocumentService
@@ -90,43 +96,57 @@ src/hippowiki/
 │   ├── parse.py         # title extraction, headings, sections
 │   └── frontmatter.py   # split / join YAML frontmatter
 ├── auth/
-│   ├── middleware.py    # ASGI middleware: rejects with 401 or stores the principal in the scope
+│   ├── middleware.py    # ASGI middleware: rejects with 401 or 503, or stores the principal in the scope
 │   └── principal.py     # Principal abstraction (user / admin), placeholder resolution
 ├── api/                 # REST adapter
 │   ├── routers/
-│   ├── schemas.py       # Pydantic request/response models
-│   ├── deps.py          # FastAPI dependencies (session, principal from the scope, services)
+│   ├── deps.py          # FastAPI dependencies (principal from the scope, services)
 │   └── errors.py        # domain exceptions, request validation errors and framework errors → RFC 9457 problem+json
 └── mcp/                 # MCP adapter
-    ├── server.py        # MCPServer factory (takes the principal resolver), transport setup
-    ├── tools.py         # tool definitions wrapping services
-    └── resources.py
+    ├── server.py        # MCPServer factory (takes the services and the principal resolver), transport setup
+    └── tools.py         # tool definitions wrapping services
 ```
 
 ### Layer rules
 
 - The auth middleware rejects unauthenticated requests on every non-public route before they reach `api/` or `mcp/`.
-- `api/` and `mcp/` call **only** `services/`. They never touch the DB or repositories directly.
+- `api/` and `mcp/` call **only** `services/` for behaviour and may import the models from `schemas/`. They never touch
+  the DB, sessions or repositories directly.
+- `api/` and `mcp/` make exactly one service call per request or tool call.
+- `schemas/` imports no other HippoWiki package, which keeps validators free of lookups.
 - `services/` receive a `Principal` on every call and enforce access rules.
   - The one exception is `UserService.create_root_admin`, because no principal exists yet at system initialization. Only
     `hippowiki init` calls it, and no adapter exposes it.
-- `services/` use repositories only through the Protocols in `repositories/interfaces.py`.
-- `repositories/` do DB access only; they contain no permission or business logic.
-- Name conflicts: repositories translate unique violations into `DuplicateNameError`, and services turn that into
-  `NameConflictError`. Services do not check for duplicates up front, so concurrent requests get the same answer.
+- `services/` use repositories only through the Protocols in `repositories/interfaces.py`, and reach them through a
+  unit of work.
+- `services/` are stateless and get the unit-of-work factory when they are built.
+  - Each public method opens one unit of work and commits it before returning, so a failed commit becomes an error
+    response.
+  - Leaving a unit of work without a commit rolls it back, also when a domain error passes through.
+  - Public service methods do not call each other inside a transaction. Shared steps take the open unit of work as a
+    parameter.
+- `repositories/` do DB access only; they contain no permission or business logic. They get their session from the unit
+  of work.
+- Name conflicts: repositories flush after each write, so a unique violation surfaces inside the repository, and they
+  translate it into `DuplicateNameError`. Services turn that into `NameConflictError`. Services do not check for
+  duplicates up front, so concurrent requests get the same answer. PostgreSQL has then aborted the transaction, so the
+  service does not continue in it.
 - `markdown/` is pure and side-effect free, therefore easy to unit test.
 - Domain errors (`NotFoundError`, `ForbiddenError`, `NameConflictError`, `VersionConflictError`,
-  `DomainValidationError`) are defined in the service layer and translated by each adapter (HTTP status codes for REST,
+  `DomainValidationError`) are defined in `services/errors.py` and translated by each adapter (HTTP status codes for REST,
   tool errors for MCP).
 
 ## Cross-Cutting Concerns
 
 - **Configuration**: environment variables via pydantic-settings (`HIPPOWIKI_DATABASE_URL`, …).
-- **Composition**: `create_app()` takes the repositories and the credential check, because FastAPI dependencies do not
-  reach the mounted MCP app. Production passes the real ones, tests pass fakes, see [Testing Strategy](testing.md).
-- **Transactions**: one DB session/transaction per request or tool call; a document update and its revision rows are
-  written atomically. The credential lookup in the auth middleware uses its own short session, separate from this
-  transaction.
+- **Composition**: `create_app()` takes the unit-of-work factory and the credential check, because FastAPI dependencies
+  do not reach the mounted MCP app. It builds the services once and passes them to both adapters. It knows nothing about
+  the engine, so tests pass fakes and need no database, see [Testing Strategy](testing.md). `create_production_app()`
+  builds the engine from the settings, passes the real factory and credential check, and disposes of the engine in the
+  lifespan.
+- **Transactions**: one DB session/transaction per public service method, and so per request or tool call. A document
+  update and its revision rows are written atomically, and so are a new folder and its default tab. The credential lookup
+  in the auth middleware uses its own short unit of work, separate from the transaction of the service call.
 - **Logging**: stdlib `logging`, structured (JSON) in production; log who changed what.
 - **Validation**: two kinds, in the order defined in [API](api.md).
   - Schema validation in the adapters: shape and types through the Pydantic models, without database access.
@@ -137,6 +157,8 @@ src/hippowiki/
   - Authentication is one pure ASGI middleware, not `BaseHTTPMiddleware`, because MCP streams its responses.
   - It wraps REST and the mounted MCP app, since FastAPI dependencies do not reach mounted apps.
   - It stores the principal in the ASGI scope, and the OpenAPI security scheme is declared separately.
+  - The credential check returns a principal or nothing. An exception means the lookup failed, and the middleware fails
+    closed, see [API](api.md).
   - MCP tools get the principal through a resolver passed to the server factory. The production resolver reads it from
     the ASGI scope of the HTTP request in the tool context and fails closed if there is none.
   - Public routes are the only ones the middleware lets through without authentication, as allowed by

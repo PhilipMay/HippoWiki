@@ -110,10 +110,11 @@ Notes:
   - a user with no row for a folder has no access to it
   - rights are ordered: `read` < `write` < `update`
   - assigning a right replaces the existing row, so `created_by` and `created_at` describe the current assignment
-  - deleting a right removes the row
+  - deleting a right removes the row, and deleting a right that does not exist gets 404, see [API](api.md)
 - an admin has an implicit `update` right on all folders
   - it comes from `is_admin` and is not stored as rows
   - an assigned right of an admin has no effect while `is_admin` is true, and applies again if the flag is removed
+  - which rights list operation shows stored rows and which shows effective rights is defined in [Auth Concept](auth-concept.md)
 - system initialization creates the root admin, a user named `admin` with `is_root` and `is_admin` set to true
   - `hippowiki init` runs it, see [Deployment](deployment.md)
   - it is idempotent: an existing root admin is left alone, and a concurrent run is caught by the unique name

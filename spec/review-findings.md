@@ -3,67 +3,7 @@
 Review of all documents in `spec/`, checked against each other, the Makefile, `pyproject.toml`, the CI workflows, the
 tests and the source of the `mcp` SDK 2.3.0. Everything already listed in [Known Limitations](known-limitations.md) is
 left out. The core rules on rights, check order and rejected operations are largely consistent, see
-[Checked Without Findings](#checked-without-findings). Most findings sit in the architecture and at the seams to MCP.
-
-## Important
-
-These affect the design or would break the implementation as specified.
-
-- **Repositories and transactions do not fit together** (`architecture.md:67`, `:75`, `:98`, `:109`, `:113`, `:125-127`,
-  `testing.md:3`)
-  - `create_app()` receives the repositories once at startup, but real repositories need the session of the current
-    request or tool call, because there is one transaction per request.
-  - `api/deps.py` provides the session, although `api/` must "never touch the DB". With fakes there is no engine or
-    session to provide, and `make test` needs no database.
-  - Services use only the repository Protocols, and `interfaces.py` has one per repository. Nothing lets a service or
-    adapter define a transaction, although creating a folder with its default tab has to be atomic (`entities.md:128`).
-  - The MCP adapter needs the same mechanism, since FastAPI dependencies do not reach it, but the server factory is only
-    described as taking the principal resolver (`architecture.md:101`).
-  - Repositories can only translate a unique violation into `DuplicateNameError` (`architecture.md:115`) if they flush
-    explicitly. Otherwise SQLAlchemy raises it later, outside the repository.
-  - Suggestion: add a unit-of-work Protocol and pass `create_app()` a factory for it. Each adapter opens one per request
-    or tool call, and the fakes implement it too.
-- **The shared Pydantic models have no shared place** (`architecture.md:48`, `:97`, `:109`, `time.md:30`)
-  - The models are described as shared between REST and MCP tool inputs, but they live in `api/schemas.py`, the REST
-    adapter. `mcp/tools.py` would have to import from another adapter, while the layer rules say adapters call only
-    `services/`.
-  - `UtcDatetime` is shared too and has no module at all.
-  - Suggestion: add a top-level `schemas/` package and allow both adapters to use it in the layer rules.
-
-## Medium
-
-These are contradictions or undefined behaviour that an implementer would have to guess.
-
-- **Error mapping covers MCP tools only, but the layout has MCP resources** (`architecture.md:103`, `api.md:69-82`,
-  `auth-concept.md:13`, `testing.md:20`)
-  - Every MCP row says "tool error", but a failed resource read is a protocol error in the SDK
-    (`mcpserver/server.py:469-475`).
-  - The identical 404 and the no-leaks rule are not defined for resources, and no test kind covers them.
-  - Suggestion: remove `resources.py` for now or define its errors and tests.
-- **Failure of the credential lookup is undefined** (`architecture.md:128`, `api.md:86-89`, `testing.md:41`)
-  - When the database is down, the lookup in the middleware fails on every request. The spec does not say whether that
-    is a 500 or a 503, whether the body is problem+json, or what MCP clients see.
-  - It should be stated that this fails closed, and it should get a test, since `api.md` itself points out that the
-    middleware runs outside the exception handlers.
-- **Unknown routes and wrong methods are missing from the check order** (`api.md:7-18`, `:88`, `testing.md:40-41`)
-  - The order says it applies to every request to a non-public route, but 404 for an unknown route and 405 are not part
-    of it. From `architecture.md:146` an unauthenticated request to an unknown route gets 401.
-  - Suggestion: add a routing step between authentication and schema validation.
-- **Deleting a right that does not exist is undefined** (`entities.md:113`, `api.md:15`)
-  - Target lookup lists only a missing tab, md_document or user. Both 404 and an idempotent success are plausible.
-- **What an admin sees as their rights is undefined** (`auth-concept.md:39`, `:53-54`, `entities.md:115-116`)
-  - "All users can see their own full rights", but an admin's implicit `update` is not stored, and their stored rows have
-    no effect while `is_admin` is true.
-  - Own rights, the rights of a folder and all rights could therefore return rows that have no effect and leave out the
-    right that does. Define whether these operations return stored rows or effective rights.
-- **The package layout misses files the text relies on** (`architecture.md:64-104`, `:118`, `deployment.md:3`, `:7`)
-  - Alembic configuration and migration scripts have no location. The slim runtime image needs them for
-    `hippowiki migrate`, so they have to be part of the package or be copied explicitly.
-  - Domain errors are "defined in the service layer", but `services/` has no module for them.
-- **Contract tests can not guarantee what is claimed** (`testing.md:7`, `:10-11`, `:13-14`, `:43`)
-  - "So the fakes can not drift" does not hold: the real side of the suite does not run in CI, and the fakes
-    intentionally differ on foreign keys and check constraints. The suite can not assert these on both sides.
-  - Suggestion: phrase it as "drift shows up when `make test-podman` runs".
+[Checked Without Findings](#checked-without-findings). The remaining findings are small.
 
 ## Minor
 

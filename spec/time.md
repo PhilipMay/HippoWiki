@@ -27,8 +27,8 @@ representation of that.**
   test fails on any naive datetime column. asyncpg returns aware UTC datetimes and reads a naive parameter as host
   local time, so a naive value silently stores the wrong instant.
 - **Wire format** (REST, MCP, export) is RFC 3339 (a profile of ISO 8601) in UTC with `Z` and always six fractional
-  digits, e.g. `2026-10-30T14:05:09.123456Z`. REST and MCP share one `UtcDatetime` annotated type. On output it
-  writes the fixed format, because Pydantic's default omits the fraction when microseconds are exactly zero. On
+  digits, e.g. `2026-10-30T14:05:09.123456Z`. REST and MCP share one `UtcDatetime` annotated type from
+  `schemas/time.py`. On output it writes the fixed format, because Pydantic's default omits the fraction when microseconds are exactly zero. On
   input it accepts only strings with an explicit offset (`Z` or `+02:00`), rejects values without offset and Unix
   timestamps, and converts to UTC. Pydantic's `AwareDatetime` alone is not enough, because it keeps the offset and
   accepts Unix timestamps. HTTP headers (HTTP-date) and JWT claims (Unix seconds) follow their own standards.
