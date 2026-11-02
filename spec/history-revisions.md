@@ -6,5 +6,6 @@
   - per folder
 - in the changes view on md_document view it must be possible to revert to a previous status of the md_document
 - in the changes view on folder view it must be possible to revert to a previous status of the whole folder
+  - a folder rename can never be reverted
 - these reverts are only accessable on REST API - not via MCP
 - a user needs the manage right on the folder do revert anything
