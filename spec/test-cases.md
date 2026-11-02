@@ -42,7 +42,8 @@ REST and MCP, including:
 
 - A hidden and a missing item give an identical response, comparing the full 404 body on REST and the full tool error text
   on MCP.
-- A matrix of operations against `read`, `write`, `manage`, admin and no right shows which operation each right allows.
+- A matrix of operations against `read`, `write`, `manage`, admin and no right shows which operation each right allows. On
+  MCP it has no admin, because admins are rejected there.
 
 ## Rights Lists
 
@@ -88,8 +89,8 @@ The rules are in [Authentication](authentication.md#token-check).
 
 ## Error Format
 
-- The 401, the 404 for an unknown route, the 405, the 413, the 422 from schema validation, the 422 for an unparsable body,
-  the 500 and the 503 are problem+json.
+- The 401, the 403 for an admin on MCP, the 404 for an unknown route, the 405, the 413, the 422 from schema validation, the
+  422 for an unparsable body, the 500 and the 503 are problem+json.
 - Each of them carries the `code` from [REST Error Format](request-checks.md#rest-error-format), and a name conflict, a
   subject conflict and a version conflict can be told apart by it.
 - A 404 body has no `instance` and no ID.
@@ -106,7 +107,14 @@ The rules are in [Authentication](authentication.md#token-check).
 - In the tool tests, an unknown argument gets a tool error from the shared wrapper, which pins how it uses the SDK.
 - In the tool tests, the advertised `input_schema` has `additionalProperties: false`.
 - In the tool tests, invalid arguments give `schema_validation`, and the text has no `input_value` and no pydantic.dev link.
-- In the tool tests, each domain error gives its stable code.
+- In the tool tests, each domain error a tool can raise gives its stable code.
+- In the tool tests, the tool list has no [admin operation](auth-concept.md#admin-rights).
+- On the transport, an admin, including the root admin, gets 403 problem+json with the code `forbidden` and no
+  `WWW-Authenticate` on `POST /mcp` and `GET /mcp`, on both protocol paths, and no tool runs.
+- On the transport, an admin with a body over the limit gets 403, not 413.
+- The same admin token works on REST.
+- A user who becomes an admin gets 403 on the next MCP request, and one who is no longer an admin gets through again.
+- `/mcp/` as an admin does not reach a tool.
 - On the transport, responses carry no `Mcp-Session-Id`, on both protocol paths from
   [Serving the MCP App](mcp.md#serving-the-mcp-app).
 - On the transport, each user's tool calls run under their own principal, on both protocol paths.

@@ -4,6 +4,18 @@ The MCP adapter is a thin layer over the services, see [Architecture](architectu
 specific to MCP. MCP exposes tools only for now, see [Known Limitations](known-limitations.md). The SDK line numbers in
 the specification refer to `mcp` 2.3.0.
 
+## Admin Accounts
+
+MCP is only for users who are not admins, see [Auth Concept](auth-concept.md#rules):
+
+- An admin gets HTTP 403 on every MCP request, before any tool runs, see
+  [Auth Middleware](auth-middleware.md#admin-accounts-on-mcp). This includes the root admin.
+- The adapter has no tools for the [admin operations](auth-concept.md#admin-rights), so a non-admin who calls one gets the
+  tool error for an unknown tool.
+- `is_admin` is read on every request, so a user who becomes an admin loses MCP access on the next request, and one who is
+  no longer an admin gets it back.
+- A person who is an admin uses a separate account for connectors, see [AI Agents](authentication.md#ai-agents).
+
 ## Sessions and Principal
 
 - The MCP app runs with `stateless_http=True`. The SDK compares session owners only if the scope holds its own

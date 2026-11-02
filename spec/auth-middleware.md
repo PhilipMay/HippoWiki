@@ -28,6 +28,17 @@ A public route matches on the exact path, so a trailing slash or a path below it
 Everything else stays behind authentication, including MCP and `/openapi.json`. Swagger UI and ReDoc are turned off,
 because a browser can not load `/openapi.json` for them without extra setup and they load their assets from a CDN.
 
+## Admin Accounts on MCP
+
+An admin can not connect through MCP, see [MCP](mcp.md#admin-accounts). The middleware enforces this right after
+authentication, so neither the body, the SDK nor a tool is reached:
+
+- A request to the MCP path whose principal has `is_admin` gets 403 problem+json from the
+  [shared helper](request-checks.md#rest-error-format), whatever its method.
+- The path matches exactly, like a [public route](#public-routes), and every other path is unaffected.
+- The response is not a 401 and has no `WWW-Authenticate` header, because both tell an MCP client to log in again. That can
+  not help, since the login is valid and the account itself is not allowed.
+
 ## Request Body Limit
 
 After authentication and before anything parses the body, the middleware rejects a request body over the limit with 413.

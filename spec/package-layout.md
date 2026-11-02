@@ -39,7 +39,7 @@ src/hippowiki/
 ├── auth/
 │   ├── tokens.py        # token check: verifies the JWT and returns its subject, caches the signing keys of Keycloak
 │   ├── credentials.py   # credential check: looks up the user through the unit-of-work factory, not a service
-│   ├── middleware.py    # ASGI middleware: rejects with 401, 413 or 503, buffers the body, or stores the principal in the scope
+│   ├── middleware.py    # ASGI middleware: rejects with 401, 403 (admin on MCP), 413 or 503, buffers the body, or stores the principal in the scope
 │   └── principal.py     # Principal abstraction (user / admin)
 ├── api/                 # REST adapter
 │   ├── routers/

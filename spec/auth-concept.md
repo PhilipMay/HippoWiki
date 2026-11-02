@@ -6,6 +6,7 @@
 - user rights are assigned on the level of folders - not on the level of tabs or md_documents
 - authentication: see [Authentication](authentication.md) for the login method and [Auth Middleware](auth-middleware.md) for rejecting requests
 - AI agents: an agent acts as the account it logged in with and has no rights of its own, see [Authentication](authentication.md#ai-agents)
+- admins and MCP: an admin can connect only through REST, never through MCP, and admin operations exist only on REST, see [MCP](mcp.md#admin-accounts)
 - no leaks: services must filter by the current user everywhere, so an unreadable md_document never leaks through a list, and later through a search snippet
 - denied requests: which response a denied request gets (404 or 403) is defined in [Request Checks](request-checks.md)
 
@@ -40,7 +41,7 @@ Notes:
 
 ## Admin Rights
 
-These are the operations allowed for users with `is_admin == True`:
+These are the operations allowed for users with `is_admin == True`, and they are available only on REST:
 
 - create new users, each linked to a Keycloak account
 - a user can be created as an admin directly

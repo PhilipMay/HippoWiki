@@ -34,7 +34,7 @@ The login method is defined in [Authentication](authentication.md#user-linking).
 - an `auth_subject` of "" or one that is too long gets `DomainValidationError`, because the "" would otherwise hit the check constraint and become a 500
 - an admin can change or remove `auth_subject` of another user, and removing it blocks that user on the next request (service)
 - an admin changing their own `auth_subject` is rejected, because it could lock them out (service)
-- changing `auth_subject` of the root admin through REST or MCP is rejected, because an admin could otherwise take over the root admin (service)
+- changing `auth_subject` of the root admin through REST is rejected, because an admin could otherwise take over the root admin (service)
 - a violated unique `auth_subject` is reported as `SubjectConflictError`
 
 ## Rights

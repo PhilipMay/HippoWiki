@@ -53,7 +53,8 @@ Keycloak accounts and HippoWiki users are connected only through `users.auth_sub
 
 An AI agent acts as the account it logged in with. There are no tokens with fewer rights than their user.
 
-- A person can log a connector in with their own account.
+- A person can log a connector in with their own account, unless it is an admin account.
+- An admin account can log in at Keycloak, but MCP then rejects it with 403, see [MCP](mcp.md#admin-accounts). A person who is an admin uses a separate account for connectors.
 - A separate account, such as `alice-claude`, is a normal user: it gets its own folder rights, such as read-only, and shows up separately in the revision history.
 
 ## Token Check

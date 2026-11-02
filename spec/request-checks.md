@@ -13,6 +13,7 @@ and each adapter translates them. The last row is not a check: it covers any oth
 | ------------------ | ----------------------------------------------------------------------------- | -------------------------------- | -------- | ---------------------------------- |
 | Credential lookup  | a request with credentials that can not be checked, because the lookup failed | none, rejected by the middleware | 503      | rejected before the tools run      |
 | Authentication     | an unauthenticated request                                                    | none, rejected by the middleware | 401      | rejected before the tools run      |
+| Admin on MCP       | a request to MCP by an admin, see [MCP](mcp.md#admin-accounts)                | none, rejected by the middleware | allowed  | HTTP 403, before the tools run     |
 | Body size          | a request body over the limit                                                 | none, rejected by the middleware | 413      | rejected before the tools run      |
 | Routing            | an unknown route (404), a known route with the wrong method (405)             | none, rejected by the framework  | 404, 405 | see [MCP](mcp.md#errors)           |
 | Schema validation  | malformed JSON, an unparsable body, wrong types, missing or unknown fields    | none, rejected by the adapter    | 422      | see [MCP](mcp.md#errors)           |
@@ -22,7 +23,7 @@ and each adapter translates them. The last row is not a check: it covers any oth
 | Target rules       | an operation the target does not allow, see [below](#rejected-operations)     | `ForbiddenError`                 | 403      | tool error `forbidden`             |
 | Domain validation  | a name or size that breaks the domain rules                                   | `DomainValidationError`          | 422      | tool error `domain_validation`     |
 | Conflicts: name    | a name conflict                                                               | `NameConflictError`              | 409      | tool error `name_conflict`         |
-| Conflicts: subject | a Keycloak account that is already linked to another user                     | `SubjectConflictError`           | 409      | tool error `subject_conflict`      |
+| Conflicts: subject | a Keycloak account that is already linked to another user                     | `SubjectConflictError`           | 409      | no such tool, admin operation      |
 | Conflicts: version | a version conflict, once optimistic locking exists                            | `VersionConflictError`           | 409      | tool error `version_conflict`      |
 | Unexpected         | any other exception                                                           | none                             | 500      | generic tool error without details |
 
@@ -71,6 +72,8 @@ and each adapter translates them. The last row is not a check: it covers any oth
 
 ### Admin Operations
 
+- REST only: admin operations and admins themselves are not available on MCP, see [MCP](mcp.md#admin-accounts), so the rules
+  below describe REST
 - admins: the [implicit `manage` right](auth-concept.md#admin-rights) makes every folder visible and sufficient, so a 404
   means it really does not exist
 - admin operations by non-admins:
@@ -103,8 +106,8 @@ These rules from [Entity Rules](entity-rules.md) reject an operation, whatever t
 
 Every REST error uses RFC 9457 problem+json, built by one shared helper:
 
-- The 401, the 413 and the 503 come from the middleware, which runs outside FastAPI's exception handlers, so it calls the
-  helper directly.
+- The 401, the 413, the 503 and the 403 for an admin on MCP come from the middleware, which runs outside FastAPI's exception
+  handlers, so it calls the helper directly.
 - The 422 from schema validation is not a domain error, so FastAPI's default 422 body has to be replaced.
 - Framework errors (404 for unknown routes, 405, 500) go through a handler, since they return a different body by
   default. A 500 body contains no exception details.

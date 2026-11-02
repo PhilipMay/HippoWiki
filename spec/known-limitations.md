@@ -34,6 +34,7 @@ The login method is defined in [Authentication](authentication.md), but the loca
 - Both clients keep working after a token refresh, and the session lifetimes are long enough that nobody has to log in again every day.
 - Both clients accept 405 on `GET /mcp`, see [Serving the MCP App](mcp.md#serving-the-mcp-app).
 - How each client reacts to the 401 for a valid login with no linked user, in case it keeps retrying the login.
+- How each client reacts to the 403 for an admin account, see [Admin Accounts](mcp.md#admin-accounts), and whether the person sees why.
 
 If a client does not work this way, turn on the Keycloak features `cimd` and `resource-indicators` for it. If that also fails, evaluate [Logto](https://docs.logto.io/use-cases/ai/mcp-server-enable-third-party-ai-agent-access).
 

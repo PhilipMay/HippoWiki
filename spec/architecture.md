@@ -38,7 +38,8 @@ access. Clients log in at Keycloak, a separate service that issues the tokens, s
 
 Key idea: **MCP and REST are thin adapters** over the same service layer. All domain rules (domain validation,
 permissions, versioning) live in exactly one place, so both interfaces always behave identically. The adapters only
-check the shape of the input.
+check the shape of the input. The one exception is access: admins can use only REST, and admin operations exist only on
+REST, see [Auth Concept](auth-concept.md#rules).
 
 ## Layer Rules
 
@@ -58,7 +59,8 @@ check the shape of the input.
   - `auth/principal.py` imports only `domain.py`, and the adapters, the services and the rest of `auth/` may import it.
   - `auth/tokens.py` imports no other HippoWiki package, and gets its settings as parameters.
   - `auth/credentials.py` uses only `repositories/interfaces.py`, `auth/principal.py` and `auth/tokens.py`.
-  - `auth/middleware.py` uses only `auth/principal.py` and `problem.py`, and gets the credential check as a parameter.
+  - `auth/middleware.py` uses only `auth/principal.py` and `problem.py`, and gets the credential check and the MCP path as
+    parameters.
 - `services/` receive a `Principal` on every call and enforce access rules. There are three exceptions, because no principal
   exists yet:
   - `UserService.create_root_admin` at system initialization. Only `hippowiki init` calls it, and no adapter exposes it.
