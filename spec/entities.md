@@ -29,8 +29,9 @@ constraints, so the service layer enforces them. The rules for users and rights 
 
 ## Deleting and Restoring Content
 
-Who can do this is defined in [Rights on Folders](users-and-rights.md#rights-on-folders). Which response a deleted item
-gets is defined in [Deleted Items](request-checks.md#deleted-items).
+Who can do this is defined in [Rights on Folders](users-and-rights.md#rights-on-folders) for md_documents and tabs, and
+in [Admin Operations](users-and-rights.md#admin-operations) for folders. Which response a deleted item gets is defined
+in [Deleted Items](request-checks.md#deleted-items).
 
 - deleting a md_document, tab or folder sets its `deleted_at` and removes no row, so it can be restored (service)
 - an item is live when it and all its parents have `deleted_at` null

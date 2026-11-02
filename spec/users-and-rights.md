@@ -21,8 +21,8 @@ expressed by table constraints, so the service layer enforces them.
 
 ## Rights on Folders
 
-A user with no right on the folder gets 404 for every row. What deleting does is defined in
-[Entities](entities.md#deleting-and-restoring-content), and what can be moved where in
+A user with no right on the folder gets 404 for every row, and lists leave the folder out. What deleting does is defined
+in [Entities](entities.md#deleting-and-restoring-content), and what can be moved where in
 [Folders, Tabs and MD Documents](entities.md#folders-tabs-and-md-documents).
 
 | Operation in a folder                                                                   | `read` | `write` | `manage` | admin |

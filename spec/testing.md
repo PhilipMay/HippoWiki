@@ -15,12 +15,11 @@
     `expire_on_commit=False` protect against.
 - **Marker**: only tests against a real PostgreSQL carry the `podman` marker. These are the integration tests and the
   real side of the contract tests. All other test kinds below run in `make test`.
-- **Accepted trade-off**: table constraints, atomic writes, migrations and real SQL run only in `make test-podman`,
-  which CI does not run, so it has to be run locally after such changes. Reconsider this when the repositories arrive,
-  because reading after commit and text PostgreSQL rejects only show up there. `DOCKER_HOST` can already be overridden,
-  so CI would not need the `podman machine` call in the `Makefile`.
-- **CI**: `make format`, `make check` and `make test` must stay green locally; CI runs `make check` and `make test` in
-  parallel as two separate GitHub Actions workflows (`check.yml` and `test.yml`).
+- **CI**: `make format`, `make check` and `make test` must stay green locally; CI runs `make check`, `make test` and
+  `make test-podman` in parallel as three separate GitHub Actions workflows (`check.yml`, `test.yml` and
+  `test-podman.yml`). `test-podman.yml` starts the Podman socket of the runner and sets `DOCKER_HOST` to it, so it does
+  not use the `podman machine` call in the `Makefile`. Table constraints, atomic writes, migrations and real SQL run
+  only in `make test-podman`, so run it locally as well after such changes.
 
 ## Test Kinds
 

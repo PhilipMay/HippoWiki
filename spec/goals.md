@@ -17,7 +17,7 @@
 
 ## Non-Goals (for now)
 
-These need a design once they come into scope.
+Search, multi-language content, attachments and import or export need a design once they come into scope.
 
 - No web UI. The REST API is designed so that any frontend can be built on top of it later.
 - No search, including `SearchService`, its filters and multi-language search.

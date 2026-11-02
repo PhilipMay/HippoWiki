@@ -79,8 +79,8 @@ What deleting does is defined in [Entities](entities.md#deleting-and-restoring-c
 - restoring a md_document or tab, and reading the history of a md_document that is not live or the content of one of its
   revisions, resolves its ID among the deleted rows too, then runs the check order on its folder.
   [Rights on Folders](users-and-rights.md#rights-on-folders) gives the result
-- no right on the folder, or a deleted folder, gets 404 in these cases, except for an admin reading the history of a
-  deleted folder
+- no right on the folder, or a deleted folder, gets 404 in these cases. An admin can still read the history of a
+  md_document in a deleted folder and the content of its revisions, but can not restore anything in it
 - accepted leak: a user with a right below `manage` gets 403 for an ID in their folder and 404 for an unknown ID, so
   they can tell a deleted item from one that never existed. This is accepted, because the user has a right on the folder
   and the random UUIDs make it hard to exploit

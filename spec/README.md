@@ -22,6 +22,7 @@ Look these up when you need them:
 - [Testing](testing.md): the test kinds and the cases that are easy to miss.
 - [Deployment](deployment.md): containers, Keycloak, the reverse proxy and backups.
 - [Roadmap](roadmap.md): next steps and open points.
+- [Gaps](gaps.md): open gaps in the specification, with suggested fixes.
 
 ## Glossary
 
@@ -29,11 +30,12 @@ Look these up when you need them:
 - **default tab**: the tab named "" that every folder has.
 - **live**: an item is live when it and all its parents are not deleted.
 - **hidden**: an item the user can not see, because they have no right on its folder or it is deleted. It gets the same
-  response as a missing item.
+  response as a missing item, apart from the exceptions in [Deleted Items](request-checks.md#deleted-items).
 - **root admin**: the one permanent admin, a user named `admin`.
 - **principal**: the authenticated user of a request, as the services receive it.
 - **credential check**: the step that turns a token into a principal, by verifying the token and looking up the user.
-- **unit of work**: one database session and transaction, used for one public service method.
+- **unit of work**: one database session and transaction. Each public service method uses one, and the credential lookup
+  has its own.
 - **entry**: one numbered change in the history of a folder.
 - **revision**: a full snapshot of an item, written with an entry.
 - **version**: the counter of a md_document, which grows with each of its revisions.
