@@ -1,16 +1,17 @@
 # List of Open Points
 
 This list holds what is still open for HippoWiki: decisions to make, points only the
-[Connector Test](../spec/roadmap.md#connector-test) can settle, known gaps, review findings, experiments and possible
-cuts. Rules that are already fixed are in the [specification](../spec/README.md) and not here, and the plan is in the
-[Roadmap](../spec/roadmap.md).
+[Connector Test](../spec/roadmap.md#connector-test) can settle, checks on the real host, known gaps, review findings,
+experiments and possible cuts. Rules that are already fixed are in the [specification](../spec/README.md) and not here,
+and the plan is in the [Roadmap](../spec/roadmap.md).
 
 ## Overview
 
 | Section                                         | Open points |
 | ----------------------------------------------- | ----------- |
 | [OAuth Decisions](#oauth-decisions)             | 11          |
-| [Connector Test Points](#connector-test-points) | 8           |
+| [Connector Test Points](#connector-test-points) | 6           |
+| [Host Checks](#host-checks)                     | 2           |
 | [OAuth Known Gaps](#oauth-known-gaps)           | 4           |
 | [Spec Findings](#spec-findings)                 | 37          |
 | [Experiments](#experiments)                     | 5           |
@@ -203,6 +204,11 @@ Each of these has a planned answer, which only the real clients can confirm. See
 - **Recommendation**: read the log for each case and write down what the person sees.
 - **Alternatives if it fails**: for a 401 on discovery, make `/.well-known/openid-configuration` a public 404. For a bad
   message on the login page, change the wording.
+
+## Host Checks
+
+Each of these has a planned answer, which depends on the real host and not on how an AI client behaves. They need the
+[NixOS guide](nixos-setup.md) and the app from the first [roadmap step](../spec/roadmap.md#next-steps).
 
 ### Document Fetch From the Server
 
