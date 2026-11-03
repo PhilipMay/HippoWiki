@@ -99,7 +99,7 @@ Admin operations only, see [Admin Operations](users-and-rights.md#admin-operatio
 | `GET /users`                                   | paged, includes deactivated and deleted users |
 | `POST /users`                                  | `name`, `auth_subject`, optional `is_admin`   |
 | `GET /users/{user_id}`                         | one user, a deleted user gets 404             |
-| `PATCH /users/{user_id}`                       | `is_admin`, `auth_subject`                    |
+| `PATCH /users/{user_id}`                       | `auth_subject`                                |
 | `DELETE /users/{user_id}`                      | delete the user, which is final               |
 | `POST /users/{user_id}/deactivate`             | idempotent                                    |
 | `POST /users/{user_id}/reactivate`             | idempotent                                    |

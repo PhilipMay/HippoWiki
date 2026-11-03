@@ -185,10 +185,9 @@ src/hippowiki/
     folder and its default tab, and a deleted user and the removal of their rights.
   - The credential lookup in the auth middleware uses its own short unit of work, separate from the transaction of the
     service call.
-  - Stale principal: the principal's `is_admin` is a snapshot from that lookup, so a request already running when an
-    admin is demoted can still finish as admin, and a request already running when a user is deactivated or deleted can
-    still finish as that user. This is accepted, because it ends with that request. Services read folder rights inside
-    their own transaction.
+  - Stale principal: the principal is a snapshot from that lookup, so a request already running when a user is
+    deactivated or deleted can still finish as that user. This is accepted, because it ends with that request. Services
+    read folder rights inside their own transaction.
 - **Logging**: stdlib `logging`, structured (JSON) in production; log who changed what. `logs.py` has a small JSON
   formatter, so no new dependency is needed, and Uvicorn's loggers go through the same handler, so all output has one
   format.

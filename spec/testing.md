@@ -118,8 +118,8 @@ transport behaviour.
 - An item inside a deleted tab or folder gives the same response, by ID and in lists.
 - An admin gets the same 404 for a deleted folder, on every operation except restore and history.
 - Restoring a tab or folder brings back its content, and an item deleted before it stays deleted.
-- An admin's own rights show `manage` and ignore their stored rows, while the rights of a folder and all rights show
-  those rows. Every rights list leaves out deleted folders.
+- An admin's own rights show `manage` on every live folder. Every rights list leaves out deleted folders.
+- Assigning a right to an admin or to the root admin gets 403 and stores no row.
 
 ### History and Revert
 
@@ -164,6 +164,8 @@ transport behaviour.
 
 ### Users and Linking
 
+- `POST /users` with and without `is_admin` creates the expected role.
+- A `PATCH` with `is_admin` gets 422 and changes nothing, for either value and also for an unchanged value.
 - A deactivated user gets the same 401 as a token with no linked user, on the next request, on REST and MCP.
 - A reactivated user gets through again, with the same rights and without a new link.
 - Reactivating the root admin or your own user succeeds and changes nothing.
@@ -219,7 +221,6 @@ transport behaviour.
   `WWW-Authenticate` on `POST /mcp` and `GET /mcp`, on both protocol paths, and no tool runs.
 - On the transport, an admin with a body over the limit gets 403, not 413.
 - The same admin token works on REST.
-- A user who becomes an admin gets 403 on the next MCP request, and one who is no longer an admin gets through again.
 - `/mcp/` as an admin does not reach a tool.
 - On the transport, responses carry no `Mcp-Session-Id`, on both protocol paths from the
   [implementation notes](mcp.md#implementation-notes).

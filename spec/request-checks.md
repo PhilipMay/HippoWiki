@@ -96,9 +96,9 @@ What deleting does is defined in [Entities](entities.md#deleting-and-restoring-c
   - operations on an existing folder (rename or delete the folder, assign or delete its rights, list its rights) follow
     the checks above: 404 with no right on the folder, otherwise 403
   - all other admin operations (such as create users, create folders, list users, list all rights of all folders, change
-    the `is_admin` flag or the `auth_subject` of a user, deactivate, reactivate or delete a user, list deleted folders,
-    restore a folder) get 403 after schema validation and before their target is looked at or their input is checked
-    against domain rules, so user and folder names can not be probed
+    the `auth_subject` of a user, deactivate, reactivate or delete a user, list deleted folders, restore a folder) get
+    403 after schema validation and before their target is looked at or their input is checked against domain rules, so
+    user and folder names can not be probed
 
 ## Rejected Operations
 
@@ -138,15 +138,14 @@ gets `DomainValidationError`, and a violated unique name gets `NameConflictError
 
 | Rule                                                | Domain error                              | REST | Check              |
 | --------------------------------------------------- | ----------------------------------------- | ---- | ------------------ |
-| change own `is_admin` flag                          | `ForbiddenError`                          | 403  | Target rules       |
-| change the `is_admin` flag of the root admin        | `ForbiddenError`                          | 403  | Target rules       |
 | change own `auth_subject`                           | `ForbiddenError`                          | 403  | Target rules       |
 | change the `auth_subject` of the root admin         | `ForbiddenError`                          | 403  | Target rules       |
 | delete or deactivate the root admin                 | `ForbiddenError`                          | 403  | Target rules       |
 | delete or deactivate own user                       | `ForbiddenError`                          | 403  | Target rules       |
+| assign a right to an admin                          | `ForbiddenError`                          | 403  | Target rules       |
 | any operation on a deleted user                     | `NotFoundError`                           | 404  | Target lookup      |
 | delete a right that does not exist                  | `NotFoundError`                           | 404  | Target lookup      |
-| rename a user or set `is_root`                      | none, the request model has no such field | 422  | Schema validation  |
+| rename a user, set `is_root` or change `is_admin`   | none, the request model has no such field | 422  | Schema validation  |
 | create a user without `auth_subject`                | none, the request model requires it       | 422  | Schema validation  |
 | set an `auth_subject` of "" or one that is too long | `DomainValidationError`                   | 422  | Domain validation  |
 | create a user named `admin`                         | `NameConflictError`                       | 409  | Conflicts: name    |

@@ -123,8 +123,8 @@ Hosted MCP connectors log in with OAuth 2.1 and PKCE, because the clients named 
 - Keycloak handles password hashing, so HippoWiki has no password code.
 - The realm has brute-force detection and login events switched on, and self-registration and username editing switched
   off.
-- HippoWiki logs changes of rights, of `is_admin` and of `auth_subject`, including `hippowiki link-root-admin`, and logs
-  when a user is deactivated, reactivated or deleted. Keycloak records the logins.
+- HippoWiki logs changes of rights and of `auth_subject`, including `hippowiki link-root-admin`, and logs when a user is
+  deactivated, reactivated or deleted. Keycloak records the logins.
 
 ## Request Handling
 

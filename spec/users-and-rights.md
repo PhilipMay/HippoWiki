@@ -71,28 +71,28 @@ A user with `is_admin` set can do these, only on REST. The responses for non-adm
   - list all users, including deactivated and deleted users, and read one user who is not deleted
   - change or remove the linked Keycloak account of other users, except for the root admin
   - deactivate and delete other users, except for the root admin, and reactivate users
-  - change the `is_admin` flag of other users, except for the root admin
 - folders: create and rename folders, delete them, list deleted folders and restore them
 - rights: assign and delete the rights of a folder, list them, and list all rights of all folders
 
 An admin has an implicit `manage` right on all live folders:
 
 - it comes from `is_admin` and is not stored as rows, so it makes every live folder visible and sufficient
-- an assigned right of an admin has no effect while `is_admin` is true, and applies again if the flag is removed
+- a right can not be assigned to an admin, because it could never take effect (service)
 
-An admin can not change their own `is_admin` flag (service). The other limits are in [Root Admin](#root-admin),
-[User Linking](#user-linking) and [Deactivating and Deleting Users](#deactivating-and-deleting-users).
+The admin role is set when a user is created and can never change: a user can not become an admin later, and an admin
+can not become a normal user (service). The other limits are in [Root Admin](#root-admin), [User Linking](#user-linking)
+and [Deactivating and Deleting Users](#deactivating-and-deleting-users).
 
 ## Assigning and Listing Rights
 
 - assigning a right replaces the existing row, so `assigned_by` and `assigned_at` describe the current assignment
 - deleting a right removes the row
 - all users can see their own full rights with the folder name
-  - this list shows effective rights: an admin gets `manage` on every live folder, and their stored rows are ignored
+  - this list shows effective rights: an admin gets `manage` on every live folder
   - deleted folders are left out
   - each entry has the folder and the right only, because an implicit right has no `assigned_by` or `assigned_at`
-- the rights of a folder and all rights of all folders show the stored rows that admins assign and delete, including
-  rows that have no effect while the user is an admin. Rows on deleted folders and rows of deleted users are left out
+- the rights of a folder and all rights of all folders show the stored rows that admins assign and delete. Rows on
+  deleted folders and rows of deleted users are left out
 
 ## User Linking
 
@@ -131,8 +131,8 @@ Keycloak accounts and HippoWiki users are connected only through `users.auth_sub
 - what a user did stays: their content stays attributed to them, and the rights they assigned stay in force
 - a right assigned while its user is being deleted can leave a row behind. This is accepted, because the row has no
   effect, and the rights lists leave out rows of deleted users
-- users can not be renamed, which keeps the root admin in place, and `is_root` of a user never changes after creation
-  (service)
+- users can not be renamed, which keeps the root admin in place, and `is_root` and `is_admin` of a user never change
+  after creation (service)
 
 ## Root Admin
 
@@ -147,11 +147,11 @@ Keycloak accounts and HippoWiki users are connected only through `users.auth_sub
 - a lost password is reset in the Keycloak console
 - credential changes can not lock the root admin out for good: if its account is disabled, deleted or lost in Keycloak,
   the operator enables it or links another account with the same command
-- the root admin can never be deleted or deactivated, and its `is_admin` flag can never be removed (service)
+- the root admin can never be deleted or deactivated (service)
 - apart from that the root admin has the same rights as any other admin
 - after system initialization at least one admin always exists, because the root admin always stays an admin
-  - this also holds under concurrent transactions and needs no lock: admins who demote, deactivate or delete each other
-    at the same time can not affect the root admin
+  - this also holds under concurrent transactions and needs no lock: admins who deactivate or delete each other at the
+    same time can not affect the root admin
   - before system initialization, and until an account is linked to the root admin, nobody can authenticate, so every
     request to a non-public route gets 401
 
