@@ -67,6 +67,9 @@ The results go into [Authentication](authentication.md), including Claude Code i
 - Browser clients: same origin only for now, and no Keycloak client is defined for them. A preflight `OPTIONS` carries
   no credentials, so the auth middleware would reject it with 401. If origins get allowed, CORS wraps outside the auth
   middleware and is configured by an allowlist that is empty by default, with a preflight test.
+- add Prometheus for monitoring
+- add exporter to Prometheus for Database and other components
+- add Grafana for visualization
 
 ## Ideas
 
