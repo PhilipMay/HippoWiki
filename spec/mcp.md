@@ -11,8 +11,8 @@ MCP is only for users who are not the admin:
   [Admin Account on MCP](authentication.md#admin-account-on-mcp).
 - The adapter has no tools for the [admin operations](users-and-rights.md#admin-operations), so a user who calls one
   gets the tool error for an unknown tool.
-- [`is_admin` never changes](users-and-rights.md#deactivating-and-deleting-users), so whether a user may use MCP is
-  fixed when the user is created.
+- [`is_admin` never changes](users-and-rights.md#deactivating-users), so whether a user may use MCP is fixed when the
+  user is created.
 - The person who is the admin uses a separate account for connectors, see [AI Agents](authentication.md#ai-agents).
 
 ## History and Revert

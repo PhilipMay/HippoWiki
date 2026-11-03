@@ -23,8 +23,7 @@ holds:
 - The audience contains `HIPPOWIKI_OAUTH_AUDIENCE`, which also rejects an ID token issued for a client.
 - The token has not expired. This compares the `exp` claim with the app host clock, which [Time](time.md) allows because
   nothing is persisted.
-- A `sub` claim exists, and a user has this `auth_subject` and is not deactivated. A deleted user has no `auth_subject`,
-  so it needs no check of its own.
+- A `sub` claim exists, and a user has this `auth_subject` and is not deactivated.
 
 Only `sub` is used. Rights are read from the database on every request, so a token carries no rights, and a revoked
 right takes effect on the next request.
@@ -44,8 +43,8 @@ Signing keys are cached in memory:
 - Refresh tokens rotate, and the `offline_access` scope keeps connectors logged in between sessions. The exact session
   lifetimes are set during the [Connector Test](roadmap.md#connector-test).
 - Keycloak stores and revokes refresh tokens and sessions. HippoWiki stores no tokens, so it needs no token hashing.
-- Removing the link of a user, or deactivating or deleting them, blocks them on the next request. Disabling them only in
-  Keycloak takes effect when their access token expires, so after up to 5 minutes.
+- Removing the link of a user, or deactivating them, blocks them on the next request. Disabling them only in Keycloak
+  takes effect when their access token expires, so after up to 5 minutes.
 
 ## User Linking
 
@@ -126,7 +125,7 @@ Hosted MCP connectors log in with OAuth 2.1 and PKCE, because the clients named 
 - The realm has brute-force detection and login events switched on, and self-registration and username editing switched
   off.
 - HippoWiki logs changes of rights and of `auth_subject`, including `hippowiki link-admin`, and logs when a user is
-  deactivated, reactivated or deleted. Keycloak records the logins.
+  deactivated or reactivated. Keycloak records the logins.
 
 ## Request Handling
 

@@ -124,7 +124,7 @@ transport behaviour.
 ### History and Revert
 
 - Changes of a md_document appear in both histories, and tab changes appear in the folder history.
-- An entry has the author's ID and name, also for a deleted user.
+- An entry has the author's ID and name, also for a deactivated user.
 - A revert adds new revisions pointing at the target and leaves the earlier ones unchanged, and reverting a revert
   works.
 - A write that would change nothing gets `VersionConflictError` with a stale version, and adds no revision with the
@@ -149,7 +149,7 @@ transport behaviour.
 ### Own Account
 
 - Every user gets their own user, without `auth_subject`, on REST and on MCP.
-- `created_by` and `assigned_by` have ID and name, and `created_by` also for a deleted user.
+- `created_by` and `assigned_by` have ID and name, and `created_by` also for a deactivated user.
 - A non-admin gets 403 on every `/users` route, also for their own ID.
 
 ### Combined Updates
@@ -168,7 +168,8 @@ transport behaviour.
 - A deactivated user gets the same 401 as a token with no linked user, on the next request, on REST and MCP.
 - A reactivated user gets through again, with the same rights and without a new link.
 - Reactivating the admin succeeds and changes nothing.
-- A deleted user gets 401 for the old subject, and that subject can be linked to a new user.
+- The subject of a deactivated user gets `SubjectConflictError` for a new user, and can be linked once the admin removes
+  it from the deactivated user.
 - An `auth_subject` of 256 characters gets `DomainValidationError`.
 - A duplicate `auth_subject` gets `SubjectConflictError`, on create and on change.
 - After the admin removes or changes the link of a user, the old subject gets 401 on the next request.
@@ -252,14 +253,12 @@ transport behaviour.
   it.
 - `SafeText` is needed: writing NUL or a lone surrogate through SQLAlchemy and asyncpg raises `DBAPIError`, so a change
   in this behaviour shows up.
-- The checks reject a deleted default tab, a deactivated or deleted admin and a deleted user with an `auth_subject`.
+- The checks reject a deleted default tab and a deactivated admin.
 - A name can be used again after a delete, and restoring the old item gets `NameConflictError`, against the real partial
-  unique indexes. The name of a deleted user stays taken.
+  unique indexes. The name of a deactivated user stays taken.
 - Two concurrent deletes of one item give one success and one 404, and an update racing a delete gets 404.
 - A md_document created in a tab while it is being deleted waits for the lock on the folder row: it gets 404 when the
   delete commits first, and otherwise it is hidden and comes back when the tab is restored.
-- Deleting a user sets `deleted_at`, clears `auth_subject` and removes the rights in one transaction, and nothing is
-  left changed after a rollback.
 - A folder revert that swaps the names of two tabs or two md_documents succeeds against the real partial unique indexes.
 - A folder revert that fails leaves nothing changed after the rollback, and the revision counter stays as it was.
 - Concurrent changes in one folder get consecutive revision numbers, and a folder revert racing a change gets

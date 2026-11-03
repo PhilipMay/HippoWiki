@@ -94,19 +94,18 @@ A folder revert can change thousands of items, so the changed items of an entry 
 
 Admin operations only, see [Admin Operations](users-and-rights.md#admin-operations).
 
-| Route                                          | Purpose                                       |
-| ---------------------------------------------- | --------------------------------------------- |
-| `GET /users`                                   | paged, includes deactivated and deleted users |
-| `POST /users`                                  | `name`, `auth_subject`                        |
-| `GET /users/{user_id}`                         | one user, a deleted user gets 404             |
-| `PATCH /users/{user_id}`                       | `auth_subject`                                |
-| `DELETE /users/{user_id}`                      | delete the user, which is final               |
-| `POST /users/{user_id}/deactivate`             | idempotent                                    |
-| `POST /users/{user_id}/reactivate`             | idempotent                                    |
-| `GET /rights`                                  | all rights of all folders, paged              |
-| `GET /folders/{folder_id}/rights`              | paged                                         |
-| `PUT /folders/{folder_id}/rights/{user_id}`    | `access_right`, replaces the row              |
-| `DELETE /folders/{folder_id}/rights/{user_id}` | 204                                           |
+| Route                                          | Purpose                           |
+| ---------------------------------------------- | --------------------------------- |
+| `GET /users`                                   | paged, includes deactivated users |
+| `POST /users`                                  | `name`, `auth_subject`            |
+| `GET /users/{user_id}`                         | one user                          |
+| `PATCH /users/{user_id}`                       | `auth_subject`                    |
+| `POST /users/{user_id}/deactivate`             | idempotent                        |
+| `POST /users/{user_id}/reactivate`             | idempotent                        |
+| `GET /rights`                                  | all rights of all folders, paged  |
+| `GET /folders/{folder_id}/rights`              | paged                             |
+| `PUT /folders/{folder_id}/rights/{user_id}`    | `access_right`, replaces the row  |
+| `DELETE /folders/{folder_id}/rights/{user_id}` | 204                               |
 
 ## Response Fields
 
@@ -125,7 +124,7 @@ A user is always named as `{id, name}`, see [Own Account](users-and-rights.md#ow
 - **History item**: `type` (`md_document`, `tab` or `folder`), `id`, `name`, `previous_name`, and for a md_document also
   `tab_id`, `previous_tab_id` and `version`. It holds no content, which comes from the revision of the md_document.
 - **Own user**: `id`, `name`, `is_admin`, `created_at`.
-- **User**: `id`, `name`, `auth_subject`, `is_admin`, `created_by`, `created_at`, `deactivated_at`, `deleted_at`.
+- **User**: `id`, `name`, `auth_subject`, `is_admin`, `created_by`, `created_at`, `deactivated_at`.
 - **Own right**: `folder` as `{id, name}`, `access_right`.
 - **Stored right**: `folder` as `{id, name}`, `user`, `access_right`, `assigned_by`, `assigned_at`.
 

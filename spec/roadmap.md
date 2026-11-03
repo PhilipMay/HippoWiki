@@ -53,7 +53,7 @@ The results go into [Authentication](authentication.md), including Claude Code i
 - Backup and restore: [Deployment](deployment.md) names `pg_dump`, but the schedule, the retention and a tested restore
   are open.
 - Database monitoring: health reports liveness only, so a database outage does not show up in it.
-- Erasure: deleted content and the names of deleted users are never physically erased, so storage only grows and
+- Erasure: deleted content and the names of deactivated users are never physically erased, so storage only grows and
   personal data stays. A permanent purge, a retention period and the handling of personal data need a design, including
   what happens to the revisions.
 - Rate limits and quotas: nothing limits the requests or the storage of a user, and an AI agent can write any number of

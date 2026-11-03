@@ -20,7 +20,7 @@ errors for REST and MCP, and each adapter translates them. The last row is not a
 | Schema validation  | malformed JSON, an unparsable body, wrong types, missing or unknown fields, an invalid `limit` or `cursor`       | none, rejected by the adapter    | 422           | see [MCP](mcp.md#errors)           |
 | Visibility         | a user with no right on the folder or a deleted folder, also for any tab or md_document in it                    | `NotFoundError`                  | 404           | tool error `not_found`             |
 | Required right     | a user whose right on the folder is too low for the operation                                                    | `ForbiddenError`                 | 403           | tool error `forbidden`             |
-| Target lookup      | a missing or deleted tab, md_document or user, or a missing folder right, also when named in the body            | `NotFoundError`                  | 404           | tool error `not_found`             |
+| Target lookup      | a missing or deleted tab or md_document, a missing user, or a missing folder right, also when named in the body  | `NotFoundError`                  | 404           | tool error `not_found`             |
 | Target rules       | an operation the target does not allow, see [below](#rejected-operations)                                        | `ForbiddenError`                 | 403           | tool error `forbidden`             |
 | Domain validation  | a name, `auth_subject` or size that breaks the domain rules                                                      | `DomainValidationError`          | 422           | tool error `domain_validation`     |
 | Conflicts: version | a version conflict, compared before the write, see [Optimistic Locking](history-revisions.md#optimistic-locking) | `VersionConflictError`           | 409           | tool error `version_conflict`      |
@@ -98,9 +98,9 @@ What deleting does is defined in [Entities](entities.md#deleting-and-restoring-c
   - operations on an existing folder (rename or delete the folder, assign or delete its rights, list its rights) follow
     the checks above: 404 with no right on the folder, otherwise 403
   - all other admin operations (such as create users, create folders, list users, list all rights of all folders, change
-    the `auth_subject` of a user, deactivate, reactivate or delete a user, list deleted folders, restore a folder) get
-    403 after schema validation and before their target is looked at or their input is checked against domain rules, so
-    user and folder names can not be probed
+    the `auth_subject` of a user, deactivate or reactivate a user, list deleted folders, restore a folder) get 403 after
+    schema validation and before their target is looked at or their input is checked against domain rules, so user and
+    folder names can not be probed
 
 ## Rejected Operations
 
@@ -141,15 +141,14 @@ gets `DomainValidationError`, and a violated unique name gets `NameConflictError
 | Rule                                                | Domain error                              | REST | Check              |
 | --------------------------------------------------- | ----------------------------------------- | ---- | ------------------ |
 | change the `auth_subject` of the admin              | `ForbiddenError`                          | 403  | Target rules       |
-| delete or deactivate the admin                      | `ForbiddenError`                          | 403  | Target rules       |
+| deactivate the admin                                | `ForbiddenError`                          | 403  | Target rules       |
 | assign a right to the admin                         | `ForbiddenError`                          | 403  | Target rules       |
-| any operation on a deleted user                     | `NotFoundError`                           | 404  | Target lookup      |
 | delete a right that does not exist                  | `NotFoundError`                           | 404  | Target lookup      |
 | rename a user, or send `is_admin`                   | none, the request model has no such field | 422  | Schema validation  |
 | create a user without `auth_subject`                | none, the request model requires it       | 422  | Schema validation  |
 | set an `auth_subject` of "" or one that is too long | `DomainValidationError`                   | 422  | Domain validation  |
 | create a user named `admin`                         | `NameConflictError`                       | 409  | Conflicts: name    |
-| create a user with the name of a deleted user       | `NameConflictError`                       | 409  | Conflicts: name    |
+| create a user with the name of a deactivated user   | `NameConflictError`                       | 409  | Conflicts: name    |
 | set an `auth_subject` that another user already has | `SubjectConflictError`                    | 409  | Conflicts: subject |
 
 ## REST Error Format

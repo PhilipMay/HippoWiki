@@ -180,13 +180,13 @@ src/hippowiki/
   - Leaving a unit of work without a commit rolls it back, also when a domain error passes through.
   - Public service methods do not call each other inside a transaction. Shared steps take the open unit of work as a
     parameter.
-  - These are written atomically: a document update and its revision rows, a delete or restore and its revision, a new
-    folder and its default tab, and a deleted user and the removal of their rights.
+  - These are written atomically: a document update and its revision rows, a delete or restore and its revision, and a
+    new folder and its default tab.
   - The credential lookup in the auth middleware uses its own short unit of work, separate from the transaction of the
     service call.
   - Stale principal: the principal is a snapshot from that lookup, so a request already running when a user is
-    deactivated or deleted can still finish as that user. This is accepted, because it ends with that request. Services
-    read folder rights inside their own transaction.
+    deactivated can still finish as that user. This is accepted, because it ends with that request. Services read folder
+    rights inside their own transaction.
 - **Logging**: stdlib `logging`, structured (JSON) in production; log who changed what. `logs.py` has a small JSON
   formatter, so no new dependency is needed, and Uvicorn's loggers go through the same handler, so all output has one
   format.

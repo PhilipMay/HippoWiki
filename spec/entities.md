@@ -152,23 +152,20 @@ are sorted by them, see [Implementation Notes](rest.md#implementation-notes).
 | Column           | Type                          | Notes                                                                      |
 | ---------------- | ----------------------------- | -------------------------------------------------------------------------- |
 | `id`             | uuid, PK                      |                                                                            |
-| `name`           | text, not null, unique        | stays reserved after the user is deleted                                   |
+| `name`           | text, not null, unique        | stays reserved, also while the user is deactivated                         |
 | `auth_subject`   | text, unique                  | the `sub` claim of the linked Keycloak account, null when no one is linked |
 | `is_admin`       | bool, not null, default false | true for the admin                                                         |
 | `created_by`     | uuid → users, not null        | the admin is created by itself                                             |
 | `created_at`     | timestamptz                   |                                                                            |
 | `deactivated_at` | timestamptz                   | null while the user is active                                              |
-| `deleted_at`     | timestamptz                   | null while the user is not deleted                                         |
 
 - A check constraint `name <> ''` enforces that the name is not empty.
 - A check constraint `auth_subject <> ''` enforces that a link is not empty. Null means that nobody can log in as this
   user, see [User Linking](authentication.md#user-linking). There is no issuer column, because there is one issuer.
 - A check constraint `is_admin = (name = 'admin')` enforces that the user named `admin` is the admin and that no other
   user is. Together with the unique, not null name, this allows at most one admin.
-- A check constraint `NOT is_admin OR (deactivated_at IS NULL AND deleted_at IS NULL)` enforces that the admin is never
-  deactivated or deleted, also under concurrent transactions.
-- A check constraint `deleted_at IS NULL OR auth_subject IS NULL` enforces that a deleted user has no link, so nobody
-  can log in as this user.
+- A check constraint `NOT is_admin OR deactivated_at IS NULL` enforces that the admin is never deactivated, also under
+  concurrent transactions.
 
 ### Folder Right
 

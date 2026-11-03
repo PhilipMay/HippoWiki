@@ -42,7 +42,7 @@ This document defines which changes HippoWiki tracks and how a user reverts them
   - a folder revert has one revision per changed item, so a history list shows its number, target and author, and its
     changed items come from a paged list of their own
 - the author is returned as user ID and user name, see [Own Account](users-and-rights.md#own-account)
-  - the author is never null, because users are never removed, and the name of a deleted user stays reserved
+  - the author is never null, because users are never removed, and the name of a deactivated user stays reserved
 - a history list returns metadata only, and the content comes only when one revision is fetched
 - history lists page like all other lists, see [Lists](rest.md#lists)
 

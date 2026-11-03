@@ -1,6 +1,6 @@
 # Users and Rights
 
-This document defines who can do what, and how users are linked, deactivated and deleted. The tables are in
+This document defines who can do what, and how users are linked and deactivated. The tables are in
 [Entities](entities.md#user), the login is in [Authentication](authentication.md), and the responses to rejected
 operations are in [Rejected Operations](request-checks.md#rejected-operations). Rules marked (service) can not be
 expressed by table constraints, so the service layer enforces them.
@@ -59,7 +59,7 @@ One [update of a md_document](rest.md#md-documents) can change its content, name
 - every response names a user as ID and name together, so `created_by` needs no lookup
   - a name appears only next to something the user can already read, so nothing can be enumerated, and there is no route
     that turns an ID into a name
-  - a deleted user keeps their name here, because [the name stays reserved](#deactivating-and-deleting-users)
+  - a deactivated user keeps their name here, because [the name stays reserved](#deactivating-users)
 
 ## Admin Operations
 
@@ -68,9 +68,9 @@ The [admin](#admin) can do these, only on REST. The responses for other users ar
 
 - users:
   - create users, each linked to a Keycloak account
-  - list all users, including deactivated and deleted users, and read one user who is not deleted
+  - list all users, including deactivated users, and read one user
   - change or remove the linked Keycloak account of other users
-  - deactivate and delete other users, and reactivate users
+  - deactivate other users, and reactivate users
 - folders: create and rename folders, delete them, list deleted folders and restore them
 - rights: assign and delete the rights of a folder, list them, and list all rights of all folders
 
@@ -83,8 +83,7 @@ The admin has no access to content:
   is not a security boundary: the admin can assign a right to any account, and
   [changes of rights are logged](authentication.md#login-protection-and-audit)
 
-The other limits are in [Admin](#admin), [User Linking](#user-linking) and
-[Deactivating and Deleting Users](#deactivating-and-deleting-users).
+The other limits are in [Admin](#admin), [User Linking](#user-linking) and [Deactivating Users](#deactivating-users).
 
 ## Assigning and Listing Rights
 
@@ -95,7 +94,7 @@ The other limits are in [Admin](#admin), [User Linking](#user-linking) and
   - deleted folders are left out
   - each entry has the folder and the right only
 - the rights of a folder and all rights of all folders show the rows that the admin assigns and deletes. Rows on deleted
-  folders and rows of deleted users are left out
+  folders are left out
 
 ## User Linking
 
@@ -110,26 +109,20 @@ Keycloak accounts and HippoWiki users are connected only through `users.auth_sub
   (service)
 - nobody can change `auth_subject` of the admin through REST, because it could lock the admin out (service)
 
-## Deactivating and Deleting Users
+## Deactivating Users
 
-- the admin can deactivate or delete any other user, but not their own user, because it would lock them out (service)
+- users can not be deleted, only deactivated and reactivated
+- the admin can deactivate any other user, but not their own user, because it would lock them out (service)
 - deactivating sets `deactivated_at`, and the credential check then rejects the user on the next request, see
   [Token Check](authentication.md#token-check)
   - the link and the rights stay, and apply again after reactivation
   - deactivating and reactivating are idempotent, and `deactivated_at` keeps its first value
   - reactivating an active user succeeds and changes nothing, which is always the case for the admin
   - a deactivated user can still get rights and a changed link from the admin
-- deleting is final, and a deleted user can not be restored or reactivated (service)
-  - in one transaction it sets `deleted_at`, clears `auth_subject` and removes the folder right rows of the user
-  - the cleared `auth_subject` lets the same Keycloak account be linked to a new user
-  - the name stays reserved, so the history stays unambiguous
-  - a user can be deleted without being deactivated first
-- every other operation on a deleted user fails as if the user did not exist, also when the user is the target of a
-  right (service)
-- a deleted user stays in the list of all users, with both timestamps, so that the admin can still see who they were
+  - a deactivated user stays linked, so their Keycloak account stays taken. To link it to a new user, the admin first
+    removes it from the deactivated user
+- the name of a user stays reserved, also while they are deactivated, so the history stays unambiguous
 - what a user did stays: their content stays attributed to them
-- a right assigned while its user is being deleted can leave a row behind. This is accepted, because the row has no
-  effect, and the rights lists leave out rows of deleted users
 - users can not be renamed, which keeps the admin in place, and `is_admin` of a user never changes after creation
   (service)
 
@@ -148,7 +141,7 @@ Keycloak accounts and HippoWiki users are connected only through `users.auth_sub
 - a lost password is reset in the Keycloak console
 - credential changes can not lock the admin out for good: if its account is disabled, deleted or lost in Keycloak, the
   operator enables it or links another account with the same command
-- the admin can never be deleted or deactivated (service)
+- the admin can never be deactivated (service)
 - before system initialization, and until an account is linked to the admin, nobody can authenticate, so every request
   to a non-public route gets 401
 
