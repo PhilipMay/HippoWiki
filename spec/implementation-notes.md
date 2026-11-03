@@ -13,6 +13,9 @@ notes support are in the other documents. The SDK line numbers refer to `mcp` 2.
   [REST Error Format](errors.md#rest-error-format). The default would also send the input back.
 - Framework errors (404 for unknown routes, 405, 500) go through a handler, since they return a different body by
   default. The handler keeps `exc.headers`, so rebuilding the 405 does not lose `Allow`.
+- The app sets `redirect_slashes=False`. The default answers `/api/v1/folders/` with a 307 whose `Location` is built
+  from the request, so behind a TLS proxy it depends on trusting forwarded headers. A trailing slash is then an unknown
+  route.
 - FastAPI turns any exception during body parsing into a 400 (`fastapi/routing.py:495-497` in FastAPI 0.162.0). The
   application raises no 400 of its own, so the same handler answers it with the 422 for an unparsable body.
 - Raising from a wrapped `receive` does not work for the [body limit](limits.md#request-body-limit). FastAPI turns any

@@ -1,12 +1,37 @@
 # Spec QA Report
 
 Date: 2026-11-03. Scope: `spec/`, `doc/nixos-keycloak-setup.md` (called "the guide" below), `README.md` and `CLAUDE.md`.
-This report is the only file this round created. Nothing in the spec was changed.
+
+## Status
+
+All 8 major findings and the 9 minor findings that affect roadmap step 1 are now applied to the spec. 49 minor findings,
+the experiments and the cut candidates are still open.
+
+The findings below describe the spec as it was reviewed, so their quotes may no longer match it. Each applied finding
+says so, and says where the result differs from its recommended fix.
+
+Decisions made:
+
+| Question             | Decision                                                                                                                                   |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| REST login of people | A later Web GUI, whose server part holds the tokens, is the normal way. Until then and for terminal work: `hippowiki-cli` with device flow |
+| Token binding        | "Consent required" on the product clients, and the remaining risk stated. Tokens stay unbound                                              |
+| Production           | A NixOS host. The project stays independent of the distribution, and everything runs in containers with Podman or Docker                   |
+
+Values chosen while applying the fixes, which you may want to check:
+
+- Key cache maximum age of 10 minutes, 30 seconds between fetches, a fetch timeout of 5 seconds, and a token leeway of
+  30 seconds, all in `limits.md`.
+- The `detail` texts in `errors.md`.
+- The `postgresql+asyncpg://` format of `HIPPOWIKI_DATABASE_URL` in the guide.
+
+Decisions still open are marked **Decision** in the list of minor findings, and the [cut candidates](#cut-candidates)
+are also yours to decide.
 
 ## Summary
 
 There are no blockers. The core design held up: existence leaks, lock order, history numbering, the rights tables and
-the fixed-client login were all tested and found sound. There are 8 major and 58 minor findings.
+the fixed-client login were all tested and found sound. There were 8 major and 58 minor findings.
 
 The major findings cluster around three things:
 
@@ -17,25 +42,7 @@ The major findings cluster around three things:
 
 The other two are a data conflict in folder revert and undefined error bodies.
 
-### Decisions Only You Can Make
-
-- How a person gets a REST token, see [No person can get a REST token](#no-person-can-get-a-rest-token).
-- Whether tokens get bound to a client, see
-  [A token issued for an AI product carries full REST rights](#a-token-issued-for-an-ai-product-carries-full-rest-rights).
-- What production runs on, see [Production has no defined deployment](#production-has-no-defined-deployment).
-- Smaller ones, marked **Decision** in the list of minor findings, and the [cut candidates](#cut-candidates).
-
-### What to Settle Before Roadmap Step 1
-
-Step 1 writes the token check, the middleware and the MCP tools, so these change code that is about to be written:
-
-- Both signing key findings.
-- The token check details and the `resource_metadata` value.
-- Public route matching and trailing slashes.
-- The error bodies, because the tool error text comes with them.
-- The stale ChatGPT and Claude notes in the Connector Test, and whether its fallback plan is complete.
-
-The rest can wait for the step that touches it, or for the implementation to show whether it matters.
+The open minor findings can wait for the step that touches them, or for the implementation to show whether they matter.
 
 ## How This Was Checked
 
@@ -69,6 +76,8 @@ Limits of this round:
 
 ### Cached signing keys never expire
 
+**Status:** applied as recommended, in `authentication.md`, `limits.md` and `test-cases.md`.
+
 **Where:** `authentication.md`, Token Check: "Signing keys are cached in memory", "An unknown `kid` causes one refetch"
 and "A cached key keeps working while Keycloak is down". Nothing states a maximum age or that a refetch replaces the
 set.
@@ -85,6 +94,8 @@ rule. Add the case to `test-cases.md`.
 `configuration-and-failure-modes.md`. This needs no code, but relies on an operator remembering it during an incident.
 
 ### An unknown key inside the refetch limit has two possible answers
+
+**Status:** applied as recommended, in `authentication.md`, `limits.md` and `test-cases.md`, with a fetch timeout added.
 
 **Where:** `authentication.md`, Token Check: "A key that is still unknown after the refetch gets 401" and "When a needed
 key can not be fetched, the lookup failed". `test-cases.md`: "further unknown `kid`s within the rate limit cause no
@@ -112,6 +123,9 @@ further fetch", with no result stated. No document gives the interval a value. `
 
 ### A token issued for an AI product carries full REST rights
 
+**Status:** decided and applied as recommended, in `connectors.md`, the guide and the Connector Test. The risk is now
+stated as an accepted trade-off. The silent login is still untested, and the Connector Test checks the consent screen.
+
 **Where:** `authentication.md`, Token Check: "Only `sub` is used". `connectors.md`: "One audience covers both MCP and
 REST". `test-cases.md`: "The same admin token works on REST."
 
@@ -133,9 +147,14 @@ Connector Test. This conflicts with no rule and is the cheapest step. State the 
 | Separate audiences for MCP and REST | Cleanest split                      | Conflicts with the single `HIPPOWIKI_OAUTH_AUDIENCE` and the shared-token rule     |
 | Keycloak flow override per client   | The token is never issued           | Console configuration that `make test` can not cover, and it needs a realm role    |
 
-**Decision needed:** yes.
+**Decision needed:** yes, now made, see [Status](#status).
 
 ### No person can get a REST token
+
+**Status:** decided and applied, in `connectors.md`, `goals.md`, `roadmap.md` and the guide. This goes beyond the
+recommended fix: the planned Web GUI is the normal way for a person to use REST, and `hippowiki-cli` covers the time
+until then and terminal work. So the gap for people with `manage` closes with the GUI, and the CLI client covers it
+until then. The device login is still untested, and the Connector Test checks it.
 
 **Where:** `goals.md`: "It is the only way to administer the system." `connectors.md`: "Each script gets its own
 Keycloak client with a service account". The guide: "The HippoWiki admin account also goes in this realm".
@@ -156,9 +175,11 @@ a localhost callback. Describe it in `connectors.md`, add it to the guide, and a
   revert for people stay unsolved.
 - Direct access grants on one client. This is the simplest, but it is the password grant, which OAuth 2.1 removes.
 
-**Decision needed:** yes.
+**Decision needed:** yes, now made, see [Status](#status).
 
 ### Folder revert of an item deleted at both points conflicts with the write rule
+
+**Status:** applied as recommended, in `history-revisions.md`, `content.md` and `test-cases.md`.
 
 **Where:** `history-revisions.md`, Folder Revert: "return to their state at that number" and "stays deleted, or is
 deleted again". `content.md`: "writes use `WHERE deleted_at IS NULL`" and "a statement that changes no row gets
@@ -185,6 +206,8 @@ longer match the target, and a later restore shows content from after the target
 
 ### Error bodies are undefined apart from `type` and `code`
 
+**Status:** applied as recommended, in `errors.md`, `implementation-notes.md` and `test-cases.md`.
+
 **Where:** `errors.md`: "`type` stays `about:blank`. Every body has a `code` extension". `implementation-notes.md`:
 "FastAPI's default 422 body has to be replaced", with nothing saying what replaces it. `mcp.md`: "the field and reason
 only". `errors.md` says a tool error's message starts with the code, and gives no separator or remainder.
@@ -204,6 +227,11 @@ another an `errors` array, and a third keeps FastAPI's shape, which echoes the i
 failed.
 
 ### Step 5 can not be built as written
+
+**Status:** applied, in `roadmap.md`, `package-layout.md`, `testing.md` and `test-cases.md`, with two differences.
+Groups are whole services, so step 5 registers `get_own_user`, `list_folders` and `get_folder`, and needs those service
+methods. The new test uses locally generated keys served at `HIPPOWIKI_OAUTH_JWKS_URL` instead of a stubbed key source.
+The step is shown by tests, because creating users and rights over REST comes in step 8.
 
 **Where:** `roadmap.md`, step 5: "the models and migration, repositories, fakes and contract tests, services, routes,
 tool, `create_app()` and `create_production_app()`". Step 6: "the remaining models", and `hippowiki migrate`. Step 7:
@@ -239,6 +267,10 @@ the services once and passes them to both adapters".
 
 ### Production has no defined deployment
 
+**Status:** decided and applied, in `deployment.md`, `tech-stack.md`, `roadmap.md` and the guide. The guide lists what
+the module has to cover, and writing `hippowiki.nix` stays in step 9, because the image and its commands do not exist
+yet.
+
 **Where:** The guide: "the container is replaced by the complete deployment" and "HippoWiki's database goes on the same
 server later". `roadmap.md`, step 9: "the complete `compose.yaml`". `deployment.md` scopes compose to "development and
 simple self-hosting".
@@ -256,11 +288,14 @@ tested.
 **Alternatives:** Compose everywhere. This gives one path to maintain, but discards the tested guide and needs a
 migration of the realm.
 
-**Decision needed:** yes.
+**Decision needed:** yes, now made, see [Status](#status).
 
 ## Minor Findings
 
 ### Token Check and Public Routes
+
+**Status:** all four are applied as recommended. The `HEAD` method on public routes also gets 401, and the root form of
+the metadata route stays.
 
 - **Required claims and clock tolerance** (`authentication.md`, Token Check: "The token has not expired"). PyJWT checks
   `exp` only if present, and rejects a future `iat`, so a small clock difference can reject fresh tokens. Fix: require
@@ -424,35 +459,35 @@ migration of the realm.
   use `kc.sh export --file <path> --realm hippowiki --users skip`, and strip secrets and keys before versioning the
   file, because `deployment.md` requires a file without secrets. Keycloak has to be stopped for this. Alternatives: keep
   the partial export and rely on the planned fresh-install test, or use a declarative tool, which adds a dependency.
-- **Connector Test fallback** (`roadmap.md`: "turn on the Keycloak feature `resource-indicators`, and `cimd` for Claude
-  and Claude Code only"). [The flags alone are not enough](https://www.keycloak.org/securing-apps/mcp-authz-server): the
-  manual path needs a client with `resource_url` and an audience mapper, and CIMD needs a client profile and policy. An
-  unconfigured `resource` gets `invalid_target`, which would make ChatGPT worse. Fix: list these steps in the roadmap
-  and the guide.
+- **Applied: Connector Test fallback** (`roadmap.md`: "turn on the Keycloak feature `resource-indicators`, and `cimd`
+  for Claude and Claude Code only").
+  [The flags alone are not enough](https://www.keycloak.org/securing-apps/mcp-authz-server): the manual path needs a
+  client with `resource_url` and an audience mapper, and CIMD needs a client profile and policy. An unconfigured
+  `resource` gets `invalid_target`, which would make ChatGPT worse. Fix: list these steps in the roadmap and the guide.
 - **`eager_defaults`** (`implementation-notes.md`: "reading one after UPDATE, such as `deleted_at = now()` or the
   incremented `revision_counter`"). [SQLAlchemy](https://docs.sqlalchemy.org/en/21/orm/persistence_techniques.html)
   expires an attribute assigned a SQL expression, so the setting does not prevent the implicit IO. The failure would be
   loud in the first integration test. Fix: correct the note and use Core `update(...).returning(...)`, which fits
   repositories that return dataclasses. Alternatives: `server_onupdate=FetchedValue()` on each column, or
   `await session.refresh(row)`.
-- **Claude's early refresh** (`configuration-and-failure-modes.md`: "a retry or two parallel refreshes can log a
-  connector out"). [Claude](https://claude.com/docs/connectors/building/authentication.md) refreshes up to five minutes
-  before expiry, which equals the token lifetime here, and refresh reuse is 0. Whether this causes a logout is not
-  verified. Fix: name the overlap in the existing Connector Test check. Alternatives: longer access tokens, reuse of 1,
-  or rotation off. **Decision** if the test fails.
-- **ChatGPT setup** (`roadmap.md`: "names a predefined OAuth client, but does not describe the dialog"). This is still
-  true of [OpenAI's guide](https://developers.openai.com/api/docs/guides/custom-mcp-server.md), but
+- **Applied: Claude's early refresh** (`configuration-and-failure-modes.md`: "a retry or two parallel refreshes can log
+  a connector out"). [Claude](https://claude.com/docs/connectors/building/authentication.md) refreshes up to five
+  minutes before expiry, which equals the token lifetime here, and refresh reuse is 0. Whether this causes a logout is
+  not verified. Fix: name the overlap in the existing Connector Test check. Alternatives: longer access tokens, reuse of
+  1, or rotation off. **Decision** if the test fails.
+- **Applied: ChatGPT setup** (`roadmap.md`: "names a predefined OAuth client, but does not describe the dialog"). This
+  is still true of [OpenAI's guide](https://developers.openai.com/api/docs/guides/custom-mcp-server.md), but
   [Zuora](https://docs.zuora.com/en/zuora-ai/zuora-mcp-server/zuora-mcp-server/configure-zuora-remote-mcp-server/configure-zuora-remote-mcp-clients/install-zuora-mcp-server-in-chatgpt)
   and [BoldSign](https://developers.boldsign.com/boldsign-mcp-server/chatgpt.md) describe the dialog. Fix: keep the
   check and add these as hints, including the choice of a user-defined OAuth client.
 - **Anthropic's IP ranges** (`deployment.md`: "including Anthropic's range `160.79.104.0/21`"). A
   [second range](https://platform.claude.com/docs/en/api/ip-addresses), `153.61.208.0/20`, exists. Fix: link the page
   instead of copying a value.
-- **Claude plans** (`roadmap.md`: "offers it on Pro and Max, and on Team plans only owners can add one."). The
+- **Applied: Claude plans** (`roadmap.md`: "offers it on Pro and Max, and on Team plans only owners can add one."). The
   [current page](https://claude.com/docs/connectors/custom/add-unlisted.md) also covers Free, Ultra and Enterprise, and
   auth settings can not be edited, so replacing a secret means remove, re-add and reconnect. Fix: update the roadmap and
   `connectors.md`.
-- **Claude Code secret** (`connectors.md`: "shows whether it needs a secret").
+- **Applied, client stays confidential: Claude Code secret** (`connectors.md`: "shows whether it needs a secret").
   [`--client-secret`](https://code.claude.com/docs/en/mcp) exists and a confidential client needs it, and the guide
   already uses it. Fix: update `connectors.md` and the roadmap. Alternative: a public client with PKCE, so no secret
   sits on laptops. **Decision**.
@@ -487,7 +522,8 @@ migration of the realm.
 
 ## Experiments
 
-Documentation could not settle these:
+Documentation could not settle these. The silent login, the Claude refresh, the CIMD audience and the ChatGPT dialog are
+now part of the Connector Test:
 
 - **`eager_defaults`:** a `podman` test that assigns `func.now()` in an `AsyncSession`, flushes and reads. Expect
   `MissingGreenlet`.

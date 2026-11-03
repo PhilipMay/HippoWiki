@@ -41,9 +41,10 @@ have different IDs and their bodies must be identical.
 
 Two responses need a header as well as the body:
 
-- The 401 carries `WWW-Authenticate: Bearer resource_metadata="..."`, because RFC 9110 requires the header and MCP
-  clients use it to find the [protected resource metadata](authentication.md#public-routes). When a token was presented,
-  the header also carries `error="invalid_token"`, as RFC 6750 asks for.
+- The 401 carries `WWW-Authenticate: Bearer resource_metadata="<URL>"`, because RFC 9110 requires the header and MCP
+  clients use it to find the [protected resource metadata](authentication.md#public-routes), whose form for the MCP path
+  gives the URL, such as `https://wiki.example.org/.well-known/oauth-protected-resource/mcp`. When a token was
+  presented, the header also carries `error="invalid_token"`, as RFC 6750 asks for.
 - The 405 carries `Allow`, because RFC 9110 requires it.
 
 ## MCP Errors

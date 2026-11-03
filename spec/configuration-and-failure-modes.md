@@ -91,14 +91,15 @@ What can go wrong, see the [implementation notes](implementation-notes.md#mcp-sd
 
 ### Auth Middleware
 
-Configure the credential check, the MCP path, the public paths, the metadata URL and the body limit, which are passed in
-as parameters, with RS256 as the only allowed algorithm.
+Configure the credential check, the MCP path, the public routes, the metadata URL and the body limit, which are passed
+in as parameters, with RS256 as the only allowed algorithm.
 
 What can go wrong:
 
 - Using `BaseHTTPMiddleware` would break MCP streaming, see [Request Handling](authentication.md#request-handling).
 - Answering 401 instead of 503 during an outage makes clients discard valid credentials, see
   [Failed Credential Lookup](authentication.md#failed-credential-lookup).
+- A clock difference over the [leeway](limits.md#token-check-values) rejects fresh tokens with 401.
 
 ### Container, Podman and Secrets
 
@@ -127,12 +128,9 @@ to be checked against the versions in use.
 - **Health check hides outages**: `/health` is liveness only, so it stays green while every authenticated request gets
   503\. Database monitoring is an open point in the [Roadmap](roadmap.md), and Keycloak needs the same.
 - **Recreating the realm**: new accounts get new `sub` values, so all user links break, including the admin's.
-- **Clock differences**: the [Token Check](authentication.md#token-check) compares `exp` with the app host clock and
-  names no tolerance. To check: PyJWT also rejects an `iat` in the future, so a small difference could reject fresh
-  tokens.
 - **Refresh token rotation**: the [Keycloak guide](../doc/nixos-keycloak-setup.md) turns on "Revoke refresh token" with
   "Refresh token max reuse" set to 0, so a retry or two parallel refreshes can log a connector out. With access tokens
-  of 5 minutes, refreshes happen often.
+  of 5 minutes, refreshes happen often, and the [Connector Test](roadmap.md#connector-test) checks this with Claude.
 - **Rollbacks**: migrations run separately from the app, so an older image may meet a newer schema. No rollback path is
   defined.
 - **Connection pool**: the pool size and `max_connections` are not specified. Stale connections after a database restart

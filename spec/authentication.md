@@ -21,14 +21,15 @@ holds:
   `alg=none` and a token signed with the public key as an HMAC secret.
 - The signature matches a signing key of Keycloak, and the issuer equals `HIPPOWIKI_OAUTH_ISSUER`.
 - The audience contains `HIPPOWIKI_OAUTH_AUDIENCE`, which also rejects an ID token issued for a client.
-- The token has not expired. This compares the `exp` claim with the app host clock, which [Time](time.md) allows because
-  nothing is persisted.
+- The token has an `exp` claim and has not expired, and an `iat` claim, if it has one, is not in the future. These
+  compare with the app host clock, which [Time](time.md) allows because nothing is persisted, with a fixed
+  [leeway](limits.md#token-check-values), so a small clock difference does not reject fresh tokens.
 - A `sub` claim exists, and a user has this `auth_subject` and is not deactivated.
 
 Only `sub` is used. Rights are read from the database on every request, so a token carries no rights, and a revoked
 right takes effect on the next request.
 
-Signing keys are cached in memory, with the values in [Signing Key Cache](limits.md#signing-key-cache):
+Signing keys are cached in memory, with the values in [Token Check Values](limits.md#token-check-values):
 
 - A successful fetch from `HIPPOWIKI_OAUTH_JWKS_URL` replaces the whole set, so a key removed from Keycloak stops
   working.
@@ -51,7 +52,7 @@ Signing keys are cached in memory, with the values in [Signing Key Cache](limits
   should not name this scope in its protected resource metadata or in `WWW-Authenticate`.
 - Keycloak stores and revokes refresh tokens and sessions. HippoWiki stores no tokens, so it needs no token hashing.
 - Removing the link of a user, or deactivating them, blocks them on the next request. Disabling them only in Keycloak
-  takes effect when their access token expires, so after up to 5 minutes.
+  takes effect when their access token expires, so after up to 5 minutes and the leeway.
 
 ## Login Protection and Audit
 
@@ -78,14 +79,20 @@ Public routes are the only ones the middleware lets through without authenticati
 
 - health: `GET /health`, liveness only, with a fixed status body, no database access and no version or configuration
   details
-- protected resource metadata (RFC 9728): `/.well-known/oauth-protected-resource` and its form for the MCP path,
-  `/.well-known/oauth-protected-resource/mcp`, with a body built from the settings and no database access. Its
+- protected resource metadata (RFC 9728): `GET /.well-known/oauth-protected-resource` and its form for the MCP path,
+  `GET /.well-known/oauth-protected-resource/mcp`, with a body built from the settings and no database access. Its
   `authorization_servers` lists the Keycloak issuer, and its `resource` equals the MCP URL as a user enters it in a
   client
 
 There are no login routes, because the login pages are on Keycloak.
 
-A public route matches on the exact path, so a trailing slash or a path below it is not public.
+A public route matches on the exact path and on `GET`, so a trailing slash, a path below it or another method is not
+public and gets 401. The middleware never reads the body of a public route, so an anonymous client can not make it hold
+a body in memory.
+
+The `resource_metadata` value of the [401](errors.md#rest-error-format) is the URL of the form for the MCP path. The
+composition root builds it from `HIPPOWIKI_OAUTH_AUDIENCE`, by putting `/.well-known/oauth-protected-resource` in front
+of its path, so it needs no setting of its own.
 
 Everything else stays behind authentication, including MCP and `/openapi.json`. Swagger UI and ReDoc are turned off,
 because a browser can not load `/openapi.json` for them without extra setup and they load their assets from a CDN.

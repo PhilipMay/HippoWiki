@@ -75,17 +75,28 @@ it works with the real clients, so this test comes before the other implementati
 - ChatGPT logs in with the fixed client while Keycloak ignores the `resource` parameter. It runs on a Business or
   Enterprise plan, where a workspace admin first turns on developer mode, see
   [OpenAI: developer mode](https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt).
-- Where ChatGPT takes the client ID and secret. Its [documentation](connectors.md#why-oauth) names a predefined OAuth
-  client, but does not describe the dialog.
+  [OpenAI's guide](https://developers.openai.com/api/docs/guides/custom-mcp-server.md) names no such step, so check
+  whether it is still needed, and whether a Business member needs an admin to publish the connector.
+- Where ChatGPT takes the client ID and secret. OpenAI's guide says static credentials take priority, but does not
+  describe the dialog. Guides from
+  [Zuora](https://docs.zuora.com/en/zuora-ai/zuora-mcp-server/zuora-mcp-server/configure-zuora-remote-mcp-server/configure-zuora-remote-mcp-clients/install-zuora-mcp-server-in-chatgpt)
+  and [BoldSign](https://developers.boldsign.com/boldsign-mcp-server/chatgpt.md) describe a user-defined OAuth client,
+  with fields for the client ID, the secret, the token endpoint method and the callback URL. Keycloak always advertises
+  a registration endpoint, so choose that option explicitly.
 - Whether ChatGPT needs `securitySchemes` on the tools, which [Connectors](connectors.md#why-oauth) names and
   [MCP](mcp.md#tools) does not define. The documentation says its linking UI needs them together with a tool error that
   carries `_meta["mcp/www_authenticate"]`, which HippoWiki does not send, because the 401 comes before any tool runs.
 - The option "Use your own OAuth client" of Claude works for a connector added by a user, without approval by Anthropic.
-  The documentation offers it on Pro and Max, and on Team plans only owners can add one.
-- Claude Code works with a fixed client through `--client-id` and `--callback-port`, with the redirect URI
-  `http://localhost:38765/callback`, and whether that client needs a secret.
+  The [documentation](https://claude.com/docs/connectors/custom/add-unlisted.md) offers custom connectors on every plan,
+  with one on Free, and on Team and Enterprise an owner adds them.
+- Claude Code works with a fixed client through `--client-id`, `--client-secret` and `--callback-port`, with the
+  redirect URI `http://localhost:38765/callback`. Use version 2.1.231 or later, because 2.1.229 sent `127.0.0.1` instead
+  of `localhost`, and remove and add the server again to repeat the test, because the secret is set only when adding it.
 - All clients keep working after a token refresh, and the session lifetimes are long enough that nobody has to log in
-  again every day.
+  again every day. The [documentation of Claude](https://claude.com/docs/connectors/building/authentication.md) says it
+  can refresh up to five minutes before expiry, which equals the access token lifetime here, while the guide sets
+  refresh token reuse to 0. So run parallel tool calls with Claude for 30 minutes and read the refresh events in
+  Keycloak. If this logs it out, try longer access tokens, a reuse of 1 or no rotation.
 - Whether each client requests `offline_access`, and how long it stays logged in if it does not. The
   [documentation of Claude](https://claude.com/docs/connectors/building/authentication.md) says it adds the scope when
   the metadata of Keycloak lists it. The `scope` in the log and the offline sessions of the client in the Keycloak
@@ -109,10 +120,17 @@ it works with the real clients, so this test comes before the other implementati
 - The [CLI client](connectors.md#people) logs in with the device flow, and a token of the linked user gets a result from
   `get_own_user` with `curl`. REST has no routes yet, so this shows only that the token passes the token check.
 
-If a client does not work this way, turn on the Keycloak feature `resource-indicators`, and `cimd` for Claude and Claude
-Code only, because Keycloak does not support the metadata document of ChatGPT. Both are set when Keycloak starts, so
-they apply to the whole server. If that also fails, evaluate
+If a client does not work this way, try the Keycloak features below, set up as in
+[Keycloak: MCP](https://www.keycloak.org/securing-apps/mcp-authz-server). Both are set when Keycloak starts, so they
+apply to the whole server, and turning them on alone is not enough. If that also fails, evaluate
 [Logto](https://docs.logto.io/use-cases/ai/mcp-server-enable-third-party-ai-agent-access).
+
+- `resource-indicators`: a `resource` value that is not configured then gets `invalid_target`, which would stop a client
+  that works today, and ChatGPT sends this parameter. So it also needs the MCP server as a Keycloak client with a
+  `resource_url` attribute, and an Audience mapper on each fixed client.
+- `cimd`, for Claude and Claude Code only, because Keycloak does not support the metadata document of ChatGPT, which
+  stays on its fixed client. It also needs a client profile and a client policy, with the trusted domains filled in.
+  Whether such a client gets the audience from the default client scope has to be tried.
 
 The results go into [Authentication](authentication.md), including Claude Code in
 [Client Registration](connectors.md#client-registration) and the session lifetimes, and this section is removed.

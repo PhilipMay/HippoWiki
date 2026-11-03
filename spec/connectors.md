@@ -45,8 +45,9 @@ secret are entered in the connector dialog of the product.
 - Claude: the redirect URI is `https://claude.ai/api/mcp/auth_callback`, and the connector uses the option "Use your own
   OAuth client".
 - Claude Code: the redirect URI is `http://localhost:38765/callback`, with the client ID given by `--client-id` and the
-  port fixed by `--callback-port 38765`. Its client starts as confidential like the others, and the
-  [Connector Test](roadmap.md#connector-test) shows whether it needs a secret.
+  port fixed by `--callback-port 38765`. Its client is confidential like the others, so it also needs `--client-secret`,
+  which asks for the secret and works only when the server is added
+  ([Claude Code: MCP](https://code.claude.com/docs/en/mcp)).
 - The audience of the tokens comes from a fixed Audience mapper set to the MCP URL, on a default client scope. One
   audience covers both MCP and REST.
 - Each product client has "Consent required" on, so a connector can not log in silently through a Keycloak session that
@@ -63,7 +64,9 @@ These stay off:
   recognize the `resource` parameter that ChatGPT sends, so the audience comes from the mapper instead.
 
 Accepted trade-off: everyone who adds a connector themselves uses the same client secret, and replacing it means
-entering it again. The secret only identifies the product, and each person still has to log in.
+entering it again. In Claude the authentication settings can not be edited, so this means removing the connector, adding
+it again and reconnecting ([Claude: unlisted connectors](https://claude.com/docs/connectors/custom/add-unlisted.md)).
+The secret only identifies the product, and each person still has to log in.
 
 Accepted trade-off: tokens are not bound to a client. A person who accepts the consent screen of a product leaves a
 token with that product that is valid for their whole account, also on REST. If the person logged in with the admin

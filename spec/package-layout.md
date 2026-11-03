@@ -101,7 +101,7 @@ src/hippowiki/
   - `auth/tokens.py` imports no other HippoWiki package, and gets its settings as parameters.
   - `auth/credentials.py` uses only `repositories/interfaces.py`, `auth/principal.py` and `auth/tokens.py`.
   - `auth/middleware.py` uses only `auth/principal.py` and `problem.py`, and gets the credential check, the MCP path,
-    the [public paths](authentication.md#public-routes), the metadata URL for `WWW-Authenticate` and the
+    the [public routes](authentication.md#public-routes), the metadata URL for `WWW-Authenticate` and the
     [request body limit](limits.md#request-body-limit) as parameters.
 - **Conflicts**:
   - Repositories flush after each write, so a unique violation surfaces inside the repository. It becomes

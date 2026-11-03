@@ -1,7 +1,7 @@
 # Limits
 
 This document is the one home for every fixed limit. The name length, the document size, the request body limit and the
-values of the signing key cache are fixed in the code and are not settings.
+values of the token check are fixed in the code and are not settings.
 
 ## Limits at a Glance
 
@@ -28,7 +28,8 @@ values of the signing key cache are fixed in the code and are not settings.
 ## Request Body Limit
 
 After authentication and before anything parses the body, the auth middleware answers 413 to a request body over the
-limit. It checks this on the declared length and while reading, whatever the route. A body of exactly the limit passes.
+limit. It checks this on the declared length and while reading, whatever the route, except a
+[public route](authentication.md#public-routes), whose body it never reads. A body of exactly the limit passes.
 
 The limit of 2 MiB is separate from the maximum document size of 256 KiB, but has to leave room for it. JSON escaping
 can grow one UTF-8 byte to six, because U+0001 becomes `\u0001` and `SafeText` allows it, so the largest document can
@@ -42,10 +43,11 @@ The middleware reads the body up to the limit before it calls the app, and then 
 limit, and after the replay `receive` goes to the original one again, so the app still gets `http.disconnect`. The
 reason for this design is in [FastAPI Notes](implementation-notes.md#fastapi-notes).
 
-## Signing Key Cache
+## Token Check Values
 
 `auth/tokens.py` holds these values for the [token check](authentication.md#token-check):
 
+- `TOKEN_LEEWAY_SECONDS`, 30: the clock difference allowed for `exp` and `iat`.
 - `JWKS_MAX_AGE_SECONDS`, 600: the age at which the cached set is refreshed, so a key removed from Keycloak stops
   working after 10 minutes at most, and sooner if another fetch runs first.
 - `JWKS_REFETCH_INTERVAL_SECONDS`, 30: the shortest time between two fetches. If another fetch has just run, a token

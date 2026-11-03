@@ -109,13 +109,19 @@ lists only the cases that are easy to miss: combinations of rules, races, exact 
   configured audience.
 - Under the same conditions, every route except health and the protected resource metadata gets 401, including MCP and
   `/openapi.json`.
-- A public path with a trailing slash or a path below it gets 401.
+- A public path with a trailing slash, a path below it or another method gets 401. This also holds for `POST /health`
+  with a chunked body, which is not read.
+- The `resource_metadata` value of a 401 is the URL of the metadata route for the MCP path, on REST and MCP, and a `GET`
+  on that URL returns the configured audience as `resource`.
+- An authenticated request to `/health/`, `/api/v1/folders/` or `/mcp/` gets 404 problem+json with no `Location`.
 - `/docs` and `/redoc` get 404 when authenticated.
 
 ## Token Check Cases
 
 - These tokens each get 401: expired, wrong issuer, wrong audience, bad signature, `alg=none`, HS256 signed with the
-  public key as the secret, no `sub`, and a valid token with no linked user.
+  public key as the secret, no `exp`, no `sub`, and a valid token with no linked user.
+- A token expired by less than the leeway and one whose `iat` is ahead by less than the leeway pass, and beyond the
+  leeway each gets 401.
 - A token with an unknown `kid` gets 401 after one successful refetch, and further unknown `kid`s within the rate limit
   cause no further fetch and also get 401.
 - A token with an unknown `kid` gets 503 when the fetch fails, and again 503 within the rate limit with no further
