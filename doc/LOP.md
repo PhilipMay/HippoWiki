@@ -113,99 +113,18 @@ How to read this list:
   [for later](../spec/roadmap.md#later).
 - **Recommendation**: keep this while the operator is the main terminal user. Add the device flow when other people need
   it.
-- **Alternatives**:
-  - A CLI login through a loopback redirect: no device codes, and it needs a small client program.
-  - Personal access tokens from the Web GUI: familiar to users, and it adds a second kind of long-lived token.
 
 ### Who Manages Script Clients
 
 - **Question**: should only the operator on the shell manage clients?
 - **Today**: yes, with `hippowiki client`. The admin has no REST route for them.
 - **Recommendation**: keep it until the Web GUI exists, then add admin routes for script clients only.
-- **Alternatives**:
-  - Admin routes now: helps if the admin is not the operator, and it is more surface before anyone needs it.
 
 ### Password Recovery
 
 - **Question**: should a person be able to recover a password without the admin?
 - **Today**: no, because HippoWiki [stores no email](../spec/users.md#passwords).
-- **Recommendation**: keep it for a small group of users. Decide again together with the email question above.
-- **Alternatives**:
-  - Reset by email: the usual way, and it needs an email column and mail delivery, and the mailbox becomes a way in.
-  - Recovery codes, shown once: no mail needed, and people lose them.
-
-## Connector Test Points
-
-Each of these has a planned answer, which only the real clients can confirm. See
-[Connector Test](../spec/roadmap.md#connector-test).
-
-### Clients Accept the Metadata Documents
-
-- **Open**: all three log in with nothing entered but the MCP URL. This is read from the vendor pages and has never run.
-- **Recommendation**: test Claude Code first, because it needs no plan or approval and has the shortest loop, then
-  Claude and ChatGPT.
-- **Alternatives if it fails**: an own client with `--public` and its ID entered by hand, and only then an external
-  service such as Logto.
-
-### ChatGPT Plan and Public Mode
-
-- **Open**: that ChatGPT uses its stable `client_id` and runs as a public client, and whether a Business member needs an
-  admin to publish the connector. The OpenAI page on developer mode could not be read during the review.
-- **Recommendation**: use a workspace where you are the admin, and read the `client_id` in the log.
-- **Alternatives if it fails**: if ChatGPT sends a `client_id` with a callback ID, add that URL to the allowlist. If it
-  insists on `private_key_jwt`, add client assertions, which is the larger change.
-
-### Whether Tools Need `securitySchemes`
-
-- **Open**: the OpenAI documentation names them, and [MCP](../spec/mcp.md#tools) does not define them.
-- **Recommendation**: start without them, and add them only if ChatGPT fails to link.
-- **Alternatives**: add them from the start, which is harmless and leaves more text to maintain.
-
-### `form-action` on the Login Page
-
-- **Open**: Chrome may block the login if a callback redirects on to another origin or to an app. The Claude desktop and
-  mobile apps share one callback, and its behaviour is unknown.
-- **Recommendation**: keep it, and test those apps in particular.
-- **Alternatives if it fails**: drop `form-action`, as [already planned](../spec/oauth-server.md#browser-protection).
-  The page has no scripts and escapes its values, so little depends on it.
-
-### Refresh Behaviour and Lifetimes
-
-- **Open**: parallel refreshes and retries are assumed, and the values in [OAuth Values](../spec/limits.md#oauth-values)
-  are estimates, because vendors name none.
-- **Recommendation**: run parallel tool calls across a refresh, and leave a client logged in overnight and over a
-  weekend.
-- **Alternatives if it fails**: a longer grace window, a longer access token, or as a last resort no rotation for that
-  client, which gives up reuse detection.
-
-### Client Reactions
-
-- **Open**: how each client reacts to a deactivated user, to the admin being refused, to 405 on `GET /mcp`, to its
-  `Origin` being checked, and to a 401 on a discovery path that does not exist.
-- **Recommendation**: read the log for each case and write down what the person sees.
-- **Alternatives if it fails**: for a 401 on discovery, make `/.well-known/openid-configuration` a public 404. For a bad
-  message on the login page, change the wording.
-
-## Host Checks
-
-Each of these has a planned answer, which depends on the real host and not on how an AI client behaves. They need the
-[NixOS guide](nixos-setup.md) and the app from the first [roadmap step](../spec/roadmap.md#next-steps).
-
-### Document Fetch From the Server
-
-- **Open**: the vendor documents answered during the review, from a developer machine. They sit behind Cloudflare, so a
-  data centre address may be treated differently.
-- **Recommendation**: run the [check in the guide](nixos-setup.md#checks) from the real host.
-- **Alternatives if it fails**: ship copies of the documents in the image and use them when a fetch fails. Trust then
-  rests on the image, and a vendor change needs a new image.
-
-### Real Client Address and Secrets in the Journal
-
-- **Open**: which address Podman shows for Traefik, and that `podman exec` output stays out of the journal. Neither has
-  been run, and neither has the [NixOS guide](nixos-setup.md) as a whole.
-- **Recommendation**: follow the guide once on a test host, and fix it as you go.
-- **Alternatives if it fails**: for the address, a different `--forwarded-allow-ips` or a host network for the app. For
-  the journal, `--log-driver=none`.
+- My decision (fix): keep it as it is. Decide again together with the email question above. Add it to the roadmap.
 
 ## OAuth Known Gaps
 
