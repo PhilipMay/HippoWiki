@@ -4,21 +4,10 @@ Date: 2026-11-03. Scope: `spec/`, `doc/nixos-keycloak-setup.md` (called "the gui
 
 ## Status
 
-All 8 major findings and the 9 minor findings that affect roadmap step 1 are now applied to the spec. 49 minor findings,
-the experiments and the cut candidates are still open.
+All 8 major findings and 10 of the 58 minor findings are resolved in the spec, and are removed from this report. 48
+minor findings, the experiments and the cut candidates are still open.
 
-The findings below describe the spec as it was reviewed, so their quotes may no longer match it. Each applied finding
-says so, and says where the result differs from its recommended fix.
-
-Decisions made:
-
-| Question             | Decision                                                                                                                                   |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| REST login of people | A later Web GUI, whose server part holds the tokens, is the normal way. Until then and for terminal work: `hippowiki-cli` with device flow |
-| Token binding        | "Consent required" on the product clients, and the remaining risk stated. Tokens stay unbound                                              |
-| Production           | A NixOS host. The project stays independent of the distribution, and everything runs in containers with Podman or Docker                   |
-
-Values chosen while applying the fixes, which you may want to check:
+Values chosen while resolving the findings, which you may want to check:
 
 - Key cache maximum age of 10 minutes, 30 seconds between fetches, a fetch timeout of 5 seconds, and a token leeway of
   30 seconds, all in `limits.md`.
@@ -30,17 +19,8 @@ are also yours to decide.
 
 ## Summary
 
-There are no blockers. The core design held up: existence leaks, lock order, history numbering, the rights tables and
-the fixed-client login were all tested and found sound. There were 8 major and 58 minor findings.
-
-The major findings cluster around three things:
-
-- **Signing keys:** cached keys never expire, and one case in the refetch limit has two possible answers.
-- **Login and tokens:** no person can get a REST token today, and a token issued for an AI product carries full REST
-  rights.
-- **The plan:** step 5 can not be built as written, and production has no defined deployment.
-
-The other two are a data conflict in folder revert and undefined error bodies.
+There are no blockers and no open major findings. The core design held up: existence leaks, lock order, history
+numbering, the rights tables and the fixed-client login were all tested and found sound.
 
 The open minor findings can wait for the step that touches them, or for the implementation to show whether they matter.
 
@@ -72,245 +52,7 @@ Limits of this round:
 - `help.openai.com` could not be read, so ChatGPT claims rest on OpenAI's developer guide and on third-party documents.
 - [Experiments](#experiments) lists what documentation could not settle.
 
-## Major Findings
-
-### Cached signing keys never expire
-
-**Status:** applied as recommended, in `authentication.md`, `limits.md` and `test-cases.md`.
-
-**Where:** `authentication.md`, Token Check: "Signing keys are cached in memory", "An unknown `kid` causes one refetch"
-and "A cached key keeps working while Keycloak is down". Nothing states a maximum age or that a refetch replaces the
-set.
-
-**Problem:** A refetch happens only for an unknown `kid`, so a known key is never dropped. An operator removes a
-compromised key in Keycloak, and tokens signed with it keep passing on the running app until someone restarts it.
-Nothing tells the operator to restart.
-
-**Recommended fix:** In `authentication.md`, a successful fetch replaces the whole set, and the set is refreshed once it
-is older than a fixed age, such as 10 minutes. A failed refresh keeps the old set, which preserves the "keeps working"
-rule. Add the case to `test-cases.md`.
-
-**Alternatives:** Keep no expiry and document "restart the app after removing a key" in
-`configuration-and-failure-modes.md`. This needs no code, but relies on an operator remembering it during an incident.
-
-### An unknown key inside the refetch limit has two possible answers
-
-**Status:** applied as recommended, in `authentication.md`, `limits.md` and `test-cases.md`, with a fetch timeout added.
-
-**Where:** `authentication.md`, Token Check: "A key that is still unknown after the refetch gets 401" and "When a needed
-key can not be fetched, the lookup failed". `test-cases.md`: "further unknown `kid`s within the rate limit cause no
-further fetch", with no result stated. No document gives the interval a value. `time.md` only uses
-`jwks_refetch_interval_seconds` as a naming example.
-
-**Problem:** Inside the window no fetch happens, so neither rule applies.
-
-- The app starts with an empty cache before Keycloak is up. The first request gets 503. A retry inside the window can
-  get 401, so a client discards valid credentials, which Failed Credential Lookup forbids: "it is never a 401".
-- A junk `kid` can use up the slot just after a key rotation, so valid tokens with the new key get 401 until the window
-  ends.
-
-**Recommended fix:** In `authentication.md`, with the value in `limits.md`:
-
-- Use a fixed interval, such as 30 seconds, and allow one fetch at a time. A failed fetch counts against the limit.
-- Inside the window, the answer is 503 if the last fetch failed and 401 if it succeeded.
-- Add both cases to `test-cases.md`.
-
-**Alternatives:**
-
-- Answer 503 for every unknown `kid` inside the window. A valid credential is never discarded, but junk tokens get 503
-  and clients retry them.
-- Skip the limit while the cache is empty. This recovers faster at startup, but protects a struggling Keycloak less.
-
-### A token issued for an AI product carries full REST rights
-
-**Status:** decided and applied as recommended, in `connectors.md`, the guide and the Connector Test. The risk is now
-stated as an accepted trade-off. The silent login is still untested, and the Connector Test checks the consent screen.
-
-**Where:** `authentication.md`, Token Check: "Only `sub` is used". `connectors.md`: "One audience covers both MCP and
-REST". `test-cases.md`: "The same admin token works on REST."
-
-**Problem:** This is a deliberate design, but its consequence is not stated. No client asks for consent, so a browser
-holding the admin's Keycloak session can complete a connector login with no screen. MCP then answers 403, the person
-fixes the setup and moves on, and the refresh token stays at the vendor or on disk, valid for every admin operation on
-REST. The same silent login can bind `alice` instead of the intended `alice-claude`. The silent login is inferred from
-Keycloak's defaults and was not tested.
-
-**Recommended fix:** Turn on "Consent required" on the product clients in the guide, and add a check of it to the
-Connector Test. This conflicts with no rule and is the cheapest step. State the remaining risk in `connectors.md`.
-
-**Alternatives:**
-
-| Option                              | Gain                                | Cost                                                                               |
-| ----------------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------- |
-| Allowlists on `azp`                 | Strongest: a client can be refused  | Reverses "Only `sub` is used", and `tokens.py` has to return more than the subject |
-| Audience scope per client           | Stops future clients getting access | Replaces the default client scope, and does not solve the admin case               |
-| Separate audiences for MCP and REST | Cleanest split                      | Conflicts with the single `HIPPOWIKI_OAUTH_AUDIENCE` and the shared-token rule     |
-| Keycloak flow override per client   | The token is never issued           | Console configuration that `make test` can not cover, and it needs a realm role    |
-
-**Decision needed:** yes, now made, see [Status](#status).
-
-### No person can get a REST token
-
-**Status:** decided and applied, in `connectors.md`, `goals.md`, `roadmap.md` and the guide. This goes beyond the
-recommended fix: the planned Web GUI is the normal way for a person to use REST, and `hippowiki-cli` covers the time
-until then and terminal work. So the gap for people with `manage` closes with the GUI, and the CLI client covers it
-until then. The device login is still untested, and the Connector Test checks it.
-
-**Where:** `goals.md`: "It is the only way to administer the system." `connectors.md`: "Each script gets its own
-Keycloak client with a service account". The guide: "The HippoWiki admin account also goes in this realm".
-
-**Problem:** The guide makes the admin a person with a password, but no client can give that person a token for REST.
-Product clients redirect into the products, and MCP rejects the admin. Script clients have "Standard flow" off, and
-their token carries the service account's `sub`, which gets 401. So after setup the operator can not call `POST /users`
-or `POST /folders`, and roadmap step 5 needs exactly that call. A person with `manage` has the same problem, because
-history and revert are REST only.
-
-**Recommended fix:** Define one client for people, such as `hippowiki-cli`, using device flow or authorization code with
-a localhost callback. Describe it in `connectors.md`, add it to the guide, and add a row to the Connector Test.
-
-**Alternatives:**
-
-- Link the admin to a service account of a `hippowiki-admin` client. `hippowiki link-admin` already takes any subject,
-  so this needs no new client type. But the admin is then no person, the guide and `users.md` change, and history and
-  revert for people stay unsolved.
-- Direct access grants on one client. This is the simplest, but it is the password grant, which OAuth 2.1 removes.
-
-**Decision needed:** yes, now made, see [Status](#status).
-
-### Folder revert of an item deleted at both points conflicts with the write rule
-
-**Status:** applied as recommended, in `history-revisions.md`, `content.md` and `test-cases.md`.
-
-**Where:** `history-revisions.md`, Folder Revert: "return to their state at that number" and "stays deleted, or is
-deleted again". `content.md`: "writes use `WHERE deleted_at IS NULL`" and "a statement that changes no row gets
-`NotFoundError`".
-
-**Problem:** An item can differ between the target and now while being deleted at both. At number 10 it is deleted with
-name `a`. Then it is restored, renamed `b` and deleted again. A revert to 10 has three readings:
-
-- Skip it. A later restore shows `b`, so the state at the revert's number is not the state at 10.
-- Write `a` with a revision. This matches "state at that number".
-- Follow `content.md` literally. The write changes no row, and the whole revert rolls back as a 404.
-
-**Recommended fix:** In `history-revisions.md`, say the item still gets the name, content and tab of the target, with a
-revision, and stays deleted. In `content.md`, limit the `WHERE` rule to normal operations, since a folder revert writes
-rows by ID in any deleted state. Add the sequence to `test-cases.md`.
-
-Also in `content.md`, reword the sentence "gets `VersionConflictError` and not this `NotFoundError`". It reads as if a
-stale update on a deleted row could get 409, while `test-cases.md` says it gets 404, and under the lock the `WHERE` can
-never fire for an update. Say a deleted item gets 404 when it is read after the lock, and that the `WHERE` is a
-safeguard.
-
-**Alternatives:** Treat deleted-to-deleted as unchanged. The revert is smaller and writes less, but such items then no
-longer match the target, and a later restore shows content from after the target.
-
-### Error bodies are undefined apart from `type` and `code`
-
-**Status:** applied as recommended, in `errors.md`, `implementation-notes.md` and `test-cases.md`.
-
-**Where:** `errors.md`: "`type` stays `about:blank`. Every body has a `code` extension". `implementation-notes.md`:
-"FastAPI's default 422 body has to be replaced", with nothing saying what replaces it. `mcp.md`: "the field and reason
-only". `errors.md` says a tool error's message starts with the code, and gives no separator or remainder.
-
-**Problem:** This is the public contract for every REST client on every error. One implementer returns only `detail`,
-another an `errors` array, and a third keeps FastAPI's shape, which echoes the input and so can return a rejected
-`content_md`. Tests that compare the full 404 body also need a fixed text to compare against.
-
-**Recommended fix:** In `errors.md`:
-
-- `title` is the HTTP reason phrase, and `status` is always present.
-- `detail` is a fixed text per `code`, with one `not_found` text for all entities.
-- A 422 adds `errors: [{"field", "reason"}]`, with no input values, which matches MCP.
-- A tool error is `<code>: <detail>`, with the same field and reason for validation errors.
-
-**Alternatives:** `detail` as one formatted string. This is simpler, but clients have to parse it to show which field
-failed.
-
-### Step 5 can not be built as written
-
-**Status:** applied, in `roadmap.md`, `package-layout.md`, `testing.md` and `test-cases.md`, with two differences.
-Groups are whole services, so step 5 registers `get_own_user`, `list_folders` and `get_folder`, and needs those service
-methods. The new test uses locally generated keys served at `HIPPOWIKI_OAUTH_JWKS_URL` instead of a stubbed key source.
-The step is shown by tests, because creating users and rights over REST comes in step 8.
-
-**Where:** `roadmap.md`, step 5: "the models and migration, repositories, fakes and contract tests, services, routes,
-tool, `create_app()` and `create_production_app()`". Step 6: "the remaining models", and `hippowiki migrate`. Step 7:
-`hippowiki init`, `hippowiki link-admin` and "The real services replace the stand-ins". `architecture.md`: "It builds
-the services once and passes them to both adapters".
-
-**Problem:** Step 5 needs things it does not list, or that only later steps build:
-
-- **Tables:** creating a folder also writes `tabs`, `folder_history_entries` and `folder_revisions`, and users and
-  rights need `users` and `folder_rights`.
-- **People:** `POST /users` and `PUT` of rights come in step 8, so nothing says how "a user with a right" exists.
-- **Running it:** `create_production_app()` can not run without `migrate`, `init` and `link-admin`, and it also needs
-  `auth/credentials.py`, which is not listed.
-- **MCP tools:** the five tools from step 1 have no real services until step 7, and the stand-ins live in a module
-  nothing may import. So `create_app()` either fails strict mypy, advertises tools that always fail, or differs from the
-  Connector Test App.
-- **Proof:** no test kind runs `create_production_app()`, so "shows early that the layers fit together" has no test
-  behind it.
-
-**Recommended fix:** In `roadmap.md`, step 5, and `testing.md`:
-
-- List the six tables and `auth/credentials.py`. Move `migrate`, `init` and `link-admin` into step 5.
-- State that the user and right are seeded through repositories.
-- The MCP factory takes one Protocol-typed argument per service group and registers only the tools of the groups it is
-  given, so step 5 registers `get_folder`. Step 7 makes all groups required. This also goes in `package-layout.md`.
-- Add one `podman` test through the real factory, the real repositories and a stubbed key source.
-
-**Alternatives:**
-
-- Drop `create_production_app()` from step 5. The step is smaller, but the real wiring is shown only later.
-- Build the real services of the five tools in step 5. No temporary wiring is needed, but it stops being a small first
-  feature.
-
-### Production has no defined deployment
-
-**Status:** decided and applied, in `deployment.md`, `tech-stack.md`, `roadmap.md` and the guide. The guide lists what
-the module has to cover, and writing `hippowiki.nix` stays in step 9, because the image and its commands do not exist
-yet.
-
-**Where:** The guide: "the container is replaced by the complete deployment" and "HippoWiki's database goes on the same
-server later". `roadmap.md`, step 9: "the complete `compose.yaml`". `deployment.md` scopes compose to "development and
-simple self-hosting".
-
-**Problem:** The Connector Test host runs PostgreSQL and Keycloak as NixOS containers, with Traefik native. Running
-`compose.yaml` there starts a second PostgreSQL and Keycloak, and a new realm means new `sub` values. If the host's
-services stay instead, no step covers creating the HippoWiki database and role, a `migrate` unit or the app module, and
-the guide's database init script no longer runs: "Runs only when the PostgreSQL data volume is first created."
-`HIPPOWIKI_DATABASE_URL` is also missing from the guide's "What HippoWiki Needs".
-
-**Recommended fix:** Name the NixOS host as production in `deployment.md`, keep compose for development and simple
-self-hosting, and add the app module and database setup to the guide and to step 9. This builds on what was already
-tested.
-
-**Alternatives:** Compose everywhere. This gives one path to maintain, but discards the tested guide and needs a
-migration of the realm.
-
-**Decision needed:** yes, now made, see [Status](#status).
-
 ## Minor Findings
-
-### Token Check and Public Routes
-
-**Status:** all four are applied as recommended. The `HEAD` method on public routes also gets 401, and the root form of
-the metadata route stays.
-
-- **Required claims and clock tolerance** (`authentication.md`, Token Check: "The token has not expired"). PyJWT checks
-  `exp` only if present, and rejects a future `iat`, so a small clock difference can reject fresh tokens. Fix: require
-  `exp`, give a fixed leeway, and add cases for a missing `exp` and a future `iat`. Passing an issuer already rejects a
-  missing `iss`, and the spec already requires `sub`.
-- **The `resource_metadata` value** (`errors.md`: `WWW-Authenticate: Bearer resource_metadata="..."`). The value is
-  never defined, and `authentication.md` names two forms. Fix: use the path form, derived from the audience, so no new
-  setting is needed. Either form is allowed, because RFC 9728 section 5 and MCP accept a root pointer.
-- **Public route methods** (`authentication.md`: "A public route matches on the exact path"; `test-cases.md`: "An
-  unauthenticated request to an unknown route or with a wrong method gets 401."). An unauthenticated `POST /health` gets
-  405 by one rule and 401 by the other, and may also buffer up to 2 MiB, depending on how `limits.md` is read. Fix:
-  match path and method, and never buffer on a public route. Alternative: answer 405 and adjust the test case.
-- **Trailing slashes** (`request-checks.md`: "an unknown route (404)"). Starlette's default answers `/api/v1/folders/`
-  with a 307, whose `Location` is likely `http://` behind the proxy. The existing `/mcp/` test still passes with the
-  redirect, so it does not catch this. Fix: `redirect_slashes=False` in `implementation-notes.md`, plus a test case.
 
 ### Security and Operations
 
@@ -356,8 +98,6 @@ the metadata route stays.
 - **Tool annotations** (`mcp.md`: "`readOnlyHint` on the list and get tools and `destructiveHint` on the delete
   tools."). In the MCP schema, `destructiveHint` and `openWorldHint` default to true, so other write tools count as
   destructive by default. Fix: give each tool explicit values, and say they are hints only.
-- **Rendering content** (`roadmap.md`: "Browser clients: same origin only for now"). Nothing says `content_md` is unsafe
-  to render. Fix: one line in that roadmap item. There is no web UI today.
 
 ### REST and Checks
 
@@ -434,8 +174,8 @@ the metadata route stays.
   database URL on one settings class would stop the repeatable Connector Test container. Fix: one table of settings, and
   a separate group for the test app. Alternative: make the URL optional and check it at production startup.
 - **Open risks outside the roadmap** (`configuration-and-failure-modes.md`: "open items of the specification stay in the
-  [Roadmap](roadmap.md)"). Six risks are in neither place's plan: realm recreation, clock differences, rollbacks, the
-  connection pool, compose providers and upgrades. Fix: move them to the roadmap, and settle pool pre-ping now in
+  [Roadmap](roadmap.md)"). Five risks are in neither place's plan: realm recreation, rollbacks, the connection pool,
+  compose providers and upgrades. Fix: move them to the roadmap, and settle pool pre-ping now in
   `implementation-notes.md`.
 - **Connector test data** (`roadmap.md`: "a right on it for the linked user and the service account"). The level is
   unnamed, and other details are open, for throwaway code with one implementer. Fix: give one example JSON with `write`.
@@ -445,9 +185,8 @@ the metadata route stays.
   `implementation-notes.md`: "It also does not depend on the image"). All name columns use `COLLATE "C"`, so the first
   sentence is wrong. Fix: correct it, and also the reason in `deployment.md`.
 - **After the Connector Test** (`roadmap.md`: "and this section is removed"; `testing.md`: "The real Keycloak is covered
-  by the"). Real clients only ever see 5 tools and stand-ins, 23 links point to that section, and removing
-  `connector-test.nix` is not listed. Fix: end step 9 with a repeat of the client checks, keep a short procedure, and
-  list the removals in step 7.
+  by the"). Real clients only ever see a few tools and the stand-ins, and 14 links point to that section. Fix: end step
+  9 with a repeat of the client checks, and keep a short procedure.
 - **Duplicated values** (`README.md`: "Each topic has one home"). The rights in `rest.md` restate `rights.md`, and
   external values are copied, with no drift found so far. Fix: a test that compares routes with the rights matrix, and
   let the guide link to values outside runnable code.
@@ -459,38 +198,15 @@ the metadata route stays.
   use `kc.sh export --file <path> --realm hippowiki --users skip`, and strip secrets and keys before versioning the
   file, because `deployment.md` requires a file without secrets. Keycloak has to be stopped for this. Alternatives: keep
   the partial export and rely on the planned fresh-install test, or use a declarative tool, which adds a dependency.
-- **Applied: Connector Test fallback** (`roadmap.md`: "turn on the Keycloak feature `resource-indicators`, and `cimd`
-  for Claude and Claude Code only").
-  [The flags alone are not enough](https://www.keycloak.org/securing-apps/mcp-authz-server): the manual path needs a
-  client with `resource_url` and an audience mapper, and CIMD needs a client profile and policy. An unconfigured
-  `resource` gets `invalid_target`, which would make ChatGPT worse. Fix: list these steps in the roadmap and the guide.
 - **`eager_defaults`** (`implementation-notes.md`: "reading one after UPDATE, such as `deleted_at = now()` or the
   incremented `revision_counter`"). [SQLAlchemy](https://docs.sqlalchemy.org/en/21/orm/persistence_techniques.html)
   expires an attribute assigned a SQL expression, so the setting does not prevent the implicit IO. The failure would be
   loud in the first integration test. Fix: correct the note and use Core `update(...).returning(...)`, which fits
   repositories that return dataclasses. Alternatives: `server_onupdate=FetchedValue()` on each column, or
   `await session.refresh(row)`.
-- **Applied: Claude's early refresh** (`configuration-and-failure-modes.md`: "a retry or two parallel refreshes can log
-  a connector out"). [Claude](https://claude.com/docs/connectors/building/authentication.md) refreshes up to five
-  minutes before expiry, which equals the token lifetime here, and refresh reuse is 0. Whether this causes a logout is
-  not verified. Fix: name the overlap in the existing Connector Test check. Alternatives: longer access tokens, reuse of
-  1, or rotation off. **Decision** if the test fails.
-- **Applied: ChatGPT setup** (`roadmap.md`: "names a predefined OAuth client, but does not describe the dialog"). This
-  is still true of [OpenAI's guide](https://developers.openai.com/api/docs/guides/custom-mcp-server.md), but
-  [Zuora](https://docs.zuora.com/en/zuora-ai/zuora-mcp-server/zuora-mcp-server/configure-zuora-remote-mcp-server/configure-zuora-remote-mcp-clients/install-zuora-mcp-server-in-chatgpt)
-  and [BoldSign](https://developers.boldsign.com/boldsign-mcp-server/chatgpt.md) describe the dialog. Fix: keep the
-  check and add these as hints, including the choice of a user-defined OAuth client.
-- **Anthropic's IP ranges** (`deployment.md`: "including Anthropic's range `160.79.104.0/21`"). A
-  [second range](https://platform.claude.com/docs/en/api/ip-addresses), `153.61.208.0/20`, exists. Fix: link the page
+- **Anthropic's IP ranges** (`deployment.md`: "including Anthropic's range `160.79.104.0/21`", and the guide copies it).
+  A [second range](https://platform.claude.com/docs/en/api/ip-addresses), `153.61.208.0/20`, exists. Fix: link the page
   instead of copying a value.
-- **Applied: Claude plans** (`roadmap.md`: "offers it on Pro and Max, and on Team plans only owners can add one."). The
-  [current page](https://claude.com/docs/connectors/custom/add-unlisted.md) also covers Free, Ultra and Enterprise, and
-  auth settings can not be edited, so replacing a secret means remove, re-add and reconnect. Fix: update the roadmap and
-  `connectors.md`.
-- **Applied, client stays confidential: Claude Code secret** (`connectors.md`: "shows whether it needs a secret").
-  [`--client-secret`](https://code.claude.com/docs/en/mcp) exists and a confidential client needs it, and the guide
-  already uses it. Fix: update `connectors.md` and the roadmap. Alternative: a public client with PKCE, so no secret
-  sits on laptops. **Decision**.
 - **Anonymous registration** (guide: "do not enable `cimd`, `resource-indicators` or anonymous client registration").
   [It is a policy](https://www.keycloak.org/securing-apps/client-registration), not a feature flag. Fix: say "leave
   Trusted Hosts empty", and add a check that an anonymous registration is rejected.
@@ -522,23 +238,14 @@ the metadata route stays.
 
 ## Experiments
 
-Documentation could not settle these. The silent login, the Claude refresh, the CIMD audience and the ChatGPT dialog are
-now part of the Connector Test:
+Most open questions about real clients are checks of the [Connector Test](spec/roadmap.md#connector-test). Documentation
+could not settle these others:
 
 - **`eager_defaults`:** a `podman` test that assigns `func.now()` in an `AsyncSession`, flushes and reads. Expect
   `MissingGreenlet`.
 - **Stale reads:** run the existing race test against the first repository code. Expect a 500 unless the re-read is
   fixed.
-- **Silent login:** with a live admin session, add a connector and see whether Keycloak shows a screen, with and without
-  "Consent required".
-- **Claude refresh:** parallel tool calls over 30 minutes, reading refresh events in Keycloak.
-- **`offline_access`:** read `scope` in the log for each client. For Claude Code, retry with `oauth.scopes` if it is
-  missing.
-- **CIMD audience:** on a scratch Keycloak with `cimd` on, log in with Claude Code and check whether the token's `aud`
-  contains the MCP URL.
-- **ChatGPT dialog:** confirm the fields in the UI, and whether a Business member needs an admin to publish.
 - **401 or 403:** try both for an unlinked user during the Connector Test.
-- **Trailing slash redirect:** check the `Location` scheme behind the proxy.
 - **Traefik:** run `traefik version` on the host.
 - **Keycloak dump and export:** confirm which keys and secrets a `pg_dump` and a `kc.sh export` contain, and which
   action ends offline sessions.
@@ -557,14 +264,14 @@ would take them. The others are product decisions.
   `implementation-notes.md`, which go stale on an upgrade. Test names would serve better.
 - **Components section** of `configuration-and-failure-modes.md`: it mostly restates other documents. Keep "Values That
   Must Match" and the risks. A per-component checklist is lost.
-- **Root form of the protected resource metadata:** the 401 can name the path form directly. This saves one public
-  route. Check first whether MCP clients fall back to the root form when the header is absent.
+- **Root form of the protected resource metadata:** the 401 already names the path form, so this saves one public route.
+  Check first whether MCP clients fall back to the root form when the header is absent.
 - **Full rights matrix on MCP:** run one allowed and one denied call per tool instead, plus the mapping of each domain
   error. This saves most of a second copy of the matrix, but a tool calling the wrong method in an unusual cell goes
   unnoticed.
 - **Folder revert:** no goal names revert, only "Full **revision history**". This is the largest saving: the route, the
-  `folder_revert` kind, name swap handling, about six hard test cases, and one major finding in this report. One-step
-  undo of an agent's bulk damage is lost, but revisions keep recording, so it can be added later.
+  `folder_revert` kind, name swap handling and about six hard test cases. One-step undo of an agent's bulk damage is
+  lost, but revisions keep recording, so it can be added later.
 - **Tabs beyond the default tab:** `goals.md` gives no reason for them. This saves seven routes, seven of 18 tools, and
   the rules for items hidden through a deleted tab. Keep the table and `tab_id`, so adding tabs later needs no data
   migration. Grouping inside a folder is lost.
@@ -574,5 +281,5 @@ would take them. The others are product decisions.
 
 ## Next Check
 
-A clean review can not replace running code. Once the major findings are settled, the Connector Test and the first
-feature will show more than another round of review.
+A clean review can not replace running code. The major findings are settled, so the Connector Test and the first feature
+will show more than another round of review.

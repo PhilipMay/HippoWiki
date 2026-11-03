@@ -68,6 +68,11 @@ notes support are in the other documents. The SDK line numbers refer to `mcp` 2.
 - **Partial unique indexes** can not be deferred, so a swap of two names in a folder revert has to free the names first,
   for example by setting `deleted_at` on the affected rows within the transaction.
 
+## PyJWT Notes
+
+- `exp` is checked only if the token has it, so the [token check](authentication.md#token-check) has to require it.
+- Passing an issuer already rejects a token with no `iss`.
+
 ## ruff Notes
 
 Its `DTZ` rules (included in `select = ["ALL"]`) catch common mistakes but are not a guarantee: they miss non-UTC

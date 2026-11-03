@@ -100,7 +100,7 @@ it works with the real clients, so this test comes before the other implementati
 - Whether each client requests `offline_access`, and how long it stays logged in if it does not. The
   [documentation of Claude](https://claude.com/docs/connectors/building/authentication.md) says it adds the scope when
   the metadata of Keycloak lists it. The `scope` in the log and the offline sessions of the client in the Keycloak
-  console show the result.
+  console show the result. If Claude Code does not request it, try again with `oauth.scopes`.
 - Whether each client sends an `Origin`, and which one, because a foreign `Origin` gets 403, see
   [Serving the MCP App](mcp.md#serving-the-mcp-app).
 - All clients accept 405 on `GET /mcp`, see [Serving the MCP App](mcp.md#serving-the-mcp-app), and a server that sends
@@ -172,6 +172,16 @@ The results go into [Authentication](authentication.md), including Claude Code i
   account. Left out for now, because a [separate account](connectors.md#ai-agents) already shows up separately in the
   history.
 - API tokens: REST accepts [OAuth tokens only](connectors.md#scripts), and no token has fewer rights than its user.
+- Tokens bound to a client, which would close the [accepted trade-off](connectors.md#client-registration) that a token
+  of a product is valid for the whole account, also on REST. The options:
+  - Allowlists on `azp`: the strongest, because a client can be refused, but this reverses "Only `sub` is used", and
+    `tokens.py` has to return more than the subject.
+  - An audience scope per client: this stops future clients getting access, but replaces the default client scope and
+    does not solve the admin case.
+  - Separate audiences for MCP and REST: the cleanest split, but this conflicts with the single
+    `HIPPOWIKI_OAUTH_AUDIENCE` and the shared token.
+  - A Keycloak flow override per client: the token is never issued, but this is console configuration that `make test`
+    can not cover, and it needs a realm role.
 - `md_document_links`: rebuilt for a md_document on every save. It enables **backlinks** ("what links here") and
   detection of **broken links**. When a md_document is created, dangling links pointing to it get resolved. md_documents
   have no path, only a folder, tab and name, so the link format has to be defined first.
