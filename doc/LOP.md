@@ -135,10 +135,7 @@ These are small, and each has a clear fix once it is worth doing.
 - **Open**: only logins are limited. `POST /oauth/token` and `GET /oauth/authorize` have none, and each token request
   can cost a database lookup.
 - **Recommendation**: a Traefik `rateLimit` middleware on `/oauth/`, because it needs no code, and it stays out of the
-  streamed MCP path.
-- **Alternatives**:
-  - Extend `auth/login_limiter.py` in the app: works without the proxy, and is more code.
-  - Accept it for now: acceptable while the server holds test data.
+  streamed MCP path. Add this as a reminder somewhere - maybe in the roadmap
 
 ### No Way to End All Tokens
 
@@ -147,16 +144,11 @@ These are small, and each has a clear fix once it is worth doing.
   already ended.
 - **Recommendation**: add `hippowiki revoke-all-tokens`, and run it after every restore. Everybody logs in again, and
   nothing else is lost.
-- **Alternatives**:
-  - Empty the tables by hand with `psql`: works today, and is easy to get wrong under pressure.
 
 ### Parallel Logins Past the Address Limit
 
 - **Open**: concurrent attempts from one address all pass the check before any failure is counted.
 - **Recommendation**: accept it for now. The limit on running and waiting hashes already bounds the burst.
-- **Alternatives**:
-  - Count an attempt when it starts and take it back on success: closes the gap with a few lines, and needs tests for
-    the race.
 
 ### Refetch Interval and the Metadata Document Draft
 
@@ -164,8 +156,6 @@ These are small, and each has a clear fix once it is worth doing.
   The specification does not call this a deliberate deviation.
 - **Recommendation**: add one sentence to [Trusted Clients](../spec/oauth-server.md#trusted-clients) saying it is
   deliberate, because the limit protects the vendor.
-- **Alternatives**:
-  - A shorter interval: closer to the draft, with more requests during an outage.
 
 ## Spec Findings
 
