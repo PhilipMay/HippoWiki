@@ -112,8 +112,8 @@ Configure:
 
 What can go wrong:
 
-- `hippowiki link-root-admin` is a manual step on the first deployment and is easy to miss, see
-  [Root Admin](users-and-rights.md#root-admin).
+- `hippowiki link-admin` is a manual step on the first deployment and is easy to miss, see
+  [Admin](users-and-rights.md#admin).
 - Everyone re-enters the shared client secret when it is replaced, see
   [Client Registration](authentication.md#client-registration).
 
@@ -123,13 +123,13 @@ The specification does not settle these yet. Points marked "to check" come from 
 to be checked against the versions in use.
 
 - **Login loop**: a valid token with no linked user, or of a deactivated user, gets 401, which tells MCP clients to log
-  in again. [Admin Accounts on MCP](authentication.md#admin-accounts-on-mcp) avoids this for admins with a 403, but not
+  in again. [Admin Account on MCP](authentication.md#admin-account-on-mcp) avoids this for the admin with a 403, but not
   for these two cases. The user logs in successfully and is sent straight back to log in. The
   [Connector Test](roadmap.md#connector-test) will probably run into this, because it needs an unlinked and a
   deactivated user.
 - **Health check hides outages**: `/health` is liveness only, so it stays green while every authenticated request gets
   503\. Database monitoring is an open point in the [Roadmap](roadmap.md), and Keycloak needs the same.
-- **Recreating the realm**: new accounts get new `sub` values, so all user links break, including the root admin's.
+- **Recreating the realm**: new accounts get new `sub` values, so all user links break, including the admin's.
 - **Clock differences**: the [Token Check](authentication.md#token-check) compares `exp` with the app host clock and
   names no tolerance. To check: PyJWT also rejects an `iat` in the future, so a small difference could reject fresh
   tokens.

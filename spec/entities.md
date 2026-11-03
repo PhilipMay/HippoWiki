@@ -59,12 +59,12 @@ in [Deleted Items](request-checks.md#deleted-items).
 - every name is required, and only the default tab has the name "" (empty string)
 - folders, md_documents and users: `^[a-z0-9]+(-[a-z0-9]+)*$`, so lowercase ASCII words joined by single hyphens, with
   at most 100 characters
-  - this also rules out a user who looks like the root admin, such as `Admin` or a name with a lookalike character
+  - this also rules out a user who looks like the admin, such as `Admin` or a name with a lookalike character
 - tabs: at most 100 characters, no control characters and no leading or trailing whitespace, so a name of only spaces is
   not valid
 - a create or rename request with the name "" is rejected for every entity, because PostgreSQL runs check constraints
   before unique indexes and a check violation would otherwise become a 500
-- the name `admin` for a new user is rejected, because the root admin exists whenever someone can authenticate
+- the name `admin` for a new user is rejected, because the admin exists whenever someone can authenticate
   - this is a fixed rule for the same reason, not an up-front duplicate check, so it does not conflict with the
     [layer rules](architecture.md#layer-rules)
 
@@ -85,13 +85,13 @@ in [Deleted Items](request-checks.md#deleted-items).
 Time columns such as `created_at` follow the rules in [Time](time.md).
 
 IDs are UUIDv4. The services generate them with `uuid.uuid4()` and pass them to the repositories, so the real
-repositories and the fakes behave the same. The root admin refers to itself, so it uses the same value for `id` and
+repositories and the fakes behave the same. The admin refers to itself, so it uses the same value for `id` and
 `created_by`. UUIDv4 needs no new dependency and reveals nothing, while a UUIDv7 would put the host clock into stored
 data, against [Time](time.md). A random ID is fine as a tie-breaker, which only needs to be stable.
 
 Foreign keys have no `ON DELETE` action, because md_documents, tabs, folders and users are never removed. Only
-`folder_rights` rows are physically deleted. So `created_by` and `assigned_by` are never null, and the root admin can
-refer to itself because a foreign key is checked at the end of the statement.
+`folder_rights` rows are physically deleted. So `created_by` and `assigned_by` are never null, and the admin can refer
+to itself because a foreign key is checked at the end of the statement.
 
 The `name` columns of `md_documents`, `tabs`, `folders` and `users` use `COLLATE "C"`, because [lists](rest.md#lists)
 are sorted by them, see [Implementation Notes](rest.md#implementation-notes).
@@ -156,9 +156,8 @@ are sorted by them, see [Implementation Notes](rest.md#implementation-notes).
 | `id`             | uuid, PK                      |                                                                            |
 | `name`           | text, not null, unique        | stays reserved after the user is deleted                                   |
 | `auth_subject`   | text, unique                  | the `sub` claim of the linked Keycloak account, null when no one is linked |
-| `is_admin`       | bool, not null, default false | Admin role                                                                 |
-| `is_root`        | bool, not null, default false | true for the root admin                                                    |
-| `created_by`     | uuid → users, not null        | the root admin is created by itself                                        |
+| `is_admin`       | bool, not null, default false | true for the admin                                                         |
+| `created_by`     | uuid → users, not null        | the admin is created by itself                                             |
 | `created_at`     | timestamptz                   |                                                                            |
 | `deactivated_at` | timestamptz                   | null while the user is active                                              |
 | `deleted_at`     | timestamptz                   | null while the user is not deleted                                         |
@@ -166,12 +165,10 @@ are sorted by them, see [Implementation Notes](rest.md#implementation-notes).
 - A check constraint `name <> ''` enforces that the name is not empty.
 - A check constraint `auth_subject <> ''` enforces that a link is not empty. Null means that nobody can log in as this
   user, see [User Linking](authentication.md#user-linking). There is no issuer column, because there is one issuer.
-- A check constraint `is_root = (name = 'admin')` enforces that the user named `admin` is the root admin and that no
-  other user is. Together with the unique, not null name, this allows at most one root admin.
-- A check constraint `NOT is_root OR is_admin` enforces that the root admin always has the admin role, also under
-  concurrent transactions.
-- A check constraint `NOT is_root OR (deactivated_at IS NULL AND deleted_at IS NULL)` enforces that the root admin is
-  never deactivated or deleted, also under concurrent transactions.
+- A check constraint `is_admin = (name = 'admin')` enforces that the user named `admin` is the admin and that no other
+  user is. Together with the unique, not null name, this allows at most one admin.
+- A check constraint `NOT is_admin OR (deactivated_at IS NULL AND deleted_at IS NULL)` enforces that the admin is never
+  deactivated or deleted, also under concurrent transactions.
 - A check constraint `deleted_at IS NULL OR auth_subject IS NULL` enforces that a deleted user has no link, so nobody
   can log in as this user.
 

@@ -9,8 +9,8 @@ are in [Users and Rights](users-and-rights.md).
   `hippowiki`, and handles login pages, passwords, tokens and sessions, see [Deployment](deployment.md).
 - HippoWiki is the protected resource. It checks tokens and owns users and rights, and has no login routes, passwords or
   stored tokens.
-- The Keycloak console admin lives in Keycloak's `master` realm and is separate from the HippoWiki root admin. It
-  administers Keycloak and has no rights in HippoWiki.
+- The Keycloak console admin lives in Keycloak's `master` realm and is separate from the HippoWiki admin. It administers
+  Keycloak and has no rights in HippoWiki.
 
 ## Token Check
 
@@ -60,9 +60,9 @@ the Keycloak account. The rules are in [Users and Rights](users-and-rights.md#us
 
 An AI agent acts as the account it logged in with. There are no tokens with fewer rights than their user.
 
-- A person can log a connector in with their own account, unless it is an admin account.
-- An admin account can log in at Keycloak, but [MCP rejects it](mcp.md#admin-accounts). A person who is an admin uses a
-  separate account for connectors.
+- A person can log a connector in with their own account, unless it is the admin account.
+- The admin account can log in at Keycloak, but [MCP rejects it](mcp.md#admin-account). The person who is the admin uses
+  a separate account for connectors.
 - A separate account, such as `alice-claude`, is a normal user: it gets its own folder rights, such as read-only, and
   shows up separately in the revision history.
 
@@ -72,6 +72,8 @@ REST accepts the same OAuth tokens as MCP, and there are no API tokens for now.
 
 - Each script gets its own Keycloak client with a service account, and uses the client credentials grant.
 - The service account is linked to a HippoWiki user like any other account.
+- A script that administers the system has to use the one [admin](users-and-rights.md#admin) account, which has one
+  link.
 
 ## Client Registration
 
@@ -123,7 +125,7 @@ Hosted MCP connectors log in with OAuth 2.1 and PKCE, because the clients named 
 - Keycloak handles password hashing, so HippoWiki has no password code.
 - The realm has brute-force detection and login events switched on, and self-registration and username editing switched
   off.
-- HippoWiki logs changes of rights and of `auth_subject`, including `hippowiki link-root-admin`, and logs when a user is
+- HippoWiki logs changes of rights and of `auth_subject`, including `hippowiki link-admin`, and logs when a user is
   deactivated, reactivated or deleted. Keycloak records the logins.
 
 ## Request Handling
@@ -154,9 +156,9 @@ A public route matches on the exact path, so a trailing slash or a path below it
 Everything else stays behind authentication, including MCP and `/openapi.json`. Swagger UI and ReDoc are turned off,
 because a browser can not load `/openapi.json` for them without extra setup and they load their assets from a CDN.
 
-## Admin Accounts on MCP
+## Admin Account on MCP
 
-The rule is in [MCP](mcp.md#admin-accounts). The middleware enforces it right after authentication, so neither the body,
+The rule is in [MCP](mcp.md#admin-account). The middleware enforces it right after authentication, so neither the body,
 the SDK nor a tool is reached:
 
 - A request to the MCP path whose principal has `is_admin` gets 403 problem+json from the

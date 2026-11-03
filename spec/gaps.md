@@ -14,11 +14,11 @@ been changed for it.
   `compose.yaml` only arrive in the last step. Nothing defines how it runs until then. Suggested fix: move the
   `Containerfile` into the first step and run the image on the NixOS host with `virtualisation.oci-containers`, on the
   `hippowiki` network. The complete `compose.yaml` stays in the last step.
-- **Test users**: the test needs a linked user, an unlinked user, a deactivated user and an admin. Nothing defines how
-  they get into the in-memory data, because `hippowiki link-root-admin` only arrives with the services. Suggested fix:
-  give the test app its own composition, outside `create_production_app()`, which passes in-memory data to
-  `create_app()`. It reads the four users from a JSON file named by an environment variable, each with its Keycloak
-  subject, name, `is_admin` and deactivated state.
+- **Test users**: the test needs a linked user, an unlinked user, a deactivated user and the admin. Nothing defines how
+  they get into the in-memory data, because `hippowiki link-admin` only arrives with the services. Suggested fix: give
+  the test app its own composition, outside `create_production_app()`, which passes in-memory data to `create_app()`. It
+  reads the four users from a JSON file named by an environment variable, each with its Keycloak subject, name,
+  `is_admin` and deactivated state.
 - **Test code afterwards**: nothing says whether the code written for the test stays or gets thrown away. Suggested fix:
   keep the middleware, the token check and the MCP routes, and throw away the in-memory data, the JSON file and the test
   composition. State this in the first step of the roadmap.

@@ -33,7 +33,7 @@ Look these up when you need them:
 - **live**: an item is live when it and all its parents are not deleted.
 - **hidden**: an item the user can not see, because they have no right on its folder or it is deleted. It gets the same
   response as a missing item, apart from the exceptions in [Deleted Items](request-checks.md#deleted-items).
-- **root admin**: the one permanent admin, a user named `admin`.
+- **admin**: the one permanent administrator, a user named `admin`, who has no access to content.
 - **principal**: the authenticated user of a request, as the services receive it.
 - **credential check**: the step that turns a token into a principal, by verifying the token and looking up the user.
 - **unit of work**: one database session and transaction. Each public service method uses one, and the credential lookup

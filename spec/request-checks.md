@@ -5,15 +5,15 @@ tools in [MCP](mcp.md#tools).
 
 ## Check Order
 
-A user only learns that a folder exists if they have a right on it. Every request to a non-public route runs these
-checks in this order, and the first one that fails decides the response. Services raise the same domain errors for REST
-and MCP, and each adapter translates them. The last row is not a check: it covers any other exception.
+A user only learns that a folder exists if they have a right on it or are the admin. Every request to a non-public route
+runs these checks in this order, and the first one that fails decides the response. Services raise the same domain
+errors for REST and MCP, and each adapter translates them. The last row is not a check: it covers any other exception.
 
 | Check              | Rejects                                                                                                          | Domain error                     | REST          | MCP                                |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------- | -------------------------------- | ------------- | ---------------------------------- |
 | Credential lookup  | a request with credentials that can not be checked, because the lookup failed                                    | none, rejected by the middleware | 503           | rejected before the tools run      |
 | Authentication     | an unauthenticated request                                                                                       | none, rejected by the middleware | 401           | rejected before the tools run      |
-| Admin on MCP       | a request to MCP by an admin, see [MCP](mcp.md#admin-accounts)                                                   | none, rejected by the middleware | allowed       | HTTP 403, before the tools run     |
+| Admin on MCP       | a request to MCP by the admin, see [MCP](mcp.md#admin-account)                                                   | none, rejected by the middleware | allowed       | HTTP 403, before the tools run     |
 | Body size          | a request body over the limit                                                                                    | none, rejected by the middleware | 413           | rejected before the tools run      |
 | Routing            | an unknown route (404), a known route with the wrong method (405)                                                | none, rejected by the framework  | 404, 405      | see [MCP](mcp.md#errors)           |
 | Host check         | a foreign `Host` (421) or `Origin` (403), see [MCP](mcp.md#serving-the-mcp-app)                                  | none, rejected by the SDK        | no such check | HTTP 421 or 403                    |
@@ -59,7 +59,7 @@ and MCP, and each adapter translates them. The last row is not a check: it cover
 - no conflict leaks: a user without the required right gets 403 before any name or version conflict or domain validation
   error is reported
 - conflicts leak nothing: tab and md_document names conflict only inside a folder the user already has the right on, and
-  only admins, who see everything, create folders and users, rename folders and link Keycloak accounts
+  only the admin, who sees all folders and users, creates folders and users, renames folders and links Keycloak accounts
 
 ### Targets
 
@@ -74,25 +74,27 @@ and MCP, and each adapter translates them. The last row is not a check: it cover
 What deleting does is defined in [Entities](entities.md#deleting-and-restoring-content).
 
 - a deleted md_document, tab or folder, and any item inside a deleted tab or folder, gets the same 404 as a missing
-  item, for every operation except the deleted list, restore and history. This also holds for admins
+  item, for every operation except the deleted list, restore and history. This also holds for the admin
 - deleting a deleted item gets this 404 as well, in the same way as deleting a right that does not exist
 - a folder has two deleted lists, one for md_documents and one for tabs. They hold the items that have their own
   `deleted_at` and a live parent, with metadata only, and follow the check order on the folder
 - restoring a md_document or tab, and reading the history of a md_document that is not live or the content of one of its
   revisions, resolves its ID among the deleted rows too, then runs the check order on its folder.
   [Rights on Folders](users-and-rights.md#rights-on-folders) gives the result
-- no right on the folder, or a deleted folder, gets 404 in these cases. An admin can still read the history of a
-  md_document in a deleted folder and the content of its revisions, but can not restore anything in it
+- no right on the folder, or a deleted folder, gets 404 in these cases
 - accepted leak: a user with a right below `manage` gets 403 for an ID in their folder and 404 for an unknown ID, so
   they can tell a deleted item from one that never existed. This is accepted, because the user has a right on the folder
   and the random UUIDs make it hard to exploit
 
 ### Admin Operations
 
-- REST only: admin operations and admins themselves are not available on MCP, so the rules below describe REST
-- admins: every live folder is visible and their [implicit `manage` right](users-and-rights.md#admin-operations) is
-  sufficient, so a 404 means it really does not exist or is deleted
-- admin operations by non-admins:
+- REST only: admin operations and the admin are not available on MCP, so the rules below describe REST
+- the admin:
+  - on admin operations and when reading a folder, every live folder is visible, so a 404 means it really does not exist
+    or is deleted
+  - on everything inside a folder, the [admin has no access](users-and-rights.md#admin-operations), so it gets the same
+    404 as a user with no right on the folder
+- admin operations by other users:
   - operations on an existing folder (rename or delete the folder, assign or delete its rights, list its rights) follow
     the checks above: 404 with no right on the folder, otherwise 403
   - all other admin operations (such as create users, create folders, list users, list all rights of all folders, change
@@ -138,14 +140,12 @@ gets `DomainValidationError`, and a violated unique name gets `NameConflictError
 
 | Rule                                                | Domain error                              | REST | Check              |
 | --------------------------------------------------- | ----------------------------------------- | ---- | ------------------ |
-| change own `auth_subject`                           | `ForbiddenError`                          | 403  | Target rules       |
-| change the `auth_subject` of the root admin         | `ForbiddenError`                          | 403  | Target rules       |
-| delete or deactivate the root admin                 | `ForbiddenError`                          | 403  | Target rules       |
-| delete or deactivate own user                       | `ForbiddenError`                          | 403  | Target rules       |
-| assign a right to an admin                          | `ForbiddenError`                          | 403  | Target rules       |
+| change the `auth_subject` of the admin              | `ForbiddenError`                          | 403  | Target rules       |
+| delete or deactivate the admin                      | `ForbiddenError`                          | 403  | Target rules       |
+| assign a right to the admin                         | `ForbiddenError`                          | 403  | Target rules       |
 | any operation on a deleted user                     | `NotFoundError`                           | 404  | Target lookup      |
 | delete a right that does not exist                  | `NotFoundError`                           | 404  | Target lookup      |
-| rename a user, set `is_root` or change `is_admin`   | none, the request model has no such field | 422  | Schema validation  |
+| rename a user, or send `is_admin`                   | none, the request model has no such field | 422  | Schema validation  |
 | create a user without `auth_subject`                | none, the request model requires it       | 422  | Schema validation  |
 | set an `auth_subject` of "" or one that is too long | `DomainValidationError`                   | 422  | Domain validation  |
 | create a user named `admin`                         | `NameConflictError`                       | 409  | Conflicts: name    |
@@ -184,7 +184,7 @@ Two responses need a header as well as the body:
 
 - `SafeText`: Pydantic's `str` accepts NUL and lone surrogates, but writing them raises a `DBAPIError`, which is not an
   `IntegrityError` and would end as a 500.
-- The 401, the 413, the 503 and the 403 for an admin on MCP come from the middleware, which runs outside FastAPI's
+- The 401, the 413, the 503 and the 403 for the admin on MCP come from the middleware, which runs outside FastAPI's
   exception handlers, so it calls the helper directly.
 - The 422 from schema validation is not a domain error, so FastAPI's default 422 body has to be replaced.
 - Framework errors (404 for unknown routes, 405, 500) go through a handler, since they return a different body by

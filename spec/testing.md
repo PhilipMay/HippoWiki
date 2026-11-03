@@ -56,7 +56,7 @@
 Every rule in this specification needs a test, on REST and, where it applies, on MCP. That includes every row of
 [Check Order](request-checks.md#check-order) and [Rejected Operations](request-checks.md#rejected-operations), and every
 cell of [Rights on Folders](users-and-rights.md#rights-on-folders), tested as a matrix that also has a user with no
-right. On MCP the matrix has no admin, because admins are rejected there.
+right. The matrix has no admin, because the admin behaves like a user with no right on REST and is rejected on MCP.
 
 The rest of this document lists the cases that are easy to miss: combinations of rules, races, exact input values and
 transport behaviour.
@@ -116,10 +116,12 @@ transport behaviour.
 - A deleted md_document, tab and folder each give the same full 404 body as a missing one on REST, and the same full
   tool error text on MCP, on read, update, rename, move and a second delete.
 - An item inside a deleted tab or folder gives the same response, by ID and in lists.
-- An admin gets the same 404 for a deleted folder, on every operation except restore and history.
+- The admin gets the same 404 for a deleted folder, on every operation except restore.
+- The admin finds every live folder in the folder list and can read it, and gets the same full 404 body as a missing
+  item on every route inside it, including history and revert.
 - Restoring a tab or folder brings back its content, and an item deleted before it stays deleted.
-- An admin's own rights show `manage` on every live folder. Every rights list leaves out deleted folders.
-- Assigning a right to an admin or to the root admin gets 403 and stores no row.
+- The admin's own rights are an empty list. Every rights list leaves out deleted folders.
+- Assigning a right to the admin gets 403 and stores no row.
 
 ### History and Revert
 
@@ -150,7 +152,7 @@ transport behaviour.
 ### Own Account
 
 - Every user gets their own user, without `auth_subject`, on REST and on MCP.
-- `created_by` and `assigned_by` have ID and name, also for a deleted user.
+- `created_by` and `assigned_by` have ID and name, and `created_by` also for a deleted user.
 - A non-admin gets 403 on every `/users` route, also for their own ID.
 
 ### Combined Updates
@@ -164,17 +166,17 @@ transport behaviour.
 
 ### Users and Linking
 
-- `POST /users` with and without `is_admin` creates the expected role.
+- `POST /users` with `is_admin` gets 422 and creates no user, for either value.
 - A `PATCH` with `is_admin` gets 422 and changes nothing, for either value and also for an unchanged value.
 - A deactivated user gets the same 401 as a token with no linked user, on the next request, on REST and MCP.
 - A reactivated user gets through again, with the same rights and without a new link.
-- Reactivating the root admin or your own user succeeds and changes nothing.
+- Reactivating the admin succeeds and changes nothing.
 - A deleted user gets 401 for the old subject, and that subject can be linked to a new user.
 - An `auth_subject` of 256 characters gets `DomainValidationError`.
 - A duplicate `auth_subject` gets `SubjectConflictError`, on create and on change.
-- After an admin removes or changes the link of a user, the old subject gets 401 on the next request.
-- `hippowiki link-root-admin` run twice with the same subject changes nothing, a new subject replaces the link, and a
-  subject that another user has is rejected.
+- After the admin removes or changes the link of a user, the old subject gets 401 on the next request.
+- `hippowiki link-admin` run twice with the same subject changes nothing, a new subject replaces the link, and a subject
+  that another user has is rejected.
 
 ### Public Routes
 
@@ -200,7 +202,7 @@ transport behaviour.
 
 - `lifespan` passes through the middleware, so startup and shutdown still run.
 - A `websocket` scope is closed without reaching the app.
-- The 401, the 403 for an admin on MCP, the 404 for an unknown route, the 405, the 413, the 422 from schema validation,
+- The 401, the 403 for the admin on MCP, the 404 for an unknown route, the 405, the 413, the 422 from schema validation,
   the 422 for an unparsable body, the 500 and the 503 are problem+json, each with its
   [code](request-checks.md#rest-error-format).
 - A credential check that raises gets 503 problem+json without exception details on REST and an HTTP 503 on the MCP
@@ -217,11 +219,11 @@ transport behaviour.
   revert tool.
 - In the tool tests, a result has one text block and no `structured_content`, and the tool description has no output
   schema.
-- On the transport, an admin, including the root admin, gets 403 problem+json with the code `forbidden` and no
-  `WWW-Authenticate` on `POST /mcp` and `GET /mcp`, on both protocol paths, and no tool runs.
-- On the transport, an admin with a body over the limit gets 403, not 413.
+- On the transport, the admin gets 403 problem+json with the code `forbidden` and no `WWW-Authenticate` on `POST /mcp`
+  and `GET /mcp`, on both protocol paths, and no tool runs.
+- On the transport, the admin with a body over the limit gets 403, not 413.
 - The same admin token works on REST.
-- `/mcp/` as an admin does not reach a tool.
+- `/mcp/` as the admin does not reach a tool.
 - On the transport, responses carry no `Mcp-Session-Id`, on both protocol paths from the
   [implementation notes](mcp.md#implementation-notes).
 - On the transport, each user's tool calls run under their own principal, on both protocol paths.
@@ -244,8 +246,8 @@ transport behaviour.
 - Writes are atomic, such as a folder with its default tab.
 - A unique violation surfaces inside the repository call.
 - Time-dependent behaviour works in separate committed transactions.
-- `hippowiki migrate` followed by `hippowiki init` twice leaves one root admin, and it stays unlinked until
-  `hippowiki link-root-admin` runs.
+- `hippowiki migrate` followed by `hippowiki init` twice leaves one admin, and it stays unlinked until
+  `hippowiki link-admin` runs.
 - Creating or renaming anything to the name `""` gets `DomainValidationError` and creating a user named `admin` gets
   `NameConflictError`, not a check violation.
 - Assigning a right twice updates `assigned_by` and `assigned_at`, also in separate committed transactions.
@@ -253,8 +255,7 @@ transport behaviour.
   it.
 - `SafeText` is needed: writing NUL or a lone surrogate through SQLAlchemy and asyncpg raises `DBAPIError`, so a change
   in this behaviour shows up.
-- The checks reject a deleted default tab, a deactivated or deleted root admin and a deleted user with an
-  `auth_subject`.
+- The checks reject a deleted default tab, a deactivated or deleted admin and a deleted user with an `auth_subject`.
 - A name can be used again after a delete, and restoring the old item gets `NameConflictError`, against the real partial
   unique indexes. The name of a deleted user stays taken.
 - Two concurrent deletes of one item give one success and one 404, and an update racing a delete gets 404.

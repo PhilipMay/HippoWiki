@@ -38,8 +38,8 @@ access. Clients log in at Keycloak, a separate service that issues the tokens, s
 
 Key idea: **MCP and REST are thin adapters** over the same service layer. All domain rules (domain validation,
 permissions, versioning) live in exactly one place, so both interfaces always behave identically. The adapters only
-check the shape of the input. The one exception is that some things exist only on REST: admins, admin operations,
-history and revert, see [Admin Accounts](mcp.md#admin-accounts) and [History and Revert](mcp.md#history-and-revert).
+check the shape of the input. The one exception is that some things exist only on REST: the admin, admin operations,
+history and revert, see [Admin Account](mcp.md#admin-account) and [History and Revert](mcp.md#history-and-revert).
 
 ## Technology Stack
 
@@ -70,7 +70,7 @@ src/hippowiki/
 ├── app.py               # ASGI composition: create_app(unit-of-work factory, credential check), services, FastAPI app + MCP routes,
 │                        # lifespan (MCP session manager)
 │                        # create_production_app(): real factory and credential check, lifespan (DB engine)
-├── cli.py               # CLI: hippowiki migrate, hippowiki init, hippowiki link-root-admin
+├── cli.py               # CLI: hippowiki migrate, hippowiki init, hippowiki link-admin
 ├── config.py            # Settings (pydantic-settings)
 ├── domain.py            # frozen dataclasses exchanged by repositories, services and adapters, including Page and UserRef
 ├── logs.py              # JSON log formatter and logging setup, also for Uvicorn's loggers
@@ -138,10 +138,9 @@ src/hippowiki/
   - They are stateless and get the unit-of-work factory when they are built.
   - They receive a `Principal` on every call and enforce access rules. There are three exceptions, because no principal
     exists yet:
-    - `UserService.create_root_admin` at system initialization. Only `hippowiki init` calls it, and no adapter exposes
-      it.
-    - `UserService.link_root_admin`, which gives the root admin its login. Only `hippowiki link-root-admin` calls it,
-      and no adapter exposes it.
+    - `UserService.create_admin` at system initialization. Only `hippowiki init` calls it, and no adapter exposes it.
+    - `UserService.link_admin`, which gives the admin its login. Only `hippowiki link-admin` calls it, and no adapter
+      exposes it.
     - The credential check in `auth/credentials.py`, which produces the principal. It is not a service, and reads users
       through the unit-of-work factory and the repository Protocol.
 - **Repositories** (`repositories/`):

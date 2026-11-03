@@ -24,18 +24,18 @@ the error format are in [Request Checks](request-checks.md), and who can do what
 
 ## Routes
 
-The right is the lowest one that is enough, see [Rights on Folders](users-and-rights.md#rights-on-folders). An admin has
-an [implicit `manage` right](users-and-rights.md#admin-operations) on all live folders. Body fields are named where they
-are not obvious.
+The right is the lowest one that is enough, see [Rights on Folders](users-and-rights.md#rights-on-folders). The admin
+[has no right](users-and-rights.md#admin-operations) on any folder, so a route that names a right gets 404 for the
+admin, unless it says otherwise. Body fields are named where they are not obvious.
 
 ### Own Account
 
 For every user, see [Own Account](users-and-rights.md#own-account).
 
-| Route            | Purpose                                          |
-| ---------------- | ------------------------------------------------ |
-| `GET /me`        | own user                                         |
-| `GET /me/rights` | own effective rights with the folder name, paged |
+| Route            | Purpose                                |
+| ---------------- | -------------------------------------- |
+| `GET /me`        | own user                               |
+| `GET /me/rights` | own rights with the folder name, paged |
 
 ### Folders
 
@@ -44,7 +44,7 @@ For every user, see [Own Account](users-and-rights.md#own-account).
 | `GET /folders`                                    | lists only what the user can see, paged       |
 | `POST /folders`                                   | admin, `name`                                 |
 | `GET /folders/deleted`                            | admin, paged                                  |
-| `GET /folders/{folder_id}`                        | `read`                                        |
+| `GET /folders/{folder_id}`                        | `read` or admin                               |
 | `PATCH /folders/{folder_id}`                      | admin, `name`                                 |
 | `DELETE /folders/{folder_id}`                     | admin                                         |
 | `POST /folders/{folder_id}/restore`               | admin                                         |
@@ -97,7 +97,7 @@ Admin operations only, see [Admin Operations](users-and-rights.md#admin-operatio
 | Route                                          | Purpose                                       |
 | ---------------------------------------------- | --------------------------------------------- |
 | `GET /users`                                   | paged, includes deactivated and deleted users |
-| `POST /users`                                  | `name`, `auth_subject`, optional `is_admin`   |
+| `POST /users`                                  | `name`, `auth_subject`                        |
 | `GET /users/{user_id}`                         | one user, a deleted user gets 404             |
 | `PATCH /users/{user_id}`                       | `auth_subject`                                |
 | `DELETE /users/{user_id}`                      | delete the user, which is final               |
@@ -125,8 +125,7 @@ A user is always named as `{id, name}`, see [Own Account](users-and-rights.md#ow
 - **History item**: `type` (`md_document`, `tab` or `folder`), `id`, `name`, `previous_name`, and for a md_document also
   `tab_id`, `previous_tab_id` and `version`. It holds no content, which comes from the revision of the md_document.
 - **Own user**: `id`, `name`, `is_admin`, `created_at`.
-- **User**: `id`, `name`, `auth_subject`, `is_admin`, `is_root`, `created_by`, `created_at`, `deactivated_at`,
-  `deleted_at`.
+- **User**: `id`, `name`, `auth_subject`, `is_admin`, `created_by`, `created_at`, `deactivated_at`, `deleted_at`.
 - **Own right**: `folder` as `{id, name}`, `access_right`.
 - **Stored right**: `folder` as `{id, name}`, `user`, `access_right`, `assigned_by`, `assigned_at`.
 

@@ -11,9 +11,9 @@
 - Alembic migrations run only through `hippowiki migrate`, never on app startup. They ship inside the package, and the
   command builds the Alembic configuration in code without an `alembic.ini`, so the slim runtime image needs nothing
   copied separately.
-- `hippowiki init` runs after the migrations and creates the root admin. It is idempotent, so it is safe to run on every
+- `hippowiki init` runs after the migrations and creates the admin. It is idempotent, so it is safe to run on every
   deployment. The first deployment then needs one manual step: create the account in Keycloak and run
-  `hippowiki link-root-admin <subject>`, see [Root Admin](users-and-rights.md#root-admin).
+  `hippowiki link-admin <subject>`, see [Admin](users-and-rights.md#admin).
 - Keycloak, see [Authentication](authentication.md):
   - It has its own database and its own role on the existing PostgreSQL server, so it can not read HippoWiki's tables.
   - Its memory limit is 2 GB, as the [Keycloak container guide](https://www.keycloak.org/server/containers) recommends

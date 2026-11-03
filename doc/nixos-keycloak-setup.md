@@ -263,8 +263,8 @@ come from [Authentication](spec/authentication.md). The labels may differ slight
 - **Features:** do not enable `cimd`, `resource-indicators` or anonymous client registration, see
   [Client Registration](spec/authentication.md#client-registration).
 
-The root admin account also goes in this realm, not in `master`. Create the user, copy its ID, and run
-`hippowiki link-root-admin <subject>` with that ID, see [Root Admin](spec/users-and-rights.md#root-admin).
+The HippoWiki admin account also goes in this realm, not in `master`. Create the user, copy its ID, and run
+`hippowiki link-admin <subject>` with that ID, see [Admin](spec/users-and-rights.md#admin).
 
 [Deployment](spec/deployment.md) wants the realm as a versioned import file without secrets:
 

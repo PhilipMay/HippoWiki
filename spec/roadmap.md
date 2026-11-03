@@ -13,7 +13,7 @@ This documents what still needs to be done and is missing, most urgent first. Wh
    problem helper, `domain.py` and `schemas/`, with the import contracts that wait for the first code.
 4. **Database**: models, migrations, repositories, their fakes, the contract tests and `hippowiki migrate`.
 5. **Services**: users, rights, folders, tabs and md_documents with revisions and revert, and `hippowiki init` and
-   `hippowiki link-root-admin`.
+   `hippowiki link-admin`.
 6. **Adapters**: the REST routes and all MCP tools.
 7. **Deployment**: the `Containerfile` and the complete `compose.yaml`, see [Deployment](deployment.md).
 
@@ -35,7 +35,7 @@ it works with the real clients, so this test comes before the other implementati
   no session ID, see [Sessions and Principal](mcp.md#sessions-and-principal).
 - How each client reacts to the 401 for a valid login with no linked user or a deactivated user, in case it keeps
   retrying the login.
-- How each client reacts to the 403 for an admin account, see [Admin Accounts](mcp.md#admin-accounts), and whether the
+- How each client reacts to the 403 for the admin account, see [Admin Account](mcp.md#admin-account), and whether the
   person sees why.
 - What each client does with a `get_md_document` result at the [maximum document size](entities.md#document-size), which
   is more than some clients put into the context at once.
@@ -73,6 +73,8 @@ The results go into [Authentication](authentication.md), including Claude Code i
 
 ## Ideas
 
+- Admin role: more than one admin account, so that several administrators and admin scripts need not
+  [share one](users-and-rights.md#admin).
 - Conflicting edits: a merge strategy for conflicting AI and human edits, beyond optimistic locking.
 - Record the client of the token (the `azp` claim) in revisions, to tell AI edits from human edits made with the same
   account. Left out for now, because a [separate account](authentication.md#ai-agents) already shows up separately in
