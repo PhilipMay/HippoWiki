@@ -57,11 +57,9 @@ in [Deleted Items](request-checks.md#deleted-items).
 ## Names
 
 - every name is required, and only the default tab has the name "" (empty string)
-- folders, md_documents and users: `^[a-z0-9]+(-[a-z0-9]+)*$`, so lowercase ASCII words joined by single hyphens, with
-  at most 100 characters
+- folders, tabs other than the default tab, md_documents and users: `^[a-z0-9]+(-[a-z0-9]+)*$`, so lowercase ASCII words
+  joined by single hyphens, with at most 100 characters
   - this also rules out a user who looks like the admin, such as `Admin` or a name with a lookalike character
-- tabs: at most 100 characters, no control characters and no leading or trailing whitespace, so a name of only spaces is
-  not valid
 - a create or rename request with the name "" is rejected for every entity, because PostgreSQL runs check constraints
   before unique indexes and a check violation would otherwise become a 500
 - the name `admin` for a new user is rejected, because the admin exists whenever someone can authenticate

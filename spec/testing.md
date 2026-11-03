@@ -94,9 +94,7 @@ transport behaviour.
 
 - Each entity with a [name rule](entities.md#names) gets `DomainValidationError` for a name that is too long, and
   accepts one of exactly 100 characters.
-- `-`, `--`, `a--b`, `-a`, `a-` and `Admin` get `DomainValidationError` for folders, md_documents and users.
-- A tab name of only spaces, with a control character or with leading or trailing whitespace gets
-  `DomainValidationError`.
+- `-`, `--`, `a--b`, `-a`, `a-` and `Admin` get `DomainValidationError` for folders, tabs, md_documents and users.
 
 ### Document Size
 
@@ -144,7 +142,6 @@ transport behaviour.
   response for a hidden, a missing and a readable folder.
 - A `limit` of 0 and of 101 get 422, and 1 and 100 are accepted.
 - Paging goes on when the row named by the cursor is deleted between two pages.
-- Tab names outside ASCII sort the same on the fakes and on the real repositories.
 - Names that repeat, among deleted rows and across the tabs of a folder, are neither skipped nor repeated between pages.
 - No list has `content_md`, and neither has the result of a create or update of a md_document.
 - A folder revert with more changed items than `limit` returns all of them across pages.
