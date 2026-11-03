@@ -14,12 +14,13 @@ been changed for it.
   although the first code now arrives earlier. Suggested fix: move all of these into the first step, limited to what
   that step uses. The rest of Foundation stays where it is.
 - **Layers under the tools**: the first step has MCP tools, but [each tool makes one service call](mcp.md#tools) and the
-  services only arrive in the fifth step. [`create_app()`](architecture.md#composition) takes a unit-of-work factory and
-  builds the services itself, and the repository fakes arrive in the fourth step and live in `tests/`, which a container
-  image would not hold. So "over in-memory data" does not fit the composition. Suggested fix: the test composition
-  passes stand-in services, with only the methods the tools call, to the MCP server factory, which already takes the
-  services and the principal resolver, and passes a credential check to the middleware. The first step then needs no
-  unit of work and no repository, and the real services replace the stand-ins in the fifth step.
+  first services only arrive in the fourth step, the rest in the sixth. [`create_app()`](architecture.md#composition)
+  takes a unit-of-work factory and builds the services itself, and the repository fakes arrive in the fourth step and
+  live in `tests/`, which a container image would not hold. So "over in-memory data" does not fit the composition.
+  Suggested fix: the test composition passes stand-in services, with only the methods the tools call, to the MCP server
+  factory, which already takes the services and the principal resolver, and passes a credential check to the middleware.
+  The first step then needs no unit of work and no repository, and the real services replace the stand-ins in the sixth
+  step.
 - **Tools for the test**: the first step says "enough tools", and nothing names them. Suggested fix: `get_own_user`, to
   show who is logged in, `list_folders` and `list_md_documents`, to find the IDs, `get_md_document`, for the maximum
   size case, and `create_md_document`, as one write tool and for a body of the maximum size through the proxy. They
@@ -40,10 +41,6 @@ been changed for it.
   no matching user, so the file holds three users, each with its Keycloak subject, name, `is_admin` and deactivated
   state. It also holds a folder, a right for the linked user and a md_document at the
   [maximum document size](limits.md#document-size), which the Connector Test needs.
-- **Test code afterwards**: nothing says whether the code written for the test stays or gets thrown away. Suggested fix:
-  keep the middleware, the token check, the MCP routes and the tools, with their token, middleware and MCP transport
-  tests written in the first step. Throw away the stand-in services, the JSON file and the test composition. State this
-  in the first step of the roadmap.
 
 ## Reverse Proxy Gaps
 

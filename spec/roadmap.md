@@ -7,15 +7,22 @@ This documents what still needs to be done and is missing, most urgent first. Wh
 
 1. **Connector setup**: everything the [Connector Test](#connector-test) needs and no server provides yet: Keycloak with
    the realm import, the reverse proxy with TLS on a public URL, for which the product has to be chosen, and the auth
-   middleware and MCP routes over in-memory data, with enough tools to run the test.
+   middleware and MCP routes over in-memory data, with enough tools to run the test. The middleware, the token check,
+   the MCP routes and the tools stay, with their tests. What stands in under the tools, its data and the composition of
+   the test are thrown away, so they do not become a design for the services.
 2. **Connector Test**: see [below](#connector-test).
 3. **Foundation**: replace `demo.py`, its test and its script entry with `cli.py`, and add the settings, logging,
    problem helper, `domain.py` and `schemas/`, with the import contracts that wait for the first code.
-4. **Database**: models, migrations, repositories, their fakes, the contract tests and `hippowiki migrate`.
-5. **Services**: users, rights, folders, tabs and md_documents with revisions and revert, and `hippowiki init` and
-   `hippowiki link-admin`.
-6. **Adapters**: the REST routes and all MCP tools.
-7. **Deployment**: the `Containerfile` and the complete `compose.yaml`, see [Deployment](deployment.md).
+4. **First feature end to end**: the admin creates a folder with `POST /folders`, a user with a right reads it with
+   `GET /folders/{folder_id}` and the MCP tool `get_folder`, and a user with no right gets 404. It goes through all
+   layers: the models and migration, repositories, fakes and contract tests, services, routes, tool and
+   `create_production_app()`. This shows early that the layers fit together, on both adapters.
+5. **Database**: the remaining models, migrations, repositories, their fakes and contract tests, and
+   `hippowiki migrate`.
+6. **Services**: the remaining services for users, rights, folders, tabs and md_documents with revisions and revert, and
+   `hippowiki init` and `hippowiki link-admin`.
+7. **Adapters**: the remaining REST routes and MCP tools.
+8. **Deployment**: the `Containerfile` and the complete `compose.yaml`, see [Deployment](deployment.md).
 
 ### Connector Test
 
