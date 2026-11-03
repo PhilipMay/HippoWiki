@@ -1,7 +1,8 @@
 # Keycloak on NixOS with Podman and Traefik
 
 This guide runs Keycloak in Podman on a NixOS host, behind a Traefik that runs as the native `services.traefik` and
-handles TLS. It follows the requirements in [Deployment](../spec/deployment.md), [Authentication](../spec/authentication.md) and [Connectors](../spec/connectors.md).
+handles TLS. It follows the requirements in [Deployment](../spec/deployment.md),
+[Authentication](../spec/authentication.md) and [Connectors](../spec/connectors.md).
 
 ## What You Get
 
@@ -245,7 +246,8 @@ works with `/realms/master` closed to the internet.
 ## Realm Setup
 
 Create the realm `hippowiki` in the console (the realm menu, then "Create realm"), and then set the following. The rules
-come from [Authentication](../spec/authentication.md) and [Connectors](../spec/connectors.md). The labels may differ slightly between Keycloak versions.
+come from [Authentication](../spec/authentication.md) and [Connectors](../spec/connectors.md). The labels may differ
+slightly between Keycloak versions.
 
 - **Realm settings, Login:** turn off "User registration" and "Edit username".
 - **Realm settings, Security defenses:** turn on "Brute force detection".
