@@ -2,14 +2,22 @@
 
 This document defines how HippoWiki runs in production and for simple self-hosting.
 
+## Where It Runs
+
+- HippoWiki is independent of the Linux distribution. Everything runs in containers, with Podman or Docker, and nothing
+  in the project depends on the host.
+- Production is a NixOS host, set up in the [guide](../doc/nixos-keycloak-setup.md). It runs the same image as every
+  other setup. What is specific to NixOS stays in the guide.
+- `compose.yaml` is for development and simple self-hosting, on any distribution.
+
 ## Containers and Compose
 
-- Container image built with uv via `podman build` from a `Containerfile` (multi-stage, slim runtime). The container
-  runs as a non-root user.
-- `compose.yaml` with `app`, `postgres`, `keycloak` and a one-shot `migrate` service, run via `podman compose`, for
-  development and simple self-hosting. The `migrate` service runs `hippowiki migrate` and then `hippowiki init`, and the
-  app waits for it to succeed. The `postgres` service sets `timezone=UTC` on the server, see [Time](time.md), and uses
-  the same `postgres:16-alpine` image as the tests, because Alpine and Debian images can sort text differently.
+- Container image built with uv from a `Containerfile` (multi-stage, slim runtime), with `podman build` or
+  `docker build`. The container runs as a non-root user.
+- `compose.yaml` with `app`, `postgres`, `keycloak` and a one-shot `migrate` service, run via `podman compose` or
+  `docker compose`. The `migrate` service runs `hippowiki migrate` and then `hippowiki init`, and the app waits for it
+  to succeed. The `postgres` service sets `timezone=UTC` on the server, see [Time](time.md), and uses the same
+  `postgres:16-alpine` image as the tests, because Alpine and Debian images can sort text differently.
 - Secrets, such as the database password, never go into `compose.yaml`. They come from an uncommitted `.env` file or
   from Podman secrets.
 

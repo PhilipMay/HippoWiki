@@ -1,7 +1,7 @@
 # Connectors
 
-This document defines how AI agents, scripts and web clients log in, and why HippoWiki uses OAuth. How tokens are
-checked is in [Authentication](authentication.md).
+This document defines how AI agents, people and scripts log in, and why HippoWiki uses OAuth. How tokens are checked is
+in [Authentication](authentication.md).
 
 ## AI Agents
 
@@ -13,9 +13,24 @@ An AI agent acts as the account it logged in with. There are no tokens with fewe
 - A separate account, such as `alice-claude`, is a normal user: it gets its own folder rights, such as read-only, and
   shows up separately in the revision history.
 
-## Scripts and Web Clients
+## People
 
-REST accepts the same OAuth tokens as MCP, and there are no API tokens for now.
+REST accepts the same OAuth tokens as MCP. Admins and normal users log in the same way, and what they can do depends
+only on their account.
+
+- **Web GUI**, which comes [later](roadmap.md#later): the normal way for a person to use REST.
+  - Its server part is a separate confidential Keycloak client, which logs in with the authorization code flow and S256
+    PKCE and keeps the tokens. It adds the bearer token when it calls REST.
+  - The browser only gets a session cookie that scripts can not read. The GUI displays Markdown written by other users,
+    so a script that runs through a rendering bug must not be able to take the tokens away.
+  - Cookies end at this server, so REST stays bearer only, and HippoWiki itself keeps no login routes or stored tokens.
+- **CLI client**: until the Web GUI exists, and for work in a terminal afterwards, a person logs in through the public
+  client `hippowiki-cli` with the device flow. They approve a code in any browser and use the token with `curl` or a
+  similar tool, see the [guide](../doc/nixos-keycloak-setup.md#logging-in-on-the-command-line).
+
+## Scripts
+
+There are no API tokens for now.
 
 - Each script gets its own Keycloak client with a service account, and uses the client credentials grant.
 - The service account is linked to a HippoWiki user like any other account.
@@ -34,6 +49,9 @@ secret are entered in the connector dialog of the product.
   [Connector Test](roadmap.md#connector-test) shows whether it needs a secret.
 - The audience of the tokens comes from a fixed Audience mapper set to the MCP URL, on a default client scope. One
   audience covers both MCP and REST.
+- Each product client has "Consent required" on, so a connector can not log in silently through a Keycloak session that
+  is already open in the browser, such as the admin's. The clients of the [Web GUI and the CLI](#people) belong to
+  HippoWiki and ask for no consent.
 
 These stay off:
 
@@ -46,6 +64,11 @@ These stay off:
 
 Accepted trade-off: everyone who adds a connector themselves uses the same client secret, and replacing it means
 entering it again. The secret only identifies the product, and each person still has to log in.
+
+Accepted trade-off: tokens are not bound to a client. A person who accepts the consent screen of a product leaves a
+token with that product that is valid for their whole account, also on REST. If the person logged in with the admin
+account, MCP rejects it, but the token still works for every admin operation on REST. So the admin account must not be
+used for a connector, see [AI Agents](#ai-agents).
 
 Whether this works with the real clients is not shown yet, see [Connector Test](roadmap.md#connector-test).
 

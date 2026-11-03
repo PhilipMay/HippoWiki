@@ -35,7 +35,9 @@ This documents what still needs to be done and is missing, most urgent first. Wh
    `hippowiki init` and `hippowiki link-admin`. The real services replace the stand-ins, and the
    [Connector Test App](#connector-test-app) is removed.
 8. **Adapters**: the remaining REST routes and MCP tools.
-9. **Deployment**: the complete `compose.yaml`, see [Deployment](deployment.md).
+9. **Deployment**: the complete `compose.yaml` and the NixOS module of the
+   [complete deployment](../doc/nixos-keycloak-setup.md#complete-deployment), which run the same image, see
+   [Deployment](deployment.md).
 
 ### Connector Test App
 
@@ -92,7 +94,11 @@ it works with the real clients, so this test comes before the other implementati
 - A body of the largest size gets through the proxy. An AI client can not realistically write this much, so the script
   client sends a `create_md_document` call with `curl`, using a token of its service account: a body of exactly the
   [request body limit](limits.md#request-body-limit) passes the middleware, and one byte more gets the 413 problem+json
-  of the app. This also tries out the [script login](connectors.md#scripts-and-web-clients).
+  of the app. This also tries out the [script login](connectors.md#scripts).
+- Each product client shows its consent screen, also with a Keycloak session already open in the browser, and the login
+  finishes after accepting it.
+- The [CLI client](connectors.md#people) logs in with the device flow, and a token of the linked user gets a result from
+  `get_own_user` with `curl`. REST has no routes yet, so this shows only that the token passes the token check.
 
 If a client does not work this way, turn on the Keycloak feature `resource-indicators`, and `cimd` for Claude and Claude
 Code only, because Keycloak does not support the metadata document of ChatGPT. Both are set when Keycloak starts, so
@@ -118,9 +124,14 @@ The results go into [Authentication](authentication.md), including Claude Code i
   [Connector Test](#connector-test) shows how urgent this is.
 - MCP resources: the first version has tools only. Adding resources needs their errors, the identical 404 and tests
   defined, because a failed resource read is a protocol error in the SDK.
-- Browser clients: same origin only for now, and no Keycloak client is defined for them. A preflight `OPTIONS` carries
-  no credentials, so the auth middleware would reject it with 401. If origins get allowed, CORS wraps outside the auth
-  middleware and is configured by an allowlist that is empty by default, with a preflight test.
+- Web GUI: a GUI for admins and normal users, with the login in [People](connectors.md#people). It needs a design and a
+  Keycloak client.
+  - Its server part: how it is deployed and routed next to the app, and the CSRF protection of its session cookie.
+  - Rendering: `content_md` is written by other users, so the renderer drops raw HTML and allows only safe URL schemes,
+    and the pages get a Content-Security-Policy.
+  - CORS: the browser never calls REST directly, so REST needs none. A preflight `OPTIONS` carries no credentials, so
+    the auth middleware would reject it with 401. If other origins ever get allowed, CORS wraps outside the auth
+    middleware and is configured by an allowlist that is empty by default, with a preflight test.
 - add Prometheus for monitoring
 - add exporter to Prometheus for Database and other components
 - add Grafana for visualization
@@ -133,8 +144,7 @@ The results go into [Authentication](authentication.md), including Claude Code i
 - Record the client of the token (the `azp` claim) in revisions, to tell AI edits from human edits made with the same
   account. Left out for now, because a [separate account](connectors.md#ai-agents) already shows up separately in the
   history.
-- API tokens: REST accepts [OAuth tokens only](connectors.md#scripts-and-web-clients), and no token has fewer rights
-  than its user.
+- API tokens: REST accepts [OAuth tokens only](connectors.md#scripts), and no token has fewer rights than its user.
 - `md_document_links`: rebuilt for a md_document on every save. It enables **backlinks** ("what links here") and
   detection of **broken links**. When a md_document is created, dangling links pointing to it get resolved. md_documents
   have no path, only a folder, tab and name, so the link format has to be defined first.

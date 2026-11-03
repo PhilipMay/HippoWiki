@@ -6,7 +6,7 @@
 - **One core, two front doors**:
   - **MCP** (Model Context Protocol) so that AI systems like Claude and ChatGPT can list, read and write knowledge. It
     is not open to the admin and offers no admin operations.
-  - **REST API** so that web clients, scripts and other services can do the same. It is the only way to administer the
+  - **REST API** so that a web GUI, scripts and other services can do the same. It is the only way to administer the
     system.
 - **Multi-user** with one permanent **admin**, who manages users, folders and rights and has no access to content.
 - **Authenticated access only**: every request needs an authenticated user, there is no public or anonymous access to
@@ -19,7 +19,8 @@
 
 Search, multi-language content, attachments and import or export need a design once they come into scope.
 
-- No web UI. The REST API is designed so that any frontend can be built on top of it later.
+- No web UI yet. A Web GUI for admins and normal users comes [later](roadmap.md#later). Supporting it is the main
+  purpose of the REST API, which is designed so that any frontend can be built on top of it.
 - No search, including `SearchService`, its filters and multi-language search.
 - No multi-language content.
 - No file-based storage. Markdown lives in the database.

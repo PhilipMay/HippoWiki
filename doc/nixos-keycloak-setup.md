@@ -42,7 +42,8 @@ with [Checks](#checks):
 - the realm checklist, whose console labels were written from memory
 
 The `connector-test.nix` module and the wiki route in [Connector Test App](#connector-test-app) were written later. They
-have not been evaluated or run, and the app they start does not exist yet.
+have not been evaluated or run, and the app they start does not exist yet. The consent setting and the
+[command-line login](#logging-in-on-the-command-line) have not been run either.
 
 ## Secrets
 
@@ -265,7 +266,10 @@ slightly between Keycloak versions.
 - **Clients:** create one client per product, with "Client authentication" on and "Standard flow" on. Under "Advanced",
   set "Proof Key for Code Exchange Code Challenge Method" to `S256`. The redirect URI of Claude is
   `https://claude.ai/api/mcp/auth_callback`, and the one of Claude Code is `http://localhost:38765/callback`. Copy the
-  one for ChatGPT from its management page.
+  one for ChatGPT from its management page. Turn on "Consent required" on each of these clients, see
+  [Client Registration](../spec/connectors.md#client-registration).
+- **CLI client:** create the client `hippowiki-cli` with "Client authentication" off, "Standard flow" off and "OAuth 2.0
+  Device Authorization Grant" on, see [People](../spec/connectors.md#people).
 - **Staying logged in:** on each client of a product, under "Client scopes", check that `offline_access` is assigned, as
   "Optional" by default. A client only gets it if it asks for it, see
   [Token Lifecycle](../spec/authentication.md#token-lifecycle). [Checks](#checks) shows that the metadata lists it.
@@ -276,6 +280,24 @@ slightly between Keycloak versions.
 The HippoWiki admin account also goes in this realm, not in `master`. Create the user, copy its ID, and run
 `hippowiki link-admin <subject>` with that ID, see [Admin](../spec/users.md#admin). During the Connector Test the admin
 only needs an entry in the test data instead, because `hippowiki link-admin` does not exist yet.
+
+### Logging In on the Command Line
+
+A person gets a token for REST through the client `hippowiki-cli`:
+
+1. Ask for a code. The response holds `device_code` and `verification_uri_complete`:
+
+   ```bash
+   curl -fsS -d client_id=hippowiki-cli https://auth.example.org/realms/hippowiki/protocol/openid-connect/auth/device
+   ```
+
+2. Open `verification_uri_complete` in any browser, log in and approve the code.
+
+3. Get the token, which lasts 5 minutes, and repeat from the first step when it has expired:
+
+   ```bash
+   curl -fsS -d client_id=hippowiki-cli -d grant_type=urn:ietf:params:oauth:grant-type:device_code -d device_code=<device_code> https://auth.example.org/realms/hippowiki/protocol/openid-connect/token | jq -r .access_token
+   ```
 
 ## What HippoWiki Needs
 
@@ -292,6 +314,13 @@ HIPPOWIKI_MCP_ALLOWED_ORIGINS=["https://wiki.example.org"]
 The last two are JSON lists, which is how pydantic-settings reads a list. The SDK otherwise allows only localhost, so
 every MCP request behind Traefik would get 421.
 
+The [complete deployment](#complete-deployment) also needs `HIPPOWIKI_DATABASE_URL`. The Connector Test App does not use
+it. It holds a password, so it comes from a root-only environment file:
+
+```text
+HIPPOWIKI_DATABASE_URL=postgresql+asyncpg://hippowiki:<password>@postgres:5432/hippowiki
+```
+
 Keycloak's public hostname must also stay reachable from Anthropic's range `160.79.104.0/21`, see
 [Deployment](../spec/deployment.md).
 
@@ -299,7 +328,7 @@ Keycloak's public hostname must also stay reachable from Anthropic's range `160.
 
 This runs the temporary [Connector Test App](../spec/roadmap.md#connector-test-app) for the
 [Connector Test](../spec/roadmap.md#connector-test). The route stays afterwards, and the container is replaced by the
-complete deployment.
+[complete deployment](#complete-deployment).
 
 The route covers the whole wiki host, so the MCP path and the public routes reach the app and its middleware rejects the
 rest. It uses no `buffering` middleware, see [Reverse Proxy Setup](../spec/deployment.md#reverse-proxy-setup).
@@ -375,6 +404,25 @@ Then set it up:
    ```bash
    claude mcp add --transport http --client-id hippowiki-claude-code --client-secret --callback-port 38765 hippowiki https://wiki.example.org/mcp
    ```
+
+## Complete Deployment
+
+This host is the production system, see [Where It Runs](../spec/deployment.md#where-it-runs). The module for it, a
+`hippowiki.nix`, is written in the [Deployment step](../spec/roadmap.md#next-steps), because the image and its commands
+do not exist yet. It runs the same image as `compose.yaml`. Do not run `compose.yaml` on this host, because it would
+start a second PostgreSQL and Keycloak, and a new realm would give every account a new subject.
+
+The module and its setup have to cover:
+
+- **Database and role:** create them once by hand with `psql`, because the init script of `keycloak.nix` runs only when
+  the data volume is first created. They follow the same rules as those of Keycloak: their own role and database, and
+  `REVOKE CONNECT` from `PUBLIC`.
+- **Secrets:** a root-only environment file under `/etc/secrets/hippowiki/`, with `HIPPOWIKI_DATABASE_URL`, see
+  [What HippoWiki Needs](#what-hippowiki-needs).
+- **Migrations:** a one-shot unit that runs `hippowiki migrate` and then `hippowiki init` from the image, and that the
+  app waits for.
+- **App container:** on the `hippowiki` network, with its port bound to localhost behind the existing wiki route.
+- **Removing the test app:** `connector-test.nix` and `/etc/hippowiki/connector-test.json`.
 
 ## Realm Export and Import
 
