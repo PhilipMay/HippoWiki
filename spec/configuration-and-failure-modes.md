@@ -1,7 +1,7 @@
 # Configuration and Failure Modes
 
 This document collects what has to be configured for each component and how it can fail. It adds no new rules: the rules
-stay in the documents it links to, and open items of the specification stay in [Gaps](gaps.md).
+stay in the documents it links to, and open items of the specification stay in the [Roadmap](roadmap.md).
 
 ## Values That Must Match
 
@@ -15,7 +15,7 @@ logins or requests still fail.
 | Signing keys URL          | `HIPPOWIKI_OAUTH_JWKS_URL` and Keycloak's address inside the container network                                                              | 503, not 401, so it looks like an outage                  |
 | Allowed hosts and origins | `HIPPOWIKI_MCP_ALLOWED_HOSTS`, `HIPPOWIKI_MCP_ALLOWED_ORIGINS` and the public hostname                                                      | 421 or 403, because the SDK default allows only localhost |
 | Redirect URIs             | The Keycloak client and each product, see [Client Registration](connectors.md#client-registration)                                          | The login fails at Keycloak                               |
-| Body limit                | The reverse proxy and the app's 2 MiB, see [Request Body Limit](limits.md#request-body-limit)                                               | A lower proxy limit rejects documents the app allows      |
+| Body limit                | Any limit on the reverse proxy and the app's 2 MiB, see [Request Body Limit](limits.md#request-body-limit)                                  | A lower proxy limit rejects documents the app allows      |
 | User link                 | `users.auth_subject` and Keycloak's `sub`, see [User Linking](users.md#user-linking)                                                        | A valid login, but 401                                    |
 
 ## Components
@@ -34,7 +34,7 @@ Keep off self-registration, username editing, dynamic client registration and th
 
 What can go wrong:
 
-- The realm import is still untested, see [Gaps](gaps.md#keycloak-gaps).
+- The realm import is still untested, and it comes after the Connector Test, see [Roadmap](roadmap.md#next-steps).
 - A firewall can block Claude's IP range and break the login, see [Deployment](deployment.md).
 - The admin console can be exposed by accident.
 - When Keycloak is down, existing access tokens work for at most 5 more minutes, and then clients are locked out, see
@@ -45,14 +45,12 @@ What can go wrong:
 Configure:
 
 - TLS and routes for both hostnames
-- the body limit
-- an idle timeout longer than the slowest tool call
+- no body limit, because the app enforces it
+- no timeout that cuts a response before the slowest tool call ends
 
-What can go wrong:
+What can go wrong, see [Deployment](deployment.md#reverse-proxy-setup):
 
-- Buffering can hold back streamed MCP responses.
-- The documents disagree on whether `/.well-known/` is exposed, the product is not chosen and the wiki hostname has no
-  route, see [Gaps](gaps.md#reverse-proxy-gaps).
+- The Traefik `buffering` middleware holds back streamed MCP responses, so it is not used for a body limit.
 
 ### PostgreSQL and Alembic
 
@@ -93,8 +91,8 @@ What can go wrong, see the [implementation notes](implementation-notes.md#mcp-sd
 
 ### Auth Middleware
 
-Configure the credential check, the MCP path and the body limit, which are passed in as parameters, with RS256 as the
-only allowed algorithm.
+Configure the credential check, the MCP path, the public paths, the metadata URL and the body limit, which are passed in
+as parameters, with RS256 as the only allowed algorithm.
 
 What can go wrong:
 

@@ -22,7 +22,7 @@ fixed in the code and are not settings.
 - the size is checked only when a client sends `content_md`, so on a create and an update (service)
   - a rename, a move, a restore and a revert bring no new content and are not checked, so a limit lowered later can not
     block recovery or make a folder revert fail
-- the value is not a setting, because the request body limit and the reverse proxy depend on it
+- the value is not a setting, because the request body limit depends on it
 - there is no check constraint, so changing the value needs no migration
 
 ## Request Body Limit
@@ -35,7 +35,8 @@ can grow one UTF-8 byte to six, because U+0001 becomes `\u0001` and `SafeText` a
 need 1.5 MiB. The other 512 KiB covers the name, the IDs and the JSON-RPC envelope.
 
 `app.py` holds the value as `MAX_REQUEST_BODY_BYTES` and passes it to the middleware, while `services/md_documents.py`
-holds `MAX_CONTENT_MD_BYTES`. The [reverse proxy](deployment.md#reverse-proxy-setup) needs a matching limit.
+holds `MAX_CONTENT_MD_BYTES`. The [reverse proxy](deployment.md#reverse-proxy-setup) sets no limit of its own, and a
+later one must not be lower.
 
 The middleware reads the body up to the limit before it calls the app, and then replays it. Memory is bounded by the
 limit, and after the replay `receive` goes to the original one again, so the app still gets `http.disconnect`. The

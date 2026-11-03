@@ -42,7 +42,6 @@ Operations and planning:
 - [Configuration and Failure Modes](configuration-and-failure-modes.md): what to configure for each component and what
   can go wrong.
 - [Roadmap](roadmap.md): next steps and open points.
-- [Gaps](gaps.md): open gaps that block the Connector Test.
 
 ## Glossary
 

@@ -9,6 +9,7 @@ src/hippowiki/
 │                        # lifespan (MCP session manager)
 │                        # create_production_app(): real factory and credential check, lifespan (DB engine)
 ├── cli.py               # CLI: hippowiki migrate, hippowiki init, hippowiki link-admin
+├── connector_test_app.py # temporary composition of the Connector Test: stand-in services, test data from a JSON file
 ├── config.py            # Settings (pydantic-settings)
 ├── domain.py            # frozen dataclasses exchanged by repositories, services and adapters, including Page and UserRef
 ├── logs.py              # JSON log formatter and logging setup, also for Uvicorn's loggers
@@ -44,11 +45,13 @@ src/hippowiki/
 │   └── principal.py     # Principal abstraction (user / admin)
 ├── api/                 # REST adapter
 │   ├── routers/
+│   │   └── public.py    # the public routes: health and protected resource metadata, gets the issuer and MCP URL as parameters
 │   ├── deps.py          # FastAPI dependencies (principal from the scope, services)
 │   └── errors.py        # domain exceptions, request validation errors and framework errors → RFC 9457 problem+json
 └── mcp/                 # MCP adapter
     ├── server.py        # MCPServer factory (takes the services and the principal resolver), stateless transport setup,
-    │                    # routes for app.py, 405 for everything except POST
+    │                    # routes for app.py, 405 for everything except POST,
+    │                    # small Protocols with the service methods the tools call
     └── tools.py         # tool definitions wrapping services, shared wrapper: forbids unknown arguments, raises ToolError
 ```
 
@@ -62,7 +65,12 @@ src/hippowiki/
   - They call **only** `services/` for behaviour, and make exactly one service call per request or tool call.
   - Apart from that they may import `schemas/`, `domain.py`, `services/errors.py`, `auth/principal.py` and `problem.py`.
     They never touch the DB, sessions or repositories directly.
-- **Composition roots**: `app.py` and `cli.py` may import anything, and nothing imports them.
+  - The [public routes](authentication.md#public-routes) are the exception: they make no service call, and get what they
+    need as parameters, because adapters do not import `config.py`.
+  - `mcp/server.py` types the services with its Protocols, so that the stand-ins of the
+    [Connector Test App](roadmap.md#connector-test-app) and the real services both pass strict mypy.
+- **Composition roots**: `app.py`, `cli.py` and, until the [Services step](roadmap.md#next-steps),
+  `connector_test_app.py` may import anything, and nothing imports them.
 - **Pure modules**: `schemas/` imports no other HippoWiki package, which keeps validators free of lookups. `domain.py`,
   `problem.py` and `config.py` import no other HippoWiki package either.
 - **Data between the layers**: repositories and services exchange the small frozen dataclasses from `domain.py`, and the
@@ -89,8 +97,9 @@ src/hippowiki/
   - `auth/principal.py` imports only `domain.py`, and the adapters, the services and the rest of `auth/` may import it.
   - `auth/tokens.py` imports no other HippoWiki package, and gets its settings as parameters.
   - `auth/credentials.py` uses only `repositories/interfaces.py`, `auth/principal.py` and `auth/tokens.py`.
-  - `auth/middleware.py` uses only `auth/principal.py` and `problem.py`, and gets the credential check, the MCP path and
-    the [request body limit](limits.md#request-body-limit) as parameters.
+  - `auth/middleware.py` uses only `auth/principal.py` and `problem.py`, and gets the credential check, the MCP path,
+    the [public paths](authentication.md#public-routes), the metadata URL for `WWW-Authenticate` and the
+    [request body limit](limits.md#request-body-limit) as parameters.
 - **Conflicts**:
   - Repositories flush after each write, so a unique violation surfaces inside the repository. It becomes
     `DuplicateNameError` or, for `auth_subject`, `DuplicateSubjectError`, and the service turns these into

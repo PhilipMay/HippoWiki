@@ -2,7 +2,8 @@
 
 This guide runs Keycloak in Podman on a NixOS host, behind a Traefik that runs as the native `services.traefik` and
 handles TLS. It follows the requirements in [Deployment](../spec/deployment.md),
-[Authentication](../spec/authentication.md) and [Connectors](../spec/connectors.md).
+[Authentication](../spec/authentication.md) and [Connectors](../spec/connectors.md). It also runs the temporary
+[Connector Test App](#connector-test-app) on the same host.
 
 ## What You Get
 
@@ -16,12 +17,13 @@ handles TLS. It follows the requirements in [Deployment](../spec/deployment.md),
 
 Replace these placeholders everywhere:
 
-| Placeholder                    | Meaning                                                    |
-| ------------------------------ | ---------------------------------------------------------- |
-| `auth.example.org`             | public hostname of Keycloak, with DNS pointing at the host |
-| `https://wiki.example.org/mcp` | the MCP URL of HippoWiki, used as the token audience       |
-| `websecure`                    | the name of your HTTPS entry point in Traefik              |
-| `letsencrypt`                  | the name of your certificate resolver in Traefik           |
+| Placeholder                    | Meaning                                                     |
+| ------------------------------ | ----------------------------------------------------------- |
+| `auth.example.org`             | public hostname of Keycloak, with DNS pointing at the host  |
+| `wiki.example.org`             | public hostname of HippoWiki, with DNS pointing at the host |
+| `https://wiki.example.org/mcp` | the MCP URL of HippoWiki, used as the token audience        |
+| `websecure`                    | the name of your HTTPS entry point in Traefik               |
+| `letsencrypt`                  | the name of your certificate resolver in Traefik            |
 
 ## How It Was Tested
 
@@ -38,6 +40,9 @@ with [Checks](#checks):
 - the health check that makes Keycloak wait for PostgreSQL
 - the native Traefik route and real TLS
 - the realm checklist, whose console labels were written from memory
+
+The `connector-test.nix` module and the wiki route in [Connector Test App](#connector-test-app) were written later. They
+have not been evaluated or run, and the app they start does not exist yet.
 
 ## Secrets
 
@@ -259,23 +264,18 @@ slightly between Keycloak versions.
   this before the clients, so that they pick it up.
 - **Clients:** create one client per product, with "Client authentication" on and "Standard flow" on. Under "Advanced",
   set "Proof Key for Code Exchange Code Challenge Method" to `S256`. The redirect URI of Claude is
-  `https://claude.ai/api/mcp/auth_callback`. Copy the one for ChatGPT from its management page.
+  `https://claude.ai/api/mcp/auth_callback`, and the one of Claude Code is `http://localhost:38765/callback`. Copy the
+  one for ChatGPT from its management page.
+- **Staying logged in:** on each client of a product, under "Client scopes", check that `offline_access` is assigned, as
+  "Optional" by default. A client only gets it if it asks for it, see
+  [Token Lifecycle](../spec/authentication.md#token-lifecycle). [Checks](#checks) shows that the metadata lists it.
 - **Script clients:** create one client per script, with "Service accounts roles" on and "Standard flow" off.
 - **Features:** do not enable `cimd`, `resource-indicators` or anonymous client registration, see
   [Client Registration](../spec/connectors.md#client-registration).
 
 The HippoWiki admin account also goes in this realm, not in `master`. Create the user, copy its ID, and run
-`hippowiki link-admin <subject>` with that ID, see [Admin](../spec/users.md#admin).
-
-[Deployment](../spec/deployment.md) wants the realm as a versioned import file without secrets:
-
-1. In "Realm settings", use "Action" and then "Partial export", including clients and groups.
-2. Replace each client secret with an environment placeholder such as `${CLAUDE_CLIENT_SECRET}`, and save the file as
-   `hippowiki-realm.json`.
-3. For a new installation, mount the file into `/opt/keycloak/data/import` and use `cmd = [ "start" "--import-realm" ]`.
-   Keycloak skips the import when the realm already exists, so it can not overwrite a running setup.
-
-This export and import has not been tested yet.
+`hippowiki link-admin <subject>` with that ID, see [Admin](../spec/users.md#admin). During the Connector Test the admin
+only needs an entry in the test data instead, because `hippowiki link-admin` does not exist yet.
 
 ## What HippoWiki Needs
 
@@ -285,10 +285,109 @@ If the HippoWiki container joins the `hippowiki` network:
 HIPPOWIKI_OAUTH_ISSUER=https://auth.example.org/realms/hippowiki
 HIPPOWIKI_OAUTH_AUDIENCE=https://wiki.example.org/mcp
 HIPPOWIKI_OAUTH_JWKS_URL=http://keycloak:8080/realms/hippowiki/protocol/openid-connect/certs
+HIPPOWIKI_MCP_ALLOWED_HOSTS=["wiki.example.org"]
+HIPPOWIKI_MCP_ALLOWED_ORIGINS=["https://wiki.example.org"]
 ```
+
+The last two are JSON lists, which is how pydantic-settings reads a list. The SDK otherwise allows only localhost, so
+every MCP request behind Traefik would get 421.
 
 Keycloak's public hostname must also stay reachable from Anthropic's range `160.79.104.0/21`, see
 [Deployment](../spec/deployment.md).
+
+## Connector Test App
+
+This runs the temporary [Connector Test App](../spec/roadmap.md#connector-test-app) for the
+[Connector Test](../spec/roadmap.md#connector-test). The route stays afterwards, and the container is replaced by the
+complete deployment.
+
+The route covers the whole wiki host, so the MCP path and the public routes reach the app and its middleware rejects the
+rest. It uses no `buffering` middleware, see [Reverse Proxy Setup](../spec/deployment.md#reverse-proxy-setup).
+
+Save this as `connector-test.nix` next to `configuration.nix`:
+
+```nix
+{ ... }:
+
+{
+  # These lists merge with the ones in keycloak.nix.
+  systemd.services.podman-network-hippowiki = {
+    requiredBy = [ "podman-hippowiki-connector-test.service" ];
+    before = [ "podman-hippowiki-connector-test.service" ];
+  };
+
+  virtualisation.oci-containers.containers.hippowiki-connector-test = {
+    image = "localhost/hippowiki:connector-test";
+    cmd = [ "uvicorn" "--factory" "hippowiki.connector_test_app:create_connector_test_app" "--host" "0.0.0.0" "--port" "8000" ];
+    networks = [ "hippowiki" ];
+    # Published ports bypass the NixOS firewall, so bind them to localhost.
+    ports = [ "127.0.0.1:8280:8000" ];
+    volumes = [ "/etc/hippowiki/connector-test.json:/data/connector-test.json:ro" ];
+    environment = {
+      HIPPOWIKI_OAUTH_ISSUER = "https://auth.example.org/realms/hippowiki";
+      HIPPOWIKI_OAUTH_AUDIENCE = "https://wiki.example.org/mcp";
+      HIPPOWIKI_OAUTH_JWKS_URL = "http://keycloak:8080/realms/hippowiki/protocol/openid-connect/certs";
+      HIPPOWIKI_MCP_ALLOWED_HOSTS = ''["wiki.example.org"]'';
+      HIPPOWIKI_MCP_ALLOWED_ORIGINS = ''["https://wiki.example.org"]'';
+      HIPPOWIKI_CONNECTOR_TEST_DATA = "/data/connector-test.json";
+    };
+  };
+
+  services.traefik.dynamicConfigOptions.http = {
+    routers.hippowiki = {
+      rule = "Host(`wiki.example.org`)";
+      entryPoints = [ "websecure" ];
+      tls.certResolver = "letsencrypt";
+      service = "hippowiki";
+    };
+    services.hippowiki.loadBalancer.servers = [
+      { url = "http://127.0.0.1:8280"; }
+    ];
+  };
+}
+```
+
+Then set it up:
+
+1. Build the image on the host from a copy of the project. This needs no registry and gives the image the architecture
+   of the host:
+
+   ```bash
+   sudo podman build -t localhost/hippowiki:connector-test -f Containerfile .
+   ```
+
+2. In the realm `hippowiki`, create the users for a linked user, a deactivated user, the admin and an unlinked user,
+   each with a password, and one [script client](#realm-setup). Copy the ID of each user except the unlinked one, and
+   the ID of the service account of the script client, which its "Service account roles" tab links to.
+
+3. Write the test data with these IDs to `/etc/hippowiki/connector-test.json`, see
+   [Connector Test App](../spec/roadmap.md#connector-test-app). It holds no secrets, and has to be readable by all,
+   because the container runs as a non-root user.
+
+4. Add `./connector-test.nix` to `imports`, and apply the configuration:
+
+   ```bash
+   sudo nixos-rebuild switch
+   ```
+
+5. Add the connector in each product, with the client ID and secret of its client. For Claude Code:
+
+   ```bash
+   claude mcp add --transport http --client-id hippowiki-claude-code --client-secret --callback-port 38765 hippowiki https://wiki.example.org/mcp
+   ```
+
+## Realm Export and Import
+
+Do this after the [Connector Test](../spec/roadmap.md#next-steps), so the export holds its results.
+[Deployment](../spec/deployment.md) wants the realm as a versioned import file without secrets:
+
+1. In "Realm settings", use "Action" and then "Partial export", including clients and groups.
+2. Replace each client secret with an environment placeholder such as `${CLAUDE_CLIENT_SECRET}`, and save the file as
+   `hippowiki-realm.json`.
+3. For a new installation, mount the file into `/opt/keycloak/data/import` and use `cmd = [ "start" "--import-realm" ]`.
+   Keycloak skips the import when the realm already exists, so it can not overwrite a running setup.
+
+This export and import has not been tested yet.
 
 ## Checks
 
@@ -310,10 +409,10 @@ Run these on the host:
    sudo podman exec postgres psql -U postgres -Atc 'show timezone'
    ```
 
-3. The Keycloak ports listen on localhost only. Expect `127.0.0.1` in every line:
+3. The ports of Keycloak and the Connector Test app listen on localhost only. Expect `127.0.0.1` in every line:
 
    ```bash
-   sudo ss -tlnp | grep -E ':(8180|9180)'
+   sudo ss -tlnp | grep -E ':(8180|9180|8280)'
    ```
 
 Run these from outside the host, once the realm exists:
@@ -344,6 +443,32 @@ Run these from outside the host, once the realm exists:
    `https://auth.example.org/realms/hippowiki/account`, and look at the event under "Events" in the console. Expect your
    own public IP address. This depends on how Podman forwards the port on your host, see
    [Troubleshooting](#troubleshooting).
+
+5. The metadata of Keycloak lists `offline_access`. Expect a number, not `null`:
+
+   ```bash
+   curl -fsS https://auth.example.org/.well-known/oauth-authorization-server/realms/hippowiki | jq '.scopes_supported | index("offline_access")'
+   ```
+
+Run these from outside the host, once the [Connector Test App](#connector-test-app) runs:
+
+1. The health route answers through Traefik. Expect 200:
+
+   ```bash
+   curl -s -o /dev/null -w '%{http_code}\n' https://wiki.example.org/health
+   ```
+
+2. The protected resource metadata names the MCP URL. Expect `https://wiki.example.org/mcp`:
+
+   ```bash
+   curl -fsS https://wiki.example.org/.well-known/oauth-protected-resource/mcp | jq -r .resource
+   ```
+
+3. MCP asks for a login and points at the metadata. Expect 401 and a `www-authenticate` line with `resource_metadata`:
+
+   ```bash
+   curl -si -X POST https://wiki.example.org/mcp | grep -iE '^(HTTP|www-authenticate)'
+   ```
 
 ## Backups and Upgrades
 
@@ -377,6 +502,8 @@ journalctl -u podman-keycloak -n 100 --no-pager
 | Events show another private address as the client             | The address Traefik connects from is outside the trusted subnet. Add it to `KC_PROXY_TRUSTED_ADDRESSES`.                                                                         |
 | Keycloak stops with an out-of-memory error                    | The container limit is too low. The Keycloak guide requires at least 750 MB and recommends 2 GB.                                                                                 |
 | 404 from Traefik on every path                                | The entry point or resolver name differs, or `dynamicConfigFile` overrides `dynamicConfigOptions`. Check the Traefik logs.                                                       |
+| 421 on MCP requests                                           | `HIPPOWIKI_MCP_ALLOWED_HOSTS` does not hold the wiki hostname. See [What HippoWiki Needs](#what-hippowiki-needs).                                                                |
+| 403 on MCP requests of a user who is not the admin            | The client sends an `Origin` that `HIPPOWIKI_MCP_ALLOWED_ORIGINS` does not hold. The log of the app shows it.                                                                    |
 
 ## Sources
 

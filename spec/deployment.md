@@ -28,18 +28,30 @@ This document defines how HippoWiki runs in production and for simple self-hosti
 - Its memory limit is 2 GB, as the [Keycloak container guide](https://www.keycloak.org/server/containers) recommends for
   smaller production deployments.
 - The realm configuration is a versioned import file without secrets. Client secrets and the bootstrap admin password
-  follow the same rule as the other secrets.
+  follow the same rule as the other secrets. The file only comes after the [Connector Test](roadmap.md#next-steps), and
+  until then the realm is configured in the console.
 - HippoWiki gets `HIPPOWIKI_OAUTH_ISSUER`, the public URL of the realm, `HIPPOWIKI_OAUTH_AUDIENCE`, the MCP URL, and
   `HIPPOWIKI_OAUTH_JWKS_URL`, so signing keys can be fetched inside the container network.
 
 ## Reverse Proxy Setup
 
-- Reverse proxy with TLS (e.g. Caddy or Traefik) in front, required for remote MCP connectors.
-- MCP tool calls can answer as a stream, so the idle timeout of the proxy has to be longer than the slowest tool call.
-- Its body limit equals the [Request Body Limit](limits.md#request-body-limit) and is never lower, because a lower one
-  would reject documents the app allows. Over the limit a client may get the proxy's own 413 body instead of
-  problem+json, which is accepted.
-- It exposes Keycloak's login paths (`/realms/` and `/resources/`), but not its admin console.
+- Traefik with TLS in front, required for remote MCP connectors. It routes the whole wiki hostname to the app, whose
+  middleware rejects everything that is not allowed.
+- MCP tool calls can answer as a stream, so the proxy must not cut a response before the slowest tool call ends. In
+  Traefik the entry point setting `writeTimeout` covers the whole response. It has no limit by default, so leave it
+  unset or above the slowest tool call. `readTimeout`, 60 seconds by default, bounds a slow upload.
+- It sets no body limit. The auth middleware enforces the [Request Body Limit](limits.md#request-body-limit), rejects an
+  unauthenticated request before it reads the body, and answers over the limit with problem+json.
+  - The Traefik `buffering` middleware is not used. In Traefik 3.7 it holds back every response until it is complete,
+    and the switch that turns this off can not be set from configuration files before Traefik 3.8.
+  - A later proxy limit must not be below the request body limit, because a lower one would reject documents the app
+    allows.
+- It exposes Keycloak's login paths (`/realms/` and `/resources/`) and `/.well-known/`, which serves the RFC 8414
+  metadata, but not its admin console.
+- HippoWiki gets `HIPPOWIKI_MCP_ALLOWED_HOSTS`, the wiki hostname, and `HIPPOWIKI_MCP_ALLOWED_ORIGINS`, `https://` plus
+  the wiki hostname, because an origin includes the scheme. Without them the SDK allows only localhost, so every request
+  behind the proxy gets 421, see [Serving the MCP App](mcp.md#serving-the-mcp-app). The
+  [Connector Test](roadmap.md#connector-test) shows whether a client sends an `Origin` at all.
 - HippoWiki and Keycloak must both be reachable from the public internet, including Anthropic's range `160.79.104.0/21`,
   because Claude connects from there. A firewall in front of Keycloak can break the login.
 

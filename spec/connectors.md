@@ -29,6 +29,9 @@ secret are entered in the connector dialog of the product.
 - ChatGPT: the redirect URI comes from the management page, see [Why OAuth](#why-oauth).
 - Claude: the redirect URI is `https://claude.ai/api/mcp/auth_callback`, and the connector uses the option "Use your own
   OAuth client".
+- Claude Code: the redirect URI is `http://localhost:38765/callback`, with the client ID given by `--client-id` and the
+  port fixed by `--callback-port 38765`. Its client starts as confidential like the others, and the
+  [Connector Test](roadmap.md#connector-test) shows whether it needs a secret.
 - The audience of the tokens comes from a fixed Audience mapper set to the MCP URL, on a default client scope. One
   audience covers both MCP and REST.
 

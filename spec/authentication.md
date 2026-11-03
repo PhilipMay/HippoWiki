@@ -42,6 +42,9 @@ Signing keys are cached in memory:
 - Access tokens last 5 minutes.
 - Refresh tokens rotate, and the `offline_access` scope keeps connectors logged in between sessions. The exact session
   lifetimes are set during the [Connector Test](roadmap.md#connector-test).
+- A client requests `offline_access` itself, when the metadata of Keycloak lists it. HippoWiki can not make it: the
+  [MCP draft specification](https://modelcontextprotocol.io/specification/draft/basic/authorization) says a server
+  should not name this scope in its protected resource metadata or in `WWW-Authenticate`.
 - Keycloak stores and revokes refresh tokens and sessions. HippoWiki stores no tokens, so it needs no token hashing.
 - Removing the link of a user, or deactivating them, blocks them on the next request. Disabling them only in Keycloak
   takes effect when their access token expires, so after up to 5 minutes.
