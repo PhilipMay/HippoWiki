@@ -34,7 +34,8 @@ are in [Tech Stack](tech-stack.md).
 ```
 
 All application code between the clients and PostgreSQL runs in a single ASGI process, behind a reverse proxy for remote
-access. Clients log in at Keycloak, a separate service that issues the tokens, see [Authentication](authentication.md).
+access. Clients log in at the [OAuth Server](oauth-server.md), a part of the same process that issues the tokens. It
+sits beside the two adapters and uses the same database, and the diagram leaves it out.
 
 Key idea: **MCP and REST are thin adapters** over the same service layer. All domain rules (domain validation,
 permissions, versioning) live in exactly one place, so both interfaces always behave identically. The adapters only
@@ -59,6 +60,8 @@ One unit of work, over one DB session and transaction, runs per public service m
 - Leaving a unit of work without a commit rolls it back, also when a domain error passes through.
 - Public service methods do not call each other inside a transaction. Shared steps take the open unit of work as a
   parameter.
+- The login is the one exception to one unit of work per method: it reads the hash in one, runs the slow password hash
+  outside any transaction, and writes the result in another, so a login holds no database connection while hashing.
 - These are written atomically: a document update and its revision rows, a delete or restore and its revision, and a new
   folder and its default tab.
 - The credential lookup in the auth middleware uses its own short unit of work, separate from the transaction of the

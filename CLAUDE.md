@@ -20,12 +20,13 @@ implementation.
 - content rules, names, deleting and restoring: `spec/content.md`
 - database tables and constraints: `spec/database.md`
 - rights on folders: `spec/rights.md`
-- own account, admin, admin operations, user linking and user lifecycle: `spec/users.md`
+- own account, admin, admin operations, passwords and user lifecycle: `spec/users.md`
 - history, revisions and revert: `spec/history-revisions.md`
 - time rules: `spec/time.md`
 - fixed limits, document size and request body size: `spec/limits.md`
 - tokens, authentication middleware and public routes: `spec/authentication.md`
 - login of AI agents, scripts and web clients, and why OAuth: `spec/connectors.md`
+- the built-in OAuth server, its clients, login page, tokens and login protection: `spec/oauth-server.md`
 - check order and denied requests: `spec/request-checks.md`
 - REST error format and MCP tool errors: `spec/errors.md`
 - REST routes and response fields: `spec/rest.md`

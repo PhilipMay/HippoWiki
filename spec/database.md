@@ -3,17 +3,21 @@
 This document defines the tables, indexes and constraints. Rules that table constraints can not express are in
 [Content](content.md), [Rights](rights.md) and [Users](users.md).
 
-| Entity               | Table                  | Notes                           |
-| -------------------- | ---------------------- | ------------------------------- |
-| md_document          | md_documents           | a Markdown document             |
-| tab                  | tabs                   |                                 |
-| folder               | folders                |                                 |
-| user                 | users                  |                                 |
-| folder_right         | folder_rights          | the right of a user on a folder |
-| folder_history_entry | folder_history_entries | one numbered change in a folder |
-| md_document_revision | md_document_revisions  | a snapshot of a md_document     |
-| tab_revision         | tab_revisions          | a snapshot of a tab             |
-| folder_revision      | folder_revisions       | a snapshot of a folder          |
+| Entity               | Table                  | Notes                             |
+| -------------------- | ---------------------- | --------------------------------- |
+| md_document          | md_documents           | a Markdown document               |
+| tab                  | tabs                   |                                   |
+| folder               | folders                |                                   |
+| user                 | users                  |                                   |
+| user_password        | user_passwords         | the password hash of a user       |
+| oauth_client         | oauth_clients          | an own client of the OAuth server |
+| oauth_code           | oauth_codes            | an authorization code             |
+| oauth_token          | oauth_tokens           | an access or refresh token        |
+| folder_right         | folder_rights          | the right of a user on a folder   |
+| folder_history_entry | folder_history_entries | one numbered change in a folder   |
+| md_document_revision | md_document_revisions  | a snapshot of a md_document       |
+| tab_revision         | tab_revisions          | a snapshot of a tab               |
+| folder_revision      | folder_revisions       | a snapshot of a folder            |
 
 ## Rules for All Tables
 
@@ -25,8 +29,9 @@ This document defines the tables, indexes and constraints. Rules that table cons
   - UUIDv4 needs no new dependency and reveals nothing, while a UUIDv7 would put the host clock into stored data,
     against [Time](time.md). A random ID is fine as a tie-breaker, which only needs to be stable.
 - Foreign keys have no `ON DELETE` action, because md_documents, tabs, folders and users are never removed. Only
-  `folder_rights` rows are physically deleted. So `created_by` and `assigned_by` are never null, and the admin can refer
-  to itself because a foreign key is checked at the end of the statement.
+  `folder_rights` rows and the rows of the [OAuth tables](#oauth-tables) are physically deleted. So `created_by` and
+  `assigned_by` are never null, and the admin can refer to itself because a foreign key is checked at the end of the
+  statement.
 - The `name` columns of `md_documents`, `tabs`, `folders` and `users` use `COLLATE "C"`, because [lists](lists.md) are
   sorted by them, see [PostgreSQL Notes](implementation-notes.md#postgresql-notes).
 
@@ -85,23 +90,88 @@ This document defines the tables, indexes and constraints. Rules that table cons
 
 ## User Table
 
-| Column           | Type                          | Notes                                                                      |
-| ---------------- | ----------------------------- | -------------------------------------------------------------------------- |
-| `id`             | uuid, PK                      |                                                                            |
-| `name`           | text, not null, unique        | stays reserved, also while the user is deactivated                         |
-| `auth_subject`   | text, unique                  | the `sub` claim of the linked Keycloak account, null when no one is linked |
-| `is_admin`       | bool, not null, default false | true for the admin                                                         |
-| `created_by`     | uuid → users, not null        | the admin is created by itself                                             |
-| `created_at`     | timestamptz                   |                                                                            |
-| `deactivated_at` | timestamptz                   | null while the user is active                                              |
+| Column           | Type                          | Notes                                              |
+| ---------------- | ----------------------------- | -------------------------------------------------- |
+| `id`             | uuid, PK                      |                                                    |
+| `name`           | text, not null, unique        | stays reserved, also while the user is deactivated |
+| `is_admin`       | bool, not null, default false | true for the admin                                 |
+| `created_by`     | uuid → users, not null        | the admin is created by itself                     |
+| `created_at`     | timestamptz                   |                                                    |
+| `deactivated_at` | timestamptz                   | null while the user is active                      |
 
 - A check constraint `name <> ''` enforces that the name is not empty.
-- A check constraint `auth_subject <> ''` enforces that a link is not empty. Null means that nobody can log in as this
-  user, see [User Linking](users.md#user-linking). There is no issuer column, because there is one issuer.
 - A check constraint `is_admin = (name = 'admin')` enforces that the user named `admin` is the admin and that no other
   user is. Together with the unique, not null name, this allows at most one admin.
 - A check constraint `NOT is_admin OR deactivated_at IS NULL` enforces that the admin is never deactivated, also under
   concurrent transactions.
+
+## User Password Table
+
+The rules are in [Passwords](users.md#passwords) and [Login Protection](oauth-server.md#login-protection). The hash has
+its own table, so reading a user can not bring it along. A user without a row can not log in, which is how the admin
+starts.
+
+| Column            | Type                     | Notes                                       |
+| ----------------- | ------------------------ | ------------------------------------------- |
+| `user_id`         | uuid → users, PK         |                                             |
+| `password_hash`   | text, not null           | Argon2id, with its parameters               |
+| `is_one_time`     | bool, not null           | a new password is needed at the next login  |
+| `failed_attempts` | int, not null, default 0 | failed logins since the last successful one |
+| `locked_until`    | timestamptz              | null when no wait applies                   |
+| `changed_at`      | timestamptz              |                                             |
+
+## OAuth Tables
+
+The rules are in [OAuth Server](oauth-server.md). Hashes are SHA-256 as `bytea`, and the values themselves are never
+stored. `client_id` has no foreign key, because a [trusted client](oauth-server.md#trusted-clients) has no row. Rows are
+physically deleted, so `user_id` is the only foreign key and nothing refers to these tables.
+
+`oauth_clients` holds the [own clients](oauth-server.md#own-clients):
+
+| Column          | Type                          | Notes                                                |
+| --------------- | ----------------------------- | ---------------------------------------------------- |
+| `id`            | text, PK                      | generated, and never a URL                           |
+| `name`          | text, not null                | shown on the login page                              |
+| `secret_hash`   | bytea                         | null for a public client                             |
+| `redirect_uris` | text[], not null              | empty for a script client                            |
+| `script_user`   | uuid → users                  | the user of a script client, null for a login client |
+| `admin_allowed` | bool, not null, default false | the admin may approve this login client              |
+| `created_at`    | timestamptz                   |                                                      |
+
+- A check constraint enforces that a client is either a login client, with redirect URIs and no `script_user`, or a
+  script client, with a `script_user`, a `secret_hash` and no redirect URIs.
+
+`oauth_codes` holds the authorization codes:
+
+| Column           | Type                   | Notes                                                               |
+| ---------------- | ---------------------- | ------------------------------------------------------------------- |
+| `code_hash`      | bytea, PK              |                                                                     |
+| `family_id`      | uuid, not null         | the family that this code starts                                    |
+| `client_id`      | text, not null         |                                                                     |
+| `user_id`        | uuid → users, not null |                                                                     |
+| `redirect_uri`   | text, not null         | exactly as the request sent it, so the token request can compare it |
+| `code_challenge` | text, not null         | S256 is the only method                                             |
+| `scope`          | text, not null         | the granted scope, may be empty                                     |
+| `created_at`     | timestamptz            |                                                                     |
+| `expires_at`     | timestamptz, not null  |                                                                     |
+| `consumed_at`    | timestamptz            | null until used, kept to detect a second use                        |
+
+`oauth_tokens` holds access and refresh tokens:
+
+| Column        | Type                   | Notes                                                                           |
+| ------------- | ---------------------- | ------------------------------------------------------------------------------- |
+| `token_hash`  | bytea, PK              | the only lookup for a request, see [Token Check](authentication.md#token-check) |
+| `kind`        | text, not null         | `access` or `refresh`, with a check constraint                                  |
+| `family_id`   | uuid, not null         | indexed, and a script client starts a new family per token                      |
+| `client_id`   | text, not null         | indexed                                                                         |
+| `user_id`     | uuid → users, not null | indexed                                                                         |
+| `scope`       | text, not null         |                                                                                 |
+| `created_at`  | timestamptz            |                                                                                 |
+| `expires_at`  | timestamptz, not null  | indexed for the cleanup                                                         |
+| `replaced_at` | timestamptz            | a refresh token that was rotated, kept to detect reuse                          |
+
+- There is no `resource` column, because every token has the one resource, the MCP URL.
+- `oauth_codes` has indexes on `family_id` and `user_id`, for [ending tokens](oauth-server.md#ending-tokens).
 
 ## Folder Right Table
 

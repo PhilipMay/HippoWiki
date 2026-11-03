@@ -22,18 +22,17 @@ errors for REST and MCP, and each adapter translates them. The last row is not a
 | Required right     | a user whose right on the folder is too low for the operation                                                    | `ForbiddenError`                 | 403           | tool error `forbidden`                 |
 | Target lookup      | a missing or deleted tab or md_document, a missing user, or a missing folder right, also when named in the body  | `NotFoundError`                  | 404           | tool error `not_found`                 |
 | Target rules       | an operation the target does not allow, see [below](#rejected-operations)                                        | `ForbiddenError`                 | 403           | tool error `forbidden`                 |
-| Domain validation  | a name, `auth_subject` or size that breaks the domain rules                                                      | `DomainValidationError`          | 422           | tool error `domain_validation`         |
+| Domain validation  | a name or size that breaks the domain rules                                                                      | `DomainValidationError`          | 422           | tool error `domain_validation`         |
 | Conflicts: version | a version conflict, compared before the write, see [Optimistic Locking](history-revisions.md#optimistic-locking) | `VersionConflictError`           | 409           | tool error `version_conflict`          |
 | Conflicts: name    | a name conflict, which surfaces at the write                                                                     | `NameConflictError`              | 409           | tool error `name_conflict`             |
-| Conflicts: subject | a Keycloak account that is already linked to another user                                                        | `SubjectConflictError`           | 409           | no such tool, admin operation          |
 | Unexpected         | any other exception                                                                                              | none                             | 500           | generic tool error without details     |
 
 ## Validation
 
 - two kinds of validation:
   - schema validation in the adapters: shape and types through the Pydantic models, without database access
-  - domain validation in the services: the [name rules](content.md#names), the
-    [`auth_subject` length and maximum document size](limits.md#limits-at-a-glance)
+  - domain validation in the services: the [name rules](content.md#names) and the
+    [maximum document size](limits.md#limits-at-a-glance)
 - schema validation leaks nothing: it depends only on the request and never reads the database, so a hidden, a missing
   and a readable folder give the same 422, and validators must not do lookups
 - unknown fields: request models forbid them (`extra="forbid"`), so they get 422 instead of being silently ignored. For
@@ -57,7 +56,7 @@ errors for REST and MCP, and each adapter translates them. The last row is not a
 - no conflict leaks: a user without the required right gets 403 before any name or version conflict or domain validation
   error is reported
 - conflicts leak nothing: tab and md_document names conflict only inside a folder the user already has the right on, and
-  only the admin, who sees all folders and users, creates folders and users, renames folders and links Keycloak accounts
+  only the admin, who sees all folders and users, creates folders and users and renames folders
 
 ## Targets
 
@@ -95,8 +94,8 @@ What deleting does is defined in [Content](content.md#deleting-and-restoring-con
 - admin operations by other users:
   - operations on an existing folder (rename or delete the folder, assign or delete its rights, list its rights) follow
     the checks above: 404 with no right on the folder, otherwise 403
-  - all other admin operations (such as create users, create folders, list users, list all rights of all folders, change
-    the `auth_subject` of a user, deactivate or reactivate a user, list deleted folders, restore a folder) get 403 after
+  - all other admin operations (such as create users, create folders, list users, list all rights of all folders, reset
+    the password of a user, deactivate or reactivate a user, list deleted folders, restore a folder) get 403 after
     schema validation and before their target is looked at or their input is checked against domain rules, so user and
     folder names can not be probed
 

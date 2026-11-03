@@ -8,43 +8,43 @@ stay in the documents it links to, and open items of the specification stay in t
 Most failures come from values that have to match across components. Each component can look healthy on its own while
 logins or requests still fail.
 
-| Value                     | Must match between                                                                                                                          | If it does not match                                      |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| Issuer                    | Keycloak's public hostname and `HIPPOWIKI_OAUTH_ISSUER`                                                                                     | Every token gets 401                                      |
-| Audience                  | Keycloak's Audience mapper, `HIPPOWIKI_OAUTH_AUDIENCE`, the `resource` of the protected resource metadata and the URL entered in the client | 401, possibly from something as small as a trailing slash |
-| Signing keys URL          | `HIPPOWIKI_OAUTH_JWKS_URL` and Keycloak's address inside the container network                                                              | 503, not 401, so it looks like an outage                  |
-| Allowed hosts and origins | `HIPPOWIKI_MCP_ALLOWED_HOSTS`, `HIPPOWIKI_MCP_ALLOWED_ORIGINS` and the public hostname                                                      | 421 or 403, because the SDK default allows only localhost |
-| Redirect URIs             | The Keycloak client and each product, see [Client Registration](connectors.md#client-registration)                                          | The login fails at Keycloak                               |
-| Body limit                | Any limit on the reverse proxy and the app's 2 MiB, see [Request Body Limit](limits.md#request-body-limit)                                  | A lower proxy limit rejects documents the app allows      |
-| User link                 | `users.auth_subject` and Keycloak's `sub`, see [User Linking](users.md#user-linking)                                                        | A valid login, but 401                                    |
+| Value                     | Must match between                                                                                                   | If it does not match                                                |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Public URL                | `HIPPOWIKI_PUBLIC_URL`, the URL of the proxy and the MCP URL entered in the client                                   | The client rejects the metadata, or `invalid_target`                |
+| Allowed hosts and origins | `HIPPOWIKI_MCP_ALLOWED_HOSTS`, `HIPPOWIKI_MCP_ALLOWED_ORIGINS` and the public hostname                               | 421 or 403, because the SDK default allows only localhost           |
+| Trusted client URLs       | `HIPPOWIKI_OAUTH_TRUSTED_CLIENT_URLS` and the `client_id` a product sends                                            | The error page instead of the login page                            |
+| Proxy address             | `--forwarded-allow-ips` and the address the proxy connects from, see [Deployment](deployment.md#reverse-proxy-setup) | All logins count as one address, so one attacker can block them all |
+| Body limit                | Any limit on the reverse proxy and the app's 2 MiB, see [Request Body Limit](limits.md#request-body-limit)           | A lower proxy limit rejects documents the app allows                |
 
 ## Components
 
-### Keycloak
+### OAuth Server
 
 Configure:
 
-- the realm, and one client per product with S256 PKCE required
-- the Audience mapper and `offline_access`
-- brute-force detection and login events
-- the 2 GB memory limit
-
-Keep off self-registration, username editing, dynamic client registration and the experimental features, see
-[Client Registration](connectors.md#client-registration).
+- `HIPPOWIKI_PUBLIC_URL`, and the allowlist only when a vendor changes its URL
+- the admin password and a script client, on the server, see [Admin](users.md#admin)
+- outgoing `https` access to the hosts of the allowlist
 
 What can go wrong:
 
-- The realm import is still untested, and it comes after the Connector Test, see [Roadmap](roadmap.md#next-steps).
-- A firewall can block Claude's IP range and break the login, see [Deployment](deployment.md).
-- The admin console can be exposed by accident.
-- When Keycloak is down, existing access tokens work for at most 5 more minutes, and then clients are locked out, see
-  [Token Check](authentication.md#token-check).
+- A vendor changes its document or URL, so its product stops logging in, see [Open Risks](oauth-server.md#open-risks).
+- A vendor is down with no document in the cache after a restart. New logins of that product fail, and clients that are
+  logged in keep working, see [Trusted Clients](oauth-server.md#trusted-clients).
+- The app has no outgoing network access, which has the same result for every product.
+- `--forwarded-allow-ips` is wrong, so the failures of all users count against one address, see
+  [Login Protection](oauth-server.md#login-protection).
+- A public client retries a refresh after the [grace window](limits.md#oauth-values), which logs it out.
+- Hashing needs memory, so a tight container limit can kill the app during logins, see
+  [OAuth Server Settings](deployment.md#oauth-server-settings).
+- The clock does not matter for tokens, because the database compares all times, see [Tokens](oauth-server.md#tokens).
 
 ### Reverse Proxy
 
 Configure:
 
-- TLS and routes for both hostnames
+- TLS and the route of the hostname
+- the forwarded client address
 - no body limit, because the app enforces it
 - no timeout that cuts a response before the slowest tool call ends
 
@@ -56,7 +56,7 @@ What can go wrong, see [Deployment](deployment.md#reverse-proxy-setup):
 
 Configure:
 
-- separate databases and roles for HippoWiki and Keycloak
+- a separate role for HippoWiki
 - `timezone=UTC`
 - the same image as the tests
 
@@ -64,7 +64,7 @@ What can go wrong:
 
 - Alpine and Debian images can sort text differently, which affects anything sorted by name.
 - A naive datetime silently stores the wrong instant, see [Time](implementation-notes.md#asyncpg-notes).
-- Restoring only one of the two databases breaks the user links, see [Deployment](deployment.md).
+- A restored backup brings back old tokens that were ended since, until they expire.
 
 ### SQLAlchemy
 
@@ -92,14 +92,13 @@ What can go wrong, see the [implementation notes](implementation-notes.md#mcp-sd
 ### Auth Middleware
 
 Configure the credential check, the MCP path, the public routes, the metadata URL and the body limit, which are passed
-in as parameters, with RS256 as the only allowed algorithm.
+in as parameters.
 
 What can go wrong:
 
 - Using `BaseHTTPMiddleware` would break MCP streaming, see [Request Handling](authentication.md#request-handling).
 - Answering 401 instead of 503 during an outage makes clients discard valid credentials, see
   [Failed Credential Lookup](authentication.md#failed-credential-lookup).
-- A clock difference over the [leeway](limits.md#token-check-values) rejects fresh tokens with 401.
 
 ### Container, Podman and Secrets
 
@@ -111,31 +110,21 @@ Configure:
 
 What can go wrong:
 
-- `hippowiki link-admin` is a manual step on the first deployment and is easy to miss, see [Admin](users.md#admin).
-- Everyone re-enters the shared client secret when it is replaced, see
-  [Client Registration](connectors.md#client-registration).
+- `hippowiki set-admin-password` and the script client of the admin are manual steps on the first deployment and are
+  easy to miss, see [Admin](users.md#admin).
 
 ## Risks Not Settled Yet
 
 The specification does not settle these yet. Points marked "to check" come from general knowledge of the tools and have
 to be checked against the versions in use.
 
-- **Login loop**: a valid token with no linked user, or of a deactivated user, gets 401, which tells MCP clients to log
-  in again. [Admin Account on MCP](authentication.md#admin-account-on-mcp) avoids this for the admin with a 403, but not
-  for these two cases. The user logs in successfully and is sent straight back to log in. The
-  [Connector Test](roadmap.md#connector-test) will probably run into this, because it needs an unlinked and a
-  deactivated user.
 - **Health check hides outages**: `/health` is liveness only, so it stays green while every authenticated request gets
-  503\. Database monitoring is an open point in the [Roadmap](roadmap.md), and Keycloak needs the same.
-- **Recreating the realm**: new accounts get new `sub` values, so all user links break, including the admin's.
-- **Refresh token rotation**: the [Keycloak guide](../doc/nixos-keycloak-setup.md) turns on "Revoke refresh token" with
-  "Refresh token max reuse" set to 0, so a retry or two parallel refreshes can log a connector out. With access tokens
-  of 5 minutes, refreshes happen often, and the [Connector Test](roadmap.md#connector-test) checks this with Claude.
+  503\. Database monitoring is an open point in the [Roadmap](roadmap.md).
 - **Rollbacks**: migrations run separately from the app, so an older image may meet a newer schema. No rollback path is
   defined.
 - **Connection pool**: the pool size and `max_connections` are not specified. Stale connections after a database restart
   can cause 500s unless the pool checks them first.
 - **`podman compose` providers**: to check: it hands off to another compose tool, and these can differ in how they
   support waiting for the `migrate` service to finish.
-- **Upgrades**: moving to a new PostgreSQL major version needs a data migration, and Keycloak is pinned to one exact
-  version, so neither upgrade is a simple change of the image.
+- **Upgrades**: moving to a new PostgreSQL major version needs a data migration, so it is not a simple change of the
+  image.

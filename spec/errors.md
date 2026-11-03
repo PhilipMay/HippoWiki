@@ -5,12 +5,15 @@ This document defines how errors look on REST and MCP. Which error a request get
 
 ## REST Error Format
 
-Every REST error uses RFC 9457 problem+json, built by one shared helper in `problem.py`. Every body has these members:
+Every REST error uses RFC 9457 problem+json, built by one shared helper in `problem.py`. The
+[OAuth Server](oauth-server.md) is not part of REST and has its own errors, as OAuth clients expect, see
+[Authorization Request](oauth-server.md#authorization-request) and [Token Request](oauth-server.md#token-request). Every
+body has these members:
 
 - `type`: always `about:blank`
 - `title`: the HTTP reason phrase of the status
 - `status`: the HTTP status
-- `code`: an extension, so a client can tell apart errors with the same status, such as the two 409s, which need
+- `code`: an extension, so a client can tell apart errors with the same status, such as the two 422s, which need
   different reactions. It uses the same stable codes as MCP where both have them.
 - `detail`: the fixed text of the `code`, so it never holds an ID, a name or an input value
 
@@ -21,7 +24,6 @@ Every REST error uses RFC 9457 problem+json, built by one shared helper in `prob
 | 404    | `not_found`           | The item does not exist.                   |
 | 405    | `method_not_allowed`  | This method is not allowed on this route.  |
 | 409    | `name_conflict`       | The name is already taken.                 |
-| 409    | `subject_conflict`    | The subject is already linked to a user.   |
 | 409    | `version_conflict`    | The version is not the current one.        |
 | 413    | `body_too_large`      | The request body is over the limit.        |
 | 422    | `schema_validation`   | The request is not valid.                  |

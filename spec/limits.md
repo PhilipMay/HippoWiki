@@ -1,19 +1,20 @@
 # Limits
 
 This document is the one home for every fixed limit. The name length, the document size, the request body limit and the
-values of the token check are fixed in the code and are not settings.
+values of the OAuth server are fixed in the code and are not settings.
 
 ## Limits at a Glance
 
 | Limit                                      | Value                                  | Out of range                                            |
 | ------------------------------------------ | -------------------------------------- | ------------------------------------------------------- |
 | name of a folder, tab, md_document or user | at most 100 characters                 | `DomainValidationError`                                 |
-| `auth_subject`                             | 1 to 255 characters                    | `DomainValidationError`                                 |
+| new password                               | 12 to 128 characters                   | the [login page](oauth-server.md#login-page) says so    |
 | `content_md`                               | at most 256 KiB (262,144 bytes), UTF-8 | `DomainValidationError`                                 |
 | request body                               | at most 2 MiB (2,097,152 bytes)        | 413                                                     |
 | `limit` of a [list](lists.md)              | 1 to 100, with a default of 50         | a schema validation error, and the value is not clamped |
 
-- The service checks the length of `auth_subject`, because "" would otherwise hit the check constraint and become a 500.
+- A password is limited, because hashing a very long one would cost time on an anonymous route. A password at login over
+  the limit gets the same answer as a wrong one, without hashing it.
 
 ## Document Size
 
@@ -43,13 +44,40 @@ The middleware reads the body up to the limit before it calls the app, and then 
 limit, and after the replay `receive` goes to the original one again, so the app still gets `http.disconnect`. The
 reason for this design is in [FastAPI Notes](implementation-notes.md#fastapi-notes).
 
-## Token Check Values
+## OAuth Values
 
-`auth/tokens.py` holds these values for the [token check](authentication.md#token-check):
+`services/oauth.py` and `auth/client_documents.py` hold these values for the [OAuth Server](oauth-server.md). Vendors
+name no lifetimes, so these come from their behaviour and are checked in the
+[Connector Test](roadmap.md#connector-test).
 
-- `TOKEN_LEEWAY_SECONDS`, 30: the clock difference allowed for `exp` and `iat`.
-- `JWKS_MAX_AGE_SECONDS`, 600: the age at which the cached set is refreshed, so a key removed from Keycloak stops
-  working after 10 minutes at most, and sooner if another fetch runs first.
-- `JWKS_REFETCH_INTERVAL_SECONDS`, 30: the shortest time between two fetches. If another fetch has just run, a token
-  with a new key can get 401 for up to this time.
-- `JWKS_FETCH_TIMEOUT_SECONDS`, 5: a fetch that takes longer counts as failed.
+Tokens:
+
+- `AUTHORIZATION_CODE_SECONDS`, 60: how long a code can be used.
+- `AUTHORIZATION_CODE_RETENTION_SECONDS`, 86,400: how long a code row stays, so a second use is detected.
+- `ACCESS_TOKEN_SECONDS`, 3,600: longer than the 5 minutes before expiry at which Claude can refresh, so it does not
+  refresh on every request. A deactivated user or a deleted token still ends on the next request.
+- `REFRESH_TOKEN_IDLE_SECONDS`, 5,184,000 (60 days): each refresh starts it again, so regular use never logs out.
+- `REFRESH_REUSE_GRACE_SECONDS`, 60: how long a replaced refresh token still works. It is above the 30 seconds Claude
+  waits for a refresh, so a retry after a lost response fits.
+
+Requests:
+
+- `OAUTH_FORM_MAX_BYTES`, 16,384: the largest body of a `POST` route. Over it, the login page answers 413 and the other
+  routes answer `invalid_request`.
+- `OAUTH_PARAMETER_MAX_CHARS`, 2,048: the longest value of a single parameter, also in a query string.
+
+Client documents:
+
+- `CLIENT_DOCUMENT_MAX_BYTES`, 65,536: a larger document is rejected.
+- `CLIENT_DOCUMENT_MAX_AGE_SECONDS`, 3,600: the age at which a cached document is fetched again.
+- `CLIENT_DOCUMENT_REFETCH_INTERVAL_SECONDS`, 60: the shortest time between two fetches of one URL, also after a
+  failure.
+- `CLIENT_DOCUMENT_FETCH_TIMEOUT_SECONDS`, 5: a fetch that takes longer counts as failed.
+
+Logins:
+
+- `LOGIN_FREE_FAILURES`, 5: the failures of an account with no wait.
+- `LOGIN_MAX_WAIT_SECONDS`, 900: the wait starts at 1 second and doubles with each further failure, up to this value.
+- `LOGIN_FAILURES_PER_ADDRESS`, 20, within `LOGIN_ADDRESS_WINDOW_SECONDS`, 300: over this, one address gets no hash.
+- `PASSWORD_HASHES_RUNNING`, 4, and `PASSWORD_HASHES_WAITING`, 16: over these, a login gets 503. With the default
+  parameters of `argon2-cffi`, each hash uses 64 MiB, so the running hashes use about 256 MiB.

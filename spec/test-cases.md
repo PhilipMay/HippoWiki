@@ -89,48 +89,120 @@ lists only the cases that are easy to miss: combinations of rules, races, exact 
 - In the tool tests, `update_md_document` treats a `null` argument as not given, so `null` for `name` needs only
   `write`.
 
-## User and Linking Cases
+## User and Password Cases
 
 - `POST /users` with `is_admin` gets 422 and creates no user, for either value.
-- A `PATCH` with `is_admin` gets 422 and changes nothing, for either value and also for an unchanged value.
-- A deactivated user gets the same 401 as a token with no linked user, on the next request, on REST and MCP.
-- The subject of a deactivated user gets `SubjectConflictError` for a new user, and can be linked once the admin removes
-  it from the deactivated user.
-- An `auth_subject` of 256 characters gets `DomainValidationError`.
-- After the admin removes or changes the link of a user, the old subject gets 401 on the next request.
-- `hippowiki link-admin` run twice with the same subject changes nothing, a new subject replaces the link, and a subject
-  that another user has is rejected.
+- `PATCH /users/{user_id}` gets 405 for the admin.
+- A deactivated user gets the same 401 as an unknown token, on the next request, on REST and MCP.
+- After reactivating a user, their old access and refresh tokens stay invalid.
+- The response of `POST /users` holds a one-time password, and no other route or log does.
+- A password reset ends the tokens of the user on the next request. Resetting the admin gets 403 and changes nothing.
+- `hippowiki set-admin-password` run twice works, ends the tokens of the admin, and clears a wait after failed logins.
+- No response and no log holds a `password_hash`.
 
 ## Public Route Cases
 
 - Without credentials and with a unit-of-work factory that fails when called, health returns its fixed body.
 - The same holds for the protected resource metadata routes, with the body built from the settings.
-- The protected resource metadata lists the configured issuer in `authorization_servers`, and its `resource` equals the
-  configured audience.
-- Under the same conditions, every route except health and the protected resource metadata gets 401, including MCP and
-  `/openapi.json`.
+- The same holds for the metadata of the OAuth server.
+- The protected resource metadata lists the issuer in `authorization_servers`, and its `resource` equals the MCP URL.
+- Under the same conditions, every route except the public ones gets 401, including MCP and `/openapi.json`.
 - A public path with a trailing slash, a path below it or another method gets 401. This also holds for `POST /health`
-  with a chunked body, which is not read.
+  with a chunked body, which is not read, and for `GET /oauth/token`.
 - The `resource_metadata` value of a 401 is the URL of the metadata route for the MCP path, on REST and MCP, and a `GET`
-  on that URL returns the configured audience as `resource`.
+  on that URL returns the MCP URL as `resource`.
+- A request with a foreign `Host` gets metadata with the configured URLs.
 - An authenticated request to `/health/`, `/api/v1/folders/` or `/mcp/` gets 404 problem+json with no `Location`.
 - `/docs` and `/redoc` get 404 when authenticated.
 
 ## Token Check Cases
 
-- These tokens each get 401: expired, wrong issuer, wrong audience, bad signature, `alg=none`, HS256 signed with the
-  public key as the secret, no `exp`, no `sub`, and a valid token with no linked user.
-- A token expired by less than the leeway and one whose `iat` is ahead by less than the leeway pass, and beyond the
-  leeway each gets 401.
-- A token with an unknown `kid` gets 401 after one successful refetch, and further unknown `kid`s within the rate limit
-  cause no further fetch and also get 401.
-- A token with an unknown `kid` gets 503 when the fetch fails, and again 503 within the rate limit with no further
-  fetch. This also holds with an empty cache at startup. After the interval, the next request fetches again.
-- An unreachable key source gets 503 when a key is needed, and a cached key keeps working while the key source is down,
-  also past the maximum age, with at most one failed fetch per interval.
-- A key that a successful fetch no longer lists gets 401, both after the refresh at the maximum age and after a refetch
-  for another `kid`.
+- These each get 401: an unknown token, an expired token, a refresh token, an authorization code, and a token of a
+  deactivated user.
+- A value of the wrong shape gets 401 with a unit-of-work factory that fails when called, so it causes no lookup.
+- A valid token gets 503 when the lookup fails, never 401.
 - A 401 for a presented token carries `error="invalid_token"`, and a 401 without a token does not.
+
+## OAuth Server Cases
+
+Authorization request:
+
+- An unknown client, a URL not on the allowlist and a redirect URI of another client get the error page, and never a
+  redirect, on `GET` and `POST`. No fetch happens for a URL that is not on the allowlist.
+- A redirect URI that differs in any way gets the error page: a path below it, a query, a trailing slash, another case
+  in the path, or `http` instead of `https`. A loopback URI with another port passes, and another host or path does not.
+- `http://localhost.example.org/callback` is not a loopback URI.
+- A missing `code_challenge`, the method `plain`, another `response_type` and a foreign `resource` go back as a redirect
+  with the right `error`, the `state` and `iss`.
+- Every redirect carries `iss`, including errors and deny.
+- A `state` with HTML in it comes back unchanged in the redirect and is escaped in the page.
+- `POST` with parameters changed from those of the `GET` is validated again, such as another redirect URI.
+
+Trusted clients:
+
+- The current documents of Claude, Claude Code and ChatGPT are accepted, including the `jwt-bearer` grant of Claude and
+  the `private_key_jwt` preference of ChatGPT.
+- A document with another `client_id`, without `none`, without redirect URIs, or over the size limit is rejected, and a
+  redirect from the URL is not followed.
+- A failed fetch keeps the last good document. With an empty cache it gives the error page, and a later success works.
+- Requests over the rate cause no extra fetch.
+- A refresh works while the fetch of its document fails, and is rejected when the URL leaves the allowlist.
+
+Login page:
+
+- A wrong password, an unknown name, a deactivated user and an account in its wait get an identical response, and each
+  of them runs a hash, apart from an address over its limit.
+- A `POST` without the cookie, with a form field that differs, or with a foreign or missing `Origin` issues no code.
+- The admin with a correct password on a trusted client, or on an own client without `--admin-allowed`, gets no code,
+  and with a wrong password gets the normal answer. An own client with `--admin-allowed` works.
+- A one-time password with no new password issues no code and leaves the password as it was. With a new one it issues a
+  code, and the one-time password stops working.
+- A new password that is too short, too long or equal to the name issues no code and changes nothing.
+- Changing a password ends the older tokens of the user, and the new code works.
+- An approval answers 303, never 307, and the page has the [browser headers](oauth-server.md#browser-protection), with
+  the origin of the redirect URI in `form-action`.
+- Deny needs no password, issues no code and gets `access_denied`.
+- The page holds no password after a failed attempt.
+
+Login protection:
+
+- The failure after the free attempts starts the wait, and the right password during the wait fails with the same
+  answer.
+- A successful login resets the counter, also against concurrent failures (`podman`).
+- Over the limit of hashes, a login gets 503, and other requests go on answering while hashes run.
+- Over the limit of failures for one address, a login runs no hash, and another address still can log in.
+- `X-Forwarded-For` from an untrusted address does not change the address that is counted.
+- A password over the limit runs no hash.
+
+Token endpoint:
+
+- A wrong `code_verifier`, a `client_id` or `redirect_uri` other than that of the code, and a foreign `resource` get
+  `invalid_grant` or `invalid_target`, and the code can not be used afterwards.
+- A verifier of the wrong length is rejected, and PKCE is also needed for a confidential client.
+- An expired code gets `invalid_grant`, in separate committed transactions (`podman`).
+- Two concurrent exchanges of one code give one success (`podman`).
+- A second use of a code gets `invalid_grant` and ends the tokens from the first use.
+- A code of one client can not be redeemed by another, and a refresh token of one client can not be used by another.
+- A confidential client with a wrong or no secret gets 401 `invalid_client` with `WWW-Authenticate: Basic`.
+- A script client gets only the client credentials grant, with no refresh token, and a login client can not use it.
+- A body over the form limit, another content type and a repeated parameter get `invalid_request`, and the chunked case
+  is not held in memory.
+- A token response has `Cache-Control: no-store`, and no token appears in a log.
+
+Refresh rotation:
+
+- A refresh returns a new refresh token, and the new one works.
+- Two concurrent refreshes of one token both succeed and leave the family valid (`podman`).
+- A replaced token inside the grace window works, and after it gets `invalid_grant` and ends the family, while another
+  family of the user keeps working (`podman`).
+- A refresh sets a new idle time, so a token used regularly outlives the idle limit (`podman`).
+
+Revocation and clients:
+
+- Revoking a token ends its family. A token of another client or an unknown token gets 200 and changes nothing.
+- `hippowiki client remove` ends the tokens of the client, and a client added with `--user` acts as that user.
+- A script client whose user is deactivated gets `invalid_client`.
+- A row in `oauth_tokens` holds no token, and a copied row hash does not work as a bearer token.
 
 ## Middleware and Error Format Cases
 
@@ -181,8 +253,9 @@ lists only the cases that are easy to miss: combinations of rules, races, exact 
 - Writes are atomic, such as a folder with its default tab.
 - A unique violation surfaces inside the repository call.
 - Time-dependent behaviour works in separate committed transactions.
-- `hippowiki migrate` followed by `hippowiki init` twice leaves one admin, and it stays unlinked until
-  `hippowiki link-admin` runs.
+- `hippowiki migrate` followed by `hippowiki init` twice leaves one admin, who can not log in until
+  `hippowiki set-admin-password` runs.
+- The check constraint of `oauth_clients` rejects a client that is neither a login client nor a script client.
 - Creating or renaming anything to the name `""` gets `DomainValidationError` and creating a user named `admin` gets
   `NameConflictError`, not a check violation.
 - Assigning a right twice updates `assigned_by` and `assigned_at`, also in separate committed transactions.
@@ -202,6 +275,7 @@ lists only the cases that are easy to miss: combinations of rules, races, exact 
   `VersionConflictError`.
 - An update racing a folder revert ends without a deadlock, and two updates racing with one version give one success and
   one `VersionConflictError`.
-- In the production composition test, after `hippowiki migrate`, `hippowiki init` and `hippowiki link-admin`, the admin
-  creates a folder on REST. A user with a right reads it on REST and MCP, and a user with no right gets the full 404
+- In the production composition test, after `hippowiki migrate`, `hippowiki init` and
+  `hippowiki client add --user admin`, the admin creates a folder on REST with a token from its script client. A user
+  with a right logs in through the login page and reads it on REST and MCP, and a user with no right gets the full 404
   body.

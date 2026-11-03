@@ -6,18 +6,20 @@ This document defines how HippoWiki runs in production and for simple self-hosti
 
 - HippoWiki is independent of the Linux distribution. Everything runs in containers, with Podman or Docker, and nothing
   in the project depends on the host.
-- Production is a NixOS host, set up in the [guide](../doc/nixos-keycloak-setup.md). It runs the same image as every
-  other setup. What is specific to NixOS stays in the guide.
+- Production is a NixOS host, set up in the [guide](../doc/nixos-setup.md). It runs the same image as every other setup.
+  What is specific to NixOS stays in the guide.
+- The app is one process, because the [login protection](oauth-server.md#login-protection) counts failures per address
+  and limits hashes in memory. Uvicorn runs with its default of one worker.
 - `compose.yaml` is for development and simple self-hosting, on any distribution.
 
 ## Containers and Compose
 
 - Container image built with uv from a `Containerfile` (multi-stage, slim runtime), with `podman build` or
   `docker build`. The container runs as a non-root user.
-- `compose.yaml` with `app`, `postgres`, `keycloak` and a one-shot `migrate` service, run via `podman compose` or
-  `docker compose`. The `migrate` service runs `hippowiki migrate` and then `hippowiki init`, and the app waits for it
-  to succeed. The `postgres` service sets `timezone=UTC` on the server, see [Time](time.md), and uses the same
-  `postgres:16-alpine` image as the tests, because Alpine and Debian images can sort text differently.
+- `compose.yaml` with `app`, `postgres` and a one-shot `migrate` service, run via `podman compose` or `docker compose`.
+  The `migrate` service runs `hippowiki migrate` and then `hippowiki init`, and the app waits for it to succeed. The
+  `postgres` service sets `timezone=UTC` on the server, see [Time](time.md), and uses the same `postgres:16-alpine`
+  image as the tests, because Alpine and Debian images can sort text differently.
 - Secrets, such as the database password, never go into `compose.yaml`. They come from an uncommitted `.env` file or
   from Podman secrets.
 
@@ -27,23 +29,22 @@ This document defines how HippoWiki runs in production and for simple self-hosti
   command builds the Alembic configuration in code without an `alembic.ini`, so the slim runtime image needs nothing
   copied separately.
 - `hippowiki init` runs after the migrations and creates the admin. It is idempotent, so it is safe to run on every
-  deployment. The first deployment then needs one manual step: create the account in Keycloak and run
-  `hippowiki link-admin <subject>`, see [Admin](users.md#admin).
+  deployment. The first deployment then needs manual steps on the server: `hippowiki set-admin-password`, and
+  `hippowiki client add --user admin` for a script client, because REST is the only way to administer the system, see
+  [Admin](users.md#admin).
 
-## Keycloak Service
+## OAuth Server Settings
 
-- It has its own database and its own role on the existing PostgreSQL server, so it can not read HippoWiki's tables.
-- Its memory limit is 2 GB, as the [Keycloak container guide](https://www.keycloak.org/server/containers) recommends for
-  smaller production deployments.
-- The realm configuration is a versioned import file without secrets. Client secrets and the bootstrap admin password
-  follow the same rule as the other secrets. The file only comes after the [Connector Test](roadmap.md#next-steps), and
-  until then the realm is configured in the console.
-- HippoWiki gets `HIPPOWIKI_OAUTH_ISSUER`, the public URL of the realm, `HIPPOWIKI_OAUTH_AUDIENCE`, the MCP URL, and
-  `HIPPOWIKI_OAUTH_JWKS_URL`, so signing keys can be fetched inside the container network.
+- HippoWiki gets `HIPPOWIKI_PUBLIC_URL`, see [Settings](oauth-server.md#settings). It is the one value that names the
+  issuer, the MCP URL and the metadata, so these can not disagree.
+- `HIPPOWIKI_OAUTH_TRUSTED_CLIENT_URLS` keeps its default unless a [Trusted Client](oauth-server.md#trusted-clients)
+  changes its URL.
+- The app needs outgoing `https` access to the hosts of these URLs, and only those, to fetch their documents.
+- The container memory has to leave room for the [running hashes](limits.md#oauth-values), about 256 MiB.
 
 ## Reverse Proxy Setup
 
-- Traefik with TLS in front, required for remote MCP connectors. It routes the whole wiki hostname to the app, whose
+- Traefik with TLS in front, required for remote MCP connectors. It routes the whole hostname to the app, whose
   middleware rejects everything that is not allowed.
 - MCP tool calls can answer as a stream, so the proxy must not cut a response before the slowest tool call ends. In
   Traefik the entry point setting `writeTimeout` covers the whole response. It has no limit by default, so leave it
@@ -54,19 +55,21 @@ This document defines how HippoWiki runs in production and for simple self-hosti
     and the switch that turns this off can not be set from configuration files before Traefik 3.8.
   - A later proxy limit must not be below the request body limit, because a lower one would reject documents the app
     allows.
-- It exposes Keycloak's login paths (`/realms/` and `/resources/`) and `/.well-known/`, which serves the RFC 8414
-  metadata, but not its admin console.
-- HippoWiki gets `HIPPOWIKI_MCP_ALLOWED_HOSTS`, the wiki hostname, and `HIPPOWIKI_MCP_ALLOWED_ORIGINS`, `https://` plus
-  the wiki hostname, because an origin includes the scheme. Without them the SDK allows only localhost, so every request
-  behind the proxy gets 421, see [Serving the MCP App](mcp.md#serving-the-mcp-app). The
+- It passes the real client address in `X-Forwarded-For`, for the [login protection](oauth-server.md#login-protection).
+  Uvicorn runs with `--proxy-headers` and `--forwarded-allow-ips` set to the address the proxy connects from, so the app
+  trusts this header only from the proxy. To check: that this version of Uvicorn accepts a subnet there, and what
+  address Podman shows for the proxy.
+- HippoWiki gets `HIPPOWIKI_MCP_ALLOWED_HOSTS`, the hostname, and `HIPPOWIKI_MCP_ALLOWED_ORIGINS`, `https://` plus the
+  hostname, because an origin includes the scheme. Without them the SDK allows only localhost, so every request behind
+  the proxy gets 421, see [Serving the MCP App](mcp.md#serving-the-mcp-app). The
   [Connector Test](roadmap.md#connector-test) shows whether a client sends an `Origin` at all.
-- HippoWiki and Keycloak must both be reachable from the public internet, including Anthropic's range `160.79.104.0/21`,
-  because Claude connects from there. A firewall in front of Keycloak can break the login.
+- HippoWiki must be reachable from the public internet, including Anthropic's range `160.79.104.0/21`, because Claude
+  connects from there. A firewall in front of it can break the login.
 
 ## Health Checks and Backups
 
 - Container and reverse proxy health checks use the [public health route](authentication.md#public-routes), so they need
   no credentials. The slim image has no `curl`, so the container health check calls the route with Python's standard
   library.
-- Backups via standard PostgreSQL tooling (`pg_dump`), for both the HippoWiki and the Keycloak database, because the
-  links in `users.auth_subject` only make sense together with the Keycloak accounts.
+- Backups via standard PostgreSQL tooling (`pg_dump`), of the one database. It holds password hashes and token hashes,
+  so a backup needs the same protection as the live database.

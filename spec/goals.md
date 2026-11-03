@@ -19,8 +19,9 @@
 
 Search, multi-language content, attachments and import or export need a design once they come into scope.
 
-- No web UI yet. A Web GUI for admins and normal users comes [later](roadmap.md#later). Supporting it is the main
-  purpose of the REST API, which is designed so that any frontend can be built on top of it.
+- No web UI yet, apart from the one [login page](oauth-server.md#login-page) that OAuth needs. A Web GUI for admins and
+  normal users comes [later](roadmap.md#later). Supporting it is the main purpose of the REST API, which is designed so
+  that any frontend can be built on top of it.
 - No search, including `SearchService`, its filters and multi-language search.
 - No multi-language content.
 - No file-based storage. Markdown lives in the database.

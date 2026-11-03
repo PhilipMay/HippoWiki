@@ -7,8 +7,7 @@ This document defines how HippoWiki is tested. The cases that are easy to miss a
 - **Test data**: `make test` uses in-memory repository fakes from `tests/` behind a fake unit-of-work factory, injected
   through `create_app()` together with a fake credential check, see [Composition](architecture.md#composition).
   - The fakes implement the same Protocols as the real repositories, and raise `DuplicateNameError` for the four unique
-    names and `DuplicateSubjectError` for `auth_subject`. The names of md_documents, tabs and folders are unique among
-    live rows only, and the name of a user always.
+    names. The names of md_documents, tabs and folders are unique among live rows only, and the name of a user always.
   - The fakes hide deleted rows and the children of deleted parents, in the same way as the real repositories.
   - The fake unit of work restores a snapshot of the in-memory data when it exits without a commit, so a forgotten
     commit also fails in `make test`.
@@ -28,9 +27,13 @@ This document defines how HippoWiki is tested. The cases that are easy to miss a
 ## Test Kinds
 
 - **Unit tests**: pure code, such as `UtcDatetime`.
-- **Token tests**: `auth/tokens.py` against locally generated keys and a fake key source, so `make test` needs no
-  Keycloak. Most other tests keep the fake credential check. The real Keycloak is covered by the
+- **OAuth tests**: the [OAuth Server](oauth-server.md) through `httpx.AsyncClient` against the app with fakes and a fake
+  source of client documents, so `make test` needs no network. They run each flow as a client would, including the login
+  page. Most other tests keep the fake credential check. Row locks, expiry by the database clock and the atomic failure
+  counter run only against a real PostgreSQL (`podman`). The real clients are covered by the
   [Connector Test](roadmap.md#connector-test).
+- **Client document tests**: `auth/client_documents.py` against a small local server, with the current documents of
+  Claude, Claude Code and ChatGPT as test data.
 - **Time and pinned library tests**: `UtcDatetime` on input and output, a test that fails on any naive datetime column,
   and the tests in `tests/test_time_*.py` that pin the library behaviour [Time](time.md) relies on. The asyncpg ones
   carry the `podman` marker. Tests of time-dependent behaviour use separate committed transactions, because one
@@ -38,8 +41,8 @@ This document defines how HippoWiki is tested. The cases that are easy to miss a
   does not affect the database.
 - **Contract tests**: one suite runs against the fakes and against the real repositories (`podman`), so drift between
   them shows up when `make test-podman` runs. The suite covers only what both sides implement: returned data,
-  `DuplicateNameError`, `DuplicateSubjectError`, hiding deleted rows, commit and rollback. Foreign keys and check
-  constraints are covered only by the integration tests.
+  `DuplicateNameError`, hiding deleted rows, commit and rollback. Foreign keys and check constraints are covered only by
+  the integration tests.
 - **Integration tests**: services and repositories against a real PostgreSQL (testcontainers). `make test-podman` runs
   these tests and sets `DOCKER_HOST` to the Podman socket and `TESTCONTAINERS_RYUK_DISABLED=true`; both can be
   overridden from the environment.
@@ -51,8 +54,8 @@ This document defines how HippoWiki is tested. The cases that are easy to miss a
   by Uvicorn on a local port, because `httpx.ASGITransport` buffers responses and can not stream. All authentication and
   check order tests on MCP run this way.
 - **Production composition test** (`podman`): `create_production_app()` as a whole, with a real PostgreSQL, the real
-  repositories and credential check, and tokens signed with locally generated keys that a small local server offers at
-  `HIPPOWIKI_OAUTH_JWKS_URL`. All other test kinds replace part of this composition, so only this one shows that it fits
+  repositories and credential check, tokens from the real [OAuth Server](oauth-server.md), and client documents from a
+  small local server. All other test kinds replace part of this composition, so only this one shows that it fits
   together.
 - **Import contracts**: `make check` runs import-linter on the [layer rules](package-layout.md#layer-rules). A layer is
   optional until its package exists.

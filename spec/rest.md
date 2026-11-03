@@ -16,8 +16,9 @@ The REST adapter is a thin layer over the services. This document defines its ro
   it.
 - The version the client saw travels in the body, not in `If-Match`.
 - A `PATCH` with no field to change gets 422 `schema_validation`.
-- A `null` for a field gets 422 `schema_validation`, except `auth_subject`, where `null` removes the link and leaving it
-  out changes nothing.
+- A `null` for a field gets 422 `schema_validation`.
+- The [routes of the OAuth Server](oauth-server.md#routes) are not REST routes, and have neither the prefix nor these
+  conventions.
 
 ## Routes
 
@@ -91,18 +92,21 @@ A folder revert can change thousands of items, so the changed items of an entry 
 
 Admin operations only, see [Admin Operations](users.md#admin-operations).
 
-| Route                                          | Purpose                           |
-| ---------------------------------------------- | --------------------------------- |
-| `GET /users`                                   | paged, includes deactivated users |
-| `POST /users`                                  | `name`, `auth_subject`            |
-| `GET /users/{user_id}`                         | one user                          |
-| `PATCH /users/{user_id}`                       | `auth_subject`                    |
-| `POST /users/{user_id}/deactivate`             | idempotent                        |
-| `POST /users/{user_id}/reactivate`             | idempotent                        |
-| `GET /rights`                                  | all rights of all folders, paged  |
-| `GET /folders/{folder_id}/rights`              | paged                             |
-| `PUT /folders/{folder_id}/rights/{user_id}`    | `access_right`, replaces the row  |
-| `DELETE /folders/{folder_id}/rights/{user_id}` | 204                               |
+| Route                                          | Purpose                                     |
+| ---------------------------------------------- | ------------------------------------------- |
+| `GET /users`                                   | paged, includes deactivated users           |
+| `POST /users`                                  | `name`, answers with the one-time password  |
+| `GET /users/{user_id}`                         | one user                                    |
+| `POST /users/{user_id}/password-reset`         | no body, answers with the one-time password |
+| `POST /users/{user_id}/deactivate`             | idempotent                                  |
+| `POST /users/{user_id}/reactivate`             | idempotent                                  |
+| `GET /rights`                                  | all rights of all folders, paged            |
+| `GET /folders/{folder_id}/rights`              | paged                                       |
+| `PUT /folders/{folder_id}/rights/{user_id}`    | `access_right`, replaces the row            |
+| `DELETE /folders/{folder_id}/rights/{user_id}` | 204                                         |
+
+The two responses with a [one-time password](users.md#passwords) carry `Cache-Control: no-store`, and the password
+appears nowhere else, also not in a log.
 
 ## Response Fields
 
@@ -121,6 +125,7 @@ A user is always named as `{id, name}`, see [Own Account](users.md#own-account).
 - **History item**: `type` (`md_document`, `tab` or `folder`), `id`, `name`, `previous_name`, and for a md_document also
   `tab_id`, `previous_tab_id` and `version`. It holds no content, which comes from the revision of the md_document.
 - **Own user**: `id`, `name`, `is_admin`, `created_at`.
-- **User**: `id`, `name`, `auth_subject`, `is_admin`, `created_by`, `created_at`, `deactivated_at`.
+- **User**: `id`, `name`, `is_admin`, `created_by`, `created_at`, `deactivated_at`.
+- **New password**: the user, as above, and `one_time_password`.
 - **Own right**: `folder` as `{id, name}`, `access_right`.
 - **Stored right**: `folder` as `{id, name}`, `user`, `access_right`, `assigned_by`, `assigned_at`.

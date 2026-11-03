@@ -6,8 +6,9 @@ of that.** Library details are in [Implementation Notes](implementation-notes.md
 ## Rules
 
 - **Instants** (points in time) are PostgreSQL `timestamptz`, never plain `timestamp`. Columns are
-  `NOT NULL DEFAULT now()` unless null has a meaning (e.g. `deleted_at`). Column names end in `_at` (`created_at`,
-  `deleted_at`). Server and connection time zone are set to `UTC`.
+  `NOT NULL DEFAULT now()` unless null has a meaning (e.g. `deleted_at`) or a lifetime sets them (`expires_at`, which is
+  `now()` plus the lifetime). Column names end in `_at` (`created_at`, `deleted_at`). Server and connection time zone
+  are set to `UTC`.
 - **One clock: the database.** Persisted timestamps are set with `now()` (column default `now()`, updates set
   `deleted_at = now()`), never taken from clients and never from the app host clock. `now()` is the start of the
   transaction, so all rows written together share the exact same timestamp. The app host clock is only for values that
@@ -23,7 +24,7 @@ of that.** Library details are in [Implementation Notes](implementation-notes.md
   naive `datetime` is a bug.
 - **Wire format** (REST, MCP, export) is RFC 3339 (a profile of ISO 8601) in UTC with `Z` and always six fractional
   digits, e.g. `2026-10-30T14:05:09.123456Z`. REST and MCP share one `UtcDatetime` annotated type from
-  `schemas/time.py`. HTTP headers (HTTP-date) and JWT claims (Unix seconds) follow their own standards.
+  `schemas/time.py`. HTTP headers (HTTP-date) and `expires_in` in a token response (seconds) follow their own standards.
 - **Wire input** accepts only strings in a strict profile of RFC 3339: `YYYY-MM-DDTHH:MM:SS`, optionally a fraction of
   one to six digits, then `Z` or an offset such as `+02:00`. It rejects values without offset or seconds, a lowercase
   `t` or `z`, a space as the separator, Unix timestamps and more than six fractional digits, which it does not truncate.
@@ -31,7 +32,7 @@ of that.** Library details are in [Implementation Notes](implementation-notes.md
 - **Time ranges** (e.g. list filters, and later search filters) are half-open: `[since, until)`.
 - **Calendar dates** without a time of day (e.g. a "published" date) are `date` / `YYYY-MM-DD`, column names end in
   `_on`. A date is never encoded as midnight UTC.
-- **Durations** (config, TTLs, limits) are integers with the unit in the name, e.g. `jwks_refetch_interval_seconds`.
+- **Durations** (config, TTLs, limits) are integers with the unit in the name, e.g. `ACCESS_TOKEN_SECONDS`.
 - **Frontmatter** stays verbatim in `content_md`. If it is ever extracted into `jsonb`, dates and times are kept as
   strings by turning off PyYAML's timestamp parsing.
 - **Logs** use UTC, RFC 3339 with `Z`.
