@@ -46,14 +46,15 @@ reason for this design is in [FastAPI Notes](implementation-notes.md#fastapi-not
 
 ## OAuth Values
 
-`services/oauth.py` and `auth/client_documents.py` hold these values for the [OAuth Server](oauth-server.md). Vendors
-name no lifetimes, so these come from their behaviour and are checked in the
-[Connector Test](roadmap.md#connector-test).
+`services/oauth.py`, `auth/client_documents.py`, `auth/passwords.py` and `auth/login_limiter.py` hold these values for
+the [OAuth Server](oauth-server.md). Vendors name no lifetimes, so these come from their behaviour and are checked in
+the [Connector Test](roadmap.md#connector-test).
 
 Tokens:
 
 - `AUTHORIZATION_CODE_SECONDS`, 60: how long a code can be used.
-- `AUTHORIZATION_CODE_RETENTION_SECONDS`, 86,400: how long a code row stays, so a second use is detected.
+- `AUTHORIZATION_CODE_RETENTION_SECONDS`, 86,400: how long a code row stays after `created_at`, so a second use is
+  detected.
 - `ACCESS_TOKEN_SECONDS`, 3,600: longer than the 5 minutes before expiry at which Claude can refresh, so it does not
   refresh on every request. A deactivated user or a deleted token still ends on the next request.
 - `REFRESH_TOKEN_IDLE_SECONDS`, 5,184,000 (60 days): each refresh starts it again, so regular use never logs out.
@@ -68,7 +69,8 @@ Requests:
 
 Client documents:
 
-- `CLIENT_DOCUMENT_MAX_BYTES`, 65,536: a larger document is rejected.
+- `CLIENT_DOCUMENT_MAX_BYTES`, 5,120: a larger document is rejected. This follows the recommendation of the CIMD draft,
+  and the current documents are under 1 KiB.
 - `CLIENT_DOCUMENT_MAX_AGE_SECONDS`, 3,600: the age at which a cached document is fetched again.
 - `CLIENT_DOCUMENT_REFETCH_INTERVAL_SECONDS`, 60: the shortest time between two fetches of one URL, also after a
   failure.
@@ -79,5 +81,7 @@ Logins:
 - `LOGIN_FREE_FAILURES`, 5: the failures of an account with no wait.
 - `LOGIN_MAX_WAIT_SECONDS`, 900: the wait starts at 1 second and doubles with each further failure, up to this value.
 - `LOGIN_FAILURES_PER_ADDRESS`, 20, within `LOGIN_ADDRESS_WINDOW_SECONDS`, 300: over this, one address gets no hash.
+- `LOGIN_ADDRESSES_TRACKED`, 10,000: the most addresses held in memory, dropping the oldest.
+- `ONE_TIME_PASSWORD_BYTES`, 16: the random bytes of a one-time password, so 128 bits.
 - `PASSWORD_HASHES_RUNNING`, 4, and `PASSWORD_HASHES_WAITING`, 16: over these, a login gets 503. With the default
   parameters of `argon2-cffi`, each hash uses 64 MiB, so the running hashes use about 256 MiB.

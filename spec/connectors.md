@@ -46,7 +46,8 @@ finds everything else through the [metadata](oauth-server.md#metadata) and logs 
 
 - ChatGPT and Claude: add a connector with the MCP URL. Plans differ in who may add one, see
   [Connector Test](roadmap.md#connector-test).
-- Claude Code: `claude mcp add --transport http hippowiki https://wiki.example.org/mcp`.
+- Claude Code: `claude mcp add --transport http hippowiki https://wiki.example.org/mcp`, and then log in with `/mcp` in
+  a session or with `claude mcp login hippowiki`.
 
 Accepted trade-off: tokens are not bound to a client. A person who approves a product leaves a token with that product
 that is valid for their whole account, also on REST. The admin is not affected, because the admin can not approve a
@@ -61,9 +62,9 @@ Hosted MCP connectors log in with OAuth 2.1 and PKCE, because the clients named 
 - ChatGPT needs OAuth for an authenticated server: protected resource metadata, an authorization server with discovery
   metadata, and the authorization code flow with PKCE and S256. It can not present API keys or customer mTLS
   certificates, and does not support machine-to-machine grants
-  ([OpenAI: Authentication](https://developers.openai.com/plugins/build/auth)). The tools declare `securitySchemes`, and
-  the `resource` parameter sets the audience of the tokens
-  ([OpenAI: full documentation](https://developers.openai.com/plugins/llms-full.txt)).
+  ([OpenAI: Authentication](https://developers.openai.com/plugins/build/auth)). Its documentation has tools declare
+  `securitySchemes`, which is [still to check](roadmap.md#connector-test), and the `resource` parameter sets the
+  audience of the tokens ([OpenAI: full documentation](https://developers.openai.com/plugins/llms-full.txt)).
 - Claude documents OAuth with discovery from a 401 carrying `WWW-Authenticate: Bearer resource_metadata=...`
   ([Claude: connector authentication](https://claude.com/docs/connectors/building/authentication.md),
   [Claude: custom connectors](https://support.claude.com/en/articles/11175166-getting-started-with-custom-connectors-using-remote-mcp)).

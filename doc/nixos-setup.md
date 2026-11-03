@@ -11,6 +11,13 @@ same host.
 - Traefik routes the whole hostname to the app, which also serves the login page.
 - Nothing but Traefik is reachable from the internet.
 
+This guide assumes a NixOS host that already has:
+
+- `services.traefik.enable = true`, with an HTTPS entry point and a certificate resolver in its static configuration
+- DNS for the hostname pointing at the host, and ports 80 and 443 open as your certificate resolver needs them
+- outgoing `https` access, because the app fetches the
+  [documents of the trusted clients](../spec/oauth-server.md#trusted-clients)
+
 Replace these placeholders everywhere:
 
 | Placeholder                    | Meaning                                                     |
@@ -136,9 +143,15 @@ If you already use `services.traefik.dynamicConfigFile` or `staticConfigFile`, t
 `dynamicConfigOptions`, so put the router and service there instead. Do not set `forwardedHeaders.insecure`, and if
 another proxy sits in front of Traefik, set `forwardedHeaders.trustedIPs` for it.
 
+Apply the configuration. The first start pulls the image and creates the database, which takes a few minutes:
+
+```bash
+sudo nixos-rebuild switch
+```
+
 ## What HippoWiki Needs
 
-If the HippoWiki container joins the `hippowiki` network:
+The HippoWiki container joins the `hippowiki` network, and the app gets these settings:
 
 ```text
 HIPPOWIKI_PUBLIC_URL=https://wiki.example.org
@@ -149,7 +162,8 @@ HIPPOWIKI_MCP_ALLOWED_ORIGINS=["https://wiki.example.org"]
 The last two are JSON lists, which is how pydantic-settings reads a list. The SDK otherwise allows only localhost, so
 every MCP request behind Traefik would get 421.
 
-`HIPPOWIKI_DATABASE_URL` holds a password, so it comes from `/etc/secrets/hippowiki/app.env`.
+`HIPPOWIKI_DATABASE_URL` holds a password, so it comes from `/etc/secrets/hippowiki/app.env`. The `hippowiki` commands
+need only this one, see [Settings](../spec/oauth-server.md#settings).
 
 The hostname must stay reachable from Anthropic's range `160.79.104.0/21`, see [Deployment](../spec/deployment.md).
 
@@ -214,40 +228,54 @@ Then set it up:
    sudo podman run --rm --network hippowiki --env-file /etc/secrets/hippowiki/app.env localhost/hippowiki:connector-test hippowiki init
    ```
 
-4. Set the password of the admin. It asks on the terminal:
-
-   ```bash
-   sudo podman run --rm -it --network hippowiki --env-file /etc/secrets/hippowiki/app.env localhost/hippowiki:connector-test hippowiki set-admin-password
-   ```
-
-5. Create the test users. This prints their one-time passwords once, so keep them for the test:
-
-   ```bash
-   sudo podman run --rm --network hippowiki --env-file /etc/secrets/hippowiki/app.env -v /etc/hippowiki/connector-test.json:/data/connector-test.json:ro -e HIPPOWIKI_CONNECTOR_TEST_DATA=/data/connector-test.json localhost/hippowiki:connector-test python -m hippowiki.connector_test_app create-users
-   ```
-
-6. Create a [script client](../spec/connectors.md#scripts) for the admin and one for the script user. Each prints its ID
-   and secret once:
-
-   ```bash
-   sudo podman run --rm --network hippowiki --env-file /etc/secrets/hippowiki/app.env localhost/hippowiki:connector-test hippowiki client add --name admin-script --user admin
-   ```
-
-   ```bash
-   sudo podman run --rm --network hippowiki --env-file /etc/secrets/hippowiki/app.env localhost/hippowiki:connector-test hippowiki client add --name test-script --user <name of the script user>
-   ```
-
-7. Add `./connector-test.nix` to `imports`, and apply the configuration:
+4. Add `./connector-test.nix` to `imports`, and apply the configuration:
 
    ```bash
    sudo nixos-rebuild switch
    ```
 
-8. Add the connector in each product, with nothing but the MCP URL. For Claude Code:
+The next commands print or read secrets, so they use `podman exec` in the running container. The output of `podman run`
+can end up in the journal through its log driver. [Checks](#checks) looks for this.
+
+5. Set the password of the admin. It asks on the terminal:
+
+   ```bash
+   sudo podman exec -it hippowiki-connector-test hippowiki set-admin-password
+   ```
+
+6. Create the test users. This prints their one-time passwords once, so keep them for the test:
+
+   ```bash
+   sudo podman exec hippowiki-connector-test python -m hippowiki.connector_test_app create-users
+   ```
+
+7. Create a [script client](../spec/connectors.md#scripts) for the admin and one for the script user. Each prints its ID
+   and secret once:
+
+   ```bash
+   sudo podman exec hippowiki-connector-test hippowiki client add --name admin-script --user admin
+   ```
+
+   ```bash
+   sudo podman exec hippowiki-connector-test hippowiki client add --name test-script --user <name of the script user>
+   ```
+
+8. Add the connector in each product, with nothing but the MCP URL. For Claude Code, add it and then log in:
 
    ```bash
    claude mcp add --transport http hippowiki https://wiki.example.org/mcp
    ```
+
+   ```bash
+   claude mcp login hippowiki
+   ```
+
+To test a [deactivated user](../spec/roadmap.md#connector-test), log them in through a product first, and then run this,
+or `reactivate-user` to undo it:
+
+```bash
+sudo podman exec hippowiki-connector-test python -m hippowiki.connector_test_app deactivate-user <name>
+```
 
 ### Getting a Token on the Command Line
 
@@ -270,7 +298,7 @@ The module and its setup have to cover:
   app waits for.
 - **App container:** on the `hippowiki` network, with its port bound to localhost behind the existing route, and the
   Uvicorn flags of `connector-test.nix`.
-- **First start:** `hippowiki set-admin-password` and the script client of the admin, see
+- **First start:** `hippowiki set-admin-password` and the script client of the admin, with `podman exec`, see
   [Migrations and Initialization](../spec/deployment.md#migrations-and-initialization).
 - **Removing the test app:** `connector-test.nix` and `/etc/hippowiki/connector-test.json`. The test data in the
   database has to go as well, by starting with an empty database.
@@ -279,7 +307,7 @@ The module and its setup have to cover:
 
 Run these on the host:
 
-1. The containers run. For the app, add it to the list once it exists:
+1. The containers run:
 
    ```bash
    systemctl status podman-postgres podman-network-hippowiki podman-hippowiki-connector-test
@@ -303,6 +331,19 @@ Run these on the host:
    sudo podman port postgres
    ```
 
+5. The app can fetch the documents of the trusted clients. Expect 200 three times:
+
+   ```bash
+   sudo podman exec hippowiki-connector-test python -c 'import urllib.request as u; [print(u.urlopen(x, timeout=5).status) for x in ("https://claude.ai/oauth/mcp-oauth-client-metadata", "https://claude.ai/oauth/claude-code-client-metadata", "https://chatgpt.com/oauth/client.json")]'
+   ```
+
+6. The journal holds no secret that a command printed. Replace the placeholder with the secret of a script client, and
+   expect no output:
+
+   ```bash
+   sudo journalctl -u podman-hippowiki-connector-test --no-pager | grep -F '<client secret>'
+   ```
+
 Run these from outside the host, once the [Connector Test App](#connector-test-app) runs:
 
 1. The health route answers through Traefik. Expect 200:
@@ -323,10 +364,10 @@ Run these from outside the host, once the [Connector Test App](#connector-test-a
    curl -fsS https://wiki.example.org/.well-known/oauth-authorization-server | jq -r .issuer
    ```
 
-4. The metadata has what the clients need. Expect `true` and `true`, then `["S256"]`, and a number for `none`:
+4. The metadata has what the clients need. Expect `true` and `true`, then `["S256"]`, and two numbers for `none`:
 
    ```bash
-   curl -fsS https://wiki.example.org/.well-known/oauth-authorization-server | jq -c '.client_id_metadata_document_supported, .authorization_response_iss_parameter_supported, .code_challenge_methods_supported, (.token_endpoint_auth_methods_supported | index("none"))'
+   curl -fsS https://wiki.example.org/.well-known/oauth-authorization-server | jq -c '.client_id_metadata_document_supported, .authorization_response_iss_parameter_supported, .code_challenge_methods_supported, (.token_endpoint_auth_methods_supported | index("none")), (.revocation_endpoint_auth_methods_supported | index("none"))'
    ```
 
 5. MCP asks for a login and points at the metadata. Expect 401 and a `www-authenticate` line with `resource_metadata`:

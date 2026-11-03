@@ -124,7 +124,7 @@ starts.
 
 The rules are in [OAuth Server](oauth-server.md). Hashes are SHA-256 as `bytea`, and the values themselves are never
 stored. `client_id` has no foreign key, because a [trusted client](oauth-server.md#trusted-clients) has no row. Rows are
-physically deleted, so `user_id` is the only foreign key and nothing refers to these tables.
+physically deleted, so nothing refers to these tables, and their only foreign keys are `user_id` and `script_user`.
 
 `oauth_clients` holds the [own clients](oauth-server.md#own-clients):
 
@@ -171,7 +171,9 @@ physically deleted, so `user_id` is the only foreign key and nothing refers to t
 | `replaced_at` | timestamptz            | a refresh token that was rotated, kept to detect reuse                          |
 
 - There is no `resource` column, because every token has the one resource, the MCP URL.
-- `oauth_codes` has indexes on `family_id` and `user_id`, for [ending tokens](oauth-server.md#ending-tokens).
+- `oauth_codes` has indexes on `family_id`, `user_id` and `client_id`, for
+  [ending tokens](oauth-server.md#ending-tokens) and removing a client, and on `created_at`, for the
+  [cleanup](oauth-server.md#tokens).
 
 ## Folder Right Table
 

@@ -106,7 +106,8 @@ Admin operations only, see [Admin Operations](users.md#admin-operations).
 | `DELETE /folders/{folder_id}/rights/{user_id}` | 204                                         |
 
 The two responses with a [one-time password](users.md#passwords) carry `Cache-Control: no-store`, and the password
-appears nowhere else, also not in a log.
+appears nowhere else, also not in a log. Over the [limit of hashes](limits.md#oauth-values), these routes get 503
+`service_unavailable` and change nothing.
 
 ## Response Fields
 

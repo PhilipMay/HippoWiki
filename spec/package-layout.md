@@ -5,7 +5,8 @@ This document defines the code structure and which layer may use which.
 ```text
 src/hippowiki/
 ├── __init__.py
-├── app.py               # ASGI composition: create_app(unit-of-work factory, credential check), services, FastAPI app + MCP routes,
+├── app.py               # ASGI composition: create_app(unit-of-work factory, credential check, client document source, public URL),
+│                        # services, FastAPI app + MCP routes,
 │                        # lifespan (MCP session manager)
 │                        # create_production_app(): real factory and credential check, lifespan (DB engine)
 ├── cli.py               # CLI: hippowiki migrate, init, set-admin-password, client add, client list, client remove
@@ -46,6 +47,7 @@ src/hippowiki/
 │   ├── tokens.py        # generates opaque tokens and turns a bearer value into its hash
 │   ├── passwords.py     # Argon2id hashing in a worker thread, with the limit on running and waiting hashes
 │   ├── client_documents.py # fetches, validates and caches the documents of the trusted clients
+│   ├── login_limiter.py # counts failed logins per client address, in memory
 │   ├── credentials.py   # credential check: looks up the token and user through the unit-of-work factory, not a service
 │   ├── middleware.py    # ASGI middleware: rejects with 401, 403 (admin on MCP), 413 or 503, buffers the body, or stores the principal in the scope
 │   └── principal.py     # Principal abstraction (user / admin)
@@ -105,16 +107,17 @@ src/hippowiki/
       calls.
     - The credential check in `auth/credentials.py`, which produces the principal. It is not a service, and reads tokens
       and users through the unit-of-work factory and the repository Protocol.
-  - They may import `auth/tokens.py` and `auth/passwords.py`. `services/oauth.py` gets the source of client documents as
-    a Protocol, which `auth/client_documents.py` implements.
+  - They may import `auth/tokens.py` and `auth/passwords.py`. `services/oauth.py` gets the source of client documents
+    and the login limiter as Protocols, which `auth/client_documents.py` and `auth/login_limiter.py` implement, so the
+    service itself stays stateless.
 - **Repositories** (`repositories/`):
   - They do DB access only, with no permission or business logic, and get their session from the unit of work.
   - Their methods return only live rows, unless a method is named for deleted ones, so a service can not forget the
     filter. See [Deleting and Restoring Content](content.md#deleting-and-restoring-content).
 - **`auth/`**:
   - `auth/principal.py` imports only `domain.py`, and the adapters, the services and the rest of `auth/` may import it.
-  - `auth/tokens.py`, `auth/passwords.py` and `auth/client_documents.py` import no other HippoWiki package, and get
-    their settings as parameters.
+  - `auth/tokens.py`, `auth/passwords.py`, `auth/client_documents.py` and `auth/login_limiter.py` import no other
+    HippoWiki package, and get their settings as parameters.
   - `auth/credentials.py` uses only `repositories/interfaces.py`, `auth/principal.py` and `auth/tokens.py`.
   - `auth/middleware.py` uses only `auth/principal.py` and `problem.py`, and gets the credential check, the MCP path,
     the [public routes](authentication.md#public-routes), the metadata URL for `WWW-Authenticate` and the

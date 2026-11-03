@@ -137,6 +137,9 @@ Authorization request:
 - Every redirect carries `iss`, including errors and deny.
 - A `state` with HTML in it comes back unchanged in the redirect and is escaped in the page.
 - `POST` with parameters changed from those of the `GET` is validated again, such as another redirect URI.
+- A NUL, a lone surrogate and invalid UTF-8 in any parameter, also in `name` and `client_id`, never give a 500.
+- A `code_challenge` that is not 43 base64url characters is rejected.
+- A `HIPPOWIKI_PUBLIC_URL` with `http` stops the app from starting, and a loopback host is allowed.
 
 Trusted clients:
 
@@ -152,26 +155,34 @@ Login page:
 
 - A wrong password, an unknown name, a deactivated user and an account in its wait get an identical response, and each
   of them runs a hash, apart from an address over its limit.
-- A `POST` without the cookie, with a form field that differs, or with a foreign or missing `Origin` issues no code.
+- A `POST` without the cookie, with a form field that differs, or with a foreign or missing `Origin` issues no code, and
+  the page comes back with a new cookie and field.
+- A second `GET` reuses a cookie it finds, so a form from an earlier `GET` still works.
 - The admin with a correct password on a trusted client, or on an own client without `--admin-allowed`, gets no code,
   and with a wrong password gets the normal answer. An own client with `--admin-allowed` works.
+- The admin with a correct password and a filled new password field gets no code, on any client, and the password stays.
 - A one-time password with no new password issues no code and leaves the password as it was. With a new one it issues a
   code, and the one-time password stops working.
-- A new password that is too short, too long or equal to the name issues no code and changes nothing.
+- A new password that is too short, too long, equal to the name or equal to the current password issues no code and
+  changes nothing.
 - Changing a password ends the older tokens of the user, and the new code works.
+- A password reset between the two units of work of a login makes that login count as wrong, and issues no code.
 - An approval answers 303, never 307, and the page has the [browser headers](oauth-server.md#browser-protection), with
   the origin of the redirect URI in `form-action`.
+- The page shows the host of the `client_id` for every client, and the warning for a loopback redirect URI only.
 - Deny needs no password, issues no code and gets `access_denied`.
 - The page holds no password after a failed attempt.
 
 Login protection:
 
 - The failure after the free attempts starts the wait, and the right password during the wait fails with the same
-  answer.
+  answer. Refused attempts during the wait neither count nor extend it.
 - A successful login resets the counter, also against concurrent failures (`podman`).
 - Over the limit of hashes, a login gets 503, and other requests go on answering while hashes run.
 - Over the limit of failures for one address, a login runs no hash, and another address still can log in.
 - `X-Forwarded-For` from an untrusted address does not change the address that is counted.
+- Two IPv6 addresses in one /64 count as one address, and the oldest entry goes when the table is full.
+- `POST /users` and a password reset over the limit of hashes get 503 and change nothing.
 - A password over the limit runs no hash.
 
 Token endpoint:
@@ -183,8 +194,15 @@ Token endpoint:
 - Two concurrent exchanges of one code give one success (`podman`).
 - A second use of a code gets `invalid_grant` and ends the tokens from the first use.
 - A code of one client can not be redeemed by another, and a refresh token of one client can not be used by another.
-- A confidential client with a wrong or no secret gets 401 `invalid_client` with `WWW-Authenticate: Basic`.
-- A script client gets only the client credentials grant, with no refresh token, and a login client can not use it.
+- A confidential client with a wrong or no secret gets 401 `invalid_client` with `WWW-Authenticate: Basic`, and an
+  unknown `client_id` gets 401 `invalid_client`.
+- A script client gets only the client credentials grant, with no refresh token, and a login client using it gets
+  `unauthorized_client`. An unknown grant gets `unsupported_grant_type`.
+- The code row stays after the code expires, so a second use after that still ends the tokens from the first use, and
+  the cleanup deletes it only after its retention time.
+- A failing database gets 503 on a code and a refresh, never `invalid_grant`, and the refresh token still works
+  afterwards.
+- A token response leaves out `scope` when nothing was granted.
 - A body over the form limit, another content type and a repeated parameter get `invalid_request`, and the chunked case
   is not held in memory.
 - A token response has `Cache-Control: no-store`, and no token appears in a log.
@@ -196,10 +214,17 @@ Refresh rotation:
 - A replaced token inside the grace window works, and after it gets `invalid_grant` and ends the family, while another
   family of the user keeps working (`podman`).
 - A refresh sets a new idle time, so a token used regularly outlives the idle limit (`podman`).
+- A foreign `resource` on a refresh gets `invalid_target`.
+- After a reuse inside the grace window, a normal refresh of one chain marks the other as replaced, so its next refresh
+  after the window gets `invalid_grant` and ends the family (`podman`).
+- A reuse inside the grace window marks no other token as replaced, so a client that keeps either response goes on
+  working.
 
 Revocation and clients:
 
-- Revoking a token ends its family. A token of another client or an unknown token gets 200 and changes nothing.
+- Revoking a token ends its family. An unknown token gets 200, and a token of another client gets `invalid_grant`, and
+  neither changes anything.
+- The metadata has `revocation_endpoint_auth_methods_supported` with `none`.
 - `hippowiki client remove` ends the tokens of the client, and a client added with `--user` acts as that user.
 - A script client whose user is deactivated gets `invalid_client`.
 - A row in `oauth_tokens` holds no token, and a copied row hash does not work as a bearer token.
@@ -276,6 +301,6 @@ Revocation and clients:
 - An update racing a folder revert ends without a deadlock, and two updates racing with one version give one success and
   one `VersionConflictError`.
 - In the production composition test, after `hippowiki migrate`, `hippowiki init` and
-  `hippowiki client add --user admin`, the admin creates a folder on REST with a token from its script client. A user
-  with a right logs in through the login page and reads it on REST and MCP, and a user with no right gets the full 404
-  body.
+  `hippowiki client add --name admin-script --user admin`, the admin creates a folder on REST with a token from its
+  script client. A user with a right logs in through the login page and reads it on REST and MCP, and a user with no
+  right gets the full 404 body.

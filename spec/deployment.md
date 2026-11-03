@@ -30,8 +30,9 @@ This document defines how HippoWiki runs in production and for simple self-hosti
   copied separately.
 - `hippowiki init` runs after the migrations and creates the admin. It is idempotent, so it is safe to run on every
   deployment. The first deployment then needs manual steps on the server: `hippowiki set-admin-password`, and
-  `hippowiki client add --user admin` for a script client, because REST is the only way to administer the system, see
-  [Admin](users.md#admin).
+  `hippowiki client add --name admin-script --user admin` for a script client, because REST is the only way to
+  administer the system. Run these with `podman exec` in the running container, because the output of `podman run` can
+  end up in the journal, and it holds a secret, see [Admin](users.md#admin).
 
 ## OAuth Server Settings
 
@@ -57,8 +58,8 @@ This document defines how HippoWiki runs in production and for simple self-hosti
     allows.
 - It passes the real client address in `X-Forwarded-For`, for the [login protection](oauth-server.md#login-protection).
   Uvicorn runs with `--proxy-headers` and `--forwarded-allow-ips` set to the address the proxy connects from, so the app
-  trusts this header only from the proxy. To check: that this version of Uvicorn accepts a subnet there, and what
-  address Podman shows for the proxy.
+  trusts this header only from the proxy. [Uvicorn](https://uvicorn.dev/settings/) accepts a subnet there. To check:
+  what address Podman shows for the proxy.
 - HippoWiki gets `HIPPOWIKI_MCP_ALLOWED_HOSTS`, the hostname, and `HIPPOWIKI_MCP_ALLOWED_ORIGINS`, `https://` plus the
   hostname, because an origin includes the scheme. Without them the SDK allows only localhost, so every request behind
   the proxy gets 421, see [Serving the MCP App](mcp.md#serving-the-mcp-app). The

@@ -8,14 +8,15 @@ This documents what still needs to be done and is missing, most urgent first. Wh
 1. **Connector setup**: everything the [Connector Test](#connector-test) needs and no server provides yet.
    - PostgreSQL and Traefik with TLS on a public URL, both as in the [guide](../doc/nixos-setup.md).
    - The parts of the foundation this step uses, and only those: the settings for the public URL, the trusted clients,
-     the database and the allowed hosts and origins, `problem.py`, `domain.py`, `services/errors.py`, `SafeText`,
-     `UtcDatetime`, the paging types, the response models of the tools, the engine and the unit of work, with the import
-     contracts that wait for the first code.
+     the database and the allowed hosts and origins, `problem.py`, `domain.py`, `logs.py`, `services/errors.py`,
+     `SafeText`, `UtcDatetime`, the paging types, the response models of the tools, the engine and the unit of work,
+     with the import contracts that wait for the first code. The test reads the log of the app, so logging comes first.
    - The [OAuth Server](oauth-server.md) in full, because login and refresh are what the test has to prove, so it can
      not be a stand-in. That means the real `users`, `user_passwords` and [OAuth tables](database.md#oauth-tables), with
      their migration, repositories, fakes and contract tests.
-   - `UserService` with `create_admin` and `set_admin_password`, and `cli.py` with `hippowiki migrate`, `init`,
-     `set-admin-password` and `client`. It replaces `demo.py`, its test and its script entry.
+   - `UserService` with `create_admin`, `set_admin_password` and the own account, which `get_own_user` calls, and
+     `cli.py` with `hippowiki migrate`, `init`, `set-admin-password` and `client`. It replaces `demo.py`, its test and
+     its script entry.
    - The auth middleware, the token check, the [public routes](authentication.md#public-routes) and the MCP routes.
    - The tools `get_own_user`, to show who is logged in, `list_folders` and `list_md_documents`, to find the IDs,
      `get_md_document`, for the maximum size case, and `create_md_document`, as one write tool and for a body of the
@@ -23,7 +24,7 @@ This documents what still needs to be done and is missing, most urgent first. Wh
    - The `Containerfile`, whose image runs on the NixOS host, see the [guide](../doc/nixos-setup.md#connector-test-app).
    - The [Connector Test App](#connector-test-app).
 2. **Connector Test**: see [below](#connector-test).
-3. **Foundation**: add logging and the settings and `schemas/` that the first step left out.
+3. **Foundation**: add the settings and `schemas/` that the first step left out.
 4. **First feature end to end**: the admin creates a folder with `POST /folders`, a user with a right reads it with
    `GET /folders/{folder_id}` and the MCP tool `get_folder`, and a user with no right gets 404. This shows early that
    the layers fit together, on both adapters, and a [production composition test](testing.md#test-kinds) shows it.
@@ -31,7 +32,7 @@ This documents what still needs to be done and is missing, most urgent first. Wh
      because creating a folder also writes its default tab, its entry and its revision.
    - The repositories these need, with their fakes and contract tests. The tests create the user and the right through
      the repositories, because `POST /users` and `PUT` of a right come in the Adapters step.
-   - `FolderService` with create, read and list, and `UserService` with the own account.
+   - `FolderService` with create, read and list.
    - The two routes and `create_app()` and `create_production_app()`. The MCP server factory
      [registers only the tools of the services it gets](package-layout.md#layer-rules), so here `get_own_user`,
      `list_folders` and `get_folder`. The stand-ins get `get_folder` too, so the
@@ -59,12 +60,16 @@ away in the Services step, so it does not become a design for the services. Unti
   the real principal, so the real login decides who sees what.
 - It passes the middleware the real credential check.
 - It reads the test data from a JSON file named by the environment variable `HIPPOWIKI_CONNECTOR_TEST_DATA`:
-  - Three user names: a normal user, a deactivated user and the user of a script client. The admin comes from
+  - Three user names: a normal user, a user to deactivate and the user of a script client. The admin comes from
     `hippowiki init`.
   - A folder with its default tab, and a right on it for the normal user and the user of the script client.
   - A md_document of exactly the [maximum document size](limits.md#document-size).
-- `POST /users` does not exist yet, so a small command of this module creates these users in the database, and prints
-  their one-time passwords once. It is idempotent, and leaves existing users alone.
+- The REST routes for users do not exist yet, so small commands of this module stand in for them:
+  - `create-users` creates these users in the database, and prints their one-time passwords once. It is idempotent, and
+    leaves existing users alone.
+  - `deactivate-user` and `reactivate-user` take a name and follow the real rule, which
+    [ends the tokens](oauth-server.md#ending-tokens). The user has to log in first, so a deactivated user holds a token
+    the test can try.
 - It logs the method, path and status of each request, its `Origin` and `User-Agent`, and the client and scope of the
   token, because the test has to read these values and nothing else shows them. It never logs a token or a password.
 
@@ -74,15 +79,18 @@ The login method is defined in [OAuth Server](oauth-server.md), but the local tr
 works with the real clients, so this test comes before the other implementation work. It checks:
 
 - All three clients log in through their [metadata document](oauth-server.md#trusted-clients), with nothing entered but
-  the MCP URL. Claude Code uses `claude mcp add --transport http hippowiki https://wiki.example.org/mcp`.
+  the MCP URL. Claude Code uses `claude mcp add --transport http hippowiki https://wiki.example.org/mcp` and then
+  `/mcp`. The log of the app shows which discovery paths each client tries, because a guessed path that does not exist
+  gets 401.
 - ChatGPT uses `https://chatgpt.com/oauth/client.json` and its stable redirect URI, and runs as a public client, because
   the server advertises only `none` of the methods it supports. It runs on a Business or Enterprise plan, where a
   workspace admin first turns on developer mode, see
   [OpenAI: developer mode](https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt).
   [OpenAI's guide](https://developers.openai.com/api/docs/guides/custom-mcp-server.md) names no such step, so check
   whether it is still needed, and whether a Business member needs an admin to publish the connector.
-- Whether ChatGPT asks for `openid`, `email` and UserInfo on the plan in use, see
-  [Open Risks](oauth-server.md#open-risks). HippoWiki stores no email, so if it needs them, this needs a decision.
+- Whether ChatGPT works without `openid`, `email` and UserInfo on the plan in use, and what a workspace with domain
+  restrictions does, see [Open Risks](oauth-server.md#open-risks). HippoWiki stores no email, so if it needs them, this
+  needs a decision.
 - Whether ChatGPT needs `securitySchemes` on the tools, which [Connectors](connectors.md#why-oauth) names and
   [MCP](mcp.md#tools) does not define. The documentation says its linking UI needs them together with a tool error that
   carries `_meta["mcp/www_authenticate"]`, which HippoWiki does not send, because the 401 comes before any tool runs.
@@ -90,11 +98,13 @@ works with the real clients, so this test comes before the other implementation 
   [documentation](https://claude.com/docs/connectors/custom/add-unlisted.md) offers custom connectors on every plan,
   with one on Free, and on Team and Enterprise an owner adds them.
 - The [login page](oauth-server.md#login-page) works in a real browser, in Chrome, Firefox and Safari, coming from each
-  product:
-  - The redirect after the form is not blocked by `form-action`, and the `Origin` check and the `SameSite=Strict` cookie
-    accept the form after the product sent the browser there.
+  product, including the Claude desktop and mobile apps, which share one callback:
+  - The redirect after the form is not blocked by `form-action`, also where the callback redirects on to an app. If it
+    is blocked, `form-action` is dropped, see [Browser Protection](oauth-server.md#browser-protection).
+  - The `Origin` check and the cookie accept the form after the product sent the browser there, also with two logins in
+    two tabs.
   - A one-time password can be replaced in the flow.
-  - Each product shows its name and redirect host on the page.
+  - Each product shows its name and hosts on the page, and Claude Code shows the loopback warning.
 - All clients keep working after a token refresh, and the lifetimes in [OAuth Values](limits.md#oauth-values) are long
   enough that nobody has to log in again every day. The
   [documentation of Claude](https://claude.com/docs/connectors/building/authentication.md) says it can refresh up to
@@ -106,8 +116,8 @@ works with the real clients, so this test comes before the other implementation 
   [Serving the MCP App](mcp.md#serving-the-mcp-app).
 - All clients accept 405 on `GET /mcp`, see [Serving the MCP App](mcp.md#serving-the-mcp-app), and a server that sends
   no session ID, see [Sessions and Principal](mcp.md#sessions-and-principal).
-- How each client reacts to the 401 and `invalid_grant` for a deactivated user, and whether the person sees why at the
-  login page.
+- How each client reacts when a logged-in user is deactivated with `deactivate-user`: the 401 and `invalid_grant`, and
+  whether the person sees why at the login page.
 - How each client reacts when the [admin is refused on the login page](oauth-server.md#admin), and the 403 for a token
   of an admin script client with `curl`, see [Admin Account](mcp.md#admin-account).
 - What each client does with a `get_md_document` result at the [maximum document size](limits.md#document-size), which
@@ -150,6 +160,8 @@ The results go into [OAuth Server](oauth-server.md), including the lifetimes, an
     runs on its own hostname, so a rendering bug can not reach the login page.
   - Rendering: `content_md` is written by other users, so the renderer drops raw HTML and allows only safe URL schemes,
     and the pages get a Content-Security-Policy.
+  - Passwords: it sends a person to the [login page](oauth-server.md#login-page) to change one, so it needs no route of
+    its own, and it shows the one-time password of `POST /users` once.
   - CORS: the browser never calls REST directly, so REST needs none. A preflight `OPTIONS` carries no credentials, so
     the auth middleware would reject it with 401. If other origins ever get allowed, CORS wraps outside the auth
     middleware and is configured by an allowlist that is empty by default, with a preflight test.

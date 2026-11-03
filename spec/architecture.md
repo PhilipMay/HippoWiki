@@ -44,10 +44,11 @@ history and revert, see [Admin Account](mcp.md#admin-account) and [History and R
 
 ## Composition
 
-`create_app()` takes the unit-of-work factory and the credential check, because FastAPI dependencies do not reach the
-MCP routes. It builds the services once and passes them to both adapters, adds the MCP routes to the FastAPI router and
-runs the MCP session manager in the lifespan, see [Serving the MCP App](mcp.md#serving-the-mcp-app). It knows nothing
-about the engine, so tests pass fakes and need no database, see [Testing](testing.md).
+`create_app()` takes the unit-of-work factory, the credential check, the source of client documents and the public URL.
+FastAPI dependencies do not reach the MCP routes, and tests need no network for the documents. It builds the services
+once and passes them to both adapters, adds the MCP routes to the FastAPI router and runs the MCP session manager in the
+lifespan, see [Serving the MCP App](mcp.md#serving-the-mcp-app). It knows nothing about the engine, so tests pass fakes
+and need no database, see [Testing](testing.md).
 
 `create_production_app()` builds the engine from the settings, passes the real factory and credential check, and
 disposes of the engine in the lifespan.

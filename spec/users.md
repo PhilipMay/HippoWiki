@@ -57,14 +57,16 @@ A user is an account: there are no external accounts to link, and a user logs in
 [login page](oauth-server.md#login-page). How passwords are stored and protected is in
 [Login Protection](oauth-server.md#login-protection).
 
-- the admin never chooses a password for another user. Creating a user generates a random one-time password, which the
-  response holds once, and which the admin passes on
-- a one-time password works only for setting a new password, see [Login Page](oauth-server.md#login-page)
+- the admin never chooses a password for another user. Creating a user generates a random one-time password of
+  [128 bits](limits.md#oauth-values), which the response holds once, and which the admin passes on
+- a one-time password works only for setting a new password, see [Login Page](oauth-server.md#login-page). It has no
+  expiry. This is accepted, because only the admin sees it and it opens nothing until it is replaced
 - a password reset by the admin replaces the password with a new one-time password, ends the tokens of the user and
   clears a wait after failed logins (service)
 - a user changes their own password on the login page, which ends all their tokens (service)
-- the [rules for a new password](limits.md#limits-at-a-glance) are only its length and that it is not the name of the
-  user, because rules on character types lead to weaker passwords (service)
+- the [rules for a new password](limits.md#limits-at-a-glance) are only its length, that it is not the name of the user
+  and that it is not the current password, so a password the admin knows can not stay. There are no rules on character
+  types, because they lead to weaker passwords (service)
 - the hash is in its own table, so it never comes along with a user row, see
   [User Password Table](database.md#user-password-table)
 - a lost password has no self-service, because HippoWiki stores no email. A person goes to the admin, and the admin to
