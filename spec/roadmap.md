@@ -1,7 +1,8 @@
 # Roadmap
 
 This documents what still needs to be done and is missing, most urgent first. What is out of scope is in
-[Non-Goals](goals.md#non-goals-for-now).
+[Non-Goals](goals.md#non-goals-for-now), and decisions and review findings that are still open are in the
+[List of Open Points](../doc/LOP.md).
 
 ## Next Steps
 

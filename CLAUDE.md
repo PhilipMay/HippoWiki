@@ -38,6 +38,7 @@ implementation.
 - deployment: `spec/deployment.md`
 - what to configure for each component and what can go wrong: `spec/configuration-and-failure-modes.md`
 - next steps and open points: `spec/roadmap.md`
+- open points, decisions to make and review findings: `doc/LOP.md`
 
 ## Commands
 

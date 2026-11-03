@@ -43,6 +43,7 @@ Operations and planning:
 - [Configuration and Failure Modes](configuration-and-failure-modes.md): what to configure for each component and what
   can go wrong.
 - [Roadmap](roadmap.md): next steps and open points.
+- [List of Open Points](../doc/LOP.md): decisions to make, review findings and points still to check.
 
 ## Glossary
 
