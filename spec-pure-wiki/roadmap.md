@@ -9,6 +9,7 @@ This documents what still needs to be done and is missing, most urgent first. Wh
    the paging types, the engine and the unit of work, with the import contracts that wait for the first code.
    - `cli.py` replaces `demo.py`, its test and its script entry.
    - The time pin tests drop what only the earlier plan needed, so PyYAML and its stubs can leave the dev dependencies.
+   - The layer rules in `pyproject.toml` lose `mcp`, and their comment points to this specification.
 2. **Login**: the `users`, `user_passwords` and `sessions` tables with their migration, repositories, fakes and contract
    tests, `UserService` with `create_admin` and `set_admin_password`, `AuthService`, the auth middleware, the token
    check and the [public routes](authentication.md#public-routes), and `hippowiki migrate`, `init` and
@@ -25,8 +26,8 @@ This documents what still needs to be done and is missing, most urgent first. Wh
 4. **Database**: the remaining models, migrations, repositories, and their fakes and contract tests.
 5. **Services**: the remaining services for users, rights, folders, tabs and md_documents with revisions and revert.
 6. **Adapter**: the remaining REST routes.
-7. **Security review**: an independent review of the [login](authentication.md) and its tests, because it is
-   security-critical code that HippoWiki owns. Its findings are fixed before anything real goes on the server. Until
+7. **Security review**: a review of the [login](authentication.md) and its tests with Codex and Claude Code, because it
+   is security-critical code that HippoWiki owns. Its findings are fixed before anything real goes on the server. Until
    then the server holds test data only.
 8. **Deployment**: the `Containerfile`, the complete `compose.yaml` and the NixOS module, which run the same image, see
    [Deployment](deployment.md). The [existing guide](../doc/nixos-setup.md) is adapted to the pure wiki.
@@ -50,6 +51,26 @@ One point is a firm requirement, whatever the choices above:
 It also shows the one-time password of `POST /users` and of a password reset once, and handles the
 `password_change_required` answer of the [login](authentication.md#login).
 
+## Open Decisions
+
+- One-time password expiry: a one-time password has [no expiry](users.md#passwords), and whoever uses it first takes the
+  account. The [List of Open Points](../doc/LOP.md) recommends an expiry of 7 days, compared with `changed_at`.
+- Attacks on the login: the [known trade-offs](authentication.md#login-protection) let an anonymous client keep a known
+  account out and use up all hash slots. The list recommends a Traefik `rateLimit` middleware for its anonymous routes,
+  which here would be `/api/v1/auth/login`, because it needs no code.
+- Open findings: [Spec Findings](../doc/Spec-Findings.md) holds review findings on rules that this specification carries
+  over, and they still apply. They name the files of the earlier plan, and the same rules are in the documents of the
+  same name here. These are the findings that still apply:
+  - Security and operations: what must not be logged, rights on deleted folders, control characters in content.
+  - REST and checks: not-live item with a low right, revert result, integer ranges, invalid `access_right`, unknown
+    query parameters, restoring a live folder, trailing newline in names, OpenAPI security scheme, history items hide
+    deleted state, "the deleted rows".
+  - Data model and concurrency: folder state after the lock, isolation and stale reads, indexes and lists, "(service)"
+    glossary entry.
+  - Structure and plan: settings list, open risks outside the roadmap, container command, sort order claim, duplicated
+    values.
+  - Outside facts: `eager_defaults`, Traefik version, Podman compose wait.
+
 ## Later
 
 - Backup and restore: [Deployment](deployment.md) names `pg_dump`, but the schedule, the retention and a tested restore
@@ -64,8 +85,11 @@ It also shows the one-time password of `POST /users` and of a password reset onc
   with the folder and which holds the lock on the folder row until it ends.
 - Login limit per address: counting failures per client address, which slows down one password tried against many names.
   It needs the app to trust the forwarded address only from the proxy.
-- Stronger login: multi-factor login, and a password reset without the admin, which needs an email or another second
-  channel.
+- Stronger login: passwords alone are acceptable only for a small group that uses long, unique passwords. The options
+  are a bundled list of common passwords, TOTP, passkeys (WebAuthn), the Have I Been Pwned API, and sign-in through
+  Google or GitHub. A password reset without the admin needs an email or another second channel.
+- Ending all sessions: a command that ends every session at once, such as after a leak or a restored backup. The fixed
+  [session length](limits.md#login-values) bounds the risk until then.
 - add Prometheus for monitoring
 - add exporter to Prometheus for Database and other components
 - add Grafana for visualization

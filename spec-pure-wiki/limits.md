@@ -13,8 +13,8 @@ login values are fixed in the code and are not settings.
 | request body                               | at most 2 MiB (2,097,152 bytes)        | 413                                                     |
 | `limit` of a [list](lists.md)              | 1 to 100, with a default of 50         | a schema validation error, and the value is not clamped |
 
-- A password is limited, because hashing a very long one would cost time on an anonymous route. A password at login over
-  the limit gets the same answer as a wrong one, without hashing it.
+- A password is limited, because hashing a very long one would cost time on an anonymous route. A password at login or a
+  `current_password` over the limit gets the same answer as a wrong one, without hashing it.
 
 ## Document Size
 
@@ -46,7 +46,8 @@ reason for this design is in [FastAPI Notes](implementation-notes.md#fastapi-not
 
 ## Login Values
 
-`services/auth.py`, `auth/tokens.py` and `auth/passwords.py` hold these values for [Authentication](authentication.md).
+`services/auth.py`, `auth/tokens.py`, `auth/passwords.py` and `api/routers/auth.py` hold these values for
+[Authentication](authentication.md).
 
 - `SESSION_SECONDS`, 28,800 (8 hours): how long a session lasts from its login.
 - `TOKEN_BYTES`, 32: the random bytes of a token, so 256 bits and 43 base64url characters.
@@ -54,5 +55,5 @@ reason for this design is in [FastAPI Notes](implementation-notes.md#fastapi-not
 - `LOGIN_BODY_MAX_BYTES`, 16,384: the largest body of the login route. Over it, the route answers 413.
 - `LOGIN_FREE_FAILURES`, 5: the failures of an account with no wait.
 - `LOGIN_MAX_WAIT_SECONDS`, 900: the wait starts at 1 second and doubles with each further failure, up to this value.
-- `PASSWORD_HASHES_RUNNING`, 4, and `PASSWORD_HASHES_WAITING`, 16: over these, a login gets 503. With the default
-  parameters of `argon2-cffi`, each hash uses 64 MiB, so the running hashes use about 256 MiB.
+- `PASSWORD_HASHES_RUNNING`, 4, and `PASSWORD_HASHES_WAITING`, 16: over these, a request that needs a hash gets 503.
+  With the default parameters of `argon2-cffi`, each hash uses 64 MiB, so the running hashes use about 256 MiB.

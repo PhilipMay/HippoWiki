@@ -14,21 +14,21 @@ Every REST error uses RFC 9457 problem+json, built by one shared helper in `prob
   different reactions
 - `detail`: the fixed text of the `code`, so it never holds an ID, a name or an input value
 
-| Status | `code`                     | `detail`                                   |
-| ------ | -------------------------- | ------------------------------------------ |
-| 401    | `unauthenticated`          | A valid token is required.                 |
-| 401    | `invalid_credentials`      | The name or the password is wrong.         |
-| 403    | `forbidden`                | This operation is not allowed.             |
-| 403    | `password_change_required` | A new password is required.                |
-| 404    | `not_found`                | The item does not exist.                   |
-| 405    | `method_not_allowed`       | This method is not allowed on this route.  |
-| 409    | `name_conflict`            | The name is already taken.                 |
-| 409    | `version_conflict`         | The version is not the current one.        |
-| 413    | `body_too_large`           | The request body is over the limit.        |
-| 422    | `schema_validation`        | The request is not valid.                  |
-| 422    | `domain_validation`        | The request breaks a rule for its values.  |
-| 500    | `internal_error`           | An unexpected error occurred.              |
-| 503    | `service_unavailable`      | The service can not check the request now. |
+| Status | `code`                     | `detail`                                    |
+| ------ | -------------------------- | ------------------------------------------- |
+| 401    | `unauthenticated`          | A valid token is required.                  |
+| 401    | `invalid_credentials`      | The name or the password is wrong.          |
+| 403    | `forbidden`                | This operation is not allowed.              |
+| 403    | `password_change_required` | A new password is required.                 |
+| 404    | `not_found`                | The item does not exist.                    |
+| 405    | `method_not_allowed`       | This method is not allowed on this route.   |
+| 409    | `name_conflict`            | The name is already taken.                  |
+| 409    | `version_conflict`         | The version is not the current one.         |
+| 413    | `body_too_large`           | The request body is over the limit.         |
+| 422    | `schema_validation`        | The request is not valid.                   |
+| 422    | `domain_validation`        | The request breaks a rule for its values.   |
+| 500    | `internal_error`           | An unexpected error occurred.               |
+| 503    | `service_unavailable`      | The service can not handle the request now. |
 
 A 422 also has an `errors` extension, a list of objects with `field` and `reason`, so a client can show which field
 failed:

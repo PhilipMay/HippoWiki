@@ -40,7 +40,7 @@ Operations and planning:
 - [Deployment](deployment.md): containers, the reverse proxy and backups.
 - [Configuration and Failure Modes](configuration-and-failure-modes.md): what to configure for each component and what
   can go wrong.
-- [Roadmap](roadmap.md): next steps, the open points of the web client and what comes later.
+- [Roadmap](roadmap.md): next steps, the open points of the web client, open decisions and what comes later.
 
 ## Glossary
 

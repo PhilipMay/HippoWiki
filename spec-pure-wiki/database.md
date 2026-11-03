@@ -108,14 +108,14 @@ The rules are in [Passwords](users.md#passwords) and [Login Protection](authenti
 has its own table, so reading a user can not bring it along. A user without a row can not log in, which is how the admin
 starts.
 
-| Column            | Type                     | Notes                                       |
-| ----------------- | ------------------------ | ------------------------------------------- |
-| `user_id`         | uuid → users, PK         |                                             |
-| `password_hash`   | text, not null           | Argon2id, with its parameters               |
-| `is_one_time`     | bool, not null           | a new password is needed at the next login  |
-| `failed_attempts` | int, not null, default 0 | failed logins since the last successful one |
-| `locked_until`    | timestamptz              | null when no wait applies                   |
-| `changed_at`      | timestamptz              |                                             |
+| Column            | Type                     | Notes                                                     |
+| ----------------- | ------------------------ | --------------------------------------------------------- |
+| `user_id`         | uuid → users, PK         |                                                           |
+| `password_hash`   | text, not null           | Argon2id, with its parameters                             |
+| `is_one_time`     | bool, not null           | a new password is needed at the next login                |
+| `failed_attempts` | int, not null, default 0 | wrong passwords since the last successful check           |
+| `locked_until`    | timestamptz              | null when no wait applies                                 |
+| `changed_at`      | timestamptz              | set only when the password is replaced, not by an upgrade |
 
 ## Session Table
 
@@ -126,7 +126,7 @@ The rules are in [Sessions](authentication.md#sessions). The token itself is nev
 | `token_hash` | bytea, PK              | SHA-256, the only lookup for a request, see [Token Check](authentication.md#token-check) |
 | `user_id`    | uuid → users, not null | indexed, to end the sessions of a user                                                   |
 | `created_at` | timestamptz            |                                                                                          |
-| `expires_at` | timestamptz, not null  | indexed for the cleanup                                                                  |
+| `expires_at` | timestamptz, not null  |                                                                                          |
 
 ## Folder Right Table
 

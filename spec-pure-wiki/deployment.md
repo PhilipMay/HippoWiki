@@ -21,6 +21,8 @@ This document defines how HippoWiki runs in production and for simple self-hosti
   The `migrate` service runs `hippowiki migrate` and then `hippowiki init`, and the app waits for it to succeed. The
   `postgres` service sets `timezone=UTC` on the server, see [Time](time.md), and uses the same `postgres:16-alpine`
   image as the tests, because Alpine and Debian images can sort text differently.
+- In `compose.yaml`, `postgres` publishes no port and `app` binds to `127.0.0.1`, so nothing reaches the app without the
+  proxy and its TLS.
 - Secrets, such as the database password, never go into `compose.yaml`. They come from an uncommitted `.env` file or
   from Podman secrets.
 
@@ -39,7 +41,12 @@ This document defines how HippoWiki runs in production and for simple self-hosti
 
 - Traefik with TLS in front, because a password and a token must never cross the network in clear text. It routes the
   whole hostname to the app, whose middleware rejects everything that is not allowed.
-- `readTimeout`, 60 seconds by default, bounds a slow upload.
+- It routes no plain HTTP to the app, and sets `Strict-Transport-Security`, because the app does not check for TLS
+  itself.
+- `readTimeout`, 60 seconds by default, bounds a slow upload. The entry point setting `writeTimeout` covers the whole
+  response, so leave it unset or above the slowest request, such as a large folder revert.
+- Its access log is the source of the client address, because the app does not log it, see
+  [Login Protection](authentication.md#login-protection).
 - It sets no body limit. The auth middleware enforces the [Request Body Limit](limits.md#request-body-limit), rejects an
   unauthenticated request before it reads the body, and answers over the limit with problem+json.
   - A later proxy limit must not be below the request body limit, because a lower one would reject documents the app

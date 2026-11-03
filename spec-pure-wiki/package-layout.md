@@ -62,7 +62,7 @@ src/hippowiki/
   - The [auth middleware](authentication.md#request-handling) runs before it.
   - It calls **only** `services/` for behaviour, and makes exactly one service call per request.
   - Apart from that it may import `schemas/`, `domain.py`, `services/errors.py`, `auth/principal.py` and `problem.py`.
-    It never touches the DB, sessions or repositories directly.
+    It never touches the DB, DB sessions or repositories directly.
   - The health route is the exception: it makes no service call.
 - **Composition roots**: `app.py` and `cli.py` may import anything, and nothing imports them.
 - **Pure modules**: `schemas/` imports no other HippoWiki package, which keeps validators free of lookups. `domain.py`,
@@ -75,7 +75,9 @@ src/hippowiki/
   - They never import `schemas/`, and take plain arguments.
   - They use repositories only through the Protocols in `repositories/interfaces.py`, and reach them through a unit of
     work.
-  - They are stateless and get the unit-of-work factory when they are built.
+  - They are stateless and get the unit-of-work factory when they are built. Services that hash passwords also get the
+    one password hasher of the process, which holds the [limit of hashes](limits.md#login-values). `create_app()` builds
+    it, and `cli.py` builds its own.
   - They receive a `Principal` on every call and enforce access rules. There are these exceptions, because no principal
     exists yet:
     - `UserService.create_admin` at system initialization. Only `hippowiki init` calls it, and no adapter exposes it.
@@ -104,6 +106,6 @@ src/hippowiki/
   - The names `""` and `admin` are fixed rules instead, see [Names](content.md#names), because they would hit a check
     constraint.
 - **Domain errors** (`NotFoundError`, `ForbiddenError`, `NameConflictError`, `VersionConflictError`,
-  `DomainValidationError`) are defined in `services/errors.py` and translated by the adapter to HTTP status codes.
-  `AuthService.login` returns its own results for a wrong password and a needed password change, because the adapter
-  answers these with their [own codes](errors.md#rest-error-format).
+  `DomainValidationError`, `ServiceBusyError`) are defined in `services/errors.py` and translated by the adapter to HTTP
+  status codes. `AuthService.login` returns its own results for a wrong password and a needed password change, because
+  the adapter answers these with their [own codes](errors.md#rest-error-format).

@@ -17,23 +17,25 @@ A user sends their name and password to the login route and gets a token. Every 
 
 `POST /api/v1/auth/login` takes JSON with `name`, `password` and an optional `new_password`.
 
-| Case                                                                                     | Response                                                  |
-| ---------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| Correct password                                                                         | 200 with the [login result](rest.md#response-fields)      |
-| Wrong password, unknown name, deactivated user, or an account in its wait                | one identical 401 `invalid_credentials`                   |
-| Correct one-time password, no `new_password`                                             | 403 `password_change_required`, no token, nothing changes |
-| Correct one-time password, valid `new_password`                                          | 200, and the new password replaces the one-time password  |
-| Correct one-time password, `new_password` breaks a [rule](users.md#passwords)            | 422 `domain_validation`, no token, nothing changes        |
-| Correct normal password, any `new_password`, because `PUT /me/password` is the way to it | 422 `domain_validation`, no token, nothing changes        |
-| A body with the wrong shape                                                              | 422 `schema_validation`, before any hash                  |
-| A body over the [login body limit](limits.md#login-values)                               | 413 `body_too_large`, before any hash                     |
-| Over the [limit of hashes](limits.md#login-values)                                       | 503 `service_unavailable`                                 |
+| Case                                                                                                                      | Response                                                  |
+| ------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| Correct normal password, no `new_password`                                                                                | 200 with the [login result](rest.md#response-fields)      |
+| Wrong password, unknown name, user with no password, deactivated user, password over the limit, or an account in its wait | one identical 401 `invalid_credentials`                   |
+| Correct one-time password, no `new_password`                                                                              | 403 `password_change_required`, no token, nothing changes |
+| Correct one-time password, valid `new_password`                                                                           | 200, and the new password replaces the one-time password  |
+| Correct one-time password, `new_password` breaks a [rule](users.md#passwords)                                             | 422 `domain_validation`, no token, nothing changes        |
+| Correct normal password, any `new_password`, because `PUT /me/password` is the way to it                                  | 422 `domain_validation`, no token, nothing changes        |
+| A body with the wrong shape, or another content type than JSON                                                            | 422 `schema_validation`, before any hash                  |
+| A body over the [login body limit](limits.md#login-values)                                                                | 413 `body_too_large`, before any hash                     |
+| Over the [limit of hashes](limits.md#login-values)                                                                        | 503 `service_unavailable`                                 |
+| Any other failure, such as a database outage                                                                              | 503 `service_unavailable`                                 |
 
 - The rules for `new_password` are checked only after the password was correct, so they tell an attacker nothing.
 - The admin never has a one-time password, because `hippowiki set-admin-password` sets a normal one.
 - A login response carries `Cache-Control: no-store`.
-- Any other failure, such as a database outage during the login, gets the 500 of the
-  [check order](request-checks.md#check-order), and never a 401, so a client does not report a wrong password.
+- A failure is never a 401, so a client does not report a wrong password during an outage.
+- The route ignores an `Authorization` header, so a stale token does not change its answer, and its 401 never carries
+  `error="invalid_token"`.
 - The route reads its own body with a bounded reader, also when it is chunked, because the middleware never reads the
   body of a public route. This is why it validates the body itself, with the same request model rules as other routes.
 
@@ -43,9 +45,12 @@ A user sends their name and password to the login route and gets a token. Every 
 ones of the [check order](request-checks.md#check-order) up to schema validation, and the first that fails decides:
 
 1. The admin gets 403 `forbidden`, because [only the command changes the password](users.md#admin).
-2. A wrong `current_password` gets 403 `forbidden`. It is never a 401, because the token is valid and a client must not
-   discard it. It counts as a failed login, and the wait of [Login Protection](#login-protection) applies to it.
-3. A `new_password` that breaks a [rule](users.md#passwords) gets 422 `domain_validation`.
+2. A `current_password` over the [length limit](limits.md#limits-at-a-glance) gets 403 `forbidden`, without a hash.
+3. Over the [limit of hashes](limits.md#login-values), the request gets 503 `service_unavailable`.
+4. A wrong `current_password`, or any `current_password` during a wait of [Login Protection](#login-protection), gets
+   403 `forbidden`. It is never a 401, because the token is valid and a client must not discard it.
+5. A `new_password` that breaks a [rule](users.md#passwords) gets 422 `domain_validation`.
+6. A password change that [loses a race](#login-protection) gets 403 `forbidden`.
 
 A successful change ends all sessions of the user, also the one that sent the request, so the client logs in again. It
 uses the same [two units of work](#login-protection) as a login.
@@ -58,11 +63,12 @@ uses the same [two units of work](#login-protection) as a login.
   after that. A later version can add a longer lifetime without changing the token check.
 - A user can have several sessions at once, such as a browser and a script.
 - `POST /api/v1/auth/logout` deletes the session of the request and answers 204. The principal carries the hash of its
-  token for this.
+  token for this. A concurrent logout that finds no row also answers 204.
 - These end all sessions of a user, by deleting their rows in the same transaction as the change: a password change, a
   password reset, `hippowiki set-admin-password` and deactivating.
-- A successful login also deletes all expired rows, so the table does not grow without limit. A row that has expired
-  does not pass the token check, whether it was deleted yet or not.
+- A successful login also deletes the expired rows of its user, under the [lock on the user row](#login-protection), so
+  concurrent logins of other users do not wait for each other. A row that has expired does not pass the token check,
+  whether it was deleted yet or not.
 
 ## Token Check
 
@@ -80,30 +86,55 @@ token carries no rights, and a revoked right takes effect on the next request.
 
 ## Login Protection
 
-- **Hashing**: Argon2id through `argon2-cffi` with its default parameters, and a hash is upgraded at the next login when
-  the parameters have changed.
+- **Hashing**: Argon2id through `argon2-cffi` with its default parameters. A successful login upgrades a hash when the
+  parameters have changed, and skips this when no hash slot is free. An upgrade does not set `changed_at`, so it can not
+  make a parallel login fail.
 - **Event loop**: hashing runs in a worker thread with a [limit on running and waiting hashes](limits.md#login-values).
-  Over the limit the route answers 503, and so do the REST routes that generate a
-  [one-time password](users.md#passwords), so logins can not block other requests or exhaust memory and CPU.
+  Over the limit, a login, a password change and the REST routes that generate a [one-time password](users.md#passwords)
+  answer 503 and change nothing, so hashing can not block other requests or exhaust memory and CPU.
 - **Transactions**: hashing runs outside a transaction, so it holds no connection, see
-  [Transactions](architecture.md#transactions). The failure counter is updated atomically. The second unit of work
-  compares `changed_at` with the value the first one read, and reads the user again. If a password changed in between or
-  the user was deactivated, the login counts as wrong, so it can not create a session after these have ended the
-  sessions of the user.
+  [Transactions](architecture.md#transactions). The second unit of work first locks the user row, and then compares
+  `changed_at`, `deactivated_at` and `locked_until` with the values the first one read. If one of them changed, the
+  request loses the race: a login gets the normal 401, and a password change gets 403.
+  - The lock is needed because a check alone can not see an uncommitted session, so a session could survive a reset.
+    Everything that ends the sessions of a user takes the same lock first: a password change, a password reset,
+    `hippowiki set-admin-password` and deactivating.
+  - Requests that passed the first unit of work before a wait started therefore lose the race once it has started, so a
+    burst of parallel guesses does not get past the wait.
 - **Per account**: after the free attempts, each failure doubles the time an account must wait. During this time the
-  login is refused even with the right password, with the same answer as a wrong one. A refused attempt neither counts
-  nor extends the wait. `hippowiki set-admin-password` and a password reset clear this.
-- Accepted trade-off: one wrong password per wait keeps a known account from logging in, and the name `admin` is known.
-  Sessions that exist keep working. A wait per account and address would end this, but allows slow guessing from many
-  addresses, which is the worse risk for a password login.
-- Accepted trade-off: there is no limit per client address, so one password tried against many names is not slowed down.
-  This also means the app needs no trusted forwarded address. A limit per address is [for later](roadmap.md#later).
-- **Enumeration**: an unknown name, a deactivated user and an account in its wait still run a hash, against a fixed
-  dummy value where there is no password to check, and get the same answer as a wrong password. A password over the
-  [length limit](limits.md#limits-at-a-glance) gets this answer without a hash.
+  login is refused even with the right password, with the same answer as a wrong one. `hippowiki set-admin-password`, a
+  password reset, a successful login and a successful password change clear this.
+- **Enumeration**: an unknown name, a user with no password, a deactivated user and an account in its wait still run a
+  hash, against a dummy value made with the current parameters where there is no password to check, and get the same
+  answer as a wrong password. A password over the [length limit](limits.md#limits-at-a-glance) gets this answer without
+  a hash. A known user with a wrong password also writes the counter, so the timing can differ slightly, which is
+  accepted.
 - **Accounts**: there is no self-registration and no way to rename a user.
 - **Logging**: a login, a failure and the start of a wait are logged. The name is logged only when it belongs to a user,
-  because people type passwords into the name field. Logs never hold a password or a token.
+  because people type passwords into the name field. Logs never hold a password or a token. The app does not log the
+  client address, and the [access log of the proxy](deployment.md#reverse-proxy-setup) shows it.
+
+This is what each attempt does to `failed_attempts`:
+
+| Attempt                                                            | Counter                                  |
+| ------------------------------------------------------------------ | ---------------------------------------- |
+| Wrong password at a login or a password change, with no wait       | grows by 1, and can start or grow a wait |
+| Refused during a wait                                              | unchanged, and the wait is not extended  |
+| Unknown name, user with no password, deactivated user              | unchanged                                |
+| Password over the length limit                                     | unchanged                                |
+| A request that lost the race                                       | unchanged                                |
+| Correct password that gets 403 `password_change_required` or a 422 | unchanged                                |
+| Successful login or password change                                | back to 0                                |
+
+Known trade-offs of this design, with the decision open in the [Roadmap](roadmap.md#open-decisions):
+
+- One wrong password per wait keeps a known account from logging in, and the name `admin` is known. Sessions that exist
+  keep working, but only for up to [8 hours](limits.md#login-values), and then everybody needs the login, so an attacker
+  can keep a person or the admin out for as long as they go on. A wait per account and address would end this, but
+  allows slow guessing from many addresses, which is the worse risk for a password login.
+- There is no limit per client address, so one password tried against many names is not slowed down.
+- For the same reason, one anonymous client can hold all hash slots, so that logins, password changes and the routes
+  that generate a one-time password get 503 for everybody.
 
 Multi-factor login and a reset without the admin are [for later](roadmap.md#later).
 
@@ -119,6 +150,8 @@ including `hippowiki set-admin-password`, and when a user is deactivated or reac
 - It rejects unauthenticated requests before the request body is read or parsed and before they reach the adapter or
   services, on every route except the public ones.
 - It stores the principal in the ASGI scope, and the OpenAPI security scheme is declared separately.
+- `api/deps.py` fails closed: a route that needs a principal and finds none in the scope gets a 500, so a wiring fault
+  never runs a request as nobody.
 - The credential check returns a principal or nothing. An exception means the lookup failed.
 - It also enforces the [request body limit](limits.md#request-body-limit).
 - Other ASGI scopes: `lifespan` passes through unchanged, and `websocket` fails closed, because no route uses it.

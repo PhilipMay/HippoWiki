@@ -7,8 +7,12 @@ notes support are in the other documents.
 
 - Static routes such as `/folders/deleted` are declared before `/folders/{folder_id}`, because `deleted` would otherwise
   be a malformed ID and get 422.
-- The 401, the 413 and the 503 come from the middleware, which runs outside FastAPI's exception handlers, so it calls
-  the problem+json helper in `problem.py` directly.
+- The 401 for a missing or bad token, the 413 and the 503 of a failed lookup come from the middleware, which runs
+  outside FastAPI's exception handlers, so it calls the problem+json helper in `problem.py` directly. The other 401, 413
+  and 503 come from the login route and the error handlers, and use the same helper.
+- The login route reads its body by hand, so FastAPI does not see its request model. The route declares the model with
+  `openapi_extra`, so `/openapi.json` still describes it. It catches any unexpected exception, logs it and answers 503,
+  see [Login](authentication.md#login).
 - The 422 from schema validation is not a domain error, so FastAPI's default 422 body has to be replaced with the one in
   [REST Error Format](errors.md#rest-error-format). The default would also send the input back, which at the login route
   would be a password.
@@ -61,6 +65,10 @@ notes support are in the other documents.
   - Delete and insert is not an alternative, because two concurrent first assignments would then hit the primary key.
 - **Lock on the folder row**: it is `SELECT ... FOR NO KEY UPDATE`, because this lock mode does not block the foreign
   key checks of `folder_rights`.
+- **Lock on the user row**: it is also `SELECT ... FOR NO KEY UPDATE`, see
+  [Login Protection](authentication.md#login-protection). The foreign key check of a new session takes only
+  `FOR KEY SHARE`, which does not conflict with an update of `deactivated_at`, so it does not protect against that race
+  by itself.
 - **Partial unique indexes** can not be deferred, so a swap of two names in a folder revert has to free the names first,
   for example by setting `deleted_at` on the affected rows within the transaction.
 

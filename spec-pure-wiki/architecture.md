@@ -40,9 +40,9 @@ of the input.
 
 ## Composition
 
-`create_app()` takes the unit-of-work factory and the credential check. It builds the services once, passes them to the
-adapter and adds the [auth middleware](authentication.md#request-handling). It knows nothing about the engine, so tests
-pass fakes and need no database, see [Testing](testing.md).
+`create_app()` takes the unit-of-work factory and the credential check. It builds the password hasher and the services
+once, passes the services to the adapter and adds the [auth middleware](authentication.md#request-handling). It knows
+nothing about the engine, so tests pass fakes and need no database, see [Testing](testing.md).
 
 `create_production_app()` builds the engine from the settings, passes the real factory and credential check, and
 disposes of the engine in the lifespan.

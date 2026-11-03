@@ -22,6 +22,7 @@ route are in [Login](authentication.md#login).
 | Target lookup      | a missing or deleted tab or md_document, a missing user, or a missing folder right, also when named in the body  | `NotFoundError`                  | 404      |
 | Target rules       | an operation the target does not allow, see [below](#rejected-operations)                                        | `ForbiddenError`                 | 403      |
 | Domain validation  | a name or size that breaks the domain rules                                                                      | `DomainValidationError`          | 422      |
+| Hash limit         | a request that needs a password hash when the [limit of hashes](limits.md#login-values) is reached               | `ServiceBusyError`               | 503      |
 | Conflicts: version | a version conflict, compared before the write, see [Optimistic Locking](history-revisions.md#optimistic-locking) | `VersionConflictError`           | 409      |
 | Conflicts: name    | a name conflict, which surfaces at the write                                                                     | `NameConflictError`              | 409      |
 | Unexpected         | any other exception                                                                                              | none                             | 500      |

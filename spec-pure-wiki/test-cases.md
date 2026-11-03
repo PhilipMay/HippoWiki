@@ -91,9 +91,14 @@ lists only the cases that are easy to miss: combinations of rules, races, exact 
 - After reactivating a user, their old tokens stay invalid.
 - The response of `POST /users` holds a one-time password, and no other route or log does.
 - A password reset ends the sessions of the user on the next request. Resetting the admin gets 403 and changes nothing.
-- `hippowiki set-admin-password` run twice works, ends the sessions of the admin, and clears a wait after failed logins.
+- `hippowiki set-admin-password` run twice works, also with one value, ends the sessions of the admin, and clears a wait
+  after failed logins.
+- `hippowiki set-admin-password` refuses a password that is too short, too long or equal to the name, and fails with a
+  clear message before `hippowiki init`.
 - No response and no log holds a `password_hash`.
 - `POST /users` and a password reset over the limit of hashes get 503 and change nothing.
+- With the limit of hashes reached, `POST /users` still gets the 403 and 422 of the checks that come before Hash limit
+  in the [check order](request-checks.md#check-order).
 
 ## Public Route Cases
 
@@ -106,9 +111,14 @@ lists only the cases that are easy to miss: combinations of rules, races, exact 
 
 ## Login Cases
 
-- A wrong password, an unknown name, a deactivated user and an account in its wait get an identical response, and each
-  of them runs a hash.
+- A wrong password, an unknown name, a user with no password, a deactivated user and an account in its wait get an
+  identical response, and each of them runs a hash.
 - A password over the length limit gets this identical response and runs no hash.
+- A login with a stale `Authorization` header gets the same response as one without it, and its 401 has no
+  `error="invalid_token"`.
+- The 401, 403, 413, 422 and 503 of the login are problem+json with their `code`, and the 401 carries
+  `WWW-Authenticate: Bearer`.
+- Another content type than JSON gets 422.
 - A successful login holds a token and `expires_at`, with `Cache-Control: no-store`, and the token works on the next
   request.
 - A row in `sessions` holds no token, and a copied row hash does not work as a bearer token.
@@ -120,9 +130,13 @@ lists only the cases that are easy to miss: combinations of rules, races, exact 
   and changes nothing.
 - A wrong one-time password with an invalid new password gets the normal 401, so the rule is not reported.
 - A correct normal password with a `new_password` gets 422 and changes nothing, also for the admin.
-- A password reset or a deactivation between the two units of work of a login makes that login count as wrong, and
-  creates no session.
-- A failing database during a login never gives a 401.
+- A password reset or a deactivation between the two units of work of a login makes that login lose the race, get the
+  normal 401 and create no session, and the counter stays as it was.
+- A password reset or a deactivation that runs during the second unit of work of a login leaves no session behind, and a
+  session does not come back on reactivation (`podman`).
+- A failing database during a login gets 503, never a 401.
+- A successful login upgrades a hash with old parameters and leaves `changed_at` alone, and skips the upgrade when no
+  hash slot is free. A login that gets 403 or 422 upgrades nothing.
 - No token and no password appears in a log.
 
 ## Login Protection Cases
@@ -131,13 +145,16 @@ lists only the cases that are easy to miss: combinations of rules, races, exact 
   answer. Refused attempts during the wait neither count nor extend it.
 - A successful login resets the counter, also against concurrent failures (`podman`).
 - Over the limit of hashes, a login gets 503, and other requests go on answering while hashes run.
+- Every row of the [counter table](authentication.md#login-protection) holds.
+- A correct password in a parallel burst that started a wait loses the race and gets the normal 401 (`podman`).
 
 ## Session Cases
 
 - Logout deletes the session of the request and answers 204, the token then gets 401, and another session of the user
   keeps working.
+- Two concurrent logouts of one session both answer 204.
 - An expired session gets 401 and a new login works, in separate committed transactions (`podman`).
-- A successful login deletes expired rows and leaves the others (`podman`).
+- A successful login deletes the expired rows of its user and leaves the others (`podman`).
 
 ## Token Check Cases
 
@@ -154,12 +171,16 @@ lists only the cases that are easy to miss: combinations of rules, races, exact 
 - The right current password during a wait gets 403 and changes nothing.
 - The admin gets 403 and the password stays, also with a correct current password.
 - A new password that breaks a rule gets 422 and changes nothing, and only after the current password was correct.
-- A password reset between the two units of work makes the change fail, and the password from the reset stays.
+- A password reset between the two units of work gets 403, the password from the reset stays, and the counter stays as
+  it was.
+- A `current_password` over the length limit gets 403, runs no hash and does not count.
+- Over the limit of hashes, the change gets 503 and changes nothing.
 
 ## Middleware and Error Format Cases
 
 - `lifespan` passes through the middleware, so startup and shutdown still run.
 - A `websocket` scope is closed without reaching the app.
+- A route that needs a principal and finds none in the scope gets 500 and calls no service.
 - The 401, the 404 for an unknown route, the 405, the 413, the 422 from schema validation, the 422 for an unparsable
   body, the 500 and the 503 are problem+json, each with its
   [code, title, status and detail](errors.md#rest-error-format).

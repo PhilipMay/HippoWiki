@@ -23,6 +23,9 @@ This document defines accounts, the admin, passwords and how users are deactivat
   - it asks for the password on the terminal, so the password stays out of the shell history and the process list
   - it can be run again at any time, ends the sessions of the admin, and clears a
     [wait after failed logins](authentication.md#login-protection)
+  - the [rules for a new password](#passwords) apply, apart from "not the current password", so running it twice with
+    one value works
+  - it sets a normal password, and fails with a clear message when `hippowiki init` has not created the admin yet
 - the admin logs in like any other user and uses REST, through the web client or a script
 - there is one admin account, so several administrators or admin scripts have to share it. This is accepted for now, see
   [Ideas](roadmap.md#ideas)
@@ -60,8 +63,9 @@ A user is an account: there are no external accounts to link, and a user logs in
 
 - the admin never chooses a password for another user. Creating a user generates a random one-time password of
   [128 bits](limits.md#login-values), which the response holds once, and which the admin passes on
-- a one-time password works only for setting a new password, see [Login](authentication.md#login). It has no expiry.
-  This is accepted, because only the admin sees it and it opens nothing until it is replaced
+- a one-time password works only for setting a new password, see [Login](authentication.md#login). The request that sets
+  it also gets a token, so whoever uses the password first takes the account. It has no expiry for now, which is
+  [an open decision](roadmap.md#open-decisions)
 - a password reset by the admin replaces the password with a new one-time password, ends the sessions of the user and
   clears a wait after failed logins (service)
 - a user changes their own password with [`PUT /me/password`](authentication.md#changing-a-password), which ends all
@@ -98,6 +102,7 @@ These rules reject an operation, whatever the rights of the user. The last colum
 | ------------------------------------------------------------------------------------------- | ----------------------------------------- | ---- | ----------------- |
 | reset the password of the admin through REST, because it could lock the admin out (service) | `ForbiddenError`                          | 403  | Target rules      |
 | change the own password as the admin, because only the command changes it (service)         | `ForbiddenError`                          | 403  | Target rules      |
+| change the own password with a wrong current password (service)                             | `ForbiddenError`                          | 403  | Target rules      |
 | deactivate the admin, because it would lock them out (service)                              | `ForbiddenError`                          | 403  | Target rules      |
 | assign a right to the admin, because it would give the admin access to content (service)    | `ForbiddenError`                          | 403  | Target rules      |
 | delete a right that does not exist                                                          | `NotFoundError`                           | 404  | Target lookup     |
