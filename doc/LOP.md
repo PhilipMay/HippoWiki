@@ -39,7 +39,8 @@ How to read this list:
   - Keep it as it is: no work, but a product holds more access than it needs.
   - Separate resources for MCP and REST: the cleanest split, but clients then need a different token per resource, and
     it also changes the Web GUI and scripts.
-- My decision (fix): Keep it as it is: no work, but a product holds more access than it needs. Document this in the specs as an explicit decision.
+- My decision (fix): Keep it as it is: no work, but a product holds more access than it needs. Document this in the
+  specs as an explicit decision.
 
 ### Stronger Login Before Production
 
@@ -54,7 +55,8 @@ How to read this list:
   - Sign-in through Google or GitHub: no passwords to protect, but an outside dependency, and it brings back account
     linking.
   - Keep passwords only: acceptable only for a small group that uses long, unique passwords.
-- My decision (fix): Keep passwords only: acceptable only for a small group that uses long, unique passwords. Add other options as ideas for improvement to the roadmap
+- My decision (fix): Keep passwords only: acceptable only for a small group that uses long, unique passwords. Add other
+  options as ideas for improvement to the roadmap
 
 ### Independent Security Review
 
@@ -104,7 +106,8 @@ How to read this list:
 - **Question**: how do other MCP clients connect, such as Codex or MCP Inspector?
 - **Today**: the [allowlist](../spec/oauth-server.md#trusted-clients) has only the three products, so others need an own
   client created on the server.
-- My decision (fix): any (authenticated) MCP client should be allowed - add this as an explicit decision to the spec. Claude and ChatGPT are just examples
+- My decision (fix): any (authenticated) MCP client should be allowed - add this as an explicit decision to the spec.
+  Claude and ChatGPT are just examples
 
 ### Terminal Access for People
 

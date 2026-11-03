@@ -1,6 +1,6 @@
 src := src/hippowiki
 other-src := tests
-md-src := README.md CLAUDE.md spec doc
+md-src := README.md CLAUDE.md spec spec-pure-wiki doc
 
 .PHONY: check format test test-podman install
 

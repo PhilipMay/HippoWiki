@@ -7,38 +7,39 @@ HippoWiki is a knowledge management system for AI and natural intelligence. It i
 
 ## Objective
 
-The current objective is to document a clear initial plan for the project and to plan the first steps of the actual
-implementation.
+The current objective is to plan and build the first version, a pure wiki: a Python backend with a REST API and a web
+client whose details are planned later. MCP and OAuth come later.
 
 ## Documents
 
-- reading order and glossary: `spec/README.md`
-- project goals and non-goals: `spec/goals.md`
-- big picture, composition and transactions: `spec/architecture.md`
-- technology stack: `spec/tech-stack.md`
-- package layout and layer rules: `spec/package-layout.md`
-- content rules, names, deleting and restoring: `spec/content.md`
-- database tables and constraints: `spec/database.md`
-- rights on folders: `spec/rights.md`
-- own account, admin, admin operations, passwords and user lifecycle: `spec/users.md`
-- history, revisions and revert: `spec/history-revisions.md`
-- time rules: `spec/time.md`
-- fixed limits, document size and request body size: `spec/limits.md`
-- tokens, authentication middleware and public routes: `spec/authentication.md`
-- login of AI agents, scripts and web clients, and why OAuth: `spec/connectors.md`
-- the built-in OAuth server, its clients, login page, tokens and login protection: `spec/oauth-server.md`
-- check order and denied requests: `spec/request-checks.md`
-- REST error format and MCP tool errors: `spec/errors.md`
-- REST routes and response fields: `spec/rest.md`
-- paging and list order: `spec/lists.md`
-- MCP tools and adapter: `spec/mcp.md`
-- library behaviour to work around: `spec/implementation-notes.md`
-- testing strategy and test kinds: `spec/testing.md`
-- cases that are easy to miss: `spec/test-cases.md`
-- deployment: `spec/deployment.md`
-- what to configure for each component and what can go wrong: `spec/configuration-and-failure-modes.md`
-- next steps and open points: `spec/roadmap.md`
-- open points, decisions to make and review findings: `doc/LOP.md`
+The current specification is `spec-pure-wiki/`:
+
+- reading order and glossary: `spec-pure-wiki/README.md`
+- project goals and non-goals: `spec-pure-wiki/goals.md`
+- big picture, composition and transactions: `spec-pure-wiki/architecture.md`
+- technology stack: `spec-pure-wiki/tech-stack.md`
+- package layout and layer rules: `spec-pure-wiki/package-layout.md`
+- content rules, names, deleting and restoring: `spec-pure-wiki/content.md`
+- database tables and constraints: `spec-pure-wiki/database.md`
+- rights on folders: `spec-pure-wiki/rights.md`
+- own account, admin, admin operations, passwords and user lifecycle: `spec-pure-wiki/users.md`
+- history, revisions and revert: `spec-pure-wiki/history-revisions.md`
+- time rules: `spec-pure-wiki/time.md`
+- fixed limits, document size and request body size: `spec-pure-wiki/limits.md`
+- login, sessions, login protection, authentication middleware and public routes: `spec-pure-wiki/authentication.md`
+- check order and denied requests: `spec-pure-wiki/request-checks.md`
+- REST error format: `spec-pure-wiki/errors.md`
+- REST routes and response fields: `spec-pure-wiki/rest.md`
+- paging and list order: `spec-pure-wiki/lists.md`
+- library behaviour to work around: `spec-pure-wiki/implementation-notes.md`
+- testing strategy and test kinds: `spec-pure-wiki/testing.md`
+- cases that are easy to miss: `spec-pure-wiki/test-cases.md`
+- deployment: `spec-pure-wiki/deployment.md`
+- what to configure for each component and what can go wrong: `spec-pure-wiki/configuration-and-failure-modes.md`
+- next steps, web client open points and later work: `spec-pure-wiki/roadmap.md`
+
+The earlier, full plan with MCP and OAuth is parked in `spec/`, with its open points in `doc/LOP.md`. Read it only when
+that work comes back into scope.
 
 ## Commands
 
