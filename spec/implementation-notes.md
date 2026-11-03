@@ -9,7 +9,8 @@ notes support are in the other documents. The SDK line numbers refer to `mcp` 2.
   be a malformed ID and get 422.
 - The 401, the 413, the 503 and the 403 for the admin on MCP come from the middleware, which runs outside FastAPI's
   exception handlers, so it calls the problem+json helper in `problem.py` directly.
-- The 422 from schema validation is not a domain error, so FastAPI's default 422 body has to be replaced.
+- The 422 from schema validation is not a domain error, so FastAPI's default 422 body has to be replaced with the one in
+  [REST Error Format](errors.md#rest-error-format). The default would also send the input back.
 - Framework errors (404 for unknown routes, 405, 500) go through a handler, since they return a different body by
   default. The handler keeps `exc.headers`, so rebuilding the 405 does not lose `Allow`.
 - FastAPI turns any exception during body parsing into a 400 (`fastapi/routing.py:495-497` in FastAPI 0.162.0). The

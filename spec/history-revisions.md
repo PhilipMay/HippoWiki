@@ -91,6 +91,8 @@ that number:
 - an item created after the target is soft deleted, so it stays in the deleted list and can be restored
 - an item deleted after the target is restored
 - an item that was deleted at the target stays deleted, or is deleted again
+  - it also gets the other fields it had at the target, with a revision if they differ from its current ones, so a later
+    restore brings back that state
 - only the own fields of each item are written, so nothing cascades, in line with
   [Deleting and Restoring Content](content.md#deleting-and-restoring-content)
 

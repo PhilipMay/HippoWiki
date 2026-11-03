@@ -5,21 +5,36 @@ This document defines how errors look on REST and MCP. Which error a request get
 
 ## REST Error Format
 
-Every REST error uses RFC 9457 problem+json, built by one shared helper. `type` stays `about:blank`. Every body has a
-`code` extension, so a client can tell apart errors with the same status, such as the two 409s, which need different
-reactions. It uses the same stable codes as MCP where both have them:
+Every REST error uses RFC 9457 problem+json, built by one shared helper in `problem.py`. Every body has these members:
 
-| Status | `code`                                                    |
-| ------ | --------------------------------------------------------- |
-| 401    | `unauthenticated`                                         |
-| 403    | `forbidden`                                               |
-| 404    | `not_found`                                               |
-| 405    | `method_not_allowed`                                      |
-| 409    | `name_conflict`, `subject_conflict` or `version_conflict` |
-| 413    | `body_too_large`                                          |
-| 422    | `schema_validation` or `domain_validation`                |
-| 500    | `internal_error`                                          |
-| 503    | `service_unavailable`                                     |
+- `type`: always `about:blank`
+- `title`: the HTTP reason phrase of the status
+- `status`: the HTTP status
+- `code`: an extension, so a client can tell apart errors with the same status, such as the two 409s, which need
+  different reactions. It uses the same stable codes as MCP where both have them.
+- `detail`: the fixed text of the `code`, so it never holds an ID, a name or an input value
+
+| Status | `code`                | `detail`                                   |
+| ------ | --------------------- | ------------------------------------------ |
+| 401    | `unauthenticated`     | A valid access token is required.          |
+| 403    | `forbidden`           | This operation is not allowed.             |
+| 404    | `not_found`           | The item does not exist.                   |
+| 405    | `method_not_allowed`  | This method is not allowed on this route.  |
+| 409    | `name_conflict`       | The name is already taken.                 |
+| 409    | `subject_conflict`    | The subject is already linked to a user.   |
+| 409    | `version_conflict`    | The version is not the current one.        |
+| 413    | `body_too_large`      | The request body is over the limit.        |
+| 422    | `schema_validation`   | The request is not valid.                  |
+| 422    | `domain_validation`   | The request breaks a rule for its values.  |
+| 500    | `internal_error`      | An unexpected error occurred.              |
+| 503    | `service_unavailable` | The service can not check the request now. |
+
+A 422 also has an `errors` extension, a list of objects with `field` and `reason`, so a client can show which field
+failed:
+
+- `field` is the name of the field, dotted if it is nested, or `body` for a body that can not be parsed.
+- `reason` never holds the input value, so a rejected `content_md` is not sent back. `DomainValidationError` carries its
+  field and reason.
 
 A 500 body contains no exception details. A 404 body has no `instance` and no ID, because a hidden and a missing item
 have different IDs and their bodies must be identical.
@@ -44,6 +59,8 @@ depending on where they fail:
 
 MCP keeps the distinction REST makes between 404 and 403 through `not_found` and `forbidden`.
 
-Tool errors are plain text, so `mcp/tools.py` raises a `ToolError` whose message starts with the stable code of the
-domain error. The SDK puts `Error executing tool <name>: ` in front of the message, so clients find the code right after
-this text. The tool error that the SDK produces itself for an unknown tool has no code.
+Tool errors are plain text, so `mcp/tools.py` raises a `ToolError` whose message is `<code>: <detail>`, with the texts
+of [REST Error Format](#rest-error-format). A validation error adds its fields after that, as in
+`schema_validation: The request is not valid. name: Input should be a valid string; limit: Input should be at least 1`.
+The SDK puts `Error executing tool <name>: ` in front of the message, so clients find the code right after this text.
+The tool error that the SDK produces itself for an unknown tool has no code.

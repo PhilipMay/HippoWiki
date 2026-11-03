@@ -26,13 +26,22 @@ This documents what still needs to be done and is missing, most urgent first. Wh
 4. **Foundation**: replace `demo.py`, its test and its script entry with `cli.py`, and add logging and the settings and
    `schemas/` that the first step left out.
 5. **First feature end to end**: the admin creates a folder with `POST /folders`, a user with a right reads it with
-   `GET /folders/{folder_id}` and the MCP tool `get_folder`, and a user with no right gets 404. It goes through all
-   layers: the models and migration, repositories, fakes and contract tests, services, routes, tool, `create_app()` and
-   `create_production_app()`. This shows early that the layers fit together, on both adapters.
-6. **Database**: the remaining models, migrations, repositories, their fakes and contract tests, and
-   `hippowiki migrate`.
-7. **Services**: the remaining services for users, rights, folders, tabs and md_documents with revisions and revert, and
-   `hippowiki init` and `hippowiki link-admin`. The real services replace the stand-ins, and the
+   `GET /folders/{folder_id}` and the MCP tool `get_folder`, and a user with no right gets 404. This shows early that
+   the layers fit together, on both adapters, and a [production composition test](testing.md#test-kinds) shows it.
+   - The models and migration of `users`, `folders`, `tabs`, `folder_rights`, `folder_history_entries` and
+     `folder_revisions`, because creating a folder also writes its default tab, its entry and its revision.
+   - The repositories these need, with their fakes and contract tests. The tests create the user and the right through
+     the repositories, because `POST /users` and `PUT` of a right come in the Adapters step.
+   - `FolderService` with create, read and list, `UserService` with the own account, `create_admin` and `link_admin`,
+     and `auth/credentials.py`.
+   - `hippowiki migrate`, `hippowiki init` and `hippowiki link-admin`, which the production composition needs.
+   - The two routes and `create_app()` and `create_production_app()`. The MCP server factory
+     [registers only the tools of the services it gets](package-layout.md#layer-rules), so here `get_own_user`,
+     `list_folders` and `get_folder`. The stand-ins get `get_folder` too, so the
+     [Connector Test App](#connector-test-app) keeps working.
+6. **Database**: the remaining models, migrations, repositories, and their fakes and contract tests.
+7. **Services**: the remaining services for users, rights, folders, tabs and md_documents with revisions and revert. The
+   real services replace the stand-ins, the MCP server factory requires all services, and the
    [Connector Test App](#connector-test-app) is removed.
 8. **Adapters**: the remaining REST routes and MCP tools.
 9. **Deployment**: the complete `compose.yaml` and the NixOS module of the

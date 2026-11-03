@@ -50,6 +50,10 @@ This document defines how HippoWiki is tested. The cases that are easy to miss a
 - **MCP transport tests**: an MCP client over streamable HTTP against the full ASGI app with the auth middleware, served
   by Uvicorn on a local port, because `httpx.ASGITransport` buffers responses and can not stream. All authentication and
   check order tests on MCP run this way.
+- **Production composition test** (`podman`): `create_production_app()` as a whole, with a real PostgreSQL, the real
+  repositories and credential check, and tokens signed with locally generated keys that a small local server offers at
+  `HIPPOWIKI_OAUTH_JWKS_URL`. All other test kinds replace part of this composition, so only this one shows that it fits
+  together.
 - **Import contracts**: `make check` runs import-linter on the [layer rules](package-layout.md#layer-rules). A layer is
   optional until its package exists.
 

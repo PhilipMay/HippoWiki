@@ -26,10 +26,13 @@ Which response a deleted item gets is defined in [Deleted Items](request-checks.
   - a deleted folder keeps its default tab, whose own `deleted_at` stays null, and the tab is hidden through the folder
 - a deleted name can be used again, because the unique names apply only to live rows
 - restoring an item whose parent is deleted is rejected, so the parent is restored first (service)
-- writes use `WHERE deleted_at IS NULL` and a restore uses `WHERE deleted_at IS NOT NULL`, and a statement that changes
-  no row gets `NotFoundError`, so a racing update or a second delete behaves correctly
-  - a version mismatch is found before that, under the lock on the folder row, so it gets `VersionConflictError` and not
-    this `NotFoundError`
+- a normal write reads the item under the [lock on the folder row](history-revisions.md#optimistic-locking), so a
+  deleted item gets `NotFoundError` there and a live item with another version gets `VersionConflictError`
+  - a racing update or a second delete therefore gets `NotFoundError`, although the delete grew the version
+  - as a safeguard, these writes use `WHERE deleted_at IS NULL` and a restore uses `WHERE deleted_at IS NOT NULL`, and a
+    statement that changes no row gets `NotFoundError`
+- a [folder revert](history-revisions.md#folder-revert) writes rows by ID in any deleted state, because it also changes
+  items that stay deleted
 - the rights on a deleted folder stay and apply again on restore, and changing them needs a restore first
 - deleted content is never physically erased, see [Roadmap](roadmap.md#later)
 

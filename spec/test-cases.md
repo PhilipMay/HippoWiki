@@ -63,6 +63,8 @@ lists only the cases that are easy to miss: combinations of rules, races, exact 
   current one.
 - A folder revert soft deletes newer items, restores items deleted later and keeps items deleted at the target deleted.
   It keeps the current folder name and the rights, and the rename stays in the history.
+- A folder revert on an item deleted both at the target and now, whose name or content changed in between, writes the
+  fields of the target with a revision and keeps it deleted, and a later restore shows that state.
 
 ## List Cases
 
@@ -114,9 +116,14 @@ lists only the cases that are easy to miss: combinations of rules, races, exact 
 
 - These tokens each get 401: expired, wrong issuer, wrong audience, bad signature, `alg=none`, HS256 signed with the
   public key as the secret, no `sub`, and a valid token with no linked user.
-- A token that fails with an unknown `kid` gets 401 after one refetch, and further unknown `kid`s within the rate limit
-  cause no further fetch.
-- An unreachable key source gets 503 when a key is needed, and a cached key keeps working while the key source is down.
+- A token with an unknown `kid` gets 401 after one successful refetch, and further unknown `kid`s within the rate limit
+  cause no further fetch and also get 401.
+- A token with an unknown `kid` gets 503 when the fetch fails, and again 503 within the rate limit with no further
+  fetch. This also holds with an empty cache at startup. After the interval, the next request fetches again.
+- An unreachable key source gets 503 when a key is needed, and a cached key keeps working while the key source is down,
+  also past the maximum age, with at most one failed fetch per interval.
+- A key that a successful fetch no longer lists gets 401, both after the refresh at the maximum age and after a refetch
+  for another `kid`.
 - A 401 for a presented token carries `error="invalid_token"`, and a 401 without a token does not.
 
 ## Middleware and Error Format Cases
@@ -125,7 +132,9 @@ lists only the cases that are easy to miss: combinations of rules, races, exact 
 - A `websocket` scope is closed without reaching the app.
 - The 401, the 403 for the admin on MCP, the 404 for an unknown route, the 405, the 413, the 422 from schema validation,
   the 422 for an unparsable body, the 500 and the 503 are problem+json, each with its
-  [code](errors.md#rest-error-format).
+  [code, title, status and detail](errors.md#rest-error-format).
+- A 422 from schema validation, from domain validation and for an unparsable body has `errors` with `field` and
+  `reason`. The body does not hold the input value, also for a rejected `content_md`.
 - A credential check that raises gets 503 problem+json without exception details on REST and an HTTP 503 on the MCP
   transport. No adapter is reached, and health still answers.
 
@@ -187,3 +196,6 @@ lists only the cases that are easy to miss: combinations of rules, races, exact 
   `VersionConflictError`.
 - An update racing a folder revert ends without a deadlock, and two updates racing with one version give one success and
   one `VersionConflictError`.
+- In the production composition test, after `hippowiki migrate`, `hippowiki init` and `hippowiki link-admin`, the admin
+  creates a folder on REST. A user with a right reads it on REST and MCP, and a user with no right gets the full 404
+  body.

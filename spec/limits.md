@@ -1,7 +1,7 @@
 # Limits
 
-This document is the one home for every fixed limit. The name length, the document size and the request body limit are
-fixed in the code and are not settings.
+This document is the one home for every fixed limit. The name length, the document size, the request body limit and the
+values of the signing key cache are fixed in the code and are not settings.
 
 ## Limits at a Glance
 
@@ -41,3 +41,13 @@ later one must not be lower.
 The middleware reads the body up to the limit before it calls the app, and then replays it. Memory is bounded by the
 limit, and after the replay `receive` goes to the original one again, so the app still gets `http.disconnect`. The
 reason for this design is in [FastAPI Notes](implementation-notes.md#fastapi-notes).
+
+## Signing Key Cache
+
+`auth/tokens.py` holds these values for the [token check](authentication.md#token-check):
+
+- `JWKS_MAX_AGE_SECONDS`, 600: the age at which the cached set is refreshed, so a key removed from Keycloak stops
+  working after 10 minutes at most, and sooner if another fetch runs first.
+- `JWKS_REFETCH_INTERVAL_SECONDS`, 30: the shortest time between two fetches. If another fetch has just run, a token
+  with a new key can get 401 for up to this time.
+- `JWKS_FETCH_TIMEOUT_SECONDS`, 5: a fetch that takes longer counts as failed.

@@ -28,14 +28,18 @@ holds:
 Only `sub` is used. Rights are read from the database on every request, so a token carries no rights, and a revoked
 right takes effect on the next request.
 
-Signing keys are cached in memory:
+Signing keys are cached in memory, with the values in [Signing Key Cache](limits.md#signing-key-cache):
 
-- An unknown `kid` causes one refetch from `HIPPOWIKI_OAUTH_JWKS_URL`, at a limited rate, so invalid tokens can not
-  flood Keycloak.
-- A key that is still unknown after the refetch gets 401.
-- When a needed key can not be fetched, the lookup failed, see [Failed Credential Lookup](#failed-credential-lookup).
-- A cached key keeps working while Keycloak is down, so existing access tokens work until they expire. New logins and
-  token refreshes need Keycloak.
+- A successful fetch from `HIPPOWIKI_OAUTH_JWKS_URL` replaces the whole set, so a key removed from Keycloak stops
+  working.
+- A request that finds the set older than the maximum age refreshes it first, and an unknown `kid` causes a refetch.
+- Fetches run one at a time and at a limited rate, so invalid tokens can not flood Keycloak. A failed fetch counts
+  against the rate.
+- A key that is still unknown gets 401 if the last fetch succeeded. If it failed, the lookup failed, see
+  [Failed Credential Lookup](#failed-credential-lookup). This also holds when the rate allows no new fetch, so a client
+  does not discard valid credentials while Keycloak is down.
+- A failed refresh keeps the old set, so a cached key keeps working while Keycloak is down, and existing access tokens
+  work until they expire. New logins and token refreshes need Keycloak.
 
 ## Token Lifecycle
 

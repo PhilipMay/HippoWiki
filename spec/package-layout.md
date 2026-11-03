@@ -69,6 +69,9 @@ src/hippowiki/
     need as parameters, because adapters do not import `config.py`.
   - `mcp/server.py` types the services with its Protocols, so that the stand-ins of the
     [Connector Test App](roadmap.md#connector-test-app) and the real services both pass strict mypy.
+  - Its factory takes one argument per service. Until the [Services step](roadmap.md#next-steps), each is optional and
+    the factory registers only the tools of the services it gets, so `create_app()` advertises no tool that can not
+    work.
 - **Composition roots**: `app.py`, `cli.py` and, until the [Services step](roadmap.md#next-steps),
   `connector_test_app.py` may import anything, and nothing imports them.
 - **Pure modules**: `schemas/` imports no other HippoWiki package, which keeps validators free of lookups. `domain.py`,
