@@ -25,6 +25,7 @@ implementation.
 - MCP tools and adapter: `spec/mcp.md`
 - testing strategy and required test cases: `spec/testing.md`
 - deployment: `spec/deployment.md`
+- what to configure for each component and what can go wrong: `spec/configuration-and-failure-modes.md`
 - next steps and open points: `spec/roadmap.md`
 
 ## Commands

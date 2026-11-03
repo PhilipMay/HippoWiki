@@ -22,6 +22,8 @@ Look these up when you need them:
 - [Time](time.md): how points in time are stored and sent.
 - [Testing](testing.md): the test kinds and the cases that are easy to miss.
 - [Deployment](deployment.md): containers, Keycloak, the reverse proxy and backups.
+- [Configuration and Failure Modes](configuration-and-failure-modes.md): what to configure for each component and what
+  can go wrong.
 - [Roadmap](roadmap.md): next steps and open points.
 
 ## Glossary
