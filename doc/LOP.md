@@ -39,6 +39,7 @@ How to read this list:
   - Keep it as it is: no work, but a product holds more access than it needs.
   - Separate resources for MCP and REST: the cleanest split, but clients then need a different token per resource, and
     it also changes the Web GUI and scripts.
+- My decision (fix): Keep it as it is: no work, but a product holds more access than it needs. Document this in the specs as an explicit decision.
 
 ### Stronger Login Before Production
 
@@ -53,6 +54,7 @@ How to read this list:
   - Sign-in through Google or GitHub: no passwords to protect, but an outside dependency, and it brings back account
     linking.
   - Keep passwords only: acceptable only for a small group that uses long, unique passwords.
+- My decision (fix): Keep passwords only: acceptable only for a small group that uses long, unique passwords. Add other options as ideas for improvement to the roadmap
 
 ### Independent Security Review
 
@@ -64,6 +66,7 @@ How to read this list:
 - **Alternatives**:
   - Automated review only: cheap, and misses more. Acceptable only while the server holds test data.
   - A paid penetration test: the strongest evidence, and only worth it once other people's data is at stake.
+- My decision (fix): I will do a security review with Codex and Claude code - add that to the roadmap
 
 ### Account Lockout
 
@@ -72,10 +75,6 @@ How to read this list:
   and the [wait](../spec/oauth-server.md#login-protection) can be cleared.
 - **Recommendation**: keep it. Guessing a password is the worse risk, and the admin does not use the login page until
   the Web GUI exists. Look at it again when the Web GUI is designed.
-- **Alternatives**:
-  - A wait per account and address: an attacker can not lock out others, but many addresses can guess slowly.
-  - A lower `LOGIN_MAX_WAIT_SECONDS`: a shorter lockout, and faster guessing.
-  - Add multi-factor login, then soften the wait: the best end state, and it depends on the item above.
 
 ### One-Time Password Expiry
 
@@ -84,9 +83,6 @@ How to read this list:
   replaced". That reason is too weak: whoever gets the password first can replace it and take the account.
 - **Recommendation**: let it expire after 7 days, compared with `changed_at`, and correct that sentence. It takes one
   comparison and one limit, and the admin can reset it again.
-- **Alternatives**:
-  - Keep no expiry: simplest, and acceptable if the admin passes it on over a safe channel and the person logs in soon.
-  - A one-time link instead of a password: friendlier, and it needs a new route and a way to deliver it.
 
 ### Token Lifetime
 
@@ -94,10 +90,6 @@ How to read this list:
 - **Today**: no absolute limit, only 60 days idle, see [Refresh Rotation](../spec/oauth-server.md#refresh-rotation).
 - **Recommendation**: keep it for the first version. Rotation already detects a thief at a later refresh, and connectors
   that ask people to log in again get in the way. Let the security review confirm it.
-- **Alternatives**:
-  - An absolute limit, such as 180 days: limits a theft that rotation misses. It needs a family start time, and everyone
-    logs in again at that interval.
-  - A shorter idle limit: helps little for connectors in daily use.
 
 ### ChatGPT Workspaces With Domain Restrictions
 
@@ -106,24 +98,13 @@ How to read this list:
   stores no email, see [Open Risks](../spec/oauth-server.md#open-risks).
 - **Recommendation**: leave it out unless you need such a workspace. Test first on the plan you use, and document the
   limit.
-- **Alternatives**:
-  - Add an email column set by the admin, the two scopes and UserInfo: about a day of work and new personal data. The
-    `email_verified: true` claim would then rest only on the admin's word.
-  - Add real email verification: it needs mail delivery, and it would also allow a self-service password reset.
 
 ### Clients Outside the Allowlist
 
 - **Question**: how do other MCP clients connect, such as Codex or MCP Inspector?
 - **Today**: the [allowlist](../spec/oauth-server.md#trusted-clients) has only the three products, so others need an own
   client created on the server.
-- **Recommendation**: keep the exact allowlist. Add a URL to the setting when a client you use has a metadata document,
-  and use `hippowiki client add --public` when it does not.
-- **Alternatives**:
-  - Allow any metadata document on trusted domains: less upkeep, and any client on those domains can then ask for a
-    login.
-  - Accept any document, with protection against server-side request forgery: the most open, with the most code, and the
-    login page then shows names nobody vetted.
-  - Dynamic client registration: not recommended, because MCP deprecates it and anyone could create clients.
+- My decision (fix): any (authenticated) MCP client should be allowed - add this as an explicit decision to the spec. Claude and ChatGPT are just examples
 
 ### Terminal Access for People
 
