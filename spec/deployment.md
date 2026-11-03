@@ -1,5 +1,9 @@
 # Deployment
 
+This document defines how HippoWiki runs in production and for simple self-hosting.
+
+## Containers and Compose
+
 - Container image built with uv via `podman build` from a `Containerfile` (multi-stage, slim runtime). The container
   runs as a non-root user.
 - `compose.yaml` with `app`, `postgres`, `keycloak` and a one-shot `migrate` service, run via `podman compose`, for
@@ -8,27 +12,39 @@
   the same `postgres:16-alpine` image as the tests, because Alpine and Debian images can sort text differently.
 - Secrets, such as the database password, never go into `compose.yaml`. They come from an uncommitted `.env` file or
   from Podman secrets.
+
+## Migrations and Initialization
+
 - Alembic migrations run only through `hippowiki migrate`, never on app startup. They ship inside the package, and the
   command builds the Alembic configuration in code without an `alembic.ini`, so the slim runtime image needs nothing
   copied separately.
 - `hippowiki init` runs after the migrations and creates the admin. It is idempotent, so it is safe to run on every
   deployment. The first deployment then needs one manual step: create the account in Keycloak and run
-  `hippowiki link-admin <subject>`, see [Admin](users-and-rights.md#admin).
-- Keycloak, see [Authentication](authentication.md):
-  - It has its own database and its own role on the existing PostgreSQL server, so it can not read HippoWiki's tables.
-  - Its memory limit is 2 GB, as the [Keycloak container guide](https://www.keycloak.org/server/containers) recommends
-    for smaller production deployments.
-  - The realm configuration is a versioned import file without secrets. Client secrets and the bootstrap admin password
-    follow the same rule as the other secrets.
-  - HippoWiki gets `HIPPOWIKI_OAUTH_ISSUER`, the public URL of the realm, `HIPPOWIKI_OAUTH_AUDIENCE`, the MCP URL, and
-    `HIPPOWIKI_OAUTH_JWKS_URL`, so signing keys can be fetched inside the container network.
-- Reverse proxy with TLS (e.g. Caddy or Traefik) in front, required for remote MCP connectors. MCP tool calls can answer
-  as a stream, so its idle timeout has to be longer than the slowest tool call. Its body limit is the same 2 MiB as the
-  [Request Body Limit](authentication.md#request-body-limit), and never lower, because a lower one would reject
-  documents the app allows. Over the limit a client may get the proxy's own 413 body instead of problem+json, which is
-  accepted. It exposes Keycloak's login paths (`/realms/` and `/resources/`), but not its admin console.
+  `hippowiki link-admin <subject>`, see [Admin](users.md#admin).
+
+## Keycloak Service
+
+- It has its own database and its own role on the existing PostgreSQL server, so it can not read HippoWiki's tables.
+- Its memory limit is 2 GB, as the [Keycloak container guide](https://www.keycloak.org/server/containers) recommends for
+  smaller production deployments.
+- The realm configuration is a versioned import file without secrets. Client secrets and the bootstrap admin password
+  follow the same rule as the other secrets.
+- HippoWiki gets `HIPPOWIKI_OAUTH_ISSUER`, the public URL of the realm, `HIPPOWIKI_OAUTH_AUDIENCE`, the MCP URL, and
+  `HIPPOWIKI_OAUTH_JWKS_URL`, so signing keys can be fetched inside the container network.
+
+## Reverse Proxy Setup
+
+- Reverse proxy with TLS (e.g. Caddy or Traefik) in front, required for remote MCP connectors.
+- MCP tool calls can answer as a stream, so the idle timeout of the proxy has to be longer than the slowest tool call.
+- Its body limit equals the [Request Body Limit](limits.md#request-body-limit) and is never lower, because a lower one
+  would reject documents the app allows. Over the limit a client may get the proxy's own 413 body instead of
+  problem+json, which is accepted.
+- It exposes Keycloak's login paths (`/realms/` and `/resources/`), but not its admin console.
 - HippoWiki and Keycloak must both be reachable from the public internet, including Anthropic's range `160.79.104.0/21`,
   because Claude connects from there. A firewall in front of Keycloak can break the login.
+
+## Health Checks and Backups
+
 - Container and reverse proxy health checks use the [public health route](authentication.md#public-routes), so they need
   no credentials. The slim image has no `curl`, so the container health check calls the route with Python's standard
   library.

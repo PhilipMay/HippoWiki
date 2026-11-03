@@ -1,30 +1,48 @@
 # HippoWiki Specification
 
-Each topic has one home here, and other documents link to it. Documents open with their rules, and library details are
-in an "Implementation Notes" section at the end.
+Each topic has one home here, and other documents link to it.
 
-## Reading Order
+## Read in Order
 
 Read these in order for a first overview:
 
-1. [Goals and Non-Goals](goals.md): what HippoWiki is and is not.
-2. [Architecture](architecture.md): the stack, the package layout and the layer rules.
-3. [Entities](entities.md): content rules and database tables.
-4. [Users and Rights](users-and-rights.md): who can do what, and the user lifecycle.
-5. [History and Revisions](history-revisions.md): tracked changes, versions and revert.
-6. [Request Checks](request-checks.md): check order, rejected operations and error format.
-7. [Authentication](authentication.md): login, token check and the auth middleware.
-8. [REST](rest.md): the routes, the response fields and how lists page.
-9. [MCP](mcp.md): the tools and what else is specific to the MCP adapter.
+01. [Goals and Non-Goals](goals.md): what HippoWiki is and is not.
+02. [Architecture](architecture.md): the big picture, composition and transactions.
+03. [Content](content.md): folders, tabs, md_documents, names, deleting and restoring.
+04. [Rights](rights.md): who can do what in a folder.
+05. [Users](users.md): own account, the admin, linking and deactivating.
+06. [History and Revisions](history-revisions.md): tracked changes, versions and revert.
+07. [Request Checks](request-checks.md): check order, leaks and deleted items.
+08. [Authentication](authentication.md): token check, the auth middleware and public routes.
+09. [REST](rest.md): the routes and the response fields.
+10. [MCP](mcp.md): the tools and what else is specific to the MCP adapter.
 
-Look these up when you need them:
+## Look Up When Needed
 
+Rules and reference:
+
+- [Errors](errors.md): the REST error format and MCP tool errors.
+- [Lists](lists.md): paging and list order, on REST and MCP.
+- [Limits](limits.md): every fixed limit, with document size and request body size.
 - [Time](time.md): how points in time are stored and sent.
-- [Testing](testing.md): the test kinds and the cases that are easy to miss.
+- [Connectors](connectors.md): how AI agents, scripts and web clients log in, and why OAuth.
+
+Implementation:
+
+- [Database Tables](database.md): tables, indexes and constraints.
+- [Tech Stack](tech-stack.md): the chosen technologies.
+- [Package Layout](package-layout.md): the code structure and the layer rules.
+- [Implementation Notes](implementation-notes.md): library behaviour to work around, by library.
+- [Testing](testing.md): the test kinds.
+- [Test Cases](test-cases.md): the cases that are easy to miss.
+
+Operations and planning:
+
 - [Deployment](deployment.md): containers, Keycloak, the reverse proxy and backups.
 - [Configuration and Failure Modes](configuration-and-failure-modes.md): what to configure for each component and what
   can go wrong.
 - [Roadmap](roadmap.md): next steps and open points.
+- [Gaps](gaps.md): open gaps that block the Connector Test.
 
 ## Glossary
 
@@ -42,3 +60,4 @@ Look these up when you need them:
 - **revision**: a full snapshot of an item, written with an entry.
 - **version**: the counter of a md_document, which grows with each of its revisions.
 - **number**: the position of an entry in the history of a folder, taken from the revision counter of the folder.
+- **(service)**: marks a rule that table constraints can not express, so the service layer enforces it.

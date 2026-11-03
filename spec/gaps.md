@@ -23,27 +23,27 @@ been changed for it.
   keep the middleware, the token check and the MCP routes, and throw away the in-memory data, the JSON file and the test
   composition. State this in the first step of the roadmap.
 
-## Reverse Proxy
+## Reverse Proxy Gaps
 
 - **Product not chosen**: the [roadmap](roadmap.md#next-steps) lists the choice as open and [Deployment](deployment.md)
   says "e.g. Caddy or Traefik", while the [Keycloak guide](../doc/nixos-keycloak-setup.md) already uses Traefik.
   Suggested fix: choose Traefik, because the guide has already tested it, and name it in the roadmap and in Deployment.
 - **No route for HippoWiki**: the guide only has a Traefik route for the Keycloak hostname, not for the wiki hostname.
   Suggested fix: add a router and service for the wiki hostname to the guide, covering the whole host, so the MCP path
-  and the public routes reach the app and its middleware rejects the rest. Add the 2 MiB body limit and the idle timeout
-  from [Deployment](deployment.md). Before using the Traefik `buffering` middleware for the limit, check that it does
-  not hold back streamed MCP responses.
+  and the public routes reach the app and its middleware rejects the rest. Add the
+  [body limit](limits.md#request-body-limit) and the idle timeout from [Deployment](deployment.md). Before using the
+  Traefik `buffering` middleware for the limit, check that it does not hold back streamed MCP responses.
 - **Login paths differ**: [Deployment](deployment.md) names `/realms/` and `/resources/` as the paths to expose, but the
   guide also exposes `/.well-known/`, which its check of the RFC 8414 metadata uses. Suggested fix: add `/.well-known/`
   to the exposed paths in Deployment.
 
-## Keycloak
+## Keycloak Gaps
 
 - **Claude Code client**: the realm setup in the guide only covers the clients of Claude and ChatGPT and script clients.
   It has no client for Claude Code with the redirect URI `http://localhost:PORT/callback`, and the port is not chosen.
   Suggested fix: add a third connector client to the guide, with a fixed port chosen for `--callback-port` and that
   redirect URI. Start it as confidential like the other clients, and record in
-  [Client Registration](authentication.md#client-registration) whether the test shows it needs a secret.
+  [Client Registration](connectors.md#client-registration) whether the test shows it needs a secret.
 - **`offline_access`**: [Token Lifecycle](authentication.md#token-lifecycle) relies on this scope to keep connectors
   logged in, but the realm setup in the guide does not mention it. Suggested fix: add a step to the realm setup that
   checks the scope is available on each connector client, and add whether each client requests it to the
@@ -58,8 +58,3 @@ been changed for it.
   ChatGPT plan can add a connector with its own OAuth client. Suggested fix: look up the required plan in the OpenAI
   documentation when the test is prepared, and add it to the Connector Test next to the Claude plans. It is left unnamed
   here because plans change.
-
-## Keycloak Guide
-
-- **Broken links**: the links in the [guide](../doc/nixos-keycloak-setup.md) start with `spec/`, so from `doc/` they
-  point to `doc/spec/`, which does not exist. Suggested fix: change the links to start with `../spec/`.

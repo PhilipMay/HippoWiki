@@ -14,19 +14,30 @@ implementation.
 
 - reading order and glossary: `spec/README.md`
 - project goals and non-goals: `spec/goals.md`
-- architecture, technology stack, package layout and layer rules: `spec/architecture.md`
-- content rules, database tables and constraints: `spec/entities.md`
-- rights, admin operations, user linking and user lifecycle: `spec/users-and-rights.md`
+- big picture, composition and transactions: `spec/architecture.md`
+- technology stack: `spec/tech-stack.md`
+- package layout and layer rules: `spec/package-layout.md`
+- content rules, names, deleting and restoring: `spec/content.md`
+- database tables and constraints: `spec/database.md`
+- rights on folders: `spec/rights.md`
+- own account, admin, admin operations, user linking and user lifecycle: `spec/users.md`
 - history, revisions and revert: `spec/history-revisions.md`
 - time rules: `spec/time.md`
-- login method, tokens, authentication middleware and public routes: `spec/authentication.md`
-- check order, denied requests and errors: `spec/request-checks.md`
-- REST routes, response fields and lists: `spec/rest.md`
+- fixed limits, document size and request body size: `spec/limits.md`
+- tokens, authentication middleware and public routes: `spec/authentication.md`
+- login of AI agents, scripts and web clients, and why OAuth: `spec/connectors.md`
+- check order and denied requests: `spec/request-checks.md`
+- REST error format and MCP tool errors: `spec/errors.md`
+- REST routes and response fields: `spec/rest.md`
+- paging and list order: `spec/lists.md`
 - MCP tools and adapter: `spec/mcp.md`
-- testing strategy and required test cases: `spec/testing.md`
+- library behaviour to work around: `spec/implementation-notes.md`
+- testing strategy and test kinds: `spec/testing.md`
+- cases that are easy to miss: `spec/test-cases.md`
 - deployment: `spec/deployment.md`
 - what to configure for each component and what can go wrong: `spec/configuration-and-failure-modes.md`
 - next steps and open points: `spec/roadmap.md`
+- open gaps that block the Connector Test: `spec/gaps.md`
 
 ## Commands
 

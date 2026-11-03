@@ -42,7 +42,7 @@ dev = [
     "types-pyyaml>=6.0.12.20261030",
 ]
 
-# The layer rules from spec/architecture.md. Layers are optional until their packages exist, and a layer may
+# The layer rules from spec/package-layout.md. Layers are optional until their packages exist, and a layer may
 # import any layer below it. The stricter rules need "forbidden" contracts, which do not allow missing modules, so
 # they come with the first code.
 [tool.importlinter]

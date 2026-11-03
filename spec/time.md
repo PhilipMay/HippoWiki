@@ -1,7 +1,7 @@
 # Time
 
 One rule: **persisted points in time are stored in UTC, set by the database clock; everything else is a representation
-of that.**
+of that.** Library details are in [Implementation Notes](implementation-notes.md).
 
 ## Rules
 
@@ -16,8 +16,9 @@ of that.**
 - **Ordering**: timestamps are for humans and filters, not for ordering guarantees. `now()` is the transaction start and
   the clock is not monotonic, so timestamp order is not commit order, and rows from one transaction tie exactly.
   Revisions are ordered by version or folder number, and sorted lists use the primary key as a tie-breaker.
-- **Last change**: no table stores it. The `created_at` of the latest [history entry](entities.md#folder-history-entry)
-  of an item gives it, so a second timestamp could only disagree.
+- **Last change**: no table stores it. The `created_at` of the latest
+  [history entry](database.md#folder-history-entry-table) of an item gives it, so a second timestamp could only
+  disagree.
 - **Python** uses only timezone-aware `datetime` objects in UTC (`datetime.now(UTC)` if the app ever needs "now"); a
   naive `datetime` is a bug.
 - **Wire format** (REST, MCP, export) is RFC 3339 (a profile of ISO 8601) in UTC with `Z` and always six fractional
@@ -37,29 +38,3 @@ of that.**
 - **Local time is presentation only**: converting to a user's time zone is the client's job, no user time zone is
   stored. Accepted trade-off: the author's original UTC offset is not kept. Future events in local time would need local
   time plus an IANA zone, which is out of scope for now.
-
-## Implementation Notes
-
-- **Time zone settings**: `compose.yaml` sets `timezone=UTC` on the server and `db/engine.py` passes
-  `server_settings={"timezone": "UTC"}`. asyncpg returns UTC whatever the session time zone, so this only affects `psql`
-  output and text casts in SQL.
-- **ruff**: its `DTZ` rules (included in `select = ["ALL"]`) catch common mistakes but are not a guarantee: they miss
-  non-UTC offsets and values returned by libraries. One shared type and tests enforce the rest.
-- **SQLAlchemy**:
-  - Columns use `DateTime(timezone=True)`, set once through `type_annotation_map = {datetime: DateTime(timezone=True)}`,
-    because a bare `Mapped[datetime]` would be naive.
-  - Mappers use `eager_defaults=True`, because the default `"auto"` only fetches server-set values after INSERT, and
-    reading one after UPDATE, such as `deleted_at = now()` or the incremented `revision_counter`, would trigger implicit
-    IO in async code.
-  - Sessions use `expire_on_commit=False` for the same reason: the default expires loaded objects on commit, and the
-    next attribute access raises `MissingGreenlet`.
-- **asyncpg** returns aware UTC datetimes and reads a naive parameter as host local time, so a naive value silently
-  stores the wrong instant. `infinity` comes back naive, so it is not a valid value: columns only get `now()`, and input
-  validation rejects it.
-- **`UtcDatetime`**:
-  - On output it writes the fixed format, because Pydantic's default omits the fraction when microseconds are exactly
-    zero.
-  - On overflow the validator has to catch the `OverflowError`, which would otherwise become a 500, because Pydantic
-    only turns `ValueError` and `AssertionError` into validation errors.
-  - Pydantic's `AwareDatetime` alone is not enough, because it keeps the offset, accepts Unix timestamps and the
-    rejected formats, and truncates the fraction.

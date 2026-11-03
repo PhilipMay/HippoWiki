@@ -14,9 +14,9 @@ logins or requests still fail.
 | Audience                  | Keycloak's Audience mapper, `HIPPOWIKI_OAUTH_AUDIENCE`, the `resource` of the protected resource metadata and the URL entered in the client | 401, possibly from something as small as a trailing slash |
 | Signing keys URL          | `HIPPOWIKI_OAUTH_JWKS_URL` and Keycloak's address inside the container network                                                              | 503, not 401, so it looks like an outage                  |
 | Allowed hosts and origins | `HIPPOWIKI_MCP_ALLOWED_HOSTS`, `HIPPOWIKI_MCP_ALLOWED_ORIGINS` and the public hostname                                                      | 421 or 403, because the SDK default allows only localhost |
-| Redirect URIs             | The Keycloak client and each product, see [Client Registration](authentication.md#client-registration)                                      | The login fails at Keycloak                               |
-| Body limit                | The reverse proxy and the app's 2 MiB, see [Request Body Limit](authentication.md#request-body-limit)                                       | A lower proxy limit rejects documents the app allows      |
-| User link                 | `users.auth_subject` and Keycloak's `sub`, see [User Linking](authentication.md#user-linking)                                               | A valid login, but 401                                    |
+| Redirect URIs             | The Keycloak client and each product, see [Client Registration](connectors.md#client-registration)                                          | The login fails at Keycloak                               |
+| Body limit                | The reverse proxy and the app's 2 MiB, see [Request Body Limit](limits.md#request-body-limit)                                               | A lower proxy limit rejects documents the app allows      |
+| User link                 | `users.auth_subject` and Keycloak's `sub`, see [User Linking](users.md#user-linking)                                                        | A valid login, but 401                                    |
 
 ## Components
 
@@ -30,11 +30,11 @@ Configure:
 - the 2 GB memory limit
 
 Keep off self-registration, username editing, dynamic client registration and the experimental features, see
-[Client Registration](authentication.md#client-registration).
+[Client Registration](connectors.md#client-registration).
 
 What can go wrong:
 
-- The realm import is still untested, see [Gaps](gaps.md#keycloak).
+- The realm import is still untested, see [Gaps](gaps.md#keycloak-gaps).
 - A firewall can block Claude's IP range and break the login, see [Deployment](deployment.md).
 - The admin console can be exposed by accident.
 - When Keycloak is down, existing access tokens work for at most 5 more minutes, and then clients are locked out, see
@@ -52,7 +52,7 @@ What can go wrong:
 
 - Buffering can hold back streamed MCP responses.
 - The documents disagree on whether `/.well-known/` is exposed, the product is not chosen and the wiki hostname has no
-  route, see [Gaps](gaps.md#reverse-proxy).
+  route, see [Gaps](gaps.md#reverse-proxy-gaps).
 
 ### PostgreSQL and Alembic
 
@@ -65,7 +65,7 @@ Configure:
 What can go wrong:
 
 - Alpine and Debian images can sort text differently, which affects anything sorted by name.
-- A naive datetime silently stores the wrong instant, see [Time](time.md#implementation-notes).
+- A naive datetime silently stores the wrong instant, see [Time](implementation-notes.md#asyncpg-notes).
 - Restoring only one of the two databases breaks the user links, see [Deployment](deployment.md).
 
 ### SQLAlchemy
@@ -73,7 +73,7 @@ What can go wrong:
 Configure `expire_on_commit=False`, `eager_defaults=True` and `DateTime(timezone=True)`.
 
 What can go wrong: without these settings the code gets `MissingGreenlet` errors or naive datetimes, see
-[Time](time.md#implementation-notes).
+[Time](implementation-notes.md#sqlalchemy-notes).
 
 ### MCP SDK
 
@@ -83,7 +83,7 @@ Configure:
 - the session manager in the FastAPI lifespan
 - routes added directly rather than mounted
 
-What can go wrong, see the [implementation notes](mcp.md#implementation-notes):
+What can go wrong, see the [implementation notes](implementation-notes.md#mcp-sdk-notes):
 
 - Mounting causes a 307 redirect on `POST /mcp`.
 - A missing lifespan gives "Task group is not initialized".
@@ -112,10 +112,9 @@ Configure:
 
 What can go wrong:
 
-- `hippowiki link-admin` is a manual step on the first deployment and is easy to miss, see
-  [Admin](users-and-rights.md#admin).
+- `hippowiki link-admin` is a manual step on the first deployment and is easy to miss, see [Admin](users.md#admin).
 - Everyone re-enters the shared client secret when it is replaced, see
-  [Client Registration](authentication.md#client-registration).
+  [Client Registration](connectors.md#client-registration).
 
 ## Risks Not Settled Yet
 

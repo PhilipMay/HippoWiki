@@ -1,10 +1,7 @@
 # History and Revisions
 
-This document defines which changes HippoWiki tracks and how a user reverts them. The tables are in
-[Entities](entities.md#folder-history-entry), who can see and revert what is in
-[Rights on Folders](users-and-rights.md#rights-on-folders), and the responses are in
-[Rejected Operations](request-checks.md#rejected-operations). History and revert are available only on REST, see
-[MCP](mcp.md#history-and-revert).
+This document defines which changes HippoWiki tracks and how a user reverts them. Who can see and revert what is in
+[Rights on Folders](rights.md#rights-on-folders). History and revert are available only on REST.
 
 ## Tracked Changes
 
@@ -14,11 +11,11 @@ This document defines which changes HippoWiki tracks and how a user reverts them
 | tab         | create, rename, delete, restore, change by a folder revert                      |
 | folder      | create, rename, delete, restore, folder revert                                  |
 
-- changes to [folder rights](entities.md#folder-right) are not tracked
+- changes to folder rights are not tracked
 - creating a folder adds one entry, which includes its default tab
 - a delete or restore adds one revision on the deleted item only, and its children get none, because their rows do not
   change
-- a change and its revision are written atomically, see [Transactions](architecture.md#cross-cutting-concerns)
+- a change and its revision are written [atomically](architecture.md#transactions)
 
 ## History Layers
 
@@ -41,10 +38,10 @@ This document defines which changes HippoWiki tracks and how a user reverts them
   - a normal entry has one revision, which gives the item and its old and new name or tab
   - a folder revert has one revision per changed item, so a history list shows its number, target and author, and its
     changed items come from a paged list of their own
-- the author is returned as user ID and user name, see [Own Account](users-and-rights.md#own-account)
+- the author is returned as user ID and user name, see [Own Account](users.md#own-account)
   - the author is never null, because users are never removed, and the name of a deactivated user stays reserved
 - a history list returns metadata only, and the content comes only when one revision is fetched
-- history lists page like all other lists, see [Lists](rest.md#lists)
+- history lists page like all other [lists](lists.md)
 
 ## Order and Versions
 
@@ -81,15 +78,10 @@ A write runs in this order, after the visibility and right checks of [Request Ch
   compares it under the lock on the folder row, see [Optimistic Locking](#optimistic-locking), so a concurrent change
   can not slip in between
 - reverting to the state that is already current with the current version succeeds and adds no revision
-- a revision that belongs to another item or folder is treated as a missing one, and so is a number that is not in the
-  history of the folder
 
 ### MD Document Revert
 
-- content, name and tab return to the state of the target revision
-- a md_document that is not live has to be restored first, and so does a target tab that is not live
-- a target revision that records the deletion of the md_document is rejected, because delete is its own operation
-- a name that is taken in the target tab is rejected, and the live item has to be renamed or deleted first
+Content, name and tab return to the state of the target revision.
 
 ### Folder Revert
 
@@ -100,7 +92,7 @@ that number:
 - an item deleted after the target is restored
 - an item that was deleted at the target stays deleted, or is deleted again
 - only the own fields of each item are written, so nothing cascades, in line with
-  [Deleting and Restoring Content](entities.md#deleting-and-restoring-content)
+  [Deleting and Restoring Content](content.md#deleting-and-restoring-content)
 
 A folder revert only changes what `manage` may change, so these stay as they are:
 
@@ -117,9 +109,17 @@ The revert itself:
 - it adds one entry to the history of the folder and one revision per changed item, linked to that entry
 - it gets no `NameConflictError`, because the items return to a state that was valid together
 
-## Implementation Notes
+## Rejected Revert Operations
 
-- The lock on the folder row is `SELECT ... FOR NO KEY UPDATE`, because this lock mode does not block the foreign key
-  checks of `folder_rights`.
-- The partial unique indexes can not be deferred, so a swap of two names in a folder revert has to free the names first,
-  for example by setting `deleted_at` on the affected rows within the transaction.
+These rules reject an operation, whatever the rights of the user. The last column names the row in the
+[check order](request-checks.md#check-order).
+
+| Rule                                                                                                                | Domain error           | REST | Check              |
+| ------------------------------------------------------------------------------------------------------------------- | ---------------------- | ---- | ------------------ |
+| revert a md_document to a revision that records its deletion, because delete is its own operation                   | `ForbiddenError`       | 403  | Target rules       |
+| revert a md_document that is not live, which has to be restored first                                               | `NotFoundError`        | 404  | Target lookup      |
+| revert to a revision of another item or folder, which is treated as a missing one                                   | `NotFoundError`        | 404  | Target lookup      |
+| revert a md_document to a tab that is not live, which has to be restored first                                      | `NotFoundError`        | 404  | Target lookup      |
+| revert a folder to a number that is not in its history, which is treated as a missing one                           | `NotFoundError`        | 404  | Target lookup      |
+| revert with a version that is not the current one                                                                   | `VersionConflictError` | 409  | Conflicts: version |
+| revert a md_document to a name that is taken in the target tab, so the live item has to be renamed or deleted first | `NameConflictError`    | 409  | Conflicts: name    |

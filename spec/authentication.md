@@ -1,7 +1,7 @@
 # Authentication
 
-This document defines the login method and how the middleware authenticates and rejects requests. The rights themselves
-are in [Users and Rights](users-and-rights.md).
+This document defines how the auth middleware authenticates and rejects requests. How clients log in is in
+[Connectors](connectors.md), and how users are linked to Keycloak accounts is in [User Linking](users.md#user-linking).
 
 ## Roles
 
@@ -46,79 +46,6 @@ Signing keys are cached in memory:
 - Removing the link of a user, or deactivating them, blocks them on the next request. Disabling them only in Keycloak
   takes effect when their access token expires, so after up to 5 minutes.
 
-## User Linking
-
-Keycloak accounts and HippoWiki users are connected only through `users.auth_subject`, which holds the `sub` claim of
-the Keycloak account. The rules are in [Users and Rights](users-and-rights.md#user-linking).
-
-- Keycloak usernames and HippoWiki names are not compared, because a match by name would break when a username changes
-  or is reused.
-- A valid token with no linked user gets 401, and so does a valid token of a deactivated user.
-
-## AI Agents
-
-An AI agent acts as the account it logged in with. There are no tokens with fewer rights than their user.
-
-- A person can log a connector in with their own account, unless it is the admin account.
-- The admin account can log in at Keycloak, but [MCP rejects it](mcp.md#admin-account). The person who is the admin uses
-  a separate account for connectors.
-- A separate account, such as `alice-claude`, is a normal user: it gets its own folder rights, such as read-only, and
-  shows up separately in the revision history.
-
-## Scripts and Web Clients
-
-REST accepts the same OAuth tokens as MCP, and there are no API tokens for now.
-
-- Each script gets its own Keycloak client with a service account, and uses the client credentials grant.
-- The service account is linked to a HippoWiki user like any other account.
-- A script that administers the system has to use the one [admin](users-and-rights.md#admin) account, which has one
-  link.
-
-## Client Registration
-
-Each product gets one confidential client, created by hand in Keycloak, with S256 PKCE required. Its client ID and
-secret are entered in the connector dialog of the product.
-
-- ChatGPT: the redirect URI comes from the management page, see [Why OAuth](#why-oauth).
-- Claude: the redirect URI is `https://claude.ai/api/mcp/auth_callback`, and the connector uses the option "Use your own
-  OAuth client".
-- The audience of the tokens comes from a fixed Audience mapper set to the MCP URL, on a default client scope. One
-  audience covers both MCP and REST.
-
-These stay off:
-
-- Client ID Metadata Documents (the `cimd` feature): experimental in Keycloak, and Keycloak rejects the document of
-  ChatGPT ([Keycloak: MCP](https://www.keycloak.org/securing-apps/mcp-authz-server)).
-- Anonymous dynamic client registration: the MCP specification is deprecating it, it would let anyone on the internet
-  create clients, and Claude would register a new client on every fresh connection.
-- Resource indicators (the `resource-indicators` feature): experimental in Keycloak. Without it Keycloak does not
-  recognize the `resource` parameter that ChatGPT sends, so the audience comes from the mapper instead.
-
-Accepted trade-off: everyone who adds a connector themselves uses the same client secret, and replacing it means
-entering it again. The secret only identifies the product, and each person still has to log in.
-
-Whether this works with the real clients is not shown yet, see [Connector Test](roadmap.md#connector-test).
-
-## Why OAuth
-
-Hosted MCP connectors log in with OAuth 2.1 and PKCE, because the clients named in [Goals](goals.md) need it.
-
-- ChatGPT needs OAuth for an authenticated server: protected resource metadata, an authorization server with discovery
-  metadata, and the authorization code flow with PKCE and S256. It can not present API keys or customer mTLS
-  certificates, and does not support machine-to-machine grants
-  ([OpenAI: Authentication](https://developers.openai.com/plugins/build/auth)). The tools declare `securitySchemes`, and
-  the `resource` parameter sets the audience of the tokens
-  ([OpenAI: full documentation](https://developers.openai.com/plugins/llms-full.txt)).
-- The redirect URI of ChatGPT depends on the authorization server:
-  `https://chatgpt.com/connector_platform_oauth_redirect` with RFC 9207 issuer identification, otherwise
-  `https://chatgpt.com/connector/oauth/{callback_id}`. Copy the exact value from the management page when setting this
-  up ([OpenAI: Authentication](https://developers.openai.com/plugins/build/auth)).
-- Claude documents OAuth with discovery from a 401 carrying `WWW-Authenticate: Bearer resource_metadata=...`
-  ([Claude: connector authentication](https://claude.com/docs/connectors/building/authentication.md),
-  [Claude: custom connectors](https://support.claude.com/en/articles/11175166-getting-started-with-custom-connectors-using-remote-mcp)).
-  It also lists authless servers, which [Goals](goals.md) rules out, and `static_headers` (beta), an API key or bearer
-  token sent on every call, which HippoWiki does not use.
-
 ## Login Protection and Audit
 
 - Keycloak handles password hashing, so HippoWiki has no password code.
@@ -135,6 +62,7 @@ Hosted MCP connectors log in with OAuth 2.1 and PKCE, because the clients named 
   services, on both REST and MCP, on every route except the public ones.
 - It stores the principal in the ASGI scope, and the OpenAPI security scheme is declared separately.
 - The credential check returns a principal or nothing. An exception means the lookup failed.
+- It also enforces the [request body limit](limits.md#request-body-limit).
 - Other ASGI scopes: `lifespan` passes through unchanged, and `websocket` fails closed, because no route uses it.
 
 ## Public Routes
@@ -161,35 +89,18 @@ The rule is in [MCP](mcp.md#admin-account). The middleware enforces it right aft
 the SDK nor a tool is reached:
 
 - A request to the MCP path whose principal has `is_admin` gets 403 problem+json from the
-  [shared helper](request-checks.md#rest-error-format), whatever its method.
+  [shared helper](errors.md#rest-error-format), whatever its method.
 - The path matches exactly, like a [public route](#public-routes), and every other path is unaffected.
 - The response is not a 401 and has no `WWW-Authenticate` header, because both tell an MCP client to log in again. That
   can not help, since the login is valid and the account itself is not allowed.
-
-## Request Body Limit
-
-After authentication and before anything parses the body, the middleware rejects a request body over the limit with 413.
-It checks this on the declared length and while reading, whatever the route. The limit is 2 MiB (2,097,152 bytes), and a
-body of exactly this size passes.
-
-The limit is separate from the [maximum document size](entities.md#document-size) of 256 KiB, but has to leave room for
-it. JSON escaping can grow one UTF-8 byte to six, because U+0001 becomes `\u0001` and `SafeText` allows it, so the
-largest document can need 1.5 MiB. The other 512 KiB covers the name, the IDs and the JSON-RPC envelope.
-
-The value is fixed in the code and not a setting. `app.py` holds it as `MAX_REQUEST_BODY_BYTES` and passes it to the
-middleware, while `services/md_documents.py` holds `MAX_CONTENT_MD_BYTES`. The [reverse proxy](deployment.md) needs a
-matching limit.
-
-The middleware reads the body up to the limit before it calls the app, and then replays it. Memory is bounded by the
-limit, and after the replay `receive` goes to the original one again, so the app still gets `http.disconnect`.
 
 ## Failed Credential Lookup
 
 When the credential lookup fails, for example because the database is down or a needed signing key can not be fetched
 from Keycloak, the middleware can not tell whether the credentials are valid, so it fails closed:
 
-- the response is 503 problem+json from the [shared helper](request-checks.md#rest-error-format) and contains no
-  exception details
+- the response is 503 problem+json from the [shared helper](errors.md#rest-error-format) and contains no exception
+  details
 - it is never a 401, because the credentials may be valid and a client must not discard them
 - the request does not go on without a principal, so it reaches neither adapter
 - MCP clients get the same HTTP 503, because the middleware runs before the MCP routes
@@ -198,13 +109,3 @@ from Keycloak, the middleware can not tell whether the credentials are valid, so
 An outage that starts after the lookup, during the service call, gets the 500 of the
 [check order](request-checks.md#check-order). This is intended: only the lookup has to protect credentials from being
 discarded, and any later failure is unexpected.
-
-## Implementation Notes
-
-- Raising from a wrapped `receive` does not work for the body limit. FastAPI turns any exception during body parsing
-  into a 400, and a route that reads no body would answer 404, although the Body size check comes before Routing in the
-  [check order](request-checks.md#check-order). So the body is read up front and replayed.
-- The SDK's `RequestBodyLimitMiddleware` (`transport_security.py:126`) works the same way.
-- The SDK limits MCP bodies to 4 MiB by itself (`transport_security.py:15`) and answers with a plain text 413. Our limit
-  is lower, so the middleware always answers first and `max_request_body_size` stays unset. The line numbers refer to
-  `mcp` 2.3.0.

@@ -1,12 +1,11 @@
 # Keycloak on NixOS with Podman and Traefik
 
 This guide runs Keycloak in Podman on a NixOS host, behind a Traefik that runs as the native `services.traefik` and
-handles TLS. It follows the requirements in [Deployment](spec/deployment.md) and
-[Authentication](spec/authentication.md).
+handles TLS. It follows the requirements in [Deployment](../spec/deployment.md), [Authentication](../spec/authentication.md) and [Connectors](../spec/connectors.md).
 
 ## What You Get
 
-- `quay.io/keycloak/keycloak:26.8.1`, the version pinned in [Architecture](spec/architecture.md), limited to 2 GB of
+- `quay.io/keycloak/keycloak:26.8.1`, the version pinned in [Tech Stack](../spec/tech-stack.md), limited to 2 GB of
   memory.
 - `postgres:16-alpine` with `timezone=UTC`, and a separate `keycloak` database and role. HippoWiki's database goes on
   the same server later.
@@ -246,13 +245,13 @@ works with `/realms/master` closed to the internet.
 ## Realm Setup
 
 Create the realm `hippowiki` in the console (the realm menu, then "Create realm"), and then set the following. The rules
-come from [Authentication](spec/authentication.md). The labels may differ slightly between Keycloak versions.
+come from [Authentication](../spec/authentication.md) and [Connectors](../spec/connectors.md). The labels may differ slightly between Keycloak versions.
 
 - **Realm settings, Login:** turn off "User registration" and "Edit username".
 - **Realm settings, Security defenses:** turn on "Brute force detection".
 - **Realm settings, Events:** turn on saving of user events.
 - **Realm settings, Tokens:** set "Access token lifespan" to 5 minutes, turn on "Revoke refresh token", and set "Refresh
-  token max reuse" to 0. The session lifetimes are decided in the [Connector Test](spec/roadmap.md#connector-test).
+  token max reuse" to 0. The session lifetimes are decided in the [Connector Test](../spec/roadmap.md#connector-test).
 - **Client scopes:** create a scope `hippowiki-audience` of type "Default". Add a mapper "By configuration", type
   "Audience", with "Included Custom Audience" set to `https://wiki.example.org/mcp` and "Add to access token" on. Create
   this before the clients, so that they pick it up.
@@ -261,12 +260,12 @@ come from [Authentication](spec/authentication.md). The labels may differ slight
   `https://claude.ai/api/mcp/auth_callback`. Copy the one for ChatGPT from its management page.
 - **Script clients:** create one client per script, with "Service accounts roles" on and "Standard flow" off.
 - **Features:** do not enable `cimd`, `resource-indicators` or anonymous client registration, see
-  [Client Registration](spec/authentication.md#client-registration).
+  [Client Registration](../spec/connectors.md#client-registration).
 
 The HippoWiki admin account also goes in this realm, not in `master`. Create the user, copy its ID, and run
-`hippowiki link-admin <subject>` with that ID, see [Admin](spec/users-and-rights.md#admin).
+`hippowiki link-admin <subject>` with that ID, see [Admin](../spec/users.md#admin).
 
-[Deployment](spec/deployment.md) wants the realm as a versioned import file without secrets:
+[Deployment](../spec/deployment.md) wants the realm as a versioned import file without secrets:
 
 1. In "Realm settings", use "Action" and then "Partial export", including clients and groups.
 2. Replace each client secret with an environment placeholder such as `${CLAUDE_CLIENT_SECRET}`, and save the file as
@@ -287,7 +286,7 @@ HIPPOWIKI_OAUTH_JWKS_URL=http://keycloak:8080/realms/hippowiki/protocol/openid-c
 ```
 
 Keycloak's public hostname must also stay reachable from Anthropic's range `160.79.104.0/21`, see
-[Deployment](spec/deployment.md).
+[Deployment](../spec/deployment.md).
 
 ## Checks
 
@@ -354,7 +353,7 @@ sudo podman exec postgres pg_dump -U postgres -Fc keycloak > "keycloak-$(date +%
 ```
 
 To upgrade, read the Keycloak upgrading guide, make a backup, change the image tag in `keycloak.nix`, and run
-`sudo nixos-rebuild switch`. Update the pinned version in [Architecture](spec/architecture.md) as well.
+`sudo nixos-rebuild switch`. Update the pinned version in [Tech Stack](../spec/tech-stack.md) as well.
 
 ## Troubleshooting
 

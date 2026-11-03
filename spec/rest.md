@@ -1,9 +1,6 @@
 # REST
 
-The REST adapter is a thin layer over the services, see [Architecture](architecture.md). This document defines its
-routes, its response fields and how lists page. The list rules also apply to [MCP](mcp.md#tools). Denied requests and
-the error format are in [Request Checks](request-checks.md), and who can do what is in
-[Users and Rights](users-and-rights.md).
+The REST adapter is a thin layer over the services. This document defines its routes and its response fields.
 
 ## Conventions
 
@@ -11,33 +8,33 @@ the error format are in [Request Checks](request-checks.md), and who can do what
   stay outside it.
 - Items are addressed flat by ID, see [Targets](request-checks.md#targets). Lists and creates are nested under the
   parent.
+- A route marked paged follows [Lists](lists.md).
 - A create answers 201 and deleting a right answers 204. Everything else answers 200 with the item.
 - A delete and a restore return the summary of the item, because
   [write results](history-revisions.md#optimistic-locking) of a md_document return its version and both grow it.
 - The result of a create or update of a md_document is its summary without `content_md`, because the client just sent
   it.
-- The version the client saw travels in the body, not in `If-Match`, see
-  [Optimistic Locking](history-revisions.md#optimistic-locking).
+- The version the client saw travels in the body, not in `If-Match`.
 - A `PATCH` with no field to change gets 422 `schema_validation`.
 - A `null` for a field gets 422 `schema_validation`, except `auth_subject`, where `null` removes the link and leaving it
   out changes nothing.
 
 ## Routes
 
-The right is the lowest one that is enough, see [Rights on Folders](users-and-rights.md#rights-on-folders). The admin
-[has no right](users-and-rights.md#admin-operations) on any folder, so a route that names a right gets 404 for the
-admin, unless it says otherwise. Body fields are named where they are not obvious.
+The right is the lowest one that is enough, see [Rights on Folders](rights.md#rights-on-folders). The admin
+[has no right](users.md#admin-operations) on any folder, so a route that names a right gets 404 for the admin, unless it
+says otherwise. Body fields are named where they are not obvious.
 
-### Own Account
+### Own Account Routes
 
-For every user, see [Own Account](users-and-rights.md#own-account).
+For every user, see [Own Account](users.md#own-account).
 
 | Route            | Purpose                                |
 | ---------------- | -------------------------------------- |
 | `GET /me`        | own user                               |
 | `GET /me/rights` | own rights with the folder name, paged |
 
-### Folders
+### Folder Routes
 
 | Route                                             | Right                                         |
 | ------------------------------------------------- | --------------------------------------------- |
@@ -55,7 +52,7 @@ For every user, see [Own Account](users-and-rights.md#own-account).
 
 A folder revert can change thousands of items, so the changed items of an entry are a list of their own.
 
-### Tabs
+### Tab Routes
 
 | Route                                   | Right            |
 | --------------------------------------- | ---------------- |
@@ -67,7 +64,7 @@ A folder revert can change thousands of items, so the changed items of an entry 
 | `DELETE /tabs/{tab_id}`                 | `manage`         |
 | `POST /tabs/{tab_id}/restore`           | `manage`         |
 
-### MD Documents
+### MD Document Routes
 
 | Route                                                    | Right                                                   |
 | -------------------------------------------------------- | ------------------------------------------------------- |
@@ -83,16 +80,16 @@ A folder revert can change thousands of items, so the changed items of an entry 
 | `GET /md-documents/{md_document_id}/revisions/{version}` | `read`, `manage` when it is not live, with `content_md` |
 
 - `PATCH` takes the optional fields `content_md`, `name` and `tab_id`, and changing several of them is one
-  [`update`](entities.md#folder-history-entry). The right it needs is in
-  [Combined Updates](users-and-rights.md#combined-updates).
+  [`update`](database.md#folder-history-entry-table). The right it needs is in
+  [Combined Updates](rights.md#combined-updates).
 - Without `tab_id`, the list returns the live md_documents of all live tabs of the folder, and each row has its
-  `tab_id`. Without `tab_id`, a create uses the [default tab](entities.md#folders-tabs-and-md-documents).
+  `tab_id`. Without `tab_id`, a create uses the [default tab](content.md#folders-tabs-and-md-documents).
 - A `tab_id` in the list follows the same rule as in the create: a missing, deleted or foreign tab gets the 404 of
   [Targets](request-checks.md#targets).
 
-### Users and Rights
+### User and Right Routes
 
-Admin operations only, see [Admin Operations](users-and-rights.md#admin-operations).
+Admin operations only, see [Admin Operations](users.md#admin-operations).
 
 | Route                                          | Purpose                           |
 | ---------------------------------------------- | --------------------------------- |
@@ -109,8 +106,8 @@ Admin operations only, see [Admin Operations](users-and-rights.md#admin-operatio
 
 ## Response Fields
 
-A user is always named as `{id, name}`, see [Own Account](users-and-rights.md#own-account). This applies to
-`created_by`, `assigned_by` and `user` below.
+A user is always named as `{id, name}`, see [Own Account](users.md#own-account). This applies to `created_by`,
+`assigned_by` and `user` below.
 
 - **Folder**: `id`, `name`, `revision_counter`, `created_by`, `created_at`, `deleted_at`. A folder revert needs the
   counter.
@@ -127,55 +124,3 @@ A user is always named as `{id, name}`, see [Own Account](users-and-rights.md#ow
 - **User**: `id`, `name`, `auth_subject`, `is_admin`, `created_by`, `created_at`, `deactivated_at`.
 - **Own right**: `folder` as `{id, name}`, `access_right`.
 - **Stored right**: `folder` as `{id, name}`, `user`, `access_right`, `assigned_by`, `assigned_at`.
-
-## Lists
-
-These rules apply to every paged list, on REST and on [MCP](mcp.md#tools):
-
-- Lists take `limit` and `cursor`, as query parameters on REST.
-- `limit` is 1 to 100, with a default of 50. A value out of range gets a schema validation error and is not clamped.
-- A list returns `{"items": [...], "next_cursor": "..."}`, and `next_cursor` is null on the last page.
-  - It has no total, so nothing has to count.
-  - The repository reads `limit + 1` rows, so a null `next_cursor` is certain and a full last page is not followed by an
-    empty one.
-- Lists never return `content_md`, so the size of a page depends only on the number of rows. A page of 100 summaries is
-  roughly 25 kB.
-- The cursor is opaque for clients. It is base64url of the sort key of the last row, such as `["some-name", "<uuid>"]`.
-  - A cursor that can not be decoded or has the wrong shape gets a schema validation error, which depends only on the
-    request and so [leaks nothing](request-checks.md#validation).
-  - It is not signed, because it only says where to continue. The rights still filter every row, and the row it names
-    need not exist any more.
-- Hidden and deleted rows are left out by the query itself, so a page is full unless it is the last one.
-- There is no snapshot across pages, because each page is its own
-  [unit of work](architecture.md#cross-cutting-concerns). A rename during paging can show a row twice or not at all,
-  which is accepted.
-
-The order is fixed, and a client can not choose it:
-
-| List                                                | Order                      |
-| --------------------------------------------------- | -------------------------- |
-| folders, tabs, md_documents and their deleted lists | `name`, `id`               |
-| users                                               | `name`, `id`               |
-| own rights                                          | folder `name`, folder `id` |
-| rights of a folder                                  | `user_id`                  |
-| all rights                                          | `user_id`, `folder_id`     |
-| revisions of a md_document                          | `version`, newest first    |
-| folder history                                      | `number`, newest first     |
-| changed items of an entry                           | `type`, `id`               |
-
-The ID is the [tie-breaker](time.md#rules): names repeat among deleted rows and across the tabs of a folder.
-
-## Implementation Notes
-
-- Static routes such as `/folders/deleted` are declared before `/folders/{folder_id}`, because `deleted` would otherwise
-  be a malformed ID and get 422.
-- Paging: `schemas/paging.py` has the shared types for `limit` and the cursors, used by both adapters.
-  - The adapters decode the cursor and pass the sort key to the service as plain values, because services never import
-    `schemas/`.
-  - A repository returns a `Page` from `domain.py` with the rows and the sort key of the last one, and the adapter
-    encodes that key.
-  - Decoded strings go through `SafeText`, because a crafted NUL would otherwise reach asyncpg and become a 500.
-- Collation: the [name columns](entities.md#tables) use `COLLATE "C"`. The keyset comparison and `ORDER BY` have to
-  agree, the partial unique indexes have to serve them, and it matches the string order of Python, so the fakes sort
-  like PostgreSQL. It also does not depend on the image, unlike the sort difference [Deployment](deployment.md)
-  mentions.
