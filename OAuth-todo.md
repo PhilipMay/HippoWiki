@@ -240,10 +240,3 @@ These are small, and each has a clear fix once it is worth doing.
   deliberate, because the limit protects the vendor.
 - **Alternatives**:
   - A shorter interval: closer to the draft, with more requests during an outage.
-
-### Old Review Report
-
-- **Open**: `spec-qa-report.md` still describes the Keycloak design, so its findings no longer apply.
-- **Recommendation**: delete it, because most of what it covers has been rewritten.
-- **Alternatives**:
-  - Keep it with a note at the top saying which design it describes.

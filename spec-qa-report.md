@@ -1,16 +1,16 @@
 # Spec QA Report
 
-Date: 2026-11-03. Scope: `spec/`, `doc/nixos-keycloak-setup.md` (called "the guide" below), `README.md` and `CLAUDE.md`.
+Date: 2026-11-03. Scope: `spec/`, `doc/nixos-setup.md` (called "the guide" below), `README.md` and `CLAUDE.md`. The
+[OAuth Server](spec/oauth-server.md) was reviewed separately, and its open items are in [OAuth Todo](OAuth-todo.md).
 
 ## Status
 
-All 8 major findings and 10 of the 58 minor findings are resolved in the spec, and are removed from this report. 48
-minor findings, the experiments and the cut candidates are still open.
+All 8 major findings and 10 of the 58 minor findings are resolved in the spec, and are removed from this report. The
+change to a built-in OAuth server then removed 11 more minor findings, and this report was updated to match it. 37 minor
+findings, the experiments and the cut candidates are still open.
 
 Values chosen while resolving the findings, which you may want to check:
 
-- Key cache maximum age of 10 minutes, 30 seconds between fetches, a fetch timeout of 5 seconds, and a token leeway of
-  30 seconds, all in `limits.md`.
 - The `detail` texts in `errors.md`.
 - The `postgresql+asyncpg://` format of `HIPPOWIKI_DATABASE_URL` in the guide.
 
@@ -20,7 +20,7 @@ are also yours to decide.
 ## Summary
 
 There are no blockers and no open major findings. The core design held up: existence leaks, lock order, history
-numbering, the rights tables and the fixed-client login were all tested and found sound.
+numbering and the rights tables were all tested and found sound.
 
 The open minor findings can wait for the step that touches them, or for the implementation to show whether they matter.
 
@@ -37,13 +37,10 @@ Removed or corrected in that pass:
 
 - **Refuted:** first `PUT` of a right being 200 or 201. The operation is always called assign, and "Everything else
   answers 200 with the item" settles it.
-- **Refuted:** a conflict between logging `azp` and `tokens.py` returning the subject. `connector_test_app.py` may
-  import anything and can read those values itself.
 - **Refuted:** podman-compose settling the wait for `migrate`, so that risk stays open.
 - **Dropped:** a missing test for restoring a tab with an earlier deleted item, because `testing.md` already requires a
   test for every rule.
 - **Corrected:** rejecting Unicode tag characters would break valid flag emoji, so that fix is no longer recommended.
-- **Corrected:** the guide runs PostgreSQL and Keycloak as containers, not natively. Only Traefik is native.
 
 Limits of this round:
 
@@ -62,27 +59,9 @@ Limits of this round:
   connector accounts to hold the smallest rights. Alternatives: a last editor field, which needs a read of the latest
   entry because no table stores it; a rights ceiling per client or scoped tokens, which reverse "There are no tokens
   with fewer rights than their user". **Decision** for those two.
-- **Backups are secrets** (guide: `pg_dump -U postgres -Fc keycloak > "keycloak-$(date +%F).dump"`). The Keycloak dump
-  probably holds signing keys and client secrets, and the spec has no rule for it. Copies off the host are the real
-  risk. Fix: in `deployment.md`, backups are encrypted and root-only, and a leak means rotating realm keys and client
-  secrets.
-- **Exposed master realm** (`deployment.md`: "It exposes Keycloak's login paths (`/realms/` and `/resources/`) and
-  `/.well-known/`"). The guide excludes `/realms/master`, the spec does not, and Keycloak's proxy guide marks it
-  internal. Fix: state an allowlist for the `hippowiki` realm that keeps every discovery form MCP clients try.
 - **Compose ports** (`deployment.md`, Containers and Compose). No rule on published ports, although the guide warns they
-  bypass the firewall, and Traefik is not in the compose list. Fix: `postgres` publishes nothing, and `app` and
-  `keycloak` bind to `127.0.0.1`. Alternative: put Traefik in the compose file. **Decision** for that alternative.
-- **Stolen connector logins** (`users.md`: "the link and the rights stay, and apply again after reactivation").
-  Reactivating revives a stolen refresh token. Fix: a short procedure in `users.md` to sign out the user and revoke
-  offline sessions, and rotate a service account's secret. Alternatives: comparing `auth_time`, or having the app call
-  the Keycloak admin API, which are automatic but heavier. **Decision** for those two.
-- **Trust in the Keycloak admin** (`authentication.md`: "It administers Keycloak and has no rights in HippoWiki.").
-  `users.md` already admits the HippoWiki admin is no security boundary, but the Keycloak side is not stated, and the
-  guide saves only user events. Fix: state the trust and turn on admin events. Alternative: an audit table, which
-  reverses "changes to folder rights are not tracked". **Decision** for that alternative.
-- **Admin login strength** (guide, Realm Setup). The all-powerful admin has a password only on a public login. Fix: OTP
-  for the admin and a password policy. Direct access grants default to off in the 26.8.1 UI, so listing them is
-  optional.
+  bypass the firewall, and Traefik is not in the compose list. Fix: `postgres` publishes nothing, and `app` binds to
+  `127.0.0.1`. Alternative: put Traefik in the compose file. **Decision** for that alternative.
 - **Rights on deleted folders** (`content.md`: "changing them needs a restore first"; `rights.md`: "Rows on deleted
   folders are left out"). This is a deliberate rule, and the effect is a short window after a restore, before a right is
   removed. Fix: leave it and name the window. Alternatives: let the admin list and delete these rights, which changes
@@ -91,10 +70,9 @@ Limits of this round:
   invisible characters can be stored. Fix: keep the current verbatim rule, and tell clients to filter on display.
   Alternative: reject C0 and C1 controls, which means rewriting the sizing reason in `limits.md` and its test case. Do
   not reject tag characters, because flag emoji need them. **Decision**.
-- **What must not be logged** (`architecture.md`: "log who changed what"; `roadmap.md`: "the `azp` and `scope` of the
-  token"). No rule exists, and the Connector Test App runs before logging is added in step 4. Fix: logs never hold
-  tokens, secrets or `content_md`; set `hide_parameters=True`; the test app escapes its values and logs token claims
-  only after verification.
+- **What must not be logged** (`architecture.md`: "log who changed what"; `oauth-server.md`: "Logs never hold a
+  password, token, code or secret"). The rule covers login data only. Fix: logs also never hold `content_md`; set
+  `hide_parameters=True`; the Connector Test App escapes the values it logs.
 - **Tool annotations** (`mcp.md`: "`readOnlyHint` on the list and get tools and `destructiveHint` on the delete
   tools."). In the MCP schema, `destructiveHint` and `openWorldHint` default to true, so other write tools count as
   destructive by default. Fix: give each tool explicit values, and say they are hints only.
@@ -119,18 +97,13 @@ Limits of this round:
   no body model needs its own choice, and ignoring it is simplest. **Decision**, a small one.
 - **MCP errors outside tools** (`request-checks.md`: "HTTP 421 or 403"). Statuses are defined and bodies come from the
   SDK. Fix: say so in `errors.md`, and say an unexpected tool error carries `internal_error`.
-- **Name and subject both taken** (`request-checks.md`: "the first one that fails decides the response"). One INSERT
-  raises one violation, chosen by index creation order. Fix: state that either 409 may result, and fix the order in the
-  fakes. Pinning the index order is fragile.
-- **`auth_subject` wording** (`rest.md`: "where `null` removes the link and leaving it out changes nothing"). Behaviour
-  is settled elsewhere. Fix: limit the sentence to `PATCH /users/{id}`, and drop the last clause.
 - **Restoring a live folder** (`request-checks.md`: "so a 404 means it really does not exist or is deleted"). This is
   false for a restore of a live folder, per `content.md`. Fix: add the exception.
 - **Trailing newline in names** (`content.md`: "`^[a-z0-9]+(-[a-z0-9]+)*$`"). Running it confirmed that `re.match`
   accepts `admin\n`, which also passes the `is_admin` check constraint. Names are validated in services, so Pydantic's
   engine does not help. Fix: say full match, and add `a\n` and `admin\n` to Name Cases.
 - **OpenAPI security scheme** (`authentication.md`: "the OpenAPI security scheme is declared separately"). No type is
-  named. Fix: `http` bearer with `bearerFormat: JWT`, which needs no settings.
+  named. Fix: `http` bearer without `bearerFormat`, because the tokens are opaque, which needs no settings.
 - **History items hide deleted state** (`rest.md`, History item). A `folder_revert` entry has one `kind` for every item,
   and tabs have no revision route, so nobody can read what a revert did to a tab. Fix: add `is_deleted` and
   `previous_is_deleted`. Alternative: a tab revision route, which is more surface.
@@ -166,26 +139,25 @@ Limits of this round:
 - **Composition wiring** (`package-layout.md`: "may import anything, and nothing imports them"; `limits.md`: "`app.py`
   holds the value as `MAX_REQUEST_BODY_BYTES`"). `connector_test_app.py` needs the value in step 1, and the wiring gets
   copied. Fix: one assembly function with a named exception, and the constants in a neutral module. Alternative: accept
-  the copy until step 7, since the code is temporary, though the Connector Test then exercises a copy.
-- **`create_app()` signature** (`package-layout.md`: "create_app(unit-of-work factory, credential check)"). Issuer,
-  audience, hosts and origins have no stated way in, and reading them inside makes fake-based tests depend on the
-  environment. Fix: write the signature with a settings parameter.
-- **Settings list** (`architecture.md`: "(`HIPPOWIKI_DATABASE_URL`, …)"). There is no complete list, and a required
-  database URL on one settings class would stop the repeatable Connector Test container. Fix: one table of settings, and
-  a separate group for the test app. Alternative: make the URL optional and check it at production startup.
+  the copy until step 6, since the code is temporary, though the Connector Test then exercises a copy.
+- **`create_app()` signature** (`package-layout.md`: "create_app(unit-of-work factory, credential check, client document
+  source, public URL)"). The allowed hosts and origins and the trusted client URLs have no stated way in, and reading
+  them inside makes fake-based tests depend on the environment. Fix: write the signature with a settings parameter.
+- **Settings list** (`architecture.md`: "(`HIPPOWIKI_DATABASE_URL`, …)"). There is no complete list, and the settings
+  are named across several documents. Fix: one table of settings, with a separate group for the test app.
 - **Open risks outside the roadmap** (`configuration-and-failure-modes.md`: "open items of the specification stay in the
-  [Roadmap](roadmap.md)"). Five risks are in neither place's plan: realm recreation, rollbacks, the connection pool,
-  compose providers and upgrades. Fix: move them to the roadmap, and settle pool pre-ping now in
-  `implementation-notes.md`.
-- **Connector test data** (`roadmap.md`: "a right on it for the linked user and the service account"). The level is
-  unnamed, and other details are open, for throwaway code with one implementer. Fix: give one example JSON with `write`.
+  [Roadmap](spec/roadmap.md)"). Four risks are in neither place's plan: rollbacks, the connection pool, compose
+  providers and upgrades. Fix: move them to the roadmap, and settle pool pre-ping now in `implementation-notes.md`.
+- **Connector test data** (`roadmap.md`: "a right on it for the normal user and the user of the script client"). The
+  level is unnamed, and other details are open, for throwaway code with one implementer. Fix: give one example JSON with
+  `write`.
 - **Container command** (guide: `cmd = [ "uvicorn" "--factory"`). An `ENTRYPOINT` in the `Containerfile` would break it.
   Fix: state in `deployment.md` that there is no `ENTRYPOINT` and `uvicorn` is on the `PATH`.
 - **Sort order claim** (`configuration-and-failure-modes.md`: "which affects anything sorted by name";
   `implementation-notes.md`: "It also does not depend on the image"). All name columns use `COLLATE "C"`, so the first
   sentence is wrong. Fix: correct it, and also the reason in `deployment.md`.
-- **After the Connector Test** (`roadmap.md`: "and this section is removed"; `testing.md`: "The real Keycloak is covered
-  by the"). Real clients only ever see a few tools and the stand-ins, and 14 links point to that section. Fix: end step
+- **After the Connector Test** (`roadmap.md`: "and this section is removed"; `testing.md`: "The real clients are covered
+  by the"). Real clients only ever see a few tools and the stand-ins, and 21 links point to that section. Fix: end step
   9 with a repeat of the client checks, and keep a short procedure.
 - **Duplicated values** (`README.md`: "Each topic has one home"). The rights in `rest.md` restate `rights.md`, and
   external values are copied, with no drift found so far. Fix: a test that compares routes with the rights matrix, and
@@ -193,11 +165,6 @@ Limits of this round:
 
 ### Outside Facts
 
-- **Realm export** (guide: "use "Action" and then "Partial export""; `roadmap.md`: "export the realm from the console").
-  [Keycloak](https://www.keycloak.org/server/importExport) calls console exports unfit for moving between servers. Fix:
-  use `kc.sh export --file <path> --realm hippowiki --users skip`, and strip secrets and keys before versioning the
-  file, because `deployment.md` requires a file without secrets. Keycloak has to be stopped for this. Alternatives: keep
-  the partial export and rely on the planned fresh-install test, or use a declarative tool, which adds a dependency.
 - **`eager_defaults`** (`implementation-notes.md`: "reading one after UPDATE, such as `deleted_at = now()` or the
   incremented `revision_counter`"). [SQLAlchemy](https://docs.sqlalchemy.org/en/21/orm/persistence_techniques.html)
   expires an attribute assigned a SQL expression, so the setting does not prevent the implicit IO. The failure would be
@@ -207,16 +174,13 @@ Limits of this round:
 - **Anthropic's IP ranges** (`deployment.md`: "including Anthropic's range `160.79.104.0/21`", and the guide copies it).
   A [second range](https://platform.claude.com/docs/en/api/ip-addresses), `153.61.208.0/20`, exists. Fix: link the page
   instead of copying a value.
-- **Anonymous registration** (guide: "do not enable `cimd`, `resource-indicators` or anonymous client registration").
-  [It is a policy](https://www.keycloak.org/securing-apps/client-registration), not a feature flag. Fix: say "leave
-  Trusted Hosts empty", and add a check that an anonymous registration is rejected.
 - **Traefik version** (`tech-stack.md`: "tested with 3.7.17"). The `nixos-26.05` package is at 3.7.16, which a
   [High denial-of-service advisory](https://github.com/traefik/traefik/security/advisories/GHSA-xv5x-242w-7hf7) covers.
   This is worth acting on, for availability. Fix: add `traefik version` to the guide's checks, and update or override
   the package.
-- **MCP wording** (`authentication.md`: "MCP draft specification"; `connectors.md`: "the MCP specification is
-  deprecating it"). [Revision 2026-07-28](https://modelcontextprotocol.io/specification/versioning) is current, with the
-  same `offline_access` rule. Fix: update the wording and links.
+- **MCP wording** (`oauth-server.md`: "the MCP specification deprecates it", with its sources on the draft pages).
+  [Revision 2026-07-28](https://modelcontextprotocol.io/specification/versioning) is current. Fix: check the rules
+  against that revision and cite it, or say why the draft is used.
 - **Sampling and elicitation reason** (`mcp.md`: "Tools can not send requests to the client, so there is no sampling or
   elicitation."). [Revision 2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/changelog.md) removes
   sessions and changes this. The tools-only decision stands. Fix: limit the reason to earlier revisions, and check how
@@ -224,17 +188,10 @@ Limits of this round:
 - **Podman compose wait** (`configuration-and-failure-modes.md`: "how they support waiting for the `migrate` service to
   finish."). [An issue](https://github.com/containers/podman-compose/issues/1330) showed it could pass early, and the
   fix came after the latest release checked. Fix: keep the risk open, and update its text.
-- **401 or 403 with no linked user** (`configuration-and-failure-modes.md`: "a valid token with no linked user, or of a
-  deactivated user, gets 401").
-  [MCP's table](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization) permits 403, which could
-  avoid the login loop. It conflicts with several rules and needs a third outcome from the credential check. Fix: record
-  the option before the Connector Test, and try both. **Decision** after the test.
 - **`BaseHTTPMiddleware` reason** (`configuration-and-failure-modes.md`: "Using `BaseHTTPMiddleware` would break MCP
   streaming"). [Starlette](https://starlette.dev/middleware/) documents only a contextvars limit, and a reported break
   [could not be reproduced](https://github.com/modelcontextprotocol/python-sdk/issues/2702). Fix: keep pure ASGI and
   change the reason, for example the body replay in `limits.md`.
-- **Script clients** (guide: "with "Service accounts roles" on and "Standard flow" off."). Client authentication has to
-  be on as well, and the UI enforces it, so nothing fails silently. Fix: add it to the guide.
 
 ## Experiments
 
@@ -245,10 +202,7 @@ could not settle these others:
   `MissingGreenlet`.
 - **Stale reads:** run the existing race test against the first repository code. Expect a 500 unless the re-read is
   fixed.
-- **401 or 403:** try both for an unlinked user during the Connector Test.
 - **Traefik:** run `traefik version` on the host.
-- **Keycloak dump and export:** confirm which keys and secrets a `pg_dump` and a `kc.sh export` contain, and which
-  action ends offline sessions.
 - **Podman compose:** test the wait for `migrate` with the version in use.
 - **`BaseHTTPMiddleware`:** run one streaming transport test with a wrapper, if you want the reason settled.
 
@@ -275,8 +229,6 @@ would take them. The others are product decisions.
 - **Tabs beyond the default tab:** `goals.md` gives no reason for them. This saves seven routes, seven of 18 tools, and
   the rules for items hidden through a deleted tab. Keep the table and `tab_id`, so adding tabs later needs no data
   migration. Grouping inside a folder is lost.
-- **Deactivate and reactivate:** removing the link has the same effect on login. This saves a column, two routes and
-  some test cases. An explicit state is lost, and reactivating needs the subject entered again.
 - **Fakes and the contract suite:** only if the rule that `make test` needs no Podman changes, which I would not do.
 
 ## Next Check
