@@ -10,3 +10,101 @@ Candidates for the next features, not ordered. Before one is started, it gets it
 - page history
 - attachments and images
 - metrics, semantic search with pgvector
+
+## Feature Candidates
+
+- Content Structure
+  - Folders
+  - Tabs in Folders
+  - Default Tab per Folder
+  - Markdown Documents in Tabs
+  - Name Rules for Folders, Tabs, Documents and Users
+  - Unique Names per Tab and Folder
+  - Renaming Folders, Tabs and Documents
+  - Moving a Document to Another Tab
+  - Soft Delete of Folders, Tabs and Documents
+  - Deleted Item Lists
+  - Restoring Deleted Items
+  - Maximum Document Size
+- Users and Accounts
+  - Multi-User Accounts
+  - Permanent Admin Account
+  - Admin Without Content Access
+  - Admin Initialization Command
+  - Admin Password Command
+  - User Creation with One-Time Password
+  - Forced Password Change on First Login
+  - Password Reset by the Admin
+  - Own Password Change
+  - Password Rules
+  - Deactivating and Reactivating Users
+  - Own Account View
+  - User List
+- Rights
+  - Folder Rights (Read, Write, Manage)
+  - Assigning and Removing Rights
+  - Own Rights List
+  - Rights Overview for All Folders
+  - No Leaks of Hidden Content
+- Authentication
+  - Authenticated Access Only
+  - Login with Name and Password
+  - Bearer Token Sessions
+  - Fixed Session Lifetime
+  - Multiple Sessions per User
+  - Logout
+  - Ending Sessions on Password Change, Reset and Deactivation
+  - Argon2id Password Hashing
+  - Login Wait After Failed Attempts
+  - Limit on Concurrent Password Hashes
+  - Protection Against Account Enumeration
+  - Public Health Route
+  - Audit Log for Logins, Rights and Passwords
+- History and Revisions
+  - Document Revision History
+  - Folder History
+  - Full Snapshots per Revision
+  - Changed Items of a History Entry
+  - Optimistic Locking with Versions
+  - Document Revert
+  - Folder Revert
+- Operations
+  - Container Image
+  - Compose Setup for Self-Hosting
+  - NixOS Deployment
+  - Database Migrations Command
+  - Reverse Proxy with TLS
+  - Configuration via Environment Variables
+  - Structured JSON Logging
+  - Container Health Check
+  - Database Backups
+- Later
+  - Backup Schedule, Retention and Tested Restore
+  - Database Monitoring
+  - Prometheus Monitoring
+  - Prometheus Exporters
+  - Grafana Dashboards
+  - Erasure and Retention of Deleted Content
+  - Rate Limits and Quotas
+  - Large Folder Reverts
+  - Login Limit per Client Address
+  - Login Rate Limit in the Reverse Proxy
+  - One-Time Password Expiry
+  - Common Password List
+  - TOTP
+  - Passkeys (WebAuthn)
+  - Have I Been Pwned Check
+  - Sign-In with Google or GitHub
+  - Password Reset Without the Admin
+  - Ending All Sessions at Once
+  - Several Admin Accounts
+  - Merge Strategy for Conflicting Edits
+  - Long-Lived API Tokens
+  - Document Links, Backlinks and Broken Links
+  - CORS for Other Origins
+  - Search
+  - Multi-Language Content
+  - Attachments and Images
+  - Import and Export
+  - MCP Server
+  - OAuth
