@@ -1,16 +1,7 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
+import { collectErrors } from "./support/browser";
 import { createPage, resetTestDatabase } from "./support/database";
-
-/** Collects console errors and uncaught exceptions of the browser page. */
-function collectErrors(page: Page): string[] {
-  const errors: string[] = [];
-  page.on("console", (message) => {
-    if (message.type() === "error") errors.push(message.text());
-  });
-  page.on("pageerror", (error) => errors.push(error.message));
-  return errors;
-}
 
 test.beforeEach(async () => {
   await resetTestDatabase();

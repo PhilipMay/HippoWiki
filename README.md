@@ -24,7 +24,8 @@ npm run dev
 
 The app runs at http://localhost:3000, which redirects to the list of pages:
 
-- `/pages` lists all pages, most recently updated first.
+- `/pages` lists all pages, most recently updated first; "New page" opens the form at `/pages/new`.
+- `/pages/new` creates a page from a title and its Markdown content and then shows it.
 - `/pages/<id>` shows a page with its Markdown rendered (GitHub Flavored Markdown; raw HTML is shown as text, not
   rendered).
 
@@ -79,6 +80,7 @@ npx playwright show-report   # open the HTML report of the last run
   tables. The development database is never touched.
 - Playwright starts its own development server on port 3100 with the build directory `.next-e2e`, so it can run next
   to `npm run dev`.
+- `e2e/support/browser.ts` has `collectErrors()`, which records console errors of the browser page.
 - `e2e/support/database.ts` has helpers for tests: `createPage()` inserts a page directly into the test database,
   `resetTestDatabase()` empties it, and `getTestDb()` returns a Prisma client for it. All tests share this database
   and run one after another.

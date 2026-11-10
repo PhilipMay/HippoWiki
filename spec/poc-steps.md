@@ -36,7 +36,7 @@ spec/poc-steps.md`.
 4. [x] Prisma and the Page model
 5. [x] End-to-end test harness
 6. [x] List and view pages
-7. [ ] Create pages
+7. [x] Create pages
 8. [ ] Edit and delete pages
 
 Rules for every step:

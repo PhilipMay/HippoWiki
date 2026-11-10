@@ -18,7 +18,7 @@ export default function PageList({ pages }: { pages: PageSummary[] }) {
           No pages yet
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Pages you create will be listed here.
+          Pages you create will be listed here. Start with “New page”.
         </Typography>
       </Paper>
     );
