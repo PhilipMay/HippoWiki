@@ -12,6 +12,7 @@ The specification lives in the `spec/` directory. This catalog should always be 
 - `spec/testing.md`: unit and end-to-end test conventions
 - `spec/pages.md`: the page feature as built (model, input rules, routes, limits)
 - `spec/roadmap.md`: backlog of candidate features
+- `spec/issue-report.md`: how to report issues found in code and document reviews
 
 ## Running the Checks
 
@@ -38,6 +39,15 @@ Run `npm run format` to fix formatting issues reported by `format:check`.
 
 Do not number headings, sections or paragraphs in documents (no `## 3. Data Model`, no `§3`). Use bullet lists for rules
 and other unordered items; numbered lists only where the order itself matters, such as the steps of a procedure.
+
+## Reporting Review Issues
+
+Report every issue found in a review using the structure, severity levels and checklist in `spec/issue-report.md`.
+This applies to code reviews and to reviews of documents such as the files in `spec/`.
+
+- For code, Location is the file, line range and function.
+- For documents, Location is the file and the heading of the section; Evidence is a short quote of the passage.
+- Start the review with a short summary: the overall verdict and how many issues there are at each severity level.
 
 ## No Git
 
