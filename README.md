@@ -32,6 +32,25 @@ npm run dev
 
 `.env` must exist before `npm install`, because generating the Prisma client reads `DATABASE_URL`.
 
+### Start and stop in one line
+
+Once `.env` exists and the Podman machine runs (`podman machine start`), this line starts everything needed to try the
+app: it installs the dependencies, starts the database, applies the migrations, inserts the sample pages and starts the
+development server. It can be run again at any time; existing data is kept and the sample pages are not duplicated.
+
+```bash
+source ~/.nvm/nvm.sh && nvm use && npm install && npm run db:up && npm run db:deploy && npm run db:seed && npm run dev
+```
+
+To spin it down, stop the development server with Ctrl+C and then stop and remove the database container (the data in
+the volume is kept):
+
+```bash
+npm run db:down
+```
+
+`podman machine stop` also stops the Podman machine afterwards.
+
 The app runs at http://localhost:3000, which redirects to the list of pages:
 
 - `/pages` lists all pages, most recently updated first; "New page" opens the form at `/pages/new`.
