@@ -1,3 +1,3 @@
 # HippoWiki
 
-This is a knowledge management system.
+HippoWiki is a knowledge management system.
