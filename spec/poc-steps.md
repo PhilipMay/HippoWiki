@@ -30,8 +30,8 @@ Not in the prototype (see "After the prototype"):
 spec/poc-steps.md`.
 - The steps build on each other and are worked through in this order. A step is ticked off here when its checks pass:
 
-1. [ ] Project scaffold
-2. [ ] App shell with Material UI
+1. [x] Project scaffold
+2. [x] App shell with Material UI
 3. [ ] Postgres in Podman
 4. [ ] Prisma and the Page model
 5. [ ] End-to-end test harness

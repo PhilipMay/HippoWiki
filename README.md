@@ -1,6 +1,6 @@
 # HippoWiki
 
-HippoWiki is a knowledge management system.
+HippoWiki is a knowledge management system, built with Next.js (App Router) and Material UI.
 
 ## Prerequisites
 
