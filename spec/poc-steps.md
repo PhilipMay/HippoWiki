@@ -27,7 +27,7 @@ Not in the prototype (see "After the prototype"):
 ## How to use this plan
 
 - Each step is implemented with one Claude Code call, for example: `Implement the step "Postgres in Podman" from
-  spec/poc-steps.md`.
+spec/poc-steps.md`.
 - The steps build on each other and are worked through in this order. A step is ticked off here when its checks pass:
 
 1. [ ] Project scaffold

@@ -1,11 +1,13 @@
 # HippoWiki – Technology Stack
 
 ## Core
+
 - Language: TypeScript
 - Framework: Next.js (React, Node.js) with the App Router
 - UI library: Material UI
 
 ## Data & Backend
+
 - Database: PostgreSQL
 - ORM: Prisma
   - use Prisma for CRUD - "fullTextSearchPostgres" preview feature is not used.
@@ -14,6 +16,7 @@
 - Logging: pino
 
 ## Tooling
+
 - Node.js version management: nvm
 - Package manager: npm
 - Linting: ESLint (without the Airbnb style guide)

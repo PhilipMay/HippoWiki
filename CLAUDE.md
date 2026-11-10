@@ -9,6 +9,26 @@ The specification lives in the `spec/` directory. This catalog should always be 
 - `spec/tech.md`: technology stack
 - `spec/poc-steps.md`: step-by-step plan for the first prototype
 
+## Running the Checks
+
+Node.js is managed with nvm; every shell session needs `nvm use` first (it reads `.nvmrc`):
+
+```bash
+source ~/.nvm/nvm.sh && nvm use
+npm install
+npm run check   # format:check, lint, typecheck, test
+npm run build
+```
+
+Run `npm run format` to fix formatting issues reported by `format:check`.
+
+## Next.js Agent Rules
+
+`AGENTS.md` is managed by Next.js (`next dev` rewrites it) and points to the version-matched Next.js docs in
+`node_modules/next/dist/docs/`.
+
+@AGENTS.md
+
 ## Document Style
 
 Do not number headings, sections or paragraphs in documents (no `## 3. Data Model`, no `§3`). Use bullet lists for rules
