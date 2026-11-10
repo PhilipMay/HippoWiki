@@ -2,6 +2,16 @@
 
 HippoWiki is a knowledge management system, built with Next.js (App Router) and Material UI.
 
+## What the prototype can do
+
+The prototype manages wiki pages written in Markdown and stores them in PostgreSQL:
+
+- list all pages, most recently updated first,
+- view a page with its Markdown rendered,
+- create, edit and delete pages; deleting asks for confirmation first.
+
+There is a single user and no login.
+
 ## Prerequisites
 
 - [nvm](https://github.com/nvm-sh/nvm) with the current Node.js LTS release: `nvm install --lts`. The project's major
@@ -27,7 +37,17 @@ The app runs at http://localhost:3000, which redirects to the list of pages:
 - `/pages` lists all pages, most recently updated first; "New page" opens the form at `/pages/new`.
 - `/pages/new` creates a page from a title and its Markdown content and then shows it.
 - `/pages/<id>` shows a page with its Markdown rendered (GitHub Flavored Markdown; raw HTML is shown as text, not
-  rendered).
+  rendered). "Edit" opens the form at `/pages/<id>/edit`; "Delete" asks for confirmation, deletes the page and returns
+  to the list.
+- `/pages/<id>/edit` changes the title and content of a page and then shows it again.
+
+To start from scratch with an empty database (this deletes all data of the development database):
+
+```bash
+npm run db:reset    # remove container and volume, start an empty database
+npm run db:deploy   # create the tables
+npm run dev
+```
 
 `npm run db:seed` adds two sample pages to try this out. `GET /api/health` returns `{ "status": "ok" }` while the database is reachable
 and status 503 otherwise.
