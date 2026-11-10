@@ -33,7 +33,7 @@ spec/poc-steps.md`.
 1. [x] Project scaffold
 2. [x] App shell with Material UI
 3. [x] Postgres in Podman
-4. [ ] Prisma and the Page model
+4. [x] Prisma and the Page model
 5. [ ] End-to-end test harness
 6. [ ] List and view pages
 7. [ ] Create pages

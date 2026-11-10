@@ -12,13 +12,18 @@ HippoWiki is a knowledge management system, built with Next.js (App Router) and 
 
 ```bash
 nvm use
-npm install
 cp .env.example .env   # once; .env stays on your machine
+npm install            # also generates the Prisma client
 npm run db:up
+npm run db:migrate     # apply the migrations to the development database
+npm run db:seed        # optional: insert two sample pages
 npm run dev
 ```
 
-The app runs at http://localhost:3000.
+`.env` must exist before `npm install`, because generating the Prisma client reads `DATABASE_URL`.
+
+The app runs at http://localhost:3000. `GET /api/health` returns `{ "status": "ok" }` while the database is reachable
+and status 503 otherwise.
 
 ## Database
 
@@ -33,6 +38,18 @@ The development database is PostgreSQL 18 in the Podman container `hippowiki-db`
 | `npm run db:reset` | Remove container and volume, then start with an empty database                  |
 | `npm run db:psql`  | Open `psql`; pass arguments after `--`, e.g. `npm run db:psql -- -c "select 1"` |
 | `npm run db:logs`  | Show the container logs; follow them with `npm run db:logs -- -f`               |
+
+The application accesses the database with [Prisma](https://www.prisma.io/) 7. The schema is in
+`prisma/schema.prisma`, the migrations are in `prisma/migrations/` and the connection is configured in
+`prisma.config.ts`. The generated client is written to `src/generated/prisma/` and is not checked in.
+
+| Command               | Description                                                                                 |
+| --------------------- | ------------------------------------------------------------------------------------------- |
+| `npm run db:generate` | Regenerate the Prisma client; needed after every change to the schema                       |
+| `npm run db:migrate`  | Create and apply a migration from schema changes, e.g. `npm run db:migrate -- --name add-x` |
+| `npm run db:deploy`   | Apply all pending migrations without creating new ones                                      |
+| `npm run db:seed`     | Insert the sample pages from `prisma/seed.ts`; running it again changes nothing             |
+| `npm run db:studio`   | Open Prisma Studio to browse and edit the data                                              |
 
 ## Commands
 

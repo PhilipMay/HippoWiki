@@ -2,5 +2,6 @@
 AGENTS.md
 
 # Generated files
+src/generated/
 package-lock.json
 next-env.d.ts
