@@ -22,7 +22,13 @@ npm run dev
 
 `.env` must exist before `npm install`, because generating the Prisma client reads `DATABASE_URL`.
 
-The app runs at http://localhost:3000. `GET /api/health` returns `{ "status": "ok" }` while the database is reachable
+The app runs at http://localhost:3000, which redirects to the list of pages:
+
+- `/pages` lists all pages, most recently updated first.
+- `/pages/<id>` shows a page with its Markdown rendered (GitHub Flavored Markdown; raw HTML is shown as text, not
+  rendered).
+
+`npm run db:seed` adds two sample pages to try this out. `GET /api/health` returns `{ "status": "ok" }` while the database is reachable
 and status 503 otherwise.
 
 ## Database

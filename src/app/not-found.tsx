@@ -13,8 +13,8 @@ export default function NotFound() {
       <Typography variant="body1" color="text.secondary">
         The page you are looking for does not exist.
       </Typography>
-      <Button component={Link} href="/" variant="contained">
-        Back to home
+      <Button component={Link} href="/pages" variant="contained">
+        Back to pages
       </Button>
     </Stack>
   );

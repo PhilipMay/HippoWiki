@@ -1,4 +1,5 @@
 import AppBar from "@mui/material/AppBar";
+import Button from "@mui/material/Button";
 import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
 
@@ -8,7 +9,7 @@ import { siteName } from "@/lib/site";
 export default function AppHeader() {
   return (
     <AppBar position="static" elevation={0}>
-      <Toolbar>
+      <Toolbar sx={{ gap: 3 }}>
         <Typography
           variant="h6"
           component={Link}
@@ -17,6 +18,11 @@ export default function AppHeader() {
         >
           {siteName}
         </Typography>
+        <nav aria-label="Main">
+          <Button component={Link} href="/pages" color="inherit">
+            Pages
+          </Button>
+        </nav>
       </Toolbar>
     </AppBar>
   );

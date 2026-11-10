@@ -1,17 +1,6 @@
-import Paper from "@mui/material/Paper";
-import Typography from "@mui/material/Typography";
+import { redirect } from "next/navigation";
 
-import { siteDescription, siteName } from "@/lib/site";
-
+/** The home page is the list of pages. */
 export default function Home() {
-  return (
-    <Paper variant="outlined" sx={{ p: 4 }}>
-      <Typography variant="h3" component="h1" gutterBottom>
-        {siteName}
-      </Typography>
-      <Typography variant="body1" color="text.secondary">
-        {siteDescription}
-      </Typography>
-    </Paper>
-  );
+  redirect("/pages");
 }

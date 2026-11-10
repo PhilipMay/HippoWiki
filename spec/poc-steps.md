@@ -35,7 +35,7 @@ spec/poc-steps.md`.
 3. [x] Postgres in Podman
 4. [x] Prisma and the Page model
 5. [x] End-to-end test harness
-6. [ ] List and view pages
+6. [x] List and view pages
 7. [ ] Create pages
 8. [ ] Edit and delete pages
 
