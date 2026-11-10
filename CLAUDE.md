@@ -7,6 +7,7 @@ HippoWiki is a knowledge management system.
 The specification lives in the `spec/` directory. This catalog should always be kept in sync with the files.
 
 - `spec/tech.md`: technology stack
+- `spec/poc-steps.md`: step-by-step plan for the first prototype
 
 ## Document Style
 
