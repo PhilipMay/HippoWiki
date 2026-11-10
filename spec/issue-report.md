@@ -4,17 +4,18 @@
 
 Every issue you report should answer these questions. Write them in this order.
 
-| Heading    | Question it answers                                                  | Tip                                                                                  |
-| ---------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| Title      | What is the problem, in one line?                                    | Name the problem, not the fix.                                                       |
-| Location   | Where exactly is it?                                                 | File, line range, function.                                                          |
-| Severity   | How urgent is it?                                                    | Use the fixed scale below.                                                           |
-| Category   | What kind of problem is it?                                          | Correctness, security, performance, readability, error handling, tests, docs, style. |
-| Problem    | What does the code or document do or say now, and why is that wrong? | Facts first, opinion last.                                                           |
-| Impact     | What can go wrong because of it?                                     | Who is affected and when. This convinces the author the issue is real.               |
-| Evidence   | How can I see it?                                                    | An input that fails, a test, a log line, a short code excerpt.                       |
-| Suggestion | How could it be fixed?                                               | Concrete, ideally with a snippet. Say if it is required or optional.                 |
-| Reference  | Where can I read more?                                               | Optional: coding guideline, docs, OWASP, a related ticket.                           |
+| Heading      | Question it answers                                                  | Tip                                                                                    |
+| ------------ | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Title        | What is the problem, in one line?                                    | Name the problem, not the fix.                                                         |
+| Location     | Where exactly is it?                                                 | File, line range, function.                                                            |
+| Severity     | How urgent is it?                                                    | Use the fixed scale below.                                                             |
+| Category     | What kind of problem is it?                                          | Correctness, security, performance, readability, error handling, tests, docs, style.   |
+| Problem      | What does the code or document do or say now, and why is that wrong? | Facts first, opinion last.                                                             |
+| Impact       | What can go wrong because of it?                                     | Who is affected and when. This convinces the author the issue is real.                 |
+| Evidence     | How can I see it?                                                    | An input that fails, a test, a log line, a short code excerpt.                         |
+| Suggestion   | How could it be fixed?                                               | Concrete, ideally with a snippet. Say if it is required or optional.                   |
+| Alternatives | What other fixes are possible?                                       | Optional: only if there are several reasonable solutions. Name the trade-offs briefly. |
+| Reference    | Where can I read more?                                               | Optional: coding guideline, docs, OWASP, a related ticket.                             |
 
 If you can't fill in Impact, ask yourself whether the issue really matters. If you're unsure, it may be a question rather than an issue.
 
