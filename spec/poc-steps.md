@@ -59,7 +59,8 @@ One-time setup on the development machine, done by hand before the first step:
 - Source code lives under `src/`, with the import alias `@/` pointing to `src/`.
 - Layout:
   - `src/app/`: routes (App Router)
-  - `src/lib/`: cross-cutting modules (`env.ts`, `db.ts`, `logger.ts`)
+  - `src/components/`: shared UI components (for example the app bar)
+  - `src/lib/`: cross-cutting modules (for example `env.ts`, `db.ts`, `logger.ts`, `theme.ts`)
   - `src/features/pages/`: everything about pages (`schema.ts`, `queries.ts`, `actions.ts`, `components/`)
   - `prisma/`: schema, migrations, seed
   - `scripts/`: development scripts

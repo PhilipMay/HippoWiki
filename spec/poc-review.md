@@ -8,14 +8,15 @@ All eight steps of `poc-steps.md` are implemented as described, and the prototyp
 differences are:
 
 - features from `tech.md` that `poc-steps.md` postpones on purpose,
-- two packages held below their latest major version for compatibility reasons, and one missing patch update,
+- two packages held below their latest major version for compatibility reasons,
 - small additions that the specification does not describe.
 
-None of them needs to be fixed for the prototype to count as complete.
+None of them needs to be fixed for the prototype to count as complete. The small fixes made after the review are listed
+under "Fixed after the review".
 
 ## Check results
 
-Run on 2026-11-10 with Node.js 26.13.0:
+Run on 2026-11-10 with Node.js 26.13.0, after the fixes:
 
 | Check              | Result                                                        |
 | ------------------ | ------------------------------------------------------------- |
@@ -60,18 +61,15 @@ The items under "Later aspects" in `tech.md` are not implemented either, as expe
 - ESLint 9.39.5 instead of 10.14.0: `eslint-config-next` pulls in `eslint-plugin-react` 7.37.5, `eslint-plugin-import`
   2.32.0 and `eslint-plugin-jsx-a11y` 6.10.2, which support ESLint only up to version 9.
 - TypeScript 6.0.3 instead of 7.0.2: `typescript-eslint` requires TypeScript below 6.1.
-- React and React DOM 19.3.0, pinned exactly; 19.3.1 is available. This is the only real gap and only a patch update.
 
 These are on the latest stable version, even if a tool may suggest otherwise:
 
+- React and React DOM 19.3.1, pinned exactly.
 - Prisma 7.10.1: the npm `latest` tag points to `8.0.0-rc.33`, a release candidate.
 - Node.js 26 (`.nvmrc`, `engines`) is the current LTS release.
 
 ## Additions not described in the specification
 
-- `src/components/` with `AppHeader.tsx` and `Link.tsx`; the layout under "Conventions" does not list this directory.
-- `src/lib/format.ts`, `src/lib/site.ts` and `src/lib/theme.ts` with unit tests, next to the listed `env.ts`, `db.ts`
-  and `logger.ts`.
 - npm scripts `db:generate` and `postinstall`, which generate the Prisma client. Because of this, `.env` must exist
   before `npm install` (documented in `README.md`).
 - `HIPPOWIKI_DIST_DIR` in `next.config.ts`: the end-to-end test server builds into `.next-e2e`, so it can run next to
@@ -82,8 +80,15 @@ These are on the latest stable version, even if a tool may suggest otherwise:
 ## Details where the specification is silent
 
 - The end-to-end tests run against `next dev`, not against a production build.
-- There is no `global-error.tsx`, so an error thrown in the root layout itself is not caught by `src/app/error.tsx`.
 - `db:down` stops and removes the container; the volume and its data are kept, as required.
-- `e2e/smoke.spec.ts` collects browser errors itself instead of using `collectErrors()` from `e2e/support/browser.ts`.
 - `src/app/error.tsx` logs with `console.error`. It runs in the browser, so the rule to log through pino (server side)
   does not apply.
+
+## Fixed after the review
+
+- React and React DOM updated from 19.3.0 to 19.3.1.
+- `src/app/global-error.tsx` added: an error in the root layout itself now shows a themed error page with "Try again"
+  instead of the bare default page of Next.js. Checked in the browser with a temporary error in the app bar.
+- `e2e/smoke.spec.ts` uses `collectErrors()` from `e2e/support/browser.ts`, like the other end-to-end tests.
+- The layout under "Conventions" in `poc-steps.md` now lists `src/components/` and names `src/lib/` modules as
+  examples, so it matches the code.

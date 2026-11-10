@@ -1,13 +1,10 @@
 import { expect, test } from "@playwright/test";
 
+import { collectErrors } from "./support/browser";
 import { createPage, getTestDb, resetTestDatabase } from "./support/database";
 
 test("home page shows the app bar without browser errors", async ({ page }) => {
-  const errors: string[] = [];
-  page.on("console", (message) => {
-    if (message.type() === "error") errors.push(message.text());
-  });
-  page.on("pageerror", (error) => errors.push(error.message));
+  const errors = collectErrors(page);
 
   await page.goto("/");
 
