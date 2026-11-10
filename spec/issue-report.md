@@ -33,16 +33,16 @@ When in doubt, pick the lower level and explain your reasoning. Overrating every
 
 ## Tips and common mistakes
 
-**Do:**
+Do:
 
-- **One issue per report.** Each one can then be discussed, fixed and closed on its own.
-- **Label your comments** so the author knows what you expect: `issue:`, `suggestion:`, `question:`, `nit:`. This convention is called Conventional Comments.
-- **Group repeated problems.** If the same mistake appears in ten places, write one report and list all locations.
-- **Ask when you're unsure.** A question is better than a wrong claim.
-- **Mention what is good**, too. It tells the author what to keep doing.
-- **Start the review with a short summary:** the overall verdict, number of blockers vs. minor issues.
+- One issue per report. Each one can then be discussed, fixed and closed on its own.
+- Label your comments so the author knows what you expect: `issue:`, `suggestion:`, `question:`, `nit:`. This convention is called Conventional Comments.
+- Group repeated problems. If the same mistake appears in ten places, write one report and list all locations.
+- Ask when you're unsure. A question is better than a wrong claim.
+- Mention what is good, too. It tells the author what to keep doing.
+- Start the review with a short summary: the overall verdict, number of blockers vs. minor issues.
 
-**Avoid:**
+Avoid:
 
 - Vague comments like "this is wrong" or "clean this up" with no reason.
 - Personal language like "you always" or "why would you do this?". Talk about the code: "this function" instead of "your function".
