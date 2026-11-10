@@ -13,10 +13,26 @@ HippoWiki is a knowledge management system, built with Next.js (App Router) and 
 ```bash
 nvm use
 npm install
+cp .env.example .env   # once; .env stays on your machine
+npm run db:up
 npm run dev
 ```
 
 The app runs at http://localhost:3000.
+
+## Database
+
+The development database is PostgreSQL 18 in the Podman container `hippowiki-db`. Its data lives in the named volume
+`hippowiki-db-data`, and port 5432 is published on localhost only. Database name, user and password are read from
+`.env`, and `DATABASE_URL` there must match them.
+
+| Command            | Description                                                                     |
+| ------------------ | ------------------------------------------------------------------------------- |
+| `npm run db:up`    | Create or start the container and wait until the database accepts connections   |
+| `npm run db:down`  | Stop and remove the container; the data in the volume is kept                   |
+| `npm run db:reset` | Remove container and volume, then start with an empty database                  |
+| `npm run db:psql`  | Open `psql`; pass arguments after `--`, e.g. `npm run db:psql -- -c "select 1"` |
+| `npm run db:logs`  | Show the container logs; follow them with `npm run db:logs -- -f`               |
 
 ## Commands
 
