@@ -51,6 +51,32 @@ The application accesses the database with [Prisma](https://www.prisma.io/) 7. T
 | `npm run db:seed`     | Insert the sample pages from `prisma/seed.ts`; running it again changes nothing             |
 | `npm run db:studio`   | Open Prisma Studio to browse and edit the data                                              |
 
+## End-to-end tests
+
+The end-to-end tests use [Playwright](https://playwright.dev/) with Chromium and live in `e2e/`. Install the browser
+once:
+
+```bash
+npx playwright install chromium
+```
+
+The tests need the database container (`npm run db:up`):
+
+```bash
+npm run test:e2e      # run all end-to-end tests
+npm run test:e2e:ui   # open the Playwright UI to run and debug tests
+npx playwright show-report   # open the HTML report of the last run
+```
+
+- The tests use the database `hippowiki_test` in the same container. Its URL is derived from `DATABASE_URL`. Before
+  each run, the global setup (`e2e/global-setup.ts`) creates it if missing, applies the migrations and empties all
+  tables. The development database is never touched.
+- Playwright starts its own development server on port 3100 with the build directory `.next-e2e`, so it can run next
+  to `npm run dev`.
+- `e2e/support/database.ts` has helpers for tests: `createPage()` inserts a page directly into the test database,
+  `resetTestDatabase()` empties it, and `getTestDb()` returns a Prisma client for it. All tests share this database
+  and run one after another.
+
 ## Commands
 
 | Command                | Description                                                 |
@@ -64,3 +90,5 @@ The application accesses the database with [Prisma](https://www.prisma.io/) 7. T
 | `npm run typecheck`    | Generate the Next.js route types and run the type checker   |
 | `npm run test`         | Run the unit tests with Vitest                              |
 | `npm run check`        | Run `format:check`, `lint`, `typecheck` and `test` in a row |
+| `npm run test:e2e`     | Run the end-to-end tests with Playwright                    |
+| `npm run test:e2e:ui`  | Run the end-to-end tests in the Playwright UI               |
