@@ -8,6 +8,7 @@ The specification lives in the `spec/` directory. This catalog should always be 
 
 - `spec/tech.md`: technology stack
 - `spec/poc-steps.md`: step-by-step plan for the first prototype
+- `spec/poc-review.md`: review of the implemented prototype against `poc-steps.md` and `tech.md`
 
 ## Running the Checks
 
