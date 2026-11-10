@@ -4,17 +4,17 @@
 
 Every issue you report should answer these questions. Write them in this order.
 
-| Heading | Question it answers | Tip |
-| --- | --- | --- |
-| Title | What is the problem, in one line? | Name the problem, not the fix. |
-| Location | Where exactly is it? | File, line range, function. |
-| Severity | How urgent is it? | Use the fixed scale below. |
-| Category | What kind of problem is it? | Correctness, security, performance, readability, error handling, tests, docs, style. |
-| Problem | What does the code or document do or say now, and why is that wrong? | Facts first, opinion last. |
-| Impact | What can go wrong because of it? | Who is affected and when. This convinces the author the issue is real. |
-| Evidence | How can I see it? | An input that fails, a test, a log line, a short code excerpt. |
-| Suggestion | How could it be fixed? | Concrete, ideally with a snippet. Say if it is required or optional. |
-| Reference | Where can I read more? | Optional: coding guideline, docs, OWASP, a related ticket. |
+| Heading    | Question it answers                                                  | Tip                                                                                  |
+| ---------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Title      | What is the problem, in one line?                                    | Name the problem, not the fix.                                                       |
+| Location   | Where exactly is it?                                                 | File, line range, function.                                                          |
+| Severity   | How urgent is it?                                                    | Use the fixed scale below.                                                           |
+| Category   | What kind of problem is it?                                          | Correctness, security, performance, readability, error handling, tests, docs, style. |
+| Problem    | What does the code or document do or say now, and why is that wrong? | Facts first, opinion last.                                                           |
+| Impact     | What can go wrong because of it?                                     | Who is affected and when. This convinces the author the issue is real.               |
+| Evidence   | How can I see it?                                                    | An input that fails, a test, a log line, a short code excerpt.                       |
+| Suggestion | How could it be fixed?                                               | Concrete, ideally with a snippet. Say if it is required or optional.                 |
+| Reference  | Where can I read more?                                               | Optional: coding guideline, docs, OWASP, a related ticket.                           |
 
 If you can't fill in Impact, ask yourself whether the issue really matters. If you're unsure, it may be a question rather than an issue.
 
@@ -22,12 +22,12 @@ If you can't fill in Impact, ask yourself whether the issue really matters. If y
 
 Use the same four levels every time, so the author knows what must be fixed before merging and what can wait.
 
-| Level | Meaning | Blocks the merge? | Typical examples |
-| --- | --- | --- | --- |
-| Blocker | Must be fixed before merging | Yes | Bug that gives wrong results, security hole, data loss, crash |
-| Major | Should be fixed; real risk if left | Usually | Missing error handling, missing tests for core logic, clear performance problem |
-| Minor | Worth improving | No | Unclear naming, duplicated code, a missing comment on tricky logic |
-| Nit | Personal taste or tiny style point | No | Formatting, word choice, ordering of imports |
+| Level   | Meaning                            | Blocks the merge? | Typical examples                                                                |
+| ------- | ---------------------------------- | ----------------- | ------------------------------------------------------------------------------- |
+| Blocker | Must be fixed before merging       | Yes               | Bug that gives wrong results, security hole, data loss, crash                   |
+| Major   | Should be fixed; real risk if left | Usually           | Missing error handling, missing tests for core logic, clear performance problem |
+| Minor   | Worth improving                    | No                | Unclear naming, duplicated code, a missing comment on tricky logic              |
+| Nit     | Personal taste or tiny style point | No                | Formatting, word choice, ordering of imports                                    |
 
 When in doubt, pick the lower level and explain your reasoning. Overrating everything as a blocker makes real blockers easy to miss.
 
