@@ -28,7 +28,7 @@
 
 ## Later Aspects
 
-These aspects will be added later or are not solved yet.
+These aspects will be added later or are not solved yet. The feature backlog is in `roadmap.md`.
 
 - metrics / prometheus
 - PostgreSQL pgvector for semantic search
