@@ -87,7 +87,7 @@ once:
 npx playwright install chromium
 ```
 
-The tests need the database container (`npm run db:up`):
+The tests need only the Podman machine (`podman machine start`); they bring their own database:
 
 ```bash
 npm run test:e2e      # run all end-to-end tests
@@ -95,11 +95,13 @@ npm run test:e2e:ui   # open the Playwright UI to run and debug tests
 npx playwright show-report   # open the HTML report of the last run
 ```
 
-- The tests use the database `hippowiki_test` in the same container. Its URL is derived from `DATABASE_URL`. Before
-  each run, the global setup (`e2e/global-setup.ts`) creates it if missing, applies the migrations and empties all
-  tables. The development database is never touched.
+- Each run starts its own throwaway PostgreSQL container `hippowiki-test-db` (port 5433, data in memory only, database
+  `hippowiki_test`). The global setup (`e2e/global-setup.ts`) starts it and applies the migrations; the global
+  teardown (`e2e/global-teardown.ts`) removes it again, also when tests fail or the run is stopped with Ctrl+C. If a
+  run is killed hard and leaves the container behind, the next run removes it first. The development database and
+  its container `hippowiki-db` are never touched, and do not need to run.
 - Playwright starts its own development server on port 3100 with the build directory `.next-e2e`, so it can run next
-  to `npm run dev`.
+  to `npm run dev`, and stops it after the run.
 - `e2e/support/browser.ts` has `collectErrors()`, which records console errors of the browser page.
 - `e2e/support/database.ts` has helpers for tests: `createPage()` inserts a page directly into the test database,
   `resetTestDatabase()` empties it, and `getTestDb()` returns a Prisma client for it. All tests share this database

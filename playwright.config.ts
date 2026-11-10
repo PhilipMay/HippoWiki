@@ -3,7 +3,8 @@ import { config } from "dotenv";
 
 import { testDatabaseUrl } from "./e2e/support/database";
 
-// Playwright does not read `.env` by itself; the test database URL is derived from its DATABASE_URL.
+// Playwright does not read `.env` by itself. Its DATABASE_URL is only read to make sure the tests never use the
+// development database; the tests use their own throwaway container (see e2e/support/container.ts).
 config({ quiet: true });
 
 const port = 3100;
@@ -17,7 +18,9 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   reporter: [["list"], ["html", { open: "never" }]],
+  // The global setup starts the test database container, the global teardown removes it.
   globalSetup: "./e2e/global-setup.ts",
+  globalTeardown: "./e2e/global-teardown.ts",
   use: {
     baseURL,
     trace: "on-first-retry",
@@ -25,8 +28,9 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
     command: `npx next dev --port ${port}`,
-    // The server starts before the global setup creates the test database, so readiness must not depend on it.
-    url: baseURL,
+    // The server starts before the global setup starts the test database, so readiness must not depend on it. It is
+    // checked on the port: a `url` check would follow the redirect from `/` to `/pages`, which needs the database.
+    port,
     env: {
       DATABASE_URL: testDatabaseUrl(),
       // A separate build directory lets the test server run next to `npm run dev`.

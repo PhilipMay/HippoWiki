@@ -177,8 +177,9 @@ end-to-end tests.
 Build:
 
 - Playwright (Chromium only) with tests in `e2e/`.
-- A separate database `hippowiki_test` in the same container. A global setup creates it if missing, applies the
-  migrations and empties all tables.
+- A throwaway PostgreSQL container `hippowiki-test-db` with the database `hippowiki_test` (port 5433, data in memory
+  only). A global setup starts it and applies the migrations; a global teardown removes it, so nothing is left running
+  after the tests.
 - Playwright starts the application itself on a separate port (3100) with `DATABASE_URL` pointing to the test
   database; the development database is never touched by tests.
 - A small helper to create pages directly in the test database from a test.
@@ -188,7 +189,8 @@ Build:
 
 Test:
 
-- `npm run test:e2e` passes with the database running.
+- `npm run test:e2e` passes without the development database running, and `podman ps -a` shows no test container
+  afterwards.
 - The development database has the same content before and after the test run.
 - `npm run check` passes.
 

@@ -18,7 +18,7 @@ source ~/.nvm/nvm.sh && nvm use
 npm install
 npm run check   # format:check, lint, typecheck, test
 npm run build
-npm run test:e2e  # end-to-end tests, needs npm run db:up
+npm run test:e2e  # end-to-end tests in a throwaway database container, needs only Podman
 ```
 
 Run `npm run format` to fix formatting issues reported by `format:check`.
