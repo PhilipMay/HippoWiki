@@ -164,6 +164,8 @@ test("content above the limit shows an error at the content field and stores not
   await page.goto("/folders/handbook/long.md?action=edit");
   // Remove the field's limit, as a crafted request would, to submit content that is too long.
   const content = page.getByLabel("Content");
+  // The field is read-only until hydration; changing it before then makes hydration report a mismatch.
+  await expect(content).toBeEditable();
   await content.evaluate((field: HTMLTextAreaElement) => field.removeAttribute("maxlength"));
   await content.fill(`# Long page\n\n${"x".repeat(CONTENT_MAX_LENGTH)}`);
   await page.getByRole("button", { name: "Save" }).click();

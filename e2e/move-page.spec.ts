@@ -218,6 +218,8 @@ test("a crafted move into a tab of another folder is refused", async ({ page }) 
   // Point the selected choice to the tab of another folder, as a crafted request would.
   const choice = dialog.getByRole("radio", { name: "Directly in the folder" });
   await expect(choice).toBeChecked();
+  // The choices are disabled until hydration; React would write a value changed before then back.
+  await expect(choice).toBeEnabled();
   await choice.evaluate((radio: HTMLInputElement, tabId) => (radio.value = tabId), foreignTab.id);
   await dialog.getByRole("button", { name: "Save" }).click();
 

@@ -40,6 +40,9 @@ How the code is tested. Commands are listed in `README.md`.
 - Elements are located by role, label and accessible name, not by CSS selectors.
 - `e2e/hydration.spec.ts` checks with JavaScript disabled that the controls of Client Components stay read-only or
   disabled until hydration (see "UI" in `architecture.md`). A new Client Component with such controls adds a case there.
+- A test that changes the DOM to simulate a crafted request, e.g. a changed field value or a removed `maxlength`, first
+  waits until the page is hydrated, for instance until the control it changes is enabled or editable. Otherwise React
+  writes the change back or reports a hydration mismatch, depending on how fast the page hydrates.
 - Every feature step adds end-to-end tests for its behaviour, including error and empty states.
 
 ## Continuous integration
