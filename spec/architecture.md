@@ -66,7 +66,7 @@ How the code is organised and which patterns new code follows. The technology st
   component has hydrated, using `useHydrated()` from `src/lib/hydration.ts`. Input during hydration could otherwise be
   lost: React sets the value of a hydrating text field again, which resets its selection, and a click before the
   handler is attached does nothing. The end-to-end tests rely on this, because Playwright waits until a field is
-  editable and a button is enabled.
+  editable and a button is enabled; `e2e/hydration.spec.ts` checks the lock with JavaScript disabled.
 - Browser titles are built with `pageTitle()` from `src/lib/site.ts`.
 - Markdown is rendered with `react-markdown` and GitHub Flavored Markdown; raw HTML is never rendered.
 - Markdown that is analysed instead of rendered, such as the title heading of a page, is parsed with the same parser

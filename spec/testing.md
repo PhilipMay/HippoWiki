@@ -6,6 +6,11 @@ How the code is tested. Commands are listed in `README.md`.
 
 - Vitest; unit tests sit next to the code as `*.test.ts`.
 - Schemas, environment parsing and other pure helpers get unit tests.
+- Server Actions and route handlers get unit tests for the branches the end-to-end tests cannot reach without breaking
+  the shared test database, such as database failures and malformed ids. They mock `@/lib/db`, `@/lib/logger`,
+  `next/cache` and `next/navigation` with `vi.mock` (shared mock functions from `vi.hoisted`, reset in `beforeEach`);
+  the mocked `redirect` throws like the real one, so code after it never runs and tests assert the rejection and its
+  path.
 - `npm run check` (format, lint, typecheck, unit tests) stays fast and does not include the end-to-end tests.
 
 ## End-to-end tests
@@ -26,6 +31,8 @@ How the code is tested. Commands are listed in `README.md`.
   - `getTestDb()` returns a Prisma client for the test database, e.g. to check what an action stored.
   - `collectErrors()` records console errors and uncaught exceptions of the browser page; tests assert it stays empty.
 - Elements are located by role, label and accessible name, not by CSS selectors.
+- `e2e/hydration.spec.ts` checks with JavaScript disabled that the controls of Client Components stay read-only or
+  disabled until hydration (see "UI" in `architecture.md`). A new Client Component with such controls adds a case there.
 - Every feature step adds end-to-end tests for its behaviour, including error and empty states.
 
 ## Continuous integration
