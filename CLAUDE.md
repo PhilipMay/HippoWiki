@@ -13,6 +13,7 @@ The specification lives in the `spec/` directory. This catalog should always be 
 - `spec/pages.md`: the page feature as built (model, input rules, routes, limits)
 - `spec/roadmap.md`: backlog of candidate features
 - `spec/issue-report.md`: how to report issues found in code and document reviews
+- `spec/test-coverage-steps.md`: step plan for unit tests of actions and route handlers and the hydration lock test
 
 ## Running the Checks
 
