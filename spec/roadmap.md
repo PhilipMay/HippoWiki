@@ -16,12 +16,11 @@ Candidates for the next features, not ordered. Before one is started, it gets it
 - Content Structure
   - Folders
   - Tabs in Folders
-  - Default Tab per Folder
-  - Markdown Documents in Tabs
+  - Markdown Documents in Folders and Tabs
   - Name Rules for Folders, Tabs, Documents and Users
   - Unique Names per Tab and Folder
   - Renaming Folders, Tabs and Documents
-  - Moving a Document to Another Tab
+  - Moving a Document Within Its Folder
   - Soft Delete of Folders, Tabs and Documents
   - Deleted Item Lists
   - Restoring Deleted Items
