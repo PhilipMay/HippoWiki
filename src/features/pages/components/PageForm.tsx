@@ -43,7 +43,6 @@ export default function PageForm({ action, initialValues, cancelHref }: PageForm
         value={slug}
         onChange={(event) => setSlug(event.target.value)}
         required
-        autoFocus
         fullWidth
         error={!!slugError}
         helperText={slugError ?? `Address: /pages/${slug.trim()}`}
@@ -56,6 +55,7 @@ export default function PageForm({ action, initialValues, cancelHref }: PageForm
         onChange={(event) => setContent(event.target.value)}
         multiline
         minRows={16}
+        autoFocus
         fullWidth
         error={!!contentError}
         helperText={contentError ?? "Markdown (GitHub Flavored Markdown), starting with the title heading: # Title"}

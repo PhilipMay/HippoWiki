@@ -59,6 +59,31 @@ test("editing slug and content shows the new version and moves it to the top of 
   expect(errors).toEqual([]);
 });
 
+test("the edit form starts with the cursor at the start of the content", async ({ page }) => {
+  const errors = collectErrors(page);
+  const created = await createPage({ title: "Focused page", content: "# Focused page\n\nSome content" });
+
+  async function expectCursorAtContentStart() {
+    const content = page.getByLabel("Content");
+    await expect(content).toBeFocused();
+    await expect(page.getByLabel("Slug")).not.toBeFocused();
+    const selection = await content.evaluate((field: HTMLTextAreaElement) => [
+      field.selectionStart,
+      field.selectionEnd,
+    ]);
+    expect(selection).toEqual([0, 0]);
+  }
+
+  await page.goto(`/pages/${created.slug}`);
+  await page.getByRole("link", { name: "Edit" }).click();
+  await expect(page).toHaveURL(`/pages/${created.slug}/edit`);
+  await expectCursorAtContentStart();
+
+  await page.goto(`/pages/${created.slug}/edit`);
+  await expectCursorAtContentStart();
+  expect(errors).toEqual([]);
+});
+
 test("changing the heading changes the title and the list entry, but not the slug", async ({ page }) => {
   const errors = collectErrors(page);
   const edited = await createPage({ slug: "stable-slug", content: "# Before\n\nBody" });

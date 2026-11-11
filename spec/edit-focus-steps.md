@@ -15,7 +15,7 @@ is rejected, the cursor moves to the field with the error, so it can be fixed ri
 
 ## Checklist
 
-- [ ] Initial focus on content
+- [x] Initial focus on content
 - [ ] Focus on the field with an error
 - [ ] Wrap-up
 
