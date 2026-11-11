@@ -5,7 +5,7 @@ Candidates for the next features, not ordered. Before one is started, it gets it
 
 - authentication with Better Auth, pages with an author
 - PostgreSQL full-text search (English, German and more)
-- unique titles or slugs and `[[wiki links]]`
+- `[[wiki links]]`
 - rich editor (TipTap or Milkdown)
 - page history
 - attachments and images

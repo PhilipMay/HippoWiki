@@ -206,10 +206,9 @@ test("a page can be created, edited and deleted", async ({ page }) => {
   await expect(page.getByText("No pages yet")).toBeVisible();
 
   await page.getByRole("link", { name: "New page" }).click();
-  await page.getByLabel("Title").fill("Lifecycle page");
-  await page.getByLabel("Slug").fill("lifecycle-page");
-  await page.getByLabel("Content").fill("First version");
+  await page.getByLabel("Content").fill("## Lifecycle page\n\nFirst version");
   await page.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("dialog", { name: "Save page" }).getByRole("button", { name: "Save" }).click();
   await expect(page).toHaveURL("/pages/lifecycle-page");
   await expect(page.getByRole("heading", { level: 1, name: "Lifecycle page" })).toBeVisible();
 

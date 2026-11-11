@@ -18,16 +18,17 @@ import {
 type PageFormProps = {
   /** Server Action that stores the page; it returns the errors to show, or redirects on success. */
   action: (prevState: PageFormState, formData: FormData) => Promise<PageFormState>;
-  /** Values the form starts with, e.g. the current page when editing. */
-  initialValues?: PageInput;
+  /** Values the form starts with: the current page. */
+  initialValues: PageInput;
   /** Where "Cancel" leads. */
   cancelHref: string;
 };
 
-const emptyValues: PageInput = { title: "", slug: "", content: "" };
-
-/** Form for the title, slug and Markdown content of a page, used to create and to edit pages. */
-export default function PageForm({ action, initialValues = emptyValues, cancelHref }: PageFormProps) {
+/**
+ * Form for the title, slug and Markdown content of a page, used to edit pages. The slug does not follow the title here.
+ * New pages use `NewPageForm`.
+ */
+export default function PageForm({ action, initialValues, cancelHref }: PageFormProps) {
   const [state, formAction, pending] = useActionState(action, {});
   // Controlled fields keep the entered values when the action returns errors; React resets only uncontrolled fields
   // after a submission.

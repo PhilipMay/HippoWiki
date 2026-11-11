@@ -9,6 +9,7 @@ How the code is organised and which patterns new code follows. The technology st
 - `src/components/`: shared UI components (app bar, `Link`)
 - `src/lib/`: cross-cutting modules (`env.ts`, `db.ts`, `logger.ts`, `theme.ts`, `site.ts`, `format.ts`)
 - `src/features/<feature>/`: everything about one feature – `schema.ts`, `queries.ts`, `actions.ts`, `components/`
+  and pure helpers such as `derive.ts` for pages (no server-only imports, so Client Components can use them)
 - `src/generated/prisma/`: the generated Prisma client (`npm run db:generate`), not checked in
 - `prisma/`: schema, migrations, seed
 - `scripts/`: development scripts (`db.sh`)
@@ -32,8 +33,8 @@ How the code is organised and which patterns new code follows. The technology st
 
 - All input (forms, actions, environment variables) is validated with Zod. Schemas live in the feature's `schema.ts`
   and have unit tests.
-- Ids from URLs or forms are parsed (`parsePageId`) before they reach the database; malformed ids are treated like
-  missing rows and show the not-found page.
+- Ids and slugs from URLs or forms are parsed (`parsePageId`, `parsePageSlug`) before they reach the database;
+  malformed ones are treated like missing rows and show the not-found page.
 - The server environment is read through `getServerEnv()` from `src/lib/env.ts`, never directly from `process.env`.
 - Server-side logging goes through the pino `logger` from `src/lib/logger.ts`, not `console`. Errors are logged with
   `{ err }` and the relevant ids.
