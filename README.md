@@ -51,17 +51,7 @@ npm run db:down
 
 `podman machine stop` also stops the Podman machine afterwards.
 
-The app runs at http://localhost:3000, which redirects to the list of pages:
-
-- `/pages` lists all pages, most recently updated first; "New page" opens the form at `/pages/new`.
-- `/pages/new` creates a page from its Markdown content, which must start with a title heading (`# Title`); the page
-  title is always taken from that heading. "Save" shows the title and asks for the slug, prefilled from the title, and
-  then shows the page.
-- `/pages/<slug>` shows a page with its Markdown rendered (GitHub Flavored Markdown; raw HTML is shown as text, not
-  rendered). "Edit" opens the form at `/pages/<slug>/edit`; "Delete" asks for confirmation, deletes the page and
-  returns to the list.
-- `/pages/<slug>/edit` changes the slug and content of a page and then shows it at its (possibly new) address; the
-  title follows the content's title heading.
+The app runs at http://localhost:3000.
 
 To start from scratch with an empty database (this deletes all data of the development database):
 
@@ -144,18 +134,3 @@ npx playwright show-report   # open the HTML report of the last run
 | `npm run check`        | Run `format:check`, `lint`, `typecheck` and `test` in a row |
 | `npm run test:e2e`     | Run the end-to-end tests with Playwright                    |
 | `npm run test:e2e:ui`  | Run the end-to-end tests in the Playwright UI               |
-
-## Continuous integration
-
-GitHub Actions runs the same checks on every push, on pull requests and when started by hand. Each check is its own
-workflow in `.github/workflows/`:
-
-| Workflow           | Runs                                                 |
-| ------------------ | ---------------------------------------------------- |
-| `format_check`     | `npm run format:check`                               |
-| `lint`             | `npm run build`, `npm run typecheck`, `npm run lint` |
-| `unit_tests`       | `npm run test`                                       |
-| `end_to_end_tests` | `npm run test:e2e`                                   |
-
-The end-to-end workflow uses the Podman on the GitHub runner for its throwaway test database and uploads the
-Playwright HTML report as the artifact `playwright-report`, also when tests fail.
