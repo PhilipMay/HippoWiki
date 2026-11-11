@@ -1,0 +1,4 @@
+# The PostgreSQL image of the development database and the test database, kept in this one place. scripts/db.sh and
+# e2e/support/container.ts read the FROM line; the file is never built. Dependabot keeps the pinned minor version up
+# to date.
+FROM docker.io/library/postgres:18.6

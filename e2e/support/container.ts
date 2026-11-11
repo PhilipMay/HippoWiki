@@ -1,10 +1,10 @@
 // The throwaway PostgreSQL container of the end-to-end tests. The global setup creates it before each run and the
 // global teardown removes it, so no database is left running after the tests. Its data lives in memory only.
 import { execFileSync, spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 
 export const TEST_DB_CONTAINER = "hippowiki-test-db";
-// Keep the image in sync with scripts/db.sh, so that the tests run against the same PostgreSQL version.
-const TEST_DB_IMAGE = "docker.io/library/postgres:18";
+const TEST_DB_IMAGE = readPostgresImage();
 const TEST_DB_PORT = 5433;
 export const TEST_DATABASE_NAME = "hippowiki_test";
 const TEST_DB_USER = "hippowiki_test";
@@ -13,6 +13,19 @@ const READY_TIMEOUT_MS = 60_000;
 
 /** URL of the test database in the test container. */
 export const TEST_DATABASE_URL = `postgresql://${TEST_DB_USER}:${TEST_DB_PASSWORD}@localhost:${TEST_DB_PORT}/${TEST_DATABASE_NAME}`;
+
+/**
+ * Reads the PostgreSQL image from scripts/Containerfile, the one place it is pinned, so that the tests run against the
+ * same version as the development database.
+ */
+function readPostgresImage(): string {
+  const containerfile = readFileSync(new URL("../../scripts/Containerfile", import.meta.url), "utf8");
+  const image = /^FROM\s+(\S+)/m.exec(containerfile)?.[1];
+  if (image === undefined) {
+    throw new Error("No FROM line with the PostgreSQL image found in scripts/Containerfile.");
+  }
+  return image;
+}
 
 function podman(args: string[]): string {
   return execFileSync("podman", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });

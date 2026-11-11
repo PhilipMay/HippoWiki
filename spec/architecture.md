@@ -84,7 +84,9 @@ How the code is organised and which patterns new code follows. The technology st
 - The `partialIndexes` preview feature is enabled for partial unique indexes (`where` in `@@unique`), such as the one
   on the names of pages placed directly in a folder.
 - The development database is PostgreSQL 18 in the Podman container `hippowiki-db`, managed with `scripts/db.sh`
-  (`npm run db:up`, `db:down`, `db:reset`, `db:psql`, `db:logs`). The test database uses the same image version.
+  (`npm run db:up`, `db:down`, `db:reset`, `db:psql`, `db:logs`). The image is pinned to an exact minor
+  version in `scripts/Containerfile`, which `scripts/db.sh` and the test database container both read; Dependabot
+  keeps the minor version up to date.
 
 ## UI
 

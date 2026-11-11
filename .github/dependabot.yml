@@ -12,6 +12,16 @@ updates:
         update-types:
           - minor
           - patch
+  # The PostgreSQL image pinned in scripts/Containerfile. Only minor updates: a major upgrade needs the data in the
+  # development volume migrated, so it is a task of its own.
+  - package-ecosystem: docker
+    directory: /scripts
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
   - package-ecosystem: github-actions
     directory: /
     schedule:

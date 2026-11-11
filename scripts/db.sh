@@ -18,7 +18,12 @@ POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-hippowiki}"
 
 CONTAINER="hippowiki-db"
 VOLUME="hippowiki-db-data"
-IMAGE="docker.io/library/postgres:18"
+# The image is pinned in scripts/Containerfile, which the test database container reads as well.
+IMAGE="$(awk '$1 == "FROM" { print $2; exit }' scripts/Containerfile)"
+if [[ -z "$IMAGE" ]]; then
+  echo "No FROM line with the PostgreSQL image found in scripts/Containerfile." >&2
+  exit 1
+fi
 # Since PostgreSQL 18 the image keeps its data in /var/lib/postgresql/<major>/docker,
 # so the volume is mounted at the parent directory.
 DATA_DIR="/var/lib/postgresql"

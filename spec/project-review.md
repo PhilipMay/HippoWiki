@@ -27,18 +27,6 @@
 - Suggestion (optional): Add per-glob thresholds for `src/lib/**` and for `schema.ts`, `derive.ts`, `actions.ts` and
   `queries.ts` of every feature, and keep the rest without one.
 
-### The PostgreSQL image is set twice and not pinned
-
-- Location: `scripts/db.sh`, line 21; `e2e/support/container.ts`, line 7
-- Severity: Nit
-- Category: Configuration
-- Problem: Both files set `docker.io/library/postgres:18`. A comment asks to keep them in sync, and the tag follows
-  every minor release.
-- Impact: The development and test databases can drift apart, and a new minor version can change a run without a
-  change in the repository.
-- Suggestion (optional): Keep the image in one place, for example `.env.example` or a small file that both read, and
-  pin an exact minor version (`postgres:18.<minor>`).
-
 ## Outside this review
 
 There is no login yet, so every Server Action is a public endpoint, and `next.config.ts` sets no security headers or

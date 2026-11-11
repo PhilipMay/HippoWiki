@@ -68,7 +68,8 @@ returns `{ "status": "ok" }` while the database is reachable and status 503 othe
 
 ## Database
 
-The development database is PostgreSQL 18 in the Podman container `hippowiki-db`. Its data lives in the named volume
+The development database is PostgreSQL 18 in the Podman container `hippowiki-db`, from the image pinned in
+`scripts/Containerfile`. Its data lives in the named volume
 `hippowiki-db-data`, and port 5432 is published on localhost only. Database name, user and password are read from
 `.env`, and `DATABASE_URL` there must match them.
 
