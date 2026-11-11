@@ -27,7 +27,7 @@ Not in:
 
 ## Steps
 
-- [ ] Slug derivation
+- [x] Slug derivation
 - [ ] Slug column and edit form
 - [ ] Slug routes
 - [ ] Content-first creation
@@ -42,7 +42,7 @@ Pure helpers that derive a title from Markdown and a slug from a title, and a sc
 
 - `src/features/pages/derive.ts` (no server-only imports, it is used by Client Components):
   - `deriveTitle(markdown)`: the text of the first ATX heading of any level (`#` to `######`, up to three leading
-    spaces), ignoring lines inside fenced code blocks (```` ``` ```` and `~~~`); an optional closing `#` sequence is
+    spaces), ignoring lines inside fenced code blocks (` ``` ` and `~~~`); an optional closing `#` sequence is
     removed, the result is trimmed and cut to `TITLE_MAX_LENGTH`. No heading → `""`.
   - `deriveSlug(title)`: replace ä/ö/ü/Ä/Ö/Ü/ß with ae/oe/ue/Ae/Oe/Ue/ss, normalize to NFKD and drop combining marks,
     lowercase, replace every run of characters other than `a-z0-9` with `-`, trim `-` at both ends. If longer than

@@ -1,6 +1,62 @@
 import { describe, expect, it } from "vitest";
 
-import { CONTENT_MAX_LENGTH, parsePageFormData, parsePageId, TITLE_MAX_LENGTH } from "@/features/pages/schema";
+import {
+  CONTENT_MAX_LENGTH,
+  parsePageFormData,
+  parsePageId,
+  parsePageSlug,
+  SLUG_MAX_LENGTH,
+  slugSchema,
+  TITLE_MAX_LENGTH,
+} from "@/features/pages/schema";
+
+function slugErrors(slug: string): string[] {
+  const result = slugSchema.safeParse(slug);
+  return result.success ? [] : result.error.issues.map((issue) => issue.message);
+}
+
+describe("slugSchema", () => {
+  it("accepts lowercase letters, digits and single hyphens", () => {
+    for (const slug of ["a", "a-1", "getting-started", "2026", "a".repeat(SLUG_MAX_LENGTH)]) {
+      expect(slugSchema.parse(slug)).toBe(slug);
+    }
+  });
+
+  it("trims the slug", () => {
+    expect(slugSchema.parse(" a-1 \n")).toBe("a-1");
+  });
+
+  it("requires a slug", () => {
+    expect(slugErrors("")).toEqual(["Slug is required"]);
+    expect(slugErrors("   ")).toEqual(["Slug is required"]);
+  });
+
+  it("rejects characters and hyphens outside the pattern", () => {
+    for (const slug of ["A", "a--b", "-a", "a-", "a_b", "a b", "ä", "a/b"]) {
+      expect(slugErrors(slug)).toEqual(["Use lowercase letters, digits and single hyphens"]);
+    }
+  });
+
+  it("limits the slug length", () => {
+    expect(slugErrors("a".repeat(SLUG_MAX_LENGTH + 1))).toEqual(["Slug must be at most 80 characters"]);
+  });
+
+  it("rejects reserved slugs", () => {
+    expect(slugErrors("new")).toEqual(["This slug is reserved"]);
+  });
+});
+
+describe("parsePageSlug", () => {
+  it("returns valid slugs", () => {
+    expect(parsePageSlug("getting-started")).toBe("getting-started");
+  });
+
+  it("rejects malformed, reserved and untrimmed slugs", () => {
+    for (const slug of ["", "Bad_Slug", "a--b", "new", " a", "a ", "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c000Z"]) {
+      expect(parsePageSlug(slug)).toBeNull();
+    }
+  });
+});
 
 describe("parsePageId", () => {
   it("accepts well-formed UUIDs", () => {

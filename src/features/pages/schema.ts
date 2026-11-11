@@ -15,6 +15,31 @@ export function parsePageId(id: string): string | null {
 export const TITLE_MAX_LENGTH = 200;
 export const CONTENT_MAX_LENGTH = 100_000;
 
+export const SLUG_MAX_LENGTH = 80;
+/** Lowercase letters and digits in groups joined by single hyphens, e.g. `getting-started`. */
+export const SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+/** Slugs that cannot name a page, because the address is a route of its own (`/pages/new`). */
+export const RESERVED_SLUGS: readonly string[] = ["new"];
+
+/** The slug of a page: the last part of its address `/pages/<slug>`. */
+export const slugSchema = z
+  .string()
+  .trim()
+  // Abort here, so that an empty slug reports only this error and not also the pattern error.
+  .min(1, { error: "Slug is required", abort: true })
+  .max(SLUG_MAX_LENGTH, `Slug must be at most ${SLUG_MAX_LENGTH} characters`)
+  .regex(SLUG_PATTERN, "Use lowercase letters, digits and single hyphens")
+  .refine((slug) => !RESERVED_SLUGS.includes(slug), "This slug is reserved");
+
+/**
+ * Returns the slug if it is a valid page slug, otherwise `null`. Surrounding whitespace makes a slug invalid here, so
+ * that every address maps to at most one page.
+ */
+export function parsePageSlug(slug: string): string | null {
+  const result = slugSchema.safeParse(slug);
+  return result.success && result.data === slug ? result.data : null;
+}
+
 /** Input for creating or updating a page, as entered in the page form. */
 export const pageInputSchema = z.object({
   title: z
