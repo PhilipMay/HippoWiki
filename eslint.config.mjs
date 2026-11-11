@@ -30,6 +30,60 @@ const eslintConfig = defineConfig([
       "playwright/prefer-web-first-assertions": "error",
     },
   },
+  {
+    // Imports come in groups separated by a blank line: Node.js modules, packages, `@/` modules, relative paths.
+    files: ["**/*.{js,mjs,ts,tsx,mts}"],
+    rules: {
+      "import/order": [
+        "error",
+        {
+          groups: ["builtin", "external", "internal", ["parent", "sibling", "index"]],
+          pathGroups: [{ pattern: "@/**", group: "internal" }],
+          pathGroupsExcludedImportTypes: ["builtin"],
+          "newlines-between": "always",
+        },
+      ],
+    },
+  },
+  {
+    // The application reads its environment only through getServerEnv() and imports Material UI per path.
+    files: ["src/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-properties": [
+        "error",
+        {
+          object: "process",
+          property: "env",
+          message: "Read the server environment through getServerEnv() from @/lib/env.",
+        },
+      ],
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@mui/material",
+              message: "Import Material UI components per path, e.g. @mui/material/Button.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // The modules that validate the environment and create the logger read process.env themselves.
+    files: ["src/lib/env.ts", "src/lib/logger.ts"],
+    rules: {
+      "no-restricted-properties": "off",
+    },
+  },
+  {
+    // Server code logs through the pino logger from @/lib/logger.
+    files: ["src/features/**/actions.ts", "src/features/**/queries.ts", "src/app/api/**", "src/lib/**"],
+    rules: {
+      "no-console": "error",
+    },
+  },
   // Turns off rules that conflict with Prettier; must come after the other configs.
   prettier,
   {

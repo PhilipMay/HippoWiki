@@ -2,25 +2,6 @@
 
 ## Minor
 
-### Conventions from the specs are not enforced by the linter
-
-- Location: `spec/architecture.md`, "Validation and errors" and "UI"; `eslint.config.mjs`
-- Severity: Minor
-- Category: Style, correctness
-- Problem: Several rules in the specs are only checked by review, although the linter could check them.
-- Impact: A rule that only review checks gets broken sooner or later, especially in code written by an agent.
-  `issue-report.md` itself says to fix the tool configuration rather than report what tools can catch.
-- Evidence: `spec/architecture.md`:
-  - "never directly from `process.env`"
-  - "Server-side logging goes through the pino `logger` … not `console`"
-  - "Material UI components are imported per path"
-  - The groups of imports are also ordered by hand in every file.
-- Suggestion (optional):
-  - `no-restricted-properties` for `process.env`, turned off for `src/lib/env.ts` and `src/lib/logger.ts`
-  - `no-console` for server code (`src/features/**/actions.ts`, `queries.ts`, `src/app/api/**`, `src/lib/**`)
-  - `no-restricted-imports` for the barrel import `@mui/material`
-  - `import/order` with the groups already in use; the import plugin is loaded by `eslint-config-next`
-
 ### Database behaviour is only tested through mocks and end-to-end tests
 
 - Location: `src/lib/db-errors.ts`, lines 14–25, `isUniqueViolation`; the unit tests that mock `@/lib/db`

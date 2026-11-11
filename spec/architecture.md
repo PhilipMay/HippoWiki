@@ -123,4 +123,13 @@ How the code is organised and which patterns new code follows. The technology st
   (`no-misused-promises`), `await` on a value that is not a promise (`await-thenable`) and a `switch` over a union that
   misses a case (`switch-exhaustiveness-check`). A promise that is deliberately not awaited is marked with `void` and a
   comment saying why.
+- Lint rules enforce the conventions above:
+  - `import/order`: imports come in groups separated by a blank line: Node.js modules, packages, `@/` modules, relative
+    paths. Imports within a group are not sorted by the rule.
+  - `no-restricted-properties`: `process.env` is not read in `src/`, except in `src/lib/env.ts` and
+    `src/lib/logger.ts`. Configuration files, `e2e/` and `scripts/` read it directly.
+  - `no-restricted-imports`: the barrel import `@mui/material` is not allowed in `src/`.
+  - `no-console`: server code (`src/features/**/actions.ts`, `src/features/**/queries.ts`, `src/app/api/`, `src/lib/`)
+    does not use `console`. The client error boundaries `src/app/error.tsx` and `global-error.tsx` log with
+    `console.error`, because the pino logger runs only on the server.
 - The rules for the end-to-end tests are described in `testing.md`.
