@@ -50,11 +50,8 @@ This applies to code reviews and to reviews of documents such as the files in `s
 - For documents, Location is the file and the heading of the section; Evidence is a short quote of the passage.
 - Start the review with a short summary: the overall verdict and how many issues there are at each severity level.
 
-## No Git
+## Git Handling
 
-Git must not be used in this project. Treat the documents as if they were not managed under Git:
-
-- Do not run any Git commands. In particular, do not view the history, diffs, or status.
-- Do not create commits, branches, pull requests, or pushes.
-- Never ask if something should be committed or pushed, and do not offer to do so.
-- Do not mention Git in your responses.
+- Do not look at the Git history, and do not mention how something used to be in an earlier commit.
+- Do not create branches or pull requests.
+- Do not ask whether something should be committed or pushed, and do not offer to do so.
