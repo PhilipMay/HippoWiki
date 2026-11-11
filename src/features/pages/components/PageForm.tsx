@@ -9,6 +9,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import Link from "@/components/Link";
 import { CONTENT_MAX_LENGTH, SLUG_MAX_LENGTH } from "@/features/pages/limits";
 import { type PageFormState, type PageFormValues } from "@/features/pages/schema";
+import { useHydrated } from "@/lib/hydration";
 
 type PageFormProps = {
   /** Server Action that stores the page; it returns the errors to show, or redirects on success. */
@@ -29,6 +30,8 @@ export default function PageForm({ action, initialValues, cancelHref }: PageForm
   // after a submission.
   const [slug, setSlug] = useState(initialValues.slug);
   const [content, setContent] = useState(initialValues.content);
+  // Input before hydration could be lost, so the fields are read-only and "Save" is disabled until then.
+  const hydrated = useHydrated();
 
   const slugRef = useRef<HTMLInputElement>(null);
   const contentRef = useRef<HTMLTextAreaElement>(null);
@@ -58,7 +61,14 @@ export default function PageForm({ action, initialValues, cancelHref }: PageForm
         inputRef={slugRef}
         error={!!slugError}
         helperText={slugError ?? `Address: /pages/${slug.trim()}`}
-        slotProps={{ htmlInput: { maxLength: SLUG_MAX_LENGTH, spellCheck: false, autoCapitalize: "none" } }}
+        slotProps={{
+          htmlInput: {
+            maxLength: SLUG_MAX_LENGTH,
+            spellCheck: false,
+            autoCapitalize: "none",
+            readOnly: !hydrated,
+          },
+        }}
       />
       <TextField
         name="content"
@@ -73,12 +83,12 @@ export default function PageForm({ action, initialValues, cancelHref }: PageForm
         error={!!contentError}
         helperText={contentError ?? "Markdown (GitHub Flavored Markdown), starting with the title heading: # Title"}
         slotProps={{
-          htmlInput: { maxLength: CONTENT_MAX_LENGTH, spellCheck: false },
+          htmlInput: { maxLength: CONTENT_MAX_LENGTH, spellCheck: false, readOnly: !hydrated },
           input: { sx: { fontFamily: "monospace", fontSize: "0.875rem", lineHeight: 1.6 } },
         }}
       />
       <Stack direction="row" spacing={2}>
-        <Button type="submit" variant="contained" disabled={pending}>
+        <Button type="submit" variant="contained" disabled={pending || !hydrated}>
           {pending ? "Saving…" : "Save"}
         </Button>
         <Button component={Link} href={cancelHref}>

@@ -16,6 +16,7 @@ import { createPage } from "@/features/pages/actions";
 import { deriveSlug, titleFromContent } from "@/features/pages/derive";
 import { CONTENT_MAX_LENGTH, SLUG_MAX_LENGTH } from "@/features/pages/limits";
 import { TITLE_HEADING_MISSING_MESSAGE } from "@/features/pages/schema";
+import { useHydrated } from "@/lib/hydration";
 
 /**
  * Form for a new page that asks only for the Markdown content, which must start with a title heading (`# Title`).
@@ -31,6 +32,8 @@ export default function NewPageForm() {
   // A new key for every opening remounts the dialog, so that the slug is derived again and errors of an earlier attempt
   // are gone.
   const [dialogKey, setDialogKey] = useState(0);
+  // Input before hydration could be lost, so the content is read-only and "Save" is disabled until then.
+  const hydrated = useHydrated();
 
   const save = () => {
     const derived = titleFromContent(content);
@@ -57,12 +60,12 @@ export default function NewPageForm() {
         error={!!contentError}
         helperText={contentError ?? "Markdown (GitHub Flavored Markdown), starting with the title heading: # Title"}
         slotProps={{
-          htmlInput: { maxLength: CONTENT_MAX_LENGTH, spellCheck: false },
+          htmlInput: { maxLength: CONTENT_MAX_LENGTH, spellCheck: false, readOnly: !hydrated },
           input: { sx: { fontFamily: "monospace", fontSize: "0.875rem", lineHeight: 1.6 } },
         }}
       />
       <Stack direction="row" spacing={2}>
-        <Button type="button" variant="contained" onClick={save}>
+        <Button type="button" variant="contained" onClick={save} disabled={!hydrated}>
           Save
         </Button>
         <Button component={Link} href="/pages">

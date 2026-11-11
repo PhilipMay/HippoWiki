@@ -11,6 +11,7 @@ import DialogTitle from "@mui/material/DialogTitle";
 import { useActionState, useId, useState } from "react";
 
 import { deletePage } from "@/features/pages/actions";
+import { useHydrated } from "@/lib/hydration";
 
 type DeletePageButtonProps = {
   pageId: string;
@@ -24,6 +25,8 @@ export default function DeletePageButton({ pageId, title }: DeletePageButtonProp
   const [state, formAction, pending] = useActionState(deletePage.bind(null, pageId), {});
   const titleId = useId();
   const descriptionId = useId();
+  // A click before hydration would not open the dialog, so the button is disabled until then.
+  const hydrated = useHydrated();
 
   const close = () => {
     if (!pending) setOpen(false);
@@ -31,7 +34,7 @@ export default function DeletePageButton({ pageId, title }: DeletePageButtonProp
 
   return (
     <>
-      <Button variant="outlined" color="error" onClick={() => setOpen(true)}>
+      <Button variant="outlined" color="error" onClick={() => setOpen(true)} disabled={!hydrated}>
         Delete
       </Button>
       <Dialog open={open} onClose={close} aria-labelledby={titleId} aria-describedby={descriptionId}>

@@ -7,7 +7,8 @@ How the code is organised and which patterns new code follows. The technology st
 - Source code lives under `src/`, with the import alias `@/` pointing to `src/`.
 - `src/app/`: routes (App Router), including the global `not-found`, `error` and `global-error` pages
 - `src/components/`: shared UI components (app bar, `Link`)
-- `src/lib/`: cross-cutting modules (`env.ts`, `db.ts`, `logger.ts`, `theme.ts`, `site.ts`, `format.ts`)
+- `src/lib/`: cross-cutting modules (`env.ts`, `db.ts`, `logger.ts`, `theme.ts`, `site.ts`, `format.ts`,
+  `hydration.ts`)
 - `src/features/<feature>/`: everything about one feature – `schema.ts`, `queries.ts`, `actions.ts`, `components/`
   and pure helpers such as `derive.ts` and `limits.ts` for pages (no server-only imports, so Client Components can use
   them). `limits.ts` holds the field length limits, so that `schema.ts` can import `derive.ts` without a cycle.
@@ -61,6 +62,11 @@ How the code is organised and which patterns new code follows. The technology st
 - `sx` props in Server Components are plain objects, because functions cannot cross to Client Components.
 - Forms focus the field the user most likely edits first. When the server rejects a save with field errors, the first
   field with an error is focused; errors that only show a message above the form leave the focus where it is.
+- Controls of Client Components that need JavaScript stay read-only (text fields) or disabled (buttons) until the
+  component has hydrated, using `useHydrated()` from `src/lib/hydration.ts`. Input during hydration could otherwise be
+  lost: React sets the value of a hydrating text field again, which resets its selection, and a click before the
+  handler is attached does nothing. The end-to-end tests rely on this, because Playwright waits until a field is
+  editable and a button is enabled.
 - Browser titles are built with `pageTitle()` from `src/lib/site.ts`.
 - Markdown is rendered with `react-markdown` and GitHub Flavored Markdown; raw HTML is never rendered.
 - Markdown that is analysed instead of rendered, such as the title heading of a page, is parsed with the same parser
