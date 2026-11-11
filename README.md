@@ -124,6 +124,12 @@ npx playwright show-report   # open the HTML report of the last run
   `resetTestDatabase()` empties it, and `getTestDb()` returns a Prisma client for it. All tests share this database
   and run one after another.
 
+## Unit test coverage
+
+`npm run test:coverage` runs the unit tests, prints a coverage table and writes an HTML report to
+`coverage/index.html`. On GitHub, every run of the `unit_tests` workflow shows the coverage in its job summary and
+offers the HTML report as the artifact `coverage-report`.
+
 ## Commands
 
 | Command                 | Description                                                           |

@@ -29,4 +29,14 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: npm run test
+      - run: npm run test:coverage
+      # Also when the tests fail (the report is written then too), but not when the run was cancelled.
+      - name: Write coverage to the job summary
+        if: ${{ !cancelled() && hashFiles('coverage/coverage-summary.json') != '' }}
+        run: npx tsx scripts/coverage-summary.ts
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() && hashFiles('coverage/coverage-summary.json') != '' }}
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 7

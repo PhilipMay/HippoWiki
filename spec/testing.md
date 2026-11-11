@@ -14,9 +14,13 @@ How the code is tested. Commands are listed in `README.md`.
 - `npm run check` (format, lint, typecheck, unit tests) stays fast and does not include the end-to-end tests.
 - `npm run test:coverage` measures the coverage of the unit tests with `@vitest/coverage-v8` (configured in
   `vitest.config.ts`). It covers all `.ts` and `.tsx` files in `src/` except the tests and `src/generated/`, so files
-  that no unit test loads show up with 0%. It prints a table and writes an HTML report to `coverage/index.html`
-  (ignored by Git and ESLint). It is not part of `npm run check` and has no thresholds: much of the code, such as the
-  UI, is covered by the end-to-end tests instead.
+  that no unit test loads show up with 0%. It prints a table, writes an HTML report to `coverage/index.html` and a
+  summary to `coverage/coverage-summary.json` (all in `coverage/`, ignored by Git and ESLint), also when a test fails
+  (`reportOnFailure`). It is not part of `npm run check` and has no thresholds: much of the code, such as the UI, is
+  covered by the end-to-end tests instead.
+- `scripts/coverage-summary.ts` (`npx tsx scripts/coverage-summary.ts`) turns `coverage/coverage-summary.json` into
+  Markdown tables, the totals and a collapsed table per file: appended to the GitHub job summary when
+  `GITHUB_STEP_SUMMARY` is set, printed otherwise.
 
 ## End-to-end tests
 
@@ -61,7 +65,7 @@ How the code is tested. Commands are listed in `README.md`.
   shows at a glance which kind of check broke:
   - `format_check`: `npm run format:check`
   - `lint`: `npm run build`, `npm run typecheck`, `npm run lint`, as separate steps in this order
-  - `unit_tests`: `npm run test`
+  - `unit_tests`: `npm run test:coverage`
   - `end_to_end_tests`: `npm run test:e2e`
 - They run on every push to any branch, on pull requests and when started by hand (`workflow_dispatch`). A newer push
   to the same ref cancels a run still in progress.
@@ -75,3 +79,6 @@ How the code is tested. Commands are listed in `README.md`.
   retry, and rejects `test.only`.
 - The Playwright HTML report (`playwright-report/`) is uploaded as the artifact `playwright-report`, also when the tests
   fail (not when the run was cancelled), and kept for 7 days.
+- The unit test workflow writes the coverage tables of `scripts/coverage-summary.ts` to the job summary and uploads
+  `coverage/` as the artifact `coverage-report`, also when the tests fail (not when the run was cancelled or no report
+  was written), kept for 7 days.

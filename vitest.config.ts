@@ -13,7 +13,10 @@ export default defineConfig({
       // Also lists files that no unit test loads, with 0% coverage.
       include: ["src/**/*.{ts,tsx}"],
       exclude: ["src/**/*.test.ts", "src/generated/**"],
-      reporter: ["text", "html"],
+      // `json-summary` writes coverage/coverage-summary.json for scripts/coverage-summary.ts.
+      reporter: ["text", "html", "json-summary"],
+      // Also write the report when a test fails, so CI can still show and upload it.
+      reportOnFailure: true,
     },
   },
 });
