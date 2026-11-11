@@ -23,6 +23,11 @@ How the code is tested. Commands are listed in `README.md`.
   pointing to the test database. The development database is never touched and does not need to run.
 - All tests share the test database and run one after another.
 - Helpers in `e2e/support/`:
+  - `test.ts` exports the `test` and `expect` that all specs use; a lint rule forbids importing them from
+    `@playwright/test`. After `page.goto()` and `page.reload()` its `page` waits until the page has hydrated, i.e. until
+    `HydrationMarker` has set `data-hydrated="true"` on `<html>` (see "UI" in `architecture.md`); not with JavaScript
+    disabled. So no test acts on the locked, server-rendered page, where React could undo a change to the DOM or report
+    a hydration mismatch. This matters most in CI, whose runner hydrates much later than a fast local machine.
   - `resetTestDatabase()` empties all tables; tests call it in `beforeEach`.
   - `createFolder()` inserts a folder directly into the test database with a unique name; any field, e.g. `name` or
     `updatedAt`, can be set.
@@ -38,11 +43,11 @@ How the code is tested. Commands are listed in `README.md`.
   - `getTestDb()` returns a Prisma client for the test database, e.g. to check what an action stored.
   - `collectErrors()` records console errors and uncaught exceptions of the browser page; tests assert it stays empty.
 - Elements are located by role, label and accessible name, not by CSS selectors.
+- A test that simulates a crafted request adds hidden fields to the form, or changes the submitted data in the form's
+  `formdata` event. It does not change the value of a control that React renders: React writes that value back
+  whenever it renders the control again, e.g. when it gets the focus.
 - `e2e/hydration.spec.ts` checks with JavaScript disabled that the controls of Client Components stay read-only or
   disabled until hydration (see "UI" in `architecture.md`). A new Client Component with such controls adds a case there.
-- A test that changes the DOM to simulate a crafted request, e.g. a changed field value or a removed `maxlength`, first
-  waits until the page is hydrated, for instance until the control it changes is enabled or editable. Otherwise React
-  writes the change back or reports a hydration mismatch, depending on how fast the page hydrates.
 - Every feature step adds end-to-end tests for its behaviour, including error and empty states.
 
 ## Continuous integration
@@ -61,6 +66,7 @@ How the code is tested. Commands are listed in `README.md`.
   no route is prerendered.
 - The end-to-end workflow installs Chromium with `npx playwright install --with-deps chromium` and uses the Podman
   preinstalled on the runner; the tests start and remove their throwaway container `hippowiki-test-db` as they do
-  locally. With `CI` set, Playwright retries a failed test twice and rejects `test.only`.
+  locally. With `CI` set, Playwright retries a failed test twice, fails the run if a test passed only on a
+  retry, and rejects `test.only`.
 - The Playwright HTML report (`playwright-report/`) is uploaded as the artifact `playwright-report`, also when the tests
   fail (not when the run was cancelled), and kept for 7 days.

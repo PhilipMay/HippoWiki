@@ -1,9 +1,11 @@
-import { expect, test, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
 
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
+import { MOVE_TARGET_FIELD } from "@/features/pages/schema";
 
 import { collectErrors } from "./support/browser";
 import { createFolder, createPage, createTab, getTestDb, resetTestDatabase } from "./support/database";
+import { expect, test } from "./support/test";
 
 let handbook: Awaited<ReturnType<typeof createFolder>>;
 let guides: Awaited<ReturnType<typeof createTab>>;
@@ -215,13 +217,15 @@ test("a crafted move into a tab of another folder is refused", async ({ page }) 
 
   await page.goto("/folders/handbook/kept.md?action=move");
   const dialog = moveDialog(page);
-  // Point the selected choice to the tab of another folder, as a crafted request would.
-  const choice = dialog.getByRole("radio", { name: "Directly in the folder" });
-  await expect(choice).toBeChecked();
-  // The choices are disabled until hydration; React would write a value changed before then back.
-  await expect(choice).toBeEnabled();
-  await choice.evaluate((radio: HTMLInputElement, tabId) => (radio.value = tabId), foreignTab.id);
-  await dialog.getByRole("button", { name: "Save" }).click();
+  const save = dialog.getByRole("button", { name: "Save" });
+  // Send the tab of another folder as the target, as a crafted request would. It is set in the submitted form data, not
+  // in a radio button: React writes a radio button's value back whenever it renders the button again, e.g. on focus.
+  await save.evaluate(
+    (button: HTMLButtonElement, { field, tabId }) =>
+      button.form?.addEventListener("formdata", (event) => event.formData.set(field, tabId)),
+    { field: MOVE_TARGET_FIELD, tabId: foreignTab.id },
+  );
+  await save.click();
 
   await expect(dialog.getByRole("alert")).toHaveText("This tab no longer exists.");
   expect(await getTestDb().page.findUniqueOrThrow({ where: { id: kept.id } })).toEqual(kept);

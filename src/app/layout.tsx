@@ -6,6 +6,7 @@ import type { Metadata } from "next";
 import { Roboto } from "next/font/google";
 
 import AppHeader from "@/components/AppHeader";
+import HydrationMarker from "@/components/HydrationMarker";
 import { pageTitle, siteDescription } from "@/lib/site";
 import { theme } from "@/lib/theme";
 
@@ -27,6 +28,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <AppRouterCacheProvider>
           <ThemeProvider theme={theme}>
             <CssBaseline />
+            <HydrationMarker />
             <AppHeader />
             <Container component="main" maxWidth="md" sx={{ py: 4 }}>
               {children}

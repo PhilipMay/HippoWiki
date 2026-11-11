@@ -17,6 +17,9 @@ export default defineConfig({
   workers: 1,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
+  // A test that passes only on a retry fails the CI run, so timing problems show up early. The retries still run: the
+  // report then shows the test as flaky and keeps the trace of the first retry.
+  failOnFlakyTests: !!process.env.CI,
   reporter: [["list"], ["html", { open: "never" }]],
   // The global setup starts the test database container, the global teardown removes it.
   globalSetup: "./e2e/global-setup.ts",

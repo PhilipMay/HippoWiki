@@ -8,6 +8,24 @@ const eslintConfig = defineConfig([
   ...nextTs,
   // Turns off rules that conflict with Prettier; must come after the other configs.
   prettier,
+  {
+    // The shared test of the end-to-end tests waits for hydration after every page load.
+    files: ["e2e/**/*.spec.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@playwright/test",
+              importNames: ["test", "expect"],
+              message: "Import test and expect from ./support/test, which waits for hydration after page loads.",
+            },
+          ],
+        },
+      ],
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

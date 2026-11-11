@@ -1,7 +1,8 @@
-import { expect, test, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
 
 import { collectErrors } from "./support/browser";
 import { createFolder, createPage, getTestDb, resetTestDatabase } from "./support/database";
+import { expect, test } from "./support/test";
 
 const TITLE_HEADING_MISSING = "Content must start with a title heading: # Title";
 /** The address of the editor for a new page in the folder that every test starts with. */

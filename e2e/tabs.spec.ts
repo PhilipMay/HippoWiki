@@ -1,7 +1,8 @@
-import { expect, test, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
 
 import { collectErrors } from "./support/browser";
 import { createFolder, createPage, createTab, getTestDb, resetTestDatabase } from "./support/database";
+import { expect, test } from "./support/test";
 
 let handbook: Awaited<ReturnType<typeof createFolder>>;
 

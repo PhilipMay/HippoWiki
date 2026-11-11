@@ -100,6 +100,8 @@ How the code is organised and which patterns new code follows. The technology st
   lost: React sets the value of a hydrating text field again, which resets its selection, and a click before the
   handler is attached does nothing. The end-to-end tests rely on this, because Playwright waits until a field is
   editable and a button is enabled; `e2e/hydration.spec.ts` checks the lock with JavaScript disabled.
+- The root layout renders `HydrationMarker` (`src/components/`), which sets `data-hydrated="true"` on `<html>` in the
+  same commit in which `useHydrated()` turns true. The end-to-end tests wait for it after every page load.
 - Dialogs that a route renders for an action use `disablePortal`, so that they are part of the server-rendered HTML
   like the rest of the page, and lock their controls until hydration as described above. The name dialog
   (`NameDialog` in `src/features/folders/components/`) is shared by folders, tabs and pages.

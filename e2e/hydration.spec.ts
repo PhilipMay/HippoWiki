@@ -1,6 +1,5 @@
-import { expect, test } from "@playwright/test";
-
 import { createFolder, createPage, createTab, resetTestDatabase } from "./support/database";
+import { expect, test } from "./support/test";
 
 // Without JavaScript the page never hydrates and shows only the server-rendered HTML: the state in which input could be
 // lost, so every control that needs JavaScript must be locked here.
