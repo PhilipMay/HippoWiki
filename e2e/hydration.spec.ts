@@ -74,3 +74,20 @@ test("the name dialog on a tab is prefilled and locked until hydration", async (
     "/folders/locked-folder/locked-tab",
   );
 });
+
+test("the move dialog shows the current place and is locked until hydration", async ({ page }) => {
+  const folder = await createFolder({ name: "locked-folder" });
+  const tab = await createTab({ folder, name: "locked-tab" });
+  await createPage({ tab, name: "locked-page", title: "Locked page" });
+
+  await page.goto("/folders/locked-folder/locked-tab/locked-page.md?action=move");
+
+  const dialog = page.getByRole("dialog", { name: "Move page" });
+  await expect(dialog.getByRole("radio", { name: "Tab locked-tab" })).toBeChecked();
+  for (const radio of await dialog.getByRole("radio").all()) await expect(radio).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "Save" })).toBeDisabled();
+  await expect(dialog.getByRole("link", { name: "Cancel" })).toHaveAttribute(
+    "href",
+    "/folders/locked-folder/locked-tab/locked-page.md",
+  );
+});

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createPage, renamePage, updatePageContent } from "@/features/pages/actions";
+import { createPage, movePage, renamePage, updatePageContent } from "@/features/pages/actions";
 import { Prisma } from "@/generated/prisma/client";
 
 /** Thrown by the mocked `redirect`, like the real one throws, so that code after it never runs. */
@@ -344,6 +344,104 @@ describe("renamePage", () => {
     mocks.updateMany.mockRejectedValue(err);
 
     await expect(renamePage(id, {}, formData(VALID))).resolves.toEqual(SAVE_FAILED);
+
+    expect(mocks.error).toHaveBeenCalledWith(expect.objectContaining({ err }), expect.any(String));
+    expectNotRevalidatedOrRedirected();
+  });
+});
+
+describe("movePage", () => {
+  const id = crypto.randomUUID();
+  const tabId = crypto.randomUUID();
+  const MOVE_FAILED = { message: "The page could not be moved. Please try again." };
+  const NAME_TAKEN_THERE = { fieldErrors: { target: ["A page with this name already exists there"] } };
+
+  it.each([
+    ["a tab as target", { target: tabId }],
+    ["the folder as target", { target: "" }],
+    ["a malformed target", { target: MALFORMED_ID }],
+  ])("reports a malformed page id as a missing page, with %s", async (_name, fields) => {
+    await expect(movePage(MALFORMED_ID, {}, formData(fields))).resolves.toEqual(PAGE_GONE);
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+    expectNotRevalidatedOrRedirected();
+  });
+
+  it("reports a malformed tab id as a missing tab without writing anything", async () => {
+    for (const target of [MALFORMED_ID, "guides", " "]) {
+      await expect(movePage(id, {}, formData({ target }))).resolves.toEqual(TAB_GONE);
+    }
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+    expectNotRevalidatedOrRedirected();
+  });
+
+  it("moves the page into the tab and redirects to its new address", async () => {
+    mocks.updateMany.mockResolvedValue({ count: 1 });
+    mocks.findUnique.mockResolvedValue({
+      name: "stored-name",
+      folder: { name: "stored-folder" },
+      tab: { name: "stored-tab" },
+    });
+
+    // Submitted content and name are ignored: only the place changes.
+    const fields = { target: tabId, content: "No heading", name: "submitted-name", folderId: crypto.randomUUID() };
+    await expect(movePage(id, {}, formData(fields))).rejects.toMatchObject({
+      path: "/folders/stored-folder/stored-tab/stored-name.md",
+    });
+
+    expect(mocks.updateMany).toHaveBeenCalledWith({ where: { id }, data: { tabId } });
+    expect(mocks.findUnique).toHaveBeenCalledWith({ where: { id }, select: ADDRESS_SELECT });
+    expect(mocks.info).toHaveBeenCalledWith({ pageId: id, tabId }, "page moved");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/folders", "layout");
+  });
+
+  it.each([
+    ["an empty target", { target: "" }],
+    ["no target", {}],
+  ])("moves the page directly into its folder with %s", async (_name, fields) => {
+    mocks.updateMany.mockResolvedValue({ count: 1 });
+    mocks.findUnique.mockResolvedValue({ name: "stored-name", folder: { name: "stored-folder" }, tab: null });
+
+    await expect(movePage(id, {}, formData(fields))).rejects.toMatchObject({
+      path: "/folders/stored-folder/stored-name.md",
+    });
+
+    expect(mocks.updateMany).toHaveBeenCalledWith({ where: { id }, data: { tabId: null } });
+  });
+
+  it.each(nameTakenErrors)("reports a taken name at the target for a unique violation %s", async (_name, err) => {
+    mocks.updateMany.mockRejectedValue(err);
+
+    await expect(movePage(id, {}, formData({ target: tabId }))).resolves.toEqual(NAME_TAKEN_THERE);
+
+    expect(mocks.warn).toHaveBeenCalledWith({ pageId: id, tabId }, expect.any(String));
+    expect(mocks.error).not.toHaveBeenCalled();
+    expectNotRevalidatedOrRedirected();
+  });
+
+  it("reports a missing tab or a tab of another folder for a foreign key violation", async () => {
+    mocks.updateMany.mockRejectedValue(knownError("P2003"));
+
+    await expect(movePage(id, {}, formData({ target: tabId }))).resolves.toEqual(TAB_GONE);
+
+    expect(mocks.warn).toHaveBeenCalledWith({ pageId: id, tabId }, expect.any(String));
+    expect(mocks.error).not.toHaveBeenCalled();
+    expectNotRevalidatedOrRedirected();
+  });
+
+  it("reports a page that no longer exists", async () => {
+    mocks.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(movePage(id, {}, formData({ target: tabId }))).resolves.toEqual(PAGE_GONE);
+
+    expect(mocks.findUnique).not.toHaveBeenCalled();
+    expect(mocks.warn).toHaveBeenCalledWith({ pageId: id }, expect.any(String));
+    expectNotRevalidatedOrRedirected();
+  });
+
+  it.each(otherErrors)("reports a failed move for %s", async (_name, err) => {
+    mocks.updateMany.mockRejectedValue(err);
+
+    await expect(movePage(id, {}, formData({ target: tabId }))).resolves.toEqual(MOVE_FAILED);
 
     expect(mocks.error).toHaveBeenCalledWith(expect.objectContaining({ err }), expect.any(String));
     expectNotRevalidatedOrRedirected();

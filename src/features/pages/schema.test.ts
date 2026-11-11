@@ -5,6 +5,7 @@ import {
   parseNewPageFormData,
   parsePageContentFormData,
   parsePageId,
+  parsePageMoveFormData,
   parsePageNameFormData,
   TITLE_HEADING_MISSING_MESSAGE,
 } from "@/features/pages/schema";
@@ -216,5 +217,29 @@ describe("parsePageNameFormData", () => {
       success: false,
       fieldErrors: { name: ["Use lowercase letters, digits and single hyphens"] },
     });
+  });
+});
+
+describe("parsePageMoveFormData", () => {
+  it("returns the tab id of the target", () => {
+    const tabId = crypto.randomUUID();
+    expect(parsePageMoveFormData(formData({ target: tabId }))).toEqual({ success: true, tabId });
+  });
+
+  it("returns no tab for the folder itself: an empty or missing target", () => {
+    expect(parsePageMoveFormData(formData({ target: "" }))).toEqual({ success: true, tabId: null });
+    expect(parsePageMoveFormData(new FormData())).toEqual({ success: true, tabId: null });
+  });
+
+  it("ignores other fields, so that no content rule can block a move", () => {
+    const fields = { target: "", content: "x".repeat(CONTENT_MAX_LENGTH + 1), name: "Bad Name", folderId: "x" };
+    expect(parsePageMoveFormData(formData(fields))).toEqual({ success: true, tabId: null });
+  });
+
+  it("refuses a malformed tab id and a file", () => {
+    for (const target of ["guides", "not-a-uuid", " ", "folder", `${crypto.randomUUID()}x`]) {
+      expect(parsePageMoveFormData(formData({ target }))).toEqual({ success: false });
+    }
+    expect(parsePageMoveFormData(formData({ target: new Blob(["x"]) }))).toEqual({ success: false });
   });
 });

@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { parseTabId } from "@/features/folders/schema";
 import { titleFromContent } from "@/features/pages/derive";
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 import { nameSchema, type NameFieldErrors } from "@/lib/names";
@@ -109,4 +110,32 @@ export function parsePageNameFormData(formData: FormData): ParseResult<PageNameI
   const result = pageNameInputSchema.safeParse({ name: formData.get("name") ?? "" });
   if (result.success) return { success: true, data: result.data };
   return { success: false, fieldErrors: z.flattenError(result.error).fieldErrors };
+}
+
+/** Name of the form field that holds the target of a move: a tab id, or empty for the folder itself. */
+export const MOVE_TARGET_FIELD = "target";
+
+/** State of the "Move page" form between submissions: errors from the last attempt, if any. */
+export type PageMoveFormState = {
+  fieldErrors?: { target?: string[] };
+  /** An error that is not about the chosen target, e.g. when the page no longer exists. */
+  message?: string;
+};
+
+/** A Server Action behind the "Move page" form; it returns the errors to show, or redirects on success. */
+export type PageMoveFormAction = (prevState: PageMoveFormState, formData: FormData) => Promise<PageMoveFormState>;
+
+/**
+ * Reads the target of a submitted "Move page" form: the id of a tab, or `null` for the folder itself when the field
+ * is empty or missing. A malformed tab id is not a target. The content is not part of the form and never validated,
+ * so the content limit never blocks a move.
+ */
+export function parsePageMoveFormData(
+  formData: FormData,
+): { success: true; tabId: string | null } | { success: false } {
+  const target = formData.get(MOVE_TARGET_FIELD) ?? "";
+  if (typeof target !== "string") return { success: false };
+  if (target === "") return { success: true, tabId: null };
+  const tabId = parseTabId(target);
+  return tabId ? { success: true, tabId } : { success: false };
 }
