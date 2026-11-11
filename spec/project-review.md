@@ -52,6 +52,7 @@ These parts are worth keeping as they are:
   - the absence of the double rendering that StrictMode does in development only
 
   A caching bug would pass every check and only show up after deployment.
+
 - Evidence: `spec/testing.md`, "Unit tests": "the end-to-end tests run the development server, which never
   prerenders".
 
