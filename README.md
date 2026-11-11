@@ -144,3 +144,18 @@ npx playwright show-report   # open the HTML report of the last run
 | `npm run check`        | Run `format:check`, `lint`, `typecheck` and `test` in a row |
 | `npm run test:e2e`     | Run the end-to-end tests with Playwright                    |
 | `npm run test:e2e:ui`  | Run the end-to-end tests in the Playwright UI               |
+
+## Continuous integration
+
+GitHub Actions runs the same checks on every push, on pull requests and when started by hand. Each check is its own
+workflow in `.github/workflows/`:
+
+| Workflow           | Runs                                                 |
+| ------------------ | ---------------------------------------------------- |
+| `format_check`     | `npm run format:check`                               |
+| `lint`             | `npm run build`, `npm run typecheck`, `npm run lint` |
+| `unit_tests`       | `npm run test`                                       |
+| `end_to_end_tests` | `npm run test:e2e`                                   |
+
+The end-to-end workflow uses the Podman on the GitHub runner for its throwaway test database and uploads the
+Playwright HTML report as the artifact `playwright-report`, also when tests fail.

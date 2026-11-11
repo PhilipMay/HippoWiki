@@ -27,3 +27,23 @@ How the code is tested. Commands are listed in `README.md`.
   - `collectErrors()` records console errors and uncaught exceptions of the browser page; tests assert it stays empty.
 - Elements are located by role, label and accessible name, not by CSS selectors.
 - Every feature step adds end-to-end tests for its behaviour, including error and empty states.
+
+## Continuous integration
+
+- GitHub Actions runs the checks in four workflows in `.github/workflows/`, each named like its file, so a failure
+  shows at a glance which kind of check broke:
+  - `format_check`: `npm run format:check`
+  - `lint`: `npm run build`, `npm run typecheck`, `npm run lint`, as separate steps in this order
+  - `unit_tests`: `npm run test`
+  - `end_to_end_tests`: `npm run test:e2e`
+- They run on every push to any branch, on pull requests and when started by hand (`workflow_dispatch`). A newer push
+  to the same ref cancels a run still in progress.
+- Every workflow installs Node.js from `.nvmrc` and runs `npm ci` on `ubuntu-24.04`.
+- `DATABASE_URL` is set to a placeholder URL on port 5432, never the test database: only `prisma generate` during
+  `npm ci` reads it, nothing connects to it. The build needs no database, because every query calls `connection()` and
+  no route is prerendered.
+- The end-to-end workflow installs Chromium with `npx playwright install --with-deps chromium` and uses the Podman
+  preinstalled on the runner; the tests start and remove their throwaway container `hippowiki-test-db` as they do
+  locally. With `CI` set, Playwright retries a failed test twice and rejects `test.only`.
+- The Playwright HTML report (`playwright-report/`) is uploaded as the artifact `playwright-report`, also when the tests
+  fail (not when the run was cancelled), and kept for 7 days.

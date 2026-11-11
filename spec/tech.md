@@ -24,6 +24,7 @@
 - Testing: Vitest (unit tests)
 - end-to-end tests: Playwright
 - Podman: instead of Docker for development
+- Continuous integration: GitHub Actions
 - Zod: for forms, actions and environment variable validation
 
 ## Later Aspects
