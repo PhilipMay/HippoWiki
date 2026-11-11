@@ -7,8 +7,9 @@ HippoWiki is a knowledge management system, built with Next.js (App Router) and 
 The prototype manages wiki pages written in Markdown, organises them in folders and stores them in PostgreSQL:
 
 - create, list and rename folders; every folder has its own address `/folders/<folder>`,
-- list the pages of a folder by name,
-- view a page with its Markdown rendered at `/folders/<folder>/<page>.md`,
+- divide a folder into tabs (`/folders/<folder>/<tab>`); create and rename tabs,
+- list the pages placed directly in a folder and the pages of a tab, by name,
+- view a page with its Markdown rendered at `/folders/<folder>/<page>.md` or `/folders/<folder>/<tab>/<page>.md`,
 - create, edit and rename pages.
 
 Nothing can be deleted yet. There is a single user and no login.
@@ -117,8 +118,8 @@ npx playwright show-report   # open the HTML report of the last run
 - Playwright starts its own development server on port 3100 with the build directory `.next-e2e`, so it can run next
   to `npm run dev`, and stops it after the run.
 - `e2e/support/browser.ts` has `collectErrors()`, which records console errors of the browser page.
-- `e2e/support/database.ts` has helpers for tests: `createFolder()` and `createPage()` insert a folder or a page
-  (in a given or a new folder) directly into the test database, `resetTestDatabase()` empties it, and `getTestDb()` returns a Prisma client for it.
+- `e2e/support/database.ts` has helpers for tests: `createFolder()`, `createTab()` and `createPage()` insert a folder, a
+  tab or a page (in a given folder or tab, or in a new folder) directly into the test database, `resetTestDatabase()` empties it, and `getTestDb()` returns a Prisma client for it.
   All tests share this database and run one after another.
 
 ## Commands

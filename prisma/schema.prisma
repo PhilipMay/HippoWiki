@@ -1,9 +1,11 @@
 // Prisma schema. Connection settings live in prisma.config.ts.
 
 generator client {
-  provider     = "prisma-client"
-  output       = "../src/generated/prisma"
-  moduleFormat = "esm"
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  moduleFormat    = "esm"
+  // For the unique index on the names of pages placed directly in a folder (`where` in `@@unique`).
+  previewFeatures = ["partialIndexes"]
 }
 
 datasource db {
@@ -17,22 +19,48 @@ model Folder {
   name      String   @unique
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  tabs      Tab[]
   pages     Page[]
 }
 
-/// A wiki page with its Markdown source. It lives in exactly one folder.
+/// A tab: an optional section inside a folder.
+model Tab {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  folderId  String   @db.Uuid
+  folder    Folder   @relation(fields: [folderId], references: [id], onDelete: Restrict)
+  /// The tab's part of its address `/folders/<folder>/<name>`; unique among the tabs of its folder.
+  name      String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  pages     Page[]
+
+  @@unique([folderId, name])
+  // Target of the composite foreign key of `Page`, which makes sure a page's tab belongs to the page's folder.
+  @@unique([id, folderId])
+}
+
+/// A wiki page with its Markdown source. It lives in exactly one folder: directly in it or in one of its tabs.
 model Page {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   /// Derived from the content's first heading (`# Title`) on every save; never entered directly.
   title     String
-  /// The page's part of its address `/folders/<folder>/<name>.md`; unique among the pages of its folder.
+  /// The page's part of its address, followed by `.md`: `/folders/<folder>/<name>.md` or, in a tab,
+  /// `/folders/<folder>/<tab>/<name>.md`. Unique among the pages of its tab or, without a tab, among the pages placed
+  /// directly in its folder.
   name      String
   /// Markdown source of the page.
   content   String
   folderId  String   @db.Uuid
   folder    Folder   @relation(fields: [folderId], references: [id], onDelete: Restrict)
+  /// The tab the page lives in; without one, the page is placed directly in its folder.
+  tabId     String?  @db.Uuid
+  /// The foreign key includes `folderId`, so the tab is always one of the page's folder.
+  tab       Tab?     @relation(fields: [tabId, folderId], references: [id, folderId], onDelete: Restrict)
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
-  @@unique([folderId, name])
+  // Pages in a tab: unique within the tab.
+  @@unique([tabId, name])
+  // Pages placed directly in a folder: unique among those pages only.
+  @@unique([folderId, name], where: { tabId: null })
 }

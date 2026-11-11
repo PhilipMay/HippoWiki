@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { createFolder, createPage, resetTestDatabase } from "./support/database";
+import { createFolder, createPage, createTab, resetTestDatabase } from "./support/database";
 
 // Without JavaScript the page never hydrates and shows only the server-rendered HTML: the state in which input could be
 // lost, so every control that needs JavaScript must be locked here.
@@ -57,4 +57,20 @@ test("the name dialog is prefilled and locked until hydration", async ({ page })
   await expect(dialog.getByLabel("Name")).not.toBeEditable();
   await expect(dialog.getByRole("button", { name: "Save" })).toBeDisabled();
   await expect(dialog.getByRole("link", { name: "Cancel" })).toHaveAttribute("href", "/folders/locked-folder");
+});
+
+test("the name dialog on a tab is prefilled and locked until hydration", async ({ page }) => {
+  const folder = await createFolder({ name: "locked-folder" });
+  await createTab({ folder, name: "locked-tab" });
+
+  await page.goto("/folders/locked-folder/locked-tab?action=rename");
+
+  const dialog = page.getByRole("dialog", { name: "Rename tab" });
+  await expect(dialog.getByLabel("Name")).toHaveValue("locked-tab");
+  await expect(dialog.getByLabel("Name")).not.toBeEditable();
+  await expect(dialog.getByRole("button", { name: "Save" })).toBeDisabled();
+  await expect(dialog.getByRole("link", { name: "Cancel" })).toHaveAttribute(
+    "href",
+    "/folders/locked-folder/locked-tab",
+  );
 });

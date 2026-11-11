@@ -5,9 +5,10 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import Link from "@/components/Link";
-import { renameFolder } from "@/features/folders/actions";
+import { createTab, renameFolder } from "@/features/folders/actions";
+import FolderNav from "@/features/folders/components/FolderNav";
 import NameDialog from "@/features/folders/components/NameDialog";
-import { getFolderByName } from "@/features/folders/queries";
+import { getFolderByName, listTabs } from "@/features/folders/queries";
 import { createPage } from "@/features/pages/actions";
 import NewPageForm from "@/features/pages/components/NewPageForm";
 import PageList from "@/features/pages/components/PageList";
@@ -15,8 +16,11 @@ import { listFolderPages } from "@/features/pages/queries";
 import { folderPath, parseAction } from "@/lib/addresses";
 import { pageTitle } from "@/lib/site";
 
-/** The actions of a folder address: `new` opens the editor for a new page, `rename` the "Rename folder" dialog. */
-const ACTIONS = ["new", "rename"] as const;
+/**
+ * The actions of a folder address: `new` opens the editor for a new page placed directly in the folder, `rename` the
+ * "Rename folder" dialog and `new-tab` the "New tab" dialog.
+ */
+const ACTIONS = ["new", "rename", "new-tab"] as const;
 
 export async function generateMetadata({ params, searchParams }: PageProps<"/folders/[folder]">): Promise<Metadata> {
   const folder = await getFolderByName((await params).folder);
@@ -38,12 +42,13 @@ export default async function FolderPage({ params, searchParams }: PageProps<"/f
         <Typography variant="h4" component="h1">
           New page
         </Typography>
-        <NewPageForm action={createPage.bind(null, folder.id)} folderName={folder.name} />
+        <NewPageForm action={createPage.bind(null, folder.id, null)} folderName={folder.name} tabName={null} />
       </Stack>
     );
   }
 
-  const pages = await listFolderPages(folder.id);
+  const [tabs, pages] = await Promise.all([listTabs(folder.id), listFolderPages(folder.id)]);
+  const address = folderPath(folder.name);
 
   return (
     <Stack spacing={3}>
@@ -60,14 +65,18 @@ export default async function FolderPage({ params, searchParams }: PageProps<"/f
           </Button>
         </Stack>
       </Stack>
+      <FolderNav folderName={folder.name} tabs={tabs} current="folder" />
       <PageList pages={pages} folderName={folder.name} />
       {action === "rename" && (
         <NameDialog
           title="Rename folder"
           action={renameFolder.bind(null, folder.id)}
           initialName={folder.name}
-          closeHref={folderPath(folder.name)}
+          closeHref={address}
         />
+      )}
+      {action === "new-tab" && (
+        <NameDialog title="New tab" action={createTab.bind(null, folder.id)} closeHref={address} />
       )}
     </Stack>
   );

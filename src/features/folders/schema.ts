@@ -29,3 +29,27 @@ export function parseFolderFormData(formData: FormData): ParseFolderInputResult 
   if (result.success) return { success: true, data: result.data };
   return { success: false, fieldErrors: z.flattenError(result.error).fieldErrors };
 }
+
+/** A tab id: a UUID, like a folder id. */
+export const tabIdSchema = z.guid();
+
+/** Returns the id if it is a well-formed tab id, otherwise `null`, so that malformed ids never reach the database. */
+export function parseTabId(id: string): string | null {
+  const result = tabIdSchema.safeParse(id);
+  return result.success ? result.data : null;
+}
+
+/** Input for creating or renaming a tab: its name. */
+export const tabInputSchema = z.object({ name: nameSchema });
+
+/** A validated tab name. */
+export type TabInput = z.output<typeof tabInputSchema>;
+
+export type ParseTabInputResult = { success: true; data: TabInput } | { success: false; fieldErrors: NameFieldErrors };
+
+/** Validates the name of a submitted tab form. A missing field counts as empty. */
+export function parseTabFormData(formData: FormData): ParseTabInputResult {
+  const result = tabInputSchema.safeParse({ name: formData.get("name") ?? "" });
+  if (result.success) return { success: true, data: result.data };
+  return { success: false, fieldErrors: z.flattenError(result.error).fieldErrors };
+}

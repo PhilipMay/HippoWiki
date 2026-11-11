@@ -15,13 +15,15 @@ type PageListProps = {
   pages: PageSummary[];
   /** Name of the folder the pages live in, for their addresses. */
   folderName: string;
+  /** Name of the tab the pages live in, or `null` for pages placed directly in the folder. */
+  tabName?: string | null;
 };
 
 /**
- * The pages placed directly in a folder, each with its title, its name and its last update and linking to its page,
- * or an empty state when there are none.
+ * The pages placed directly in a folder or the pages of a tab, each with its title, its name and its last update and
+ * linking to its page, or an empty state when there are none.
  */
-export default function PageList({ pages, folderName }: PageListProps) {
+export default function PageList({ pages, folderName, tabName = null }: PageListProps) {
   if (pages.length === 0) {
     return (
       <Paper variant="outlined" sx={{ p: 4, textAlign: "center" }}>
@@ -40,7 +42,7 @@ export default function PageList({ pages, folderName }: PageListProps) {
       <List disablePadding aria-label="Pages">
         {pages.map((page, index) => (
           <ListItem key={page.id} disablePadding divider={index < pages.length - 1}>
-            <ListItemButton component={Link} href={pagePath(folderName, null, page.name)}>
+            <ListItemButton component={Link} href={pagePath(folderName, tabName, page.name)}>
               <ListItemText
                 primary={page.title}
                 secondary={

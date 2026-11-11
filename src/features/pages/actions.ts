@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { parseFolderId } from "@/features/folders/schema";
+import { parseFolderId, parseTabId } from "@/features/folders/schema";
 import {
   parseNewPageFormData,
   parsePageContentFormData,
@@ -20,9 +20,13 @@ import { NAME_TAKEN_MESSAGE, type NameFormState } from "@/lib/names";
 const SAVE_FAILED_MESSAGE = "The page could not be saved. Please try again.";
 const PAGE_GONE_MESSAGE = "This page no longer exists.";
 const FOLDER_GONE_MESSAGE = "This folder no longer exists.";
+const TAB_GONE_MESSAGE = "This tab no longer exists.";
 
-/** The unique index on the page name within its folder, as Prisma creates it for `@@unique`. */
-const PAGE_NAME: UniqueConstraint = { indexes: ["Page_folderId_name_key"], field: "name" };
+/**
+ * The unique indexes on the page name, as Prisma creates them for `@@unique`: within a tab, and among the pages placed
+ * directly in a folder.
+ */
+const PAGE_NAME: UniqueConstraint = { indexes: ["Page_tabId_name_key", "Page_folderId_name_key"], field: "name" };
 
 /** The form state that shows "Name is already in use" at the name field. */
 const nameTakenState = { fieldErrors: { name: [NAME_TAKEN_MESSAGE] } };
@@ -32,13 +36,17 @@ function revalidateFolders(): void {
   revalidatePath("/folders", "layout");
 }
 
-/** What an address is built from: the name of the page and of its folder. */
-const ADDRESS_SELECT = { name: true, folder: { select: { name: true } } } as const;
+/** What an address is built from: the name of the page, of its folder and of its tab, if it has one. */
+const ADDRESS_SELECT = {
+  name: true,
+  folder: { select: { name: true } },
+  tab: { select: { name: true } },
+} as const;
 
-type AddressParts = { name: string; folder: { name: string } };
+type AddressParts = { name: string; folder: { name: string }; tab: { name: string } | null };
 
-function addressOf({ name, folder }: AddressParts): string {
-  return pagePath(folder.name, null, name);
+function addressOf({ name, folder, tab }: AddressParts): string {
+  return pagePath(folder.name, tab?.name ?? null, name);
 }
 
 /**
@@ -51,17 +59,21 @@ async function findPageAddress(pageId: string): Promise<string | null> {
 }
 
 /**
- * Creates a page in the folder with the given id from the submitted editor content and name, and redirects to its
- * address. Returns the errors to show in the form if the input is invalid, the name is taken, the folder no longer
- * exists or the page cannot be stored. Bind the folder id with `createPage.bind(null, folderId)`.
+ * Creates a page from the submitted editor content and name and redirects to its address. The page is placed in the
+ * tab with the given id or, with `tabId` `null`, directly in the folder with the given id; the tab must be one of that
+ * folder. Returns the errors to show in the form if the input is invalid, the name is taken there, the folder or tab
+ * no longer exists or the page cannot be stored. Bind the ids with `createPage.bind(null, folderId, tabId)`.
  */
 export async function createPage(
   folderId: string,
+  tabId: string | null,
   _prevState: PageFormState,
   formData: FormData,
 ): Promise<PageFormState> {
   const parsedFolderId = parseFolderId(folderId);
   if (!parsedFolderId) return { message: FOLDER_GONE_MESSAGE };
+  const parsedTabId = tabId === null ? null : parseTabId(tabId);
+  if (tabId !== null && !parsedTabId) return { message: TAB_GONE_MESSAGE };
 
   const input = parseNewPageFormData(formData);
   if (!input.success) return { fieldErrors: input.fieldErrors };
@@ -69,19 +81,23 @@ export async function createPage(
   let page: AddressParts & { id: string };
   try {
     page = await getDb().page.create({
-      data: { ...input.data, folderId: parsedFolderId },
+      data: { ...input.data, folderId: parsedFolderId, tabId: parsedTabId },
       select: { id: true, ...ADDRESS_SELECT },
     });
   } catch (err) {
     if (isUniqueViolation(err, PAGE_NAME)) {
-      logger.warn({ folderId: parsedFolderId, name: input.data.name }, "name of new page already in use");
+      logger.warn(
+        { folderId: parsedFolderId, tabId: parsedTabId, name: input.data.name },
+        "name of new page already in use",
+      );
       return nameTakenState;
     }
     if (isForeignKeyViolation(err)) {
-      logger.warn({ folderId: parsedFolderId }, "folder of new page not found");
-      return { message: FOLDER_GONE_MESSAGE };
+      // A missing folder, a missing tab or a tab of another folder: the composite foreign key refuses all of them.
+      logger.warn({ folderId: parsedFolderId, tabId: parsedTabId }, "folder or tab of new page not found");
+      return { message: parsedTabId ? TAB_GONE_MESSAGE : FOLDER_GONE_MESSAGE };
     }
-    logger.error({ err, folderId: parsedFolderId }, "failed to create page");
+    logger.error({ err, folderId: parsedFolderId, tabId: parsedTabId }, "failed to create page");
     return { message: SAVE_FAILED_MESSAGE };
   }
 

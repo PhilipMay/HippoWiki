@@ -15,22 +15,27 @@ import Link from "@/components/Link";
 import { deriveName, titleFromContent } from "@/features/pages/derive";
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 import { TITLE_HEADING_MISSING_MESSAGE, type PageFormAction } from "@/features/pages/schema";
-import { folderPath, pagePath } from "@/lib/addresses";
+import { folderPath, pagePath, tabPath } from "@/lib/addresses";
 import { useHydrated } from "@/lib/hydration";
 import { NAME_MAX_LENGTH } from "@/lib/names";
 
 type NewPageFormProps = {
-  /** Server Action that creates the page in its folder; it returns the errors to show, or redirects on success. */
+  /** Server Action that creates the page in its place; it returns the errors to show, or redirects on success. */
   action: PageFormAction;
-  /** Name of the folder the page is created in: "Cancel" leads there, and the dialog shows the new address. */
+  /** Name of the folder the page is created in. */
   folderName: string;
+  /**
+   * Name of the tab the page is created in, or `null` for a page placed directly in the folder. "Cancel" leads to
+   * this place, and the dialog shows the new address in it.
+   */
+  tabName: string | null;
 };
 
 /**
  * Form for a new page that asks only for the Markdown content, which must start with a title heading (`# Title`).
  * "Save" derives the title and opens a dialog that shows it and asks for the name, prefilled from the title.
  */
-export default function NewPageForm({ action, folderName }: NewPageFormProps) {
+export default function NewPageForm({ action, folderName, tabName }: NewPageFormProps) {
   const [content, setContent] = useState("");
   const [open, setOpen] = useState(false);
   // The title derived when "Save" was last pressed. It stays while the dialog closes, so the dialog does not change
@@ -76,7 +81,7 @@ export default function NewPageForm({ action, folderName }: NewPageFormProps) {
         <Button type="button" variant="contained" onClick={save} disabled={!hydrated}>
           Save
         </Button>
-        <Button component={Link} href={folderPath(folderName)}>
+        <Button component={Link} href={tabName === null ? folderPath(folderName) : tabPath(folderName, tabName)}>
           Cancel
         </Button>
       </Stack>
@@ -85,6 +90,7 @@ export default function NewPageForm({ action, folderName }: NewPageFormProps) {
         open={open}
         action={action}
         folderName={folderName}
+        tabName={tabName}
         title={title}
         content={content}
         onClose={() => setOpen(false)}
@@ -103,7 +109,7 @@ type SavePageDialogProps = NewPageFormProps & {
 };
 
 /** Dialog "Save page" that shows the title, asks for the name and creates the page. */
-function SavePageDialog({ open, action, folderName, title, content, onClose }: SavePageDialogProps) {
+function SavePageDialog({ open, action, folderName, tabName, title, content, onClose }: SavePageDialogProps) {
   const [state, formAction, pending] = useActionState(action, {});
   const [name, setName] = useState(() => deriveName(title));
   const nameRef = useRef<HTMLInputElement>(null);
@@ -152,7 +158,7 @@ function SavePageDialog({ open, action, folderName, title, content, onClose }: S
               required
               fullWidth
               error={!!nameError}
-              helperText={nameError ?? `Address: ${pagePath(folderName, null, name.trim())}`}
+              helperText={nameError ?? `Address: ${pagePath(folderName, tabName, name.trim())}`}
               slotProps={{ htmlInput: { maxLength: NAME_MAX_LENGTH, spellCheck: false, autoCapitalize: "none" } }}
             />
             <input type="hidden" name="content" value={content} />

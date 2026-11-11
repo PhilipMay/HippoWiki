@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 import { titleFromContent } from "@/features/pages/derive";
-import { PrismaClient, type Folder, type Page, type Prisma } from "@/generated/prisma/client";
+import { PrismaClient, type Folder, type Page, type Prisma, type Tab } from "@/generated/prisma/client";
 
 import { TEST_DATABASE_NAME, TEST_DATABASE_URL } from "./container";
 
@@ -72,21 +72,36 @@ export function createFolder(data: Partial<Prisma.FolderCreateInput> = {}): Prom
   return getTestDb().folder.create({ data: { name: `test-folder-${crypto.randomUUID()}`, ...data } });
 }
 
-/** The fields of a page that `createPage()` can set, and the folder to place it in. */
-type CreatePageData = Partial<Omit<Prisma.PageUncheckedCreateInput, "folderId">> & { folder?: Folder };
+/** The fields of a tab that `createTab()` can set, and the folder it belongs to. */
+type CreateTabData = Partial<Omit<Prisma.TabUncheckedCreateInput, "folderId">> & { folder?: Folder };
 
 /**
- * Creates a page directly in the test database, placed directly in the given folder; without one, a new folder is
- * created for it. The page gets a unique name unless one is given. Like a save through the forms, the title is derived
- * from the content; the content defaults to `# <title>`, so `createPage({ title: "Old" })` gives a page with the
- * content `# Old`. A title given together with content is stored as is, e.g. to set up a page that was stored before
- * titles were derived. Any other field can be overridden, e.g. `updatedAt`.
+ * Creates a tab directly in the test database, in the given folder; without one, a new folder is created for it. The
+ * tab gets a unique name unless one is given.
  */
-export async function createPage({ folder, ...data }: CreatePageData = {}): Promise<Page> {
+export async function createTab({ folder, ...data }: CreateTabData = {}): Promise<Tab> {
+  const folderId = (folder ?? (await createFolder())).id;
+  return getTestDb().tab.create({ data: { name: `test-tab-${crypto.randomUUID()}`, ...data, folderId } });
+}
+
+/** The fields of a page that `createPage()` can set, and the folder or tab to place it in. */
+type CreatePageData = Partial<Omit<Prisma.PageUncheckedCreateInput, "folderId" | "tabId">> & {
+  folder?: Folder;
+  tab?: Tab;
+};
+
+/**
+ * Creates a page directly in the test database: in the given tab, or placed directly in the given folder; without
+ * either, a new folder is created for it. The page gets a unique name unless one is given. Like a save through the
+ * forms, the title is derived from the content; the content defaults to `# <title>`, so `createPage({ title: "Old" })`
+ * gives a page with the content `# Old`. A title given together with content is stored as is, e.g. to set up a page
+ * that was stored before titles were derived. Any other field can be overridden, e.g. `updatedAt`.
+ */
+export async function createPage({ folder, tab, ...data }: CreatePageData = {}): Promise<Page> {
   const content = data.content ?? `# ${data.title ?? "Test page"}`;
   const title = data.title ?? titleFromContent(content) ?? "Test page";
-  const folderId = (folder ?? (await createFolder())).id;
+  const folderId = tab ? tab.folderId : (folder ?? (await createFolder())).id;
   return getTestDb().page.create({
-    data: { name: `test-page-${crypto.randomUUID()}`, ...data, title, content, folderId },
+    data: { name: `test-page-${crypto.randomUUID()}`, ...data, title, content, folderId, tabId: tab?.id ?? null },
   });
 }
