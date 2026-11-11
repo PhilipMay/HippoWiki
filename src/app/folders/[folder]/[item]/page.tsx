@@ -14,7 +14,7 @@ import NewPageForm from "@/features/pages/components/NewPageForm";
 import PageList from "@/features/pages/components/PageList";
 import PageView, { PAGE_ACTIONS, pageViewTitle } from "@/features/pages/components/PageView";
 import { getPage, listTabPages } from "@/features/pages/queries";
-import { parseAction, parsePageSegment, tabPath } from "@/lib/addresses";
+import { parseAction, parsePageSegment, parseView, tabPath } from "@/lib/addresses";
 import { pageTitle } from "@/lib/site";
 
 type Props = PageProps<"/folders/[folder]/[item]">;
@@ -51,15 +51,19 @@ export default async function FolderItemPage({ params, searchParams }: Props) {
   const item = await findItem(params);
   if (!item) notFound();
 
+  const query = await searchParams;
+  // Neither a page nor a tab has views.
+  if (parseView(query) !== null) notFound();
+
   if (item.kind === "page") {
-    const action = parseAction(await searchParams, PAGE_ACTIONS);
+    const action = parseAction(query, PAGE_ACTIONS);
     if (action === "invalid") notFound();
     return <PageView page={item.page} action={action} />;
   }
 
   const { tab } = item;
   const { folder } = tab;
-  const action = parseAction(await searchParams, TAB_ACTIONS);
+  const action = parseAction(query, TAB_ACTIONS);
   if (action === "invalid") notFound();
 
   if (action === "new") {

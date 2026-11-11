@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 
 import PageView, { PAGE_ACTIONS, pageViewTitle } from "@/features/pages/components/PageView";
 import { getPage } from "@/features/pages/queries";
-import { parseAction, parsePageSegment } from "@/lib/addresses";
+import { parseAction, parsePageSegment, parseView } from "@/lib/addresses";
 import { pageTitle } from "@/lib/site";
 
 type Props = PageProps<"/folders/[folder]/[item]/[page]">;
@@ -29,8 +29,10 @@ export default async function TabPageView({ params, searchParams }: Props) {
   const page = await findPage(params);
   if (!page) notFound();
 
-  const action = parseAction(await searchParams, PAGE_ACTIONS);
-  if (action === "invalid") notFound();
+  const query = await searchParams;
+  const action = parseAction(query, PAGE_ACTIONS);
+  // A page has no views.
+  if (action === "invalid" || parseView(query) !== null) notFound();
 
   return <PageView page={page} action={action} />;
 }

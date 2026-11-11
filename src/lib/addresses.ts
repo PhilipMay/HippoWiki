@@ -23,6 +23,11 @@ export function folderPath(folder: string, action?: string): string {
   return withAction(`${FOLDERS_PATH}/${folder}`, action);
 }
 
+/** The address of the list of all pages of a folder: the folder address with the view `all`. */
+export function allPagesPath(folder: string): string {
+  return `${FOLDERS_PATH}/${folder}?view=all`;
+}
+
 /** The address of a tab of a folder, optionally with an action. */
 export function tabPath(folder: string, tab: string, action?: string): string {
   return withAction(`${FOLDERS_PATH}/${folder}/${tab}`, action);
@@ -70,4 +75,15 @@ export function parseAction<Action extends string>(
   allowed: readonly Action[],
 ): Action | null | "invalid" {
   return parseChoice(searchParams, "action", allowed);
+}
+
+/**
+ * Reads the view of an address from its query string `?view=<view>`, checked like an action: `null` without a view,
+ * the view if the address has it, and `"invalid"` for anything else. Addresses without views pass no allowed views.
+ */
+export function parseView<View extends string>(
+  searchParams: SearchParams,
+  allowed: readonly View[] = [],
+): View | null | "invalid" {
+  return parseChoice(searchParams, "view", allowed);
 }

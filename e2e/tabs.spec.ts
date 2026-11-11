@@ -31,7 +31,7 @@ test("creating a tab through the dialog shows the new tab", async ({ page }) => 
   const errors = collectErrors(page);
 
   await page.goto("/folders/handbook");
-  await expect(navLinks(page)).toHaveText(["handbook"]);
+  await expect(navLinks(page)).toHaveText(["handbook", "All pages"]);
   await page.getByRole("link", { name: "New tab" }).click();
 
   await expect(page).toHaveURL("/folders/handbook?action=new-tab");
@@ -48,7 +48,7 @@ test("creating a tab through the dialog shows the new tab", async ({ page }) => 
   await expect(page.getByRole("heading", { level: 2, name: "guides" })).toBeVisible();
   await expect(page.getByText("No pages yet")).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(navLinks(page)).toHaveText(["handbook", "guides"]);
+  await expect(navLinks(page)).toHaveText(["handbook", "guides", "All pages"]);
   const stored = await getTestDb().tab.findMany();
   expect(stored).toHaveLength(1);
   expect(stored[0]).toMatchObject({ name: "guides", folderId: handbook.id });
@@ -97,7 +97,7 @@ test("the same tab name in two folders gives two tabs", async ({ page }) => {
 
   await page.goto("/folders/archive/guides");
   await expect(page.getByRole("heading", { level: 1, name: "archive" })).toBeVisible();
-  await expect(navLinks(page)).toHaveText(["archive", "guides"]);
+  await expect(navLinks(page)).toHaveText(["archive", "guides", "All pages"]);
 });
 
 test("renaming a tab shows it at its new address with its pages and the old address shows the not-found page", async ({
@@ -128,7 +128,7 @@ test("renaming a tab shows it at its new address with its pages and the old addr
   await expect(page).toHaveURL("/folders/handbook/new-tab");
   await expect(page.getByRole("heading", { level: 2, name: "new-tab" })).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(navLinks(page)).toHaveText(["handbook", "new-tab", "taken"]);
+  await expect(navLinks(page)).toHaveText(["handbook", "new-tab", "taken", "All pages"]);
   await expect(listLinks(page)).toHaveText([/^Inside the tab/]);
   await expect(listLinks(page)).toHaveAttribute("href", "/folders/handbook/new-tab/inside.md");
   expect((await getTestDb().tab.findUniqueOrThrow({ where: { id: tab.id } })).name).toBe("new-tab");
@@ -167,7 +167,7 @@ test("the navigation bar lists the folder and its tabs by name and marks the cur
 
   await page.goto("/folders/handbook");
 
-  await expect(navLinks(page)).toHaveText(["handbook", "archive", "guides", "meetings"]);
+  await expect(navLinks(page)).toHaveText(["handbook", "archive", "guides", "meetings", "All pages"]);
   await expect(navLinks(page).nth(0)).toHaveAttribute("href", "/folders/handbook");
   await expect(navLinks(page).nth(2)).toHaveAttribute("href", "/folders/handbook/guides");
   await expect(navLinks(page).nth(0)).toHaveAttribute("aria-current", "page");
@@ -176,7 +176,7 @@ test("the navigation bar lists the folder and its tabs by name and marks the cur
   await navLinks(page).nth(2).click();
 
   await expect(page).toHaveURL("/folders/handbook/guides");
-  await expect(navLinks(page)).toHaveText(["handbook", "archive", "guides", "meetings"]);
+  await expect(navLinks(page)).toHaveText(["handbook", "archive", "guides", "meetings", "All pages"]);
   await expect(navLinks(page).nth(2)).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("navigation", { name: "Folder" }).locator("[aria-current]")).toHaveCount(1);
   await expect(page.getByRole("link", { name: "New tab" })).toHaveAttribute("href", "/folders/handbook?action=new-tab");

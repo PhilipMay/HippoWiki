@@ -55,7 +55,7 @@ The rules every step follows:
 - [x] Pages in folders
 - [x] Tabs
 - [x] Moving pages
-- [ ] All pages of a folder
+- [x] All pages of a folder
 - [ ] Wrap-up
 
 ## Folders

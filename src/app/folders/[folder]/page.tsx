@@ -10,10 +10,11 @@ import FolderNav from "@/features/folders/components/FolderNav";
 import NameDialog from "@/features/folders/components/NameDialog";
 import { getFolderByName, listTabs } from "@/features/folders/queries";
 import { createPage } from "@/features/pages/actions";
+import AllPagesList from "@/features/pages/components/AllPagesList";
 import NewPageForm from "@/features/pages/components/NewPageForm";
 import PageList from "@/features/pages/components/PageList";
-import { listFolderPages } from "@/features/pages/queries";
-import { folderPath, parseAction } from "@/lib/addresses";
+import { listAllFolderPages, listFolderPages } from "@/features/pages/queries";
+import { folderPath, parseAction, parseView, type SearchParams } from "@/lib/addresses";
 import { pageTitle } from "@/lib/site";
 
 /**
@@ -22,19 +23,35 @@ import { pageTitle } from "@/lib/site";
  */
 const ACTIONS = ["new", "rename", "new-tab"] as const;
 
+/** The views of a folder address: `all` lists all pages of the folder, each with its tab. */
+const VIEWS = ["all"] as const;
+
+/**
+ * The action and the view of the address, or `"invalid"` if either is not one of this address. A view has no actions,
+ * so both together are invalid as well.
+ */
+function parseQuery(searchParams: SearchParams) {
+  const action = parseAction(searchParams, ACTIONS);
+  const view = parseView(searchParams, VIEWS);
+  if (action === "invalid" || view === "invalid" || (action !== null && view !== null)) return "invalid";
+  return { action, view };
+}
+
 export async function generateMetadata({ params, searchParams }: PageProps<"/folders/[folder]">): Promise<Metadata> {
   const folder = await getFolderByName((await params).folder);
-  if (!folder) return { title: pageTitle() };
-  const action = parseAction(await searchParams, ACTIONS);
-  return { title: pageTitle(action === "new" ? "New page" : folder.name) };
+  const query = parseQuery(await searchParams);
+  if (!folder || query === "invalid") return { title: pageTitle() };
+  if (query.action === "new") return { title: pageTitle("New page") };
+  return { title: pageTitle(query.view === "all" ? `All pages – ${folder.name}` : folder.name) };
 }
 
 export default async function FolderPage({ params, searchParams }: PageProps<"/folders/[folder]">) {
   const folder = await getFolderByName((await params).folder);
   if (!folder) notFound();
 
-  const action = parseAction(await searchParams, ACTIONS);
-  if (action === "invalid") notFound();
+  const query = parseQuery(await searchParams);
+  if (query === "invalid") notFound();
+  const { action, view } = query;
 
   if (action === "new") {
     return (
@@ -47,7 +64,7 @@ export default async function FolderPage({ params, searchParams }: PageProps<"/f
     );
   }
 
-  const [tabs, pages] = await Promise.all([listTabs(folder.id), listFolderPages(folder.id)]);
+  const tabs = await listTabs(folder.id);
   const address = folderPath(folder.name);
 
   return (
@@ -65,8 +82,12 @@ export default async function FolderPage({ params, searchParams }: PageProps<"/f
           </Button>
         </Stack>
       </Stack>
-      <FolderNav folderName={folder.name} tabs={tabs} current="folder" />
-      <PageList pages={pages} folderName={folder.name} />
+      <FolderNav folderName={folder.name} tabs={tabs} current={view === "all" ? "all" : "folder"} />
+      {view === "all" ? (
+        <AllPagesList pages={await listAllFolderPages(folder.id)} folderName={folder.name} />
+      ) : (
+        <PageList pages={await listFolderPages(folder.id)} folderName={folder.name} />
+      )}
       {action === "rename" && (
         <NameDialog
           title="Rename folder"

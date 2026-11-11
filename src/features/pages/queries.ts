@@ -33,6 +33,38 @@ export async function listTabPages(tabId: string) {
 export type PageSummary = Awaited<ReturnType<typeof listFolderPages>>[number];
 
 /**
+ * All pages of the folder, without their content, each with its tab: by name and then by tab, pages placed directly
+ * in the folder first.
+ */
+export async function listAllFolderPages(folderId: string) {
+  await connection();
+  const pages = await getDb().page.findMany({
+    where: { folderId },
+    select: { ...SUMMARY_SELECT, tab: { select: { name: true } } },
+    orderBy: [{ name: "asc" }, { tab: { name: "asc" } }],
+  });
+  return directPagesFirst(pages);
+}
+
+export type PageWithTabSummary = Awaited<ReturnType<typeof listAllFolderPages>>[number];
+
+/**
+ * Among pages of the same name, moves the page without a tab to the front. The database sorts a missing tab after all
+ * tab names; the pages are otherwise left in the order given, by name and then by tab.
+ */
+export function directPagesFirst<Entry extends { name: string; tab: unknown }>(pages: Entry[]): Entry[] {
+  const ordered: Entry[] = [];
+  for (const page of pages) {
+    let position = ordered.length;
+    if (page.tab === null) {
+      while (position > 0 && ordered[position - 1].name === page.name) position--;
+    }
+    ordered.splice(position, 0, page);
+  }
+  return ordered;
+}
+
+/**
  * The page with the given name in the given tab of the folder or, with `tabName` `null`, placed directly in the
  * folder, together with its folder and tab. `null` if a name is malformed or no such page exists there. Cached per
  * request, so that `generateMetadata` and the page component share one query.

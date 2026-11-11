@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  allPagesPath,
   folderPath,
   foldersPath,
   pagePath,
   parseAction,
   parseChoice,
   parsePageSegment,
+  parseView,
   tabPath,
 } from "@/lib/addresses";
 
@@ -19,6 +21,10 @@ describe("paths", () => {
   it("builds the address of a folder", () => {
     expect(folderPath("handbook")).toBe("/folders/handbook");
     expect(folderPath("handbook", "rename")).toBe("/folders/handbook?action=rename");
+  });
+
+  it("builds the address of the list of all pages of a folder", () => {
+    expect(allPagesPath("handbook")).toBe("/folders/handbook?view=all");
   });
 
   it("builds the address of a tab", () => {
@@ -96,5 +102,26 @@ describe("parseChoice", () => {
     expect(parseChoice({ view: "all" }, "view", ["all"])).toBe("all");
     expect(parseChoice({ action: "all" }, "view", ["all"])).toBeNull();
     expect(parseChoice({ view: "some" }, "view", ["all"])).toBe("invalid");
+  });
+});
+
+describe("parseView", () => {
+  it("returns null without a view", () => {
+    expect(parseView({}, ["all"])).toBeNull();
+    expect(parseView({ action: "all" }, ["all"])).toBeNull();
+    expect(parseView({})).toBeNull();
+  });
+
+  it("returns an allowed view", () => {
+    expect(parseView({ view: "all" }, ["all"])).toBe("all");
+  });
+
+  it("reports an unknown, empty or repeated view as invalid", () => {
+    for (const view of ["some", "All", ""]) expect(parseView({ view }, ["all"])).toBe("invalid");
+    expect(parseView({ view: ["all", "all"] }, ["all"])).toBe("invalid");
+  });
+
+  it("reports any view as invalid on an address without views", () => {
+    expect(parseView({ view: "all" })).toBe("invalid");
   });
 });
