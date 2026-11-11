@@ -28,7 +28,7 @@ links and breadcrumbs, as in a file browser.
 ## Checklist
 
 - [x] Tab list on the folder address
-- [ ] Breadcrumbs instead of the navigation bar
+- [x] Breadcrumbs instead of the navigation bar
 - [ ] Wrap-up
 
 ## Tab list on the folder address

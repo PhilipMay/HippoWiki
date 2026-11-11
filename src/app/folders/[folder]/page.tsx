@@ -6,7 +6,7 @@ import { notFound } from "next/navigation";
 
 import Link from "@/components/Link";
 import { createTab, renameFolder } from "@/features/folders/actions";
-import FolderNav from "@/features/folders/components/FolderNav";
+import FolderBreadcrumbs from "@/features/folders/components/FolderBreadcrumbs";
 import NameDialog from "@/features/folders/components/NameDialog";
 import TabList from "@/features/folders/components/TabList";
 import { getFolderByName, listTabs } from "@/features/folders/queries";
@@ -67,25 +67,13 @@ export default async function FolderPage({ params, searchParams }: PageProps<"/f
 
   const address = folderPath(folder.name);
 
-  // Until the list of all pages gets its breadcrumb, it keeps the folder heading and the navigation bar.
   if (view === "all") {
-    const tabs = await listTabs(folder.id);
     return (
       <Stack spacing={3}>
-        <Stack direction="row" spacing={2} sx={{ alignItems: "center", justifyContent: "space-between" }}>
-          <Typography variant="h4" component="h1" sx={{ overflowWrap: "anywhere" }}>
-            {folder.name}
-          </Typography>
-          <Stack direction="row" spacing={2} sx={{ flexShrink: 0 }}>
-            <Button component={Link} href={folderPath(folder.name, "rename")} variant="outlined">
-              Rename
-            </Button>
-            <Button component={Link} href={folderPath(folder.name, "new")} variant="contained">
-              New page
-            </Button>
-          </Stack>
-        </Stack>
-        <FolderNav folderName={folder.name} tabs={tabs} current="all" />
+        <FolderBreadcrumbs folderName={folder.name} current="All pages" />
+        <Typography variant="h4" component="h1">
+          All pages
+        </Typography>
         <AllPagesList pages={await listAllFolderPages(folder.id)} folderName={folder.name} />
       </Stack>
     );

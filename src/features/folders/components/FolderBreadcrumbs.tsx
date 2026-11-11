@@ -5,18 +5,19 @@ import Typography from "@mui/material/Typography";
 import Link from "@/components/Link";
 import { folderPath, foldersPath, tabPath } from "@/lib/addresses";
 
-type PageBreadcrumbsProps = {
+type FolderBreadcrumbsProps = {
   folderName: string;
-  /** Name of the page's tab, or `null` for a page placed directly in its folder. */
-  tabName: string | null;
-  pageName: string;
+  /** Name of the tab to link to between the folder and the current entry, or `null` for none. */
+  tabName?: string | null;
+  /** The entry that is shown, e.g. a tab name, "All pages" or a page name with `.md`. */
+  current: string;
 };
 
 /**
- * The way to a page: the folder list, the page's folder, its tab if it has one, and the page name with `.md`, as in
- * its address.
+ * The way back from an entry of a folder: links to the folder list, the folder and the tab if one is given, followed by
+ * the current entry as text. Shown on tab addresses, the list of all pages and page addresses.
  */
-export default function PageBreadcrumbs({ folderName, tabName, pageName }: PageBreadcrumbsProps) {
+export default function FolderBreadcrumbs({ folderName, tabName = null, current }: FolderBreadcrumbsProps) {
   return (
     <Breadcrumbs aria-label="Breadcrumb" sx={{ overflowWrap: "anywhere" }}>
       <MuiLink component={Link} href={foldersPath()} underline="hover" color="inherit">
@@ -31,7 +32,7 @@ export default function PageBreadcrumbs({ folderName, tabName, pageName }: PageB
         </MuiLink>
       )}
       <Typography aria-current="page" sx={{ color: "text.primary" }}>
-        {pageName}.md
+        {current}
       </Typography>
     </Breadcrumbs>
   );

@@ -6,9 +6,9 @@ import { notFound } from "next/navigation";
 
 import Link from "@/components/Link";
 import { renameTab } from "@/features/folders/actions";
-import FolderNav from "@/features/folders/components/FolderNav";
+import FolderBreadcrumbs from "@/features/folders/components/FolderBreadcrumbs";
 import NameDialog from "@/features/folders/components/NameDialog";
-import { getTab, listTabs } from "@/features/folders/queries";
+import { getTab } from "@/features/folders/queries";
 import { createPage } from "@/features/pages/actions";
 import NewPageForm from "@/features/pages/components/NewPageForm";
 import PageList from "@/features/pages/components/PageList";
@@ -77,19 +77,21 @@ export default async function FolderItemPage({ params, searchParams }: Props) {
     );
   }
 
-  const [tabs, pages] = await Promise.all([listTabs(folder.id), listTabPages(tab.id)]);
+  const pages = await listTabPages(tab.id);
 
   return (
     <Stack spacing={3}>
-      <Typography variant="h4" component="h1" sx={{ overflowWrap: "anywhere" }}>
-        {folder.name}
-      </Typography>
-      <FolderNav folderName={folder.name} tabs={tabs} current={{ tab: tab.name }} />
-      <Stack direction="row" spacing={2} sx={{ alignItems: "center", justifyContent: "space-between" }}>
-        <Typography variant="h5" component="h2" sx={{ overflowWrap: "anywhere" }}>
+      <FolderBreadcrumbs folderName={folder.name} current={tab.name} />
+      {/* The buttons move below the heading and wrap on narrow screens instead of overflowing. */}
+      <Stack
+        direction="row"
+        useFlexGap
+        sx={{ alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 2 }}
+      >
+        <Typography variant="h4" component="h1" sx={{ overflowWrap: "anywhere" }}>
           {tab.name}
         </Typography>
-        <Stack direction="row" spacing={2} sx={{ flexShrink: 0 }}>
+        <Stack direction="row" useFlexGap sx={{ flexWrap: "wrap", gap: 2 }}>
           <Button component={Link} href={tabPath(folder.name, tab.name, "rename")} variant="outlined">
             Rename
           </Button>

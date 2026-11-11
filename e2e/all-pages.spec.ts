@@ -11,9 +11,9 @@ test.beforeEach(async () => {
   handbook = await createFolder({ name: "handbook" });
 });
 
-/** The links of the folder's navigation bar, in display order. */
-function navLinks(page: Page) {
-  return page.getByRole("navigation", { name: "Folder" }).getByRole("link");
+/** The breadcrumb of the address. */
+function breadcrumb(page: Page) {
+  return page.getByRole("navigation", { name: "Breadcrumb" });
 }
 
 async function expectNotFound(page: Page, address: string) {
@@ -42,9 +42,14 @@ test("all pages of a folder are listed by name and then by tab, each with its ta
 
   await expect(page).toHaveURL("/folders/handbook?view=all");
   await expect(page).toHaveTitle("All pages – handbook – HippoWiki");
-  await expect(page.getByRole("heading", { level: 1, name: "handbook" })).toBeVisible();
-  await expect(navLinks(page).last()).toHaveAttribute("aria-current", "page");
-  await expect(page.getByRole("navigation", { name: "Folder" }).locator("[aria-current]")).toHaveCount(1);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(["All pages"]);
+  const items = breadcrumb(page).getByRole("listitem");
+  await expect(items).toHaveText(["Folders", "handbook", "All pages"]);
+  await expect(items.nth(2).locator("[aria-current=page]")).toHaveText("All pages");
+  await expect(breadcrumb(page).getByRole("link")).toHaveText(["Folders", "handbook"]);
+  await expect(page.getByRole("navigation", { name: "Folder" })).toHaveCount(0);
+  // The list of all pages has no buttons.
+  await expect(page.getByRole("main").getByRole("link", { name: /^(Rename|New page|New tab)$/ })).toHaveCount(0);
 
   const table = page.getByRole("table", { name: "All pages" });
   await expect(table.getByRole("columnheader")).toHaveText(["Name", "Tab", "Title", "Last update"]);
@@ -83,19 +88,19 @@ test("the list of all pages shows an empty state for a folder without pages", as
     page.getByText("This folder has no pages, neither placed directly in it nor in its tabs."),
   ).toBeVisible();
   await expect(page.getByRole("table")).toHaveCount(0);
-  await expect(navLinks(page)).toHaveText(["handbook", "guides", "All pages"]);
+  await expect(breadcrumb(page).getByRole("listitem")).toHaveText(["Folders", "handbook", "All pages"]);
 });
 
-test("the list of all pages is reached from a tab and left through the folder entry", async ({ page }) => {
+test("the list of all pages is reached from the folder and left through the breadcrumb", async ({ page }) => {
   const guides = await createTab({ folder: handbook, name: "guides" });
   await createPage({ tab: guides, name: "setup", title: "Setup" });
 
-  await page.goto("/folders/handbook/guides");
-  await navLinks(page).last().click();
+  await page.goto("/folders/handbook");
+  await page.getByRole("main").getByRole("link", { name: "All pages" }).click();
   await expect(page).toHaveURL("/folders/handbook?view=all");
   await expect(page.getByRole("table", { name: "All pages" }).getByRole("link")).toHaveText(["setup.md"]);
 
-  await navLinks(page).first().click();
+  await breadcrumb(page).getByRole("link", { name: "handbook" }).click();
   await expect(page).toHaveURL("/folders/handbook");
   await expect(page.getByText("No pages yet")).toBeVisible();
 });

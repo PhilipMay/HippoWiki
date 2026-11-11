@@ -5,12 +5,12 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 
 import Link from "@/components/Link";
+import FolderBreadcrumbs from "@/features/folders/components/FolderBreadcrumbs";
 import NameDialog from "@/features/folders/components/NameDialog";
 import { listTabs } from "@/features/folders/queries";
 import { movePage, renamePage, updatePageContent } from "@/features/pages/actions";
 import MarkdownContent from "@/features/pages/components/MarkdownContent";
 import MovePageDialog from "@/features/pages/components/MovePageDialog";
-import PageBreadcrumbs from "@/features/pages/components/PageBreadcrumbs";
 import PageForm from "@/features/pages/components/PageForm";
 import type { PageWithPlace } from "@/features/pages/queries";
 import { pagePath } from "@/lib/addresses";
@@ -61,7 +61,7 @@ export default async function PageView({ page, action }: PageViewProps) {
 
   return (
     <Stack spacing={2}>
-      <PageBreadcrumbs folderName={folderName} tabName={tabName} pageName={page.name} />
+      <FolderBreadcrumbs folderName={folderName} tabName={tabName} current={`${page.name}.md`} />
       <Paper component="article" variant="outlined" sx={{ p: { xs: 2, sm: 4 } }}>
         <Stack spacing={1} sx={{ mb: 3 }}>
           <Typography variant="body2" color="text.secondary">
