@@ -4,7 +4,8 @@ How the code is tested. Commands are listed in `README.md`.
 
 ## Unit tests
 
-- Vitest; unit tests sit next to the code as `*.test.ts`.
+- Vitest project `unit` (`vitest.config.ts`); unit tests sit next to the code as `*.test.ts`. `npm run test` and
+  `npm run test:coverage` run only this project.
 - Schemas, environment parsing and other pure helpers get unit tests.
 - Server Actions and route handlers get unit tests for the branches the end-to-end tests cannot reach without breaking
   the shared test database, such as database failures and malformed ids. They mock `@/lib/db`, `@/lib/logger`,
@@ -29,6 +30,27 @@ How the code is tested. Commands are listed in `README.md`.
 - `scripts/coverage-summary.ts` (`npx tsx scripts/coverage-summary.ts`) turns `coverage/coverage-summary.json` into
   Markdown tables, the totals and a collapsed table per file: appended to the GitHub job summary when
   `GITHUB_STEP_SUMMARY` is set, printed otherwise.
+
+## Integration tests
+
+- Vitest project `integration` (`vitest.config.ts`); tests live in `integration/` (`npm run test:integration`). They
+  are not part of `npm run check`, which stays fast and needs no Podman.
+- They run against the throwaway test database container of the end-to-end tests (`e2e/support/container.ts`):
+  `integration/global-setup.ts` starts it and applies the migrations, and its teardown removes it. Both runs use the
+  same container name and port, so integration and end-to-end tests must not run at the same time.
+- `integration/setup.ts` runs before every test file: it mocks `@/lib/db` so that `getDb()` returns the client of
+  `getTestDb()`, mocks `connection()` from `next/server`, which throws outside a request, and empties all tables
+  before every test with `resetTestDatabase()`. The test files run one after another (`fileParallelism: false`).
+- Rows are created with the helpers of `e2e/support/database.ts` (`createFolder()`, `createTab()`, `createPage()`).
+- They cover what the unit tests can only mock:
+  - `db-errors.ts` against the errors that Prisma and its `pg` adapter really report: every unique constraint of the
+    schema is recognised by its constant (`FOLDER_NAME`, `TAB_NAME`, `PAGE_NAME`) and by no other, every foreign key
+    violation by `isForeignKeyViolation()`. The actions use the same constants, so a Prisma upgrade that changes the
+    error shape or the index names fails here.
+  - The queries of the features on real data: their conditions (e.g. pages placed directly in a folder versus pages
+    in a tab) and their order.
+- A new unique constraint gets a constant in `db-errors.ts` and a case in `integration/db-errors.test.ts`; a new
+  query with a condition the database must get right gets a case in `integration/queries.test.ts`.
 
 ## End-to-end tests
 
@@ -79,11 +101,12 @@ How the code is tested. Commands are listed in `README.md`.
 
 ## Continuous integration
 
-- GitHub Actions runs the checks in five workflows in `.github/workflows/`, each named like its file, so a failure
+- GitHub Actions runs the checks in six workflows in `.github/workflows/`, each named like its file, so a failure
   shows at a glance which kind of check broke:
   - `format_check`: `npm run format:check`
   - `lint`: `npm run build`, `npm run typecheck`, `npm run lint`, as separate steps in this order
   - `unit_tests`: `npm run test:coverage`
+  - `integration_tests`: `npm run test:integration`, using the Podman preinstalled on the runner
   - `end_to_end_tests`: `npm run test:e2e`, against the development server
   - `end_to_end_tests_production`: `npm run test:e2e:production`, against a production build
 - They run on every push to `main`, on pull requests and when started by hand (`workflow_dispatch`). Pushes to other

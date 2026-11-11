@@ -15,7 +15,7 @@ import {
 } from "@/features/pages/schema";
 import { pagePath } from "@/lib/addresses";
 import { getDb } from "@/lib/db";
-import { isForeignKeyViolation, isUniqueViolation, type UniqueConstraint } from "@/lib/db-errors";
+import { isForeignKeyViolation, isUniqueViolation, PAGE_NAME } from "@/lib/db-errors";
 import { logger } from "@/lib/logger";
 import { NAME_TAKEN_MESSAGE, type NameFormState } from "@/lib/names";
 
@@ -25,12 +25,6 @@ const FOLDER_GONE_MESSAGE = "This folder no longer exists.";
 const TAB_GONE_MESSAGE = "This tab no longer exists.";
 const MOVE_FAILED_MESSAGE = "The page could not be moved. Please try again.";
 const NAME_TAKEN_AT_TARGET_MESSAGE = "A page with this name already exists there";
-
-/**
- * The unique indexes on the page name, as Prisma creates them for `@@unique`: within a tab, and among the pages placed
- * directly in a folder.
- */
-const PAGE_NAME: UniqueConstraint = { indexes: ["Page_tabId_name_key", "Page_folderId_name_key"], field: "name" };
 
 /** The form state that shows "Name is already in use" at the name field. */
 const nameTakenState = { fieldErrors: { name: [NAME_TAKEN_MESSAGE] } };

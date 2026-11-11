@@ -23,6 +23,7 @@ How the code is organised and which patterns new code follows. The technology st
 - `prisma/`: schema, migrations, seed
 - `scripts/`: development scripts (`db.sh`)
 - `e2e/`: Playwright tests
+- `integration/`: Vitest integration tests against the test database
 
 ## Reads and writes
 

@@ -125,6 +125,20 @@ npx playwright show-report   # open the HTML report of the last run
   `resetTestDatabase()` empties it, and `getTestDb()` returns a Prisma client for it. All tests share this database
   and run one after another.
 
+## Integration tests
+
+The integration tests run with Vitest against the same throwaway PostgreSQL container `hippowiki-test-db` as the
+end-to-end tests, and live in `integration/`. They check what the unit tests can only mock: the errors that Prisma
+reports for the unique and foreign key constraints (`src/lib/db-errors.ts`) and the queries of the features on real
+data. Like the end-to-end tests, they need only the Podman machine:
+
+```bash
+npm run test:integration
+```
+
+They are not part of `npm run check`. Do not run them at the same time as the end-to-end tests: both use the same
+container.
+
 ## Unit test coverage
 
 `npm run test:coverage` runs the unit tests, prints a coverage table and writes an HTML report to
@@ -145,6 +159,7 @@ offers the HTML report as the artifact `coverage-report`.
 | `npm run test`                | Run the unit tests with Vitest                                        |
 | `npm run test:coverage`       | Run the unit tests and measure their coverage (report in `coverage/`) |
 | `npm run check`               | Run `format:check`, `lint`, `typecheck` and `test` in a row           |
+| `npm run test:integration`    | Run the integration tests against a throwaway test database           |
 | `npm run test:e2e`            | Run the end-to-end tests with Playwright                              |
 | `npm run test:e2e:ui`         | Run the end-to-end tests in the Playwright UI                         |
 | `npm run test:e2e:production` | Run the end-to-end tests against a production build                   |

@@ -2,29 +2,6 @@
 
 ## Minor
 
-### Database behaviour is only tested through mocks and end-to-end tests
-
-- Location: `src/lib/db-errors.ts`, lines 14–25, `isUniqueViolation`; the unit tests that mock `@/lib/db`
-- Severity: Minor
-- Category: Tests
-- Problem: `isUniqueViolation` depends on the error shape `meta.driverAdapterError.cause.constraint` of the Prisma
-  `pg` adapter, and on index names such as `Page_folderId_name_key`. The unit tests build this shape by hand, so they
-  pass whatever shape Prisma really reports.
-- Impact: If a Prisma upgrade (version 8 is in release candidate) changes the shape or the names, the unit tests stay
-  green. Only the slower end-to-end tests for a taken name notice it, and they show a failed save, not the cause.
-- Evidence:
-
-  ```ts
-  const adapterError = err.meta?.driverAdapterError as
-    { cause?: { constraint?: { index?: string; fields?: string[] } } } | undefined;
-  ```
-
-- Suggestion (optional): Add a small Vitest project for integration tests against the throwaway PostgreSQL container
-  of `e2e/support/container.ts`. It checks `db-errors.ts`, the unique and foreign key constraints and the queries
-  against a real database, and stays out of `npm run check` so that the check stays fast.
-- Alternatives: Rely on the end-to-end tests and add one test per constraint that checks the exact message in the
-  form. Cheaper, but slower to run and to debug.
-
 ### TypeScript could be stricter
 
 - Location: `tsconfig.json`, line 7, `compilerOptions`
@@ -48,9 +25,9 @@
 - Location: `.github/workflows/*.yml`
 - Severity: Nit
 - Category: Performance, security
-- Problem: Each of the five workflows runs `npm ci` on its own. The `lint` workflow and the production end-to-end
+- Problem: Each of the six workflows runs `npm ci` on its own. The `lint` workflow and the production end-to-end
   workflow each create a production build. Actions are pinned by tag (`actions/checkout@v7`), not by commit SHA.
-- Impact: Five installs and two builds per push, and a moved tag would change what runs in CI without a change in the repository.
+- Impact: Six installs and two builds per push, and a moved tag would change what runs in CI without a change in the repository.
 - Suggestion (optional): Pin actions by commit SHA; Dependabot keeps the pins up to date. Whether to merge the
   workflows is a matter of taste: separate workflows show at a glance which check broke, which `testing.md` wants.
 

@@ -10,6 +10,21 @@ export type UniqueConstraint = {
   field: string;
 };
 
+/** The unique index on `Folder.name`, as Prisma creates it for `@unique`. */
+export const FOLDER_NAME: UniqueConstraint = { indexes: ["Folder_name_key"], field: "name" };
+
+/** The unique index on the tab name within its folder, as Prisma creates it for `@@unique`. */
+export const TAB_NAME: UniqueConstraint = { indexes: ["Tab_folderId_name_key"], field: "name" };
+
+/**
+ * The unique indexes on the page name, as Prisma creates them for `@@unique`: within a tab, and among the pages placed
+ * directly in a folder.
+ */
+export const PAGE_NAME: UniqueConstraint = {
+  indexes: ["Page_tabId_name_key", "Page_folderId_name_key"],
+  field: "name",
+};
+
 /**
  * Whether the error is a violation of the given unique constraint. With a driver adapter, Prisma reports the violated
  * constraint in `meta.driverAdapterError.cause.constraint`: as the index name or, if that is unknown, as the fields.

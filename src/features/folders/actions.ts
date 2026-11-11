@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { parseFolderFormData, parseFolderId, parseTabFormData, parseTabId } from "@/features/folders/schema";
 import { folderPath, tabPath } from "@/lib/addresses";
 import { getDb } from "@/lib/db";
-import { isForeignKeyViolation, isUniqueViolation, type UniqueConstraint } from "@/lib/db-errors";
+import { FOLDER_NAME, isForeignKeyViolation, isUniqueViolation, TAB_NAME } from "@/lib/db-errors";
 import { logger } from "@/lib/logger";
 import { NAME_TAKEN_MESSAGE, type NameFormState } from "@/lib/names";
 
@@ -14,12 +14,6 @@ const SAVE_FAILED_MESSAGE = "The folder could not be saved. Please try again.";
 const FOLDER_GONE_MESSAGE = "This folder no longer exists.";
 const TAB_SAVE_FAILED_MESSAGE = "The tab could not be saved. Please try again.";
 const TAB_GONE_MESSAGE = "This tab no longer exists.";
-
-/** The unique index on `Folder.name`, as Prisma creates it for `@unique`. */
-const FOLDER_NAME: UniqueConstraint = { indexes: ["Folder_name_key"], field: "name" };
-
-/** The unique index on the tab name within its folder, as Prisma creates it for `@@unique`. */
-const TAB_NAME: UniqueConstraint = { indexes: ["Tab_folderId_name_key"], field: "name" };
 
 /** The form state that shows "Name is already in use" at the name field. */
 const nameTakenState: NameFormState = { fieldErrors: { name: [NAME_TAKEN_MESSAGE] } };

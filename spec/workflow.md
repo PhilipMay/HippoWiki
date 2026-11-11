@@ -37,7 +37,7 @@ Goal/Build/Test sections as the other steps, and its Build section covers, in th
 
 ## Rules for every step
 
-- A step is done only when `npm run check`, `npm run test:e2e` and `npm run build` pass and its "Test" items have been
+- A step is done only when `npm run check`, `npm run test:integration`, `npm run test:e2e` and `npm run build` pass and its "Test" items have been
   verified.
 - Follow the conventions in `architecture.md` and `testing.md`.
 - When a step adds a package, use its latest stable version and its current documentation instead of older

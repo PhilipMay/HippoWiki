@@ -27,6 +27,7 @@ npm install
 npm run check   # format:check, lint, typecheck, test
 npm run test:coverage  # unit test coverage, report in coverage/
 npm run build
+npm run test:integration  # integration tests against a throwaway database container, needs only Podman
 npm run test:e2e  # end-to-end tests in a throwaway database container, needs only Podman
 npm run test:e2e:production  # the same end-to-end tests against a production build (next build, next start)
 ```
