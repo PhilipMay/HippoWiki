@@ -29,7 +29,7 @@ export default defineConfig({
   webServer: {
     command: `npx next dev --port ${port}`,
     // The server starts before the global setup starts the test database, so readiness must not depend on it. It is
-    // checked on the port: a `url` check would follow the redirect from `/` to `/pages`, which needs the database.
+    // checked on the port: a `url` check would follow the redirect from `/` to `/folders`, which needs the database.
     port,
     env: {
       DATABASE_URL: testDatabaseUrl(),

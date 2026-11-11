@@ -20,9 +20,6 @@ export default function AppHeader() {
           {siteName}
         </Typography>
         <nav aria-label="Main">
-          <Button component={Link} href="/pages" color="inherit">
-            Pages
-          </Button>
           <Button component={Link} href={foldersPath()} color="inherit">
             Folders
           </Button>

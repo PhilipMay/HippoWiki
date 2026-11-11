@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { deriveSlug, titleFromContent } from "@/features/pages/derive";
-import { SLUG_MAX_LENGTH, TITLE_MAX_LENGTH } from "@/features/pages/limits";
-import { SLUG_PATTERN } from "@/features/pages/schema";
+import { deriveName, titleFromContent } from "@/features/pages/derive";
+import { TITLE_MAX_LENGTH } from "@/features/pages/limits";
+import { NAME_MAX_LENGTH, parseName } from "@/lib/names";
 
 describe("titleFromContent", () => {
   it("takes the text of a leading level-one heading", () => {
@@ -94,47 +94,47 @@ describe("titleFromContent", () => {
   });
 });
 
-describe("deriveSlug", () => {
+describe("deriveName", () => {
   it("spells out German umlauts and ß", () => {
-    expect(deriveSlug("Übersicht Größen")).toBe("uebersicht-groessen");
+    expect(deriveName("Übersicht Größen")).toBe("uebersicht-groessen");
   });
 
   it("drops other accents", () => {
-    expect(deriveSlug("Café & Crème")).toBe("cafe-creme");
+    expect(deriveName("Café & Crème")).toBe("cafe-creme");
   });
 
   it("collapses separators and trims hyphens", () => {
-    expect(deriveSlug("  --Hello,   World!--  ")).toBe("hello-world");
+    expect(deriveName("  --Hello,   World!--  ")).toBe("hello-world");
   });
 
   it("returns an empty string when nothing usable is left", () => {
-    expect(deriveSlug("日本語")).toBe("");
-    expect(deriveSlug("")).toBe("");
-    expect(deriveSlug("!?")).toBe("");
+    expect(deriveName("日本語")).toBe("");
+    expect(deriveName("")).toBe("");
+    expect(deriveName("!?")).toBe("");
   });
 
-  it("cuts a long slug at a word boundary", () => {
+  it("cuts a long name at a word boundary", () => {
     const title = Array.from({ length: 20 }, (_, i) => `word${i}`).join(" ");
     expect(title.length).toBeGreaterThanOrEqual(120);
-    const slug = deriveSlug(title);
-    expect(slug.length).toBeLessThanOrEqual(SLUG_MAX_LENGTH);
-    expect(slug).not.toMatch(/-$/);
-    // The slug is a prefix of the uncut slug that ends where a word ends.
+    const name = deriveName(title);
+    expect(name.length).toBeLessThanOrEqual(NAME_MAX_LENGTH);
+    expect(name).not.toMatch(/-$/);
+    // The name is a prefix of the uncut name that ends where a word ends.
     const uncut = title.replaceAll(" ", "-");
-    expect(uncut.startsWith(slug)).toBe(true);
-    expect(uncut[slug.length]).toBe("-");
+    expect(uncut.startsWith(name)).toBe(true);
+    expect(uncut[name.length]).toBe("-");
   });
 
   it("keeps an exactly fitting last word", () => {
     const title = `${"a".repeat(39)} ${"b".repeat(40)} c`;
-    expect(deriveSlug(title)).toBe(`${"a".repeat(39)}-${"b".repeat(40)}`);
+    expect(deriveName(title)).toBe(`${"a".repeat(39)}-${"b".repeat(40)}`);
   });
 
   it("cuts hard when there is no word boundary", () => {
-    expect(deriveSlug("a".repeat(120))).toBe("a".repeat(SLUG_MAX_LENGTH));
+    expect(deriveName("a".repeat(120))).toBe("a".repeat(NAME_MAX_LENGTH));
   });
 
-  it("always produces a valid slug or an empty string", () => {
+  it("always produces a valid name or an empty string", () => {
     for (const title of [
       "Getting started",
       "Über Größen",
@@ -146,9 +146,9 @@ describe("deriveSlug", () => {
       "x".repeat(200),
       `${"word ".repeat(40)}`,
     ]) {
-      const slug = deriveSlug(title);
-      if (slug !== "") expect(slug).toMatch(SLUG_PATTERN);
-      expect(slug.length).toBeLessThanOrEqual(SLUG_MAX_LENGTH);
+      const name = deriveName(title);
+      if (name !== "") expect(parseName(name)).toBe(name);
+      expect(name.length).toBeLessThanOrEqual(NAME_MAX_LENGTH);
     }
   });
 });

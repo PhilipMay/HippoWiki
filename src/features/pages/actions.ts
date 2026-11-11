@@ -3,123 +3,160 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { parsePageFormData, parsePageId, type PageFormState } from "@/features/pages/schema";
-import { Prisma } from "@/generated/prisma/client";
+import { parseFolderId } from "@/features/folders/schema";
+import {
+  parseNewPageFormData,
+  parsePageContentFormData,
+  parsePageId,
+  parsePageNameFormData,
+  type PageFormState,
+} from "@/features/pages/schema";
+import { pagePath } from "@/lib/addresses";
 import { getDb } from "@/lib/db";
+import { isForeignKeyViolation, isUniqueViolation, type UniqueConstraint } from "@/lib/db-errors";
 import { logger } from "@/lib/logger";
+import { NAME_TAKEN_MESSAGE, type NameFormState } from "@/lib/names";
 
 const SAVE_FAILED_MESSAGE = "The page could not be saved. Please try again.";
-const DELETE_FAILED_MESSAGE = "The page could not be deleted. Please try again.";
-const PAGE_GONE_MESSAGE = "This page no longer exists. It may have been deleted.";
-const SLUG_TAKEN_MESSAGE = "Slug is already in use";
+const PAGE_GONE_MESSAGE = "This page no longer exists.";
+const FOLDER_GONE_MESSAGE = "This folder no longer exists.";
 
-/** Name of the unique index on `Page.slug`, as Prisma creates it for `@unique`. */
-const SLUG_INDEX = "Page_slug_key";
+/** The unique index on the page name within its folder, as Prisma creates it for `@@unique`. */
+const PAGE_NAME: UniqueConstraint = { indexes: ["Page_folderId_name_key"], field: "name" };
 
-/**
- * Whether the error is a unique violation on the page slug. With a driver adapter, Prisma reports the violated
- * constraint in `meta.driverAdapterError.cause.constraint`: as the index name or, if that is unknown, as the fields.
- */
-function isSlugTaken(err: unknown): boolean {
-  if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== "P2002") return false;
-  const adapterError = err.meta?.driverAdapterError as
-    { cause?: { constraint?: { index?: string; fields?: string[] } } } | undefined;
-  const constraint = adapterError?.cause?.constraint;
-  return constraint?.index === SLUG_INDEX || (constraint?.fields?.includes("slug") ?? false);
+/** The form state that shows "Name is already in use" at the name field. */
+const nameTakenState = { fieldErrors: { name: [NAME_TAKEN_MESSAGE] } };
+
+/** Revalidates every address under `/folders`, so that a renamed page's old and new address are both covered. */
+function revalidateFolders(): void {
+  revalidatePath("/folders", "layout");
 }
 
-/** The form state that shows "Slug is already in use" at the slug field. */
-const slugTakenState: PageFormState = { fieldErrors: { slug: [SLUG_TAKEN_MESSAGE] } };
+/** What an address is built from: the name of the page and of its folder. */
+const ADDRESS_SELECT = { name: true, folder: { select: { name: true } } } as const;
 
-/**
- * Revalidates every route under `/pages`: the list and the view and edit routes of all slugs, so that a renamed page's
- * old and new address are both covered.
- */
-function revalidatePages(): void {
-  revalidatePath("/pages", "layout");
+type AddressParts = { name: string; folder: { name: string } };
+
+function addressOf({ name, folder }: AddressParts): string {
+  return pagePath(folder.name, null, name);
 }
 
 /**
- * Creates a page from the submitted page form and redirects to its address `/pages/<slug>`. Returns the errors to show
- * in the form if the input is invalid, the slug is taken or the page cannot be stored.
+ * The address of the page with the given id as stored, or `null` if it does not exist. Actions redirect to the stored
+ * address, never to one built from submitted values.
  */
-export async function createPage(_prevState: PageFormState, formData: FormData): Promise<PageFormState> {
-  const input = parsePageFormData(formData);
+async function findPageAddress(pageId: string): Promise<string | null> {
+  const page = await getDb().page.findUnique({ where: { id: pageId }, select: ADDRESS_SELECT });
+  return page && addressOf(page);
+}
+
+/**
+ * Creates a page in the folder with the given id from the submitted editor content and name, and redirects to its
+ * address. Returns the errors to show in the form if the input is invalid, the name is taken, the folder no longer
+ * exists or the page cannot be stored. Bind the folder id with `createPage.bind(null, folderId)`.
+ */
+export async function createPage(
+  folderId: string,
+  _prevState: PageFormState,
+  formData: FormData,
+): Promise<PageFormState> {
+  const parsedFolderId = parseFolderId(folderId);
+  if (!parsedFolderId) return { message: FOLDER_GONE_MESSAGE };
+
+  const input = parseNewPageFormData(formData);
   if (!input.success) return { fieldErrors: input.fieldErrors };
 
-  let id: string;
-  let slug: string;
+  let page: AddressParts & { id: string };
   try {
-    ({ id, slug } = await getDb().page.create({ data: input.data, select: { id: true, slug: true } }));
+    page = await getDb().page.create({
+      data: { ...input.data, folderId: parsedFolderId },
+      select: { id: true, ...ADDRESS_SELECT },
+    });
   } catch (err) {
-    if (isSlugTaken(err)) {
-      logger.warn({ slug: input.data.slug }, "slug of new page already in use");
-      return slugTakenState;
+    if (isUniqueViolation(err, PAGE_NAME)) {
+      logger.warn({ folderId: parsedFolderId, name: input.data.name }, "name of new page already in use");
+      return nameTakenState;
     }
-    logger.error({ err }, "failed to create page");
+    if (isForeignKeyViolation(err)) {
+      logger.warn({ folderId: parsedFolderId }, "folder of new page not found");
+      return { message: FOLDER_GONE_MESSAGE };
+    }
+    logger.error({ err, folderId: parsedFolderId }, "failed to create page");
     return { message: SAVE_FAILED_MESSAGE };
   }
 
-  logger.info({ pageId: id }, "page created");
-  revalidatePages();
+  logger.info({ pageId: page.id }, "page created");
+  revalidateFolders();
   // `redirect` throws, so it must stay outside the try block above.
-  redirect(`/pages/${slug}`);
+  redirect(addressOf(page));
 }
 
 /**
- * Updates the page with the given id from the submitted page form and redirects to its address with the stored, possibly
- * changed slug. Returns the errors to show in the form if the input is invalid, the slug is taken, the page no longer
- * exists or it cannot be stored. Bind the id with `updatePage.bind(null, id)`.
+ * Stores the submitted content of the page with the given id, with the title derived from it, and redirects to the
+ * page. Returns the errors to show in the form if the content is invalid, the page no longer exists or it cannot be
+ * stored. Bind the id with `updatePageContent.bind(null, id)`.
  */
-export async function updatePage(id: string, _prevState: PageFormState, formData: FormData): Promise<PageFormState> {
+export async function updatePageContent(
+  id: string,
+  _prevState: PageFormState,
+  formData: FormData,
+): Promise<PageFormState> {
   const pageId = parsePageId(id);
   if (!pageId) return { message: PAGE_GONE_MESSAGE };
 
-  const input = parsePageFormData(formData);
+  const input = parsePageContentFormData(formData);
   if (!input.success) return { fieldErrors: input.fieldErrors };
 
-  let count: number;
+  let address: string | null;
   try {
     // `updateMany` reports a missing page as a count of 0 instead of throwing; it sets `updatedAt` as well.
-    ({ count } = await getDb().page.updateMany({ where: { id: pageId }, data: input.data }));
+    const { count } = await getDb().page.updateMany({ where: { id: pageId }, data: input.data });
+    address = count === 0 ? null : await findPageAddress(pageId);
   } catch (err) {
-    if (isSlugTaken(err)) {
-      logger.warn({ pageId, slug: input.data.slug }, "slug of updated page already in use");
-      return slugTakenState;
-    }
     logger.error({ err, pageId }, "failed to update page");
     return { message: SAVE_FAILED_MESSAGE };
   }
-  if (count === 0) {
+  if (address === null) {
     logger.warn({ pageId }, "page to update not found");
     return { message: PAGE_GONE_MESSAGE };
   }
 
   logger.info({ pageId }, "page updated");
-  revalidatePages();
-  redirect(`/pages/${input.data.slug}`);
+  revalidateFolders();
+  redirect(address);
 }
 
 /**
- * Deletes the page with the given id and redirects to the list. A page that no longer exists counts as deleted.
- * Returns an error message if the page cannot be deleted. Bind the id with `deletePage.bind(null, id)`.
+ * Renames the page with the given id to the submitted name and redirects to its new address. The content is neither
+ * validated nor touched, so the content limit never blocks a rename. Returns the errors to show in the form if the
+ * name is invalid or taken, the page no longer exists or it cannot be stored. Bind the id with
+ * `renamePage.bind(null, id)`.
  */
-export async function deletePage(id: string): Promise<PageFormState> {
+export async function renamePage(id: string, _prevState: NameFormState, formData: FormData): Promise<NameFormState> {
   const pageId = parsePageId(id);
-  if (pageId) {
-    let count: number;
-    try {
-      ({ count } = await getDb().page.deleteMany({ where: { id: pageId } }));
-    } catch (err) {
-      logger.error({ err, pageId }, "failed to delete page");
-      return { message: DELETE_FAILED_MESSAGE };
+  if (!pageId) return { message: PAGE_GONE_MESSAGE };
+
+  const input = parsePageNameFormData(formData);
+  if (!input.success) return { fieldErrors: input.fieldErrors };
+
+  let address: string | null;
+  try {
+    const { count } = await getDb().page.updateMany({ where: { id: pageId }, data: input.data });
+    address = count === 0 ? null : await findPageAddress(pageId);
+  } catch (err) {
+    if (isUniqueViolation(err, PAGE_NAME)) {
+      logger.warn({ pageId, name: input.data.name }, "name of renamed page already in use");
+      return nameTakenState;
     }
-    if (count === 0) logger.warn({ pageId }, "page to delete not found");
-    else logger.info({ pageId }, "page deleted");
-    revalidatePages();
-  } else {
-    logger.warn({ pageId: id }, "page to delete has a malformed id");
+    logger.error({ err, pageId }, "failed to rename page");
+    return { message: SAVE_FAILED_MESSAGE };
+  }
+  if (address === null) {
+    logger.warn({ pageId }, "page to rename not found");
+    return { message: PAGE_GONE_MESSAGE };
   }
 
-  redirect("/pages");
+  logger.info({ pageId }, "page renamed");
+  revalidateFolders();
+  redirect(address);
 }

@@ -1,5 +1,4 @@
 import Button from "@mui/material/Button";
-import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import type { Metadata } from "next";
@@ -9,15 +8,21 @@ import Link from "@/components/Link";
 import { renameFolder } from "@/features/folders/actions";
 import NameDialog from "@/features/folders/components/NameDialog";
 import { getFolderByName } from "@/features/folders/queries";
+import { createPage } from "@/features/pages/actions";
+import NewPageForm from "@/features/pages/components/NewPageForm";
+import PageList from "@/features/pages/components/PageList";
+import { listFolderPages } from "@/features/pages/queries";
 import { folderPath, parseAction } from "@/lib/addresses";
 import { pageTitle } from "@/lib/site";
 
-/** The actions of a folder address: `rename` opens the "Rename folder" dialog. */
-const ACTIONS = ["rename"] as const;
+/** The actions of a folder address: `new` opens the editor for a new page, `rename` the "Rename folder" dialog. */
+const ACTIONS = ["new", "rename"] as const;
 
-export async function generateMetadata({ params }: PageProps<"/folders/[folder]">): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: PageProps<"/folders/[folder]">): Promise<Metadata> {
   const folder = await getFolderByName((await params).folder);
-  return { title: pageTitle(folder?.name) };
+  if (!folder) return { title: pageTitle() };
+  const action = parseAction(await searchParams, ACTIONS);
+  return { title: pageTitle(action === "new" ? "New page" : folder.name) };
 }
 
 export default async function FolderPage({ params, searchParams }: PageProps<"/folders/[folder]">) {
@@ -27,24 +32,35 @@ export default async function FolderPage({ params, searchParams }: PageProps<"/f
   const action = parseAction(await searchParams, ACTIONS);
   if (action === "invalid") notFound();
 
+  if (action === "new") {
+    return (
+      <Stack spacing={3}>
+        <Typography variant="h4" component="h1">
+          New page
+        </Typography>
+        <NewPageForm action={createPage.bind(null, folder.id)} folderName={folder.name} />
+      </Stack>
+    );
+  }
+
+  const pages = await listFolderPages(folder.id);
+
   return (
     <Stack spacing={3}>
       <Stack direction="row" spacing={2} sx={{ alignItems: "center", justifyContent: "space-between" }}>
         <Typography variant="h4" component="h1" sx={{ overflowWrap: "anywhere" }}>
           {folder.name}
         </Typography>
-        <Button component={Link} href={folderPath(folder.name, "rename")} variant="outlined">
-          Rename
-        </Button>
+        <Stack direction="row" spacing={2} sx={{ flexShrink: 0 }}>
+          <Button component={Link} href={folderPath(folder.name, "rename")} variant="outlined">
+            Rename
+          </Button>
+          <Button component={Link} href={folderPath(folder.name, "new")} variant="contained">
+            New page
+          </Button>
+        </Stack>
       </Stack>
-      <Paper variant="outlined" sx={{ p: 4, textAlign: "center" }}>
-        <Typography variant="h6" component="p" gutterBottom>
-          This folder is empty
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          The content of this folder will be listed here.
-        </Typography>
-      </Paper>
+      <PageList pages={pages} folderName={folder.name} />
       {action === "rename" && (
         <NameDialog
           title="Rename folder"

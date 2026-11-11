@@ -72,16 +72,21 @@ export function createFolder(data: Partial<Prisma.FolderCreateInput> = {}): Prom
   return getTestDb().folder.create({ data: { name: `test-folder-${crypto.randomUUID()}`, ...data } });
 }
 
+/** The fields of a page that `createPage()` can set, and the folder to place it in. */
+type CreatePageData = Partial<Omit<Prisma.PageUncheckedCreateInput, "folderId">> & { folder?: Folder };
+
 /**
- * Creates a page directly in the test database, with a unique slug unless one is given. Like a save through the forms,
- * the title is derived from the content; the content defaults to `# <title>`, so `createPage({ title: "Old" })` gives
- * a page with the content `# Old`. A title given together with content is stored as is, e.g. to set up a page that was
- * stored before titles were derived. Any other field can be overridden, e.g. `updatedAt` to control ordering.
+ * Creates a page directly in the test database, placed directly in the given folder; without one, a new folder is
+ * created for it. The page gets a unique name unless one is given. Like a save through the forms, the title is derived
+ * from the content; the content defaults to `# <title>`, so `createPage({ title: "Old" })` gives a page with the
+ * content `# Old`. A title given together with content is stored as is, e.g. to set up a page that was stored before
+ * titles were derived. Any other field can be overridden, e.g. `updatedAt`.
  */
-export function createPage(data: Partial<Prisma.PageCreateInput> = {}): Promise<Page> {
+export async function createPage({ folder, ...data }: CreatePageData = {}): Promise<Page> {
   const content = data.content ?? `# ${data.title ?? "Test page"}`;
   const title = data.title ?? titleFromContent(content) ?? "Test page";
+  const folderId = (folder ?? (await createFolder())).id;
   return getTestDb().page.create({
-    data: { slug: `test-page-${crypto.randomUUID()}`, ...data, title, content },
+    data: { name: `test-page-${crypto.randomUUID()}`, ...data, title, content, folderId },
   });
 }

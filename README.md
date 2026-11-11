@@ -4,14 +4,14 @@ HippoWiki is a knowledge management system, built with Next.js (App Router) and 
 
 ## What the prototype can do
 
-The prototype manages wiki pages written in Markdown and stores them in PostgreSQL:
+The prototype manages wiki pages written in Markdown, organises them in folders and stores them in PostgreSQL:
 
-- list all pages, most recently updated first,
-- view a page with its Markdown rendered,
-- create, edit and delete pages; deleting asks for confirmation first,
-- create, list and rename folders under `/folders`; pages are not placed in folders yet.
+- create, list and rename folders; every folder has its own address `/folders/<folder>`,
+- list the pages of a folder by name,
+- view a page with its Markdown rendered at `/folders/<folder>/<page>.md`,
+- create, edit and rename pages.
 
-There is a single user and no login.
+Nothing can be deleted yet. There is a single user and no login.
 
 ## Prerequisites
 
@@ -27,7 +27,7 @@ cp .env.example .env   # once; .env stays on your machine
 npm install            # also generates the Prisma client
 npm run db:up
 npm run db:migrate     # apply the migrations to the development database
-npm run db:seed        # optional: insert two sample pages
+npm run db:seed        # optional: insert a sample folder with two sample pages
 npm run dev
 ```
 
@@ -36,8 +36,9 @@ npm run dev
 ### Start and stop in one line
 
 Once `.env` exists and the Podman machine runs (`podman machine start`), this line starts everything needed to try the
-app: it installs the dependencies, starts the database, applies the migrations, inserts the sample pages and starts the
-development server. It can be run again at any time; existing data is kept and the sample pages are not duplicated.
+app: it installs the dependencies, starts the database, applies the migrations, inserts the sample folder with its
+pages and starts the development server. It can be run again at any time; existing data is kept and the samples are not
+duplicated.
 
 ```bash
 source ~/.nvm/nvm.sh && nvm use && npm install && npm run db:up && npm run db:deploy && npm run db:seed && npm run dev
@@ -62,8 +63,8 @@ npm run db:deploy   # create the tables
 npm run dev
 ```
 
-`npm run db:seed` adds two sample pages to try this out. `GET /api/health` returns `{ "status": "ok" }` while the database is reachable
-and status 503 otherwise.
+`npm run db:seed` adds the sample folder `getting-started` with two sample pages to try this out. `GET /api/health`
+returns `{ "status": "ok" }` while the database is reachable and status 503 otherwise.
 
 ## Database
 
@@ -88,7 +89,7 @@ The application accesses the database with [Prisma](https://www.prisma.io/) 7. T
 | `npm run db:generate` | Regenerate the Prisma client; needed after every change to the schema                       |
 | `npm run db:migrate`  | Create and apply a migration from schema changes, e.g. `npm run db:migrate -- --name add-x` |
 | `npm run db:deploy`   | Apply all pending migrations without creating new ones                                      |
-| `npm run db:seed`     | Insert the sample pages from `prisma/seed.ts`; running it again changes nothing             |
+| `npm run db:seed`     | Insert the sample folder and pages from `prisma/seed.ts`; running it again changes nothing  |
 | `npm run db:studio`   | Open Prisma Studio to browse and edit the data                                              |
 
 ## End-to-end tests
@@ -117,7 +118,7 @@ npx playwright show-report   # open the HTML report of the last run
   to `npm run dev`, and stops it after the run.
 - `e2e/support/browser.ts` has `collectErrors()`, which records console errors of the browser page.
 - `e2e/support/database.ts` has helpers for tests: `createFolder()` and `createPage()` insert a folder or a page
-  directly into the test database, `resetTestDatabase()` empties it, and `getTestDb()` returns a Prisma client for it.
+  (in a given or a new folder) directly into the test database, `resetTestDatabase()` empties it, and `getTestDb()` returns a Prisma client for it.
   All tests share this database and run one after another.
 
 ## Commands

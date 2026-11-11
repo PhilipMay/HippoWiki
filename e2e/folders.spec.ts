@@ -46,11 +46,12 @@ test("the folder list shows folders by name and links to them", async ({ page })
   await expect(page).toHaveURL("/folders/handbook");
   await expect(page).toHaveTitle("handbook – HippoWiki");
   await expect(page.getByRole("heading", { level: 1, name: "handbook" })).toBeVisible();
-  await expect(page.getByText("This folder is empty")).toBeVisible();
+  await expect(page.getByText("No pages yet")).toBeVisible();
 });
 
 test("the app bar links to the folder list", async ({ page }) => {
-  await page.goto("/pages");
+  await createFolder({ name: "handbook" });
+  await page.goto("/folders/handbook");
 
   await page.getByRole("banner").getByRole("link", { name: "Folders" }).click();
 
@@ -225,7 +226,7 @@ for (const address of [
   "/folders?action=delete",
   "/folders?action=",
   "/folders?action=new&action=new",
-  "/folders/existing?action=new",
+  "/folders/existing?action=edit",
   "/folders/existing?action=delete",
   "/folders/existing?action=rename&action=rename",
   "/folders/no-such-folder?action=rename",

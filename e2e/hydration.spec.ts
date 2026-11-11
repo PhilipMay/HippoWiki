@@ -11,32 +11,40 @@ test.beforeEach(async () => {
 });
 
 test("the new page form is locked until hydration", async ({ page }) => {
-  await page.goto("/pages/new");
+  await createFolder({ name: "locked-folder" });
+
+  await page.goto("/folders/locked-folder?action=new");
 
   await expect(page.getByLabel("Content")).not.toBeEditable();
   await expect(page.getByRole("button", { name: "Save" })).toBeDisabled();
-  await expect(page.getByRole("link", { name: "Cancel" })).toHaveAttribute("href", "/pages");
+  await expect(page.getByRole("link", { name: "Cancel" })).toHaveAttribute("href", "/folders/locked-folder");
 });
 
 test("the edit form is prefilled and locked until hydration", async ({ page }) => {
-  const created = await createPage({ content: "# Locked page\n\nSome content" });
+  const folder = await createFolder({ name: "locked-folder" });
+  await createPage({ folder, name: "locked-page", content: "# Locked page\n\nSome content" });
 
-  await page.goto(`/pages/${created.slug}/edit`);
+  await page.goto("/folders/locked-folder/locked-page.md?action=edit");
 
-  await expect(page.getByLabel("Slug")).toHaveValue(created.slug);
-  await expect(page.getByLabel("Slug")).not.toBeEditable();
   await expect(page.getByLabel("Content")).toHaveValue("# Locked page\n\nSome content");
   await expect(page.getByLabel("Content")).not.toBeEditable();
   await expect(page.getByRole("button", { name: "Save" })).toBeDisabled();
+  await expect(page.getByRole("link", { name: "Cancel" })).toHaveAttribute(
+    "href",
+    "/folders/locked-folder/locked-page.md",
+  );
 });
 
-test("the delete button of the page view is disabled until hydration", async ({ page }) => {
-  const created = await createPage({ title: "Locked page" });
+test("the page view needs no JavaScript for its controls", async ({ page }) => {
+  const folder = await createFolder({ name: "locked-folder" });
+  await createPage({ folder, name: "locked-page", title: "Locked page" });
 
-  await page.goto(`/pages/${created.slug}`);
+  await page.goto("/folders/locked-folder/locked-page.md");
 
-  await expect(page.getByRole("button", { name: "Delete" })).toBeDisabled();
-  await expect(page.getByRole("link", { name: "Edit" })).toHaveAttribute("href", `/pages/${created.slug}/edit`);
+  const address = "/folders/locked-folder/locked-page.md";
+  await expect(page.getByRole("link", { name: "Edit" })).toHaveAttribute("href", `${address}?action=edit`);
+  await expect(page.getByRole("link", { name: "Rename" })).toHaveAttribute("href", `${address}?action=rename`);
+  await expect(page.getByRole("button")).toHaveCount(0);
 });
 
 test("the name dialog is prefilled and locked until hydration", async ({ page }) => {

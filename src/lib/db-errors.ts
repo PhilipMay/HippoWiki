@@ -22,3 +22,8 @@ export function isUniqueViolation(err: unknown, { indexes, field }: UniqueConstr
   if (constraint?.index !== undefined) return indexes.includes(constraint.index);
   return constraint?.fields?.includes(field) ?? false;
 }
+
+/** Whether the error is a foreign key violation, e.g. a row that refers to a folder that no longer exists. */
+export function isForeignKeyViolation(err: unknown): boolean {
+  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2003";
+}

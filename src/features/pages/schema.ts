@@ -1,7 +1,8 @@
 import { z } from "zod";
 
 import { titleFromContent } from "@/features/pages/derive";
-import { CONTENT_MAX_LENGTH, SLUG_MAX_LENGTH } from "@/features/pages/limits";
+import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
+import { nameSchema, type NameFieldErrors } from "@/lib/names";
 
 /** A page id: a UUID in its canonical 8-4-4-4-12 hex form, as PostgreSQL generates it. */
 export const pageIdSchema = z.guid();
@@ -15,83 +16,97 @@ export function parsePageId(id: string): string | null {
   return result.success ? result.data : null;
 }
 
-/** Lowercase letters and digits in groups joined by single hyphens, e.g. `getting-started`. */
-export const SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
-/** Slugs that cannot name a page, because the address is a route of its own (`/pages/new`). */
-export const RESERVED_SLUGS: readonly string[] = ["new"];
-
-/** The slug of a page: the last part of its address `/pages/<slug>`. */
-export const slugSchema = z
-  .string()
-  .trim()
-  // Abort here, so that an empty slug reports only this error and not also the pattern error.
-  .min(1, { error: "Slug is required", abort: true })
-  .max(SLUG_MAX_LENGTH, `Slug must be at most ${SLUG_MAX_LENGTH} characters`)
-  .regex(SLUG_PATTERN, "Use lowercase letters, digits and single hyphens")
-  .refine((slug) => !RESERVED_SLUGS.includes(slug), "This slug is reserved");
-
-/**
- * Returns the slug if it is a valid page slug, otherwise `null`. Surrounding whitespace makes a slug invalid here, so
- * that every address maps to at most one page.
- */
-export function parsePageSlug(slug: string): string | null {
-  const result = slugSchema.safeParse(slug);
-  return result.success && result.data === slug ? result.data : null;
-}
-
 /** Shown at the content field when the content has no title (see `titleFromContent`). */
 export const TITLE_HEADING_MISSING_MESSAGE = "Content must start with a title heading: # Title";
 
+/** The Markdown source of a page, as entered in the content field. */
+const contentSchema = z
+  .string()
+  .max(CONTENT_MAX_LENGTH, `Content must be at most ${CONTENT_MAX_LENGTH.toLocaleString("en-US")} characters`)
+  // Browsers submit textarea line breaks as CRLF; store the Markdown with plain LF.
+  .transform((content) => content.replace(/\r\n?/g, "\n"));
+
 /**
- * Input for creating or updating a page: slug and content as entered in the page form, plus the title derived from the
- * content. A submitted title is not part of the input; the content is the only source of the title.
+ * Adds the title derived from the content to validated input, or reports the missing title heading at the content
+ * field. A submitted title is never part of the input; the content is the only source of the title.
  */
-export const pageInputSchema = z
-  .object({
-    slug: slugSchema,
-    content: z
-      .string()
-      .max(CONTENT_MAX_LENGTH, `Content must be at most ${CONTENT_MAX_LENGTH.toLocaleString("en-US")} characters`)
-      // Browsers submit textarea line breaks as CRLF; store the Markdown with plain LF.
-      .transform((content) => content.replace(/\r\n?/g, "\n")),
-  })
-  // Runs only when slug and content are valid, so too long content reports only the length error.
-  .transform(({ slug, content }, ctx) => {
-    const title = titleFromContent(content);
-    if (title === null) {
-      ctx.addIssue({ code: "custom", message: TITLE_HEADING_MISSING_MESSAGE, path: ["content"] });
-      return z.NEVER;
-    }
-    return { title, slug, content };
-  });
+function withDerivedTitle<Input extends { content: string }>(input: Input, ctx: z.RefinementCtx) {
+  const title = titleFromContent(input.content);
+  if (title === null) {
+    ctx.addIssue({ code: "custom", message: TITLE_HEADING_MISSING_MESSAGE, path: ["content"] });
+    return z.NEVER;
+  }
+  return { ...input, title };
+}
 
-/** A validated page: the derived title, the slug and the content. */
-export type PageInput = z.output<typeof pageInputSchema>;
+/**
+ * Input for editing a page: the content as entered in the page form, plus the title derived from it. The name is not
+ * part of the form; a page is renamed in its own dialog.
+ */
+export const pageContentInputSchema = z
+  .object({ content: contentSchema })
+  // Runs only when the content is valid, so too long content reports only the length error.
+  .transform(withDerivedTitle);
 
-/** The values of the page form, as entered. */
-export type PageFormValues = z.input<typeof pageInputSchema>;
+/**
+ * Input for a new page: the content of the editor and the name asked for in the save dialog, plus the title derived
+ * from the content.
+ */
+export const newPageInputSchema = z
+  .object({ name: nameSchema, content: contentSchema })
+  // Runs only when name and content are valid, so too long content reports only the length error.
+  .transform(withDerivedTitle);
 
-export type PageFieldErrors = Partial<Record<keyof PageFormValues, string[]>>;
+/** Input for renaming a page: its new name. The content is not validated or touched. */
+export const pageNameInputSchema = z.object({ name: nameSchema });
 
-/** State of the page form between submissions: errors from the last attempt, if any. */
+/** A validated edit of a page: the derived title and the content. */
+export type PageContentInput = z.output<typeof pageContentInputSchema>;
+/** A validated new page: the name, the derived title and the content. */
+export type NewPageInput = z.output<typeof newPageInputSchema>;
+/** A validated page name. */
+export type PageNameInput = z.output<typeof pageNameInputSchema>;
+
+export type PageFieldErrors = { name?: string[]; content?: string[] };
+
+/** State of a page form between submissions: errors from the last attempt, if any. */
 export type PageFormState = {
   fieldErrors?: PageFieldErrors;
   /** An error that is not about a single field, e.g. when the database is unreachable. */
   message?: string;
 };
 
-export type ParsePageInputResult =
-  { success: true; data: PageInput } | { success: false; fieldErrors: PageFieldErrors };
+/** A Server Action behind a page form; it returns the errors to show, or redirects on success. */
+export type PageFormAction = (prevState: PageFormState, formData: FormData) => Promise<PageFormState>;
+
+type ParseResult<Data, FieldErrors> = { success: true; data: Data } | { success: false; fieldErrors: FieldErrors };
 
 /**
- * Validates the fields of a submitted page form and derives the title from the content. Missing fields count as empty;
- * a submitted `title` field is ignored.
+ * Validates the content of a submitted page form and derives the title from it. A missing field counts as empty;
+ * submitted `title` and `name` fields are ignored.
  */
-export function parsePageFormData(formData: FormData): ParsePageInputResult {
-  const result = pageInputSchema.safeParse({
-    slug: formData.get("slug") ?? "",
+export function parsePageContentFormData(formData: FormData): ParseResult<PageContentInput, PageFieldErrors> {
+  const result = pageContentInputSchema.safeParse({ content: formData.get("content") ?? "" });
+  if (result.success) return { success: true, data: result.data };
+  return { success: false, fieldErrors: z.flattenError(result.error).fieldErrors };
+}
+
+/**
+ * Validates name and content of a submitted new page form and derives the title from the content. Missing fields
+ * count as empty; a submitted `title` field is ignored.
+ */
+export function parseNewPageFormData(formData: FormData): ParseResult<NewPageInput, PageFieldErrors> {
+  const result = newPageInputSchema.safeParse({
+    name: formData.get("name") ?? "",
     content: formData.get("content") ?? "",
   });
+  if (result.success) return { success: true, data: result.data };
+  return { success: false, fieldErrors: z.flattenError(result.error).fieldErrors };
+}
+
+/** Validates the name of a submitted rename form. A missing field counts as empty; other fields are ignored. */
+export function parsePageNameFormData(formData: FormData): ParseResult<PageNameInput, NameFieldErrors> {
+  const result = pageNameInputSchema.safeParse({ name: formData.get("name") ?? "" });
   if (result.success) return { success: true, data: result.data };
   return { success: false, fieldErrors: z.flattenError(result.error).fieldErrors };
 }

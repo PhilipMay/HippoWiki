@@ -1,4 +1,4 @@
-// Pure helpers that derive the title and suggest a slug for a page. Used by Client Components, so no server-only
+// Pure helpers that derive the title and suggest a name for a page. Used by Client Components, so no server-only
 // imports.
 
 import { fromMarkdown } from "mdast-util-from-markdown";
@@ -6,7 +6,8 @@ import { gfmFromMarkdown } from "mdast-util-gfm";
 import { toString as mdastToString } from "mdast-util-to-string";
 import { gfm } from "micromark-extension-gfm";
 
-import { SLUG_MAX_LENGTH, TITLE_MAX_LENGTH } from "@/features/pages/limits";
+import { TITLE_MAX_LENGTH } from "@/features/pages/limits";
+import { NAME_MAX_LENGTH } from "@/lib/names";
 
 /**
  * Returns the page title of the Markdown content, or `null` if it has none. The content must start, after optional
@@ -57,12 +58,12 @@ function trimHyphens(text: string): string {
 }
 
 /**
- * Turns a title into a slug: German umlauts and ß are spelled out, other accents dropped, everything else than
- * `a-z0-9` becomes a single `-`. A slug longer than `SLUG_MAX_LENGTH` is cut at a word boundary. Returns `""` if
+ * Turns a title into a page name: German umlauts and ß are spelled out, other accents dropped, everything else than
+ * `a-z0-9` becomes a single `-`. A name longer than `NAME_MAX_LENGTH` is cut at a word boundary. Returns `""` if
  * nothing usable is left, e.g. for a title in a non-Latin script.
  */
-export function deriveSlug(title: string): string {
-  let slug = trimHyphens(
+export function deriveName(title: string): string {
+  let name = trimHyphens(
     title
       .replace(/[äöüÄÖÜß]/g, (letter) => GERMAN_LETTERS[letter])
       .normalize("NFKD")
@@ -71,12 +72,12 @@ export function deriveSlug(title: string): string {
       .replace(/[^a-z0-9]+/g, "-"),
   );
 
-  if (slug.length > SLUG_MAX_LENGTH) {
-    // Include one character past the limit: a hyphen there means the first SLUG_MAX_LENGTH characters are whole words.
-    const head = slug.slice(0, SLUG_MAX_LENGTH + 1);
+  if (name.length > NAME_MAX_LENGTH) {
+    // Include one character past the limit: a hyphen there means the first NAME_MAX_LENGTH characters are whole words.
+    const head = name.slice(0, NAME_MAX_LENGTH + 1);
     const boundary = head.lastIndexOf("-");
-    slug = trimHyphens(boundary > 0 ? head.slice(0, boundary) : slug.slice(0, SLUG_MAX_LENGTH));
+    name = trimHyphens(boundary > 0 ? head.slice(0, boundary) : name.slice(0, NAME_MAX_LENGTH));
   }
 
-  return slug;
+  return name;
 }

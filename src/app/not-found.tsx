@@ -3,6 +3,7 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 
 import Link from "@/components/Link";
+import { foldersPath } from "@/lib/addresses";
 
 export default function NotFound() {
   return (
@@ -13,8 +14,8 @@ export default function NotFound() {
       <Typography variant="body1" color="text.secondary">
         The page you are looking for does not exist.
       </Typography>
-      <Button component={Link} href="/pages" variant="contained">
-        Back to pages
+      <Button component={Link} href={foldersPath()} variant="contained">
+        Back to folders
       </Button>
     </Stack>
   );

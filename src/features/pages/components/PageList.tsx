@@ -7,10 +7,21 @@ import Typography from "@mui/material/Typography";
 
 import Link from "@/components/Link";
 import type { PageSummary } from "@/features/pages/queries";
+import { pagePath } from "@/lib/addresses";
 import { formatDateTime } from "@/lib/format";
 
-/** The list of pages, each linking to its page view, or an empty state when there are none. */
-export default function PageList({ pages }: { pages: PageSummary[] }) {
+type PageListProps = {
+  /** The pages to list, in display order. */
+  pages: PageSummary[];
+  /** Name of the folder the pages live in, for their addresses. */
+  folderName: string;
+};
+
+/**
+ * The pages placed directly in a folder, each with its title, its name and its last update and linking to its page,
+ * or an empty state when there are none.
+ */
+export default function PageList({ pages, folderName }: PageListProps) {
   if (pages.length === 0) {
     return (
       <Paper variant="outlined" sx={{ p: 4, textAlign: "center" }}>
@@ -18,7 +29,7 @@ export default function PageList({ pages }: { pages: PageSummary[] }) {
           No pages yet
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Pages you create will be listed here. Start with “New page”.
+          Pages you create here will be listed. Start with “New page”.
         </Typography>
       </Paper>
     );
@@ -29,14 +40,16 @@ export default function PageList({ pages }: { pages: PageSummary[] }) {
       <List disablePadding aria-label="Pages">
         {pages.map((page, index) => (
           <ListItem key={page.id} disablePadding divider={index < pages.length - 1}>
-            <ListItemButton component={Link} href={`/pages/${page.slug}`}>
+            <ListItemButton component={Link} href={pagePath(folderName, null, page.name)}>
               <ListItemText
                 primary={page.title}
                 secondary={
                   <>
-                    Updated <time dateTime={page.updatedAt.toISOString()}>{formatDateTime(page.updatedAt)}</time>
+                    {page.name}.md · Updated{" "}
+                    <time dateTime={page.updatedAt.toISOString()}>{formatDateTime(page.updatedAt)}</time>
                   </>
                 }
+                slotProps={{ primary: { sx: { overflowWrap: "anywhere" } } }}
               />
             </ListItemButton>
           </ListItem>
