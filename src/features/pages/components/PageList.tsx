@@ -1,14 +1,9 @@
 import List from "@mui/material/List";
-import ListItem from "@mui/material/ListItem";
-import ListItemButton from "@mui/material/ListItemButton";
-import ListItemText from "@mui/material/ListItemText";
 import Paper from "@mui/material/Paper";
 import Typography from "@mui/material/Typography";
 
-import Link from "@/components/Link";
+import PageListItem from "@/features/pages/components/PageListItem";
 import type { PageSummary } from "@/features/pages/queries";
-import { pagePath } from "@/lib/addresses";
-import { formatDateTime } from "@/lib/format";
 
 type PageListProps = {
   /** The pages to list, in display order. */
@@ -41,20 +36,13 @@ export default function PageList({ pages, folderName, tabName = null }: PageList
     <Paper variant="outlined">
       <List disablePadding aria-label="Pages">
         {pages.map((page, index) => (
-          <ListItem key={page.id} disablePadding divider={index < pages.length - 1}>
-            <ListItemButton component={Link} href={pagePath(folderName, tabName, page.name)}>
-              <ListItemText
-                primary={page.title}
-                secondary={
-                  <>
-                    {page.name}.md · Updated{" "}
-                    <time dateTime={page.updatedAt.toISOString()}>{formatDateTime(page.updatedAt)}</time>
-                  </>
-                }
-                slotProps={{ primary: { sx: { overflowWrap: "anywhere" } } }}
-              />
-            </ListItemButton>
-          </ListItem>
+          <PageListItem
+            key={page.id}
+            page={page}
+            folderName={folderName}
+            tabName={tabName}
+            divider={index < pages.length - 1}
+          />
         ))}
       </List>
     </Paper>

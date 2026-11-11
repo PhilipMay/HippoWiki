@@ -23,7 +23,7 @@ separate "Tabs" section.
 
 ## Checklist
 
-- [ ] Page icon
+- [x] Page icon
 - [ ] One folder list
 - [ ] Wrap-up
 
