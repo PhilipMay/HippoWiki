@@ -17,6 +17,9 @@ How new features are planned, built and finished.
 
 - The steps build on each other and are worked through in order. The call that implements a step ticks it off in the
   checklist once the step is done (see "Rules for every step").
+- Once the step is done and ticked off, the same call commits all of the step's changes, including the updated step
+  file, as one Git commit on the current branch, without asking first. The message is a short lowercase summary of what
+  the step does, for example `add search index`. A step that is not done is not committed.
 - If a step shows that the plan needs to change (a missing step, a wrong order, a wrong assumption), the step file is
   updated first and the change is mentioned; then the work continues. Changes to the scope need the user's approval.
 

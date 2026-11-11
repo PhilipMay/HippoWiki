@@ -54,3 +54,4 @@ This applies to code reviews and to reviews of documents such as the files in `s
 - Do not look at the Git history, and do not mention how something used to be in an earlier commit.
 - Do not create branches or pull requests.
 - Do not ask whether something should be committed or pushed, and do not offer to do so.
+- After each finished step of a step plan, commit as described in `spec/workflow.md`.
