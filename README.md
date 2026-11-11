@@ -106,8 +106,9 @@ npx playwright install chromium
 The tests need only the Podman machine (`podman machine start`); they bring their own database:
 
 ```bash
-npm run test:e2e      # run all end-to-end tests
-npm run test:e2e:ui   # open the Playwright UI to run and debug tests
+npm run test:e2e              # run all end-to-end tests against the development server
+npm run test:e2e:production   # run them against a production build (next build, next start)
+npm run test:e2e:ui           # open the Playwright UI to run and debug tests
 npx playwright show-report   # open the HTML report of the last run
 ```
 
@@ -117,7 +118,9 @@ npx playwright show-report   # open the HTML report of the last run
   run is killed hard and leaves the container behind, the next run removes it first. The development database and
   its container `hippowiki-db` are never touched, and do not need to run.
 - Playwright starts its own development server on port 3100 with the build directory `.next-e2e`, so it can run next
-  to `npm run dev`, and stops it after the run.
+  to `npm run dev`, and stops it after the run. `npm run test:e2e:production` builds the app and starts the
+  production server instead, to test what only a production build does, such as prerendering and caching; it takes
+  longer because of the build.
 - `e2e/support/browser.ts` has `collectErrors()`, which records console errors of the browser page.
 - `e2e/support/database.ts` has helpers for tests: `createFolder()`, `createTab()` and `createPage()` insert a folder,
   a tab or a page (in a given folder or tab, or in a new folder) directly into the test database,
@@ -132,17 +135,18 @@ offers the HTML report as the artifact `coverage-report`.
 
 ## Commands
 
-| Command                 | Description                                                           |
-| ----------------------- | --------------------------------------------------------------------- |
-| `npm run dev`           | Start the development server                                          |
-| `npm run build`         | Create a production build                                             |
-| `npm run start`         | Serve the production build                                            |
-| `npm run lint`          | Lint with ESLint                                                      |
-| `npm run format`        | Format all files with Prettier                                        |
-| `npm run format:check`  | Check formatting without changing files                               |
-| `npm run typecheck`     | Generate the Next.js route types and run the type checker             |
-| `npm run test`          | Run the unit tests with Vitest                                        |
-| `npm run test:coverage` | Run the unit tests and measure their coverage (report in `coverage/`) |
-| `npm run check`         | Run `format:check`, `lint`, `typecheck` and `test` in a row           |
-| `npm run test:e2e`      | Run the end-to-end tests with Playwright                              |
-| `npm run test:e2e:ui`   | Run the end-to-end tests in the Playwright UI                         |
+| Command                       | Description                                                           |
+| ----------------------------- | --------------------------------------------------------------------- |
+| `npm run dev`                 | Start the development server                                          |
+| `npm run build`               | Create a production build                                             |
+| `npm run start`               | Serve the production build                                            |
+| `npm run lint`                | Lint with ESLint                                                      |
+| `npm run format`              | Format all files with Prettier                                        |
+| `npm run format:check`        | Check formatting without changing files                               |
+| `npm run typecheck`           | Generate the Next.js route types and run the type checker             |
+| `npm run test`                | Run the unit tests with Vitest                                        |
+| `npm run test:coverage`       | Run the unit tests and measure their coverage (report in `coverage/`) |
+| `npm run check`               | Run `format:check`, `lint`, `typecheck` and `test` in a row           |
+| `npm run test:e2e`            | Run the end-to-end tests with Playwright                              |
+| `npm run test:e2e:ui`         | Run the end-to-end tests in the Playwright UI                         |
+| `npm run test:e2e:production` | Run the end-to-end tests against a production build                   |
