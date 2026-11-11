@@ -1,40 +1,5 @@
 # HippoWiki – Project Review
 
-A review of the project setup: configuration, linting, type checking, test strategy and continuous integration. The
-issues follow the structure in `issue-report.md`. Nothing in this review has been changed in the code yet.
-
-## Summary
-
-The setup is very good. There are no blockers, 2 major issues, 6 minor issues and 3 nits.
-
-- `npm run lint` passes without findings, and the 264 unit tests pass in under a second.
-- `npm audit --omit=dev` finds no vulnerabilities in the production dependencies.
-- The end-to-end tests and the production build were not run for this review.
-
-The two major issues are about what the checks cannot see: the end-to-end tests never run a production build, and the
-linter does not catch a forgotten `await`. The minor issues and nits are about making the tooling enforce what the
-specs already say, and about keeping dependencies and documentation up to date.
-
-## What is good
-
-These parts are worth keeping as they are:
-
-- The specs in `spec/` are precise and match the code closely. The conventions in `architecture.md` and `testing.md`
-  are followed throughout.
-- The end-to-end tests bring their own throwaway database: in memory (`--tmpfs`, `fsync=off`), started by the global
-  setup and removed by the global teardown, also after a failed setup. Several guards keep the tests away from the
-  development database: `testDatabaseUrl()` refuses a URL that points to the test database, `resetTestDatabase()`
-  checks the name of the connected database before it empties it, and `reuseExistingServer: false` never attaches to a
-  server someone else started.
-- `HydrationMarker` and the shared `test` fixture in `e2e/support/test.ts`, enforced by a `no-restricted-imports` rule,
-  remove the most common cause of flaky Next.js end-to-end tests. No test waits for a fixed time.
-- `failOnFlakyTests` together with retries in CI makes flaky tests visible in the report without hiding failures.
-- The unit tests focus on the branches the end-to-end tests cannot reach (database failures, malformed ids,
-  `connection()`), instead of repeating them.
-- The database enforces the content rules itself: the composite foreign key keeps a page's tab in the page's folder,
-  and the partial unique index covers the names of pages placed directly in a folder.
-- The workflows use minimal permissions, cancel outdated runs and upload their reports also when tests fail.
-
 ## Major
 
 ### End-to-end tests never exercise a production build
