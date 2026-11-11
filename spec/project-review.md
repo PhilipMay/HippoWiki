@@ -59,17 +59,6 @@
 - Alternatives: Rely on the end-to-end tests and add one test per constraint that checks the exact message in the
   form. Cheaper, but slower to run and to debug.
 
-### `tech.md` lists features that are not built yet
-
-- Location: `spec/tech.md`, "Data & Backend"
-- Severity: Minor
-- Category: Docs
-- Problem: Authentication and full-text search are listed as part of the stack, next to the parts that exist.
-- Impact: A reader, or an agent following the specs, assumes a login and a search exist and may build on them.
-- Evidence: "Authentication: Better Auth" and "for search use Postgres full-text search", while `README.md` says
-  "There is a single user and no login."
-- Suggestion (optional): Mark both as planned, or move them to "Later Aspects".
-
 ### TypeScript could be stricter
 
 - Location: `tsconfig.json`, line 7, `compilerOptions`
