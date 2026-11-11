@@ -9,7 +9,8 @@ How the code is organised and which patterns new code follows. The technology st
 - `src/components/`: shared UI components (app bar, `Link`)
 - `src/lib/`: cross-cutting modules (`env.ts`, `db.ts`, `logger.ts`, `theme.ts`, `site.ts`, `format.ts`)
 - `src/features/<feature>/`: everything about one feature – `schema.ts`, `queries.ts`, `actions.ts`, `components/`
-  and pure helpers such as `derive.ts` for pages (no server-only imports, so Client Components can use them)
+  and pure helpers such as `derive.ts` and `limits.ts` for pages (no server-only imports, so Client Components can use
+  them). `limits.ts` holds the field length limits, so that `schema.ts` can import `derive.ts` without a cycle.
 - `src/generated/prisma/`: the generated Prisma client (`npm run db:generate`), not checked in
 - `prisma/`: schema, migrations, seed
 - `scripts/`: development scripts (`db.sh`)
@@ -60,3 +61,6 @@ How the code is organised and which patterns new code follows. The technology st
 - `sx` props in Server Components are plain objects, because functions cannot cross to Client Components.
 - Browser titles are built with `pageTitle()` from `src/lib/site.ts`.
 - Markdown is rendered with `react-markdown` and GitHub Flavored Markdown; raw HTML is never rendered.
+- Markdown that is analysed instead of rendered, such as the title heading of a page, is parsed with the same parser
+  that `react-markdown` uses (`mdast-util-from-markdown` with `micromark-extension-gfm` and `mdast-util-gfm`, and
+  `mdast-util-to-string` for plain text), so the result matches the rendered page.
