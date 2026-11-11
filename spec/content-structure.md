@@ -103,14 +103,17 @@ Built and parsed in `src/lib/addresses.ts`:
 - `/` redirects to `/folders`; the app bar links to `/folders`.
 - `/folders`: the folders with their last update, each linking to its folder; an empty state when there are none; a
   "New folder" button.
-- `/folders/<folder>`: the folder name as heading with "Rename" and "New page", the navigation bar, and the pages
-  placed directly in the folder; an empty state when there are none.
-- `/folders/<folder>?view=all`: the same heading and navigation bar, and all pages of the folder in a table with name,
-  tab, title and last update, each name linking to its page; an empty state when the folder has no pages at all.
-- `/folders/<folder>/<tab>`: the folder name as heading, the navigation bar with the tab selected, the tab name with
-  "Rename" and "New page", and the pages of the tab; an empty state when there are none.
-- The navigation bar of a folder: the folder itself first, then its tabs, then "All pages", each a link, with the
-  current entry marked; and a "New tab" button.
+- `/folders/<folder>`: the folder name as heading with the buttons "Rename", "All pages", "New tab" and "New page",
+  which wrap on narrow screens; below it the pages placed directly in the folder, with an empty state when there are
+  none; then, if the folder has tabs, the heading "Tabs" and the list of its tabs, each with a folder icon, its name and
+  its last update, linking to the tab. A folder without tabs shows no tab list.
+- `/folders/<folder>?view=all`: the breadcrumb `Folders › <folder> › All pages`, the heading "All pages", and all
+  pages of the folder in a table with name, tab, title and last update, each name linking to its page; an empty state
+  when the folder has no pages at all. The view has no buttons.
+- `/folders/<folder>/<tab>`: the breadcrumb `Folders › <folder> › <tab>`, the tab name as heading with "Rename" and
+  "New page", and the pages of the tab; an empty state when there are none.
+- The breadcrumb (`FolderBreadcrumbs`) links to the folder list, the folder and, on page addresses in a tab, the tab;
+  the current entry follows as text, marked with `aria-current="page"`. The folder address and `/folders` have none.
 - Page addresses are described in `pages.md`.
 - Browser titles are built with `pageTitle()`: "Folders", the folder name, `<tab> – <folder>` and
   `All pages – <folder>`.
@@ -136,6 +139,7 @@ Server Actions in `src/features/folders/actions.ts` (`createFolder`, `renameFold
 
 - Folders, tabs and pages are listed by name, in the order of the database's collation.
 - The page lists of a folder and of a tab show title, name with `.md` and last update.
+- The tab list of a folder shows name and last update of each tab.
 - The list of all pages of a folder is ordered by name and then by tab; among pages of the same name, the one placed
   directly in the folder comes first.
 - Lists show names and metadata only, never page content.

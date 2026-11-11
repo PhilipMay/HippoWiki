@@ -4,7 +4,7 @@
 
 - Language: TypeScript
 - Framework: Next.js (React, Node.js) with the App Router
-- UI library: Material UI
+- UI library: Material UI, with the icons of `@mui/icons-material`
 
 ## Data & Backend
 

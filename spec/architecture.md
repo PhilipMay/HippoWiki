@@ -93,8 +93,8 @@ How the code is organised and which patterns new code follows. The technology st
 - Every page is rendered inside the root layout: Material UI with its App Router cache provider, the theme from
   `src/lib/theme.ts`, `CssBaseline`, the app bar and a centered content container.
 - Components are Server Components unless they need interaction; then they are small Client Components.
-- Material UI components are imported per path (`@mui/material/Button`). Links use `@/components/Link` as
-  `component={Link}`.
+- Material UI components and icons are imported per path (`@mui/material/Button`, `@mui/icons-material/Folder`).
+  Links use `@/components/Link` as `component={Link}`.
 - `sx` props in Server Components are plain objects, because functions cannot cross to Client Components.
 - Forms focus the field the user most likely edits first. When the server rejects a save with field errors, the first
   field with an error is focused; errors that only show a message above the form leave the focus where it is.
@@ -133,7 +133,7 @@ How the code is organised and which patterns new code follows. The technology st
     paths. Imports within a group are not sorted by the rule.
   - `no-restricted-properties`: `process.env` is not read in `src/`, except in `src/lib/env.ts` and
     `src/lib/logger.ts`. Configuration files, `e2e/` and `scripts/` read it directly.
-  - `no-restricted-imports`: the barrel import `@mui/material` is not allowed in `src/`.
+  - `no-restricted-imports`: the barrel imports `@mui/material` and `@mui/icons-material` are not allowed in `src/`.
   - `no-console`: server code (`src/features/**/actions.ts`, `src/features/**/queries.ts`, `src/app/api/`, `src/lib/`)
     does not use `console`. The client error boundaries `src/app/error.tsx` and `global-error.tsx` log with
     `console.error`, because the pino logger runs only on the server.

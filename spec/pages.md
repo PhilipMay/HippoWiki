@@ -69,11 +69,12 @@ same views; actions are given as `?action=<action>` (see `content-structure.md`)
   time the dialog opens and focused once it has opened; below the name it shows the address the page will get. Errors
   from the server are shown in the open dialog; "Cancel" in the dialog closes it and keeps the content. Saving shows
   the new page.
-- The page address: a breadcrumb with the folder list, the folder, the tab if the page has one, and the page name with
-  `.md`. Below it the last update and "Edit", "Rename" and "Move" above a divider, then the rendered Markdown (GitHub
-  Flavored Markdown, raw HTML shown as text, unsafe link URLs removed). The stored title is not shown; the content's
-  `#` heading is the page's only level-one heading. Markdown headings are drawn two Typography sizes smaller than their
-  tag (`h1` as `h3`, which is the size page titles had). The browser tab uses the stored title.
+- The page address: the folder breadcrumb (see `content-structure.md`) with the folder list, the folder, the tab if
+  the page has one, and the page name with `.md`. Below it the last update and "Edit", "Rename" and "Move" above a
+  divider, then the rendered Markdown (GitHub Flavored Markdown, raw HTML shown as text, unsafe link URLs removed). The
+  stored title is not shown; the content's `#` heading is the page's only level-one heading. Markdown headings are
+  drawn two Typography sizes smaller than their tag (`h1` as `h3`, which is the size page titles had). The browser tab
+  uses the stored title.
 - `?action=edit`: the page form with the content only, prefilled; there is no title or name field. The form opens with
   the cursor at the start of the content. Saving derives the title again and shows the page; content without a title
   or above the limit shows the error at the content field, keeps the entered content and focuses the field.
