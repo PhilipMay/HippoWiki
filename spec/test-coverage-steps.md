@@ -24,7 +24,7 @@ of the forms, which the end-to-end tests rely on but never check. The behaviour 
 
 - [x] Action unit tests
 - [x] Health route unit tests
-- [ ] Hydration lock end-to-end tests
+- [x] Hydration lock end-to-end tests
 - [ ] Wrap-up
 
 ## Action unit tests
