@@ -113,3 +113,14 @@ How the code is organised and which patterns new code follows. The technology st
 - Markdown that is analysed instead of rendered, such as the title heading of a page, is parsed with the same parser
   that `react-markdown` uses (`mdast-util-from-markdown` with `micromark-extension-gfm` and `mdast-util-gfm`, and
   `mdast-util-to-string` for plain text), so the result matches the rendered page.
+
+## Linting
+
+- ESLint uses the rules of `eslint-config-next` (`core-web-vitals`, `typescript`) and Prettier's config, which turns off
+  the rules that conflict with formatting.
+- TypeScript files are linted with type information (`parserOptions.projectService`). These rules report a promise that
+  is neither awaited nor handled (`no-floating-promises`), a promise passed where no promise is expected
+  (`no-misused-promises`), `await` on a value that is not a promise (`await-thenable`) and a `switch` over a union that
+  misses a case (`switch-exhaustiveness-check`). A promise that is deliberately not awaited is marked with `void` and a
+  comment saying why.
+- The rules for the end-to-end tests are described in `testing.md`.

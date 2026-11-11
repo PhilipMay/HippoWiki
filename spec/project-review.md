@@ -1,29 +1,5 @@
 # HippoWiki – Project Review
 
-## Major
-
-### No type-aware lint rules and no Playwright lint rules
-
-- Location: `eslint.config.mjs`, lines 6–10
-- Severity: Major
-- Category: Tests, correctness
-- Problem: Only `eslint-config-next/core-web-vitals` and `eslint-config-next/typescript` are active. Neither runs
-  rules that need type information, so nothing reports a promise that is not awaited. No rules for Playwright tests are
-  configured either.
-- Impact: Almost all code is asynchronous: Server Actions, Prisma calls and every Playwright step. In an end-to-end
-  test, a missing `await` before `expect(locator)…` lets the test finish before the assertion runs: it passes when it
-  should fail, or fails at random, which is exactly the kind of timing problem the hydration work prevents elsewhere.
-  In a Server Action, a write that is not awaited can still be running when `redirect` throws.
-- Evidence: `npx eslint --print-config` on any spec file shows no `@typescript-eslint/no-floating-promises` rule.
-- Suggestion (required): Enable typed linting with `parserOptions.projectService: true` and add at least
-  `@typescript-eslint/no-floating-promises`, `@typescript-eslint/no-misused-promises`,
-  `@typescript-eslint/await-thenable` and `@typescript-eslint/switch-exhaustiveness-check`. Add
-  `eslint-plugin-playwright` for `e2e/**` with `missing-playwright-await`, `no-wait-for-timeout` and
-  `prefer-web-first-assertions`.
-- Alternatives: Use the whole `recommendedTypeChecked` preset of typescript-eslint. It finds more, but needs more
-  suppressions at first and makes `npm run lint` slower.
-- Reference: typescript-eslint, "Linting with Type Information"; eslint-plugin-playwright rules.
-
 ## Minor
 
 ### Dependencies are neither updated nor audited automatically

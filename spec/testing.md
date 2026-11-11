@@ -65,6 +65,10 @@ How the code is tested. Commands are listed in `README.md`.
     `createPage({ folder, name: "overview" })` for `/folders/<folder>/overview.md`.
   - `getTestDb()` returns a Prisma client for the test database, e.g. to check what an action stored.
   - `collectErrors()` records console errors and uncaught exceptions of the browser page; tests assert it stays empty.
+- `eslint-plugin-playwright` checks all files in `e2e/`: a Playwright call or `expect` that is not awaited
+  (`missing-playwright-await`), `page.waitForTimeout()` (`no-wait-for-timeout`) and checks such as
+  `expect(await locator.isVisible())` instead of the retrying `await expect(locator).toBeVisible()`
+  (`prefer-web-first-assertions`) are errors.
 - Elements are located by role, label and accessible name, not by CSS selectors.
 - A test that simulates a crafted request adds hidden fields to the form, or changes the submitted data in the form's
   `formdata` event. It does not change the value of a control that React renders: React writes that value back
