@@ -14,7 +14,7 @@ import { useActionState, useId, useState } from "react";
 import Link from "@/components/Link";
 import { createPage } from "@/features/pages/actions";
 import { deriveSlug, deriveTitle } from "@/features/pages/derive";
-import { CONTENT_MAX_LENGTH, SLUG_MAX_LENGTH, TITLE_MAX_LENGTH } from "@/features/pages/schema";
+import { CONTENT_MAX_LENGTH, SLUG_MAX_LENGTH, TITLE_MAX_LENGTH } from "@/features/pages/limits";
 
 /**
  * Form for a new page that asks only for the Markdown content. "Save" opens a dialog that asks for title and slug,

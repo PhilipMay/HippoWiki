@@ -1,6 +1,37 @@
-// Pure helpers that suggest a title and a slug for a page. Used by Client Components, so no server-only imports.
+// Pure helpers that derive the title and suggest a slug for a page. Used by Client Components, so no server-only
+// imports.
 
-import { SLUG_MAX_LENGTH, TITLE_MAX_LENGTH } from "@/features/pages/schema";
+import { fromMarkdown } from "mdast-util-from-markdown";
+import { gfmFromMarkdown } from "mdast-util-gfm";
+import { toString as mdastToString } from "mdast-util-to-string";
+import { gfm } from "micromark-extension-gfm";
+
+import { SLUG_MAX_LENGTH, TITLE_MAX_LENGTH } from "@/features/pages/limits";
+
+/**
+ * Returns the page title of the Markdown content, or `null` if it has none. The content must start, after optional
+ * blank lines, with a level-one ATX heading (`# Title`); a setext heading or any other block first does not count.
+ * The content is parsed as GitHub Flavored Markdown, like the page view renders it, and the heading is reduced to
+ * plain text: inline Markdown keeps only its text, images their alt text, and raw HTML stays as typed. Whitespace runs
+ * become a single space, and the text is trimmed and cut to `TITLE_MAX_LENGTH`. A heading whose text has no letter
+ * or digit, such as `#` or `# **`, gives `null`.
+ */
+export function titleFromContent(content: string): string | null {
+  const tree = fromMarkdown(content, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] });
+  const first = tree.children[0];
+  if (first?.type !== "heading" || first.depth !== 1) return null;
+
+  // An ATX heading's source starts with `#` (its position starts after up to three leading spaces); a setext
+  // heading's source starts with its text.
+  const start = first.position?.start.offset;
+  if (start === undefined || content[start] !== "#") return null;
+
+  const title = truncate(mdastToString(first).replace(/\s+/g, " ").trim(), TITLE_MAX_LENGTH);
+  return TITLE_CHARACTER.test(title) ? title : null;
+}
+
+/** A letter or digit in any script; a title needs at least one. */
+const TITLE_CHARACTER = /[\p{L}\p{N}]/u;
 
 const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 const FENCE_CLOSE = /^ {0,3}(`{3,}|~{3,})[ \t]*$/;

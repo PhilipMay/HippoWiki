@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { CONTENT_MAX_LENGTH, SLUG_MAX_LENGTH, TITLE_MAX_LENGTH } from "@/features/pages/limits";
+
 /** A page id: a UUID in its canonical 8-4-4-4-12 hex form, as PostgreSQL generates it. */
 export const pageIdSchema = z.guid();
 
@@ -12,10 +14,6 @@ export function parsePageId(id: string): string | null {
   return result.success ? result.data : null;
 }
 
-export const TITLE_MAX_LENGTH = 200;
-export const CONTENT_MAX_LENGTH = 100_000;
-
-export const SLUG_MAX_LENGTH = 80;
 /** Lowercase letters and digits in groups joined by single hyphens, e.g. `getting-started`. */
 export const SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 /** Slugs that cannot name a page, because the address is a route of its own (`/pages/new`). */

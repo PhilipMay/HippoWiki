@@ -1,7 +1,98 @@
 import { describe, expect, it } from "vitest";
 
-import { deriveSlug, deriveTitle } from "@/features/pages/derive";
-import { SLUG_MAX_LENGTH, SLUG_PATTERN, TITLE_MAX_LENGTH } from "@/features/pages/schema";
+import { deriveSlug, deriveTitle, titleFromContent } from "@/features/pages/derive";
+import { SLUG_MAX_LENGTH, TITLE_MAX_LENGTH } from "@/features/pages/limits";
+import { SLUG_PATTERN } from "@/features/pages/schema";
+
+describe("titleFromContent", () => {
+  it("takes the text of a leading level-one heading", () => {
+    expect(titleFromContent("# Title")).toBe("Title");
+    expect(titleFromContent("# Title\n\nSome text\n\n# Later")).toBe("Title");
+  });
+
+  it("allows blank lines before the heading", () => {
+    expect(titleFromContent("\n\n  \n# Title")).toBe("Title");
+  });
+
+  it("allows up to three leading spaces and a tab after the hash", () => {
+    expect(titleFromContent("   # Indented")).toBe("Indented");
+    expect(titleFromContent("#\tTabbed")).toBe("Tabbed");
+  });
+
+  it("removes a closing sequence", () => {
+    expect(titleFromContent("# Title #")).toBe("Title");
+    expect(titleFromContent("# Title ###   ")).toBe("Title");
+    // Without a space before it, the # belongs to the text.
+    expect(titleFromContent("# C#")).toBe("C#");
+  });
+
+  it("reduces inline Markdown to its text", () => {
+    expect(titleFromContent("# *Emphasis* and **strong**")).toBe("Emphasis and strong");
+    expect(titleFromContent("# ~~Struck~~ text")).toBe("Struck text");
+    expect(titleFromContent("# The `npm run` command")).toBe("The npm run command");
+    expect(titleFromContent("# Read [the guide](https://example.com)")).toBe("Read the guide");
+    expect(titleFromContent("# Logo ![HippoWiki](logo.png)")).toBe("Logo HippoWiki");
+  });
+
+  it("keeps raw HTML as typed text", () => {
+    expect(titleFromContent("# A <b>bold</b> title")).toBe("A <b>bold</b> title");
+  });
+
+  it("collapses whitespace inside the heading", () => {
+    expect(titleFromContent("#   Lots \t of   space   ")).toBe("Lots of space");
+  });
+
+  it("cuts a long heading to the title limit", () => {
+    expect(titleFromContent(`# ${"a".repeat(300)}`)).toBe("a".repeat(TITLE_MAX_LENGTH));
+  });
+
+  it("does not split a surrogate pair at the cut", () => {
+    expect(titleFromContent(`# ${"a".repeat(TITLE_MAX_LENGTH - 1)}😀`)).toBe("a".repeat(TITLE_MAX_LENGTH - 1));
+  });
+
+  it("handles CRLF line breaks", () => {
+    expect(titleFromContent("\r\n# Title\r\nMore text\r\n")).toBe("Title");
+  });
+
+  it("returns null for empty content", () => {
+    expect(titleFromContent("")).toBeNull();
+    expect(titleFromContent("\n \n\t\n")).toBeNull();
+  });
+
+  it("returns null when another block comes before the heading", () => {
+    expect(titleFromContent("Intro text\n\n# Title")).toBeNull();
+    expect(titleFromContent("- item\n\n# Title")).toBeNull();
+    expect(titleFromContent("```\ncode\n```\n\n# Title")).toBeNull();
+    expect(titleFromContent("```\n# Not a title\n```")).toBeNull();
+    expect(titleFromContent("> quote\n\n# Title")).toBeNull();
+    expect(titleFromContent("<div>html</div>\n\n# Title")).toBeNull();
+  });
+
+  it("returns null for headings that are not a level-one ATX heading", () => {
+    expect(titleFromContent("## Section\n\n# Title")).toBeNull();
+    expect(titleFromContent("Title\n=====")).toBeNull();
+    expect(titleFromContent("#NoSpace")).toBeNull();
+    expect(titleFromContent("\\# Title")).toBeNull();
+    expect(titleFromContent("    # Title")).toBeNull();
+  });
+
+  it("returns null for a heading without a letter or digit", () => {
+    expect(titleFromContent("#")).toBeNull();
+    expect(titleFromContent("#   \nText")).toBeNull();
+    expect(titleFromContent("# **")).toBeNull();
+    expect(titleFromContent("# ##")).toBeNull();
+    expect(titleFromContent("# ...")).toBeNull();
+    expect(titleFromContent("# 🎉")).toBeNull();
+    expect(titleFromContent("# ![](logo.png)")).toBeNull();
+  });
+
+  it("accepts a title with a letter or digit in any script", () => {
+    expect(titleFromContent("# 2026")).toBe("2026");
+    expect(titleFromContent("# Über Größen")).toBe("Über Größen");
+    expect(titleFromContent("# 日本語")).toBe("日本語");
+    expect(titleFromContent("# 🎉 Party")).toBe("🎉 Party");
+  });
+});
 
 describe("deriveTitle", () => {
   it("takes the text of a level-one heading", () => {

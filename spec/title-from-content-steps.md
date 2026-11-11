@@ -33,8 +33,8 @@ In scope:
   - Runs of whitespace become a single space, and the text is trimmed.
   - A text longer than 200 characters is cut to 200 without splitting a surrogate pair.
 - Refused content:
-  - Content whose title would be empty is not saved: no title heading, or a heading with no text left, such as `#` or
-    `# **`.
+  - Content without a title is not saved: no title heading, or a heading whose text has no letter or digit (in any
+    script), such as `#`, `# **` or `# ...`.
   - There is no fallback title. The error "Content must start with a title heading: # Title" is shown at the content
     field.
 - Saving:
@@ -68,7 +68,7 @@ Not in scope:
 
 ## Checklist
 
-1. [ ] Title derivation
+1. [x] Title derivation
 2. [ ] Title from content on save
 3. [ ] Page view without title
 4. [ ] Spec update

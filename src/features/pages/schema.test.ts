@@ -1,14 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  CONTENT_MAX_LENGTH,
-  parsePageFormData,
-  parsePageId,
-  parsePageSlug,
-  SLUG_MAX_LENGTH,
-  slugSchema,
-  TITLE_MAX_LENGTH,
-} from "@/features/pages/schema";
+import { CONTENT_MAX_LENGTH, SLUG_MAX_LENGTH, TITLE_MAX_LENGTH } from "@/features/pages/limits";
+import { parsePageFormData, parsePageId, parsePageSlug, slugSchema } from "@/features/pages/schema";
 
 function slugErrors(slug: string): string[] {
   const result = slugSchema.safeParse(slug);

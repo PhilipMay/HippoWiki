@@ -7,13 +7,8 @@ import TextField from "@mui/material/TextField";
 import { useActionState, useState } from "react";
 
 import Link from "@/components/Link";
-import {
-  CONTENT_MAX_LENGTH,
-  SLUG_MAX_LENGTH,
-  TITLE_MAX_LENGTH,
-  type PageFormState,
-  type PageInput,
-} from "@/features/pages/schema";
+import { CONTENT_MAX_LENGTH, SLUG_MAX_LENGTH, TITLE_MAX_LENGTH } from "@/features/pages/limits";
+import { type PageFormState, type PageInput } from "@/features/pages/schema";
 
 type PageFormProps = {
   /** Server Action that stores the page; it returns the errors to show, or redirects on success. */
