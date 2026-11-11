@@ -11,8 +11,7 @@ How new features are planned, built and finished.
 spec/search-steps.md`.
 - The steps build on each other and are worked through in order. A step is ticked off in the checklist when its checks
   pass.
-- When all steps are done, the lasting content of the plan moves into the other spec files (feature spec such as
-  `pages.md`, `architecture.md`, `testing.md`, `roadmap.md`), and the step file is deleted.
+- As a last step the lasting content of the plan moves into the other spec files (at `spec/*`), and the step file is deleted.
 
 ## Rules for every step
 
