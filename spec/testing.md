@@ -11,6 +11,13 @@ How the code is tested. Commands are listed in `README.md`.
   `next/cache` and `next/navigation` with `vi.mock` (shared mock functions from `vi.hoisted`, reset in `beforeEach`);
   the mocked `redirect` throws like the real one, so code after it never runs and tests assert the rejection and its
   path.
+- Queries get unit tests for what the end-to-end tests cannot tell apart: that every query awaits `connection()` before
+  it reads the database (the end-to-end tests run the development server, which never prerenders), that malformed names
+  never reach the database, and the conditions that pick the place of a page. They mock `@/lib/db` and `next/server`.
+  Assertions that only repeat the `select` and `orderBy` of a query are left out.
+- `getDb()` and `getServerEnv()` are tested for creating the client and validating the environment on first use only,
+  not on import. These tests load the module anew for every case (`vi.resetModules()` and a dynamic import), because
+  the modules keep their result.
 - `npm run check` (format, lint, typecheck, unit tests) stays fast and does not include the end-to-end tests.
 - `npm run test:coverage` measures the coverage of the unit tests with `@vitest/coverage-v8` (configured in
   `vitest.config.ts`). It covers all `.ts` and `.tsx` files in `src/` except the tests and `src/generated/`, so files

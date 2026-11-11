@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { parseServerEnv } from "@/lib/env";
 
@@ -39,5 +39,41 @@ describe("parseServerEnv", () => {
 
   it("rejects an unknown NODE_ENV", () => {
     expect(() => parseServerEnv({ DATABASE_URL: databaseUrl, NODE_ENV: "staging" })).toThrow(/NODE_ENV/);
+  });
+});
+
+describe("getServerEnv", () => {
+  // The module keeps the validated environment, so every test loads a fresh copy of it.
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("returns the validated environment from process.env", async () => {
+    vi.stubEnv("DATABASE_URL", databaseUrl);
+    vi.stubEnv("NODE_ENV", "production");
+    const { getServerEnv } = await import("@/lib/env");
+
+    expect(getServerEnv()).toEqual({ DATABASE_URL: databaseUrl, NODE_ENV: "production" });
+  });
+
+  it("validates on first use, not when the module is imported", async () => {
+    vi.stubEnv("DATABASE_URL", "not a url");
+    const { getServerEnv } = await import("@/lib/env");
+
+    expect(() => getServerEnv()).toThrow(/Invalid server environment[^]*DATABASE_URL/);
+  });
+
+  it("validates once and keeps the result", async () => {
+    vi.stubEnv("DATABASE_URL", databaseUrl);
+    const { getServerEnv } = await import("@/lib/env");
+    const env = getServerEnv();
+
+    vi.stubEnv("DATABASE_URL", "not a url");
+
+    expect(getServerEnv()).toBe(env);
   });
 });
