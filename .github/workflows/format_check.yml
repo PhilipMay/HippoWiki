@@ -1,0 +1,32 @@
+name: format_check
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Placeholder, never the test database: only `prisma generate` during `npm ci` reads it (prisma.config.ts requires
+  # it), nothing connects to it. The build needs no database, because every query calls `connection()` and no route
+  # is prerendered.
+  DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+
+jobs:
+  format_check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run format:check
