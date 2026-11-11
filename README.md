@@ -7,8 +7,8 @@ HippoWiki is a knowledge management system, built with Next.js (App Router) and 
 The prototype manages wiki pages written in Markdown, organises them in folders and stores them in PostgreSQL:
 
 - create, list and rename folders; every folder has its own address `/folders/<folder>`,
-- divide a folder into tabs (`/folders/<folder>/<tab>`), listed like sub-folders below the folder's pages; create and
-  rename tabs,
+- divide a folder into tabs (`/folders/<folder>/<tab>`), listed like sub-folders in one list with the folder's pages,
+  after them; create and rename tabs,
 - list the pages placed directly in a folder, the pages of a tab, or all pages of a folder with their tabs, by name,
 - view a page with its Markdown rendered at `/folders/<folder>/<page>.md` or `/folders/<folder>/<tab>/<page>.md`,
 - create, edit and rename pages,

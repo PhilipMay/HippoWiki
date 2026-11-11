@@ -104,14 +104,15 @@ Built and parsed in `src/lib/addresses.ts`:
 - `/folders`: the folders with their last update, each linking to its folder; an empty state when there are none; a
   "New folder" button.
 - `/folders/<folder>`: the folder name as heading with the buttons "Rename", "All pages", "New tab" and "New page",
-  which wrap on narrow screens; below it the pages placed directly in the folder, with an empty state when there are
-  none; then, if the folder has tabs, the heading "Tabs" and the list of its tabs, each with a folder icon, its name and
-  its last update, linking to the tab. A folder without tabs shows no tab list.
+  which wrap on narrow screens; below it one list "Contents" (`FolderContentsList`): first the pages placed directly in
+  the folder, each with a document icon, its title, its name with `.md` and its last update, linking to the page; then
+  its tabs, each with a folder icon, its name and its last update, linking to the tab. Only a folder with neither pages
+  nor tabs shows an empty state instead of the list.
 - `/folders/<folder>?view=all`: the breadcrumb `Folders › <folder> › All pages`, the heading "All pages", and all
   pages of the folder in a table with name, tab, title and last update, each name linking to its page; an empty state
   when the folder has no pages at all. The view has no buttons.
 - `/folders/<folder>/<tab>`: the breadcrumb `Folders › <folder> › <tab>`, the tab name as heading with "Rename" and
-  "New page", and the pages of the tab; an empty state when there are none.
+  "New page", and the pages of the tab, each with a document icon; an empty state when there are none.
 - The breadcrumb (`FolderBreadcrumbs`) links to the folder list, the folder and, on page addresses in a tab, the tab;
   the current entry follows as text, marked with `aria-current="page"`. The folder address and `/folders` have none.
 - Page addresses are described in `pages.md`.
@@ -138,8 +139,9 @@ Server Actions in `src/features/folders/actions.ts` (`createFolder`, `renameFold
 ## Lists and order
 
 - Folders, tabs and pages are listed by name, in the order of the database's collation.
-- The page lists of a folder and of a tab show title, name with `.md` and last update.
-- The tab list of a folder shows name and last update of each tab.
+- The contents list of a folder shows its pages by name, then its tabs by name: pages with title, name with `.md` and
+  last update, tabs with name and last update.
+- The page list of a tab shows title, name with `.md` and last update.
 - The list of all pages of a folder is ordered by name and then by tab; among pages of the same name, the one placed
   directly in the folder comes first.
 - Lists show names and metadata only, never page content.
