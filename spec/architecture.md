@@ -59,6 +59,8 @@ How the code is organised and which patterns new code follows. The technology st
 - Material UI components are imported per path (`@mui/material/Button`). Links use `@/components/Link` as
   `component={Link}`.
 - `sx` props in Server Components are plain objects, because functions cannot cross to Client Components.
+- Forms focus the field the user most likely edits first. When the server rejects a save with field errors, the first
+  field with an error is focused; errors that only show a message above the form leave the focus where it is.
 - Browser titles are built with `pageTitle()` from `src/lib/site.ts`.
 - Markdown is rendered with `react-markdown` and GitHub Flavored Markdown; raw HTML is never rendered.
 - Markdown that is analysed instead of rendered, such as the title heading of a page, is parsed with the same parser

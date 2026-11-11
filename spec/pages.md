@@ -66,9 +66,11 @@ Defined in `src/features/pages/derive.ts` (`titleFromContent`, `deriveSlug`), sh
   (`h1` as `h3`, which is the size page titles had). The browser tab uses the stored title. "Edit" opens the edit form;
   "Delete" asks for confirmation in a dialog that names the page by its stored title, then deletes it and returns to
   the list.
-- `/pages/[slug]/edit`: the page form with slug and content, prefilled; there is no title field. Saving derives the
-  title again and shows the page at its possibly new address; content without a title shows the error at the content
-  field and keeps all entered values. Editing a page that was deleted in the meantime shows an error message.
+- `/pages/[slug]/edit`: the page form with slug and content, prefilled; there is no title field. The form opens with
+  the cursor at the start of the content. Saving derives the title again and shows the page at its possibly new
+  address; content without a title shows the error at the content field and keeps all entered values. After a rejected
+  save the first field with an error (slug before content) is focused. Editing a page that was deleted in the meantime
+  shows an error message and leaves the focus where it is.
 - Unknown or malformed slugs, old UUID addresses and the previous slug of a renamed page show the not-found page.
 - `GET /api/health`: `{ "status": "ok" }` while the database is reachable, status 503 and a logged error otherwise.
 
