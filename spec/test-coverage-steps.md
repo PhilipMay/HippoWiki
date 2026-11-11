@@ -22,7 +22,7 @@ of the forms, which the end-to-end tests rely on but never check. The behaviour 
 
 ## Checklist
 
-- [ ] Action unit tests
+- [x] Action unit tests
 - [ ] Health route unit tests
 - [ ] Hydration lock end-to-end tests
 - [ ] Wrap-up
