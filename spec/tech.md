@@ -20,6 +20,8 @@
 
 - Node.js version management: nvm
 - Package manager: npm
+  - `.npmrc` sets `strict-peer-deps=true`: a peer dependency conflict fails `npm install` and `npm ci` (also in CI)
+    instead of only printing a warning
 - Linting: ESLint (without the Airbnb style guide)
 - Formatting: Prettier
 - Testing: Vitest (unit and integration tests), coverage with `@vitest/coverage-v8`
