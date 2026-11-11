@@ -8,13 +8,14 @@ import Link from "@/components/Link";
 import { createTab, renameFolder } from "@/features/folders/actions";
 import FolderNav from "@/features/folders/components/FolderNav";
 import NameDialog from "@/features/folders/components/NameDialog";
+import TabList from "@/features/folders/components/TabList";
 import { getFolderByName, listTabs } from "@/features/folders/queries";
 import { createPage } from "@/features/pages/actions";
 import AllPagesList from "@/features/pages/components/AllPagesList";
 import NewPageForm from "@/features/pages/components/NewPageForm";
 import PageList from "@/features/pages/components/PageList";
 import { listAllFolderPages, listFolderPages } from "@/features/pages/queries";
-import { folderPath, parseAction, parseView, type SearchParams } from "@/lib/addresses";
+import { allPagesPath, folderPath, parseAction, parseView, type SearchParams } from "@/lib/addresses";
 import { pageTitle } from "@/lib/site";
 
 /**
@@ -64,29 +65,68 @@ export default async function FolderPage({ params, searchParams }: PageProps<"/f
     );
   }
 
-  const tabs = await listTabs(folder.id);
   const address = folderPath(folder.name);
+
+  // Until the list of all pages gets its breadcrumb, it keeps the folder heading and the navigation bar.
+  if (view === "all") {
+    const tabs = await listTabs(folder.id);
+    return (
+      <Stack spacing={3}>
+        <Stack direction="row" spacing={2} sx={{ alignItems: "center", justifyContent: "space-between" }}>
+          <Typography variant="h4" component="h1" sx={{ overflowWrap: "anywhere" }}>
+            {folder.name}
+          </Typography>
+          <Stack direction="row" spacing={2} sx={{ flexShrink: 0 }}>
+            <Button component={Link} href={folderPath(folder.name, "rename")} variant="outlined">
+              Rename
+            </Button>
+            <Button component={Link} href={folderPath(folder.name, "new")} variant="contained">
+              New page
+            </Button>
+          </Stack>
+        </Stack>
+        <FolderNav folderName={folder.name} tabs={tabs} current="all" />
+        <AllPagesList pages={await listAllFolderPages(folder.id)} folderName={folder.name} />
+      </Stack>
+    );
+  }
+
+  const [pages, tabs] = await Promise.all([listFolderPages(folder.id), listTabs(folder.id)]);
 
   return (
     <Stack spacing={3}>
-      <Stack direction="row" spacing={2} sx={{ alignItems: "center", justifyContent: "space-between" }}>
+      {/* The buttons move below the heading and wrap on narrow screens instead of overflowing. */}
+      <Stack
+        direction="row"
+        useFlexGap
+        sx={{ alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 2 }}
+      >
         <Typography variant="h4" component="h1" sx={{ overflowWrap: "anywhere" }}>
           {folder.name}
         </Typography>
-        <Stack direction="row" spacing={2} sx={{ flexShrink: 0 }}>
+        <Stack direction="row" useFlexGap sx={{ flexWrap: "wrap", gap: 2 }}>
           <Button component={Link} href={folderPath(folder.name, "rename")} variant="outlined">
             Rename
+          </Button>
+          <Button component={Link} href={allPagesPath(folder.name)} variant="outlined">
+            All pages
+          </Button>
+          <Button component={Link} href={folderPath(folder.name, "new-tab")} variant="outlined">
+            New tab
           </Button>
           <Button component={Link} href={folderPath(folder.name, "new")} variant="contained">
             New page
           </Button>
         </Stack>
       </Stack>
-      <FolderNav folderName={folder.name} tabs={tabs} current={view === "all" ? "all" : "folder"} />
-      {view === "all" ? (
-        <AllPagesList pages={await listAllFolderPages(folder.id)} folderName={folder.name} />
-      ) : (
-        <PageList pages={await listFolderPages(folder.id)} folderName={folder.name} />
+      <PageList pages={pages} folderName={folder.name} />
+      {tabs.length > 0 && (
+        <Stack spacing={2}>
+          <Typography variant="h5" component="h2">
+            Tabs
+          </Typography>
+          <TabList folderName={folder.name} tabs={tabs} />
+        </Stack>
       )}
       {action === "rename" && (
         <NameDialog

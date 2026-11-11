@@ -46,7 +46,8 @@ const eslintConfig = defineConfig([
     },
   },
   {
-    // The application reads its environment only through getServerEnv() and imports Material UI per path.
+    // The application reads its environment only through getServerEnv() and imports Material UI components and icons
+    // per path.
     files: ["src/**/*.{ts,tsx}"],
     rules: {
       "no-restricted-properties": [
@@ -64,6 +65,10 @@ const eslintConfig = defineConfig([
             {
               name: "@mui/material",
               message: "Import Material UI components per path, e.g. @mui/material/Button.",
+            },
+            {
+              name: "@mui/icons-material",
+              message: "Import Material UI icons per path, e.g. @mui/icons-material/Folder.",
             },
           ],
         },

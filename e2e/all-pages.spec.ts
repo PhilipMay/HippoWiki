@@ -38,8 +38,7 @@ test("all pages of a folder are listed by name and then by tab, each with its ta
   await createPage({ folder: other, name: "elsewhere", title: "Elsewhere" });
 
   await page.goto("/folders/handbook");
-  await expect(navLinks(page)).toHaveText(["handbook", "guides", "meetings", "All pages"]);
-  await navLinks(page).last().click();
+  await page.getByRole("main").getByRole("link", { name: "All pages" }).click();
 
   await expect(page).toHaveURL("/folders/handbook?view=all");
   await expect(page).toHaveTitle("All pages – handbook – HippoWiki");

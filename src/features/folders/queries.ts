@@ -34,7 +34,7 @@ export async function listTabs(folderId: string) {
   await connection();
   return getDb().tab.findMany({
     where: { folderId },
-    select: { id: true, name: true },
+    select: { id: true, name: true, updatedAt: true },
     orderBy: { name: "asc" },
   });
 }
