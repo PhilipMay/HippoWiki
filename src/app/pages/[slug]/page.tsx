@@ -25,9 +25,6 @@ export default async function PageView({ params }: PageProps<"/pages/[slug]">) {
   return (
     <Paper component="article" variant="outlined" sx={{ p: { xs: 2, sm: 4 } }}>
       <Stack spacing={1} sx={{ mb: 3 }}>
-        <Typography variant="h3" component="h1" sx={{ overflowWrap: "anywhere" }}>
-          {page.title}
-        </Typography>
         <Typography variant="body2" color="text.secondary">
           Last updated <time dateTime={page.updatedAt.toISOString()}>{formatDateTime(page.updatedAt)}</time>
         </Typography>

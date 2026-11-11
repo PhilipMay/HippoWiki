@@ -13,13 +13,13 @@ import remarkGfm from "remark-gfm";
 
 type HeadingTag = "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
 
-// Markdown headings keep their level, but are drawn smaller: the page title above the content is the visual top
-// heading.
+// Markdown headings keep their level, but are drawn two Typography sizes smaller than their tag: the content's title
+// heading (`# Title`) is the visual top heading of the page view and takes the `h3` size that page titles have.
 const headingVariants: Record<HeadingTag, TypographyProps["variant"]> = {
-  h1: "h4",
-  h2: "h5",
-  h3: "h6",
-  h4: "subtitle1",
+  h1: "h3",
+  h2: "h4",
+  h3: "h5",
+  h4: "h6",
   h5: "subtitle1",
   h6: "subtitle1",
 };
@@ -27,7 +27,12 @@ const headingVariants: Record<HeadingTag, TypographyProps["variant"]> = {
 function heading(tag: HeadingTag): Components[HeadingTag] {
   return function MarkdownHeading({ children, id }) {
     return (
-      <Typography variant={headingVariants[tag]} component={tag} id={id} sx={{ mt: 3, mb: 1.5, fontWeight: 500 }}>
+      <Typography
+        variant={headingVariants[tag]}
+        component={tag}
+        id={id}
+        sx={{ mt: 3, mb: 1.5, fontWeight: 500, overflowWrap: "anywhere" }}
+      >
         {children}
       </Typography>
     );

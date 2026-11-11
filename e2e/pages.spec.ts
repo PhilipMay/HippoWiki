@@ -39,6 +39,7 @@ test("list shows pages newest first and links to them", async ({ page }) => {
 
   await expect(page).toHaveURL("/pages/middle");
   await expect(page).toHaveTitle("Middle – HippoWiki");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(["Middle"]);
 });
 
 test("page view renders the Markdown content", async ({ page }) => {
@@ -47,6 +48,8 @@ test("page view renders the Markdown content", async ({ page }) => {
     title: "Rendered page",
     slug: "rendered-page",
     content: [
+      "# Rendered page",
+      "",
       "## Section heading",
       "",
       "- First item",
@@ -63,7 +66,7 @@ test("page view renders the Markdown content", async ({ page }) => {
   await page.goto("/pages/rendered-page");
 
   await expect(page).toHaveTitle("Rendered page – HippoWiki");
-  await expect(page.getByRole("heading", { level: 1, name: "Rendered page" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(["Rendered page"]);
   await expect(page.getByText(/^Last updated/)).toBeVisible();
   const article = page.getByRole("article");
   await expect(article.getByRole("heading", { level: 2, name: "Section heading" })).toBeVisible();
@@ -75,6 +78,32 @@ test("page view renders the Markdown content", async ({ page }) => {
   const table = article.getByRole("table");
   await expect(table.getByRole("columnheader")).toHaveText(["Name", "Value"]);
   await expect(table.getByRole("cell")).toHaveText(["alpha", "42"]);
+  expect(errors).toEqual([]);
+});
+
+test("page view shows the content's heading instead of the stored title", async ({ page }) => {
+  const errors = collectErrors(page);
+  const created = await createPage({ title: "Stored title", content: "# Content heading\n\nBody text" });
+
+  await page.goto(`/pages/${created.slug}`);
+
+  // The browser tab and the delete dialog use the stored title; the page shows only the content's heading.
+  await expect(page).toHaveTitle("Stored title – HippoWiki");
+  const article = page.getByRole("article");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(["Content heading"]);
+  await expect(page.getByRole("heading", { name: "Stored title" })).toHaveCount(0);
+  await expect(article.getByText(/^Last updated/)).toBeVisible();
+  await expect(article.getByText("Body text")).toBeVisible();
+
+  await page.getByRole("button", { name: "Delete" }).click();
+  await expect(page.getByRole("dialog", { name: "Delete page?" })).toHaveAccessibleDescription(
+    "“Stored title” will be deleted permanently.",
+  );
+  await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
+
+  await page.getByRole("link", { name: "Edit" }).click();
+  await expect(page).toHaveURL(`/pages/${created.slug}/edit`);
+  await expect(page.getByLabel("Content")).toHaveValue("# Content heading\n\nBody text");
   expect(errors).toEqual([]);
 });
 

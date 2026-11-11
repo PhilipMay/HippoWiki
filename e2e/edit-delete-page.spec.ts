@@ -37,6 +37,7 @@ test("editing slug and content shows the new version and moves it to the top of 
 
   await expect(page).toHaveURL("/pages/edited-slug");
   await expect(page).toHaveTitle("Edited title – HippoWiki");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(["Edited title"]);
   const article = page.getByRole("article");
   await expect(article.getByRole("heading", { level: 2, name: "New section" })).toBeVisible();
   await expect(article.getByRole("listitem")).toHaveText(["Changed item"]);
@@ -68,6 +69,7 @@ test("changing the heading changes the title and the list entry, but not the slu
 
   await expect(page).toHaveURL("/pages/stable-slug");
   await expect(page).toHaveTitle("After the change – HippoWiki");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(["After the change"]);
   expect(await getTestDb().page.findUniqueOrThrow({ where: { id: edited.id } })).toMatchObject({
     title: "After the change",
     slug: "stable-slug",
@@ -271,6 +273,7 @@ test("a page can be created, edited and deleted", async ({ page }) => {
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page).toHaveURL("/pages/lifecycle-page");
   await expect(page).toHaveTitle("Lifecycle page, edited – HippoWiki");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(["Lifecycle page, edited"]);
   await expect(page.getByRole("article").getByText("Second version")).toBeVisible();
 
   await page.getByRole("banner").getByRole("link", { name: "Pages" }).click();

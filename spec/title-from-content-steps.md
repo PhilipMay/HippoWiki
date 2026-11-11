@@ -70,7 +70,7 @@ Not in scope:
 
 1. [x] Title derivation
 2. [x] Title from content on save
-3. [ ] Page view without title
+3. [x] Page view without title
 4. [ ] Spec update
 
 ## Step: Title derivation

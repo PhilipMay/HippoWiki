@@ -48,6 +48,7 @@ test("creating a page derives title and slug from the title heading and shows th
 
   await expect(page).toHaveURL("/pages/getting-started");
   await expect(page).toHaveTitle("Getting started – HippoWiki");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(["Getting started"]);
   const article = page.getByRole("article");
   await expect(article.getByRole("listitem")).toHaveText(["First step", "Second step"]);
 
@@ -129,6 +130,7 @@ test("an umlaut title gives a slug with spelled-out umlauts", async ({ page }) =
 
   await expect(page).toHaveURL("/pages/ueber-groessen");
   await expect(page).toHaveTitle("Über Größen – HippoWiki");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(["Über Größen"]);
 });
 
 test("a form submission with an extra title field stores the derived title", async ({ page }) => {
