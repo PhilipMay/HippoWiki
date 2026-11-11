@@ -28,7 +28,7 @@ kind of check broke.
 ## Checklist
 
 - [x] Format, lint and unit test workflows
-- [ ] End-to-end test workflow
+- [x] End-to-end test workflow
 - [ ] Wrap-up
 
 ## Format, lint and unit test workflows
