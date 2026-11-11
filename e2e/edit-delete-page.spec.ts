@@ -1,5 +1,7 @@
 import { expect, test, type Page as BrowserPage } from "@playwright/test";
 
+import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
+
 import { collectErrors } from "./support/browser";
 import { createPage, getTestDb, resetTestDatabase } from "./support/database";
 
@@ -129,6 +131,7 @@ test("removing the title heading shows an error at the content field and keeps a
   const content = page.getByLabel("Content");
   await expect(content).toHaveAttribute("aria-invalid", "true");
   await expect(content).toHaveAccessibleDescription("Content must start with a title heading: # Title");
+  await expect(content).toBeFocused();
   await expect(page).toHaveURL(`/pages/${created.slug}/edit`);
   await expect(page.getByLabel("Slug")).toHaveValue("new-slug");
   await expect(content).toHaveValue("Intro first\n\n# Valid title\n\nNew content that must not get lost");
@@ -198,10 +201,32 @@ test("a slug taken by another page shows an error at the field and keeps all val
   const slug = page.getByLabel("Slug");
   await expect(slug).toHaveAttribute("aria-invalid", "true");
   await expect(slug).toHaveAccessibleDescription("Slug is already in use");
+  await expect(slug).toBeFocused();
   await expect(page).toHaveURL(`/pages/${edited.slug}/edit`);
   await expect(slug).toHaveValue("taken");
   await expect(page.getByLabel("Content")).toHaveValue("# New title\n\nNew content that must not get lost");
   expect(await getTestDb().page.findUniqueOrThrow({ where: { id: edited.id } })).toEqual(edited);
+  expect(errors).toEqual([]);
+});
+
+test("with errors at slug and content, the slug gets the focus", async ({ page }) => {
+  const errors = collectErrors(page);
+  const created = await createPage({ title: "Two errors" });
+
+  await page.goto(`/pages/${created.slug}/edit`);
+  await page.getByLabel("Slug").fill("Bad Slug");
+  // The missing title heading is only checked once the slug is valid, so the content error here is the length limit.
+  // Remove the field's limit, as a crafted request would, to submit content that is too long.
+  const content = page.getByLabel("Content");
+  await content.evaluate((field: HTMLTextAreaElement) => field.removeAttribute("maxlength"));
+  await content.fill(`# Two errors\n\n${"x".repeat(CONTENT_MAX_LENGTH)}`);
+  await page.getByRole("button", { name: "Save" }).click();
+
+  const slug = page.getByLabel("Slug");
+  await expect(slug).toHaveAttribute("aria-invalid", "true");
+  await expect(content).toHaveAttribute("aria-invalid", "true");
+  await expect(slug).toBeFocused();
+  expect(await getTestDb().page.findUniqueOrThrow({ where: { id: created.id } })).toEqual(created);
   expect(errors).toEqual([]);
 });
 
@@ -216,6 +241,8 @@ test("saving a page that was deleted in the meantime shows an error and keeps th
   await expect(page.getByRole("main").getByRole("alert")).toHaveText(
     "This page no longer exists. It may have been deleted.",
   );
+  await expect(page.getByLabel("Slug")).not.toBeFocused();
+  await expect(page.getByLabel("Content")).not.toBeFocused();
   await expect(page).toHaveURL(`/pages/${created.slug}/edit`);
   await expect(page.getByLabel("Content")).toHaveValue("# Soon gone\n\nTyped after the page was deleted");
   expect(await getTestDb().page.count()).toBe(0);

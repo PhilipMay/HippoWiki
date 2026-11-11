@@ -4,7 +4,7 @@ import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 
 import Link from "@/components/Link";
 import { CONTENT_MAX_LENGTH, SLUG_MAX_LENGTH } from "@/features/pages/limits";
@@ -30,8 +30,19 @@ export default function PageForm({ action, initialValues, cancelHref }: PageForm
   const [slug, setSlug] = useState(initialValues.slug);
   const [content, setContent] = useState(initialValues.content);
 
+  const slugRef = useRef<HTMLInputElement>(null);
+  const contentRef = useRef<HTMLTextAreaElement>(null);
+
   const slugError = state.fieldErrors?.slug?.[0];
   const contentError = state.fieldErrors?.content?.[0];
+
+  // Field errors come back from the Server Action, not from a client event, so the focus moves once the new state
+  // arrives: to the first field with an error. Each submission returns a new state object, so a repeated rejection
+  // moves the focus again; the initial state and message-only states leave the focus where it is.
+  useEffect(() => {
+    if (state.fieldErrors?.slug) slugRef.current?.focus();
+    else if (state.fieldErrors?.content) contentRef.current?.focus();
+  }, [state]);
 
   return (
     // `noValidate`: the server validates, and its errors are shown at the fields instead of browser bubbles.
@@ -44,6 +55,7 @@ export default function PageForm({ action, initialValues, cancelHref }: PageForm
         onChange={(event) => setSlug(event.target.value)}
         required
         fullWidth
+        inputRef={slugRef}
         error={!!slugError}
         helperText={slugError ?? `Address: /pages/${slug.trim()}`}
         slotProps={{ htmlInput: { maxLength: SLUG_MAX_LENGTH, spellCheck: false, autoCapitalize: "none" } }}
@@ -57,6 +69,7 @@ export default function PageForm({ action, initialValues, cancelHref }: PageForm
         minRows={16}
         autoFocus
         fullWidth
+        inputRef={contentRef}
         error={!!contentError}
         helperText={contentError ?? "Markdown (GitHub Flavored Markdown), starting with the title heading: # Title"}
         slotProps={{

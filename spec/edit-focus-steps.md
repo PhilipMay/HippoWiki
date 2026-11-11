@@ -16,7 +16,7 @@ is rejected, the cursor moves to the field with the error, so it can be fixed ri
 ## Checklist
 
 - [x] Initial focus on content
-- [ ] Focus on the field with an error
+- [x] Focus on the field with an error
 - [ ] Wrap-up
 
 ## Initial focus on content
@@ -64,8 +64,10 @@ error, otherwise the content.
   - extend "a slug taken by another page shows an error at the field and keeps all values": Slug is focused;
   - extend "removing the title heading shows an error at the content field and keeps all values": Content is
     focused;
-  - new test "with errors at slug and content, the slug gets the focus": slug `Bad Slug` and content without a title
-    heading; both fields are `aria-invalid`, Slug is focused;
+  - new test "with errors at slug and content, the slug gets the focus": slug `Bad Slug` and content longer than
+    `CONTENT_MAX_LENGTH` (the test removes the field's `maxlength`, as a crafted request would); both fields are
+    `aria-invalid`, Slug is focused. Content without a title heading cannot be used here: the title heading is only
+    checked once the slug is valid, so it never errors together with the slug;
   - extend "saving a page that was deleted in the meantime shows an error and keeps the values": the focus is not
     moved to a field (Slug and Content are not focused).
 - No unit tests: the logic lives in the component and is covered end to end.
