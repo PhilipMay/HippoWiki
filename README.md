@@ -8,7 +8,8 @@ The prototype manages wiki pages written in Markdown and stores them in PostgreS
 
 - list all pages, most recently updated first,
 - view a page with its Markdown rendered,
-- create, edit and delete pages; deleting asks for confirmation first.
+- create, edit and delete pages; deleting asks for confirmation first,
+- create, list and rename folders under `/folders`; pages are not placed in folders yet.
 
 There is a single user and no login.
 
@@ -115,9 +116,9 @@ npx playwright show-report   # open the HTML report of the last run
 - Playwright starts its own development server on port 3100 with the build directory `.next-e2e`, so it can run next
   to `npm run dev`, and stops it after the run.
 - `e2e/support/browser.ts` has `collectErrors()`, which records console errors of the browser page.
-- `e2e/support/database.ts` has helpers for tests: `createPage()` inserts a page directly into the test database,
-  `resetTestDatabase()` empties it, and `getTestDb()` returns a Prisma client for it. All tests share this database
-  and run one after another.
+- `e2e/support/database.ts` has helpers for tests: `createFolder()` and `createPage()` insert a folder or a page
+  directly into the test database, `resetTestDatabase()` empties it, and `getTestDb()` returns a Prisma client for it.
+  All tests share this database and run one after another.
 
 ## Commands
 

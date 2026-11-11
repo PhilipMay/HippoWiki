@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 import { titleFromContent } from "@/features/pages/derive";
-import { PrismaClient, type Page, type Prisma } from "@/generated/prisma/client";
+import { PrismaClient, type Folder, type Page, type Prisma } from "@/generated/prisma/client";
 
 import { TEST_DATABASE_NAME, TEST_DATABASE_URL } from "./container";
 
@@ -62,6 +62,14 @@ export async function resetTestDatabase(): Promise<void> {
     const names = tables.map(({ tablename }) => `"public"."${tablename.replaceAll('"', '""')}"`).join(", ");
     await db.$executeRawUnsafe(`TRUNCATE TABLE ${names} CASCADE`);
   }
+}
+
+/**
+ * Creates a folder directly in the test database, with a unique name unless one is given. Any other field can be
+ * overridden, e.g. `updatedAt`.
+ */
+export function createFolder(data: Partial<Prisma.FolderCreateInput> = {}): Promise<Folder> {
+  return getTestDb().folder.create({ data: { name: `test-folder-${crypto.randomUUID()}`, ...data } });
 }
 
 /**

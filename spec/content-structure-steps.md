@@ -51,7 +51,7 @@ The rules every step follows:
 
 ## Checklist
 
-- [ ] Folders
+- [x] Folders
 - [ ] Pages in folders
 - [ ] Tabs
 - [ ] Moving pages

@@ -4,6 +4,7 @@ import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
 
 import Link from "@/components/Link";
+import { foldersPath } from "@/lib/addresses";
 import { siteName } from "@/lib/site";
 
 export default function AppHeader() {
@@ -21,6 +22,9 @@ export default function AppHeader() {
         <nav aria-label="Main">
           <Button component={Link} href="/pages" color="inherit">
             Pages
+          </Button>
+          <Button component={Link} href={foldersPath()} color="inherit">
+            Folders
           </Button>
         </nav>
       </Toolbar>

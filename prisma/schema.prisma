@@ -10,6 +10,15 @@ datasource db {
   provider = "postgresql"
 }
 
+/// A folder: the top level of the content structure.
+model Folder {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// The part of the folder's address `/folders/<name>`; unique across the wiki.
+  name      String   @unique
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+}
+
 /// A wiki page with its Markdown source.
 model Page {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
