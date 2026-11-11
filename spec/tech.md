@@ -22,7 +22,7 @@
 - Package manager: npm
 - Linting: ESLint (without the Airbnb style guide)
 - Formatting: Prettier
-- Testing: Vitest (unit tests)
+- Testing: Vitest (unit tests), coverage with `@vitest/coverage-v8`
 - end-to-end tests: Playwright
 - Podman: instead of Docker for development
 - Continuous integration: GitHub Actions

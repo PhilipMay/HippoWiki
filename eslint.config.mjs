@@ -37,6 +37,8 @@ const eslintConfig = defineConfig([
     ".next-e2e/**",
     "playwright-report/**",
     "test-results/**",
+    // Unit test coverage report:
+    "coverage/**",
     // Generated Prisma client:
     "src/generated/**",
   ]),

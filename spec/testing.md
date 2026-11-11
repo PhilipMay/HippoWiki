@@ -12,6 +12,11 @@ How the code is tested. Commands are listed in `README.md`.
   the mocked `redirect` throws like the real one, so code after it never runs and tests assert the rejection and its
   path.
 - `npm run check` (format, lint, typecheck, unit tests) stays fast and does not include the end-to-end tests.
+- `npm run test:coverage` measures the coverage of the unit tests with `@vitest/coverage-v8` (configured in
+  `vitest.config.ts`). It covers all `.ts` and `.tsx` files in `src/` except the tests and `src/generated/`, so files
+  that no unit test loads show up with 0%. It prints a table and writes an HTML report to `coverage/index.html`
+  (ignored by Git and ESLint). It is not part of `npm run check` and has no thresholds: much of the code, such as the
+  UI, is covered by the end-to-end tests instead.
 
 ## End-to-end tests
 
