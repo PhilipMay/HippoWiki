@@ -13,9 +13,9 @@ test.beforeEach(async () => {
   handbook = await createFolder({ name: "handbook" });
 });
 
-/** The links of the page list of a folder, in display order. */
+/** The links of the contents list of a folder, in display order. */
 function listLinks(page: BrowserPage) {
-  return page.getByRole("list", { name: "Pages" }).getByRole("link");
+  return page.getByRole("list", { name: "Contents" }).getByRole("link");
 }
 
 /** The "Rename page" dialog. */
@@ -372,7 +372,7 @@ test("a folder and a page can be created, and the page edited and renamed", asyn
   await page.getByRole("dialog", { name: "New folder" }).getByLabel("Name").fill("lifecycle");
   await page.getByRole("dialog", { name: "New folder" }).getByRole("button", { name: "Save" }).click();
   await expect(page).toHaveURL("/folders/lifecycle");
-  await expect(page.getByText("No pages yet")).toBeVisible();
+  await expect(page.getByText("This folder is empty")).toBeVisible();
 
   await page.getByRole("link", { name: "New page" }).click();
   await page.getByLabel("Content").fill("# Lifecycle page\n\nFirst version");

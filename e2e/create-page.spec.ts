@@ -64,7 +64,7 @@ test("creating a page derives title and name from the title heading and shows th
 
   await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("link", { name: "handbook" }).click();
 
-  const links = page.getByRole("list", { name: "Pages" }).getByRole("link");
+  const links = page.getByRole("list", { name: "Contents" }).getByRole("link");
   await expect(links).toHaveText([/^Getting started/, /^Older page/]);
   expect(errors).toEqual([]);
 });
@@ -123,7 +123,7 @@ test("a heading with inline Markdown gives a plain title in the list and the bro
   expect((await getTestDb().page.findFirstOrThrow()).title).toBe("The npm guide logo");
 
   await page.goto("/folders/handbook");
-  await expect(page.getByRole("list", { name: "Pages" }).getByRole("link")).toHaveText([/^The npm guide logo/]);
+  await expect(page.getByRole("list", { name: "Contents" }).getByRole("link")).toHaveText([/^The npm guide logo/]);
 });
 
 test("an umlaut title gives a name with spelled-out umlauts", async ({ page }) => {
@@ -256,7 +256,7 @@ test("cancel on the form returns to the folder and creates nothing", async ({ pa
   await page.getByRole("link", { name: "Cancel" }).click();
 
   await expect(page).toHaveURL("/folders/handbook");
-  await expect(page.getByText("No pages yet")).toBeVisible();
+  await expect(page.getByText("This folder is empty")).toBeVisible();
   expect(await getTestDb().page.count()).toBe(0);
 });
 

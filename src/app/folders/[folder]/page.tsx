@@ -7,13 +7,12 @@ import { notFound } from "next/navigation";
 import Link from "@/components/Link";
 import { createTab, renameFolder } from "@/features/folders/actions";
 import FolderBreadcrumbs from "@/features/folders/components/FolderBreadcrumbs";
+import FolderContentsList from "@/features/folders/components/FolderContentsList";
 import NameDialog from "@/features/folders/components/NameDialog";
-import TabList from "@/features/folders/components/TabList";
 import { getFolderByName, listTabs } from "@/features/folders/queries";
 import { createPage } from "@/features/pages/actions";
 import AllPagesList from "@/features/pages/components/AllPagesList";
 import NewPageForm from "@/features/pages/components/NewPageForm";
-import PageList from "@/features/pages/components/PageList";
 import { listAllFolderPages, listFolderPages } from "@/features/pages/queries";
 import { allPagesPath, folderPath, parseAction, parseView, type SearchParams } from "@/lib/addresses";
 import { pageTitle } from "@/lib/site";
@@ -107,15 +106,7 @@ export default async function FolderPage({ params, searchParams }: PageProps<"/f
           </Button>
         </Stack>
       </Stack>
-      <PageList pages={pages} folderName={folder.name} />
-      {tabs.length > 0 && (
-        <Stack spacing={2}>
-          <Typography variant="h5" component="h2">
-            Tabs
-          </Typography>
-          <TabList folderName={folder.name} tabs={tabs} />
-        </Stack>
-      )}
+      <FolderContentsList folderName={folder.name} pages={pages} tabs={tabs} />
       {action === "rename" && (
         <NameDialog
           title="Rename folder"

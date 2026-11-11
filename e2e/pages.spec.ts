@@ -25,15 +25,17 @@ test("the home page shows the folder list", async ({ page }) => {
   await expect(mainLinks).toHaveAttribute("href", "/folders");
 });
 
-test("a folder shows an empty state without pages", async ({ page }) => {
+test("a folder with neither pages nor tabs shows an empty state and no list", async ({ page }) => {
   const other = await createFolder({ name: "other" });
   await createPage({ folder: other, title: "Page of another folder" });
   await createFolder({ name: "handbook" });
 
   await page.goto("/folders/handbook");
 
-  await expect(page.getByText("No pages yet")).toBeVisible();
-  await expect(page.getByRole("list", { name: "Pages" })).toHaveCount(0);
+  await expect(page.getByText("This folder is empty")).toBeVisible();
+  await expect(page.getByText("Create a page with “New page” or a tab with “New tab”.")).toBeVisible();
+  await expect(page.getByRole("list", { name: "Contents" })).toHaveCount(0);
+  await expect(page.getByRole("main").getByRole("list")).toHaveCount(0);
 });
 
 test("a folder lists its pages by name and links to them", async ({ page }) => {
@@ -47,7 +49,7 @@ test("a folder lists its pages by name and links to them", async ({ page }) => {
 
   await page.goto("/folders/handbook");
 
-  const items = page.getByRole("list", { name: "Pages" }).getByRole("listitem");
+  const items = page.getByRole("list", { name: "Contents" }).getByRole("listitem");
   await expect(items).toHaveCount(3);
   await expect(items.getByRole("link")).toHaveText([/^Mango.*first\.md/, /^Apple.*last\.md/, /^Zebra.*middle\.md/]);
   await expect(items.getByRole("link").nth(2)).toHaveAttribute("href", "/folders/handbook/middle.md");

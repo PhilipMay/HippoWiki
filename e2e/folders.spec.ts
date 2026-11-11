@@ -47,7 +47,7 @@ test("the folder list shows folders by name and links to them", async ({ page })
   await expect(page).toHaveURL("/folders/handbook");
   await expect(page).toHaveTitle("handbook – HippoWiki");
   await expect(page.getByRole("heading", { level: 1, name: "handbook" })).toBeVisible();
-  await expect(page.getByText("No pages yet")).toBeVisible();
+  await expect(page.getByText("This folder is empty")).toBeVisible();
 });
 
 test("the app bar links to the folder list", async ({ page }) => {

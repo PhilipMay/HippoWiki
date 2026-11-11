@@ -102,7 +102,7 @@ test("the list of all pages is reached from the folder and left through the brea
 
   await breadcrumb(page).getByRole("link", { name: "handbook" }).click();
   await expect(page).toHaveURL("/folders/handbook");
-  await expect(page.getByText("No pages yet")).toBeVisible();
+  await expect(page.getByRole("list", { name: "Contents" }).getByRole("link")).toHaveText([/^guides/]);
 });
 
 for (const address of [

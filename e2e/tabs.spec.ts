@@ -16,14 +16,14 @@ function breadcrumb(page: Page) {
   return page.getByRole("navigation", { name: "Breadcrumb" });
 }
 
-/** The links of the page list, in display order. */
+/** The links of the page list on a tab address, in display order. */
 function listLinks(page: Page) {
   return page.getByRole("list", { name: "Pages" }).getByRole("link");
 }
 
-/** The links of the tab list on the folder address, in display order. */
-function tabLinks(page: Page) {
-  return page.getByRole("list", { name: "Tabs" }).getByRole("link");
+/** The links of the contents list on a folder address (its pages, then its tabs), in display order. */
+function contentsLinks(page: Page) {
+  return page.getByRole("list", { name: "Contents" }).getByRole("link");
 }
 
 async function expectNotFound(page: Page, address: string) {
@@ -37,7 +37,7 @@ test("creating a tab through the dialog shows the new tab", async ({ page }) => 
   const errors = collectErrors(page);
 
   await page.goto("/folders/handbook");
-  await expect(page.getByRole("list", { name: "Tabs" })).toHaveCount(0);
+  await expect(page.getByRole("list", { name: "Contents" })).toHaveCount(0);
   await page.getByRole("link", { name: "New tab" }).click();
 
   await expect(page).toHaveURL("/folders/handbook?action=new-tab");
@@ -59,7 +59,7 @@ test("creating a tab through the dialog shows the new tab", async ({ page }) => 
   expect(stored[0]).toMatchObject({ name: "guides", folderId: handbook.id });
 
   await page.goto("/folders/handbook");
-  await expect(tabLinks(page)).toHaveText([/^guides/]);
+  await expect(contentsLinks(page)).toHaveText([/^guides/]);
   expect(errors).toEqual([]);
 });
 
@@ -143,7 +143,7 @@ test("renaming a tab shows it at its new address with its pages and the old addr
   expect(errors).toEqual([]);
 
   await page.goto("/folders/handbook");
-  await expect(tabLinks(page)).toHaveText([/^new-tab/, /^taken/]);
+  await expect(contentsLinks(page)).toHaveText([/^new-tab/, /^taken/]);
 
   await page.goto("/folders/handbook/new-tab/inside.md");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(["Inside the tab"]);
@@ -169,28 +169,37 @@ test("cancelling the tab dialogs returns to the address without the query string
   expect((await getTestDb().tab.findFirstOrThrow()).name).toBe("guides");
 });
 
-test("the folder address lists its tabs by name below its pages, each linking to its tab", async ({ page }) => {
+test("the folder address lists its pages by name and then its tabs by name in one list", async ({ page }) => {
   const other = await createFolder({ name: "other" });
+  // A page "zulu" before the tab "alpha" shows that pages come first, not a mixed order by name.
   await createTab({ folder: handbook, name: "meetings" });
-  await createTab({ folder: handbook, name: "archive" });
+  await createTab({ folder: handbook, name: "alpha" });
   await createTab({ folder: handbook, name: "guides", updatedAt: new Date("2026-02-01T10:00:00Z") });
   await createTab({ folder: other, name: "elsewhere" });
-  await createPage({ folder: handbook, name: "in-folder", title: "In folder" });
+  await createPage({ folder: handbook, name: "zulu", title: "Zulu page", updatedAt: new Date("2026-03-01T10:00:00Z") });
+  await createPage({ folder: handbook, name: "bravo", title: "Bravo page" });
 
   await page.goto("/folders/handbook");
 
-  await expect(page.getByRole("heading", { level: 2, name: "Tabs" })).toBeVisible();
-  await expect(tabLinks(page)).toHaveText([/^archive/, /^guides/, /^meetings/]);
-  await expect(tabLinks(page).nth(1)).toHaveAttribute("href", "/folders/handbook/guides");
-  const items = page.getByRole("list", { name: "Tabs" }).getByRole("listitem");
-  await expect(items.nth(1).locator("time")).toHaveAttribute("datetime", "2026-02-01T10:00:00.000Z");
-  // The tab list follows the page list.
   const lists = page.getByRole("main").getByRole("list");
-  await expect(lists).toHaveCount(2);
-  await expect(lists.nth(0)).toHaveAccessibleName("Pages");
-  await expect(lists.nth(1)).toHaveAccessibleName("Tabs");
+  await expect(lists).toHaveCount(1);
+  await expect(lists).toHaveAccessibleName("Contents");
+  await expect(page.getByRole("heading", { name: "Tabs" })).toHaveCount(0);
+  await expect(contentsLinks(page)).toHaveText([
+    /^Bravo page.*bravo\.md/,
+    /^Zulu page.*zulu\.md/,
+    /^alpha/,
+    /^guides/,
+    /^meetings/,
+  ]);
+  await expect(contentsLinks(page).nth(1)).toHaveAttribute("href", "/folders/handbook/zulu.md");
+  await expect(contentsLinks(page).nth(3)).toHaveAttribute("href", "/folders/handbook/guides");
+  const items = page.getByRole("list", { name: "Contents" }).getByRole("listitem");
+  await expect(items).toHaveCount(5);
+  await expect(items.nth(1).locator("time")).toHaveAttribute("datetime", "2026-03-01T10:00:00.000Z");
+  await expect(items.nth(3).locator("time")).toHaveAttribute("datetime", "2026-02-01T10:00:00.000Z");
 
-  await tabLinks(page).nth(1).click();
+  await contentsLinks(page).nth(3).click();
 
   await expect(page).toHaveURL("/folders/handbook/guides");
 });
@@ -226,24 +235,23 @@ test("the tab address shows the way back to its folder as a breadcrumb and the t
   await expect(page).toHaveURL("/folders/handbook");
 });
 
-test("a folder without tabs shows no tab list", async ({ page }) => {
+test("a folder without tabs lists only its pages", async ({ page }) => {
   await createPage({ folder: handbook, name: "in-folder", title: "In folder" });
 
   await page.goto("/folders/handbook");
 
-  await expect(listLinks(page)).toHaveText([/^In folder/]);
+  await expect(contentsLinks(page)).toHaveText([/^In folder/]);
   await expect(page.getByRole("heading", { name: "Tabs" })).toHaveCount(0);
-  await expect(page.getByRole("list", { name: "Tabs" })).toHaveCount(0);
 });
 
-test("a folder with tabs but without pages shows the empty page state and the tab list", async ({ page }) => {
+test("a folder with tabs but without pages lists only its tabs, without an empty state", async ({ page }) => {
   await createTab({ folder: handbook, name: "guides" });
 
   await page.goto("/folders/handbook");
 
-  await expect(page.getByText("No pages yet")).toBeVisible();
-  await expect(page.getByRole("heading", { level: 2, name: "Tabs" })).toBeVisible();
-  await expect(tabLinks(page)).toHaveText([/^guides/]);
+  await expect(contentsLinks(page)).toHaveText([/^guides/]);
+  await expect(page.getByText("This folder is empty")).toHaveCount(0);
+  await expect(page.getByText("No pages yet")).toHaveCount(0);
 });
 
 test("the folder header links to all pages, a new tab and a new page", async ({ page }) => {
@@ -314,7 +322,7 @@ test("a page can be created in a tab, viewed, edited and renamed", async ({ page
   await expect(listLinks(page)).toHaveText([/^Setup guide, edited.*setup\.md/]);
   await expect(listLinks(page)).toHaveAttribute("href", "/folders/handbook/guides/setup.md");
   await page.goto("/folders/handbook");
-  await expect(page.getByText("No pages yet")).toBeVisible();
+  await expect(contentsLinks(page)).toHaveText([/^guides/]);
   expect(errors).toEqual([]);
 });
 
@@ -333,7 +341,7 @@ test("a tab lists its pages by name, without the pages of the folder and of othe
   await expect(items.nth(1).locator("time")).toHaveAttribute("datetime", "2026-02-01T10:00:00.000Z");
 
   await page.goto("/folders/handbook");
-  await expect(listLinks(page)).toHaveText([/^In folder/]);
+  await expect(contentsLinks(page)).toHaveText([/^In folder/, /^guides/, /^meetings/]);
 });
 
 test("a page created on the folder address is placed directly in the folder, also when it has tabs", async ({
