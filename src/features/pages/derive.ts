@@ -65,7 +65,7 @@ function trimHyphens(text: string): string {
 export function deriveName(title: string): string {
   let name = trimHyphens(
     title
-      .replace(/[äöüÄÖÜß]/g, (letter) => GERMAN_LETTERS[letter])
+      .replace(/[äöüÄÖÜß]/g, (letter) => GERMAN_LETTERS[letter] ?? letter)
       .normalize("NFKD")
       .replace(/\p{M}/gu, "")
       .toLowerCase()

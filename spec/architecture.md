@@ -117,6 +117,8 @@ How the code is organised and which patterns new code follows. The technology st
 
 ## Linting
 
+- TypeScript runs with `strict`, `noUncheckedIndexedAccess`, `noImplicitOverride` and `noFallthroughCasesInSwitch`
+  (`tsconfig.json`). An element read by index, from an array or a record, may be `undefined` and has to be checked.
 - ESLint uses the rules of `eslint-config-next` (`core-web-vitals`, `typescript`) and Prettier's config, which turns off
   the rules that conflict with formatting.
 - TypeScript files are linted with type information (`parserOptions.projectService`). These rules report a promise that

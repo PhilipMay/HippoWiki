@@ -69,7 +69,7 @@ test("an invalid or taken tab name shows the error at the name field and keeps t
     ["guides.md", "Use lowercase letters, digits and single hyphens"],
     ["", "Name is required"],
     ["taken", "Name is already in use"],
-  ]) {
+  ] as const) {
     await name.fill(entered);
     await dialog.getByRole("button", { name: "Save" }).click();
 

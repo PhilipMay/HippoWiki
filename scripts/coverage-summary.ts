@@ -15,7 +15,10 @@ if (!existsSync(SUMMARY_FILE)) {
   process.exit(1);
 }
 
-const { total, ...files } = JSON.parse(readFileSync(SUMMARY_FILE, "utf8")) as Record<string, FileCoverage>;
+const { total, ...files } = JSON.parse(readFileSync(SUMMARY_FILE, "utf8")) as {
+  total: FileCoverage;
+  [file: string]: FileCoverage;
+};
 
 function formatMetric({ total, covered, pct }: Metric): string {
   if (total === 0) return "–";

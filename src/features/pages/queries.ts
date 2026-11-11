@@ -57,7 +57,7 @@ export function directPagesFirst<Entry extends { name: string; tab: unknown }>(p
   for (const page of pages) {
     let position = ordered.length;
     if (page.tab === null) {
-      while (position > 0 && ordered[position - 1].name === page.name) position--;
+      while (position > 0 && ordered[position - 1]?.name === page.name) position--;
     }
     ordered.splice(position, 0, page);
   }

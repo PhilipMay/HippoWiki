@@ -1,23 +1,5 @@
 # HippoWiki – Project Review
 
-## Minor
-
-### TypeScript could be stricter
-
-- Location: `tsconfig.json`, line 7, `compilerOptions`
-- Severity: Minor
-- Category: Correctness
-- Problem: Only `strict` is enabled. Access by index is typed as always present.
-- Impact: Code that assumes an array has an element compiles without a warning and fails at runtime if it does not.
-- Evidence: `e2e/support/database.ts`, line 54:
-
-  ```ts
-  const [{ current_database: current }] = await db.$queryRaw<{ current_database: string }[]>`
-  ```
-
-- Suggestion (optional): Enable `noUncheckedIndexedAccess`, `noImplicitOverride` and `noFallthroughCasesInSwitch`.
-  `noUncheckedIndexedAccess` will need a few small fixes in existing code.
-
 ## Nits
 
 ### The CI workflows repeat their setup

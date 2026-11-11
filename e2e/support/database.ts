@@ -51,8 +51,9 @@ export async function disconnectTestDb(): Promise<void> {
 /** Deletes all rows from all tables of the test database, except the migration history. */
 export async function resetTestDatabase(): Promise<void> {
   const db = getTestDb();
-  const [{ current_database: current }] = await db.$queryRaw<{ current_database: string }[]>`
+  const [row] = await db.$queryRaw<{ current_database: string }[]>`
     SELECT current_database()`;
+  const current = row?.current_database;
   if (current !== TEST_DATABASE_NAME) {
     throw new Error(`Refusing to empty database ${current}; only ${TEST_DATABASE_NAME} may be reset.`);
   }

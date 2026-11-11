@@ -135,7 +135,7 @@ describe("parseNewPageFormData", () => {
       ["Bad Name", "Use lowercase letters, digits and single hyphens"],
       ["overview.md", "Use lowercase letters, digits and single hyphens"],
       ["a".repeat(NAME_MAX_LENGTH + 1), "Name must be at most 80 characters"],
-    ]) {
+    ] as const) {
       expect(parseNewPageFormData(formData({ name, content: "# Title" }))).toEqual({
         success: false,
         fieldErrors: { name: [error] },
