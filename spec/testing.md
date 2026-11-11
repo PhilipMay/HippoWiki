@@ -89,9 +89,8 @@ How the code is tested. Commands are listed in `README.md`.
 - They run on every push to any branch, on pull requests and when started by hand (`workflow_dispatch`). A newer push
   to the same ref cancels a run still in progress.
 - Every workflow installs Node.js from `.nvmrc` and runs `npm ci` on `ubuntu-24.04`.
-- `DATABASE_URL` is set to a placeholder URL on port 5432, never the test database: only `prisma generate` during
-  `npm ci` reads it, nothing connects to it. The build needs no database, because every query calls `connection()` and
-  no route is prerendered.
+- No workflow sets `DATABASE_URL`. `prisma generate` during `npm ci` does not need it, and the build needs no
+  database, because every query calls `connection()` and no route is prerendered.
 - Both end-to-end workflows install Chromium with `npx playwright install --with-deps chromium` and use the Podman
   preinstalled on the runner; the tests start and remove their throwaway container `hippowiki-test-db` as they do
   locally. With `CI` set, Playwright retries a failed test twice, fails the run if a test passed only on a

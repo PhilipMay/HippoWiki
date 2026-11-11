@@ -59,21 +59,6 @@
 - Alternatives: Rely on the end-to-end tests and add one test per constraint that checks the exact message in the
   form. Cheaper, but slower to run and to debug.
 
-### `npm install` fails without `DATABASE_URL`
-
-- Location: `prisma.config.ts`, lines 13–14, `datasource.url`; `package.json`, line 22, `postinstall`
-- Severity: Minor
-- Category: Configuration
-- Problem: `env("DATABASE_URL")` throws when the variable is missing, and `postinstall` runs `prisma generate`, which
-  loads the config. Generating the client does not need a database.
-- Impact: A fresh clone fails at `npm install` until `.env` exists. Each of the four workflows carries a placeholder
-  URL with a long comment explaining why.
-- Evidence: `README.md`, "Getting started": "`.env` must exist before `npm install`, because generating the Prisma
-  client reads `DATABASE_URL`."
-- Suggestion (optional): Check in the Prisma 7 documentation whether the URL can be optional for `generate`, for
-  example by reading `process.env.DATABASE_URL` directly instead of through `env()`, so that only `migrate`, `seed` and
-  `studio` require it. Then remove the placeholders from the workflows.
-
 ### `tech.md` lists features that are not built yet
 
 - Location: `spec/tech.md`, "Data & Backend"

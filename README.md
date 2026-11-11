@@ -33,8 +33,6 @@ npm run db:seed        # optional: insert a sample folder with two sample pages
 npm run dev
 ```
 
-`.env` must exist before `npm install`, because generating the Prisma client reads `DATABASE_URL`.
-
 ### Start and stop in one line
 
 Once `.env` exists and the Podman machine runs (`podman machine start`), this line starts everything needed to try the

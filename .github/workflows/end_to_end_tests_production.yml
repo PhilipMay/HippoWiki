@@ -12,11 +12,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  # Placeholder, never the test database: only `prisma generate` during `npm ci` reads it (prisma.config.ts requires
-  # it), nothing connects to it. The tests start their own database container and point the app to it.
-  DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
-
 jobs:
   end_to_end_tests_production:
     runs-on: ubuntu-24.04
