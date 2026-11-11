@@ -29,7 +29,7 @@ Not in:
 
 - [x] Slug derivation
 - [x] Slug column and edit form
-- [ ] Slug routes
+- [x] Slug routes
 - [ ] Content-first creation
 
 ## Slug derivation

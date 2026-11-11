@@ -23,27 +23,29 @@ test("list shows an empty state without pages", async ({ page }) => {
 });
 
 test("list shows pages newest first and links to them", async ({ page }) => {
-  await createPage({ title: "Oldest", updatedAt: new Date("2026-01-01T10:00:00Z") });
-  await createPage({ title: "Newest", updatedAt: new Date("2026-03-01T10:00:00Z") });
-  const middle = await createPage({ title: "Middle", updatedAt: new Date("2026-02-01T10:00:00Z") });
+  await createPage({ title: "Oldest", slug: "oldest", updatedAt: new Date("2026-01-01T10:00:00Z") });
+  await createPage({ title: "Newest", slug: "newest", updatedAt: new Date("2026-03-01T10:00:00Z") });
+  await createPage({ title: "Middle", slug: "middle", updatedAt: new Date("2026-02-01T10:00:00Z") });
 
   await page.goto("/pages");
 
   const items = page.getByRole("list", { name: "Pages" }).getByRole("listitem");
   await expect(items).toHaveCount(3);
   await expect(items.getByRole("link")).toHaveText([/^Newest/, /^Middle/, /^Oldest/]);
+  await expect(items.getByRole("link").nth(1)).toHaveAttribute("href", "/pages/middle");
   await expect(items.nth(1).locator("time")).toHaveAttribute("datetime", "2026-02-01T10:00:00.000Z");
 
   await items.getByRole("link", { name: /^Middle/ }).click();
 
-  await expect(page).toHaveURL(`/pages/${middle.id}`);
+  await expect(page).toHaveURL("/pages/middle");
   await expect(page.getByRole("heading", { level: 1, name: "Middle" })).toBeVisible();
 });
 
 test("page view renders the Markdown content", async ({ page }) => {
   const errors = collectErrors(page);
-  const created = await createPage({
+  await createPage({
     title: "Rendered page",
+    slug: "rendered-page",
     content: [
       "## Section heading",
       "",
@@ -58,7 +60,7 @@ test("page view renders the Markdown content", async ({ page }) => {
     ].join("\n"),
   });
 
-  await page.goto(`/pages/${created.id}`);
+  await page.goto("/pages/rendered-page");
 
   await expect(page).toHaveTitle("Rendered page – HippoWiki");
   await expect(page.getByRole("heading", { level: 1, name: "Rendered page" })).toBeVisible();
@@ -87,7 +89,7 @@ test("raw HTML and unsafe links in the Markdown are not executed", async ({ page
     content: "Before\n\n<script>alert(1)</script>\n\n<img src=x onerror=alert(2)>\n\n[Click me](javascript:alert(3))",
   });
 
-  await page.goto(`/pages/${created.id}`);
+  await page.goto(`/pages/${created.slug}`);
 
   const article = page.getByRole("article");
   await expect(article.getByText("<script>alert(1)</script>")).toBeVisible();
@@ -99,16 +101,31 @@ test("raw HTML and unsafe links in the Markdown are not executed", async ({ page
   expect(dialogs).toEqual([]);
 });
 
-test("unknown page id shows the not-found page", async ({ page }) => {
-  const response = await page.goto(`/pages/${crypto.randomUUID()}`);
+test("unknown page slug shows the not-found page", async ({ page }) => {
+  await createPage({ title: "Existing page", slug: "existing-page" });
+
+  const response = await page.goto("/pages/no-such-page");
 
   expect(response?.status()).toBe(404);
   await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
   await expect(page.getByRole("banner")).toBeVisible();
 });
 
-test("malformed page id shows the not-found page", async ({ page }) => {
-  const response = await page.goto("/pages/not-a-uuid");
+for (const slug of ["Bad_Slug", "Existing-Page", "existing--page"]) {
+  test(`malformed page slug "${slug}" shows the not-found page`, async ({ page }) => {
+    await createPage({ title: "Existing page", slug: "existing-page" });
+
+    const response = await page.goto(`/pages/${slug}`);
+
+    expect(response?.status()).toBe(404);
+    await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
+  });
+}
+
+test("the old id address of a page shows the not-found page", async ({ page }) => {
+  const created = await createPage({ title: "Reached by slug", slug: "reached-by-slug" });
+
+  const response = await page.goto(`/pages/${created.id}`);
 
   expect(response?.status()).toBe(404);
   await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();

@@ -9,17 +9,17 @@ import { notFound } from "next/navigation";
 import Link from "@/components/Link";
 import DeletePageButton from "@/features/pages/components/DeletePageButton";
 import MarkdownContent from "@/features/pages/components/MarkdownContent";
-import { getPage } from "@/features/pages/queries";
+import { getPageBySlug } from "@/features/pages/queries";
 import { formatDateTime } from "@/lib/format";
 import { pageTitle } from "@/lib/site";
 
-export async function generateMetadata({ params }: PageProps<"/pages/[id]">): Promise<Metadata> {
-  const page = await getPage((await params).id);
+export async function generateMetadata({ params }: PageProps<"/pages/[slug]">): Promise<Metadata> {
+  const page = await getPageBySlug((await params).slug);
   return { title: pageTitle(page?.title) };
 }
 
-export default async function PageView({ params }: PageProps<"/pages/[id]">) {
-  const page = await getPage((await params).id);
+export default async function PageView({ params }: PageProps<"/pages/[slug]">) {
+  const page = await getPageBySlug((await params).slug);
   if (!page) notFound();
 
   return (
@@ -32,7 +32,7 @@ export default async function PageView({ params }: PageProps<"/pages/[id]">) {
           Last updated <time dateTime={page.updatedAt.toISOString()}>{formatDateTime(page.updatedAt)}</time>
         </Typography>
         <Stack direction="row" spacing={2} sx={{ pt: 1 }}>
-          <Button component={Link} href={`/pages/${page.id}/edit`} variant="outlined">
+          <Button component={Link} href={`/pages/${page.slug}/edit`} variant="outlined">
             Edit
           </Button>
           <DeletePageButton pageId={page.id} title={page.title} />

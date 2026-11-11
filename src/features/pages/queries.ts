@@ -1,7 +1,7 @@
 import { connection } from "next/server";
 import { cache } from "react";
 
-import { parsePageId } from "@/features/pages/schema";
+import { parsePageSlug } from "@/features/pages/schema";
 import { getDb } from "@/lib/db";
 
 // Every query starts with `connection()`: without a request-time API, Next.js would prerender the calling route at
@@ -11,7 +11,7 @@ import { getDb } from "@/lib/db";
 export async function listPages() {
   await connection();
   return getDb().page.findMany({
-    select: { id: true, title: true, updatedAt: true },
+    select: { id: true, slug: true, title: true, updatedAt: true },
     // The id makes the order deterministic for pages with the same update time.
     orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
   });
@@ -20,12 +20,12 @@ export async function listPages() {
 export type PageSummary = Awaited<ReturnType<typeof listPages>>[number];
 
 /**
- * The page with the given id, or `null` if the id is malformed or no such page exists. Cached per request, so that
+ * The page with the given slug, or `null` if the slug is malformed or no such page exists. Cached per request, so that
  * `generateMetadata` and the page component share one query.
  */
-export const getPage = cache(async (id: string) => {
+export const getPageBySlug = cache(async (slug: string) => {
   await connection();
-  const pageId = parsePageId(id);
-  if (!pageId) return null;
-  return getDb().page.findUnique({ where: { id: pageId } });
+  const pageSlug = parsePageSlug(slug);
+  if (!pageSlug) return null;
+  return getDb().page.findUnique({ where: { slug: pageSlug } });
 });

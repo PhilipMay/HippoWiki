@@ -54,11 +54,11 @@ npm run db:down
 The app runs at http://localhost:3000, which redirects to the list of pages:
 
 - `/pages` lists all pages, most recently updated first; "New page" opens the form at `/pages/new`.
-- `/pages/new` creates a page from a title and its Markdown content and then shows it.
-- `/pages/<id>` shows a page with its Markdown rendered (GitHub Flavored Markdown; raw HTML is shown as text, not
-  rendered). "Edit" opens the form at `/pages/<id>/edit`; "Delete" asks for confirmation, deletes the page and returns
-  to the list.
-- `/pages/<id>/edit` changes the title and content of a page and then shows it again.
+- `/pages/new` creates a page from a title, a slug and its Markdown content and then shows it.
+- `/pages/<slug>` shows a page with its Markdown rendered (GitHub Flavored Markdown; raw HTML is shown as text, not
+  rendered). "Edit" opens the form at `/pages/<slug>/edit`; "Delete" asks for confirmation, deletes the page and
+  returns to the list.
+- `/pages/<slug>/edit` changes the title, slug and content of a page and then shows it at its (possibly new) address.
 
 To start from scratch with an empty database (this deletes all data of the development database):
 

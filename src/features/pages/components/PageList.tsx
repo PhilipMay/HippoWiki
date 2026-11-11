@@ -29,7 +29,7 @@ export default function PageList({ pages }: { pages: PageSummary[] }) {
       <List disablePadding aria-label="Pages">
         {pages.map((page, index) => (
           <ListItem key={page.id} disablePadding divider={index < pages.length - 1}>
-            <ListItemButton component={Link} href={`/pages/${page.id}`}>
+            <ListItemButton component={Link} href={`/pages/${page.slug}`}>
               <ListItemText
                 primary={page.title}
                 secondary={

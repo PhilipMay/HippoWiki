@@ -23,7 +23,7 @@ test("creating a page shows it rendered and lists it first", async ({ page }) =>
   await page.getByLabel("Content").fill("## Getting started\n\n- First step\n- Second step");
   await page.getByRole("button", { name: "Save" }).click();
 
-  await expect(page).toHaveURL(/\/pages\/[0-9a-f-]{36}$/);
+  await expect(page).toHaveURL("/pages/created-in-the-browser");
   await expect(page.getByRole("heading", { level: 1, name: "Created in the browser" })).toBeVisible();
   const article = page.getByRole("article");
   await expect(article.getByRole("heading", { level: 2, name: "Getting started" })).toBeVisible();
@@ -33,7 +33,6 @@ test("creating a page shows it rendered and lists it first", async ({ page }) =>
   expect(stored).toHaveLength(1);
   expect(stored[0].slug).toBe("created-in-the-browser");
   expect(stored[0].content).toBe("## Getting started\n\n- First step\n- Second step");
-  expect(page.url()).toMatch(new RegExp(`/pages/${stored[0].id}$`));
 
   await page.getByRole("banner").getByRole("link", { name: "Pages" }).click();
 

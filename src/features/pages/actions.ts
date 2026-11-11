@@ -31,23 +31,26 @@ function isSlugTaken(err: unknown): boolean {
 /** The form state that shows "Slug is already in use" at the slug field. */
 const slugTakenState: PageFormState = { fieldErrors: { slug: [SLUG_TAKEN_MESSAGE] } };
 
-/** Revalidates the routes that show a page: the list and, if given, the page itself. */
-function revalidatePage(id?: string): void {
-  revalidatePath("/pages");
-  if (id) revalidatePath(`/pages/${id}`);
+/**
+ * Revalidates every route under `/pages`: the list and the view and edit routes of all slugs, so that a renamed page's
+ * old and new address are both covered.
+ */
+function revalidatePages(): void {
+  revalidatePath("/pages", "layout");
 }
 
 /**
- * Creates a page from the submitted page form and redirects to it. Returns the errors to show in the form if the input
- * is invalid, the slug is taken or the page cannot be stored.
+ * Creates a page from the submitted page form and redirects to its address `/pages/<slug>`. Returns the errors to show
+ * in the form if the input is invalid, the slug is taken or the page cannot be stored.
  */
 export async function createPage(_prevState: PageFormState, formData: FormData): Promise<PageFormState> {
   const input = parsePageFormData(formData);
   if (!input.success) return { fieldErrors: input.fieldErrors };
 
   let id: string;
+  let slug: string;
   try {
-    ({ id } = await getDb().page.create({ data: input.data, select: { id: true } }));
+    ({ id, slug } = await getDb().page.create({ data: input.data, select: { id: true, slug: true } }));
   } catch (err) {
     if (isSlugTaken(err)) {
       logger.warn({ slug: input.data.slug }, "slug of new page already in use");
@@ -58,15 +61,15 @@ export async function createPage(_prevState: PageFormState, formData: FormData):
   }
 
   logger.info({ pageId: id }, "page created");
-  revalidatePage();
+  revalidatePages();
   // `redirect` throws, so it must stay outside the try block above.
-  redirect(`/pages/${id}`);
+  redirect(`/pages/${slug}`);
 }
 
 /**
- * Updates the page with the given id from the submitted page form and redirects to it. Returns the errors to show in
- * the form if the input is invalid, the slug is taken, the page no longer exists or it cannot be stored. Bind the id with
- * `updatePage.bind(null, id)`.
+ * Updates the page with the given id from the submitted page form and redirects to its address with the stored, possibly
+ * changed slug. Returns the errors to show in the form if the input is invalid, the slug is taken, the page no longer
+ * exists or it cannot be stored. Bind the id with `updatePage.bind(null, id)`.
  */
 export async function updatePage(id: string, _prevState: PageFormState, formData: FormData): Promise<PageFormState> {
   const pageId = parsePageId(id);
@@ -93,8 +96,8 @@ export async function updatePage(id: string, _prevState: PageFormState, formData
   }
 
   logger.info({ pageId }, "page updated");
-  revalidatePage(pageId);
-  redirect(`/pages/${pageId}`);
+  revalidatePages();
+  redirect(`/pages/${input.data.slug}`);
 }
 
 /**
@@ -113,7 +116,7 @@ export async function deletePage(id: string): Promise<PageFormState> {
     }
     if (count === 0) logger.warn({ pageId }, "page to delete not found");
     else logger.info({ pageId }, "page deleted");
-    revalidatePage(pageId);
+    revalidatePages();
   } else {
     logger.warn({ pageId: id }, "page to delete has a malformed id");
   }
