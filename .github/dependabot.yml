@@ -1,0 +1,22 @@
+# Weekly version updates. Minor and patch updates arrive grouped in one pull request; a major npm update comes as a
+# pull request of its own, because upgrading is a task of its own (see spec/workflow.md).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns:
+          - "*"

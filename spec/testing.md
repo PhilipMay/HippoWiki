@@ -101,3 +101,6 @@ How the code is tested. Commands are listed in `README.md`.
 - The unit test workflow writes the coverage tables of `scripts/coverage-summary.ts` to the job summary and uploads
   `coverage/` as the artifact `coverage-report`, also when the tests fail (not when the run was cancelled or no report
   was written), kept for 7 days.
+- Dependabot (`.github/dependabot.yml`) checks the `npm` and `github-actions` dependencies weekly. All minor and patch
+  npm updates arrive in one pull request, each major npm update in a pull request of its own, all action updates in
+  one. Its pull requests run the same workflows; merging one is an upgrade, a task of its own (see `workflow.md`).

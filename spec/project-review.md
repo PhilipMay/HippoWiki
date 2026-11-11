@@ -2,21 +2,6 @@
 
 ## Minor
 
-### Dependencies are neither updated nor audited automatically
-
-- Location: `.github/`, no `dependabot.yml` or Renovate configuration
-- Severity: Minor
-- Category: Security
-- Problem: Nothing reports outdated or vulnerable packages. Upgrades only happen when someone thinks of them.
-- Impact: Security fixes reach the project late. Today the advisories concern only development tooling, but the same
-  gap applies to Next.js, Prisma and `pg`.
-- Evidence: `npm audit` reports 7 moderate advisories in the typescript-eslint → minimatch chain (dev only, fixable
-  with `npm audit fix`). `npm outdated` lists new major versions of ESLint (10), TypeScript (7) and Prisma (8, release
-  candidate).
-- Suggestion (optional): Add Dependabot for the `npm` and `github-actions` ecosystems, weekly and grouped, so it opens
-  few pull requests. Upgrading stays a task of its own, as `workflow.md` asks.
-- Reference: GitHub Docs, "Configuring Dependabot version updates".
-
 ### Conventions from the specs are not enforced by the linter
 
 - Location: `spec/architecture.md`, "Validation and errors" and "UI"; `eslint.config.mjs`
