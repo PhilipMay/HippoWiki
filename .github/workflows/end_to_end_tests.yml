@@ -2,6 +2,7 @@ name: end_to_end_tests
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 

@@ -86,8 +86,9 @@ How the code is tested. Commands are listed in `README.md`.
   - `unit_tests`: `npm run test:coverage`
   - `end_to_end_tests`: `npm run test:e2e`, against the development server
   - `end_to_end_tests_production`: `npm run test:e2e:production`, against a production build
-- They run on every push to any branch, on pull requests and when started by hand (`workflow_dispatch`). A newer push
-  to the same ref cancels a run still in progress.
+- They run on every push to `main`, on pull requests and when started by hand (`workflow_dispatch`). Pushes to other
+  branches run them only through their pull request, so a pull request's commits are not tested twice. A newer push to
+  the same ref cancels a run still in progress.
 - Every workflow installs Node.js from `.nvmrc` and runs `npm ci` on `ubuntu-24.04`.
 - No workflow sets `DATABASE_URL`. `prisma generate` during `npm ci` does not need it, and the build needs no
   database, because every query calls `connection()` and no route is prerendered.
