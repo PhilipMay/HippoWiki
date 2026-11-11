@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { deriveSlug, deriveTitle, titleFromContent } from "@/features/pages/derive";
+import { deriveSlug, titleFromContent } from "@/features/pages/derive";
 import { SLUG_MAX_LENGTH, TITLE_MAX_LENGTH } from "@/features/pages/limits";
 import { SLUG_PATTERN } from "@/features/pages/schema";
 
@@ -91,71 +91,6 @@ describe("titleFromContent", () => {
     expect(titleFromContent("# Über Größen")).toBe("Über Größen");
     expect(titleFromContent("# 日本語")).toBe("日本語");
     expect(titleFromContent("# 🎉 Party")).toBe("🎉 Party");
-  });
-});
-
-describe("deriveTitle", () => {
-  it("takes the text of a level-one heading", () => {
-    expect(deriveTitle("# Title\n\nSome text")).toBe("Title");
-  });
-
-  it("removes a closing sequence", () => {
-    expect(deriveTitle("### Title ###")).toBe("Title");
-    expect(deriveTitle("## Title #   ")).toBe("Title");
-    // Without a space before it, the # belongs to the text.
-    expect(deriveTitle("# C#")).toBe("C#");
-  });
-
-  it("finds a heading after a paragraph", () => {
-    expect(deriveTitle("Intro paragraph.\n\n## Getting started\n\n# Later")).toBe("Getting started");
-  });
-
-  it("skips headings inside fenced code blocks", () => {
-    expect(deriveTitle("```sh\n# not a title\n```\n\n# Real title")).toBe("Real title");
-    expect(deriveTitle("~~~\n# not a title\n~~~\n# Real title")).toBe("Real title");
-    // A shorter or different fence does not close the block.
-    expect(deriveTitle("````\n```\n~~~~\n# inside\n````\n# Outside")).toBe("Outside");
-  });
-
-  it("treats everything after an unclosed fence as code", () => {
-    expect(deriveTitle("```\n# inside")).toBe("");
-  });
-
-  it("does not treat a backtick line with backticks in its info string as a fence", () => {
-    expect(deriveTitle("``` a ` b\n# Title")).toBe("Title");
-  });
-
-  it("requires a space after the hashes", () => {
-    expect(deriveTitle("#NoSpace")).toBe("");
-    expect(deriveTitle("#NoSpace\n# Title")).toBe("Title");
-  });
-
-  it("accepts up to three leading spaces", () => {
-    expect(deriveTitle("   # Indented")).toBe("Indented");
-    expect(deriveTitle("    # Code\n# Title")).toBe("Title");
-  });
-
-  it("does not accept more than six hashes", () => {
-    expect(deriveTitle("####### Seven\n###### Six")).toBe("Six");
-  });
-
-  it("handles CRLF line breaks", () => {
-    expect(deriveTitle("Text\r\n# Title\r\nMore")).toBe("Title");
-  });
-
-  it("returns an empty string without a heading", () => {
-    expect(deriveTitle("")).toBe("");
-    expect(deriveTitle("Just text.\n\n- a list")).toBe("");
-  });
-
-  it("cuts a long heading to the title limit", () => {
-    const title = deriveTitle(`# ${"a".repeat(300)}`);
-    expect(title).toBe("a".repeat(TITLE_MAX_LENGTH));
-  });
-
-  it("does not split a surrogate pair at the cut", () => {
-    const title = deriveTitle(`# ${"a".repeat(TITLE_MAX_LENGTH - 1)}😀`);
-    expect(title).toBe("a".repeat(TITLE_MAX_LENGTH - 1));
   });
 });
 

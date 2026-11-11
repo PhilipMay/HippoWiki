@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 
 import { PrismaPg } from "@prisma/adapter-pg";
 
+import { titleFromContent } from "@/features/pages/derive";
 import { PrismaClient, type Page, type Prisma } from "@/generated/prisma/client";
 
 import { TEST_DATABASE_NAME, TEST_DATABASE_URL } from "./container";
@@ -64,11 +65,15 @@ export async function resetTestDatabase(): Promise<void> {
 }
 
 /**
- * Creates a page directly in the test database, with a unique slug unless one is given. Any field can be overridden,
- * e.g. `updatedAt` to control ordering.
+ * Creates a page directly in the test database, with a unique slug unless one is given. Like a save through the forms,
+ * the title is derived from the content; the content defaults to `# <title>`, so `createPage({ title: "Old" })` gives
+ * a page with the content `# Old`. A title given together with content is stored as is, e.g. to set up a page that was
+ * stored before titles were derived. Any other field can be overridden, e.g. `updatedAt` to control ordering.
  */
 export function createPage(data: Partial<Prisma.PageCreateInput> = {}): Promise<Page> {
+  const content = data.content ?? `# ${data.title ?? "Test page"}`;
+  const title = data.title ?? titleFromContent(content) ?? "Test page";
   return getTestDb().page.create({
-    data: { title: "Test page", slug: `test-page-${crypto.randomUUID()}`, content: "", ...data },
+    data: { slug: `test-page-${crypto.randomUUID()}`, ...data, title, content },
   });
 }

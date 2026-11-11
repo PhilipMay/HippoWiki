@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import { CONTENT_MAX_LENGTH, SLUG_MAX_LENGTH, TITLE_MAX_LENGTH } from "@/features/pages/limits";
-import { parsePageFormData, parsePageId, parsePageSlug, slugSchema } from "@/features/pages/schema";
+import {
+  parsePageFormData,
+  parsePageId,
+  parsePageSlug,
+  slugSchema,
+  TITLE_HEADING_MISSING_MESSAGE,
+} from "@/features/pages/schema";
 
 function slugErrors(slug: string): string[] {
   const result = slugSchema.safeParse(slug);
@@ -79,34 +85,38 @@ function formData(fields: Record<string, string | Blob>): FormData {
 }
 
 describe("parsePageFormData", () => {
-  it("accepts a title, a slug and Markdown content", () => {
-    expect(parsePageFormData(formData({ title: "Welcome", slug: "welcome", content: "# Hello\n\n- item" }))).toEqual({
+  it("derives the title from the content's first heading", () => {
+    expect(parsePageFormData(formData({ slug: "welcome", content: "# Hello *world*\n\n- item" }))).toEqual({
       success: true,
-      data: { title: "Welcome", slug: "welcome", content: "# Hello\n\n- item" },
+      data: { title: "Hello world", slug: "welcome", content: "# Hello *world*\n\n- item" },
     });
   });
 
-  it("trims the title and the slug", () => {
-    const result = parsePageFormData(formData({ title: "  Welcome \n", slug: " welcome\t", content: "" }));
-    expect(result).toEqual({ success: true, data: { title: "Welcome", slug: "welcome", content: "" } });
+  it("ignores a submitted title", () => {
+    expect(parsePageFormData(formData({ title: "Typed title", slug: "a", content: "# From content" }))).toEqual({
+      success: true,
+      data: { title: "From content", slug: "a", content: "# From content" },
+    });
   });
 
-  it("rejects an empty or whitespace-only title", () => {
-    for (const title of ["", "   ", "\t\n"]) {
-      expect(parsePageFormData(formData({ title, slug: "a", content: "Some content" }))).toEqual({
+  it("trims the slug", () => {
+    const result = parsePageFormData(formData({ slug: " welcome\t", content: "# Welcome" }));
+    expect(result).toEqual({ success: true, data: { title: "Welcome", slug: "welcome", content: "# Welcome" } });
+  });
+
+  it("refuses content without a title heading at the content field", () => {
+    for (const content of ["", "Text first\n\n# Title", "## Section", "Title\n=====", "#", "# **"]) {
+      expect(parsePageFormData(formData({ slug: "a", content }))).toEqual({
         success: false,
-        fieldErrors: { title: ["Title is required"] },
+        fieldErrors: { content: [TITLE_HEADING_MISSING_MESSAGE] },
       });
     }
+    expect(TITLE_HEADING_MISSING_MESSAGE).toBe("Content must start with a title heading: # Title");
   });
 
-  it("limits the title length", () => {
-    const longest = "a".repeat(TITLE_MAX_LENGTH);
-    expect(parsePageFormData(formData({ title: longest, slug: "a", content: "" }))).toMatchObject({ success: true });
-    expect(parsePageFormData(formData({ title: `${longest}a`, slug: "a", content: "" }))).toEqual({
-      success: false,
-      fieldErrors: { title: ["Title must be at most 200 characters"] },
-    });
+  it("cuts a long heading to the title limit", () => {
+    const result = parsePageFormData(formData({ slug: "a", content: `# ${"a".repeat(TITLE_MAX_LENGTH + 50)}` }));
+    expect(result).toMatchObject({ success: true, data: { title: "a".repeat(TITLE_MAX_LENGTH) } });
   });
 
   it("rejects an empty, malformed or reserved slug", () => {
@@ -117,50 +127,47 @@ describe("parsePageFormData", () => {
       ["a".repeat(SLUG_MAX_LENGTH + 1), "Slug must be at most 80 characters"],
       ["new", "This slug is reserved"],
     ]) {
-      expect(parsePageFormData(formData({ title: "Title", slug, content: "" }))).toEqual({
+      expect(parsePageFormData(formData({ slug, content: "# Title" }))).toEqual({
         success: false,
         fieldErrors: { slug: [error] },
       });
     }
   });
 
-  it("accepts empty content", () => {
-    expect(parsePageFormData(formData({ title: "Empty", slug: "empty", content: "" }))).toMatchObject({
-      success: true,
-    });
-  });
-
   it("limits the content length", () => {
-    const longest = "a".repeat(CONTENT_MAX_LENGTH);
-    expect(parsePageFormData(formData({ title: "Long", slug: "long", content: longest }))).toMatchObject({
-      success: true,
-    });
-    expect(parsePageFormData(formData({ title: "Long", slug: "long", content: `${longest}a` }))).toEqual({
+    const longest = `# Long\n\n${"a".repeat(CONTENT_MAX_LENGTH - 8)}`;
+    expect(longest).toHaveLength(CONTENT_MAX_LENGTH);
+    expect(parsePageFormData(formData({ slug: "long", content: longest }))).toMatchObject({ success: true });
+    expect(parsePageFormData(formData({ slug: "long", content: `${longest}a` }))).toEqual({
       success: false,
       fieldErrors: { content: ["Content must be at most 100,000 characters"] },
     });
   });
 
   it("normalizes line breaks in the content", () => {
-    const result = parsePageFormData(formData({ title: "Lines", slug: "lines", content: "one\r\ntwo\rthree\nfour" }));
+    const result = parsePageFormData(formData({ slug: "lines", content: "# Lines\r\none\rtwo\nthree" }));
     expect(result).toEqual({
       success: true,
-      data: { title: "Lines", slug: "lines", content: "one\ntwo\nthree\nfour" },
+      data: { title: "Lines", slug: "lines", content: "# Lines\none\ntwo\nthree" },
     });
   });
 
   it("treats missing fields as empty", () => {
     expect(parsePageFormData(new FormData())).toEqual({
       success: false,
-      fieldErrors: { title: ["Title is required"], slug: ["Slug is required"] },
+      fieldErrors: { slug: ["Slug is required"] },
+    });
+    expect(parsePageFormData(formData({ slug: "a" }))).toEqual({
+      success: false,
+      fieldErrors: { content: [TITLE_HEADING_MISSING_MESSAGE] },
     });
   });
 
   it("rejects files instead of text", () => {
-    const result = parsePageFormData(formData({ title: new Blob(["x"]), slug: new Blob(["a"]), content: "" }));
+    const result = parsePageFormData(formData({ slug: new Blob(["a"]), content: new Blob(["# Title"]) }));
     expect(result).toMatchObject({
       success: false,
-      fieldErrors: { title: [expect.any(String)], slug: [expect.any(String)] },
+      fieldErrors: { slug: [expect.any(String)], content: [expect.any(String)] },
     });
   });
 });

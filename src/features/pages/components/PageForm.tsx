@@ -7,31 +7,29 @@ import TextField from "@mui/material/TextField";
 import { useActionState, useState } from "react";
 
 import Link from "@/components/Link";
-import { CONTENT_MAX_LENGTH, SLUG_MAX_LENGTH, TITLE_MAX_LENGTH } from "@/features/pages/limits";
-import { type PageFormState, type PageInput } from "@/features/pages/schema";
+import { CONTENT_MAX_LENGTH, SLUG_MAX_LENGTH } from "@/features/pages/limits";
+import { type PageFormState, type PageFormValues } from "@/features/pages/schema";
 
 type PageFormProps = {
   /** Server Action that stores the page; it returns the errors to show, or redirects on success. */
   action: (prevState: PageFormState, formData: FormData) => Promise<PageFormState>;
   /** Values the form starts with: the current page. */
-  initialValues: PageInput;
+  initialValues: PageFormValues;
   /** Where "Cancel" leads. */
   cancelHref: string;
 };
 
 /**
- * Form for the title, slug and Markdown content of a page, used to edit pages. The slug does not follow the title here.
- * New pages use `NewPageForm`.
+ * Form for the slug and Markdown content of a page, used to edit pages. The title is derived from the content's first
+ * heading when the page is saved; the slug never changes automatically. New pages use `NewPageForm`.
  */
 export default function PageForm({ action, initialValues, cancelHref }: PageFormProps) {
   const [state, formAction, pending] = useActionState(action, {});
   // Controlled fields keep the entered values when the action returns errors; React resets only uncontrolled fields
   // after a submission.
-  const [title, setTitle] = useState(initialValues.title);
   const [slug, setSlug] = useState(initialValues.slug);
   const [content, setContent] = useState(initialValues.content);
 
-  const titleError = state.fieldErrors?.title?.[0];
   const slugError = state.fieldErrors?.slug?.[0];
   const contentError = state.fieldErrors?.content?.[0];
 
@@ -40,23 +38,12 @@ export default function PageForm({ action, initialValues, cancelHref }: PageForm
     <Stack component="form" action={formAction} noValidate spacing={3}>
       {state.message && <Alert severity="error">{state.message}</Alert>}
       <TextField
-        name="title"
-        label="Title"
-        value={title}
-        onChange={(event) => setTitle(event.target.value)}
-        required
-        autoFocus
-        fullWidth
-        error={!!titleError}
-        helperText={titleError}
-        slotProps={{ htmlInput: { maxLength: TITLE_MAX_LENGTH } }}
-      />
-      <TextField
         name="slug"
         label="Slug"
         value={slug}
         onChange={(event) => setSlug(event.target.value)}
         required
+        autoFocus
         fullWidth
         error={!!slugError}
         helperText={slugError ?? `Address: /pages/${slug.trim()}`}
@@ -71,7 +58,7 @@ export default function PageForm({ action, initialValues, cancelHref }: PageForm
         minRows={16}
         fullWidth
         error={!!contentError}
-        helperText={contentError ?? "Markdown (GitHub Flavored Markdown)"}
+        helperText={contentError ?? "Markdown (GitHub Flavored Markdown), starting with the title heading: # Title"}
         slotProps={{
           htmlInput: { maxLength: CONTENT_MAX_LENGTH, spellCheck: false },
           input: { sx: { fontFamily: "monospace", fontSize: "0.875rem", lineHeight: 1.6 } },

@@ -13,6 +13,7 @@ datasource db {
 /// A wiki page with its Markdown source.
 model Page {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Derived from the content's first heading (`# Title`) on every save; never entered directly.
   title     String
   /// Last part of the page address `/pages/<slug>`.
   slug      String   @unique

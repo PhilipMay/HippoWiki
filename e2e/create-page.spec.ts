@@ -3,6 +3,8 @@ import { expect, test, type Page } from "@playwright/test";
 import { collectErrors } from "./support/browser";
 import { createPage, getTestDb, resetTestDatabase } from "./support/database";
 
+const TITLE_HEADING_MISSING = "Content must start with a title heading: # Title";
+
 test.beforeEach(async () => {
   await resetTestDatabase();
 });
@@ -22,10 +24,10 @@ async function openSaveDialog(page: Page, content: string) {
   return dialog;
 }
 
-test("creating a page derives title and slug from the first heading and shows the page", async ({ page }) => {
+test("creating a page derives title and slug from the title heading and shows the page", async ({ page }) => {
   const errors = collectErrors(page);
   await createPage({ title: "Older page", updatedAt: new Date("2026-01-01T10:00:00Z") });
-  const content = "Intro\n\n## Getting started\n\n- First step\n- Second step";
+  const content = "# Getting started\n\n- First step\n- Second step";
 
   await page.goto("/pages");
   await page.getByRole("link", { name: "New page" }).click();
@@ -45,9 +47,8 @@ test("creating a page derives title and slug from the first heading and shows th
   await dialog.getByRole("button", { name: "Save" }).click();
 
   await expect(page).toHaveURL("/pages/getting-started");
-  await expect(page.getByRole("heading", { level: 1, name: "Getting started" })).toBeVisible();
+  await expect(page).toHaveTitle("Getting started – HippoWiki");
   const article = page.getByRole("article");
-  await expect(article.getByRole("heading", { level: 2, name: "Getting started" })).toBeVisible();
   await expect(article.getByRole("listitem")).toHaveText(["First step", "Second step"]);
 
   const stored = await getTestDb().page.findMany({ where: { slug: "getting-started" } });
@@ -62,56 +63,87 @@ test("creating a page derives title and slug from the first heading and shows th
   expect(errors).toEqual([]);
 });
 
-test("a heading inside a code block is not used as the title", async ({ page }) => {
-  const dialog = await openSaveDialog(page, "```\n# Not the title\n```\n\n# Real title");
+for (const { name, content } of [
+  { name: "text before the title heading", content: "Intro\n\n# Title" },
+  { name: "a level-two heading first", content: "## Section\n\n# Title" },
+  { name: "a title heading only inside a code block", content: "```\n# Not the title\n```\n\n# Title" },
+  { name: "a setext heading", content: "Title\n=====" },
+  { name: "a heading without text", content: "# **" },
+  { name: "empty content", content: "" },
+]) {
+  test(`${name} shows the error at the content field and opens no dialog`, async ({ page }) => {
+    const errors = collectErrors(page);
+    await page.goto("/pages/new");
+    const field = page.getByLabel("Content");
+    await field.fill(content);
+    await page.getByRole("button", { name: "Save" }).click();
 
-  await expect(dialog.getByLabel("Title")).toHaveValue("Real title");
-  await expect(dialog.getByLabel("Slug")).toHaveValue("real-title");
-});
+    await expect(field).toHaveAttribute("aria-invalid", "true");
+    await expect(field).toHaveAccessibleDescription(TITLE_HEADING_MISSING);
+    await expect(saveDialog(page)).toHaveCount(0);
+    await expect(page).toHaveURL("/pages/new");
+    await expect(field).toHaveValue(content);
+    expect(await getTestDb().page.count()).toBe(0);
 
-test("without a heading, title and slug start empty and are required", async ({ page }) => {
-  const errors = collectErrors(page);
-  const dialog = await openSaveDialog(page, "Content without a heading");
+    // Adding a title heading removes the error and opens the dialog.
+    await field.fill(`# Fixed\n\n${content}`);
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(saveDialog(page).getByLabel("Title")).toHaveValue("Fixed");
+    await expect(field).toHaveAttribute("aria-invalid", "false");
+    expect(errors).toEqual([]);
+  });
+}
+
+test("the dialog shows the title read-only and has no editable title field", async ({ page }) => {
+  const dialog = await openSaveDialog(page, "# Read-only title\n\nBody");
 
   const title = dialog.getByLabel("Title");
-  const slug = dialog.getByLabel("Slug");
-  await expect(title).toHaveValue("");
-  await expect(slug).toHaveValue("");
+  await expect(title).toHaveValue("Read-only title");
+  await expect(title).not.toBeEditable();
+  await expect(title).not.toHaveAttribute("name");
+  await expect(dialog.getByLabel("Slug")).toBeEditable();
+  await expect(dialog.getByLabel("Slug")).toBeFocused();
+});
+
+test("a heading with inline Markdown gives a plain title in the list and the browser tab", async ({ page }) => {
+  const dialog = await openSaveDialog(page, "# The *`npm`* **[guide](https://example.com)** ![logo](x.png)");
+
+  await expect(dialog.getByLabel("Title")).toHaveValue("The npm guide logo");
+  await expect(dialog.getByLabel("Slug")).toHaveValue("the-npm-guide-logo");
   await dialog.getByRole("button", { name: "Save" }).click();
 
-  await expect(title).toHaveAttribute("aria-invalid", "true");
-  await expect(title).toHaveAccessibleDescription("Title is required");
-  await expect(slug).toHaveAttribute("aria-invalid", "true");
-  await expect(slug).toHaveAccessibleDescription("Slug is required");
-  await expect(dialog).toBeVisible();
-  await expect(page).toHaveURL("/pages/new");
-  expect(await getTestDb().page.count()).toBe(0);
-  expect(errors).toEqual([]);
-});
+  await expect(page).toHaveURL("/pages/the-npm-guide-logo");
+  await expect(page).toHaveTitle("The npm guide logo – HippoWiki");
+  expect((await getTestDb().page.findFirstOrThrow()).title).toBe("The npm guide logo");
 
-test("the slug follows the title until it is edited by hand", async ({ page }) => {
-  const dialog = await openSaveDialog(page, "# First title");
-  const title = dialog.getByLabel("Title");
-  const slug = dialog.getByLabel("Slug");
-
-  await title.fill("Second title");
-  await expect(slug).toHaveValue("second-title");
-
-  await slug.fill("my-slug");
-  await title.fill("Third title");
-  await expect(title).toHaveValue("Third title");
-  await expect(slug).toHaveValue("my-slug");
+  await page.getByRole("banner").getByRole("link", { name: "Pages" }).click();
+  await expect(page.getByRole("list", { name: "Pages" }).getByRole("link")).toHaveText([/^The npm guide logo/]);
 });
 
 test("an umlaut title gives a slug with spelled-out umlauts", async ({ page }) => {
-  const dialog = await openSaveDialog(page, "## Über Größen");
+  const dialog = await openSaveDialog(page, "# Über Größen");
 
   await expect(dialog.getByLabel("Title")).toHaveValue("Über Größen");
   await expect(dialog.getByLabel("Slug")).toHaveValue("ueber-groessen");
   await dialog.getByRole("button", { name: "Save" }).click();
 
   await expect(page).toHaveURL("/pages/ueber-groessen");
-  await expect(page.getByRole("heading", { level: 1, name: "Über Größen" })).toBeVisible();
+  await expect(page).toHaveTitle("Über Größen – HippoWiki");
+});
+
+test("a form submission with an extra title field stores the derived title", async ({ page }) => {
+  const dialog = await openSaveDialog(page, "# From content");
+  const save = dialog.getByRole("button", { name: "Save" });
+  // The Save button is tied to the dialog's form; add a title field to that form as a crafted request would.
+  await save.evaluate((button: HTMLButtonElement) => {
+    const input = document.createElement("input");
+    Object.assign(input, { type: "hidden", name: "title", value: "Injected title" });
+    button.form?.append(input);
+  });
+  await save.click();
+
+  await expect(page).toHaveURL("/pages/from-content");
+  expect((await getTestDb().page.findFirstOrThrow()).title).toBe("From content");
 });
 
 test("a taken slug shows an error in the open dialog and keeps all values", async ({ page }) => {
@@ -120,8 +152,6 @@ test("a taken slug shows an error in the open dialog and keeps all values", asyn
 
   const dialog = await openSaveDialog(page, "# Taken\n\nContent that must not get lost");
   await expect(dialog.getByLabel("Slug")).toHaveValue("taken");
-  await dialog.getByLabel("Title").fill("Another page");
-  await dialog.getByLabel("Slug").fill("taken");
   await dialog.getByRole("button", { name: "Save" }).click();
 
   const slug = dialog.getByLabel("Slug");
@@ -129,7 +159,7 @@ test("a taken slug shows an error in the open dialog and keeps all values", asyn
   await expect(slug).toHaveAccessibleDescription("Slug is already in use");
   await expect(dialog).toBeVisible();
   await expect(page).toHaveURL("/pages/new");
-  await expect(dialog.getByLabel("Title")).toHaveValue("Another page");
+  await expect(dialog.getByLabel("Title")).toHaveValue("Taken");
   await expect(slug).toHaveValue("taken");
   expect(await getTestDb().page.count()).toBe(1);
 
@@ -141,6 +171,7 @@ test("a taken slug shows an error in the open dialog and keeps all values", asyn
 for (const { slug, error } of [
   { slug: "Bad Slug", error: "Use lowercase letters, digits and single hyphens" },
   { slug: "new", error: "This slug is reserved" },
+  { slug: "", error: "Slug is required" },
 ]) {
   test(`the slug "${slug}" shows "${error}" in the dialog and creates nothing`, async ({ page }) => {
     const dialog = await openSaveDialog(page, "# Valid title");
@@ -150,12 +181,24 @@ for (const { slug, error } of [
     const slugField = dialog.getByLabel("Slug");
     await expect(slugField).toHaveAttribute("aria-invalid", "true");
     await expect(slugField).toHaveAccessibleDescription(error);
-    await expect(dialog.getByLabel("Title")).toHaveAttribute("aria-invalid", "false");
+    await expect(dialog.getByLabel("Title")).toHaveValue("Valid title");
     await expect(page).toHaveURL("/pages/new");
     await expect(slugField).toHaveValue(slug);
     expect(await getTestDb().page.count()).toBe(0);
   });
 }
+
+test("a title in a non-Latin script gives an empty slug that must be entered", async ({ page }) => {
+  const dialog = await openSaveDialog(page, "# 日本語");
+
+  await expect(dialog.getByLabel("Title")).toHaveValue("日本語");
+  await expect(dialog.getByLabel("Slug")).toHaveValue("");
+  await dialog.getByLabel("Slug").fill("japanese");
+  await dialog.getByRole("button", { name: "Save" }).click();
+
+  await expect(page).toHaveURL("/pages/japanese");
+  expect((await getTestDb().page.findFirstOrThrow()).title).toBe("日本語");
+});
 
 test("cancel in the dialog keeps the content, creates nothing and derives again on reopening", async ({ page }) => {
   const dialog = await openSaveDialog(page, "# First draft\n\nBody");

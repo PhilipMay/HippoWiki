@@ -9,26 +9,38 @@ import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
-import { useActionState, useId, useState } from "react";
+import { useActionState, useId, useRef, useState } from "react";
 
 import Link from "@/components/Link";
 import { createPage } from "@/features/pages/actions";
-import { deriveSlug, deriveTitle } from "@/features/pages/derive";
-import { CONTENT_MAX_LENGTH, SLUG_MAX_LENGTH, TITLE_MAX_LENGTH } from "@/features/pages/limits";
+import { deriveSlug, titleFromContent } from "@/features/pages/derive";
+import { CONTENT_MAX_LENGTH, SLUG_MAX_LENGTH } from "@/features/pages/limits";
+import { TITLE_HEADING_MISSING_MESSAGE } from "@/features/pages/schema";
 
 /**
- * Form for a new page that asks only for the Markdown content. "Save" opens a dialog that asks for title and slug,
- * prefilled from the first heading of the content.
+ * Form for a new page that asks only for the Markdown content, which must start with a title heading (`# Title`).
+ * "Save" derives the title and opens a dialog that shows it and asks for the slug, prefilled from the title.
  */
 export default function NewPageForm() {
   const [content, setContent] = useState("");
   const [open, setOpen] = useState(false);
-  // A new key for every opening remounts the dialog, so that title and slug are derived again and errors of an earlier
-  // attempt are gone.
+  // The title derived when "Save" was last pressed. It stays while the dialog closes, so the dialog does not change
+  // during its exit transition.
+  const [title, setTitle] = useState("");
+  const [contentError, setContentError] = useState<string | null>(null);
+  // A new key for every opening remounts the dialog, so that the slug is derived again and errors of an earlier attempt
+  // are gone.
   const [dialogKey, setDialogKey] = useState(0);
 
-  const openDialog = () => {
+  const save = () => {
+    const derived = titleFromContent(content);
+    if (derived === null) {
+      setContentError(TITLE_HEADING_MISSING_MESSAGE);
+      return;
+    }
+    setContentError(null);
     setDialogKey((key) => key + 1);
+    setTitle(derived);
     setOpen(true);
   };
 
@@ -42,43 +54,43 @@ export default function NewPageForm() {
         minRows={16}
         autoFocus
         fullWidth
-        helperText="Markdown (GitHub Flavored Markdown). The first heading suggests the title."
+        error={!!contentError}
+        helperText={contentError ?? "Markdown (GitHub Flavored Markdown), starting with the title heading: # Title"}
         slotProps={{
           htmlInput: { maxLength: CONTENT_MAX_LENGTH, spellCheck: false },
           input: { sx: { fontFamily: "monospace", fontSize: "0.875rem", lineHeight: 1.6 } },
         }}
       />
       <Stack direction="row" spacing={2}>
-        <Button type="button" variant="contained" onClick={openDialog}>
+        <Button type="button" variant="contained" onClick={save}>
           Save
         </Button>
         <Button component={Link} href="/pages">
           Cancel
         </Button>
       </Stack>
-      <SavePageDialog key={dialogKey} open={open} content={content} onClose={() => setOpen(false)} />
+      <SavePageDialog key={dialogKey} open={open} title={title} content={content} onClose={() => setOpen(false)} />
     </Stack>
   );
 }
 
 type SavePageDialogProps = {
   open: boolean;
-  /** The Markdown content of the new page, submitted with title and slug. */
+  /** The title derived from the content, shown read-only; the server derives it again on save. */
+  title: string;
+  /** The Markdown content of the new page, submitted with the slug. */
   content: string;
   onClose: () => void;
 };
 
-/** Dialog "Save page" that asks for title and slug and creates the page. */
-function SavePageDialog({ open, content, onClose }: SavePageDialogProps) {
+/** Dialog "Save page" that shows the title, asks for the slug and creates the page. */
+function SavePageDialog({ open, title, content, onClose }: SavePageDialogProps) {
   const [state, formAction, pending] = useActionState(createPage, {});
-  const [title, setTitle] = useState(() => deriveTitle(content));
-  const [slug, setSlug] = useState(() => deriveSlug(deriveTitle(content)));
-  // The slug follows the title until the user edits it.
-  const [slugEdited, setSlugEdited] = useState(false);
+  const [slug, setSlug] = useState(() => deriveSlug(title));
+  const slugRef = useRef<HTMLInputElement>(null);
   const titleId = useId();
   const formId = useId();
 
-  const titleError = state.fieldErrors?.title?.[0];
   const slugError = state.fieldErrors?.slug?.[0];
   const message = state.message ?? state.fieldErrors?.content?.[0];
 
@@ -87,7 +99,16 @@ function SavePageDialog({ open, content, onClose }: SavePageDialogProps) {
   };
 
   return (
-    <Dialog open={open} onClose={close} fullWidth maxWidth="sm" aria-labelledby={titleId}>
+    <Dialog
+      open={open}
+      onClose={close}
+      fullWidth
+      maxWidth="sm"
+      aria-labelledby={titleId}
+      // The slug is the only field to edit. `autoFocus` does not hold here, because the dialog focuses itself on
+      // opening, so the slug field is focused once the dialog has entered.
+      slotProps={{ transition: { onEntered: () => slugRef.current?.focus() } }}
+    >
       <DialogTitle id={titleId}>Save page</DialogTitle>
       <DialogContent>
         {/* The dialog renders in a portal, outside the content field's tree, so the content is submitted in a hidden
@@ -95,29 +116,20 @@ function SavePageDialog({ open, content, onClose }: SavePageDialogProps) {
         <Box component="form" id={formId} action={formAction} noValidate>
           <Stack spacing={3} sx={{ pt: 1 }}>
             {message && <Alert severity="error">{message}</Alert>}
+            {/* No `name`: the title is not submitted, the server derives it from the content. */}
             <TextField
-              name="title"
               label="Title"
               value={title}
-              onChange={(event) => {
-                setTitle(event.target.value);
-                if (!slugEdited) setSlug(deriveSlug(event.target.value));
-              }}
-              required
-              autoFocus
               fullWidth
-              error={!!titleError}
-              helperText={titleError}
-              slotProps={{ htmlInput: { maxLength: TITLE_MAX_LENGTH } }}
+              helperText="From the first heading of the content"
+              slotProps={{ htmlInput: { readOnly: true } }}
             />
             <TextField
               name="slug"
               label="Slug"
               value={slug}
-              onChange={(event) => {
-                setSlug(event.target.value);
-                setSlugEdited(true);
-              }}
+              onChange={(event) => setSlug(event.target.value)}
+              inputRef={slugRef}
               required
               fullWidth
               error={!!slugError}

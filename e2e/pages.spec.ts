@@ -38,7 +38,7 @@ test("list shows pages newest first and links to them", async ({ page }) => {
   await items.getByRole("link", { name: /^Middle/ }).click();
 
   await expect(page).toHaveURL("/pages/middle");
-  await expect(page.getByRole("heading", { level: 1, name: "Middle" })).toBeVisible();
+  await expect(page).toHaveTitle("Middle – HippoWiki");
 });
 
 test("page view renders the Markdown content", async ({ page }) => {

@@ -69,7 +69,7 @@ Not in scope:
 ## Checklist
 
 1. [x] Title derivation
-2. [ ] Title from content on save
+2. [x] Title from content on save
 3. [ ] Page view without title
 4. [ ] Spec update
 

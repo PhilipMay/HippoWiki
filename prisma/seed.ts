@@ -1,12 +1,12 @@
 // Inserts sample pages into the database configured by DATABASE_URL. Run it with `npm run db:seed`; the Prisma CLI
 // loads `.env` before starting this script. Pages are upserted by fixed ids, so running it again changes nothing.
+import { titleFromContent } from "../src/features/pages/derive";
 import { getDb } from "../src/lib/db";
 import { logger } from "../src/lib/logger";
 
 const pages = [
   {
     id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c0001",
-    title: "Welcome to HippoWiki",
     slug: "welcome-to-hippowiki",
     content: `# Welcome to HippoWiki
 
@@ -27,7 +27,6 @@ HippoWiki is a small wiki whose pages are written in **Markdown** and stored in 
   },
   {
     id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c0002",
-    title: "Markdown cheat sheet",
     slug: "markdown-cheat-sheet",
     content: `# Markdown cheat sheet
 
@@ -74,12 +73,11 @@ function greet(name: string): string {
 async function main() {
   const db = getDb();
   try {
-    for (const page of pages) {
-      await db.page.upsert({
-        where: { id: page.id },
-        create: page,
-        update: { title: page.title, slug: page.slug, content: page.content },
-      });
+    for (const { id, slug, content } of pages) {
+      // Like the page form, the title comes from the content's first heading.
+      const title = titleFromContent(content);
+      if (title === null) throw new Error(`Sample page ${slug} has no title heading`);
+      await db.page.upsert({ where: { id }, create: { id, title, slug, content }, update: { title, slug, content } });
     }
     logger.info({ count: pages.length }, "seeded sample pages");
   } finally {

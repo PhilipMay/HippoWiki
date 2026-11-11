@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-import { CONTENT_MAX_LENGTH, SLUG_MAX_LENGTH, TITLE_MAX_LENGTH } from "@/features/pages/limits";
+import { titleFromContent } from "@/features/pages/derive";
+import { CONTENT_MAX_LENGTH, SLUG_MAX_LENGTH } from "@/features/pages/limits";
 
 /** A page id: a UUID in its canonical 8-4-4-4-12 hex form, as PostgreSQL generates it. */
 export const pageIdSchema = z.guid();
@@ -38,24 +39,39 @@ export function parsePageSlug(slug: string): string | null {
   return result.success && result.data === slug ? result.data : null;
 }
 
-/** Input for creating or updating a page, as entered in the page form. */
-export const pageInputSchema = z.object({
-  title: z
-    .string()
-    .trim()
-    .min(1, "Title is required")
-    .max(TITLE_MAX_LENGTH, `Title must be at most ${TITLE_MAX_LENGTH} characters`),
-  slug: slugSchema,
-  content: z
-    .string()
-    .max(CONTENT_MAX_LENGTH, `Content must be at most ${CONTENT_MAX_LENGTH.toLocaleString("en-US")} characters`)
-    // Browsers submit textarea line breaks as CRLF; store the Markdown with plain LF.
-    .transform((content) => content.replace(/\r\n?/g, "\n")),
-});
+/** Shown at the content field when the content has no title (see `titleFromContent`). */
+export const TITLE_HEADING_MISSING_MESSAGE = "Content must start with a title heading: # Title";
 
-export type PageInput = z.infer<typeof pageInputSchema>;
+/**
+ * Input for creating or updating a page: slug and content as entered in the page form, plus the title derived from the
+ * content. A submitted title is not part of the input; the content is the only source of the title.
+ */
+export const pageInputSchema = z
+  .object({
+    slug: slugSchema,
+    content: z
+      .string()
+      .max(CONTENT_MAX_LENGTH, `Content must be at most ${CONTENT_MAX_LENGTH.toLocaleString("en-US")} characters`)
+      // Browsers submit textarea line breaks as CRLF; store the Markdown with plain LF.
+      .transform((content) => content.replace(/\r\n?/g, "\n")),
+  })
+  // Runs only when slug and content are valid, so too long content reports only the length error.
+  .transform(({ slug, content }, ctx) => {
+    const title = titleFromContent(content);
+    if (title === null) {
+      ctx.addIssue({ code: "custom", message: TITLE_HEADING_MISSING_MESSAGE, path: ["content"] });
+      return z.NEVER;
+    }
+    return { title, slug, content };
+  });
 
-export type PageFieldErrors = Partial<Record<keyof PageInput, string[]>>;
+/** A validated page: the derived title, the slug and the content. */
+export type PageInput = z.output<typeof pageInputSchema>;
+
+/** The values of the page form, as entered. */
+export type PageFormValues = z.input<typeof pageInputSchema>;
+
+export type PageFieldErrors = Partial<Record<keyof PageFormValues, string[]>>;
 
 /** State of the page form between submissions: errors from the last attempt, if any. */
 export type PageFormState = {
@@ -67,10 +83,12 @@ export type PageFormState = {
 export type ParsePageInputResult =
   { success: true; data: PageInput } | { success: false; fieldErrors: PageFieldErrors };
 
-/** Validates the fields of a submitted page form. Missing fields count as empty. */
+/**
+ * Validates the fields of a submitted page form and derives the title from the content. Missing fields count as empty;
+ * a submitted `title` field is ignored.
+ */
 export function parsePageFormData(formData: FormData): ParsePageInputResult {
   const result = pageInputSchema.safeParse({
-    title: formData.get("title") ?? "",
     slug: formData.get("slug") ?? "",
     content: formData.get("content") ?? "",
   });
