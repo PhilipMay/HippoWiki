@@ -14,19 +14,12 @@ Candidates for the next features, not ordered. Before one is started, it gets it
 ## Feature Candidates
 
 - Content Structure
-  - Folders
-  - Tabs in Folders
-  - Markdown Documents in Folders and Tabs
-  - Name Rules for Folders, Tabs, Documents and Users
-  - Unique Names per Tab and Folder
-  - Renaming Folders, Tabs and Documents
-  - Moving a Document Within Its Folder
   - Soft Delete of Folders, Tabs and Documents
   - Deleted Item Lists
   - Restoring Deleted Items
-  - Maximum Document Size
 - Users and Accounts
   - Multi-User Accounts
+  - Name Rules for Users
   - Permanent Admin Account
   - Admin Without Content Access
   - Admin Initialization Command

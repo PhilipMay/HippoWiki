@@ -10,9 +10,9 @@ The specification lives in the `spec/` directory. This catalog should always be 
 - `spec/workflow.md`: how features are planned in step files, when a step is done and how a feature is wrapped up
 - `spec/architecture.md`: code layout and conventions (reads, writes, validation, database, UI)
 - `spec/testing.md`: unit and end-to-end test conventions
-- `spec/pages.md`: the page feature as built (model, input rules, routes, limits)
-- `spec/content-structure.md`: top-level description of folders, tabs and pages (not yet a spec)
-- `spec/content-structure-steps.md`: step plan for the content structure feature (folders, tabs, pages under `/folders`)
+- `spec/pages.md`: the page feature as built (model, input rules, derived title and name, routes, limits)
+- `spec/content-structure.md`: the content structure as built (folders, tabs and pages under `/folders`: models, names,
+  addresses, actions, routes, lists, limits)
 - `spec/roadmap.md`: backlog of candidate features
 - `spec/issue-report.md`: how to report issues found in code and document reviews
 

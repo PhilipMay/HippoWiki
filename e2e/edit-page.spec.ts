@@ -48,7 +48,6 @@ test("editing the content shows the new version and keeps the name", async ({ pa
   await expect(page.getByRole("heading", { level: 1, name: "Edit page" })).toBeVisible();
   await expect(page.getByLabel("Title")).toHaveCount(0);
   await expect(page.getByLabel("Name")).toHaveCount(0);
-  await expect(page.getByLabel("Slug")).toHaveCount(0);
   await expect(page.getByLabel("Content")).toHaveValue("# Original title\n\nOriginal content");
   await page.getByLabel("Content").fill("# Edited title\n\n## New section\n\n- Changed item");
   await page.getByRole("button", { name: "Save" }).click();

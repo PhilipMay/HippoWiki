@@ -7,11 +7,18 @@ How the code is organised and which patterns new code follows. The technology st
 - Source code lives under `src/`, with the import alias `@/` pointing to `src/`.
 - `src/app/`: routes (App Router), including the global `not-found`, `error` and `global-error` pages
 - `src/components/`: shared UI components (app bar, `Link`)
-- `src/lib/`: cross-cutting modules (`env.ts`, `db.ts`, `logger.ts`, `theme.ts`, `site.ts`, `format.ts`,
-  `hydration.ts`)
+- `src/lib/`: cross-cutting modules (`env.ts`, `db.ts`, `db-errors.ts`, `logger.ts`, `theme.ts`, `site.ts`,
+  `format.ts`, `hydration.ts`, `names.ts`, `addresses.ts`)
+  - `names.ts`: the name rule shared by folders, tabs and pages (`nameSchema`, `parseName`) and the form state of
+    forms that ask for a name
+  - `addresses.ts`: the addresses under `/folders` (`folderPath`, `tabPath`, `pagePath`, `parsePageSegment`) and the
+    actions and views in their query string (`parseAction`, `parseView`)
+  - Both have no server-only imports, so Client Components can use them.
 - `src/features/<feature>/`: everything about one feature – `schema.ts`, `queries.ts`, `actions.ts`, `components/`
   and pure helpers such as `derive.ts` and `limits.ts` for pages (no server-only imports, so Client Components can use
   them). `limits.ts` holds the field length limits, so that `schema.ts` can import `derive.ts` without a cycle.
+  - `folders`: folders and their tabs, and the name dialog used for folders, tabs and pages
+  - `pages`: pages
 - `src/generated/prisma/`: the generated Prisma client (`npm run db:generate`), not checked in
 - `prisma/`: schema, migrations, seed
 - `scripts/`: development scripts (`db.sh`)
@@ -24,7 +31,10 @@ How the code is organised and which patterns new code follows. The technology st
   - Queries that are used by both `generateMetadata` and the page are wrapped in React `cache()`.
 - Writes happen through Server Actions in the feature's `actions.ts`.
   - An action validates its input, writes, logs the event, calls `revalidatePath` for every affected route and
-    redirects.
+    redirects. The actions for folders, tabs and pages call `revalidatePath("/folders", "layout")`, which covers every
+    address under `/folders`.
+  - An action redirects to the address of the item as stored, built with the helpers in `addresses.ts`, never to one
+    built from submitted values.
   - On failure it returns a form state `{ fieldErrors?, message? }` that the form shows; the entered values are kept.
   - `redirect` is called outside `try` blocks, because it throws.
   - Rows that may no longer exist are changed with `updateMany`/`deleteMany` and the returned count is checked,
@@ -35,11 +45,26 @@ How the code is organised and which patterns new code follows. The technology st
 
 - All input (forms, actions, environment variables) is validated with Zod. Schemas live in the feature's `schema.ts`
   and have unit tests.
-- Ids and slugs from URLs or forms are parsed (`parsePageId`, `parsePageSlug`) before they reach the database;
-  malformed ones are treated like missing rows and show the not-found page.
+- Ids and names from URLs or forms are parsed (`parsePageId`, `parseFolderId`, `parseTabId`, `parseName`,
+  `parsePageSegment`) before they reach the database; malformed ones are treated like missing rows and show the
+  not-found page.
+- Unique and foreign key violations that a user can cause, such as a taken name or a folder that no longer exists,
+  are recognised with `isUniqueViolation` and `isForeignKeyViolation` from `src/lib/db-errors.ts` and shown in the
+  form. Any other database error is logged and shown as a failed save.
 - The server environment is read through `getServerEnv()` from `src/lib/env.ts`, never directly from `process.env`.
 - Server-side logging goes through the pino `logger` from `src/lib/logger.ts`, not `console`. Errors are logged with
   `{ err }` and the relevant ids.
+
+## Addresses and actions
+
+- All content lives under `/folders`; the addresses are described in `content-structure.md`. Routes, Server Actions
+  and links build them with the helpers in `src/lib/addresses.ts` instead of writing paths by hand.
+- What an address opens is given in its query string: an action as `?action=<action>`, a view as `?view=<view>`.
+  A route reads them with `parseAction` and `parseView`, passing only the actions and views it has, and calls
+  `notFound()` for `"invalid"`. A route without views calls `parseView` without allowed views.
+- A dialog that belongs to an action is rendered by the route's Server Component, open from the start, on top of the
+  content of the address. Buttons that open it are links to the address with the action; closing it navigates to the
+  address without the query string.
 
 ## Database
 
@@ -47,8 +72,16 @@ How the code is organised and which patterns new code follows. The technology st
   `pg` driver adapter and survives hot reloads in development.
 - Schema changes are made in `prisma/schema.prisma` and always come with a migration
   (`npm run db:migrate -- --name <change>`). Migrations are stored under `prisma/migrations/`.
+- A migration that Prisma cannot create by itself, such as one that moves data or one that `prisma migrate dev`
+  refuses to create without a prompt, is written by hand: the SQL of the schema change comes from
+  `npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --script`, and
+  `npm run db:migrate` then applies it and checks that the database matches the schema.
+- The name of a migration directory must sort after all existing ones, because migrations are applied in the order of
+  their names.
 - Prisma is used for CRUD. The `fullTextSearchPostgres` preview feature is not enabled; search uses PostgreSQL
   full-text search directly.
+- The `partialIndexes` preview feature is enabled for partial unique indexes (`where` in `@@unique`), such as the one
+  on the names of pages placed directly in a folder.
 - The development database is PostgreSQL 18 in the Podman container `hippowiki-db`, managed with `scripts/db.sh`
   (`npm run db:up`, `db:down`, `db:reset`, `db:psql`, `db:logs`). The test database uses the same image version.
 
@@ -67,6 +100,12 @@ How the code is organised and which patterns new code follows. The technology st
   lost: React sets the value of a hydrating text field again, which resets its selection, and a click before the
   handler is attached does nothing. The end-to-end tests rely on this, because Playwright waits until a field is
   editable and a button is enabled; `e2e/hydration.spec.ts` checks the lock with JavaScript disabled.
+- Dialogs that a route renders for an action use `disablePortal`, so that they are part of the server-rendered HTML
+  like the rest of the page, and lock their controls until hydration as described above. The name dialog
+  (`NameDialog` in `src/features/folders/components/`) is shared by folders, tabs and pages.
+- A form with controlled radio buttons or checkboxes calls its Server Action in `onSubmit` inside `startTransition`
+  instead of passing it as the form's `action`: React resets a form after its action, which puts these controls back
+  to their initial state, out of sync with the controlled one.
 - Browser titles are built with `pageTitle()` from `src/lib/site.ts`.
 - Markdown is rendered with `react-markdown` and GitHub Flavored Markdown; raw HTML is never rendered.
 - Markdown that is analysed instead of rendered, such as the title heading of a page, is parsed with the same parser

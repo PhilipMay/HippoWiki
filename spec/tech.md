@@ -11,6 +11,7 @@
 - Database: PostgreSQL
 - ORM: Prisma
   - use Prisma for CRUD - "fullTextSearchPostgres" preview feature is not used.
+  - the "partialIndexes" preview feature is used for partial unique indexes
   - for search use Postgres full-text search - language: english, german and more
 - Authentication: Better Auth
 - Logging: pino

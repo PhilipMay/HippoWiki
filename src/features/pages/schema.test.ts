@@ -46,8 +46,8 @@ describe("parsePageContentFormData", () => {
     });
   });
 
-  it("ignores a submitted title, name and slug", () => {
-    const fields = { title: "Typed title", name: "typed-name", slug: "typed-slug", content: "# From content" };
+  it("ignores a submitted title and name", () => {
+    const fields = { title: "Typed title", name: "typed-name", content: "# From content" };
     expect(parsePageContentFormData(formData(fields))).toEqual({
       success: true,
       data: { title: "From content", content: "# From content" },
@@ -121,7 +121,7 @@ describe("parseNewPageFormData", () => {
     expect(result).toEqual({ success: true, data: { title: "Welcome", name: "welcome", content: "# Welcome" } });
   });
 
-  it("accepts the name new, which is no longer reserved", () => {
+  it("accepts the name new: no name is reserved", () => {
     expect(parseNewPageFormData(formData({ name: "new", content: "# New" }))).toMatchObject({
       success: true,
       data: { name: "new" },

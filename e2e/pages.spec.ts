@@ -191,7 +191,7 @@ for (const address of [
   "/folders/handbook/existing-page.md?action=",
   "/folders/handbook/existing-page.md?action=edit&action=edit",
   "/folders/handbook/existing-page?action=edit",
-  // The addresses before pages lived in folders.
+  // Page addresses outside `/folders`.
   "/pages",
   "/pages/new",
   "/pages/existing-page",

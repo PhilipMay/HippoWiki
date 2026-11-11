@@ -24,10 +24,17 @@ How the code is tested. Commands are listed in `README.md`.
 - All tests share the test database and run one after another.
 - Helpers in `e2e/support/`:
   - `resetTestDatabase()` empties all tables; tests call it in `beforeEach`.
-  - `createPage()` inserts a page directly into the test database with a unique slug; any field, e.g. `updatedAt`,
-    can be set. Like the forms, it derives the title from the content; the content defaults to `# <title>`, so
+  - `createFolder()` inserts a folder directly into the test database with a unique name; any field, e.g. `name` or
+    `updatedAt`, can be set.
+  - `createTab()` inserts a tab with a unique name into the folder given as `folder`; without one, it creates a folder
+    for the tab.
+  - `createPage()` inserts a page with a unique name: into the tab given as `tab`, or directly into the folder given
+    as `folder`; without either, it creates a folder for the page. Any field, e.g. `name` or `updatedAt`, can be set.
+    Like the forms, it derives the title from the content; the content defaults to `# <title>`, so
     `createPage({ title: "Older page" })` works. A title given together with content is stored as is, to set up a page
     that was stored before titles were derived.
+  - Tests that open an address give the folder, tab and page fixed names, e.g.
+    `createPage({ folder, name: "overview" })` for `/folders/<folder>/overview.md`.
   - `getTestDb()` returns a Prisma client for the test database, e.g. to check what an action stored.
   - `collectErrors()` records console errors and uncaught exceptions of the browser page; tests assert it stays empty.
 - Elements are located by role, label and accessible name, not by CSS selectors.

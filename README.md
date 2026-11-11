@@ -119,9 +119,10 @@ npx playwright show-report   # open the HTML report of the last run
 - Playwright starts its own development server on port 3100 with the build directory `.next-e2e`, so it can run next
   to `npm run dev`, and stops it after the run.
 - `e2e/support/browser.ts` has `collectErrors()`, which records console errors of the browser page.
-- `e2e/support/database.ts` has helpers for tests: `createFolder()`, `createTab()` and `createPage()` insert a folder, a
-  tab or a page (in a given folder or tab, or in a new folder) directly into the test database, `resetTestDatabase()` empties it, and `getTestDb()` returns a Prisma client for it.
-  All tests share this database and run one after another.
+- `e2e/support/database.ts` has helpers for tests: `createFolder()`, `createTab()` and `createPage()` insert a folder,
+  a tab or a page (in a given folder or tab, or in a new folder) directly into the test database,
+  `resetTestDatabase()` empties it, and `getTestDb()` returns a Prisma client for it. All tests share this database
+  and run one after another.
 
 ## Commands
 
