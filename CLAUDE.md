@@ -12,6 +12,7 @@ The specification lives in the `spec/` directory. This catalog should always be 
 - `spec/testing.md`: unit and end-to-end test conventions
 - `spec/pages.md`: the page feature as built (model, input rules, routes, limits)
 - `spec/content-structure.md`: top-level description of folders, tabs and pages (not yet a spec)
+- `spec/content-structure-steps.md`: step plan for the content structure feature (folders, tabs, pages under `/folders`)
 - `spec/roadmap.md`: backlog of candidate features
 - `spec/issue-report.md`: how to report issues found in code and document reviews
 
