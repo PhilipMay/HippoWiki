@@ -27,7 +27,8 @@ addresses and rights simple.
 
 ## Names
 
-- Folders, tabs (except the default tab) and pages each have a name, which is also the part of their address.
+- Folders, tabs (except the default tab) and pages each have a name, which is also the part of their address (for a page
+  followed by `.md`, see Addresses).
 - A name is required and uses lowercase ASCII words joined by single hyphens, such as `release-notes`, the same rule as
   today's page slug, with a fixed maximum length.
 - Names are unique only where they meet:
@@ -39,10 +40,13 @@ addresses and rights simple.
 
 ## Addresses
 
-- A page is found by its folder, tab and name, such as `/<folder>/<tab>/<page>`.
-- A page in the default tab has the shorter address `/<folder>/<page>`, because the default tab has no name.
-- A folder address shows the folder with its tabs, opening on the default tab; a tab address shows the pages of that
-  tab.
+- A page is found by its folder, tab and name. Its address ends with `.md`, because a page is a Markdown document:
+  `/<folder>/<tab>/<page>.md`.
+- A page in the default tab has the shorter address `/<folder>/<page>.md`, because the default tab has no name.
+- The `.md` belongs to the address only, not to the name. Names never contain a dot, so the suffix tells a page from a
+  tab: `/<folder>/guides` is the tab `guides`, `/<folder>/guides.md` is the page `guides` in the default tab.
+- A folder address `/<folder>` shows the folder with its tabs, opening on the default tab; a tab address
+  `/<folder>/<tab>` shows the pages of that tab.
 
 ## Changing the Structure
 
