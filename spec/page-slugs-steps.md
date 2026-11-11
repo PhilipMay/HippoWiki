@@ -28,7 +28,7 @@ Not in:
 ## Steps
 
 - [x] Slug derivation
-- [ ] Slug column and edit form
+- [x] Slug column and edit form
 - [ ] Slug routes
 - [ ] Content-first creation
 

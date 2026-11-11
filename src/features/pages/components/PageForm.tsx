@@ -7,7 +7,13 @@ import TextField from "@mui/material/TextField";
 import { useActionState, useState } from "react";
 
 import Link from "@/components/Link";
-import { CONTENT_MAX_LENGTH, TITLE_MAX_LENGTH, type PageFormState, type PageInput } from "@/features/pages/schema";
+import {
+  CONTENT_MAX_LENGTH,
+  SLUG_MAX_LENGTH,
+  TITLE_MAX_LENGTH,
+  type PageFormState,
+  type PageInput,
+} from "@/features/pages/schema";
 
 type PageFormProps = {
   /** Server Action that stores the page; it returns the errors to show, or redirects on success. */
@@ -18,17 +24,19 @@ type PageFormProps = {
   cancelHref: string;
 };
 
-const emptyValues: PageInput = { title: "", content: "" };
+const emptyValues: PageInput = { title: "", slug: "", content: "" };
 
-/** Form for the title and Markdown content of a page, used to create and to edit pages. */
+/** Form for the title, slug and Markdown content of a page, used to create and to edit pages. */
 export default function PageForm({ action, initialValues = emptyValues, cancelHref }: PageFormProps) {
   const [state, formAction, pending] = useActionState(action, {});
   // Controlled fields keep the entered values when the action returns errors; React resets only uncontrolled fields
   // after a submission.
   const [title, setTitle] = useState(initialValues.title);
+  const [slug, setSlug] = useState(initialValues.slug);
   const [content, setContent] = useState(initialValues.content);
 
   const titleError = state.fieldErrors?.title?.[0];
+  const slugError = state.fieldErrors?.slug?.[0];
   const contentError = state.fieldErrors?.content?.[0];
 
   return (
@@ -46,6 +54,17 @@ export default function PageForm({ action, initialValues = emptyValues, cancelHr
         error={!!titleError}
         helperText={titleError}
         slotProps={{ htmlInput: { maxLength: TITLE_MAX_LENGTH } }}
+      />
+      <TextField
+        name="slug"
+        label="Slug"
+        value={slug}
+        onChange={(event) => setSlug(event.target.value)}
+        required
+        fullWidth
+        error={!!slugError}
+        helperText={slugError ?? `Address: /pages/${slug.trim()}`}
+        slotProps={{ htmlInput: { maxLength: SLUG_MAX_LENGTH, spellCheck: false, autoCapitalize: "none" } }}
       />
       <TextField
         name="content"

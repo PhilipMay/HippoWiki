@@ -47,6 +47,7 @@ export const pageInputSchema = z.object({
     .trim()
     .min(1, "Title is required")
     .max(TITLE_MAX_LENGTH, `Title must be at most ${TITLE_MAX_LENGTH} characters`),
+  slug: slugSchema,
   content: z
     .string()
     .max(CONTENT_MAX_LENGTH, `Content must be at most ${CONTENT_MAX_LENGTH.toLocaleString("en-US")} characters`)
@@ -72,6 +73,7 @@ export type ParsePageInputResult =
 export function parsePageFormData(formData: FormData): ParsePageInputResult {
   const result = pageInputSchema.safeParse({
     title: formData.get("title") ?? "",
+    slug: formData.get("slug") ?? "",
     content: formData.get("content") ?? "",
   });
   if (result.success) return { success: true, data: result.data };

@@ -7,6 +7,7 @@ const pages = [
   {
     id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c0001",
     title: "Welcome to HippoWiki",
+    slug: "welcome-to-hippowiki",
     content: `# Welcome to HippoWiki
 
 HippoWiki is a small wiki whose pages are written in **Markdown** and stored in PostgreSQL.
@@ -27,6 +28,7 @@ HippoWiki is a small wiki whose pages are written in **Markdown** and stored in 
   {
     id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c0002",
     title: "Markdown cheat sheet",
+    slug: "markdown-cheat-sheet",
     content: `# Markdown cheat sheet
 
 A quick reference for the formatting you can use on a page.
@@ -76,7 +78,7 @@ async function main() {
       await db.page.upsert({
         where: { id: page.id },
         create: page,
-        update: { title: page.title, content: page.content },
+        update: { title: page.title, slug: page.slug, content: page.content },
       });
     }
     logger.info({ count: pages.length }, "seeded sample pages");

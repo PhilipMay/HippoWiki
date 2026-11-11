@@ -63,7 +63,12 @@ export async function resetTestDatabase(): Promise<void> {
   }
 }
 
-/** Creates a page directly in the test database. Any field can be overridden, e.g. `updatedAt` to control ordering. */
+/**
+ * Creates a page directly in the test database, with a unique slug unless one is given. Any field can be overridden,
+ * e.g. `updatedAt` to control ordering.
+ */
 export function createPage(data: Partial<Prisma.PageCreateInput> = {}): Promise<Page> {
-  return getTestDb().page.create({ data: { title: "Test page", content: "", ...data } });
+  return getTestDb().page.create({
+    data: { title: "Test page", slug: `test-page-${crypto.randomUUID()}`, content: "", ...data },
+  });
 }

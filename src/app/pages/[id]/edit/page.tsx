@@ -24,7 +24,7 @@ export default async function EditPagePage({ params }: PageProps<"/pages/[id]/ed
       </Typography>
       <PageForm
         action={updatePage.bind(null, page.id)}
-        initialValues={{ title: page.title, content: page.content }}
+        initialValues={{ title: page.title, slug: page.slug, content: page.content }}
         cancelHref={`/pages/${page.id}`}
       />
     </Stack>

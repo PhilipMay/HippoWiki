@@ -12,10 +12,15 @@ function listLinks(page: BrowserPage) {
   return page.getByRole("list", { name: "Pages" }).getByRole("link");
 }
 
-test("editing title and content shows the new version and moves it to the top of the list", async ({ page }) => {
+test("editing title, slug and content shows the new version and moves it to the top of the list", async ({ page }) => {
   const errors = collectErrors(page);
   const oldUpdatedAt = new Date("2026-01-01T10:00:00Z");
-  const edited = await createPage({ title: "Original title", content: "Original content", updatedAt: oldUpdatedAt });
+  const edited = await createPage({
+    title: "Original title",
+    slug: "original-slug",
+    content: "Original content",
+    updatedAt: oldUpdatedAt,
+  });
   await createPage({ title: "Other page", updatedAt: new Date("2026-02-01T10:00:00Z") });
 
   await page.goto(`/pages/${edited.id}`);
@@ -25,8 +30,10 @@ test("editing title and content shows the new version and moves it to the top of
   await expect(page).toHaveTitle("Edit Original title – HippoWiki");
   await expect(page.getByRole("heading", { level: 1, name: "Edit page" })).toBeVisible();
   await expect(page.getByLabel("Title")).toHaveValue("Original title");
+  await expect(page.getByLabel("Slug")).toHaveValue("original-slug");
   await expect(page.getByLabel("Content")).toHaveValue("Original content");
   await page.getByLabel("Title").fill("  Edited title ");
+  await page.getByLabel("Slug").fill(" edited-slug ");
   await page.getByLabel("Content").fill("## New section\n\n- Changed item");
   await page.getByRole("button", { name: "Save" }).click();
 
@@ -39,7 +46,11 @@ test("editing title and content shows the new version and moves it to the top of
   expect(new Date(shownUpdatedAt ?? "").getTime()).toBeGreaterThan(oldUpdatedAt.getTime());
 
   const stored = await getTestDb().page.findUniqueOrThrow({ where: { id: edited.id } });
-  expect(stored).toMatchObject({ title: "Edited title", content: "## New section\n\n- Changed item" });
+  expect(stored).toMatchObject({
+    title: "Edited title",
+    slug: "edited-slug",
+    content: "## New section\n\n- Changed item",
+  });
   expect(stored.updatedAt.toISOString()).toBe(shownUpdatedAt);
   expect(await getTestDb().page.count()).toBe(2);
 
@@ -75,6 +86,28 @@ test("an empty title on edit shows an error at the field and keeps the content",
   await expect(page).toHaveURL(`/pages/${created.id}/edit`);
   await expect(page.getByLabel("Content")).toHaveValue("New content that must not get lost");
   expect(await getTestDb().page.findUniqueOrThrow({ where: { id: created.id } })).toEqual(created);
+});
+
+test("a slug taken by another page shows an error at the field and keeps all values", async ({ page }) => {
+  const errors = collectErrors(page);
+  await createPage({ title: "Other page", slug: "taken" });
+  const edited = await createPage({ title: "Edited page", slug: "edited-page", content: "Old content" });
+
+  await page.goto(`/pages/${edited.id}/edit`);
+  await page.getByLabel("Title").fill("New title");
+  await page.getByLabel("Slug").fill("taken");
+  await page.getByLabel("Content").fill("New content that must not get lost");
+  await page.getByRole("button", { name: "Save" }).click();
+
+  const slug = page.getByLabel("Slug");
+  await expect(slug).toHaveAttribute("aria-invalid", "true");
+  await expect(slug).toHaveAccessibleDescription("Slug is already in use");
+  await expect(page).toHaveURL(`/pages/${edited.id}/edit`);
+  await expect(page.getByLabel("Title")).toHaveValue("New title");
+  await expect(slug).toHaveValue("taken");
+  await expect(page.getByLabel("Content")).toHaveValue("New content that must not get lost");
+  expect(await getTestDb().page.findUniqueOrThrow({ where: { id: edited.id } })).toEqual(edited);
+  expect(errors).toEqual([]);
 });
 
 test("saving a page that was deleted in the meantime shows an error and keeps the values", async ({ page }) => {
@@ -153,6 +186,7 @@ test("a page can be created, edited and deleted", async ({ page }) => {
 
   await page.getByRole("link", { name: "New page" }).click();
   await page.getByLabel("Title").fill("Lifecycle page");
+  await page.getByLabel("Slug").fill("lifecycle-page");
   await page.getByLabel("Content").fill("First version");
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Lifecycle page" })).toBeVisible();

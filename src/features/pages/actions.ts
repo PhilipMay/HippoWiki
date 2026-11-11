@@ -4,12 +4,32 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { parsePageFormData, parsePageId, type PageFormState } from "@/features/pages/schema";
+import { Prisma } from "@/generated/prisma/client";
 import { getDb } from "@/lib/db";
 import { logger } from "@/lib/logger";
 
 const SAVE_FAILED_MESSAGE = "The page could not be saved. Please try again.";
 const DELETE_FAILED_MESSAGE = "The page could not be deleted. Please try again.";
 const PAGE_GONE_MESSAGE = "This page no longer exists. It may have been deleted.";
+const SLUG_TAKEN_MESSAGE = "Slug is already in use";
+
+/** Name of the unique index on `Page.slug`, as Prisma creates it for `@unique`. */
+const SLUG_INDEX = "Page_slug_key";
+
+/**
+ * Whether the error is a unique violation on the page slug. With a driver adapter, Prisma reports the violated
+ * constraint in `meta.driverAdapterError.cause.constraint`: as the index name or, if that is unknown, as the fields.
+ */
+function isSlugTaken(err: unknown): boolean {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== "P2002") return false;
+  const adapterError = err.meta?.driverAdapterError as
+    { cause?: { constraint?: { index?: string; fields?: string[] } } } | undefined;
+  const constraint = adapterError?.cause?.constraint;
+  return constraint?.index === SLUG_INDEX || (constraint?.fields?.includes("slug") ?? false);
+}
+
+/** The form state that shows "Slug is already in use" at the slug field. */
+const slugTakenState: PageFormState = { fieldErrors: { slug: [SLUG_TAKEN_MESSAGE] } };
 
 /** Revalidates the routes that show a page: the list and, if given, the page itself. */
 function revalidatePage(id?: string): void {
@@ -19,7 +39,7 @@ function revalidatePage(id?: string): void {
 
 /**
  * Creates a page from the submitted page form and redirects to it. Returns the errors to show in the form if the input
- * is invalid or the page cannot be stored.
+ * is invalid, the slug is taken or the page cannot be stored.
  */
 export async function createPage(_prevState: PageFormState, formData: FormData): Promise<PageFormState> {
   const input = parsePageFormData(formData);
@@ -29,6 +49,10 @@ export async function createPage(_prevState: PageFormState, formData: FormData):
   try {
     ({ id } = await getDb().page.create({ data: input.data, select: { id: true } }));
   } catch (err) {
+    if (isSlugTaken(err)) {
+      logger.warn({ slug: input.data.slug }, "slug of new page already in use");
+      return slugTakenState;
+    }
     logger.error({ err }, "failed to create page");
     return { message: SAVE_FAILED_MESSAGE };
   }
@@ -41,7 +65,7 @@ export async function createPage(_prevState: PageFormState, formData: FormData):
 
 /**
  * Updates the page with the given id from the submitted page form and redirects to it. Returns the errors to show in
- * the form if the input is invalid, the page no longer exists or it cannot be stored. Bind the id with
+ * the form if the input is invalid, the slug is taken, the page no longer exists or it cannot be stored. Bind the id with
  * `updatePage.bind(null, id)`.
  */
 export async function updatePage(id: string, _prevState: PageFormState, formData: FormData): Promise<PageFormState> {
@@ -56,6 +80,10 @@ export async function updatePage(id: string, _prevState: PageFormState, formData
     // `updateMany` reports a missing page as a count of 0 instead of throwing; it sets `updatedAt` as well.
     ({ count } = await getDb().page.updateMany({ where: { id: pageId }, data: input.data }));
   } catch (err) {
+    if (isSlugTaken(err)) {
+      logger.warn({ pageId, slug: input.data.slug }, "slug of updated page already in use");
+      return slugTakenState;
+    }
     logger.error({ err, pageId }, "failed to update page");
     return { message: SAVE_FAILED_MESSAGE };
   }

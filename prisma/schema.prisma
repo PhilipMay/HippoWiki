@@ -14,6 +14,8 @@ datasource db {
 model Page {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   title     String
+  /// Last part of the page address `/pages/<slug>`.
+  slug      String   @unique
   /// Markdown source of the page.
   content   String
   createdAt DateTime @default(now()) @db.Timestamptz(3)
