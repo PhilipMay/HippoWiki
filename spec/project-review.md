@@ -2,37 +2,6 @@
 
 ## Major
 
-### End-to-end tests never exercise a production build
-
-- Location: `playwright.config.ts`, lines 32–33, `webServer.command`
-- Severity: Major
-- Category: Tests
-- Problem: All browser tests run against the development server (`npx next dev`). `testing.md` acknowledges the gap
-  and works around one part of it with unit tests that mock `next/server`.
-- Impact: Behaviour that only exists in a production build is never tested in a browser:
-  - prerendering and the route cache, and whether `revalidatePath("/folders", "layout")` really refreshes every
-    address under `/folders` after a save
-  - the minified client bundles
-  - `error.tsx` and `global-error.tsx`, which the development error overlay hides
-  - the absence of the double rendering that StrictMode does in development only
-
-  A caching bug would pass every check and only show up after deployment.
-
-- Evidence: `spec/testing.md`, "Unit tests": "the end-to-end tests run the development server, which never
-  prerenders".
-
-  ```ts
-  webServer: {
-    command: `npx next dev --port ${port}`,
-  ```
-
-- Suggestion (required): In CI, run the end-to-end tests against `next build` followed by `next start`, both with
-  `HIPPOWIKI_DIST_DIR=.next-e2e` and the test `DATABASE_URL`. The build needs no database, because no route is
-  prerendered.
-- Alternatives: Keep `next dev` as the default locally and switch to the production server with an environment
-  variable, so that local runs stay fast. Or run both in CI, which doubles the runtime of the workflow.
-- Reference: `node_modules/next/dist/docs/` on `next build`, `next start` and caching.
-
 ### No type-aware lint rules and no Playwright lint rules
 
 - Location: `eslint.config.mjs`, lines 6–10
@@ -163,9 +132,9 @@
 - Location: `.github/workflows/*.yml`
 - Severity: Nit
 - Category: Performance, security
-- Problem: Each of the four workflows runs `npm ci` on its own. The production build sits in the `lint` workflow, and
-  the end-to-end workflow does not reuse it. Actions are pinned by tag (`actions/checkout@v7`), not by commit SHA.
-- Impact: Four installs per push, and a moved tag would change what runs in CI without a change in the repository.
+- Problem: Each of the five workflows runs `npm ci` on its own. The `lint` workflow and the production end-to-end
+  workflow each create a production build. Actions are pinned by tag (`actions/checkout@v7`), not by commit SHA.
+- Impact: Five installs and two builds per push, and a moved tag would change what runs in CI without a change in the repository.
 - Suggestion (optional): Pin actions by commit SHA; Dependabot keeps the pins up to date. Whether to merge the
   workflows is a matter of taste: separate workflows show at a glance which check broke, which `testing.md` wants.
 

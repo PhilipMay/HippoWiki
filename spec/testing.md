@@ -12,8 +12,9 @@ How the code is tested. Commands are listed in `README.md`.
   the mocked `redirect` throws like the real one, so code after it never runs and tests assert the rejection and its
   path.
 - Queries get unit tests for what the end-to-end tests cannot tell apart: that every query awaits `connection()` before
-  it reads the database (the end-to-end tests run the development server, which never prerenders), that malformed names
-  never reach the database, and the conditions that pick the place of a page. They mock `@/lib/db` and `next/server`.
+  it reads the database (the default end-to-end run uses the development server, which never prerenders), that
+  malformed names never reach the database, and the conditions that pick the place of a page. They mock `@/lib/db` and
+  `next/server`.
   Assertions that only repeat the `select` and `orderBy` of a query are left out.
 - `getDb()` and `getServerEnv()` are tested for creating the client and validating the environment on first use only,
   not on import. These tests load the module anew for every case (`vi.resetModules()` and a dynamic import), because
@@ -37,6 +38,12 @@ How the code is tested. Commands are listed in `README.md`.
   left running.
 - Playwright starts the application itself on port 3100 with the build directory `.next-e2e` and `DATABASE_URL`
   pointing to the test database. The development database is never touched and does not need to run.
+- By default it starts the development server (`next dev`), which starts fast. With `HIPPOWIKI_E2E_SERVER=production`
+  (`npm run test:e2e:production`) it runs `next build` followed by `next start` instead, both with the same build
+  directory and `DATABASE_URL`. This run covers what only exists in a production build: prerendering and the route
+  cache, the minified client bundles, `error.tsx` and `global-error.tsx` (hidden by the development error overlay)
+  and rendering without the double rendering of StrictMode. The build needs no running database, because no route is
+  prerendered; the global setup starts the test database only after the server.
 - All tests share the test database and run one after another.
 - Helpers in `e2e/support/`:
   - `test.ts` exports the `test` and `expect` that all specs use; a lint rule forbids importing them from
@@ -68,24 +75,26 @@ How the code is tested. Commands are listed in `README.md`.
 
 ## Continuous integration
 
-- GitHub Actions runs the checks in four workflows in `.github/workflows/`, each named like its file, so a failure
+- GitHub Actions runs the checks in five workflows in `.github/workflows/`, each named like its file, so a failure
   shows at a glance which kind of check broke:
   - `format_check`: `npm run format:check`
   - `lint`: `npm run build`, `npm run typecheck`, `npm run lint`, as separate steps in this order
   - `unit_tests`: `npm run test:coverage`
-  - `end_to_end_tests`: `npm run test:e2e`
+  - `end_to_end_tests`: `npm run test:e2e`, against the development server
+  - `end_to_end_tests_production`: `npm run test:e2e:production`, against a production build
 - They run on every push to any branch, on pull requests and when started by hand (`workflow_dispatch`). A newer push
   to the same ref cancels a run still in progress.
 - Every workflow installs Node.js from `.nvmrc` and runs `npm ci` on `ubuntu-24.04`.
 - `DATABASE_URL` is set to a placeholder URL on port 5432, never the test database: only `prisma generate` during
   `npm ci` reads it, nothing connects to it. The build needs no database, because every query calls `connection()` and
   no route is prerendered.
-- The end-to-end workflow installs Chromium with `npx playwright install --with-deps chromium` and uses the Podman
+- Both end-to-end workflows install Chromium with `npx playwright install --with-deps chromium` and use the Podman
   preinstalled on the runner; the tests start and remove their throwaway container `hippowiki-test-db` as they do
   locally. With `CI` set, Playwright retries a failed test twice, fails the run if a test passed only on a
   retry, and rejects `test.only`.
-- The Playwright HTML report (`playwright-report/`) is uploaded as the artifact `playwright-report`, also when the tests
-  fail (not when the run was cancelled), and kept for 7 days.
+- The Playwright HTML report (`playwright-report/`) is uploaded as the artifact `playwright-report`, or
+  `playwright-report-production` for the production run, also when the tests fail (not when the run was cancelled),
+  and kept for 7 days.
 - The unit test workflow writes the coverage tables of `scripts/coverage-summary.ts` to the job summary and uploads
   `coverage/` as the artifact `coverage-report`, also when the tests fail (not when the run was cancelled or no report
   was written), kept for 7 days.

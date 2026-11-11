@@ -1,0 +1,41 @@
+name: end_to_end_tests_production
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Placeholder, never the test database: only `prisma generate` during `npm ci` reads it (prisma.config.ts requires
+  # it), nothing connects to it. The tests start their own database container and point the app to it.
+  DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+
+jobs:
+  end_to_end_tests_production:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      # Podman is preinstalled on the runner; e2e/support/container.ts starts and removes the test database container.
+      # Runs the tests against `next build` and `next start` instead of `next dev` (see playwright.config.ts).
+      - run: npm run test:e2e:production
+      - uses: actions/upload-artifact@v7
+        # Also when the tests fail, but not when the run was cancelled.
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report-production
+          path: playwright-report/
+          retention-days: 7

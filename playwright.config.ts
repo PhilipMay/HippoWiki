@@ -10,6 +10,11 @@ config({ quiet: true });
 const port = 3100;
 const baseURL = `http://localhost:${port}`;
 
+// By default the tests run against the development server, which starts fast. With HIPPOWIKI_E2E_SERVER=production
+// (`npm run test:e2e:production`) they run against a production build instead, to cover what only exists there:
+// prerendering, the route cache, minified bundles, the error pages and rendering without StrictMode's double render.
+const production = process.env.HIPPOWIKI_E2E_SERVER === "production";
+
 export default defineConfig({
   testDir: "e2e",
   // All tests share one database, so they run one after another.
@@ -30,7 +35,8 @@ export default defineConfig({
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
-    command: `npx next dev --port ${port}`,
+    // The build and the server both get `env`. The build needs no running database, because no route is prerendered.
+    command: production ? `npx next build && npx next start --port ${port}` : `npx next dev --port ${port}`,
     // The server starts before the global setup starts the test database, so readiness must not depend on it. It is
     // checked on the port: a `url` check would follow the redirect from `/` to `/folders`, which needs the database.
     port,
@@ -41,6 +47,7 @@ export default defineConfig({
     },
     // Never attach to a server that was started by someone else and may use another database.
     reuseExistingServer: false,
-    timeout: 120_000,
+    // The production server starts only after the build.
+    timeout: production ? 300_000 : 120_000,
   },
 });

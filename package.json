@@ -18,6 +18,7 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
+    "test:e2e:production": "HIPPOWIKI_E2E_SERVER=production playwright test",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run test",
     "postinstall": "prisma generate",
     "db:up": "bash scripts/db.sh up",
