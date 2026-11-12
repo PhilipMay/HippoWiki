@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # Builds the container image of HippoWiki with Podman (see Containerfile) and checks it.
-# Usage: scripts/image.sh <build|smoke>
+# Usage: scripts/image.sh <build|smoke|check-tag|reference> [args...]
 #   build   builds the image as hippowiki:local for the platform of this machine. IMAGE_VERSION and IMAGE_REVISION,
 #           when set, become the labels org.opencontainers.image.version and org.opencontainers.image.revision.
 #   smoke   runs the image of `build` against a throwaway, empty database and checks that it installs itself and
 #           serves the wiki. It removes everything it started, also when a check fails.
+#   check-tag <tag>          succeeds when <tag> is a valid image tag other than `latest`
+#   reference <owner> <tag>  checks <tag> and prints ghcr.io/<owner in lower case>/hippowiki:<tag>
+# The release workflow (.github/workflows/container_image.yml) calls all four commands.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -26,7 +29,7 @@ SMOKE_DATABASE_URL="postgresql://${SMOKE_DB_USER}:${SMOKE_DB_PASSWORD}@127.0.0.1
 READY_TIMEOUT_SECONDS=60
 
 usage() {
-  echo "Usage: $0 <build|smoke>" >&2
+  echo "Usage: $0 <build|smoke|check-tag <tag>|reference <owner> <tag>>" >&2
   exit 1
 }
 
@@ -235,6 +238,45 @@ cmd_smoke() {
   echo "Smoke test passed."
 }
 
+# Fails with a message unless the tag is a valid image tag (letters, digits, _, . and -, at most 128 characters, not
+# starting with . or -) other than `latest`, which is never published.
+check_tag() {
+  local tag="$1"
+  if [[ -z "$tag" ]]; then
+    echo "The image tag is empty." >&2
+    exit 1
+  fi
+  if ((${#tag} > 128)); then
+    echo "The image tag '${tag}' has ${#tag} characters; at most 128 are allowed." >&2
+    exit 1
+  fi
+  if [[ ! "$tag" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]*$ ]]; then
+    echo "The image tag '${tag}' is invalid: only letters, digits, _, . and - are allowed, and it must not start with . or -." >&2
+    exit 1
+  fi
+  if [[ "$tag" == "latest" ]]; then
+    echo "The image tag 'latest' is not published; name the release with its version." >&2
+    exit 1
+  fi
+}
+
+cmd_check_tag() {
+  [[ $# -eq 1 ]] || usage
+  check_tag "$1"
+  echo "The image tag '$1' is valid."
+}
+
+cmd_reference() {
+  [[ $# -eq 2 ]] || usage
+  local owner="$1" tag="$2"
+  if [[ -z "$owner" ]]; then
+    echo "The owner is empty." >&2
+    exit 1
+  fi
+  check_tag "$tag"
+  echo "ghcr.io/$(tr '[:upper:]' '[:lower:]' <<<"$owner")/hippowiki:${tag}"
+}
+
 [[ $# -ge 1 ]] || usage
 command="$1"
 shift
@@ -248,5 +290,7 @@ case "$command" in
     require_podman
     cmd_smoke
     ;;
+  check-tag) cmd_check_tag "$@" ;;
+  reference) cmd_reference "$@" ;;
   *) usage ;;
 esac

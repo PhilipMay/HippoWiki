@@ -1,0 +1,76 @@
+name: container_image
+
+# Builds the container image and runs its smoke test on every push to main, on pull requests and when started by hand.
+# Publishing a release on GitHub (a pre-release included, a draft not) also pushes the checked image to the GitHub
+# Container Registry as ghcr.io/<owner>/hippowiki:<tag of the release>. No `latest` tag is pushed.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # A run for a release is never cancelled.
+  cancel-in-progress: ${{ github.event_name != 'release' }}
+
+jobs:
+  container_image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # The push of a release needs packages: write. The job has it for every trigger and builds and starts the code of
+    # the commit, so the token is kept away from that code: the checkout does not store it, and only the login step
+    # gets it, after the build and the smoke test.
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      # For a release, the checkout is the commit of the release tag.
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # Podman is preinstalled on the runner. The log shows which version built the image.
+      - run: podman version
+      # Before the build, so that an invalid tag fails at once and no unchecked string reaches the build command.
+      - name: Check the release tag
+        if: ${{ github.event_name == 'release' }}
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: bash scripts/image.sh check-tag "$RELEASE_TAG"
+      - name: Build the image
+        env:
+          IMAGE_REVISION: ${{ github.sha }}
+          IMAGE_VERSION: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
+        run: bash scripts/image.sh build
+      - name: Smoke test
+        run: bash scripts/image.sh smoke
+      # Only after the smoke test, so that only a checked image is published.
+      - name: Log in to the GitHub Container Registry
+        if: ${{ github.event_name == 'release' }}
+        env:
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$REGISTRY_TOKEN" | podman login ghcr.io --username "$REGISTRY_USER" --password-stdin
+      - name: Push the image
+        if: ${{ github.event_name == 'release' }}
+        env:
+          OWNER: ${{ github.repository_owner }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          reference="$(bash scripts/image.sh reference "$OWNER" "$RELEASE_TAG")"
+          podman tag hippowiki:local "$reference"
+          podman push --digestfile "$RUNNER_TEMP/image-digest" "$reference"
+          echo "IMAGE_REFERENCE=${reference}" >> "$GITHUB_ENV"
+      - name: Write the pushed image to the job summary
+        if: ${{ github.event_name == 'release' }}
+        run: |
+          {
+            echo "### Published image"
+            echo
+            echo "\`${IMAGE_REFERENCE}@$(cat "$RUNNER_TEMP/image-digest")\`"
+          } >> "$GITHUB_STEP_SUMMARY"

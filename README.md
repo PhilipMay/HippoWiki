@@ -181,6 +181,21 @@ npm run image:smoke   # check the built image against a throwaway database
   when a check fails; then the last log lines of the containers are printed. It can run next to the development
   database, the test database and the development server.
 
+### Publishing
+
+The workflow `container_image` builds the image and runs `npm run image:smoke` on every push to `main`, on pull
+requests and when started by hand, without publishing anything. Publishing a release on GitHub, a pre-release
+included, also pushes the image to the GitHub Container Registry under the tag name of the release, unchanged; a draft
+does not. A tag name that is not a valid image tag, or is `latest`, fails the run before the build. There is no
+`latest` tag: pull the image by the tag of the release:
+
+```bash
+podman pull ghcr.io/<owner>/hippowiki:<tag>
+```
+
+A new package is private until its visibility is changed on GitHub, so the host may need to log in to `ghcr.io`
+first, with a token that has the `read:packages` scope.
+
 ## Commands
 
 | Command                       | Description                                                           |

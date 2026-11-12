@@ -40,7 +40,7 @@ that file into the description of the feature as built and deletes it.
 
 - [x] Image
 - [x] Smoke test
-- [ ] Release workflow
+- [x] Release workflow
 - [ ] Wrap-up
 
 ## Image
