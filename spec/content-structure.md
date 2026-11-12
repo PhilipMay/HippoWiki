@@ -135,9 +135,9 @@ Built and parsed in `src/lib/addresses.ts`:
 
 ## Changing the structure
 
-Server Actions in `src/features/folders/actions.ts` (`createFolder`, `renameFolder`, `createTab`, `renameTab`) and
-`src/features/pages/actions.ts` (`createPage`, `updatePageContent`, `moveOrRenamePage`, `deletePage`,
-`restorePage`):
+The writes of `src/features/folders/service.ts` (`createFolder`, `renameFolder`, `createTab`, `renameTab`) and
+`src/features/pages/service.ts` (`createPage`, `updatePageContent`, `moveOrRenamePage`, `deletePage`,
+`restorePage`), which the forms reach through the Server Actions of the same names in `actions.ts` of each feature:
 
 - Folders, tabs and pages can be created and renamed. Pages can be deleted and restored (see `page-deletion.md`).
 - A new page can be created in any place of its folder: the "Save page" dialog offers "Directly in the folder" and
@@ -159,9 +159,9 @@ Server Actions in `src/features/folders/actions.ts` (`createFolder`, `renameFold
   shared `PageNameAndPlaceFields`; in the "Restore page" dialog no place is preselected.
 - Moving or renaming does not validate or touch the content.
 - A folder, tab or page that no longer exists when its form is saved shows a message above the form.
-- Every action redirects to the stored address of the item, never to one built from submitted values, and calls
-  `revalidateContent()` from `src/lib/revalidate.ts`, which revalidates every address under `/folders` and
-  `/deleted-pages`.
+- Every write returns the item as stored. Its action redirects to the address built from it, never to one built from
+  submitted values, and calls `revalidateContent()` from `src/lib/revalidate.ts`, which revalidates every address
+  under `/folders` and `/deleted-pages`.
 
 ## Lists and order
 

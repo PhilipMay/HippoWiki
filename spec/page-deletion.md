@@ -30,9 +30,9 @@ Pages themselves are described in `pages.md`, folders, tabs and addresses in `co
 - `?action=delete` shows the "Delete page" dialog on top of the page. It names the page with `.md` and says that it can
   be restored later from the deleted pages of its folder. "Delete" is disabled until hydration; "Cancel" and the Escape
   key lead back to the page address.
-- `deletePage` reads the folder and tab of the page and marks it deleted in one transaction: `updateMany` where the page
-  is not deleted sets `deletedAt` to the current time, `tabId` to `null` and `updatedAt`. It redirects to the stored
-  address of the folder or tab the page was in.
+- `deletePage` of the page service reads the folder and tab of the page and marks it deleted in one transaction:
+  `updateMany` where the page is not deleted sets `deletedAt` to the current time, `tabId` to `null` and `updatedAt`.
+  It returns the place the page was in, and the action redirects to the stored address of that folder or tab.
 - A malformed id, a page that no longer exists and a page that was deleted in the meantime show "This page no longer
   exists." in the dialog; any other database error is logged and shows "The page could not be deleted. Please try
   again.".
@@ -62,13 +62,13 @@ Pages themselves are described in `pages.md`, folders, tabs and addresses in `co
   controls are locked until hydration.
 - No place is preselected: no radio button is checked and the address line below the name is not shown; it appears once
   a place is chosen and follows name and place.
-- The form is parsed by `parsePageRestoreFormData` in `src/features/pages/schema.ts`: the name as for moving or
+- The form is parsed by `parsePageRestoreFormData` in `src/features/pages/forms.ts`: the name as for moving or
   renaming; a missing place shows "Choose a place" at the place field, an empty place is the folder itself, a tab id is
   that tab, and a malformed one shows "This tab no longer exists.". All errors are reported together. The name field is
   focused when it has an error, otherwise the place field when it has one.
-- `restorePage` restores the page with `updateMany` where the page is deleted: it sets `deletedAt` to `null` and stores
-  name and tab; `updatedAt` is set as well. The content is neither validated nor touched. It redirects to the new stored
-  address of the page.
+- `restorePage` of the page service restores the page with `updateMany` where the page is deleted: it sets
+  `deletedAt` to `null` and stores name and tab; `updatedAt` is set as well. The content is neither validated nor
+  touched. It returns the page as stored, and the action redirects to its new address.
   - A taken name at the chosen place shows "Name is already in use" at the name field and focuses it; name and place
     are kept.
   - A tab that no longer exists or belongs to another folder (foreign key violation) shows "This tab no longer

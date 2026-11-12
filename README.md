@@ -134,7 +134,7 @@ npx playwright show-report   # open the HTML report of the last run
 
 The integration tests run with Vitest against the same throwaway PostgreSQL container `hippowiki-test-db` as the
 end-to-end tests, and live in `integration/`. They check what the unit tests can only mock: the errors that Prisma
-reports for the unique and foreign key constraints (`src/lib/db-errors.ts`) and the queries of the features on real
+reports for the unique and foreign key constraints (`src/lib/db-errors.ts`) and the services of the features on real
 data. Like the end-to-end tests, they need only the Podman machine:
 
 ```bash

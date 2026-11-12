@@ -20,7 +20,9 @@ folders, tabs, names and addresses – is described in `content-structure.md`.
 
 ## Input rules
 
-Defined in `src/features/pages/schema.ts`, with the length limits in `src/features/pages/limits.ts`:
+Defined in `src/features/pages/schema.ts`, with the length limits in `src/features/pages/limits.ts`. The forms are
+read by `src/features/pages/forms.ts`; `src/features/pages/service.ts` validates the same input again before it
+writes:
 
 - Each form submits only what it changes:
   - a new page: `name`, `content` and the place, a tab or the folder itself
@@ -30,8 +32,8 @@ Defined in `src/features/pages/schema.ts`, with the length limits in `src/featur
 - The place is submitted in the field `place`: the id of a tab of the folder, or empty for the folder itself. A
   malformed tab id shows "This tab no longer exists.", together with the field errors, if there are any; a tab that no
   longer exists or belongs to another folder shows the same message.
-- The title is derived from the content in the create and edit actions; a submitted `title` field is ignored. Titles
-  need not be unique.
+- The title is derived from the content by the schemas for creating and editing a page; a submitted `title` field is
+  ignored. Titles need not be unique.
 - `name` follows the name rule in `content-structure.md`. A name that is taken where the page lives shows "Name is
   already in use"; no suffix is added automatically.
 - `content` is at most 100,000 characters and must start with a title heading. Content without a title is refused with

@@ -9,15 +9,13 @@ The specification lives in the `spec/` directory. This catalog should always be 
 - `spec/tech.md`: technology stack
 - `spec/workflow.md`: how features are planned in step files, when a step is done, what to do when it cannot be
   finished and how a feature is wrapped up
-- `spec/architecture.md`: code layout and conventions (reads, writes, validation, database, UI)
-- `spec/testing.md`: unit and end-to-end test conventions
+- `spec/architecture.md`: code layout and conventions (layers and services, reads, writes, validation, database, UI)
+- `spec/testing.md`: unit, integration and end-to-end test conventions
 - `spec/pages.md`: the page feature as built (model, input rules, derived title and name, routes, limits)
 - `spec/content-structure.md`: the content structure as built (folders, tabs and pages under `/folders`: models, names,
   addresses, actions, routes, lists, limits)
 - `spec/page-deletion.md`: the soft delete of pages as built (deleting, the deleted pages of a folder under
   `/deleted-pages`, restoring, limits)
-- `spec/service-layer-steps.md`: step plan for the service layer (services per feature, used by the GUI now and by an
-  MCP server later)
 - `spec/roadmap.md`: backlog of candidate features
 - `spec/issue-report.md`: how to report issues found in code and document reviews
 

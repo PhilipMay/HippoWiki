@@ -7,16 +7,32 @@ How the code is tested. Commands are listed in `README.md`.
 - Vitest project `unit` (`vitest.config.ts`); unit tests sit next to the code as `*.test.ts`. `npm run test` and
   `npm run test:coverage` run only this project.
 - Schemas, environment parsing and other pure helpers get unit tests.
-- Server Actions and route handlers get unit tests for the branches the end-to-end tests cannot reach without breaking
-  the shared test database, such as database failures and malformed ids. They mock `@/lib/db`, `@/lib/logger`,
-  `next/cache` and `next/navigation` with `vi.mock` (shared mock functions from `vi.hoisted`, reset in `beforeEach`);
-  the mocked `redirect` throws like the real one, so code after it never runs and tests assert the rejection and its
-  path.
-- Queries get unit tests for what the end-to-end tests cannot tell apart: that every query awaits `connection()` before
-  it reads the database (the default end-to-end run uses the development server, which never prerenders), that
-  malformed names never reach the database, and the conditions that pick the place of a page. They mock `@/lib/db` and
-  `next/server`.
-  Assertions that only repeat the `select` and `orderBy` of a query are left out.
+- Mocks are set up with `vi.mock` and shared mock functions from `vi.hoisted`, reset in `beforeEach`.
+- Services (`service.test.ts`) get unit tests for the branches the end-to-end tests cannot reach without breaking the
+  shared test database, and for what they cannot tell apart. They mock `@/lib/db` and `@/lib/logger`.
+  - Malformed ids and names never reach the database; invalid input returns `invalid-input` with the field errors and
+    writes nothing.
+  - The stored data of every write, such as the derived title of a page.
+  - Every database error gives its code: a unique violation `name-taken`, a foreign key violation or a count of 0 a
+    not-found code, any other error `failed`.
+  - What is logged for each outcome.
+  - The conditions of the reads, such as the ones that pick the place of a page and leave out deleted pages.
+    Assertions that only repeat the `select` and `orderBy` of a query are left out.
+- Server Actions (`actions.test.ts`) get unit tests as adapters. They mock the service of the feature, `next/cache`
+  and `next/navigation`; the mocked `redirect` throws like the real one, so code after it never runs and tests assert
+  the rejection and its path.
+  - Every error code of every action gives its form state.
+  - Success revalidates and redirects to the address of the stored item; a failure does neither.
+  - A malformed id or an invalid form never reaches the service.
+- Queries (`queries.test.ts`) get one unit test per query: that it awaits `connection()` before it calls the service
+  read of the same name (the default end-to-end run uses the development server, which never prerenders). They mock
+  the service of the feature and `next/server`.
+- The form parsers get unit tests in `forms.test.ts`, the ids in `schema.test.ts`.
+- `src/features/services.test.ts` checks that the services load without Next.js and React: it mocks `next/cache`,
+  `next/headers`, `next/navigation`, `next/server` and `react` with factories that throw, then imports the services.
+  An import of one of them, also an indirect one through `schema.ts` or `src/lib/`, fails the test. A new service is
+  added to this test.
+- Route handlers get unit tests for their failure branches; they mock `@/lib/db` and `@/lib/logger`.
 - `getDb()` and `getServerEnv()` are tested for creating the client and validating the environment on first use only,
   not on import. These tests load the module anew for every case (`vi.resetModules()` and a dynamic import), because
   the modules keep their result.
@@ -39,18 +55,24 @@ How the code is tested. Commands are listed in `README.md`.
   `integration/global-setup.ts` starts it and applies the migrations, and its teardown removes it. Both runs use the
   same container name and port, so integration and end-to-end tests must not run at the same time.
 - `integration/setup.ts` runs before every test file: it mocks `@/lib/db` so that `getDb()` returns the client of
-  `getTestDb()`, mocks `connection()` from `next/server`, which throws outside a request, and empties all tables
-  before every test with `resetTestDatabase()`. The test files run one after another (`fileParallelism: false`).
+  `getTestDb()`, and empties all tables before every test with `resetTestDatabase()`. Nothing of Next.js is mocked:
+  the tests call the services, which work outside a request. The test files run one after another
+  (`fileParallelism: false`).
 - Rows are created with the helpers of `e2e/support/database.ts` (`createFolder()`, `createTab()`, `createPage()`).
 - They cover what the unit tests can only mock:
   - `db-errors.ts` against the errors that Prisma and its `pg` adapter really report: every unique constraint of the
     schema is recognised by its constant (`FOLDER_NAME`, `TAB_NAME`, `PAGE_NAME`) and by no other, every foreign key
-    violation by `isForeignKeyViolation()`. The actions use the same constants, so a Prisma upgrade that changes the
+    violation by `isForeignKeyViolation()`. The services use the same constants, so a Prisma upgrade that changes the
     error shape or the index names fails here.
-  - The queries of the features on real data: their conditions (e.g. pages placed directly in a folder versus pages
-    in a tab) and their order.
+  - The services of the features on real data, one file per service (`integration/folder-service.test.ts`,
+    `integration/page-service.test.ts`):
+    - the reads: their conditions (e.g. pages placed directly in a folder versus pages in a tab) and their order, and
+      that a read of a single item returns exactly the declared fields (`toStrictEqual`)
+    - the writes: what is stored and returned, and the codes the database decides, such as `name-taken` for a taken
+      name and `tab-not-found` for a tab of another folder
 - A new unique constraint gets a constant in `db-errors.ts` and a case in `integration/db-errors.test.ts`; a new
-  query with a condition the database must get right gets a case in `integration/queries.test.ts`.
+  read with a condition the database must get right and every new write get a case in the integration test of their
+  service.
 
 ## End-to-end tests
 

@@ -8,7 +8,7 @@ How the code is organised and which patterns new code follows. The technology st
 - `src/app/`: routes (App Router), including the global `not-found`, `error` and `global-error` pages
 - `src/components/`: shared UI components (app bar, `Link`)
 - `src/lib/`: cross-cutting modules (`env.ts`, `db.ts`, `db-errors.ts`, `logger.ts`, `theme.ts`, `site.ts`,
-  `format.ts`, `hydration.ts`, `names.ts`, `addresses.ts`, `revalidate.ts`)
+  `format.ts`, `hydration.ts`, `names.ts`, `addresses.ts`, `revalidate.ts`, `result.ts`)
   - `names.ts`: the name rule shared by folders, tabs and pages (`nameSchema`, `parseName`) and the form state of
     forms that ask for a name
   - `addresses.ts`: the addresses under `/folders` (`folderPath`, `tabPath`, `pagePath`, `parsePageSegment`) and
@@ -16,9 +16,16 @@ How the code is organised and which patterns new code follows. The technology st
     (`parseAction`, `parseView`)
   - `names.ts` and `addresses.ts` have no server-only imports, so Client Components can use them.
   - `revalidate.ts`: `revalidateContent()`, the revalidation after every write to folders, tabs and pages
-- `src/features/<feature>/`: everything about one feature – `schema.ts`, `queries.ts`, `actions.ts`, `components/`
-  and pure helpers such as `derive.ts` and `limits.ts` for pages (no server-only imports, so Client Components can use
-  them). `limits.ts` holds the field length limits, so that `schema.ts` can import `derive.ts` without a cycle.
+  - `result.ts`: the type `Result`, which the writes of a service return; no server-only imports
+- `src/features/<feature>/`: everything about one feature – `schema.ts`, `service.ts`, `forms.ts`, `queries.ts`,
+  `actions.ts`, `components/` and pure helpers such as `derive.ts` and `limits.ts` for pages (no server-only imports,
+  so Client Components can use them). `limits.ts` holds the field length limits, so that `schema.ts` can import
+  `derive.ts` without a cycle.
+  - `schema.ts`: the ids, the Zod schemas and the types of validated input
+  - `service.ts`: every read and write of the feature (see "Reads and writes")
+  - `forms.ts`: what only a form needs: the `parse*FormData` functions, the form states, the types of the form
+    actions and the names of form fields. It has no server-only imports, so Client Components can use it.
+  - `queries.ts` and `actions.ts`: the adapters between the web and the service
   - `folders`: folders and their tabs, and the name dialog used for folders, tabs and pages
   - `pages`: pages
 - `src/generated/prisma/`: the generated Prisma client (`npm run db:generate`), not checked in
@@ -29,33 +36,70 @@ How the code is organised and which patterns new code follows. The technology st
 
 ## Reads and writes
 
+- The layers: a route or component calls `queries.ts` or `actions.ts`, these call `service.ts`, and only `service.ts`
+  calls `getDb()`. Routes and components import a service only for its types. The health route
+  (`src/app/api/health/route.ts`) is the one exception: it checks the database connection itself.
+- `service.ts` of a feature holds every read and write of the feature. It knows nothing about Next.js, forms or
+  addresses, so that a caller other than the GUI, such as an MCP server, can use the same service.
+  - It imports nothing from `next`, `react`, `@/lib/revalidate` or a `forms.ts`, has no `"use server"` and works
+    outside a request.
+  - It takes plain typed arguments (ids, names, objects of strings), never `FormData`.
+  - It trusts no caller: it parses ids and names and validates input with the Zod schemas of `schema.ts`, which also
+    derive the title of a page (see "Validation and errors").
+  - Reads return rows, a list or `null`. A malformed id or name counts as a missing row and never reaches the
+    database: a list is empty, a single item is `null`. Database errors are thrown.
+  - Writes return a `Result` from `src/lib/result.ts`: `{ ok: true, value }` with the item as stored, or
+    `{ ok: false, error }` with a code. The codes are `invalid-input` (with `fieldErrors`), `name-taken`,
+    `folder-not-found`, `tab-not-found`, `page-not-found` and `failed`. Each write declares the ones it can return in
+    a type of its own, such as `CreatePageError`.
+  - A write checks its ids first, then its input, then writes.
+  - Rows that may no longer exist are changed with `updateMany` and the returned count is checked, instead of catching
+    "not found" errors.
+  - It logs the events of its writes: the stored item, a taken name, an item that was not found in the database and
+    an unexpected error. A malformed id and invalid input are not logged.
+  - It returns no addresses and no messages, except the field errors of the schemas in `invalid-input`. The stored
+    item carries what an address is built from: its name and the names of its folder and tab.
+  - It declares the types of its results itself (`FolderSummary`, `PageWithPlace`, `StoredPage` and the like) instead
+    of deriving them from a Prisma query, states the return type of every function, and names the columns of every
+    query with `select`, never `include`, so that a new column does not reach a caller by accident. Components import
+    these types from the service with `import type`.
+  - It is the place for checks of who may read or change something, once users and rights exist. Such checks never go
+    into the adapters, which an MCP server does not pass through.
+  - Its functions have the names of the queries and actions, so the adapters import it as a namespace:
+    `import * as folderService from "@/features/folders/service"`.
 - Reads happen in Server Components through the feature's `queries.ts`.
-  - Every query first awaits `connection()`, so that Next.js does not prerender the route at build time.
+  - Every query first awaits `connection()`, so that Next.js does not prerender the route at build time, and then
+    calls the service read of the same name.
   - Queries that are used by both `generateMetadata` and the page are wrapped in React `cache()`.
 - Writes happen through Server Actions in the feature's `actions.ts`.
-  - An action validates its input, writes, logs the event, calls `revalidatePath` for every affected route and
-    redirects. The actions for folders, tabs and pages call `revalidateContent()` from `src/lib/revalidate.ts`, which
-    calls `revalidatePath` with `"layout"` for `/folders` and `/deleted-pages` and so covers every address under both:
+  - An action checks the id, parses the form with a `parse*FormData` function of `forms.ts`, calls the service and
+    maps the result.
+  - It maps every error code to a form state `{ fieldErrors?, message? }` in a `switch`; the form shows the state and
+    keeps the entered values. The messages live in `actions.ts`, and each action has its own message for `failed`.
+  - On success it calls `revalidateContent()` from `src/lib/revalidate.ts` and redirects. `revalidateContent()` calls
+    `revalidatePath` with `"layout"` for `/folders` and `/deleted-pages` and so covers every address under both:
     renaming a folder changes the addresses of its deleted pages, and creating or renaming a tab changes the places
     offered when a page is restored.
-  - An action redirects to the address of the item as stored, built with the helpers in `addresses.ts`, never to one
-    built from submitted values.
-  - On failure it returns a form state `{ fieldErrors?, message? }` that the form shows; the entered values are kept.
-  - `redirect` is called outside `try` blocks, because it throws.
-  - Rows that may no longer exist are changed with `updateMany`/`deleteMany` and the returned count is checked,
-    instead of catching "not found" errors.
+  - It redirects to the address of the item as stored, built from the result of the service with the helpers in
+    `addresses.ts`, never to one built from submitted values.
+  - `redirect` is called last and outside `try` blocks, because it throws.
   - Values such as the id are bound with `action.bind(null, id)`.
 
 ## Validation and errors
 
-- All input (forms, actions, environment variables) is validated with Zod. Schemas live in the feature's `schema.ts`
-  and have unit tests.
-- Ids and names from URLs or forms are parsed (`parsePageId`, `parseFolderId`, `parseTabId`, `parseName`,
-  `parsePageSegment`) before they reach the database; malformed ones are treated like missing rows and show the
-  not-found page.
+- All input (forms, service arguments, environment variables) is validated with Zod. Schemas live in the feature's
+  `schema.ts` and have unit tests.
+- A form is parsed by a `parse*FormData` function in the feature's `forms.ts`. It reports all errors of a form
+  together, including the ones only a form has, such as no place chosen or a file instead of text.
+- The service validates the same input again with the same schemas. This is deliberate: a caller other than a form
+  does not pass through `forms.ts`.
+- Ids and names from URLs, forms or callers of a service are parsed (`parsePageId`, `parseFolderId`, `parseTabId`,
+  `parseName`, `parsePageSegment`) before they reach the database; malformed ones are treated like missing rows: a
+  route shows the not-found page, a write returns its not-found code.
 - Unique and foreign key violations that a user can cause, such as a taken name or a folder that no longer exists,
-  are recognised with `isUniqueViolation` and `isForeignKeyViolation` from `src/lib/db-errors.ts` and shown in the
-  form. Any other database error is logged and shown as a failed save.
+  are recognised in the service with `isUniqueViolation` and `isForeignKeyViolation` from `src/lib/db-errors.ts` and
+  returned as `name-taken` or a not-found code, which the action shows in the form. Any other database error in a
+  write is logged with `{ err }` and the ids and returned as `failed`, which the action shows as a failed save.
 - The server environment is read through `getServerEnv()` from `src/lib/env.ts`, never directly from `process.env`.
 - Server-side logging goes through the pino `logger` from `src/lib/logger.ts`, not `console`. Errors are logged with
   `{ err }` and the relevant ids.
@@ -142,7 +186,18 @@ How the code is organised and which patterns new code follows. The technology st
   - `no-restricted-properties`: `process.env` is not read in `src/`, except in `src/lib/env.ts` and
     `src/lib/logger.ts`. Configuration files, `e2e/` and `scripts/` read it directly.
   - `no-restricted-imports`: the barrel imports `@mui/material` and `@mui/icons-material` are not allowed in `src/`.
-  - `no-console`: server code (`src/features/**/actions.ts`, `src/features/**/queries.ts`, `src/app/api/`, `src/lib/`)
-    does not use `console`. The client error boundaries `src/app/error.tsx` and `global-error.tsx` log with
-    `console.error`, because the pino logger runs only on the server.
+  - `no-console`: server code (`src/features/**/actions.ts`, `src/features/**/queries.ts`,
+    `src/features/**/service.ts`, `src/app/api/`, `src/lib/`) does not use `console`. The client error boundaries
+    `src/app/error.tsx` and `global-error.tsx` log with `console.error`, because the pino logger runs only on the
+    server.
+  - `@typescript-eslint/no-restricted-imports` keeps the layers apart (see "Reads and writes"). It is a rule of its
+    own, so that the Material UI paths in `no-restricted-imports` stay as they are.
+    - `@/lib/db` may only be imported in `src/features/**/service.ts`, `src/lib/**` and `src/app/api/health/**`;
+      everywhere else in `src/` the rule points to the service of the feature.
+    - In `src/app/**` and `src/features/**/components/**`, `@/features/*/service` may only be imported as a type; the
+      rule points to `queries.ts` and `actions.ts`.
+    - `src/features/**/service.ts` imports neither `next`, `next/*`, `react`, `@/lib/revalidate` nor
+      `@/features/*/forms`.
+    - A later config object replaces the options of a rule instead of adding to them. The config objects of this rule
+      therefore match disjoint sets of files, and each one lists all restrictions of its files.
 - The rules for the end-to-end tests are described in `testing.md`.
