@@ -124,7 +124,7 @@ How the code is tested. Commands are listed in `README.md`.
 
 ## Continuous integration
 
-- GitHub Actions runs the checks in six workflows in `.github/workflows/`, each named like its file, so a failure
+- GitHub Actions runs the checks in seven workflows in `.github/workflows/`, each named like its file, so a failure
   shows at a glance which kind of check broke:
   - `format_check`: `npm run format:check`
   - `lint`: `npm run build`, `npm run typecheck`, `npm run lint`, as separate steps in this order
@@ -132,10 +132,15 @@ How the code is tested. Commands are listed in `README.md`.
   - `integration_tests`: `npm run test:integration`, using the Podman preinstalled on the runner
   - `end_to_end_tests`: `npm run test:e2e`, against the development server
   - `end_to_end_tests_production`: `npm run test:e2e:production`, against a production build
+  - `container_image`: `scripts/image.sh build` and `scripts/image.sh smoke`, and for a published release the push of
+    the image to the GitHub Container Registry (see `container-image.md`)
 - They run on every push to `main`, on pull requests and when started by hand (`workflow_dispatch`). Pushes to other
   branches run them only through their pull request, so a pull request's commits are not tested twice. A newer push to
-  the same ref cancels a run still in progress.
-- Every workflow installs Node.js from `.nvmrc` and runs `npm ci` on `ubuntu-24.04`.
+  the same ref cancels a run still in progress. `container_image` also runs when a release is published, and a run for a
+  release is never cancelled.
+- Every workflow runs on `ubuntu-24.04`. All but `container_image` install Node.js from `.nvmrc` and run `npm ci`;
+  `container_image` calls `bash scripts/image.sh` directly, with the Podman preinstalled on the runner, and builds
+  Node.js into the image instead.
 - No workflow sets `DATABASE_URL`. `prisma generate` during `npm ci` does not need it, and the build needs no
   database, because every query calls `connection()` and no route is prerendered.
 - Both end-to-end workflows install Chromium with `npx playwright install --with-deps chromium` and use the Podman
@@ -148,6 +153,7 @@ How the code is tested. Commands are listed in `README.md`.
 - The unit test workflow writes the coverage tables of `scripts/coverage-summary.ts` to the job summary and uploads
   `coverage/` as the artifact `coverage-report`, also when the tests fail (not when the run was cancelled or no report
   was written), kept for 7 days.
-- Dependabot (`.github/dependabot.yml`) checks the `npm` and `github-actions` dependencies weekly. All minor and patch
-  npm updates arrive in one pull request, each major npm update in a pull request of its own, all action updates in
-  one. Its pull requests run the same workflows; merging one is an upgrade, a task of its own (see `workflow.md`).
+- Dependabot (`.github/dependabot.yml`) checks the `npm` and `github-actions` dependencies and the two `docker` images
+  weekly: the PostgreSQL image in `scripts/Containerfile` and the Node.js image in the `Containerfile` of the project
+  root, both for minor updates only. All minor and patch npm updates arrive in one pull request, each major npm update
+  in a pull request of its own, all action updates in one. Its pull requests run the same workflows; merging one is an upgrade, a task of its own (see `workflow.md`).

@@ -16,10 +16,9 @@ The specification lives in the `spec/` directory. This catalog should always be 
   addresses, actions, routes, lists, limits)
 - `spec/page-deletion.md`: the soft delete of pages as built (deleting, the deleted pages of a folder under
   `/deleted-pages`, restoring, limits)
-- `spec/container-image-requirements.md`: what the container image has to do and why (one image that migrates its
-  database at the start, configuration, smoke test, publishing on a release, what the environment has to provide)
-- `spec/container-image-steps.md`: step plan for the container image, its smoke test and the release workflow that
-  publishes it to the GitHub Container Registry
+- `spec/container-image.md`: the container image as built (image and build stages, start with the migration, the
+  command that only migrates, configuration, smoke test, publishing on a release, what the environment has to provide,
+  decisions, limits)
 - `spec/roadmap.md`: backlog of candidate features
 - `spec/issue-report.md`: how to report issues found in code and document reviews
 

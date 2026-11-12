@@ -28,6 +28,8 @@
 - end-to-end tests: Playwright
 - Podman: instead of Docker for development
 - Continuous integration: GitHub Actions
+- Container registry: GitHub Container Registry (`ghcr.io`), which receives the container image of every published
+  release (see `container-image.md`)
 - Zod: for forms, actions and environment variable validation
 
 ## Later Aspects

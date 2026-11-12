@@ -134,8 +134,8 @@ How the code is organised and which patterns new code follows. The technology st
   on the names of pages placed directly in a folder.
 - The development database is PostgreSQL 18 in the Podman container `hippowiki-db`, managed with `scripts/db.sh`
   (`npm run db:up`, `db:down`, `db:reset`, `db:psql`, `db:logs`). The image is pinned to an exact minor
-  version in `scripts/Containerfile`, which `scripts/db.sh` and the test database container both read; Dependabot
-  keeps the minor version up to date.
+  version in `scripts/Containerfile`, which `scripts/db.sh`, the test database container and the smoke test of the
+  container image (`scripts/image.sh`, see `container-image.md`) read; Dependabot keeps the minor version up to date.
 
 ## UI
 
