@@ -6,6 +6,7 @@ import {
   parsePageContentFormData,
   parsePageId,
   parsePageMoveFormData,
+  parsePageMoveOrRenameFormData,
   parsePageNameFormData,
   TITLE_HEADING_MISSING_MESSAGE,
 } from "@/features/pages/schema";
@@ -241,5 +242,94 @@ describe("parsePageMoveFormData", () => {
       expect(parsePageMoveFormData(formData({ target }))).toEqual({ success: false });
     }
     expect(parsePageMoveFormData(formData({ target: new Blob(["x"]) }))).toEqual({ success: false });
+  });
+});
+
+describe("parsePageMoveOrRenameFormData", () => {
+  const tabId = crypto.randomUUID();
+
+  it("returns the name and the tab id of the target", () => {
+    expect(parsePageMoveOrRenameFormData(formData({ name: "release-notes", target: tabId }))).toEqual({
+      success: true,
+      data: { name: "release-notes", tabId },
+    });
+  });
+
+  it("returns no tab for the folder itself: an empty or missing target", () => {
+    expect(parsePageMoveOrRenameFormData(formData({ name: "release-notes", target: "" }))).toEqual({
+      success: true,
+      data: { name: "release-notes", tabId: null },
+    });
+    expect(parsePageMoveOrRenameFormData(formData({ name: "release-notes" }))).toEqual({
+      success: true,
+      data: { name: "release-notes", tabId: null },
+    });
+  });
+
+  it("trims the name", () => {
+    expect(parsePageMoveOrRenameFormData(formData({ name: " release-notes ", target: tabId }))).toEqual({
+      success: true,
+      data: { name: "release-notes", tabId },
+    });
+  });
+
+  it("reports a missing, empty or invalid name at the name field", () => {
+    expect(parsePageMoveOrRenameFormData(formData({ target: tabId }))).toEqual({
+      success: false,
+      fieldErrors: { name: ["Name is required"] },
+      targetInvalid: false,
+    });
+    expect(parsePageMoveOrRenameFormData(formData({ name: " ", target: tabId }))).toEqual({
+      success: false,
+      fieldErrors: { name: ["Name is required"] },
+      targetInvalid: false,
+    });
+    expect(parsePageMoveOrRenameFormData(formData({ name: "Release Notes", target: "" }))).toEqual({
+      success: false,
+      fieldErrors: { name: ["Use lowercase letters, digits and single hyphens"] },
+      targetInvalid: false,
+    });
+    expect(parsePageMoveOrRenameFormData(formData({ name: "a".repeat(NAME_MAX_LENGTH + 1) }))).toEqual({
+      success: false,
+      fieldErrors: { name: [`Name must be at most ${NAME_MAX_LENGTH} characters`] },
+      targetInvalid: false,
+    });
+  });
+
+  it("refuses a malformed tab id and a file as target", () => {
+    for (const target of ["guides", "not-a-uuid", " ", "folder", `${crypto.randomUUID()}x`]) {
+      expect(parsePageMoveOrRenameFormData(formData({ name: "release-notes", target }))).toEqual({
+        success: false,
+        fieldErrors: {},
+        targetInvalid: true,
+      });
+    }
+    expect(parsePageMoveOrRenameFormData(formData({ name: "release-notes", target: new Blob(["x"]) }))).toEqual({
+      success: false,
+      fieldErrors: {},
+      targetInvalid: true,
+    });
+  });
+
+  it("reports an invalid name and an invalid target together", () => {
+    expect(parsePageMoveOrRenameFormData(formData({ name: "", target: "guides" }))).toEqual({
+      success: false,
+      fieldErrors: { name: ["Name is required"] },
+      targetInvalid: true,
+    });
+  });
+
+  it("ignores the content and other fields, so that no content rule can block a save", () => {
+    const fields = {
+      name: "release-notes",
+      target: tabId,
+      content: "x".repeat(CONTENT_MAX_LENGTH + 1),
+      title: "Typed",
+      folderId: "x",
+    };
+    expect(parsePageMoveOrRenameFormData(formData(fields))).toEqual({
+      success: true,
+      data: { name: "release-notes", tabId },
+    });
   });
 });

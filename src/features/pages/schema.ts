@@ -133,9 +133,59 @@ export type PageMoveFormAction = (prevState: PageMoveFormState, formData: FormDa
 export function parsePageMoveFormData(
   formData: FormData,
 ): { success: true; tabId: string | null } | { success: false } {
+  return parseMoveTarget(formData);
+}
+
+/**
+ * Reads the target of a move from the submitted form: the id of a tab, or `null` for the folder itself when the field
+ * is empty or missing. A malformed tab id or a file is not a target.
+ */
+function parseMoveTarget(formData: FormData): { success: true; tabId: string | null } | { success: false } {
   const target = formData.get(MOVE_TARGET_FIELD) ?? "";
   if (typeof target !== "string") return { success: false };
   if (target === "") return { success: true, tabId: null };
   const tabId = parseTabId(target);
   return tabId ? { success: true, tabId } : { success: false };
+}
+
+/** The name of a page as entered in the "Move or rename page" form. */
+const pageMoveOrRenameNameSchema = z.object({ name: nameSchema });
+
+/** A validated move or rename of a page: its name and its tab, or `null` for a page placed directly in its folder. */
+export type PageMoveOrRenameInput = { name: string; tabId: string | null };
+
+/** State of the "Move or rename page" form between submissions: errors from the last attempt, if any. */
+export type PageMoveOrRenameFormState = {
+  fieldErrors?: NameFieldErrors;
+  /** An error that is not about the name, e.g. when the chosen tab or the page no longer exists. */
+  message?: string;
+};
+
+/** A Server Action behind the "Move or rename page" form; it returns the errors to show, or redirects on success. */
+export type PageMoveOrRenameFormAction = (
+  prevState: PageMoveOrRenameFormState,
+  formData: FormData,
+) => Promise<PageMoveOrRenameFormState>;
+
+/**
+ * Validates the name and reads the target of a submitted "Move or rename page" form. A missing name counts as empty;
+ * an empty or missing target is the folder itself, a malformed tab id or a file is no target. Other fields, the content
+ * in particular, are ignored, so no content rule can block a save. On failure, returns the errors of the name field
+ * and whether the target is invalid; both are reported together.
+ */
+export function parsePageMoveOrRenameFormData(
+  formData: FormData,
+):
+  | { success: true; data: PageMoveOrRenameInput }
+  | { success: false; fieldErrors: NameFieldErrors; targetInvalid: boolean } {
+  const name = pageMoveOrRenameNameSchema.safeParse({ name: formData.get("name") ?? "" });
+  const target = parseMoveTarget(formData);
+  if (name.success && target.success) {
+    return { success: true, data: { name: name.data.name, tabId: target.tabId } };
+  }
+  return {
+    success: false,
+    fieldErrors: name.success ? {} : z.flattenError(name.error).fieldErrors,
+    targetInvalid: !target.success,
+  };
 }

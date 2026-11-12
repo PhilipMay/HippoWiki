@@ -9,9 +9,11 @@ import {
   parsePageContentFormData,
   parsePageId,
   parsePageMoveFormData,
+  parsePageMoveOrRenameFormData,
   parsePageNameFormData,
   type PageFormState,
   type PageMoveFormState,
+  type PageMoveOrRenameFormState,
 } from "@/features/pages/schema";
 import { pagePath } from "@/lib/addresses";
 import { getDb } from "@/lib/db";
@@ -216,6 +218,56 @@ export async function movePage(
   }
 
   logger.info({ pageId, tabId }, "page moved");
+  revalidateFolders();
+  redirect(address);
+}
+
+/**
+ * Stores the submitted name and place of the page with the given id in one update and redirects to its new address.
+ * The page is placed in the chosen tab of its folder or, without one, directly in the folder. The content is neither
+ * validated nor touched, so the content limit never blocks a save. Returns the errors to show in the form if the name
+ * is invalid or taken at the target, the tab does not exist or belongs to another folder (the composite foreign key
+ * refuses it), the page no longer exists or it cannot be stored. Bind the id with `moveOrRenamePage.bind(null, id)`.
+ */
+export async function moveOrRenamePage(
+  id: string,
+  _prevState: PageMoveOrRenameFormState,
+  formData: FormData,
+): Promise<PageMoveOrRenameFormState> {
+  const pageId = parsePageId(id);
+  if (!pageId) return { message: PAGE_GONE_MESSAGE };
+
+  const input = parsePageMoveOrRenameFormData(formData);
+  if (!input.success) {
+    return {
+      ...(input.fieldErrors.name && { fieldErrors: input.fieldErrors }),
+      ...(input.targetInvalid && { message: TAB_GONE_MESSAGE }),
+    };
+  }
+  const { name, tabId } = input.data;
+
+  let address: string | null;
+  try {
+    const { count } = await getDb().page.updateMany({ where: { id: pageId }, data: { name, tabId } });
+    address = count === 0 ? null : await findPageAddress(pageId);
+  } catch (err) {
+    if (isUniqueViolation(err, PAGE_NAME)) {
+      logger.warn({ pageId, tabId, name }, "name of moved or renamed page already in use at the target");
+      return nameTakenState;
+    }
+    if (isForeignKeyViolation(err)) {
+      logger.warn({ pageId, tabId }, "target tab of moved or renamed page not found in the page's folder");
+      return { message: TAB_GONE_MESSAGE };
+    }
+    logger.error({ err, pageId, tabId }, "failed to move or rename page");
+    return { message: SAVE_FAILED_MESSAGE };
+  }
+  if (address === null) {
+    logger.warn({ pageId }, "page to move or rename not found");
+    return { message: PAGE_GONE_MESSAGE };
+  }
+
+  logger.info({ pageId, tabId }, "page moved or renamed");
   revalidateFolders();
   redirect(address);
 }

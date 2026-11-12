@@ -24,7 +24,7 @@ saved together. The dialog shows the address the page will get.
 
 ## Checklist
 
-- [ ] Move-or-rename action
+- [x] Move-or-rename action
 - [ ] Move-or-rename dialog
 - [ ] Wrap-up
 
