@@ -6,7 +6,7 @@ import Paper from "@mui/material/Paper";
 import Typography from "@mui/material/Typography";
 
 import Link from "@/components/Link";
-import type { FolderSummary } from "@/features/folders/queries";
+import type { FolderSummary } from "@/features/folders/service";
 import { folderPath } from "@/lib/addresses";
 import { formatDateTime } from "@/lib/format";
 

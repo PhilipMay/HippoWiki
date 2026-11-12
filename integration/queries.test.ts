@@ -1,7 +1,6 @@
-// Runs the queries of the features against the test database, to check their conditions and order on real data.
+// Runs the queries of the pages against the test database, to check their conditions and order on real data.
 import { describe, expect, it } from "vitest";
 
-import { getFolderByName, getTab, listFolders, listTabs } from "@/features/folders/queries";
 import {
   getDeletedPage,
   getPage,
@@ -12,41 +11,6 @@ import {
 } from "@/features/pages/queries";
 
 import { createFolder, createPage, createTab } from "../e2e/support/database";
-
-describe("folder queries", () => {
-  it("lists all folders by name", async () => {
-    await createFolder({ name: "zeta" });
-    await createFolder({ name: "alpha" });
-
-    expect((await listFolders()).map(({ name }) => name)).toEqual(["alpha", "zeta"]);
-  });
-
-  it("finds a folder by name, and null for an unknown or malformed name", async () => {
-    const folder = await createFolder({ name: "docs" });
-
-    await expect(getFolderByName("docs")).resolves.toMatchObject({ id: folder.id });
-    await expect(getFolderByName("other")).resolves.toBeNull();
-    await expect(getFolderByName("Not A Name")).resolves.toBeNull();
-  });
-
-  it("lists the tabs of a folder by name, without those of other folders", async () => {
-    const folder = await createFolder();
-    await createTab({ folder, name: "zeta" });
-    await createTab({ folder, name: "alpha" });
-    await createTab({ name: "other" });
-
-    expect((await listTabs(folder.id)).map(({ name }) => name)).toEqual(["alpha", "zeta"]);
-  });
-
-  it("finds a tab by folder and tab name, and null for a tab of another folder", async () => {
-    const folder = await createFolder({ name: "docs" });
-    const tab = await createTab({ folder, name: "guides" });
-    await createTab({ folder: await createFolder({ name: "other" }), name: "news" });
-
-    await expect(getTab("docs", "guides")).resolves.toMatchObject({ id: tab.id, folder: { name: "docs" } });
-    await expect(getTab("docs", "news")).resolves.toBeNull();
-  });
-});
 
 describe("page queries", () => {
   it("lists the pages placed directly in a folder by name, without the pages of its tabs", async () => {

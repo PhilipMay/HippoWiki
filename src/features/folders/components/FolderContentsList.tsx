@@ -8,7 +8,7 @@ import Paper from "@mui/material/Paper";
 import Typography from "@mui/material/Typography";
 
 import Link from "@/components/Link";
-import type { TabSummary } from "@/features/folders/queries";
+import type { TabSummary } from "@/features/folders/service";
 import PageListItem from "@/features/pages/components/PageListItem";
 import type { PageSummary } from "@/features/pages/queries";
 import { tabPath } from "@/lib/addresses";

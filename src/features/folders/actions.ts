@@ -1,14 +1,15 @@
 "use server";
 
+// The writes of folders and tabs for forms: thin adapters that translate between a form and the service.
+
 import { redirect } from "next/navigation";
 
-import { parseFolderFormData, parseFolderId, parseTabFormData, parseTabId } from "@/features/folders/schema";
+import { parseFolderFormData, parseTabFormData } from "@/features/folders/forms";
+import { parseFolderId, parseTabId } from "@/features/folders/schema";
+import * as folderService from "@/features/folders/service";
 import { folderPath, tabPath } from "@/lib/addresses";
-import { getDb } from "@/lib/db";
-import { FOLDER_NAME, isForeignKeyViolation, isUniqueViolation, TAB_NAME } from "@/lib/db-errors";
-import { logger } from "@/lib/logger";
-import { revalidateContent } from "@/lib/revalidate";
 import { NAME_TAKEN_MESSAGE, type NameFormState } from "@/lib/names";
+import { revalidateContent } from "@/lib/revalidate";
 
 const SAVE_FAILED_MESSAGE = "The folder could not be saved. Please try again.";
 const FOLDER_GONE_MESSAGE = "This folder no longer exists.";
@@ -26,23 +27,21 @@ export async function createFolder(_prevState: NameFormState, formData: FormData
   const input = parseFolderFormData(formData);
   if (!input.success) return { fieldErrors: input.fieldErrors };
 
-  let id: string;
-  let name: string;
-  try {
-    ({ id, name } = await getDb().folder.create({ data: input.data, select: { id: true, name: true } }));
-  } catch (err) {
-    if (isUniqueViolation(err, FOLDER_NAME)) {
-      logger.warn({ name: input.data.name }, "name of new folder already in use");
-      return nameTakenState;
+  const result = await folderService.createFolder(input.data);
+  if (!result.ok) {
+    switch (result.error.code) {
+      case "invalid-input":
+        return { fieldErrors: result.error.fieldErrors };
+      case "name-taken":
+        return nameTakenState;
+      case "failed":
+        return { message: SAVE_FAILED_MESSAGE };
     }
-    logger.error({ err }, "failed to create folder");
-    return { message: SAVE_FAILED_MESSAGE };
   }
 
-  logger.info({ folderId: id }, "folder created");
   revalidateContent();
-  // `redirect` throws, so it must stay outside the try block above.
-  redirect(folderPath(name));
+  // The address is built from the stored folder, never from submitted values.
+  redirect(folderPath(result.value.name));
 }
 
 /**
@@ -57,26 +56,22 @@ export async function renameFolder(id: string, _prevState: NameFormState, formDa
   const input = parseFolderFormData(formData);
   if (!input.success) return { fieldErrors: input.fieldErrors };
 
-  let count: number;
-  try {
-    // `updateMany` reports a missing folder as a count of 0 instead of throwing; it sets `updatedAt` as well.
-    ({ count } = await getDb().folder.updateMany({ where: { id: folderId }, data: input.data }));
-  } catch (err) {
-    if (isUniqueViolation(err, FOLDER_NAME)) {
-      logger.warn({ folderId, name: input.data.name }, "name of renamed folder already in use");
-      return nameTakenState;
+  const result = await folderService.renameFolder(folderId, input.data);
+  if (!result.ok) {
+    switch (result.error.code) {
+      case "folder-not-found":
+        return { message: FOLDER_GONE_MESSAGE };
+      case "invalid-input":
+        return { fieldErrors: result.error.fieldErrors };
+      case "name-taken":
+        return nameTakenState;
+      case "failed":
+        return { message: SAVE_FAILED_MESSAGE };
     }
-    logger.error({ err, folderId }, "failed to rename folder");
-    return { message: SAVE_FAILED_MESSAGE };
-  }
-  if (count === 0) {
-    logger.warn({ folderId }, "folder to rename not found");
-    return { message: FOLDER_GONE_MESSAGE };
   }
 
-  logger.info({ folderId }, "folder renamed");
   revalidateContent();
-  redirect(folderPath(input.data.name));
+  redirect(folderPath(result.value.name));
 }
 
 /**
@@ -95,28 +90,22 @@ export async function createTab(
   const input = parseTabFormData(formData);
   if (!input.success) return { fieldErrors: input.fieldErrors };
 
-  let tab: { id: string; name: string; folder: { name: string } };
-  try {
-    tab = await getDb().tab.create({
-      data: { ...input.data, folderId: parsedFolderId },
-      select: { id: true, name: true, folder: { select: { name: true } } },
-    });
-  } catch (err) {
-    if (isUniqueViolation(err, TAB_NAME)) {
-      logger.warn({ folderId: parsedFolderId, name: input.data.name }, "name of new tab already in use");
-      return nameTakenState;
+  const result = await folderService.createTab(parsedFolderId, input.data);
+  if (!result.ok) {
+    switch (result.error.code) {
+      case "folder-not-found":
+        return { message: FOLDER_GONE_MESSAGE };
+      case "invalid-input":
+        return { fieldErrors: result.error.fieldErrors };
+      case "name-taken":
+        return nameTakenState;
+      case "failed":
+        return { message: TAB_SAVE_FAILED_MESSAGE };
     }
-    if (isForeignKeyViolation(err)) {
-      logger.warn({ folderId: parsedFolderId }, "folder of new tab not found");
-      return { message: FOLDER_GONE_MESSAGE };
-    }
-    logger.error({ err, folderId: parsedFolderId }, "failed to create tab");
-    return { message: TAB_SAVE_FAILED_MESSAGE };
   }
 
-  logger.info({ tabId: tab.id }, "tab created");
   revalidateContent();
-  redirect(tabPath(tab.folder.name, tab.name));
+  redirect(tabPath(result.value.folder.name, result.value.name));
 }
 
 /**
@@ -131,32 +120,20 @@ export async function renameTab(id: string, _prevState: NameFormState, formData:
   const input = parseTabFormData(formData);
   if (!input.success) return { fieldErrors: input.fieldErrors };
 
-  let tab: { name: string; folder: { name: string } } | null;
-  try {
-    const db = getDb();
-    const { count } = await db.tab.updateMany({ where: { id: tabId }, data: input.data });
-    // The address is built from the stored names, never from submitted values.
-    tab =
-      count === 0
-        ? null
-        : await db.tab.findUnique({
-            where: { id: tabId },
-            select: { name: true, folder: { select: { name: true } } },
-          });
-  } catch (err) {
-    if (isUniqueViolation(err, TAB_NAME)) {
-      logger.warn({ tabId, name: input.data.name }, "name of renamed tab already in use");
-      return nameTakenState;
+  const result = await folderService.renameTab(tabId, input.data);
+  if (!result.ok) {
+    switch (result.error.code) {
+      case "tab-not-found":
+        return { message: TAB_GONE_MESSAGE };
+      case "invalid-input":
+        return { fieldErrors: result.error.fieldErrors };
+      case "name-taken":
+        return nameTakenState;
+      case "failed":
+        return { message: TAB_SAVE_FAILED_MESSAGE };
     }
-    logger.error({ err, tabId }, "failed to rename tab");
-    return { message: TAB_SAVE_FAILED_MESSAGE };
-  }
-  if (tab === null) {
-    logger.warn({ tabId }, "tab to rename not found");
-    return { message: TAB_GONE_MESSAGE };
   }
 
-  logger.info({ tabId }, "tab renamed");
   revalidateContent();
-  redirect(tabPath(tab.folder.name, tab.name));
+  redirect(tabPath(result.value.folder.name, result.value.name));
 }

@@ -72,7 +72,7 @@ These rules apply to every step.
 
 ## Checklist
 
-- [ ] Folder and tab service
+- [x] Folder and tab service
 - [ ] Page reads
 - [ ] Page writes
 - [ ] Layer rules
