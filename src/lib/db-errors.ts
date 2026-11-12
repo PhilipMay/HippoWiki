@@ -26,6 +26,12 @@ export const PAGE_NAME: UniqueConstraint = {
 };
 
 /**
+ * The unique indexes on the user name and on the email of `User`, as Prisma creates them for `@unique`. The email is
+ * derived from the name, so both stand for a taken name.
+ */
+export const USER_NAME: UniqueConstraint = { indexes: ["User_username_key", "User_email_key"], field: "username" };
+
+/**
  * Whether the error is a violation of the given unique constraint. With a driver adapter, Prisma reports the violated
  * constraint in `meta.driverAdapterError.cause.constraint`: as the index name or, if that is unknown, as the fields.
  */

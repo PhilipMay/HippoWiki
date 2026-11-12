@@ -2,18 +2,27 @@
 // schema, so that a Prisma upgrade that changes their shape or the index names fails here.
 import { describe, expect, it } from "vitest";
 
+import { newUserData } from "@/features/users/records";
 import {
   FOLDER_NAME,
   isForeignKeyViolation,
   isUniqueViolation,
   PAGE_NAME,
   TAB_NAME,
+  USER_NAME,
   type UniqueConstraint,
 } from "@/lib/db-errors";
 
 import { createFolder, createPage, createTab, getTestDb } from "../e2e/support/database";
 
-const NAME_CONSTRAINTS = { FOLDER_NAME, TAB_NAME, PAGE_NAME } as const;
+const NAME_CONSTRAINTS = { FOLDER_NAME, TAB_NAME, PAGE_NAME, USER_NAME } as const;
+
+/** Creates a user with the given name directly in the test database; other fields of the row can be overridden. */
+function createUserRow(name: string, data: { username?: string; email?: string } = {}) {
+  return getTestDb().user.create({
+    data: { ...newUserData({ name, passwordHash: "not-a-hash", mustChangePassword: false }), ...data },
+  });
+}
 
 /** The error the given write rejects with; fails the test if it succeeds. */
 async function errorOf(write: Promise<unknown>): Promise<unknown> {
@@ -98,6 +107,24 @@ describe("unique violations", () => {
 
     await expect(createPage({ tab: first, name: "intro" })).resolves.toMatchObject({ tabId: first.id });
     await expect(createPage({ tab: second, name: "intro" })).resolves.toMatchObject({ tabId: second.id });
+  });
+
+  it("reports a taken user name as a violation of USER_NAME", async () => {
+    await createUserRow("alice");
+
+    expectUniqueViolationOf(await errorOf(createUserRow("alice")), USER_NAME);
+  });
+
+  it("reports a taken user name with another email as a violation of USER_NAME", async () => {
+    await createUserRow("alice");
+
+    expectUniqueViolationOf(await errorOf(createUserRow("alice", { email: "other@example.invalid" })), USER_NAME);
+  });
+
+  it("reports a taken email with another user name as a violation of USER_NAME", async () => {
+    const alice = await createUserRow("alice");
+
+    expectUniqueViolationOf(await errorOf(createUserRow("bob", { email: alice.email })), USER_NAME);
   });
 });
 

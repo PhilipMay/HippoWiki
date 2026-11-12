@@ -41,7 +41,7 @@ model Tab {
 
 /// A wiki page with its Markdown source. It lives in exactly one folder: directly in it or in one of its tabs.
 model Page {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   /// Derived from the content's first heading (`# Title`) on every save; never entered directly.
   title     String
   /// The page's part of its address, followed by `.md`: `/folders/<folder>/<name>.md` or, in a tab,
@@ -50,14 +50,14 @@ model Page {
   name      String
   /// Markdown source of the page.
   content   String
-  folderId  String   @db.Uuid
-  folder    Folder   @relation(fields: [folderId], references: [id], onDelete: Restrict)
+  folderId  String    @db.Uuid
+  folder    Folder    @relation(fields: [folderId], references: [id], onDelete: Restrict)
   /// The tab the page lives in; without one, the page is placed directly in its folder.
-  tabId     String?  @db.Uuid
+  tabId     String?   @db.Uuid
   /// The foreign key includes `folderId`, so the tab is always one of the page's folder.
-  tab       Tab?     @relation(fields: [tabId, folderId], references: [id, folderId], onDelete: Restrict)
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  tab       Tab?      @relation(fields: [tabId, folderId], references: [id, folderId], onDelete: Restrict)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(3)
   /// When the page was deleted, or `null` for a page that is not deleted. A deleted page keeps its folder but has no
   /// tab, because its place inside the folder is forgotten; it is missing from every list and every page address.
   deletedAt DateTime? @db.Timestamptz(3)
@@ -66,4 +66,79 @@ model Page {
   @@unique([tabId, name])
   // Pages placed directly in a folder and not deleted: unique among those pages only. Deleted pages never block a name.
   @@unique([folderId, name], where: { tabId: null, deletedAt: null })
+}
+
+/// A user account. The table has the shape Better Auth expects for its `user` model with the `username` plugin; Better
+/// Auth reads it through its Prisma adapter, and the users service writes it with Prisma.
+model User {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Better Auth needs a display name; it is always the same as `username`.
+  name               String
+  /// Better Auth needs an email address; it is the hidden placeholder `<username>@users.hippowiki.invalid`, which is
+  /// never shown and never gets mail.
+  email              String    @unique
+  emailVerified      Boolean   @default(false)
+  /// A field of Better Auth that HippoWiki does not use.
+  image              String?
+  /// The user name people log in with; unique across the wiki. The admin is the user named `admin`.
+  username           String    @unique
+  /// A field of the `username` plugin that HippoWiki does not use.
+  displayUsername    String?
+  /// Whether the user still has the first password and must set an own one before doing anything else.
+  mustChangePassword Boolean   @default(true)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(3)
+  sessions           Session[]
+  accounts           Account[]
+}
+
+/// A login of a user in one browser, in the shape of the `session` model of Better Auth.
+model Session {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  expiresAt DateTime @db.Timestamptz(3)
+  /// The value of the session cookie.
+  token     String   @unique
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  ipAddress String?
+  userAgent String?
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// A way a user can log in, in the shape of the `account` model of Better Auth. Every user has exactly one: the
+/// credential account (`providerId` is `credential`, `accountId` the id of the user) with the hash of the password.
+model Account {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  accountId             String
+  providerId            String
+  userId                String    @db.Uuid
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime? @db.Timestamptz(3)
+  refreshTokenExpiresAt DateTime? @db.Timestamptz(3)
+  scope                 String?
+  /// The encoded Argon2id hash of the password (see `src/lib/password-hash.ts`).
+  password              String?
+  createdAt             DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@index([userId])
+}
+
+/// The `verification` model of Better Auth, for values that are valid for a short time. HippoWiki uses no feature that
+/// writes it; the table exists because Better Auth expects it.
+model Verification {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  identifier String
+  value      String
+  expiresAt  DateTime @db.Timestamptz(3)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([identifier])
 }

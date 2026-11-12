@@ -1,9 +1,13 @@
-// Inserts a sample folder with sample pages into the database configured by DATABASE_URL. Run it with
-// `npm run db:seed`; the Prisma CLI loads `.env` before starting this script. The folder and its pages are upserted by
-// fixed ids, so running it again changes nothing.
+// Inserts a sample folder with sample pages and the known users into the database configured by DATABASE_URL. Run it
+// with `npm run db:seed`; the Prisma CLI loads `.env` before starting this script. The folder and its pages are
+// upserted by fixed ids, so running it again changes nothing. The known users are upserted by their names: running it
+// again gives them their known passwords back.
 import { titleFromContent } from "../src/features/pages/derive";
+import { CREDENTIAL_PROVIDER_ID, newUserData } from "../src/features/users/records";
 import { getDb } from "../src/lib/db";
 import { logger } from "../src/lib/logger";
+import { hashPassword } from "../src/lib/password-hash";
+import { KNOWN_USERS } from "./known-users";
 
 /** The sample folder that holds the sample pages. */
 const folder = { id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6cf001", name: "getting-started" };
@@ -87,6 +91,20 @@ async function main() {
       await db.page.upsert({ where: { id }, create: { id, ...data }, update: data });
     }
     logger.info({ folder: folder.name, count: pages.length }, "seeded sample folder and pages");
+
+    for (const { id, name, password } of KNOWN_USERS) {
+      const passwordHash = await hashPassword(password);
+      // By name, not by id: an admin that `npm run admin:setup` created has another id and keeps it.
+      await db.user.upsert({
+        where: { username: name },
+        create: newUserData({ id, name, passwordHash, mustChangePassword: false }),
+        update: {
+          mustChangePassword: false,
+          accounts: { updateMany: { where: { providerId: CREDENTIAL_PROVIDER_ID }, data: { password: passwordHash } } },
+        },
+      });
+    }
+    logger.info({ users: KNOWN_USERS.map(({ name }) => name) }, "seeded known users");
   } finally {
     await db.$disconnect();
   }

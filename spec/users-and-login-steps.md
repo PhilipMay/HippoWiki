@@ -79,7 +79,7 @@ These hold for all steps. The wrap-up step moves them into the feature spec.
 ## Checklist
 
 - [x] Password hashing
-- [ ] User accounts and admin setup
+- [x] User accounts and admin setup
 - [ ] Admin setup in the container image
 - [ ] Login and logout
 - [ ] Authenticated access only

@@ -32,6 +32,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
+    "admin:setup": "tsx --env-file-if-exists=.env scripts/admin.ts",
     "image:build": "bash scripts/image.sh build",
     "image:smoke": "bash scripts/image.sh smoke"
   },
@@ -45,6 +46,7 @@
     "@node-rs/argon2": "^2.2.2",
     "@prisma/adapter-pg": "^7.10.1",
     "@prisma/client": "^7.10.1",
+    "better-auth": "^1.7.22",
     "mdast-util-from-markdown": "^2.1.0",
     "mdast-util-gfm": "^3.1.0",
     "mdast-util-to-string": "^4.0.0",

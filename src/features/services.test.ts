@@ -22,7 +22,9 @@ vi.mock("react", () => {
 it("the services load without Next.js and React", async () => {
   const folderService = await import("@/features/folders/service");
   const pageService = await import("@/features/pages/service");
+  const userService = await import("@/features/users/service");
 
   expect(folderService.listFolders).toBeTypeOf("function");
   expect(pageService.listFolderPages).toBeTypeOf("function");
+  expect(userService.ensureAdmin).toBeTypeOf("function");
 });

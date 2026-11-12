@@ -36,7 +36,7 @@ cp .env.example .env   # once; .env stays on your machine
 npm install            # also generates the Prisma client
 npm run db:up
 npm run db:migrate     # apply the migrations to the development database
-npm run db:seed        # optional: insert a sample folder with two sample pages
+npm run db:seed        # optional: insert a sample folder with two sample pages and the known users
 npm run dev
 ```
 
@@ -70,8 +70,9 @@ npm run db:deploy   # create the tables
 npm run dev
 ```
 
-`npm run db:seed` adds the sample folder `getting-started` with two sample pages to try this out. `GET /api/health`
-returns `{ "status": "ok" }` while the database is reachable and status 503 otherwise.
+`npm run db:seed` adds the sample folder `getting-started` with two sample pages to try this out, and the known users
+(see "Users"). `GET /api/health` returns `{ "status": "ok" }` while the database is reachable and status 503
+otherwise.
 
 ## Database
 
@@ -97,8 +98,30 @@ The application accesses the database with [Prisma](https://www.prisma.io/) 7. T
 | `npm run db:generate` | Regenerate the Prisma client; needed after every change to the schema                       |
 | `npm run db:migrate`  | Create and apply a migration from schema changes, e.g. `npm run db:migrate -- --name add-x` |
 | `npm run db:deploy`   | Apply all pending migrations without creating new ones                                      |
-| `npm run db:seed`     | Insert the sample folder and pages from `prisma/seed.ts`; running it again changes nothing  |
+| `npm run db:seed`     | Insert the sample folder, its pages and the known users from `prisma/seed.ts`               |
 | `npm run db:studio`   | Open Prisma Studio to browse and edit the data                                              |
+
+## Users
+
+User accounts are stored in the database. There is one admin account, named `admin`; it is created by the admin
+setup or by the seed:
+
+- `npm run db:seed` inserts two known users for development (`prisma/known-users.ts`), with the password change
+  already done. Running it again gives them these passwords back.
+
+  | User    | Password         |               |
+  | ------- | ---------------- | ------------- |
+  | `admin` | `admin-password` | the admin     |
+  | `alice` | `alice-password` | a normal user |
+
+- `npm run admin:setup` creates the admin account with the password from `HIPPOWIKI_ADMIN_PASSWORD` (8 to 128
+  characters), which it reads from the environment or from `.env`, and which the admin has to change at the first
+  login. When the admin exists, it does nothing and ignores the variable. It exits with a non-zero code when the admin
+  has to be created and the variable is missing or not a valid password.
+
+  ```bash
+  HIPPOWIKI_ADMIN_PASSWORD=first-password npm run admin:setup
+  ```
 
 ## End-to-end tests
 
@@ -217,6 +240,7 @@ first, with a token that has the `read:packages` scope.
 | `npm run test:e2e`            | Run the end-to-end tests with Playwright                              |
 | `npm run test:e2e:ui`         | Run the end-to-end tests in the Playwright UI                         |
 | `npm run test:e2e:production` | Run the end-to-end tests against a production build                   |
+| `npm run admin:setup`         | Create the admin account from `HIPPOWIKI_ADMIN_PASSWORD`              |
 | `npm run image:build`         | Build the container image `hippowiki:local` with Podman               |
 | `npm run image:smoke`         | Check the built image against a throwaway database                    |
 
