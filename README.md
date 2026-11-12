@@ -168,3 +168,11 @@ offers the HTML report as the artifact `coverage-report`.
 | `npm run test:e2e`            | Run the end-to-end tests with Playwright                              |
 | `npm run test:e2e:ui`         | Run the end-to-end tests in the Playwright UI                         |
 | `npm run test:e2e:production` | Run the end-to-end tests against a production build                   |
+
+## Licensing
+
+Copyright (c) 2026 [Philip May](https://philipmay.org)
+
+Licensed under the **MIT License** (the "License"); you may not use this file except in compliance with the License.
+You may obtain a copy of the License by reviewing the file
+[LICENSE](https://github.com/PhilipMay/HippoWiki/blob/main/LICENSE) in the repository.
