@@ -184,7 +184,7 @@ The writes of `src/features/folders/service.ts` (`createFolder`, `renameFolder`,
 ## Current limits
 
 - Folders and tabs cannot be deleted. Deleted pages cannot be removed for good (see `page-deletion.md`).
-- No rights per folder; one user, no login.
+- No rights per folder: everyone who is logged in can read and change all content (see `users-and-login.md`).
 - A page cannot be moved to another folder, a tab cannot be moved to another folder.
 - No redirects from old addresses after a rename or move.
 - No history, no handling of concurrent changes, no links between pages, no search.

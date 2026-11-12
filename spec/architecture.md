@@ -6,17 +6,23 @@ How the code is organised and which patterns new code follows. The technology st
 
 - Source code lives under `src/`, with the import alias `@/` pointing to `src/`.
 - `src/app/`: routes (App Router), including the global `not-found`, `error` and `global-error` pages
+- `src/proxy.ts`: the proxy of Next.js, which sends requests without a session cookie to the login page (see "Login
+  and sessions")
 - `src/components/`: shared UI components (app bar, `Link`)
 - `src/lib/`: cross-cutting modules (`env.ts`, `db.ts`, `db-errors.ts`, `logger.ts`, `theme.ts`, `site.ts`,
-  `format.ts`, `hydration.ts`, `focus.ts`, `names.ts`, `addresses.ts`, `revalidate.ts`, `result.ts`)
+  `format.ts`, `hydration.ts`, `focus.ts`, `names.ts`, `addresses.ts`, `revalidate.ts`, `result.ts`, `auth.ts`,
+  `password-hash.ts`)
   - `names.ts`: the name rule shared by folders, tabs and pages (`nameSchema`, `parseName`) and the form state of
     forms that ask for a name
   - `addresses.ts`: the addresses under `/folders` (`folderPath`, `tabPath`, `pagePath`, `parsePageSegment`) and
-    `/deleted-pages` (`deletedPagesPath`, `deletedPagePath`), and the actions and views in their query string
-    (`parseAction`, `parseView`)
+    `/deleted-pages` (`deletedPagesPath`, `deletedPagePath`), those of the users, the login and the password change
+    (`usersPath`, `loginPath`, `changePasswordPath`), and the actions and views in their query string (`parseAction`,
+    `parseView`)
   - `names.ts` and `addresses.ts` have no server-only imports, so Client Components can use them.
   - `revalidate.ts`: `revalidateContent()`, the revalidation after every write to folders, tabs and pages
   - `result.ts`: the type `Result`, which the writes of a service return; no server-only imports
+  - `auth.ts`: `getAuth()`, the single Better Auth instance, created on first use like the client of `getDb()`
+  - `password-hash.ts`: `hashPassword()` and `verifyPassword()` with Argon2id, and the limit on concurrent hashes
 - `src/features/<feature>/`: everything about one feature – `schema.ts`, `service.ts`, `forms.ts`, `queries.ts`,
   `actions.ts`, `components/` and pure helpers such as `derive.ts` and `limits.ts` for pages (no server-only imports,
   so Client Components can use them). `limits.ts` holds the field length limits, so that `schema.ts` can import
@@ -28,9 +34,14 @@ How the code is organised and which patterns new code follows. The technology st
   - `queries.ts` and `actions.ts`: the adapters between the web and the service
   - `folders`: folders and their tabs, and the name dialog used for folders, tabs and pages
   - `pages`: pages
+  - `users`: the user accounts (see `users-and-login.md`), with `records.ts` (the rows of a new user in the shape
+    Better Auth expects) and `password.ts` (the generated first password)
+  - `auth`: login, logout, the session, the login wait and the forced password change, with `session.ts` (who is
+    calling, see "Login and sessions") and `wait.ts` (the wait after failed logins)
 - `src/generated/prisma/`: the generated Prisma client (`npm run db:generate`), not checked in
-- `prisma/`: schema, migrations, seed
-- `scripts/`: development scripts (`db.sh`)
+- `prisma/`: schema, migrations, seed, and `known-users.ts`, the known users of the seed and the tests
+- `scripts/`: development scripts (`db.sh`), the admin setup (`admin.ts`) and the scripts of the container image
+  (see `container-image.md`)
 - `e2e/`: Playwright tests
 - `integration/`: Vitest integration tests against the test database
 
@@ -49,9 +60,10 @@ How the code is organised and which patterns new code follows. The technology st
   - Reads return rows, a list or `null`. A malformed id or name counts as a missing row and never reaches the
     database: a list is empty, a single item is `null`. Database errors are thrown.
   - Writes return a `Result` from `src/lib/result.ts`: `{ ok: true, value }` with the item as stored, or
-    `{ ok: false, error }` with a code. The codes are `invalid-input` (with `fieldErrors`), `name-taken`,
-    `folder-not-found`, `tab-not-found`, `page-not-found` and `failed`. Each write declares the ones it can return in
-    a type of its own, such as `CreatePageError`.
+    `{ ok: false, error }` with a code. The codes of the content are `invalid-input` (with `fieldErrors`),
+    `name-taken`, `folder-not-found`, `tab-not-found`, `page-not-found` and `failed`; the users and auth services add
+    codes such as `not-allowed`, `busy`, `invalid-credentials` and `wait` (see `users-and-login.md`). Each write
+    declares the ones it can return in a type of its own, such as `CreatePageError`.
   - A write checks its ids first, then its input, then writes.
   - Rows that may no longer exist are changed with `updateMany` and the returned count is checked, instead of catching
     "not found" errors.
@@ -63,17 +75,24 @@ How the code is organised and which patterns new code follows. The technology st
     of deriving them from a Prisma query, states the return type of every function, and names the columns of every
     query with `select`, never `include`, so that a new column does not reach a caller by accident. Components import
     these types from the service with `import type`.
-  - It is the place for checks of who may read or change something, once users and rights exist. Such checks never go
-    into the adapters, which an MCP server does not pass through.
+  - It is the place for checks of who may read or change something. Such checks never go into the adapters, which
+    an MCP server does not pass through. A function that not everyone may call takes the acting user as its first
+    argument (`Actor` in the users service) and decides itself: `listUsers(actor)` returns `null` and
+    `createUser(actor, input)` the code `not-allowed` for everyone but the admin. Who the actor is, the adapters find
+    out from the session (see "Login and sessions").
+  - The auth service is the only code that uses Better Auth (`getAuth()` from `src/lib/auth.ts`). It takes the
+    `Headers` of the request, a web standard, because the session lives in a cookie, and returns the response headers
+    that set or clear it.
   - Its functions have the names of the queries and actions, so the adapters import it as a namespace:
     `import * as folderService from "@/features/folders/service"`.
 - Reads happen in Server Components through the feature's `queries.ts`.
-  - Every query first awaits `connection()`, so that Next.js does not prerender the route at build time, and then
-    calls the service read of the same name.
+  - Every query first awaits `connection()`, so that Next.js does not prerender the route at build time, then
+    `requireUser()` (see "Login and sessions"), and then calls the service read of the same name.
   - Queries that are used by both `generateMetadata` and the page are wrapped in React `cache()`.
 - Writes happen through Server Actions in the feature's `actions.ts`.
-  - An action checks the id, parses the form with a `parse*FormData` function of `forms.ts`, calls the service and
-    maps the result.
+  - An action first calls `requireUser()` (see "Login and sessions"), outside its `try` blocks, because the redirect
+    throws. Then it checks the id, parses the form with a `parse*FormData` function of `forms.ts`, calls the service
+    and maps the result.
   - It maps every error code to a form state `{ fieldErrors?, message? }` in a `switch`; the form shows the state and
     keeps the entered values. The messages live in `actions.ts`, and each action has its own message for `failed`.
   - On success it calls `revalidateContent()` from `src/lib/revalidate.ts` and redirects. `revalidateContent()` calls
@@ -84,6 +103,27 @@ How the code is organised and which patterns new code follows. The technology st
     `addresses.ts`, never to one built from submitted values.
   - `redirect` is called last and outside `try` blocks, because it throws.
   - Values such as the id are bound with `action.bind(null, id)`.
+
+## Login and sessions
+
+The feature is described in `users-and-login.md`. What every new route, query and action has to do:
+
+- Nothing is read or changed without a login. The login is checked in two layers:
+  - `src/proxy.ts` sends every request without a session cookie to the login page. It only looks whether the cookie
+    is there. Its matcher leaves out the login page, `/api/health` and the static files of Next.js; a new public
+    address has to be added there.
+  - `requireUser()` from `src/features/auth/session.ts` checks the session in the database. It is the layer that
+    protects the data: it redirects to the login page without a session, and to the password change while the user
+    still has the first password.
+- Every page calls `requireUser()` first, before it reads the query string, so that an invalid address also leads to
+  the login page. Every query calls it after `connection()`, every Server Action first. `not-found.tsx`, `error.tsx`
+  and `global-error.tsx` show no data and have no check.
+- `requireUser()` returns the user of the session (`id`, `name`, `mustChangePassword`). An adapter passes it to a
+  service function that needs the actor.
+- `requireSession()` only asks for a session; only the password change page and its action use it. `getCurrentUser()`
+  returns the user or `null` without redirecting, for the header and the login page; it is wrapped in React `cache()`.
+- These three functions and the actions of the auth feature are the only code that reads the headers of the request
+  for the session. `src/lib/auth.ts` is imported only by the auth service and by `src/lib/`.
 
 ## Validation and errors
 
@@ -101,14 +141,18 @@ How the code is organised and which patterns new code follows. The technology st
   returned as `name-taken` or a not-found code, which the action shows in the form. Any other database error in a
   write is logged with `{ err }` and the ids and returned as `failed`, which the action shows as a failed save.
 - The server environment is read through `getServerEnv()` from `src/lib/env.ts`, never directly from `process.env`.
+  `HIPPOWIKI_ADMIN_PASSWORD` is not part of it: only the admin setup script reads it.
+- A password and its hash are never logged. A password is checked for its length with a refinement on the length of
+  the string, as Better Auth counts it; `.min()` and `.max()` of Zod count code points.
 - Server-side logging goes through the pino `logger` from `src/lib/logger.ts`, not `console`. Errors are logged with
   `{ err }` and the relevant ids.
 
 ## Addresses and actions
 
 - All content lives under `/folders`, deleted pages under `/deleted-pages`; the addresses are described in
-  `content-structure.md`. Routes, Server Actions and links build them with the helpers in `src/lib/addresses.ts`
-  instead of writing paths by hand.
+  `content-structure.md`. The login is at `/login`, the forced password change at `/change-password` and the user
+  list at `/users` (see `users-and-login.md`). Routes, Server Actions and links build them with the helpers in
+  `src/lib/addresses.ts` instead of writing paths by hand.
 - What an address opens is given in its query string: an action as `?action=<action>`, a view as `?view=<view>`.
   A route reads them with `parseAction` and `parseView`, passing only the actions and views it has, and calls
   `notFound()` for `"invalid"`. A route without views calls `parseView` without allowed views.
@@ -128,6 +172,11 @@ How the code is organised and which patterns new code follows. The technology st
   `npm run db:migrate` then applies it and checks that the database matches the schema.
 - The name of a migration directory must sort after all existing ones, because migrations are applied in the order of
   their names.
+- What Prisma cannot express in the schema, such as the check constraint that keeps `AuthSecret` to a single row, is
+  added to the SQL of the migration by hand (`npm run db:migrate -- --name <change> --create-only`, edit the file,
+  then `npm run db:migrate`).
+- The tables `User`, `Session`, `Account` and `Verification` have the shape Better Auth expects; a change to them
+  follows the schema of the installed Better Auth version.
 - Prisma is used for CRUD. The `fullTextSearchPostgres` preview feature is not enabled; search uses PostgreSQL
   full-text search directly.
 - The `partialIndexes` preview feature is enabled for partial unique indexes (`where` in `@@unique`), such as the one
@@ -140,7 +189,8 @@ How the code is organised and which patterns new code follows. The technology st
 ## UI
 
 - Every page is rendered inside the root layout: Material UI with its App Router cache provider, the theme from
-  `src/lib/theme.ts`, `CssBaseline`, the app bar and a centered content container.
+  `src/lib/theme.ts`, `CssBaseline`, the app bar and a centered content container. The app bar reads the user of the
+  session, so every route is rendered on demand.
 - Components are Server Components unless they need interaction; then they are small Client Components.
 - Material UI components and icons are imported per path (`@mui/material/Button`, `@mui/icons-material/Folder`).
   Links use `@/components/Link` as `component={Link}`.
@@ -191,9 +241,9 @@ How the code is organised and which patterns new code follows. The technology st
     `src/lib/logger.ts`. Configuration files, `e2e/` and `scripts/` read it directly.
   - `no-restricted-imports`: the barrel imports `@mui/material` and `@mui/icons-material` are not allowed in `src/`.
   - `no-console`: server code (`src/features/**/actions.ts`, `src/features/**/queries.ts`,
-    `src/features/**/service.ts`, `src/app/api/`, `src/lib/`) does not use `console`. The client error boundaries
-    `src/app/error.tsx` and `global-error.tsx` log with `console.error`, because the pino logger runs only on the
-    server.
+    `src/features/**/service.ts`, `src/app/api/`, `src/lib/`, `src/proxy.ts`) does not use `console`. The client
+    error boundaries `src/app/error.tsx` and `global-error.tsx` log with `console.error`, because the pino logger
+    runs only on the server.
   - `@typescript-eslint/no-restricted-imports` keeps the layers apart (see "Reads and writes"). It is a rule of its
     own, so that the Material UI paths in `no-restricted-imports` stay as they are.
     - `@/lib/db` may only be imported in `src/features/**/service.ts`, `src/lib/**` and `src/app/api/health/**`;
@@ -202,6 +252,8 @@ How the code is organised and which patterns new code follows. The technology st
       rule points to `queries.ts` and `actions.ts`.
     - `src/features/**/service.ts` imports neither `next`, `next/*`, `react`, `@/lib/revalidate` nor
       `@/features/*/forms`.
+    - `@/lib/auth` may only be imported in `src/features/auth/service.ts` and `src/lib/**`; everywhere else in `src/`
+      the rule points to the auth service and to `session.ts`.
     - A later config object replaces the options of a rule instead of adding to them. The config objects of this rule
       therefore match disjoint sets of files, and each one lists all restrictions of its files.
 - The rules for the end-to-end tests are described in `testing.md`.

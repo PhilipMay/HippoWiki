@@ -13,7 +13,9 @@
   - use Prisma for CRUD - "fullTextSearchPostgres" preview feature is not used.
   - the "partialIndexes" preview feature is used for partial unique indexes
   - for search use Postgres full-text search - language: english, german and more
-- Authentication: Better Auth
+- Authentication: Better Auth with its `username` plugin, called only on the server; its password hashing is
+  replaced
+- Password hashing: Argon2id with `@node-rs/argon2`, a native package with prebuilt builds
 - Logging: pino
 
 ## Tooling
@@ -31,6 +33,7 @@
 - Container registry: GitHub Container Registry (`ghcr.io`), which receives the container image of every published
   release (see `container-image.md`)
 - Zod: for forms, actions and environment variable validation
+- esbuild: bundles the admin setup script into one file for the container image (see `container-image.md`)
 
 ## Later Aspects
 

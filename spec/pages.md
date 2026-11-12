@@ -94,7 +94,7 @@ same views; actions are given as `?action=<action>` (see `content-structure.md`)
 
 ## Current limits
 
-- one user, no login
+- no rights and no author: everyone who is logged in can read and change every page (see `users-and-login.md`)
 - a deleted page cannot be removed for good and is restored only into its own folder (see `page-deletion.md`)
 - no search, no `[[wiki links]]`, no history, no attachments
 - raw Markdown editing in a textarea

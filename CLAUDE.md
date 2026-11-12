@@ -9,7 +9,8 @@ The specification lives in the `spec/` directory. This catalog should always be 
 - `spec/tech.md`: technology stack
 - `spec/workflow.md`: how features are planned in step files, when a step is done, what to do when it cannot be
   finished and how a feature is wrapped up
-- `spec/architecture.md`: code layout and conventions (layers and services, reads, writes, validation, database, UI)
+- `spec/architecture.md`: code layout and conventions (layers and services, reads, writes, login and sessions,
+  validation, database, UI)
 - `spec/testing.md`: unit, integration and end-to-end test conventions
 - `spec/pages.md`: the page feature as built (model, input rules, derived title and name, routes, limits)
 - `spec/content-structure.md`: the content structure as built (folders, tabs and pages under `/folders`: models, names,
@@ -17,14 +18,11 @@ The specification lives in the `spec/` directory. This catalog should always be 
 - `spec/page-deletion.md`: the soft delete of pages as built (deleting, the deleted pages of a folder under
   `/deleted-pages`, restoring, limits)
 - `spec/container-image.md`: the container image as built (image and build stages, start with the migration, the
-  command that only migrates, configuration, smoke test, publishing on a release, what the environment has to provide,
-  decisions, limits)
-- `spec/users-and-login-requirements.md`: the requirements of the users and login feature, before it is built (login,
-  sessions, failed logins, user names, passwords and hashing, admin account and setup, creating and listing users,
-  forced password change, scope)
-- `spec/users-and-login-steps.md`: the step plan of the users and login feature (decisions, password hashing, user
-  accounts and admin setup, admin setup in the container image, login and logout, authenticated access only, login
-  wait, forced password change, user list, creating users, wrap-up)
+  command that only migrates, the admin setup, configuration, smoke test, publishing on a release, what the
+  environment has to provide, decisions, limits)
+- `spec/users-and-login.md`: the users and login feature as built (models, user names and email, passwords and
+  hashing, admin account and setup, login and logout, sessions, failed logins, authenticated access only, forced
+  password change, user list, creating users, routes, decisions, limits)
 - `spec/roadmap.md`: backlog of candidate features
 - `spec/issue-report.md`: how to report issues found in code and document reviews
 

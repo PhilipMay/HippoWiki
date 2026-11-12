@@ -3,7 +3,7 @@
 Candidates for the next features, not ordered. Before one is started, it gets its own step plan
 `spec/<feature>-steps.md` (see `workflow.md`).
 
-- authentication with Better Auth, pages with an author
+- pages with an author
 - PostgreSQL full-text search (English, German and more)
 - `[[wiki links]]`
 - rich editor (TipTap or Milkdown)
@@ -18,20 +18,12 @@ Candidates for the next features, not ordered. Before one is started, it gets it
   - Deleted Folder and Tab Lists
   - Restoring Deleted Folders and Tabs
 - Users and Accounts
-  - Multi-User Accounts
-  - Name Rules for Users
-  - Permanent Admin Account
   - Admin Without Content Access
-  - Admin Initialization Command
   - Admin Password Command
-  - User Creation with One-Time Password
-  - Forced Password Change on First Login
   - Password Reset by the Admin
   - Own Password Change
-  - Password Rules
   - Deactivating and Reactivating Users
   - Own Account View
-  - User List
 - Rights
   - Folder Rights (Read, Write, Manage)
   - Assigning and Removing Rights
@@ -39,17 +31,8 @@ Candidates for the next features, not ordered. Before one is started, it gets it
   - Rights Overview for All Folders
   - No Leaks of Hidden Content
 - Authentication
-  - Authenticated Access Only
-  - Login with Name and Password
   - Bearer Token Sessions
-  - Fixed Session Lifetime
-  - Multiple Sessions per User
-  - Logout
   - Ending Sessions on Password Change, Reset and Deactivation
-  - Argon2id Password Hashing
-  - Login Wait After Failed Attempts
-  - Limit on Concurrent Password Hashes
-  - Protection Against Account Enumeration
   - Public Health Route
   - Audit Log for Logins, Rights and Passwords
 - History and Revisions

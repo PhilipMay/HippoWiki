@@ -39,9 +39,12 @@ cp .env.example .env   # once; .env stays on your machine
 npm install            # also generates the Prisma client
 npm run db:up
 npm run db:migrate     # apply the migrations to the development database
-npm run db:seed        # optional: insert a sample folder with two sample pages and the known users
+npm run db:seed        # insert a sample folder with two sample pages and the known users
 npm run dev
 ```
+
+The wiki needs a login. After `npm run db:seed`, log in as `alice` with the password `alice-password`, or as the admin
+`admin` with `admin-password`. Without the seed, create the admin with `npm run admin:setup` (see "Users").
 
 ### Start and stop in one line
 
