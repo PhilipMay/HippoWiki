@@ -80,7 +80,7 @@ These hold for all steps. The wrap-up step moves them into the feature spec.
 
 - [x] Password hashing
 - [x] User accounts and admin setup
-- [ ] Admin setup in the container image
+- [x] Admin setup in the container image
 - [ ] Login and logout
 - [ ] Authenticated access only
 - [ ] Login wait after failed attempts
@@ -140,6 +140,7 @@ provides a known admin and a known normal user. There is no login yet.
     PascalCase model names, UUID ids with `gen_random_uuid()`, `@db.Timestamptz(3)` for all times.
   - `User` gets the column `mustChangePassword`, a boolean that is true by default.
   - The user name is stored in the `username` field of the plugin; the `name` field of Better Auth gets the same value.
+    The column is required, although the plugin declares it optional: every user of HippoWiki has a name.
 - `src/lib/db-errors.ts`: the constant `USER_NAME` for the unique indexes on the user name and on the email of `User`.
   The email is derived from the name, so both stand for a taken name.
 - `src/features/users/schema.ts`:
@@ -147,7 +148,9 @@ provides a known admin and a known normal user. There is no login yet.
   - The user name: the name rule of `src/lib/names.ts` with 3 to 30 characters (see "User names" in the requirements),
     and a parse function for names from callers.
   - The password: 8 to 128 characters, counted as Better Auth counts them (the length of the string), nothing trimmed,
-    no composition rules, and not the same as the user name (see "Passwords").
+    no composition rules, and not the same as the user name (see "Passwords"). The length is checked with a `refine`
+    on the length of the string, not with `.min()` and `.max()` of Zod, which count code points: with two measures a
+    password of emoji could pass here and be refused by Better Auth.
 - `src/features/users/records.ts`: the helper that builds the data of a new user for Prisma, without server-only
   imports:
   - the `User` row with the name, the placeholder email `<name>@users.hippowiki.invalid` (see "Email") and
@@ -170,7 +173,9 @@ provides a known admin and a known normal user. There is no login yet.
 - `package.json`: the script `admin:setup`, which runs `scripts/admin.ts` with `tsx` and loads `.env` when the file
   exists. The script itself does not import `dotenv`, because the same file is bundled for the image in the next step.
 - `prisma/known-users.ts`: the names and passwords of the known admin (`admin`) and the known normal user (`alice`),
-  for development and tests only. `prisma/seed.ts` upserts both with fixed ids and the password change already done.
+  for development and tests only. `prisma/seed.ts` upserts both by name, with fixed ids when it creates them, and
+  with their known passwords and the password change already done. By name, because an admin that
+  `npm run admin:setup` created has another id.
 - `.env.example`: `HIPPOWIKI_ADMIN_PASSWORD` with a comment on who reads it.
 - `README.md`: the known users after `npm run db:seed`, and `npm run admin:setup` in the list of commands.
 - `src/features/services.test.ts`: add the users service.

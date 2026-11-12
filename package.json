@@ -33,6 +33,7 @@
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
     "admin:setup": "tsx --env-file-if-exists=.env scripts/admin.ts",
+    "build:admin": "esbuild scripts/admin.ts --bundle --platform=node --format=esm --outfile=build/admin.mjs --external:@prisma/client --external:pg --external:pino --external:pino-pretty --external:@node-rs/argon2",
     "image:build": "bash scripts/image.sh build",
     "image:smoke": "bash scripts/image.sh smoke"
   },
@@ -69,6 +70,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitest/coverage-v8": "^5.1.0",
     "dotenv": "^18.0.10",
+    "esbuild": "^0.28.2",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.4.6",
     "eslint-config-prettier": "^10.1.8",

@@ -1,5 +1,5 @@
-# The container image of HippoWiki. On every start it applies the pending database migrations and then serves the wiki
-# (scripts/image-start.sh). Built with `npm run image:build` (scripts/image.sh). Only plain instructions are used (no
+# The container image of HippoWiki. On every start it applies the pending database migrations, creates the admin
+# account if there is none, and then serves the wiki (scripts/image-start.sh). Built with `npm run image:build` (scripts/image.sh). Only plain instructions are used (no
 # heredocs, no RUN --mount), because the Podman of the CI runner is older than the one of the development machine.
 
 # The only stage that names the Node.js image, so its version stands in one place. The major version must be the one
@@ -25,6 +25,9 @@ RUN if [ -e .next/standalone/.env ]; then \
       echo "The standalone output contains a .env file; it must not reach the image." >&2; \
       exit 1; \
     fi
+# The admin setup (scripts/admin.ts) as one file, build/admin.mjs. It imports @prisma/client, pg, pino, pino-pretty
+# and @node-rs/argon2 from the node_modules of the standalone output; everything else is part of the file.
+RUN npm run build:admin
 
 # What `prisma migrate deploy` needs, apart from the node_modules of the standalone output: the Prisma CLI and dotenv,
 # which prisma.config.ts imports. Both are development dependencies, so the standalone output does not contain them.
@@ -60,7 +63,12 @@ COPY --from=migrate-tools /migrate/node_modules ./migrate/node_modules
 COPY prisma.config.ts ./migrate/
 COPY prisma/schema.prisma ./migrate/prisma/
 COPY prisma/migrations ./migrate/prisma/migrations
-COPY scripts/image-migrate.sh scripts/image-start.sh ./
+# The admin setup, next to the node_modules of the standalone output.
+COPY --from=build --chown=node:node /src/build/admin.mjs ./admin.mjs
+# The password hashing with its native build for the platform of the image, whatever the standalone output contains
+# of it: Next.js only traces what the server imports.
+COPY --from=deps /src/node_modules/@node-rs ./node_modules/@node-rs
+COPY scripts/image-admin.sh scripts/image-migrate.sh scripts/image-start.sh ./
 USER node
 EXPOSE 3000
 CMD ["./image-start.sh"]

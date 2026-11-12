@@ -3,8 +3,8 @@
 # Usage: scripts/image.sh <build|smoke|check-tag|reference> [args...]
 #   build   builds the image as hippowiki:local for the platform of this machine. IMAGE_VERSION and IMAGE_REVISION,
 #           when set, become the labels org.opencontainers.image.version and org.opencontainers.image.revision.
-#   smoke   runs the image of `build` against a throwaway, empty database and checks that it installs itself and
-#           serves the wiki. It removes everything it started, also when a check fails.
+#   smoke   runs the image of `build` against a throwaway, empty database and checks that it installs itself,
+#           creates the admin account and serves the wiki. It removes everything it started, also when a check fails.
 #   check-tag <tag>          succeeds when <tag> is a valid image tag other than `latest`
 #   reference <owner> <tag>  checks <tag> and prints ghcr.io/<owner in lower case>/hippowiki:<tag>
 # The release workflow (.github/workflows/container_image.yml) calls all four commands.
@@ -21,11 +21,14 @@ SMOKE_POD="hippowiki-smoke"
 SMOKE_DB="hippowiki-smoke-db"
 SMOKE_APP="hippowiki-smoke-app"
 SMOKE_MIGRATE="hippowiki-smoke-migrate"
+SMOKE_ADMIN="hippowiki-smoke-admin"
 SMOKE_URL="http://127.0.0.1:3200"
 SMOKE_DB_NAME="hippowiki_smoke"
 SMOKE_DB_USER="hippowiki_smoke"
 SMOKE_DB_PASSWORD="hippowiki_smoke"
 SMOKE_DATABASE_URL="postgresql://${SMOKE_DB_USER}:${SMOKE_DB_PASSWORD}@127.0.0.1:5432/${SMOKE_DB_NAME}"
+# The first password of the admin account that the first container creates.
+SMOKE_ADMIN_PASSWORD="smoke-admin-password"
 READY_TIMEOUT_SECONDS=60
 
 usage() {
@@ -131,13 +134,15 @@ smoke_start_db() {
   done
 }
 
-# Starts a container of the image against the database and waits until /api/health reports ok.
+# Starts a container of the image against the database and waits until /api/health reports ok. Its arguments are
+# further options of `podman run`, such as --env.
 smoke_start_app() {
   echo "Starting ${IMAGE}..."
   podman run --detach \
     --pod "$SMOKE_POD" \
     --name "$SMOKE_APP" \
     --env DATABASE_URL="$SMOKE_DATABASE_URL" \
+    "$@" \
     "$IMAGE" >/dev/null
   local waited=0
   until [[ "$(curl --silent --max-time 5 "${SMOKE_URL}/api/health" || true)" == '{"status":"ok"}' ]]; do
@@ -162,9 +167,54 @@ smoke_require_status() {
   echo "ok: ${path} answers 200"
 }
 
+# Starts a container of the image that must not serve: it has to exit with a non-zero code. $1 says what is wrong
+# with its environment, $2 is a text that its output must contain; further arguments are options of `podman run`.
+smoke_require_failed_start() {
+  local what="$1" message="$2"
+  shift 2
+  echo "Starting ${IMAGE} ${what}..."
+  podman run --detach \
+    --pod "$SMOKE_POD" \
+    --name "$SMOKE_APP" \
+    --env DATABASE_URL="$SMOKE_DATABASE_URL" \
+    "$@" \
+    "$IMAGE" >/dev/null
+  local waited=0
+  while [[ "$(podman container inspect --format '{{.State.Running}}' "$SMOKE_APP")" == "true" ]]; do
+    if [[ "$(curl --silent --max-time 5 "${SMOKE_URL}/api/health" || true)" == '{"status":"ok"}' ]]; then
+      smoke_fail "the container ${what} serves instead of exiting."
+    fi
+    if ((waited >= READY_TIMEOUT_SECONDS)); then
+      smoke_fail "the container ${what} did not exit within ${READY_TIMEOUT_SECONDS}s."
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+  local code output
+  code="$(podman container inspect --format '{{.State.ExitCode}}' "$SMOKE_APP")"
+  if [[ "$code" == "0" ]]; then
+    smoke_fail "the container ${what} exited with code 0."
+  fi
+  output="$(podman logs "$SMOKE_APP" 2>&1)"
+  if [[ "$output" != *"$message"* ]]; then
+    smoke_fail "the output of the container ${what} lacks the message '${message}'."
+  fi
+  podman rm --force "$SMOKE_APP" >/dev/null
+  echo "ok: the container ${what} exits with code ${code} instead of serving"
+}
+
+# Runs a query in the smoke test database and prints its rows, with the fields separated by |.
+smoke_sql() {
+  podman exec "$SMOKE_DB" psql -At -U "$SMOKE_DB_USER" -d "$SMOKE_DB_NAME" -c "$1"
+}
+
 smoke_migrations() {
-  podman exec "$SMOKE_DB" psql -At -U "$SMOKE_DB_USER" -d "$SMOKE_DB_NAME" \
-    -c "SELECT id, migration_name, checksum, started_at, finished_at, applied_steps_count FROM _prisma_migrations ORDER BY migration_name"
+  smoke_sql "SELECT id, migration_name, checksum, started_at, finished_at, applied_steps_count FROM _prisma_migrations ORDER BY migration_name"
+}
+
+# The users with their password hashes, to compare them before and after a start.
+smoke_users() {
+  smoke_sql 'SELECT u.id, u.username, u."mustChangePassword", u."updatedAt", a.password FROM "User" u JOIN "Account" a ON a."userId" = u.id ORDER BY u.username'
 }
 
 cmd_smoke() {
@@ -178,8 +228,35 @@ cmd_smoke() {
   podman pod create --name "$SMOKE_POD" --publish 127.0.0.1:3200:3000 >/dev/null
   smoke_start_db
 
-  # Started against the empty database: the container applies the migrations and serves the wiki.
-  smoke_start_app
+  # Without a valid password for the admin account, a container against the empty database must not serve. It applies
+  # the migrations first, so the table of the users exists afterwards and must be empty.
+  smoke_require_failed_start "without HIPPOWIKI_ADMIN_PASSWORD" "HIPPOWIKI_ADMIN_PASSWORD is not set"
+  smoke_require_failed_start "with a HIPPOWIKI_ADMIN_PASSWORD of 7 characters" \
+    "Password must be at least 8 characters" --env HIPPOWIKI_ADMIN_PASSWORD=1234567
+  if [[ "$(smoke_sql 'SELECT count(*) FROM "User"')" != "0" ]]; then
+    smoke_fail "a start that failed created a user."
+  fi
+  echo "ok: the starts that failed created no user"
+
+  # Started with a password: the container applies no further migration, creates the admin and serves the wiki.
+  smoke_start_app --env HIPPOWIKI_ADMIN_PASSWORD="$SMOKE_ADMIN_PASSWORD"
+  local admin
+  admin="$(smoke_sql 'SELECT username, "mustChangePassword" FROM "User"')"
+  if [[ "$admin" != "admin|t" ]]; then
+    smoke_fail "the table User has '${admin}' instead of the one row 'admin|t'."
+  fi
+  echo "ok: the start created the admin account, with a pending password change"
+  local users
+  users="$(smoke_users)"
+  if [[ "$users" != *'|admin|t|'*'|$argon2id$'* ]]; then
+    smoke_fail "the admin account has no Argon2id password hash."
+  fi
+  # The native build of the password hashing for the platform of the image loads and hashes.
+  if ! podman exec "$SMOKE_APP" node -e \
+    "import('@node-rs/argon2').then(async ({ hash, verify }) => process.exit((await verify(await hash('smoke'), 'smoke')) ? 0 : 1)).catch(() => process.exit(1))"; then
+    smoke_fail "@node-rs/argon2 does not load or hash in /app inside ${SMOKE_APP}."
+  fi
+  echo "ok: @node-rs/argon2 loads and hashes inside the container"
   # /folders reads the tables, so its 200 proves that the start created them.
   smoke_require_status /folders
   local asset
@@ -216,7 +293,8 @@ cmd_smoke() {
   fi
   echo "ok: $(wc -l <<<"$migrations" | tr -d ' ') migrations applied"
 
-  # A second container against the migrated database applies nothing and serves as well.
+  # A second container against the migrated database applies nothing and serves as well. It needs no password for
+  # the admin account, because the admin exists.
   podman rm --force "$SMOKE_APP" >/dev/null
   smoke_start_app
   smoke_require_status /folders
@@ -224,6 +302,10 @@ cmd_smoke() {
     smoke_fail "the second start changed _prisma_migrations."
   fi
   echo "ok: the second start applied no migration"
+  if [[ "$(smoke_users)" != "$users" ]]; then
+    smoke_fail "the second start changed the admin account."
+  fi
+  echo "ok: the second start, without HIPPOWIKI_ADMIN_PASSWORD, left the admin account as it was"
 
   # The command that only migrates applies nothing against the migrated database and exits without an error.
   if ! podman run --rm --pod "$SMOKE_POD" --name "$SMOKE_MIGRATE" --env DATABASE_URL="$SMOKE_DATABASE_URL" \
@@ -234,6 +316,16 @@ cmd_smoke() {
     smoke_fail "./image-migrate.sh changed _prisma_migrations."
   fi
   echo "ok: ./image-migrate.sh exits with 0 and applies no migration"
+
+  # The command that only sets up the admin does nothing when the admin exists, also with another password.
+  if ! podman run --rm --pod "$SMOKE_POD" --name "$SMOKE_ADMIN" --env DATABASE_URL="$SMOKE_DATABASE_URL" \
+    --env HIPPOWIKI_ADMIN_PASSWORD="another-${SMOKE_ADMIN_PASSWORD}" "$IMAGE" ./image-admin.sh; then
+    smoke_fail "./image-admin.sh failed although the admin account exists."
+  fi
+  if [[ "$(smoke_users)" != "$users" ]]; then
+    smoke_fail "./image-admin.sh changed the admin account."
+  fi
+  echo "ok: ./image-admin.sh exits with 0 and leaves the admin account as it was"
 
   echo "Smoke test passed."
 }

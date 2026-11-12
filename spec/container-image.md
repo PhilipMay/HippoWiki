@@ -1,9 +1,10 @@
 # HippoWiki – Container Image
 
-The container image of HippoWiki as built: one image that applies the database migrations when it starts and then
-serves the wiki, for a first pre-production environment outside the development machine. A first installation needs
-only the image, an empty PostgreSQL database and its address. Code: `Containerfile`, `.containerignore`,
-`scripts/image.sh`, `scripts/image-migrate.sh`, `scripts/image-start.sh` and `.github/workflows/container_image.yml`.
+The container image of HippoWiki as built: one image that applies the database migrations when it starts, creates
+the admin account if there is none, and then serves the wiki, for a first pre-production environment outside the
+development machine. A first installation needs only the image, an empty PostgreSQL database, its address and a first
+password for the admin. Code: `Containerfile`, `.containerignore`, `scripts/image.sh`, `scripts/image-migrate.sh`,
+`scripts/image-admin.sh`, `scripts/image-start.sh`, `scripts/admin.ts` and `.github/workflows/container_image.yml`.
 
 ## Image
 
@@ -23,7 +24,8 @@ only the image, an empty PostgreSQL database and its address. Code: `Containerfi
   - `build`: starts from `deps` for `node_modules` and the generated Prisma client, copies the sources and runs
     `npm run build` with `HIPPOWIKI_OUTPUT=standalone` and `NEXT_TELEMETRY_DISABLED=1`. It needs no database and no
     `DATABASE_URL`. It fails when `.next/standalone/.env` exists, because `next build` copies a `.env` file of the
-    project into the standalone output.
+    project into the standalone output. Then `npm run build:admin` bundles the admin setup (`scripts/admin.ts`) into
+    the one file `build/admin.mjs` (see "Admin setup").
   - `migrate-tools`: installs the Prisma CLI (`prisma`) and `dotenv`, which `prisma.config.ts` imports, into a
     directory of their own. Both are development dependencies and not part of the standalone output. Their versions
     are read from `package-lock.json` during the build; their own dependencies are resolved anew at every build. The
@@ -32,7 +34,11 @@ only the image, an empty PostgreSQL database and its address. Code: `Containerfi
     - the standalone output with `.next/static` in `/app`, owned by `node` so that the server can write its cache
     - the migration tools in `/app/migrate`, next to `prisma.config.ts`, `prisma/schema.prisma` and
       `prisma/migrations`; the seed script is left out
-    - `image-migrate.sh` and `image-start.sh` in `/app`
+    - the admin setup `admin.mjs` in `/app`, next to the `node_modules` of the standalone output, which it imports
+      from
+    - `node_modules/@node-rs` from the `deps` stage: the password hashing `@node-rs/argon2` with its native build for
+      the platform of the image, whatever the standalone output contains of it
+    - `image-admin.sh`, `image-migrate.sh` and `image-start.sh` in `/app`
     - no further system packages: the slim image already has the OpenSSL library the schema engine needs
     - `NODE_ENV=production`, `PORT=3000`, `NEXT_TELEMETRY_DISABLED=1` and `CHECKPOINT_DISABLE=1`, which stops the
       Prisma CLI from checking for updates
@@ -41,8 +47,8 @@ only the image, an empty PostgreSQL database and its address. Code: `Containerfi
   only when `HIPPOWIKI_OUTPUT=standalone`. `npm run start` and `npm run test:e2e:production` keep using `next start`,
   which warns that it does not work with the standalone output.
 - `.containerignore` keeps `.env` and every other `.env*` file except `.env.example` out of the build context, as well
-  as `.git`, `node_modules`, `.next`, `.next-e2e`, `src/generated`, `coverage`, `playwright-report`, `test-results`
-  and `*.tsbuildinfo`. Only Podman reads this file, so the check in the `build` stage is the second guard. The image
+  as `.git`, `node_modules`, `.next`, `.next-e2e`, `build`, `src/generated`, `coverage`, `playwright-report`,
+  `test-results` and `*.tsbuildinfo`. Only Podman reads this file, so the check in the `build` stage is the second guard. The image
   contains no credentials, no `.env` file and no database address.
 - Labels:
   - `org.opencontainers.image.source` names the GitHub repository and links the package to it. It is set in the
@@ -64,8 +70,8 @@ only the image, an empty PostgreSQL database and its address. Code: `Containerfi
 
 ## Start and database setup
 
-- `image-start.sh` runs `image-migrate.sh` (`prisma migrate deploy`) on every start of a container, then starts the
-  server.
+- `image-start.sh` runs `image-migrate.sh` (`prisma migrate deploy`) on every start of a container, then
+  `image-admin.sh` (see "Admin setup"), then starts the server.
 - An empty database gets its tables this way. Every later start applies only the migrations that are not applied yet,
   and none when there are none. A new version of the image therefore updates the database when it starts.
 - When the migration fails, the script exits with a non-zero code and the server does not start.
@@ -78,13 +84,47 @@ only the image, an empty PostgreSQL database and its address. Code: `Containerfi
   with `./image-migrate.sh` as its command makes the migration a step of its own without a second image.
 - No sample data is inserted; the seed script is not part of the image.
 
+## Admin setup
+
+- The admin setup makes sure that the admin account, the user named `admin`, exists. It is `scripts/admin.ts`, which
+  calls `ensureAdmin()` of the users service, and in the image the bundle `admin.mjs`, started by `image-admin.sh`.
+- When it runs: `image-start.sh` runs it on every start of a container, after the migration and before the server.
+- What it does:
+  - If the database has no admin, it creates the admin with the password from `HIPPOWIKI_ADMIN_PASSWORD`. The password
+    is a first password: the account is stored with a pending password change.
+  - If the admin exists, it does nothing and does not read the variable. Changing the variable later does not change
+    the password of the admin.
+  - Two containers that start together both try to create the admin; the one that comes second finds the name taken
+    and counts that as "exists".
+- When the admin has to be created and `HIPPOWIKI_ADMIN_PASSWORD` is missing, empty or not a valid password (8 to 128
+  characters), it creates nothing and fails. `image-start.sh` then exits and the server does not start.
+- To run it on its own:
+  - in a running container: `podman exec <container> ./image-admin.sh`
+  - in a one-off container, like `image-migrate.sh`:
+    `podman run --rm --env DATABASE_URL=... --env HIPPOWIKI_ADMIN_PASSWORD=... <image> ./image-admin.sh`. The tables
+    must exist, so the migration runs first.
+- What it prints:
+  - on the standard output one line: `Admin account "admin" created. Its password must be changed at the first login.`
+    or `Admin account "admin" exists, nothing to do.`
+  - on the error output, when it fails: `HIPPOWIKI_ADMIN_PASSWORD is not set. It is needed to create the admin account
+"admin".`, or `HIPPOWIKI_ADMIN_PASSWORD is not a valid password:` followed by the rule that was broken, or that
+    the account could not be created
+  - before these, the log lines of the service as JSON, such as `admin created` or the database error. A password is
+    never printed or logged.
+- Exit codes: 0 when the admin was created or exists, 1 in every other case, also when the database is not reachable
+  or `DATABASE_URL` is missing.
+
 ## Configuration
 
-- `DATABASE_URL` is the only variable a container needs: `postgresql://<user>:<password>@<host>:<port>/<database>`.
-  The migration and the server both read it. Special characters in the password are percent-encoded.
+- A container needs two variables, `DATABASE_URL` and `HIPPOWIKI_ADMIN_PASSWORD`, and nothing else.
+- `DATABASE_URL`: `postgresql://<user>:<password>@<host>:<port>/<database>`. The migration, the admin setup and the
+  server read it. Special characters in the password are percent-encoded.
 - Only this form, without parameters, is supported and tested. The migration reads the URL with the schema engine of
   Prisma and the server with node-postgres, and the two may read parameters such as `sslmode` or `schema` differently.
 - The URL is read when the container runs, never when the image is built.
+- `HIPPOWIKI_ADMIN_PASSWORD`: the first password of the admin account, 8 to 128 characters, any characters. Only the
+  admin setup reads it, and only while the database has no admin; the server never reads it. A container that starts
+  against a database with an admin does not need it.
 - `PORT` is optional (default 3000). `HOSTNAME` has no effect (see above). `NODE_ENV` is `production`.
 - The database is PostgreSQL in the version pinned in `scripts/Containerfile`. The database and its user are created
   outside HippoWiki. The user must be allowed to create tables, because the migrations run with it. The migrations
@@ -106,19 +146,28 @@ database. It runs the same way locally and in CI:
    of the application as `127.0.0.1:3200`; the database port is not published.
 2. It starts PostgreSQL `hippowiki-smoke-db` in the pod from the image of `scripts/Containerfile`, with its data in
    memory only, and waits until it accepts connections over TCP.
-3. It starts `hippowiki-smoke-app` with `DATABASE_URL` and polls `/api/health` for at most 60 seconds until it reports
-   ok. It fails at once when the container exits.
-4. `/folders` must answer 200, which proves that the start created the tables. The first `/_next/static/` file that
+3. Against the empty database, a container without `HIPPOWIKI_ADMIN_PASSWORD` and one with a password of 7 characters
+   must each exit with a non-zero code instead of serving, and print the message of the admin setup. The first of
+   them has applied the migrations; the table `User` must be empty afterwards.
+4. It starts `hippowiki-smoke-app` with `DATABASE_URL` and `HIPPOWIKI_ADMIN_PASSWORD` and polls `/api/health` for at
+   most 60 seconds until it reports ok. It fails at once when the container exits.
+5. The table `User` must have exactly one row, named `admin`, with `mustChangePassword` set and an Argon2id password
+   hash. `@node-rs/argon2` must load, hash and verify in `/app`, checked with `node` in the running container.
+6. `/folders` must answer 200, which proves that the start created the tables. The first `/_next/static/` file that
    the page references must answer 200.
-5. `/api/health` must answer 200 on `127.0.0.1:3000` from inside the container, requested with `node`, because the
+7. `/api/health` must answer 200 on `127.0.0.1:3000` from inside the container, requested with `node`, because the
    slim image has no `curl`.
-6. The server process (PID 1) must not run as root. The container must have no `.env` file in `/app` or in
+8. The server process (PID 1) must not run as root. The container must have no `.env` file in `/app` or in
    `/app/migrate`.
-7. It reads the rows of `_prisma_migrations` with `psql`. Then it replaces the application container with a second one
-   against the same database. `/folders` must answer 200 again, and the rows must stay the same.
-8. `./image-migrate.sh` in a further container must exit with 0, and the rows must stay the same.
-9. It removes the pod, also when a check fails. On a failure it prints the last log lines of the containers first and
-   exits with a non-zero code.
+9. It reads the rows of `_prisma_migrations` and the admin row with its password hash with `psql`. Then it replaces
+   the application container with a second one against the same database, without `HIPPOWIKI_ADMIN_PASSWORD`.
+   `/folders` must answer 200 again, and the rows must stay the same.
+10. `./image-migrate.sh` in a further container must exit with 0, and the rows of `_prisma_migrations` must stay the
+    same.
+11. `./image-admin.sh` in a further container, with another value in `HIPPOWIKI_ADMIN_PASSWORD`, must exit with 0, and
+    the admin row with its password hash must stay the same.
+12. It removes the pod, also when a check fails. On a failure it prints the last log lines of the containers first and
+    exits with a non-zero code.
 
 The names and the port differ from the development database (`hippowiki-db`, 5432), the test database
 (`hippowiki-test-db`, 5433), `npm run dev` (3000) and the end-to-end server (3100), so the smoke test can run next to
@@ -171,6 +220,8 @@ These are not built into the image; whoever runs it takes care of them.
 
 - A PostgreSQL database and `DATABASE_URL`, kept out of the image and out of the repository, for example in an
   environment file that only the host can read.
+- `HIPPOWIKI_ADMIN_PASSWORD` for the first start, kept out of the image and out of the repository in the same way. It
+  can be removed once the admin exists.
 - Protection from the public: the wiki has no login yet, so everyone who reaches the container can read and change
   everything. It runs behind a VPN or a reverse proxy that authenticates.
 - TLS: the container speaks plain HTTP.
@@ -213,6 +264,18 @@ These are not built into the image; whoever runs it takes care of them.
   - Their own dependencies are not pinned and are resolved anew at every build, so two builds of the same commit can
     contain different packages. That is accepted for a pre-production image.
   - A lock file of their own would be a second pin to keep up to date with every Prisma update.
+- The admin setup is one file, bundled with esbuild (`npm run build:admin`), instead of TypeScript run with `tsx`:
+  - The standalone output has neither `tsx` nor the sources, and the setup uses the users service with its `@/`
+    imports, so it has to be compiled for the image.
+  - Everything is bundled except `@prisma/client`, `pg`, `pino`, `pino-pretty` and `@node-rs/argon2`. These five stay
+    imports, because the standalone output carries them in `/app/node_modules`: Next.js keeps them out of its bundles.
+  - `--packages=external` is not used: `zod` and `@prisma/adapter-pg` are bundled into the server by Next.js and are
+    missing in the `node_modules` of the standalone output.
+  - The format is ESM, because the generated Prisma client uses `import.meta.url`.
+  - `node_modules/@node-rs` is copied from the `deps` stage instead of relying on the trace of Next.js, which only
+    contains what the server imports.
+  - `scripts/admin.ts` imports nothing that exists only on the development machine, such as `dotenv`;
+    `npm run admin:setup` loads `.env` with an option of Node.js instead.
 - No `latest` tag:
   - It would follow only the publishing of a release. A pre-release that is later changed to a release would not move
     it, and a release for an older version line would move it back.

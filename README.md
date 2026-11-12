@@ -190,21 +190,37 @@ npm run image:smoke   # check the built image against a throwaway database
 - The image reads `DATABASE_URL` in the form `postgresql://<user>:<password>@<host>:<port>/<database>`, without
   parameters such as `sslmode`; special characters in the password are percent-encoded. `PORT` is optional (default
   3000). The image contains no `.env` file and no database address.
+- The second variable is `HIPPOWIKI_ADMIN_PASSWORD`: the first password of the admin account `admin`, 8 to 128
+  characters. A container needs it only while the database has no admin.
 - On every start the container applies the pending migrations to the database of `DATABASE_URL`
-  (`prisma migrate deploy`): an empty database gets its tables, a migrated one stays as it is. Then the server starts
-  on port 3000. When the migration fails, the container exits without serving.
+  (`prisma migrate deploy`): an empty database gets its tables, a migrated one stays as it is. Then it creates the
+  admin account with the password from `HIPPOWIKI_ADMIN_PASSWORD` if the database has none; an existing admin stays
+  as it is and the variable is ignored. Then the server starts on port 3000. When the migration fails, or the admin
+  has to be created and the variable is missing or not a valid password, the container exits without serving.
 - To only apply the migrations, start the image with `./image-migrate.sh` as its command:
 
   ```bash
   podman run --rm --env DATABASE_URL=postgresql://user:password@host:5432/hippowiki hippowiki:local ./image-migrate.sh
   ```
 
+- To only set up the admin, in a running container or in a one-off container:
+
+  ```bash
+  podman exec <container> ./image-admin.sh
+  ```
+
+  ```bash
+  podman run --rm --env DATABASE_URL=postgresql://user:password@host:5432/hippowiki --env HIPPOWIKI_ADMIN_PASSWORD=first-password hippowiki:local ./image-admin.sh
+  ```
+
 - `npm run image:smoke` checks the image of `npm run image:build`. In the pod `hippowiki-smoke` it starts PostgreSQL
   with an empty database in memory and a container of the image, whose port 3000 is published as `127.0.0.1:3200`.
-  It checks that the start creates the tables and serves `/folders`, `/api/health` and the static files, that the
-  server listens on all interfaces and not as root, and that the image has no `.env` file. A second container and
-  `./image-migrate.sh` against the migrated database must apply no migration. The pod is removed at the end, also
-  when a check fails; then the last log lines of the containers are printed. It can run next to the development
+  It checks that a container without a valid `HIPPOWIKI_ADMIN_PASSWORD` exits instead of serving, that the start
+  creates the tables and the admin account and serves `/folders`, `/api/health` and the static files, that the
+  password hashing works in the image, that the server listens on all interfaces and not as root, and that the image
+  has no `.env` file. A second container and `./image-migrate.sh` against the migrated database must apply no
+  migration, and the second container and `./image-admin.sh` must leave the admin account as it is. The pod is
+  removed at the end, also when a check fails; then the last log lines of the containers are printed. It can run next to the development
   database, the test database and the development server.
 
 ### Publishing
@@ -241,6 +257,7 @@ first, with a token that has the `read:packages` scope.
 | `npm run test:e2e:ui`         | Run the end-to-end tests in the Playwright UI                         |
 | `npm run test:e2e:production` | Run the end-to-end tests against a production build                   |
 | `npm run admin:setup`         | Create the admin account from `HIPPOWIKI_ADMIN_PASSWORD`              |
+| `npm run build:admin`         | Bundle the admin setup into `build/admin.mjs` for the container image |
 | `npm run image:build`         | Build the container image `hippowiki:local` with Podman               |
 | `npm run image:smoke`         | Check the built image against a throwaway database                    |
 
