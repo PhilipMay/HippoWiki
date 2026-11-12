@@ -302,11 +302,11 @@ test("a page can be created in a tab, viewed, edited and renamed", async ({ page
   await expect(page).toHaveURL("/folders/handbook/guides/setup-guide.md");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(["Setup guide, edited"]);
 
-  await page.getByRole("link", { name: "Rename" }).click();
-  await expect(page).toHaveURL("/folders/handbook/guides/setup-guide.md?action=rename");
-  const renameDialog = page.getByRole("dialog", { name: "Rename page" });
-  await renameDialog.getByLabel("Name").fill("setup");
-  await renameDialog.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("link", { name: "Move or rename" }).click();
+  await expect(page).toHaveURL("/folders/handbook/guides/setup-guide.md?action=move-or-rename");
+  const moveOrRenameDialog = page.getByRole("dialog", { name: "Move or rename page" });
+  await moveOrRenameDialog.getByLabel("Name").fill("setup");
+  await moveOrRenameDialog.getByRole("button", { name: "Save" }).click();
 
   await expect(page).toHaveURL("/folders/handbook/guides/setup.md");
   expect(await getTestDb().page.findUniqueOrThrow({ where: { id: created.id } })).toMatchObject({
@@ -414,8 +414,8 @@ test("renaming a page in a tab to a name taken in the same tab is refused, a nam
   await createPage({ folder: handbook, name: "taken-in-folder", title: "Folder" });
   const renamed = await createPage({ tab: guides, name: "renamed", title: "Renamed" });
 
-  await page.goto("/folders/handbook/guides/renamed.md?action=rename");
-  const dialog = page.getByRole("dialog", { name: "Rename page" });
+  await page.goto("/folders/handbook/guides/renamed.md?action=move-or-rename");
+  const dialog = page.getByRole("dialog", { name: "Move or rename page" });
   const name = dialog.getByLabel("Name");
   await name.fill("taken-here");
   await dialog.getByRole("button", { name: "Save" }).click();
@@ -425,7 +425,7 @@ test("renaming a page in a tab to a name taken in the same tab is refused, a nam
   await dialog.getByRole("button", { name: "Save" }).click();
   await expect(page).toHaveURL("/folders/handbook/guides/taken-in-other-tab.md");
 
-  await page.goto("/folders/handbook/guides/taken-in-other-tab.md?action=rename");
+  await page.goto("/folders/handbook/guides/taken-in-other-tab.md?action=move-or-rename");
   await name.fill("taken-in-folder");
   await dialog.getByRole("button", { name: "Save" }).click();
   await expect(page).toHaveURL("/folders/handbook/guides/taken-in-folder.md");

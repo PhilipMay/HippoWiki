@@ -25,7 +25,7 @@ saved together. The dialog shows the address the page will get.
 ## Checklist
 
 - [x] Move-or-rename action
-- [ ] Move-or-rename dialog
+- [x] Move-or-rename dialog
 - [ ] Wrap-up
 
 ## Move-or-rename action
@@ -119,6 +119,8 @@ Page addresses show "Move or rename", which opens the new dialog. The old page b
     addresses, a repeated action and a missing page
 - End-to-end: the lifecycle test in `e2e/edit-page.spec.ts` renames through "Move or rename"; the move-dialog test in
   `e2e/hydration.spec.ts` covers the new dialog (name read-only, radios and "Save" disabled, "Cancel" link).
+- End-to-end: in `e2e/tabs.spec.ts` the lifecycle test of a page in a tab and the test of names taken in a tab rename
+  through "Move or rename".
 - Unit: the tests of the removed functions are removed; `src/lib/addresses.test.ts` keeps its generic examples.
 - Manual: on a narrow screen "Edit" and "Move or rename" fit; with many tabs the dialog scrolls and stays usable.
 

@@ -18,9 +18,9 @@ function listLinks(page: BrowserPage) {
   return page.getByRole("list", { name: "Contents" }).getByRole("link");
 }
 
-/** The "Rename page" dialog. */
-function renameDialog(page: BrowserPage) {
-  return page.getByRole("dialog", { name: "Rename page" });
+/** The "Move or rename page" dialog. */
+function moveOrRenameDialog(page: BrowserPage) {
+  return page.getByRole("dialog", { name: "Move or rename page" });
 }
 
 async function expectNotFound(page: BrowserPage, address: string) {
@@ -248,123 +248,6 @@ test("editing an unknown page or a page address without .md shows the not-found 
   }
 });
 
-test("renaming a page shows it at its new address and the old address shows the not-found page", async ({ page }) => {
-  const errors = collectErrors(page);
-  const renamed = await createPage({ folder: handbook, name: "old-name", content: "# Renamed page\n\nBody" });
-
-  await page.goto("/folders/handbook/old-name.md");
-  await page.getByRole("link", { name: "Rename" }).click();
-
-  await expect(page).toHaveURL("/folders/handbook/old-name.md?action=rename");
-  const dialog = renameDialog(page);
-  const name = dialog.getByLabel("Name");
-  await expect(name).toHaveValue("old-name");
-  await expect(name).toBeFocused();
-  // The page stays visible behind the dialog.
-  await expect(page.getByRole("article", { includeHidden: true })).toHaveCount(1);
-  await name.fill(" new-name ");
-  await dialog.getByRole("button", { name: "Save" }).click();
-
-  await expect(page).toHaveURL("/folders/handbook/new-name.md");
-  await expect(page).toHaveTitle("Renamed page – HippoWiki");
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("listitem")).toHaveText([
-    "Folders",
-    "handbook",
-    "new-name.md",
-  ]);
-  expect(await getTestDb().page.findUniqueOrThrow({ where: { id: renamed.id } })).toMatchObject({
-    name: "new-name",
-    title: "Renamed page",
-    content: "# Renamed page\n\nBody",
-  });
-  expect(errors).toEqual([]);
-
-  for (const oldAddress of ["/folders/handbook/old-name.md", "/folders/handbook/old-name.md?action=edit"]) {
-    await expectNotFound(page, oldAddress);
-  }
-});
-
-test("renaming a page to a taken or invalid name shows the error and keeps the entered name", async ({ page }) => {
-  const errors = collectErrors(page);
-  const other = await createFolder({ name: "other" });
-  await createPage({ folder: handbook, name: "taken", title: "Other page" });
-  await createPage({ folder: other, name: "free-here", title: "Page of another folder" });
-  const renamed = await createPage({ folder: handbook, name: "renamed", title: "Renamed page" });
-
-  await page.goto("/folders/handbook/renamed.md?action=rename");
-  const dialog = renameDialog(page);
-  const name = dialog.getByLabel("Name");
-  await name.fill("taken");
-  await dialog.getByRole("button", { name: "Save" }).click();
-
-  await expect(name).toHaveAttribute("aria-invalid", "true");
-  await expect(name).toHaveAccessibleDescription("Name is already in use");
-  await expect(name).toHaveValue("taken");
-  await expect(name).toBeFocused();
-  await expect(page).toHaveURL("/folders/handbook/renamed.md?action=rename");
-
-  await name.fill("Not Valid");
-  await dialog.getByRole("button", { name: "Save" }).click();
-
-  await expect(name).toHaveAccessibleDescription("Use lowercase letters, digits and single hyphens");
-  await expect(name).toHaveValue("Not Valid");
-  expect(await getTestDb().page.findUniqueOrThrow({ where: { id: renamed.id } })).toEqual(renamed);
-
-  // A name that only a page of another folder uses is free.
-  await name.fill("free-here");
-  await dialog.getByRole("button", { name: "Save" }).click();
-  await expect(page).toHaveURL("/folders/handbook/free-here.md");
-  expect(errors).toEqual([]);
-});
-
-test("renaming a page whose content is above the content limit succeeds", async ({ page }) => {
-  // Stored directly, as if the limit had been lowered after the page was saved.
-  const content = `# Big page\n\n${"x".repeat(CONTENT_MAX_LENGTH)}`;
-  expect(content.length).toBeGreaterThan(CONTENT_MAX_LENGTH);
-  const big = await createPage({ folder: handbook, name: "big", content });
-
-  await page.goto("/folders/handbook/big.md?action=rename");
-  const dialog = renameDialog(page);
-  await dialog.getByLabel("Name").fill("still-big");
-  await dialog.getByRole("button", { name: "Save" }).click();
-
-  await expect(page).toHaveURL("/folders/handbook/still-big.md");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(["Big page"]);
-  expect(await getTestDb().page.findUniqueOrThrow({ where: { id: big.id } })).toMatchObject({
-    name: "still-big",
-    title: "Big page",
-    content,
-  });
-});
-
-test("cancelling the rename dialog returns to the page and changes nothing", async ({ page }) => {
-  const created = await createPage({ folder: handbook, name: "kept-name", title: "Kept name" });
-
-  await page.goto("/folders/handbook/kept-name.md?action=rename");
-  const dialog = renameDialog(page);
-  await dialog.getByLabel("Name").fill("other-name");
-  await dialog.getByRole("link", { name: "Cancel" }).click();
-
-  await expect(page).toHaveURL("/folders/handbook/kept-name.md");
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  expect(await getTestDb().page.findUniqueOrThrow({ where: { id: created.id } })).toEqual(created);
-});
-
-test("renaming a page that no longer exists shows an error in the dialog", async ({ page }) => {
-  const created = await createPage({ folder: handbook, name: "soon-gone", title: "Soon gone" });
-
-  await page.goto("/folders/handbook/soon-gone.md?action=rename");
-  await getTestDb().page.delete({ where: { id: created.id } });
-  const dialog = renameDialog(page);
-  await dialog.getByLabel("Name").fill("new-name");
-  await dialog.getByRole("button", { name: "Save" }).click();
-
-  await expect(dialog.getByRole("alert")).toHaveText("This page no longer exists.");
-  await expect(dialog.getByLabel("Name")).toHaveValue("new-name");
-  expect(await getTestDb().page.count()).toBe(0);
-});
-
 test("a folder and a page can be created, and the page edited and renamed", async ({ page }) => {
   const errors = collectErrors(page);
 
@@ -393,9 +276,9 @@ test("a folder and a page can be created, and the page edited and renamed", asyn
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(["Lifecycle page, edited"]);
   await expect(page.getByRole("article").getByText("Second version")).toBeVisible();
 
-  await page.getByRole("link", { name: "Rename" }).click();
-  await renameDialog(page).getByLabel("Name").fill("lifecycle-renamed");
-  await renameDialog(page).getByRole("button", { name: "Save" }).click();
+  await page.getByRole("link", { name: "Move or rename" }).click();
+  await moveOrRenameDialog(page).getByLabel("Name").fill("lifecycle-renamed");
+  await moveOrRenameDialog(page).getByRole("button", { name: "Save" }).click();
   await expect(page).toHaveURL("/folders/lifecycle/lifecycle-renamed.md");
 
   await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("link", { name: "lifecycle" }).click();

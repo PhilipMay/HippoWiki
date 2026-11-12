@@ -28,8 +28,8 @@ type NameDialogProps = {
 };
 
 /**
- * Dialog that asks for the name of a folder, tab or page, used to create and to rename. The route renders it for an
- * action in the query string, so it is open from the start; closing it leads to the address without the action.
+ * Dialog that asks for the name of a folder or tab, used to create and to rename. The route renders it for an action
+ * in the query string, so it is open from the start; closing it leads to the address without the action.
  */
 export default function NameDialog({ title, action, initialName = "", closeHref }: NameDialogProps) {
   const [state, formAction, pending] = useActionState(action, {});

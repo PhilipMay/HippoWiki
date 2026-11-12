@@ -22,7 +22,8 @@ type PageFormProps = {
 
 /**
  * Form for the Markdown content of an existing page. The title is derived from the content's first heading when the
- * page is saved. The name is not part of the form; a page is renamed in its own dialog. New pages use `NewPageForm`.
+ * page is saved. The name is not part of the form; a page is moved or renamed in its own dialog. New pages use
+ * `NewPageForm`.
  */
 export default function PageForm({ action, initialContent, cancelHref }: PageFormProps) {
   const [state, formAction, pending] = useActionState(action, {});

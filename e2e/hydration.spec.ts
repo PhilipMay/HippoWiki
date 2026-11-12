@@ -42,7 +42,10 @@ test("the page view needs no JavaScript for its controls", async ({ page }) => {
 
   const address = "/folders/locked-folder/locked-page.md";
   await expect(page.getByRole("link", { name: "Edit" })).toHaveAttribute("href", `${address}?action=edit`);
-  await expect(page.getByRole("link", { name: "Rename" })).toHaveAttribute("href", `${address}?action=rename`);
+  await expect(page.getByRole("link", { name: "Move or rename" })).toHaveAttribute(
+    "href",
+    `${address}?action=move-or-rename`,
+  );
   await expect(page.getByRole("button")).toHaveCount(0);
 });
 
@@ -74,15 +77,21 @@ test("the name dialog on a tab is prefilled and locked until hydration", async (
   );
 });
 
-test("the move dialog shows the current place and is locked until hydration", async ({ page }) => {
+test("the move or rename dialog is prefilled and locked until hydration", async ({ page }) => {
   const folder = await createFolder({ name: "locked-folder" });
   const tab = await createTab({ folder, name: "locked-tab" });
   await createPage({ tab, name: "locked-page", title: "Locked page" });
 
-  await page.goto("/folders/locked-folder/locked-tab/locked-page.md?action=move");
+  await page.goto("/folders/locked-folder/locked-tab/locked-page.md?action=move-or-rename");
 
-  const dialog = page.getByRole("dialog", { name: "Move page" });
+  const dialog = page.getByRole("dialog", { name: "Move or rename page" });
+  await expect(dialog.getByLabel("Name")).toHaveValue("locked-page");
+  await expect(dialog.getByLabel("Name")).not.toBeEditable();
+  await expect(dialog.getByLabel("Name")).toHaveAccessibleDescription(
+    "Address: /folders/locked-folder/locked-tab/locked-page.md",
+  );
   await expect(dialog.getByRole("radio", { name: "Tab locked-tab" })).toBeChecked();
+  await expect(dialog.getByRole("radio")).toHaveCount(2);
   for (const radio of await dialog.getByRole("radio").all()) await expect(radio).toBeDisabled();
   await expect(dialog.getByRole("button", { name: "Save" })).toBeDisabled();
   await expect(dialog.getByRole("link", { name: "Cancel" })).toHaveAttribute(

@@ -42,7 +42,7 @@ function withDerivedTitle<Input extends { content: string }>(input: Input, ctx: 
 
 /**
  * Input for editing a page: the content as entered in the page form, plus the title derived from it. The name is not
- * part of the form; a page is renamed in its own dialog.
+ * part of the form; a page is moved or renamed in its own dialog.
  */
 export const pageContentInputSchema = z
   .object({ content: contentSchema })
@@ -58,15 +58,10 @@ export const newPageInputSchema = z
   // Runs only when name and content are valid, so too long content reports only the length error.
   .transform(withDerivedTitle);
 
-/** Input for renaming a page: its new name. The content is not validated or touched. */
-export const pageNameInputSchema = z.object({ name: nameSchema });
-
 /** A validated edit of a page: the derived title and the content. */
 export type PageContentInput = z.output<typeof pageContentInputSchema>;
 /** A validated new page: the name, the derived title and the content. */
 export type NewPageInput = z.output<typeof newPageInputSchema>;
-/** A validated page name. */
-export type PageNameInput = z.output<typeof pageNameInputSchema>;
 
 export type PageFieldErrors = { name?: string[]; content?: string[] };
 
@@ -105,36 +100,8 @@ export function parseNewPageFormData(formData: FormData): ParseResult<NewPageInp
   return { success: false, fieldErrors: z.flattenError(result.error).fieldErrors };
 }
 
-/** Validates the name of a submitted rename form. A missing field counts as empty; other fields are ignored. */
-export function parsePageNameFormData(formData: FormData): ParseResult<PageNameInput, NameFieldErrors> {
-  const result = pageNameInputSchema.safeParse({ name: formData.get("name") ?? "" });
-  if (result.success) return { success: true, data: result.data };
-  return { success: false, fieldErrors: z.flattenError(result.error).fieldErrors };
-}
-
-/** Name of the form field that holds the target of a move: a tab id, or empty for the folder itself. */
+/** Name of the form field that holds the place of a page: a tab id, or empty for the folder itself. */
 export const MOVE_TARGET_FIELD = "target";
-
-/** State of the "Move page" form between submissions: errors from the last attempt, if any. */
-export type PageMoveFormState = {
-  fieldErrors?: { target?: string[] };
-  /** An error that is not about the chosen target, e.g. when the page no longer exists. */
-  message?: string;
-};
-
-/** A Server Action behind the "Move page" form; it returns the errors to show, or redirects on success. */
-export type PageMoveFormAction = (prevState: PageMoveFormState, formData: FormData) => Promise<PageMoveFormState>;
-
-/**
- * Reads the target of a submitted "Move page" form: the id of a tab, or `null` for the folder itself when the field
- * is empty or missing. A malformed tab id is not a target. The content is not part of the form and never validated,
- * so the content limit never blocks a move.
- */
-export function parsePageMoveFormData(
-  formData: FormData,
-): { success: true; tabId: string | null } | { success: false } {
-  return parseMoveTarget(formData);
-}
 
 /**
  * Reads the target of a move from the submitted form: the id of a tab, or `null` for the folder itself when the field

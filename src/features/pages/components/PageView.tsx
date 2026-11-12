@@ -6,21 +6,17 @@ import Typography from "@mui/material/Typography";
 
 import Link from "@/components/Link";
 import FolderBreadcrumbs from "@/features/folders/components/FolderBreadcrumbs";
-import NameDialog from "@/features/folders/components/NameDialog";
 import { listTabs } from "@/features/folders/queries";
-import { movePage, renamePage, updatePageContent } from "@/features/pages/actions";
+import { moveOrRenamePage, updatePageContent } from "@/features/pages/actions";
 import MarkdownContent from "@/features/pages/components/MarkdownContent";
-import MovePageDialog from "@/features/pages/components/MovePageDialog";
+import MoveOrRenamePageDialog from "@/features/pages/components/MoveOrRenamePageDialog";
 import PageForm from "@/features/pages/components/PageForm";
 import type { PageWithPlace } from "@/features/pages/queries";
 import { pagePath } from "@/lib/addresses";
 import { formatDateTime } from "@/lib/format";
 
-/**
- * The actions of a page address: `edit` opens the edit form, `rename` the "Rename page" dialog and `move` the "Move
- * page" dialog.
- */
-export const PAGE_ACTIONS = ["edit", "rename", "move"] as const;
+/** The actions of a page address: `edit` opens the edit form, `move-or-rename` the "Move or rename page" dialog. */
+export const PAGE_ACTIONS = ["edit", "move-or-rename"] as const;
 
 export type PageAction = (typeof PAGE_ACTIONS)[number];
 
@@ -37,8 +33,7 @@ type PageViewProps = {
 
 /**
  * What a page address shows, for pages placed directly in a folder and for pages in a tab: the rendered page with its
- * breadcrumb, with the "Rename page" or "Move page" dialog on top for `rename` and `move`, or the edit form for
- * `edit`.
+ * breadcrumb, with the "Move or rename page" dialog on top for `move-or-rename`, or the edit form for `edit`.
  */
 export default async function PageView({ page, action }: PageViewProps) {
   const folderName = page.folder.name;
@@ -56,8 +51,8 @@ export default async function PageView({ page, action }: PageViewProps) {
     );
   }
 
-  // Only the "Move page" dialog needs the tabs of the folder.
-  const tabs = action === "move" ? await listTabs(page.folder.id) : [];
+  // Only the "Move or rename page" dialog needs the tabs of the folder.
+  const tabs = action === "move-or-rename" ? await listTabs(page.folder.id) : [];
 
   return (
     <Stack spacing={2}>
@@ -71,30 +66,25 @@ export default async function PageView({ page, action }: PageViewProps) {
             <Button component={Link} href={pagePath(folderName, tabName, page.name, "edit")} variant="outlined">
               Edit
             </Button>
-            <Button component={Link} href={pagePath(folderName, tabName, page.name, "rename")} variant="outlined">
-              Rename
-            </Button>
-            <Button component={Link} href={pagePath(folderName, tabName, page.name, "move")} variant="outlined">
-              Move
+            <Button
+              component={Link}
+              href={pagePath(folderName, tabName, page.name, "move-or-rename")}
+              variant="outlined"
+            >
+              Move or rename
             </Button>
           </Stack>
         </Stack>
         <Divider sx={{ mb: 3 }} />
         <MarkdownContent>{page.content}</MarkdownContent>
       </Paper>
-      {action === "rename" && (
-        <NameDialog
-          title="Rename page"
-          action={renamePage.bind(null, page.id)}
-          initialName={page.name}
-          closeHref={address}
-        />
-      )}
-      {action === "move" && (
-        <MovePageDialog
-          action={movePage.bind(null, page.id)}
+      {action === "move-or-rename" && (
+        <MoveOrRenamePageDialog
+          action={moveOrRenamePage.bind(null, page.id)}
+          folderName={folderName}
           tabs={tabs}
           currentTabId={page.tab?.id ?? null}
+          initialName={page.name}
           closeHref={address}
         />
       )}
