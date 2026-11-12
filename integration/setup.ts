@@ -12,8 +12,6 @@ vi.mock("@/lib/db", async () => {
   const { getTestDb } = await import("../e2e/support/database");
   return { getDb: getTestDb };
 });
-// Outside a request, `connection()` throws; the queries only await it to opt out of prerendering.
-vi.mock("next/server", () => ({ connection: async () => {} }));
 
 beforeEach(async () => {
   await resetTestDatabase();

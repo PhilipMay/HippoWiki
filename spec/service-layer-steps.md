@@ -76,7 +76,7 @@ These rules apply to every step.
 - [x] Folder and tab service
 - [x] Page reads
 - [x] Page writes
-- [ ] Layer rules
+- [x] Layer rules
 - [ ] Wrap-up
 
 ## Folder and tab service
