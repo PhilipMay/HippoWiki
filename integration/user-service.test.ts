@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import * as userService from "@/features/users/service";
 import { verifyPassword } from "@/lib/password-hash";
 
-import { getTestDb } from "../e2e/support/database";
+import { createUser, getTestDb } from "../e2e/support/database";
 
 /** Every user with its accounts, to compare the tables before and after a call. */
 function storedUsers() {
@@ -80,5 +80,31 @@ describe("ensureAdmin", () => {
     expect(results.map((result) => result.ok)).toEqual([true, true]);
     expect(await getTestDb().user.count()).toBe(1);
     expect(await getTestDb().account.count()).toBe(1);
+  });
+});
+
+describe("listUsers", () => {
+  it("lists all users by name for the admin, with exactly the declared fields", async () => {
+    const createdAt = new Date("2026-03-01T10:00:00.000Z");
+    const zoe = await createUser({ name: "zoe", createdAt });
+    const admin = await createUser({ name: "admin", mustChangePassword: false, createdAt });
+    const bob = await createUser({ name: "bob", mustChangePassword: false, createdAt });
+    const alice = await createUser({ name: "alice", createdAt });
+
+    const users = await userService.listUsers({ id: admin.id, name: "admin" });
+
+    expect(users).toStrictEqual([
+      { id: admin.id, name: "admin", createdAt, mustChangePassword: false },
+      { id: alice.id, name: "alice", createdAt, mustChangePassword: true },
+      { id: bob.id, name: "bob", createdAt, mustChangePassword: false },
+      { id: zoe.id, name: "zoe", createdAt, mustChangePassword: true },
+    ]);
+  });
+
+  it("returns null for a normal user", async () => {
+    await createUser({ name: "admin" });
+    const alice = await createUser({ name: "alice" });
+
+    expect(await userService.listUsers({ id: alice.id, name: "alice" })).toBeNull();
   });
 });

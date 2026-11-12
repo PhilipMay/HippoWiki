@@ -1,16 +1,53 @@
 // The reads and writes of user accounts. The service knows nothing about Next.js, forms or addresses, so that the GUI
 // (through `queries.ts` and `actions.ts`), the admin setup script and any other caller can use it, also outside a
 // request. It writes users with Prisma and the password hashing, not through Better Auth, and never logs a password.
+//
+// What a caller may do is checked here, not in the adapters, which another caller would not pass through: a function
+// that is for the admin only takes the acting user as its first argument and decides itself whether it is the admin.
 
 import { z } from "zod";
 
 import { newUserData } from "@/features/users/records";
-import { ADMIN_NAME, passwordSchemaFor, type PasswordFieldErrors } from "@/features/users/schema";
+import { ADMIN_NAME, isAdmin, passwordSchemaFor, type PasswordFieldErrors } from "@/features/users/schema";
 import { getDb } from "@/lib/db";
 import { isUniqueViolation, USER_NAME } from "@/lib/db-errors";
 import { logger } from "@/lib/logger";
 import { hashPassword, PasswordHashBusyError } from "@/lib/password-hash";
 import type { Result } from "@/lib/result";
+
+/**
+ * The user on whose behalf a function is called. The adapters take it from the session of the request; the service
+ * decides what it may do.
+ */
+export type Actor = { id: string; name: string };
+
+/** A user as the user list shows it. */
+export type UserSummary = {
+  id: string;
+  /** The user name. */
+  name: string;
+  createdAt: Date;
+  /** Whether the user still has to replace the first password by an own one. */
+  mustChangePassword: boolean;
+};
+
+/**
+ * All users, by name, for the admin. For every other actor it returns `null` and does not ask the database: for them
+ * the user list does not exist.
+ */
+export async function listUsers(actor: Actor): Promise<UserSummary[] | null> {
+  if (!isAdmin(actor)) return null;
+  const users = await getDb().user.findMany({
+    select: { id: true, username: true, createdAt: true, mustChangePassword: true },
+    orderBy: { username: "asc" },
+  });
+  return users.map(({ id, username, createdAt, mustChangePassword }) => ({
+    id,
+    name: username,
+    createdAt,
+    mustChangePassword,
+  }));
+}
 
 /** What `ensureAdmin()` found or did: the admin was created, or it existed already. */
 export type AdminSetup = { outcome: "created" | "exists" };

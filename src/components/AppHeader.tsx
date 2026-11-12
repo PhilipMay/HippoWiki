@@ -7,12 +7,13 @@ import Typography from "@mui/material/Typography";
 import Link from "@/components/Link";
 import { logOut } from "@/features/auth/actions";
 import { getCurrentUser } from "@/features/auth/session";
-import { foldersPath } from "@/lib/addresses";
+import { isAdmin } from "@/features/users/schema";
+import { foldersPath, usersPath } from "@/lib/addresses";
 import { siteName } from "@/lib/site";
 
 /**
  * The app bar of every page. For a logged-in user it has the menu, the user name and "Log out"; while the user still
- * has to change the first password, only the name and "Log out".
+ * has to change the first password, only the name and "Log out". The menu entry "Users" is for the admin only.
  */
 export default async function AppHeader() {
   const user = await getCurrentUser();
@@ -34,6 +35,12 @@ export default async function AppHeader() {
             <Button component={Link} href={foldersPath()} color="inherit">
               Folders
             </Button>
+            {/* The user list is for the admin only; for everyone else its address is not found. */}
+            {isAdmin(user) && (
+              <Button component={Link} href={usersPath()} color="inherit">
+                Users
+              </Button>
+            )}
           </nav>
         )}
         {user && (

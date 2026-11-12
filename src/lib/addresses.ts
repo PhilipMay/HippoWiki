@@ -1,5 +1,5 @@
-// Addresses of folders, tabs and pages under `/folders`, of deleted pages under `/deleted-pages`, of the login and the
-// password change, and the actions in their query string. Pure functions used by routes, Server Actions and links; no server-only imports.
+// Addresses of folders, tabs and pages under `/folders`, of deleted pages under `/deleted-pages`, of the users, the
+// login and the password change, and the actions in their query string. Pure functions used by routes, Server Actions and links; no server-only imports.
 
 import { parseName } from "@/lib/names";
 
@@ -21,6 +21,14 @@ const LOGIN_PATH = "/login";
 /** The address of the login page. */
 export function loginPath(): string {
   return LOGIN_PATH;
+}
+
+/** The address of the user list, which only the admin sees. */
+const USERS_PATH = "/users";
+
+/** The address of the user list, optionally with an action. */
+export function usersPath(action?: string): string {
+  return withAction(USERS_PATH, action);
 }
 
 /** The address where a user who logged in with a first password sets a password of their own. */

@@ -7,6 +7,14 @@ import { NAME_PATTERN } from "@/lib/names";
 /** The name of the one admin account. The admin is the user with this name; there is no role column. */
 export const ADMIN_NAME = "admin";
 
+/**
+ * Whether the user is the admin. The one place that decides it: the users service asks it before it lists or creates
+ * users, and the header before it shows the menu entry.
+ */
+export function isAdmin(user: { name: string }): boolean {
+  return user.name === ADMIN_NAME;
+}
+
 export const USER_NAME_MIN_LENGTH = 3;
 export const USER_NAME_MAX_LENGTH = 30;
 

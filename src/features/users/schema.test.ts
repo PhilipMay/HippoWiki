@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import {
   ADMIN_NAME,
+  isAdmin,
   parseUserName,
   passwordSchema,
   passwordSchemaFor,
@@ -20,6 +21,18 @@ describe("ADMIN_NAME", () => {
   it("is a valid user name", () => {
     expect(ADMIN_NAME).toBe("admin");
     expect(parseUserName(ADMIN_NAME)).toBe("admin");
+  });
+});
+
+describe("isAdmin", () => {
+  it("is true for the user named admin", () => {
+    expect(isAdmin({ name: "admin" })).toBe(true);
+  });
+
+  it("is false for every other name", () => {
+    for (const name of ["alice", "admin-2", "administrator", "Admin", " admin", ""]) {
+      expect(isAdmin({ name }), name).toBe(false);
+    }
   });
 });
 

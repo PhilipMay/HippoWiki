@@ -111,7 +111,11 @@ session lasts 30 days. Nothing can be read or changed without a login. After 5 f
 name, the next login for that name has to wait 1 minute, and twice as long after each further failure, up to 15
 minutes; the answer is the same for names that exist and names that do not. Whoever logs in with a first password,
 such as the admin after the admin setup, has to set a password of their own at `/change-password` before doing
-anything else; that ends the other sessions of the user. User accounts are stored in the database. There is one admin account, named `admin`; it is
+anything else; that ends the other sessions of the user.
+
+The admin sees all users at `/users`, each with the time it was created and a mark while it still has its first
+password; the header shows the menu entry "Users" to the admin only, and for every other user the address is not
+found. User accounts are stored in the database. There is one admin account, named `admin`; it is
 created by the admin setup or by the seed:
 
 - `npm run db:seed` inserts two known users for development (`prisma/known-users.ts`), with the password change

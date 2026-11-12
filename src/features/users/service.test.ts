@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ensureAdmin } from "@/features/users/service";
+import { ensureAdmin, listUsers } from "@/features/users/service";
 import { Prisma } from "@/generated/prisma/client";
 import { PasswordHashBusyError } from "@/lib/password-hash";
 
 const mocks = vi.hoisted(() => ({
   userFindUnique: vi.fn(),
+  userFindMany: vi.fn(),
   userCreate: vi.fn(),
   hashPassword: vi.fn(),
   info: vi.fn(),
@@ -14,7 +15,9 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/db", () => ({
-  getDb: () => ({ user: { findUnique: mocks.userFindUnique, create: mocks.userCreate } }),
+  getDb: () => ({
+    user: { findUnique: mocks.userFindUnique, findMany: mocks.userFindMany, create: mocks.userCreate },
+  }),
 }));
 vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, error: mocks.error } }));
 vi.mock(import("@/lib/password-hash"), async (importOriginal) => ({
@@ -25,6 +28,11 @@ vi.mock(import("@/lib/password-hash"), async (importOriginal) => ({
 const PASSWORD = "first-password";
 const HASH = "$argon2id$v=19$m=19456,t=2,p=1$salt$hash";
 const ADMIN_ID = "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1000";
+const ALICE_ID = "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002";
+
+/** The acting users: the admin, and a normal user. */
+const ADMIN = { id: ADMIN_ID, name: "admin" };
+const ALICE = { id: ALICE_ID, name: "alice" };
 
 function knownError(code: string, meta?: Record<string, unknown>): Prisma.PrismaClientKnownRequestError {
   return new Prisma.PrismaClientKnownRequestError("database error", { code, clientVersion: "test", meta });
@@ -194,5 +202,39 @@ describe("ensureAdmin", () => {
 
     expect(logged()).not.toContain(PASSWORD);
     expect(logged()).not.toContain(HASH);
+  });
+});
+
+describe("listUsers", () => {
+  const CREATED_AT = new Date("2026-11-12T10:00:00.000Z");
+
+  it("returns every user for the admin, with the user name as the name", async () => {
+    mocks.userFindMany.mockResolvedValue([
+      { id: ADMIN_ID, username: "admin", createdAt: CREATED_AT, mustChangePassword: false },
+      { id: ALICE_ID, username: "alice", createdAt: CREATED_AT, mustChangePassword: true },
+    ]);
+
+    await expect(listUsers(ADMIN)).resolves.toStrictEqual([
+      { id: ADMIN_ID, name: "admin", createdAt: CREATED_AT, mustChangePassword: false },
+      { id: ALICE_ID, name: "alice", createdAt: CREATED_AT, mustChangePassword: true },
+    ]);
+  });
+
+  it.each([
+    ["a normal user", ALICE],
+    ["a user whose name only starts like the admin's", { id: ALICE_ID, name: "admin-2" }],
+    ["a name in another case", { id: ALICE_ID, name: "Admin" }],
+    ["a normal user with the id of the admin", { id: ADMIN_ID, name: "alice" }],
+  ])("returns null for %s and does not ask the database", async (_case, actor) => {
+    await expect(listUsers(actor)).resolves.toBeNull();
+
+    expect(mocks.userFindMany).not.toHaveBeenCalled();
+    expectNothingLogged();
+  });
+
+  it("throws a database error", async () => {
+    mocks.userFindMany.mockRejectedValue(new Error("connection refused"));
+
+    await expect(listUsers(ADMIN)).rejects.toThrow("connection refused");
   });
 });
