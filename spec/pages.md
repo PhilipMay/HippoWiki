@@ -22,9 +22,12 @@ folders, tabs, names and addresses – is described in `content-structure.md`.
 Defined in `src/features/pages/schema.ts`, with the length limits in `src/features/pages/limits.ts`:
 
 - Each form submits only what it changes:
-  - a new page: `name` and `content`
+  - a new page: `name`, `content` and the place, a tab or the folder itself
   - editing: `content` only
-  - moving or renaming: `name` and the target, a tab or the folder itself
+  - moving or renaming: `name` and the place, a tab or the folder itself
+- The place is submitted in the field `place`: the id of a tab of the folder, or empty for the folder itself. A
+  malformed tab id shows "This tab no longer exists.", together with the field errors, if there are any; a tab that no
+  longer exists or belongs to another folder shows the same message.
 - The title is derived from the content in the create and edit actions; a submitted `title` field is ignored. Titles
   need not be unique.
 - `name` follows the name rule in `content-structure.md`. A name that is taken where the page lives shows "Name is
@@ -64,10 +67,11 @@ same views; actions are given as `?action=<action>` (see `content-structure.md`)
 - New page – `?action=new` on a folder or tab address: content first – a monospace Markdown textarea with "Save" and
   "Cancel" (back to the folder or tab). "Save" checks the content on the client with `titleFromContent`; without a
   title it shows the error at the content field and does not open the dialog. Otherwise it opens the "Save page"
-  dialog, which asks only for the name, prefilled from the title derived from the content each time the dialog opens
-  and focused once it has opened; below the name it shows the address the page will get. The title is not shown and
-  not submitted. Errors from the server are shown in the open dialog; "Cancel" in the dialog closes it and keeps the
-  content. Saving shows the new page.
+  dialog, which asks for the name and the place (see `content-structure.md`). The name is prefilled from the title
+  derived from the content each time the dialog opens and focused once it has opened; below the name it shows the
+  address the page will get at the chosen place. The title is not shown and not submitted. Errors from the server are
+  shown in the open dialog and keep name, place and content; "Cancel" in the dialog closes it and keeps the content.
+  Saving shows the new page.
 - The page address: the folder breadcrumb (see `content-structure.md`) with the folder list, the folder, the tab if
   the page has one, and the page name with `.md`. Below it the last update and "Edit" and "Move or rename" above a
   divider, then the rendered Markdown (GitHub Flavored Markdown, raw HTML shown as text, unsafe link URLs removed). The

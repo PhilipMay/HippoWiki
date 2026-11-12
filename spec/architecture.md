@@ -107,7 +107,9 @@ How the code is organised and which patterns new code follows. The technology st
   same commit in which `useHydrated()` turns true. The end-to-end tests wait for it after every page load.
 - Dialogs that a route renders for an action use `disablePortal`, so that they are part of the server-rendered HTML
   like the rest of the page, and lock their controls until hydration as described above. The name dialog
-  (`NameDialog` in `src/features/folders/components/`) is shared by folders, tabs and pages.
+  (`NameDialog` in `src/features/folders/components/`) is shared by folders, tabs and pages. The name field and the
+  place choice of a page (`PageNameAndPlaceFields` in `src/features/pages/components/`) are shared by the "Save page"
+  and the "Move or rename page" dialog; its `locked` prop locks them in a dialog that renders before hydration.
 - A form with controlled radio buttons or checkboxes calls its Server Action in `onSubmit` inside `startTransition`
   instead of passing it as the form's `action`: React resets a form after its action, which puts these controls back
   to their initial state, out of sync with the controlled one.
