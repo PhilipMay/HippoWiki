@@ -10,24 +10,33 @@ implements it.
 - A step plan has a goal, a scope (what is in, what is explicitly not in), an ordered checklist of steps, and for every
   step a "Goal", "Build" and "Test" section. "Test" lists the unit, integration and end-to-end tests the step adds (see
   `testing.md`), plus any manual checks that cannot be automated.
-- Each step is implemented in one session, started with a prompt such as:
+- A whole step plan is implemented in one session, step by step, started with a prompt such as:
 
   ```text
-  Implement the step "Search index" from spec/search-steps.md
+  Implement spec/search-steps.md
   ```
 
-- The steps build on each other and are worked through in order. Before you start a step, check that every earlier step
-  is ticked off and that the working tree is clean; otherwise stop and ask the user. When you implement a step, tick it
-  off in the checklist once it is done (see "When a step is done").
-- Once the step is done and ticked off, commit all of its changes, including the updated step file, as one Git commit
-  on the current branch, without asking first. The message is a short lowercase summary of what the step does, for
-  example `add search index`. A step that is not done is not committed (see "When a step cannot be finished").
-- If the step shows that the scope needs to change (something the plan puts out of scope is needed, or something in
-  scope should be dropped): stop before writing any code for the change, ask the user, and commit nothing. Once the user
-  has approved the change, update the scope in the step file and continue. If the user declines it, continue within
-  the existing scope, or follow "When a step cannot be finished" if the step cannot be done without the change.
-- If the step shows that the plan needs another change (a missing step, a wrong order, a wrong assumption): update the
-  step file first, then continue. Name the change in your final reply, and commit it together with the step.
+- In that session, work through the steps one after the other, in checklist order, starting with the first step that
+  is not ticked off, until the plan is finished, wrap-up included. Do not ask the user between steps whether to go on.
+  The same prompt resumes a plan that was interrupted: the steps that are already ticked off are skipped.
+- The steps build on each other. Finish each step completely (done, ticked off, committed) before you start the next
+  one; never work on two steps at once. Before you start a step, check that every earlier step is ticked off and that
+  the working tree is clean; otherwise stop and ask the user. Tick a step off in the checklist once it is done (see
+  "When a step is done").
+- Once a step is done and ticked off, commit all of its changes, including the updated step file, as one Git commit on
+  the current branch, without asking first, then go on with the next step. The message is a short lowercase summary of
+  what the step does, for example `add search index`. A step that is not done is not committed (see "When a step cannot
+  be finished").
+- After each commit, give a short report of the step: what it built, the commit message, any change to the plan, and
+  the manual checks left for the user. Then continue with the next step. Your final reply, once the plan is finished or
+  stopped, sums up all steps of the session.
+- If a step shows that the scope needs to change (something the plan puts out of scope is needed, or something in scope
+  should be dropped): stop before writing any code for the change, ask the user, and commit nothing. Once the user has
+  approved the change, update the scope in the step file and continue with the step and the rest of the plan. If the
+  user declines it, continue within the existing scope, or follow "When a step cannot be finished" if the step cannot
+  be done without the change.
+- If a step shows that the plan needs another change (a missing step, a wrong order, a wrong assumption): update the
+  step file first, then continue. Name the change in the report of the step, and commit it together with the step.
 
 ## Wrap-up step
 
@@ -65,7 +74,7 @@ A step is done only when both of the following hold:
   3. `npm run test:e2e`
   4. `npm run build`
 - Its "Test" items have been verified. Do the manual checks you can yourself, for example in the browser. A manual
-  check you cannot do does not hold the step back: list it in your final reply so that the user can do it. Never report
+  check you cannot do does not hold the step back: list it in the report of the step so that the user can do it. Never report
   a check as done that you did not do.
 
 `npm run test:e2e:production` is left out of this list on purpose: CI runs it on every push to `main` and on every pull
@@ -82,6 +91,7 @@ finished".
 If a command fails or a "Test" item fails and you cannot fix it within the step (for example a check keeps failing,
 Podman is not running, or an end-to-end test fails only now and then):
 
+- Stop the whole plan, not only the step: do not start any later step. The steps committed before stay as they are.
 - Do not tick the step off and do not commit.
 - Leave the changes in the working tree.
 - Stop and report which command failed, with the relevant part of its output.
