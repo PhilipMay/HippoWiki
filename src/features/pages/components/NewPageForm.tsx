@@ -14,8 +14,9 @@ import { startTransition, useActionState, useId, useRef, useState, type SubmitEv
 import Link from "@/components/Link";
 import PageNameAndPlaceFields, { FOLDER_TARGET } from "@/features/pages/components/PageNameAndPlaceFields";
 import { deriveName, titleFromContent } from "@/features/pages/derive";
+import type { PageFormAction } from "@/features/pages/forms";
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
-import { TITLE_HEADING_MISSING_MESSAGE, type PageFormAction } from "@/features/pages/schema";
+import { TITLE_HEADING_MISSING_MESSAGE } from "@/features/pages/schema";
 import { folderPath, tabPath } from "@/lib/addresses";
 import { useHydrated } from "@/lib/hydration";
 

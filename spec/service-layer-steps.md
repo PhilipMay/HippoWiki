@@ -20,7 +20,8 @@ translate between the web and the services. A later MCP server can then call the
   - users, rights or a caller that is passed to the services
   - repositories or another layer between the services and Prisma: the services call Prisma directly, on purpose
   - any change a user can see: addresses, redirects, messages and form behaviour stay as they are, and so do the
-    logged events; no file in `e2e/` is changed
+    logged events; no test in `e2e/` is changed. Only the import of `PLACE_FIELD` in `e2e/create-page.spec.ts` and
+    `e2e/move-or-rename-page.spec.ts` follows its move to `forms.ts`.
   - changes to the database schema, new packages
   - the health route (`src/app/api/health/route.ts`), which keeps reading the database directly
 
@@ -74,7 +75,7 @@ These rules apply to every step.
 
 - [x] Folder and tab service
 - [x] Page reads
-- [ ] Page writes
+- [x] Page writes
 - [ ] Layer rules
 - [ ] Wrap-up
 
@@ -183,7 +184,8 @@ Pages are written through `src/features/pages/service.ts`. No Server Action read
   - the transaction of `deletePage()` and the rule that a foreign key violation means the tab if one was given, else
     the folder, stay as they are
 - `src/features/pages/forms.ts`: the `parse*FormData` functions, the form states, the types of the form actions,
-  `PLACE_FIELD` and `CHOOSE_PLACE_MESSAGE`, moved from `schema.ts`; components import them from there.
+  `PLACE_FIELD` and `CHOOSE_PLACE_MESSAGE`, moved from `schema.ts`; components import them from there, and so do the
+  two end-to-end specs that use `PLACE_FIELD`.
 - `src/features/pages/actions.ts` becomes an adapter as described in "Design". Each action keeps its own message for
   `failed` (save, delete, restore).
 
@@ -212,7 +214,8 @@ Pages are written through `src/features/pages/service.ts`. No Server Action read
   - a delete forgets the tab, returns the place and frees the name
   - a restore into the folder and into a tab; a taken name returns `name-taken`; a page that is not deleted returns
     `page-not-found`
-- End-to-end: no new tests; the existing ones pass without a change to `e2e/`.
+- End-to-end: no new tests; the existing ones pass with no change to `e2e/` but the import of `PLACE_FIELD` in the
+  two specs.
 
 ## Layer rules
 

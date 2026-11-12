@@ -9,7 +9,7 @@ import RadioGroup from "@mui/material/RadioGroup";
 import TextField from "@mui/material/TextField";
 import { useId, type Ref } from "react";
 
-import { PLACE_FIELD } from "@/features/pages/schema";
+import { PLACE_FIELD } from "@/features/pages/forms";
 import { pagePath } from "@/lib/addresses";
 import { NAME_MAX_LENGTH } from "@/lib/names";
 

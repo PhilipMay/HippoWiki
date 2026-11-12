@@ -13,7 +13,7 @@ import { startTransition, useActionState, useEffect, useId, useRef, useState, ty
 
 import Link from "@/components/Link";
 import PageNameAndPlaceFields from "@/features/pages/components/PageNameAndPlaceFields";
-import type { PageRestoreFormAction } from "@/features/pages/schema";
+import type { PageRestoreFormAction } from "@/features/pages/forms";
 import { useHydrated } from "@/lib/hydration";
 
 type RestorePageDialogProps = {

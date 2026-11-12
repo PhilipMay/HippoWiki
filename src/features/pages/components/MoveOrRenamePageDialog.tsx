@@ -13,7 +13,7 @@ import { startTransition, useActionState, useEffect, useId, useRef, useState, ty
 
 import Link from "@/components/Link";
 import PageNameAndPlaceFields, { FOLDER_TARGET } from "@/features/pages/components/PageNameAndPlaceFields";
-import type { PageMoveOrRenameFormAction } from "@/features/pages/schema";
+import type { PageMoveOrRenameFormAction } from "@/features/pages/forms";
 import { useHydrated } from "@/lib/hydration";
 
 type MoveOrRenamePageDialogProps = {

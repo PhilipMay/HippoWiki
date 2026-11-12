@@ -1,25 +1,25 @@
 "use server";
 
+// The writes of pages for forms: thin adapters that translate between a form and the service.
+
 import { redirect } from "next/navigation";
 
 import { parseFolderId } from "@/features/folders/schema";
 import {
   parseNewPageFormData,
   parsePageContentFormData,
-  parsePageId,
   parsePageMoveOrRenameFormData,
   parsePageRestoreFormData,
   type PageDeleteFormState,
   type PageFormState,
   type PageMoveOrRenameFormState,
   type PageRestoreFormState,
-} from "@/features/pages/schema";
+} from "@/features/pages/forms";
+import { parsePageId } from "@/features/pages/schema";
+import * as pageService from "@/features/pages/service";
 import { folderPath, pagePath, tabPath } from "@/lib/addresses";
-import { getDb } from "@/lib/db";
-import { isForeignKeyViolation, isUniqueViolation, PAGE_NAME } from "@/lib/db-errors";
-import { logger } from "@/lib/logger";
-import { revalidateContent } from "@/lib/revalidate";
 import { NAME_TAKEN_MESSAGE } from "@/lib/names";
+import { revalidateContent } from "@/lib/revalidate";
 
 const SAVE_FAILED_MESSAGE = "The page could not be saved. Please try again.";
 const DELETE_FAILED_MESSAGE = "The page could not be deleted. Please try again.";
@@ -31,26 +31,9 @@ const TAB_GONE_MESSAGE = "This tab no longer exists.";
 /** The form state that shows "Name is already in use" at the name field. */
 const nameTakenState = { fieldErrors: { name: [NAME_TAKEN_MESSAGE] } };
 
-/** What an address is built from: the name of the page, of its folder and of its tab, if it has one. */
-const ADDRESS_SELECT = {
-  name: true,
-  folder: { select: { name: true } },
-  tab: { select: { name: true } },
-} as const;
-
-type AddressParts = { name: string; folder: { name: string }; tab: { name: string } | null };
-
-function addressOf({ name, folder, tab }: AddressParts): string {
+/** The address of a page as stored. Actions redirect to it, never to an address built from submitted values. */
+function addressOf({ name, folder, tab }: pageService.StoredPage): string {
   return pagePath(folder.name, tab?.name ?? null, name);
-}
-
-/**
- * The address of the page with the given id as stored, or `null` if it does not exist or is deleted, since a deleted
- * page has no address. Actions redirect to the stored address, never to one built from submitted values.
- */
-async function findPageAddress(pageId: string): Promise<string | null> {
-  const page = await getDb().page.findUnique({ where: { id: pageId, deletedAt: null }, select: ADDRESS_SELECT });
-  return page && addressOf(page);
 }
 
 /**
@@ -75,32 +58,27 @@ export async function createPage(
       ...(input.placeInvalid && { message: TAB_GONE_MESSAGE }),
     };
   }
-  const { tabId } = input.data;
+  const { name, content, tabId } = input.data;
 
-  let page: AddressParts & { id: string };
-  try {
-    page = await getDb().page.create({
-      data: { ...input.data, folderId: parsedFolderId },
-      select: { id: true, ...ADDRESS_SELECT },
-    });
-  } catch (err) {
-    if (isUniqueViolation(err, PAGE_NAME)) {
-      logger.warn({ folderId: parsedFolderId, tabId, name: input.data.name }, "name of new page already in use");
-      return nameTakenState;
+  const result = await pageService.createPage(parsedFolderId, { name, content, tabId });
+  if (!result.ok) {
+    switch (result.error.code) {
+      case "folder-not-found":
+        return { message: FOLDER_GONE_MESSAGE };
+      case "tab-not-found":
+        return { message: TAB_GONE_MESSAGE };
+      case "invalid-input":
+        return { fieldErrors: result.error.fieldErrors };
+      case "name-taken":
+        return nameTakenState;
+      case "failed":
+        return { message: SAVE_FAILED_MESSAGE };
     }
-    if (isForeignKeyViolation(err)) {
-      // A missing folder, a missing tab or a tab of another folder: the composite foreign key refuses all of them.
-      logger.warn({ folderId: parsedFolderId, tabId }, "folder or tab of new page not found");
-      return { message: tabId ? TAB_GONE_MESSAGE : FOLDER_GONE_MESSAGE };
-    }
-    logger.error({ err, folderId: parsedFolderId, tabId }, "failed to create page");
-    return { message: SAVE_FAILED_MESSAGE };
   }
 
-  logger.info({ pageId: page.id }, "page created");
   revalidateContent();
-  // `redirect` throws, so it must stay outside the try block above.
-  redirect(addressOf(page));
+  // `redirect` throws; it comes last.
+  redirect(addressOf(result.value));
 }
 
 /**
@@ -119,33 +97,28 @@ export async function updatePageContent(
   const input = parsePageContentFormData(formData);
   if (!input.success) return { fieldErrors: input.fieldErrors };
 
-  let address: string | null;
-  try {
-    // `updateMany` reports a missing page as a count of 0 instead of throwing; it sets `updatedAt` as well. A deleted
-    // page counts as missing.
-    const { count } = await getDb().page.updateMany({ where: { id: pageId, deletedAt: null }, data: input.data });
-    address = count === 0 ? null : await findPageAddress(pageId);
-  } catch (err) {
-    logger.error({ err, pageId }, "failed to update page");
-    return { message: SAVE_FAILED_MESSAGE };
-  }
-  if (address === null) {
-    logger.warn({ pageId }, "page to update not found");
-    return { message: PAGE_GONE_MESSAGE };
+  const result = await pageService.updatePageContent(pageId, { content: input.data.content });
+  if (!result.ok) {
+    switch (result.error.code) {
+      case "page-not-found":
+        return { message: PAGE_GONE_MESSAGE };
+      case "invalid-input":
+        return { fieldErrors: result.error.fieldErrors };
+      case "failed":
+        return { message: SAVE_FAILED_MESSAGE };
+    }
   }
 
-  logger.info({ pageId }, "page updated");
   revalidateContent();
-  redirect(address);
+  redirect(addressOf(result.value));
 }
 
 /**
- * Stores the submitted name and place of the page with the given id in one update and redirects to its new address.
- * The page is placed in the chosen tab of its folder or, without one, directly in the folder. The content is neither
- * validated nor touched, so the content limit never blocks a save. Returns the errors to show in the form if the name
- * is invalid or taken at the target, the tab does not exist or belongs to another folder (the composite foreign key
- * refuses it), the page no longer exists or is deleted, or it cannot be stored. Bind the id with
- * `moveOrRenamePage.bind(null, id)`.
+ * Stores the submitted name and place of the page with the given id and redirects to its new address. The page is
+ * placed in the chosen tab of its folder or, without one, directly in the folder. The content is neither validated nor
+ * touched, so the content limit never blocks a save. Returns the errors to show in the form if the name is invalid or
+ * taken at the target, the tab does not exist or belongs to another folder, the page no longer exists or is deleted,
+ * or it cannot be stored. Bind the id with `moveOrRenamePage.bind(null, id)`.
  */
 export async function moveOrRenamePage(
   id: string,
@@ -162,85 +135,58 @@ export async function moveOrRenamePage(
       ...(input.placeInvalid && { message: TAB_GONE_MESSAGE }),
     };
   }
-  const { name, tabId } = input.data;
 
-  let address: string | null;
-  try {
-    const { count } = await getDb().page.updateMany({
-      where: { id: pageId, deletedAt: null },
-      data: { name, tabId },
-    });
-    address = count === 0 ? null : await findPageAddress(pageId);
-  } catch (err) {
-    if (isUniqueViolation(err, PAGE_NAME)) {
-      logger.warn({ pageId, tabId, name }, "name of moved or renamed page already in use at the target");
-      return nameTakenState;
+  const result = await pageService.moveOrRenamePage(pageId, input.data);
+  if (!result.ok) {
+    switch (result.error.code) {
+      case "page-not-found":
+        return { message: PAGE_GONE_MESSAGE };
+      case "tab-not-found":
+        return { message: TAB_GONE_MESSAGE };
+      case "invalid-input":
+        return { fieldErrors: result.error.fieldErrors };
+      case "name-taken":
+        return nameTakenState;
+      case "failed":
+        return { message: SAVE_FAILED_MESSAGE };
     }
-    if (isForeignKeyViolation(err)) {
-      logger.warn({ pageId, tabId }, "target tab of moved or renamed page not found in the page's folder");
-      return { message: TAB_GONE_MESSAGE };
-    }
-    logger.error({ err, pageId, tabId }, "failed to move or rename page");
-    return { message: SAVE_FAILED_MESSAGE };
-  }
-  if (address === null) {
-    logger.warn({ pageId }, "page to move or rename not found");
-    return { message: PAGE_GONE_MESSAGE };
   }
 
-  logger.info({ pageId, tabId }, "page moved or renamed");
   revalidateContent();
-  redirect(address);
+  redirect(addressOf(result.value));
 }
 
 /**
- * Deletes the page with the given id and redirects to the folder or tab it was in. The page keeps its row and its
- * folder, so it can be restored; it gets the time of deletion and loses its tab, because its place inside the folder is
- * forgotten. Returns the error to show in the dialog if the page no longer exists or is already deleted, or it cannot
- * be deleted. The form submits nothing; its previous state and data are ignored. Bind the id with
+ * Deletes the page with the given id and redirects to the folder or tab it was in. The page can be restored from the
+ * deleted pages of its folder. Returns the error to show in the dialog if the page no longer exists or is already
+ * deleted, or it cannot be deleted. The form submits nothing; its previous state and data are ignored. Bind the id with
  * `deletePage.bind(null, id)`.
  */
 export async function deletePage(id: string): Promise<PageDeleteFormState> {
   const pageId = parsePageId(id);
   if (!pageId) return { message: PAGE_GONE_MESSAGE };
 
-  let address: string | null;
-  try {
-    // One transaction, so that the place read is the one the page had when it was deleted.
-    address = await getDb().$transaction(async (tx) => {
-      const page = await tx.page.findFirst({
-        where: { id: pageId, deletedAt: null },
-        select: { folder: { select: { name: true } }, tab: { select: { name: true } } },
-      });
-      if (!page) return null;
-      // `updateMany` reports a page deleted in the meantime as a count of 0; it sets `updatedAt` as well.
-      const { count } = await tx.page.updateMany({
-        where: { id: pageId, deletedAt: null },
-        data: { deletedAt: new Date(), tabId: null },
-      });
-      if (count === 0) return null;
-      return page.tab ? tabPath(page.folder.name, page.tab.name) : folderPath(page.folder.name);
-    });
-  } catch (err) {
-    logger.error({ err, pageId }, "failed to delete page");
-    return { message: DELETE_FAILED_MESSAGE };
-  }
-  if (address === null) {
-    logger.warn({ pageId }, "page to delete not found");
-    return { message: PAGE_GONE_MESSAGE };
+  const result = await pageService.deletePage(pageId);
+  if (!result.ok) {
+    switch (result.error.code) {
+      case "page-not-found":
+        return { message: PAGE_GONE_MESSAGE };
+      case "failed":
+        return { message: DELETE_FAILED_MESSAGE };
+    }
   }
 
-  logger.info({ pageId }, "page deleted");
   revalidateContent();
-  redirect(address);
+  const { folder, tab } = result.value;
+  redirect(tab ? tabPath(folder.name, tab.name) : folderPath(folder.name));
 }
 
 /**
  * Restores the deleted page with the given id into its folder, under the submitted name, at the chosen place: the tab
  * of its folder or, without one, directly in the folder. It redirects to the page's new address. The content is
  * neither validated nor touched. Returns the errors to show in the form if the name is invalid or taken at the target,
- * no place is chosen, the tab does not exist or belongs to another folder (the composite foreign key refuses it), the
- * page no longer exists or is not deleted, or it cannot be stored. Bind the id with `restorePage.bind(null, id)`.
+ * no place is chosen, the tab does not exist or belongs to another folder, the page no longer exists or is not
+ * deleted, or it cannot be stored. Bind the id with `restorePage.bind(null, id)`.
  */
 export async function restorePage(
   id: string,
@@ -258,34 +204,23 @@ export async function restorePage(
       ...(input.placeInvalid && { message: TAB_GONE_MESSAGE }),
     };
   }
-  const { name, tabId } = input.data;
 
-  let address: string | null;
-  try {
-    // Only a deleted page can be restored; `updateMany` reports any other as a count of 0. It sets `updatedAt` as well.
-    const { count } = await getDb().page.updateMany({
-      where: { id: pageId, deletedAt: { not: null } },
-      data: { deletedAt: null, name, tabId },
-    });
-    address = count === 0 ? null : await findPageAddress(pageId);
-  } catch (err) {
-    if (isUniqueViolation(err, PAGE_NAME)) {
-      logger.warn({ pageId, tabId, name }, "name of restored page already in use at the target");
-      return nameTakenState;
+  const result = await pageService.restorePage(pageId, input.data);
+  if (!result.ok) {
+    switch (result.error.code) {
+      case "page-not-found":
+        return { message: PAGE_GONE_MESSAGE };
+      case "tab-not-found":
+        return { message: TAB_GONE_MESSAGE };
+      case "invalid-input":
+        return { fieldErrors: result.error.fieldErrors };
+      case "name-taken":
+        return nameTakenState;
+      case "failed":
+        return { message: RESTORE_FAILED_MESSAGE };
     }
-    if (isForeignKeyViolation(err)) {
-      logger.warn({ pageId, tabId }, "target tab of restored page not found in the page's folder");
-      return { message: TAB_GONE_MESSAGE };
-    }
-    logger.error({ err, pageId, tabId }, "failed to restore page");
-    return { message: RESTORE_FAILED_MESSAGE };
-  }
-  if (address === null) {
-    logger.warn({ pageId }, "deleted page to restore not found");
-    return { message: PAGE_GONE_MESSAGE };
   }
 
-  logger.info({ pageId, tabId }, "page restored");
   revalidateContent();
-  redirect(address);
+  redirect(addressOf(result.value));
 }

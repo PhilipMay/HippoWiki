@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 
-import { PLACE_FIELD } from "@/features/pages/schema";
+import { PLACE_FIELD } from "@/features/pages/forms";
 
 import { collectErrors } from "./support/browser";
 import { createFolder, createPage, createTab, getTestDb, resetTestDatabase } from "./support/database";

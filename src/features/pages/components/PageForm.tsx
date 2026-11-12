@@ -8,7 +8,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 
 import Link from "@/components/Link";
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
-import { type PageFormAction } from "@/features/pages/schema";
+import { type PageFormAction } from "@/features/pages/forms";
 import { useHydrated } from "@/lib/hydration";
 
 type PageFormProps = {
