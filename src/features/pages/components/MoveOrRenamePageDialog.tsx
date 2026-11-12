@@ -7,24 +7,14 @@ import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
-import FormControl from "@mui/material/FormControl";
-import FormControlLabel from "@mui/material/FormControlLabel";
-import FormLabel from "@mui/material/FormLabel";
-import Radio from "@mui/material/Radio";
-import RadioGroup from "@mui/material/RadioGroup";
 import Stack from "@mui/material/Stack";
-import TextField from "@mui/material/TextField";
 import { useRouter } from "next/navigation";
 import { startTransition, useActionState, useEffect, useId, useRef, useState, type SubmitEvent } from "react";
 
 import Link from "@/components/Link";
-import { MOVE_TARGET_FIELD, type PageMoveOrRenameFormAction } from "@/features/pages/schema";
-import { pagePath } from "@/lib/addresses";
+import PageNameAndPlaceFields, { FOLDER_TARGET } from "@/features/pages/components/PageNameAndPlaceFields";
+import type { PageMoveOrRenameFormAction } from "@/features/pages/schema";
 import { useHydrated } from "@/lib/hydration";
-import { NAME_MAX_LENGTH } from "@/lib/names";
-
-/** The value of the place "directly in the folder": no tab. */
-const FOLDER_TARGET = "";
 
 type MoveOrRenamePageDialogProps = {
   /** Server Action that stores name and place of the page; it returns the errors to show, or redirects on success. */
@@ -62,13 +52,11 @@ export default function MoveOrRenamePageDialog({
   const router = useRouter();
   const titleId = useId();
   const formId = useId();
-  const placeLabelId = useId();
   // The dialog is part of the server-rendered page. Input before hydration could be lost, so the name is read-only and
   // the places and "Save" are disabled until then.
   const hydrated = useHydrated();
 
   const nameError = state.fieldErrors?.name?.[0];
-  const tabName = tabs.find((tab) => tab.id === target)?.name ?? null;
 
   // Field errors come back from the Server Action, not from a client event, so the focus moves once the new state
   // arrives. Each submission returns a new state object, so a repeated rejection moves the focus again; the initial
@@ -108,46 +96,17 @@ export default function MoveOrRenamePageDialog({
         <Box component="form" id={formId} onSubmit={submit} noValidate>
           <Stack spacing={3} sx={{ pt: 1 }}>
             {state.message && <Alert severity="error">{state.message}</Alert>}
-            <TextField
-              name="name"
-              label="Name"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              inputRef={nameRef}
-              required
-              fullWidth
-              error={!!nameError}
-              helperText={nameError ?? `Address: ${pagePath(folderName, tabName, name.trim())}`}
-              slotProps={{
-                htmlInput: {
-                  maxLength: NAME_MAX_LENGTH,
-                  spellCheck: false,
-                  autoCapitalize: "none",
-                  readOnly: !hydrated,
-                },
-                formHelperText: { sx: { overflowWrap: "anywhere" } },
-              }}
+            <PageNameAndPlaceFields
+              folderName={folderName}
+              tabs={tabs}
+              name={name}
+              onNameChange={setName}
+              place={target}
+              onPlaceChange={setTarget}
+              nameError={nameError}
+              nameRef={nameRef}
+              locked={!hydrated}
             />
-            <FormControl disabled={!hydrated}>
-              <FormLabel id={placeLabelId}>Place</FormLabel>
-              <RadioGroup
-                name={MOVE_TARGET_FIELD}
-                value={target}
-                onChange={(event) => setTarget(event.target.value)}
-                aria-labelledby={placeLabelId}
-              >
-                <FormControlLabel value={FOLDER_TARGET} control={<Radio />} label="Directly in the folder" />
-                {tabs.map((tab) => (
-                  <FormControlLabel
-                    key={tab.id}
-                    value={tab.id}
-                    control={<Radio />}
-                    label={`Tab ${tab.name}`}
-                    sx={{ overflowWrap: "anywhere" }}
-                  />
-                ))}
-              </RadioGroup>
-            </FormControl>
           </Stack>
         </Box>
       </DialogContent>
