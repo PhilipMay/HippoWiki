@@ -77,6 +77,12 @@ const otherErrors = [
   ["any other error", new Error("connection lost")],
 ] as const;
 
+/** Both prefixes are refreshed: a write can change addresses under `/folders` and under `/deleted-pages`. */
+function expectContentRevalidated(): void {
+  expect(mocks.revalidatePath).toHaveBeenCalledWith("/folders", "layout");
+  expect(mocks.revalidatePath).toHaveBeenCalledWith("/deleted-pages", "layout");
+}
+
 function expectNotRevalidatedOrRedirected(): void {
   expect(mocks.revalidatePath).not.toHaveBeenCalled();
   expect(mocks.redirect).not.toHaveBeenCalled();
@@ -118,7 +124,7 @@ describe("createPage", () => {
       select: { id: true, ...ADDRESS_SELECT },
     });
     expect(mocks.info).toHaveBeenCalledWith({ pageId: id }, "page created");
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/folders", "layout");
+    expectContentRevalidated();
   });
 
   it.each(nameTakenErrors)("reports a taken name for a unique violation %s", async (_name, err) => {
@@ -158,7 +164,7 @@ describe("createPage", () => {
       data: { title: "My page", name: "my-page", content: CONTENT, folderId, tabId },
       select: { id: true, ...ADDRESS_SELECT },
     });
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/folders", "layout");
+    expectContentRevalidated();
   });
 
   it.each([
@@ -254,7 +260,7 @@ describe("updatePageContent", () => {
     });
     expect(mocks.findUnique).toHaveBeenCalledWith({ where: { id, deletedAt: null }, select: ADDRESS_SELECT });
     expect(mocks.info).toHaveBeenCalledWith({ pageId: id }, "page updated");
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/folders", "layout");
+    expectContentRevalidated();
   });
 
   // The update only matches a page that is not deleted, so a deleted page counts as missing as well.
@@ -346,7 +352,7 @@ describe("moveOrRenamePage", () => {
     });
     expect(mocks.findUnique).toHaveBeenCalledWith({ where: { id, deletedAt: null }, select: ADDRESS_SELECT });
     expect(mocks.info).toHaveBeenCalledWith({ pageId: id, tabId }, "page moved or renamed");
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/folders", "layout");
+    expectContentRevalidated();
   });
 
   it.each([

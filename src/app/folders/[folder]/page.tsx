@@ -14,7 +14,7 @@ import { createPage } from "@/features/pages/actions";
 import AllPagesList from "@/features/pages/components/AllPagesList";
 import NewPageForm from "@/features/pages/components/NewPageForm";
 import { listAllFolderPages, listFolderPages } from "@/features/pages/queries";
-import { allPagesPath, folderPath, parseAction, parseView, type SearchParams } from "@/lib/addresses";
+import { allPagesPath, deletedPagesPath, folderPath, parseAction, parseView, type SearchParams } from "@/lib/addresses";
 import { pageTitle } from "@/lib/site";
 
 /**
@@ -103,6 +103,9 @@ export default async function FolderPage({ params, searchParams }: PageProps<"/f
           </Button>
           <Button component={Link} href={allPagesPath(folder.name)} variant="outlined">
             All pages
+          </Button>
+          <Button component={Link} href={deletedPagesPath(folder.name)} variant="outlined">
+            Deleted pages
           </Button>
           <Button component={Link} href={folderPath(folder.name, "new-tab")} variant="outlined">
             New tab

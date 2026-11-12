@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { parseFolderId } from "@/features/folders/schema";
@@ -16,6 +15,7 @@ import { pagePath } from "@/lib/addresses";
 import { getDb } from "@/lib/db";
 import { isForeignKeyViolation, isUniqueViolation, PAGE_NAME } from "@/lib/db-errors";
 import { logger } from "@/lib/logger";
+import { revalidateContent } from "@/lib/revalidate";
 import { NAME_TAKEN_MESSAGE } from "@/lib/names";
 
 const SAVE_FAILED_MESSAGE = "The page could not be saved. Please try again.";
@@ -25,11 +25,6 @@ const TAB_GONE_MESSAGE = "This tab no longer exists.";
 
 /** The form state that shows "Name is already in use" at the name field. */
 const nameTakenState = { fieldErrors: { name: [NAME_TAKEN_MESSAGE] } };
-
-/** Revalidates every address under `/folders`, so that a renamed page's old and new address are both covered. */
-function revalidateFolders(): void {
-  revalidatePath("/folders", "layout");
-}
 
 /** What an address is built from: the name of the page, of its folder and of its tab, if it has one. */
 const ADDRESS_SELECT = {
@@ -98,7 +93,7 @@ export async function createPage(
   }
 
   logger.info({ pageId: page.id }, "page created");
-  revalidateFolders();
+  revalidateContent();
   // `redirect` throws, so it must stay outside the try block above.
   redirect(addressOf(page));
 }
@@ -135,7 +130,7 @@ export async function updatePageContent(
   }
 
   logger.info({ pageId }, "page updated");
-  revalidateFolders();
+  revalidateContent();
   redirect(address);
 }
 
@@ -189,6 +184,6 @@ export async function moveOrRenamePage(
   }
 
   logger.info({ pageId, tabId }, "page moved or renamed");
-  revalidateFolders();
+  revalidateContent();
   redirect(address);
 }

@@ -80,6 +80,12 @@ const otherErrors = [
   ["any other error", new Error("connection lost")],
 ] as const;
 
+/** Both prefixes are refreshed: a write can change addresses under `/folders` and under `/deleted-pages`. */
+function expectContentRevalidated(): void {
+  expect(mocks.revalidatePath).toHaveBeenCalledWith("/folders", "layout");
+  expect(mocks.revalidatePath).toHaveBeenCalledWith("/deleted-pages", "layout");
+}
+
 function expectNotRevalidatedOrRedirected(): void {
   expect(mocks.revalidatePath).not.toHaveBeenCalled();
   expect(mocks.redirect).not.toHaveBeenCalled();
@@ -100,7 +106,7 @@ describe("createFolder", () => {
 
     expect(mocks.create).toHaveBeenCalledWith({ data: { name: "handbook" }, select: { id: true, name: true } });
     expect(mocks.info).toHaveBeenCalledWith({ folderId: id }, "folder created");
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/folders", "layout");
+    expectContentRevalidated();
   });
 
   it.each(nameTakenErrors)("reports a taken name for a unique violation %s", async (_name, err) => {
@@ -148,7 +154,7 @@ describe("renameFolder", () => {
 
     expect(mocks.updateMany).toHaveBeenCalledWith({ where: { id }, data: { name: "handbook" } });
     expect(mocks.info).toHaveBeenCalledWith({ folderId: id }, "folder renamed");
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/folders", "layout");
+    expectContentRevalidated();
   });
 
   it("reports a folder that no longer exists", async () => {
@@ -223,7 +229,7 @@ describe("createTab", () => {
       select: { id: true, name: true, folder: { select: { name: true } } },
     });
     expect(mocks.info).toHaveBeenCalledWith({ tabId: id }, "tab created");
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/folders", "layout");
+    expectContentRevalidated();
   });
 
   it.each(tabNameTakenErrors)("reports a taken name for a unique violation %s", async (_name, err) => {
@@ -289,7 +295,7 @@ describe("renameTab", () => {
       select: { name: true, folder: { select: { name: true } } },
     });
     expect(mocks.info).toHaveBeenCalledWith({ tabId: id }, "tab renamed");
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/folders", "layout");
+    expectContentRevalidated();
   });
 
   it("reports a tab that no longer exists", async () => {

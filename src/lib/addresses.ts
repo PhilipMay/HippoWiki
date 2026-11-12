@@ -1,10 +1,16 @@
-// Addresses of folders, tabs and pages under `/folders`, and the actions in their query string. Pure functions used by
-// routes, Server Actions and links; no server-only imports.
+// Addresses of folders, tabs and pages under `/folders`, of deleted pages under `/deleted-pages`, and the actions in
+// their query string. Pure functions used by routes, Server Actions and links; no server-only imports.
 
 import { parseName } from "@/lib/names";
 
 /** The fixed prefix of all content addresses. */
 const FOLDERS_PATH = "/folders";
+
+/**
+ * The fixed prefix of the addresses of deleted pages. It names what it holds, so that deleted tabs and folders can get
+ * addresses of their own later.
+ */
+const DELETED_PAGES_PATH = "/deleted-pages";
 
 /** The suffix that marks a page in an address. It belongs to the address, not to the page name. */
 const PAGE_SUFFIX = ".md";
@@ -37,6 +43,19 @@ export function tabPath(folder: string, tab: string, action?: string): string {
 export function pagePath(folder: string, tab: string | null, page: string, action?: string): string {
   const place = tab === null ? `${FOLDERS_PATH}/${folder}` : `${FOLDERS_PATH}/${folder}/${tab}`;
   return withAction(`${place}/${page}${PAGE_SUFFIX}`, action);
+}
+
+/** The address of the list of the deleted pages of a folder. */
+export function deletedPagesPath(folder: string): string {
+  return `${DELETED_PAGES_PATH}/${folder}`;
+}
+
+/**
+ * The address of a deleted page of a folder, optionally with an action. Deleted pages are addressed by their id,
+ * because their names need not be unique.
+ */
+export function deletedPagePath(folder: string, id: string, action?: string): string {
+  return withAction(`${DELETED_PAGES_PATH}/${folder}/${id}`, action);
 }
 
 /**

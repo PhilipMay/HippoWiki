@@ -1,6 +1,7 @@
 import { connection } from "next/server";
 import { cache } from "react";
 
+import { parsePageId } from "@/features/pages/schema";
 import { getDb } from "@/lib/db";
 import { parseName } from "@/lib/names";
 
@@ -89,3 +90,46 @@ export const getPage = cache(async (folderName: string, tabName: string | null, 
 
 /** A page with its folder and its tab, as the page view shows it. */
 export type PageWithPlace = NonNullable<Awaited<ReturnType<typeof getPage>>>;
+
+/**
+ * The page with its time of deletion as a `Date`, or `null` if it is not deleted. The queries of deleted pages only
+ * read pages with `deletedAt` set; this tells the type system so.
+ */
+function asDeleted<Entry extends { deletedAt: Date | null }>(page: Entry): (Entry & { deletedAt: Date }) | null {
+  const { deletedAt } = page;
+  return deletedAt ? { ...page, deletedAt } : null;
+}
+
+/** The deleted pages of the folder with id, name, title and time of deletion, without their content, newest first. */
+export async function listDeletedPages(folderId: string) {
+  await connection();
+  const pages = await getDb().page.findMany({
+    where: { folderId, deletedAt: { not: null } },
+    select: { id: true, name: true, title: true, deletedAt: true },
+    // The id keeps pages deleted at the same moment in a stable order.
+    orderBy: [{ deletedAt: "desc" }, { id: "asc" }],
+  });
+  return pages.flatMap((page) => asDeleted(page) ?? []);
+}
+
+export type DeletedPageSummary = Awaited<ReturnType<typeof listDeletedPages>>[number];
+
+/**
+ * The deleted page with the given id in the folder with the given name, together with its folder. `null` if the name
+ * or the id is malformed, the page belongs to another folder or is not deleted. Cached per request, so that
+ * `generateMetadata` and the page component share one query.
+ */
+export const getDeletedPage = cache(async (folderName: string, id: string) => {
+  await connection();
+  const folder = parseName(folderName);
+  const pageId = parsePageId(id);
+  if (!folder || !pageId) return null;
+  const page = await getDb().page.findFirst({
+    where: { id: pageId, folder: { name: folder }, deletedAt: { not: null } },
+    include: { folder: { select: { id: true, name: true } } },
+  });
+  return page && asDeleted(page);
+});
+
+/** A deleted page with its folder, as the deleted page view shows it. */
+export type DeletedPage = NonNullable<Awaited<ReturnType<typeof getDeletedPage>>>;

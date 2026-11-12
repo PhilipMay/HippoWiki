@@ -1,6 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { directPagesFirst, getPage, listAllFolderPages, listFolderPages, listTabPages } from "@/features/pages/queries";
+import {
+  directPagesFirst,
+  getDeletedPage,
+  getPage,
+  listAllFolderPages,
+  listDeletedPages,
+  listFolderPages,
+  listTabPages,
+} from "@/features/pages/queries";
 
 const mocks = vi.hoisted(() => ({
   connection: vi.fn(),
@@ -23,6 +31,7 @@ beforeEach(() => {
 
 const FOLDER_ID = "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10";
 const TAB_ID = "5a2c1c0e-3f55-4a55-8a42-5d2f0e6a9b11";
+const PAGE_ID = "9c4d2b7e-1a3f-4c5d-8e6f-7a8b9c0d1e22";
 
 /** Names that are not valid as written: not lowercase, surrounding whitespace, a double hyphen, empty. */
 const MALFORMED_NAMES = ["Overview", " overview", "overview ", "release--notes", "-overview", ""];
@@ -44,6 +53,8 @@ describe("every query", () => {
     ["listTabPages", () => listTabPages(TAB_ID)],
     ["listAllFolderPages", () => listAllFolderPages(FOLDER_ID)],
     ["getPage", () => getPage("handbook", null, "overview")],
+    ["listDeletedPages", () => listDeletedPages(FOLDER_ID)],
+    ["getDeletedPage", () => getDeletedPage("handbook", PAGE_ID)],
   ])("%s waits for connection() before it reads the database", async (_name, query) => {
     let release = () => {};
     mocks.connection.mockReturnValue(new Promise<void>((resolve) => (release = resolve)));
@@ -143,6 +154,54 @@ describe("getPage", () => {
     await expect(getPage("handbook", name, "overview")).resolves.toBeNull();
     expect(readCount()).toBe(0);
   });
+});
+
+describe("listDeletedPages", () => {
+  it("lists only the deleted pages of the folder", async () => {
+    const deletedAt = new Date("2026-11-12T10:00:00Z");
+    mocks.findMany.mockResolvedValue([{ id: PAGE_ID, name: "overview", title: "Overview", deletedAt }]);
+
+    await expect(listDeletedPages(FOLDER_ID)).resolves.toEqual([
+      { id: PAGE_ID, name: "overview", title: "Overview", deletedAt },
+    ]);
+    expect(mocks.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { folderId: FOLDER_ID, deletedAt: { not: null } } }),
+    );
+  });
+});
+
+describe("getDeletedPage", () => {
+  it("looks for a deleted page with the id in the folder of that name", async () => {
+    const stored = { id: PAGE_ID, deletedAt: new Date(), folder: { id: FOLDER_ID, name: "handbook" } };
+    mocks.findFirst.mockResolvedValue(stored);
+
+    await expect(getDeletedPage("handbook", PAGE_ID)).resolves.toEqual(stored);
+    expect(mocks.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: PAGE_ID, folder: { name: "handbook" }, deletedAt: { not: null } } }),
+    );
+  });
+
+  it("returns null when there is no such deleted page", async () => {
+    mocks.findFirst.mockResolvedValue(null);
+
+    await expect(getDeletedPage("handbook", PAGE_ID)).resolves.toBeNull();
+  });
+
+  it.each(MALFORMED_NAMES)(
+    "returns null for the malformed folder name %j without reading the database",
+    async (name) => {
+      await expect(getDeletedPage(name, PAGE_ID)).resolves.toBeNull();
+      expect(readCount()).toBe(0);
+    },
+  );
+
+  it.each(["not-a-uuid", "", `${PAGE_ID}0`, PAGE_ID.replaceAll("-", ""), "overview"])(
+    "returns null for the malformed id %j without reading the database",
+    async (id) => {
+      await expect(getDeletedPage("handbook", id)).resolves.toBeNull();
+      expect(readCount()).toBe(0);
+    },
+  );
 });
 
 describe("directPagesFirst", () => {

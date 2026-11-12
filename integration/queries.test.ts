@@ -2,7 +2,14 @@
 import { describe, expect, it } from "vitest";
 
 import { getFolderByName, getTab, listFolders, listTabs } from "@/features/folders/queries";
-import { getPage, listAllFolderPages, listFolderPages, listTabPages } from "@/features/pages/queries";
+import {
+  getDeletedPage,
+  getPage,
+  listAllFolderPages,
+  listDeletedPages,
+  listFolderPages,
+  listTabPages,
+} from "@/features/pages/queries";
 
 import { createFolder, createPage, createTab } from "../e2e/support/database";
 
@@ -123,5 +130,38 @@ describe("page queries", () => {
     await expect(getPage("docs", "guides", "only-in-news")).resolves.toBeNull();
     await expect(getPage("docs", "guides", "direct")).resolves.toBeNull();
     await expect(getPage("docs", null, "Not A Name")).resolves.toBeNull();
+  });
+});
+
+describe("deleted page queries", () => {
+  it("lists only the deleted pages of the folder, newest first", async () => {
+    const folder = await createFolder();
+    await createPage({ folder, name: "older", deletedAt: new Date("2026-11-01T10:00:00Z") });
+    await createPage({ folder, name: "newest", deletedAt: new Date("2026-11-03T10:00:00Z") });
+    await createPage({ folder, name: "middle", deletedAt: new Date("2026-11-02T10:00:00Z") });
+    await createPage({ folder, name: "not-deleted" });
+    await createPage({ name: "other-folder", deletedAt: new Date("2026-11-04T10:00:00Z") });
+
+    expect((await listDeletedPages(folder.id)).map(({ name }) => name)).toEqual(["newest", "middle", "older"]);
+  });
+
+  it("finds a deleted page of the folder by its id", async () => {
+    const folder = await createFolder({ name: "docs" });
+    const page = await createPage({ folder, name: "intro", deletedAt: new Date() });
+
+    await expect(getDeletedPage("docs", page.id)).resolves.toMatchObject({
+      id: page.id,
+      name: "intro",
+      folder: { id: folder.id, name: "docs" },
+    });
+  });
+
+  it("returns null for a page that is not deleted and for a deleted page of another folder", async () => {
+    const folder = await createFolder({ name: "docs" });
+    const kept = await createPage({ folder });
+    const elsewhere = await createPage({ folder: await createFolder({ name: "other" }), deletedAt: new Date() });
+
+    await expect(getDeletedPage("docs", kept.id)).resolves.toBeNull();
+    await expect(getDeletedPage("docs", elsewhere.id)).resolves.toBeNull();
   });
 });

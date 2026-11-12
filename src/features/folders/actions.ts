@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { parseFolderFormData, parseFolderId, parseTabFormData, parseTabId } from "@/features/folders/schema";
@@ -8,6 +7,7 @@ import { folderPath, tabPath } from "@/lib/addresses";
 import { getDb } from "@/lib/db";
 import { FOLDER_NAME, isForeignKeyViolation, isUniqueViolation, TAB_NAME } from "@/lib/db-errors";
 import { logger } from "@/lib/logger";
+import { revalidateContent } from "@/lib/revalidate";
 import { NAME_TAKEN_MESSAGE, type NameFormState } from "@/lib/names";
 
 const SAVE_FAILED_MESSAGE = "The folder could not be saved. Please try again.";
@@ -17,11 +17,6 @@ const TAB_GONE_MESSAGE = "This tab no longer exists.";
 
 /** The form state that shows "Name is already in use" at the name field. */
 const nameTakenState: NameFormState = { fieldErrors: { name: [NAME_TAKEN_MESSAGE] } };
-
-/** Revalidates every address under `/folders`, so that a renamed item's old and new address are both covered. */
-function revalidateFolders(): void {
-  revalidatePath("/folders", "layout");
-}
 
 /**
  * Creates a folder from the submitted name and redirects to its address. Returns the errors to show in the form if
@@ -45,7 +40,7 @@ export async function createFolder(_prevState: NameFormState, formData: FormData
   }
 
   logger.info({ folderId: id }, "folder created");
-  revalidateFolders();
+  revalidateContent();
   // `redirect` throws, so it must stay outside the try block above.
   redirect(folderPath(name));
 }
@@ -80,7 +75,7 @@ export async function renameFolder(id: string, _prevState: NameFormState, formDa
   }
 
   logger.info({ folderId }, "folder renamed");
-  revalidateFolders();
+  revalidateContent();
   redirect(folderPath(input.data.name));
 }
 
@@ -120,7 +115,7 @@ export async function createTab(
   }
 
   logger.info({ tabId: tab.id }, "tab created");
-  revalidateFolders();
+  revalidateContent();
   redirect(tabPath(tab.folder.name, tab.name));
 }
 
@@ -162,6 +157,6 @@ export async function renameTab(id: string, _prevState: NameFormState, formData:
   }
 
   logger.info({ tabId }, "tab renamed");
-  revalidateFolders();
+  revalidateContent();
   redirect(tabPath(tab.folder.name, tab.name));
 }

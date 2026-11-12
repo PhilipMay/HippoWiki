@@ -30,7 +30,7 @@ behaviour is described from the user's point of view in `page-deletion.md`.
 ## Checklist
 
 - [x] Deleted pages in the data model
-- [ ] Deleted pages list and view
+- [x] Deleted pages list and view
 - [ ] Deleting a page
 - [ ] Restoring a page
 - [ ] Wrap-up
