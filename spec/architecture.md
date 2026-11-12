@@ -8,12 +8,14 @@ How the code is organised and which patterns new code follows. The technology st
 - `src/app/`: routes (App Router), including the global `not-found`, `error` and `global-error` pages
 - `src/components/`: shared UI components (app bar, `Link`)
 - `src/lib/`: cross-cutting modules (`env.ts`, `db.ts`, `db-errors.ts`, `logger.ts`, `theme.ts`, `site.ts`,
-  `format.ts`, `hydration.ts`, `names.ts`, `addresses.ts`)
+  `format.ts`, `hydration.ts`, `names.ts`, `addresses.ts`, `revalidate.ts`)
   - `names.ts`: the name rule shared by folders, tabs and pages (`nameSchema`, `parseName`) and the form state of
     forms that ask for a name
-  - `addresses.ts`: the addresses under `/folders` (`folderPath`, `tabPath`, `pagePath`, `parsePageSegment`) and the
-    actions and views in their query string (`parseAction`, `parseView`)
-  - Both have no server-only imports, so Client Components can use them.
+  - `addresses.ts`: the addresses under `/folders` (`folderPath`, `tabPath`, `pagePath`, `parsePageSegment`) and
+    `/deleted-pages` (`deletedPagesPath`, `deletedPagePath`), and the actions and views in their query string
+    (`parseAction`, `parseView`)
+  - `names.ts` and `addresses.ts` have no server-only imports, so Client Components can use them.
+  - `revalidate.ts`: `revalidateContent()`, the revalidation after every write to folders, tabs and pages
 - `src/features/<feature>/`: everything about one feature – `schema.ts`, `queries.ts`, `actions.ts`, `components/`
   and pure helpers such as `derive.ts` and `limits.ts` for pages (no server-only imports, so Client Components can use
   them). `limits.ts` holds the field length limits, so that `schema.ts` can import `derive.ts` without a cycle.
@@ -32,8 +34,10 @@ How the code is organised and which patterns new code follows. The technology st
   - Queries that are used by both `generateMetadata` and the page are wrapped in React `cache()`.
 - Writes happen through Server Actions in the feature's `actions.ts`.
   - An action validates its input, writes, logs the event, calls `revalidatePath` for every affected route and
-    redirects. The actions for folders, tabs and pages call `revalidatePath("/folders", "layout")`, which covers every
-    address under `/folders`.
+    redirects. The actions for folders, tabs and pages call `revalidateContent()` from `src/lib/revalidate.ts`, which
+    calls `revalidatePath` with `"layout"` for `/folders` and `/deleted-pages` and so covers every address under both:
+    renaming a folder changes the addresses of its deleted pages, and creating or renaming a tab changes the places
+    offered when a page is restored.
   - An action redirects to the address of the item as stored, built with the helpers in `addresses.ts`, never to one
     built from submitted values.
   - On failure it returns a form state `{ fieldErrors?, message? }` that the form shows; the entered values are kept.
@@ -58,8 +62,9 @@ How the code is organised and which patterns new code follows. The technology st
 
 ## Addresses and actions
 
-- All content lives under `/folders`; the addresses are described in `content-structure.md`. Routes, Server Actions
-  and links build them with the helpers in `src/lib/addresses.ts` instead of writing paths by hand.
+- All content lives under `/folders`, deleted pages under `/deleted-pages`; the addresses are described in
+  `content-structure.md`. Routes, Server Actions and links build them with the helpers in `src/lib/addresses.ts`
+  instead of writing paths by hand.
 - What an address opens is given in its query string: an action as `?action=<action>`, a view as `?view=<view>`.
   A route reads them with `parseAction` and `parseView`, passing only the actions and views it has, and calls
   `notFound()` for `"invalid"`. A route without views calls `parseView` without allowed views.
@@ -108,8 +113,9 @@ How the code is organised and which patterns new code follows. The technology st
 - Dialogs that a route renders for an action use `disablePortal`, so that they are part of the server-rendered HTML
   like the rest of the page, and lock their controls until hydration as described above. The name dialog
   (`NameDialog` in `src/features/folders/components/`) is shared by folders, tabs and pages. The name field and the
-  place choice of a page (`PageNameAndPlaceFields` in `src/features/pages/components/`) are shared by the "Save page"
-  and the "Move or rename page" dialog; its `locked` prop locks them in a dialog that renders before hydration.
+  place choice of a page (`PageNameAndPlaceFields` in `src/features/pages/components/`) are shared by the "Save page",
+  the "Move or rename page" and the "Restore page" dialog; its `locked` prop locks them in a dialog that renders before
+  hydration, and a place of `null` checks no place.
 - A form with controlled radio buttons or checkboxes calls its Server Action in `onSubmit` inside `startTransition`
   instead of passing it as the form's `action`: React resets a form after its action, which puts these controls back
   to their initial state, out of sync with the controlled one.

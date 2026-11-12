@@ -16,6 +16,7 @@ folders, tabs, names and addresses – is described in `content-structure.md`.
 - `content`: text, the Markdown source
 - `folderId`, `tabId`: the folder the page lives in and, if it has one, its tab (see `content-structure.md`)
 - `createdAt`, `updatedAt`: timestamps
+- `deletedAt`: `null` for a page that is not deleted, the time of deletion otherwise (see `page-deletion.md`)
 
 ## Input rules
 
@@ -25,6 +26,7 @@ Defined in `src/features/pages/schema.ts`, with the length limits in `src/featur
   - a new page: `name`, `content` and the place, a tab or the folder itself
   - editing: `content` only
   - moving or renaming: `name` and the place, a tab or the folder itself
+  - deleting: nothing; restoring: `name` and the place (see `page-deletion.md`)
 - The place is submitted in the field `place`: the id of a tab of the folder, or empty for the folder itself. A
   malformed tab id shows "This tab no longer exists.", together with the field errors, if there are any; a tab that no
   longer exists or belongs to another folder shows the same message.
@@ -73,8 +75,8 @@ same views; actions are given as `?action=<action>` (see `content-structure.md`)
   shown in the open dialog and keep name, place and content; "Cancel" in the dialog closes it and keeps the content.
   Saving shows the new page.
 - The page address: the folder breadcrumb (see `content-structure.md`) with the folder list, the folder, the tab if
-  the page has one, and the page name with `.md`. Below it the last update and "Edit" and "Move or rename" above a
-  divider, then the rendered Markdown (GitHub Flavored Markdown, raw HTML shown as text, unsafe link URLs removed). The
+  the page has one, and the page name with `.md`. Below it the last update and "Edit", "Move or rename" and "Delete"
+  above a divider, then the rendered Markdown (GitHub Flavored Markdown, raw HTML shown as text, unsafe link URLs removed). The
   stored title is not shown; the content's `#` heading is the page's only level-one heading. Markdown headings are
   drawn two Typography sizes smaller than their tag (`h1` as `h3`, which is the size page titles had). The browser tab
   uses the stored title.
@@ -83,13 +85,15 @@ same views; actions are given as `?action=<action>` (see `content-structure.md`)
   or above the limit shows the error at the content field, keeps the entered content and focuses the field.
 - `?action=move-or-rename`: the "Move or rename page" dialog on top of the page (see `content-structure.md`). Saving
   stores name and place together and shows the page at its new address.
-- Saving a page that no longer exists shows an error message and leaves the focus where it is.
+- `?action=delete`: the "Delete page" dialog on top of the page (see `page-deletion.md`). Deleting leads to the folder
+  or tab the page was in.
+- Saving a page that no longer exists or is deleted shows an error message and leaves the focus where it is.
 - `GET /api/health`: `{ "status": "ok" }` while the database is reachable, status 503 and a logged error otherwise.
 
 ## Current limits
 
 - one user, no login
-- pages cannot be deleted
+- a deleted page cannot be removed for good and is restored only into its own folder (see `page-deletion.md`)
 - no search, no `[[wiki links]]`, no history, no attachments
 - raw Markdown editing in a textarea
 - the title comes only from a leading `# Title` heading: no setext headings, no front matter, no live display of the

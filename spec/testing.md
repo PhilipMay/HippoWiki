@@ -82,7 +82,8 @@ How the code is tested. Commands are listed in `README.md`.
     as `folder`; without either, it creates a folder for the page. Any field, e.g. `name` or `updatedAt`, can be set.
     Like the forms, it derives the title from the content; the content defaults to `# <title>`, so
     `createPage({ title: "Older page" })` works. A title given together with content is stored as is, to set up a page
-    that was stored before titles were derived.
+    that was stored before titles were derived. With `deletedAt` it creates a deleted page, which has no tab, so it
+    cannot be combined with `tab`.
   - Tests that open an address give the folder, tab and page fixed names, e.g.
     `createPage({ folder, name: "overview" })` for `/folders/<folder>/overview.md`.
   - `getTestDb()` returns a Prisma client for the test database, e.g. to check what an action stored.

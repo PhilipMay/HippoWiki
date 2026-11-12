@@ -14,9 +14,9 @@ Candidates for the next features, not ordered. Before one is started, it gets it
 ## Feature Candidates
 
 - Content Structure
-  - Soft Delete of Folders, Tabs and Documents
-  - Deleted Item Lists
-  - Restoring Deleted Items
+  - Soft Delete of Folders and Tabs
+  - Deleted Folder and Tab Lists
+  - Restoring Deleted Folders and Tabs
 - Users and Accounts
   - Multi-User Accounts
   - Name Rules for Users

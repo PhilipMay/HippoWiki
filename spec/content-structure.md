@@ -2,8 +2,8 @@
 
 The content structure as built: folders, optional tabs inside a folder and Markdown pages. Code: `src/features/folders/`
 (folders and tabs), `src/features/pages/` (pages), `src/lib/names.ts`, `src/lib/addresses.ts` and the routes under
-`src/app/folders/`. What a page itself is – its content, derived title, editor and rendering – is described in
-`pages.md`.
+`src/app/folders/` and `src/app/deleted-pages/`. What a page itself is – its content, derived title, editor and
+rendering – is described in `pages.md`, deleting and restoring pages in `page-deletion.md`.
 
 ## Overview
 
@@ -29,6 +29,7 @@ In `prisma/schema.prisma`:
 - `Page`, as far as the structure goes (the other fields are in `pages.md`):
   - `folderId`: required
   - `tabId`: optional; without a tab the page is placed directly in its folder
+  - `deletedAt`: set for a deleted page, which keeps its folder and has no tab (see `page-deletion.md`)
   - A composite foreign key `(tabId, folderId)` to `Tab(id, folderId)` makes sure a page's tab belongs to the page's
     folder.
 - All foreign keys use `onDelete: Restrict`.
@@ -49,7 +50,8 @@ Defined in `src/lib/names.ts`, shared by server and client code:
   - tab names within their folder
   - page names within their tab
   - the names of pages placed directly in a folder among those pages only: a partial unique index on
-    `(folderId, name)` for pages without a tab
+    `(folderId, name)` for pages without a tab that are not deleted
+  - Deleted pages never block a name, and deleted pages of a folder may share one.
   - Tab names and the names of pages placed directly in the folder are separate: a tab `guides` and a page `guides`
     placed directly in the same folder exist side by side, because `.md` keeps their addresses apart.
 - A taken name shows "Name is already in use" at the name field; no suffix is added automatically.
@@ -59,34 +61,43 @@ Defined in `src/lib/names.ts`, shared by server and client code:
 
 Built and parsed in `src/lib/addresses.ts`:
 
-- All content lives under the fixed prefix `/folders`. The rest of the root belongs to the app (`/api` today).
+- All content lives under the fixed prefix `/folders`; deleted pages live under `/deleted-pages`, named for what it
+  holds, so that deleted tabs and folders can get addresses of their own later. The rest of the root belongs to the
+  app (`/api` today).
 - The addresses:
   - `/folders`: the list of folders
   - `/folders/<folder>`: a folder
   - `/folders/<folder>/<tab>`: a tab
   - `/folders/<folder>/<page>.md`: a page placed directly in a folder
   - `/folders/<folder>/<tab>/<page>.md`: a page in a tab
+  - `/deleted-pages/<folder>`: the deleted pages of a folder
+  - `/deleted-pages/<folder>/<id>`: a deleted page, addressed by its id, because the names of deleted pages need not
+    be unique
+  - `/deleted-pages` on its own has no route and shows the not-found page.
 - The `.md` belongs to the address, not to the name. A segment that ends in `.md` is a page, any other is a tab. Only
   the lowercase suffix counts: `/folders/<folder>/guides.MD` shows the not-found page.
 - Malformed names in an address are treated like missing items and show the not-found page, as do an unknown folder,
   tab or page and a page of another folder or tab. Pages have no address outside `/folders`; `/pages` shows the
   not-found page.
-- A rename or move changes the address. There are no redirects from the old address; it shows the not-found page.
+- A rename or move changes the address, deleting a page removes it. There are no redirects from the old address; it
+  shows the not-found page. Renaming a folder changes the addresses of its deleted pages as well.
 
 ## Actions and views
 
 - An action is given in the query string as `?action=<action>` and opens a dialog or the editor:
 
-  | Address    | Action           | Opens                                                    |
-  | ---------- | ---------------- | -------------------------------------------------------- |
-  | `/folders` | `new`            | the "New folder" dialog                                  |
-  | folder     | `new`            | the editor for a new page, the folder itself preselected |
-  | folder     | `rename`         | the "Rename folder" dialog                               |
-  | folder     | `new-tab`        | the "New tab" dialog                                     |
-  | tab        | `new`            | the editor for a new page, the tab preselected           |
-  | tab        | `rename`         | the "Rename tab" dialog                                  |
-  | page       | `edit`           | the edit form (see `pages.md`)                           |
-  | page       | `move-or-rename` | the "Move or rename page" dialog                         |
+  | Address      | Action           | Opens                                                    |
+  | ------------ | ---------------- | -------------------------------------------------------- |
+  | `/folders`   | `new`            | the "New folder" dialog                                  |
+  | folder       | `new`            | the editor for a new page, the folder itself preselected |
+  | folder       | `rename`         | the "Rename folder" dialog                               |
+  | folder       | `new-tab`        | the "New tab" dialog                                     |
+  | tab          | `new`            | the editor for a new page, the tab preselected           |
+  | tab          | `rename`         | the "Rename tab" dialog                                  |
+  | page         | `edit`           | the edit form (see `pages.md`)                           |
+  | page         | `move-or-rename` | the "Move or rename page" dialog                         |
+  | page         | `delete`         | the "Delete page" dialog                                 |
+  | deleted page | `restore`        | the "Restore page" dialog                                |
 
 - A folder address also has the view `?view=all`, the list of all its pages.
 - Each address accepts only its own actions and views. An unknown, empty or repeated action or view, one of another
@@ -95,7 +106,7 @@ Built and parsed in `src/lib/addresses.ts`:
   Escape key to the address without the query string.
 - Folders and tabs are created and renamed in the name dialog. Pages are created and edited in the editor, a new
   page gets its name and place in the "Save page" dialog; pages are moved and renamed in the "Move or rename page"
-  dialog.
+  dialog; pages are deleted in the "Delete page" dialog and restored in the "Restore page" dialog.
 - The name dialog focuses the name field when it opens and keeps the entered name after a rejected save.
 
 ## Routes
@@ -103,7 +114,8 @@ Built and parsed in `src/lib/addresses.ts`:
 - `/` redirects to `/folders`; the app bar links to `/folders`.
 - `/folders`: the folders with their last update, each linking to its folder; an empty state when there are none; a
   "New folder" button.
-- `/folders/<folder>`: the folder name as heading with the buttons "Rename", "All pages", "New tab" and "New page",
+- `/folders/<folder>`: the folder name as heading with the buttons "Rename", "All pages", "Deleted pages", "New tab"
+  and "New page",
   which wrap on narrow screens; below it one list "Contents" (`FolderContentsList`): first the pages placed directly in
   the folder, each with a document icon, its title, its name with `.md` and its last update, linking to the page; then
   its tabs, each with a folder icon, its name and its last update, linking to the tab. Only a folder with neither pages
@@ -113,18 +125,21 @@ Built and parsed in `src/lib/addresses.ts`:
   when the folder has no pages at all. The view has no buttons.
 - `/folders/<folder>/<tab>`: the breadcrumb `Folders › <folder> › <tab>`, the tab name as heading with "Rename" and
   "New page", and the pages of the tab, each with a document icon; an empty state when there are none.
-- The breadcrumb (`FolderBreadcrumbs`) links to the folder list, the folder and, on page addresses in a tab, the tab;
-  the current entry follows as text, marked with `aria-current="page"`. The folder address and `/folders` have none.
+- `/deleted-pages/<folder>` and `/deleted-pages/<folder>/<id>`: the deleted pages of a folder and a deleted page, see
+  `page-deletion.md`.
+- The breadcrumb (`FolderBreadcrumbs`) links to the folder list, the folder and, on page addresses in a tab, the tab,
+  on a deleted page "Deleted pages"; the current entry follows as text, marked with `aria-current="page"`. The folder address and `/folders` have none.
 - Page addresses are described in `pages.md`.
-- Browser titles are built with `pageTitle()`: "Folders", the folder name, `<tab> – <folder>` and
-  `All pages – <folder>`.
+- Browser titles are built with `pageTitle()`: "Folders", the folder name, `<tab> – <folder>`,
+  `All pages – <folder>`, `Deleted pages – <folder>` and `Deleted: <title>`.
 
 ## Changing the structure
 
 Server Actions in `src/features/folders/actions.ts` (`createFolder`, `renameFolder`, `createTab`, `renameTab`) and
-`src/features/pages/actions.ts` (`createPage`, `updatePageContent`, `moveOrRenamePage`):
+`src/features/pages/actions.ts` (`createPage`, `updatePageContent`, `moveOrRenamePage`, `deletePage`,
+`restorePage`):
 
-- Folders, tabs and pages can be created and renamed.
+- Folders, tabs and pages can be created and renamed. Pages can be deleted and restored (see `page-deletion.md`).
 - A new page can be created in any place of its folder: the "Save page" dialog offers "Directly in the folder" and
   `Tab <name>` for each tab of the folder, with the place the editor was opened for preselected (the folder on a folder
   address, the tab on a tab address). Every opening of the dialog starts with that place again. The editor's own
@@ -140,11 +155,13 @@ Server Actions in `src/features/folders/actions.ts` (`createFolder`, `renameFold
     entered name and the chosen place are kept, and the page keeps its name and place.
   - A tab of another folder is refused by the composite foreign key and reported like a tab that no longer exists, when
     creating and when moving a page.
-- Both dialogs render the name field and the places with the shared `PageNameAndPlaceFields`.
+- The "Save page", "Move or rename page" and "Restore page" dialogs render the name field and the places with the
+  shared `PageNameAndPlaceFields`; in the "Restore page" dialog no place is preselected.
 - Moving or renaming does not validate or touch the content.
 - A folder, tab or page that no longer exists when its form is saved shows a message above the form.
 - Every action redirects to the stored address of the item, never to one built from submitted values, and calls
-  `revalidatePath("/folders", "layout")`, which covers every address of the feature.
+  `revalidateContent()` from `src/lib/revalidate.ts`, which revalidates every address under `/folders` and
+  `/deleted-pages`.
 
 ## Lists and order
 
@@ -154,6 +171,8 @@ Server Actions in `src/features/folders/actions.ts` (`createFolder`, `renameFold
 - The page list of a tab shows title, name with `.md` and last update.
 - The list of all pages of a folder is ordered by name and then by tab; among pages of the same name, the one placed
   directly in the folder comes first.
+- Deleted pages are missing from all of these lists. The deleted pages of a folder are listed newest first, with name,
+  title and time of deletion.
 - Lists show names and metadata only, never page content.
 
 ## Limits
@@ -164,7 +183,7 @@ Server Actions in `src/features/folders/actions.ts` (`createFolder`, `renameFold
 
 ## Current limits
 
-- Nothing can be deleted or restored: no folder, tab or page.
+- Folders and tabs cannot be deleted. Deleted pages cannot be removed for good (see `page-deletion.md`).
 - No rights per folder; one user, no login.
 - A page cannot be moved to another folder, a tab cannot be moved to another folder.
 - No redirects from old addresses after a rename or move.
