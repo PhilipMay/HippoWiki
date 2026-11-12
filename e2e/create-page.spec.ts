@@ -47,7 +47,6 @@ test("creating a page derives title and name from the title heading and shows th
   await page.getByRole("button", { name: "Save" }).click();
 
   const dialog = saveDialog(page);
-  await expect(dialog.getByLabel("Title")).toHaveValue("Getting started");
   await expect(dialog.getByLabel("Name")).toHaveValue("getting-started");
   await expect(dialog.getByLabel("Name")).toHaveAccessibleDescription("Address: /folders/handbook/getting-started.md");
   await dialog.getByRole("button", { name: "Save" }).click();
@@ -94,19 +93,19 @@ for (const { name, content } of [
     // Adding a title heading removes the error and opens the dialog.
     await field.fill(`# Fixed\n\n${content}`);
     await page.getByRole("button", { name: "Save" }).click();
-    await expect(saveDialog(page).getByLabel("Title")).toHaveValue("Fixed");
+    await expect(saveDialog(page).getByLabel("Name")).toHaveValue("fixed");
     await expect(field).toHaveAttribute("aria-invalid", "false");
     expect(errors).toEqual([]);
   });
 }
 
-test("the dialog shows the title read-only and has no editable title field", async ({ page }) => {
-  const dialog = await openSaveDialog(page, "# Read-only title\n\nBody");
+test("the dialog asks only for the name and shows no title", async ({ page }) => {
+  const dialog = await openSaveDialog(page, "# Hidden title\n\nBody");
 
-  const title = dialog.getByLabel("Title");
-  await expect(title).toHaveValue("Read-only title");
-  await expect(title).not.toBeEditable();
-  await expect(title).not.toHaveAttribute("name");
+  await expect(dialog.getByLabel("Title")).toHaveCount(0);
+  await expect(dialog.getByRole("textbox")).toHaveCount(1);
+  await expect(dialog.getByText("Hidden title")).toHaveCount(0);
+  await expect(dialog.getByLabel("Name")).toHaveValue("hidden-title");
   await expect(dialog.getByLabel("Name")).toBeEditable();
   await expect(dialog.getByLabel("Name")).toBeFocused();
 });
@@ -114,7 +113,6 @@ test("the dialog shows the title read-only and has no editable title field", asy
 test("a heading with inline Markdown gives a plain title in the list and the browser tab", async ({ page }) => {
   const dialog = await openSaveDialog(page, "# The *`npm`* **[guide](https://example.com)** ![logo](x.png)");
 
-  await expect(dialog.getByLabel("Title")).toHaveValue("The npm guide logo");
   await expect(dialog.getByLabel("Name")).toHaveValue("the-npm-guide-logo");
   await dialog.getByRole("button", { name: "Save" }).click();
 
@@ -129,7 +127,6 @@ test("a heading with inline Markdown gives a plain title in the list and the bro
 test("an umlaut title gives a name with spelled-out umlauts", async ({ page }) => {
   const dialog = await openSaveDialog(page, "# Über Größen");
 
-  await expect(dialog.getByLabel("Title")).toHaveValue("Über Größen");
   await expect(dialog.getByLabel("Name")).toHaveValue("ueber-groessen");
   await dialog.getByRole("button", { name: "Save" }).click();
 
@@ -166,7 +163,6 @@ test("a taken name shows an error in the open dialog and keeps all values", asyn
   await expect(name).toHaveAccessibleDescription("Name is already in use");
   await expect(dialog).toBeVisible();
   await expect(page).toHaveURL(NEW_PAGE);
-  await expect(dialog.getByLabel("Title")).toHaveValue("Taken");
   await expect(name).toHaveValue("taken");
   expect(await getTestDb().page.count()).toBe(1);
 
@@ -204,7 +200,6 @@ for (const { name, error } of [
     const nameField = dialog.getByLabel("Name");
     await expect(nameField).toHaveAttribute("aria-invalid", "true");
     await expect(nameField).toHaveAccessibleDescription(error);
-    await expect(dialog.getByLabel("Title")).toHaveValue("Valid title");
     await expect(page).toHaveURL(NEW_PAGE);
     await expect(nameField).toHaveValue(name);
     expect(await getTestDb().page.count()).toBe(0);
@@ -224,7 +219,6 @@ test("no page name is reserved: a page can be named new", async ({ page }) => {
 test("a title in a non-Latin script gives an empty name that must be entered", async ({ page }) => {
   const dialog = await openSaveDialog(page, "# 日本語");
 
-  await expect(dialog.getByLabel("Title")).toHaveValue("日本語");
   await expect(dialog.getByLabel("Name")).toHaveValue("");
   await dialog.getByLabel("Name").fill("japanese");
   await dialog.getByRole("button", { name: "Save" }).click();
@@ -246,7 +240,6 @@ test("cancel in the dialog keeps the content, creates nothing and derives again 
 
   await content.fill("# Second draft\n\nBody");
   await page.getByRole("button", { name: "Save" }).click();
-  await expect(dialog.getByLabel("Title")).toHaveValue("Second draft");
   await expect(dialog.getByLabel("Name")).toHaveValue("second-draft");
 });
 

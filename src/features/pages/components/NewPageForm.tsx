@@ -33,13 +33,13 @@ type NewPageFormProps = {
 
 /**
  * Form for a new page that asks only for the Markdown content, which must start with a title heading (`# Title`).
- * "Save" derives the title and opens a dialog that shows it and asks for the name, prefilled from the title.
+ * "Save" derives the title and opens a dialog that asks only for the name, prefilled from the title.
  */
 export default function NewPageForm({ action, folderName, tabName }: NewPageFormProps) {
   const [content, setContent] = useState("");
   const [open, setOpen] = useState(false);
-  // The title derived when "Save" was last pressed. It stays while the dialog closes, so the dialog does not change
-  // during its exit transition.
+  // The title derived when "Save" was last pressed; the dialog suggests the name from it. The title is not submitted,
+  // the server derives it again from the content.
   const [title, setTitle] = useState("");
   const [contentError, setContentError] = useState<string | null>(null);
   // A new key for every opening remounts the dialog, so that the name is derived again and errors of an earlier attempt
@@ -101,14 +101,14 @@ export default function NewPageForm({ action, folderName, tabName }: NewPageForm
 
 type SavePageDialogProps = NewPageFormProps & {
   open: boolean;
-  /** The title derived from the content, shown read-only; the server derives it again on save. */
+  /** The title derived from the content, used to suggest the name; the server derives it again on save. */
   title: string;
   /** The Markdown content of the new page, submitted with the name. */
   content: string;
   onClose: () => void;
 };
 
-/** Dialog "Save page" that shows the title, asks for the name and creates the page. */
+/** Dialog "Save page" that asks for the name and creates the page. */
 function SavePageDialog({ open, action, folderName, tabName, title, content, onClose }: SavePageDialogProps) {
   const [state, formAction, pending] = useActionState(action, {});
   const [name, setName] = useState(() => deriveName(title));
@@ -130,7 +130,7 @@ function SavePageDialog({ open, action, folderName, tabName, title, content, onC
       fullWidth
       maxWidth="sm"
       aria-labelledby={titleId}
-      // The name is the only field to edit. `autoFocus` does not hold here, because the dialog focuses itself on
+      // The name is the only field. `autoFocus` does not hold here, because the dialog focuses itself on
       // opening, so the name field is focused once the dialog has entered.
       slotProps={{ transition: { onEntered: () => nameRef.current?.focus() } }}
     >
@@ -141,14 +141,6 @@ function SavePageDialog({ open, action, folderName, tabName, title, content, onC
         <Box component="form" id={formId} action={formAction} noValidate>
           <Stack spacing={3} sx={{ pt: 1 }}>
             {message && <Alert severity="error">{message}</Alert>}
-            {/* No `name`: the title is not submitted, the server derives it from the content. */}
-            <TextField
-              label="Title"
-              value={title}
-              fullWidth
-              helperText="From the first heading of the content"
-              slotProps={{ htmlInput: { readOnly: true } }}
-            />
             <TextField
               name="name"
               label="Name"
