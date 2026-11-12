@@ -1,20 +1,5 @@
 # Review of `page-deletion-steps.md`
 
-## Summary
-
-The step plan reads consistently, and the prefix `/deleted-pages` is used the same way everywhere. It matches
-`page-deletion.md` on every behaviour: the place inside the folder is forgotten, the name is free right away, the old
-address shows the not-found page, no place is preselected on restore, and the scope leaves out the same things. There is
-no outright contradiction, but there are two real gaps and a few smaller points.
-
-- Blocker: 0
-- Major: 2
-- Minor: 1
-- Nit: 3
-
-What works: each step adds one visible capability; error and empty states are covered; the tests follow `testing.md`
-(unit, integration, end-to-end, hydration).
-
 ## issue: The delete step depends on a list that is only built in the next step
 
 - **Location:** `spec/page-deletion-steps.md`, sections "Checklist", "Deleting a page" and "Deleted pages list and
