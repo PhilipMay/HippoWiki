@@ -2,24 +2,6 @@
 
 Review of `spec/workflow.md`, following the structure and severity levels in `issue-report.md`.
 
-## Summary
-
-The workflow is clean, short and mostly helpful for AI use. There are no blockers and no hard contradictions, apart
-from one conflict in the wrap-up step. The main gaps are what to do when a step fails and some cases the file does not
-cover.
-
-- Blocker: 0
-- Major: 1
-- Minor: 8
-- Nit: 3
-
-What is good:
-
-- "Done" is defined by commands that can be run, and "not done means not committed" is unambiguous.
-- The example call for a step is ready to copy and paste.
-- The Goal/Build/Test split of each step gives an AI a clear contract.
-- The order of the wrap-up step is spelled out.
-
 ## Issues
 
 ### No rule for a step that cannot be finished
@@ -48,7 +30,7 @@ What is good:
   `testing.md` says that run covers what only exists in a production build, and CI runs it.
 - **Impact:** A step can count as done locally and still fail in CI.
 - **Evidence:** "`npm run check`, `npm run test:integration`, `npm run test:e2e` and `npm run build` pass"
-- **Suggestion (optional):** Add it, or state on purpose that CI covers it.
+- **Suggestion:** state on purpose that CI covers it
 
 ### The integration and end-to-end tests must not run at the same time
 
@@ -109,21 +91,6 @@ What is good:
 - **Evidence:** "'Test' lists the unit and end-to-end tests the step adds"
 - **Suggestion (required):** Change it to "unit, integration and end-to-end tests".
 
-### Writing the step plan itself has no rules
-
-- **Location:** `spec/workflow.md`, "Step plans", first bullet
-- **Severity:** Minor
-- **Category:** docs
-- **Problem:** The file does not say:
-  - whether the plan needs the user's approval before step 1;
-  - whether creating the plan gets its own commit;
-  - how big a step should be.
-- **Impact:** Steps vary in size. One that is too big for one call leaves half-done work that cannot be committed.
-- **Suggestion (optional):**
-  - Add an example call for writing a plan.
-  - Add the rule "the plan is committed on its own, and the user reviews it before step 1".
-  - Add a sizing rule: a step fits in one call, leaves the app working, and can be tested on its own.
-
 ### The template has no wrap-up section
 
 - **Location:** `spec/workflow.md`, "Step plan template"
@@ -132,20 +99,6 @@ What is good:
 - **Problem:** The checklist lists "Wrap-up", but the template shows only `<First step>`. The five wrap-up items have to
   be copied in by hand.
 - **Suggestion (optional):** Add a ready-made `## Wrap-up` section with the five Build items.
-
-### Work that is not a roadmap feature is not covered
-
-- **Location:** `spec/workflow.md`, "Step plans", first bullet, and "Wrap-up step"
-- **Severity:** Minor
-- **Category:** docs
-- **Problem:**
-  - The file does not say whether bug fixes, refactors and package upgrades ("a task of its own") need a plan, and what
-    counts as done for them.
-  - If a feature covers only part of a roadmap item, "Remove the feature from roadmap.md" is wrong; the rest should
-    stay.
-- **Suggestion (optional):**
-  - Add a short "Other work" section: same done rule and commit rule, no plan needed.
-  - Change the wrap-up item to: remove or shorten the roadmap entry.
 
 ### The README rule is in two places
 
