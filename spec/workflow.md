@@ -27,9 +27,14 @@ implements it.
   the current branch, without asking first, then go on with the next step. The message is a short lowercase summary of
   what the step does, for example `add search index`. A step that is not done is not committed (see "When a step cannot
   be finished").
+- Once the wrap-up step is committed and the plan is finished, push the current branch with `git push`, without asking
+  first. Push only then: not after each step, and not when the plan stops early (see "When a step cannot be finished").
+- Never force-push. If the push fails (for example because the remote has new commits or the branch has no upstream),
+  stop and report the error with the relevant part of its output; do not pull, rebase or merge to fix it. The commits
+  stay local.
 - After each commit, give a short report of the step: what it built, the commit message, any change to the plan, and
   the manual checks left for the user. Then continue with the next step. Your final reply, once the plan is finished or
-  stopped, sums up all steps of the session.
+  stopped, sums up all steps of the session and says whether the push succeeded.
 - If a step shows that the scope needs to change (something the plan puts out of scope is needed, or something in scope
   should be dropped): stop before writing any code for the change, ask the user, and commit nothing. Once the user has
   approved the change, update the scope in the step file and continue with the step and the rest of the plan. If the
@@ -52,7 +57,8 @@ same items, ready to copy):
 5. Update the spec catalog in `CLAUDE.md`: add new spec files, remove this step file.
 
 The wrap-up step is not ticked off, because its step file is deleted; its commit includes the deletion of the step
-file. Otherwise it follows the same rules as every other step.
+file. The push of the finished plan follows this commit (see "Step plans"). Otherwise it follows the same rules as
+every other step.
 
 ## Rules for every step
 
@@ -93,6 +99,7 @@ Podman is not running, or an end-to-end test fails only now and then):
 
 - Stop the whole plan, not only the step: do not start any later step. The steps committed before stay as they are.
 - Do not tick the step off and do not commit.
+- Do not push; the steps committed before stay local.
 - Leave the changes in the working tree.
 - Stop and report which command failed, with the relevant part of its output.
 - Never skip, weaken or delete tests, and never loosen lint, type or format rules, to make the checks pass.
