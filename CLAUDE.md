@@ -22,6 +22,9 @@ The specification lives in the `spec/` directory. This catalog should always be 
 - `spec/users-and-login-requirements.md`: the requirements of the users and login feature, before it is built (login,
   sessions, failed logins, user names, passwords and hashing, admin account and setup, creating and listing users,
   forced password change, scope)
+- `spec/users-and-login-steps.md`: the step plan of the users and login feature (decisions, password hashing, user
+  accounts and admin setup, admin setup in the container image, login and logout, authenticated access only, login
+  wait, forced password change, user list, creating users, wrap-up)
 - `spec/roadmap.md`: backlog of candidate features
 - `spec/issue-report.md`: how to report issues found in code and document reviews
 
