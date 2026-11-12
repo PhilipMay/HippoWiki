@@ -1,4 +1,4 @@
-import { NO_STORAGE_STATE } from "./support/auth";
+import { ADMIN_STORAGE_STATE, NO_STORAGE_STATE } from "./support/auth";
 import { createFolder, createPage, createTab, createUser, resetTestDatabase, TEST_PASSWORD } from "./support/database";
 import { expect, test } from "./support/test";
 
@@ -8,6 +8,19 @@ test.use({ javaScriptEnabled: false });
 
 test.beforeEach(async () => {
   await resetTestDatabase();
+});
+
+test.describe("as the admin", () => {
+  test.use({ storageState: ADMIN_STORAGE_STATE });
+
+  test("the new user dialog is locked until hydration", async ({ page }) => {
+    await page.goto("/users?action=create");
+
+    const dialog = page.getByRole("dialog", { name: "New user" });
+    await expect(dialog.getByLabel("User name")).not.toBeEditable();
+    await expect(dialog.getByRole("button", { name: "Create" })).toBeDisabled();
+    await expect(dialog.getByRole("link", { name: "Cancel" })).toHaveAttribute("href", "/users");
+  });
 });
 
 test.describe("without a login", () => {

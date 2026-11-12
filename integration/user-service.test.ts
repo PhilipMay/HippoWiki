@@ -1,6 +1,7 @@
 // Runs the users service against the test database, to check its reads and writes on real data and with real hashes.
 import { describe, expect, it } from "vitest";
 
+import * as authService from "@/features/auth/service";
 import * as userService from "@/features/users/service";
 import { verifyPassword } from "@/lib/password-hash";
 
@@ -106,5 +107,109 @@ describe("listUsers", () => {
     const alice = await createUser({ name: "alice" });
 
     expect(await userService.listUsers({ id: alice.id, name: "alice" })).toBeNull();
+  });
+});
+
+describe("createUser", () => {
+  /** The admin as an actor, created in the database like every other user. */
+  async function createAdmin() {
+    const admin = await createUser({ name: "admin", mustChangePassword: false });
+    return { id: admin.id, name: admin.username };
+  }
+
+  it("creates a user with a pending password change who can log in with the returned password", async () => {
+    const admin = await createAdmin();
+
+    const result = await userService.createUser(admin, { name: "jane-doe" });
+
+    if (!result.ok) return expect.fail(`creation failed with ${result.error.code}`);
+    const { user, password } = result.value;
+    expect(password).toMatch(/^[A-HJ-NP-Za-km-z2-9]{20}$/);
+    const stored = await getTestDb().user.findUniqueOrThrow({
+      where: { username: "jane-doe" },
+      include: { accounts: true },
+    });
+    expect(user).toStrictEqual({
+      id: stored.id,
+      name: "jane-doe",
+      createdAt: stored.createdAt,
+      mustChangePassword: true,
+    });
+    expect(stored).toMatchObject({
+      name: "jane-doe",
+      email: "jane-doe@users.hippowiki.invalid",
+      mustChangePassword: true,
+    });
+    expect(stored.accounts).toHaveLength(1);
+    expect(stored.accounts[0]).toMatchObject({ providerId: "credential", accountId: stored.id });
+    // Only the hash is stored.
+    expect(JSON.stringify(stored)).not.toContain(password);
+    expect(await verifyPassword(stored.accounts[0]?.password ?? "", password)).toBe(true);
+
+    const login = await authService.logIn({ name: "jane-doe", password }, new Headers());
+    expect(login).toMatchObject({ ok: true, value: { user: { id: stored.id, mustChangePassword: true } } });
+  });
+
+  it("gives every user another password", async () => {
+    const admin = await createAdmin();
+
+    const first = await userService.createUser(admin, { name: "first-user" });
+    const second = await userService.createUser(admin, { name: "second-user" });
+
+    if (!first.ok || !second.ok) return expect.fail("creation failed");
+    expect(first.value.password).not.toBe(second.value.password);
+  });
+
+  it.each([
+    ["a taken name", "alice"],
+    ["the name of the admin", "admin"],
+    ["a taken name with spaces around it", "  alice "],
+  ])("answers name-taken for %s and stores nothing", async (_case, name) => {
+    const admin = await createAdmin();
+    await createUser({ name: "alice" });
+    const before = await getTestDb().user.findMany({ include: { accounts: true }, orderBy: { username: "asc" } });
+
+    const result = await userService.createUser(admin, { name });
+
+    expect(result).toEqual({ ok: false, error: { code: "name-taken" } });
+    expect(
+      await getTestDb().user.findMany({ include: { accounts: true }, orderBy: { username: "asc" } }),
+    ).toStrictEqual(before);
+  });
+
+  it("answers not-allowed for a normal user and stores nothing", async () => {
+    await createAdmin();
+    const alice = await createUser({ name: "alice" });
+
+    const result = await userService.createUser({ id: alice.id, name: "alice" }, { name: "jane-doe" });
+
+    expect(result).toEqual({ ok: false, error: { code: "not-allowed" } });
+    expect(await getTestDb().user.count()).toBe(2);
+    expect(await getTestDb().account.count()).toBe(2);
+  });
+
+  it("answers invalid-input for a name that breaks the rule and stores nothing", async () => {
+    const admin = await createAdmin();
+
+    const result = await userService.createUser(admin, { name: "Jane Doe" });
+
+    expect(result).toEqual({
+      ok: false,
+      error: { code: "invalid-input", fieldErrors: { name: ["Use lowercase letters, digits and single hyphens"] } },
+    });
+    expect(await getTestDb().user.count()).toBe(1);
+  });
+
+  it("shows the created user in the list of the admin", async () => {
+    const admin = await createAdmin();
+
+    await userService.createUser(admin, { name: "jane-doe" });
+
+    expect(
+      (await userService.listUsers(admin))?.map(({ name, mustChangePassword }) => ({ name, mustChangePassword })),
+    ).toEqual([
+      { name: "admin", mustChangePassword: false },
+      { name: "jane-doe", mustChangePassword: true },
+    ]);
   });
 });

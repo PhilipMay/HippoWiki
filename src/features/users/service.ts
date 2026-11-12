@@ -7,8 +7,16 @@
 
 import { z } from "zod";
 
+import { generateFirstPassword } from "@/features/users/password";
 import { newUserData } from "@/features/users/records";
-import { ADMIN_NAME, isAdmin, passwordSchemaFor, type PasswordFieldErrors } from "@/features/users/schema";
+import {
+  ADMIN_NAME,
+  isAdmin,
+  passwordSchemaFor,
+  userInputSchema,
+  type PasswordFieldErrors,
+  type UserFieldErrors,
+} from "@/features/users/schema";
 import { getDb } from "@/lib/db";
 import { isUniqueViolation, USER_NAME } from "@/lib/db-errors";
 import { logger } from "@/lib/logger";
@@ -47,6 +55,81 @@ export async function listUsers(actor: Actor): Promise<UserSummary[] | null> {
     createdAt,
     mustChangePassword,
   }));
+}
+
+/**
+ * A user that was just created, with the generated first password. The password leaves the service this once and is
+ * stored nowhere: only its hash is in the database.
+ */
+export type CreatedUser = { user: UserSummary; password: string };
+
+/** The actor is not the admin. */
+type NotAllowed = { code: "not-allowed" };
+type InvalidUser = { code: "invalid-input"; fieldErrors: UserFieldErrors };
+type NameTaken = { code: "name-taken" };
+
+export type CreateUserError = NotAllowed | InvalidUser | NameTaken | Busy | Failed;
+
+/** A generated first password for the user with the given name; never the name itself, as the password rules ask. */
+function firstPasswordFor(name: string): string {
+  let password = generateFirstPassword();
+  while (password === name) password = generateFirstPassword();
+  return password;
+}
+
+/**
+ * Creates a user with the given name and a generated first password, for the admin. The user has to change the
+ * password at the first login. The password is returned this once, for the admin to pass on, and is never logged.
+ * It checks the actor first, then the name, then hashes the password and writes.
+ */
+export async function createUser(actor: Actor, input: { name: string }): Promise<Result<CreatedUser, CreateUserError>> {
+  if (!isAdmin(actor)) {
+    logger.warn({ actorId: actor.id }, "user not created: the actor is not the admin");
+    return { ok: false, error: { code: "not-allowed" } };
+  }
+
+  const parsed = userInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: { code: "invalid-input", fieldErrors: z.flattenError(parsed.error).fieldErrors } };
+  }
+  const { name } = parsed.data;
+
+  const password = firstPasswordFor(name);
+  let passwordHash: string;
+  try {
+    passwordHash = await hashPassword(password);
+  } catch (err) {
+    if (err instanceof PasswordHashBusyError) {
+      logger.warn({ name }, "too many password hashes are running, user not created");
+      return { ok: false, error: { code: "busy" } };
+    }
+    logger.error({ err, name }, "failed to hash the first password of a new user");
+    return { ok: false, error: { code: "failed" } };
+  }
+
+  let user: UserSummary;
+  try {
+    const created = await getDb().user.create({
+      data: newUserData({ name, passwordHash, mustChangePassword: true }),
+      select: { id: true, username: true, createdAt: true, mustChangePassword: true },
+    });
+    user = {
+      id: created.id,
+      name: created.username,
+      createdAt: created.createdAt,
+      mustChangePassword: created.mustChangePassword,
+    };
+  } catch (err) {
+    if (isUniqueViolation(err, USER_NAME)) {
+      logger.warn({ name }, "name of new user already in use");
+      return { ok: false, error: { code: "name-taken" } };
+    }
+    logger.error({ err, name }, "failed to create user");
+    return { ok: false, error: { code: "failed" } };
+  }
+
+  logger.info({ userId: user.id, actorId: actor.id }, "user created");
+  return { ok: true, value: { user, password } };
 }
 
 /** What `ensureAdmin()` found or did: the admin was created, or it existed already. */

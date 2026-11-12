@@ -115,7 +115,10 @@ anything else; that ends the other sessions of the user.
 
 The admin sees all users at `/users`, each with the time it was created and a mark while it still has its first
 password; the header shows the menu entry "Users" to the admin only, and for every other user the address is not
-found. User accounts are stored in the database. There is one admin account, named `admin`; it is
+found. There the admin also creates users, with "New user" (`/users?action=create`): the admin enters a
+user name, HippoWiki generates a first password of 20 characters and shows it exactly once, with a copy button, for
+the admin to pass on. The new user has to change it at the first login. A lost first password cannot be shown again
+or reset yet. User accounts are stored in the database. There is one admin account, named `admin`; it is
 created by the admin setup or by the seed:
 
 - `npm run db:seed` inserts two known users for development (`prisma/known-users.ts`), with the password change
