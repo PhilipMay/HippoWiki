@@ -13,17 +13,17 @@ behaviour is described from the user's point of view in `page-deletion.md`.
   - deleted pages disappear from the folder contents, the tab and "All pages"; their old address shows the not-found
     page; their name is free right away
   - a deleted page keeps its folder and forgets its place inside the folder
-  - the list of the deleted pages of a folder at `/deleted-folders/<folder>`, reached by a "Deleted pages" button next
+  - the list of the deleted pages of a folder at `/deleted-pages/<folder>`, reached by a "Deleted pages" button next
     to "All pages", newest first, with an empty state
-  - a deleted page, read-only, at `/deleted-folders/<folder>/<id>`
-  - the "Restore page" dialog at `/deleted-folders/<folder>/<id>?action=restore`: the old name prefilled, no
+  - a deleted page, read-only, at `/deleted-pages/<folder>/<id>`
+  - the "Restore page" dialog at `/deleted-pages/<folder>/<id>?action=restore`: the old name prefilled, no
     preselected place, "Choose a place", "Name is already in use", the address shown once a place is chosen
 - Not in:
   - deleting folders or tabs
   - removing a deleted page for good, emptying all deleted pages at once, automatic cleanup after some time
   - restoring a page into another folder
   - recording who deleted a page
-  - an address `/deleted-folders` on its own; it shows the not-found page
+  - an address `/deleted-pages` on its own; it shows the not-found page
   - editing, moving or renaming a deleted page other than by restoring it
   - redirects from the old address of a deleted page
 
@@ -89,7 +89,7 @@ A page can be deleted from its address after a short confirmation, and you land 
   - In one transaction it reads the names of the page's folder and tab and sets `deletedAt` to the current time and
     `tabId` to `null` with `updateMany` where the page is not deleted. A count of 0 shows "This page no longer exists.".
   - It logs the event with the page id, calls `revalidatePath("/folders", "layout")` and
-    `revalidatePath("/deleted-folders", "layout")` and redirects to the stored address of the folder or tab the page
+    `revalidatePath("/deleted-pages", "layout")` and redirects to the stored address of the folder or tab the page
     was in.
   - Any other database error is logged and shows "The page could not be deleted. Please try again.".
 
@@ -114,17 +114,18 @@ Each folder lists its deleted pages, and a deleted page can be opened and read, 
 
 ### Build
 
-- Addresses in `src/lib/addresses.ts`: `deletedPagesPath(folder)` for `/deleted-folders/<folder>` and
-  `deletedPagePath(folder, id, action?)` for `/deleted-folders/<folder>/<id>`. Deleted pages are addressed by their id,
-  because their names need not be unique.
+- Addresses in `src/lib/addresses.ts`: `deletedPagesPath(folder)` for `/deleted-pages/<folder>` and
+  `deletedPagePath(folder, id, action?)` for `/deleted-pages/<folder>/<id>`. Deleted pages are addressed by their id,
+  because their names need not be unique. The prefix `/deleted-pages` is named for what it holds, so deleted tabs and
+  folders can get addresses of their own later.
 - Queries in `src/features/pages/queries.ts`:
   - `listDeletedPages(folderId)`: the deleted pages of the folder with id, name, title and `deletedAt`, without their
     content, newest first.
   - `getDeletedPage(folderName, id)`, wrapped in `cache()`: the deleted page with the given id in the folder of that
     name, with its folder; `null` for a malformed name or id, a page of another folder or a page that is not deleted.
-- Routes `src/app/deleted-folders/[folder]/page.tsx` and `src/app/deleted-folders/[folder]/[id]/page.tsx`. An unknown
+- Routes `src/app/deleted-pages/[folder]/page.tsx` and `src/app/deleted-pages/[folder]/[id]/page.tsx`. An unknown
   or malformed folder or id, a page of another folder, a page that is not deleted and any action or view show the
-  not-found page (`parseAction`, `parseView`). There is no route for `/deleted-folders` itself.
+  not-found page (`parseAction`, `parseView`). There is no route for `/deleted-pages` itself.
 - The folder address gets a "Deleted pages" button next to "All pages".
 - The list: the breadcrumb `Folders › <folder> › Deleted pages`, the heading "Deleted pages", and the deleted pages of
   the folder with name, title and time of deletion (`formatDateTime`), newest first, each linking to the deleted page.
@@ -145,7 +146,7 @@ Each folder lists its deleted pages, and a deleted page can be opened and read, 
   - the list shows name, title and time of deletion, newest first, only of this folder; the empty state
   - a deleted page can be opened and read and has no edit controls
   - the not-found page for an unknown folder, a malformed or unknown id, a page of another folder, a page that is not
-    deleted, an action or view that the address does not have, and `/deleted-folders`
+    deleted, an action or view that the address does not have, and `/deleted-pages`
 
 ## Restoring a page
 
@@ -172,7 +173,7 @@ address.
   - A tab that no longer exists or belongs to another folder (foreign key violation) shows "This tab no longer
     exists.".
   - A count of 0, for a page that no longer exists or is not deleted, shows "This page no longer exists.".
-  - It logs the event, calls `revalidatePath("/folders", "layout")` and `revalidatePath("/deleted-folders", "layout")`
+  - It logs the event, calls `revalidatePath("/folders", "layout")` and `revalidatePath("/deleted-pages", "layout")`
     and redirects to the new stored address of the page.
 
 ### Test
@@ -202,9 +203,9 @@ Move the lasting content of this plan into the other spec files and remove the p
    spec; update `architecture.md`, `testing.md` or `tech.md` where conventions changed.
    - Rewrite `page-deletion.md` as the feature as built.
    - `pages.md`: the field `deletedAt`, the "Delete" button and the current limits.
-   - `content-structure.md`: models and the unique index, the addresses under `/deleted-folders`, the actions `delete`
+   - `content-structure.md`: models and the unique index, the addresses under `/deleted-pages`, the actions `delete`
      and `restore`, routes, lists and current limits.
-   - `architecture.md`: the prefix `/deleted-folders` next to `/folders` in "Addresses and actions".
+   - `architecture.md`: the prefix `/deleted-pages` next to `/folders` in "Addresses and actions".
 2. Remove the feature from `roadmap.md`: narrow the candidates for soft delete, deleted item lists and restoring to
    folders and tabs.
 3. Check that `README.md` has all the commands a developer needs.
