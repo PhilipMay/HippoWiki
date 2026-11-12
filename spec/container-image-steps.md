@@ -7,6 +7,9 @@ environment. The image applies the database migrations itself when it starts and
 installation needs nothing but the image and an empty database. Publishing a release on GitHub builds the image, checks
 that it starts and answers, and stores it in the GitHub Container Registry under the tag of the release.
 
+The requirements and the reasons for the decisions are in `container-image-requirements.md`. The wrap-up step folds
+that file into the description of the feature as built and deletes it.
+
 ## Scope
 
 - In:
@@ -204,14 +207,19 @@ Move the lasting content of this plan into the other spec files and remove the p
    stages, the start with the migration and `HIPPOWIKI_SKIP_MIGRATION`, the command that only migrates, the
    environment variables, the smoke test, the release workflow with its tags, and the limits. One limit to name:
    `/api/health` only checks that the database answers; a container started with `HIPPOWIKI_SKIP_MIGRATION=true`
-   against a database without the tables reports ok. Update the section "Continuous integration" in `testing.md` (the
-   number of workflows, the new workflow, the second `docker` entry of Dependabot) and add the GitHub Container
-   Registry to `tech.md`.
+   against a database without the tables reports ok. Fold `container-image-requirements.md` into this file: take over
+   what still holds and is not covered yet, in particular its sections "What the environment has to provide" and
+   "Decisions", worded as built instead of as required. Where the image as built differs from a requirement, describe
+   the image as built and name the difference in the report of the step. Update the section "Continuous integration"
+   in `testing.md` (the number of workflows, the new workflow, the second `docker` entry of Dependabot) and add the
+   GitHub Container Registry to `tech.md`.
 2. Remove "Container Image" and "Database Migrations Command" from `roadmap.md`.
 3. Check that `README.md` has all the commands a developer needs.
-4. Delete this step file.
-5. Update the spec catalog in `CLAUDE.md`: add `spec/container-image.md`, remove this step file.
+4. Delete this step file and `spec/container-image-requirements.md`.
+5. Update the spec catalog in `CLAUDE.md`: add `spec/container-image.md`, remove this step file and
+   `spec/container-image-requirements.md`.
 
 ### Test
 
+- No file in the repository refers to `container-image-requirements.md` or to this step file any more.
 - The commands in "When a step is done" in `spec/workflow.md` pass.

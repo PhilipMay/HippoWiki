@@ -2,7 +2,8 @@
 
 What the container image of HippoWiki has to do, and why. The image is the way to run HippoWiki on a first
 pre-production environment, outside the development machine. How it is built is planned in `container-image-steps.md`;
-this file only says what is required. Nothing of it is built yet.
+this file only says what is required. Nothing of it is built yet. The wrap-up step of that plan folds this file into
+`container-image.md`, the description of the feature as built, and deletes it.
 
 ## Image
 
