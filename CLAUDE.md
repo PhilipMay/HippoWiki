@@ -16,6 +16,8 @@ The specification lives in the `spec/` directory. This catalog should always be 
   addresses, actions, routes, lists, limits)
 - `spec/page-deletion.md`: the soft delete of pages as built (deleting, the deleted pages of a folder under
   `/deleted-pages`, restoring, limits)
+- `spec/service-layer-steps.md`: step plan for the service layer (services per feature, used by the GUI now and by an
+  MCP server later)
 - `spec/roadmap.md`: backlog of candidate features
 - `spec/issue-report.md`: how to report issues found in code and document reviews
 
