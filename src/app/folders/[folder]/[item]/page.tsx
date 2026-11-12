@@ -5,6 +5,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import Link from "@/components/Link";
+import { requireUser } from "@/features/auth/session";
 import { renameTab } from "@/features/folders/actions";
 import FolderBreadcrumbs from "@/features/folders/components/FolderBreadcrumbs";
 import NameDialog from "@/features/folders/components/NameDialog";
@@ -51,6 +52,9 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
 }
 
 export default async function FolderItemPage({ params, searchParams }: Props) {
+  // Nothing is shown without a login. First, so that an invalid address also leads to the login page.
+  await requireUser();
+
   const item = await findItem(params);
   if (!item) notFound();
 

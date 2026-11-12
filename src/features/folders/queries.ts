@@ -3,14 +3,17 @@
 import { connection } from "next/server";
 import { cache } from "react";
 
+import { requireUser } from "@/features/auth/session";
 import * as folderService from "@/features/folders/service";
 
 // Every query starts with `connection()`: without a request-time API, Next.js would prerender the calling route at
-// build time and serve a stale snapshot of the database.
+// build time and serve a stale snapshot of the database. Then it calls `requireUser()`, which redirects to the login
+// page without a logged-in user: nothing is read without a login, whoever calls the query.
 
 /** All folders, by name. */
 export async function listFolders(): Promise<folderService.FolderSummary[]> {
   await connection();
+  await requireUser();
   return folderService.listFolders();
 }
 
@@ -20,12 +23,14 @@ export async function listFolders(): Promise<folderService.FolderSummary[]> {
  */
 export const getFolderByName = cache(async (name: string): Promise<folderService.Folder | null> => {
   await connection();
+  await requireUser();
   return folderService.getFolderByName(name);
 });
 
 /** The tabs of the folder, by name. */
 export async function listTabs(folderId: string): Promise<folderService.TabSummary[]> {
   await connection();
+  await requireUser();
   return folderService.listTabs(folderId);
 }
 
@@ -37,6 +42,7 @@ export async function listTabs(folderId: string): Promise<folderService.TabSumma
 export const getTab = cache(
   async (folderName: string, tabName: string): Promise<folderService.TabWithFolder | null> => {
     await connection();
+    await requireUser();
     return folderService.getTab(folderName, tabName);
   },
 );

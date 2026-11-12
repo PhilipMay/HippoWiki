@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import { createPage, deletePage, moveOrRenamePage, restorePage, updatePageContent } from "@/features/pages/actions";
 
@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   restorePage: vi.fn(),
   revalidatePath: vi.fn(),
   redirect: vi.fn(),
+  requireUser: vi.fn(),
 }));
 
 vi.mock("@/features/pages/service", () => ({
@@ -28,6 +29,7 @@ vi.mock("@/features/pages/service", () => ({
 }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
+vi.mock("@/features/auth/session", () => ({ requireUser: mocks.requireUser }));
 
 const serviceWrites = [
   mocks.createPage,
@@ -42,6 +44,8 @@ beforeEach(() => {
   mocks.redirect.mockImplementation((path: string) => {
     throw new RedirectError(path);
   });
+  // A logged-in user, unless a test says otherwise.
+  mocks.requireUser.mockResolvedValue({ id: crypto.randomUUID(), name: "alice", mustChangePassword: false });
 });
 
 const SAVE_FAILED = { message: "The page could not be saved. Please try again." };
@@ -389,4 +393,55 @@ describe("restorePage", () => {
     await expect(restorePage(id, {}, formData(VALID))).resolves.toEqual(state);
     expectNotRevalidatedOrRedirected();
   });
+});
+
+/** Every action with a call that reaches the service when a user is logged in, and the service write it calls. */
+const ACTIONS: [string, () => Promise<unknown>, Mock][] = [
+  [
+    "createPage",
+    () => createPage(crypto.randomUUID(), {}, formData({ name: "my-page", content: CONTENT, place: "" })),
+    mocks.createPage,
+  ],
+  [
+    "updatePageContent",
+    () => updatePageContent(crypto.randomUUID(), {}, formData({ content: CONTENT })),
+    mocks.updatePageContent,
+  ],
+  [
+    "moveOrRenamePage",
+    () => moveOrRenamePage(crypto.randomUUID(), {}, formData({ name: "new-name", place: "" })),
+    mocks.moveOrRenamePage,
+  ],
+  ["deletePage", () => deletePage(crypto.randomUUID()), mocks.deletePage],
+  [
+    "restorePage",
+    () => restorePage(crypto.randomUUID(), {}, formData({ name: "new-name", place: "" })),
+    mocks.restorePage,
+  ],
+];
+
+describe("without a logged-in user", () => {
+  // A Server Action is a public endpoint: its form may be shown by a page that checked the login, but the request can
+  // come from anywhere and at any time, e.g. after the session has ended.
+  it.each(ACTIONS)("%s redirects to the login page and does not reach the service", async (_name, action) => {
+    mocks.requireUser.mockRejectedValue(new RedirectError("/login"));
+
+    await expect(action()).rejects.toMatchObject({ path: "/login" });
+
+    for (const write of serviceWrites) expect(write).not.toHaveBeenCalled();
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+    expect(mocks.redirect).not.toHaveBeenCalled();
+  });
+
+  it.each(ACTIONS)(
+    "%s reaches the service with the same input once a user is logged in",
+    async (_name, action, write) => {
+      write.mockResolvedValue({ ok: false, error: { code: "failed" } });
+
+      await action();
+
+      expect(mocks.requireUser).toHaveBeenCalledOnce();
+      expect(write).toHaveBeenCalledOnce();
+    },
+  );
 });

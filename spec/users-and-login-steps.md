@@ -82,7 +82,7 @@ These hold for all steps. The wrap-up step moves them into the feature spec.
 - [x] User accounts and admin setup
 - [x] Admin setup in the container image
 - [x] Login and logout
-- [ ] Authenticated access only
+- [x] Authenticated access only
 - [ ] Login wait after failed attempts
 - [ ] Forced password change
 - [ ] User list
@@ -356,6 +356,14 @@ leads to the login page.
   - A request without the session cookie of Better Auth is redirected to the login page. It reads the cookie with the
     helper of `better-auth/cookies` and does not ask the database.
   - Its matcher leaves out the login page, `/api/health` and the static files of Next.js.
+  - A Server Action that the client of Next.js calls without the cookie, e.g. a form submitted after a logout in
+    another tab, is not answered with an HTTP redirect: the client does not follow one and shows the error page
+    instead. The proxy answers it the way Next.js answers an action that redirects to another site, with the address
+    of the login page in the header `x-action-redirect`, which the client opens with a full page load. It recognises
+    such a request by its `next-action` header. Both headers are internals of Next.js; an end-to-end test covers
+    them.
+  - Every other request that is not a read (not `GET` or `HEAD`) is redirected with 303 instead of 307, so that the
+    browser asks for the login page with `GET` instead of sending the request again.
   - `eslint.config.mjs`: `src/proxy.ts` joins the files that must not use `console`.
 - Every page under `src/app/folders/` and `src/app/deleted-pages/` and `src/app/page.tsx` call `requireUser()` first,
   before they read the query string, so that an invalid address also leads to the login page.
@@ -395,9 +403,12 @@ leads to the login page.
     address that does not exist all lead to the login page.
   - `/api/health` answers 200.
   - With a session cookie that the server does not know, the folder list leads to the login page.
-  - A Server Action that is submitted after the session has ended changes nothing and leads to the login page.
+  - A Server Action that is submitted after the session has ended changes nothing and leads to the login page: once
+    with the session gone from the database, once with the cookie gone from the browser.
   - With the storage state of the normal user and of the admin, the folder list opens.
-- All existing specs pass unchanged, except `e2e/smoke.spec.ts` and `e2e/login.spec.ts`.
+- All existing specs pass unchanged, except `e2e/smoke.spec.ts`, `e2e/login.spec.ts` and one case of
+  `e2e/hydration.spec.ts`: the page view has no button that needs JavaScript, but the header now has "Log out", so
+  the case looks at the content only, and a new case checks that "Log out" works without JavaScript.
 - `npm run test:e2e:production` passes.
 - `npm run image:build` and `npm run image:smoke` pass.
 

@@ -1,9 +1,13 @@
 "use server";
 
-// The writes of folders and tabs for forms: thin adapters that translate between a form and the service.
+// The writes of folders and tabs for forms: thin adapters that translate between a form and the service. Every action
+// calls `requireUser()` first, which redirects to the login page without a logged-in user: a Server Action is a
+// public endpoint, whatever page shows its form. The call stands outside every `try` block, because the redirect
+// throws.
 
 import { redirect } from "next/navigation";
 
+import { requireUser } from "@/features/auth/session";
 import { parseFolderFormData, parseTabFormData } from "@/features/folders/forms";
 import { parseFolderId, parseTabId } from "@/features/folders/schema";
 import * as folderService from "@/features/folders/service";
@@ -24,6 +28,8 @@ const nameTakenState: NameFormState = { fieldErrors: { name: [NAME_TAKEN_MESSAGE
  * the name is invalid or taken or the folder cannot be stored.
  */
 export async function createFolder(_prevState: NameFormState, formData: FormData): Promise<NameFormState> {
+  await requireUser();
+
   const input = parseFolderFormData(formData);
   if (!input.success) return { fieldErrors: input.fieldErrors };
 
@@ -50,6 +56,8 @@ export async function createFolder(_prevState: NameFormState, formData: FormData
  * with `renameFolder.bind(null, id)`.
  */
 export async function renameFolder(id: string, _prevState: NameFormState, formData: FormData): Promise<NameFormState> {
+  await requireUser();
+
   const folderId = parseFolderId(id);
   if (!folderId) return { message: FOLDER_GONE_MESSAGE };
 
@@ -84,6 +92,8 @@ export async function createTab(
   _prevState: NameFormState,
   formData: FormData,
 ): Promise<NameFormState> {
+  await requireUser();
+
   const parsedFolderId = parseFolderId(folderId);
   if (!parsedFolderId) return { message: FOLDER_GONE_MESSAGE };
 
@@ -114,6 +124,8 @@ export async function createTab(
  * stored. Bind the id with `renameTab.bind(null, id)`.
  */
 export async function renameTab(id: string, _prevState: NameFormState, formData: FormData): Promise<NameFormState> {
+  await requireUser();
+
   const tabId = parseTabId(id);
   if (!tabId) return { message: TAB_GONE_MESSAGE };
 

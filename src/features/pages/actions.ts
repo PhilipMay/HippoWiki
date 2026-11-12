@@ -1,9 +1,12 @@
 "use server";
 
-// The writes of pages for forms: thin adapters that translate between a form and the service.
+// The writes of pages for forms: thin adapters that translate between a form and the service. Every action calls
+// `requireUser()` first, which redirects to the login page without a logged-in user: a Server Action is a public
+// endpoint, whatever page shows its form. The call stands outside every `try` block, because the redirect throws.
 
 import { redirect } from "next/navigation";
 
+import { requireUser } from "@/features/auth/session";
 import { parseFolderId } from "@/features/folders/schema";
 import {
   parseNewPageFormData,
@@ -47,6 +50,8 @@ export async function createPage(
   _prevState: PageFormState,
   formData: FormData,
 ): Promise<PageFormState> {
+  await requireUser();
+
   const parsedFolderId = parseFolderId(folderId);
   if (!parsedFolderId) return { message: FOLDER_GONE_MESSAGE };
 
@@ -91,6 +96,8 @@ export async function updatePageContent(
   _prevState: PageFormState,
   formData: FormData,
 ): Promise<PageFormState> {
+  await requireUser();
+
   const pageId = parsePageId(id);
   if (!pageId) return { message: PAGE_GONE_MESSAGE };
 
@@ -125,6 +132,8 @@ export async function moveOrRenamePage(
   _prevState: PageMoveOrRenameFormState,
   formData: FormData,
 ): Promise<PageMoveOrRenameFormState> {
+  await requireUser();
+
   const pageId = parsePageId(id);
   if (!pageId) return { message: PAGE_GONE_MESSAGE };
 
@@ -163,6 +172,8 @@ export async function moveOrRenamePage(
  * `deletePage.bind(null, id)`.
  */
 export async function deletePage(id: string): Promise<PageDeleteFormState> {
+  await requireUser();
+
   const pageId = parsePageId(id);
   if (!pageId) return { message: PAGE_GONE_MESSAGE };
 
@@ -193,6 +204,8 @@ export async function restorePage(
   _prevState: PageRestoreFormState,
   formData: FormData,
 ): Promise<PageRestoreFormState> {
+  await requireUser();
+
   const pageId = parsePageId(id);
   if (!pageId) return { message: PAGE_GONE_MESSAGE };
 

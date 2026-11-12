@@ -5,6 +5,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import Link from "@/components/Link";
+import { requireUser } from "@/features/auth/session";
 import { createFolder } from "@/features/folders/actions";
 import FolderList from "@/features/folders/components/FolderList";
 import NameDialog from "@/features/folders/components/NameDialog";
@@ -20,6 +21,9 @@ export const metadata: Metadata = {
 const ACTIONS = ["new"] as const;
 
 export default async function FoldersPage({ searchParams }: PageProps<"/folders">) {
+  // Nothing is shown without a login. First, so that an invalid address also leads to the login page.
+  await requireUser();
+
   const query = await searchParams;
   const action = parseAction(query, ACTIONS);
   // The folder list has no views.

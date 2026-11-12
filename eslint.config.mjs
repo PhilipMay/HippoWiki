@@ -127,6 +127,7 @@ const eslintConfig = defineConfig([
       "src/features/**/service.ts",
       "src/app/api/**",
       "src/lib/**",
+      "src/proxy.ts",
     ],
     rules: {
       "no-console": "error",

@@ -5,6 +5,7 @@ import DeletedPageView, {
   DELETED_PAGE_ACTIONS,
   deletedPageViewTitle,
 } from "@/features/pages/components/DeletedPageView";
+import { requireUser } from "@/features/auth/session";
 import { getDeletedPage } from "@/features/pages/queries";
 import { parseAction, parseView, type SearchParams } from "@/lib/addresses";
 import { pageTitle } from "@/lib/site";
@@ -30,6 +31,9 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
 
 /** A deleted page of a folder, read-only, with the "Restore page" dialog for `?action=restore`. */
 export default async function DeletedPageAddress({ params, searchParams }: Props) {
+  // Nothing is shown without a login. First, so that an invalid address also leads to the login page.
+  await requireUser();
+
   const page = await findDeletedPage(params);
   if (!page) notFound();
 

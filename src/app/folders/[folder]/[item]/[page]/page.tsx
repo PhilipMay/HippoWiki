@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
+import { requireUser } from "@/features/auth/session";
 import PageView, { PAGE_ACTIONS, pageViewTitle } from "@/features/pages/components/PageView";
 import { getPage } from "@/features/pages/queries";
 import { parseAction, parsePageSegment, parseView } from "@/lib/addresses";
@@ -26,6 +27,9 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
 }
 
 export default async function TabPageView({ params, searchParams }: Props) {
+  // Nothing is shown without a login. First, so that an invalid address also leads to the login page.
+  await requireUser();
+
   const page = await findPage(params);
   if (!page) notFound();
 

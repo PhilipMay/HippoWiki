@@ -3,6 +3,7 @@ import Typography from "@mui/material/Typography";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
+import { requireUser } from "@/features/auth/session";
 import FolderBreadcrumbs from "@/features/folders/components/FolderBreadcrumbs";
 import { getFolderByName } from "@/features/folders/queries";
 import DeletedPagesList from "@/features/pages/components/DeletedPagesList";
@@ -25,6 +26,9 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
 
 /** The deleted pages of a folder, newest first. */
 export default async function DeletedPagesPage({ params, searchParams }: Props) {
+  // Nothing is shown without a login. First, so that an invalid address also leads to the login page.
+  await requireUser();
+
   const folder = await getFolderByName((await params).folder);
   if (!folder || hasQuery(await searchParams)) notFound();
 

@@ -3,20 +3,24 @@
 import { connection } from "next/server";
 import { cache } from "react";
 
+import { requireUser } from "@/features/auth/session";
 import * as pageService from "@/features/pages/service";
 
 // Every query starts with `connection()`: without a request-time API, Next.js would prerender the calling route at
-// build time and serve a stale snapshot of the database.
+// build time and serve a stale snapshot of the database. Then it calls `requireUser()`, which redirects to the login
+// page without a logged-in user: nothing is read without a login, whoever calls the query.
 
 /** The pages placed directly in the folder, without their content, by name; deleted pages are left out. */
 export async function listFolderPages(folderId: string): Promise<pageService.PageSummary[]> {
   await connection();
+  await requireUser();
   return pageService.listFolderPages(folderId);
 }
 
 /** The pages of the tab, without their content, by name; deleted pages are left out. */
 export async function listTabPages(tabId: string): Promise<pageService.PageSummary[]> {
   await connection();
+  await requireUser();
   return pageService.listTabPages(tabId);
 }
 
@@ -26,6 +30,7 @@ export async function listTabPages(tabId: string): Promise<pageService.PageSumma
  */
 export async function listAllFolderPages(folderId: string): Promise<pageService.PageWithTabSummary[]> {
   await connection();
+  await requireUser();
   return pageService.listAllFolderPages(folderId);
 }
 
@@ -38,6 +43,7 @@ export async function listAllFolderPages(folderId: string): Promise<pageService.
 export const getPage = cache(
   async (folderName: string, tabName: string | null, pageName: string): Promise<pageService.PageWithPlace | null> => {
     await connection();
+    await requireUser();
     return pageService.getPage(folderName, tabName, pageName);
   },
 );
@@ -45,6 +51,7 @@ export const getPage = cache(
 /** The deleted pages of the folder with id, name, title and time of deletion, without their content, newest first. */
 export async function listDeletedPages(folderId: string): Promise<pageService.DeletedPageSummary[]> {
   await connection();
+  await requireUser();
   return pageService.listDeletedPages(folderId);
 }
 
@@ -55,5 +62,6 @@ export async function listDeletedPages(folderId: string): Promise<pageService.De
  */
 export const getDeletedPage = cache(async (folderName: string, id: string): Promise<pageService.DeletedPage | null> => {
   await connection();
+  await requireUser();
   return pageService.getDeletedPage(folderName, id);
 });

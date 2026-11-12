@@ -20,7 +20,10 @@ The prototype manages wiki pages written in Markdown, organises them in folders 
 - delete a page; each folder lists its deleted pages at `/deleted-pages/<folder>`, where they can be read and restored
   into the folder under a chosen name and place.
 
-Folders and tabs cannot be deleted yet. There is a single user and no login.
+Folders and tabs cannot be deleted yet.
+
+The wiki can only be used after a login: every address except the login page `/login` and `/api/health` leads to
+the login page. Everyone who is logged in can read and change all content (see "Users").
 
 ## Prerequisites
 
@@ -104,7 +107,7 @@ The application accesses the database with [Prisma](https://www.prisma.io/) 7. T
 ## Users
 
 Users log in at `/login` with a user name and a password; the header shows who is logged in and has "Log out". A
-session lasts 30 days. User accounts are stored in the database. There is one admin account, named `admin`; it is
+session lasts 30 days. Nothing can be read or changed without a login. User accounts are stored in the database. There is one admin account, named `admin`; it is
 created by the admin setup or by the seed:
 
 - `npm run db:seed` inserts two known users for development (`prisma/known-users.ts`), with the password change
@@ -151,11 +154,17 @@ npx playwright show-report   # open the HTML report of the last run
   to `npm run dev`, and stops it after the run. `npm run test:e2e:production` builds the app and starts the
   production server instead, to test what only a production build does, such as prerendering and caching; it takes
   longer because of the build.
+- The tests log in once: the setup project `e2e/auth.setup.ts` logs in as the known users `admin` and `alice` and
+  saves their browser states and sessions in `e2e/.auth/` (ignored by Git). Every test starts logged in as `alice`;
+  a spec that needs the admin or no user says so with `test.use({ storageState: ... })` and the constants of
+  `e2e/support/auth.ts`. `npx playwright test` runs the setup project by itself, also for a single spec. The
+  Playwright UI (`npm run test:e2e:ui`) does not: run `auth.setup.ts` there once first, or enable the `setup`
+  project in the project filter of the UI, otherwise every test ends on the login page.
 - `e2e/support/browser.ts` has `collectErrors()`, which records console errors of the browser page.
 - `e2e/support/database.ts` has helpers for tests: `createFolder()`, `createTab()` and `createPage()` insert a folder,
   a tab or a page (in a given folder or tab, or in a new folder) directly into the test database, `createUser()`
-  inserts a user with a password, `resetTestDatabase()` empties it and puts the known users back (`admin` and
-  `alice`, see "Users"), and `getTestDb()` returns a Prisma client for it. All tests share this database and run one
+  inserts a user with a password, `resetTestDatabase()` empties it and puts the known users (`admin` and `alice`, see
+  "Users") and the sessions of their saved logins back, and `getTestDb()` returns a Prisma client for it. All tests share this database and run one
   after another.
 
 ## Integration tests
@@ -189,6 +198,8 @@ npm run image:build   # build the image hippowiki:local for this machine
 npm run image:smoke   # check the built image against a throwaway database
 ```
 
+- The wiki needs HTTPS in front of the container, for example a reverse proxy with TLS: the session cookie is
+  `Secure`, so over plain HTTP nobody stays logged in (browsers make an exception for `localhost`).
 - The image reads `DATABASE_URL` in the form `postgresql://<user>:<password>@<host>:<port>/<database>`, without
   parameters such as `sslmode`; special characters in the password are percent-encoded. `PORT` is optional (default
   3000). The image contains no `.env` file and no database address.
@@ -218,8 +229,8 @@ npm run image:smoke   # check the built image against a throwaway database
 - `npm run image:smoke` checks the image of `npm run image:build`. In the pod `hippowiki-smoke` it starts PostgreSQL
   with an empty database in memory and a container of the image, whose port 3000 is published as `127.0.0.1:3200`.
   It checks that a container without a valid `HIPPOWIKI_ADMIN_PASSWORD` exits instead of serving, that the start
-  creates the tables and the admin account and serves `/folders`, `/api/health` and the static files, that the
-  password hashing works in the image, that the server listens on all interfaces and not as root, and that the image
+  creates the tables and the admin account and serves the login page, `/api/health` and the static files, that
+  `/folders` leads to the login page, that the password hashing works in the image, that the server listens on all interfaces and not as root, and that the image
   has no `.env` file. A second container and `./image-migrate.sh` against the migrated database must apply no
   migration, and the second container and `./image-admin.sh` must leave the admin account as it is. The pod is
   removed at the end, also when a check fails; then the last log lines of the containers are printed. It can run next to the development

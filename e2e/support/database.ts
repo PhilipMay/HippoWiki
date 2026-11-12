@@ -1,15 +1,25 @@
 // Access to the end-to-end test database. It lives in its own throwaway container (see ./container.ts), so the tests
 // never touch the development database.
 import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 
 import { PrismaPg } from "@prisma/adapter-pg";
 
 import { titleFromContent } from "@/features/pages/derive";
 import { newUserData, type NewUser } from "@/features/users/records";
-import { PrismaClient, type Folder, type Page, type Prisma, type Tab, type User } from "@/generated/prisma/client";
+import {
+  PrismaClient,
+  type Folder,
+  type Page,
+  type Prisma,
+  type Session,
+  type Tab,
+  type User,
+} from "@/generated/prisma/client";
 import { hashPassword } from "@/lib/password-hash";
 
 import { KNOWN_USERS } from "../../prisma/known-users";
+import { SESSIONS_FILE } from "./auth";
 import { TEST_DATABASE_NAME, TEST_DATABASE_URL } from "./container";
 
 /** Host, port and database of a PostgreSQL URL, e.g. "localhost:5432/hippowiki". */
@@ -77,16 +87,37 @@ export async function emptyTestDatabase(): Promise<void> {
   if (names.length > 0) await db.$executeRawUnsafe(`TRUNCATE TABLE ${names.join(", ")} CASCADE`);
 }
 
+/** A row of `Session` as the setup project saved it: JSON has no dates, so they are strings. */
+type SavedSession = { [Field in keyof Session]: Session[Field] extends Date ? string : Session[Field] };
+
+/**
+ * The sessions that the setup project saved after it had logged in as the known users (see ./auth.ts); none while
+ * the file does not exist yet, i.e. when the global setup resets the database before the logins.
+ */
+function savedSessions(): Session[] {
+  if (!existsSync(SESSIONS_FILE)) return [];
+  const sessions = JSON.parse(readFileSync(SESSIONS_FILE, "utf8")) as SavedSession[];
+  return sessions.map((session) => ({
+    ...session,
+    expiresAt: new Date(session.expiresAt),
+    createdAt: new Date(session.createdAt),
+    updatedAt: new Date(session.updatedAt),
+  }));
+}
+
 /**
  * Puts the test database into the state every end-to-end test starts from: all tables empty, except the two that are
- * never emptied, and the known users of `prisma/known-users.ts` with their fixed ids and the password change already
- * done.
+ * never emptied, then the known users of `prisma/known-users.ts` with their fixed ids and the password change already
+ * done, and the sessions of their saved logins. So the browser states that the tests start with stay logged in after
+ * every reset.
  */
 export async function resetTestDatabase(): Promise<void> {
   await emptyTestDatabase();
   for (const { id, name, password } of KNOWN_USERS) {
     await createUser({ id, name, password, mustChangePassword: false });
   }
+  const sessions = savedSessions();
+  if (sessions.length > 0) await getTestDb().session.createMany({ data: sessions });
 }
 
 /** The hashes of the passwords that `createUser()` has stored; a hash takes time, so each one is computed once. */

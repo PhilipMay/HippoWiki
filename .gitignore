@@ -42,6 +42,9 @@ yarn-error.log*
 # generated Prisma client
 /src/generated/
 
+# saved logins of the end-to-end tests
+/e2e/.auth/
+
 # vercel
 .vercel
 

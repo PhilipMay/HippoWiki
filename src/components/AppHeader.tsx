@@ -10,7 +10,7 @@ import { getCurrentUser } from "@/features/auth/session";
 import { foldersPath } from "@/lib/addresses";
 import { siteName } from "@/lib/site";
 
-/** The app bar of every page: the menu and, for a logged-in user, the user name and "Log out". */
+/** The app bar of every page. For a logged-in user it has the menu, the user name and "Log out". */
 export default async function AppHeader() {
   const user = await getCurrentUser();
 
@@ -25,11 +25,13 @@ export default async function AppHeader() {
         >
           {siteName}
         </Typography>
-        <nav aria-label="Main">
-          <Button component={Link} href={foldersPath()} color="inherit">
-            Folders
-          </Button>
-        </nav>
+        {user && (
+          <nav aria-label="Main">
+            <Button component={Link} href={foldersPath()} color="inherit">
+              Folders
+            </Button>
+          </nav>
+        )}
         {user && (
           <Stack direction="row" spacing={2} sx={{ alignItems: "center", ml: "auto" }}>
             <Typography variant="body2">{user.name}</Typography>

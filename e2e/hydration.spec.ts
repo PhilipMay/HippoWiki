@@ -1,3 +1,4 @@
+import { NO_STORAGE_STATE } from "./support/auth";
 import { createFolder, createPage, createTab, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
 
@@ -9,12 +10,16 @@ test.beforeEach(async () => {
   await resetTestDatabase();
 });
 
-test("the login form is locked until hydration", async ({ page }) => {
-  await page.goto("/login");
+test.describe("without a login", () => {
+  test.use({ storageState: NO_STORAGE_STATE });
 
-  await expect(page.getByLabel("User name")).not.toBeEditable();
-  await expect(page.getByLabel("Password")).not.toBeEditable();
-  await expect(page.getByRole("button", { name: "Log in" })).toBeDisabled();
+  test("the login form is locked until hydration", async ({ page }) => {
+    await page.goto("/login");
+
+    await expect(page.getByLabel("User name")).not.toBeEditable();
+    await expect(page.getByLabel("Password")).not.toBeEditable();
+    await expect(page.getByRole("button", { name: "Log in" })).toBeDisabled();
+  });
 });
 
 test("the new page form is locked until hydration", async ({ page }) => {
@@ -55,7 +60,18 @@ test("the page view needs no JavaScript for its controls", async ({ page }) => {
     `${address}?action=move-or-rename`,
   );
   await expect(page.getByRole("link", { name: "Delete" })).toHaveAttribute("href", `${address}?action=delete`);
-  await expect(page.getByRole("button")).toHaveCount(0);
+  await expect(page.getByRole("main").getByRole("button")).toHaveCount(0);
+});
+
+test("log out in the header needs no JavaScript", async ({ page }) => {
+  await page.goto("/folders");
+
+  // A plain form with a Server Action: the browser submits it itself.
+  await page.getByRole("banner").getByRole("button", { name: "Log out" }).click();
+
+  await expect(page).toHaveURL("/login");
+  await expect(page.getByRole("heading", { level: 1, name: "Log in" })).toBeVisible();
+  await expect(page.getByRole("banner").getByRole("button", { name: "Log out" })).toHaveCount(0);
 });
 
 test("the name dialog is prefilled and locked until hydration", async ({ page }) => {

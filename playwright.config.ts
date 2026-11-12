@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 import { config } from "dotenv";
 
+import { USER_STORAGE_STATE } from "./e2e/support/auth";
 import { testDatabaseUrl } from "./e2e/support/database";
 
 // Playwright does not read `.env` by itself. Its DATABASE_URL is only read to make sure the tests never use the
@@ -33,7 +34,17 @@ export default defineConfig({
     baseURL,
     trace: "on-first-retry",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    // Logs in once as each known user and saves the browser states (see e2e/support/auth.ts).
+    { name: "setup", testMatch: /auth\.setup\.ts$/ },
+    {
+      name: "chromium",
+      // Every test starts logged in as the known normal user. A spec that needs the admin or no user sets its own
+      // storage state with `test.use()`.
+      use: { ...devices["Desktop Chrome"], storageState: USER_STORAGE_STATE },
+      dependencies: ["setup"],
+    },
+  ],
   webServer: {
     // The build and the server both get `env`. The build needs no running database, because no route is prerendered.
     command: production ? `npx next build && npx next start --port ${port}` : `npx next dev --port ${port}`,

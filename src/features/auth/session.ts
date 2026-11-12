@@ -2,9 +2,11 @@
 // it reads the session cookie from the headers of the request and asks the auth service.
 
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { cache } from "react";
 
 import * as authService from "@/features/auth/service";
+import { loginPath } from "@/lib/addresses";
 
 /**
  * The logged-in user of the current request, or `null`. The session is checked in the database. Cached per request, so
@@ -13,3 +15,15 @@ import * as authService from "@/features/auth/service";
 export const getCurrentUser = cache(async (): Promise<authService.SessionUser | null> => {
   return authService.getSessionUser(await headers());
 });
+
+/**
+ * The logged-in user of the current request; without one it redirects to the login page. It is the one place that
+ * decides whether a request may go on: every page, every query and every Server Action calls it first. The proxy
+ * (`src/proxy.ts`) only looks whether a session cookie is there; this function checks the session in the database.
+ * The redirect throws, so a caller keeps the call outside its `try` blocks.
+ */
+export async function requireUser(): Promise<authService.SessionUser> {
+  const user = await getCurrentUser();
+  if (!user) redirect(loginPath());
+  return user;
+}

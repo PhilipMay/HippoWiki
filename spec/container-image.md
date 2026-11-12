@@ -125,7 +125,10 @@ password for the admin. Code: `Containerfile`, `.containerignore`, `scripts/imag
 - `HIPPOWIKI_ADMIN_PASSWORD`: the first password of the admin account, 8 to 128 characters, any characters. Only the
   admin setup reads it, and only while the database has no admin; the server never reads it. A container that starts
   against a database with an admin does not need it.
-- `PORT` is optional (default 3000). `HOSTNAME` has no effect (see above). `NODE_ENV` is `production`.
+- `PORT` is optional (default 3000). `HOSTNAME` has no effect (see above). `NODE_ENV` is `production`, which makes
+  the session cookies `Secure`.
+- There is no variable for the secret that signs the session cookies: the server generates it on first use and
+  stores it in the database (table `AuthSecret`). It therefore survives a new container, and all sessions with it.
 - The database is PostgreSQL in the version pinned in `scripts/Containerfile`. The database and its user are created
   outside HippoWiki. The user must be allowed to create tables, because the migrations run with it. The migrations
   need no database extensions.
@@ -153,15 +156,16 @@ database. It runs the same way locally and in CI:
    most 60 seconds until it reports ok. It fails at once when the container exits.
 5. The table `User` must have exactly one row, named `admin`, with `mustChangePassword` set and an Argon2id password
    hash. `@node-rs/argon2` must load, hash and verify in `/app`, checked with `node` in the running container.
-6. `/folders` must answer 200, which proves that the start created the tables. The first `/_next/static/` file that
-   the page references must answer 200.
+6. `/login` must answer 200, and `AuthSecret` must have its one row afterwards: the server stores the secret of the
+   session cookies on first use, so the row proves that the page was rendered with the database. The first
+   `/_next/static/` file that the login page references must answer 200. `/folders` must redirect to the login page.
 7. `/api/health` must answer 200 on `127.0.0.1:3000` from inside the container, requested with `node`, because the
    slim image has no `curl`.
 8. The server process (PID 1) must not run as root. The container must have no `.env` file in `/app` or in
    `/app/migrate`.
 9. It reads the rows of `_prisma_migrations` and the admin row with its password hash with `psql`. Then it replaces
    the application container with a second one against the same database, without `HIPPOWIKI_ADMIN_PASSWORD`.
-   `/folders` must answer 200 again, and the rows must stay the same.
+   `/login` must answer 200 again, `/folders` must redirect to the login page, and the rows must stay the same.
 10. `./image-migrate.sh` in a further container must exit with 0, and the rows of `_prisma_migrations` must stay the
     same.
 11. `./image-admin.sh` in a further container, with another value in `HIPPOWIKI_ADMIN_PASSWORD`, must exit with 0, and
@@ -222,9 +226,12 @@ These are not built into the image; whoever runs it takes care of them.
   environment file that only the host can read.
 - `HIPPOWIKI_ADMIN_PASSWORD` for the first start, kept out of the image and out of the repository in the same way. It
   can be removed once the admin exists.
-- Protection from the public: the wiki has no login yet, so everyone who reaches the container can read and change
-  everything. It runs behind a VPN or a reverse proxy that authenticates.
-- TLS: the container speaks plain HTTP.
+- TLS in front of the container, for example in a reverse proxy: the container speaks plain HTTP, and the login
+  needs HTTPS. The session cookie is `Secure`, so a browser that reaches the wiki over plain HTTP does not send it
+  back and nobody can stay logged in. `localhost` is the one exception that browsers make.
+- The login is the protection from the public: nothing can be read or changed without it, and only the login page and
+  `/api/health` answer without one. There is no limit on login attempts per client address; a reverse proxy can add
+  one.
 - One instance only. Instances that start together would all try to migrate, and each instance has its own page
   cache.
 - Access to the package: a new package in the GitHub Container Registry is private until its visibility is changed, so
@@ -292,7 +299,6 @@ These are not built into the image; whoever runs it takes care of them.
 - no parameters in `DATABASE_URL`, such as `sslmode` or `schema`
 - no image signing, provenance attestations or vulnerability scans
 - no seed script in the image
-- no authentication: the image serves the wiki to everyone who reaches it
 - the first runs on GitHub are still to come:
   - the workflow on the runner's Podman
   - the login and the push to `ghcr.io`, which run for the first time with the first release

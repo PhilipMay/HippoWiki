@@ -1,13 +1,26 @@
 import type { Page } from "@playwright/test";
 
 import { KNOWN_ADMIN, KNOWN_USER } from "../prisma/known-users";
+import { NO_STORAGE_STATE } from "./support/auth";
 import { collectErrors } from "./support/browser";
 import { createUser, getTestDb, resetTestDatabase, TEST_PASSWORD } from "./support/database";
 import { expect, test } from "./support/test";
 
+// The login is tested as a visitor who is not logged in yet.
+test.use({ storageState: NO_STORAGE_STATE });
+
+/** The ids of the sessions of the saved logins, which every reset puts back; the tests count the other ones. */
+let savedSessionIds: string[];
+
 test.beforeEach(async () => {
   await resetTestDatabase();
+  savedSessionIds = (await getTestDb().session.findMany({ select: { id: true } })).map(({ id }) => id);
 });
+
+/** How many sessions the logins of the test have started and not ended, of all users or of one. */
+function newSessionCount(userId?: string): Promise<number> {
+  return getTestDb().session.count({ where: { id: { notIn: savedSessionIds }, userId } });
+}
 
 const INVALID_CREDENTIALS = "Invalid user name or password";
 
@@ -53,7 +66,7 @@ test("a login leads to the folder list and the header shows the name", async ({ 
   const banner = page.getByRole("banner");
   await expect(banner.getByText(KNOWN_USER.name, { exact: true })).toBeVisible();
   await expect(banner.getByRole("button", { name: "Log out" })).toBeVisible();
-  expect(await getTestDb().session.count({ where: { userId: KNOWN_USER.id } })).toBe(1);
+  expect(await newSessionCount(KNOWN_USER.id)).toBe(1);
   expect(errors).toEqual([]);
 });
 
@@ -120,7 +133,7 @@ test("a wrong password and an unknown name show the same message, and the name s
   await expect(page.getByLabel("User name")).toHaveValue("nobody");
   await expect(page.getByLabel("Password")).toHaveValue("");
   await expect(page.getByRole("banner").getByRole("button", { name: "Log out" })).toHaveCount(0);
-  expect(await getTestDb().session.count()).toBe(0);
+  expect(await newSessionCount()).toBe(0);
   expect(errors).toEqual([]);
 });
 
@@ -133,7 +146,7 @@ test("a name that cannot belong to a user and a password in another case show th
 
   await submitLogin(page, KNOWN_USER.name, KNOWN_USER.password.toUpperCase());
   await expect(formAlert(page)).toHaveText(INVALID_CREDENTIALS);
-  expect(await getTestDb().session.count()).toBe(0);
+  expect(await newSessionCount()).toBe(0);
 });
 
 test("the right password logs in after a failed attempt", async ({ page }) => {
@@ -189,7 +202,7 @@ test("log out leads to the login page and the header shows no name", async ({ pa
   const banner = page.getByRole("banner");
   await expect(banner.getByText(KNOWN_USER.name, { exact: true })).toHaveCount(0);
   await expect(banner.getByRole("button", { name: "Log out" })).toHaveCount(0);
-  expect(await getTestDb().session.count()).toBe(0);
+  expect(await newSessionCount()).toBe(0);
   expect(await page.context().cookies()).toEqual([]);
   expect(errors).toEqual([]);
 });
@@ -219,17 +232,17 @@ test("a user can be logged in in two browsers, and a logout ends only one of the
   browser,
 }) => {
   await logIn(page, KNOWN_USER);
-  const otherContext = await browser.newContext();
+  const otherContext = await browser.newContext({ storageState: NO_STORAGE_STATE });
   const otherPage = await otherContext.newPage();
   await otherPage.goto("/login");
   await submitLogin(otherPage, KNOWN_USER.name, KNOWN_USER.password);
   await expect(otherPage).toHaveURL("/folders");
-  expect(await getTestDb().session.count({ where: { userId: KNOWN_USER.id } })).toBe(2);
+  expect(await newSessionCount(KNOWN_USER.id)).toBe(2);
 
   await page.getByRole("banner").getByRole("button", { name: "Log out" }).click();
   await expect(page).toHaveURL("/login");
 
-  expect(await getTestDb().session.count({ where: { userId: KNOWN_USER.id } })).toBe(1);
+  expect(await newSessionCount(KNOWN_USER.id)).toBe(1);
   await otherPage.reload();
   await expect(otherPage.getByRole("banner").getByText(KNOWN_USER.name, { exact: true })).toBeVisible();
   await otherContext.close();

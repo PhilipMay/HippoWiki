@@ -4,7 +4,7 @@
 #   build   builds the image as hippowiki:local for the platform of this machine. IMAGE_VERSION and IMAGE_REVISION,
 #           when set, become the labels org.opencontainers.image.version and org.opencontainers.image.revision.
 #   smoke   runs the image of `build` against a throwaway, empty database and checks that it installs itself,
-#           creates the admin account and serves the wiki. It removes everything it started, also when a check fails.
+#           creates the admin account and serves the wiki, behind its login. It removes everything it started, also when a check fails.
 #   check-tag <tag>          succeeds when <tag> is a valid image tag other than `latest`
 #   reference <owner> <tag>  checks <tag> and prints ghcr.io/<owner in lower case>/hippowiki:<tag>
 # The release workflow (.github/workflows/container_image.yml) calls all four commands.
@@ -208,6 +208,16 @@ smoke_sql() {
   podman exec "$SMOKE_DB" psql -At -U "$SMOKE_DB_USER" -d "$SMOKE_DB_NAME" -c "$1"
 }
 
+# Fails unless the path redirects to the login page, as every address does without a login.
+smoke_require_login_redirect() {
+  local path="$1" answer
+  answer="$(curl --silent --output /dev/null --write-out '%{http_code} %{redirect_url}' --max-time 10 "${SMOKE_URL}${path}" || true)"
+  if [[ "$answer" != "307 ${SMOKE_URL}/login" ]]; then
+    smoke_fail "${path} answered '${answer}' instead of a redirect to the login page."
+  fi
+  echo "ok: ${path} redirects to the login page"
+}
+
 smoke_migrations() {
   smoke_sql "SELECT id, migration_name, checksum, started_at, finished_at, applied_steps_count FROM _prisma_migrations ORDER BY migration_name"
 }
@@ -257,14 +267,21 @@ cmd_smoke() {
     smoke_fail "@node-rs/argon2 does not load or hash in /app inside ${SMOKE_APP}."
   fi
   echo "ok: @node-rs/argon2 loads and hashes inside the container"
-  # /folders reads the tables, so its 200 proves that the start created them.
-  smoke_require_status /folders
+  # The login page is the one page that needs no login. It reads the secret of the session cookies, which the
+  # server stores on first use, so the row proves that the page was rendered with the database.
+  smoke_require_status /login
+  if [[ "$(smoke_sql 'SELECT count(*) FROM "AuthSecret"')" != "1" ]]; then
+    smoke_fail "the server stored no secret for the session cookies."
+  fi
+  echo "ok: the server stored the secret of the session cookies"
   local asset
-  asset="$(curl --silent --max-time 10 "${SMOKE_URL}/folders" | grep -o '/_next/static/[^"\\]*' | awk 'NR == 1')"
+  asset="$(curl --silent --max-time 10 "${SMOKE_URL}/login" | grep -o '/_next/static/[^"\\]*' | awk 'NR == 1')"
   if [[ -z "$asset" ]]; then
-    smoke_fail "/folders references no /_next/static/ file."
+    smoke_fail "/login references no /_next/static/ file."
   fi
   smoke_require_status "$asset"
+  # Everything else needs a login.
+  smoke_require_login_redirect /folders
 
   # The published port reaches the address of the pod; this shows that the server listens on 127.0.0.1 as well,
   # although Podman sets HOSTNAME to the name of the pod. The slim image has no curl, so node makes the request.
@@ -297,7 +314,8 @@ cmd_smoke() {
   # the admin account, because the admin exists.
   podman rm --force "$SMOKE_APP" >/dev/null
   smoke_start_app
-  smoke_require_status /folders
+  smoke_require_status /login
+  smoke_require_login_redirect /folders
   if [[ "$(smoke_migrations)" != "$migrations" ]]; then
     smoke_fail "the second start changed _prisma_migrations."
   fi
