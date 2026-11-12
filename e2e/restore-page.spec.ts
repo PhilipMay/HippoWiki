@@ -127,6 +127,24 @@ test("saving without a place shows choose a place", async ({ page }) => {
   await expect(dialog.getByLabel("Name")).toBeFocused();
 });
 
+test("a place chosen while the dialog fades in keeps the focus once the dialog has entered", async ({ page }) => {
+  const removed = await createDeletedPage();
+  // With the fake clock paused, the fade-in of the dialog does not end until the clock runs, so the place is chosen
+  // before the dialog has entered, as on a slow machine or by a quick user.
+  await page.clock.install({ time: new Date("2026-11-12T10:00:00Z") });
+  await page.goto(`/deleted-pages/handbook/${removed.id}`);
+  await page.clock.pauseAt(new Date("2026-11-12T11:00:00Z"));
+
+  await page.getByRole("main").getByRole("link", { name: "Restore" }).click();
+  const dialog = restoreDialog(page);
+  const folderPlace = dialog.getByRole("radio", { name: "Directly in the folder" });
+  await folderPlace.check();
+  await expect(folderPlace).toBeFocused();
+
+  await page.clock.runFor(1000);
+  await expect(folderPlace).toBeFocused();
+});
+
 test("a name that is taken at the chosen place shows an error and keeps name and place", async ({ page }) => {
   const guides = await createTab({ folder: handbook, name: "guides" });
   await createPage({ tab: guides, name: "taken", title: "Taken" });

@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useId, useRef, useState } from "react";
 
 import Link from "@/components/Link";
+import { focusOnEntered } from "@/lib/focus";
 import { useHydrated } from "@/lib/hydration";
 import { NAME_MAX_LENGTH, type NameFormAction } from "@/lib/names";
 
@@ -67,8 +68,8 @@ export default function NameDialog({ title, action, initialName = "", closeHref 
       // Without a portal the dialog is in the server-rendered HTML, like the rest of the page.
       disablePortal
       // The name is the only field. `autoFocus` does not hold here, because the dialog focuses itself on opening, so
-      // the name field is focused once the dialog has entered.
-      slotProps={{ transition: { onEntered: () => nameRef.current?.focus() } }}
+      // the name field is focused once the dialog has entered, unless the focus has moved into the dialog by then.
+      slotProps={{ transition: { onEntered: (node) => focusOnEntered(node, nameRef.current) } }}
     >
       <DialogTitle id={titleId}>{title}</DialogTitle>
       <DialogContent>

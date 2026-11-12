@@ -8,7 +8,7 @@ How the code is organised and which patterns new code follows. The technology st
 - `src/app/`: routes (App Router), including the global `not-found`, `error` and `global-error` pages
 - `src/components/`: shared UI components (app bar, `Link`)
 - `src/lib/`: cross-cutting modules (`env.ts`, `db.ts`, `db-errors.ts`, `logger.ts`, `theme.ts`, `site.ts`,
-  `format.ts`, `hydration.ts`, `names.ts`, `addresses.ts`, `revalidate.ts`, `result.ts`)
+  `format.ts`, `hydration.ts`, `focus.ts`, `names.ts`, `addresses.ts`, `revalidate.ts`, `result.ts`)
   - `names.ts`: the name rule shared by folders, tabs and pages (`nameSchema`, `parseName`) and the form state of
     forms that ask for a name
   - `addresses.ts`: the addresses under `/folders` (`folderPath`, `tabPath`, `pagePath`, `parsePageSegment`) and
@@ -147,6 +147,10 @@ How the code is organised and which patterns new code follows. The technology st
 - `sx` props in Server Components are plain objects, because functions cannot cross to Client Components.
 - Forms focus the field the user most likely edits first. When the server rejects a save with field errors, the first
   field with an error is focused; errors that only show a message above the form leave the focus where it is.
+- A dialog focuses itself on opening, so `autoFocus` does not hold in it; its first field is focused once the dialog
+  has entered, with `focusOnEntered` from `src/lib/focus.ts` in the transition's `onEntered`. It leaves the focus where
+  it is when it has already moved into the dialog: to a control the user clicked while the dialog faded in, or to a
+  field with an error when the server rejected a save before the dialog had entered.
 - Controls of Client Components that need JavaScript stay read-only (text fields) or disabled (buttons) until the
   component has hydrated, using `useHydrated()` from `src/lib/hydration.ts`. Input during hydration could otherwise be
   lost: React sets the value of a hydrating text field again, which resets its selection, and a click before the

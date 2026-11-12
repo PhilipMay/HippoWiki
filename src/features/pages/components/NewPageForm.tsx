@@ -18,6 +18,7 @@ import type { PageFormAction } from "@/features/pages/forms";
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 import { TITLE_HEADING_MISSING_MESSAGE } from "@/features/pages/schema";
 import { folderPath, tabPath } from "@/lib/addresses";
+import { focusOnEntered } from "@/lib/focus";
 import { useHydrated } from "@/lib/hydration";
 
 type NewPageFormProps = {
@@ -154,8 +155,8 @@ function SavePageDialog({
       maxWidth="sm"
       aria-labelledby={titleId}
       // `autoFocus` does not hold here, because the dialog focuses itself on opening, so the name field is focused once
-      // the dialog has entered.
-      slotProps={{ transition: { onEntered: () => nameRef.current?.focus() } }}
+      // the dialog has entered, unless the focus has moved into the dialog by then (see `focusOnEntered`).
+      slotProps={{ transition: { onEntered: (node) => focusOnEntered(node, nameRef.current) } }}
     >
       <DialogTitle id={titleId}>Save page</DialogTitle>
       <DialogContent>

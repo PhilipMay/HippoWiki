@@ -14,6 +14,7 @@ import { startTransition, useActionState, useEffect, useId, useRef, useState, ty
 import Link from "@/components/Link";
 import PageNameAndPlaceFields from "@/features/pages/components/PageNameAndPlaceFields";
 import type { PageRestoreFormAction } from "@/features/pages/forms";
+import { focusOnEntered } from "@/lib/focus";
 import { useHydrated } from "@/lib/hydration";
 
 type RestorePageDialogProps = {
@@ -87,8 +88,8 @@ export default function RestorePageDialog({
       // Without a portal the dialog is in the server-rendered HTML, like the rest of the page.
       disablePortal
       // `autoFocus` does not hold here, because the dialog focuses itself on opening, so the name field is focused once
-      // the dialog has entered.
-      slotProps={{ transition: { onEntered: () => nameRef.current?.focus() } }}
+      // the dialog has entered, unless the focus has moved into the dialog by then (see `focusOnEntered`).
+      slotProps={{ transition: { onEntered: (node) => focusOnEntered(node, nameRef.current) } }}
     >
       <DialogTitle id={titleId}>Restore page</DialogTitle>
       <DialogContent>
