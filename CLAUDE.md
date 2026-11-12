@@ -15,6 +15,7 @@ The specification lives in the `spec/` directory. This catalog should always be 
   addresses, actions, routes, lists, limits)
 - `spec/roadmap.md`: backlog of candidate features
 - `spec/issue-report.md`: how to report issues found in code and document reviews
+- `spec/workflow-review.md`: review of `spec/workflow.md` with its open issues
 
 ## Running the Checks
 
