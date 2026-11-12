@@ -27,7 +27,8 @@ this file only says what is required. Nothing of it is built yet. The wrap-up st
 - Every later start applies only the migrations that are not applied yet, and none if there are none. A new version
   of the image therefore updates the database when it starts.
 - When the migration fails, the container exits with an error and does not serve the wiki.
-- `HIPPOWIKI_SKIP_MIGRATION=true` skips the migration at the start.
+- The container finds out by itself whether its database needs a migration. There is no switch to skip the migration
+  at the start.
 - The same image has a command that only applies the migrations and exits, so that the migration can become a step
   of its own later without a second image.
 - The container does not wait for the database. When the database is not reachable at the start, the container
@@ -41,7 +42,7 @@ this file only says what is required. Nothing of it is built yet. The wrap-up st
 - The user and the password of the database are part of this URL. There are no separate variables for host, user,
   password and database name. Special characters in the password are percent-encoded.
 - The URL is read when the container runs, never when the image is built. The build needs no database.
-- Optional variables: `PORT` (default 3000), `HOSTNAME` (default `0.0.0.0`) and `HIPPOWIKI_SKIP_MIGRATION`.
+- Optional variables: `PORT` (default 3000) and `HOSTNAME` (default `0.0.0.0`).
 - `NODE_ENV` is `production` in the image.
 - The database is PostgreSQL in the version pinned in `scripts/Containerfile`. The database and its user are created
   outside HippoWiki. The user must be allowed to create tables, because the migrations run with it. The migrations
@@ -51,8 +52,8 @@ this file only says what is required. Nothing of it is built yet. The wrap-up st
 
 - `/api/health` answers 200 with `{"status":"ok"}` while the database is reachable and 503 otherwise. The environment
   uses it as its health check; the image itself declares none.
-- The route only checks that the database answers. A container started with `HIPPOWIKI_SKIP_MIGRATION=true` against a
-  database without the tables reports ok.
+- The route only checks that the database answers. That is enough: a container that serves has applied all migrations
+  at its start, so it never runs against a database without its tables.
 
 ## Smoke test
 
@@ -61,7 +62,8 @@ this file only says what is required. Nothing of it is built yet. The wrap-up st
   - `/api/health` reports ok
   - the static files of the application are served
   - the application does not run as root
-  - a start with `HIPPOWIKI_SKIP_MIGRATION=true` against the migrated database serves the wiki as well
+  - a second container, started against the migrated database, finds no pending migrations and serves the wiki as
+    well
 - The smoke test leaves no container behind and can run next to the development database, the test database and the
   development server.
 
@@ -93,9 +95,12 @@ These are not built into the image; whoever runs it takes care of them.
 ## Decisions
 
 - One image that migrates at the start, instead of a separate migration image: comparable open source applications
-  do it this way (Umami, Cal.com, Documenso, Linkwarden, Outline), and a first installation stays simple. The switch
-  to skip the migration follows Umami, Outline and Formbricks. The price is a larger image, because it carries the
-  Prisma CLI.
+  do it this way (Umami, Cal.com, Documenso, Linkwarden, Outline), and a first installation stays simple. The price is a
+  larger image, because it carries the Prisma CLI.
+- No switch to skip the migration, although Umami, Outline and Formbricks have one: `prisma migrate deploy` finds out
+  by itself whether migrations are pending and changes nothing when there are none. Without a switch the application
+  can never serve from a database without its tables. If the migration becomes a step of its own later, the switch
+  can be added then; the command that only migrates is already there.
 - `DATABASE_URL` only: it is what Prisma and the Prisma-based applications among them use, and what the application
   and its tests already read. Applications in other ecosystems often take separate variables; that would only add a
   second way to configure the same thing.
@@ -108,6 +113,7 @@ These are not built into the image; whoever runs it takes care of them.
 - deploying the image: a compose file, a reverse proxy, TLS, backups (candidates in `roadmap.md`)
 - images for other platforms than `linux/amd64`
 - more than one running instance
+- a switch to skip the migration at the start
 - image signing, provenance attestations and vulnerability scans
 - running the seed script in a container
 - authentication

@@ -14,8 +14,8 @@ that file into the description of the feature as built and deletes it.
 
 - In:
   - a `Containerfile` for the application with one image: it runs `prisma migrate deploy` and then starts the server
-  - the environment variable `HIPPOWIKI_SKIP_MIGRATION` that skips the migration at the start, and a command in the
-    same image that only applies the migrations, for the case that the migration becomes a step of its own later
+  - a command in the same image that only applies the migrations, for the case that the migration becomes a step of
+    its own later
   - the Next.js standalone output, switched on only for the image build
   - a script that builds the image locally with Podman and a smoke test that runs it against a throwaway database
   - a GitHub Actions workflow that builds and smoke-tests the image on every push to `main` and on pull requests,
@@ -23,6 +23,8 @@ that file into the description of the feature as built and deletes it.
   - a Dependabot entry for the Node.js base image
 - Not in:
   - a second image for the migrations
+  - a switch to skip the migration at the start; `prisma migrate deploy` finds out by itself whether migrations are
+    pending
   - waiting for the database at the start: when it is not reachable, the migration fails and the container exits
   - running more than one instance; instances that start together would all try to migrate
   - deploying the image: no compose file, no reverse proxy, no TLS, no backups (candidates in `roadmap.md`)
@@ -75,10 +77,10 @@ The normal build, `npm run start` and the end-to-end tests stay as they are.
   - `image-migrate.sh`: runs `prisma migrate deploy` with the tools and files above and exits with its exit code. It
     is also the command for applying the migrations as a step of its own, by starting a container of the image with
     `./image-migrate.sh` as its command instead of the start script.
-  - `image-start.sh`, the command of the image: runs `image-migrate.sh` unless `HIPPOWIKI_SKIP_MIGRATION=true`, in
-    which case it prints one line saying that the migration was skipped. When the migration fails, it exits with a
-    non-zero code and does not start the server. Otherwise it starts the server with `exec node server.js`, so that
-    the server receives the stop signal of the container.
+  - `image-start.sh`, the command of the image: runs `image-migrate.sh` on every start. `prisma migrate deploy` finds
+    out by itself whether migrations are pending and changes nothing when there are none, so there is no switch to
+    skip it. When the migration fails, the script exits with a non-zero code and does not start the server. Otherwise
+    it starts the server with `exec node server.js`, so that the server receives the stop signal of the container.
 - Base image: the slim Debian variant of the official Node.js image, with the major version of `.nvmrc` and pinned to
   the current minor version, like the PostgreSQL image.
 - Labels: `org.opencontainers.image.source` with the URL of the GitHub repository, which links the package to the
@@ -93,7 +95,7 @@ The normal build, `npm run start` and the end-to-end tests stay as they are.
 - `.github/dependabot.yml`: a second `docker` entry for the directory `/`. It ignores major updates of the Node.js
   image, because the major version changes together with `.nvmrc`.
 - `README.md`: a section "Container image" with `npm run image:build`, the variables the image reads (`DATABASE_URL`,
-  `PORT`, `HOSTNAME`, `HIPPOWIKI_SKIP_MIGRATION`), what happens at the start (the migrations are applied to the
+  `PORT`, `HOSTNAME`), what happens at the start (the migrations are applied to the
   database of `DATABASE_URL`, an empty database gets its tables, then the server starts) and the command that only
   applies the migrations. Add `npm run image:build` to the table under "Commands".
 
@@ -129,9 +131,8 @@ and serves the wiki. It runs the same way locally and in CI.
      `/_next/static/` file that the page references and require status 200, which proves that the static files were
      copied into the image.
   6. Require that the application process does not run as root.
-  7. Remove the application container and start a second one against the same database with
-     `HIPPOWIKI_SKIP_MIGRATION=true`. Require that `/folders` answers 200 again and that its log has the line about
-     the skipped migration.
+  7. Remove the application container and start a second one against the same, now migrated database. Require that
+     its log says that no migrations were pending and that `/folders` answers 200 again.
   8. Remove the pod, also when a check fails. On a failure, print the last log lines of the containers first and
      exit with a non-zero code.
 - The names and the port do not collide with the development database (`hippowiki-db`, 5432), the test database
@@ -204,10 +205,8 @@ Move the lasting content of this plan into the other spec files and remove the p
 ### Build
 
 1. Describe the feature as built in `spec/container-image.md` (in the style of `pages.md`): the image and its build
-   stages, the start with the migration and `HIPPOWIKI_SKIP_MIGRATION`, the command that only migrates, the
-   environment variables, the smoke test, the release workflow with its tags, and the limits. One limit to name:
-   `/api/health` only checks that the database answers; a container started with `HIPPOWIKI_SKIP_MIGRATION=true`
-   against a database without the tables reports ok. Fold `container-image-requirements.md` into this file: take over
+   stages, the start with the migration, the command that only migrates, the environment variables, the smoke test,
+   the release workflow with its tags, and the limits. Fold `container-image-requirements.md` into this file: take over
    what still holds and is not covered yet, in particular its sections "What the environment has to provide" and
    "Decisions", worded as built instead of as required. Where the image as built differs from a requirement, describe
    the image as built and name the difference in the report of the step. Update the section "Continuous integration"
