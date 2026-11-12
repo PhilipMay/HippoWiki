@@ -39,7 +39,7 @@ that file into the description of the feature as built and deletes it.
 ## Checklist
 
 - [x] Image
-- [ ] Smoke test
+- [x] Smoke test
 - [ ] Release workflow
 - [ ] Wrap-up
 

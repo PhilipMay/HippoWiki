@@ -158,6 +158,7 @@ needs only the Podman machine, with at least 4 GiB of memory, because `next buil
 
 ```bash
 npm run image:build   # build the image hippowiki:local for this machine
+npm run image:smoke   # check the built image against a throwaway database
 ```
 
 - The image reads `DATABASE_URL` in the form `postgresql://<user>:<password>@<host>:<port>/<database>`, without
@@ -171,6 +172,14 @@ npm run image:build   # build the image hippowiki:local for this machine
   ```bash
   podman run --rm --env DATABASE_URL=postgresql://user:password@host:5432/hippowiki hippowiki:local ./image-migrate.sh
   ```
+
+- `npm run image:smoke` checks the image of `npm run image:build`. In the pod `hippowiki-smoke` it starts PostgreSQL
+  with an empty database in memory and a container of the image, whose port 3000 is published as `127.0.0.1:3200`.
+  It checks that the start creates the tables and serves `/folders`, `/api/health` and the static files, that the
+  server listens on all interfaces and not as root, and that the image has no `.env` file. A second container and
+  `./image-migrate.sh` against the migrated database must apply no migration. The pod is removed at the end, also
+  when a check fails; then the last log lines of the containers are printed. It can run next to the development
+  database, the test database and the development server.
 
 ## Commands
 
@@ -191,6 +200,7 @@ npm run image:build   # build the image hippowiki:local for this machine
 | `npm run test:e2e:ui`         | Run the end-to-end tests in the Playwright UI                         |
 | `npm run test:e2e:production` | Run the end-to-end tests against a production build                   |
 | `npm run image:build`         | Build the container image `hippowiki:local` with Podman               |
+| `npm run image:smoke`         | Check the built image against a throwaway database                    |
 
 ## Licensing
 

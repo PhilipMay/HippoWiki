@@ -32,7 +32,8 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
-    "image:build": "bash scripts/image.sh build"
+    "image:build": "bash scripts/image.sh build",
+    "image:smoke": "bash scripts/image.sh smoke"
   },
   "dependencies": {
     "@emotion/cache": "^11.14.0",
