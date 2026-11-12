@@ -19,7 +19,7 @@ the "Save page" and the "Move or rename page" dialog.
 
 - [x] Shared name and place fields
 - [x] Place in the create action
-- [ ] Place choice in the "Save page" dialog
+- [x] Place choice in the "Save page" dialog
 - [ ] Wrap-up
 
 ## Shared name and place fields

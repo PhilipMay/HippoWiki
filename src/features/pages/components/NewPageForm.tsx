@@ -9,43 +9,43 @@ import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
-import { useActionState, useId, useRef, useState } from "react";
+import { startTransition, useActionState, useId, useRef, useState, type SubmitEvent } from "react";
 
 import Link from "@/components/Link";
+import PageNameAndPlaceFields, { FOLDER_TARGET } from "@/features/pages/components/PageNameAndPlaceFields";
 import { deriveName, titleFromContent } from "@/features/pages/derive";
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
-import { PLACE_FIELD, TITLE_HEADING_MISSING_MESSAGE, type PageFormAction } from "@/features/pages/schema";
-import { folderPath, pagePath, tabPath } from "@/lib/addresses";
+import { TITLE_HEADING_MISSING_MESSAGE, type PageFormAction } from "@/features/pages/schema";
+import { folderPath, tabPath } from "@/lib/addresses";
 import { useHydrated } from "@/lib/hydration";
-import { NAME_MAX_LENGTH } from "@/lib/names";
 
 type NewPageFormProps = {
-  /** Server Action that creates the page in its place; it returns the errors to show, or redirects on success. */
+  /** Server Action that creates the page in the chosen place; it returns the errors to show, or redirects on success. */
   action: PageFormAction;
   /** Name of the folder the page is created in. */
   folderName: string;
-  /**
-   * Name of the tab the page is created in, or `null` for a page placed directly in the folder. "Cancel" leads to
-   * this place, and the dialog shows the new address in it.
-   */
+  /** The tabs of the folder, in display order: the places the dialog offers besides the folder itself. */
+  tabs: { id: string; name: string }[];
+  /** Name of the tab the editor was opened for, or `null` for the folder itself. "Cancel" leads to this place. */
   tabName: string | null;
-  /** The id of the tab the editor was opened for, or `null` for the folder itself: the place the page is created in. */
+  /** The id of the tab the editor was opened for, or `null` for the folder itself; the dialog preselects this place. */
   initialTabId: string | null;
 };
 
 /**
  * Form for a new page that asks only for the Markdown content, which must start with a title heading (`# Title`).
- * "Save" derives the title and opens a dialog that asks only for the name, prefilled from the title.
+ * "Save" derives the title and opens a dialog that asks for the name, prefilled from the title, and the place, with the
+ * place the editor was opened for preselected.
  */
-export default function NewPageForm({ action, folderName, tabName, initialTabId }: NewPageFormProps) {
+export default function NewPageForm({ action, folderName, tabs, tabName, initialTabId }: NewPageFormProps) {
   const [content, setContent] = useState("");
   const [open, setOpen] = useState(false);
   // The title derived when "Save" was last pressed; the dialog suggests the name from it. The title is not submitted,
   // the server derives it again from the content.
   const [title, setTitle] = useState("");
   const [contentError, setContentError] = useState<string | null>(null);
-  // A new key for every opening remounts the dialog, so that the name is derived again and errors of an earlier attempt
-  // are gone.
+  // A new key for every opening remounts the dialog, so that the name is derived again, the place starts with the one
+  // the editor was opened for and errors of an earlier attempt are gone.
   const [dialogKey, setDialogKey] = useState(0);
   // Input before hydration could be lost, so the content is read-only and "Save" is disabled until then.
   const hydrated = useHydrated();
@@ -92,7 +92,7 @@ export default function NewPageForm({ action, folderName, tabName, initialTabId 
         open={open}
         action={action}
         folderName={folderName}
-        tabName={tabName}
+        tabs={tabs}
         initialTabId={initialTabId}
         title={title}
         content={content}
@@ -102,34 +102,44 @@ export default function NewPageForm({ action, folderName, tabName, initialTabId 
   );
 }
 
-type SavePageDialogProps = NewPageFormProps & {
+type SavePageDialogProps = Omit<NewPageFormProps, "tabName"> & {
   open: boolean;
   /** The title derived from the content, used to suggest the name; the server derives it again on save. */
   title: string;
-  /** The Markdown content of the new page, submitted with the name. */
+  /** The Markdown content of the new page, submitted with the name and the place. */
   content: string;
   onClose: () => void;
 };
 
-/** Dialog "Save page" that asks for the name and creates the page. */
+/** Dialog "Save page" that asks for the name and the place and creates the page. */
 function SavePageDialog({
   open,
   action,
   folderName,
-  tabName,
+  tabs,
   initialTabId,
   title,
   content,
   onClose,
 }: SavePageDialogProps) {
   const [state, formAction, pending] = useActionState(action, {});
+  // Controlled name and place keep the input when the action returns errors.
   const [name, setName] = useState(() => deriveName(title));
+  const [place, setPlace] = useState(initialTabId ?? FOLDER_TARGET);
   const nameRef = useRef<HTMLInputElement>(null);
   const titleId = useId();
   const formId = useId();
 
   const nameError = state.fieldErrors?.name?.[0];
   const message = state.message ?? state.fieldErrors?.content?.[0];
+
+  // The form calls the action itself instead of passing it as the form's `action`: React resets a form after its
+  // action, and that reset puts the radio buttons back to the initial choice, out of sync with the controlled one.
+  const submit = (event: SubmitEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    startTransition(() => formAction(formData));
+  };
 
   const close = () => {
     if (!pending) onClose();
@@ -142,31 +152,30 @@ function SavePageDialog({
       fullWidth
       maxWidth="sm"
       aria-labelledby={titleId}
-      // The name is the only field. `autoFocus` does not hold here, because the dialog focuses itself on
-      // opening, so the name field is focused once the dialog has entered.
+      // `autoFocus` does not hold here, because the dialog focuses itself on opening, so the name field is focused once
+      // the dialog has entered.
       slotProps={{ transition: { onEntered: () => nameRef.current?.focus() } }}
     >
       <DialogTitle id={titleId}>Save page</DialogTitle>
       <DialogContent>
         {/* The dialog renders in a portal, outside the content field's tree, so the content is submitted in a hidden
             field. `noValidate`: the server validates, and its errors are shown at the fields. */}
-        <Box component="form" id={formId} action={formAction} noValidate>
+        <Box component="form" id={formId} onSubmit={submit} noValidate>
           <Stack spacing={3} sx={{ pt: 1 }}>
             {message && <Alert severity="error">{message}</Alert>}
-            <TextField
-              name="name"
-              label="Name"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              inputRef={nameRef}
-              required
-              fullWidth
-              error={!!nameError}
-              helperText={nameError ?? `Address: ${pagePath(folderName, tabName, name.trim())}`}
-              slotProps={{ htmlInput: { maxLength: NAME_MAX_LENGTH, spellCheck: false, autoCapitalize: "none" } }}
+            {/* The dialog opens only after hydration, so the fields are never locked. */}
+            <PageNameAndPlaceFields
+              folderName={folderName}
+              tabs={tabs}
+              name={name}
+              onNameChange={setName}
+              place={place}
+              onPlaceChange={setPlace}
+              nameError={nameError}
+              nameRef={nameRef}
+              locked={false}
             />
             <input type="hidden" name="content" value={content} />
-            <input type="hidden" name={PLACE_FIELD} value={initialTabId ?? ""} />
           </Stack>
         </Box>
       </DialogContent>

@@ -22,9 +22,12 @@ function saveDialog(page: Page) {
   return page.getByRole("dialog", { name: "Save page" });
 }
 
-/** Opens the editor for a new page in the folder, enters the content and opens the "Save page" dialog. */
-async function openSaveDialog(page: Page, content: string) {
-  await page.goto(NEW_PAGE);
+/**
+ * Opens the editor for a new page at the given address (the folder by default), enters the content and opens the "Save
+ * page" dialog.
+ */
+async function openSaveDialog(page: Page, content: string, address = NEW_PAGE) {
+  await page.goto(address);
   await page.getByLabel("Content").fill(content);
   await page.getByRole("button", { name: "Save" }).click();
   const dialog = saveDialog(page);
@@ -101,7 +104,7 @@ for (const { name, content } of [
   });
 }
 
-test("the dialog asks only for the name and shows no title", async ({ page }) => {
+test("the dialog asks for the name and the place and shows no title", async ({ page }) => {
   const dialog = await openSaveDialog(page, "# Hidden title\n\nBody");
 
   await expect(dialog.getByLabel("Title")).toHaveCount(0);
@@ -292,5 +295,128 @@ test("a crafted request whose place is a tab of another folder shows an error an
 
   await dialog.getByRole("button", { name: "Cancel" }).click();
   await expect(page.getByLabel("Content")).toHaveValue("# Crafted\n\nContent that must not get lost");
+  expect(errors).toEqual([]);
+});
+
+test.describe("the place of the new page", () => {
+  /** The address of the editor for a new page in the tab guides of the folder. */
+  const NEW_PAGE_IN_GUIDES = "/folders/handbook/guides?action=new";
+
+  let guides: Awaited<ReturnType<typeof createTab>>;
+
+  test.beforeEach(async () => {
+    guides = await createTab({ folder: handbook, name: "guides" });
+    await createTab({ folder: handbook, name: "meetings" });
+  });
+
+  test("the place the editor was opened for is preselected", async ({ page }) => {
+    const errors = collectErrors(page);
+    let dialog = await openSaveDialog(page, "# Preselected");
+    await expect(dialog.getByRole("radiogroup", { name: "Place" }).getByRole("radio")).toHaveCount(3);
+    await expect(dialog.getByRole("radio", { name: "Directly in the folder" })).toBeChecked();
+    await expect(dialog.getByRole("radio", { name: "Tab guides" })).not.toBeChecked();
+    await expect(dialog.getByRole("radio", { name: "Tab meetings" })).not.toBeChecked();
+
+    dialog = await openSaveDialog(page, "# Preselected", NEW_PAGE_IN_GUIDES);
+    await expect(dialog.getByRole("radio", { name: "Tab guides" })).toBeChecked();
+    await expect(dialog.getByRole("radio", { name: "Directly in the folder" })).not.toBeChecked();
+    await expect(dialog.getByLabel("Name")).toHaveAccessibleDescription(
+      "Address: /folders/handbook/guides/preselected.md",
+    );
+    expect(errors).toEqual([]);
+  });
+
+  test("choosing a tab on the folder address creates the page in that tab", async ({ page }) => {
+    const errors = collectErrors(page);
+    const dialog = await openSaveDialog(page, "# Into a tab");
+    await dialog.getByRole("radio", { name: "Tab guides" }).check();
+
+    await expect(dialog.getByLabel("Name")).toHaveAccessibleDescription(
+      "Address: /folders/handbook/guides/into-a-tab.md",
+    );
+    await dialog.getByRole("button", { name: "Save" }).click();
+
+    await expect(page).toHaveURL("/folders/handbook/guides/into-a-tab.md");
+    expect(await getTestDb().page.findFirstOrThrow()).toMatchObject({ folderId: handbook.id, tabId: guides.id });
+    expect(errors).toEqual([]);
+  });
+
+  test("choosing the folder on a tab address creates the page directly in the folder", async ({ page }) => {
+    const errors = collectErrors(page);
+    const dialog = await openSaveDialog(page, "# Into the folder", NEW_PAGE_IN_GUIDES);
+    await dialog.getByRole("radio", { name: "Directly in the folder" }).check();
+
+    await expect(dialog.getByLabel("Name")).toHaveAccessibleDescription(
+      "Address: /folders/handbook/into-the-folder.md",
+    );
+    await dialog.getByRole("button", { name: "Save" }).click();
+
+    await expect(page).toHaveURL("/folders/handbook/into-the-folder.md");
+    expect(await getTestDb().page.findFirstOrThrow()).toMatchObject({ folderId: handbook.id, tabId: null });
+    expect(errors).toEqual([]);
+  });
+
+  test("choosing another tab on a tab address creates the page in that tab", async ({ page }) => {
+    const dialog = await openSaveDialog(page, "# Elsewhere", NEW_PAGE_IN_GUIDES);
+    await dialog.getByRole("radio", { name: "Tab meetings" }).check();
+
+    await expect(dialog.getByLabel("Name")).toHaveAccessibleDescription(
+      "Address: /folders/handbook/meetings/elsewhere.md",
+    );
+    await dialog.getByRole("button", { name: "Save" }).click();
+
+    await expect(page).toHaveURL("/folders/handbook/meetings/elsewhere.md");
+  });
+
+  test("a name taken at the chosen place keeps name, place and content, and is free at another place", async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    await createPage({ tab: guides, name: "taken", title: "Taken in guides" });
+
+    const dialog = await openSaveDialog(page, "# Taken\n\nContent that must not get lost");
+    await dialog.getByRole("radio", { name: "Tab guides" }).check();
+    await dialog.getByRole("button", { name: "Save" }).click();
+
+    const name = dialog.getByLabel("Name");
+    await expect(name).toHaveAccessibleDescription("Name is already in use");
+    await expect(name).toHaveValue("taken");
+    await expect(dialog.getByRole("radio", { name: "Tab guides" })).toBeChecked();
+    await expect(page).toHaveURL(NEW_PAGE);
+    expect(await getTestDb().page.count()).toBe(1);
+
+    await dialog.getByRole("radio", { name: "Directly in the folder" }).check();
+    await dialog.getByRole("button", { name: "Save" }).click();
+
+    await expect(page).toHaveURL("/folders/handbook/taken.md");
+    await expect(page.getByRole("article").getByText("Content that must not get lost")).toBeVisible();
+    expect(await getTestDb().page.count({ where: { name: "taken" } })).toBe(2);
+    expect(errors).toEqual([]);
+  });
+
+  test("cancelling the dialog and opening it again starts with the place the editor was opened for", async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    const dialog = await openSaveDialog(page, "# Reopened", NEW_PAGE_IN_GUIDES);
+    await dialog.getByRole("radio", { name: "Tab meetings" }).check();
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(dialog).toBeHidden();
+
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(dialog.getByRole("radio", { name: "Tab guides" })).toBeChecked();
+    await expect(dialog.getByRole("radio", { name: "Tab meetings" })).not.toBeChecked();
+    expect(errors).toEqual([]);
+  });
+});
+
+test("in a folder without tabs the dialog offers only the folder itself", async ({ page }) => {
+  const errors = collectErrors(page);
+  const dialog = await openSaveDialog(page, "# Alone");
+
+  const places = dialog.getByRole("radiogroup", { name: "Place" }).getByRole("radio");
+  await expect(places).toHaveCount(1);
+  await expect(places).toHaveAccessibleName("Directly in the folder");
+  await expect(places).toBeChecked();
   expect(errors).toEqual([]);
 });

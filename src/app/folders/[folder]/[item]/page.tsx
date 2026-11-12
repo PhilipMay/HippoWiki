@@ -8,7 +8,7 @@ import Link from "@/components/Link";
 import { renameTab } from "@/features/folders/actions";
 import FolderBreadcrumbs from "@/features/folders/components/FolderBreadcrumbs";
 import NameDialog from "@/features/folders/components/NameDialog";
-import { getTab } from "@/features/folders/queries";
+import { getTab, listTabs } from "@/features/folders/queries";
 import { createPage } from "@/features/pages/actions";
 import NewPageForm from "@/features/pages/components/NewPageForm";
 import PageList from "@/features/pages/components/PageList";
@@ -19,7 +19,10 @@ import { pageTitle } from "@/lib/site";
 
 type Props = PageProps<"/folders/[folder]/[item]">;
 
-/** The actions of a tab address: `new` opens the editor for a new page in the tab, `rename` the "Rename tab" dialog. */
+/**
+ * The actions of a tab address: `new` opens the editor for a new page, with the tab as the preselected place, `rename`
+ * the "Rename tab" dialog.
+ */
 const TAB_ACTIONS = ["new", "rename"] as const;
 
 /**
@@ -75,6 +78,7 @@ export default async function FolderItemPage({ params, searchParams }: Props) {
         <NewPageForm
           action={createPage.bind(null, folder.id)}
           folderName={folder.name}
+          tabs={await listTabs(folder.id)}
           tabName={tab.name}
           initialTabId={tab.id}
         />

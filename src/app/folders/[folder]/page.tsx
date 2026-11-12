@@ -18,8 +18,8 @@ import { allPagesPath, folderPath, parseAction, parseView, type SearchParams } f
 import { pageTitle } from "@/lib/site";
 
 /**
- * The actions of a folder address: `new` opens the editor for a new page placed directly in the folder, `rename` the
- * "Rename folder" dialog and `new-tab` the "New tab" dialog.
+ * The actions of a folder address: `new` opens the editor for a new page, with the folder itself as the
+ * preselected place, `rename` the "Rename folder" dialog and `new-tab` the "New tab" dialog.
  */
 const ACTIONS = ["new", "rename", "new-tab"] as const;
 
@@ -62,6 +62,7 @@ export default async function FolderPage({ params, searchParams }: PageProps<"/f
         <NewPageForm
           action={createPage.bind(null, folder.id)}
           folderName={folder.name}
+          tabs={await listTabs(folder.id)}
           tabName={null}
           initialTabId={null}
         />
