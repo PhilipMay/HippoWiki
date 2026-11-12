@@ -253,3 +253,156 @@ describe("logOut", () => {
     expect(await authService.getSessionUser(again.headers)).toStrictEqual(again.user);
   });
 });
+
+describe("the wait after failed logins", () => {
+  const MINUTE_MS = 60_000;
+
+  /** Tries the given number of logins with a wrong password and returns their results. */
+  async function failLogins(name: string, count: number) {
+    const results = [];
+    for (let attempt = 0; attempt < count; attempt += 1) {
+      results.push(await authService.logIn({ name, password: WRONG_PASSWORD }, new Headers()));
+    }
+    return results;
+  }
+
+  /** Moves the time of the last failed login for the name back, as if that much time had passed. */
+  async function letTimePass(name: string, ms: number) {
+    const attempt = await getTestDb().loginAttempt.findUniqueOrThrow({ where: { username: name } });
+    await getTestDb().loginAttempt.update({
+      where: { username: name },
+      data: { lastFailedAt: new Date(attempt.lastFailedAt.getTime() - ms) },
+    });
+  }
+
+  /** Asserts that the result is a refusal with a wait of about the given minutes: at most that, and close to it. */
+  function expectWait(result: Awaited<ReturnType<typeof authService.logIn>>, minutes: number) {
+    expect(result).toMatchObject({ ok: false, error: { code: "wait" } });
+    if (result.ok || result.error.code !== "wait") return;
+    expect(result.error.waitMs).toBeLessThanOrEqual(minutes * MINUTE_MS);
+    expect(result.error.waitMs).toBeGreaterThan(minutes * MINUTE_MS - 10_000);
+  }
+
+  it("makes the login after five failures wait a minute, the same for a known and an unknown name", async () => {
+    await createUser({ name: "alice" });
+
+    const known = await failLogins("alice", 5);
+    const unknown = await failLogins("nobody", 5);
+
+    expect(known).toEqual(Array.from({ length: 5 }, () => INVALID_CREDENTIALS));
+    expect(unknown).toStrictEqual(known);
+    expectWait(await authService.logIn({ name: "alice", password: WRONG_PASSWORD }, new Headers()), 1);
+    expectWait(await authService.logIn({ name: "nobody", password: WRONG_PASSWORD }, new Headers()), 1);
+    const attempts = await getTestDb().loginAttempt.findMany({ orderBy: { username: "asc" } });
+    expect(attempts.map(({ username, failures }) => ({ username, failures }))).toEqual([
+      { username: "alice", failures: 5 },
+      { username: "nobody", failures: 5 },
+    ]);
+  });
+
+  it("does not make a fifth login wait after four failures", async () => {
+    await createUser({ name: "alice" });
+    await failLogins("alice", 4);
+
+    expect((await logInAs("alice")).user.name).toBe("alice");
+  });
+
+  it("refuses the right password during the wait, without checking it and without counting the attempt", async () => {
+    await createUser({ name: "alice" });
+    await failLogins("alice", 5);
+    const before = await getTestDb().loginAttempt.findUniqueOrThrow({ where: { username: "alice" } });
+    vi.mocked(hashPassword).mockClear();
+    vi.mocked(verifyPassword).mockClear();
+
+    const result = await authService.logIn({ name: "alice", password: TEST_PASSWORD }, new Headers());
+
+    expectWait(result, 1);
+    expect(vi.mocked(verifyPassword)).not.toHaveBeenCalled();
+    expect(vi.mocked(hashPassword)).not.toHaveBeenCalled();
+    expect(await getTestDb().loginAttempt.findUniqueOrThrow({ where: { username: "alice" } })).toStrictEqual(before);
+    expect(await getTestDb().session.count()).toBe(0);
+  });
+
+  it("accepts the right password once the wait is over, and forgets the failures", async () => {
+    await createUser({ name: "alice" });
+    await failLogins("alice", 5);
+
+    await letTimePass("alice", MINUTE_MS - 5000);
+    expectWait(await authService.logIn({ name: "alice", password: TEST_PASSWORD }, new Headers()), 5 / 60);
+    await letTimePass("alice", 5000);
+    const { user, headers } = await logInAs("alice");
+
+    expect(await authService.getSessionUser(headers)).toStrictEqual(user);
+    expect(await getTestDb().loginAttempt.count()).toBe(0);
+    // The count starts again: four more failures do not make the next login wait.
+    await failLogins("alice", 4);
+    expect((await logInAs("alice")).user.name).toBe("alice");
+  });
+
+  it("forgets the failures of a name after a successful login, and keeps those of other names", async () => {
+    await createUser({ name: "alice" });
+    await failLogins("alice", 4);
+    await failLogins("nobody", 4);
+
+    await logInAs("alice");
+
+    const attempts = await getTestDb().loginAttempt.findMany();
+    expect(attempts.map(({ username, failures }) => ({ username, failures }))).toEqual([
+      { username: "nobody", failures: 4 },
+    ]);
+  });
+
+  it("doubles the wait with each further failure, up to 15 minutes", async () => {
+    await createUser({ name: "alice" });
+    await failLogins("alice", 5);
+
+    for (const minutes of [2, 4, 8, 15, 15]) {
+      // Once the wait is over, the next failure counts and starts a longer one.
+      await letTimePass("alice", 15 * MINUTE_MS);
+      expect(await failLogins("alice", 1)).toEqual([INVALID_CREDENTIALS]);
+      expectWait(await authService.logIn({ name: "alice", password: TEST_PASSWORD }, new Headers()), minutes);
+    }
+    expect((await getTestDb().loginAttempt.findUniqueOrThrow({ where: { username: "alice" } })).failures).toBe(10);
+  });
+
+  it("keeps the count in the database: a new instance of the service still makes the login wait", async () => {
+    await createUser({ name: "alice" });
+    await failLogins("alice", 5);
+
+    // As after a restart of the server: the modules are loaded anew, only the database remembers.
+    vi.resetModules();
+    const restarted = await import("@/features/auth/service");
+
+    expect(restarted.logIn).not.toBe(authService.logIn);
+    expectWait(await restarted.logIn({ name: "alice", password: TEST_PASSWORD }, new Headers()), 1);
+  });
+
+  it("counts a password of 129 characters as a failure", async () => {
+    await createUser({ name: "alice" });
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await authService.logIn({ name: "alice", password: "p".repeat(129) }, new Headers());
+    }
+
+    expectWait(await authService.logIn({ name: "alice", password: TEST_PASSWORD }, new Headers()), 1);
+  });
+
+  it("keeps no row for a name that breaks the name rule, however often it is tried", async () => {
+    const results = [];
+    for (let attempt = 0; attempt < 7; attempt += 1) {
+      results.push(await authService.logIn({ name: "Not A Name!", password: WRONG_PASSWORD }, new Headers()));
+    }
+
+    expect(results).toEqual(Array.from({ length: 7 }, () => INVALID_CREDENTIALS));
+    expect(await getTestDb().loginAttempt.count()).toBe(0);
+  });
+
+  it("counts the failures of a name with spaces around it under the name itself", async () => {
+    await createUser({ name: "alice" });
+
+    await failLogins("  alice ", 5);
+
+    expectWait(await authService.logIn({ name: "alice", password: TEST_PASSWORD }, new Headers()), 1);
+    expect(await getTestDb().loginAttempt.count()).toBe(1);
+  });
+});

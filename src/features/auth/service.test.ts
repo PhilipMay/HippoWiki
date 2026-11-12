@@ -1,5 +1,5 @@
 import { APIError } from "better-auth/api";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getSessionUser, logIn, logOut } from "@/features/auth/service";
 import { PasswordHashBusyError } from "@/lib/password-hash";
@@ -9,12 +9,24 @@ const mocks = vi.hoisted(() => ({
   signInUsername: vi.fn(),
   signOut: vi.fn(),
   getSession: vi.fn(),
+  attemptFindUnique: vi.fn(),
+  attemptUpsert: vi.fn(),
+  attemptDeleteMany: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({ getAuth: mocks.getAuth }));
+vi.mock("@/lib/db", () => ({
+  getDb: () => ({
+    loginAttempt: {
+      findUnique: mocks.attemptFindUnique,
+      upsert: mocks.attemptUpsert,
+      deleteMany: mocks.attemptDeleteMany,
+    },
+  }),
+}));
 vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, error: mocks.error } }));
 
 const USER_ID = "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002";
@@ -43,6 +55,19 @@ function logged(): string {
   return JSON.stringify([mocks.info.mock.calls, mocks.warn.mock.calls, mocks.error.mock.calls]);
 }
 
+/** The clock of the tests; the service takes the current time from it. */
+const NOW = new Date("2026-11-12T12:00:00.000Z");
+const MINUTE = 60_000;
+
+/** The statement that counts a failed login for the name at the time of the clock. */
+function countedFailure(name: string) {
+  return {
+    where: { username: name },
+    create: { username: name, failures: 1, lastFailedAt: NOW },
+    update: { failures: { increment: 1 }, lastFailedAt: NOW },
+  };
+}
+
 function expectNothingLogged(): void {
   expect(mocks.info).not.toHaveBeenCalled();
   expect(mocks.warn).not.toHaveBeenCalled();
@@ -51,6 +76,11 @@ function expectNothingLogged(): void {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.useFakeTimers({ now: NOW, toFake: ["Date"] });
+  // No failed logins so far, unless a test says otherwise.
+  mocks.attemptFindUnique.mockResolvedValue(null);
+  mocks.attemptUpsert.mockResolvedValue({});
+  mocks.attemptDeleteMany.mockResolvedValue({ count: 0 });
   mocks.getAuth.mockResolvedValue({
     api: { signInUsername: mocks.signInUsername, signOut: mocks.signOut, getSession: mocks.getSession },
   });
@@ -59,6 +89,10 @@ beforeEach(() => {
     response: { token: "token", user: AUTH_USER },
   });
   mocks.signOut.mockResolvedValue({ headers: RESPONSE_HEADERS, response: { success: true } });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("logIn", () => {
@@ -123,21 +157,37 @@ describe("logIn", () => {
   });
 
   it.each([
-    ["an empty name", "", PASSWORD],
-    ["a name of 2 characters", "ab", PASSWORD],
-    ["a name of 31 characters", "a".repeat(31), PASSWORD],
-    ["a name in upper case", "Alice", PASSWORD],
-    ["a name with a double hyphen", "al--ice", PASSWORD],
-    ["an email address as the name", "alice@users.hippowiki.invalid", PASSWORD],
-    ["a password of 129 characters", "alice", "p".repeat(129)],
-    ["an empty password", "alice", ""],
-  ])("answers %s like a wrong password, without reaching Better Auth", async (_case, name, password) => {
-    const result = await logIn({ name, password }, REQUEST_HEADERS);
+    ["an empty name", ""],
+    ["a name of 2 characters", "ab"],
+    ["a name of 31 characters", "a".repeat(31)],
+    ["a name in upper case", "Alice"],
+    ["a name with a double hyphen", "al--ice"],
+    ["an email address as the name", "alice@users.hippowiki.invalid"],
+  ])(
+    "answers %s like a wrong password, without reaching Better Auth and without a row for the name",
+    async (_case, name) => {
+      const result = await logIn({ name, password: PASSWORD }, REQUEST_HEADERS);
+
+      expect(result).toEqual({ ok: false, error: { code: "invalid-credentials" } });
+      expect(mocks.getAuth).not.toHaveBeenCalled();
+      expect(mocks.signInUsername).not.toHaveBeenCalled();
+      // Such a name cannot belong to a user; the table of the failed logins must not take any text.
+      expect(mocks.attemptFindUnique).not.toHaveBeenCalled();
+      expect(mocks.attemptUpsert).not.toHaveBeenCalled();
+      expectNothingLogged();
+    },
+  );
+
+  it.each([
+    ["a password of 129 characters", "p".repeat(129)],
+    ["an empty password", ""],
+  ])("counts %s as a failed login, without reaching Better Auth", async (_case, password) => {
+    const result = await logIn({ name: "alice", password }, REQUEST_HEADERS);
 
     expect(result).toEqual({ ok: false, error: { code: "invalid-credentials" } });
     expect(mocks.getAuth).not.toHaveBeenCalled();
     expect(mocks.signInUsername).not.toHaveBeenCalled();
-    expectNothingLogged();
+    expect(mocks.attemptUpsert).toHaveBeenCalledExactlyOnceWith(countedFailure("alice"));
   });
 
   it("answers busy when the password hashing has no free slot", async () => {
@@ -188,6 +238,136 @@ describe("logIn", () => {
     await logIn({ name: "alice", password: PASSWORD }, REQUEST_HEADERS);
 
     expect(logged()).not.toContain(PASSWORD);
+  });
+});
+
+describe("the wait after failed logins", () => {
+  it("counts a refused login for the name, in one statement that also creates the row", async () => {
+    mocks.signInUsername.mockRejectedValue(invalidCredentials());
+
+    await logIn({ name: "alice", password: PASSWORD }, REQUEST_HEADERS);
+
+    expect(mocks.attemptFindUnique).toHaveBeenCalledExactlyOnceWith({
+      where: { username: "alice" },
+      select: { failures: true, lastFailedAt: true },
+    });
+    expect(mocks.attemptUpsert).toHaveBeenCalledExactlyOnceWith(countedFailure("alice"));
+    expect(mocks.attemptDeleteMany).not.toHaveBeenCalled();
+  });
+
+  it("counts under the trimmed name", async () => {
+    mocks.signInUsername.mockRejectedValue(invalidCredentials());
+
+    await logIn({ name: "  alice ", password: PASSWORD }, REQUEST_HEADERS);
+
+    expect(mocks.attemptUpsert).toHaveBeenCalledExactlyOnceWith(countedFailure("alice"));
+  });
+
+  it("deletes the row of the name after a successful login", async () => {
+    mocks.attemptFindUnique.mockResolvedValue({ failures: 4, lastFailedAt: new Date(NOW.getTime() - 1000) });
+
+    const result = await logIn({ name: "alice", password: PASSWORD }, REQUEST_HEADERS);
+
+    expect(result.ok).toBe(true);
+    expect(mocks.attemptDeleteMany).toHaveBeenCalledExactlyOnceWith({ where: { username: "alice" } });
+    expect(mocks.attemptUpsert).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["4 failures a moment ago", 4, 1000],
+    ["5 failures a minute ago", 5, 1 * MINUTE],
+    ["6 failures two minutes ago", 6, 2 * MINUTE],
+    ["9 failures fifteen minutes ago", 9, 15 * MINUTE],
+    ["20 failures fifteen minutes ago", 20, 15 * MINUTE],
+  ])("checks the password again after %s", async (_case, failures, ago) => {
+    mocks.attemptFindUnique.mockResolvedValue({ failures, lastFailedAt: new Date(NOW.getTime() - ago) });
+
+    const result = await logIn({ name: "alice", password: PASSWORD }, REQUEST_HEADERS);
+
+    expect(result.ok).toBe(true);
+    expect(mocks.signInUsername).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["5 failures a moment ago", 5, 1000, 1 * MINUTE - 1000],
+    ["5 failures almost a minute ago", 5, 1 * MINUTE - 1, 1],
+    ["6 failures a minute ago", 6, 1 * MINUTE, 1 * MINUTE],
+    ["7 failures a moment ago", 7, 0, 4 * MINUTE],
+    ["8 failures a moment ago", 8, 0, 8 * MINUTE],
+    ["9 failures a moment ago", 9, 0, 15 * MINUTE],
+    ["20 failures ten minutes ago", 20, 10 * MINUTE, 5 * MINUTE],
+  ])(
+    "refuses a login after %s with the time that is left, without Better Auth and without a change of the row",
+    async (_case, failures, ago, waitMs) => {
+      mocks.attemptFindUnique.mockResolvedValue({ failures, lastFailedAt: new Date(NOW.getTime() - ago) });
+
+      const result = await logIn({ name: "alice", password: PASSWORD }, REQUEST_HEADERS);
+
+      expect(result).toEqual({ ok: false, error: { code: "wait", waitMs } });
+      // No password is checked during the wait, and the attempt is not counted.
+      expect(mocks.getAuth).not.toHaveBeenCalled();
+      expect(mocks.signInUsername).not.toHaveBeenCalled();
+      expect(mocks.attemptUpsert).not.toHaveBeenCalled();
+      expect(mocks.attemptDeleteMany).not.toHaveBeenCalled();
+      expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
+        { name: "alice", waitMs },
+        "login refused: waiting after failed logins",
+      );
+    },
+  );
+
+  it("refuses a password that cannot belong to a user during the wait like every other one", async () => {
+    mocks.attemptFindUnique.mockResolvedValue({ failures: 5, lastFailedAt: NOW });
+
+    const result = await logIn({ name: "alice", password: "p".repeat(129) }, REQUEST_HEADERS);
+
+    expect(result).toEqual({ ok: false, error: { code: "wait", waitMs: MINUTE } });
+    expect(mocks.attemptUpsert).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["the hashing is busy", new PasswordHashBusyError(), "busy"],
+    ["the login fails", new Error("connection refused"), "failed"],
+  ])("does not count an attempt when %s", async (_case, err, code) => {
+    mocks.signInUsername.mockRejectedValue(err);
+
+    const result = await logIn({ name: "alice", password: PASSWORD }, REQUEST_HEADERS);
+
+    expect(result).toEqual({ ok: false, error: { code } });
+    expect(mocks.attemptUpsert).not.toHaveBeenCalled();
+    expect(mocks.attemptDeleteMany).not.toHaveBeenCalled();
+  });
+
+  it("answers failed when the failed logins cannot be read, without checking the password", async () => {
+    const err = new Error("connection refused");
+    mocks.attemptFindUnique.mockRejectedValue(err);
+
+    const result = await logIn({ name: "alice", password: PASSWORD }, REQUEST_HEADERS);
+
+    expect(result).toEqual({ ok: false, error: { code: "failed" } });
+    expect(mocks.signInUsername).not.toHaveBeenCalled();
+    expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ err, name: "alice" }, "login failed");
+  });
+
+  it("still refuses the login when the failure cannot be counted, and logs that", async () => {
+    const err = new Error("connection refused");
+    mocks.signInUsername.mockRejectedValue(invalidCredentials());
+    mocks.attemptUpsert.mockRejectedValue(err);
+
+    const result = await logIn({ name: "alice", password: PASSWORD }, REQUEST_HEADERS);
+
+    expect(result).toEqual({ ok: false, error: { code: "invalid-credentials" } });
+    expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ err, name: "alice" }, "failed to count the failed login");
+  });
+
+  it("still logs in when the failed logins cannot be reset, and logs that", async () => {
+    const err = new Error("connection refused");
+    mocks.attemptDeleteMany.mockRejectedValue(err);
+
+    const result = await logIn({ name: "alice", password: PASSWORD }, REQUEST_HEADERS);
+
+    expect(result.ok).toBe(true);
+    expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ err, name: "alice" }, "failed to reset the failed logins");
   });
 });
 

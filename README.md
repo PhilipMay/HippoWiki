@@ -107,7 +107,9 @@ The application accesses the database with [Prisma](https://www.prisma.io/) 7. T
 ## Users
 
 Users log in at `/login` with a user name and a password; the header shows who is logged in and has "Log out". A
-session lasts 30 days. Nothing can be read or changed without a login. User accounts are stored in the database. There is one admin account, named `admin`; it is
+session lasts 30 days. Nothing can be read or changed without a login. After 5 failed logins in a row for a user
+name, the next login for that name has to wait 1 minute, and twice as long after each further failure, up to 15
+minutes; the answer is the same for names that exist and names that do not. User accounts are stored in the database. There is one admin account, named `admin`; it is
 created by the admin setup or by the seed:
 
 - `npm run db:seed` inserts two known users for development (`prisma/known-users.ts`), with the password change

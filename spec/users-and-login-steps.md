@@ -83,7 +83,7 @@ These hold for all steps. The wrap-up step moves them into the feature spec.
 - [x] Admin setup in the container image
 - [x] Login and logout
 - [x] Authenticated access only
-- [ ] Login wait after failed attempts
+- [x] Login wait after failed attempts
 - [ ] Forced password change
 - [ ] User list
 - [ ] Creating users

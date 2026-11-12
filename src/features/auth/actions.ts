@@ -12,6 +12,15 @@ import { foldersPath, loginPath } from "@/lib/addresses";
 
 const INVALID_CREDENTIALS_MESSAGE = "Invalid user name or password";
 const BUSY_MESSAGE = "Too many logins at the moment, please try again";
+
+/**
+ * The message of the wait after failed logins, with the minutes that are left, rounded up. It is the same for known
+ * and unknown user names.
+ */
+function waitMessage(waitMs: number): string {
+  const minutes = Math.max(1, Math.ceil(waitMs / 60_000));
+  return `Too many failed logins. Please try again in ${minutes} ${minutes === 1 ? "minute" : "minutes"}.`;
+}
 const LOGIN_FAILED_MESSAGE = "The login failed. Please try again.";
 
 /**
@@ -32,6 +41,8 @@ export async function logIn(_prevState: LoginFormState, formData: FormData): Pro
     switch (result.error.code) {
       case "invalid-credentials":
         return { message: INVALID_CREDENTIALS_MESSAGE };
+      case "wait":
+        return { message: waitMessage(result.error.waitMs) };
       case "busy":
         return { message: BUSY_MESSAGE };
       case "failed":

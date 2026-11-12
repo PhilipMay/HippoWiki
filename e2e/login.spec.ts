@@ -160,6 +160,76 @@ test("the right password logs in after a failed attempt", async ({ page }) => {
   await expect(page).toHaveURL("/folders");
 });
 
+const WAIT_ONE_MINUTE = "Too many failed logins. Please try again in 1 minute.";
+
+/** Submits a wrong password for the name five times; each one is answered like any wrong password. */
+async function failFiveLogins(page: Page, name: string) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    await submitLogin(page, name, "wrong-password");
+    await expect(formAlert(page)).toHaveText(INVALID_CREDENTIALS);
+    // The password field is emptied when the answer has arrived; only then is the next attempt typed.
+    await expect(page.getByLabel("Password")).toHaveValue("");
+    await expect(page.getByRole("button", { name: "Log in" })).toBeEnabled();
+  }
+}
+
+test("after five wrong passwords the right one is refused with the message of the wait", async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.goto("/login");
+  await failFiveLogins(page, KNOWN_USER.name);
+
+  await submitLogin(page, KNOWN_USER.name, KNOWN_USER.password);
+
+  await expect(formAlert(page)).toHaveText(WAIT_ONE_MINUTE);
+  await expect(page).toHaveURL("/login");
+  await expect(page.getByLabel("User name")).toHaveValue(KNOWN_USER.name);
+  await expect(page.getByLabel("Password")).toHaveValue("");
+  expect(await newSessionCount()).toBe(0);
+  expect(await getTestDb().loginAttempt.findMany()).toMatchObject([{ username: KNOWN_USER.name, failures: 5 }]);
+  expect(errors).toEqual([]);
+});
+
+test("once the wait is over, the right password logs in", async ({ page }) => {
+  await page.goto("/login");
+  await failFiveLogins(page, KNOWN_USER.name);
+  await submitLogin(page, KNOWN_USER.name, KNOWN_USER.password);
+  await expect(formAlert(page)).toHaveText(WAIT_ONE_MINUTE);
+
+  // As if a minute had passed: the stored time of the last failure is moved back.
+  await getTestDb().loginAttempt.update({
+    where: { username: KNOWN_USER.name },
+    data: { lastFailedAt: new Date(Date.now() - 61_000) },
+  });
+  await submitLogin(page, KNOWN_USER.name, KNOWN_USER.password);
+
+  await expect(page).toHaveURL("/folders");
+  await expect(page.getByRole("banner").getByText(KNOWN_USER.name, { exact: true })).toBeVisible();
+  expect(await getTestDb().loginAttempt.count()).toBe(0);
+});
+
+test("an unknown name shows the same messages as a known one, also for the wait", async ({ page }) => {
+  await page.goto("/login");
+  await failFiveLogins(page, "nobody");
+
+  await submitLogin(page, "nobody", "wrong-password");
+
+  await expect(formAlert(page)).toHaveText(WAIT_ONE_MINUTE);
+  expect(await getTestDb().loginAttempt.findMany()).toMatchObject([{ username: "nobody", failures: 5 }]);
+});
+
+test("the wait of one name does not hold back another user", async ({ page }) => {
+  await getTestDb().loginAttempt.create({
+    data: { username: KNOWN_USER.name, failures: 9, lastFailedAt: new Date() },
+  });
+  await page.goto("/login");
+
+  await submitLogin(page, KNOWN_USER.name, KNOWN_USER.password);
+  await expect(formAlert(page)).toHaveText("Too many failed logins. Please try again in 15 minutes.");
+
+  await submitLogin(page, KNOWN_ADMIN.name, KNOWN_ADMIN.password);
+  await expect(page).toHaveURL("/folders");
+});
+
 test("an empty form shows an error at each field and focuses the first one", async ({ page }) => {
   await page.goto("/login");
 

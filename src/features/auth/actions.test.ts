@@ -65,6 +65,23 @@ describe("logIn", () => {
   });
 
   it.each([
+    [1, "1 minute"],
+    [59_999, "1 minute"],
+    [60_000, "1 minute"],
+    [60_001, "2 minutes"],
+    [4 * 60_000, "4 minutes"],
+    [15 * 60_000, "15 minutes"],
+  ])("shows the wait of %i ms as %s that are left, without revalidating or redirecting", async (waitMs, minutes) => {
+    mocks.logIn.mockResolvedValue({ ok: false, error: { code: "wait", waitMs } });
+    const state = { message: `Too many failed logins. Please try again in ${minutes}.` };
+
+    await expect(logIn({}, formData(LOGIN_FORM))).resolves.toEqual(state);
+
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+    expect(mocks.redirect).not.toHaveBeenCalled();
+  });
+
+  it.each([
     ["an empty name", { name: "", password: "secret password" }, { name: ["User name is required"] }],
     ["an empty password", { name: "alice", password: "" }, { password: ["Password is required"] }],
     [
