@@ -19,6 +19,9 @@ The specification lives in the `spec/` directory. This catalog should always be 
 - `spec/container-image.md`: the container image as built (image and build stages, start with the migration, the
   command that only migrates, configuration, smoke test, publishing on a release, what the environment has to provide,
   decisions, limits)
+- `spec/users-and-login-requirements.md`: the requirements of the users and login feature, before it is built (login,
+  sessions, failed logins, user names, passwords and hashing, admin account and setup, creating and listing users,
+  forced password change, scope)
 - `spec/roadmap.md`: backlog of candidate features
 - `spec/issue-report.md`: how to report issues found in code and document reviews
 
