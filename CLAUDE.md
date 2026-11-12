@@ -14,6 +14,8 @@ The specification lives in the `spec/` directory. This catalog should always be 
 - `spec/pages.md`: the page feature as built (model, input rules, derived title and name, routes, limits)
 - `spec/content-structure.md`: the content structure as built (folders, tabs and pages under `/folders`: models, names,
   addresses, actions, routes, lists, limits)
+- `spec/page-deletion.md`: the planned soft delete of pages from the user's point of view (deleting, deleted pages,
+  restoring), not built yet
 - `spec/roadmap.md`: backlog of candidate features
 - `spec/issue-report.md`: how to report issues found in code and document reviews
 
