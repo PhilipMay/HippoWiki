@@ -406,3 +406,162 @@ describe("the wait after failed logins", () => {
     expect(await getTestDb().loginAttempt.count()).toBe(1);
   });
 });
+
+describe("changeFirstPassword", () => {
+  const NEW_PASSWORD = "my-own-password";
+
+  /** The three passwords of a change from the password of `createUser()` to the given one. */
+  function changeTo(newPassword: string, currentPassword = TEST_PASSWORD) {
+    return { currentPassword, newPassword, repeatPassword: newPassword };
+  }
+
+  /** What a refused change must leave as it is: the user row, the password hash and the sessions. */
+  async function storedState(name: string) {
+    const user = await getTestDb().user.findUniqueOrThrow({ where: { username: name }, include: { accounts: true } });
+    const sessions = await getTestDb().session.findMany({ where: { userId: user.id }, orderBy: { createdAt: "asc" } });
+    return { user, sessions };
+  }
+
+  it("clears the pending change, and the new password logs in while the old one does not", async () => {
+    const alice = await createUser({ name: "alice" });
+    const { headers } = await logInAs("alice");
+
+    const result = await authService.changeFirstPassword(changeTo(NEW_PASSWORD), headers);
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { user: { id: alice.id, name: "alice", mustChangePassword: false } },
+    });
+    expect((await getTestDb().user.findUniqueOrThrow({ where: { id: alice.id } })).mustChangePassword).toBe(false);
+    const account = await getTestDb().account.findFirstOrThrow({ where: { userId: alice.id } });
+    expect(account.password).toMatch(/^\$argon2id\$v=19\$m=19456,t=2,p=1\$/);
+    expect((await logInAs("alice", NEW_PASSWORD)).user).toStrictEqual({
+      id: alice.id,
+      name: "alice",
+      mustChangePassword: false,
+    });
+    expect(await authService.logIn({ name: "alice", password: TEST_PASSWORD }, new Headers())).toEqual(
+      INVALID_CREDENTIALS,
+    );
+  });
+
+  it("ends the other sessions of the user and keeps the request logged in, with a new session", async () => {
+    const alice = await createUser({ name: "alice" });
+    await createUser({ name: "bob" });
+    const request = await logInAs("alice");
+    const other = await logInAs("alice");
+    const bob = await logInAs("bob");
+
+    const result = await authService.changeFirstPassword(changeTo(NEW_PASSWORD), request.headers);
+
+    if (!result.ok) return expect.fail(`change failed with ${result.error.code}`);
+    // Better Auth ends all sessions of the user and starts a new one, whose cookie is in the response headers.
+    const newHeaders = withCookies(result.value.headers);
+    expect(await authService.getSessionUser(newHeaders)).toStrictEqual({
+      id: alice.id,
+      name: "alice",
+      mustChangePassword: false,
+    });
+    expect(await authService.getSessionUser(other.headers)).toBeNull();
+    expect(await authService.getSessionUser(request.headers)).toBeNull();
+    expect(await getTestDb().session.count({ where: { userId: alice.id } })).toBe(1);
+    // The sessions of other users are not touched.
+    expect(await authService.getSessionUser(bob.headers)).toStrictEqual(bob.user);
+  });
+
+  it.each([
+    ["a wrong current password", changeTo(NEW_PASSWORD, WRONG_PASSWORD), { code: "wrong-password" }],
+    [
+      "a new password equal to the current one",
+      changeTo(TEST_PASSWORD),
+      { code: "invalid-input", fieldErrors: { newPassword: ["New password must differ from the current one"] } },
+    ],
+    [
+      "a new password equal to the user name",
+      changeTo("alexander"),
+      { code: "invalid-input", fieldErrors: { newPassword: ["Password must not be the same as the user name"] } },
+    ],
+    [
+      "a new password of 7 characters",
+      changeTo("1234567"),
+      { code: "invalid-input", fieldErrors: { newPassword: ["Password must be at least 8 characters"] } },
+    ],
+    [
+      "a repetition that differs",
+      { ...changeTo(NEW_PASSWORD), repeatPassword: "another-password" },
+      { code: "invalid-input", fieldErrors: { repeatPassword: ["The two new passwords do not match"] } },
+    ],
+  ])("changes nothing for %s", async (_case, input, error) => {
+    await createUser({ name: "alexander" });
+    const request = await logInAs("alexander");
+    const other = await logInAs("alexander");
+    const before = await storedState("alexander");
+
+    const result = await authService.changeFirstPassword(input, request.headers);
+
+    expect(result).toEqual({ ok: false, error });
+    expect(await storedState("alexander")).toStrictEqual(before);
+    expect(before.user.mustChangePassword).toBe(true);
+    expect(await authService.getSessionUser(request.headers)).toStrictEqual(request.user);
+    expect(await authService.getSessionUser(other.headers)).toStrictEqual(other.user);
+    expect((await logInAs("alexander")).user.mustChangePassword).toBe(true);
+  });
+
+  it("changes nothing when the password hashing has no free slot", async () => {
+    await createUser({ name: "alice" });
+    const { headers, user } = await logInAs("alice");
+    const before = await storedState("alice");
+    vi.mocked(hashPassword).mockRejectedValueOnce(new PasswordHashBusyError());
+
+    const result = await authService.changeFirstPassword(changeTo(NEW_PASSWORD), headers);
+
+    expect(result).toEqual({ ok: false, error: { code: "busy" } });
+    expect(await storedState("alice")).toStrictEqual(before);
+    expect(await authService.getSessionUser(headers)).toStrictEqual(user);
+  });
+
+  it("is refused without a session and for a user without a pending change", async () => {
+    await createUser({ name: "alice", mustChangePassword: false });
+    const { headers } = await logInAs("alice");
+    const before = await storedState("alice");
+
+    expect(await authService.changeFirstPassword(changeTo(NEW_PASSWORD), new Headers())).toEqual({
+      ok: false,
+      error: { code: "not-logged-in" },
+    });
+    expect(await authService.changeFirstPassword(changeTo(NEW_PASSWORD), headers)).toEqual({
+      ok: false,
+      error: { code: "not-required" },
+    });
+    expect(await storedState("alice")).toStrictEqual(before);
+  });
+
+  it("cannot be used a second time", async () => {
+    await createUser({ name: "alice" });
+    const { headers } = await logInAs("alice");
+    const first = await authService.changeFirstPassword(changeTo(NEW_PASSWORD), headers);
+    if (!first.ok) return expect.fail(`change failed with ${first.error.code}`);
+
+    const second = await authService.changeFirstPassword(
+      changeTo("yet-another-password", NEW_PASSWORD),
+      withCookies(first.value.headers),
+    );
+
+    expect(second).toEqual({ ok: false, error: { code: "not-required" } });
+    expect((await logInAs("alice", NEW_PASSWORD)).user.name).toBe("alice");
+  });
+
+  it("accepts a new password of 128 characters with spaces and non-Latin letters", async () => {
+    const password = "  мой-пароль-密碼 ".padEnd(128, "p");
+    await createUser({ name: "alice" });
+    const { headers } = await logInAs("alice");
+
+    const result = await authService.changeFirstPassword(changeTo(password), headers);
+
+    expect(result.ok).toBe(true);
+    expect((await logInAs("alice", password)).user.mustChangePassword).toBe(false);
+    expect(await authService.logIn({ name: "alice", password: password.trim() }, new Headers())).toEqual(
+      INVALID_CREDENTIALS,
+    );
+  });
+});

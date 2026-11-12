@@ -1,4 +1,7 @@
-// What only the forms of the login need. No server-only imports, so Client Components can use it.
+// What only the forms of the login and of the password change need. No server-only imports, so Client Components can
+// use it.
+
+import type { PasswordChangeFieldErrors, PasswordChangeInput } from "@/features/auth/schema";
 
 export type LoginFieldErrors = { name?: string[]; password?: string[] };
 
@@ -38,4 +41,29 @@ export function parseLoginFormData(formData: FormData): ParseLoginResult {
   if (password === "") fieldErrors.password = ["Password is required"];
   if (fieldErrors.name || fieldErrors.password) return { success: false, fieldErrors };
   return { success: true, data: { name, password } };
+}
+
+/** State of the password change form between submissions: errors from the last attempt, if any. */
+export type PasswordChangeFormState = {
+  fieldErrors?: PasswordChangeFieldErrors;
+  /** An error that is not about one field, e.g. when the database is unreachable. */
+  message?: string;
+};
+
+/** The Server Action behind the password change form; it returns the errors to show, or redirects on success. */
+export type PasswordChangeFormAction = (
+  prevState: PasswordChangeFormState,
+  formData: FormData,
+) => Promise<PasswordChangeFormState>;
+
+/**
+ * Reads a submitted password change form. The three passwords are passed on as they are, with their spaces; a missing
+ * field and a file count as empty. The rules are checked by the service, because they depend on the user.
+ */
+export function readPasswordChangeFormData(formData: FormData): PasswordChangeInput {
+  return {
+    currentPassword: textOf(formData, "currentPassword"),
+    newPassword: textOf(formData, "newPassword"),
+    repeatPassword: textOf(formData, "repeatPassword"),
+  };
 }

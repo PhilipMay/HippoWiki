@@ -253,12 +253,16 @@ test("a missing password shows its error, keeps the name and focuses the passwor
   await expect(page.getByLabel("User name")).toHaveValue(KNOWN_USER.name);
 });
 
-test("a user with a first password can log in", async ({ page }) => {
+test("a user with a first password can log in, and is led to the password change", async ({ page }) => {
   const user = await createUser({ name: "newcomer" });
+  await page.goto("/login");
 
-  await logIn(page, { name: user.username, password: TEST_PASSWORD });
+  await submitLogin(page, user.username, TEST_PASSWORD);
 
+  // What happens there is tested in change-password.spec.ts.
+  await expect(page).toHaveURL("/change-password");
   await expect(page.getByRole("banner").getByText("newcomer", { exact: true })).toBeVisible();
+  expect(await newSessionCount(user.id)).toBe(1);
 });
 
 test("log out leads to the login page and the header shows no name", async ({ page }) => {

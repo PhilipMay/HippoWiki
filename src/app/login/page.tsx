@@ -6,7 +6,7 @@ import { notFound, redirect } from "next/navigation";
 import { logIn } from "@/features/auth/actions";
 import LoginForm from "@/features/auth/components/LoginForm";
 import { getCurrentUser } from "@/features/auth/session";
-import { foldersPath, parseAction, parseView } from "@/lib/addresses";
+import { changePasswordPath, foldersPath, parseAction, parseView } from "@/lib/addresses";
 import { pageTitle } from "@/lib/site";
 
 export const metadata: Metadata = {
@@ -20,7 +20,8 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   if (parseAction(query, []) !== null || parseView(query) !== null) notFound();
 
   // Who is logged in already has nothing to do here.
-  if (await getCurrentUser()) redirect(foldersPath());
+  const user = await getCurrentUser();
+  if (user) redirect(user.mustChangePassword ? changePasswordPath() : foldersPath());
 
   return (
     <Stack spacing={3} sx={{ maxWidth: 400, mx: "auto" }}>

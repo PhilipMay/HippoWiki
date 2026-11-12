@@ -84,7 +84,7 @@ These hold for all steps. The wrap-up step moves them into the feature spec.
 - [x] Login and logout
 - [x] Authenticated access only
 - [x] Login wait after failed attempts
-- [ ] Forced password change
+- [x] Forced password change
 - [ ] User list
 - [ ] Creating users
 - [ ] Wrap-up

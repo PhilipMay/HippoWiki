@@ -10,7 +10,10 @@ import { getCurrentUser } from "@/features/auth/session";
 import { foldersPath } from "@/lib/addresses";
 import { siteName } from "@/lib/site";
 
-/** The app bar of every page. For a logged-in user it has the menu, the user name and "Log out". */
+/**
+ * The app bar of every page. For a logged-in user it has the menu, the user name and "Log out"; while the user still
+ * has to change the first password, only the name and "Log out".
+ */
 export default async function AppHeader() {
   const user = await getCurrentUser();
 
@@ -25,7 +28,8 @@ export default async function AppHeader() {
         >
           {siteName}
         </Typography>
-        {user && (
+        {/* No menu while the first password is still to change: every address of it leads to the password change. */}
+        {user && !user.mustChangePassword && (
           <nav aria-label="Main">
             <Button component={Link} href={foldersPath()} color="inherit">
               Folders

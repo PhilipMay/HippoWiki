@@ -1,5 +1,5 @@
 import { NO_STORAGE_STATE } from "./support/auth";
-import { createFolder, createPage, createTab, resetTestDatabase } from "./support/database";
+import { createFolder, createPage, createTab, createUser, resetTestDatabase, TEST_PASSWORD } from "./support/database";
 import { expect, test } from "./support/test";
 
 // Without JavaScript the page never hydrates and shows only the server-rendered HTML: the state in which input could be
@@ -19,6 +19,30 @@ test.describe("without a login", () => {
     await expect(page.getByLabel("User name")).not.toBeEditable();
     await expect(page.getByLabel("Password")).not.toBeEditable();
     await expect(page.getByRole("button", { name: "Log in" })).toBeDisabled();
+  });
+
+  test("the password change form is locked until hydration", async ({ browser }) => {
+    // The login form needs JavaScript, so a browser with JavaScript logs in and hands its session to one without.
+    await createUser({ name: "newcomer" });
+    const withJavaScript = await browser.newContext({ javaScriptEnabled: true, storageState: NO_STORAGE_STATE });
+    const loginPage = await withJavaScript.newPage();
+    await loginPage.goto("/login");
+    await loginPage.getByLabel("User name").fill("newcomer");
+    await loginPage.getByLabel("Password").fill(TEST_PASSWORD);
+    await loginPage.getByRole("button", { name: "Log in" }).click();
+    await expect(loginPage).toHaveURL("/change-password");
+    const storageState = await withJavaScript.storageState();
+    await withJavaScript.close();
+    const withoutJavaScript = await browser.newContext({ javaScriptEnabled: false, storageState });
+    const page = await withoutJavaScript.newPage();
+
+    await page.goto("/change-password");
+
+    for (const label of [/^Current password/, /^New password/, /^Repeat new password/]) {
+      await expect(page.getByLabel(label)).not.toBeEditable();
+    }
+    await expect(page.getByRole("button", { name: "Change password" })).toBeDisabled();
+    await withoutJavaScript.close();
   });
 });
 

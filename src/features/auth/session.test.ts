@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getCurrentUser, requireUser } from "@/features/auth/session";
+import { getCurrentUser, requireSession, requireUser } from "@/features/auth/session";
 
 /** Thrown by the mocked `redirect`, like the real one throws, so that code after it never runs. */
 class RedirectError extends Error {
@@ -65,11 +65,42 @@ describe("requireUser", () => {
     expect(mocks.redirect).toHaveBeenCalledExactlyOnceWith("/login");
   });
 
+  it("redirects to the password change while the user still has the first password", async () => {
+    mocks.getSessionUser.mockResolvedValue({ ...USER, mustChangePassword: true });
+
+    await expect(requireUser()).rejects.toMatchObject({ path: "/change-password" });
+
+    expect(mocks.redirect).toHaveBeenCalledExactlyOnceWith("/change-password");
+  });
+
   it("does not hide an error of the session check behind a redirect", async () => {
     mocks.getSessionUser.mockRejectedValue(new Error("connection refused"));
 
     await expect(requireUser()).rejects.toThrow("connection refused");
 
     expect(mocks.redirect).not.toHaveBeenCalled();
+  });
+});
+
+describe("requireSession", () => {
+  it("returns the user of the session", async () => {
+    mocks.getSessionUser.mockResolvedValue(USER);
+
+    await expect(requireSession()).resolves.toBe(USER);
+  });
+
+  it("returns a user who still has the first password, without redirecting", async () => {
+    const pending = { ...USER, mustChangePassword: true };
+    mocks.getSessionUser.mockResolvedValue(pending);
+
+    await expect(requireSession()).resolves.toBe(pending);
+
+    expect(mocks.redirect).not.toHaveBeenCalled();
+  });
+
+  it("redirects to the login page without a session", async () => {
+    mocks.getSessionUser.mockResolvedValue(null);
+
+    await expect(requireSession()).rejects.toMatchObject({ path: "/login" });
   });
 });

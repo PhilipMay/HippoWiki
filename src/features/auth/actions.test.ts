@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { logIn, logOut } from "@/features/auth/actions";
+import { changeFirstPassword, logIn, logOut } from "@/features/auth/actions";
 
 /** `redirect` throws in Next.js; the mock throws this error, so code after it does not run. */
 class RedirectError extends Error {
@@ -12,12 +12,19 @@ class RedirectError extends Error {
 const mocks = vi.hoisted(() => ({
   logIn: vi.fn(),
   logOut: vi.fn(),
+  changeFirstPassword: vi.fn(),
+  requireSession: vi.fn(),
   headers: vi.fn(),
   revalidatePath: vi.fn(),
   redirect: vi.fn(),
 }));
 
-vi.mock("@/features/auth/service", () => ({ logIn: mocks.logIn, logOut: mocks.logOut }));
+vi.mock("@/features/auth/service", () => ({
+  logIn: mocks.logIn,
+  logOut: mocks.logOut,
+  changeFirstPassword: mocks.changeFirstPassword,
+}));
+vi.mock("@/features/auth/session", () => ({ requireSession: mocks.requireSession }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("next/headers", () => ({ headers: mocks.headers }));
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
@@ -48,6 +55,15 @@ describe("logIn", () => {
     await expect(logIn({}, formData(LOGIN_FORM))).rejects.toMatchObject({ path: "/folders" });
 
     expect(mocks.logIn).toHaveBeenCalledExactlyOnceWith(LOGIN_FORM, REQUEST_HEADERS);
+    expect(mocks.revalidatePath).toHaveBeenCalledExactlyOnceWith("/", "layout");
+  });
+
+  it("leads to the password change after a login with a first password", async () => {
+    const user = { ...USER, mustChangePassword: true };
+    mocks.logIn.mockResolvedValue({ ok: true, value: { user, headers: new Headers() } });
+
+    await expect(logIn({}, formData(LOGIN_FORM))).rejects.toMatchObject({ path: "/change-password" });
+
     expect(mocks.revalidatePath).toHaveBeenCalledExactlyOnceWith("/", "layout");
   });
 
@@ -115,5 +131,75 @@ describe("logOut", () => {
 
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
     expect(mocks.redirect).not.toHaveBeenCalled();
+  });
+});
+
+describe("changeFirstPassword", () => {
+  const FORM = {
+    currentPassword: " first password ",
+    newPassword: "my own password",
+    repeatPassword: "my own password",
+  };
+
+  beforeEach(() => {
+    mocks.requireSession.mockResolvedValue({ ...USER, mustChangePassword: true });
+  });
+
+  it("changes the password with the form and the headers of the request, revalidates everything and leads to the folders", async () => {
+    mocks.changeFirstPassword.mockResolvedValue({ ok: true, value: { user: USER, headers: new Headers() } });
+
+    await expect(changeFirstPassword({}, formData(FORM))).rejects.toMatchObject({ path: "/folders" });
+
+    expect(mocks.changeFirstPassword).toHaveBeenCalledExactlyOnceWith(FORM, REQUEST_HEADERS);
+    expect(mocks.revalidatePath).toHaveBeenCalledExactlyOnceWith("/", "layout");
+  });
+
+  it.each([
+    [
+      "invalid-input",
+      { fieldErrors: { newPassword: ["Reported by the service"] } },
+      { fieldErrors: { newPassword: ["Reported by the service"] } },
+    ],
+    ["wrong-password", {}, { fieldErrors: { currentPassword: ["Current password is wrong"] } }],
+    ["busy", {}, { message: "Too many logins at the moment, please try again" }],
+    ["failed", {}, { message: "The password could not be changed. Please try again." }],
+  ])("shows the form state of the code %s, without revalidating or redirecting", async (code, details, state) => {
+    mocks.changeFirstPassword.mockResolvedValue({ ok: false, error: { code, ...details } });
+
+    await expect(changeFirstPassword({}, formData(FORM))).resolves.toEqual(state);
+
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+    expect(mocks.redirect).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["not-logged-in", "/login"],
+    ["not-required", "/folders"],
+  ])("leads away for the code %s, to %s, without revalidating", async (code, path) => {
+    mocks.changeFirstPassword.mockResolvedValue({ ok: false, error: { code } });
+
+    await expect(changeFirstPassword({}, formData(FORM))).rejects.toMatchObject({ path });
+
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it("does not reach the service without a session", async () => {
+    mocks.requireSession.mockRejectedValue(new RedirectError("/login"));
+
+    await expect(changeFirstPassword({}, formData(FORM))).rejects.toMatchObject({ path: "/login" });
+
+    expect(mocks.changeFirstPassword).not.toHaveBeenCalled();
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it("passes on an empty form as empty passwords, for the service to judge", async () => {
+    mocks.changeFirstPassword.mockResolvedValue({ ok: false, error: { code: "invalid-input", fieldErrors: {} } });
+
+    await changeFirstPassword({}, new FormData());
+
+    expect(mocks.changeFirstPassword).toHaveBeenCalledExactlyOnceWith(
+      { currentPassword: "", newPassword: "", repeatPassword: "" },
+      REQUEST_HEADERS,
+    );
   });
 });

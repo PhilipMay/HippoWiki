@@ -9,8 +9,14 @@
 // name wait after too many of them (see `wait.ts`).
 
 import { isAPIError } from "better-auth/api";
+import { z } from "zod";
 
-import { loginInputSchema } from "@/features/auth/schema";
+import {
+  loginInputSchema,
+  passwordChangeInputSchema,
+  type PasswordChangeFieldErrors,
+  type PasswordChangeInput,
+} from "@/features/auth/schema";
 import { waitAfterFailures } from "@/features/auth/wait";
 import { getAuth } from "@/lib/auth";
 import { getDb } from "@/lib/db";
@@ -44,6 +50,23 @@ type Failed = { code: "failed" };
 
 export type LogInError = InvalidCredentials | Wait | Busy | Failed;
 export type LogOutError = Failed;
+
+/**
+ * A first password that was replaced: the user, now without a pending change, and the response headers that set the
+ * cookie of the new session. Better Auth ends all sessions of the user and starts a new one for the request.
+ */
+export type PasswordChanged = { user: SessionUser; headers: Headers };
+
+type InvalidPasswordChange = { code: "invalid-input"; fieldErrors: PasswordChangeFieldErrors };
+/** The current password is not the one of the user. */
+type WrongPassword = { code: "wrong-password" };
+/** The request has no valid session. */
+type NotLoggedIn = { code: "not-logged-in" };
+/** The user has no first password to replace: the change is done already. */
+type NotRequired = { code: "not-required" };
+
+export type ChangeFirstPasswordError =
+  InvalidPasswordChange | WrongPassword | NotLoggedIn | NotRequired | Busy | Failed;
 
 /**
  * The HTTP status codes with which Better Auth refuses a sign-in because of what was submitted: a malformed body, an
@@ -190,4 +213,74 @@ export async function getSessionUser(headers: Headers): Promise<SessionUser | nu
   const auth = await getAuth();
   const session = await auth.api.getSession({ headers });
   return session ? toSessionUser(session.user) : null;
+}
+
+/** The error codes with which Better Auth refuses a password change because of the current password. */
+const WRONG_PASSWORD_CODES: readonly string[] = ["INVALID_PASSWORD", "PASSWORD_TOO_LONG"];
+
+/**
+ * Replaces the first password of the user of the session by a password of their own and clears the pending password
+ * change. It needs a session whose user still has `mustChangePassword` set. Better Auth checks the current password,
+ * stores the new one and ends the other sessions of the user. The flag is cleared only after the password has
+ * changed: if that fails, the user changes the password once more.
+ */
+export async function changeFirstPassword(
+  input: PasswordChangeInput,
+  headers: Headers,
+): Promise<Result<PasswordChanged, ChangeFirstPasswordError>> {
+  let user: SessionUser | null;
+  try {
+    user = await getSessionUser(headers);
+  } catch (err) {
+    logger.error({ err }, "failed to change the first password");
+    return { ok: false, error: { code: "failed" } };
+  }
+  if (!user) return { ok: false, error: { code: "not-logged-in" } };
+  if (!user.mustChangePassword) return { ok: false, error: { code: "not-required" } };
+  const userId = user.id;
+
+  const parsed = passwordChangeInputSchema(user.name).safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: { code: "invalid-input", fieldErrors: z.flattenError(parsed.error).fieldErrors } };
+  }
+  const { currentPassword, newPassword } = parsed.data;
+
+  let responseHeaders: Headers;
+  try {
+    const auth = await getAuth();
+    ({ headers: responseHeaders } = await auth.api.changePassword({
+      body: { currentPassword, newPassword, revokeOtherSessions: true },
+      headers,
+      returnHeaders: true,
+    }));
+  } catch (err) {
+    if (err instanceof PasswordHashBusyError) {
+      logger.warn({ userId }, "too many password hashes are running, first password not changed");
+      return { ok: false, error: { code: "busy" } };
+    }
+    if (isAPIError(err) && err.statusCode === 401) return { ok: false, error: { code: "not-logged-in" } };
+    if (isAPIError(err) && err.statusCode === 400 && WRONG_PASSWORD_CODES.includes(err.body?.code ?? "")) {
+      logger.warn({ userId }, "first password not changed: wrong current password");
+      return { ok: false, error: { code: "wrong-password" } };
+    }
+    logger.error({ err, userId }, "failed to change the first password");
+    return { ok: false, error: { code: "failed" } };
+  }
+
+  try {
+    const { count } = await getDb().user.updateMany({
+      where: { id: userId, mustChangePassword: true },
+      data: { mustChangePassword: false },
+    });
+    if (count === 0) {
+      logger.error({ userId }, "first password changed, but the user with the pending change was not found");
+      return { ok: false, error: { code: "failed" } };
+    }
+  } catch (err) {
+    logger.error({ err, userId }, "first password changed, but the pending change could not be cleared");
+    return { ok: false, error: { code: "failed" } };
+  }
+
+  logger.info({ userId }, "first password changed");
+  return { ok: true, value: { user: { ...user, mustChangePassword: false }, headers: responseHeaders } };
 }

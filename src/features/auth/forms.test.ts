@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseLoginFormData } from "@/features/auth/forms";
+import { parseLoginFormData, readPasswordChangeFormData } from "@/features/auth/forms";
 
 function formData(fields: Record<string, string | File>): FormData {
   const data = new FormData();
@@ -73,5 +73,34 @@ describe("parseLoginFormData", () => {
       success: false,
       fieldErrors: { name: ["User name is required"], password: ["Password is required"] },
     });
+  });
+});
+
+describe("readPasswordChangeFormData", () => {
+  it("returns the three passwords as they are, with their spaces", () => {
+    const fields = { currentPassword: " first ", newPassword: "  my own  ", repeatPassword: "  my own  " };
+
+    expect(readPasswordChangeFormData(formData(fields))).toEqual(fields);
+  });
+
+  it("counts missing fields and files as empty", () => {
+    const file = new File(["content"], "password.txt");
+
+    expect(readPasswordChangeFormData(new FormData())).toEqual({
+      currentPassword: "",
+      newPassword: "",
+      repeatPassword: "",
+    });
+    expect(
+      readPasswordChangeFormData(formData({ currentPassword: file, newPassword: "new", repeatPassword: file })),
+    ).toEqual({ currentPassword: "", newPassword: "new", repeatPassword: "" });
+  });
+
+  it("ignores other fields, such as a flag that a crafted request adds", () => {
+    const fields = { currentPassword: "a", newPassword: "b", repeatPassword: "c" };
+
+    expect(readPasswordChangeFormData(formData({ ...fields, mustChangePassword: "false", userId: "x" }))).toEqual(
+      fields,
+    );
   });
 });
