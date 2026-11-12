@@ -10,7 +10,7 @@ import Typography from "@mui/material/Typography";
 import Link from "@/components/Link";
 import type { TabSummary } from "@/features/folders/service";
 import PageListItem from "@/features/pages/components/PageListItem";
-import type { PageSummary } from "@/features/pages/queries";
+import type { PageSummary } from "@/features/pages/service";
 import { tabPath } from "@/lib/addresses";
 import { formatDateTime } from "@/lib/format";
 

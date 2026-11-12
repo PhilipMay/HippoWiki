@@ -12,7 +12,7 @@ import DeletePageDialog from "@/features/pages/components/DeletePageDialog";
 import MarkdownContent from "@/features/pages/components/MarkdownContent";
 import MoveOrRenamePageDialog from "@/features/pages/components/MoveOrRenamePageDialog";
 import PageForm from "@/features/pages/components/PageForm";
-import type { PageWithPlace } from "@/features/pages/queries";
+import type { PageWithPlace } from "@/features/pages/service";
 import { pagePath } from "@/lib/addresses";
 import { formatDateTime } from "@/lib/format";
 

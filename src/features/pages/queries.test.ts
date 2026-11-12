@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  directPagesFirst,
   getDeletedPage,
   getPage,
   listAllFolderPages,
@@ -12,229 +11,74 @@ import {
 
 const mocks = vi.hoisted(() => ({
   connection: vi.fn(),
-  findMany: vi.fn(),
-  findFirst: vi.fn(),
+  listFolderPages: vi.fn(),
+  listTabPages: vi.fn(),
+  listAllFolderPages: vi.fn(),
+  getPage: vi.fn(),
+  listDeletedPages: vi.fn(),
+  getDeletedPage: vi.fn(),
 }));
 
-vi.mock("@/lib/db", () => ({ getDb: () => ({ page: { findMany: mocks.findMany, findFirst: mocks.findFirst } }) }));
+vi.mock("@/features/pages/service", () => ({
+  listFolderPages: mocks.listFolderPages,
+  listTabPages: mocks.listTabPages,
+  listAllFolderPages: mocks.listAllFolderPages,
+  getPage: mocks.getPage,
+  listDeletedPages: mocks.listDeletedPages,
+  getDeletedPage: mocks.getDeletedPage,
+}));
 vi.mock("next/server", () => ({ connection: mocks.connection }));
 
-/** How often the database has been read. */
+const serviceReads = [
+  mocks.listFolderPages,
+  mocks.listTabPages,
+  mocks.listAllFolderPages,
+  mocks.getPage,
+  mocks.listDeletedPages,
+  mocks.getDeletedPage,
+];
+
+/** How often the service has been called. */
 function readCount(): number {
-  return mocks.findMany.mock.calls.length + mocks.findFirst.mock.calls.length;
+  return serviceReads.reduce((count, read) => count + read.mock.calls.length, 0);
 }
 
 beforeEach(() => {
   vi.resetAllMocks();
-  mocks.findMany.mockResolvedValue([]);
 });
 
 const FOLDER_ID = "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10";
 const TAB_ID = "5a2c1c0e-3f55-4a55-8a42-5d2f0e6a9b11";
 const PAGE_ID = "9c4d2b7e-1a3f-4c5d-8e6f-7a8b9c0d1e22";
 
-/** Names that are not valid as written: not lowercase, surrounding whitespace, a double hyphen, empty. */
-const MALFORMED_NAMES = ["Overview", " overview", "overview ", "release--notes", "-overview", ""];
-
-function page(name: string, tab: string | null) {
-  return { name, tab: tab === null ? null : { name: tab } };
-}
-
-/** The pages as "name" or "tab/name", in their order. */
-function places(pages: ReturnType<typeof page>[]): string[] {
-  return pages.map(({ name, tab }) => (tab ? `${tab.name}/${name}` : name));
-}
-
 describe("every query", () => {
   // Without `connection()` Next.js would prerender the calling route at build time and serve a stale snapshot. The
   // end-to-end tests run the development server, which never prerenders, so only these tests notice a missing call.
   it.each([
-    ["listFolderPages", () => listFolderPages(FOLDER_ID)],
-    ["listTabPages", () => listTabPages(TAB_ID)],
-    ["listAllFolderPages", () => listAllFolderPages(FOLDER_ID)],
-    ["getPage", () => getPage("handbook", null, "overview")],
-    ["listDeletedPages", () => listDeletedPages(FOLDER_ID)],
-    ["getDeletedPage", () => getDeletedPage("handbook", PAGE_ID)],
-  ])("%s waits for connection() before it reads the database", async (_name, query) => {
-    let release = () => {};
-    mocks.connection.mockReturnValue(new Promise<void>((resolve) => (release = resolve)));
+    ["listFolderPages", () => listFolderPages(FOLDER_ID), mocks.listFolderPages, [FOLDER_ID]],
+    ["listTabPages", () => listTabPages(TAB_ID), mocks.listTabPages, [TAB_ID]],
+    ["listAllFolderPages", () => listAllFolderPages(FOLDER_ID), mocks.listAllFolderPages, [FOLDER_ID]],
+    ["getPage", () => getPage("handbook", null, "overview"), mocks.getPage, ["handbook", null, "overview"]],
+    ["listDeletedPages", () => listDeletedPages(FOLDER_ID), mocks.listDeletedPages, [FOLDER_ID]],
+    ["getDeletedPage", () => getDeletedPage("handbook", PAGE_ID), mocks.getDeletedPage, ["handbook", PAGE_ID]],
+  ])(
+    "%s waits for connection() before it calls the service read of the same name",
+    async (_name, query, read, args) => {
+      let release = () => {};
+      mocks.connection.mockReturnValue(new Promise<void>((resolve) => (release = resolve)));
+      const found = { id: PAGE_ID };
+      read.mockResolvedValue(found);
 
-    const result = query();
-    // Lets everything run that does not wait for the connection.
-    await new Promise((resolve) => setImmediate(resolve));
-    expect(mocks.connection).toHaveBeenCalledOnce();
-    expect(readCount()).toBe(0);
-
-    release();
-    await result;
-    expect(readCount()).toBe(1);
-  });
-});
-
-describe("the page lists", () => {
-  // A deleted page keeps its folder, so only `deletedAt: null` keeps it out of the folder's lists.
-  it.each([
-    ["listFolderPages", () => listFolderPages(FOLDER_ID), { folderId: FOLDER_ID, tabId: null, deletedAt: null }],
-    ["listTabPages", () => listTabPages(TAB_ID), { tabId: TAB_ID, deletedAt: null }],
-    ["listAllFolderPages", () => listAllFolderPages(FOLDER_ID), { folderId: FOLDER_ID, deletedAt: null }],
-  ])("%s leaves out deleted pages", async (_name, query, where) => {
-    await query();
-    expect(mocks.findMany).toHaveBeenCalledWith(expect.objectContaining({ where }));
-  });
-});
-
-describe("listAllFolderPages", () => {
-  it("returns the pages of the database with the page without a tab before those of the same name in tabs", async () => {
-    // As the database returns them: by name, then by tab name, a missing tab last.
-    mocks.findMany.mockResolvedValue([
-      page("overview", "guides"),
-      page("overview", "meetings"),
-      page("overview", null),
-    ]);
-
-    const pages = await listAllFolderPages(FOLDER_ID);
-
-    expect(places(pages)).toEqual(["overview", "guides/overview", "meetings/overview"]);
-  });
-});
-
-describe("getPage", () => {
-  it("looks for a page without a tab when no tab is given", async () => {
-    const stored = { id: "page-id", name: "overview", folder: { id: FOLDER_ID, name: "handbook" }, tab: null };
-    mocks.findFirst.mockResolvedValue(stored);
-
-    await expect(getPage("handbook", null, "overview")).resolves.toBe(stored);
-    // `tabId: null` keeps a page of the same name in a tab of the folder from being returned.
-    expect(mocks.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { name: "overview", folder: { name: "handbook" }, deletedAt: null, tabId: null },
-      }),
-    );
-  });
-
-  it("looks for the page in the tab with the given name", async () => {
-    const stored = {
-      id: "page-id",
-      name: "overview",
-      folder: { id: FOLDER_ID, name: "handbook" },
-      tab: { id: TAB_ID },
-    };
-    mocks.findFirst.mockResolvedValue(stored);
-
-    await expect(getPage("handbook", "guides", "overview")).resolves.toBe(stored);
-    expect(mocks.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { name: "overview", folder: { name: "handbook" }, deletedAt: null, tab: { name: "guides" } },
-      }),
-    );
-  });
-
-  it("returns null when there is no such page", async () => {
-    mocks.findFirst.mockResolvedValue(null);
-
-    await expect(getPage("handbook", "guides", "overview")).resolves.toBeNull();
-  });
-
-  it.each(MALFORMED_NAMES)(
-    "returns null for the malformed folder name %j without reading the database",
-    async (name) => {
-      await expect(getPage(name, null, "overview")).resolves.toBeNull();
+      const result = query();
+      // Lets everything run that does not wait for the connection.
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(mocks.connection).toHaveBeenCalledOnce();
       expect(readCount()).toBe(0);
+
+      release();
+      await expect(result).resolves.toBe(found);
+      expect(readCount()).toBe(1);
+      expect(read).toHaveBeenCalledWith(...args);
     },
   );
-
-  it.each(MALFORMED_NAMES)("returns null for the malformed page name %j without reading the database", async (name) => {
-    await expect(getPage("handbook", "guides", name)).resolves.toBeNull();
-    expect(readCount()).toBe(0);
-  });
-
-  // A malformed tab name must not be treated like no tab: the address would then show the page placed directly in the
-  // folder.
-  it.each(MALFORMED_NAMES)("returns null for the malformed tab name %j without reading the database", async (name) => {
-    await expect(getPage("handbook", name, "overview")).resolves.toBeNull();
-    expect(readCount()).toBe(0);
-  });
-});
-
-describe("listDeletedPages", () => {
-  it("lists only the deleted pages of the folder", async () => {
-    const deletedAt = new Date("2026-11-12T10:00:00Z");
-    mocks.findMany.mockResolvedValue([{ id: PAGE_ID, name: "overview", title: "Overview", deletedAt }]);
-
-    await expect(listDeletedPages(FOLDER_ID)).resolves.toEqual([
-      { id: PAGE_ID, name: "overview", title: "Overview", deletedAt },
-    ]);
-    expect(mocks.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { folderId: FOLDER_ID, deletedAt: { not: null } } }),
-    );
-  });
-});
-
-describe("getDeletedPage", () => {
-  it("looks for a deleted page with the id in the folder of that name", async () => {
-    const stored = { id: PAGE_ID, deletedAt: new Date(), folder: { id: FOLDER_ID, name: "handbook" } };
-    mocks.findFirst.mockResolvedValue(stored);
-
-    await expect(getDeletedPage("handbook", PAGE_ID)).resolves.toEqual(stored);
-    expect(mocks.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: PAGE_ID, folder: { name: "handbook" }, deletedAt: { not: null } } }),
-    );
-  });
-
-  it("returns null when there is no such deleted page", async () => {
-    mocks.findFirst.mockResolvedValue(null);
-
-    await expect(getDeletedPage("handbook", PAGE_ID)).resolves.toBeNull();
-  });
-
-  it.each(MALFORMED_NAMES)(
-    "returns null for the malformed folder name %j without reading the database",
-    async (name) => {
-      await expect(getDeletedPage(name, PAGE_ID)).resolves.toBeNull();
-      expect(readCount()).toBe(0);
-    },
-  );
-
-  it.each(["not-a-uuid", "", `${PAGE_ID}0`, PAGE_ID.replaceAll("-", ""), "overview"])(
-    "returns null for the malformed id %j without reading the database",
-    async (id) => {
-      await expect(getDeletedPage("handbook", id)).resolves.toBeNull();
-      expect(readCount()).toBe(0);
-    },
-  );
-});
-
-describe("directPagesFirst", () => {
-  it("moves the page without a tab before the pages of the same name in tabs", () => {
-    // As the database returns them: by name, then by tab name, a missing tab last.
-    const pages = [
-      page("alpha", "guides"),
-      page("overview", "guides"),
-      page("overview", "meetings"),
-      page("overview", null),
-      page("zeta", null),
-    ];
-
-    expect(places(directPagesFirst(pages))).toEqual([
-      "guides/alpha",
-      "overview",
-      "guides/overview",
-      "meetings/overview",
-      "zeta",
-    ]);
-  });
-
-  it("keeps an order that is already right", () => {
-    const pages = [page("a", null), page("a", "guides"), page("b", "guides"), page("c", null)];
-    expect(places(directPagesFirst(pages))).toEqual(["a", "guides/a", "guides/b", "c"]);
-  });
-
-  it("keeps pages of different names apart", () => {
-    const pages = [page("a", "guides"), page("b", null), page("c", "guides"), page("d", null)];
-    expect(places(directPagesFirst(pages))).toEqual(["guides/a", "b", "guides/c", "d"]);
-  });
-
-  it("returns an empty list for no pages", () => {
-    expect(directPagesFirst([])).toEqual([]);
-  });
 });

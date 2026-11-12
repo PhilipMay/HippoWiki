@@ -5,7 +5,7 @@ import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 
 import Link from "@/components/Link";
-import type { PageSummary } from "@/features/pages/queries";
+import type { PageSummary } from "@/features/pages/service";
 import { pagePath } from "@/lib/addresses";
 import { formatDateTime } from "@/lib/format";
 

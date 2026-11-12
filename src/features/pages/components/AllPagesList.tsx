@@ -9,7 +9,7 @@ import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 
 import Link from "@/components/Link";
-import type { PageWithTabSummary } from "@/features/pages/queries";
+import type { PageWithTabSummary } from "@/features/pages/service";
 import { pagePath } from "@/lib/addresses";
 import { formatDateTime } from "@/lib/format";
 

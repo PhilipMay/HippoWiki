@@ -3,7 +3,7 @@ import Paper from "@mui/material/Paper";
 import Typography from "@mui/material/Typography";
 
 import PageListItem from "@/features/pages/components/PageListItem";
-import type { PageSummary } from "@/features/pages/queries";
+import type { PageSummary } from "@/features/pages/service";
 
 type PageListProps = {
   /** The pages to list, in display order. */

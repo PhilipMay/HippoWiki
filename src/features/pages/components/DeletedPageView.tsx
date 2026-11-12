@@ -10,7 +10,7 @@ import { listTabs } from "@/features/folders/queries";
 import { restorePage } from "@/features/pages/actions";
 import MarkdownContent from "@/features/pages/components/MarkdownContent";
 import RestorePageDialog from "@/features/pages/components/RestorePageDialog";
-import type { DeletedPage } from "@/features/pages/queries";
+import type { DeletedPage } from "@/features/pages/service";
 import { deletedPagePath } from "@/lib/addresses";
 import { formatDateTime } from "@/lib/format";
 

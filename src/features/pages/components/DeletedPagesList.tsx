@@ -9,7 +9,7 @@ import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 
 import Link from "@/components/Link";
-import type { DeletedPageSummary } from "@/features/pages/queries";
+import type { DeletedPageSummary } from "@/features/pages/service";
 import { deletedPagePath } from "@/lib/addresses";
 import { formatDateTime } from "@/lib/format";
 
