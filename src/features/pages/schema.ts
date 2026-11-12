@@ -177,3 +177,52 @@ export type PageDeleteFormState = {
 
 /** A Server Action behind the "Delete page" form; it returns the error to show, or redirects on success. */
 export type PageDeleteFormAction = (prevState: PageDeleteFormState, formData: FormData) => Promise<PageDeleteFormState>;
+
+/** Shown at the place field of the "Restore page" form when no place is chosen. */
+export const CHOOSE_PLACE_MESSAGE = "Choose a place";
+
+/** A validated restore of a deleted page: its name and its tab, or `null` for a page placed directly in its folder. */
+export type PageRestoreInput = { name: string; tabId: string | null };
+
+export type PageRestoreFieldErrors = { name?: string[]; place?: string[] };
+
+/** State of the "Restore page" form between submissions: errors from the last attempt, if any. */
+export type PageRestoreFormState = {
+  fieldErrors?: PageRestoreFieldErrors;
+  /** An error that is not about a single field, e.g. when the chosen tab or the page no longer exists. */
+  message?: string;
+};
+
+/** A Server Action behind the "Restore page" form; it returns the errors to show, or redirects on success. */
+export type PageRestoreFormAction = (
+  prevState: PageRestoreFormState,
+  formData: FormData,
+) => Promise<PageRestoreFormState>;
+
+/**
+ * Validates the name and reads the place of a submitted "Restore page" form. The name is checked as for moving or
+ * renaming; a missing name counts as empty. No place is preselected, so a missing place is reported as "Choose a place"
+ * at the place field; an empty place is the folder itself, a malformed tab id or a file is no place. Other fields are
+ * ignored. On failure, returns the errors of name and place and whether the place is invalid; all are reported
+ * together.
+ */
+export function parsePageRestoreFormData(
+  formData: FormData,
+):
+  | { success: true; data: PageRestoreInput }
+  | { success: false; fieldErrors: PageRestoreFieldErrors; placeInvalid: boolean } {
+  const name = pageMoveOrRenameNameSchema.safeParse({ name: formData.get("name") ?? "" });
+  const placeMissing = formData.get(PLACE_FIELD) === null;
+  const place = parsePlace(formData);
+  if (name.success && !placeMissing && place.success) {
+    return { success: true, data: { name: name.data.name, tabId: place.tabId } };
+  }
+  return {
+    success: false,
+    fieldErrors: {
+      ...(!name.success && z.flattenError(name.error).fieldErrors),
+      ...(placeMissing && { place: [CHOOSE_PLACE_MESSAGE] }),
+    },
+    placeInvalid: !placeMissing && !place.success,
+  };
+}

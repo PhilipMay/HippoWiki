@@ -8,9 +8,11 @@ import {
   parsePageContentFormData,
   parsePageId,
   parsePageMoveOrRenameFormData,
+  parsePageRestoreFormData,
   type PageDeleteFormState,
   type PageFormState,
   type PageMoveOrRenameFormState,
+  type PageRestoreFormState,
 } from "@/features/pages/schema";
 import { folderPath, pagePath, tabPath } from "@/lib/addresses";
 import { getDb } from "@/lib/db";
@@ -21,6 +23,7 @@ import { NAME_TAKEN_MESSAGE } from "@/lib/names";
 
 const SAVE_FAILED_MESSAGE = "The page could not be saved. Please try again.";
 const DELETE_FAILED_MESSAGE = "The page could not be deleted. Please try again.";
+const RESTORE_FAILED_MESSAGE = "The page could not be restored. Please try again.";
 const PAGE_GONE_MESSAGE = "This page no longer exists.";
 const FOLDER_GONE_MESSAGE = "This folder no longer exists.";
 const TAB_GONE_MESSAGE = "This tab no longer exists.";
@@ -228,6 +231,61 @@ export async function deletePage(id: string): Promise<PageDeleteFormState> {
   }
 
   logger.info({ pageId }, "page deleted");
+  revalidateContent();
+  redirect(address);
+}
+
+/**
+ * Restores the deleted page with the given id into its folder, under the submitted name, at the chosen place: the tab
+ * of its folder or, without one, directly in the folder. It redirects to the page's new address. The content is
+ * neither validated nor touched. Returns the errors to show in the form if the name is invalid or taken at the target,
+ * no place is chosen, the tab does not exist or belongs to another folder (the composite foreign key refuses it), the
+ * page no longer exists or is not deleted, or it cannot be stored. Bind the id with `restorePage.bind(null, id)`.
+ */
+export async function restorePage(
+  id: string,
+  _prevState: PageRestoreFormState,
+  formData: FormData,
+): Promise<PageRestoreFormState> {
+  const pageId = parsePageId(id);
+  if (!pageId) return { message: PAGE_GONE_MESSAGE };
+
+  const input = parsePageRestoreFormData(formData);
+  if (!input.success) {
+    const hasFieldErrors = Object.keys(input.fieldErrors).length > 0;
+    return {
+      ...(hasFieldErrors && { fieldErrors: input.fieldErrors }),
+      ...(input.placeInvalid && { message: TAB_GONE_MESSAGE }),
+    };
+  }
+  const { name, tabId } = input.data;
+
+  let address: string | null;
+  try {
+    // Only a deleted page can be restored; `updateMany` reports any other as a count of 0. It sets `updatedAt` as well.
+    const { count } = await getDb().page.updateMany({
+      where: { id: pageId, deletedAt: { not: null } },
+      data: { deletedAt: null, name, tabId },
+    });
+    address = count === 0 ? null : await findPageAddress(pageId);
+  } catch (err) {
+    if (isUniqueViolation(err, PAGE_NAME)) {
+      logger.warn({ pageId, tabId, name }, "name of restored page already in use at the target");
+      return nameTakenState;
+    }
+    if (isForeignKeyViolation(err)) {
+      logger.warn({ pageId, tabId }, "target tab of restored page not found in the page's folder");
+      return { message: TAB_GONE_MESSAGE };
+    }
+    logger.error({ err, pageId, tabId }, "failed to restore page");
+    return { message: RESTORE_FAILED_MESSAGE };
+  }
+  if (address === null) {
+    logger.warn({ pageId }, "deleted page to restore not found");
+    return { message: PAGE_GONE_MESSAGE };
+  }
+
+  logger.info({ pageId, tabId }, "page restored");
   revalidateContent();
   redirect(address);
 }

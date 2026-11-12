@@ -115,3 +115,25 @@ test("the delete dialog is locked until hydration", async ({ page }) => {
     "/folders/locked-folder/locked-page.md",
   );
 });
+
+test("the restore dialog is prefilled and locked until hydration, without a place", async ({ page }) => {
+  const folder = await createFolder({ name: "locked-folder" });
+  await createTab({ folder, name: "locked-tab" });
+  const removed = await createPage({ folder, name: "locked-page", title: "Locked page", deletedAt: new Date() });
+
+  await page.goto(`/deleted-pages/locked-folder/${removed.id}?action=restore`);
+
+  const dialog = page.getByRole("dialog", { name: "Restore page" });
+  await expect(dialog.getByLabel("Name")).toHaveValue("locked-page");
+  await expect(dialog.getByLabel("Name")).not.toBeEditable();
+  await expect(dialog.getByRole("radio")).toHaveCount(2);
+  for (const radio of await dialog.getByRole("radio").all()) {
+    await expect(radio).toBeDisabled();
+    await expect(radio).not.toBeChecked();
+  }
+  await expect(dialog.getByRole("button", { name: "Save" })).toBeDisabled();
+  await expect(dialog.getByRole("link", { name: "Cancel" })).toHaveAttribute(
+    "href",
+    `/deleted-pages/locked-folder/${removed.id}`,
+  );
+});

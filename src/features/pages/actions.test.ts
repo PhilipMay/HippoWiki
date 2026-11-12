@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createPage, deletePage, moveOrRenamePage, updatePageContent } from "@/features/pages/actions";
+import { createPage, deletePage, moveOrRenamePage, restorePage, updatePageContent } from "@/features/pages/actions";
 import { Prisma } from "@/generated/prisma/client";
 
 /** Thrown by the mocked `redirect`, like the real one throws, so that code after it never runs. */
@@ -487,6 +487,108 @@ describe("deletePage", () => {
     await expect(deletePage(id)).resolves.toEqual(DELETE_FAILED);
 
     expect(mocks.error).toHaveBeenCalledWith(expect.objectContaining({ err, pageId: id }), expect.any(String));
+    expectNotRevalidatedOrRedirected();
+  });
+});
+
+describe("restorePage", () => {
+  const id = crypto.randomUUID();
+  const tabId = crypto.randomUUID();
+  const VALID = { name: " new-name ", place: tabId };
+  const RESTORE_FAILED = { message: "The page could not be restored. Please try again." };
+  const CHOOSE_PLACE = { fieldErrors: { place: ["Choose a place"] } };
+
+  it.each([
+    ["valid input", VALID],
+    ["invalid input", { name: "" }],
+  ])("reports a malformed page id as a missing page, with %s", async (_name, fields) => {
+    await expect(restorePage(MALFORMED_ID, {}, formData(fields))).resolves.toEqual(PAGE_GONE);
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+    expectNotRevalidatedOrRedirected();
+  });
+
+  it("asks for a place together with the errors of the name, without writing anything", async () => {
+    await expect(restorePage(id, {}, formData({ name: "new-name" }))).resolves.toEqual(CHOOSE_PLACE);
+    await expect(restorePage(id, {}, formData({ name: "" }))).resolves.toEqual({
+      fieldErrors: { name: ["Name is required"], place: ["Choose a place"] },
+    });
+    await expect(restorePage(id, {}, formData({ name: "", place: "guides" }))).resolves.toEqual({
+      ...NAME_REQUIRED,
+      ...TAB_GONE,
+    });
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+    expectNotRevalidatedOrRedirected();
+  });
+
+  it("restores the page with name and tab and redirects to its stored address", async () => {
+    mocks.updateMany.mockResolvedValue({ count: 1 });
+    mocks.findUnique.mockResolvedValue({
+      name: "stored-name",
+      folder: { name: "stored-folder" },
+      tab: { name: "stored-tab" },
+    });
+
+    const fields = { ...VALID, content: "No heading", title: "Submitted title" };
+    await expect(restorePage(id, {}, formData(fields))).rejects.toMatchObject({
+      path: "/folders/stored-folder/stored-tab/stored-name.md",
+    });
+
+    expect(mocks.updateMany).toHaveBeenCalledWith({
+      where: { id, deletedAt: { not: null } },
+      data: { deletedAt: null, name: "new-name", tabId },
+    });
+    expect(mocks.findUnique).toHaveBeenCalledWith({ where: { id, deletedAt: null }, select: ADDRESS_SELECT });
+    expect(mocks.info).toHaveBeenCalledWith({ pageId: id, tabId }, "page restored");
+    expectContentRevalidated();
+  });
+
+  it("restores the page directly into its folder for an empty place", async () => {
+    mocks.updateMany.mockResolvedValue({ count: 1 });
+    mocks.findUnique.mockResolvedValue({ name: "stored-name", folder: { name: "stored-folder" }, tab: null });
+
+    await expect(restorePage(id, {}, formData({ name: "new-name", place: "" }))).rejects.toMatchObject({
+      path: "/folders/stored-folder/stored-name.md",
+    });
+    expect(mocks.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { deletedAt: null, name: "new-name", tabId: null } }),
+    );
+  });
+
+  it.each(nameTakenErrors)("reports a taken name at the name field for a unique violation %s", async (_name, err) => {
+    mocks.updateMany.mockRejectedValue(err);
+
+    await expect(restorePage(id, {}, formData(VALID))).resolves.toEqual(NAME_TAKEN);
+
+    expect(mocks.warn).toHaveBeenCalledWith({ pageId: id, tabId, name: "new-name" }, expect.any(String));
+    expectNotRevalidatedOrRedirected();
+  });
+
+  it("reports a missing tab or a tab of another folder for a foreign key violation", async () => {
+    mocks.updateMany.mockRejectedValue(knownError("P2003"));
+
+    await expect(restorePage(id, {}, formData(VALID))).resolves.toEqual(TAB_GONE);
+
+    expect(mocks.warn).toHaveBeenCalledWith({ pageId: id, tabId }, expect.any(String));
+    expectNotRevalidatedOrRedirected();
+  });
+
+  // The update only matches a deleted page, so a page that is not deleted counts as missing as well.
+  it("reports a page that no longer exists or is not deleted", async () => {
+    mocks.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(restorePage(id, {}, formData(VALID))).resolves.toEqual(PAGE_GONE);
+
+    expect(mocks.findUnique).not.toHaveBeenCalled();
+    expect(mocks.warn).toHaveBeenCalledWith({ pageId: id }, expect.any(String));
+    expectNotRevalidatedOrRedirected();
+  });
+
+  it.each(otherErrors)("reports a failed restore for %s", async (_name, err) => {
+    mocks.updateMany.mockRejectedValue(err);
+
+    await expect(restorePage(id, {}, formData(VALID))).resolves.toEqual(RESTORE_FAILED);
+
+    expect(mocks.error).toHaveBeenCalledWith(expect.objectContaining({ err }), expect.any(String));
     expectNotRevalidatedOrRedirected();
   });
 });

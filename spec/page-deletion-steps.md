@@ -32,7 +32,7 @@ behaviour is described from the user's point of view in `page-deletion.md`.
 - [x] Deleted pages in the data model
 - [x] Deleted pages list and view
 - [x] Deleting a page
-- [ ] Restoring a page
+- [x] Restoring a page
 - [ ] Wrap-up
 
 ## Deleted pages in the data model

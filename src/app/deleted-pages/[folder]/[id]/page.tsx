@@ -1,16 +1,20 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
-import DeletedPageView, { deletedPageViewTitle } from "@/features/pages/components/DeletedPageView";
+import DeletedPageView, {
+  DELETED_PAGE_ACTIONS,
+  deletedPageViewTitle,
+} from "@/features/pages/components/DeletedPageView";
 import { getDeletedPage } from "@/features/pages/queries";
 import { parseAction, parseView, type SearchParams } from "@/lib/addresses";
 import { pageTitle } from "@/lib/site";
 
 type Props = PageProps<"/deleted-pages/[folder]/[id]">;
 
-/** A deleted page has neither actions nor views. */
-function hasQuery(searchParams: SearchParams): boolean {
-  return parseAction(searchParams, []) !== null || parseView(searchParams) !== null;
+/** The action of the address, or `"invalid"` for an action or a view that a deleted page does not have. */
+function parseQuery(searchParams: SearchParams) {
+  const action = parseAction(searchParams, DELETED_PAGE_ACTIONS);
+  return parseView(searchParams) === null ? action : "invalid";
 }
 
 async function findDeletedPage(params: Props["params"]) {
@@ -20,14 +24,17 @@ async function findDeletedPage(params: Props["params"]) {
 
 export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
   const page = await findDeletedPage(params);
-  if (!page || hasQuery(await searchParams)) return { title: pageTitle() };
+  if (!page || parseQuery(await searchParams) === "invalid") return { title: pageTitle() };
   return { title: pageTitle(deletedPageViewTitle(page)) };
 }
 
-/** A deleted page of a folder, read-only. */
+/** A deleted page of a folder, read-only, with the "Restore page" dialog for `?action=restore`. */
 export default async function DeletedPageAddress({ params, searchParams }: Props) {
   const page = await findDeletedPage(params);
-  if (!page || hasQuery(await searchParams)) notFound();
+  if (!page) notFound();
 
-  return <DeletedPageView page={page} />;
+  const action = parseQuery(await searchParams);
+  if (action === "invalid") notFound();
+
+  return <DeletedPageView page={page} action={action} />;
 }

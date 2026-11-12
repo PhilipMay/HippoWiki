@@ -6,6 +6,7 @@ import {
   parsePageContentFormData,
   parsePageId,
   parsePageMoveOrRenameFormData,
+  parsePageRestoreFormData,
   PLACE_FIELD,
   TITLE_HEADING_MISSING_MESSAGE,
 } from "@/features/pages/schema";
@@ -315,6 +316,74 @@ describe("parsePageMoveOrRenameFormData", () => {
       folderId: "x",
     };
     expect(parsePageMoveOrRenameFormData(formData(fields))).toEqual({
+      success: true,
+      data: { name: "release-notes", tabId },
+    });
+  });
+});
+
+describe("parsePageRestoreFormData", () => {
+  const tabId = crypto.randomUUID();
+  const CHOOSE_PLACE = { place: ["Choose a place"] };
+
+  it("returns the trimmed name and the tab id of the place", () => {
+    expect(parsePageRestoreFormData(formData({ name: " release-notes ", place: tabId }))).toEqual({
+      success: true,
+      data: { name: "release-notes", tabId },
+    });
+  });
+
+  it("returns no tab for an empty place: the folder itself", () => {
+    expect(parsePageRestoreFormData(formData({ name: "release-notes", place: "" }))).toEqual({
+      success: true,
+      data: { name: "release-notes", tabId: null },
+    });
+  });
+
+  it("asks for a place when none is submitted", () => {
+    expect(parsePageRestoreFormData(formData({ name: "release-notes" }))).toEqual({
+      success: false,
+      fieldErrors: CHOOSE_PLACE,
+      placeInvalid: false,
+    });
+  });
+
+  it("reports a missing place together with the errors of the name", () => {
+    expect(parsePageRestoreFormData(formData({ name: "" }))).toEqual({
+      success: false,
+      fieldErrors: { name: ["Name is required"], ...CHOOSE_PLACE },
+      placeInvalid: false,
+    });
+    expect(parsePageRestoreFormData(formData({ name: "Release Notes" }))).toEqual({
+      success: false,
+      fieldErrors: { name: ["Use lowercase letters, digits and single hyphens"], ...CHOOSE_PLACE },
+      placeInvalid: false,
+    });
+  });
+
+  it("refuses a malformed tab id and a file as place, together with the errors of the name", () => {
+    for (const place of ["guides", " ", `${crypto.randomUUID()}x`]) {
+      expect(parsePageRestoreFormData(formData({ name: "release-notes", place }))).toEqual({
+        success: false,
+        fieldErrors: {},
+        placeInvalid: true,
+      });
+    }
+    expect(parsePageRestoreFormData(formData({ name: "release-notes", place: new Blob(["x"]) }))).toEqual({
+      success: false,
+      fieldErrors: {},
+      placeInvalid: true,
+    });
+    expect(parsePageRestoreFormData(formData({ name: "", place: "guides" }))).toEqual({
+      success: false,
+      fieldErrors: { name: ["Name is required"] },
+      placeInvalid: true,
+    });
+  });
+
+  it("ignores the content and other fields", () => {
+    const fields = { name: "release-notes", place: tabId, content: "x".repeat(CONTENT_MAX_LENGTH + 1), title: "T" };
+    expect(parsePageRestoreFormData(formData(fields))).toEqual({
       success: true,
       data: { name: "release-notes", tabId },
     });
