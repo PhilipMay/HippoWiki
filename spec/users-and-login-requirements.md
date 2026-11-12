@@ -63,7 +63,7 @@ From "Users and Accounts" and "Authentication" in `roadmap.md`:
 
 ## Passwords
 
-- A password is at least 12 and at most 128 characters long. The upper limit protects the password hashing from very
+- A password is at least 8 and at most 128 characters long. The upper limit protects the password hashing from very
   long inputs.
 - Any characters are allowed, spaces and non-Latin letters included. Nothing is trimmed.
 - There are no composition rules such as "must contain a digit or a special character".
