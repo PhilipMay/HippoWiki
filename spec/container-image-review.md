@@ -4,46 +4,6 @@ Review of `spec/container-image-requirements.md` and `spec/container-image-steps
 `issue-report.md`. Delete this file once its findings are worked into the two files: the wrap-up of the plan requires
 that no file refers to them any more, and this file does.
 
-## Summary
-
-- Verdict: the plan is sound and can be implemented after two corrections. The two files agree with each other in
-  everything that matters, the steps are in the right order, and the central technical assumptions hold: they were
-  tried out (see "How this was checked").
-- Issues: 0 Blocker, 2 Major, 15 Minor (one of them a question), 5 Nit.
-- The two Major issues:
-  - a "Test" item of the smoke test step cannot be verified as written, which stops the plan under `workflow.md`
-  - inside a Podman pod the server does not listen on all interfaces, although both files say it does
-
-## Answers to the review questions
-
-- In sync: yes, apart from small differences (see "nit: Small differences between the two files").
-- Contradictions: none between the two files. Two statements contradict what the software does: the wrong-password
-  check and the `HOSTNAME` variable (the two Major issues).
-- Does the plan work, will it run: yes. The standalone build, the server as the user `node` and `prisma migrate deploy`
-  from a directory of its own all worked in a trial. The plan stops at the smoke test step unless the wrong-password
-  check is changed.
-- Best practices: mostly followed (one process started with `exec`, no root, no credentials in the image, tag passed
-  through `env`, smoke test before the push, least privilege for the workflow). Open points: the write permission for
-  packages on every trigger, dependencies of the migration tools that are not pinned, and the `latest` rule.
-- What could go wrong: see the Minor issues, in particular the `.env` file in the standalone output, the install
-  script that fetches the schema engine, a failed migration on the pre-production database, and the different Podman
-  versions on the development machine and the runner.
-- Order of the steps: right. The "Image" step is committed without a container of the image ever having been started;
-  one cheap check closes that gap.
-- Missing: a test of the command that only migrates, a rule for a pre-release that is promoted to a release, and a
-  few words for the operator on backups and on a failed migration.
-
-## What is good
-
-- The requirements say why, not only what, and "Decisions" names the price of each decision.
-- The standalone output is switched on for the image build only, so `next start` and the end-to-end tests are not
-  touched. The plan asks for `npm run test:e2e:production` in the step that changes the build configuration.
-- The scope lists are explicit, and "Not in" matches "Not required".
-- The tag rule in the release workflow is the rule of the registry, the owner is put in lower case, and the tag never
-  reaches a `run` script through `${{ }}`.
-- The names and ports of the smoke test do not collide with the development database, the test database, the
-  development server and the end-to-end server.
-
 ## How this was checked
 
 - Both files were read against the repository: `package.json`, `next.config.ts`, `prisma.config.ts`, `scripts/`,
