@@ -44,8 +44,6 @@ that no file refers to them any more, and this file does.
     other addresses
 - Suggestion (required): provoke the failure with something that fails on the loopback address as well, for example a
   port on which nothing listens. That was tried: `prisma migrate deploy` ends with `P1001` and exit code 1.
-- Alternatives: start PostgreSQL with `POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256`, so that the password counts on
-  the loopback address too. Then the smoke test also proves that the password is used. Not tried.
 - Reference: the description of the official PostgreSQL image on Docker Hub, note on trust authentication for local
   connections.
 
@@ -73,8 +71,6 @@ that no file refers to them any more, and this file does.
 - Suggestion (required): let `image-start.sh` set the address itself, right before `exec node server.js`, and take
   `HOSTNAME` out of the configuration variables. Add a check to the smoke test that requests `/api/health` on
   `127.0.0.1:3000` from inside the application container.
-- Alternatives: keep the address configurable through a variable of its own (for example `HIPPOWIKI_BIND_ADDRESS`),
-  which the start script copies to `HOSTNAME`. One more variable, for a case that is not needed yet.
 
 ## Minor
 
