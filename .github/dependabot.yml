@@ -22,6 +22,16 @@ updates:
       - dependency-name: "*"
         update-types:
           - version-update:semver-major
+  # The Node.js image of the Containerfile in the project root. Only minor updates: the major version changes together
+  # with .nvmrc, and scripts/image.sh fails when the two differ.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
   - package-ecosystem: github-actions
     directory: /
     schedule:

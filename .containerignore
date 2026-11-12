@@ -1,0 +1,17 @@
+# Files kept out of the build context of the container image (see Containerfile).
+
+# These entries keep the credentials of the development machine out of the image. Only Podman reads this file, Docker
+# ignores it, so the build stage of the Containerfile also fails when a .env file reaches the standalone output.
+.env
+.env*
+!.env.example
+
+.git
+node_modules
+.next
+.next-e2e
+src/generated
+coverage
+playwright-report
+test-results
+*.tsbuildinfo

@@ -38,7 +38,7 @@ that file into the description of the feature as built and deletes it.
 
 ## Checklist
 
-- [ ] Image
+- [x] Image
 - [ ] Smoke test
 - [ ] Release workflow
 - [ ] Wrap-up
@@ -122,7 +122,8 @@ it migrates a database and then serves the wiki is proved by the smoke test of t
 - `README.md`: a section "Container image" with `npm run image:build`, the variables the image reads (`DATABASE_URL`
   in the form without parameters, `PORT`), what happens at the start (the migrations are applied to the database of
   `DATABASE_URL`, an empty database gets its tables, then the server starts) and the command that only applies the
-  migrations. Add `npm run image:build` to the table under "Commands".
+  migrations. Add `npm run image:build` to the table under "Commands". Say that the Podman machine needs at least
+  4 GiB of memory: `next build` runs inside it and was killed for lack of memory in a machine with 2 GiB.
 
 ### Test
 

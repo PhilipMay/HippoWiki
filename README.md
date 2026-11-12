@@ -150,6 +150,28 @@ container.
 `coverage/index.html`. On GitHub, every run of the `unit_tests` workflow shows the coverage in its job summary and
 offers the HTML report as the artifact `coverage-report`.
 
+## Container image
+
+The `Containerfile` in the project root builds one image that runs HippoWiki outside the development machine. It
+needs only the Podman machine, with at least 4 GiB of memory, because `next build` runs inside it
+(`podman machine set --memory 4096` while the machine is stopped):
+
+```bash
+npm run image:build   # build the image hippowiki:local for this machine
+```
+
+- The image reads `DATABASE_URL` in the form `postgresql://<user>:<password>@<host>:<port>/<database>`, without
+  parameters such as `sslmode`; special characters in the password are percent-encoded. `PORT` is optional (default
+  3000). The image contains no `.env` file and no database address.
+- On every start the container applies the pending migrations to the database of `DATABASE_URL`
+  (`prisma migrate deploy`): an empty database gets its tables, a migrated one stays as it is. Then the server starts
+  on port 3000. When the migration fails, the container exits without serving.
+- To only apply the migrations, start the image with `./image-migrate.sh` as its command:
+
+  ```bash
+  podman run --rm --env DATABASE_URL=postgresql://user:password@host:5432/hippowiki hippowiki:local ./image-migrate.sh
+  ```
+
 ## Commands
 
 | Command                       | Description                                                           |
@@ -168,6 +190,7 @@ offers the HTML report as the artifact `coverage-report`.
 | `npm run test:e2e`            | Run the end-to-end tests with Playwright                              |
 | `npm run test:e2e:ui`         | Run the end-to-end tests in the Playwright UI                         |
 | `npm run test:e2e:production` | Run the end-to-end tests against a production build                   |
+| `npm run image:build`         | Build the container image `hippowiki:local` with Podman               |
 
 ## Licensing
 
