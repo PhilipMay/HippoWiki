@@ -59,7 +59,12 @@ export default async function FolderPage({ params, searchParams }: PageProps<"/f
         <Typography variant="h4" component="h1">
           New page
         </Typography>
-        <NewPageForm action={createPage.bind(null, folder.id, null)} folderName={folder.name} tabName={null} />
+        <NewPageForm
+          action={createPage.bind(null, folder.id)}
+          folderName={folder.name}
+          tabName={null}
+          initialTabId={null}
+        />
       </Stack>
     );
   }

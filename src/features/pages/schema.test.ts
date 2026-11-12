@@ -6,6 +6,7 @@ import {
   parsePageContentFormData,
   parsePageId,
   parsePageMoveOrRenameFormData,
+  PLACE_FIELD,
   TITLE_HEADING_MISSING_MESSAGE,
 } from "@/features/pages/schema";
 import { NAME_MAX_LENGTH } from "@/lib/names";
@@ -104,20 +105,23 @@ describe("parseNewPageFormData", () => {
   it("returns the name, the content and the derived title", () => {
     expect(parseNewPageFormData(formData({ name: "welcome", content: "# Hello *world*\n\n- item" }))).toEqual({
       success: true,
-      data: { title: "Hello world", name: "welcome", content: "# Hello *world*\n\n- item" },
+      data: { title: "Hello world", name: "welcome", content: "# Hello *world*\n\n- item", tabId: null },
     });
   });
 
   it("ignores a submitted title", () => {
     expect(parseNewPageFormData(formData({ title: "Typed title", name: "a", content: "# From content" }))).toEqual({
       success: true,
-      data: { title: "From content", name: "a", content: "# From content" },
+      data: { title: "From content", name: "a", content: "# From content", tabId: null },
     });
   });
 
   it("trims the name", () => {
     const result = parseNewPageFormData(formData({ name: " welcome\t", content: "# Welcome" }));
-    expect(result).toEqual({ success: true, data: { title: "Welcome", name: "welcome", content: "# Welcome" } });
+    expect(result).toEqual({
+      success: true,
+      data: { title: "Welcome", name: "welcome", content: "# Welcome", tabId: null },
+    });
   });
 
   it("accepts the name new: no name is reserved", () => {
@@ -138,6 +142,7 @@ describe("parseNewPageFormData", () => {
       expect(parseNewPageFormData(formData({ name, content: "# Title" }))).toEqual({
         success: false,
         fieldErrors: { name: [error] },
+        placeInvalid: false,
       });
     }
   });
@@ -146,6 +151,7 @@ describe("parseNewPageFormData", () => {
     expect(parseNewPageFormData(formData({ name: "a", content: "No heading" }))).toEqual({
       success: false,
       fieldErrors: { content: [TITLE_HEADING_MISSING_MESSAGE] },
+      placeInvalid: false,
     });
   });
 
@@ -157,13 +163,14 @@ describe("parseNewPageFormData", () => {
         name: ["Use lowercase letters, digits and single hyphens"],
         content: ["Content must be at most 100,000 characters"],
       },
+      placeInvalid: false,
     });
   });
 
   it("normalizes line breaks in the content", () => {
     expect(parseNewPageFormData(formData({ name: "lines", content: "# Lines\r\none\rtwo\nthree" }))).toEqual({
       success: true,
-      data: { title: "Lines", name: "lines", content: "# Lines\none\ntwo\nthree" },
+      data: { title: "Lines", name: "lines", content: "# Lines\none\ntwo\nthree", tabId: null },
     });
   });
 
@@ -171,10 +178,12 @@ describe("parseNewPageFormData", () => {
     expect(parseNewPageFormData(new FormData())).toEqual({
       success: false,
       fieldErrors: { name: ["Name is required"] },
+      placeInvalid: false,
     });
     expect(parseNewPageFormData(formData({ name: "a" }))).toEqual({
       success: false,
       fieldErrors: { content: [TITLE_HEADING_MISSING_MESSAGE] },
+      placeInvalid: false,
     });
   });
 
@@ -185,20 +194,56 @@ describe("parseNewPageFormData", () => {
       fieldErrors: { name: [expect.any(String)], content: [expect.any(String)] },
     });
   });
+
+  it("places the page directly in the folder for an empty or missing place", () => {
+    for (const fields of [{ [PLACE_FIELD]: "" }, {}] as Record<string, string>[]) {
+      expect(parseNewPageFormData(formData({ name: "a", content: "# A", ...fields }))).toEqual({
+        success: true,
+        data: { title: "A", name: "a", content: "# A", tabId: null },
+      });
+    }
+  });
+
+  it("places the page in the tab with a well-formed tab id", () => {
+    const tabId = crypto.randomUUID();
+    expect(parseNewPageFormData(formData({ name: "a", content: "# A", [PLACE_FIELD]: tabId }))).toEqual({
+      success: true,
+      data: { title: "A", name: "a", content: "# A", tabId },
+    });
+  });
+
+  it("refuses a malformed tab id and a file as place", () => {
+    for (const place of ["guides", "not-a-uuid", " ", `${crypto.randomUUID()}x`, new Blob(["x"])]) {
+      expect(parseNewPageFormData(formData({ name: "a", content: "# A", [PLACE_FIELD]: place }))).toEqual({
+        success: false,
+        fieldErrors: {},
+        placeInvalid: true,
+      });
+    }
+  });
+
+  it("reports an invalid place together with errors at name and content", () => {
+    const content = `# Long\n\n${"a".repeat(CONTENT_MAX_LENGTH)}`;
+    expect(parseNewPageFormData(formData({ name: "", content, [PLACE_FIELD]: "guides" }))).toEqual({
+      success: false,
+      fieldErrors: { name: ["Name is required"], content: ["Content must be at most 100,000 characters"] },
+      placeInvalid: true,
+    });
+  });
 });
 
 describe("parsePageMoveOrRenameFormData", () => {
   const tabId = crypto.randomUUID();
 
-  it("returns the name and the tab id of the target", () => {
-    expect(parsePageMoveOrRenameFormData(formData({ name: "release-notes", target: tabId }))).toEqual({
+  it("returns the name and the tab id of the place", () => {
+    expect(parsePageMoveOrRenameFormData(formData({ name: "release-notes", place: tabId }))).toEqual({
       success: true,
       data: { name: "release-notes", tabId },
     });
   });
 
-  it("returns no tab for the folder itself: an empty or missing target", () => {
-    expect(parsePageMoveOrRenameFormData(formData({ name: "release-notes", target: "" }))).toEqual({
+  it("returns no tab for the folder itself: an empty or missing place", () => {
+    expect(parsePageMoveOrRenameFormData(formData({ name: "release-notes", place: "" }))).toEqual({
       success: true,
       data: { name: "release-notes", tabId: null },
     });
@@ -209,62 +254,62 @@ describe("parsePageMoveOrRenameFormData", () => {
   });
 
   it("trims the name", () => {
-    expect(parsePageMoveOrRenameFormData(formData({ name: " release-notes ", target: tabId }))).toEqual({
+    expect(parsePageMoveOrRenameFormData(formData({ name: " release-notes ", place: tabId }))).toEqual({
       success: true,
       data: { name: "release-notes", tabId },
     });
   });
 
   it("reports a missing, empty or invalid name at the name field", () => {
-    expect(parsePageMoveOrRenameFormData(formData({ target: tabId }))).toEqual({
+    expect(parsePageMoveOrRenameFormData(formData({ place: tabId }))).toEqual({
       success: false,
       fieldErrors: { name: ["Name is required"] },
-      targetInvalid: false,
+      placeInvalid: false,
     });
-    expect(parsePageMoveOrRenameFormData(formData({ name: " ", target: tabId }))).toEqual({
+    expect(parsePageMoveOrRenameFormData(formData({ name: " ", place: tabId }))).toEqual({
       success: false,
       fieldErrors: { name: ["Name is required"] },
-      targetInvalid: false,
+      placeInvalid: false,
     });
-    expect(parsePageMoveOrRenameFormData(formData({ name: "Release Notes", target: "" }))).toEqual({
+    expect(parsePageMoveOrRenameFormData(formData({ name: "Release Notes", place: "" }))).toEqual({
       success: false,
       fieldErrors: { name: ["Use lowercase letters, digits and single hyphens"] },
-      targetInvalid: false,
+      placeInvalid: false,
     });
     expect(parsePageMoveOrRenameFormData(formData({ name: "a".repeat(NAME_MAX_LENGTH + 1) }))).toEqual({
       success: false,
       fieldErrors: { name: [`Name must be at most ${NAME_MAX_LENGTH} characters`] },
-      targetInvalid: false,
+      placeInvalid: false,
     });
   });
 
-  it("refuses a malformed tab id and a file as target", () => {
-    for (const target of ["guides", "not-a-uuid", " ", "folder", `${crypto.randomUUID()}x`]) {
-      expect(parsePageMoveOrRenameFormData(formData({ name: "release-notes", target }))).toEqual({
+  it("refuses a malformed tab id and a file as place", () => {
+    for (const place of ["guides", "not-a-uuid", " ", "folder", `${crypto.randomUUID()}x`]) {
+      expect(parsePageMoveOrRenameFormData(formData({ name: "release-notes", place }))).toEqual({
         success: false,
         fieldErrors: {},
-        targetInvalid: true,
+        placeInvalid: true,
       });
     }
-    expect(parsePageMoveOrRenameFormData(formData({ name: "release-notes", target: new Blob(["x"]) }))).toEqual({
+    expect(parsePageMoveOrRenameFormData(formData({ name: "release-notes", place: new Blob(["x"]) }))).toEqual({
       success: false,
       fieldErrors: {},
-      targetInvalid: true,
+      placeInvalid: true,
     });
   });
 
-  it("reports an invalid name and an invalid target together", () => {
-    expect(parsePageMoveOrRenameFormData(formData({ name: "", target: "guides" }))).toEqual({
+  it("reports an invalid name and an invalid place together", () => {
+    expect(parsePageMoveOrRenameFormData(formData({ name: "", place: "guides" }))).toEqual({
       success: false,
       fieldErrors: { name: ["Name is required"] },
-      targetInvalid: true,
+      placeInvalid: true,
     });
   });
 
   it("ignores the content and other fields, so that no content rule can block a save", () => {
     const fields = {
       name: "release-notes",
-      target: tabId,
+      place: tabId,
       content: "x".repeat(CONTENT_MAX_LENGTH + 1),
       title: "Typed",
       folderId: "x",

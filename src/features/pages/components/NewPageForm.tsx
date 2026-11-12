@@ -14,7 +14,7 @@ import { useActionState, useId, useRef, useState } from "react";
 import Link from "@/components/Link";
 import { deriveName, titleFromContent } from "@/features/pages/derive";
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
-import { TITLE_HEADING_MISSING_MESSAGE, type PageFormAction } from "@/features/pages/schema";
+import { PLACE_FIELD, TITLE_HEADING_MISSING_MESSAGE, type PageFormAction } from "@/features/pages/schema";
 import { folderPath, pagePath, tabPath } from "@/lib/addresses";
 import { useHydrated } from "@/lib/hydration";
 import { NAME_MAX_LENGTH } from "@/lib/names";
@@ -29,13 +29,15 @@ type NewPageFormProps = {
    * this place, and the dialog shows the new address in it.
    */
   tabName: string | null;
+  /** The id of the tab the editor was opened for, or `null` for the folder itself: the place the page is created in. */
+  initialTabId: string | null;
 };
 
 /**
  * Form for a new page that asks only for the Markdown content, which must start with a title heading (`# Title`).
  * "Save" derives the title and opens a dialog that asks only for the name, prefilled from the title.
  */
-export default function NewPageForm({ action, folderName, tabName }: NewPageFormProps) {
+export default function NewPageForm({ action, folderName, tabName, initialTabId }: NewPageFormProps) {
   const [content, setContent] = useState("");
   const [open, setOpen] = useState(false);
   // The title derived when "Save" was last pressed; the dialog suggests the name from it. The title is not submitted,
@@ -91,6 +93,7 @@ export default function NewPageForm({ action, folderName, tabName }: NewPageForm
         action={action}
         folderName={folderName}
         tabName={tabName}
+        initialTabId={initialTabId}
         title={title}
         content={content}
         onClose={() => setOpen(false)}
@@ -109,7 +112,16 @@ type SavePageDialogProps = NewPageFormProps & {
 };
 
 /** Dialog "Save page" that asks for the name and creates the page. */
-function SavePageDialog({ open, action, folderName, tabName, title, content, onClose }: SavePageDialogProps) {
+function SavePageDialog({
+  open,
+  action,
+  folderName,
+  tabName,
+  initialTabId,
+  title,
+  content,
+  onClose,
+}: SavePageDialogProps) {
   const [state, formAction, pending] = useActionState(action, {});
   const [name, setName] = useState(() => deriveName(title));
   const nameRef = useRef<HTMLInputElement>(null);
@@ -154,6 +166,7 @@ function SavePageDialog({ open, action, folderName, tabName, title, content, onC
               slotProps={{ htmlInput: { maxLength: NAME_MAX_LENGTH, spellCheck: false, autoCapitalize: "none" } }}
             />
             <input type="hidden" name="content" value={content} />
+            <input type="hidden" name={PLACE_FIELD} value={initialTabId ?? ""} />
           </Stack>
         </Box>
       </DialogContent>

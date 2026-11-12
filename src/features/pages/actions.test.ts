@@ -86,23 +86,20 @@ describe("createPage", () => {
   const folderId = crypto.randomUUID();
   const tabId = crypto.randomUUID();
   const VALID = { name: " my-page ", content: CONTENT };
+  const IN_TAB = { ...VALID, place: tabId };
 
   it.each([
     ["valid", VALID],
     ["invalid", { name: "", content: CONTENT }],
   ])("reports a malformed folder id as a missing folder, with %s input", async (_name, fields) => {
-    await expect(createPage(MALFORMED_ID, null, {}, formData(fields))).resolves.toEqual(FOLDER_GONE);
+    await expect(createPage(MALFORMED_ID, {}, formData(fields))).resolves.toEqual(FOLDER_GONE);
     expect(mocks.create).not.toHaveBeenCalled();
     expectNotRevalidatedOrRedirected();
   });
 
   it("returns the field errors of invalid input without writing anything", async () => {
-    await expect(createPage(folderId, null, {}, formData({ name: "", content: CONTENT }))).resolves.toEqual(
-      NAME_REQUIRED,
-    );
-    await expect(createPage(folderId, null, {}, formData({ name: "a", content: "Text" }))).resolves.toEqual(
-      TITLE_MISSING,
-    );
+    await expect(createPage(folderId, {}, formData({ name: "", content: CONTENT }))).resolves.toEqual(NAME_REQUIRED);
+    await expect(createPage(folderId, {}, formData({ name: "a", content: "Text" }))).resolves.toEqual(TITLE_MISSING);
     expect(mocks.create).not.toHaveBeenCalled();
     expectNotRevalidatedOrRedirected();
   });
@@ -112,7 +109,7 @@ describe("createPage", () => {
     mocks.create.mockResolvedValue({ id, name: "stored-name", folder: { name: "stored-folder" }, tab: null });
 
     const fields = { ...VALID, title: "Submitted title" };
-    await expect(createPage(folderId, null, {}, formData(fields))).rejects.toMatchObject({
+    await expect(createPage(folderId, {}, formData(fields))).rejects.toMatchObject({
       path: "/folders/stored-folder/stored-name.md",
     });
 
@@ -127,7 +124,7 @@ describe("createPage", () => {
   it.each(nameTakenErrors)("reports a taken name for a unique violation %s", async (_name, err) => {
     mocks.create.mockRejectedValue(err);
 
-    await expect(createPage(folderId, null, {}, formData(VALID))).resolves.toEqual(NAME_TAKEN);
+    await expect(createPage(folderId, {}, formData(VALID))).resolves.toEqual(NAME_TAKEN);
 
     expect(mocks.warn).toHaveBeenCalledWith({ folderId, tabId: null, name: "my-page" }, expect.any(String));
     expect(mocks.error).not.toHaveBeenCalled();
@@ -137,7 +134,7 @@ describe("createPage", () => {
   it("reports a folder that no longer exists for a foreign key violation", async () => {
     mocks.create.mockRejectedValue(knownError("P2003"));
 
-    await expect(createPage(folderId, null, {}, formData(VALID))).resolves.toEqual(FOLDER_GONE);
+    await expect(createPage(folderId, {}, formData(VALID))).resolves.toEqual(FOLDER_GONE);
 
     expect(mocks.warn).toHaveBeenCalledWith({ folderId, tabId: null }, expect.any(String));
     expect(mocks.error).not.toHaveBeenCalled();
@@ -153,7 +150,7 @@ describe("createPage", () => {
       tab: { name: "stored-tab" },
     });
 
-    await expect(createPage(folderId, tabId, {}, formData(VALID))).rejects.toMatchObject({
+    await expect(createPage(folderId, {}, formData(IN_TAB))).rejects.toMatchObject({
       path: "/folders/stored-folder/stored-tab/stored-name.md",
     });
 
@@ -164,17 +161,39 @@ describe("createPage", () => {
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/folders", "layout");
   });
 
-  it("reports a malformed tab id as a missing tab without writing anything", async () => {
-    await expect(createPage(folderId, MALFORMED_ID, {}, formData(VALID))).resolves.toEqual(TAB_GONE);
-    await expect(createPage(folderId, "", {}, formData(VALID))).resolves.toEqual(TAB_GONE);
+  it.each([
+    ["a malformed tab id", { ...VALID, place: MALFORMED_ID }],
+    ["a blank place", { ...VALID, place: " " }],
+  ])("reports %s as a missing tab without writing anything", async (_name, fields) => {
+    await expect(createPage(folderId, {}, formData(fields))).resolves.toEqual(TAB_GONE);
     expect(mocks.create).not.toHaveBeenCalled();
     expectNotRevalidatedOrRedirected();
+  });
+
+  it("reports an invalid place together with the field errors", async () => {
+    await expect(
+      createPage(folderId, {}, formData({ name: "", content: CONTENT, place: MALFORMED_ID })),
+    ).resolves.toEqual({ ...NAME_REQUIRED, ...TAB_GONE });
+    expect(mocks.create).not.toHaveBeenCalled();
+    expectNotRevalidatedOrRedirected();
+  });
+
+  it("stores a page with an empty place directly in the folder", async () => {
+    mocks.create.mockResolvedValue({ id: crypto.randomUUID(), name: "n", folder: { name: "f" }, tab: null });
+
+    await expect(createPage(folderId, {}, formData({ ...VALID, place: "" }))).rejects.toMatchObject({
+      path: "/folders/f/n.md",
+    });
+
+    expect(mocks.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ tabId: null }) }),
+    );
   });
 
   it("reports a missing tab or a tab of another folder for a foreign key violation", async () => {
     mocks.create.mockRejectedValue(knownError("P2003"));
 
-    await expect(createPage(folderId, tabId, {}, formData(VALID))).resolves.toEqual(TAB_GONE);
+    await expect(createPage(folderId, {}, formData(IN_TAB))).resolves.toEqual(TAB_GONE);
 
     expect(mocks.warn).toHaveBeenCalledWith({ folderId, tabId }, expect.any(String));
     expect(mocks.error).not.toHaveBeenCalled();
@@ -184,7 +203,7 @@ describe("createPage", () => {
   it("reports a taken name in a tab", async () => {
     mocks.create.mockRejectedValue(uniqueViolation({ index: "Page_tabId_name_key" }));
 
-    await expect(createPage(folderId, tabId, {}, formData(VALID))).resolves.toEqual(NAME_TAKEN);
+    await expect(createPage(folderId, {}, formData(IN_TAB))).resolves.toEqual(NAME_TAKEN);
 
     expect(mocks.warn).toHaveBeenCalledWith({ folderId, tabId, name: "my-page" }, expect.any(String));
     expectNotRevalidatedOrRedirected();
@@ -193,7 +212,7 @@ describe("createPage", () => {
   it.each(otherErrors)("reports a failed save for %s", async (_name, err) => {
     mocks.create.mockRejectedValue(err);
 
-    await expect(createPage(folderId, null, {}, formData(VALID))).resolves.toEqual(SAVE_FAILED);
+    await expect(createPage(folderId, {}, formData(VALID))).resolves.toEqual(SAVE_FAILED);
 
     expect(mocks.error).toHaveBeenCalledWith(expect.objectContaining({ err }), expect.any(String));
     expectNotRevalidatedOrRedirected();
@@ -277,24 +296,24 @@ describe("updatePageContent", () => {
 describe("moveOrRenamePage", () => {
   const id = crypto.randomUUID();
   const tabId = crypto.randomUUID();
-  const VALID = { name: " new-name ", target: tabId };
+  const VALID = { name: " new-name ", place: tabId };
 
   it.each([
     ["valid input", VALID],
-    ["the folder as target", { name: "new-name", target: "" }],
-    ["invalid input", { name: "", target: MALFORMED_ID }],
+    ["the folder as place", { name: "new-name", place: "" }],
+    ["invalid input", { name: "", place: MALFORMED_ID }],
   ])("reports a malformed page id as a missing page, with %s", async (_name, fields) => {
     await expect(moveOrRenamePage(MALFORMED_ID, {}, formData(fields))).resolves.toEqual(PAGE_GONE);
     expect(mocks.updateMany).not.toHaveBeenCalled();
     expectNotRevalidatedOrRedirected();
   });
 
-  it("returns the errors of an invalid name and a malformed target without writing anything", async () => {
-    await expect(moveOrRenamePage(id, {}, formData({ name: "", target: tabId }))).resolves.toEqual(NAME_REQUIRED);
-    for (const target of [MALFORMED_ID, "guides", " "]) {
-      await expect(moveOrRenamePage(id, {}, formData({ name: "new-name", target }))).resolves.toEqual(TAB_GONE);
+  it("returns the errors of an invalid name and a malformed place without writing anything", async () => {
+    await expect(moveOrRenamePage(id, {}, formData({ name: "", place: tabId }))).resolves.toEqual(NAME_REQUIRED);
+    for (const place of [MALFORMED_ID, "guides", " "]) {
+      await expect(moveOrRenamePage(id, {}, formData({ name: "new-name", place }))).resolves.toEqual(TAB_GONE);
     }
-    await expect(moveOrRenamePage(id, {}, formData({ name: "", target: "guides" }))).resolves.toEqual({
+    await expect(moveOrRenamePage(id, {}, formData({ name: "", place: "guides" }))).resolves.toEqual({
       ...NAME_REQUIRED,
       ...TAB_GONE,
     });
@@ -324,8 +343,8 @@ describe("moveOrRenamePage", () => {
   });
 
   it.each([
-    ["an empty target", { name: "new-name", target: "" }],
-    ["no target", { name: "new-name" }],
+    ["an empty place", { name: "new-name", place: "" }],
+    ["no place", { name: "new-name" }],
   ])("places the page directly in its folder with %s", async (_name, fields) => {
     mocks.updateMany.mockResolvedValue({ count: 1 });
     mocks.findUnique.mockResolvedValue({ name: "stored-name", folder: { name: "stored-folder" }, tab: null });

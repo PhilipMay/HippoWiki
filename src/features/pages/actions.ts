@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { parseFolderId, parseTabId } from "@/features/folders/schema";
+import { parseFolderId } from "@/features/folders/schema";
 import {
   parseNewPageFormData,
   parsePageContentFormData,
@@ -54,45 +54,46 @@ async function findPageAddress(pageId: string): Promise<string | null> {
 }
 
 /**
- * Creates a page from the submitted editor content and name and redirects to its address. The page is placed in the
- * tab with the given id or, with `tabId` `null`, directly in the folder with the given id; the tab must be one of that
- * folder. Returns the errors to show in the form if the input is invalid, the name is taken there, the folder or tab
- * no longer exists or the page cannot be stored. Bind the ids with `createPage.bind(null, folderId, tabId)`.
+ * Creates a page from the submitted editor content, name and place and redirects to its address. The page is placed in
+ * the chosen tab or, without one, directly in the folder with the given id; the tab must be one of that folder.
+ * Returns the errors to show in the form if the input is invalid, the place is no tab id, the name is taken there, the
+ * folder or tab no longer exists or the page cannot be stored. Bind the id with `createPage.bind(null, folderId)`.
  */
 export async function createPage(
   folderId: string,
-  tabId: string | null,
   _prevState: PageFormState,
   formData: FormData,
 ): Promise<PageFormState> {
   const parsedFolderId = parseFolderId(folderId);
   if (!parsedFolderId) return { message: FOLDER_GONE_MESSAGE };
-  const parsedTabId = tabId === null ? null : parseTabId(tabId);
-  if (tabId !== null && !parsedTabId) return { message: TAB_GONE_MESSAGE };
 
   const input = parseNewPageFormData(formData);
-  if (!input.success) return { fieldErrors: input.fieldErrors };
+  if (!input.success) {
+    const hasFieldErrors = Object.keys(input.fieldErrors).length > 0;
+    return {
+      ...(hasFieldErrors && { fieldErrors: input.fieldErrors }),
+      ...(input.placeInvalid && { message: TAB_GONE_MESSAGE }),
+    };
+  }
+  const { tabId } = input.data;
 
   let page: AddressParts & { id: string };
   try {
     page = await getDb().page.create({
-      data: { ...input.data, folderId: parsedFolderId, tabId: parsedTabId },
+      data: { ...input.data, folderId: parsedFolderId },
       select: { id: true, ...ADDRESS_SELECT },
     });
   } catch (err) {
     if (isUniqueViolation(err, PAGE_NAME)) {
-      logger.warn(
-        { folderId: parsedFolderId, tabId: parsedTabId, name: input.data.name },
-        "name of new page already in use",
-      );
+      logger.warn({ folderId: parsedFolderId, tabId, name: input.data.name }, "name of new page already in use");
       return nameTakenState;
     }
     if (isForeignKeyViolation(err)) {
       // A missing folder, a missing tab or a tab of another folder: the composite foreign key refuses all of them.
-      logger.warn({ folderId: parsedFolderId, tabId: parsedTabId }, "folder or tab of new page not found");
-      return { message: parsedTabId ? TAB_GONE_MESSAGE : FOLDER_GONE_MESSAGE };
+      logger.warn({ folderId: parsedFolderId, tabId }, "folder or tab of new page not found");
+      return { message: tabId ? TAB_GONE_MESSAGE : FOLDER_GONE_MESSAGE };
     }
-    logger.error({ err, folderId: parsedFolderId, tabId: parsedTabId }, "failed to create page");
+    logger.error({ err, folderId: parsedFolderId, tabId }, "failed to create page");
     return { message: SAVE_FAILED_MESSAGE };
   }
 
@@ -156,7 +157,7 @@ export async function moveOrRenamePage(
   if (!input.success) {
     return {
       ...(input.fieldErrors.name && { fieldErrors: input.fieldErrors }),
-      ...(input.targetInvalid && { message: TAB_GONE_MESSAGE }),
+      ...(input.placeInvalid && { message: TAB_GONE_MESSAGE }),
     };
   }
   const { name, tabId } = input.data;

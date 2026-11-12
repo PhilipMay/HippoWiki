@@ -60,8 +60,11 @@ export const newPageInputSchema = z
 
 /** A validated edit of a page: the derived title and the content. */
 export type PageContentInput = z.output<typeof pageContentInputSchema>;
-/** A validated new page: the name, the derived title and the content. */
-export type NewPageInput = z.output<typeof newPageInputSchema>;
+/**
+ * A validated new page: the name, the derived title, the content and its tab, or `null` for a page placed directly in
+ * the folder.
+ */
+export type NewPageInput = z.output<typeof newPageInputSchema> & { tabId: string | null };
 
 export type PageFieldErrors = { name?: string[]; content?: string[] };
 
@@ -87,32 +90,41 @@ export function parsePageContentFormData(formData: FormData): ParseResult<PageCo
   return { success: false, fieldErrors: z.flattenError(result.error).fieldErrors };
 }
 
+/** Name of the form field that holds the place of a page: a tab id, or empty for the folder itself. */
+export const PLACE_FIELD = "place";
+
 /**
- * Validates name and content of a submitted new page form and derives the title from the content. Missing fields
- * count as empty; a submitted `title` field is ignored.
+ * Reads the place of a page from the submitted form: the id of a tab, or `null` for the folder itself when the field
+ * is empty or missing. A malformed tab id or a file is not a place.
  */
-export function parseNewPageFormData(formData: FormData): ParseResult<NewPageInput, PageFieldErrors> {
+function parsePlace(formData: FormData): { success: true; tabId: string | null } | { success: false } {
+  const place = formData.get(PLACE_FIELD) ?? "";
+  if (typeof place !== "string") return { success: false };
+  if (place === "") return { success: true, tabId: null };
+  const tabId = parseTabId(place);
+  return tabId ? { success: true, tabId } : { success: false };
+}
+
+/**
+ * Validates name and content of a submitted new page form, derives the title from the content and reads the place.
+ * Missing name and content count as empty; an empty or missing place is the folder itself, a malformed tab id or a file
+ * is no place; a submitted `title` field is ignored. On failure, returns the errors of name and content and whether the
+ * place is invalid; all are reported together.
+ */
+export function parseNewPageFormData(
+  formData: FormData,
+): { success: true; data: NewPageInput } | { success: false; fieldErrors: PageFieldErrors; placeInvalid: boolean } {
   const result = newPageInputSchema.safeParse({
     name: formData.get("name") ?? "",
     content: formData.get("content") ?? "",
   });
-  if (result.success) return { success: true, data: result.data };
-  return { success: false, fieldErrors: z.flattenError(result.error).fieldErrors };
-}
-
-/** Name of the form field that holds the place of a page: a tab id, or empty for the folder itself. */
-export const MOVE_TARGET_FIELD = "target";
-
-/**
- * Reads the target of a move from the submitted form: the id of a tab, or `null` for the folder itself when the field
- * is empty or missing. A malformed tab id or a file is not a target.
- */
-function parseMoveTarget(formData: FormData): { success: true; tabId: string | null } | { success: false } {
-  const target = formData.get(MOVE_TARGET_FIELD) ?? "";
-  if (typeof target !== "string") return { success: false };
-  if (target === "") return { success: true, tabId: null };
-  const tabId = parseTabId(target);
-  return tabId ? { success: true, tabId } : { success: false };
+  const place = parsePlace(formData);
+  if (result.success && place.success) return { success: true, data: { ...result.data, tabId: place.tabId } };
+  return {
+    success: false,
+    fieldErrors: result.success ? {} : z.flattenError(result.error).fieldErrors,
+    placeInvalid: !place.success,
+  };
 }
 
 /** The name of a page as entered in the "Move or rename page" form. */
@@ -135,24 +147,24 @@ export type PageMoveOrRenameFormAction = (
 ) => Promise<PageMoveOrRenameFormState>;
 
 /**
- * Validates the name and reads the target of a submitted "Move or rename page" form. A missing name counts as empty;
- * an empty or missing target is the folder itself, a malformed tab id or a file is no target. Other fields, the content
+ * Validates the name and reads the place of a submitted "Move or rename page" form. A missing name counts as empty;
+ * an empty or missing place is the folder itself, a malformed tab id or a file is no place. Other fields, the content
  * in particular, are ignored, so no content rule can block a save. On failure, returns the errors of the name field
- * and whether the target is invalid; both are reported together.
+ * and whether the place is invalid; both are reported together.
  */
 export function parsePageMoveOrRenameFormData(
   formData: FormData,
 ):
   | { success: true; data: PageMoveOrRenameInput }
-  | { success: false; fieldErrors: NameFieldErrors; targetInvalid: boolean } {
+  | { success: false; fieldErrors: NameFieldErrors; placeInvalid: boolean } {
   const name = pageMoveOrRenameNameSchema.safeParse({ name: formData.get("name") ?? "" });
-  const target = parseMoveTarget(formData);
-  if (name.success && target.success) {
-    return { success: true, data: { name: name.data.name, tabId: target.tabId } };
+  const place = parsePlace(formData);
+  if (name.success && place.success) {
+    return { success: true, data: { name: name.data.name, tabId: place.tabId } };
   }
   return {
     success: false,
     fieldErrors: name.success ? {} : z.flattenError(name.error).fieldErrors,
-    targetInvalid: !target.success,
+    placeInvalid: !place.success,
   };
 }

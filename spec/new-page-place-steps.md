@@ -18,7 +18,7 @@ the "Save page" and the "Move or rename page" dialog.
 ## Checklist
 
 - [x] Shared name and place fields
-- [ ] Place in the create action
+- [x] Place in the create action
 - [ ] Place choice in the "Save page" dialog
 - [ ] Wrap-up
 

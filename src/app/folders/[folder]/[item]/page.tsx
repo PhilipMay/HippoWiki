@@ -72,7 +72,12 @@ export default async function FolderItemPage({ params, searchParams }: Props) {
         <Typography variant="h4" component="h1">
           New page
         </Typography>
-        <NewPageForm action={createPage.bind(null, folder.id, tab.id)} folderName={folder.name} tabName={tab.name} />
+        <NewPageForm
+          action={createPage.bind(null, folder.id)}
+          folderName={folder.name}
+          tabName={tab.name}
+          initialTabId={tab.id}
+        />
       </Stack>
     );
   }

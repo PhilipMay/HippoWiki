@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
-import { MOVE_TARGET_FIELD } from "@/features/pages/schema";
+import { PLACE_FIELD } from "@/features/pages/schema";
 
 import { collectErrors } from "./support/browser";
 import { createFolder, createPage, createTab, getTestDb, resetTestDatabase } from "./support/database";
@@ -375,7 +375,7 @@ test("a crafted move into a tab of another folder is refused", async ({ page }) 
   await save.evaluate(
     (button: HTMLButtonElement, { field, tabId }) =>
       button.form?.addEventListener("formdata", (event) => event.formData.set(field, tabId)),
-    { field: MOVE_TARGET_FIELD, tabId: foreignTab.id },
+    { field: PLACE_FIELD, tabId: foreignTab.id },
   );
   await save.click();
 

@@ -1,7 +1,9 @@
 import type { Page } from "@playwright/test";
 
+import { PLACE_FIELD } from "@/features/pages/schema";
+
 import { collectErrors } from "./support/browser";
-import { createFolder, createPage, getTestDb, resetTestDatabase } from "./support/database";
+import { createFolder, createPage, createTab, getTestDb, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
 
 const TITLE_HEADING_MISSING = "Content must start with a title heading: # Title";
@@ -262,4 +264,33 @@ test("saving into a folder that no longer exists shows an error and keeps the va
   await expect(dialog.getByLabel("Name")).toHaveValue("orphan");
   await expect(page.getByLabel("Content")).toHaveValue("# Orphan\n\nContent that must not get lost");
   expect(await getTestDb().page.count()).toBe(0);
+});
+
+test("a crafted request whose place is a tab of another folder shows an error and keeps the values", async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  const other = await createFolder({ name: "other" });
+  const foreignTab = await createTab({ folder: other, name: "foreign" });
+
+  const dialog = await openSaveDialog(page, "# Crafted\n\nContent that must not get lost");
+  const save = dialog.getByRole("button", { name: "Save" });
+  // Send the tab of another folder as the place, as a crafted request would. It is set in the submitted form data, not
+  // in a form control: React writes a control's value back whenever it renders the control again.
+  await save.evaluate(
+    (button: HTMLButtonElement, { field, tabId }) =>
+      button.form?.addEventListener("formdata", (event) => event.formData.set(field, tabId)),
+    { field: PLACE_FIELD, tabId: foreignTab.id },
+  );
+  await save.click();
+
+  await expect(dialog.getByRole("alert")).toHaveText("This tab no longer exists.");
+  await expect(dialog).toBeVisible();
+  await expect(page).toHaveURL(NEW_PAGE);
+  await expect(dialog.getByLabel("Name")).toHaveValue("crafted");
+  expect(await getTestDb().page.count()).toBe(0);
+
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByLabel("Content")).toHaveValue("# Crafted\n\nContent that must not get lost");
+  expect(errors).toEqual([]);
 });

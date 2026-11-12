@@ -8,7 +8,7 @@ import RadioGroup from "@mui/material/RadioGroup";
 import TextField from "@mui/material/TextField";
 import { useId, type Ref } from "react";
 
-import { MOVE_TARGET_FIELD } from "@/features/pages/schema";
+import { PLACE_FIELD } from "@/features/pages/schema";
 import { pagePath } from "@/lib/addresses";
 import { NAME_MAX_LENGTH } from "@/lib/names";
 
@@ -81,7 +81,7 @@ export default function PageNameAndPlaceFields({
       <FormControl disabled={locked}>
         <FormLabel id={placeLabelId}>Place</FormLabel>
         <RadioGroup
-          name={MOVE_TARGET_FIELD}
+          name={PLACE_FIELD}
           value={place}
           onChange={(event) => onPlaceChange(event.target.value)}
           aria-labelledby={placeLabelId}
