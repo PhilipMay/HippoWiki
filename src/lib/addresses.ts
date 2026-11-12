@@ -1,5 +1,5 @@
-// Addresses of folders, tabs and pages under `/folders`, of deleted pages under `/deleted-pages`, and the actions in
-// their query string. Pure functions used by routes, Server Actions and links; no server-only imports.
+// Addresses of folders, tabs and pages under `/folders`, of deleted pages under `/deleted-pages`, of the login, and
+// the actions in their query string. Pure functions used by routes, Server Actions and links; no server-only imports.
 
 import { parseName } from "@/lib/names";
 
@@ -14,6 +14,14 @@ const DELETED_PAGES_PATH = "/deleted-pages";
 
 /** The suffix that marks a page in an address. It belongs to the address, not to the page name. */
 const PAGE_SUFFIX = ".md";
+
+/** The address of the login page, the one page that needs no login. */
+const LOGIN_PATH = "/login";
+
+/** The address of the login page. */
+export function loginPath(): string {
+  return LOGIN_PATH;
+}
 
 function withAction(path: string, action?: string): string {
   return action ? `${path}?action=${action}` : path;

@@ -9,6 +9,14 @@ test.beforeEach(async () => {
   await resetTestDatabase();
 });
 
+test("the login form is locked until hydration", async ({ page }) => {
+  await page.goto("/login");
+
+  await expect(page.getByLabel("User name")).not.toBeEditable();
+  await expect(page.getByLabel("Password")).not.toBeEditable();
+  await expect(page.getByRole("button", { name: "Log in" })).toBeDisabled();
+});
+
 test("the new page form is locked until hydration", async ({ page }) => {
   await createFolder({ name: "locked-folder" });
 

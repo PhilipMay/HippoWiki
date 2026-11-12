@@ -5,8 +5,11 @@ import { execFileSync } from "node:child_process";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 import { titleFromContent } from "@/features/pages/derive";
-import { PrismaClient, type Folder, type Page, type Prisma, type Tab } from "@/generated/prisma/client";
+import { newUserData, type NewUser } from "@/features/users/records";
+import { PrismaClient, type Folder, type Page, type Prisma, type Tab, type User } from "@/generated/prisma/client";
+import { hashPassword } from "@/lib/password-hash";
 
+import { KNOWN_USERS } from "../../prisma/known-users";
 import { TEST_DATABASE_NAME, TEST_DATABASE_URL } from "./container";
 
 /** Host, port and database of a PostgreSQL URL, e.g. "localhost:5432/hippowiki". */
@@ -48,8 +51,17 @@ export async function disconnectTestDb(): Promise<void> {
   testDb = undefined;
 }
 
-/** Deletes all rows from all tables of the test database, except the migration history. */
-export async function resetTestDatabase(): Promise<void> {
+/**
+ * The tables that are never emptied: the migration history, and the secret of the session cookies, which the running
+ * server keeps for its whole life. Without the secret every session cookie of the run would become invalid.
+ */
+const KEPT_TABLES = ["_prisma_migrations", "AuthSecret"];
+
+/**
+ * Deletes all rows from all tables of the test database, except the migration history and the secret of the session
+ * cookies. The integration tests use it before every test; the end-to-end tests use `resetTestDatabase()`.
+ */
+export async function emptyTestDatabase(): Promise<void> {
   const db = getTestDb();
   const [row] = await db.$queryRaw<{ current_database: string }[]>`
     SELECT current_database()`;
@@ -58,11 +70,59 @@ export async function resetTestDatabase(): Promise<void> {
     throw new Error(`Refusing to empty database ${current}; only ${TEST_DATABASE_NAME} may be reset.`);
   }
   const tables = await db.$queryRaw<{ tablename: string }[]>`
-    SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> '_prisma_migrations'`;
-  if (tables.length > 0) {
-    const names = tables.map(({ tablename }) => `"public"."${tablename.replaceAll('"', '""')}"`).join(", ");
-    await db.$executeRawUnsafe(`TRUNCATE TABLE ${names} CASCADE`);
+    SELECT tablename FROM pg_tables WHERE schemaname = 'public'`;
+  const names = tables
+    .filter(({ tablename }) => !KEPT_TABLES.includes(tablename))
+    .map(({ tablename }) => `"public"."${tablename.replaceAll('"', '""')}"`);
+  if (names.length > 0) await db.$executeRawUnsafe(`TRUNCATE TABLE ${names.join(", ")} CASCADE`);
+}
+
+/**
+ * Puts the test database into the state every end-to-end test starts from: all tables empty, except the two that are
+ * never emptied, and the known users of `prisma/known-users.ts` with their fixed ids and the password change already
+ * done.
+ */
+export async function resetTestDatabase(): Promise<void> {
+  await emptyTestDatabase();
+  for (const { id, name, password } of KNOWN_USERS) {
+    await createUser({ id, name, password, mustChangePassword: false });
   }
+}
+
+/** The hashes of the passwords that `createUser()` has stored; a hash takes time, so each one is computed once. */
+const passwordHashes = new Map<string, Promise<string>>();
+
+function passwordHashOf(password: string): Promise<string> {
+  let hash = passwordHashes.get(password);
+  if (!hash) {
+    hash = hashPassword(password);
+    passwordHashes.set(password, hash);
+  }
+  return hash;
+}
+
+/** The password of the users that `createUser()` creates without one. */
+export const TEST_PASSWORD = "test-password";
+
+/** The fields of a user that `createUser()` can set: those of a new user and its password instead of the hash. */
+type CreateUserData = Partial<Omit<NewUser, "passwordHash">> & { password?: string } & Partial<
+    Pick<Prisma.UserCreateInput, "createdAt" | "updatedAt">
+  >;
+
+/**
+ * Creates a user with its credential account directly in the test database, in the shape of `records.ts`. The user
+ * gets a unique name and the password `TEST_PASSWORD` unless they are given, and has the first password still to
+ * change unless `mustChangePassword` is false. Any other field can be overridden, e.g. `createdAt`.
+ */
+export async function createUser({
+  id,
+  name = `test-user-${crypto.randomUUID().slice(0, 13)}`,
+  password = TEST_PASSWORD,
+  mustChangePassword = true,
+  ...data
+}: CreateUserData = {}): Promise<User> {
+  const passwordHash = await passwordHashOf(password);
+  return getTestDb().user.create({ data: { ...newUserData({ id, name, passwordHash, mustChangePassword }), ...data } });
 }
 
 /**

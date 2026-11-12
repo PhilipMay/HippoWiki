@@ -103,8 +103,9 @@ The application accesses the database with [Prisma](https://www.prisma.io/) 7. T
 
 ## Users
 
-User accounts are stored in the database. There is one admin account, named `admin`; it is created by the admin
-setup or by the seed:
+Users log in at `/login` with a user name and a password; the header shows who is logged in and has "Log out". A
+session lasts 30 days. User accounts are stored in the database. There is one admin account, named `admin`; it is
+created by the admin setup or by the seed:
 
 - `npm run db:seed` inserts two known users for development (`prisma/known-users.ts`), with the password change
   already done. Running it again gives them these passwords back.
@@ -152,9 +153,10 @@ npx playwright show-report   # open the HTML report of the last run
   longer because of the build.
 - `e2e/support/browser.ts` has `collectErrors()`, which records console errors of the browser page.
 - `e2e/support/database.ts` has helpers for tests: `createFolder()`, `createTab()` and `createPage()` insert a folder,
-  a tab or a page (in a given folder or tab, or in a new folder) directly into the test database,
-  `resetTestDatabase()` empties it, and `getTestDb()` returns a Prisma client for it. All tests share this database
-  and run one after another.
+  a tab or a page (in a given folder or tab, or in a new folder) directly into the test database, `createUser()`
+  inserts a user with a password, `resetTestDatabase()` empties it and puts the known users back (`admin` and
+  `alice`, see "Users"), and `getTestDb()` returns a Prisma client for it. All tests share this database and run one
+  after another.
 
 ## Integration tests
 

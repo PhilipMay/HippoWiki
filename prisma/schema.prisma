@@ -142,3 +142,13 @@ model Verification {
 
   @@index([identifier])
 }
+
+/// The secret that signs the session cookies. The table has a single row: `getAuth()` creates it on first use, and a
+/// check constraint in the migration allows no second one. Without the row every session cookie would be invalid, so
+/// it is never deleted.
+model AuthSecret {
+  /// Always 1.
+  id        Int      @id @default(1)
+  secret    String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+}

@@ -81,7 +81,7 @@ These hold for all steps. The wrap-up step moves them into the feature spec.
 - [x] Password hashing
 - [x] User accounts and admin setup
 - [x] Admin setup in the container image
-- [ ] Login and logout
+- [x] Login and logout
 - [ ] Authenticated access only
 - [ ] Login wait after failed attempts
 - [ ] Forced password change
@@ -283,6 +283,9 @@ can still be reached without a login; the next step closes it.
     - `logIn(input, headers)` signs in through Better Auth and returns the user, or the code `invalid-credentials`
       (the same for an unknown name and a wrong password), `busy` or `failed`.
     - `logOut(headers)` ends the session of the request.
+    - `logIn` and `logOut` also return the response headers of Better Auth, which set or clear the session cookie.
+      In a Server Action `nextCookies()` has already applied them; a caller outside Next.js, such as the integration
+      tests, passes them on itself.
     - `getSessionUser(headers)` returns the id, the name and `mustChangePassword` of the user of the session, or
       `null`.
   - `forms.ts` and `actions.ts`: the actions `logIn` and `logOut`.
@@ -297,7 +300,9 @@ can still be reached without a login; the next step closes it.
 - `src/app/login/page.tsx`: the login page. A logged-in user is redirected to `/folders`.
 - `src/lib/addresses.ts`: `loginPath()`.
 - `src/components/AppHeader.tsx`: the name of the logged-in user and a "Log out" button, a form with the `logOut`
-  action. Without a user it shows neither these nor the menu.
+  action. Without a user it shows neither of them. The menu stays for everyone in this step, because the content can
+  still be reached without a login and the existing end-to-end tests use the menu without one; the next step hides
+  it.
 - Tests:
   - `e2e/support/database.ts`: `createUser()`, which inserts a user with a password through the helper of
     `records.ts`; any field can be set, and the hash of a password is computed once per process.
@@ -359,6 +364,7 @@ leads to the login page.
 - Every Server Action in `src/features/folders/actions.ts` and `src/features/pages/actions.ts` calls `requireUser()`
   first, outside its `try` blocks, because the redirect throws.
 - `not-found.tsx`, `error.tsx` and `global-error.tsx` show no data and stay without a check.
+- `src/components/AppHeader.tsx`: without a user it shows no menu.
 - End-to-end tests that log in once (see "Tests" in the requirements):
   - `e2e/auth.setup.ts`, a Playwright setup project: it logs in on the login page as the known admin and as the known
     normal user and saves one storage state each in `e2e/.auth/`. Then it saves the rows of their sessions there too.
