@@ -77,17 +77,16 @@ Built and parsed in `src/lib/addresses.ts`:
 
 - An action is given in the query string as `?action=<action>` and opens a dialog or the editor:
 
-  | Address    | Action    | Opens                                                   |
-  | ---------- | --------- | ------------------------------------------------------- |
-  | `/folders` | `new`     | the "New folder" dialog                                 |
-  | folder     | `new`     | the editor for a new page placed directly in the folder |
-  | folder     | `rename`  | the "Rename folder" dialog                              |
-  | folder     | `new-tab` | the "New tab" dialog                                    |
-  | tab        | `new`     | the editor for a new page in the tab                    |
-  | tab        | `rename`  | the "Rename tab" dialog                                 |
-  | page       | `edit`    | the edit form (see `pages.md`)                          |
-  | page       | `rename`  | the "Rename page" dialog                                |
-  | page       | `move`    | the "Move page" dialog                                  |
+  | Address    | Action           | Opens                                                   |
+  | ---------- | ---------------- | ------------------------------------------------------- |
+  | `/folders` | `new`            | the "New folder" dialog                                 |
+  | folder     | `new`            | the editor for a new page placed directly in the folder |
+  | folder     | `rename`         | the "Rename folder" dialog                              |
+  | folder     | `new-tab`        | the "New tab" dialog                                    |
+  | tab        | `new`            | the editor for a new page in the tab                    |
+  | tab        | `rename`         | the "Rename tab" dialog                                 |
+  | page       | `edit`           | the edit form (see `pages.md`)                          |
+  | page       | `move-or-rename` | the "Move or rename page" dialog                        |
 
 - A folder address also has the view `?view=all`, the list of all its pages.
 - Each address accepts only its own actions and views. An unknown, empty or repeated action or view, one of another
@@ -95,7 +94,7 @@ Built and parsed in `src/lib/addresses.ts`:
 - A dialog is shown on top of the content of its address. Saving leads to the item's address, cancelling and the
   Escape key to the address without the query string.
 - Folders and tabs are created and renamed in the name dialog. Pages are created and edited in the editor; they are
-  renamed in the name dialog and moved in the "Move page" dialog.
+  moved and renamed in the "Move or rename page" dialog.
 - The name dialog focuses the name field when it opens and keeps the entered name after a rejected save.
 
 ## Routes
@@ -122,16 +121,19 @@ Built and parsed in `src/lib/addresses.ts`:
 ## Changing the structure
 
 Server Actions in `src/features/folders/actions.ts` (`createFolder`, `renameFolder`, `createTab`, `renameTab`) and
-`src/features/pages/actions.ts` (`createPage`, `updatePageContent`, `renamePage`, `movePage`):
+`src/features/pages/actions.ts` (`createPage`, `updatePageContent`, `moveOrRenamePage`):
 
 - Folders, tabs and pages can be created and renamed.
 - A page created on a folder address is placed directly in the folder, one created on a tab address in that tab.
-- A page can be moved within its folder: from the folder into one of its tabs, from a tab back to the folder, or to
-  another tab. The dialog offers the folder itself and its tabs, with the current place preselected.
-  - A page of the same name at the target shows "A page with this name already exists there"; the page stays where it
-    was.
+- A page is moved and renamed in one dialog: the name field, prefilled with the current name and focused once the
+  dialog has opened, and the places "Directly in the folder" and `Tab <name>` for each tab of the folder, with the
+  current place preselected. Below the name it shows the address the page will get. Saving stores name and place in a
+  single update, so a page can be renamed, moved within its folder (from the folder into one of its tabs, from a tab
+  back to the folder, or to another tab), or both.
+  - A page of the same name at the target shows "Name is already in use" at the name field and focuses it; the entered
+    name and the chosen place are kept, and the page keeps its name and place.
   - A tab of another folder is refused by the composite foreign key and reported like a tab that no longer exists.
-- Renaming and moving do not validate or touch the content.
+- Moving or renaming does not validate or touch the content.
 - A folder, tab or page that no longer exists when its form is saved shows a message above the form.
 - Every action redirects to the stored address of the item, never to one built from submitted values, and calls
   `revalidatePath("/folders", "layout")`, which covers every address of the feature.
@@ -149,8 +151,8 @@ Server Actions in `src/features/folders/actions.ts` (`createFolder`, `renameFold
 ## Limits
 
 - Names are at most 80 characters long.
-- The content limit of a page (see `pages.md`) is checked when a page is created or edited. Renaming and moving do not
-  check it, so a limit lowered later never blocks them.
+- The content limit of a page (see `pages.md`) is checked when a page is created or edited. Moving or renaming does
+  not check it, so a limit lowered later never blocks it.
 
 ## Current limits
 

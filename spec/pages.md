@@ -24,15 +24,14 @@ Defined in `src/features/pages/schema.ts`, with the length limits in `src/featur
 - Each form submits only what it changes:
   - a new page: `name` and `content`
   - editing: `content` only
-  - renaming: `name` only
-  - moving: the target only, a tab or the folder itself
+  - moving or renaming: `name` and the target, a tab or the folder itself
 - The title is derived from the content in the create and edit actions; a submitted `title` field is ignored. Titles
   need not be unique.
 - `name` follows the name rule in `content-structure.md`. A name that is taken where the page lives shows "Name is
   already in use"; no suffix is added automatically.
 - `content` is at most 100,000 characters and must start with a title heading. Content without a title is refused with
   "Content must start with a title heading: # Title" at the content field. Line breaks are stored as LF.
-- The content is validated when a page is created or edited. Renaming and moving neither validate nor touch it.
+- The content is validated when a page is created or edited. Moving or renaming neither validates nor touches it.
 - Validation errors are shown at the form fields; the entered values are kept.
 
 ## Derived title and name
@@ -70,7 +69,7 @@ same views; actions are given as `?action=<action>` (see `content-structure.md`)
   from the server are shown in the open dialog; "Cancel" in the dialog closes it and keeps the content. Saving shows
   the new page.
 - The page address: the folder breadcrumb (see `content-structure.md`) with the folder list, the folder, the tab if
-  the page has one, and the page name with `.md`. Below it the last update and "Edit", "Rename" and "Move" above a
+  the page has one, and the page name with `.md`. Below it the last update and "Edit" and "Move or rename" above a
   divider, then the rendered Markdown (GitHub Flavored Markdown, raw HTML shown as text, unsafe link URLs removed). The
   stored title is not shown; the content's `#` heading is the page's only level-one heading. Markdown headings are
   drawn two Typography sizes smaller than their tag (`h1` as `h3`, which is the size page titles had). The browser tab
@@ -78,10 +77,8 @@ same views; actions are given as `?action=<action>` (see `content-structure.md`)
 - `?action=edit`: the page form with the content only, prefilled; there is no title or name field. The form opens with
   the cursor at the start of the content. Saving derives the title again and shows the page; content without a title
   or above the limit shows the error at the content field, keeps the entered content and focuses the field.
-- `?action=rename`: the name dialog on top of the page, prefilled with the name. Saving shows the page at its new
-  address.
-- `?action=move`: the "Move page" dialog on top of the page (see `content-structure.md`). Saving shows the page at its
-  new address.
+- `?action=move-or-rename`: the "Move or rename page" dialog on top of the page (see `content-structure.md`). Saving
+  stores name and place together and shows the page at its new address.
 - Saving a page that no longer exists shows an error message and leaves the focus where it is.
 - `GET /api/health`: `{ "status": "ok" }` while the database is reachable, status 503 and a logged error otherwise.
 

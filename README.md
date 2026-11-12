@@ -11,8 +11,9 @@ The prototype manages wiki pages written in Markdown, organises them in folders 
   after them; create and rename tabs,
 - list the pages placed directly in a folder, the pages of a tab, or all pages of a folder with their tabs, by name,
 - view a page with its Markdown rendered at `/folders/<folder>/<page>.md` or `/folders/<folder>/<tab>/<page>.md`,
-- create, edit and rename pages,
-- move a page within its folder: into a tab, to another tab or back to the folder.
+- create and edit pages,
+- move or rename a page in one dialog: a new name, a new place within its folder (into a tab, to another tab or back
+  to the folder), or both.
 
 Nothing can be deleted yet. There is a single user and no login.
 
