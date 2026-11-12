@@ -7,7 +7,8 @@ HippoWiki is a knowledge management system.
 The specification lives in the `spec/` directory. This catalog should always be kept in sync with the files.
 
 - `spec/tech.md`: technology stack
-- `spec/workflow.md`: how features are planned in step files, when a step is done and how a feature is wrapped up
+- `spec/workflow.md`: how features are planned in step files, when a step is done, what to do when it cannot be
+  finished and how a feature is wrapped up
 - `spec/architecture.md`: code layout and conventions (reads, writes, validation, database, UI)
 - `spec/testing.md`: unit and end-to-end test conventions
 - `spec/pages.md`: the page feature as built (model, input rules, derived title and name, routes, limits)
@@ -15,7 +16,6 @@ The specification lives in the `spec/` directory. This catalog should always be 
   addresses, actions, routes, lists, limits)
 - `spec/roadmap.md`: backlog of candidate features
 - `spec/issue-report.md`: how to report issues found in code and document reviews
-- `spec/workflow-review.md`: review of `spec/workflow.md` with its open issues
 
 ## Running the Checks
 
