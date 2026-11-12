@@ -60,6 +60,18 @@ describe("every query", () => {
   });
 });
 
+describe("the page lists", () => {
+  // A deleted page keeps its folder, so only `deletedAt: null` keeps it out of the folder's lists.
+  it.each([
+    ["listFolderPages", () => listFolderPages(FOLDER_ID), { folderId: FOLDER_ID, tabId: null, deletedAt: null }],
+    ["listTabPages", () => listTabPages(TAB_ID), { tabId: TAB_ID, deletedAt: null }],
+    ["listAllFolderPages", () => listAllFolderPages(FOLDER_ID), { folderId: FOLDER_ID, deletedAt: null }],
+  ])("%s leaves out deleted pages", async (_name, query, where) => {
+    await query();
+    expect(mocks.findMany).toHaveBeenCalledWith(expect.objectContaining({ where }));
+  });
+});
+
 describe("listAllFolderPages", () => {
   it("returns the pages of the database with the page without a tab before those of the same name in tabs", async () => {
     // As the database returns them: by name, then by tab name, a missing tab last.
@@ -83,7 +95,9 @@ describe("getPage", () => {
     await expect(getPage("handbook", null, "overview")).resolves.toBe(stored);
     // `tabId: null` keeps a page of the same name in a tab of the folder from being returned.
     expect(mocks.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { name: "overview", folder: { name: "handbook" }, tabId: null } }),
+      expect.objectContaining({
+        where: { name: "overview", folder: { name: "handbook" }, deletedAt: null, tabId: null },
+      }),
     );
   });
 
@@ -98,7 +112,9 @@ describe("getPage", () => {
 
     await expect(getPage("handbook", "guides", "overview")).resolves.toBe(stored);
     expect(mocks.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { name: "overview", folder: { name: "handbook" }, tab: { name: "guides" } } }),
+      expect.objectContaining({
+        where: { name: "overview", folder: { name: "handbook" }, deletedAt: null, tab: { name: "guides" } },
+      }),
     );
   });
 

@@ -45,11 +45,11 @@ function addressOf({ name, folder, tab }: AddressParts): string {
 }
 
 /**
- * The address of the page with the given id as stored, or `null` if it does not exist. Actions redirect to the stored
- * address, never to one built from submitted values.
+ * The address of the page with the given id as stored, or `null` if it does not exist or is deleted, since a deleted
+ * page has no address. Actions redirect to the stored address, never to one built from submitted values.
  */
 async function findPageAddress(pageId: string): Promise<string | null> {
-  const page = await getDb().page.findUnique({ where: { id: pageId }, select: ADDRESS_SELECT });
+  const page = await getDb().page.findUnique({ where: { id: pageId, deletedAt: null }, select: ADDRESS_SELECT });
   return page && addressOf(page);
 }
 
@@ -105,8 +105,8 @@ export async function createPage(
 
 /**
  * Stores the submitted content of the page with the given id, with the title derived from it, and redirects to the
- * page. Returns the errors to show in the form if the content is invalid, the page no longer exists or it cannot be
- * stored. Bind the id with `updatePageContent.bind(null, id)`.
+ * page. Returns the errors to show in the form if the content is invalid, the page no longer exists or is deleted, or
+ * it cannot be stored. Bind the id with `updatePageContent.bind(null, id)`.
  */
 export async function updatePageContent(
   id: string,
@@ -121,8 +121,9 @@ export async function updatePageContent(
 
   let address: string | null;
   try {
-    // `updateMany` reports a missing page as a count of 0 instead of throwing; it sets `updatedAt` as well.
-    const { count } = await getDb().page.updateMany({ where: { id: pageId }, data: input.data });
+    // `updateMany` reports a missing page as a count of 0 instead of throwing; it sets `updatedAt` as well. A deleted
+    // page counts as missing.
+    const { count } = await getDb().page.updateMany({ where: { id: pageId, deletedAt: null }, data: input.data });
     address = count === 0 ? null : await findPageAddress(pageId);
   } catch (err) {
     logger.error({ err, pageId }, "failed to update page");
@@ -143,7 +144,8 @@ export async function updatePageContent(
  * The page is placed in the chosen tab of its folder or, without one, directly in the folder. The content is neither
  * validated nor touched, so the content limit never blocks a save. Returns the errors to show in the form if the name
  * is invalid or taken at the target, the tab does not exist or belongs to another folder (the composite foreign key
- * refuses it), the page no longer exists or it cannot be stored. Bind the id with `moveOrRenamePage.bind(null, id)`.
+ * refuses it), the page no longer exists or is deleted, or it cannot be stored. Bind the id with
+ * `moveOrRenamePage.bind(null, id)`.
  */
 export async function moveOrRenamePage(
   id: string,
@@ -164,7 +166,10 @@ export async function moveOrRenamePage(
 
   let address: string | null;
   try {
-    const { count } = await getDb().page.updateMany({ where: { id: pageId }, data: { name, tabId } });
+    const { count } = await getDb().page.updateMany({
+      where: { id: pageId, deletedAt: null },
+      data: { name, tabId },
+    });
     address = count === 0 ? null : await findPageAddress(pageId);
   } catch (err) {
     if (isUniqueViolation(err, PAGE_NAME)) {

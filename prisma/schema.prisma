@@ -58,9 +58,12 @@ model Page {
   tab       Tab?     @relation(fields: [tabId, folderId], references: [id, folderId], onDelete: Restrict)
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  /// When the page was deleted, or `null` for a page that is not deleted. A deleted page keeps its folder but has no
+  /// tab, because its place inside the folder is forgotten; it is missing from every list and every page address.
+  deletedAt DateTime? @db.Timestamptz(3)
 
-  // Pages in a tab: unique within the tab.
+  // Pages in a tab: unique within the tab. Deleted pages have no tab, so they are not covered.
   @@unique([tabId, name])
-  // Pages placed directly in a folder: unique among those pages only.
-  @@unique([folderId, name], where: { tabId: null })
+  // Pages placed directly in a folder and not deleted: unique among those pages only. Deleted pages never block a name.
+  @@unique([folderId, name], where: { tabId: null, deletedAt: null })
 }

@@ -96,9 +96,11 @@ type CreatePageData = Partial<Omit<Prisma.PageUncheckedCreateInput, "folderId" |
  * either, a new folder is created for it. The page gets a unique name unless one is given. Like a save through the
  * forms, the title is derived from the content; the content defaults to `# <title>`, so `createPage({ title: "Old" })`
  * gives a page with the content `# Old`. A title given together with content is stored as is, e.g. to set up a page
- * that was stored before titles were derived. Any other field can be overridden, e.g. `updatedAt`.
+ * that was stored before titles were derived. Any other field can be overridden, e.g. `updatedAt`. Setting `deletedAt`
+ * creates a deleted page; a deleted page has no tab, so it cannot be combined with `tab`.
  */
 export async function createPage({ folder, tab, ...data }: CreatePageData = {}): Promise<Page> {
+  if (tab && data.deletedAt) throw new Error("A deleted page has no tab: give a folder instead");
   const content = data.content ?? `# ${data.title ?? "Test page"}`;
   const title = data.title ?? titleFromContent(content) ?? "Test page";
   const folderId = tab ? tab.folderId : (folder ?? (await createFolder())).id;

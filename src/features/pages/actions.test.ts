@@ -248,13 +248,17 @@ describe("updatePageContent", () => {
       path: "/folders/stored-folder/stored-name.md",
     });
 
-    expect(mocks.updateMany).toHaveBeenCalledWith({ where: { id }, data: { title: "My page", content: CONTENT } });
-    expect(mocks.findUnique).toHaveBeenCalledWith({ where: { id }, select: ADDRESS_SELECT });
+    expect(mocks.updateMany).toHaveBeenCalledWith({
+      where: { id, deletedAt: null },
+      data: { title: "My page", content: CONTENT },
+    });
+    expect(mocks.findUnique).toHaveBeenCalledWith({ where: { id, deletedAt: null }, select: ADDRESS_SELECT });
     expect(mocks.info).toHaveBeenCalledWith({ pageId: id }, "page updated");
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/folders", "layout");
   });
 
-  it("reports a page that no longer exists", async () => {
+  // The update only matches a page that is not deleted, so a deleted page counts as missing as well.
+  it("reports a page that no longer exists or is deleted", async () => {
     mocks.updateMany.mockResolvedValue({ count: 0 });
 
     await expect(updatePageContent(id, {}, formData(VALID))).resolves.toEqual(PAGE_GONE);
@@ -336,8 +340,11 @@ describe("moveOrRenamePage", () => {
     });
 
     expect(mocks.updateMany).toHaveBeenCalledTimes(1);
-    expect(mocks.updateMany).toHaveBeenCalledWith({ where: { id }, data: { name: "new-name", tabId } });
-    expect(mocks.findUnique).toHaveBeenCalledWith({ where: { id }, select: ADDRESS_SELECT });
+    expect(mocks.updateMany).toHaveBeenCalledWith({
+      where: { id, deletedAt: null },
+      data: { name: "new-name", tabId },
+    });
+    expect(mocks.findUnique).toHaveBeenCalledWith({ where: { id, deletedAt: null }, select: ADDRESS_SELECT });
     expect(mocks.info).toHaveBeenCalledWith({ pageId: id, tabId }, "page moved or renamed");
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/folders", "layout");
   });
@@ -353,7 +360,10 @@ describe("moveOrRenamePage", () => {
       path: "/folders/stored-folder/stored-name.md",
     });
 
-    expect(mocks.updateMany).toHaveBeenCalledWith({ where: { id }, data: { name: "new-name", tabId: null } });
+    expect(mocks.updateMany).toHaveBeenCalledWith({
+      where: { id, deletedAt: null },
+      data: { name: "new-name", tabId: null },
+    });
   });
 
   it.each(nameTakenErrors)("reports a taken name at the name field for a unique violation %s", async (_name, err) => {
@@ -376,7 +386,8 @@ describe("moveOrRenamePage", () => {
     expectNotRevalidatedOrRedirected();
   });
 
-  it("reports a page that no longer exists", async () => {
+  // The update only matches a page that is not deleted, so a deleted page counts as missing as well.
+  it("reports a page that no longer exists or is deleted", async () => {
     mocks.updateMany.mockResolvedValue({ count: 0 });
 
     await expect(moveOrRenamePage(id, {}, formData(VALID))).resolves.toEqual(PAGE_GONE);

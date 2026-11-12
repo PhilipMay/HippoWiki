@@ -81,6 +81,25 @@ describe("page queries", () => {
     ]);
   });
 
+  it("leaves deleted pages out of every list of their folder", async () => {
+    const folder = await createFolder();
+    const tab = await createTab({ folder });
+    await createPage({ folder, name: "direct" });
+    await createPage({ tab, name: "in-tab" });
+    await createPage({ folder, name: "deleted", deletedAt: new Date() });
+
+    expect((await listFolderPages(folder.id)).map(({ name }) => name)).toEqual(["direct"]);
+    expect((await listTabPages(tab.id)).map(({ name }) => name)).toEqual(["in-tab"]);
+    expect((await listAllFolderPages(folder.id)).map(({ name }) => name)).toEqual(["direct", "in-tab"]);
+  });
+
+  it("returns null for the old name of a deleted page", async () => {
+    const folder = await createFolder({ name: "docs" });
+    await createPage({ folder, name: "intro", deletedAt: new Date() });
+
+    await expect(getPage("docs", null, "intro")).resolves.toBeNull();
+  });
+
   it("finds a page by its place: directly in the folder or in a tab", async () => {
     const folder = await createFolder({ name: "docs" });
     const tab = await createTab({ folder, name: "guides" });

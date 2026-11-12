@@ -10,21 +10,21 @@ import { parseName } from "@/lib/names";
 /** What the lists show of a page: no content. */
 const SUMMARY_SELECT = { id: true, name: true, title: true, updatedAt: true } as const;
 
-/** The pages placed directly in the folder, without their content, by name. */
+/** The pages placed directly in the folder, without their content, by name; deleted pages are left out. */
 export async function listFolderPages(folderId: string) {
   await connection();
   return getDb().page.findMany({
-    where: { folderId, tabId: null },
+    where: { folderId, tabId: null, deletedAt: null },
     select: SUMMARY_SELECT,
     orderBy: { name: "asc" },
   });
 }
 
-/** The pages of the tab, without their content, by name. */
+/** The pages of the tab, without their content, by name; deleted pages are left out. */
 export async function listTabPages(tabId: string) {
   await connection();
   return getDb().page.findMany({
-    where: { tabId },
+    where: { tabId, deletedAt: null },
     select: SUMMARY_SELECT,
     orderBy: { name: "asc" },
   });
@@ -34,12 +34,12 @@ export type PageSummary = Awaited<ReturnType<typeof listFolderPages>>[number];
 
 /**
  * All pages of the folder, without their content, each with its tab: by name and then by tab, pages placed directly
- * in the folder first.
+ * in the folder first. Deleted pages are left out.
  */
 export async function listAllFolderPages(folderId: string) {
   await connection();
   const pages = await getDb().page.findMany({
-    where: { folderId },
+    where: { folderId, deletedAt: null },
     select: { ...SUMMARY_SELECT, tab: { select: { name: true } } },
     orderBy: [{ name: "asc" }, { tab: { name: "asc" } }],
   });
@@ -66,8 +66,9 @@ export function directPagesFirst<Entry extends { name: string; tab: unknown }>(p
 
 /**
  * The page with the given name in the given tab of the folder or, with `tabName` `null`, placed directly in the
- * folder, together with its folder and tab. `null` if a name is malformed or no such page exists there. Cached per
- * request, so that `generateMetadata` and the page component share one query.
+ * folder, together with its folder and tab. `null` if a name is malformed or no such page exists there; a deleted page
+ * has no address, so it is never found. Cached per request, so that `generateMetadata` and the page component share
+ * one query.
  */
 export const getPage = cache(async (folderName: string, tabName: string | null, pageName: string) => {
   await connection();
@@ -76,7 +77,12 @@ export const getPage = cache(async (folderName: string, tabName: string | null, 
   const name = parseName(pageName);
   if (!folder || !name || (tabName !== null && !tab)) return null;
   return getDb().page.findFirst({
-    where: { name, folder: { name: folder }, ...(tab === null ? { tabId: null } : { tab: { name: tab } }) },
+    where: {
+      name,
+      folder: { name: folder },
+      deletedAt: null,
+      ...(tab === null ? { tabId: null } : { tab: { name: tab } }),
+    },
     include: { folder: { select: { id: true, name: true } }, tab: { select: { id: true, name: true } } },
   });
 });

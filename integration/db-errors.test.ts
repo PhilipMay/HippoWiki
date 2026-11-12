@@ -68,6 +68,22 @@ describe("unique violations", () => {
     expectUniqueViolationOf(await errorOf(createPage({ folder, name: "intro" })), PAGE_NAME);
   });
 
+  it("allows a page placed directly in a folder with the name of a deleted page of the folder", async () => {
+    const folder = await createFolder();
+    await createPage({ folder, name: "intro", deletedAt: new Date() });
+    await createPage({ folder, name: "intro", deletedAt: new Date() });
+
+    await expect(createPage({ folder, name: "intro" })).resolves.toMatchObject({ deletedAt: null });
+  });
+
+  it("still reports two pages of the same name placed directly in a folder next to a deleted one", async () => {
+    const folder = await createFolder();
+    await createPage({ folder, name: "intro", deletedAt: new Date() });
+    await createPage({ folder, name: "intro" });
+
+    expectUniqueViolationOf(await errorOf(createPage({ folder, name: "intro" })), PAGE_NAME);
+  });
+
   it("reports a taken page name in the same tab as a violation of PAGE_NAME", async () => {
     const tab = await createTab();
     await createPage({ tab, name: "intro" });
