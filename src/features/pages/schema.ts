@@ -168,3 +168,12 @@ export function parsePageMoveOrRenameFormData(
     placeInvalid: !place.success,
   };
 }
+
+/** State of the "Delete page" form between submissions: the error of the last attempt, if any. */
+export type PageDeleteFormState = {
+  /** Why the page could not be deleted, e.g. when it no longer exists. */
+  message?: string;
+};
+
+/** A Server Action behind the "Delete page" form; it returns the error to show, or redirects on success. */
+export type PageDeleteFormAction = (prevState: PageDeleteFormState, formData: FormData) => Promise<PageDeleteFormState>;

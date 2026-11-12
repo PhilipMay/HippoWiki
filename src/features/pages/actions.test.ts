@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createPage, moveOrRenamePage, updatePageContent } from "@/features/pages/actions";
+import { createPage, deletePage, moveOrRenamePage, updatePageContent } from "@/features/pages/actions";
 import { Prisma } from "@/generated/prisma/client";
 
 /** Thrown by the mocked `redirect`, like the real one throws, so that code after it never runs. */
@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   updateMany: vi.fn(),
   findUnique: vi.fn(),
+  findFirst: vi.fn(),
+  transaction: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
@@ -22,7 +24,10 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/db", () => ({
-  getDb: () => ({ page: { create: mocks.create, updateMany: mocks.updateMany, findUnique: mocks.findUnique } }),
+  getDb: () => ({
+    page: { create: mocks.create, updateMany: mocks.updateMany, findUnique: mocks.findUnique },
+    $transaction: mocks.transaction,
+  }),
 }));
 vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, error: mocks.error } }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
@@ -33,6 +38,10 @@ beforeEach(() => {
   mocks.redirect.mockImplementation((path: string) => {
     throw new RedirectError(path);
   });
+  // An interactive transaction runs its callback with a client of its own.
+  mocks.transaction.mockImplementation((run: (tx: unknown) => Promise<unknown>) =>
+    run({ page: { findFirst: mocks.findFirst, updateMany: mocks.updateMany } }),
+  );
 });
 
 const SAVE_FAILED = { message: "The page could not be saved. Please try again." };
@@ -417,6 +426,67 @@ describe("moveOrRenamePage", () => {
     await expect(moveOrRenamePage(id, {}, formData(VALID))).resolves.toEqual(SAVE_FAILED);
 
     expect(mocks.error).toHaveBeenCalledWith(expect.objectContaining({ err }), expect.any(String));
+    expectNotRevalidatedOrRedirected();
+  });
+});
+
+describe("deletePage", () => {
+  const id = crypto.randomUUID();
+  const DELETE_FAILED = { message: "The page could not be deleted. Please try again." };
+
+  it("reports a malformed id as a missing page", async () => {
+    await expect(deletePage(MALFORMED_ID)).resolves.toEqual(PAGE_GONE);
+    expect(mocks.transaction).not.toHaveBeenCalled();
+    expectNotRevalidatedOrRedirected();
+  });
+
+  it("marks the page as deleted, forgets its tab and redirects to the tab it was in", async () => {
+    mocks.findFirst.mockResolvedValue({ folder: { name: "stored-folder" }, tab: { name: "stored-tab" } });
+    mocks.updateMany.mockResolvedValue({ count: 1 });
+
+    await expect(deletePage(id)).rejects.toMatchObject({ path: "/folders/stored-folder/stored-tab" });
+
+    expect(mocks.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id, deletedAt: null } }));
+    expect(mocks.updateMany).toHaveBeenCalledWith({
+      where: { id, deletedAt: null },
+      data: { deletedAt: expect.any(Date), tabId: null },
+    });
+    expect(mocks.info).toHaveBeenCalledWith({ pageId: id }, "page deleted");
+    expectContentRevalidated();
+  });
+
+  it("redirects to the folder for a page placed directly in it", async () => {
+    mocks.findFirst.mockResolvedValue({ folder: { name: "stored-folder" }, tab: null });
+    mocks.updateMany.mockResolvedValue({ count: 1 });
+
+    await expect(deletePage(id)).rejects.toMatchObject({ path: "/folders/stored-folder" });
+    expectContentRevalidated();
+  });
+
+  it("reports a page that no longer exists or is already deleted", async () => {
+    mocks.findFirst.mockResolvedValue(null);
+
+    await expect(deletePage(id)).resolves.toEqual(PAGE_GONE);
+
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+    expect(mocks.warn).toHaveBeenCalledWith({ pageId: id }, expect.any(String));
+    expectNotRevalidatedOrRedirected();
+  });
+
+  it("reports a page that was deleted between reading and updating it", async () => {
+    mocks.findFirst.mockResolvedValue({ folder: { name: "stored-folder" }, tab: null });
+    mocks.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(deletePage(id)).resolves.toEqual(PAGE_GONE);
+    expectNotRevalidatedOrRedirected();
+  });
+
+  it.each(otherErrors)("reports a failed delete for %s", async (_name, err) => {
+    mocks.transaction.mockRejectedValue(err);
+
+    await expect(deletePage(id)).resolves.toEqual(DELETE_FAILED);
+
+    expect(mocks.error).toHaveBeenCalledWith(expect.objectContaining({ err, pageId: id }), expect.any(String));
     expectNotRevalidatedOrRedirected();
   });
 });

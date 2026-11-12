@@ -8,10 +8,11 @@ import {
   parsePageContentFormData,
   parsePageId,
   parsePageMoveOrRenameFormData,
+  type PageDeleteFormState,
   type PageFormState,
   type PageMoveOrRenameFormState,
 } from "@/features/pages/schema";
-import { pagePath } from "@/lib/addresses";
+import { folderPath, pagePath, tabPath } from "@/lib/addresses";
 import { getDb } from "@/lib/db";
 import { isForeignKeyViolation, isUniqueViolation, PAGE_NAME } from "@/lib/db-errors";
 import { logger } from "@/lib/logger";
@@ -19,6 +20,7 @@ import { revalidateContent } from "@/lib/revalidate";
 import { NAME_TAKEN_MESSAGE } from "@/lib/names";
 
 const SAVE_FAILED_MESSAGE = "The page could not be saved. Please try again.";
+const DELETE_FAILED_MESSAGE = "The page could not be deleted. Please try again.";
 const PAGE_GONE_MESSAGE = "This page no longer exists.";
 const FOLDER_GONE_MESSAGE = "This folder no longer exists.";
 const TAB_GONE_MESSAGE = "This tab no longer exists.";
@@ -184,6 +186,48 @@ export async function moveOrRenamePage(
   }
 
   logger.info({ pageId, tabId }, "page moved or renamed");
+  revalidateContent();
+  redirect(address);
+}
+
+/**
+ * Deletes the page with the given id and redirects to the folder or tab it was in. The page keeps its row and its
+ * folder, so it can be restored; it gets the time of deletion and loses its tab, because its place inside the folder is
+ * forgotten. Returns the error to show in the dialog if the page no longer exists or is already deleted, or it cannot
+ * be deleted. The form submits nothing; its previous state and data are ignored. Bind the id with
+ * `deletePage.bind(null, id)`.
+ */
+export async function deletePage(id: string): Promise<PageDeleteFormState> {
+  const pageId = parsePageId(id);
+  if (!pageId) return { message: PAGE_GONE_MESSAGE };
+
+  let address: string | null;
+  try {
+    // One transaction, so that the place read is the one the page had when it was deleted.
+    address = await getDb().$transaction(async (tx) => {
+      const page = await tx.page.findFirst({
+        where: { id: pageId, deletedAt: null },
+        select: { folder: { select: { name: true } }, tab: { select: { name: true } } },
+      });
+      if (!page) return null;
+      // `updateMany` reports a page deleted in the meantime as a count of 0; it sets `updatedAt` as well.
+      const { count } = await tx.page.updateMany({
+        where: { id: pageId, deletedAt: null },
+        data: { deletedAt: new Date(), tabId: null },
+      });
+      if (count === 0) return null;
+      return page.tab ? tabPath(page.folder.name, page.tab.name) : folderPath(page.folder.name);
+    });
+  } catch (err) {
+    logger.error({ err, pageId }, "failed to delete page");
+    return { message: DELETE_FAILED_MESSAGE };
+  }
+  if (address === null) {
+    logger.warn({ pageId }, "page to delete not found");
+    return { message: PAGE_GONE_MESSAGE };
+  }
+
+  logger.info({ pageId }, "page deleted");
   revalidateContent();
   redirect(address);
 }

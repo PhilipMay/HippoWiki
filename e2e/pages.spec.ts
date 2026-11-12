@@ -104,8 +104,10 @@ test("page view renders the Markdown content below a breadcrumb", async ({ page 
   await expect(breadcrumb.getByRole("listitem")).toHaveText(["Folders", "handbook", "rendered-page.md"]);
   await expect(breadcrumb.getByRole("link", { name: "Folders" })).toHaveAttribute("href", "/folders");
   await expect(breadcrumb.getByText("rendered-page.md")).toHaveAttribute("aria-current", "page");
-  await expect(article.getByRole("button", { name: "Delete" })).toHaveCount(0);
-  await expect(article.getByRole("link", { name: "Delete" })).toHaveCount(0);
+  await expect(article.getByRole("link", { name: "Delete" })).toHaveAttribute(
+    "href",
+    "/folders/handbook/rendered-page.md?action=delete",
+  );
 
   await breadcrumb.getByRole("link", { name: "handbook" }).click();
   await expect(page).toHaveURL("/folders/handbook");
@@ -189,7 +191,7 @@ for (const address of [
   "/folders/other/existing-page.md",
   "/folders/no-such-folder/existing-page.md",
   // Unknown and repeated actions.
-  "/folders/handbook/existing-page.md?action=delete",
+  "/folders/handbook/existing-page.md?action=restore",
   "/folders/handbook/existing-page.md?action=new",
   "/folders/handbook/existing-page.md?action=",
   "/folders/handbook/existing-page.md?action=edit&action=edit",

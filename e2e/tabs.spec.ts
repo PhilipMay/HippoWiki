@@ -525,7 +525,7 @@ for (const address of [
   "/folders/handbook/guides?action=new&action=new",
   "/folders/handbook/guides/in-guides.md?action=new",
   "/folders/handbook/guides/in-guides.md?action=new-tab",
-  "/folders/handbook/guides/in-guides.md?action=delete",
+  "/folders/handbook/guides/in-guides.md?action=restore",
   "/folders/handbook?action=new-tab&action=new-tab",
 ]) {
   test(`${address} shows the not-found page`, async ({ page }) => {

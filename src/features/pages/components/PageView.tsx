@@ -7,7 +7,8 @@ import Typography from "@mui/material/Typography";
 import Link from "@/components/Link";
 import FolderBreadcrumbs from "@/features/folders/components/FolderBreadcrumbs";
 import { listTabs } from "@/features/folders/queries";
-import { moveOrRenamePage, updatePageContent } from "@/features/pages/actions";
+import { deletePage, moveOrRenamePage, updatePageContent } from "@/features/pages/actions";
+import DeletePageDialog from "@/features/pages/components/DeletePageDialog";
 import MarkdownContent from "@/features/pages/components/MarkdownContent";
 import MoveOrRenamePageDialog from "@/features/pages/components/MoveOrRenamePageDialog";
 import PageForm from "@/features/pages/components/PageForm";
@@ -15,8 +16,11 @@ import type { PageWithPlace } from "@/features/pages/queries";
 import { pagePath } from "@/lib/addresses";
 import { formatDateTime } from "@/lib/format";
 
-/** The actions of a page address: `edit` opens the edit form, `move-or-rename` the "Move or rename page" dialog. */
-export const PAGE_ACTIONS = ["edit", "move-or-rename"] as const;
+/**
+ * The actions of a page address: `edit` opens the edit form, `move-or-rename` the "Move or rename page" dialog and
+ * `delete` the "Delete page" dialog.
+ */
+export const PAGE_ACTIONS = ["edit", "move-or-rename", "delete"] as const;
 
 export type PageAction = (typeof PAGE_ACTIONS)[number];
 
@@ -33,7 +37,8 @@ type PageViewProps = {
 
 /**
  * What a page address shows, for pages placed directly in a folder and for pages in a tab: the rendered page with its
- * breadcrumb, with the "Move or rename page" dialog on top for `move-or-rename`, or the edit form for `edit`.
+ * breadcrumb, with the "Move or rename page" dialog on top for `move-or-rename` and the "Delete page" dialog for
+ * `delete`, or the edit form for `edit`.
  */
 export default async function PageView({ page, action }: PageViewProps) {
   const folderName = page.folder.name;
@@ -73,6 +78,9 @@ export default async function PageView({ page, action }: PageViewProps) {
             >
               Move or rename
             </Button>
+            <Button component={Link} href={pagePath(folderName, tabName, page.name, "delete")} variant="outlined">
+              Delete
+            </Button>
           </Stack>
         </Stack>
         <Divider sx={{ mb: 3 }} />
@@ -87,6 +95,9 @@ export default async function PageView({ page, action }: PageViewProps) {
           initialName={page.name}
           closeHref={address}
         />
+      )}
+      {action === "delete" && (
+        <DeletePageDialog action={deletePage.bind(null, page.id)} pageLabel={`${page.name}.md`} closeHref={address} />
       )}
     </Stack>
   );

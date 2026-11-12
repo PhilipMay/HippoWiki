@@ -46,6 +46,7 @@ test("the page view needs no JavaScript for its controls", async ({ page }) => {
     "href",
     `${address}?action=move-or-rename`,
   );
+  await expect(page.getByRole("link", { name: "Delete" })).toHaveAttribute("href", `${address}?action=delete`);
   await expect(page.getByRole("button")).toHaveCount(0);
 });
 
@@ -97,5 +98,20 @@ test("the move or rename dialog is prefilled and locked until hydration", async 
   await expect(dialog.getByRole("link", { name: "Cancel" })).toHaveAttribute(
     "href",
     "/folders/locked-folder/locked-tab/locked-page.md",
+  );
+});
+
+test("the delete dialog is locked until hydration", async ({ page }) => {
+  const folder = await createFolder({ name: "locked-folder" });
+  await createPage({ folder, name: "locked-page", title: "Locked page" });
+
+  await page.goto("/folders/locked-folder/locked-page.md?action=delete");
+
+  const dialog = page.getByRole("dialog", { name: "Delete page" });
+  await expect(dialog).toContainText("locked-page.md");
+  await expect(dialog.getByRole("button", { name: "Delete" })).toBeDisabled();
+  await expect(dialog.getByRole("link", { name: "Cancel" })).toHaveAttribute(
+    "href",
+    "/folders/locked-folder/locked-page.md",
   );
 });
