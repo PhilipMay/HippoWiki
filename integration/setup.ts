@@ -20,7 +20,12 @@ vi.mock(import("@/lib/env"), async (importOriginal) => {
   const { TEST_DATABASE_URL } = await import("../e2e/support/container");
   return {
     ...(await importOriginal()),
-    getServerEnv: () => ({ DATABASE_URL: TEST_DATABASE_URL, NODE_ENV: "test", HIPPOWIKI_LOG_CLIENT_ADDRESS: false }),
+    getServerEnv: () => ({
+      DATABASE_URL: TEST_DATABASE_URL,
+      NODE_ENV: "test",
+      HIPPOWIKI_LOG_CLIENT_ADDRESS: false,
+      HIPPOWIKI_TRUSTED_PROXIES: 0,
+    }),
   };
 });
 

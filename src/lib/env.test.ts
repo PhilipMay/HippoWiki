@@ -10,6 +10,7 @@ describe("parseServerEnv", () => {
       DATABASE_URL: databaseUrl,
       NODE_ENV: "production",
       HIPPOWIKI_LOG_CLIENT_ADDRESS: false,
+      HIPPOWIKI_TRUSTED_PROXIES: 0,
     });
   });
 
@@ -38,6 +39,25 @@ describe("parseServerEnv", () => {
   it.each(["1", "yes", "TRUE", ""])("rejects HIPPOWIKI_LOG_CLIENT_ADDRESS=%j", (value) => {
     expect(() => parseServerEnv({ DATABASE_URL: databaseUrl, HIPPOWIKI_LOG_CLIENT_ADDRESS: value })).toThrow(
       /HIPPOWIKI_LOG_CLIENT_ADDRESS/,
+    );
+  });
+
+  it("trusts no reverse proxy by default", () => {
+    expect(parseServerEnv({ DATABASE_URL: databaseUrl }).HIPPOWIKI_TRUSTED_PROXIES).toBe(0);
+  });
+
+  it.each(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"])(
+    "reads HIPPOWIKI_TRUSTED_PROXIES=%s as its number",
+    (value) => {
+      expect(
+        parseServerEnv({ DATABASE_URL: databaseUrl, HIPPOWIKI_TRUSTED_PROXIES: value }).HIPPOWIKI_TRUSTED_PROXIES,
+      ).toBe(Number(value));
+    },
+  );
+
+  it.each(["-1", "1.5", "10", "one", "", " 1"])("rejects HIPPOWIKI_TRUSTED_PROXIES=%j", (value) => {
+    expect(() => parseServerEnv({ DATABASE_URL: databaseUrl, HIPPOWIKI_TRUSTED_PROXIES: value })).toThrow(
+      /HIPPOWIKI_TRUSTED_PROXIES/,
     );
   });
 
@@ -81,6 +101,7 @@ describe("getServerEnv", () => {
       DATABASE_URL: databaseUrl,
       NODE_ENV: "production",
       HIPPOWIKI_LOG_CLIENT_ADDRESS: false,
+      HIPPOWIKI_TRUSTED_PROXIES: 0,
     });
   });
 

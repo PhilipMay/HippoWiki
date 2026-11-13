@@ -67,7 +67,7 @@ The rules that span several steps. The wrap-up moves them into `users-and-login.
 
 ## Checklist
 
-- [ ] Client address group
+- [x] Client address group
 - [ ] Limit per user name and hour
 - [ ] Wait per user name and client address
 - [ ] Deleting old rows

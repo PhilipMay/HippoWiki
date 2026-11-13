@@ -10,6 +10,13 @@ export const serverEnvSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((value) => value === "true"),
+  // How many reverse proxies are in front of the server; the client address of a login is the entry of
+  // `X-Forwarded-For` that the last of them added (`client-address.ts`). `0` reads no header. Only one digit is
+  // accepted, so that a typo stops the server instead of trusting the wrong entry.
+  HIPPOWIKI_TRUSTED_PROXIES: z
+    .enum(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"])
+    .default("0")
+    .transform((value) => Number(value)),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
