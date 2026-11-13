@@ -6,6 +6,10 @@ and a read-only review of the code. It was checked again on 2026-11-13, against 
 client address group and against the deployment, again with harmless requests only. The issues follow
 `issue-report.md`. Remove an issue from this file once it is fixed.
 
+Fixed after the review, in the code: the missing security headers, Markdown images from any host, the
+`X-Powered-By` header, the image optimizer without a login, and the server files that the runtime user could change.
+The deployment still has to be checked after a release with these fixes (see "Things to Check" in `roadmap.md`).
+
 ## Issues
 
 ### Minor: logins without an account can block all logins

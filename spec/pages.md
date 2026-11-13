@@ -78,7 +78,9 @@ same views; actions are given as `?action=<action>` (see `content-structure.md`)
   Saving shows the new page.
 - The page address: the folder breadcrumb (see `content-structure.md`) with the folder list, the folder, the tab if
   the page has one, and the page name with `.md`. Below it the last update and "Edit", "Move or rename" and "Delete"
-  above a divider, then the rendered Markdown (GitHub Flavored Markdown, raw HTML shown as text, unsafe link URLs removed). The
+  above a divider, then the rendered Markdown (GitHub Flavored Markdown, raw HTML shown as text, unsafe link URLs removed). Markdown
+  images are shown only from the wiki itself: the Content Security Policy (`img-src 'self' data:`, see
+  `architecture.md`) makes the browser block an image of another host, and react-markdown removes a `data:` URL. The
   stored title is not shown; the content's `#` heading is the page's only level-one heading. Markdown headings are
   drawn two Typography sizes smaller than their tag (`h1` as `h3`, which is the size page titles had). The browser tab
   uses the stored title.
@@ -101,3 +103,5 @@ same views; actions are given as `?action=<action>` (see `content-structure.md`)
 - the title comes only from a leading `# Title` heading: no setext headings, no front matter, no live display of the
   derived title while editing an existing page
 - no redirects from the previous address after a page is renamed or moved
+- Markdown images only from the wiki itself: the browser blocks images of other hosts without a message in the page,
+  and `data:` images have their address removed

@@ -31,7 +31,9 @@ password for the admin. Code: `Containerfile`, `.containerignore`, `scripts/imag
     are read from `package-lock.json` during the build; their own dependencies are resolved anew at every build. The
     stage fails when the schema engine (`node_modules/@prisma/engines/schema-engine-*`) was not downloaded.
   - `app`, the last and default stage. Its content:
-    - the standalone output with `.next/static` in `/app`, owned by `node` so that the server can write its cache
+    - the standalone output with `.next/static` in `/app`. Like every file of the image it belongs to root, so the
+      server, which runs as `node`, cannot change its own code; only `/app/.next/cache` belongs to `node`, so that the
+      server can write its cache
     - the migration tools in `/app/migrate`, next to `prisma.config.ts`, `prisma/schema.prisma` and
       `prisma/migrations`; the seed script is left out
     - the admin setup `admin.mjs` in `/app`, next to the `node_modules` of the standalone output, which it imports
@@ -185,11 +187,15 @@ database. It runs the same way locally and in CI:
    hash. `@node-rs/argon2` must load, hash and verify in `/app`, checked with `node` in the running container.
 6. `/login` must answer 200, and `AuthSecret` must have its one row afterwards: the server stores the secret of the
    session cookies on first use, so the row proves that the page was rendered with the database. The first
-   `/_next/static/` file that the login page references must answer 200. `/folders` must redirect to the login page.
+   `/_next/static/` file that the login page references must answer 200. `/login` must send the security headers of
+   `next.config.ts` (`Strict-Transport-Security`, `Content-Security-Policy`, `X-Frame-Options`,
+   `X-Content-Type-Options`, `Referrer-Policy`) with their values, and no `X-Powered-By`. `/folders` and the image
+   optimizer (`/_next/image?url=%2Ffolders&w=64&q=75`) must redirect to the login page.
 7. `/api/health` must answer 200 on `127.0.0.1:3000` from inside the container, requested with `node`, because the
    slim image has no `curl`.
 8. The server process (PID 1) must not run as root. The container must have no `.env` file in `/app` or in
-   `/app/migrate`.
+   `/app/migrate`. The user `node` must not be able to write `/app/server.js`, `/app/admin.mjs` or
+   `/app/.next/server`, and must be able to create and remove a file in `/app/.next/cache`.
 9. It reads the rows of `_prisma_migrations` and the admin row with its password hash with `psql`. Then it replaces
    the application container with a second one against the same database, without `HIPPOWIKI_ADMIN_PASSWORD`.
    `/login` must answer 200 again, `/folders` must redirect to the login page, and the rows must stay the same.
@@ -256,6 +262,8 @@ These are not built into the image; whoever runs it takes care of them.
 - TLS in front of the container, for example in a reverse proxy: the container speaks plain HTTP, and the login
   needs HTTPS. The session cookie is `Secure`, so a browser that reaches the wiki over plain HTTP does not send it
   back and nobody can stay logged in. `localhost` is the one exception that browsers make.
+- No security headers: the server sets them itself (see "Security headers" in `architecture.md`), so a reverse proxy
+  does not have to.
 - The login is the protection from the public: nothing can be read or changed without it, and only the login page and
   `/api/health` answer without one. The server limits the logins per user name and client address and per user name
   (see "Failed logins" in `users-and-login.md`), but not the logins per client address across all user names; a

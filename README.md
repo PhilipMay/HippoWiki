@@ -251,9 +251,10 @@ npm run image:smoke   # check the built image against a throwaway database
 - `npm run image:smoke` checks the image of `npm run image:build`. In the pod `hippowiki-smoke` it starts PostgreSQL
   with an empty database in memory and a container of the image, whose port 3000 is published as `127.0.0.1:3200`.
   It checks that a container without a valid `HIPPOWIKI_ADMIN_PASSWORD` exits instead of serving, that the start
-  creates the tables and the admin account and serves the login page, `/api/health` and the static files, that
-  `/folders` leads to the login page, that the password hashing works in the image, that the server listens on all interfaces and not as root, and that the image
-  has no `.env` file. A second container and `./image-migrate.sh` against the migrated database must apply no
+  creates the tables and the admin account and serves the login page, `/api/health` and the static files, that the
+  login page carries the security headers, that `/folders` and the image optimizer lead to the login page, that the
+  password hashing works in the image, that the server listens on all interfaces and not as root, that the user of the
+  server can write only the cache of Next.js, and that the image has no `.env` file. A second container and `./image-migrate.sh` against the migrated database must apply no
   migration, and the second container and `./image-admin.sh` must leave the admin account as it is. The pod is
   removed at the end, also when a check fails; then the last log lines of the containers are printed. It can run next to the development
   database, the test database and the development server.

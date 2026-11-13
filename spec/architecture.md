@@ -114,8 +114,9 @@ The feature is described in `users-and-login.md`. What every new route, query an
 
 - Nothing is read or changed without a login. The login is checked in two layers:
   - `src/proxy.ts` sends every request without a session cookie to the login page. It only looks whether the cookie
-    is there. Its matcher leaves out the login page, `/api/health` and the static files of Next.js; a new public
-    address has to be added there.
+    is there. Its matcher leaves out the login page, `/api/health` and the static files of Next.js (`_next/static/`),
+    but not the image optimizer (`_next/image`), which the app does not use; a new public address has to be added
+    there.
   - `requireUser()` from `src/features/auth/session.ts` checks the session in the database. It is the layer that
     protects the data: it redirects to the login page without a session, and to the password change while the user
     still has the first password.
@@ -132,6 +133,19 @@ The feature is described in `users-and-login.md`. What every new route, query an
   `src/lib/client-address.ts` and `HIPPOWIKI_TRUSTED_PROXIES`, because `/login` does not pass `src/proxy.ts`; it
   passes the group to the auth service. No other code reads a forwarding header for anything but the diagnostic
   `client-address-probe.ts`. `src/lib/auth.ts` is imported only by the auth service and by `src/lib/`.
+
+## Security headers
+
+- `next.config.ts` sets the security headers for every address (`headers()` with the source `/:path*`), so every new
+  route, the redirects of `src/proxy.ts` and the static files get them without doing anything:
+  - `Strict-Transport-Security: max-age=63072000; includeSubDomains`; browsers ignore it over plain HTTP, so
+    `npm run dev` and the end-to-end server on `localhost` are not affected.
+  - `Content-Security-Policy: frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; img-src 'self' data:`.
+    `img-src 'self' data:` keeps images of other hosts, such as a tracking image in Markdown, from loading. There is
+    no `script-src` or `style-src`, because Material UI and Next.js insert inline styles and scripts.
+  - `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` and `Referrer-Policy: same-origin`.
+- `poweredByHeader: false`: no response names the framework in `X-Powered-By`.
+- A change to the headers is checked by `e2e/security-headers.spec.ts` and the smoke test of the container image.
 
 ## Validation and errors
 

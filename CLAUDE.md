@@ -10,7 +10,7 @@ The specification lives in the `spec/` directory. This catalog should always be 
 - `spec/workflow.md`: how features are planned in step files, when a step is done, what to do when it cannot be
   finished and how a feature is wrapped up
 - `spec/architecture.md`: code layout and conventions (layers and services, reads, writes, login and sessions,
-  validation, database, UI)
+  security headers, validation, database, UI)
 - `spec/testing.md`: unit, integration and end-to-end test conventions
 - `spec/pages.md`: the page feature as built (model, input rules, derived title and name, routes, limits)
 - `spec/content-structure.md`: the content structure as built (folders, tabs and pages under `/folders`: models, names,
@@ -19,15 +19,15 @@ The specification lives in the `spec/` directory. This catalog should always be 
   `/deleted-pages`, restoring, limits)
 - `spec/container-image.md`: the container image as built (image and build stages, start with the migration, the
   command that only migrates, the admin setup, configuration including the trusted reverse proxies, smoke test,
-  publishing on a release, what the environment has to provide for the client address of a login, decisions, limits)
+  publishing on a release, what the environment has to provide, including the client address of a login, decisions,
+  limits)
 - `spec/users-and-login.md`: the users and login feature as built (models, user names and email, passwords and
   hashing, admin account and setup, login and logout, sessions, failed logins with the wait per user name and client
   address group, the hour window per user name and the deleting of old rows, authenticated access only, forced
   password change, user list, creating users, routes, decisions, limits)
 - `spec/roadmap.md`: backlog of candidate features, grouped by theme, and things still to check
-- `spec/security-review.md`: open findings of the security review of the deployment and the code, to be fixed later
-- `spec/security-review-fixes-steps.md`: step plan that fixes the findings of the security review that the code can
-  fix (security headers, image optimizer behind the login, server files owned by root)
+- `spec/security-review.md`: open findings of the security review of the deployment and the code, to be fixed later,
+  and the findings fixed since
 - `spec/issue-report.md`: how to report issues found in code and document reviews
 
 ## Running the Checks

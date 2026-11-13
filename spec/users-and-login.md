@@ -219,7 +219,8 @@ in two layers, as the authentication guide of Next.js describes:
 
 - `src/proxy.ts` sends every request without a session cookie to the login page. It only looks whether the cookie is
   there, with the helper of `better-auth/cookies`, and does not ask the database.
-  - Its matcher leaves out the login page, `/api/health` and the static files of Next.js.
+  - Its matcher leaves out the login page, `/api/health` and the static files of Next.js (`/_next/static/`). The image
+    optimizer of Next.js (`/_next/image`) is behind the login as well, like every other address.
   - A Server Action that the client of Next.js calls without the cookie, for example a form submitted after a logout
     in another tab, is answered the way Next.js answers an action that redirects to another site: with the address of
     the login page in the header `x-action-redirect`, which the client opens with a full page load. An HTTP redirect

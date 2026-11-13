@@ -121,8 +121,8 @@ listed first; there is no order across themes.
 
 - Compose setup for self-hosting: a compose file that runs the image together with its database
   (`container-image.md`).
-- Reverse proxy with TLS: HTTPS in front of the container, with the security headers and a login rate limit from
-  `security-review.md` (`container-image.md`).
+- Reverse proxy with TLS: HTTPS in front of the container, with the login rate limit from `security-review.md`
+  (`container-image.md`).
 - Database backups: back up the database, at least before a new version starts (`container-image.md`).
 - Backup schedule, retention and tested restore: regular backups, how long they are kept, and a restore that is
   tried out.
@@ -142,6 +142,9 @@ All from "Current limits" in `container-image.md`:
 
 ## Things to Check
 
+- Security fixes on the deployment, after the next release: every response carries the five security headers of
+  `next.config.ts` and no `X-Powered-By`, and `/_next/image?url=%2Ffolders&w=64&q=75` redirects to `/login`
+  (`security-review.md`, `architecture.md`).
 - Login limit on the deployment: with `HIPPOWIKI_TRUSTED_PROXIES=1` behind Traefik, a failed login from a known
   address outside the network of the server is logged with that address as `clientAddress`
   (`users-and-login.md`, `container-image.md`).

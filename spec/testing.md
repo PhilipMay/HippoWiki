@@ -172,6 +172,11 @@ How the code is tested. Commands are listed in `README.md`.
   disabled until hydration (see "UI" in `architecture.md`). A new Client Component with such controls adds a case there.
 - `e2e/access.spec.ts` checks that every kind of address leads to the login page without a login, as a redirect that
   sends nothing of the page. A new route adds its address there.
+- `e2e/security-headers.spec.ts` checks the security headers of `next.config.ts` (see "Security headers" in
+  `architecture.md`) with their exact values, and that no `X-Powered-By` is sent: on the login page, the redirect to
+  it, `/api/health`, a page with a login and a `/_next/static/` file. It also checks that an image of another host in
+  a page is not requested and is reported as a violation of `img-src`, and that react-markdown removes the address of
+  a `data:` image. A change to the headers changes this spec and the smoke test of the container image.
 - Every feature step adds end-to-end tests for its behaviour, including error and empty states.
 
 ## Continuous integration
