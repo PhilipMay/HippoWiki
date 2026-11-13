@@ -363,7 +363,7 @@ test.describe("without a login", () => {
   test("the user list leads to the login page", async ({ page }) => {
     await page.goto("/users");
 
-    await expect(page).toHaveURL("/login");
+    await expect(page).toHaveURL("/login?next=%2Fusers");
     await expect(page.getByRole("list", { name: "Users" })).toHaveCount(0);
   });
 });

@@ -61,6 +61,50 @@ describe("parseServerEnv", () => {
     );
   });
 
+  it("has no public URL by default", () => {
+    expect(parseServerEnv({ DATABASE_URL: databaseUrl }).HIPPOWIKI_PUBLIC_URL).toBeUndefined();
+  });
+
+  it.each([
+    ["https://wiki.example.com", "https://wiki.example.com"],
+    ["https://wiki.example.com/", "https://wiki.example.com"],
+    ["https://wiki.example.com:8443", "https://wiki.example.com:8443"],
+    ["https://wiki.example.com:443", "https://wiki.example.com"],
+    ["HTTPS://Wiki.Example.com", "https://wiki.example.com"],
+    ["https://localhost", "https://localhost"],
+    ["http://localhost:3000", "http://localhost:3000"],
+    ["http://127.0.0.1:3100/", "http://127.0.0.1:3100"],
+    ["http://[::1]:3000", "http://[::1]:3000"],
+  ])("reads HIPPOWIKI_PUBLIC_URL=%s as the origin %s", (value, origin) => {
+    expect(parseServerEnv({ DATABASE_URL: databaseUrl, HIPPOWIKI_PUBLIC_URL: value }).HIPPOWIKI_PUBLIC_URL).toBe(
+      origin,
+    );
+  });
+
+  it.each([
+    "",
+    " https://wiki.example.com",
+    "https://wiki.example.com ",
+    "wiki.example.com",
+    "http://wiki.example.com",
+    "http://192.168.1.10:3000",
+    "http://localhost.example.com",
+    "ftp://wiki.example.com",
+    "https://user@wiki.example.com",
+    "https://user:secret@wiki.example.com",
+    "https://wiki.example.com/wiki",
+    "https://wiki.example.com//",
+    "https://wiki.example.com/?",
+    "https://wiki.example.com/?a=1",
+    "https://wiki.example.com/#",
+    "https://wiki.example.com/#top",
+    "not a url",
+  ])("rejects HIPPOWIKI_PUBLIC_URL=%j", (value) => {
+    expect(() => parseServerEnv({ DATABASE_URL: databaseUrl, HIPPOWIKI_PUBLIC_URL: value })).toThrow(
+      /HIPPOWIKI_PUBLIC_URL/,
+    );
+  });
+
   it("ignores unrelated variables", () => {
     expect(parseServerEnv({ DATABASE_URL: databaseUrl, HOME: "/home/someone" })).not.toHaveProperty("HOME");
   });

@@ -59,6 +59,9 @@ export default defineConfig({
       // (`extraHTTPHeaders` of a browser context). A request without the header gets the address of the connection,
       // which Next.js writes into it.
       HIPPOWIKI_TRUSTED_PROXIES: "1",
+      // The public address of the test server, which switches OAuth on and makes the MCP server give out full
+      // addresses.
+      HIPPOWIKI_PUBLIC_URL: baseURL,
     },
     // Never attach to a server that was started by someone else and may use another database.
     reuseExistingServer: false,

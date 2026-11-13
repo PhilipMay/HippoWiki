@@ -3,16 +3,19 @@ import { describe, expect, it } from "vitest";
 import {
   accountPath,
   allPagesPath,
+  changePasswordPath,
   deletedPagePath,
   deletedPagesPath,
   folderPath,
   foldersPath,
+  loginPath,
   pagePath,
   parseAction,
   parseChoice,
   parsePageSegment,
   parseView,
   revokeTokenPath,
+  safeNextPath,
   tabPath,
 } from "@/lib/addresses";
 
@@ -148,4 +151,94 @@ describe("parseView", () => {
   it("reports any view as invalid on an address without views", () => {
     expect(parseView({ view: "all" })).toBe("invalid");
   });
+});
+
+describe("safeNextPath", () => {
+  it.each([
+    "/",
+    "/account",
+    "/folders/handbook/overview.md",
+    "/folders/handbook?view=all",
+    "/oauth/authorize?client_id=https%3A%2F%2Fclient.example%2Fmeta.json&state=a%2Fb#top",
+    // Encoded slashes stay part of the path: the browser does not decode them into a host.
+    "/%2F%2Fevil.example",
+    "/%5Cevil.example",
+    "/folders/https://evil.example",
+    "/folders\\evil.example",
+  ])("accepts the path %j on this site", (next) => {
+    expect(safeNextPath(next)).toBe(next);
+  });
+
+  it.each([
+    ["another site", "https://evil.example"],
+    ["another site with a path", "https://evil.example/folders"],
+    ["a scheme-relative address", "//evil.example"],
+    ["a scheme-relative address with a path", "//evil.example/folders"],
+    ["a backslash that browsers read as a slash", "/\\evil.example"],
+    ["a backslash before a slash", "/\\/evil.example"],
+    ["two backslashes", "\\\\evil.example"],
+    ["a tab that the URL parser drops", "/\t/evil.example"],
+    ["a line break that the URL parser drops", "/\n/evil.example"],
+    ["a carriage return", "/\r/evil.example"],
+    ["a null character", "/folders\u0000"],
+    ["the delete character", "/folders\u007f"],
+    ["a relative path", "folders"],
+    ["a path that starts with a dot", "./folders"],
+    ["a script", "javascript:alert(1)"],
+    ["a data address", "data:text/html,hello"],
+    ["a space before the slash", " /folders"],
+    ["an empty value", ""],
+  ])("gives the folder list for %s", (_case, next) => {
+    expect(safeNextPath(next)).toBe("/folders");
+  });
+
+  it("gives the folder list for a missing or repeated value", () => {
+    expect(safeNextPath(undefined)).toBe("/folders");
+    expect(safeNextPath(null)).toBe("/folders");
+    expect(safeNextPath(["/account", "/users"])).toBe("/folders");
+    expect(safeNextPath(["/account"])).toBe("/folders");
+  });
+
+  it("accepts a path of 2048 characters and gives the folder list for a longer one", () => {
+    const longest = `/${"a".repeat(2047)}`;
+
+    expect(safeNextPath(longest)).toBe(longest);
+    expect(safeNextPath(`${longest}a`)).toBe("/folders");
+  });
+});
+
+describe("loginPath and changePasswordPath", () => {
+  it("build the plain address without a way back", () => {
+    expect(loginPath()).toBe("/login");
+    expect(changePasswordPath()).toBe("/change-password");
+    expect(loginPath(null)).toBe("/login");
+    expect(changePasswordPath(undefined)).toBe("/change-password");
+  });
+
+  it("carry the way back as an encoded search parameter", () => {
+    expect(loginPath("/account")).toBe("/login?next=%2Faccount");
+    expect(changePasswordPath("/account")).toBe("/change-password?next=%2Faccount");
+    expect(loginPath("/oauth/authorize?client_id=abc&state=x%2Fy")).toBe(
+      "/login?next=%2Foauth%2Fauthorize%3Fclient_id%3Dabc%26state%3Dx%252Fy",
+    );
+  });
+
+  it("the encoded way back reads back as it was", () => {
+    const next = "/oauth/authorize?client_id=abc&state=x%2Fy&scope=read write";
+
+    expect(new URL(loginPath(next), "http://localhost").searchParams.get("next")).toBe(next);
+  });
+
+  it("leave out the folder list, where a login leads anyway", () => {
+    expect(loginPath("/folders")).toBe("/login");
+    expect(changePasswordPath("/folders")).toBe("/change-password");
+  });
+
+  it.each(["https://evil.example", "//evil.example", "/\\evil.example", "/\t/evil.example", `/${"a".repeat(2048)}`])(
+    "leave out the way back %j to another site or of too many characters",
+    (next) => {
+      expect(loginPath(next)).toBe("/login");
+      expect(changePasswordPath(next)).toBe("/change-password");
+    },
+  );
 });

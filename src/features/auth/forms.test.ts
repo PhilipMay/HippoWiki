@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseLoginFormData, readPasswordChangeFormData } from "@/features/auth/forms";
+import { parseLoginFormData, readNextPath, readPasswordChangeFormData } from "@/features/auth/forms";
 
 function formData(fields: Record<string, string | File>): FormData {
   const data = new FormData();
@@ -102,5 +102,22 @@ describe("readPasswordChangeFormData", () => {
     expect(readPasswordChangeFormData(formData({ ...fields, mustChangePassword: "false", userId: "x" }))).toEqual(
       fields,
     );
+  });
+});
+
+describe("readNextPath", () => {
+  it("returns the path of the hidden field", () => {
+    expect(readNextPath(formData({ next: "/account?action=create" }))).toBe("/account?action=create");
+  });
+
+  it.each([
+    ["no field", {}],
+    ["an empty field", { next: "" }],
+    ["another site", { next: "https://evil.example" }],
+    ["a scheme-relative address", { next: "//evil.example" }],
+    ["a backslash that browsers read as a slash", { next: "/\\evil.example" }],
+    ["a file instead of text", { next: new File(["/account"], "next.txt") }],
+  ])("returns the folder list for %s", (_case, fields: Record<string, string | File>) => {
+    expect(readNextPath(formData(fields))).toBe("/folders");
   });
 });

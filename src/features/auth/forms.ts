@@ -2,6 +2,7 @@
 // use it.
 
 import type { PasswordChangeFieldErrors, PasswordChangeInput } from "@/features/auth/schema";
+import { NEXT_PARAM, safeNextPath } from "@/lib/addresses";
 
 export type LoginFieldErrors = { name?: string[]; password?: string[] };
 
@@ -25,6 +26,15 @@ export type ParseLoginResult =
 function textOf(formData: FormData, field: string): string {
   const value = formData.get(field);
   return typeof value === "string" ? value : "";
+}
+
+/**
+ * The address to go to after the login or the password change, from the hidden field of the form: a path on this
+ * site, or the folder list for a missing field and for anything `safeNextPath()` refuses. It is checked here again,
+ * because a crafted request can submit any value. It is not part of the input of the service.
+ */
+export function readNextPath(formData: FormData): string {
+  return safeNextPath(textOf(formData, NEXT_PARAM));
 }
 
 /**

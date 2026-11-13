@@ -415,6 +415,68 @@ test("a user can be logged in in two browsers, and a logout ends only one of the
   await otherContext.close();
 });
 
+test("an address opened without a login leads back to it after the login", async ({ page }) => {
+  const errors = collectErrors(page);
+
+  await page.goto("/account?action=create");
+  await expect(page).toHaveURL("/login?next=%2Faccount%3Faction%3Dcreate");
+  await expect(page.getByRole("heading", { level: 1, name: "Log in" })).toBeVisible();
+  await submitLogin(page, KNOWN_USER.name, KNOWN_USER.password);
+
+  await expect(page).toHaveURL("/account?action=create");
+  await expect(page.getByRole("dialog", { name: "New token" })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test("a failed login keeps the way back for the next attempt", async ({ page }) => {
+  await page.goto("/login?next=%2Faccount");
+
+  await submitLogin(page, KNOWN_USER.name, "wrong-password");
+  await expect(formAlert(page)).toHaveText(INVALID_CREDENTIALS);
+  await expect(page.getByLabel("Password")).toHaveValue("");
+  await submitLogin(page, KNOWN_USER.name, KNOWN_USER.password);
+
+  await expect(page).toHaveURL("/account");
+});
+
+for (const next of ["https://evil.example/", "//evil.example/", "/\\evil.example/", "javascript:alert(1)"]) {
+  test(`a crafted way back to another site (${next}) leads to the folder list`, async ({ page }) => {
+    await page.goto(`/login?next=${encodeURIComponent(next)}`);
+
+    await submitLogin(page, KNOWN_USER.name, KNOWN_USER.password);
+
+    await expect(page).toHaveURL("/folders");
+    await expect(page.getByRole("heading", { level: 1, name: "Folders" })).toBeVisible();
+  });
+}
+
+test("a way back that a crafted request puts into the form leads to the folder list", async ({ page }) => {
+  await page.goto("/login?next=%2Faccount");
+  // The page checks the search parameter; the action checks the submitted field again.
+  await page
+    .getByRole("main")
+    .locator("form")
+    .evaluate((form: HTMLFormElement) => {
+      form.addEventListener("formdata", (event) => {
+        event.formData.set("next", "https://evil.example/");
+      });
+    });
+
+  await submitLogin(page, KNOWN_USER.name, KNOWN_USER.password);
+
+  await expect(page).toHaveURL("/folders");
+});
+
+test("a logged-in user who opens the login page with a way back lands there", async ({ page }) => {
+  await logIn(page, KNOWN_USER);
+
+  await page.goto("/login?next=%2Faccount");
+  await expect(page).toHaveURL("/account");
+
+  await page.goto("/login?next=https%3A%2F%2Fevil.example%2F");
+  await expect(page).toHaveURL("/folders");
+});
+
 for (const address of ["/login?action=new", "/login?view=all"]) {
   test(`${address} shows the not-found page`, async ({ page }) => {
     const response = await page.goto(address);

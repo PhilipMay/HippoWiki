@@ -51,8 +51,20 @@ const PROTECTED_ADDRESSES = [
   ["the image optimizer", "/_next/image?url=%2Ffolders&w=64&q=75"],
 ] as const;
 
-async function expectLoginPage(page: Page) {
-  await expect(page).toHaveURL("/login");
+/**
+ * The address of the login page that a read of the given address leads to without a session cookie: with the address
+ * as the way back, except for the folder list, where a login leads anyway.
+ */
+function loginAddressFor(address: string): string {
+  return address === "/folders" ? "/login" : `/login?next=${encodeURIComponent(address)}`;
+}
+
+/**
+ * Expects the login page: without a way back, as `requireUser()` and a Server Action lead to it, or with the one of
+ * the given address, as the proxy leads to it for a read without a session cookie.
+ */
+async function expectLoginPage(page: Page, address?: string) {
+  await expect(page).toHaveURL(address === undefined ? "/login" : loginAddressFor(address));
   await expect(page.getByRole("heading", { level: 1, name: "Log in" })).toBeVisible();
   await expect(page.getByText(/Secret/)).toHaveCount(0);
 }
@@ -74,12 +86,15 @@ test.describe("without a login", () => {
       // The answer itself is a redirect: nothing of the page is sent, not even as HTML that a script hides.
       const response = await request.get(address, { maxRedirects: 0 });
       expect(response.status()).toBe(307);
-      expect(new URL(response.headers().location ?? "", "http://localhost").pathname).toBe("/login");
+      const location = new URL(response.headers().location ?? "", "http://localhost");
+      expect(location.pathname).toBe("/login");
+      // The way back is the address that was asked for.
+      expect(location.searchParams.get("next")).toBe(address === "/folders" ? null : address);
       expect(await response.text()).not.toContain("Secret");
 
       await page.goto(address);
 
-      await expectLoginPage(page);
+      await expectLoginPage(page, address);
     });
   }
 
@@ -161,7 +176,7 @@ test.describe("without a login", () => {
     await expect(page).toHaveURL("/login");
     await page.goto("/folders/handbook");
 
-    await expectLoginPage(page);
+    await expectLoginPage(page, "/folders/handbook");
   });
 
   test("a Server Action that is submitted after the session has ended changes nothing and leads to the login page", async ({

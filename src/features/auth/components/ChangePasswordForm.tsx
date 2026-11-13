@@ -8,15 +8,18 @@ import { useActionState, useEffect, useRef, useState } from "react";
 
 import { type PasswordChangeFormAction } from "@/features/auth/forms";
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/features/users/schema";
+import { NEXT_PARAM } from "@/lib/addresses";
 import { useHydrated } from "@/lib/hydration";
 
 type ChangePasswordFormProps = {
   /** Server Action that changes the password; it returns the errors to show, or redirects on success. */
   action: PasswordChangeFormAction;
+  /** The address to go to after the change, already checked by the page; the action checks it again. */
+  next: string;
 };
 
 /** The form of the forced password change: the current password, the new one and its repetition. */
-export default function ChangePasswordForm({ action }: ChangePasswordFormProps) {
+export default function ChangePasswordForm({ action, next }: ChangePasswordFormProps) {
   const [state, formAction, pending] = useActionState(action, {});
   // Controlled fields keep what was entered when the action returns errors, so that only the field with the error has
   // to be typed again; React resets uncontrolled fields after a submission.
@@ -46,6 +49,7 @@ export default function ChangePasswordForm({ action }: ChangePasswordFormProps) 
     // `noValidate`: the server validates, and its errors are shown at the field instead of browser bubbles.
     <Stack component="form" action={formAction} noValidate spacing={3}>
       {state.message && <Alert severity="error">{state.message}</Alert>}
+      <input type="hidden" name={NEXT_PARAM} value={next} />
       <TextField
         name="currentPassword"
         label="Current password"

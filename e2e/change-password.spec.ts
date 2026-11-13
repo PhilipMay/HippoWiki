@@ -284,7 +284,54 @@ test("a form that is submitted in a second tab after the change leads to the fol
 test("without a login the password change leads to the login page", async ({ page }) => {
   await page.goto("/change-password");
 
-  await expect(page).toHaveURL("/login");
+  await expect(page).toHaveURL("/login?next=%2Fchange-password");
+});
+
+test("a user with a first password reaches the address that asked for the login after the password change", async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await createUser({ name: "newcomer" });
+
+  await page.goto("/folders/handbook/overview.md?action=edit");
+  await expect(page).toHaveURL("/login?next=%2Ffolders%2Fhandbook%2Foverview.md%3Faction%3Dedit");
+  await page.getByLabel("User name").fill("newcomer");
+  await page.getByLabel("Password").fill(TEST_PASSWORD);
+  await page.getByRole("button", { name: "Log in" }).click();
+
+  // The password change comes first and keeps the way back.
+  await expect(page).toHaveURL("/change-password?next=%2Ffolders%2Fhandbook%2Foverview.md%3Faction%3Dedit");
+  await expect(page.getByRole("heading", { level: 1, name: "Change password" })).toBeVisible();
+  await expect(page.getByText(/Secret/)).toHaveCount(0);
+  await submitChange(page, {});
+
+  await expect(page).toHaveURL("/folders/handbook/overview.md?action=edit");
+  await expect(page.getByLabel("Content")).toHaveValue("# Secret overview\n\nSecret text");
+  expect(errors).toEqual([]);
+});
+
+test("a rule that the new password breaks keeps the way back", async ({ page }) => {
+  await createUser({ name: "newcomer" });
+  await page.goto("/login?next=%2Faccount");
+  await page.getByLabel("User name").fill("newcomer");
+  await page.getByLabel("Password").fill(TEST_PASSWORD);
+  await page.getByRole("button", { name: "Log in" }).click();
+  await expect(page).toHaveURL("/change-password?next=%2Faccount");
+
+  await submitChange(page, { next: "short" });
+  await expect(newPasswordField(page)).toHaveAttribute("aria-invalid", "true");
+  await submitChange(page, {});
+
+  await expect(page).toHaveURL("/account");
+});
+
+test("a crafted way back to another site leads to the folder list after the password change", async ({ page }) => {
+  await logInWithFirstPassword(page);
+  await page.goto("/change-password?next=https%3A%2F%2Fevil.example%2F");
+
+  await submitChange(page, {});
+
+  await expect(page).toHaveURL("/folders");
 });
 
 test.describe("a user without a pending password change", () => {

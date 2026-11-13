@@ -38,6 +38,9 @@ npm run dev
 The wiki needs a login. After `npm run db:seed`, log in as `alice` with the password `alice-password`, or as the admin
 `admin` with `admin-password`. Without the seed, create the admin with `npm run admin:setup` (see "Users").
 
+`.env` can also set the optional `HIPPOWIKI_PUBLIC_URL`, the public address of the wiki, such as
+`http://localhost:3000` for `npm run dev`. It is explained in `.env.example`; without it the wiki runs as before.
+
 ### Start and stop in one line
 
 Once `.env` exists and the Podman machine runs (`podman machine start`), this line starts everything needed to try the

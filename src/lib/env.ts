@@ -1,5 +1,27 @@
 import { z } from "zod";
 
+/** The hosts for which `HIPPOWIKI_PUBLIC_URL` may use `http`: the own machine, for development and the tests. */
+const LOOPBACK_HOSTS = ["localhost", "127.0.0.1", "[::1]"];
+
+/**
+ * The origin of a public address of the wiki, or `null` if the value is not one: an `https` URL, or `http` only for
+ * the own machine, without user name, password, path, query or fragment. A trailing slash is the only path allowed.
+ */
+export function parsePublicUrl(value: string): string | null {
+  // `new URL()` would trim the value and drop an empty query or fragment, so they are refused here.
+  if (value !== value.trim() || value.includes("?") || value.includes("#")) return null;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
+  }
+  const allowedProtocol =
+    url.protocol === "https:" || (url.protocol === "http:" && LOOPBACK_HOSTS.includes(url.hostname));
+  if (!allowedProtocol || url.username !== "" || url.password !== "" || url.pathname !== "/") return null;
+  return url.origin;
+}
+
 /** Environment variables the server needs. */
 export const serverEnvSchema = z.object({
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/, error: "must be a postgresql:// URL" }),
@@ -17,6 +39,17 @@ export const serverEnvSchema = z.object({
     .enum(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"])
     .default("0")
     .transform((value) => Number(value)),
+  // The public address of the wiki, as the browsers and the connectors of AI assistants reach it, e.g.
+  // `https://wiki.example.com`. It is the issuer of the OAuth authorization server and the base of the addresses that
+  // the MCP server gives out; without it there is no OAuth. Kept as the origin, without a trailing slash. Any value
+  // that is not such an address stops the server, so that a typo does not publish a wrong issuer.
+  HIPPOWIKI_PUBLIC_URL: z
+    .string()
+    .optional()
+    .refine((value) => value === undefined || parsePublicUrl(value) !== null, {
+      error: "must be an https:// URL (http:// only for localhost) without user, path, query or fragment",
+    })
+    .transform((value) => (value === undefined ? undefined : (parsePublicUrl(value) ?? undefined))),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

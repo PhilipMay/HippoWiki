@@ -7,15 +7,18 @@ import TextField from "@mui/material/TextField";
 import { useActionState, useEffect, useRef, useState } from "react";
 
 import { type LoginFormAction } from "@/features/auth/forms";
+import { NEXT_PARAM } from "@/lib/addresses";
 import { useHydrated } from "@/lib/hydration";
 
 type LoginFormProps = {
   /** Server Action that logs in; it returns the errors to show, or redirects on success. */
   action: LoginFormAction;
+  /** The address to go to after the login, already checked by the page; the action checks it again. */
+  next: string;
 };
 
 /** The login form: user name and password. After a failed login it keeps the name and empties the password. */
-export default function LoginForm({ action }: LoginFormProps) {
+export default function LoginForm({ action, next }: LoginFormProps) {
   const [state, formAction, pending] = useActionState(action, {});
   // A controlled field keeps the entered name when the action returns errors. The password is uncontrolled: React
   // resets such a field after a submission, which empties it.
@@ -40,6 +43,7 @@ export default function LoginForm({ action }: LoginFormProps) {
     // `noValidate`: the server validates, and its errors are shown at the field instead of browser bubbles.
     <Stack component="form" action={formAction} noValidate spacing={3}>
       {state.message && <Alert severity="error">{state.message}</Alert>}
+      <input type="hidden" name={NEXT_PARAM} value={next} />
       <TextField
         name="name"
         label="User name"

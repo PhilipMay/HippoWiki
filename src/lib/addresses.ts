@@ -1,6 +1,6 @@
 // Addresses of folders, tabs and pages under `/folders`, of deleted pages under `/deleted-pages`, of the users, the own
-// account, the login and the password change, and the actions in their query string. Pure functions used by routes,
-// Server Actions and links; no server-only imports.
+// account, the login and the password change, the actions in their query string and the way back after a login. Pure
+// functions used by routes, Server Actions and links; no server-only imports.
 
 import { parseName } from "@/lib/names";
 
@@ -19,9 +19,59 @@ const PAGE_SUFFIX = ".md";
 /** The address of the login page, the one page that needs no login. */
 const LOGIN_PATH = "/login";
 
-/** The address of the login page. */
-export function loginPath(): string {
-  return LOGIN_PATH;
+/** The search parameter and form field with the address to go to after a login: the way back. */
+export const NEXT_PARAM = "next";
+
+/** The longest address that is accepted as a way back. */
+const NEXT_MAX_LENGTH = 2048;
+
+/** A base that only serves to resolve a path; the reserved domain `.invalid` belongs to nobody. */
+const NEXT_BASE = "http://next.invalid";
+
+/**
+ * Whether the text has a control character or the delete character. A URL parser drops tabs and line breaks, so
+ * `/<tab>/evil.example` would become `//evil.example`, an address on another site.
+ */
+function hasControlCharacter(text: string): boolean {
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    if (code <= 0x1f || code === 0x7f) return true;
+  }
+  return false;
+}
+
+/**
+ * The address to go to after a login, taken from a search parameter or a form field. It is accepted only as a path on
+ * this site, so that a crafted link to the login page cannot send a user who just logged in to another site (an open
+ * redirect): it starts with exactly one `/`, not with `//` or `/\`, which browsers read as the start of a host, has no
+ * control characters and is at most 2048 characters long. Anything else, such as a missing or repeated value, gives
+ * the folder list.
+ */
+export function safeNextPath(next: string | string[] | null | undefined): string {
+  if (typeof next !== "string" || next.length > NEXT_MAX_LENGTH) return FOLDERS_PATH;
+  if (!next.startsWith("/") || next.startsWith("//") || next.startsWith("/\\")) return FOLDERS_PATH;
+  if (hasControlCharacter(next)) return FOLDERS_PATH;
+  // A second opinion from the parser the browser uses: the address must stay on the site it is resolved against.
+  try {
+    if (new URL(next, NEXT_BASE).origin !== NEXT_BASE) return FOLDERS_PATH;
+  } catch {
+    return FOLDERS_PATH;
+  }
+  return next;
+}
+
+/**
+ * The path with the way back in its query string. The folder list is where a login leads anyway, so it is left out,
+ * and so is everything `safeNextPath()` refuses.
+ */
+function withNext(path: string, next?: string | string[] | null): string {
+  const safe = safeNextPath(next);
+  return safe === FOLDERS_PATH ? path : `${path}?${NEXT_PARAM}=${encodeURIComponent(safe)}`;
+}
+
+/** The address of the login page, optionally with the address to go to after the login. */
+export function loginPath(next?: string | string[] | null): string {
+  return withNext(LOGIN_PATH, next);
 }
 
 /** The address of the user list, which only the admin sees. */
@@ -48,9 +98,9 @@ export function revokeTokenPath(id: string): string {
 /** The address where a user who logged in with a first password sets a password of their own. */
 const CHANGE_PASSWORD_PATH = "/change-password";
 
-/** The address of the forced password change. */
-export function changePasswordPath(): string {
-  return CHANGE_PASSWORD_PATH;
+/** The address of the forced password change, optionally with the address to go to after the change. */
+export function changePasswordPath(next?: string | string[] | null): string {
+  return withNext(CHANGE_PASSWORD_PATH, next);
 }
 
 function withAction(path: string, action?: string): string {

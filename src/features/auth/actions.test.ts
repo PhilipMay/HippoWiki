@@ -152,6 +152,52 @@ describe("logIn", () => {
     expect(mocks.revalidatePath).toHaveBeenCalledExactlyOnceWith("/", "layout");
   });
 
+  it("leads to the way back of the form, and passes only the name and the password to the service", async () => {
+    mocks.logIn.mockResolvedValue({ ok: true, value: { user: USER, headers: new Headers() } });
+    const next = "/oauth/authorize?client_id=abc&state=x%2Fy";
+
+    await expect(logIn({}, formData({ ...LOGIN_FORM, next }))).rejects.toMatchObject({ path: next });
+
+    expect(mocks.logIn).toHaveBeenCalledExactlyOnceWith(LOGIN_FORM, REQUEST_HEADERS, "shared");
+  });
+
+  it("leads to the password change with the way back after a login with a first password", async () => {
+    const user = { ...USER, mustChangePassword: true };
+    mocks.logIn.mockResolvedValue({ ok: true, value: { user, headers: new Headers() } });
+
+    await expect(logIn({}, formData({ ...LOGIN_FORM, next: "/account" }))).rejects.toMatchObject({
+      path: "/change-password?next=%2Faccount",
+    });
+  });
+
+  it.each(["https://evil.example", "//evil.example", "/\\evil.example", "/\t/evil.example", ""])(
+    "leads to the folders for the crafted way back %j",
+    async (next) => {
+      mocks.logIn.mockResolvedValue({ ok: true, value: { user: USER, headers: new Headers() } });
+
+      await expect(logIn({}, formData({ ...LOGIN_FORM, next }))).rejects.toMatchObject({ path: "/folders" });
+    },
+  );
+
+  it("leads to the plain password change for a crafted way back after a login with a first password", async () => {
+    const user = { ...USER, mustChangePassword: true };
+    mocks.logIn.mockResolvedValue({ ok: true, value: { user, headers: new Headers() } });
+
+    await expect(logIn({}, formData({ ...LOGIN_FORM, next: "//evil.example" }))).rejects.toMatchObject({
+      path: "/change-password",
+    });
+  });
+
+  it("does not lead to the way back when the login is refused", async () => {
+    mocks.logIn.mockResolvedValue({ ok: false, error: { code: "invalid-credentials" } });
+
+    await expect(logIn({}, formData({ ...LOGIN_FORM, next: "/account" }))).resolves.toEqual({
+      message: "Invalid user name or password",
+    });
+
+    expect(mocks.redirect).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["invalid-credentials", { message: "Invalid user name or password" }],
     ["busy", { message: "Too many logins at the moment, please try again" }],
@@ -267,6 +313,34 @@ describe("changeFirstPassword", () => {
     await expect(changeFirstPassword({}, formData(FORM))).rejects.toMatchObject({ path });
 
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it("leads to the way back of the form after the change, and passes only the passwords to the service", async () => {
+    mocks.changeFirstPassword.mockResolvedValue({ ok: true, value: { user: USER, headers: new Headers() } });
+    const next = "/oauth/authorize?client_id=abc&state=x%2Fy";
+
+    await expect(changeFirstPassword({}, formData({ ...FORM, next }))).rejects.toMatchObject({ path: next });
+
+    expect(mocks.changeFirstPassword).toHaveBeenCalledExactlyOnceWith(FORM, REQUEST_HEADERS);
+    expect(mocks.revalidatePath).toHaveBeenCalledExactlyOnceWith("/", "layout");
+  });
+
+  it.each(["https://evil.example", "//evil.example", "/\\evil.example", "/\n/evil.example"])(
+    "leads to the folders after the change for the crafted way back %j",
+    async (next) => {
+      mocks.changeFirstPassword.mockResolvedValue({ ok: true, value: { user: USER, headers: new Headers() } });
+
+      await expect(changeFirstPassword({}, formData({ ...FORM, next }))).rejects.toMatchObject({ path: "/folders" });
+    },
+  );
+
+  it.each([
+    ["not-logged-in", "/login?next=%2Faccount"],
+    ["not-required", "/account"],
+  ])("keeps the way back for the code %s and leads to %s", async (code, path) => {
+    mocks.changeFirstPassword.mockResolvedValue({ ok: false, error: { code } });
+
+    await expect(changeFirstPassword({}, formData({ ...FORM, next: "/account" }))).rejects.toMatchObject({ path });
   });
 
   it("does not reach the service without a session", async () => {

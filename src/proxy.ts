@@ -2,7 +2,8 @@
 // a session cookie is sent to the login page before it reaches a route. The proxy only looks whether the cookie is
 // there and does not ask the database. Whether the cookie belongs to a session is checked by `requireUser()` in every
 // page, every query and every Server Action (`src/features/auth/session.ts`), which is the layer that protects the
-// data. With `HIPPOWIKI_LOG_CLIENT_ADDRESS=true` it also logs the forwarding headers of every request it sees
+// data. A read that is sent to the login page takes its own address along as `next`, the way back after the login.
+// With `HIPPOWIKI_LOG_CLIENT_ADDRESS=true` it also logs the forwarding headers of every request it sees
 // (`src/lib/client-address-probe.ts`).
 import { getSessionCookie } from "better-auth/cookies";
 import { NextResponse, type NextRequest } from "next/server";
@@ -34,10 +35,16 @@ export function proxy(request: NextRequest): NextResponse {
     return new NextResponse(null, { status: 303, headers: { [ACTION_REDIRECT_HEADER]: `${loginPath()};push` } });
   }
 
+  // A read comes back to its address after the login. Next.js has already taken its own search parameters, such as
+  // the one of a client-side navigation, off the address.
+  if (request.method === "GET" || request.method === "HEAD") {
+    const next = request.nextUrl.pathname + request.nextUrl.search;
+    return NextResponse.redirect(new URL(loginPath(next), request.url), 307);
+  }
+
   // 303 for everything that is not a read, so that the browser asks for the login page with GET instead of sending
-  // the request again, with its body, to the login page.
-  const read = request.method === "GET" || request.method === "HEAD";
-  return NextResponse.redirect(new URL(loginPath(), request.url), read ? 307 : 303);
+  // the request again, with its body, to the login page. It has no way back: its address may not be one to read.
+  return NextResponse.redirect(new URL(loginPath(), request.url), 303);
 }
 
 export const config = {

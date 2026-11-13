@@ -8,13 +8,14 @@ import { redirect } from "next/navigation";
 
 import {
   parseLoginFormData,
+  readNextPath,
   readPasswordChangeFormData,
   type LoginFormState,
   type PasswordChangeFormState,
 } from "@/features/auth/forms";
 import * as authService from "@/features/auth/service";
 import { requireSession } from "@/features/auth/session";
-import { changePasswordPath, foldersPath, loginPath } from "@/lib/addresses";
+import { changePasswordPath, loginPath } from "@/lib/addresses";
 import { clientAddressGroup } from "@/lib/client-address";
 import { logClientAddressProbe } from "@/lib/client-address-probe";
 import { getServerEnv } from "@/lib/env";
@@ -43,6 +44,10 @@ function revalidateEverything(): void {
   revalidatePath("/", "layout");
 }
 
+/**
+ * Logs in with the submitted user name and password and leads to the address the form names as the way back, or to
+ * the folders. Returns the errors to show in the form if the login is refused.
+ */
 export async function logIn(_prevState: LoginFormState, formData: FormData): Promise<LoginFormState> {
   const input = parseLoginFormData(formData);
   if (!input.success) return { fieldErrors: input.fieldErrors };
@@ -75,13 +80,15 @@ export async function logIn(_prevState: LoginFormState, formData: FormData): Pro
   }
 
   revalidateEverything();
-  // Who logged in with a first password sets a password of their own before anything else.
-  redirect(result.value.user.mustChangePassword ? changePasswordPath() : foldersPath());
+  // Who logged in with a first password sets a password of their own before anything else, and goes on from there.
+  const next = readNextPath(formData);
+  redirect(result.value.user.mustChangePassword ? changePasswordPath(next) : next);
 }
 
 /**
- * Replaces the first password of the logged-in user by the submitted one and leads to the folders. Returns the errors
- * to show in the form if a rule is broken, the current password is wrong or the password cannot be changed.
+ * Replaces the first password of the logged-in user by the submitted one and leads to the address the form names as
+ * the way back, or to the folders. Returns the errors to show in the form if a rule is broken, the current password is
+ * wrong or the password cannot be changed.
  */
 export async function changeFirstPassword(
   _prevState: PasswordChangeFormState,
@@ -89,6 +96,7 @@ export async function changeFirstPassword(
 ): Promise<PasswordChangeFormState> {
   // Not `requireUser()`, which would send the user back to the password change.
   await requireSession();
+  const next = readNextPath(formData);
 
   // Better Auth ends all sessions of the user and sets the cookie of a new one on the response of this action.
   const result = await authService.changeFirstPassword(readPasswordChangeFormData(formData), await headers());
@@ -99,10 +107,10 @@ export async function changeFirstPassword(
       case "wrong-password":
         return { fieldErrors: { currentPassword: [WRONG_PASSWORD_MESSAGE] } };
       case "not-logged-in":
-        redirect(loginPath());
+        redirect(loginPath(next));
       // The change is done already, e.g. in another tab: there is nothing left to do here.
       case "not-required":
-        redirect(foldersPath());
+        redirect(next);
       case "busy":
         return { message: BUSY_MESSAGE };
       case "failed":
@@ -111,9 +119,10 @@ export async function changeFirstPassword(
   }
 
   revalidateEverything();
-  redirect(foldersPath());
+  redirect(next);
 }
 
+/** Ends the session of the browser and leads to the login page. */
 export async function logOut(): Promise<void> {
   const result = await authService.logOut(await headers());
   // The button has no place for a message, and a session that could not be ended must not look ended: the error page
