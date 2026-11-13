@@ -12,10 +12,10 @@ PostgreSQL: create, view, edit, move and rename pages, create and rename folders
 restore them from the deleted pages of their folder. Folders and tabs cannot be deleted yet.
 
 The wiki can only be used after a login, and the admin creates the other users. Everyone who is logged in can read and
-change all content.
+change all content, and creates API tokens for scripts and tools on the own account page.
 
 What is built is described in `spec/`: `spec/content-structure.md`, `spec/pages.md`, `spec/page-deletion.md`,
-`spec/users-and-login.md` and `spec/container-image.md`. `CLAUDE.md` lists all spec files.
+`spec/users-and-login.md`, `spec/api-tokens.md` and `spec/container-image.md`. `CLAUDE.md` lists all spec files.
 
 ## Prerequisites
 

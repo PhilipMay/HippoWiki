@@ -25,10 +25,11 @@ The specification lives in the `spec/` directory. This catalog should always be 
   account and setup, login and logout, sessions, failed logins with the wait per user name and client address group
   and the hour window per user name, authenticated access only, forced password change, user list and creating users,
   routes, decisions, limits)
+- `spec/api-tokens.md`: the API tokens as built (tokens shown once and stored as a hash, scopes and expiry, the limit
+  per user, the own tokens only, the check of a bearer token and its codes, the own account page `/account`,
+  decisions, limits)
 - `spec/roadmap.md`: backlog of candidate features, grouped by theme, and things still to check
 - `spec/issue-report.md`: how to report issues found in code and document reviews
-- `spec/api-tokens-steps.md`: step plan for long-lived API tokens (the token model and service, the check of a bearer
-  token, the own-account page with creating, listing and revoking)
 
 ## Running the Checks
 

@@ -64,13 +64,13 @@ listed first; there is no order across themes.
 
 ## Users and Accounts
 
-- Own password change: change the own password at any time, not only the first one (`users-and-login.md`).
+- Own password change: change the own password at any time, not only the first one, on the own account page
+  `/account` (`users-and-login.md`, `api-tokens.md`).
 - Password reset by the admin: a new first password for a user who lost theirs (`users-and-login.md`).
 - Admin password command: reset a lost admin password with a command of `scripts/admin.ts` instead of a change in
   the database (`users-and-login.md`).
-- Deactivating and reactivating users: stop a user from logging in, and let them back in later
-  (`users-and-login.md`).
-- Own account view: a page where each user sees their own account (`users-and-login.md`).
+- Deactivating and reactivating users: stop a user from logging in, and let them back in later; deactivating must
+  also stop the user's API tokens (`users-and-login.md`, `api-tokens.md`).
 - Admin without content access: the admin manages users only and sees no content without rights of their own.
 - Several admin accounts: more admins than the one account named `admin`.
 - First password expiry: a generated first password stops working after some time (`users-and-login.md`).
@@ -115,8 +115,8 @@ listed first; there is no order across themes.
 
 - Bearer token sessions: sessions for clients other than a browser, sent in the `Authorization` header
   (`users-and-login.md`).
-- Long-lived API tokens: tokens that a user creates for scripts and tools and can revoke.
-- MCP server: read and write the wiki from AI assistants through the Model Context Protocol.
+- MCP server: read and write the wiki from AI assistants through the Model Context Protocol, with the API tokens and
+  `authenticateToken()` as its login (`api-tokens.md`).
 - OAuth for clients: other applications, such as MCP clients, get access on behalf of a user through OAuth.
 - CORS for other origins: let web applications on other origins call the API.
 - Rate limits and quotas: limits on requests, writes and stored content per user.

@@ -22,9 +22,10 @@ How the code is organised and which patterns new code follows. The technology st
   - `forms.ts`: what only a form needs: the `parse*FormData` functions, the form states, the types of the form
     actions and the names of form fields. It has no server-only imports, so Client Components can use it.
   - `queries.ts` and `actions.ts`: the adapters between the web and the service
-  - The features are `folders` (folders and their tabs), `pages`, `users` (the accounts) and `auth` (login, logout,
-    the session and the login wait, with `session.ts` for who is calling, see "Login and sessions"). Their specs are
-    listed in `CLAUDE.md`.
+  - The features are `folders` (folders and their tabs), `pages`, `users` (the accounts), `auth` (login, logout,
+    the session and the login wait, with `session.ts` for who is calling, see "Login and sessions") and `tokens` (the
+    API tokens and the check of a bearer token, with `secret.ts` for the token and its hash). Their specs are listed
+    in `CLAUDE.md`.
 - `src/generated/prisma/`: the generated Prisma client (`npm run db:generate`), not checked in
 - `prisma/`: schema, migrations, seed, and `known-users.ts`, the known users of the seed and the tests
 - `scripts/`: development scripts (`db.sh`), the admin setup (`admin.ts`) and the scripts of the container image
@@ -48,10 +49,11 @@ How the code is organised and which patterns new code follows. The technology st
     database: a list is empty, a single item is `null`. Database errors are thrown.
   - Writes return a `Result` from `src/lib/result.ts`: `{ ok: true, value }` with the item as stored, or
     `{ ok: false, error }` with a code. The codes of the content are `invalid-input` (with `fieldErrors`),
-    `name-taken`, `folder-not-found`, `tab-not-found`, `page-not-found` and `failed`; the users and auth services add
-    codes such as `not-allowed`, `busy`, `invalid-credentials` and `wait` (see `src/features/users/service.ts` and
-    `src/features/auth/service.ts`). Each write
-    declares the ones it can return in a type of its own, such as `CreatePageError`.
+    `name-taken`, `folder-not-found`, `tab-not-found`, `page-not-found` and `failed`; the users, auth and token
+    services add codes such as `not-allowed`, `busy`, `invalid-credentials`, `wait`, `limit-reached` and
+    `token-not-found` (see `src/features/users/service.ts`, `src/features/auth/service.ts` and
+    `src/features/tokens/service.ts`). Each write declares the ones it can return in a type of its own, such as
+    `CreatePageError`.
   - A write checks its ids first, then its input, then writes.
   - Rows that may no longer exist are changed with `updateMany` and the returned count is checked, instead of catching
     "not found" errors.
@@ -118,6 +120,10 @@ The feature is described in `users-and-login.md`. What every new route, query an
   returns the user or `null` without redirecting, for the header and the login page; it is wrapped in React `cache()`.
 - These three functions and the actions of the auth feature are the only code that reads the headers of the request
   for the session.
+- A caller other than the browser, such as the MCP server, finds its actor with `authenticateToken(headers, scope)`
+  of the token service, from the bearer token in the `Authorization` header (see `api-tokens.md`). It returns the
+  same `Actor` as the session of the token's user, or a code for a missing or bad token and for a missing scope. No
+  route calls it yet, and `src/proxy.ts` does not look at the header.
 - The login action also reads the client address of the request, with `clientAddressGroup()` from
   `src/lib/client-address.ts` and `HIPPOWIKI_TRUSTED_PROXIES`, because `/login` does not pass `src/proxy.ts`; it
   passes the group to the auth service. No other code reads a forwarding header for anything but the diagnostic
@@ -165,8 +171,9 @@ The feature is described in `users-and-login.md`. What every new route, query an
 
 - All content lives under `/folders`, deleted pages under `/deleted-pages`; the addresses are described in
   `content-structure.md`. The login is at `/login`, the forced password change at `/change-password` and the user
-  list at `/users` (see `users-and-login.md`). Routes, Server Actions and links build them with the helpers in
-  `src/lib/addresses.ts` instead of writing paths by hand.
+  list at `/users` (see `users-and-login.md`), the own account with the API tokens at `/account` (see
+  `api-tokens.md`). Routes, Server Actions and links build them with the helpers in `src/lib/addresses.ts` instead of
+  writing paths by hand.
 - What an address opens is given in its query string: an action as `?action=<action>`, a view as `?view=<view>`.
   A route reads them with `parseAction` and `parseView`, passing only the actions and views it has, and calls
   `notFound()` for `"invalid"`. A route without views calls `parseView` without allowed views.
@@ -191,7 +198,8 @@ The feature is described in `users-and-login.md`. What every new route, query an
   then `npm run db:migrate`).
 - Every model has a UUID id generated by PostgreSQL (`gen_random_uuid()`) and stores its times as `timestamptz(3)`.
   The foreign keys between folders, tabs and pages restrict deleting (`onDelete: Restrict`), so that no content
-  disappears by a cascade; the sessions and accounts of a user are deleted with the user (`onDelete: Cascade`).
+  disappears by a cascade; the sessions, accounts and API tokens of a user are deleted with the user
+  (`onDelete: Cascade`).
 - The tables `User`, `Session`, `Account` and `Verification` have the shape Better Auth expects; a change to them
   follows the schema of the installed Better Auth version.
 - Writes that must succeed together run in one interactive transaction of the Prisma client

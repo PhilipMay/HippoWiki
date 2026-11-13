@@ -84,10 +84,10 @@ How the code is tested. Commands are listed in `README.md`.
   `createUser()`).
 - They cover what the unit tests can only mock:
   - `db-errors.ts` against the errors that Prisma and its `pg` adapter really report: every unique constraint of the
-    schema is recognised by its constant (`FOLDER_NAME`, `TAB_NAME`, `PAGE_NAME`) and by no other, every foreign key
-    violation by `isForeignKeyViolation()`. The services use the same constants, so a Prisma upgrade that changes the
-    error shape or the index names fails here. `USER_NAME` stands for the two unique indexes of `User`, on the user
-    name and on the email.
+    schema is recognised by its constant (`FOLDER_NAME`, `TAB_NAME`, `PAGE_NAME`, `API_TOKEN_HASH`) and by no other,
+    every foreign key violation by `isForeignKeyViolation()`. The services use the same constants, so a Prisma
+    upgrade that changes the error shape or the index names fails here. `USER_NAME` stands for the two unique indexes
+    of `User`, on the user name and on the email.
   - The users service (`integration/user-service.test.ts`) with real hashes: the admin setup, the user list and the
     creation of users, whose returned password must log in.
   - The auth service (`integration/auth-service.test.ts`) through the real Better Auth instance: that Better Auth
@@ -96,6 +96,9 @@ How the code is tested. Commands are listed in `README.md`.
     session cookie travels as headers: a test turns the response headers of a login into the request headers of the
     next call. `@/lib/password-hash` is mocked as spies, to count the hashes and to let one fail the way it does when
     no slot gets free.
+  - The token service (`integration/token-service.test.ts`): creating, listing and revoking only the own tokens, the
+    limit, also for tokens created at the same time, and the check of a bearer token, with the clock set past the
+    expiry and to the minute of the last use.
   - The services of the content on real data, one file per service (`integration/folder-service.test.ts`,
     `integration/page-service.test.ts`):
     - the reads: their conditions (e.g. pages placed directly in a folder versus pages in a tab) and their order, and
@@ -160,6 +163,9 @@ How the code is tested. Commands are listed in `README.md`.
   - `createUser()` inserts a user with its credential account, in the shape of `src/features/users/records.ts`, with
     a unique name and the password `TEST_PASSWORD` unless they are given, and with the first password still to
     change unless `mustChangePassword` is false. The hash of a password is computed once per process.
+  - `createApiToken()` inserts an API token of the user given as `owner`, with a generated token of which only the
+    hash is stored, and returns the row with the token. It has the scope `read`, a unique name and an expiry 90 days
+    ahead unless they are given; any field, e.g. `expiresAt` or `lastUsedAt`, can be set.
   - `createFolder()` inserts a folder directly into the test database with a unique name; any field, e.g. `name` or
     `updatedAt`, can be set.
   - `createTab()` inserts a tab with a unique name into the folder given as `folder`; without one, it creates a folder

@@ -12,6 +12,8 @@ forced password change), `src/lib/auth.ts` (the Better Auth instance), `src/lib/
 `AuthSecret`, `LoginAttempt` and `LoginWindow` in `prisma/schema.prisma`; the first four have the shape that Better
 Auth and its `username` plugin expect. The admin setup in the container image is described in `container-image.md`.
 
+The API tokens of a user and the own account page `/account` are described in `api-tokens.md`.
+
 Tests: `e2e/login.spec.ts`, `e2e/change-password.spec.ts`, `e2e/users.spec.ts`, `e2e/access.spec.ts`,
 `integration/auth-service.test.ts`, `integration/user-service.test.ts`, and the unit tests next to the code, such as
 `src/features/auth/service.test.ts`, `src/features/auth/wait.test.ts` and `src/lib/client-address.test.ts`.
@@ -64,8 +66,9 @@ Tests: `e2e/login.spec.ts`, `e2e/change-password.spec.ts`, `e2e/users.spec.ts`, 
 - An unknown user name and a wrong password get the same answer, and both compute one hash, so nobody can find out
   which names exist. A name that breaks the name rule and a password of more than 128 characters cannot belong to a
   user; they are answered like a wrong password, without a hash.
-- The header shows the name of the logged-in user and "Log out", a plain form that works without JavaScript. Logging
-  out ends the session of the browser and leads to the login page; the other sessions of the user stay.
+- The header shows the name of the logged-in user, which links to the own account `/account`, and "Log out", a plain
+  form that works without JavaScript. Logging out ends the session of the browser and leads to the login page; the
+  other sessions of the user stay.
 - After a login and a logout every route is revalidated, so that the header and cached pages follow the new session.
 - Better Auth is called only on the server. Its route handler is not mounted, so there is no `/api/auth/...` and no
   public endpoint to sign up or to sign in past the login wait.
@@ -153,7 +156,8 @@ in two layers, as the authentication guide of Next.js describes:
 
 - Whoever logs in with a first password, the admin after the admin setup and every new user, must set a password of
   their own at `/change-password` before doing anything else. Every other address leads there; logging out stays
-  possible. The header shows the name and "Log out", but no menu.
+  possible. The header shows the name and "Log out", but no menu, and the name is no link, because the own account
+  would only lead to the password change.
 - The form asks for the current password, the new one and its repetition, by the password rules above.
 - The change ends all sessions of the user and starts a new one for the browser that made the change, so the other
   browsers of the user are logged out.
@@ -233,8 +237,10 @@ in two layers, as the authentication guide of Next.js describes:
 - no way to reset a lost admin password; for now the only way is a change directly in the database
 - no password reset by the admin for other users, so a lost first password cannot be replaced
 - no change of the own password after the forced password change
-- no deactivating or deleting of users; a user who has edited content cannot be deleted for good at all, because the
-  key from content to its last editor restricts deleting (`onDelete: Restrict`, see `content-structure.md`)
+- a password change does not end the API tokens of the user; only revoking and expiry do (see `api-tokens.md`)
+- no deactivating or deleting of users; deactivating, when it comes, must also stop the user's API tokens. A user who
+  has edited content cannot be deleted for good at all, because the key from content to its last editor restricts
+  deleting (`onDelete: Restrict`, see `content-structure.md`)
 - no expiry of first passwords
 - no page for each user; content records only its last editor (see `content-structure.md`), not who created it
 - no mail, no TOTP, no passkeys, no sign-in with other providers
