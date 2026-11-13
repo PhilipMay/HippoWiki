@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  authorizationResponseUrl,
   CLIENT_NAME_MAX_LENGTH,
   clientNameOf,
   clientRegistrationSchema,
@@ -430,5 +431,51 @@ describe("parseMetadataDocument", () => {
     ],
   ])("refuses %s", (_case, document, reason) => {
     expect(parseMetadataDocument(URL_OF_DOCUMENT, document)).toEqual({ ok: false, reason });
+  });
+});
+
+describe("authorizationResponseUrl", () => {
+  it("adds the parameters to the redirect address", () => {
+    expect(
+      authorizationResponseUrl("https://client.example/callback", {
+        code: "hwc_abc",
+        state: "xyz",
+        iss: "https://wiki.example.com",
+      }),
+    ).toBe("https://client.example/callback?code=hwc_abc&state=xyz&iss=https%3A%2F%2Fwiki.example.com");
+  });
+
+  it("keeps the query of the redirect address and leaves out a parameter that is null", () => {
+    const url = new URL(
+      authorizationResponseUrl("https://client.example/callback?tenant=a", {
+        error: "access_denied",
+        state: null,
+        iss: "https://wiki.example.com",
+      }),
+    );
+
+    expect([...url.searchParams.keys()]).toEqual(["tenant", "error", "iss"]);
+    expect(url.searchParams.get("tenant")).toBe("a");
+  });
+
+  it("encodes a state with characters that mean something in an address, so that it reads back as it was", () => {
+    const state = "a b&c=d;e#f/g?h%20i+j";
+
+    const url = new URL(authorizationResponseUrl("http://127.0.0.1:53124/callback", { state, iss: "x" }));
+
+    expect(url.searchParams.get("state")).toBe(state);
+    expect(url.host).toBe("127.0.0.1:53124");
+    expect(url.hash).toBe("");
+  });
+
+  it.each([
+    ["cursor://anysphere.cursor-mcp/oauth/callback", "cursor://anysphere.cursor-mcp/oauth/callback?code=c&iss=i"],
+    ["com.example.app:/oauth2redirect", "com.example.app:/oauth2redirect?code=c&iss=i"],
+    [
+      "vscode://vscode.github-authentication/did-authenticate?windowId=1",
+      "vscode://vscode.github-authentication/did-authenticate?windowId=1&code=c&iss=i",
+    ],
+  ])("adds the parameters to the address %s of a native app", (redirectUri, expected) => {
+    expect(authorizationResponseUrl(redirectUri, { code: "c", iss: "i" })).toBe(expected);
   });
 });

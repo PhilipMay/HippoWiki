@@ -33,6 +33,42 @@ test.describe("as the admin", () => {
 });
 
 test.describe("as a normal user", () => {
+  test("the consent page of OAuth is locked until hydration and says that it needs JavaScript", async ({
+    page,
+    request,
+  }) => {
+    const registered = await request.post("/oauth/register", {
+      data: { redirect_uris: ["http://127.0.0.1:53682/callback"], client_name: "Example connector" },
+    });
+    const { client_id: clientId } = (await registered.json()) as { client_id: string };
+    const query = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: "http://127.0.0.1:53682/callback",
+      response_type: "code",
+      code_challenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+      code_challenge_method: "S256",
+      state: "xyz",
+    });
+
+    const address = `/oauth/authorize?${query.toString()}`;
+
+    await page.goto(address);
+
+    const main = page.getByRole("main");
+    await expect(main.getByText("127.0.0.1:53682", { exact: true })).toBeVisible();
+    for (const label of ["30 days", "90 days", "365 days"]) {
+      await expect(main.getByLabel(label)).toBeDisabled();
+    }
+    await expect(main.getByRole("button", { name: "Approve" })).toBeDisabled();
+    await expect(main.getByRole("button", { name: "Deny" })).toBeDisabled();
+    // The answer to the app cannot be sent by a plain form: forms stay on this site. The note is in a `noscript`
+    // element, which this browser does not show although its scripts are switched off, so the HTML is checked.
+    const html = await (await page.request.get(address)).text();
+    expect(html).toMatch(
+      /<noscript>[\s\S]*This page needs JavaScript to send your answer to the app\.[\s\S]*<\/noscript>/,
+    );
+  });
+
   test("the new token dialog is locked until hydration", async ({ page }) => {
     await page.goto("/account?action=create");
 

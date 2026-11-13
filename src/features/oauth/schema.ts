@@ -305,3 +305,16 @@ export function parseMetadataDocument(url: string, document: unknown): ParseMeta
   if (!redirectUris.success) return { ok: false, reason: "invalid-redirect-uris" };
   return { ok: true, metadata: { name: clientNameOf(fields.client_name), redirectUris: redirectUris.data } };
 }
+
+/**
+ * The address a client is sent back to with the answer to its authorization request: its redirect address with the
+ * given parameters added to its query string. A parameter that is `null` is left out. Every answer carries `iss`, the
+ * issuer, so that a client that talks to several authorization servers can tell which one answered (RFC 9207).
+ */
+export function authorizationResponseUrl(redirectUri: string, parameters: Record<string, string | null>): string {
+  const url = new URL(redirectUri);
+  for (const [name, value] of Object.entries(parameters)) {
+    if (value !== null) url.searchParams.set(name, value);
+  }
+  return url.toString();
+}

@@ -20,10 +20,14 @@ export const getCurrentUser = cache(async (): Promise<authService.SessionUser | 
  * The user of the session of the current request; without a session it redirects to the login page. It does not ask
  * whether the user still has to change the first password, so only the password change itself uses it: its page and
  * its action. Everything else calls `requireUser()`.
+ *
+ * `next` is the address to come back to after the login. A page that must not lose its address passes it, such as
+ * the consent page of OAuth: the proxy adds the way back only for a request without a session cookie, not for one
+ * whose cookie is no longer valid.
  */
-export async function requireSession(): Promise<authService.SessionUser> {
+export async function requireSession(next?: string): Promise<authService.SessionUser> {
   const user = await getCurrentUser();
-  if (!user) redirect(loginPath());
+  if (!user) redirect(loginPath(next));
   return user;
 }
 
@@ -33,9 +37,11 @@ export async function requireSession(): Promise<authService.SessionUser> {
  * request may go on: every page, every query and every Server Action calls it first. The proxy (`src/proxy.ts`) only
  * looks whether a session cookie is there; this function checks the session in the database. The redirect throws, so
  * a caller keeps the call outside its `try` blocks.
+ *
+ * `next` is the address to come back to after the login or the password change, as for `requireSession()`.
  */
-export async function requireUser(): Promise<authService.SessionUser> {
-  const user = await requireSession();
-  if (user.mustChangePassword) redirect(changePasswordPath());
+export async function requireUser(next?: string): Promise<authService.SessionUser> {
+  const user = await requireSession(next);
+  if (user.mustChangePassword) redirect(changePasswordPath(next));
   return user;
 }

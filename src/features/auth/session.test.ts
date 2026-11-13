@@ -73,6 +73,25 @@ describe("requireUser", () => {
     expect(mocks.redirect).toHaveBeenCalledExactlyOnceWith("/change-password");
   });
 
+  it("takes the way back along to the login page and to the password change", async () => {
+    const next = "/oauth/authorize?client_id=abc&state=x%2Fy";
+    mocks.getSessionUser.mockResolvedValue(null);
+    await expect(requireUser(next)).rejects.toMatchObject({
+      path: "/login?next=%2Foauth%2Fauthorize%3Fclient_id%3Dabc%26state%3Dx%252Fy",
+    });
+
+    mocks.getSessionUser.mockResolvedValue({ ...USER, mustChangePassword: true });
+    await expect(requireUser(next)).rejects.toMatchObject({
+      path: "/change-password?next=%2Foauth%2Fauthorize%3Fclient_id%3Dabc%26state%3Dx%252Fy",
+    });
+  });
+
+  it("leaves out a way back to another site", async () => {
+    mocks.getSessionUser.mockResolvedValue(null);
+
+    await expect(requireUser("https://evil.example/")).rejects.toMatchObject({ path: "/login" });
+  });
+
   it("does not hide an error of the session check behind a redirect", async () => {
     mocks.getSessionUser.mockRejectedValue(new Error("connection refused"));
 

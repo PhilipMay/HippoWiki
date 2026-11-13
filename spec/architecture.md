@@ -48,7 +48,9 @@ How the code is organised and which patterns new code follows. The technology st
   tools import nothing from `next` or `react`, like a service. The public endpoints of OAuth work the same way: the
   routes under `src/app/.well-known/` and `src/app/oauth/register` and `src/app/oauth/token` hand the request to a
   function of `src/features/oauth/http.ts`, which calls the OAuth service and answers 404 while
-  `HIPPOWIKI_PUBLIC_URL` is not set.
+  `HIPPOWIKI_PUBLIC_URL` is not set. The consent page `src/app/oauth/authorize/` is a page like every other, with
+  `queries.ts` and `actions.ts` of the OAuth feature; its actions return the address of the client instead of
+  redirecting, and its form opens it (see `src/features/oauth/actions.ts`).
 - `service.ts` of a feature holds every read and write of the feature. It knows nothing about Next.js, forms or
   addresses, so that a caller other than the GUI, such as an MCP server, can use the same service.
   - It imports nothing from `next`, `react`, `@/lib/revalidate` or a `forms.ts`, has no `"use server"` and works
@@ -133,6 +135,9 @@ The feature is described in `users-and-login.md`. What every new route, query an
   and `global-error.tsx` show no data and have no check.
 - `requireUser()` returns the user of the session (`id`, `name`, `mustChangePassword`). An adapter passes it to a
   service function that needs the actor.
+- `src/proxy.ts` gives a read without a session cookie its own address as the way back (`next`). `requireUser()` and
+  `requireSession()` redirect without one, unless the caller passes it: the consent page of OAuth does, so that a
+  request with a cookie that is no longer valid still comes back to it after the login.
 - `requireSession()` only asks for a session; only the password change page and its action use it. `getCurrentUser()`
   returns the user or `null` without redirecting, for the header and the login page; it is wrapped in React `cache()`.
 - These three functions and the actions of the auth feature are the only code that reads the headers of the request
@@ -196,6 +201,13 @@ The feature is described in `users-and-login.md`. What every new route, query an
 - What an address opens is given in its query string: an action as `?action=<action>`, a view as `?view=<view>`.
   A route reads them with `parseAction` and `parseView`, passing only the actions and views it has, and calls
   `notFound()` for `"invalid"`. A route without views calls `parseView` without allowed views.
+- Two kinds of addresses carry other search parameters:
+  - The login and the forced password change take `?next=<path>`, the address to go to afterwards. It is accepted
+    only as a path on this site, checked with `safeNextPath()` wherever it is read, and `loginPath(next)` and
+    `changePasswordPath(next)` build it.
+  - The consent page `/oauth/authorize` takes the parameters of an OAuth authorization request (`client_id`,
+    `redirect_uri`, `state` and the others), because OAuth defines them. It has no actions and no views and reads its
+    parameters with `readAuthorizationParams()` of `src/features/oauth/forms.ts`; the OAuth service checks them.
 - A dialog that belongs to an action is rendered by the route's Server Component, open from the start, on top of the
   content of the address. Buttons that open it are links to the address with the action; closing it navigates to the
   address without the query string.

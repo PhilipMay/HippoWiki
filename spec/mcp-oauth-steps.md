@@ -46,7 +46,7 @@ ChatGPT connect through OAuth: the user logs in, approves the connector on a con
 - [x] OAuth clients, codes and grants
 - [x] Client ID Metadata Documents
 - [x] Discovery, registration and token endpoints
-- [ ] Consent page
+- [x] Consent page
 - [ ] Grants on `/account`
 - [ ] Wrap-up
 
@@ -263,7 +263,11 @@ A logged-in user approves or denies a connector, and the connector receives a co
 ### Build
 
 - `src/app/oauth/authorize/page.tsx`, behind the login: `requireUser()` first, so a user without a session comes back
-  here after the login with the whole query. It checks the request with the service:
+  here after the login with the whole query. `requireUser()` and `requireSession()` take the way back as an optional
+  argument for this: a request with a session cookie that is no longer valid, or of a user who still has the first
+  password, passes `src/proxy.ts` and would otherwise lose it. The decisions of the page are a function of
+  `src/features/oauth/queries.ts`, so that they can be tested without rendering the page. It checks the request with
+  the service:
   - client or redirect address wrong: a page with the reason, no redirect
   - other errors: redirect to the client with `error`, `error_description`, `state` and `iss`
   - valid: the client's name, the host of its redirect address shown more prominently than the name (the name is
@@ -276,12 +280,16 @@ A logged-in user approves or denies a connector, and the connector receives a co
 - Server Actions in `src/features/oauth/actions.ts`: both check the request again from the submitted values. Approve
   creates the code and redirects to the client with `code`, `state` and `iss`; Deny redirects with `access_denied`.
 - The redirect to the connector works only with JavaScript, because `form-action 'self'` stays; without JavaScript
-  the page says that it needs JavaScript.
+  the page says that it needs JavaScript. The actions return the address of the connector and the form opens it
+  with `window.location`, instead of `redirect()` of Next.js: Next.js passes the address of a redirect to another site
+  in a header that it splits at `;`, which a redirect address may contain. A request that is refused with an error
+  for the client is answered the same way, by a small component that opens the address and shows it as a link.
 - `e2e/hydration.spec.ts` gets a case for the new form.
 
 ### Test
 
-- Unit: the actions (approve, deny, request no longer valid, limit), the page's decisions with a mocked service.
+- Unit: the actions (approve, deny, request no longer valid, limit), the page's decisions (`queries.ts`) with a mocked
+  service, `requireUser()` with a way back.
 - End-to-end: `e2e/oauth.spec.ts`, the whole flow with a client registered by DCR whose redirect address is on a
   loopback address and intercepted with `page.route()`: logged out → login → consent → approve → code → token →
   `/mcp` `tools/call` with the access token → refresh → the old refresh token revokes the grant. Also: deny, a wrong
