@@ -512,6 +512,153 @@ describe("the wait after failed logins", () => {
   });
 });
 
+describe("the limit per user name and hour", () => {
+  const MINUTE_MS = 60_000;
+  const HOUR_MS = 60 * MINUTE_MS;
+
+  /** Logs in once with a wrong password, and fails the test if it is not checked. */
+  async function failLogin(name: string) {
+    expect(await authService.logIn({ name, password: WRONG_PASSWORD }, new Headers())).toEqual(INVALID_CREDENTIALS);
+  }
+
+  /**
+   * Gets the given number of logins for the name counted within the hour: after each failure the time of the last
+   * failure is moved back, so that the wait after the failures in a row never holds a login back.
+   */
+  async function countLogins(name: string, count: number) {
+    for (let login = 0; login < count; login += 1) {
+      await failLogin(name);
+      const attempt = await getTestDb().loginAttempt.findUniqueOrThrow({ where: { username: name } });
+      await getTestDb().loginAttempt.update({
+        where: { username: name },
+        data: { lastFailedAt: new Date(attempt.lastFailedAt.getTime() - 15 * MINUTE_MS) },
+      });
+    }
+  }
+
+  /** Both counts of the name, as they are in the database. */
+  async function countsOf(name: string) {
+    return {
+      attempt: await getTestDb().loginAttempt.findUnique({ where: { username: name } }),
+      window: await getTestDb().loginWindow.findUnique({ where: { username: name } }),
+    };
+  }
+
+  it("refuses the 21st login within the hour, also with the right password, without a hash and without a write", async () => {
+    await createUser({ name: "alice" });
+    await countLogins("alice", 20);
+    const before = await countsOf("alice");
+    expect(before.window?.attempts).toBe(20);
+    vi.mocked(hashPassword).mockClear();
+    vi.mocked(verifyPassword).mockClear();
+
+    const result = await authService.logIn({ name: "alice", password: TEST_PASSWORD }, new Headers());
+
+    expect(result).toMatchObject({ ok: false, error: { code: "wait" } });
+    if (!result.ok && result.error.code === "wait") {
+      expect(result.error.waitMs).toBeLessThanOrEqual(HOUR_MS);
+      expect(result.error.waitMs).toBeGreaterThan(HOUR_MS - 5 * MINUTE_MS);
+    }
+    expect(vi.mocked(verifyPassword)).not.toHaveBeenCalled();
+    expect(vi.mocked(hashPassword)).not.toHaveBeenCalled();
+    expect(await countsOf("alice")).toStrictEqual(before);
+    expect(await getTestDb().session.count()).toBe(0);
+  });
+
+  it("checks a login again once the hour is over, and starts the window anew with 1 attempt", async () => {
+    await createUser({ name: "alice" });
+    await countLogins("alice", 20);
+    const window = await getTestDb().loginWindow.findUniqueOrThrow({ where: { username: "alice" } });
+    await getTestDb().loginWindow.update({
+      where: { username: "alice" },
+      data: { startedAt: new Date(window.startedAt.getTime() - HOUR_MS) },
+    });
+
+    await failLogin("alice");
+
+    const after = await getTestDb().loginWindow.findUniqueOrThrow({ where: { username: "alice" } });
+    expect(after.attempts).toBe(1);
+    expect(after.startedAt.getTime()).toBeGreaterThan(window.startedAt.getTime());
+  });
+
+  it("deletes the window of a name after a successful login, and keeps the windows of other names", async () => {
+    await createUser({ name: "alice" });
+    await countLogins("alice", 3);
+    await countLogins("nobody", 3);
+
+    await logInAs("alice");
+
+    const windows = await getTestDb().loginWindow.findMany();
+    expect(windows.map(({ username, attempts }) => ({ username, attempts }))).toEqual([
+      { username: "nobody", attempts: 3 },
+    ]);
+  });
+
+  it("counts an unknown name like a known one", async () => {
+    await createUser({ name: "alice" });
+    await countLogins("alice", 20);
+    await countLogins("nobody", 20);
+
+    const known = await authService.logIn({ name: "alice", password: WRONG_PASSWORD }, new Headers());
+    const unknown = await authService.logIn({ name: "nobody", password: WRONG_PASSWORD }, new Headers());
+
+    expect(known).toMatchObject({ ok: false, error: { code: "wait" } });
+    expect(unknown).toMatchObject({ ok: false, error: { code: "wait" } });
+    expect((await countsOf("nobody")).window?.attempts).toBe(20);
+  });
+
+  it("keeps no window for a name that breaks the name rule", async () => {
+    await authService.logIn({ name: "Not A Name!", password: WRONG_PASSWORD }, new Headers());
+
+    expect(await getTestDb().loginWindow.count()).toBe(0);
+  });
+
+  describe("when the password hashing is busy", () => {
+    /** Logs in with the right password while no hash slot gets free. */
+    async function logInWhileBusy(name: string) {
+      vi.mocked(verifyPassword).mockRejectedValueOnce(new PasswordHashBusyError());
+      return authService.logIn({ name, password: TEST_PASSWORD }, new Headers());
+    }
+
+    it("leaves the window of a name as it was", async () => {
+      await createUser({ name: "alice" });
+      await countLogins("alice", 3);
+      const before = await countsOf("alice");
+
+      expect(await logInWhileBusy("alice")).toEqual({ ok: false, error: { code: "busy" } });
+
+      expect(await countsOf("alice")).toStrictEqual(before);
+    });
+
+    it("keeps no window for a name that had none", async () => {
+      await createUser({ name: "alice" });
+
+      expect(await logInWhileBusy("alice")).toEqual({ ok: false, error: { code: "busy" } });
+
+      expect(await getTestDb().loginWindow.count()).toBe(0);
+    });
+  });
+
+  it("checks the password of exactly 2 of 10 logins at the same time in a window of 18, and counts them in both tables", async () => {
+    await createUser({ name: "alice" });
+    await getTestDb().loginWindow.create({ data: { username: "alice", attempts: 18, startedAt: new Date() } });
+    vi.mocked(hashPassword).mockClear();
+    vi.mocked(verifyPassword).mockClear();
+
+    const results = await Promise.all(
+      Array.from({ length: 10 }, () => authService.logIn({ name: "alice", password: WRONG_PASSWORD }, new Headers())),
+    );
+
+    const codes = results.map((result) => (result.ok ? "ok" : result.error.code));
+    expect(codes.filter((code) => code === "invalid-credentials")).toHaveLength(2);
+    expect(codes.filter((code) => code === "wait")).toHaveLength(8);
+    expect(vi.mocked(verifyPassword).mock.calls.length + vi.mocked(hashPassword).mock.calls.length).toBe(2);
+    const counts = await countsOf("alice");
+    expect(counts.window?.attempts).toBe(20);
+    expect(counts.attempt?.failures).toBe(2);
+  });
+});
+
 describe("changeFirstPassword", () => {
   const NEW_PASSWORD = "my-own-password";
 

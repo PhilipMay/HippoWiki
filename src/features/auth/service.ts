@@ -5,9 +5,10 @@
 // that set or clear the cookie. In a Server Action Better Auth has already applied them (`nextCookies()`); any other
 // caller passes them on itself. The service never logs a password.
 //
-// The service also counts the failed logins per submitted user name, in the database, and makes the next login for a
-// name wait after too many of them (see `wait.ts`). A login is counted before its password is checked, so that logins
-// at the same time get no more guesses than logins one after another.
+// The service also counts the logins per submitted user name, in the database: the failed ones in a row, after too
+// many of which the next login for the name waits, and all of them within the hour, of which only 20 are checked (see
+// `wait.ts`). A login is counted in both before its password is checked, so that logins at the same time get no more
+// guesses than logins one after another.
 
 import { isAPIError } from "better-auth/api";
 import { z } from "zod";
@@ -18,7 +19,7 @@ import {
   type PasswordChangeFieldErrors,
   type PasswordChangeInput,
 } from "@/features/auth/schema";
-import { waitAfterFailures } from "@/features/auth/wait";
+import { MAX_ATTEMPTS_PER_WINDOW, isWindowOver, waitAfterFailures, waitForWindow } from "@/features/auth/wait";
 import { getAuth } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { logger } from "@/lib/logger";
@@ -92,29 +93,47 @@ function currentTime(): Date {
 type AttemptCount = { failures: number; lastFailedAt: Date };
 
 /**
- * An attempt that is counted in `LoginAttempt` before its password is checked: the count before it (`null` without a
- * row) and the count it wrote.
+ * A login that is counted in `LoginAttempt` and in `LoginWindow` before its password is checked: the count of
+ * `LoginAttempt` before it (`null` without a row) and the count it wrote, the start of the window it counted in, and
+ * whether it started that window.
  */
-type Reservation = { previous: AttemptCount | null; reserved: AttemptCount };
+type Reservation = {
+  previous: AttemptCount | null;
+  reserved: AttemptCount;
+  windowStartedAt: Date;
+  startedWindow: boolean;
+};
 
-/** The login may be checked, or it has to wait `waitMs` milliseconds. */
-type ReserveResult = { reserved: true; reservation: Reservation } | { reserved: false; waitMs: number };
+/** Which of the two limits asks a login to wait: the failures in a row, or the logins per name and hour. */
+type WaitLimit = "failures" | "window";
+
+/** The login may be checked, or it has to wait `waitMs` milliseconds for `limit`. */
+type ReserveResult =
+  { reserved: true; reservation: Reservation } | { reserved: false; waitMs: number; limit: WaitLimit };
 
 /**
- * How often `reserveAttempt()` reads the count again after another login changed it. A round is only lost to a login
- * that changed the count, and after a few of those the count asks for a wait, so the limit is never reached in
- * practice.
+ * How often `reserveAttempt()` reads the counts again after another login changed them. A round is only lost to
+ * another login for the name that wrote in between: at most twice per such login, once for its count and once more if
+ * it succeeds and deletes the counts. Logins with a wrong password get a wait after a few counts, so they need only a
+ * few rounds; the limit is for many logins with the right password at the same moment, whose deletes let the others
+ * count again.
  */
-const MAX_RESERVE_ROUNDS = 10;
+const MAX_RESERVE_ROUNDS = 50;
+
+/** Thrown inside the transaction of `reserveAttempt()` when a count is no longer the one that was read: rolls it back. */
+class CountChangedError extends Error {}
 
 /**
- * Counts the login for the name as one more failure in a row, at the current time, before its password is checked,
- * unless the name has to wait. A wrong password then needs no further write; a successful login deletes the count,
- * and a login that was not checked takes it back (`releaseAttempt()`).
+ * Counts the login for the name, before its password is checked, at the current time: as one more failure in a row in
+ * `LoginAttempt` and as one more login of the hour in `LoginWindow`, unless one of the two asks for a wait. Then the
+ * longer of the two waits is returned and nothing is written. A wrong password needs no further write; a successful
+ * login deletes the counts, and a login that was not checked takes them back (`releaseAttempt()`).
  *
- * The write only succeeds if the row is still the one that was read; otherwise another login got in between and the
- * count is read again. So of the logins that arrive at the same time, only as many are checked as would be one after
- * another. Throws when the database fails or the count keeps changing.
+ * Both counts are written in one transaction, so a login is counted in both or in neither. Each write only succeeds
+ * if its row is still the one that was read, or, for a running window, if it has not started anew and is not full;
+ * otherwise another login got in between, the transaction is rolled back and the counts are read again. So of the
+ * logins that arrive at the same time, only as many are checked as would be one after another. Throws when the
+ * database fails or the counts keep changing.
  */
 async function reserveAttempt(name: string): Promise<ReserveResult> {
   const db = getDb();
@@ -124,31 +143,82 @@ async function reserveAttempt(name: string): Promise<ReserveResult> {
       where: { username: name },
       select: { failures: true, lastFailedAt: true },
     });
-    if (previous) {
-      const waitMs = previous.lastFailedAt.getTime() + waitAfterFailures(previous.failures) - now.getTime();
-      if (waitMs > 0) return { reserved: false, waitMs };
+    const window = await db.loginWindow.findUnique({
+      where: { username: name },
+      select: { attempts: true, startedAt: true },
+    });
+    const failuresWaitMs = previous
+      ? previous.lastFailedAt.getTime() + waitAfterFailures(previous.failures) - now.getTime()
+      : 0;
+    const windowWaitMs = waitForWindow(window, now);
+    if (failuresWaitMs > 0 || windowWaitMs > 0) {
+      return failuresWaitMs >= windowWaitMs
+        ? { reserved: false, waitMs: failuresWaitMs, limit: "failures" }
+        : { reserved: false, waitMs: windowWaitMs, limit: "window" };
     }
 
     const reserved = { failures: (previous?.failures ?? 0) + 1, lastFailedAt: now };
-    const { count } = previous
-      ? await db.loginAttempt.updateMany({
-          where: { username: name, failures: previous.failures, lastFailedAt: previous.lastFailedAt },
-          data: reserved,
-        })
-      : // A row that another login created in the meantime is skipped and reported as a count of 0.
-        await db.loginAttempt.createMany({ data: [{ username: name, ...reserved }], skipDuplicates: true });
-    if (count === 1) return { reserved: true, reservation: { previous, reserved } };
+    const runningWindow = window && !isWindowOver(window, now) ? window : null;
+    try {
+      await db.$transaction(async (tx) => {
+        const attempt = previous
+          ? await tx.loginAttempt.updateMany({
+              where: { username: name, failures: previous.failures, lastFailedAt: previous.lastFailedAt },
+              data: reserved,
+            })
+          : // A row that another login created in the meantime is skipped and reported as a count of 0.
+            await tx.loginAttempt.createMany({ data: [{ username: name, ...reserved }], skipDuplicates: true });
+        if (attempt.count !== 1) throw new CountChangedError();
+
+        const counted = runningWindow
+          ? // Only the start and the limit are named, so that logins from different addresses do not make each other
+            // read again.
+            await tx.loginWindow.updateMany({
+              where: {
+                username: name,
+                startedAt: runningWindow.startedAt,
+                attempts: { lt: MAX_ATTEMPTS_PER_WINDOW },
+              },
+              data: { attempts: { increment: 1 } },
+            })
+          : window
+            ? await tx.loginWindow.updateMany({
+                where: { username: name, attempts: window.attempts, startedAt: window.startedAt },
+                data: { attempts: 1, startedAt: now },
+              })
+            : await tx.loginWindow.createMany({
+                data: [{ username: name, attempts: 1, startedAt: now }],
+                skipDuplicates: true,
+              });
+        if (counted.count !== 1) throw new CountChangedError();
+      });
+    } catch (err) {
+      if (err instanceof CountChangedError) continue;
+      throw err;
+    }
+    const reservation = {
+      previous,
+      reserved,
+      windowStartedAt: runningWindow?.startedAt ?? now,
+      startedWindow: !runningWindow,
+    };
+    return { reserved: true, reservation };
   }
-  throw new Error("the count of the failed logins kept changing, the login attempt was not counted");
+  throw new Error("the counts of the logins kept changing, the login attempt was not counted");
 }
 
 /**
- * Takes back the count of a login whose password was not checked, because the hashing was busy or something failed.
- * If the row is still the one the login wrote, it gets the count from before, so that a wait that was over is not
- * started again. If other logins have counted since, only the number goes down by one. A database error here is
- * logged and does not change the answer.
+ * Takes back the counts of a login whose password was not checked, because the hashing was busy or something failed.
+ * If the row of `LoginAttempt` is still the one the login wrote, it gets the count from before, so that a wait that
+ * was over is not started again. If other logins have counted since, only the number goes down by one. The window
+ * loses the login as well: a window that the login started and that still has only this login is deleted, any other
+ * goes down by one, as long as it has not started anew. A database error here is logged and does not change the
+ * answer.
  */
-async function releaseAttempt(name: string, { previous, reserved }: Reservation): Promise<void> {
+async function releaseAttempt(
+  name: string,
+  { previous, reserved, windowStartedAt, startedWindow }: Reservation,
+): Promise<void> {
   const db = getDb();
   const stillReserved = { username: name, failures: reserved.failures, lastFailedAt: reserved.lastFailedAt };
   try {
@@ -158,24 +228,50 @@ async function releaseAttempt(name: string, { previous, reserved }: Reservation)
           data: { failures: previous.failures, lastFailedAt: previous.lastFailedAt },
         })
       : await db.loginAttempt.deleteMany({ where: stillReserved });
-    if (count === 1) return;
-    await db.loginAttempt.updateMany({
-      where: { username: name, failures: { gt: 0 } },
-      data: { failures: { decrement: 1 } },
-    });
+    if (count !== 1) {
+      await db.loginAttempt.updateMany({
+        where: { username: name, failures: { gt: 0 } },
+        data: { failures: { decrement: 1 } },
+      });
+    }
+  } catch (err) {
+    logger.error({ err, name }, "failed to take back the login attempt");
+  }
+
+  try {
+    const { count } = startedWindow
+      ? await db.loginWindow.deleteMany({ where: { username: name, startedAt: windowStartedAt, attempts: 1 } })
+      : { count: 0 };
+    if (count !== 1) {
+      await db.loginWindow.updateMany({
+        where: { username: name, startedAt: windowStartedAt, attempts: { gt: 0 } },
+        data: { attempts: { decrement: 1 } },
+      });
+    }
   } catch (err) {
     logger.error({ err, name }, "failed to take back the login attempt");
   }
 }
 
-/** Forgets the failed logins for the name after a successful one. A database error is logged; the login stands. */
+/**
+ * Forgets the failed logins and the window of the name after a successful login. A database error is logged; the
+ * login stands.
+ */
 async function clearFailures(name: string): Promise<void> {
   try {
-    await getDb().loginAttempt.deleteMany({ where: { username: name } });
+    const db = getDb();
+    await db.loginAttempt.deleteMany({ where: { username: name } });
+    await db.loginWindow.deleteMany({ where: { username: name } });
   } catch (err) {
     logger.error({ err, name }, "failed to reset the failed logins");
   }
 }
+
+/** The log message of a login that has to wait, per limit. */
+const WAIT_LOG_MESSAGES: Record<WaitLimit, string> = {
+  failures: "login refused: waiting after failed logins",
+  window: "login refused: too many logins for the name within the hour",
+};
 
 /**
  * Logs in with a user name and a password and starts a session. An unknown name and a wrong password give the same
@@ -183,14 +279,15 @@ async function clearFailures(name: string): Promise<void> {
  *
  * - A name that breaks the name rule cannot belong to a user: it is answered like a wrong password, without a hash,
  *   and is not counted, because the table of the failed logins would otherwise take any text.
- * - After 5 failed logins in a row for a name, the next one has to wait (`wait.ts`). During the wait the login is
- *   refused with the code `wait`, without checking the password and without counting the attempt.
+ * - After 5 failed logins in a row for a name, the next one has to wait, and so does every login after 20 logins for
+ *   the name within the hour (`wait.ts`). During a wait the login is refused with the code `wait` and the longer of
+ *   the two waits, without checking the password and without counting the attempt.
  * - Every other login is counted as a failure before its password is checked (`reserveAttempt()`), so logins at the
  *   same time cannot get past the wait. If it cannot be counted, the password is not checked.
  * - A password of more than 128 characters cannot belong to a user either: it counts as a failed login, without a
  *   hash.
- * - A successful login forgets the failed ones. A login that was not checked, because the hashing was busy or
- *   something failed, takes its count back.
+ * - A successful login forgets the failed ones and the window of the name. A login that was not checked, because the
+ *   hashing was busy or something failed, takes its counts back.
  */
 export async function logIn(
   input: { name: string; password: string },
@@ -208,7 +305,7 @@ export async function logIn(
     return { ok: false, error: { code: "failed" } };
   }
   if (!attempt.reserved) {
-    logger.warn({ name, waitMs: attempt.waitMs }, "login refused: waiting after failed logins");
+    logger.warn({ name, waitMs: attempt.waitMs }, WAIT_LOG_MESSAGES[attempt.limit]);
     return { ok: false, error: { code: "wait", waitMs: attempt.waitMs } };
   }
   // From here on the login is counted as a failure, unless it succeeds or its count is taken back.

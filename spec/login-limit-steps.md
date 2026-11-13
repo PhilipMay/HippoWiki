@@ -68,7 +68,7 @@ The rules that span several steps. The wrap-up moves them into `users-and-login.
 ## Checklist
 
 - [x] Client address group
-- [ ] Limit per user name and hour
+- [x] Limit per user name and hour
 - [ ] Wait per user name and client address
 - [ ] Deleting old rows
 - [ ] Wrap-up
@@ -156,10 +156,15 @@ the next step lets every address count on its own.
       `startedAt` that was read and `attempts` below 20. Logins from different addresses then do not make each
       other read again.
   - If one of the two writes reports a count other than 1, the transaction is rolled back, by an error that only
-    `reserveAttempt()` knows and catches, and the counts are read again, within the `MAX_RESERVE_ROUNDS` of today.
+    `reserveAttempt()` knows and catches, and the counts are read again. `MAX_RESERVE_ROUNDS` goes up from 10 to 50:
+    with the transaction a round takes longer, and in the existing test of 20 logins at the same time with the right
+    password, the successful ones delete the counts while the others still try, so some of them lost more than 10
+    rounds. A round is only lost to another login for the name that wrote in between, at most twice per such login.
   - The reservation remembers the `startedAt` of the window it counted in.
 - `releaseAttempt()` also takes the login back from the window: `attempts` decremented by 1 for the row with the
-  remembered `startedAt` and `attempts` above 0. A database error is logged and does not change the answer, as today.
+  remembered `startedAt` and `attempts` above 0. A window that the login started (there was none, or its hour was
+  over) is deleted instead while it still has only this login, so that a name without a window has none afterwards.
+  A database error is logged and does not change the answer, as today.
 - `clearFailures()` also deletes the window of the name.
 - The log line of a refused login says which limit asked for the wait.
 - The rules of `logIn()` for what is counted stay: a name that breaks the name rule gets no row in either table, and a

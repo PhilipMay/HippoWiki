@@ -230,6 +230,23 @@ test("the wait of one name does not hold back another user", async ({ page }) =>
   await expect(page).toHaveURL("/folders");
 });
 
+test("with 20 logins for a name within the hour, the right password waits for the rest of the hour", async ({
+  page,
+}) => {
+  await getTestDb().loginWindow.create({
+    data: { username: KNOWN_USER.name, attempts: 20, startedAt: new Date() },
+  });
+  await page.goto("/login");
+
+  await submitLogin(page, KNOWN_USER.name, KNOWN_USER.password);
+
+  await expect(formAlert(page)).toHaveText("Too many failed logins. Please try again in 60 minutes.");
+  expect(await newSessionCount()).toBe(0);
+
+  await submitLogin(page, KNOWN_ADMIN.name, KNOWN_ADMIN.password);
+  await expect(page).toHaveURL("/folders");
+});
+
 test("an empty form shows an error at each field and focuses the first one", async ({ page }) => {
   await page.goto("/login");
 

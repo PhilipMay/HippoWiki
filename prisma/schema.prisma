@@ -164,3 +164,16 @@ model LoginAttempt {
   /// When the last of them was counted; the wait counts from here.
   lastFailedAt DateTime @db.Timestamptz(3)
 }
+
+/// The logins counted for a submitted user name in the current hour, from all client addresses together, for the limit
+/// per name. It has no relation to `User`, like `LoginAttempt`: unknown names are counted too. A login is counted
+/// before its password is checked; when the hour is over, the next login starts a new window. A successful login
+/// deletes the row.
+model LoginWindow {
+  /// The submitted user name; always one that follows the name rule.
+  username  String   @id
+  /// How many logins for the name were counted since `startedAt`, including the ones whose password is being checked.
+  attempts  Int
+  /// When the first of them was counted; the window ends one hour later.
+  startedAt DateTime @db.Timestamptz(3)
+}
