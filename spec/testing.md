@@ -116,7 +116,8 @@ How the code is tested. Commands are listed in `README.md`.
   sends and writes the address of the connection into it only when it is missing.
 - A test waits for the answer of every login it submits, for example until the password field is emptied, also when
   the alert already shows the expected text from an earlier attempt. A login that is still being counted when the next
-  test resets the database can deadlock with the `TRUNCATE` of the reset, because its transaction writes two tables.
+  test resets the database runs into the `TRUNCATE` of the reset, because its transaction writes two tables. The reset
+  survives that on its own (see `emptyTestDatabase()` below), but the wait keeps a test from depending on it.
 - The tests log in once and reuse the session:
   - The Playwright project `setup` (`e2e/auth.setup.ts`) logs in on the login page as the known admin and the known
     normal user of `prisma/known-users.ts` and saves one browser state each in `e2e/.auth/` (ignored by Git and by
@@ -139,6 +140,12 @@ How the code is tested. Commands are listed in `README.md`.
   - `resetTestDatabase()` empties all tables except the migration history and `AuthSecret`, then creates the known
     users with their fixed ids and restores their saved sessions; tests call it in `beforeEach`.
     `emptyTestDatabase()` only empties the tables; the integration tests use it.
+  - The `TRUNCATE` of `emptyTestDatabase()` runs in a transaction with `lock_timeout` of 2 seconds and is tried up to
+    five times, with a growing pause in between. A login of the server that is still running writes `LoginAttempt` and
+    `LoginWindow` in one transaction, while the `TRUNCATE` locks the tables one after another, so the two can deadlock
+    (PostgreSQL `40P01`) or the `TRUNCATE` can wait too long for a lock (`55P03`). Both are over in milliseconds, so
+    the next try succeeds; without the retry such a reset fails its test, and in CI a test that only passes on a retry
+    fails the run. A fixed order of the tables would not help, because the order of the login is its own.
   - `createUser()` inserts a user with its credential account, in the shape of `src/features/users/records.ts`, with
     a unique name and the password `TEST_PASSWORD` unless they are given, and with the first password still to
     change unless `mustChangePassword` is false. The hash of a password is computed once per process.

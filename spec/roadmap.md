@@ -165,6 +165,3 @@ All from "Current limits" in `container-image.md`:
   enough when many logins with the right password arrive at the same moment.
 - Log volume: every login whose `X-Forwarded-For` has no usable entry logs a warning; check that a correct setup
   behind Traefik writes none, so that a warning points to a broken setup.
-- Reset of the end-to-end database: `resetTestDatabase()` truncates all tables in the order PostgreSQL lists them, so
-  a login transaction that is still running can deadlock with it (`testing.md`). Check whether truncating in a fixed
-  order, or retrying on a deadlock, makes the reset robust against a test that does not wait for its last login.

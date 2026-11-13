@@ -2,6 +2,7 @@
 // never touch the development database.
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import { setTimeout } from "node:timers/promises";
 
 import { PrismaPg } from "@prisma/adapter-pg";
 
@@ -68,6 +69,38 @@ export async function disconnectTestDb(): Promise<void> {
 const KEPT_TABLES = ["_prisma_migrations", "AuthSecret"];
 
 /**
+ * The PostgreSQL errors of a `TRUNCATE` that a transaction of the server got in the way of: `40P01` when the two
+ * deadlocked and PostgreSQL rolled the `TRUNCATE` back, `55P03` when it waited longer than `TRUNCATE_LOCK_TIMEOUT`
+ * for a lock. A login writes `LoginAttempt` and `LoginWindow` in one transaction, and `TRUNCATE` locks the tables
+ * one after another in the order of `pg_tables`, so each can hold the lock the other waits for. A fixed order would
+ * not help: the order of the login is its own. Both errors go away once that transaction is over, which takes
+ * milliseconds, so the reset simply tries again.
+ */
+const LOCK_ERROR_CODES = ["40P01", "55P03"];
+/** How long the `TRUNCATE` waits for a lock before it gives up and is tried again. */
+const TRUNCATE_LOCK_TIMEOUT = "2s";
+/** How often the `TRUNCATE` is tried before the reset fails, and how long it waits longer after each try. */
+const TRUNCATE_ATTEMPTS = 5;
+const TRUNCATE_RETRY_DELAY_MS = 100;
+
+/** The code in the message of a failed raw query, e.g. "Raw query failed. Code: `40P01`." */
+const CODE_IN_MESSAGE = /Raw query failed\. Code: `([^`]+)`/;
+
+/**
+ * The PostgreSQL error code of a failed raw query. The driver adapter of `pg` puts it below `driverAdapterError`,
+ * other versions and clients put it directly into `meta`, and the message carries it as well. All three are read, so
+ * that the retry below does not quietly stop working when the shape of the error changes.
+ */
+function postgresErrorCode(error: unknown): string | undefined {
+  const meta = (error as { meta?: { code?: unknown; driverAdapterError?: { cause?: { code?: unknown } } } } | null)
+    ?.meta;
+  const code: unknown = meta?.driverAdapterError?.cause?.code ?? meta?.code;
+  if (typeof code === "string") return code;
+  const message: unknown = (error as { message?: unknown } | null)?.message;
+  return typeof message === "string" ? CODE_IN_MESSAGE.exec(message)?.[1] : undefined;
+}
+
+/**
  * Deletes all rows from all tables of the test database, except the migration history and the secret of the session
  * cookies. The integration tests use it before every test; the end-to-end tests use `resetTestDatabase()`.
  */
@@ -84,7 +117,23 @@ export async function emptyTestDatabase(): Promise<void> {
   const names = tables
     .filter(({ tablename }) => !KEPT_TABLES.includes(tablename))
     .map(({ tablename }) => `"public"."${tablename.replaceAll('"', '""')}"`);
-  if (names.length > 0) await db.$executeRawUnsafe(`TRUNCATE TABLE ${names.join(", ")} CASCADE`);
+  if (names.length === 0) return;
+  const truncate = `TRUNCATE TABLE ${names.join(", ")} CASCADE`;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      // One transaction, so that `SET LOCAL` and the `TRUNCATE` use the same connection of the pool. Without the
+      // timeout the reset would wait for a lock until the test times out.
+      await db.$transaction(async (tx) => {
+        await tx.$executeRawUnsafe(`SET LOCAL lock_timeout = '${TRUNCATE_LOCK_TIMEOUT}'`);
+        await tx.$executeRawUnsafe(truncate);
+      });
+      return;
+    } catch (err) {
+      const code = postgresErrorCode(err);
+      if (attempt === TRUNCATE_ATTEMPTS || code === undefined || !LOCK_ERROR_CODES.includes(code)) throw err;
+      await setTimeout(attempt * TRUNCATE_RETRY_DELAY_MS);
+    }
+  }
 }
 
 /** A row of `Session` as the setup project saved it: JSON has no dates, so they are strings. */
