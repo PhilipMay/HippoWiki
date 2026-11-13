@@ -27,6 +27,8 @@ The specification lives in the `spec/` directory. This catalog should always be 
   routes, decisions, limits)
 - `spec/roadmap.md`: backlog of candidate features, grouped by theme, and things still to check
 - `spec/issue-report.md`: how to report issues found in code and document reviews
+- `spec/api-tokens-steps.md`: step plan for long-lived API tokens (the token model and service, the check of a bearer
+  token, the own-account page with creating, listing and revoking)
 
 ## Running the Checks
 
