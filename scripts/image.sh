@@ -167,6 +167,46 @@ smoke_require_status() {
   echo "ok: ${path} answers 200"
 }
 
+# Prints the value of a response header of a GET request, or nothing when the response lacks it. Header names are
+# compared without regard to case.
+http_header() {
+  local path="$1" name="$2"
+  curl --silent --output /dev/null --dump-header - --max-time 10 "${SMOKE_URL}${path}" |
+    tr -d '\r' |
+    awk -v name="$name" '
+      BEGIN { name = tolower(name) }
+      {
+        colon = index($0, ":")
+        if (colon > 0 && tolower(substr($0, 1, colon - 1)) == name) {
+          value = substr($0, colon + 1)
+          sub(/^[ \t]+/, "", value)
+          print value
+          exit
+        }
+      }' ||
+    true
+}
+
+# Fails unless the response of the path has the header with exactly the value.
+smoke_require_header() {
+  local path="$1" name="$2" expected="$3" actual
+  actual="$(http_header "$path" "$name")"
+  if [[ "$actual" != "$expected" ]]; then
+    smoke_fail "${path} sent ${name} '${actual}' instead of '${expected}'."
+  fi
+  echo "ok: ${path} sends ${name}: ${expected}"
+}
+
+# Fails when the response of the path has the header, whatever its value.
+smoke_require_no_header() {
+  local path="$1" name="$2" actual
+  actual="$(http_header "$path" "$name")"
+  if [[ -n "$actual" ]]; then
+    smoke_fail "${path} sent ${name} '${actual}', which it must not send."
+  fi
+  echo "ok: ${path} sends no ${name}"
+}
+
 # Starts a container of the image that must not serve: it has to exit with a non-zero code. $1 says what is wrong
 # with its environment, $2 is a text that its output must contain; further arguments are options of `podman run`.
 smoke_require_failed_start() {
@@ -274,6 +314,14 @@ cmd_smoke() {
     smoke_fail "the server stored no secret for the session cookies."
   fi
   echo "ok: the server stored the secret of the session cookies"
+  # The security headers of next.config.ts, which the standalone server sets itself.
+  smoke_require_header /login Strict-Transport-Security "max-age=63072000; includeSubDomains"
+  smoke_require_header /login Content-Security-Policy \
+    "frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; img-src 'self' data:"
+  smoke_require_header /login X-Frame-Options DENY
+  smoke_require_header /login X-Content-Type-Options nosniff
+  smoke_require_header /login Referrer-Policy same-origin
+  smoke_require_no_header /login X-Powered-By
   local asset
   asset="$(curl --silent --max-time 10 "${SMOKE_URL}/login" | grep -o '/_next/static/[^"\\]*' | awk 'NR == 1')"
   if [[ -z "$asset" ]]; then

@@ -26,11 +26,12 @@ login like every other address, and the server cannot change its own code in the
     insert inline styles and scripts, and the policy of the suggestion does not restrict them.
   - Showing Markdown images from other hosts in another way, for example through a proxy of the server, and a
     message in the page view for a blocked image.
+  - Showing `data:` images in the page view: react-markdown removes their address, and that stays so.
   - Turning off the image optimizer of Next.js for logged-in users.
 
 ## Checklist
 
-- [ ] Security headers
+- [x] Security headers
 - [ ] Image optimizer behind the login
 - [ ] Server files owned by root
 - [ ] Wrap-up
@@ -74,8 +75,13 @@ Every response of the server carries `Strict-Transport-Security`, `Content-Secur
   - A page whose content has an image from another host, `![](https://tracker.example/x.png)`: the browser does not
     request it (a `page.route()` for `https://tracker.example/**` is never called), and it reports the violation of
     the Content Security Policy (a `securitypolicyviolation` event whose `effectiveDirective` is `img-src`).
-    `collectErrors()` holds only the console error of this violation.
-  - A page whose content has a `data:` image: it loads (`naturalWidth` above 0) without an error.
+    `collectErrors()` holds only the console errors of this violation. The browser may try to load the image more
+    than once, and reports each try.
+  - A page whose content has a `data:` image: react-markdown removes the `data:` URL (its default `urlTransform` keeps
+    only `http`, `https`, `irc`, `ircs`, `mailto` and `xmpp`), so the image has no address and the browser reports no
+    violation of the Content Security Policy. `img-src` keeps `data:` for the app itself, not for page content;
+    `MarkdownContent` stays as it is. In development, React warns about the empty `src` on the console; the test
+    allows only this warning, which a production build does not give.
 - `next.config.ts` is something every page depends on, so the complete `npm run test:e2e` runs in this step. A spec
   whose page shows an image from another host and asserts that `collectErrors()` stays empty fails now; such a spec
   uses an image of the wiki or a `data:` image instead.
@@ -152,8 +158,8 @@ Move the lasting content of this plan into the other spec files and remove the p
      Next.js but not the image optimizer; a new section or bullet on the security headers in `next.config.ts`, which
      every new route gets without doing anything, and that `img-src 'self' data:` keeps images of other hosts out.
    - `users-and-login.md`: "Authenticated access only" says that `/_next/image` is behind the login as well.
-   - `pages.md`: the page view shows Markdown images only from the wiki itself and `data:` URLs; an image from
-     another host is blocked by the browser. The same under "Current limits".
+   - `pages.md`: the page view shows Markdown images only from the wiki itself; an image from another host is blocked
+     by the browser, and a `data:` URL is removed by react-markdown. The same under "Current limits".
    - `container-image.md`: the ownership in the stage `app` (root, with `.next/cache` for `node`), the new checks of
      the smoke test (headers, `/_next/image`, write access), and in "What the environment has to provide" that the
      server sets the security headers itself, so a reverse proxy does not have to.

@@ -8,42 +8,6 @@ client address group and against the deployment, again with harmless requests on
 
 ## Issues
 
-### Minor: no security headers
-
-- **Location:** `next.config.ts` (no `headers()`); the reverse proxy sets none either
-- **Category:** security
-- **Problem:** The responses carry no `Strict-Transport-Security`, `Content-Security-Policy`, `X-Frame-Options`,
-  `X-Content-Type-Options` or `Referrer-Policy`.
-- **Impact:** Without HSTS, a first visit can be downgraded to plain HTTP. Nothing prevents clickjacking of actions
-  such as deleting a page or creating a user from a same-site page, and there is no CSP as a second line of defence for
-  Markdown written by users.
-- **Evidence:** The response headers of `GET /login` on the deployment:
-
-  ```text
-  cache-control: private, no-cache, no-store, max-age=0, must-revalidate
-  content-type: text/html; charset=utf-8
-  vary: rsc, next-router-state-tree, ...
-  x-powered-by: Next.js
-  ```
-
-- **Suggestion (required):** An `async headers()` in `next.config.ts` for `/:path*` with:
-  - `Strict-Transport-Security: max-age=63072000; includeSubDomains`
-  - `Content-Security-Policy: frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; img-src 'self' data:`
-  - `X-Frame-Options: DENY`
-  - `X-Content-Type-Options: nosniff`
-  - `Referrer-Policy: same-origin`
-
-### Minor: Markdown images load from any host
-
-- **Location:** `src/features/pages/components/MarkdownContent.tsx`, `MarkdownContent` (images use the default
-  rendering of react-markdown)
-- **Category:** security
-- **Problem:** `![](https://tracker.example/x.png)` becomes a plain `<img>` that loads from the other host.
-- **Impact:** Any logged-in user can track who reads a page (address and browser of the reader). Without a
-  `Referrer-Policy`, the address of the page with folder and page names can leak as well.
-- **Evidence:** `MarkdownContent.tsx` passes no `img` in `components` and no `urlTransform` that restricts images.
-- **Suggestion (optional):** `img-src 'self' data:` and `Referrer-Policy: same-origin` from the issue above fix this.
-
 ### Minor: logins without an account can block all logins
 
 - **Location:** `src/lib/password-hash.ts` (`MAX_CONCURRENT_HASHES = 4`); `src/features/auth/service.ts`,
@@ -67,13 +31,6 @@ client address group and against the deployment, again with harmless requests on
 - **Alternatives:** A limit per client address group across all user names in the server, next to the two limits in
   `reserveAttempt()`. It needs `HIPPOWIKI_TRUSTED_PROXIES` of at least 1: with `0` every login is in the group
   `shared`, and the limit would hold back all users together.
-
-### Nit: the `X-Powered-By: Next.js` header is sent
-
-- **Location:** `next.config.ts`
-- **Category:** security
-- **Problem:** Every response names the framework.
-- **Suggestion (optional):** `poweredByHeader: false`.
 
 ### Nit: the image optimizer answers without a login
 
