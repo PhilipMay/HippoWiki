@@ -21,7 +21,14 @@ import {
   type PasswordChangeFieldErrors,
   type PasswordChangeInput,
 } from "@/features/auth/schema";
-import { MAX_ATTEMPTS_PER_WINDOW, isWindowOver, waitAfterFailures, waitForWindow } from "@/features/auth/wait";
+import {
+  ATTEMPT_RETENTION_MS,
+  MAX_ATTEMPTS_PER_WINDOW,
+  NAME_WINDOW_MS,
+  isWindowOver,
+  waitAfterFailures,
+  waitForWindow,
+} from "@/features/auth/wait";
 import { getAuth } from "@/lib/auth";
 import { isClientAddressGroup, SHARED_CLIENT_ADDRESS } from "@/lib/client-address";
 import { getDb } from "@/lib/db";
@@ -161,7 +168,10 @@ async function reserveAttempt(name: string, clientAddress: string): Promise<Rese
         : { reserved: false, waitMs: windowWaitMs, limit: "window" };
     }
 
-    const reserved = { failures: (previous?.failures ?? 0) + 1, lastFailedAt: now };
+    // A row whose last failure is more than a day old is not a failure in a row any more: the count starts again.
+    const inARow =
+      previous && now.getTime() - previous.lastFailedAt.getTime() <= ATTEMPT_RETENTION_MS ? previous.failures : 0;
+    const reserved = { failures: inARow + 1, lastFailedAt: now };
     const runningWindow = window && !isWindowOver(window, now) ? window : null;
     try {
       await db.$transaction(async (tx) => {
@@ -285,6 +295,26 @@ async function clearFailures(name: string, clientAddress: string): Promise<void>
   }
 }
 
+/**
+ * Deletes the counts that no login needs any more, of all names and groups: the rows of `LoginAttempt` whose last
+ * failure is more than a day old, and the windows whose hour is over. So the two tables stay small, although every
+ * pair of a name and a client address group gets a row. A database error is logged and does not change the answer.
+ */
+async function deleteOldCounts(): Promise<void> {
+  const now = currentTime().getTime();
+  const db = getDb();
+  try {
+    await db.loginAttempt.deleteMany({ where: { lastFailedAt: { lt: new Date(now - ATTEMPT_RETENTION_MS) } } });
+  } catch (err) {
+    logger.error({ err }, "failed to delete the old counts of failed logins");
+  }
+  try {
+    await db.loginWindow.deleteMany({ where: { startedAt: { lte: new Date(now - NAME_WINDOW_MS) } } });
+  } catch (err) {
+    logger.error({ err }, "failed to delete the windows of logins whose hour is over");
+  }
+}
+
 /** The log message of a login that has to wait, per limit. */
 const WAIT_LOG_MESSAGES: Record<WaitLimit, string> = {
   failures: "login refused: waiting after failed logins",
@@ -306,7 +336,9 @@ const WAIT_LOG_MESSAGES: Record<WaitLimit, string> = {
  *   same time cannot get past the wait. If it cannot be counted, the password is not checked.
  * - A password of more than 128 characters cannot belong to a user either: it counts as a failed login, without a
  *   hash.
- * - A successful login forgets the failed ones of its name and group, and the window of the name. A login that was not checked, because the
+ * - A successful login forgets the failed ones of its name and group, and the window of the name.
+ * - A counted login deletes the old counts of all names (`deleteOldCounts()`): failures that are more than a day
+ *   old, and windows whose hour is over. A login that was not checked, because the
  *   hashing was busy or something failed, takes its counts back.
  */
 export async function logIn(
@@ -338,6 +370,8 @@ export async function logIn(
   }
   // From here on the login is counted as a failure, unless it succeeds or its count is taken back.
   const { reservation } = attempt;
+  // Only a counted login cleans up, so that logins that are refused at once cost no more than a read.
+  await deleteOldCounts();
 
   const parsedPassword = loginInputSchema.shape.password.safeParse(input.password);
   if (!parsedPassword.success) {

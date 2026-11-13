@@ -762,6 +762,72 @@ describe("the limit per user name and hour", () => {
   });
 });
 
+describe("the deleting of old rows", () => {
+  const HOUR_MS = 60 * 60_000;
+
+  /** A time the given number of milliseconds ago. */
+  function ago(ms: number): Date {
+    return new Date(Date.now() - ms);
+  }
+
+  it("deletes the failures of other names and addresses that are more than a day old after a counted login", async () => {
+    await getTestDb().loginAttempt.createMany({
+      data: [
+        { username: "bob", clientAddress: "203.0.113.7", failures: 3, lastFailedAt: ago(DAY_MS + HOUR_MS) },
+        { username: "carol", clientAddress: SHARED, failures: 9, lastFailedAt: ago(23 * HOUR_MS) },
+      ],
+    });
+
+    await authService.logIn({ name: "alice", password: WRONG_PASSWORD }, new Headers(), "198.51.100.9");
+
+    const rows = await getTestDb().loginAttempt.findMany({ orderBy: { username: "asc" } });
+    expect(rows.map(({ username, clientAddress }) => ({ username, clientAddress }))).toEqual([
+      { username: "alice", clientAddress: "198.51.100.9" },
+      { username: "carol", clientAddress: SHARED },
+    ]);
+  });
+
+  it("deletes the windows of other names whose hour is over, and keeps the running ones", async () => {
+    await getTestDb().loginWindow.createMany({
+      data: [
+        { username: "bob", attempts: 20, startedAt: ago(HOUR_MS + 1000) },
+        { username: "carol", attempts: 7, startedAt: ago(HOUR_MS - 60_000) },
+      ],
+    });
+
+    await authService.logIn({ name: "alice", password: WRONG_PASSWORD }, new Headers(), SHARED);
+
+    const windows = await getTestDb().loginWindow.findMany({ orderBy: { username: "asc" } });
+    expect(windows.map(({ username }) => username)).toEqual(["alice", "carol"]);
+  });
+
+  it("deletes nothing for a login that waits", async () => {
+    await getTestDb().loginAttempt.createMany({
+      data: [
+        { username: "alice", clientAddress: SHARED, failures: 5, lastFailedAt: new Date() },
+        { username: "bob", clientAddress: SHARED, failures: 3, lastFailedAt: ago(2 * DAY_MS) },
+      ],
+    });
+
+    const result = await authService.logIn({ name: "alice", password: WRONG_PASSWORD }, new Headers(), SHARED);
+
+    expect(result).toMatchObject({ ok: false, error: { code: "wait" } });
+    expect(await getTestDb().loginAttempt.count()).toBe(2);
+  });
+
+  it("does not make a login wait for a row of its own name that is more than a day old: it counts as the first failure", async () => {
+    await createUser({ name: "alice" });
+    await getTestDb().loginAttempt.create({
+      data: { username: "alice", clientAddress: SHARED, failures: 9, lastFailedAt: ago(DAY_MS + 1000) },
+    });
+
+    const result = await authService.logIn({ name: "alice", password: WRONG_PASSWORD }, new Headers(), SHARED);
+
+    expect(result).toEqual(INVALID_CREDENTIALS);
+    expect((await getTestDb().loginAttempt.findUniqueOrThrow({ where: attemptKey("alice") })).failures).toBe(1);
+  });
+});
+
 describe("changeFirstPassword", () => {
   const NEW_PASSWORD = "my-own-password";
 

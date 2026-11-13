@@ -19,6 +19,8 @@ const mocks = vi.hoisted(() => ({
   windowCreateMany: vi.fn(),
   windowUpdateMany: vi.fn(),
   windowDeleteMany: vi.fn(),
+  attemptDeleteOld: vi.fn(),
+  windowDeleteOld: vi.fn(),
   transaction: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
@@ -26,23 +28,32 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/auth", () => ({ getAuth: mocks.getAuth }));
-/** The mocked Prisma client. A transaction runs its callback with the same functions. */
-const db = vi.hoisted(() => ({
-  loginAttempt: {
-    findUnique: mocks.attemptFindUnique,
-    createMany: mocks.attemptCreateMany,
-    updateMany: mocks.attemptUpdateMany,
-    deleteMany: mocks.attemptDeleteMany,
-  },
-  loginWindow: {
-    findUnique: mocks.windowFindUnique,
-    createMany: mocks.windowCreateMany,
-    updateMany: mocks.windowUpdateMany,
-    deleteMany: mocks.windowDeleteMany,
-  },
-  user: { updateMany: mocks.userUpdateMany },
-  $transaction: mocks.transaction,
-}));
+/**
+ * The mocked Prisma client. A transaction runs its callback with the same functions. A delete that names no user name
+ * is the deleting of old rows, so it goes to a mock of its own (`attemptDeleteOld`, `windowDeleteOld`), and the mocks
+ * of the deletes of a name see only those.
+ */
+const db = vi.hoisted(() => {
+  type DeleteArgs = { where: Record<string, unknown> };
+  return {
+    loginAttempt: {
+      findUnique: mocks.attemptFindUnique,
+      createMany: mocks.attemptCreateMany,
+      updateMany: mocks.attemptUpdateMany,
+      deleteMany: (args: DeleteArgs): unknown =>
+        "username" in args.where ? mocks.attemptDeleteMany(args) : mocks.attemptDeleteOld(args),
+    },
+    loginWindow: {
+      findUnique: mocks.windowFindUnique,
+      createMany: mocks.windowCreateMany,
+      updateMany: mocks.windowUpdateMany,
+      deleteMany: (args: DeleteArgs): unknown =>
+        "username" in args.where ? mocks.windowDeleteMany(args) : mocks.windowDeleteOld(args),
+    },
+    user: { updateMany: mocks.userUpdateMany },
+    $transaction: mocks.transaction,
+  };
+});
 vi.mock("@/lib/db", () => ({ getDb: () => db }));
 vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, error: mocks.error } }));
 
@@ -150,6 +161,9 @@ beforeEach(() => {
   mocks.windowCreateMany.mockResolvedValue({ count: 1 });
   mocks.windowUpdateMany.mockResolvedValue({ count: 1 });
   mocks.windowDeleteMany.mockResolvedValue({ count: 1 });
+  // The deleting of old rows finds nothing to delete, unless a test says otherwise.
+  mocks.attemptDeleteOld.mockResolvedValue({ count: 0 });
+  mocks.windowDeleteOld.mockResolvedValue({ count: 0 });
   mocks.transaction.mockImplementation((callback: (tx: typeof db) => Promise<unknown>) => callback(db));
   mocks.getAuth.mockResolvedValue({
     api: {
@@ -921,6 +935,104 @@ describe("the client address group", () => {
       { name: "alice", clientAddress: "2001:db8:0:1::/64", waitMs: MINUTE },
       "login refused: waiting after failed logins",
     );
+  });
+});
+
+describe("the deleting of old rows", () => {
+  const DAY = 24 * 60 * MINUTE;
+  /** The delete of the rows of `LoginAttempt` whose last failure is more than a day before the clock. */
+  const OLD_ATTEMPTS = { where: { lastFailedAt: { lt: new Date(NOW.getTime() - DAY) } } };
+  /** The delete of the windows whose hour is over at the time of the clock. */
+  const OVER_WINDOWS = { where: { startedAt: { lte: new Date(NOW.getTime() - 60 * MINUTE) } } };
+
+  it.each([
+    ["a wrong password", () => mocks.signInUsername.mockRejectedValue(invalidCredentials()), false],
+    ["the right password", () => undefined, true],
+  ])("deletes old rows of all names with the times of the clock after a login with %s", async (_case, arrange, ok) => {
+    arrange();
+
+    const result = await logIn({ name: "alice", password: PASSWORD }, REQUEST_HEADERS, CLIENT_ADDRESS);
+
+    expect(result.ok).toBe(ok);
+    expect(mocks.attemptDeleteOld).toHaveBeenCalledExactlyOnceWith(OLD_ATTEMPTS);
+    expect(mocks.windowDeleteOld).toHaveBeenCalledExactlyOnceWith(OVER_WINDOWS);
+  });
+
+  it("deletes the old rows after the login is counted, outside the transaction", async () => {
+    let inTransaction = false;
+    mocks.transaction.mockImplementation(async (callback: (tx: typeof db) => Promise<unknown>) => {
+      inTransaction = true;
+      try {
+        return await callback(db);
+      } finally {
+        inTransaction = false;
+      }
+    });
+    const deletedInTransaction: boolean[] = [];
+    mocks.attemptDeleteOld.mockImplementation(() => {
+      deletedInTransaction.push(inTransaction);
+      return Promise.resolve({ count: 0 });
+    });
+
+    await logIn({ name: "alice", password: PASSWORD }, REQUEST_HEADERS, CLIENT_ADDRESS);
+
+    expect(deletedInTransaction).toEqual([false]);
+    expect(mocks.attemptDeleteOld.mock.invocationCallOrder[0]).toBeGreaterThan(
+      mocks.attemptCreateMany.mock.invocationCallOrder[0] ?? Infinity,
+    );
+  });
+
+  it.each([
+    [
+      "a login that waits",
+      () => mocks.attemptFindUnique.mockResolvedValue({ failures: 5, lastFailedAt: NOW }),
+      "alice",
+    ],
+    ["a login with a name that breaks the name rule", () => undefined, "Not A Name!"],
+  ])("deletes nothing for %s", async (_case, arrange, name) => {
+    arrange();
+
+    await logIn({ name, password: PASSWORD }, REQUEST_HEADERS, CLIENT_ADDRESS);
+
+    expect(mocks.attemptDeleteOld).not.toHaveBeenCalled();
+    expect(mocks.windowDeleteOld).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["the old failures", mocks.attemptDeleteOld, "failed to delete the old counts of failed logins"],
+    [
+      "the windows whose hour is over",
+      mocks.windowDeleteOld,
+      "failed to delete the windows of logins whose hour is over",
+    ],
+  ])("logs an error when %s cannot be deleted and answers as without it", async (_case, deleteOld, message) => {
+    const err = new Error("connection refused");
+    deleteOld.mockRejectedValue(err);
+
+    const result = await logIn({ name: "alice", password: PASSWORD }, REQUEST_HEADERS, CLIENT_ADDRESS);
+
+    expect(result.ok).toBe(true);
+    expect(mocks.signInUsername).toHaveBeenCalledOnce();
+    expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ err }, message);
+    // The other delete is done all the same.
+    expect(mocks.attemptDeleteOld).toHaveBeenCalledOnce();
+    expect(mocks.windowDeleteOld).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["more than a day ago", DAY + 1, 1],
+    ["exactly a day ago", DAY, 10],
+  ])("counts a row whose last failure was %s as %i failures in a row", async (_case, ago, failures) => {
+    const previous = { failures: 9, lastFailedAt: new Date(NOW.getTime() - ago) };
+    mocks.attemptFindUnique.mockResolvedValue(previous);
+    mocks.signInUsername.mockRejectedValue(invalidCredentials());
+
+    await logIn({ name: "alice", password: PASSWORD }, REQUEST_HEADERS, CLIENT_ADDRESS);
+
+    expect(mocks.attemptUpdateMany).toHaveBeenCalledExactlyOnceWith({
+      ...nextAttempt("alice", previous),
+      data: { failures, lastFailedAt: NOW },
+    });
   });
 });
 

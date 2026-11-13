@@ -9,6 +9,12 @@ export const FAILURES_BEFORE_WAIT = 5;
 export const FIRST_WAIT_MS = 60_000;
 /** The longest wait. */
 export const MAX_WAIT_MS = 15 * 60_000;
+/**
+ * How long the failed logins of a user name from a client address group are kept after the last of them. The longest
+ * wait is 15 minutes, so no older row still makes a login wait; failures in a row are failures with less than this
+ * time between them.
+ */
+export const ATTEMPT_RETENTION_MS = 24 * 60 * 60_000;
 
 /**
  * How long the next login for a user name from a client address group has to wait after the given number of failed
