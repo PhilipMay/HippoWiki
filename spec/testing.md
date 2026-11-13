@@ -175,8 +175,8 @@ How the code is tested. Commands are listed in `README.md`.
 - `e2e/security-headers.spec.ts` checks the security headers of `next.config.ts` (see "Security headers" in
   `architecture.md`) with their exact values, and that no `X-Powered-By` is sent: on the login page, the redirect to
   it, `/api/health`, a page with a login and a `/_next/static/` file. It also checks that an image of another host in
-  a page is not requested and is reported as a violation of `img-src`, and that react-markdown removes the address of
-  a `data:` image. A change to the headers changes this spec and the smoke test of the container image.
+  a page is not requested and is reported as a violation of `img-src`, and that a `data:` image is not shown in the
+  page at all. A change to the headers changes this spec and the smoke test of the container image.
 - Every feature step adds end-to-end tests for its behaviour, including error and empty states.
 
 ## Continuous integration

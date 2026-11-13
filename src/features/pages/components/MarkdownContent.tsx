@@ -79,6 +79,12 @@ const components: Components = {
     </TableCell>
   ),
   td: ({ children, style }) => <TableCell style={style}>{children}</TableCell>,
+  // react-markdown empties the address of an image whose protocol is not a safe one, such as a `data:` URL. An
+  // `<img>` without an address shows a broken image and can make the browser ask for the page itself again, so such
+  // an image is left out. An image with an address is rendered as it is; one of another host is blocked by the
+  // browser through the Content Security Policy (see "Security headers" in `architecture.md`). `Box` renders the
+  // `img` element, because the lint rules of Next.js report a plain `<img>`.
+  img: ({ src, alt, title }) => (src ? <Box component="img" src={src} alt={alt} title={title} /> : null),
 };
 
 /**

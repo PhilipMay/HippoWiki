@@ -116,7 +116,7 @@ test.describe("with the saved login of the normal user", () => {
     expect(trackerRequests).toBe(0);
   });
 
-  test("a data: image in a page has its address removed", async ({ page }) => {
+  test("a data: image is not shown in the page", async ({ page }) => {
     const errors = collectErrors(page);
     const violations = await collectViolations(page);
     const folder = await createFolder({ name: "handbook" });
@@ -129,15 +129,11 @@ test.describe("with the saved login of the normal user", () => {
 
     await page.goto("/folders/handbook/inline.md");
 
-    // react-markdown keeps only addresses with a safe protocol; `data:` is not one of them.
-    const image = page.getByRole("main").getByRole("img", { name: "dot" });
-    await expect(image).toHaveCount(1);
-    // No address at all, or an empty one.
-    await expect(image).not.toHaveAttribute("src", /\S/);
+    // react-markdown keeps only addresses with a safe protocol and empties the address of a `data:` image;
+    // `MarkdownContent` leaves out an image without an address instead of rendering one the browser cannot show.
+    await expect(page.getByRole("heading", { level: 1, name: "Inline" })).toBeVisible();
+    await expect(page.getByRole("main").locator("img")).toHaveCount(0);
     expect(await violations()).toEqual([]);
-    // In development React warns about the empty address that react-markdown leaves; a production build does not.
-    expect(errors.filter((error) => !error.startsWith('An empty string ("") was passed to the %s attribute'))).toEqual(
-      [],
-    );
+    expect(errors).toEqual([]);
   });
 });

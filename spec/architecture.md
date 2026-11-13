@@ -244,7 +244,9 @@ The feature is described in `users-and-login.md`. What every new route, query an
   instead of passing it as the form's `action`: React resets a form after its action, which puts these controls back
   to their initial state, out of sync with the controlled one.
 - Browser titles are built with `pageTitle()` from `src/lib/site.ts`.
-- Markdown is rendered with `react-markdown` and GitHub Flavored Markdown; raw HTML is never rendered.
+- Markdown is rendered with `react-markdown` and GitHub Flavored Markdown; raw HTML is never rendered. An image
+  whose address react-markdown empties, because its protocol is not a safe one such as `data:`, is left out of the
+  page instead of rendered without an address (`MarkdownContent`).
 - Markdown that is analysed instead of rendered, such as the title heading of a page, is parsed with the same parser
   that `react-markdown` uses (`mdast-util-from-markdown` with `micromark-extension-gfm` and `mdast-util-gfm`, and
   `mdast-util-to-string` for plain text), so the result matches the rendered page.
