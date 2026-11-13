@@ -38,6 +38,8 @@ const PROTECTED_ADDRESSES = [
   ["the folder list with an action", "/folders?action=new"],
   ["a folder with an action", "/folders/handbook?action=rename"],
   ["a page with an action", "/folders/handbook/overview.md?action=edit"],
+  ["the own account", "/account"],
+  ["the own account with an action", "/account?action=create"],
   ["a deleted page with an action", `/deleted-pages/handbook/${DELETED_PAGE_ID}?action=restore`],
   ["an invalid action", "/folders?action=nothing"],
   ["an invalid folder name", "/folders/Not%20A%20Name"],

@@ -1,5 +1,6 @@
-// Addresses of folders, tabs and pages under `/folders`, of deleted pages under `/deleted-pages`, of the users, the
-// login and the password change, and the actions in their query string. Pure functions used by routes, Server Actions and links; no server-only imports.
+// Addresses of folders, tabs and pages under `/folders`, of deleted pages under `/deleted-pages`, of the users, the own
+// account, the login and the password change, and the actions in their query string. Pure functions used by routes,
+// Server Actions and links; no server-only imports.
 
 import { parseName } from "@/lib/names";
 
@@ -29,6 +30,19 @@ const USERS_PATH = "/users";
 /** The address of the user list, optionally with an action. */
 export function usersPath(action?: string): string {
   return withAction(USERS_PATH, action);
+}
+
+/** The address of the own account of the logged-in user, with the API tokens. */
+const ACCOUNT_PATH = "/account";
+
+/** The address of the own account, optionally with an action. */
+export function accountPath(action?: string): string {
+  return withAction(ACCOUNT_PATH, action);
+}
+
+/** The address of the dialog that revokes the token with the given id. */
+export function revokeTokenPath(id: string): string {
+  return `${accountPath("revoke")}&token=${id}`;
 }
 
 /** The address where a user who logged in with a first password sets a password of their own. */

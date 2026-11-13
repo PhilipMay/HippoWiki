@@ -8,12 +8,13 @@ import Link from "@/components/Link";
 import { logOut } from "@/features/auth/actions";
 import { getCurrentUser } from "@/features/auth/session";
 import { isAdmin } from "@/features/users/schema";
-import { foldersPath, usersPath } from "@/lib/addresses";
+import { accountPath, foldersPath, usersPath } from "@/lib/addresses";
 import { siteName } from "@/lib/site";
 
 /**
- * The app bar of every page. For a logged-in user it has the menu, the user name and "Log out"; while the user still
- * has to change the first password, only the name and "Log out". The menu entry "Users" is for the admin only.
+ * The app bar of every page. For a logged-in user it has the menu, the user name, which links to the own account, and
+ * "Log out"; while the user still has to change the first password, only the name as plain text and "Log out". The
+ * menu entry "Users" is for the admin only.
  */
 export default async function AppHeader() {
   const user = await getCurrentUser();
@@ -45,7 +46,14 @@ export default async function AppHeader() {
         )}
         {user && (
           <Stack direction="row" spacing={2} sx={{ alignItems: "center", ml: "auto" }}>
-            <Typography variant="body2">{user.name}</Typography>
+            {/* While the first password is still to change, the account would only lead to the password change. */}
+            {user.mustChangePassword ? (
+              <Typography variant="body2">{user.name}</Typography>
+            ) : (
+              <Button component={Link} href={accountPath()} color="inherit" sx={{ textTransform: "none" }}>
+                {user.name}
+              </Button>
+            )}
             {/* A plain form with a Server Action: it works before hydration and without JavaScript. */}
             <form action={logOut}>
               <Button type="submit" color="inherit">

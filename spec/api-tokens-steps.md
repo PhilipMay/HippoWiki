@@ -35,7 +35,7 @@ caller of the check.
 
 - [x] Token model and service
 - [x] Check of a bearer token
-- [ ] Own-account page
+- [x] Own-account page
 - [ ] Wrap-up
 
 ## Token model and service
@@ -173,6 +173,9 @@ Every logged-in user manages their own tokens at `/account`.
 - `e2e/hydration.spec.ts`: the "New token" dialog is locked until hydration.
 - The specs that test the header (`e2e/login.spec.ts`, `e2e/users.spec.ts`, `e2e/change-password.spec.ts`) run as
   well, because `AppHeader.tsx` changes.
+- `e2e/support/database.ts` gets `createApiToken()`, which stores a token of a given owner with any fields (for the
+  expired token, the 21st token and another user's token). Because the step changes `e2e/support/`, the complete
+  `npm run test:e2e` runs (see "When a step is done" in `workflow.md`).
 
 ## Wrap-up
 

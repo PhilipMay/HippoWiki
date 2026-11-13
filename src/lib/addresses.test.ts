@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  accountPath,
   allPagesPath,
   deletedPagePath,
   deletedPagesPath,
@@ -11,6 +12,7 @@ import {
   parseChoice,
   parsePageSegment,
   parseView,
+  revokeTokenPath,
   tabPath,
 } from "@/lib/addresses";
 
@@ -52,6 +54,16 @@ describe("paths", () => {
     const id = "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10";
     expect(deletedPagePath("handbook", id)).toBe(`/deleted-pages/handbook/${id}`);
     expect(deletedPagePath("handbook", id, "restore")).toBe(`/deleted-pages/handbook/${id}?action=restore`);
+  });
+
+  it("builds the address of the own account", () => {
+    expect(accountPath()).toBe("/account");
+    expect(accountPath("create")).toBe("/account?action=create");
+  });
+
+  it("builds the address of the dialog that revokes a token", () => {
+    const id = "0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01";
+    expect(revokeTokenPath(id)).toBe(`/account?action=revoke&token=${id}`);
   });
 });
 

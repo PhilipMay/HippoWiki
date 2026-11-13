@@ -78,6 +78,8 @@ test("a user with a first password logs in and lands on the password change", as
   await expect(banner.getByText("newcomer", { exact: true })).toBeVisible();
   await expect(banner.getByRole("button", { name: "Log out" })).toBeVisible();
   await expect(banner.getByRole("navigation")).toHaveCount(0);
+  // The account would only lead to the password change, so the name is no link yet.
+  await expect(banner.getByRole("link", { name: "newcomer" })).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
@@ -222,6 +224,7 @@ test("after the change the user lands on the folder list, and the next login nee
   const banner = page.getByRole("banner");
   await expect(banner.getByText("newcomer", { exact: true })).toBeVisible();
   await expect(banner.getByRole("link", { name: "Folders" })).toBeVisible();
+  await expect(banner.getByRole("link", { name: "newcomer" })).toHaveAttribute("href", "/account");
   expect((await getTestDb().user.findUniqueOrThrow({ where: { id: user.id } })).mustChangePassword).toBe(false);
   // The content is open now.
   await page.goto("/folders/handbook/overview.md");

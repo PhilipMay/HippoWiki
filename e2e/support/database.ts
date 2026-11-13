@@ -7,9 +7,11 @@ import { setTimeout } from "node:timers/promises";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 import { titleFromContent } from "@/features/pages/derive";
+import { generateToken, hashToken } from "@/features/tokens/secret";
 import { newUserData, type NewUser } from "@/features/users/records";
 import {
   PrismaClient,
+  type ApiToken,
   type Folder,
   type Page,
   type Prisma,
@@ -271,4 +273,32 @@ export async function createPage({ folder, tab, editor, ...data }: CreatePageDat
       lastEditedById: lastEditor.id,
     },
   });
+}
+
+/** The fields of an API token that `createApiToken()` can set, and the user it belongs to. */
+type CreateApiTokenData = Partial<Omit<Prisma.ApiTokenUncheckedCreateInput, "userId" | "tokenHash">> & {
+  owner: { id: string };
+};
+
+/**
+ * Creates an API token of the given owner directly in the test database, with a generated token of which only the
+ * hash is stored, and returns the row together with the token. Without other fields it has the scope `read`, a unique
+ * name and an expiry 90 days from now; any field can be set, e.g. `expiresAt` for an expired token.
+ */
+export async function createApiToken({
+  owner,
+  ...data
+}: CreateApiTokenData): Promise<{ token: ApiToken; secret: string }> {
+  const secret = generateToken();
+  const token = await getTestDb().apiToken.create({
+    data: {
+      name: `test-token-${crypto.randomUUID().slice(0, 8)}`,
+      scopes: ["read"],
+      expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+      ...data,
+      userId: owner.id,
+      tokenHash: hashToken(secret),
+    },
+  });
+  return { token, secret };
 }
