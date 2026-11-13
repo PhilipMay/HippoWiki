@@ -94,6 +94,9 @@ listed first; there is no order across themes.
 - Return to the requested address: after the login, lead to the address that was asked for instead of `/folders`
   (`users-and-login.md`).
 - Audit log: record logins, changes of rights and password changes and resets (`users-and-login.md`).
+- Unlock command: a command of `scripts/admin.ts` that deletes the `LoginAttempt` row of a user name and so ends its
+  wait after failed logins; this does not stop a lockout, it only shortens it (see the Major finding in
+  `security-review.md`).
 - Login limit per client address: wait after failed logins per user name and client address; see the Major finding
   in `security-review.md` (`users-and-login.md`).
 - Ending all sessions at once: a user logs out of all browsers at once.

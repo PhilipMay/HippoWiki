@@ -31,8 +31,6 @@ missing security headers.
 - **Suggestion (required):** Key the wait on the user name and the client address, and keep a much higher limit for the
   user name alone. The client address has to come from a header set by a trusted reverse proxy, which needs to be
   configured and documented in `container-image.md`.
-- **Alternatives:** At least an unlock command in `scripts/admin.ts` that deletes the `LoginAttempt` row of a name.
-  This does not stop the lockout, it only shortens it.
 
 ### Minor: no security headers
 
