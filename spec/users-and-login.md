@@ -218,9 +218,9 @@ in two layers, as the authentication guide of Next.js describes:
 
 ## Decisions
 
-- Two features, like the two groups in `roadmap.md`: `users` writes accounts with Prisma and the password hashing and
-  does not use Better Auth; `auth` is the only code that uses Better Auth, through `getAuth()`. A lint rule keeps
-  `@/lib/auth` to the auth service and `src/lib/`.
+- Two features: `users` writes accounts with Prisma and the password hashing and does not use Better Auth; `auth` is
+  the only code that uses Better Auth, through `getAuth()`. A lint rule keeps `@/lib/auth` to the auth service and
+  `src/lib/`.
 - A container needs `DATABASE_URL` and `HIPPOWIKI_ADMIN_PASSWORD` and nothing else, so the secret of the session
   cookies is stored in the database instead of a variable.
 - Who is calling is found out in the adapters, from the session cookie. What the caller may do is checked in the
