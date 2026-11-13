@@ -12,7 +12,8 @@ const mocks = vi.hoisted(() => ({
   changePassword: vi.fn(),
   userUpdateMany: vi.fn(),
   attemptFindUnique: vi.fn(),
-  attemptUpsert: vi.fn(),
+  attemptCreateMany: vi.fn(),
+  attemptUpdateMany: vi.fn(),
   attemptDeleteMany: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
@@ -24,7 +25,8 @@ vi.mock("@/lib/db", () => ({
   getDb: () => ({
     loginAttempt: {
       findUnique: mocks.attemptFindUnique,
-      upsert: mocks.attemptUpsert,
+      createMany: mocks.attemptCreateMany,
+      updateMany: mocks.attemptUpdateMany,
       deleteMany: mocks.attemptDeleteMany,
     },
     user: { updateMany: mocks.userUpdateMany },
@@ -62,13 +64,30 @@ function logged(): string {
 const NOW = new Date("2026-11-12T12:00:00.000Z");
 const MINUTE = 60_000;
 
-/** The statement that counts a failed login for the name at the time of the clock. */
-function countedFailure(name: string) {
+/** The failed logins of a name, as the database returns them. */
+type Count = { failures: number; lastFailedAt: Date };
+
+/** The write that counts the first login for the name at the time of the clock; it skips a row that exists. */
+function firstAttempt(name: string) {
+  return { data: [{ username: name, failures: 1, lastFailedAt: NOW }], skipDuplicates: true };
+}
+
+/** The write that counts one more login for the name at the time of the clock, only if the count is still `previous`. */
+function nextAttempt(name: string, previous: Count) {
   return {
-    where: { username: name },
-    create: { username: name, failures: 1, lastFailedAt: NOW },
-    update: { failures: { increment: 1 }, lastFailedAt: NOW },
+    where: { username: name, failures: previous.failures, lastFailedAt: previous.lastFailedAt },
+    data: { failures: previous.failures + 1, lastFailedAt: NOW },
   };
+}
+
+/** Whether the login was counted before Better Auth was asked to check the password. */
+function countedBeforePasswordCheck(): boolean {
+  const counted = Math.min(
+    mocks.attemptCreateMany.mock.invocationCallOrder[0] ?? Infinity,
+    mocks.attemptUpdateMany.mock.invocationCallOrder[0] ?? Infinity,
+  );
+  const checked = mocks.signInUsername.mock.invocationCallOrder[0] ?? -Infinity;
+  return counted < checked;
 }
 
 function expectNothingLogged(): void {
@@ -82,8 +101,10 @@ beforeEach(() => {
   vi.useFakeTimers({ now: NOW, toFake: ["Date"] });
   // No failed logins so far, unless a test says otherwise.
   mocks.attemptFindUnique.mockResolvedValue(null);
-  mocks.attemptUpsert.mockResolvedValue({});
-  mocks.attemptDeleteMany.mockResolvedValue({ count: 0 });
+  // Every write of the count finds the row as it expects it.
+  mocks.attemptCreateMany.mockResolvedValue({ count: 1 });
+  mocks.attemptUpdateMany.mockResolvedValue({ count: 1 });
+  mocks.attemptDeleteMany.mockResolvedValue({ count: 1 });
   mocks.getAuth.mockResolvedValue({
     api: {
       signInUsername: mocks.signInUsername,
@@ -181,7 +202,8 @@ describe("logIn", () => {
       expect(mocks.signInUsername).not.toHaveBeenCalled();
       // Such a name cannot belong to a user; the table of the failed logins must not take any text.
       expect(mocks.attemptFindUnique).not.toHaveBeenCalled();
-      expect(mocks.attemptUpsert).not.toHaveBeenCalled();
+      expect(mocks.attemptCreateMany).not.toHaveBeenCalled();
+      expect(mocks.attemptUpdateMany).not.toHaveBeenCalled();
       expectNothingLogged();
     },
   );
@@ -195,7 +217,10 @@ describe("logIn", () => {
     expect(result).toEqual({ ok: false, error: { code: "invalid-credentials" } });
     expect(mocks.getAuth).not.toHaveBeenCalled();
     expect(mocks.signInUsername).not.toHaveBeenCalled();
-    expect(mocks.attemptUpsert).toHaveBeenCalledExactlyOnceWith(countedFailure("alice"));
+    expect(mocks.attemptCreateMany).toHaveBeenCalledExactlyOnceWith(firstAttempt("alice"));
+    // The count stays: nothing takes it back.
+    expect(mocks.attemptUpdateMany).not.toHaveBeenCalled();
+    expect(mocks.attemptDeleteMany).not.toHaveBeenCalled();
   });
 
   it("answers busy when the password hashing has no free slot", async () => {
@@ -250,7 +275,9 @@ describe("logIn", () => {
 });
 
 describe("the wait after failed logins", () => {
-  it("counts a refused login for the name, in one statement that also creates the row", async () => {
+  const EARLIER = new Date(NOW.getTime() - 1000);
+
+  it("counts the first login for a name before the password is checked, in a write that skips an existing row", async () => {
     mocks.signInUsername.mockRejectedValue(invalidCredentials());
 
     await logIn({ name: "alice", password: PASSWORD }, REQUEST_HEADERS);
@@ -259,7 +286,23 @@ describe("the wait after failed logins", () => {
       where: { username: "alice" },
       select: { failures: true, lastFailedAt: true },
     });
-    expect(mocks.attemptUpsert).toHaveBeenCalledExactlyOnceWith(countedFailure("alice"));
+    expect(mocks.attemptCreateMany).toHaveBeenCalledExactlyOnceWith(firstAttempt("alice"));
+    expect(countedBeforePasswordCheck()).toBe(true);
+    // The refused login is counted already: nothing is written after the password check.
+    expect(mocks.attemptUpdateMany).not.toHaveBeenCalled();
+    expect(mocks.attemptDeleteMany).not.toHaveBeenCalled();
+  });
+
+  it("counts a further login before the password is checked, only if the count is still the one it read", async () => {
+    const previous = { failures: 3, lastFailedAt: EARLIER };
+    mocks.attemptFindUnique.mockResolvedValue(previous);
+    mocks.signInUsername.mockRejectedValue(invalidCredentials());
+
+    await logIn({ name: "alice", password: PASSWORD }, REQUEST_HEADERS);
+
+    expect(mocks.attemptUpdateMany).toHaveBeenCalledExactlyOnceWith(nextAttempt("alice", previous));
+    expect(countedBeforePasswordCheck()).toBe(true);
+    expect(mocks.attemptCreateMany).not.toHaveBeenCalled();
     expect(mocks.attemptDeleteMany).not.toHaveBeenCalled();
   });
 
@@ -268,17 +311,16 @@ describe("the wait after failed logins", () => {
 
     await logIn({ name: "  alice ", password: PASSWORD }, REQUEST_HEADERS);
 
-    expect(mocks.attemptUpsert).toHaveBeenCalledExactlyOnceWith(countedFailure("alice"));
+    expect(mocks.attemptCreateMany).toHaveBeenCalledExactlyOnceWith(firstAttempt("alice"));
   });
 
   it("deletes the row of the name after a successful login", async () => {
-    mocks.attemptFindUnique.mockResolvedValue({ failures: 4, lastFailedAt: new Date(NOW.getTime() - 1000) });
+    mocks.attemptFindUnique.mockResolvedValue({ failures: 4, lastFailedAt: EARLIER });
 
     const result = await logIn({ name: "alice", password: PASSWORD }, REQUEST_HEADERS);
 
     expect(result.ok).toBe(true);
     expect(mocks.attemptDeleteMany).toHaveBeenCalledExactlyOnceWith({ where: { username: "alice" } });
-    expect(mocks.attemptUpsert).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -287,12 +329,14 @@ describe("the wait after failed logins", () => {
     ["6 failures two minutes ago", 6, 2 * MINUTE],
     ["9 failures fifteen minutes ago", 9, 15 * MINUTE],
     ["20 failures fifteen minutes ago", 20, 15 * MINUTE],
-  ])("checks the password again after %s", async (_case, failures, ago) => {
-    mocks.attemptFindUnique.mockResolvedValue({ failures, lastFailedAt: new Date(NOW.getTime() - ago) });
+  ])("counts the login and checks the password again after %s", async (_case, failures, ago) => {
+    const previous = { failures, lastFailedAt: new Date(NOW.getTime() - ago) };
+    mocks.attemptFindUnique.mockResolvedValue(previous);
 
     const result = await logIn({ name: "alice", password: PASSWORD }, REQUEST_HEADERS);
 
     expect(result.ok).toBe(true);
+    expect(mocks.attemptUpdateMany).toHaveBeenCalledExactlyOnceWith(nextAttempt("alice", previous));
     expect(mocks.signInUsername).toHaveBeenCalledOnce();
   });
 
@@ -315,7 +359,8 @@ describe("the wait after failed logins", () => {
       // No password is checked during the wait, and the attempt is not counted.
       expect(mocks.getAuth).not.toHaveBeenCalled();
       expect(mocks.signInUsername).not.toHaveBeenCalled();
-      expect(mocks.attemptUpsert).not.toHaveBeenCalled();
+      expect(mocks.attemptCreateMany).not.toHaveBeenCalled();
+      expect(mocks.attemptUpdateMany).not.toHaveBeenCalled();
       expect(mocks.attemptDeleteMany).not.toHaveBeenCalled();
       expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
         { name: "alice", waitMs },
@@ -330,20 +375,140 @@ describe("the wait after failed logins", () => {
     const result = await logIn({ name: "alice", password: "p".repeat(129) }, REQUEST_HEADERS);
 
     expect(result).toEqual({ ok: false, error: { code: "wait", waitMs: MINUTE } });
-    expect(mocks.attemptUpsert).not.toHaveBeenCalled();
+    expect(mocks.attemptUpdateMany).not.toHaveBeenCalled();
   });
 
-  it.each([
+  describe("with another login for the name at the same time", () => {
+    it("reads the count again when the other login created the row first", async () => {
+      const taken = { failures: 1, lastFailedAt: NOW };
+      mocks.attemptFindUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(taken);
+      mocks.attemptCreateMany.mockResolvedValue({ count: 0 });
+
+      const result = await logIn({ name: "alice", password: PASSWORD }, REQUEST_HEADERS);
+
+      expect(result.ok).toBe(true);
+      expect(mocks.attemptFindUnique).toHaveBeenCalledTimes(2);
+      expect(mocks.attemptCreateMany).toHaveBeenCalledExactlyOnceWith(firstAttempt("alice"));
+      expect(mocks.attemptUpdateMany).toHaveBeenCalledExactlyOnceWith(nextAttempt("alice", taken));
+      expect(mocks.signInUsername).toHaveBeenCalledOnce();
+      expect(countedBeforePasswordCheck()).toBe(true);
+    });
+
+    it("reads the count again when the other login counted first", async () => {
+      const read = { failures: 2, lastFailedAt: EARLIER };
+      const taken = { failures: 3, lastFailedAt: NOW };
+      mocks.attemptFindUnique.mockResolvedValueOnce(read).mockResolvedValueOnce(taken);
+      mocks.attemptUpdateMany.mockResolvedValueOnce({ count: 0 }).mockResolvedValueOnce({ count: 1 });
+
+      const result = await logIn({ name: "alice", password: PASSWORD }, REQUEST_HEADERS);
+
+      expect(result.ok).toBe(true);
+      expect(mocks.attemptUpdateMany).toHaveBeenCalledTimes(2);
+      expect(mocks.attemptUpdateMany).toHaveBeenNthCalledWith(1, nextAttempt("alice", read));
+      expect(mocks.attemptUpdateMany).toHaveBeenNthCalledWith(2, nextAttempt("alice", taken));
+      expect(mocks.signInUsername).toHaveBeenCalledOnce();
+    });
+
+    it("makes the login wait when the other login took the last attempt before the wait", async () => {
+      mocks.attemptFindUnique
+        .mockResolvedValueOnce({ failures: 4, lastFailedAt: EARLIER })
+        .mockResolvedValueOnce({ failures: 5, lastFailedAt: NOW });
+      mocks.attemptUpdateMany.mockResolvedValue({ count: 0 });
+
+      const result = await logIn({ name: "alice", password: PASSWORD }, REQUEST_HEADERS);
+
+      expect(result).toEqual({ ok: false, error: { code: "wait", waitMs: MINUTE } });
+      expect(mocks.attemptUpdateMany).toHaveBeenCalledOnce();
+      expect(mocks.getAuth).not.toHaveBeenCalled();
+      expect(mocks.signInUsername).not.toHaveBeenCalled();
+    });
+
+    it("answers failed without checking the password when the count keeps changing", async () => {
+      mocks.attemptFindUnique.mockResolvedValue({ failures: 1, lastFailedAt: EARLIER });
+      mocks.attemptUpdateMany.mockResolvedValue({ count: 0 });
+
+      const result = await logIn({ name: "alice", password: PASSWORD }, REQUEST_HEADERS);
+
+      expect(result).toEqual({ ok: false, error: { code: "failed" } });
+      expect(mocks.attemptFindUnique).toHaveBeenCalledTimes(10);
+      expect(mocks.attemptUpdateMany).toHaveBeenCalledTimes(10);
+      expect(mocks.signInUsername).not.toHaveBeenCalled();
+      expect(mocks.error).toHaveBeenCalledExactlyOnceWith(
+        {
+          err: expect.objectContaining({ message: expect.stringContaining("kept changing") as string }) as Error,
+          name: "alice",
+        },
+        "login failed",
+      );
+    });
+  });
+
+  describe.each([
     ["the hashing is busy", new PasswordHashBusyError(), "busy"],
     ["the login fails", new Error("connection refused"), "failed"],
-  ])("does not count an attempt when %s", async (_case, err, code) => {
-    mocks.signInUsername.mockRejectedValue(err);
+  ])("when %s", (_case, err, code) => {
+    beforeEach(() => {
+      mocks.signInUsername.mockRejectedValue(err);
+    });
 
-    const result = await logIn({ name: "alice", password: PASSWORD }, REQUEST_HEADERS);
+    it("takes back the first login for a name by deleting the row it wrote", async () => {
+      const result = await logIn({ name: "alice", password: PASSWORD }, REQUEST_HEADERS);
 
-    expect(result).toEqual({ ok: false, error: { code } });
-    expect(mocks.attemptUpsert).not.toHaveBeenCalled();
-    expect(mocks.attemptDeleteMany).not.toHaveBeenCalled();
+      expect(result).toEqual({ ok: false, error: { code } });
+      expect(mocks.attemptDeleteMany).toHaveBeenCalledExactlyOnceWith({
+        where: { username: "alice", failures: 1, lastFailedAt: NOW },
+      });
+      expect(mocks.attemptUpdateMany).not.toHaveBeenCalled();
+    });
+
+    it("gives the row the count from before, so that a wait that was over does not start again", async () => {
+      const previous = { failures: 5, lastFailedAt: new Date(NOW.getTime() - 2 * MINUTE) };
+      mocks.attemptFindUnique.mockResolvedValue(previous);
+
+      const result = await logIn({ name: "alice", password: PASSWORD }, REQUEST_HEADERS);
+
+      expect(result).toEqual({ ok: false, error: { code } });
+      expect(mocks.attemptUpdateMany).toHaveBeenCalledTimes(2);
+      expect(mocks.attemptUpdateMany).toHaveBeenNthCalledWith(1, nextAttempt("alice", previous));
+      expect(mocks.attemptUpdateMany).toHaveBeenNthCalledWith(2, {
+        where: { username: "alice", failures: 6, lastFailedAt: NOW },
+        data: previous,
+      });
+      expect(mocks.attemptDeleteMany).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["the row it created", null, () => mocks.attemptDeleteMany.mockResolvedValue({ count: 0 })],
+      [
+        "the row it changed",
+        { failures: 2, lastFailedAt: EARLIER },
+        () => mocks.attemptUpdateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 }),
+      ],
+    ])("only lowers the number by one when other logins have counted since on %s", async (_row, previous, arrange) => {
+      mocks.attemptFindUnique.mockResolvedValue(previous);
+      arrange();
+
+      const result = await logIn({ name: "alice", password: PASSWORD }, REQUEST_HEADERS);
+
+      expect(result).toEqual({ ok: false, error: { code } });
+      expect(mocks.attemptUpdateMany).toHaveBeenLastCalledWith({
+        where: { username: "alice", failures: { gt: 0 } },
+        data: { failures: { decrement: 1 } },
+      });
+    });
+
+    it("keeps its answer when the login cannot be taken back, and logs that", async () => {
+      const releaseError = new Error("database gone");
+      mocks.attemptDeleteMany.mockRejectedValue(releaseError);
+
+      const result = await logIn({ name: "alice", password: PASSWORD }, REQUEST_HEADERS);
+
+      expect(result).toEqual({ ok: false, error: { code } });
+      expect(mocks.error).toHaveBeenCalledWith(
+        { err: releaseError, name: "alice" },
+        "failed to take back the login attempt",
+      );
+    });
   });
 
   it("answers failed when the failed logins cannot be read, without checking the password", async () => {
@@ -357,15 +522,20 @@ describe("the wait after failed logins", () => {
     expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ err, name: "alice" }, "login failed");
   });
 
-  it("still refuses the login when the failure cannot be counted, and logs that", async () => {
+  it.each([
+    ["the first login for a name", null, mocks.attemptCreateMany],
+    ["a further login", { failures: 2, lastFailedAt: EARLIER }, mocks.attemptUpdateMany],
+  ])("answers failed when %s cannot be counted, without checking the password", async (_case, previous, write) => {
     const err = new Error("connection refused");
-    mocks.signInUsername.mockRejectedValue(invalidCredentials());
-    mocks.attemptUpsert.mockRejectedValue(err);
+    mocks.attemptFindUnique.mockResolvedValue(previous);
+    write.mockRejectedValue(err);
 
     const result = await logIn({ name: "alice", password: PASSWORD }, REQUEST_HEADERS);
 
-    expect(result).toEqual({ ok: false, error: { code: "invalid-credentials" } });
-    expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ err, name: "alice" }, "failed to count the failed login");
+    expect(result).toEqual({ ok: false, error: { code: "failed" } });
+    expect(mocks.getAuth).not.toHaveBeenCalled();
+    expect(mocks.signInUsername).not.toHaveBeenCalled();
+    expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ err, name: "alice" }, "login failed");
   });
 
   it("still logs in when the failed logins cannot be reset, and logs that", async () => {

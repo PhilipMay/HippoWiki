@@ -405,6 +405,111 @@ describe("the wait after failed logins", () => {
     expectWait(await authService.logIn({ name: "alice", password: TEST_PASSWORD }, new Headers()), 1);
     expect(await getTestDb().loginAttempt.count()).toBe(1);
   });
+
+  describe("with logins at the same time", () => {
+    const BURST = 20;
+
+    /** Sends the given number of logins for the name at the same time and returns their results. */
+    function logInAtOnce(name: string, password: string, count = BURST) {
+      return Promise.all(Array.from({ length: count }, () => authService.logIn({ name, password }, new Headers())));
+    }
+
+    /** How many of the results have the code; `ok` stands for a login that succeeded. */
+    function countOf(results: Awaited<ReturnType<typeof logInAtOnce>>, code: string): number {
+      return results.filter((result) => (result.ok ? "ok" : result.error.code) === code).length;
+    }
+
+    /** How many passwords were checked: Better Auth verifies for a known name and hashes for an unknown one. */
+    function passwordChecks(): number {
+      return vi.mocked(verifyPassword).mock.calls.length + vi.mocked(hashPassword).mock.calls.length;
+    }
+
+    it.each([
+      ["a known name", "alice"],
+      ["an unknown name", "nobody"],
+    ])("checks the password of five logins for %s and makes all others wait", async (_case, name) => {
+      await createUser({ name: "alice" });
+      vi.mocked(hashPassword).mockClear();
+      vi.mocked(verifyPassword).mockClear();
+
+      const results = await logInAtOnce(name, WRONG_PASSWORD);
+
+      expect(countOf(results, "invalid-credentials")).toBe(5);
+      expect(countOf(results, "wait")).toBe(BURST - 5);
+      expect(passwordChecks()).toBe(5);
+      expect((await getTestDb().loginAttempt.findUniqueOrThrow({ where: { username: name } })).failures).toBe(5);
+    });
+
+    it("checks the password of one login once a wait is over", async () => {
+      await createUser({ name: "alice" });
+      await failLogins("alice", 5);
+      await letTimePass("alice", MINUTE_MS);
+      vi.mocked(hashPassword).mockClear();
+      vi.mocked(verifyPassword).mockClear();
+
+      const results = await logInAtOnce("alice", WRONG_PASSWORD);
+
+      expect(countOf(results, "invalid-credentials")).toBe(1);
+      expect(countOf(results, "wait")).toBe(BURST - 1);
+      expect(passwordChecks()).toBe(1);
+      expect((await getTestDb().loginAttempt.findUniqueOrThrow({ where: { username: "alice" } })).failures).toBe(6);
+    });
+
+    it("starts a session for each login with the right password that is checked, and forgets the count", async () => {
+      await createUser({ name: "alice" });
+      vi.mocked(verifyPassword).mockClear();
+
+      const results = await logInAtOnce("alice", TEST_PASSWORD);
+
+      // The first five are checked in any case; a later one only if it comes after a login has deleted the count.
+      const loggedIn = countOf(results, "ok");
+      expect(loggedIn).toBeGreaterThanOrEqual(5);
+      expect(countOf(results, "wait")).toBe(BURST - loggedIn);
+      expect(vi.mocked(verifyPassword).mock.calls).toHaveLength(loggedIn);
+      expect(await getTestDb().session.count()).toBe(loggedIn);
+      expect(await getTestDb().loginAttempt.count()).toBe(0);
+    });
+  });
+
+  describe("when the password hashing is busy", () => {
+    /** Logs in with the right password while no hash slot gets free. */
+    async function logInWhileBusy(name: string) {
+      vi.mocked(verifyPassword).mockRejectedValueOnce(new PasswordHashBusyError());
+      return authService.logIn({ name, password: TEST_PASSWORD }, new Headers());
+    }
+
+    it("keeps no row for a name without failed logins", async () => {
+      await createUser({ name: "alice" });
+
+      expect(await logInWhileBusy("alice")).toEqual({ ok: false, error: { code: "busy" } });
+
+      expect(await getTestDb().loginAttempt.count()).toBe(0);
+    });
+
+    it("leaves the count of a name as it was", async () => {
+      await createUser({ name: "alice" });
+      await failLogins("alice", 4);
+      const before = await getTestDb().loginAttempt.findUniqueOrThrow({ where: { username: "alice" } });
+
+      expect(await logInWhileBusy("alice")).toEqual({ ok: false, error: { code: "busy" } });
+
+      expect(await getTestDb().loginAttempt.findUniqueOrThrow({ where: { username: "alice" } })).toStrictEqual(before);
+      // The busy login was not the fifth failure: the next one is checked.
+      expect((await logInAs("alice")).user.name).toBe("alice");
+    });
+
+    it("does not start a wait again that was over", async () => {
+      await createUser({ name: "alice" });
+      await failLogins("alice", 5);
+      await letTimePass("alice", MINUTE_MS);
+      const before = await getTestDb().loginAttempt.findUniqueOrThrow({ where: { username: "alice" } });
+
+      expect(await logInWhileBusy("alice")).toEqual({ ok: false, error: { code: "busy" } });
+
+      expect(await getTestDb().loginAttempt.findUniqueOrThrow({ where: { username: "alice" } })).toStrictEqual(before);
+      expect((await logInAs("alice")).user.name).toBe("alice");
+    });
+  });
 });
 
 describe("changeFirstPassword", () => {

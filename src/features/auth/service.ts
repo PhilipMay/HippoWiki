@@ -6,7 +6,8 @@
 // caller passes them on itself. The service never logs a password.
 //
 // The service also counts the failed logins per submitted user name, in the database, and makes the next login for a
-// name wait after too many of them (see `wait.ts`).
+// name wait after too many of them (see `wait.ts`). A login is counted before its password is checked, so that logins
+// at the same time get no more guesses than logins one after another.
 
 import { isAPIError } from "better-auth/api";
 import { z } from "zod";
@@ -87,32 +88,83 @@ function currentTime(): Date {
   return new Date();
 }
 
-/** How long a login for the name still has to wait, in milliseconds; 0 when it may be tried now. */
-async function remainingWait(name: string): Promise<number> {
-  const attempt = await getDb().loginAttempt.findUnique({
-    where: { username: name },
-    select: { failures: true, lastFailedAt: true },
-  });
-  if (!attempt) return 0;
-  const waitUntil = attempt.lastFailedAt.getTime() + waitAfterFailures(attempt.failures);
-  return Math.max(0, waitUntil - currentTime().getTime());
+/** The count of a name in `LoginAttempt`. */
+type AttemptCount = { failures: number; lastFailedAt: Date };
+
+/**
+ * An attempt that is counted in `LoginAttempt` before its password is checked: the count before it (`null` without a
+ * row) and the count it wrote.
+ */
+type Reservation = { previous: AttemptCount | null; reserved: AttemptCount };
+
+/** The login may be checked, or it has to wait `waitMs` milliseconds. */
+type ReserveResult = { reserved: true; reservation: Reservation } | { reserved: false; waitMs: number };
+
+/**
+ * How often `reserveAttempt()` reads the count again after another login changed it. A round is only lost to a login
+ * that changed the count, and after a few of those the count asks for a wait, so the limit is never reached in
+ * practice.
+ */
+const MAX_RESERVE_ROUNDS = 10;
+
+/**
+ * Counts the login for the name as one more failure in a row, at the current time, before its password is checked,
+ * unless the name has to wait. A wrong password then needs no further write; a successful login deletes the count,
+ * and a login that was not checked takes it back (`releaseAttempt()`).
+ *
+ * The write only succeeds if the row is still the one that was read; otherwise another login got in between and the
+ * count is read again. So of the logins that arrive at the same time, only as many are checked as would be one after
+ * another. Throws when the database fails or the count keeps changing.
+ */
+async function reserveAttempt(name: string): Promise<ReserveResult> {
+  const db = getDb();
+  for (let round = 0; round < MAX_RESERVE_ROUNDS; round += 1) {
+    const now = currentTime();
+    const previous = await db.loginAttempt.findUnique({
+      where: { username: name },
+      select: { failures: true, lastFailedAt: true },
+    });
+    if (previous) {
+      const waitMs = previous.lastFailedAt.getTime() + waitAfterFailures(previous.failures) - now.getTime();
+      if (waitMs > 0) return { reserved: false, waitMs };
+    }
+
+    const reserved = { failures: (previous?.failures ?? 0) + 1, lastFailedAt: now };
+    const { count } = previous
+      ? await db.loginAttempt.updateMany({
+          where: { username: name, failures: previous.failures, lastFailedAt: previous.lastFailedAt },
+          data: reserved,
+        })
+      : // A row that another login created in the meantime is skipped and reported as a count of 0.
+        await db.loginAttempt.createMany({ data: [{ username: name, ...reserved }], skipDuplicates: true });
+    if (count === 1) return { reserved: true, reservation: { previous, reserved } };
+  }
+  throw new Error("the count of the failed logins kept changing, the login attempt was not counted");
 }
 
 /**
- * Counts a failed login for the name: one more failure in a row, at the current time. One statement, which also
- * creates the row, so that two failures at the same time are both counted. The login has been refused already; a
- * database error here is logged and does not change the answer.
+ * Takes back the count of a login whose password was not checked, because the hashing was busy or something failed.
+ * If the row is still the one the login wrote, it gets the count from before, so that a wait that was over is not
+ * started again. If other logins have counted since, only the number goes down by one. A database error here is
+ * logged and does not change the answer.
  */
-async function countFailure(name: string): Promise<void> {
-  const lastFailedAt = currentTime();
+async function releaseAttempt(name: string, { previous, reserved }: Reservation): Promise<void> {
+  const db = getDb();
+  const stillReserved = { username: name, failures: reserved.failures, lastFailedAt: reserved.lastFailedAt };
   try {
-    await getDb().loginAttempt.upsert({
-      where: { username: name },
-      create: { username: name, failures: 1, lastFailedAt },
-      update: { failures: { increment: 1 }, lastFailedAt },
+    const { count } = previous
+      ? await db.loginAttempt.updateMany({
+          where: stillReserved,
+          data: { failures: previous.failures, lastFailedAt: previous.lastFailedAt },
+        })
+      : await db.loginAttempt.deleteMany({ where: stillReserved });
+    if (count === 1) return;
+    await db.loginAttempt.updateMany({
+      where: { username: name, failures: { gt: 0 } },
+      data: { failures: { decrement: 1 } },
     });
   } catch (err) {
-    logger.error({ err, name }, "failed to count the failed login");
+    logger.error({ err, name }, "failed to take back the login attempt");
   }
 }
 
@@ -133,9 +185,12 @@ async function clearFailures(name: string): Promise<void> {
  *   and is not counted, because the table of the failed logins would otherwise take any text.
  * - After 5 failed logins in a row for a name, the next one has to wait (`wait.ts`). During the wait the login is
  *   refused with the code `wait`, without checking the password and without counting the attempt.
+ * - Every other login is counted as a failure before its password is checked (`reserveAttempt()`), so logins at the
+ *   same time cannot get past the wait. If it cannot be counted, the password is not checked.
  * - A password of more than 128 characters cannot belong to a user either: it counts as a failed login, without a
  *   hash.
- * - A successful login forgets the failed ones.
+ * - A successful login forgets the failed ones. A login that was not checked, because the hashing was busy or
+ *   something failed, takes its count back.
  */
 export async function logIn(
   input: { name: string; password: string },
@@ -145,22 +200,23 @@ export async function logIn(
   if (!parsedName.success) return { ok: false, error: { code: "invalid-credentials" } };
   const name = parsedName.data;
 
-  let waitMs: number;
+  let attempt: ReserveResult;
   try {
-    waitMs = await remainingWait(name);
+    attempt = await reserveAttempt(name);
   } catch (err) {
     logger.error({ err, name }, "login failed");
     return { ok: false, error: { code: "failed" } };
   }
-  if (waitMs > 0) {
-    logger.warn({ name, waitMs }, "login refused: waiting after failed logins");
-    return { ok: false, error: { code: "wait", waitMs } };
+  if (!attempt.reserved) {
+    logger.warn({ name, waitMs: attempt.waitMs }, "login refused: waiting after failed logins");
+    return { ok: false, error: { code: "wait", waitMs: attempt.waitMs } };
   }
+  // From here on the login is counted as a failure, unless it succeeds or its count is taken back.
+  const { reservation } = attempt;
 
   const parsedPassword = loginInputSchema.shape.password.safeParse(input.password);
   if (!parsedPassword.success) {
     logger.warn({ name }, "login refused: unknown name or wrong password");
-    await countFailure(name);
     return { ok: false, error: { code: "invalid-credentials" } };
   }
 
@@ -174,14 +230,15 @@ export async function logIn(
     });
     loggedIn = { user: toSessionUser(response.user), headers: responseHeaders };
   } catch (err) {
+    if (isAPIError(err) && REFUSED_STATUS_CODES.includes(err.statusCode)) {
+      logger.warn({ name }, "login refused: unknown name or wrong password");
+      return { ok: false, error: { code: "invalid-credentials" } };
+    }
+    // The password was not found wrong, so the attempt is not a failed login.
+    await releaseAttempt(name, reservation);
     if (err instanceof PasswordHashBusyError) {
       logger.warn({ name }, "too many password hashes are running, login not checked");
       return { ok: false, error: { code: "busy" } };
-    }
-    if (isAPIError(err) && REFUSED_STATUS_CODES.includes(err.statusCode)) {
-      logger.warn({ name }, "login refused: unknown name or wrong password");
-      await countFailure(name);
-      return { ok: false, error: { code: "invalid-credentials" } };
     }
     logger.error({ err, name }, "login failed");
     return { ok: false, error: { code: "failed" } };

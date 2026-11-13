@@ -12,51 +12,22 @@ getting past the proxy does not help an attacker. The weaknesses are in the thro
 missing security headers.
 
 - Blocker: 0
-- Major: 2
+- Major: 1
 - Minor: 3
 - Nit: 2
 
 ## Issues
 
-### Major: the login wait can be bypassed with parallel requests
-
-- **Location:** `src/features/auth/service.ts`, lines 150–183, `logIn()`
-- **Category:** security
-- **Problem:** `remainingWait(name)` reads the number of failed logins before the password is hashed, and
-  `countFailure(name)` writes the failure only after the hash. Parallel requests for the same name all read "fewer than
-  5 failures" before any of them is counted.
-- **Impact:** One burst of parallel requests gets as many guesses as the hash queue works through in about 10 seconds
-  (4 hashes at a time, `MAX_HASH_WAIT_MS = 10_000` in `src/lib/password-hash.ts`), likely hundreds, instead of one guess
-  per 15 minutes after five failures. Passwords need only 8 characters.
-- **Evidence:** The order in `logIn()`:
-
-  ```ts
-  waitMs = await remainingWait(name); // read
-  if (waitMs > 0) return { ok: false, error: { code: "wait", waitMs } };
-  // ...
-  await auth.api.signInUsername(/* ... */); // argon2, queued up to 10 s
-  // ...
-  await countFailure(name); // write
-  ```
-
-  Not tested on the deployment, because it would lock out the admin.
-
-- **Suggestion (required):** Reserve the attempt before the password is checked: raise the counter atomically in one
-  statement and read back the old value (or use `SELECT … FOR UPDATE` in a transaction), refuse if the old value
-  already requires a wait, and clear the counter on success.
-- **Alternatives:** Since only one instance runs, a mutex per user name in the process around the check and the count.
-  Simpler, but it breaks as soon as a second instance runs.
-
 ### Major: anyone can keep the admin locked out
 
-- **Location:** `src/features/auth/service.ts`, lines 150–157, `logIn()`; `src/features/auth/wait.ts`,
+- **Location:** `src/features/auth/service.ts`, lines 203–213, `logIn()`; `src/features/auth/wait.ts`,
   `waitAfterFailures()`
 - **Category:** security
 - **Problem:** The wait is keyed only on the user name, and during the wait the correct password is refused as well.
 - **Impact:** From any address, five wrong passwords for `admin` and then one more each time the wait runs out keep the
   admin locked out for good, with about 100 requests a day. There is no unlock and no second admin.
-- **Evidence:** `logIn()` returns the code `wait` without checking the password while `remainingWait(name) > 0`; the
-  wait grows to `MAX_WAIT_MS` (15 minutes) and starts again with every further failure.
+- **Evidence:** `logIn()` returns the code `wait` without checking the password while `reserveAttempt(name)` reports a
+  wait; the wait grows to `MAX_WAIT_MS` (15 minutes) and starts again with every further failure.
 - **Suggestion (required):** Key the wait on the user name and the client address, and keep a much higher limit for the
   user name alone. The client address has to come from a header set by a trusted reverse proxy, which needs to be
   configured and documented in `container-image.md`.
@@ -105,7 +76,7 @@ missing security headers.
 ### Minor: logins without an account can block all logins and grow the database
 
 - **Location:** `src/lib/password-hash.ts` (`MAX_CONCURRENT_HASHES = 4`); `src/features/auth/service.ts`,
-  `countFailure()`
+  `reserveAttempt()`
 - **Category:** security
 - **Problem:** Every login with a valid-looking but unknown name costs one argon2 hash, and every new name adds a
   `LoginAttempt` row that is never deleted.
@@ -114,7 +85,7 @@ missing security headers.
 - **Evidence:** The hash limiter allows 4 hashes at a time and queues the rest for at most 10 seconds; no code deletes
   old `LoginAttempt` rows.
 - **Suggestion (optional):** A rate limit per client address at the reverse proxy, documented in `container-image.md`,
-  and deleting rows older than `MAX_WAIT_MS` when a failure is written.
+  and deleting rows older than `MAX_WAIT_MS` when a login is counted.
 
 ### Nit: the `X-Powered-By: Next.js` header is sent
 

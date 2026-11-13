@@ -154,13 +154,13 @@ model AuthSecret {
 }
 
 /// The failed logins in a row for a submitted user name, for the wait after too many of them. It has no relation to
-/// `User`: unknown names are counted too, so that the wait does not tell which names exist. A successful login deletes
-/// the row.
+/// `User`: unknown names are counted too, so that the wait does not tell which names exist. A login is counted before
+/// its password is checked. A successful login deletes the row.
 model LoginAttempt {
   /// The submitted user name; always one that follows the name rule.
   username     String   @id
-  /// How many logins for the name have failed in a row.
+  /// How many logins for the name have failed in a row, including the ones whose password is being checked.
   failures     Int
-  /// When the last of them failed; the wait counts from here.
+  /// When the last of them was counted; the wait counts from here.
   lastFailedAt DateTime @db.Timestamptz(3)
 }

@@ -81,9 +81,10 @@ How the code is tested. Commands are listed in `README.md`.
     creation of users, whose returned password must log in.
   - The auth service (`integration/auth-service.test.ts`) through the real Better Auth instance: that Better Auth
     accepts the users that HippoWiki writes, what a login and a logout do to the sessions, the 30 days of a session,
-    the login wait, and the forced password change. The session cookie travels as headers: a test turns the response
-    headers of a login into the request headers of the next call. `@/lib/password-hash` is mocked as spies, to count
-    the hashes and to let one fail the way it does when no slot gets free.
+    the login wait, also for logins at the same time (sent with `Promise.all`), and the forced password change. The
+    session cookie travels as headers: a test turns the response headers of a login into the request headers of the
+    next call. `@/lib/password-hash` is mocked as spies, to count the hashes and to let one fail the way it does when
+    no slot gets free.
   - The services of the content on real data, one file per service (`integration/folder-service.test.ts`,
     `integration/page-service.test.ts`):
     - the reads: their conditions (e.g. pages placed directly in a folder versus pages in a tab) and their order, and

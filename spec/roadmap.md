@@ -94,8 +94,8 @@ listed first; there is no order across themes.
 - Return to the requested address: after the login, lead to the address that was asked for instead of `/folders`
   (`users-and-login.md`).
 - Audit log: record logins, changes of rights and password changes and resets (`users-and-login.md`).
-- Login limit per client address: wait after failed logins per user name and client address; see the two Major
-  findings in `security-review.md` (`users-and-login.md`).
+- Login limit per client address: wait after failed logins per user name and client address; see the Major finding
+  in `security-review.md` (`users-and-login.md`).
 - Ending all sessions at once: a user logs out of all browsers at once.
 - TOTP: a second factor with one-time codes from an authenticator app (`users-and-login.md`).
 - Passkeys (WebAuthn): login with a passkey (`users-and-login.md`).

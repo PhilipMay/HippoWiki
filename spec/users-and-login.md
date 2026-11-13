@@ -31,7 +31,8 @@ PostgreSQL and `timestamptz(3)` for all times.
 - `AuthSecret`: the secret that signs the session cookies, in a single row (`id` is always 1; a check constraint that
   the migration adds by hand allows no other row).
 - `LoginAttempt`: the failed logins in a row for a submitted user name, with `username` as its key, `failures` and
-  `lastFailedAt`. It has no relation to `User`, because unknown names are counted too.
+  `lastFailedAt`, the time the last of them was counted. It has no relation to `User`, because unknown names are
+  counted too.
 
 The admin is the user named `admin`. There is no role column.
 
@@ -137,13 +138,25 @@ In `src/lib/password-hash.ts`, with `hashPassword()` and `verifyPassword()`:
   failure doubles the wait, up to 15 minutes (`src/features/auth/wait.ts`).
 - A login during the wait is refused with "Too many failed logins. Please try again in N minutes.", without checking
   the password and without counting the attempt.
+- Every other login is counted as a failure before its password is checked (`reserveAttempt()` in the auth service).
+  A wrong password then needs no further write, and the wait counts from the time the login was counted.
+- The write that counts a login only succeeds if the count is still the one the login has read: an update names the
+  old `failures` and `lastFailedAt` in its condition, and the first login for a name inserts a row and skips one that
+  exists. A login that finds the count changed reads it again, at most 10 times; after that it is answered with the
+  general error, without checking the password.
+- Logins for a name at the same time therefore get no more guesses than logins one after another: 5, and one more
+  after each wait. The others are refused with the wait, whatever their password.
 - A successful login deletes the count of its name.
-- The count is stored in `LoginAttempt`, so it survives a restart of the server. A failure is counted in one statement
-  that also creates the row.
+- The count is stored in `LoginAttempt`, so it survives a restart of the server.
 - An unknown name is counted and has to wait like a known one. A name that breaks the name rule gets no row, because
   it cannot belong to a user and the table would otherwise take any text.
 - A password of more than 128 characters for a valid name counts as a failure.
-- A login that is refused because the password hashing is busy or because of an error is not counted.
+- A login that is refused because the password hashing is busy or because of an error is not counted: its password
+  was not found wrong, so it takes its count back (`releaseAttempt()`). If the row is still the one the login wrote,
+  it gets the count from before, so that a wait that was over does not start again; if other logins have counted
+  since, only the number goes down by one.
+- A login that cannot be counted, because the database fails, is answered with the general error, without checking the
+  password.
 
 ## Authenticated access only
 
@@ -221,6 +234,9 @@ in two layers, as the authentication guide of Next.js describes:
 - Two features: `users` writes accounts with Prisma and the password hashing and does not use Better Auth; `auth` is
   the only code that uses Better Auth, through `getAuth()`. A lint rule keeps `@/lib/auth` to the auth service and
   `src/lib/`.
+- A login is counted with a conditional write of the Prisma client, repeated when another login got in between,
+  instead of one SQL statement that checks the wait and counts: the rule of the wait stays in `wait.ts` alone and is
+  not written a second time in SQL.
 - A container needs `DATABASE_URL` and `HIPPOWIKI_ADMIN_PASSWORD` and nothing else, so the secret of the session
   cookies is stored in the database instead of a variable.
 - Who is calling is found out in the adapters, from the session cookie. What the caller may do is checked in the
