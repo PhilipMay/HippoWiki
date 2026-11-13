@@ -23,9 +23,10 @@ How the code is organised and which patterns new code follows. The technology st
     actions and the names of form fields. It has no server-only imports, so Client Components can use it.
   - `queries.ts` and `actions.ts`: the adapters between the web and the service
   - The features are `folders` (folders and their tabs), `pages`, `users` (the accounts), `auth` (login, logout,
-    the session and the login wait, with `session.ts` for who is calling, see "Login and sessions") and `tokens` (the
-    API tokens and the check of a bearer token, with `secret.ts` for the token and its hash). Their specs are listed
-    in `CLAUDE.md`.
+    the session and the login wait, with `session.ts` for who is calling, see "Login and sessions"), `tokens` (the
+    API tokens and the check of a bearer token, with `secret.ts` for the token and its hash) and `mcp` (the MCP
+    server: `tools.ts` with its tools and `http.ts`, the adapter of the route `/mcp`, see "Reads and writes"). Their
+    specs are listed in `CLAUDE.md`.
 - `src/generated/prisma/`: the generated Prisma client (`npm run db:generate`), not checked in
 - `prisma/`: schema, migrations, seed, and `known-users.ts`, the known users of the seed and the tests
 - `scripts/`: development scripts (`db.sh`), the admin setup (`admin.ts`) and the scripts of the container image
@@ -38,6 +39,11 @@ How the code is organised and which patterns new code follows. The technology st
 - The layers: a route or component calls `queries.ts` or `actions.ts`, these call `service.ts`, and only `service.ts`
   calls `getDb()`. Routes and components import a service only for its types. The health route
   (`src/app/api/health/route.ts`) is the one exception: it checks the database connection itself.
+- A caller other than the GUI has an adapter of its own in place of `queries.ts` and `actions.ts`. The MCP server is
+  the first: the route `src/app/mcp/route.ts` only hands the request to `handleMcpRequest()` in
+  `src/features/mcp/http.ts`, which finds the actor from the bearer token instead of the session and passes the
+  request to the MCP SDK; the tools in `src/features/mcp/tools.ts` call the services of the folders and pages. The
+  tools import nothing from `next` or `react`, like a service.
 - `service.ts` of a feature holds every read and write of the feature. It knows nothing about Next.js, forms or
   addresses, so that a caller other than the GUI, such as an MCP server, can use the same service.
   - It imports nothing from `next`, `react`, `@/lib/revalidate` or a `forms.ts`, has no `"use server"` and works
@@ -105,9 +111,10 @@ The feature is described in `users-and-login.md`. What every new route, query an
 
 - Nothing is read or changed without a login. The login is checked in two layers:
   - `src/proxy.ts` sends every request without a session cookie to the login page. It only looks whether the cookie
-    is there. Its matcher leaves out the login page, `/api/health` and the static files of Next.js (`_next/static/`),
-    but not the image optimizer (`_next/image`), which the app does not use; a new public address has to be added
-    there.
+    is there. Its matcher leaves out the login page, `/api/health`, the MCP endpoint `/mcp` and the static files of
+    Next.js (`_next/static/`), but not the image optimizer (`_next/image`), which the app does not use; a new public
+    address has to be added there. `/mcp` is public to the proxy only: its callers have no session cookie, and its
+    adapter refuses every request without a valid bearer token.
   - `requireUser()` from `src/features/auth/session.ts` checks the session in the database. It is the layer that
     protects the data: it redirects to the login page without a session, and to the password change while the user
     still has the first password.
@@ -122,8 +129,8 @@ The feature is described in `users-and-login.md`. What every new route, query an
   for the session.
 - A caller other than the browser, such as the MCP server, finds its actor with `authenticateToken(headers, scope)`
   of the token service, from the bearer token in the `Authorization` header (see `api-tokens.md`). It returns the
-  same `Actor` as the session of the token's user, or a code for a missing or bad token and for a missing scope. No
-  route calls it yet, and `src/proxy.ts` does not look at the header.
+  same `Actor` as the session of the token's user, or a code for a missing or bad token and for a missing scope. The
+  adapter of `/mcp` calls it for every request; `src/proxy.ts` does not look at the header.
 - The login action also reads the client address of the request, with `clientAddressGroup()` from
   `src/lib/client-address.ts` and `HIPPOWIKI_TRUSTED_PROXIES`, because `/login` does not pass `src/proxy.ts`; it
   passes the group to the auth service. No other code reads a forwarding header for anything but the diagnostic
@@ -272,7 +279,8 @@ The feature is described in `users-and-login.md`. What every new route, query an
     `src/lib/logger.ts`. Configuration files, `e2e/` and `scripts/` read it directly.
   - `no-restricted-imports`: the barrel imports `@mui/material` and `@mui/icons-material` are not allowed in `src/`.
   - `no-console`: server code (`src/features/**/actions.ts`, `src/features/**/queries.ts`,
-    `src/features/**/service.ts`, `src/app/api/`, `src/lib/`, `src/proxy.ts`) does not use `console`. The client
+    `src/features/**/service.ts`, `src/features/mcp/`, `src/app/api/`, `src/app/mcp/`, `src/lib/`, `src/proxy.ts`)
+    does not use `console`. The client
     error boundaries `src/app/error.tsx` and `global-error.tsx` log with `console.error`, because the pino logger
     runs only on the server.
   - `@typescript-eslint/no-restricted-imports` keeps the layers apart (see "Reads and writes"). It is a rule of its

@@ -48,6 +48,7 @@ const PROTECTED_ADDRESSES = [
   ["an address that starts like the login page", "/login/more"],
   ["an address that starts like the health check", "/api/health/more"],
   ["an API address that does not exist", "/api/nowhere"],
+  ["an address that starts like the MCP endpoint", "/mcp/more"],
   ["the image optimizer", "/_next/image?url=%2Ffolders&w=64&q=75"],
 ] as const;
 
@@ -124,6 +125,18 @@ test.describe("without a login", () => {
 
     expect(response.status()).toBe(200);
     expect(await response.json()).toEqual({ status: "ok" });
+  });
+
+  test("the MCP endpoint is not sent to the login page: it asks for a token itself", async ({ request }) => {
+    // What it does with a token is tested in mcp.spec.ts.
+    const response = await request.post("/mcp", {
+      data: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "list_folders" } },
+      maxRedirects: 0,
+    });
+
+    expect(response.status()).toBe(401);
+    expect(response.headers()["www-authenticate"]).toBe("Bearer");
+    expect(await response.text()).not.toContain("handbook");
   });
 
   for (const cookieName of ["better-auth.session_token", "__Secure-better-auth.session_token"]) {

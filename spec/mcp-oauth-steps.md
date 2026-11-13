@@ -42,7 +42,7 @@ ChatGPT connect through OAuth: the user logs in, approves the connector on a con
 ## Checklist
 
 - [x] Public URL and login with a way back
-- [ ] MCP endpoint with read tools
+- [x] MCP endpoint with read tools
 - [ ] OAuth clients, codes and grants
 - [ ] Client ID Metadata Documents
 - [ ] Discovery, registration and token endpoints
@@ -94,6 +94,9 @@ An MCP client with an API token can list and read the wiki. This works without `
 - Add `@modelcontextprotocol/server` (latest stable v2). Check first that its web-standard transport runs in a
   Next.js route handler, stateless and with JSON responses. If it does not, stop and ask the user (scope change: the
   protocol would be written by hand).
+- The handler of the SDK (`createMcpHandler`) answers clients of the protocol of 2025 as an SSE stream. The adapter
+  therefore routes them itself (`isLegacyRequest()`) to a transport of the SDK with JSON responses, in front of a
+  handler that serves only the current protocol, with JSON responses and no subscriptions.
 - `src/features/mcp/`: the tools and the adapter between the route and the services; the route
   `src/app/mcp/route.ts` only hands the request to it. The adapter calls the services of the folders and pages, like
   `queries.ts` does for the GUI; it is the place where the actor comes from the bearer token instead of the session.

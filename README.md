@@ -124,6 +124,18 @@ the admin setup:
   HIPPOWIKI_ADMIN_PASSWORD=first-password npm run admin:setup
   ```
 
+## MCP server
+
+AI assistants read the wiki through the Model Context Protocol at `/mcp`, acting as a user. A client sends an API token
+with the scope `read`, which the user creates on the own account page `/account`, as a bearer token. With Claude Code
+and `npm run dev`:
+
+```bash
+claude mcp add --transport http hippowiki http://localhost:3000/mcp --header "Authorization: Bearer hw_…"
+```
+
+The tools list the folders, list the tabs and pages of a folder and read a page.
+
 ## End-to-end tests
 
 The end-to-end tests use [Playwright](https://playwright.dev/) with Chromium and live in `e2e/`. Install the browser
