@@ -2,8 +2,9 @@
 
 The API tokens as built: every user creates long-lived tokens for scripts and tools, such as an MCP client, sees them
 and revokes them on the own account page `/account`. A token stands for its user, limited to the scopes chosen at
-creation, until it expires or is revoked. The check of a bearer token is built, but no route accepts a token yet; the
-MCP server will be the first. Users and the login are described in `users-and-login.md`.
+creation, until it expires or is revoked. The MCP server at `/mcp` accepts them (see `mcp.md`). The apps that a user
+connected through OAuth are grants in the same list (see `oauth.md`). Users and the login are described in
+`users-and-login.md`.
 
 Code: `src/features/tokens/` (`schema.ts`, `secret.ts`, `service.ts` with `authenticateToken()`, `forms.ts`,
 `queries.ts`, `actions.ts`, the list and the dialogs in `components/`), the route `src/app/account/` and the link in
@@ -20,9 +21,19 @@ Code: `src/features/tokens/` (`schema.ts`, `secret.ts`, `service.ts` with `authe
 - Only the SHA-256 hash of a token is stored. Neither the token nor its hash is ever logged.
 - A token has a name of 1 to 50 characters, without surrounding spaces, to tell it apart from the others. Names need
   not be unique.
-- A user holds at most 20 tokens, expired ones included (`MAX_TOKENS_PER_USER` in `src/features/tokens/service.ts`).
-  Tokens created at the same time cannot get past the limit.
+- A user holds at most 20 tokens, expired ones and grants included (`MAX_TOKENS_PER_USER` in
+  `src/features/tokens/service.ts`). Tokens and grants created at the same time cannot get past the limit.
 - Deleting a user deletes the user's tokens.
+
+## Grants
+
+- A grant is the access that a user gave an app through OAuth, such as the connector of an AI assistant. It is a row
+  of the same table as a token: it is listed on `/account`, counted in the limit and revoked like a token. How it
+  comes about, and how its access token and refresh token work, is described in `oauth.md`.
+- A grant is named after its app and has only the scope `read`. There is no token to show for it: the app holds its
+  tokens itself.
+- A row is either a token or a grant, never both; a check constraint of the database makes sure of it.
+- The list marks a grant as a connected app. Revoking it ends its access token and its refresh token at once.
 
 ## Scopes and expiry
 
@@ -44,7 +55,10 @@ Code: `src/features/tokens/` (`schema.ts`, `secret.ts`, `service.ts` with `authe
 
 - `authenticateToken(headers, scope)` in `src/features/tokens/service.ts` is the way for a caller other than the
   browser to find out which user a request acts for. It reads `Authorization: Bearer <token>`; the scheme is matched
-  without regard to case, as RFC 6750 allows.
+  without regard to case, as RFC 6750 allows. The adapter of `/mcp` calls it for every request.
+- With the option `acceptOAuth` it also accepts the access token of a grant, which is refused when it or its grant
+  has expired. The option is off unless a caller asks for it, so only `/mcp` accepts such tokens, and only while
+  OAuth is on. Without the option an access token does not look like a token.
 - It returns the actor of the token's user, the same `id` and `name` that the session of that user gives, or one of
   these codes:
   - `missing-token`: no header, another scheme, or a value that does not look like a token. The database is not
@@ -60,7 +74,7 @@ Code: `src/features/tokens/` (`schema.ts`, `secret.ts`, `service.ts` with `authe
 
 ## Own account page
 
-- `/account` shows the user name and the user's tokens, newest first, with "New token". The user name in the header
+- `/account` shows the user name and the user's tokens and connected apps, newest first, with "New token". The user name in the header
   links there, except while the first password is still to change, because the address would only lead to the
   password change.
 - `?action=create` opens the "New token" dialog, `?action=revoke&token=<id>` the "Revoke token" dialog of a token of
@@ -82,15 +96,17 @@ Code: `src/features/tokens/` (`schema.ts`, `secret.ts`, `service.ts` with `authe
 - The last use is written at most once a minute and with a conditional write, so that a burst of requests does not
   write on every one.
 - The check of a bearer token lives in the token service, not in `src/proxy.ts`, so that the MCP route decides itself
-  how it answers; `src/proxy.ts` stays as it is until a route accepts a token.
+  how it answers; `src/proxy.ts` only lets `/mcp` pass and does not look at the header.
+- A grant is a row of the tokens and not a table of its own, so that a user sees and revokes everything that acts for
+  them in one list and one limit covers both (see "Decisions" in `oauth.md`).
 
 ## Current limits
 
-- no route or endpoint accepts a token yet; the MCP server will be the first
+- only the MCP server accepts a token; there is no other API
 - a password change does not end the tokens of a user; only revoking and expiry do
 - deactivating a user does not exist yet; when it comes, it must stop the user's tokens as well (see `roadmap.md`)
 - no renaming of a token, no change of its scopes or its expiry, and no warning before a token expires
 - expired tokens are not deleted by themselves
 - the admin cannot see or revoke the tokens of other users
-- no OAuth, no CORS, no rate limits of requests with a token and no audit log
+- no CORS, no rate limits of requests with a token and no audit log
 - no change of the own password on `/account` (see "Own password change" in `roadmap.md`)

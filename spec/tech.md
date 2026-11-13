@@ -17,6 +17,10 @@
   replaced
 - Password hashing: Argon2id with `@node-rs/argon2`, a native package with prebuilt builds
 - Logging: pino
+- MCP server: the official MCP TypeScript SDK (`@modelcontextprotocol/server`, v2), with its web-standard handler in
+  a route handler of Next.js: stateless Streamable HTTP with JSON responses (see `mcp.md`)
+- OAuth for MCP clients: written in the project on top of Prisma, without a library; Better Auth is used for the
+  login only (see `oauth.md`)
 
 ## Tooling
 

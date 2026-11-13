@@ -42,6 +42,17 @@ How the code is tested. Commands are listed in `README.md`.
 - The limiter of the password hashing is tested with a work function that the test controls and with fake timers;
   the hashing itself with real hashes.
 - Route handlers get unit tests for their failure branches; they mock `@/lib/db` and `@/lib/logger`.
+- The adapters of callers other than the GUI get unit tests like actions and queries, with the service mocked: the
+  adapter of `/mcp` (`src/features/mcp/http.test.ts`) for the status and the headers of every outcome of the token
+  check, the `Origin` check and 405, and the adapters of the OAuth endpoints (`src/features/oauth/http.test.ts`) for
+  404 without the public URL, the metadata fields, the status codes, the error shape, `no-store` and the answer of
+  the registration limit. The tests of `/mcp` and of its tools (`src/features/mcp/tools.test.ts`) run the real MCP
+  SDK against mocked services, so a change of the SDK shows there.
+- The fetch of the metadata documents of OAuth clients (`src/features/oauth/metadata-fetch.ts`) never reaches the
+  network in a test. Its own unit test mocks `node:dns/promises` and `node:https` and stands in for the server; the
+  tests of the OAuth service replace the whole module with `vi.mock`.
+- A page whose decisions are worth a test of their own puts them into a function of its `queries.ts`, such as
+  `loadConsent()` of the consent page of OAuth, because pages and components have no unit tests.
 - `getDb()`, `getAuth()` and `getServerEnv()` are tested for creating the client, the Better Auth instance and
   validating the environment on first use only, not on import. These tests load the module anew for every case
   (`vi.resetModules()` and a dynamic import), because the modules keep their result.
@@ -77,14 +88,16 @@ How the code is tested. Commands are listed in `README.md`.
 - `integration/setup.ts` runs before every test file: it mocks `@/lib/db` so that `getDb()` returns the client of
   `getTestDb()`, and empties the tables before every test with `emptyTestDatabase()`, which leaves only the
   migration history and `AuthSecret`. The known users of the end-to-end tests are not created here. It also mocks
-  `getServerEnv()`, because `getAuth()` reads `NODE_ENV` through it and CI has no `.env`. Nothing of Next.js is
+  `getServerEnv()`, because `getAuth()` reads `NODE_ENV` through it and CI has no `.env`; the mocked environment has
+  a `HIPPOWIKI_PUBLIC_URL`, which the OAuth service needs for the address of the MCP endpoint. Nothing of Next.js is
   mocked: the tests call the services, which work outside a request. The test files run one after another
   (`fileParallelism: false`).
 - Rows are created with the helpers of `e2e/support/database.ts` (`createFolder()`, `createTab()`, `createPage()`,
   `createUser()`).
 - They cover what the unit tests can only mock:
   - `db-errors.ts` against the errors that Prisma and its `pg` adapter really report: every unique constraint of the
-    schema is recognised by its constant (`FOLDER_NAME`, `TAB_NAME`, `PAGE_NAME`, `API_TOKEN_HASH`) and by no other,
+    schema is recognised by its constant (`FOLDER_NAME`, `TAB_NAME`, `PAGE_NAME`, `API_TOKEN_HASH`,
+    `API_TOKEN_ACCESS_HASH`, `OAUTH_CLIENT_METADATA_URL`, `OAUTH_CODE_HASH`) and by no other,
     every foreign key violation by `isForeignKeyViolation()`. The services use the same constants, so a Prisma
     upgrade that changes the error shape or the index names fails here. `USER_NAME` stands for the two unique indexes
     of `User`, on the user name and on the email.
@@ -99,6 +112,13 @@ How the code is tested. Commands are listed in `README.md`.
   - The token service (`integration/token-service.test.ts`): creating, listing and revoking only the own tokens, the
     limit, also for tokens created at the same time, and the check of a bearer token, with the clock set past the
     expiry and to the minute of the last use.
+  - The OAuth service (`integration/oauth-service.test.ts`): the registration and its limit per client address group
+    and hour, the checks of an authorization request, codes that work once, also for exchanges at the same time
+    (sent with `Promise.all`), the expiry of codes, access tokens and grants with the clock set, the refresh, a
+    refresh token that is used again, two refreshes at the same time, the grants that a new grant replaces, the limit
+    of tokens, what is deleted with a client and a user, and the clean-up. `integration/oauth-metadata.test.ts` does
+    the same for clients with a metadata document, with the fetch replaced: the first fetch, the kept row, the fetch
+    after the cache time, a document that is not valid and a fetch that fails.
   - The services of the content on real data, one file per service (`integration/folder-service.test.ts`,
     `integration/page-service.test.ts`):
     - the reads: their conditions (e.g. pages placed directly in a folder versus pages in a tab) and their order, and
@@ -124,6 +144,9 @@ How the code is tested. Commands are listed in `README.md`.
   and rendering without the double rendering of StrictMode. The build needs no running database, because no route is
   prerendered; the global setup starts the test database only after the server.
 - All tests share the test database and run one after another.
+- The test server has a public URL (`HIPPOWIKI_PUBLIC_URL=http://localhost:3100` in `playwright.config.ts`), so
+  OAuth is on and the MCP server gives out full addresses. That OAuth is off without the variable is covered by the
+  unit tests of the adapters and by the smoke test of the container image.
 - The test server trusts one reverse proxy (`HIPPOWIKI_TRUSTED_PROXIES=1` in `playwright.config.ts`), so a test
   chooses the client address of its logins with an `X-Forwarded-For` header: `extraHTTPHeaders` in `test.use()` for
   the page of the spec, or a browser context of its own for a second address. Next.js keeps a header that the browser
@@ -183,6 +206,11 @@ How the code is tested. Commands are listed in `README.md`.
   - Tests that open an address give the folder, tab and page fixed names, e.g.
     `createPage({ folder, name: "overview" })` for `/folders/<folder>/overview.md`.
   - `getTestDb()` returns a Prisma client for the test database, e.g. to check what an action stored.
+  - `oauth.ts` has the helpers of the OAuth tests, in which a test stands in for the client: `registerClient()`,
+    `authorizeUrl()`, `exchange()`, `refresh()`, and `connect()`, which approves a client on its consent page and
+    returns the tokens of the new grant. `awaitCallback()` answers everything at the redirect address of the client,
+    a loopback address where nothing listens, with `page.route()`, and returns the parameters of the answer that
+    arrives there.
   - `collectErrors()` records console errors and uncaught exceptions of the browser page; tests assert it stays empty.
 - `eslint-plugin-playwright` checks all files in `e2e/`: a Playwright call or `expect` that is not awaited
   (`missing-playwright-await`), `page.waitForTimeout()` (`no-wait-for-timeout`) and checks such as
@@ -198,8 +226,18 @@ How the code is tested. Commands are listed in `README.md`.
   whenever it renders the control again, e.g. when it gets the focus.
 - `e2e/hydration.spec.ts` checks with JavaScript disabled that the controls of Client Components stay read-only or
   disabled until hydration (see "UI" in `architecture.md`). A new Client Component with such controls adds a case there.
+- The Chromium of the tests does not show the content of a `noscript` element, although its scripts are switched
+  off with `javaScriptEnabled: false`. A note for browsers without JavaScript, such as the one of the consent page of
+  OAuth, is therefore checked in the HTML of the page.
+- `page.goto()` waits until the page has hydrated. A page that leaves for another site at once, such as the consent
+  page for a request it sends back to the client, is opened with `window.location.assign()` from a page that is
+  already open.
 - `e2e/access.spec.ts` checks that every kind of address leads to the login page without a login, as a redirect that
-  sends nothing of the page. A new route adds its address there.
+  sends nothing of the page, and that the redirect carries the address as the way back. A new route adds its address
+  there; a new public address is checked there as well, for not being sent to the login page.
+- `e2e/mcp.spec.ts` calls `/mcp` with `request` and a token from `createApiToken()`; `e2e/oauth.spec.ts` covers the
+  discovery, the registration, the token endpoint and the whole flow from the login over the consent page to a tool
+  call, a refresh and a refresh token that is used again.
 - `e2e/security-headers.spec.ts` checks the security headers of `next.config.ts` (see "Security headers" in
   `architecture.md`) with their exact values, and that no `X-Powered-By` is sent: on the login page, the redirect to
   it, `/api/health`, a page with a login and a `/_next/static/` file. It also checks that an image of another host in

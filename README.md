@@ -12,10 +12,13 @@ PostgreSQL: create, view, edit, move and rename pages, create and rename folders
 restore them from the deleted pages of their folder. Folders and tabs cannot be deleted yet.
 
 The wiki can only be used after a login, and the admin creates the other users. Everyone who is logged in can read and
-change all content, and creates API tokens for scripts and tools on the own account page.
+change all content, and creates API tokens for scripts and tools on the own account page. AI assistants read the wiki
+through an MCP server, with an API token or, for connectors such as the ones of claude.ai and ChatGPT, through OAuth
+(see "MCP server").
 
 What is built is described in `spec/`: `spec/content-structure.md`, `spec/pages.md`, `spec/page-deletion.md`,
-`spec/users-and-login.md`, `spec/api-tokens.md` and `spec/container-image.md`. `CLAUDE.md` lists all spec files.
+`spec/users-and-login.md`, `spec/api-tokens.md`, `spec/mcp.md`, `spec/oauth.md` and `spec/container-image.md`.
+`CLAUDE.md` lists all spec files.
 
 ## Prerequisites
 
@@ -134,7 +137,16 @@ and `npm run dev`:
 claude mcp add --transport http hippowiki http://localhost:3000/mcp --header "Authorization: Bearer hw_…"
 ```
 
-The tools list the folders, list the tabs and pages of a folder and read a page.
+The tools list the folders, list the tabs and pages of a folder and read a page (`spec/mcp.md`).
+
+With `HIPPOWIKI_PUBLIC_URL` set, the wiki is also an OAuth authorization server for MCP clients, such as the connectors
+of claude.ai and ChatGPT: the user logs in, approves the connector on a consent page and revokes it on `/account`
+(`spec/oauth.md`). With `HIPPOWIKI_PUBLIC_URL=http://localhost:3000` in `.env` and `npm run dev`, Claude Code connects
+without a token:
+
+```bash
+claude mcp add --transport http hippowiki http://localhost:3000/mcp
+```
 
 ## End-to-end tests
 

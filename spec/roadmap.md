@@ -92,8 +92,6 @@ listed first; there is no order across themes.
 
 - Ending sessions on password reset and deactivation: end all sessions of a user whose password is reset or who is
   deactivated, as a password change does already.
-- Return to the requested address: after the login, lead to the address that was asked for instead of `/folders`
-  (`users-and-login.md`).
 - Audit log: record logins, changes of rights and password changes and resets (`users-and-login.md`).
 - Unlock command: a command of `scripts/admin.ts` that deletes the rows of `LoginAttempt` and `LoginWindow` of a user
   name and so ends its waits after failed logins; this does not stop a lockout, it only shortens it.
@@ -115,9 +113,9 @@ listed first; there is no order across themes.
 
 - Bearer token sessions: sessions for clients other than a browser, sent in the `Authorization` header
   (`users-and-login.md`).
-- MCP server: read and write the wiki from AI assistants through the Model Context Protocol, with the API tokens and
-  `authenticateToken()` as its login (`api-tokens.md`).
-- OAuth for clients: other applications, such as MCP clients, get access on behalf of a user through OAuth.
+- MCP write tools: create and change folders, tabs and pages from AI assistants, after page history and optimistic
+  locking (see "History and Revisions"), with the scope `write` for OAuth grants (`mcp.md`, `oauth.md`).
+- MCP search tool: search the wiki from AI assistants, after full-text search (see "Search") (`mcp.md`).
 - CORS for other origins: let web applications on other origins call the API.
 - Rate limits and quotas: limits on requests, writes and stored content per user.
 
@@ -164,3 +162,15 @@ All from "Current limits" in `container-image.md`:
   enough when many logins with the right password arrive at the same moment.
 - Log volume: every login whose `X-Forwarded-For` has no usable entry logs a warning; check that a correct setup
   behind Traefik writes none, so that a warning points to a broken setup.
+- OAuth on the deployment, after the checks above and only then with `HIPPOWIKI_PUBLIC_URL` set
+  (`container-image.md`, `oauth.md`):
+  - Add the wiki as a custom connector in claude.ai and in ChatGPT, approve it on the consent page, list and read
+    pages, and revoke it on `/account`.
+  - Claude Code with OAuth: `claude mcp add --transport http` without a header.
+  - Claude Code with an API token (`claude mcp add --transport http` with an `Authorization: Bearer hw_…` header)
+    lists and reads pages, and the MCP Inspector shows the tools (`mcp.md`).
+  - The limit on the registration of OAuth clients counts per client address behind Traefik: a registration from a
+    known address is logged with that address as `clientAddress`.
+  - Which redirect addresses and which way of identifying themselves (metadata document or registration) the
+    connectors really use, and whether a connector that loses the answer to a refresh has to be connected again too
+    often for the strict refresh rule (`oauth.md`).

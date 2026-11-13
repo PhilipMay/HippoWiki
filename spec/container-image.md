@@ -90,7 +90,8 @@ Code: `Containerfile`, `.containerignore`, `scripts/image.sh`, `scripts/image-mi
 ## Configuration
 
 - A container needs two variables, `DATABASE_URL` and `HIPPOWIKI_ADMIN_PASSWORD`, and nothing else. The optional
-  variables `HIPPOWIKI_TRUSTED_PROXIES` and `HIPPOWIKI_LOG_CLIENT_ADDRESS` are described below.
+  variables `HIPPOWIKI_TRUSTED_PROXIES`, `HIPPOWIKI_LOG_CLIENT_ADDRESS` and `HIPPOWIKI_PUBLIC_URL` are described
+  below.
 - `DATABASE_URL`: `postgresql://<user>:<password>@<host>:<port>/<database>`. The migration, the admin setup and the
   server read it. Special characters in the password are percent-encoded.
 - Only this form, without parameters, is supported and tested. The migration reads the URL with the schema engine of
@@ -127,6 +128,20 @@ Code: `Containerfile`, `.containerignore`, `scripts/image.sh`, `scripts/image-mi
     reason.
   - Set it only when the environment provides what "What the environment has to provide" names for it; otherwise a
     client that reaches the server around the reverse proxy chooses its own address.
+- `HIPPOWIKI_PUBLIC_URL` is optional: the public address of the wiki, as browsers and the connectors of AI assistants
+  reach it, such as `https://wiki.example.com`. It is read when the server runs.
+  - It is an `https` URL, or `http` only for `localhost`, `127.0.0.1` and `[::1]`, without user name, password,
+    path, query or fragment; any other value stops the server with an error like a wrong `DATABASE_URL`. It is kept
+    as the origin, without a trailing slash.
+  - Without it the wiki runs as before: the MCP server at `/mcp` works with API tokens and gives out paths as
+    addresses (see `mcp.md`), and there is no OAuth.
+  - With it OAuth is on (see `oauth.md`): the address is the issuer of the authorization server, `/mcp` also accepts
+    the access tokens of grants, and the MCP server gives out full URLs.
+  - Set it only on a deployment that is reachable over HTTPS from the internet, because the connectors of claude.ai
+    and ChatGPT call the wiki from their own servers, and only after the open checks of the deployment in "Things to
+    Check" of `roadmap.md`: with OAuth on, the registration of clients and the token endpoint answer without a login.
+  - The limit on the registration of OAuth clients counts per client address group, so it needs
+    `HIPPOWIKI_TRUSTED_PROXIES` like the wait after failed logins; with `0` all registrations share one limit.
 - There is no variable for the secret that signs the session cookies: the server generates it on first use and
   stores it in the database (table `AuthSecret`). It therefore survives a new container, and all sessions with it.
 - The database is PostgreSQL in the version pinned in `scripts/Containerfile`. The database and its user are created
@@ -208,7 +223,9 @@ These are not built into the image; whoever runs it takes care of them.
 - No security headers: the server sets them itself (see "Security headers" in `architecture.md`), so a reverse proxy
   does not have to.
 - The login is the protection from the public: nothing can be read or changed without it, and only the login page and
-  `/api/health` answer without one. The server limits the logins per user name and client address and per user name
+  `/api/health` answer a browser without one. `/mcp` answers only with a valid bearer token (see `mcp.md`), and the
+  public endpoints of OAuth show nothing of the wiki and are not found without `HIPPOWIKI_PUBLIC_URL` (see
+  `oauth.md`). The server limits the logins per user name and client address and per user name
   (see "Failed logins" in `users-and-login.md`), but not the logins per client address across all user names; a
   reverse proxy can add that limit.
 - For `HIPPOWIKI_TRUSTED_PROXIES` above `0`, a setup in which `X-Forwarded-For` can be trusted. Next.js never shows the

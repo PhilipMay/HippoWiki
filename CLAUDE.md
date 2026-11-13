@@ -9,8 +9,8 @@ The specification lives in the `spec/` directory. This catalog should always be 
 - `spec/tech.md`: technology stack
 - `spec/workflow.md`: how features are planned in step files, when a step is done, what to do when it cannot be
   finished, how a feature is wrapped up and what a feature spec holds
-- `spec/architecture.md`: code layout and conventions (layers and services, reads, writes, login and sessions,
-  security headers, validation, database, UI)
+- `spec/architecture.md`: code layout and conventions (layers and services, reads, writes, the adapters of callers
+  other than the GUI, login and sessions, the public addresses, security headers, validation, addresses, database, UI)
 - `spec/testing.md`: the check of doc references, and unit, integration and end-to-end test conventions
 - `spec/pages.md`: the page feature as built (content and title, suggested name, routes, rendering, decisions, limits)
 - `spec/content-structure.md`: the content structure as built (folders, tabs and pages under `/folders`: overview,
@@ -18,18 +18,22 @@ The specification lives in the `spec/` directory. This catalog should always be 
 - `spec/page-deletion.md`: the soft delete of pages as built (deleting, deleted pages are invisible, the deleted pages
   of a folder under `/deleted-pages` with who deleted them, restoring, decisions, limits)
 - `spec/container-image.md`: the container image as built (image and build stages, start with the migration, the
-  command that only migrates, the admin setup, configuration including the trusted reverse proxies, health, smoke
-  test, publishing on a release, what the environment has to provide, including the client address of a login,
-  decisions, limits)
+  command that only migrates, the admin setup, configuration including the trusted reverse proxies and the public
+  URL, health, smoke test, publishing on a release, what the environment has to provide, including the client address
+  of a login, decisions, limits)
 - `spec/users-and-login.md`: the users and login feature as built (user names and email, passwords and hashing, admin
-  account and setup, login and logout, sessions, failed logins with the wait per user name and client address group
-  and the hour window per user name, authenticated access only, forced password change, user list and creating users,
-  routes, decisions, limits)
-- `spec/api-tokens.md`: the API tokens as built (tokens shown once and stored as a hash, scopes and expiry, the limit
-  per user, the own tokens only, the check of a bearer token and its codes, the own account page `/account`,
-  decisions, limits)
-- `spec/mcp-oauth-steps.md`: step plan for the MCP server with read tools and OAuth for MCP clients (public URL, login
-  with a way back, the MCP endpoint, clients by CIMD and DCR, codes, grants as API tokens, consent page)
+  account and setup, login and logout, sessions, the way back after a login, failed logins with the wait per user name
+  and client address group and the hour window per user name, authenticated access only, forced password change, user
+  list and creating users, routes, decisions, limits)
+- `spec/api-tokens.md`: the API tokens as built (tokens shown once and stored as a hash, grants to OAuth clients,
+  scopes and expiry, the limit per user, the own tokens only, the check of a bearer token with its codes and the
+  option for OAuth access tokens, the own account page `/account`, decisions, limits)
+- `spec/mcp.md`: the MCP server as built (the endpoint `/mcp`, stateless with JSON answers, the tokens it accepts,
+  the read tools, decisions, limits)
+- `spec/oauth.md`: OAuth for MCP clients as built (switching it on with the public URL, discovery, clients by
+  metadata document and by registration with its limit, the safe fetch of metadata documents, the authorization
+  request and the consent page, codes, grants, refresh with rotation, the token endpoint, secrets, routes, decisions,
+  limits)
 - `spec/roadmap.md`: backlog of candidate features, grouped by theme, and things still to check
 - `spec/issue-report.md`: how to report issues found in code and document reviews
 

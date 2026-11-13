@@ -61,8 +61,8 @@ Tests: `e2e/login.spec.ts`, `e2e/change-password.spec.ts`, `e2e/users.spec.ts`, 
 
 - Users log in at `/login` with a user name and a password. There is no self-sign-up, no "forgot password" link and
   no mail.
-- A login leads to `/folders`, or to the password change when it is pending. A user who is logged in and opens
-  `/login` is led there as well.
+- A login leads to `/folders` or to the address it was asked for (see "The way back after a login"), or to the
+  password change when it is pending. A user who is logged in and opens `/login` is led there as well.
 - An unknown user name and a wrong password get the same answer, and both compute one hash, so nobody can find out
   which names exist. A name that breaks the name rule and a password of more than 128 characters cannot belong to a
   user; they are answered like a wrong password, without a hash.
@@ -82,7 +82,24 @@ Tests: `e2e/login.spec.ts`, `e2e/change-password.spec.ts`, `e2e/users.spec.ts`, 
   only (`SameSite=Lax`) and is `Secure` when `NODE_ENV` is `production`. Browsers keep `Secure` cookies on `localhost`
   as well.
 - The secret that signs the cookies is generated on first use and stored in `AuthSecret`; processes that start
-  together sign with the same one. There is no variable for the secret and none for the public address of the wiki.
+  together sign with the same one. There is no variable for the secret. The login needs no public address of the
+  wiki either: the optional `HIPPOWIKI_PUBLIC_URL` is for the MCP server and OAuth (see `container-image.md`).
+
+## The way back after a login
+
+- A read without a session cookie is sent to `/login?next=<path and query>` by `src/proxy.ts`, and the login leads
+  back to that address. Other requests, such as a submitted form, and Server Actions are sent to `/login` without a
+  way back, because their address may not be one to read.
+- With a first password the login leads to `/change-password?next=…`, and the change leads on to the address.
+- `next` is accepted only as a path on this site: it starts with exactly one `/`, not with `//` or `/\`, has no
+  control characters and is at most 2048 characters long. Anything else leads to `/folders`, so that a crafted link
+  to the login page cannot send a user who just logged in to another site. The rule is `safeNextPath()` in
+  `src/lib/addresses.ts`; the login page, the password change and both actions check the value again.
+- The folder list is where a login leads anyway, so it is left out of the address.
+- `requireUser()` redirects without a way back, unless its caller passes one: only the consent page of OAuth does
+  (see `oauth.md`). A request with a session cookie that is no longer valid therefore leads to `/folders` after the
+  login, except from that page.
+- `next` is not an action and not a view: it opens nothing on the login page.
 
 ## Failed logins
 
@@ -137,13 +154,15 @@ The client address group (`clientAddressGroup()` in `src/lib/client-address.ts`)
 
 ## Authenticated access only
 
-Nothing can be read or changed without a login. Only the login page and `/api/health` are public. The login is checked
-in two layers, as the authentication guide of Next.js describes:
+Nothing can be read or changed without a login. Only the login page and `/api/health` are public for a browser. The
+MCP endpoint `/mcp` asks for a bearer token instead of a session (see `mcp.md`), and the endpoints that an OAuth
+client calls before it has a token show nothing of the wiki (see `oauth.md`). The login is checked in two layers, as
+the authentication guide of Next.js describes:
 
 - `src/proxy.ts` sends every request without a session cookie to the login page, without asking the database. Only the
-  login page, `/api/health` and the static files of Next.js (`/_next/static/`) pass it; the image optimizer of Next.js
-  is behind the login like every other address. A Server Action called without the cookie leads to the login page as
-  well, with a full page load instead of the error page.
+  login page, `/api/health`, `/mcp`, the public endpoints of OAuth and the static files of Next.js (`/_next/static/`)
+  pass it; the image optimizer of Next.js is behind the login like every other address. A Server Action called
+  without the cookie leads to the login page as well, with a full page load instead of the error page.
 - `requireUser()` in `src/features/auth/session.ts` checks the session in the database. Every page, every query and
   every Server Action calls it first; it is the layer that protects the data. Without a session it leads to the login
   page, and while the first password is pending, to the password change. Pages call it before they read the query
@@ -163,8 +182,8 @@ in two layers, as the authentication guide of Next.js describes:
   browsers of the user are logged out.
 - The pending change is cleared only after the password has changed. If that fails, the user changes the password once
   more.
-- After the change the user lands on `/folders`. A user without a pending change who opens `/change-password` is led
-  there too.
+- After the change the user lands on `/folders`, or on the address the login was asked for (see "The way back after a
+  login"). A user without a pending change who opens `/change-password` is led there too.
 
 ## User list and creating users
 
@@ -183,8 +202,9 @@ in two layers, as the authentication guide of Next.js describes:
 
 ## Routes
 
-- `/login`: the login form. Public.
+- `/login`: the login form. Public. `?next=<path>` is the address the login leads to.
 - `/change-password`: the forced password change. It needs a session; without a pending change it leads to `/folders`.
+  `?next=<path>` is the address the change leads to.
 - `/users`: the user list, with the action `create` for the "New user" dialog. For the admin only.
 - None of the three has views, and only `/users` has an action; any other action or view shows the not-found page.
 
@@ -250,8 +270,7 @@ in two layers, as the authentication guide of Next.js describes:
 - no limit on logins per client address across user names; that is a task of the reverse proxy
 - the group of an IPv6 address is always its /64; there is no setting for the prefix
 - no audit log
-- no HTTP API and no browser client of Better Auth
+- no browser client of Better Auth, and its HTTP handler is not mounted
 - no switch for session cookies without `Secure`: a production build needs HTTPS in front of it, or `localhost`
-- no return to the address that was asked for after the login
 - the password change is not atomic: Better Auth ends the sessions, stores the password and starts the new session in
   separate statements, and the flag is cleared after them
