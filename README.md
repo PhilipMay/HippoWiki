@@ -222,6 +222,10 @@ npm run image:smoke   # check the built image against a throwaway database
 - The optional `HIPPOWIKI_LOG_CLIENT_ADDRESS=true` logs the forwarding headers (`X-Forwarded-For`, `X-Real-Ip` and the
   like, never cookies) of every request, to check the reverse proxy in front of the container; see "Configuration" in
   `spec/container-image.md`. It is off by default.
+- The optional `HIPPOWIKI_TRUSTED_PROXIES` says how many reverse proxies are in front of the container, one digit from
+  `0` to `9`. With `1` or more the wait after failed logins counts per client address, taken from `X-Forwarded-For`;
+  set it only when the container is reachable through the reverse proxy alone. It is `0` by default: no header is read
+  and the wait counts per user name; see "Configuration" in `spec/container-image.md`.
 - On every start the container applies the pending migrations to the database of `DATABASE_URL`
   (`prisma migrate deploy`): an empty database gets its tables, a migrated one stays as it is. Then it creates the
   admin account with the password from `HIPPOWIKI_ADMIN_PASSWORD` if the database has none; an existing admin stays

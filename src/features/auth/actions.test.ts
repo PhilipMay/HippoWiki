@@ -18,6 +18,10 @@ const mocks = vi.hoisted(() => ({
   revalidatePath: vi.fn(),
   redirect: vi.fn(),
   logClientAddressProbe: vi.fn(),
+  getServerEnv: vi.fn(),
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
 }));
 
 vi.mock("@/features/auth/service", () => ({
@@ -30,6 +34,18 @@ vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("next/headers", () => ({ headers: mocks.headers }));
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
 vi.mock("@/lib/client-address-probe", () => ({ logClientAddressProbe: mocks.logClientAddressProbe }));
+vi.mock("@/lib/env", () => ({ getServerEnv: mocks.getServerEnv }));
+vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, error: mocks.error } }));
+
+/** Sets the number of trusted reverse proxies that the action reads from the server environment. */
+function trustProxies(count: number): void {
+  mocks.getServerEnv.mockReturnValue({
+    DATABASE_URL: "postgresql://u:p@localhost:5432/db",
+    NODE_ENV: "production",
+    HIPPOWIKI_LOG_CLIENT_ADDRESS: false,
+    HIPPOWIKI_TRUSTED_PROXIES: count,
+  });
+}
 
 const REQUEST_HEADERS = new Headers({ cookie: "better-auth.session_token=token.signature" });
 const USER = { id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002", name: "alice", mustChangePassword: false };
@@ -45,6 +61,7 @@ const LOGIN_FORM = { name: "alice", password: "secret password" };
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.headers.mockResolvedValue(REQUEST_HEADERS);
+  trustProxies(0);
   mocks.redirect.mockImplementation((path: string) => {
     throw new RedirectError(path);
   });
@@ -56,7 +73,7 @@ describe("logIn", () => {
 
     await expect(logIn({}, formData(LOGIN_FORM))).rejects.toMatchObject({ path: "/folders" });
 
-    expect(mocks.logIn).toHaveBeenCalledExactlyOnceWith(LOGIN_FORM, REQUEST_HEADERS);
+    expect(mocks.logIn).toHaveBeenCalledExactlyOnceWith(LOGIN_FORM, REQUEST_HEADERS, "shared");
     expect(mocks.revalidatePath).toHaveBeenCalledExactlyOnceWith("/", "layout");
   });
 
@@ -69,6 +86,61 @@ describe("logIn", () => {
     expect(mocks.logClientAddressProbe.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.logIn.mock.invocationCallOrder[0] ?? 0,
     );
+  });
+
+  describe("the client address group", () => {
+    /** Logs in with the given request headers and returns the group the service got. */
+    async function groupFor(requestHeaders: Headers): Promise<unknown> {
+      mocks.headers.mockResolvedValue(requestHeaders);
+      mocks.logIn.mockResolvedValue({ ok: false, error: { code: "invalid-credentials" } });
+      await logIn({}, formData(LOGIN_FORM));
+      return mocks.logIn.mock.calls[0]?.[2];
+    }
+
+    it.each([null, "203.0.113.7", "198.51.100.9, 203.0.113.7", "unknown"])(
+      "is shared with 0 trusted proxies, whatever X-Forwarded-For says (%j), and nothing is logged",
+      async (value) => {
+        const requestHeaders = new Headers(value === null ? {} : { "x-forwarded-for": value });
+
+        expect(await groupFor(requestHeaders)).toBe("shared");
+        expect(mocks.warn).not.toHaveBeenCalled();
+        expect(mocks.error).not.toHaveBeenCalled();
+      },
+    );
+
+    it("is the rightmost entry of X-Forwarded-For with 1 trusted proxy", async () => {
+      trustProxies(1);
+
+      expect(await groupFor(new Headers({ "x-forwarded-for": "198.51.100.9, 203.0.113.7" }))).toBe("203.0.113.7");
+      expect(mocks.warn).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["no header", {}, "missing-header"],
+      ["an entry that is not an address", { "x-forwarded-for": "secret-looking-value" }, "not-an-address"],
+    ])(
+      "is shared with 1 trusted proxy and %s, with a warning that gives the reason but not the header",
+      async (_case, requestHeaders: Record<string, string>, reason) => {
+        trustProxies(1);
+
+        expect(await groupFor(new Headers(requestHeaders))).toBe("shared");
+        expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
+          { reason },
+          "no client address in X-Forwarded-For, the login counts in the shared group",
+        );
+        expect(JSON.stringify(mocks.warn.mock.calls)).not.toContain("secret-looking-value");
+      },
+    );
+
+    it("is shared with 2 trusted proxies and a single entry, with the reason", async () => {
+      trustProxies(2);
+
+      expect(await groupFor(new Headers({ "x-forwarded-for": "203.0.113.7" }))).toBe("shared");
+      expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
+        { reason: "too-few-entries" },
+        "no client address in X-Forwarded-For, the login counts in the shared group",
+      );
+    });
   });
 
   it("leads to the password change after a login with a first password", async () => {

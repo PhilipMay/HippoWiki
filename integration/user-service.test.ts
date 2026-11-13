@@ -146,7 +146,7 @@ describe("createUser", () => {
     expect(JSON.stringify(stored)).not.toContain(password);
     expect(await verifyPassword(stored.accounts[0]?.password ?? "", password)).toBe(true);
 
-    const login = await authService.logIn({ name: "jane-doe", password }, new Headers());
+    const login = await authService.logIn({ name: "jane-doe", password }, new Headers(), "shared");
     expect(login).toMatchObject({ ok: true, value: { user: { id: stored.id, mustChangePassword: true } } });
   });
 

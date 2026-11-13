@@ -153,16 +153,24 @@ model AuthSecret {
   createdAt DateTime @default(now()) @db.Timestamptz(3)
 }
 
-/// The failed logins in a row for a submitted user name, for the wait after too many of them. It has no relation to
-/// `User`: unknown names are counted too, so that the wait does not tell which names exist. A login is counted before
-/// its password is checked. A successful login deletes the row.
+/// The failed logins in a row for a submitted user name from one client address group, for the wait after too many of
+/// them. Each pair of a name and a group has its own count, so a stranger's failures do not make the owner of the
+/// name wait at another address; the logins per name from all groups together are limited by `LoginWindow`. It has no
+/// relation to `User`: unknown names are counted too, so that the wait does not tell which names exist. A login is
+/// counted before its password is checked. A successful login deletes the row of its name and group.
 model LoginAttempt {
   /// The submitted user name; always one that follows the name rule.
-  username     String   @id
-  /// How many logins for the name have failed in a row, including the ones whose password is being checked.
-  failures     Int
+  username      String
+  /// The client address group the logins came from (`src/lib/client-address.ts`): `shared`, an IPv4 address or the
+  /// /64 of an IPv6 address.
+  clientAddress String
+  /// How many logins for the name from the group have failed in a row, including the ones whose password is being
+  /// checked.
+  failures      Int
   /// When the last of them was counted; the wait counts from here.
-  lastFailedAt DateTime @db.Timestamptz(3)
+  lastFailedAt  DateTime @db.Timestamptz(3)
+
+  @@id([username, clientAddress])
 }
 
 /// The logins counted for a submitted user name in the current hour, from all client addresses together, for the limit

@@ -15,7 +15,10 @@ import {
 import * as authService from "@/features/auth/service";
 import { requireSession } from "@/features/auth/session";
 import { changePasswordPath, foldersPath, loginPath } from "@/lib/addresses";
+import { clientAddressGroup } from "@/lib/client-address";
 import { logClientAddressProbe } from "@/lib/client-address-probe";
+import { getServerEnv } from "@/lib/env";
+import { logger } from "@/lib/logger";
 
 const INVALID_CREDENTIALS_MESSAGE = "Invalid user name or password";
 const BUSY_MESSAGE = "Too many logins at the moment, please try again";
@@ -48,8 +51,16 @@ export async function logIn(_prevState: LoginFormState, formData: FormData): Pro
   // Shows whether a Server Action sees the same forwarding headers as the proxy of Next.js.
   logClientAddressProbe(requestHeaders, { source: "login" });
 
+  // `/login` does not pass the proxy of Next.js, so the action reads the client address itself; the service only gets
+  // the group.
+  const { group, fallback } = clientAddressGroup(requestHeaders, getServerEnv().HIPPOWIKI_TRUSTED_PROXIES);
+  if (fallback) {
+    // The value of the header is not logged; `HIPPOWIKI_LOG_CLIENT_ADDRESS` shows it.
+    logger.warn({ reason: fallback }, "no client address in X-Forwarded-For, the login counts in the shared group");
+  }
+
   // Better Auth sets the session cookie on the response of this action (`nextCookies()` in `src/lib/auth.ts`).
-  const result = await authService.logIn(input.data, requestHeaders);
+  const result = await authService.logIn(input.data, requestHeaders, group);
   if (!result.ok) {
     switch (result.error.code) {
       case "invalid-credentials":

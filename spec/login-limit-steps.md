@@ -69,7 +69,7 @@ The rules that span several steps. The wrap-up moves them into `users-and-login.
 
 - [x] Client address group
 - [x] Limit per user name and hour
-- [ ] Wait per user name and client address
+- [x] Wait per user name and client address
 - [ ] Deleting old rows
 - [ ] Wrap-up
 

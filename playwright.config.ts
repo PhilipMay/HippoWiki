@@ -55,6 +55,10 @@ export default defineConfig({
       DATABASE_URL: testDatabaseUrl(),
       // A separate build directory lets the test server run next to `npm run dev`.
       HIPPOWIKI_DIST_DIR: ".next-e2e",
+      // One reverse proxy is trusted, so a test chooses its client address with an `X-Forwarded-For` header
+      // (`extraHTTPHeaders` of a browser context). A request without the header gets the address of the connection,
+      // which Next.js writes into it.
+      HIPPOWIKI_TRUSTED_PROXIES: "1",
     },
     // Never attach to a server that was started by someone else and may use another database.
     reuseExistingServer: false,

@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Browser, Page } from "@playwright/test";
 
 import { KNOWN_ADMIN, KNOWN_USER } from "../prisma/known-users";
 import { NO_STORAGE_STATE } from "./support/auth";
@@ -6,8 +6,15 @@ import { collectErrors } from "./support/browser";
 import { createUser, getTestDb, resetTestDatabase, TEST_PASSWORD } from "./support/database";
 import { expect, test } from "./support/test";
 
+/**
+ * The client address of the visitor of every test. The test server trusts one reverse proxy
+ * (`HIPPOWIKI_TRUSTED_PROXIES=1` in `playwright.config.ts`), so the rightmost entry of `X-Forwarded-For` is the
+ * client address; a test that needs another one opens a browser context of its own (`openLoginFrom()`).
+ */
+const VISITOR_ADDRESS = "192.0.2.10";
+
 // The login is tested as a visitor who is not logged in yet.
-test.use({ storageState: NO_STORAGE_STATE });
+test.use({ storageState: NO_STORAGE_STATE, extraHTTPHeaders: { "x-forwarded-for": VISITOR_ADDRESS } });
 
 /** The ids of the sessions of the saved logins, which every reset puts back; the tests count the other ones. */
 let savedSessionIds: string[];
@@ -196,7 +203,7 @@ test("once the wait is over, the right password logs in", async ({ page }) => {
   await expect(formAlert(page)).toHaveText(WAIT_ONE_MINUTE);
 
   // As if a minute had passed: the stored time of the last failure is moved back.
-  await getTestDb().loginAttempt.update({
+  await getTestDb().loginAttempt.updateMany({
     where: { username: KNOWN_USER.name },
     data: { lastFailedAt: new Date(Date.now() - 61_000) },
   });
@@ -219,7 +226,7 @@ test("an unknown name shows the same messages as a known one, also for the wait"
 
 test("the wait of one name does not hold back another user", async ({ page }) => {
   await getTestDb().loginAttempt.create({
-    data: { username: KNOWN_USER.name, failures: 9, lastFailedAt: new Date() },
+    data: { username: KNOWN_USER.name, clientAddress: VISITOR_ADDRESS, failures: 9, lastFailedAt: new Date() },
   });
   await page.goto("/login");
 
@@ -245,6 +252,72 @@ test("with 20 logins for a name within the hour, the right password waits for th
 
   await submitLogin(page, KNOWN_ADMIN.name, KNOWN_ADMIN.password);
   await expect(page).toHaveURL("/folders");
+});
+
+/**
+ * Opens the login page in a browser context of its own that sends the given `X-Forwarded-For`, as a visitor from
+ * another address. The page is closed with its context at the end of the test.
+ */
+async function openLoginFrom(browser: Browser, forwardedFor: string): Promise<Page> {
+  const context = await browser.newContext({
+    storageState: NO_STORAGE_STATE,
+    extraHTTPHeaders: { "x-forwarded-for": forwardedFor },
+  });
+  const page = await context.newPage();
+  await page.goto("/login");
+  // Only the page of the fixture waits for hydration by itself (`support/test.ts`).
+  await page.locator('html[data-hydrated="true"]').waitFor({ state: "attached" });
+  return page;
+}
+
+test.describe("the wait per client address", () => {
+  test("after five wrong passwords from one address the right one waits there and logs in from another", async ({
+    page,
+    browser,
+  }) => {
+    await page.goto("/login");
+    await failFiveLogins(page, KNOWN_USER.name);
+
+    await submitLogin(page, KNOWN_USER.name, KNOWN_USER.password);
+    await expect(formAlert(page)).toHaveText(WAIT_ONE_MINUTE);
+    expect(await getTestDb().loginAttempt.findMany()).toMatchObject([
+      { username: KNOWN_USER.name, clientAddress: VISITOR_ADDRESS, failures: 5 },
+    ]);
+
+    const ownerPage = await openLoginFrom(browser, "198.51.100.9");
+    await submitLogin(ownerPage, KNOWN_USER.name, KNOWN_USER.password);
+
+    await expect(ownerPage).toHaveURL("/folders");
+    expect(await newSessionCount(KNOWN_USER.id)).toBe(1);
+    await ownerPage.context().close();
+  });
+
+  test("a forged entry to the left of the address gives no new budget", async ({ browser }) => {
+    const strangerPage = await openLoginFrom(browser, "203.0.113.7");
+    await failFiveLogins(strangerPage, KNOWN_USER.name);
+
+    const forgingPage = await openLoginFrom(browser, "198.51.100.9, 203.0.113.7");
+    await submitLogin(forgingPage, KNOWN_USER.name, KNOWN_USER.password);
+
+    await expect(formAlert(forgingPage)).toHaveText(WAIT_ONE_MINUTE);
+    expect(await getTestDb().loginAttempt.findMany()).toMatchObject([
+      { username: KNOWN_USER.name, clientAddress: "203.0.113.7", failures: 5 },
+    ]);
+    await strangerPage.context().close();
+    await forgingPage.context().close();
+  });
+
+  test("a header that is not an address counts in the shared group", async ({ browser }) => {
+    const page = await openLoginFrom(browser, "unknown");
+
+    await submitLogin(page, KNOWN_USER.name, "wrong-password");
+
+    await expect(formAlert(page)).toHaveText(INVALID_CREDENTIALS);
+    expect(await getTestDb().loginAttempt.findMany()).toMatchObject([
+      { username: KNOWN_USER.name, clientAddress: "shared", failures: 1 },
+    ]);
+    await page.context().close();
+  });
 });
 
 test("an empty form shows an error at each field and focuses the first one", async ({ page }) => {
