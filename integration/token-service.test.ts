@@ -1,10 +1,11 @@
 // Runs the token service against the test database, to check its reads and writes on real data.
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import * as authService from "@/features/auth/service";
 import { hashToken } from "@/features/tokens/secret";
 import * as tokenService from "@/features/tokens/service";
 
-import { createUser, getTestDb } from "../e2e/support/database";
+import { createUser, getTestDb, TEST_PASSWORD } from "../e2e/support/database";
 
 const INPUT = { name: "MCP client", scopes: ["read"], expiry: "90d" };
 
@@ -164,5 +165,106 @@ describe("deleting a user", () => {
     await getTestDb().user.delete({ where: { id: alice.id } });
 
     expect(await getTestDb().apiToken.findMany({ select: { id: true } })).toEqual([{ id: bobsToken.token.id }]);
+  });
+});
+
+describe("authenticateToken", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Request headers that carry the token as a bearer token. */
+  function bearer(secret: string): Headers {
+    return new Headers({ authorization: `Bearer ${secret}` });
+  }
+
+  it("returns the same actor as the session of the token's user", async () => {
+    const alice = await createActor();
+    const { secret } = await createToken(alice, { scopes: ["read", "write"] });
+    const login = await authService.logIn({ name: alice.name, password: TEST_PASSWORD }, new Headers(), "shared");
+    if (!login.ok) return expect.fail(`login failed: ${login.error.code}`);
+
+    for (const scope of ["read", "write"] as const) {
+      await expect(tokenService.authenticateToken(bearer(secret), scope)).resolves.toStrictEqual({
+        ok: true,
+        value: { id: login.value.user.id, name: login.value.user.name },
+      });
+    }
+  });
+
+  it("refuses a token that was revoked", async () => {
+    const alice = await createActor();
+    const { token, secret } = await createToken(alice);
+    await tokenService.revokeToken(alice, token.id);
+
+    await expect(tokenService.authenticateToken(bearer(secret), "read")).resolves.toEqual({
+      ok: false,
+      error: { code: "invalid-token" },
+    });
+  });
+
+  it("refuses a token once the clock is past its expiry", async () => {
+    const { token, secret } = await createToken(await createActor(), { expiry: "30d" });
+    await expect(tokenService.authenticateToken(bearer(secret), "read")).resolves.toMatchObject({ ok: true });
+
+    vi.useFakeTimers({ now: token.expiresAt.getTime() + 1, toFake: ["Date"] });
+
+    await expect(tokenService.authenticateToken(bearer(secret), "read")).resolves.toEqual({
+      ok: false,
+      error: { code: "invalid-token" },
+    });
+  });
+
+  it("refuses the token of a user who still has the first password", async () => {
+    const user = await createUser({ mustChangePassword: false });
+    const { secret } = await createToken({ id: user.id, name: user.name });
+    await getTestDb().user.update({ where: { id: user.id }, data: { mustChangePassword: true } });
+
+    await expect(tokenService.authenticateToken(bearer(secret), "read")).resolves.toEqual({
+      ok: false,
+      error: { code: "invalid-token" },
+    });
+  });
+
+  it("refuses a scope the token lacks", async () => {
+    const { secret } = await createToken(await createActor(), { scopes: ["write"] });
+
+    await expect(tokenService.authenticateToken(bearer(secret), "read")).resolves.toEqual({
+      ok: false,
+      error: { code: "insufficient-scope" },
+    });
+  });
+
+  it("refuses a token that is not stored, and a value that is no token", async () => {
+    await createToken(await createActor());
+
+    await expect(tokenService.authenticateToken(bearer(`hw_${"x".repeat(43)}`), "read")).resolves.toEqual({
+      ok: false,
+      error: { code: "invalid-token" },
+    });
+    await expect(tokenService.authenticateToken(bearer("x".repeat(46)), "read")).resolves.toEqual({
+      ok: false,
+      error: { code: "missing-token" },
+    });
+  });
+
+  it("sets the last use on the first use and not again within the minute", async () => {
+    const alice = await createActor();
+    const { token, secret } = await createToken(alice);
+    const lastUse = async () => (await getTestDb().apiToken.findUniqueOrThrow({ where: { id: token.id } })).lastUsedAt;
+    const start = Date.now();
+    vi.useFakeTimers({ now: start, toFake: ["Date"] });
+
+    await tokenService.authenticateToken(bearer(secret), "read");
+    expect(await lastUse()).toEqual(new Date(start));
+
+    vi.setSystemTime(start + 59_000);
+    await tokenService.authenticateToken(bearer(secret), "read");
+    expect(await lastUse()).toEqual(new Date(start));
+
+    vi.setSystemTime(start + 60_000);
+    await tokenService.authenticateToken(bearer(secret), "read");
+    expect(await lastUse()).toEqual(new Date(start + 60_000));
+    expect((await tokenService.listTokens(alice))[0]?.lastUsedAt).toEqual(new Date(start + 60_000));
   });
 });

@@ -1,11 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { hashToken } from "@/features/tokens/secret";
-import { createToken, listTokens, MAX_TOKENS_PER_USER, revokeToken } from "@/features/tokens/service";
+import {
+  authenticateToken,
+  createToken,
+  LAST_USE_INTERVAL_MS,
+  listTokens,
+  MAX_TOKENS_PER_USER,
+  revokeToken,
+} from "@/features/tokens/service";
 import { Prisma } from "@/generated/prisma/client";
 
 const mocks = vi.hoisted(() => ({
   findMany: vi.fn(),
+  findUnique: vi.fn(),
+  updateMany: vi.fn(),
   count: vi.fn(),
   create: vi.fn(),
   deleteMany: vi.fn(),
@@ -19,7 +28,12 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/db", () => ({
   getDb: () => ({
-    apiToken: { findMany: mocks.findMany, deleteMany: mocks.deleteMany },
+    apiToken: {
+      findMany: mocks.findMany,
+      findUnique: mocks.findUnique,
+      updateMany: mocks.updateMany,
+      deleteMany: mocks.deleteMany,
+    },
     $transaction: mocks.transaction,
   }),
 }));
@@ -47,6 +61,23 @@ function storedRow(data: Record<string, unknown> = {}) {
     lastUsedAt: null,
     ...data,
   };
+}
+
+/** A token with its user as `authenticateToken` reads it: valid, with the scope `read` and never used. */
+function tokenWithUser({ user = {}, ...data }: { user?: Record<string, unknown> } & Record<string, unknown> = {}) {
+  return {
+    id: TOKEN_ID,
+    scopes: ["read"],
+    expiresAt: new Date("2026-05-30T12:00:00.000Z"),
+    lastUsedAt: null,
+    user: { id: ALICE_ID, username: "alice", mustChangePassword: false, ...user },
+    ...data,
+  };
+}
+
+/** Request headers with the given `Authorization` value. */
+function authorization(value: string): Headers {
+  return new Headers({ authorization: value });
 }
 
 function knownError(code: string, meta?: Record<string, unknown>): Prisma.PrismaClientKnownRequestError {
@@ -81,6 +112,8 @@ beforeEach(() => {
   mocks.create.mockResolvedValue(storedRow());
   mocks.findMany.mockResolvedValue([]);
   mocks.deleteMany.mockResolvedValue({ count: 1 });
+  mocks.findUnique.mockResolvedValue(tokenWithUser());
+  mocks.updateMany.mockResolvedValue({ count: 1 });
 });
 
 afterEach(() => {
@@ -302,5 +335,193 @@ describe("revokeToken", () => {
       { err, userId: ALICE_ID, tokenId: TOKEN_ID },
       "failed to revoke token",
     );
+  });
+});
+
+describe("authenticateToken", () => {
+  it("returns the actor of the token's user for a valid token with the scope", async () => {
+    await expect(authenticateToken(authorization(`Bearer ${SECRET}`), "read")).resolves.toStrictEqual({
+      ok: true,
+      value: { id: ALICE_ID, name: "alice" },
+    });
+
+    expect(mocks.findUnique).toHaveBeenCalledExactlyOnceWith({
+      where: { tokenHash: hashToken(SECRET) },
+      select: {
+        id: true,
+        scopes: true,
+        expiresAt: true,
+        lastUsedAt: true,
+        user: { select: { id: true, username: true, mustChangePassword: true } },
+      },
+    });
+    expectNothingLogged();
+  });
+
+  it.each([
+    ["the lowercase scheme", `bearer ${SECRET}`],
+    ["the uppercase scheme", `BEARER ${SECRET}`],
+    ["more than one space after the scheme", `Bearer    ${SECRET}`],
+    ["spaces around the value", `  Bearer ${SECRET}  `],
+  ])("reads a token with %s", async (_case, value) => {
+    await expect(authenticateToken(authorization(value), "read")).resolves.toMatchObject({ ok: true });
+  });
+
+  it.each([
+    ["no header", new Headers()],
+    ["an empty header", authorization("")],
+    ["another scheme", authorization(`Basic ${SECRET}`)],
+    ["the scheme alone", authorization("Bearer")],
+    ["no space after the scheme", authorization(`Bearer${SECRET}`)],
+    ["a value without the prefix", authorization(`Bearer ${SECRET.slice(3)}`)],
+    ["a value that is too short", authorization(`Bearer ${SECRET.slice(0, -1)}`)],
+    ["a value with other characters", authorization(`Bearer ${SECRET.slice(0, -1)}=`)],
+    ["two values", authorization(`Bearer ${SECRET} ${SECRET}`)],
+  ])("reports %s as a missing token, without asking the database or logging", async (_case, headers) => {
+    await expect(authenticateToken(headers, "read")).resolves.toEqual({
+      ok: false,
+      error: { code: "missing-token" },
+    });
+
+    expect(mocks.findUnique).not.toHaveBeenCalled();
+    expectNothingLogged();
+  });
+
+  it("reports an unknown token as invalid, and logs the reason without the token", async () => {
+    mocks.findUnique.mockResolvedValue(null);
+
+    await expect(authenticateToken(authorization(`Bearer ${SECRET}`), "read")).resolves.toEqual({
+      ok: false,
+      error: { code: "invalid-token" },
+    });
+
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith({ reason: "unknown" }, "token refused");
+    expectNoSecretLogged();
+  });
+
+  it("reports an expired token as invalid, also at the moment it expires, and logs the token id", async () => {
+    for (const expiresAt of [new Date(NOW.getTime() - 1), NOW]) {
+      mocks.findUnique.mockResolvedValue(tokenWithUser({ expiresAt }));
+
+      await expect(authenticateToken(authorization(`Bearer ${SECRET}`), "read")).resolves.toEqual({
+        ok: false,
+        error: { code: "invalid-token" },
+      });
+    }
+
+    expect(mocks.warn).toHaveBeenCalledWith({ reason: "expired", tokenId: TOKEN_ID }, "token refused");
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+    expectNoSecretLogged();
+  });
+
+  it("accepts a token a millisecond before it expires", async () => {
+    mocks.findUnique.mockResolvedValue(tokenWithUser({ expiresAt: new Date(NOW.getTime() + 1) }));
+
+    await expect(authenticateToken(authorization(`Bearer ${SECRET}`), "read")).resolves.toMatchObject({ ok: true });
+  });
+
+  it("reports the token of a user with the first password as invalid", async () => {
+    mocks.findUnique.mockResolvedValue(tokenWithUser({ user: { mustChangePassword: true } }));
+
+    await expect(authenticateToken(authorization(`Bearer ${SECRET}`), "read")).resolves.toEqual({
+      ok: false,
+      error: { code: "invalid-token" },
+    });
+
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
+      { reason: "first-password", tokenId: TOKEN_ID },
+      "token refused",
+    );
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["read", ["write"]],
+    ["write", ["read"]],
+  ] as const)("reports a token without the scope %s as insufficient", async (scope, scopes) => {
+    mocks.findUnique.mockResolvedValue(tokenWithUser({ scopes }));
+
+    await expect(authenticateToken(authorization(`Bearer ${SECRET}`), scope)).resolves.toEqual({
+      ok: false,
+      error: { code: "insufficient-scope" },
+    });
+
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
+      { reason: "insufficient-scope", tokenId: TOKEN_ID, scope },
+      "token refused",
+    );
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+    expectNoSecretLogged();
+  });
+
+  it("accepts each scope of a token with both", async () => {
+    mocks.findUnique.mockResolvedValue(tokenWithUser({ scopes: ["read", "write"] }));
+
+    await expect(authenticateToken(authorization(`Bearer ${SECRET}`), "read")).resolves.toMatchObject({ ok: true });
+    await expect(authenticateToken(authorization(`Bearer ${SECRET}`), "write")).resolves.toMatchObject({ ok: true });
+  });
+
+  it("reports failed when the database cannot be read, and logs it without the token", async () => {
+    const err = new Error("connection lost");
+    mocks.findUnique.mockRejectedValue(err);
+
+    await expect(authenticateToken(authorization(`Bearer ${SECRET}`), "read")).resolves.toEqual({
+      ok: false,
+      error: { code: "failed" },
+    });
+
+    expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ err }, "failed to look up token");
+    expectNoSecretLogged();
+  });
+
+  describe("the last use", () => {
+    it("is written for a token that was never used", async () => {
+      expect(LAST_USE_INTERVAL_MS).toBe(60_000);
+
+      await authenticateToken(authorization(`Bearer ${SECRET}`), "read");
+
+      const usedBefore = new Date(NOW.getTime() - 60_000);
+      expect(mocks.updateMany).toHaveBeenCalledExactlyOnceWith({
+        where: { id: TOKEN_ID, OR: [{ lastUsedAt: null }, { lastUsedAt: { lte: usedBefore } }] },
+        data: { lastUsedAt: NOW },
+      });
+    });
+
+    it("is not written again within a minute", async () => {
+      mocks.findUnique.mockResolvedValue(tokenWithUser({ lastUsedAt: new Date(NOW.getTime() - 59_999) }));
+
+      await expect(authenticateToken(authorization(`Bearer ${SECRET}`), "read")).resolves.toMatchObject({ ok: true });
+
+      expect(mocks.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("is written again once a minute has passed", async () => {
+      mocks.findUnique.mockResolvedValue(tokenWithUser({ lastUsedAt: NOW }));
+      await authenticateToken(authorization(`Bearer ${SECRET}`), "read");
+      expect(mocks.updateMany).not.toHaveBeenCalled();
+
+      vi.setSystemTime(NOW.getTime() + 60_000);
+      await authenticateToken(authorization(`Bearer ${SECRET}`), "read");
+
+      expect(mocks.updateMany).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ data: { lastUsedAt: new Date(NOW.getTime() + 60_000) } }),
+      );
+    });
+
+    it("does not refuse the request when it cannot be written, and is logged without the token", async () => {
+      const err = new Error("connection lost");
+      mocks.updateMany.mockRejectedValue(err);
+
+      await expect(authenticateToken(authorization(`Bearer ${SECRET}`), "read")).resolves.toStrictEqual({
+        ok: true,
+        value: { id: ALICE_ID, name: "alice" },
+      });
+
+      expect(mocks.error).toHaveBeenCalledExactlyOnceWith(
+        { err, tokenId: TOKEN_ID },
+        "failed to write the last use of a token",
+      );
+      expectNoSecretLogged();
+    });
   });
 });

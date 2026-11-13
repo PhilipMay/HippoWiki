@@ -1,9 +1,10 @@
 // The reads and writes of API tokens. The service knows nothing about Next.js, forms or addresses, so that the GUI
 // (through `queries.ts` and `actions.ts`) and any other caller can use it, also outside a request.
 //
-// Every function takes the acting user first and only ever touches the actor's own tokens: nobody, the admin included,
-// sees or revokes the tokens of another user. A token leaves the service only once, when it is created; only its hash
-// is stored, and neither is ever logged.
+// Every function that lists or changes tokens takes the acting user first and only ever touches the actor's own
+// tokens: nobody, the admin included, sees or revokes the tokens of another user. `authenticateToken()` is the other
+// way round: it finds the actor of a request from its bearer token. A token leaves the service only once, when it is
+// created; only its hash is stored, and neither is ever logged.
 
 import { z } from "zod";
 
@@ -15,7 +16,7 @@ import {
   type TokenFieldErrors,
   type TokenScope,
 } from "@/features/tokens/schema";
-import { generateToken, hashToken } from "@/features/tokens/secret";
+import { generateToken, hashToken, looksLikeToken } from "@/features/tokens/secret";
 import { parseUserId } from "@/features/users/schema";
 import type { Actor } from "@/features/users/service";
 import { getDb } from "@/lib/db";
@@ -93,8 +94,16 @@ type TokenNotFound = { code: "token-not-found" };
 /** An unexpected database error, or an actor that is malformed or does not exist; it has been logged. */
 type Failed = { code: "failed" };
 
+/** The request has no `Authorization` header with a bearer token, or its value does not look like a token. */
+type MissingToken = { code: "missing-token" };
+/** The token is unknown or expired, or its user still has the first password. */
+type BadToken = { code: "invalid-token" };
+/** The token is valid but lacks the scope that was asked for. */
+type InsufficientScope = { code: "insufficient-scope" };
+
 export type CreateTokenError = InvalidToken | LimitReached | Failed;
 export type RevokeTokenError = TokenNotFound | Failed;
+export type AuthenticateTokenError = MissingToken | BadToken | InsufficientScope | Failed;
 
 /** Thrown inside the transaction of `createToken` when the actor has no row; rolls it back. */
 class ActorNotFoundError extends Error {}
@@ -184,4 +193,97 @@ export async function revokeToken(actor: Actor, id: string): Promise<Result<{ id
 
   logger.info({ userId, tokenId }, "token revoked");
   return { ok: true, value: { id: tokenId } };
+}
+
+/** How often the last use of a token is written at most, so that a burst of requests does not write on every one. */
+export const LAST_USE_INTERVAL_MS = 60 * 1000;
+
+/**
+ * The bearer token of an `Authorization` header, or `null` without one. The scheme is matched without regard to case,
+ * as RFC 6750 allows, and may be followed by more than one space.
+ */
+function bearerTokenOf(headers: Headers): string | null {
+  const match = /^bearer +(\S+) *$/i.exec(headers.get("authorization") ?? "");
+  return match?.[1] ?? null;
+}
+
+/**
+ * Who a request acts for, from the bearer token in its `Authorization` header: the actor of the token's user, if the
+ * token is valid and has the given scope. It is for callers other than the browser, such as the MCP server; the
+ * browser uses the session (`src/features/auth/session.ts`).
+ *
+ * - `missing-token`: no header, another scheme, or a value that does not look like a token; the database is not asked
+ *   and nothing is logged.
+ * - `invalid-token`: an unknown or expired token, or one whose user still has the first password, who may do nothing
+ *   but change it.
+ * - `insufficient-scope`: a valid token without the scope; `write` does not include `read`.
+ * - `failed`: the database could not be read.
+ *
+ * The MCP route is to answer `missing-token` and `invalid-token` with 401 and `WWW-Authenticate: Bearer`, and
+ * `insufficient-scope` with 403. A valid token gets its last use written, at most once a minute; a failure of that
+ * write is logged and does not refuse the request. The token is never logged.
+ */
+export async function authenticateToken(
+  headers: Headers,
+  scope: TokenScope,
+): Promise<Result<Actor, AuthenticateTokenError>> {
+  const secret = bearerTokenOf(headers);
+  if (secret === null || !looksLikeToken(secret)) return { ok: false, error: { code: "missing-token" } };
+
+  let token: {
+    id: string;
+    scopes: string[];
+    expiresAt: Date;
+    lastUsedAt: Date | null;
+    user: { id: string; username: string; mustChangePassword: boolean };
+  } | null;
+  try {
+    token = await getDb().apiToken.findUnique({
+      where: { tokenHash: hashToken(secret) },
+      select: {
+        id: true,
+        scopes: true,
+        expiresAt: true,
+        lastUsedAt: true,
+        user: { select: { id: true, username: true, mustChangePassword: true } },
+      },
+    });
+  } catch (err) {
+    logger.error({ err }, "failed to look up token");
+    return { ok: false, error: { code: "failed" } };
+  }
+
+  if (!token) {
+    logger.warn({ reason: "unknown" }, "token refused");
+    return { ok: false, error: { code: "invalid-token" } };
+  }
+  const now = currentTime();
+  const tokenId = token.id;
+  if (token.expiresAt.getTime() <= now.getTime()) {
+    logger.warn({ reason: "expired", tokenId }, "token refused");
+    return { ok: false, error: { code: "invalid-token" } };
+  }
+  if (token.user.mustChangePassword) {
+    logger.warn({ reason: "first-password", tokenId }, "token refused");
+    return { ok: false, error: { code: "invalid-token" } };
+  }
+  if (!token.scopes.includes(scope)) {
+    logger.warn({ reason: "insufficient-scope", tokenId, scope }, "token refused");
+    return { ok: false, error: { code: "insufficient-scope" } };
+  }
+
+  const usedBefore = new Date(now.getTime() - LAST_USE_INTERVAL_MS);
+  if (token.lastUsedAt === null || token.lastUsedAt.getTime() <= usedBefore.getTime()) {
+    try {
+      // Conditional, so that of the requests of a burst that all read an old last use only the first one writes.
+      await getDb().apiToken.updateMany({
+        where: { id: tokenId, OR: [{ lastUsedAt: null }, { lastUsedAt: { lte: usedBefore } }] },
+        data: { lastUsedAt: now },
+      });
+    } catch (err) {
+      logger.error({ err, tokenId }, "failed to write the last use of a token");
+    }
+  }
+
+  return { ok: true, value: { id: token.user.id, name: token.user.username } };
 }
