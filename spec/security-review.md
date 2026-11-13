@@ -2,8 +2,9 @@
 
 Open findings of the security review of 2026-11-12, to be fixed later. The review covered the deployment at
 `https://hippowiki.maysprot.ddnss.eu/`, checked from outside with harmless requests only (no login attempts, no load),
-and a read-only review of the code. The issues follow `issue-report.md`. Remove an issue from this file once it is
-fixed.
+and a read-only review of the code. It was checked again on 2026-11-13, against the code that now counts logins per
+client address group and against the deployment, again with harmless requests only. The issues follow
+`issue-report.md`. Remove an issue from this file once it is fixed.
 
 ## Issues
 
@@ -46,14 +47,26 @@ fixed.
 ### Minor: logins without an account can block all logins
 
 - **Location:** `src/lib/password-hash.ts` (`MAX_CONCURRENT_HASHES = 4`); `src/features/auth/service.ts`,
-  `reserveAttempt()`
+  `reserveAttempt()`; `src/features/auth/wait.ts`
 - **Category:** security
-- **Problem:** Every login with a valid-looking but unknown name costs one argon2 hash.
+- **Problem:** Every login with a valid-looking but unknown name costs one argon2 hash, unless its password is longer
+  than 128 characters.
 - **Impact:** A steady stream of such logins fills the 4 hash slots, so real users get "too many logins at the
-  moment".
-- **Evidence:** The hash limiter allows 4 hashes at a time and queues the rest for at most 10 seconds; the limits of
-  the login count per user name, so every new name gets its own 20 logins per hour.
-- **Suggestion (optional):** A rate limit per client address at the reverse proxy, documented in `container-image.md`.
+  moment". Every new name also writes a row of `LoginAttempt`, kept for a day, and a row of `LoginWindow`, so such a
+  stream makes the two tables grow, which otherwise stay small.
+- **Evidence:** The hash limiter allows 4 hashes at a time and queues the rest for at most 10 seconds. The two limits
+  of the login both count per user name:
+  - 5 failed logins in a row per user name and client address group
+  - 20 logins per user name and hour, from all groups together
+
+  Neither counts across user names, so every new name starts with fresh counts.
+
+- **Suggestion (optional):** A rate limit per client address in the reverse proxy of the deployment.
+  `container-image.md` ("What the environment has to provide") already says that a reverse proxy can add it; the
+  setup on the deployment is missing.
+- **Alternatives:** A limit per client address group across all user names in the server, next to the two limits in
+  `reserveAttempt()`. It needs `HIPPOWIKI_TRUSTED_PROXIES` of at least 1: with `0` every login is in the group
+  `shared`, and the limit would hold back all users together.
 
 ### Nit: the `X-Powered-By: Next.js` header is sent
 
@@ -61,6 +74,19 @@ fixed.
 - **Category:** security
 - **Problem:** Every response names the framework.
 - **Suggestion (optional):** `poweredByHeader: false`.
+
+### Nit: the image optimizer answers without a login
+
+- **Location:** `src/proxy.ts`, `config.matcher`, which leaves out `_next/image`
+- **Category:** security
+- **Problem:** `/_next/image` does not pass the login check of the proxy, although the application does not use
+  `next/image`: nothing imports it, and there is no `public/` folder.
+- **Impact:** Anyone can make the server fetch one of its own pages and answer with a 500. Nothing leaks, because the
+  result is not an image.
+- **Evidence:** `GET /_next/image?url=%2Ffolders&w=64&q=75` on the deployment without a session cookie answers
+  `500 "url" parameter is valid but internal response is invalid`.
+- **Suggestion (optional):** Remove `|_next/image` from the matcher, so that the address is sent to `/login` like
+  every other one.
 
 ### Nit: the runtime user can change the server code in the image
 
@@ -76,8 +102,8 @@ fixed.
 
 - **TLS:** Let's Encrypt certificate, valid until 2027-02-10; TLS 1.0 and 1.1 are refused; plain HTTP gets a 308
   redirect to HTTPS.
-- **Unauthenticated access:** Every address except `/login`, `/api/health` and `/_next/static` redirects to `/login`,
-  including `/.env`, `/.git/config` and `/api/auth/*`.
+- **Unauthenticated access:** Every address except `/login`, `/api/health`, `/_next/static` and `/_next/image` (see
+  the nit above) redirects to `/login`, including `/.env`, `/.git/config` and `/api/auth/*`.
 - **Forged session cookie:** It passes the proxy, but `requireUser()` sends the request to the login page. The HTTP
   handler of Better Auth is not mounted, so `/api/auth/*` answers 404.
 - **Server Actions:** Every action and query calls `requireUser()` first, and admin-only functions check the role in
@@ -93,4 +119,14 @@ fixed.
 - **Information leaks:** `/api/health` returns only `{"status":"ok"}`, error pages show only a digest, and a spoofed
   `X-Forwarded-Host` does not change the redirect.
 - **Host:** Of 14 common ports only 22, 80 and 443 are open; SSH (OpenSSH 10.6) accepts only keys.
-- **Container and dependencies:** The container runs as `node`; `npm audit --omit=dev` reports no vulnerabilities.
+- **Client address:** The client address group of a login comes from the n-th entry from the right of
+  `X-Forwarded-For`, for n trusted reverse proxies (`HIPPOWIKI_TRUSTED_PROXIES`), so the leftmost entry, which a client
+  can write, is never used. `X-Real-Ip` and `Forwarded` are never read, and with the default of `0` no header is read
+  at all. A missing or invalid entry puts the login into the group `shared`, so it is still counted, and the auth
+  service checks the group once more (`isClientAddressGroup()`). Not checked on the deployment yet: whether Traefik
+  replaces a forged `X-Forwarded-For`, and whether the port of the server is reachable only through it (see "Things to
+  Check" in `roadmap.md`).
+- **Client address probe:** `HIPPOWIKI_LOG_CLIENT_ADDRESS` is off by default. It logs only seven forwarding and host
+  headers, each cut to 200 characters, and never cookies, `authorization` or the body.
+- **Container and dependencies:** The container runs as `node`; `npm audit --omit=dev` reports no vulnerabilities, also
+  on 2026-11-13.
