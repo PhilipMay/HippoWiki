@@ -1,7 +1,9 @@
 #!/bin/sh
 # The command of the container image (see Containerfile): applies the pending database migrations, creates the admin
 # account if there is none, then starts the server. When the migration or the admin setup fails, the container exits
-# without serving.
+# with a non-zero code without serving. There is no switch to skip the migration, and the script does not wait for the
+# database: when it is not reachable, the migration fails and the container exits. Two containers that start together
+# both try to create the admin; the second finds it created and counts that as done (`ensureAdmin()`).
 set -eu
 
 cd "$(dirname "$0")"

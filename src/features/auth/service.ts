@@ -136,8 +136,8 @@ class CountChangedError extends Error {}
 /**
  * Counts the login for the name, before its password is checked, at the current time: as one more failure in a row of
  * the name from the client address group in `LoginAttempt` and as one more login of the hour for the name in
- * `LoginWindow`, unless one of the two asks for a wait. Then the
- * longer of the two waits is returned and nothing is written. A wrong password needs no further write; a successful
+ * `LoginWindow`, unless one of the two asks for a wait. Then the longer of the two waits is returned and nothing is
+ * written. A wrong password needs no further write; a successful
  * login deletes the counts, and a login that was not checked takes them back (`releaseAttempt()`).
  *
  * Both counts are written in one transaction, so a login is counted in both or in neither. Each write only succeeds
@@ -330,16 +330,17 @@ const WAIT_LOG_MESSAGES: Record<WaitLimit, string> = {
  * - The failed logins are counted per name and client address group (`clientAddressGroup`, as
  *   `src/lib/client-address.ts` writes it; any other value counts in the shared group and is logged as an error).
  * - After 5 failed logins in a row for a name from a group, the next one from that group has to wait, and so does
- *   every login after 20 logins for the name within the hour, from all groups together (`wait.ts`). During a wait the login is refused with the code `wait` and the longer of
- *   the two waits, without checking the password and without counting the attempt.
+ *   every login after 20 logins for the name within the hour, from all groups together (`wait.ts`). During a wait
+ *   the login is refused with the code `wait` and the longer of the two waits, without checking the password and
+ *   without counting the attempt; the log line names the limit that asked for the wait.
  * - Every other login is counted as a failure before its password is checked (`reserveAttempt()`), so logins at the
  *   same time cannot get past the wait. If it cannot be counted, the password is not checked.
  * - A password of more than 128 characters cannot belong to a user either: it counts as a failed login, without a
  *   hash.
  * - A successful login forgets the failed ones of its name and group, and the window of the name.
- * - A counted login deletes the old counts of all names (`deleteOldCounts()`): failures that are more than a day
- *   old, and windows whose hour is over. A login that was not checked, because the
- *   hashing was busy or something failed, takes its counts back.
+ * - A counted login deletes the old counts of all names (`deleteOldCounts()`), after and outside the transaction of
+ *   the count: failures that are more than a day old, and windows whose hour is over. A login that was not checked,
+ *   because the hashing was busy or something failed, takes its counts back.
  */
 export async function logIn(
   input: { name: string; password: string },

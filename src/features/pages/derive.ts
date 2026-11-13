@@ -11,11 +11,15 @@ import { NAME_MAX_LENGTH } from "@/lib/names";
 
 /**
  * Returns the page title of the Markdown content, or `null` if it has none. The content must start, after optional
- * blank lines, with a level-one ATX heading (`# Title`); a setext heading or any other block first does not count.
+ * blank lines, with a level-one ATX heading (`# Title`): `#`, a space or tab, then the text; up to three leading
+ * spaces and a closing `#` sequence are allowed, as in CommonMark. A setext heading (`Title` underlined with `===`), a
+ * `##` heading, and a heading after any other block, such as text, a list, a quote, a code block, HTML or a link
+ * reference definition, do not count.
  * The content is parsed as GitHub Flavored Markdown, like the page view renders it, and the heading is reduced to
  * plain text: inline Markdown keeps only its text, images their alt text, and raw HTML stays as typed. Whitespace runs
  * become a single space, and the text is trimmed and cut to `TITLE_MAX_LENGTH`. A heading whose text has no letter
- * or digit, such as `#` or `# **`, gives `null`.
+ * or digit, such as `#`, `# **` or `# ...`, gives `null`. There is no fallback title: content without a title is
+ * refused by the schemas.
  */
 export function titleFromContent(content: string): string | null {
   const tree = fromMarkdown(content, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] });

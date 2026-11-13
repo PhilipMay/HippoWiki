@@ -267,6 +267,19 @@ smoke_users() {
   smoke_sql 'SELECT u.id, u.username, u."mustChangePassword", u."updatedAt", a.password FROM "User" u JOIN "Account" a ON a."userId" = u.id ORDER BY u.username'
 }
 
+# The checks of the smoke test, in this order:
+# - Against the empty database, a container without HIPPOWIKI_ADMIN_PASSWORD and one with a password of 7 characters
+#   exit with a non-zero code and the message of the admin setup instead of serving; they create no user.
+# - A container with a password serves /api/health, and the admin exists with a pending password change and an
+#   Argon2id hash; @node-rs/argon2 loads and hashes in /app.
+# - /login answers and stores the secret of the session cookies, sends the security headers of next.config.ts and no
+#   X-Powered-By, and its first /_next/static/ file answers; /folders and the image optimizer redirect to the login.
+# - /api/health answers on 127.0.0.1 inside the container; the server does not run as root; there is no .env file;
+#   the user node can write only the cache of Next.js.
+# - A second container without HIPPOWIKI_ADMIN_PASSWORD serves, applies no migration and leaves the admin as it was.
+# - ./image-migrate.sh and ./image-admin.sh (with another password) exit with 0 and change nothing.
+# A wrong database password would not make it fail: in the pod the application reaches PostgreSQL over 127.0.0.1, and
+# the PostgreSQL image accepts loopback connections without a password.
 cmd_smoke() {
   if ! podman image exists "$IMAGE"; then
     echo "Image ${IMAGE} not found. Build it first with: npm run image:build" >&2

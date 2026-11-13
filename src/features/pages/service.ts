@@ -400,7 +400,8 @@ export async function deletePage(id: string): Promise<Result<PagePlace, DeletePa
  * Restores the deleted page with the given id into its folder, under the given name, at the given place, and returns
  * it as stored: in the tab with the id `tabId` of its folder or, with `null`, directly in the folder. The content is
  * neither validated nor touched. A page that is not deleted counts as missing; a tab of another folder is refused by
- * the composite foreign key and counts as missing as well.
+ * the composite foreign key and counts as missing as well. A name that is taken at the place gives `name-taken`, as
+ * for a new page: a deleted page never holds a name, so the name may have been given away since the page was deleted.
  */
 export async function restorePage(
   id: string,

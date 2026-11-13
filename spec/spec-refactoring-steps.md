@@ -45,7 +45,7 @@ Where each kind of information lives after this plan:
 ## Checklist
 
 - [x] Feature spec rules and reference check
-- [ ] Explanations into the code
+- [x] Explanations into the code
 - [ ] Content specs
 - [ ] Users and login spec
 - [ ] Container image spec

@@ -6,7 +6,10 @@
 
 import { isIP } from "node:net";
 
-/** The group of every client whose address is not known: all of them count together. */
+/**
+ * The group of every client whose address is not known: all of them count together. A login never goes uncounted
+ * because its address is unknown; it only shares its count with the other unknown ones.
+ */
 export const SHARED_CLIENT_ADDRESS = "shared";
 
 /**
@@ -43,8 +46,9 @@ const BRACKETED_IPV6 = /^\[([^\]]+)\](?::\d{1,5})?$/;
 
 /**
  * The group of an entry of `X-Forwarded-For`, or `null` if it is not an address: an IPv4 address is its own group, an
- * IPv6 address is in the group of its /64. A port, the square brackets around an IPv6 address and a zone id are
- * dropped; an IPv4-mapped IPv6 address counts as its IPv4 address.
+ * IPv6 address is in the group of its /64, because one customer of a provider controls at least that many addresses
+ * and could otherwise get a fresh wait with every new address. A port, the square brackets around an IPv6 address and
+ * a zone id are dropped; an IPv4-mapped IPv6 address counts as its IPv4 address.
  */
 function addressGroup(entry: string): string | null {
   let address = BRACKETED_IPV6.exec(entry)?.[1] ?? IPV4_WITH_PORT.exec(entry)?.[1] ?? entry;
