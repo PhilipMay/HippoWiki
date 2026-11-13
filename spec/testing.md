@@ -170,6 +170,10 @@ How the code is tested. Commands are listed in `README.md`.
     `createPage({ title: "Older page" })` works. A title given together with content is stored as is, to set up a page
     that was stored before titles were derived. With `deletedAt` it creates a deleted page, which has no tab, so it
     cannot be combined with `tab`.
+  - `createFolder()`, `createTab()` and `createPage()` take the last editor as `editor`, a `User`; without one, they
+    create a user with `createUser()`, so that the integration tests, which start from an empty database, need no
+    user of their own. A folder they create for a tab or page gets the same editor. A test that checks the editor shown
+    after a change through the GUI sets up the item with another editor, e.g. `createPage({ folder, editor: bob })`.
   - Tests that open an address give the folder, tab and page fixed names, e.g.
     `createPage({ folder, name: "overview" })` for `/folders/<folder>/overview.md`.
   - `getTestDb()` returns a Prisma client for the test database, e.g. to check what an action stored.

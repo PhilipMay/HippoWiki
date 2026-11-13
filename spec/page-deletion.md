@@ -25,8 +25,10 @@ the dialogs and lists in `components/`), routes under `src/app/deleted-pages/`. 
 ## Deleted pages of a folder
 
 - The folder address links to "Deleted pages", `/deleted-pages/<folder>`: the deleted pages of the folder, newest
-  first, with name, title and time of deletion. The list does not show where in the folder a page was.
-- `/deleted-pages/<folder>/<id>` shows a deleted page read-only, with "Restore" as its only action. A deleted page is
+  first, with name, title, time of deletion and the user who deleted it. The list does not show where in the folder a
+  page was.
+- `/deleted-pages/<folder>/<id>` shows a deleted page read-only, with the time of deletion, the user who deleted it
+  and "Restore" as its only action. A deleted page is
   addressed by its id, because its name need not be unique and it has no `.md` address.
 - Everything else under `/deleted-pages` (an unknown folder or id, a page of another folder or one that is not deleted,
   `/deleted-pages` alone, any view or other action) shows the not-found page.
@@ -38,6 +40,8 @@ the dialogs and lists in `components/`), routes under `src/app/deleted-pages/`. 
 - No place is preselected: the page's old place is not known, and the user has to choose one.
 - Restoring checks the name like moving a page (`content-structure.md`); the content is neither validated nor
   touched. It leads to the page's new address.
+- Deleting and restoring a page each make the logged-in user its last editor (see "Last editor" in
+  `content-structure.md`): a restored page shows the user who restored it.
 
 ## Decisions
 
@@ -46,10 +50,14 @@ the dialogs and lists in `components/`), routes under `src/app/deleted-pages/`. 
   on the names within a tab never sees a page without a tab. So the name is free at once.
 - Deleted pages have addresses of their own under `/deleted-pages`, named for what it holds, so that deleted tabs and
   folders can get addresses there later.
+- Who deleted a page is its last editor; it is not stored on its own. This holds only as long as nothing writes to a
+  deleted page. A later write to deleted pages, such as deleting or restoring folders and tabs or restoring a page into
+  another folder, has to keep the last editor of the deleted pages it touches.
+- Pages deleted before the last editor was recorded show the admin as the user who deleted them, like all content
+  stored before (see "Decisions" in `content-structure.md`).
 
 ## Current limits
 
 - Folders and tabs cannot be deleted.
 - A deleted page cannot be removed for good; there is no emptying of all deleted pages and no automatic cleanup.
 - A page is restored only into its own folder.
-- Who deleted a page is not recorded.

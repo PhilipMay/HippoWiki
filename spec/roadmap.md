@@ -27,8 +27,8 @@ listed first; there is no order across themes.
 
 ## Pages and Editing
 
-- Pages with an author: record who created and who last changed a page, and who deleted it (`pages.md`,
-  `page-deletion.md`).
+- Pages with an author: record who created a page; the last editor is already recorded (`pages.md`,
+  `content-structure.md`).
 - Rich editor: TipTap, or Milkdown since pages are stored as Markdown, with slash commands and the derived title
   shown while editing, instead of the raw Markdown textarea (`pages.md`, `tech.md`).
 - Import and export: move pages and folders in and out of the wiki as Markdown files.

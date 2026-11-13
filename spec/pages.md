@@ -36,7 +36,8 @@ given as `?action=<action>` (see `content-structure.md`).
 - `?action=new` on a folder or tab address: the editor for a new page. The content comes first; "Save" checks on the
   client that it has a title, then asks for the name and the place in the "Save page" dialog, which shows the address
   the page will get. Saving shows the new page.
-- The page address: the breadcrumb, the last update, "Edit", "Move or rename" and "Delete", then the rendered content.
+- The page address: the breadcrumb, the last update with its last editor (see "Last editor" in
+  `content-structure.md`), "Edit", "Move or rename" and "Delete", then the rendered content.
   The content's `#` heading is the page's only level-one heading; the browser tab shows the stored title.
 - `?action=edit`: the content in the editor; no title or name field. Saving shows the page.
 - `?action=move-or-rename`: see `content-structure.md`. `?action=delete`: see `page-deletion.md`.
@@ -57,7 +58,8 @@ given as `?action=<action>` (see `content-structure.md`).
 
 ## Current limits
 
-- no rights and no author: everyone who is logged in can read and change every page (see `users-and-login.md`)
+- no rights: everyone who is logged in can read and change every page (see `users-and-login.md`)
+- only the last editor of a page is stored, not who created it
 - a deleted page cannot be removed for good and is restored only into its own folder (see `page-deletion.md`)
 - no search, no `[[wiki links]]`, no history, no attachments
 - raw Markdown editing in a textarea

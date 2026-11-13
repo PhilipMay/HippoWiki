@@ -68,6 +68,10 @@ How the code is organised and which patterns new code follows. The technology st
     argument (`Actor` in the users service) and decides itself: `listUsers(actor)` returns `null` and
     `createUser(actor, input)` the code `not-allowed` for everyone but the admin. Who the actor is, the adapters find
     out from the session (see "Login and sessions").
+  - Every write of content (folders, tabs and pages) takes the acting user as its first argument as well, because it
+    stores that user as the last editor of the item (see "Last editor" in `content-structure.md`). It parses the
+    actor's id like every other id; a malformed id and an actor that does not exist give `failed` and are logged as an
+    error, because only a broken caller can cause them. Its actions pass the user that `requireUser()` returns.
   - The auth service is the only code that uses Better Auth (`getAuth()` from `src/lib/auth.ts`). It takes the
     `Headers` of the request, a web standard, because the session lives in a cookie, and returns the response headers
     that set or clear it. `logIn()` also takes the client address group of the request as a plain string, after the
@@ -145,7 +149,10 @@ The feature is described in `users-and-login.md`. What every new route, query an
   route shows the not-found page, a write returns its not-found code.
 - Unique and foreign key violations that a user can cause, such as a taken name or a folder that no longer exists,
   are recognised in the service with `isUniqueViolation` and `isForeignKeyViolation` from `src/lib/db-errors.ts` and
-  returned as `name-taken` or a not-found code, which the action shows in the form. Any other database error in a
+  returned as `name-taken` or a not-found code, which the action shows in the form. Both read the name of the violated
+  index or constraint, as the `pg` driver adapter reports it: `isForeignKeyViolation(err, LAST_EDITOR)` tells a
+  violation of the key of the last editor, which only a broken caller can cause and which gives `failed`, from one of
+  a folder or tab key. A write checks the key of the last editor first. Any other database error in a
   write is logged with `{ err }` and the ids and returned as `failed`, which the action shows as a failed save.
 - The server environment is read through `getServerEnv()` from `src/lib/env.ts`, never directly from `process.env`.
   `HIPPOWIKI_ADMIN_PASSWORD` is not part of it: only the admin setup script reads it.

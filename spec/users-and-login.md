@@ -233,9 +233,10 @@ in two layers, as the authentication guide of Next.js describes:
 - no way to reset a lost admin password; for now the only way is a change directly in the database
 - no password reset by the admin for other users, so a lost first password cannot be replaced
 - no change of the own password after the forced password change
-- no deactivating or deleting of users
+- no deactivating or deleting of users; a user who has edited content cannot be deleted for good at all, because the
+  key from content to its last editor restricts deleting (`onDelete: Restrict`, see `content-structure.md`)
 - no expiry of first passwords
-- no page for each user, and no pages with an author
+- no page for each user; content records only its last editor (see `content-structure.md`), not who created it
 - no mail, no TOTP, no passkeys, no sign-in with other providers
 - while the hour of a name is full, the right password is refused as well. Roughly 10 to 20 address groups that work
   together, or 4 unused ones every hour, can keep a name locked most of the time; a routed IPv6 /48 or a botnet

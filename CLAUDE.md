@@ -14,9 +14,9 @@ The specification lives in the `spec/` directory. This catalog should always be 
 - `spec/testing.md`: the check of doc references, and unit, integration and end-to-end test conventions
 - `spec/pages.md`: the page feature as built (content and title, suggested name, routes, rendering, decisions, limits)
 - `spec/content-structure.md`: the content structure as built (folders, tabs and pages under `/folders`: overview,
-  names, addresses, actions and views, routes, changing the structure, lists, decisions, limits)
+  names, addresses, actions and views, routes, changing the structure, the last editor, lists, decisions, limits)
 - `spec/page-deletion.md`: the soft delete of pages as built (deleting, deleted pages are invisible, the deleted pages
-  of a folder under `/deleted-pages`, restoring, decisions, limits)
+  of a folder under `/deleted-pages` with who deleted them, restoring, decisions, limits)
 - `spec/container-image.md`: the container image as built (image and build stages, start with the migration, the
   command that only migrates, the admin setup, configuration including the trusted reverse proxies, health, smoke
   test, publishing on a release, what the environment has to provide, including the client address of a login,
@@ -25,7 +25,6 @@ The specification lives in the `spec/` directory. This catalog should always be 
   account and setup, login and logout, sessions, failed logins with the wait per user name and client address group
   and the hour window per user name, authenticated access only, forced password change, user list and creating users,
   routes, decisions, limits)
-- `spec/last-editor-steps.md`: step plan for recording and showing the user who last edited a folder, tab or page
 - `spec/roadmap.md`: backlog of candidate features, grouped by theme, and things still to check
 - `spec/issue-report.md`: how to report issues found in code and document reviews
 
