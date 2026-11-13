@@ -14,6 +14,7 @@ import {
   restorePage,
   updatePageContent,
 } from "@/features/pages/service";
+import type { Actor } from "@/features/users/service";
 import { Prisma } from "@/generated/prisma/client";
 
 const mocks = vi.hoisted(() => ({
@@ -71,6 +72,11 @@ const FOLDER_ID = "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10";
 const TAB_ID = "5a2c1c0e-3f55-4a55-8a42-5d2f0e6a9b11";
 const PAGE_ID = "9c4d2b7e-1a3f-4c5d-8e6f-7a8b9c0d1e22";
 const MALFORMED_ID = "not-a-uuid";
+const ACTOR_ID = "9d4b2f6e-1c3a-4e8b-b7d5-2a6c8e0f1b12";
+
+/** The user who makes the writes, and one whose id is malformed. */
+const ACTOR: Actor = { id: ACTOR_ID, name: "alice" };
+const MALFORMED_ACTOR: Actor = { id: MALFORMED_ID, name: "alice" };
 
 /** Names that are not valid as written: not lowercase, surrounding whitespace, a double hyphen, empty. */
 const MALFORMED_NAMES = ["Overview", " overview", "overview ", "release--notes", "-overview", ""];
@@ -297,6 +303,19 @@ function uniqueViolation(constraint: { index?: string; fields?: string[] }): Pri
   return knownError("P2002", { driverAdapterError: { cause: { constraint } } });
 }
 
+/** A foreign key violation as reported with the `pg` adapter, on the given constraint or fields. */
+function foreignKeyViolation(constraint: { index?: string; fields?: string[] }): Prisma.PrismaClientKnownRequestError {
+  return knownError("P2003", { driverAdapterError: { cause: { constraint } } });
+}
+
+/** Foreign key violations of a folder or tab key, which the writes report as a missing folder or tab. */
+const placeKeyErrors = [
+  ["without details", knownError("P2003")],
+  ["on the folder key", foreignKeyViolation({ index: "Page_folderId_fkey" })],
+  ["on the tab key", foreignKeyViolation({ index: "Page_tabId_folderId_fkey" })],
+  ["on the tab field", foreignKeyViolation({ fields: ["tabId"] })],
+] as const;
+
 const nameTakenErrors = [
   ["on the index of pages placed directly in a folder", uniqueViolation({ index: "Page_folderId_name_key" })],
   ["on the index of pages in a tab", uniqueViolation({ index: "Page_tabId_name_key" })],
@@ -318,7 +337,7 @@ describe("createPage", () => {
     ["valid", VALID],
     ["invalid", { name: "", content: CONTENT, tabId: null }],
   ])("returns folder-not-found for a malformed folder id, with %s input", async (_name, input) => {
-    await expect(createPage(MALFORMED_ID, input)).resolves.toEqual(FOLDER_NOT_FOUND);
+    await expect(createPage(ACTOR, MALFORMED_ID, input)).resolves.toEqual(FOLDER_NOT_FOUND);
     expectDatabaseUntouched();
   });
 
@@ -327,13 +346,17 @@ describe("createPage", () => {
     ["an empty tab id and valid", { ...VALID, tabId: "" }],
     ["invalid", { name: "", content: CONTENT, tabId: MALFORMED_ID }],
   ])("returns tab-not-found for a malformed tab id, with %s input", async (_name, input) => {
-    await expect(createPage(FOLDER_ID, input)).resolves.toEqual(TAB_NOT_FOUND);
+    await expect(createPage(ACTOR, FOLDER_ID, input)).resolves.toEqual(TAB_NOT_FOUND);
     expectDatabaseUntouched();
   });
 
   it("returns the field errors of invalid input without writing anything", async () => {
-    await expect(createPage(FOLDER_ID, { name: "", content: CONTENT, tabId: null })).resolves.toEqual(NAME_REQUIRED);
-    await expect(createPage(FOLDER_ID, { name: "a", content: "Text", tabId: null })).resolves.toEqual(TITLE_MISSING);
+    await expect(createPage(ACTOR, FOLDER_ID, { name: "", content: CONTENT, tabId: null })).resolves.toEqual(
+      NAME_REQUIRED,
+    );
+    await expect(createPage(ACTOR, FOLDER_ID, { name: "a", content: "Text", tabId: null })).resolves.toEqual(
+      TITLE_MISSING,
+    );
     expectDatabaseUntouched();
   });
 
@@ -343,10 +366,17 @@ describe("createPage", () => {
 
     // A title is never part of the input; the content is its only source.
     const input = { ...VALID, title: "Given title" };
-    await expect(createPage(FOLDER_ID, input)).resolves.toEqual({ ok: true, value: stored });
+    await expect(createPage(ACTOR, FOLDER_ID, input)).resolves.toEqual({ ok: true, value: stored });
 
     expect(mocks.create).toHaveBeenCalledWith({
-      data: { title: "My page", name: "my-page", content: CONTENT, folderId: FOLDER_ID, tabId: null },
+      data: {
+        title: "My page",
+        name: "my-page",
+        content: CONTENT,
+        folderId: FOLDER_ID,
+        tabId: null,
+        lastEditedById: ACTOR_ID,
+      },
       select: STORED_PAGE_SELECT,
     });
     expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID }, "page created");
@@ -355,7 +385,7 @@ describe("createPage", () => {
   it("stores the content with plain line feeds", async () => {
     mocks.create.mockResolvedValue({ id: PAGE_ID, name: "n", folder: { name: "f" }, tab: null });
 
-    await createPage(FOLDER_ID, { ...VALID, content: "# My page\r\n\r\nText" });
+    await createPage(ACTOR, FOLDER_ID, { ...VALID, content: "# My page\r\n\r\nText" });
 
     expect(mocks.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ content: CONTENT }) }),
@@ -366,10 +396,17 @@ describe("createPage", () => {
     const stored = { id: PAGE_ID, name: "stored-name", folder: { name: "stored-folder" }, tab: { name: "stored-tab" } };
     mocks.create.mockResolvedValue(stored);
 
-    await expect(createPage(FOLDER_ID, IN_TAB)).resolves.toEqual({ ok: true, value: stored });
+    await expect(createPage(ACTOR, FOLDER_ID, IN_TAB)).resolves.toEqual({ ok: true, value: stored });
 
     expect(mocks.create).toHaveBeenCalledWith({
-      data: { title: "My page", name: "my-page", content: CONTENT, folderId: FOLDER_ID, tabId: TAB_ID },
+      data: {
+        title: "My page",
+        name: "my-page",
+        content: CONTENT,
+        folderId: FOLDER_ID,
+        tabId: TAB_ID,
+        lastEditedById: ACTOR_ID,
+      },
       select: STORED_PAGE_SELECT,
     });
   });
@@ -377,7 +414,7 @@ describe("createPage", () => {
   it.each(nameTakenErrors)("returns name-taken for a unique violation %s", async (_name, err) => {
     mocks.create.mockRejectedValue(err);
 
-    await expect(createPage(FOLDER_ID, VALID)).resolves.toEqual(NAME_TAKEN);
+    await expect(createPage(ACTOR, FOLDER_ID, VALID)).resolves.toEqual(NAME_TAKEN);
 
     expect(mocks.warn).toHaveBeenCalledWith(
       { folderId: FOLDER_ID, tabId: null, name: "my-page" },
@@ -389,7 +426,7 @@ describe("createPage", () => {
   it("returns name-taken for a taken name in a tab", async () => {
     mocks.create.mockRejectedValue(uniqueViolation({ index: "Page_tabId_name_key" }));
 
-    await expect(createPage(FOLDER_ID, IN_TAB)).resolves.toEqual(NAME_TAKEN);
+    await expect(createPage(ACTOR, FOLDER_ID, IN_TAB)).resolves.toEqual(NAME_TAKEN);
 
     expect(mocks.warn).toHaveBeenCalledWith(
       { folderId: FOLDER_ID, tabId: TAB_ID, name: "my-page" },
@@ -397,10 +434,10 @@ describe("createPage", () => {
     );
   });
 
-  it("returns folder-not-found for a foreign key violation without a tab", async () => {
-    mocks.create.mockRejectedValue(knownError("P2003"));
+  it.each(placeKeyErrors)("returns folder-not-found for a foreign key violation %s without a tab", async (_n, err) => {
+    mocks.create.mockRejectedValue(err);
 
-    await expect(createPage(FOLDER_ID, VALID)).resolves.toEqual(FOLDER_NOT_FOUND);
+    await expect(createPage(ACTOR, FOLDER_ID, VALID)).resolves.toEqual(FOLDER_NOT_FOUND);
 
     expect(mocks.warn).toHaveBeenCalledWith(
       { folderId: FOLDER_ID, tabId: null },
@@ -409,10 +446,10 @@ describe("createPage", () => {
     expect(mocks.error).not.toHaveBeenCalled();
   });
 
-  it("returns tab-not-found for a foreign key violation with a tab", async () => {
-    mocks.create.mockRejectedValue(knownError("P2003"));
+  it.each(placeKeyErrors)("returns tab-not-found for a foreign key violation %s with a tab", async (_n, err) => {
+    mocks.create.mockRejectedValue(err);
 
-    await expect(createPage(FOLDER_ID, IN_TAB)).resolves.toEqual(TAB_NOT_FOUND);
+    await expect(createPage(ACTOR, FOLDER_ID, IN_TAB)).resolves.toEqual(TAB_NOT_FOUND);
 
     expect(mocks.warn).toHaveBeenCalledWith(
       { folderId: FOLDER_ID, tabId: TAB_ID },
@@ -424,7 +461,7 @@ describe("createPage", () => {
   it.each(otherErrors)("returns failed for %s", async (_name, err) => {
     mocks.create.mockRejectedValue(err);
 
-    await expect(createPage(FOLDER_ID, VALID)).resolves.toEqual(FAILED);
+    await expect(createPage(ACTOR, FOLDER_ID, VALID)).resolves.toEqual(FAILED);
 
     expect(mocks.error).toHaveBeenCalledWith({ err, folderId: FOLDER_ID, tabId: null }, "failed to create page");
     expect(mocks.info).not.toHaveBeenCalled();
@@ -439,12 +476,12 @@ describe("updatePageContent", () => {
     ["valid", VALID],
     ["invalid", INVALID],
   ])("returns page-not-found for a malformed id, with %s input", async (_name, input) => {
-    await expect(updatePageContent(MALFORMED_ID, input)).resolves.toEqual(PAGE_NOT_FOUND);
+    await expect(updatePageContent(ACTOR, MALFORMED_ID, input)).resolves.toEqual(PAGE_NOT_FOUND);
     expectDatabaseUntouched();
   });
 
   it("returns the field errors of invalid content without writing anything", async () => {
-    await expect(updatePageContent(PAGE_ID, INVALID)).resolves.toEqual(TITLE_MISSING);
+    await expect(updatePageContent(ACTOR, PAGE_ID, INVALID)).resolves.toEqual(TITLE_MISSING);
     expectDatabaseUntouched();
   });
 
@@ -454,11 +491,11 @@ describe("updatePageContent", () => {
     mocks.findUnique.mockResolvedValue(stored);
 
     const input = { ...VALID, title: "Given title", name: "given-name" };
-    await expect(updatePageContent(PAGE_ID, input)).resolves.toEqual({ ok: true, value: stored });
+    await expect(updatePageContent(ACTOR, PAGE_ID, input)).resolves.toEqual({ ok: true, value: stored });
 
     expect(mocks.updateMany).toHaveBeenCalledWith({
       where: { id: PAGE_ID, deletedAt: null },
-      data: { title: "My page", content: CONTENT },
+      data: { title: "My page", content: CONTENT, lastEditedById: ACTOR_ID },
     });
     expect(mocks.findUnique).toHaveBeenCalledWith({
       where: { id: PAGE_ID, deletedAt: null },
@@ -471,7 +508,7 @@ describe("updatePageContent", () => {
   it("returns page-not-found for a page that no longer exists or is deleted", async () => {
     mocks.updateMany.mockResolvedValue({ count: 0 });
 
-    await expect(updatePageContent(PAGE_ID, VALID)).resolves.toEqual(PAGE_NOT_FOUND);
+    await expect(updatePageContent(ACTOR, PAGE_ID, VALID)).resolves.toEqual(PAGE_NOT_FOUND);
 
     expect(mocks.findUnique).not.toHaveBeenCalled();
     expect(mocks.warn).toHaveBeenCalledWith({ pageId: PAGE_ID }, "page to update not found");
@@ -482,7 +519,7 @@ describe("updatePageContent", () => {
     mocks.updateMany.mockResolvedValue({ count: 1 });
     mocks.findUnique.mockResolvedValue(null);
 
-    await expect(updatePageContent(PAGE_ID, VALID)).resolves.toEqual(PAGE_NOT_FOUND);
+    await expect(updatePageContent(ACTOR, PAGE_ID, VALID)).resolves.toEqual(PAGE_NOT_FOUND);
 
     expect(mocks.warn).toHaveBeenCalledWith({ pageId: PAGE_ID }, "page to update not found");
     expect(mocks.info).not.toHaveBeenCalled();
@@ -491,7 +528,7 @@ describe("updatePageContent", () => {
   it.each(otherErrors)("returns failed for %s", async (_name, err) => {
     mocks.updateMany.mockRejectedValue(err);
 
-    await expect(updatePageContent(PAGE_ID, VALID)).resolves.toEqual(FAILED);
+    await expect(updatePageContent(ACTOR, PAGE_ID, VALID)).resolves.toEqual(FAILED);
 
     expect(mocks.error).toHaveBeenCalledWith({ err, pageId: PAGE_ID }, "failed to update page");
     expect(mocks.info).not.toHaveBeenCalled();
@@ -502,7 +539,7 @@ describe("updatePageContent", () => {
     mocks.updateMany.mockResolvedValue({ count: 1 });
     mocks.findUnique.mockRejectedValue(err);
 
-    await expect(updatePageContent(PAGE_ID, VALID)).resolves.toEqual(FAILED);
+    await expect(updatePageContent(ACTOR, PAGE_ID, VALID)).resolves.toEqual(FAILED);
 
     expect(mocks.error).toHaveBeenCalledWith({ err, pageId: PAGE_ID }, "failed to update page");
   });
@@ -516,21 +553,21 @@ describe("moveOrRenamePage", () => {
     ["the folder as place", { name: "new-name", tabId: null }],
     ["invalid input", { name: "", tabId: MALFORMED_ID }],
   ])("returns page-not-found for a malformed page id, with %s", async (_name, input) => {
-    await expect(moveOrRenamePage(MALFORMED_ID, input)).resolves.toEqual(PAGE_NOT_FOUND);
+    await expect(moveOrRenamePage(ACTOR, MALFORMED_ID, input)).resolves.toEqual(PAGE_NOT_FOUND);
     expectDatabaseUntouched();
   });
 
   it.each([MALFORMED_ID, "guides", " ", ""])(
     "returns tab-not-found for the malformed tab id %j without writing anything",
     async (tabId) => {
-      await expect(moveOrRenamePage(PAGE_ID, { name: "new-name", tabId })).resolves.toEqual(TAB_NOT_FOUND);
-      await expect(moveOrRenamePage(PAGE_ID, { name: "", tabId })).resolves.toEqual(TAB_NOT_FOUND);
+      await expect(moveOrRenamePage(ACTOR, PAGE_ID, { name: "new-name", tabId })).resolves.toEqual(TAB_NOT_FOUND);
+      await expect(moveOrRenamePage(ACTOR, PAGE_ID, { name: "", tabId })).resolves.toEqual(TAB_NOT_FOUND);
       expectDatabaseUntouched();
     },
   );
 
   it("returns the field errors of an invalid name without writing anything", async () => {
-    await expect(moveOrRenamePage(PAGE_ID, { name: "", tabId: TAB_ID })).resolves.toEqual(NAME_REQUIRED);
+    await expect(moveOrRenamePage(ACTOR, PAGE_ID, { name: "", tabId: TAB_ID })).resolves.toEqual(NAME_REQUIRED);
     expectDatabaseUntouched();
   });
 
@@ -541,12 +578,12 @@ describe("moveOrRenamePage", () => {
 
     // Content and other fields are ignored: no content rule can block a move.
     const input = { ...VALID, content: "No heading", title: "Given title", folderId: crypto.randomUUID() };
-    await expect(moveOrRenamePage(PAGE_ID, input)).resolves.toEqual({ ok: true, value: stored });
+    await expect(moveOrRenamePage(ACTOR, PAGE_ID, input)).resolves.toEqual({ ok: true, value: stored });
 
     expect(mocks.updateMany).toHaveBeenCalledTimes(1);
     expect(mocks.updateMany).toHaveBeenCalledWith({
       where: { id: PAGE_ID, deletedAt: null },
-      data: { name: "new-name", tabId: TAB_ID },
+      data: { name: "new-name", tabId: TAB_ID, lastEditedById: ACTOR_ID },
     });
     expect(mocks.findUnique).toHaveBeenCalledWith({
       where: { id: PAGE_ID, deletedAt: null },
@@ -559,18 +596,18 @@ describe("moveOrRenamePage", () => {
     mocks.updateMany.mockResolvedValue({ count: 1 });
     mocks.findUnique.mockResolvedValue({ id: PAGE_ID, name: "n", folder: { name: "f" }, tab: null });
 
-    await moveOrRenamePage(PAGE_ID, { name: "new-name", tabId: null });
+    await moveOrRenamePage(ACTOR, PAGE_ID, { name: "new-name", tabId: null });
 
     expect(mocks.updateMany).toHaveBeenCalledWith({
       where: { id: PAGE_ID, deletedAt: null },
-      data: { name: "new-name", tabId: null },
+      data: { name: "new-name", tabId: null, lastEditedById: ACTOR_ID },
     });
   });
 
   it.each(nameTakenErrors)("returns name-taken for a unique violation %s", async (_name, err) => {
     mocks.updateMany.mockRejectedValue(err);
 
-    await expect(moveOrRenamePage(PAGE_ID, VALID)).resolves.toEqual(NAME_TAKEN);
+    await expect(moveOrRenamePage(ACTOR, PAGE_ID, VALID)).resolves.toEqual(NAME_TAKEN);
 
     expect(mocks.warn).toHaveBeenCalledWith(
       { pageId: PAGE_ID, tabId: TAB_ID, name: "new-name" },
@@ -579,10 +616,10 @@ describe("moveOrRenamePage", () => {
     expect(mocks.error).not.toHaveBeenCalled();
   });
 
-  it("returns tab-not-found for a foreign key violation", async () => {
-    mocks.updateMany.mockRejectedValue(knownError("P2003"));
+  it.each(placeKeyErrors)("returns tab-not-found for a foreign key violation %s", async (_n, err) => {
+    mocks.updateMany.mockRejectedValue(err);
 
-    await expect(moveOrRenamePage(PAGE_ID, VALID)).resolves.toEqual(TAB_NOT_FOUND);
+    await expect(moveOrRenamePage(ACTOR, PAGE_ID, VALID)).resolves.toEqual(TAB_NOT_FOUND);
 
     expect(mocks.warn).toHaveBeenCalledWith(
       { pageId: PAGE_ID, tabId: TAB_ID },
@@ -595,7 +632,7 @@ describe("moveOrRenamePage", () => {
   it("returns page-not-found for a page that no longer exists or is deleted", async () => {
     mocks.updateMany.mockResolvedValue({ count: 0 });
 
-    await expect(moveOrRenamePage(PAGE_ID, VALID)).resolves.toEqual(PAGE_NOT_FOUND);
+    await expect(moveOrRenamePage(ACTOR, PAGE_ID, VALID)).resolves.toEqual(PAGE_NOT_FOUND);
 
     expect(mocks.findUnique).not.toHaveBeenCalled();
     expect(mocks.warn).toHaveBeenCalledWith({ pageId: PAGE_ID }, "page to move or rename not found");
@@ -605,7 +642,7 @@ describe("moveOrRenamePage", () => {
     mocks.updateMany.mockResolvedValue({ count: 1 });
     mocks.findUnique.mockResolvedValue(null);
 
-    await expect(moveOrRenamePage(PAGE_ID, VALID)).resolves.toEqual(PAGE_NOT_FOUND);
+    await expect(moveOrRenamePage(ACTOR, PAGE_ID, VALID)).resolves.toEqual(PAGE_NOT_FOUND);
 
     expect(mocks.warn).toHaveBeenCalledWith({ pageId: PAGE_ID }, "page to move or rename not found");
     expect(mocks.info).not.toHaveBeenCalled();
@@ -614,7 +651,7 @@ describe("moveOrRenamePage", () => {
   it.each(otherErrors)("returns failed for %s", async (_name, err) => {
     mocks.updateMany.mockRejectedValue(err);
 
-    await expect(moveOrRenamePage(PAGE_ID, VALID)).resolves.toEqual(FAILED);
+    await expect(moveOrRenamePage(ACTOR, PAGE_ID, VALID)).resolves.toEqual(FAILED);
 
     expect(mocks.error).toHaveBeenCalledWith({ err, pageId: PAGE_ID, tabId: TAB_ID }, "failed to move or rename page");
     expect(mocks.info).not.toHaveBeenCalled();
@@ -623,7 +660,7 @@ describe("moveOrRenamePage", () => {
 
 describe("deletePage", () => {
   it("returns page-not-found for a malformed id", async () => {
-    await expect(deletePage(MALFORMED_ID)).resolves.toEqual(PAGE_NOT_FOUND);
+    await expect(deletePage(ACTOR, MALFORMED_ID)).resolves.toEqual(PAGE_NOT_FOUND);
     expectDatabaseUntouched();
   });
 
@@ -632,13 +669,13 @@ describe("deletePage", () => {
     mocks.findFirst.mockResolvedValue(place);
     mocks.updateMany.mockResolvedValue({ count: 1 });
 
-    await expect(deletePage(PAGE_ID)).resolves.toEqual({ ok: true, value: place });
+    await expect(deletePage(ACTOR, PAGE_ID)).resolves.toEqual({ ok: true, value: place });
 
     expect(mocks.transaction).toHaveBeenCalledOnce();
     expect(mocks.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: PAGE_ID, deletedAt: null } }));
     expect(mocks.updateMany).toHaveBeenCalledWith({
       where: { id: PAGE_ID, deletedAt: null },
-      data: { deletedAt: expect.any(Date), tabId: null },
+      data: { deletedAt: expect.any(Date), tabId: null, lastEditedById: ACTOR_ID },
     });
     expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID }, "page deleted");
   });
@@ -648,13 +685,13 @@ describe("deletePage", () => {
     mocks.findFirst.mockResolvedValue(place);
     mocks.updateMany.mockResolvedValue({ count: 1 });
 
-    await expect(deletePage(PAGE_ID)).resolves.toEqual({ ok: true, value: place });
+    await expect(deletePage(ACTOR, PAGE_ID)).resolves.toEqual({ ok: true, value: place });
   });
 
   it("returns page-not-found for a page that no longer exists or is already deleted", async () => {
     mocks.findFirst.mockResolvedValue(null);
 
-    await expect(deletePage(PAGE_ID)).resolves.toEqual(PAGE_NOT_FOUND);
+    await expect(deletePage(ACTOR, PAGE_ID)).resolves.toEqual(PAGE_NOT_FOUND);
 
     expect(mocks.updateMany).not.toHaveBeenCalled();
     expect(mocks.warn).toHaveBeenCalledWith({ pageId: PAGE_ID }, "page to delete not found");
@@ -665,7 +702,7 @@ describe("deletePage", () => {
     mocks.findFirst.mockResolvedValue({ folder: { name: "stored-folder" }, tab: null });
     mocks.updateMany.mockResolvedValue({ count: 0 });
 
-    await expect(deletePage(PAGE_ID)).resolves.toEqual(PAGE_NOT_FOUND);
+    await expect(deletePage(ACTOR, PAGE_ID)).resolves.toEqual(PAGE_NOT_FOUND);
 
     expect(mocks.warn).toHaveBeenCalledWith({ pageId: PAGE_ID }, "page to delete not found");
     expect(mocks.info).not.toHaveBeenCalled();
@@ -674,7 +711,7 @@ describe("deletePage", () => {
   it.each(otherErrors)("returns failed for %s", async (_name, err) => {
     mocks.transaction.mockRejectedValue(err);
 
-    await expect(deletePage(PAGE_ID)).resolves.toEqual(FAILED);
+    await expect(deletePage(ACTOR, PAGE_ID)).resolves.toEqual(FAILED);
 
     expect(mocks.error).toHaveBeenCalledWith({ err, pageId: PAGE_ID }, "failed to delete page");
     expect(mocks.info).not.toHaveBeenCalled();
@@ -688,21 +725,21 @@ describe("restorePage", () => {
     ["valid input", VALID],
     ["invalid input", { name: "", tabId: MALFORMED_ID }],
   ])("returns page-not-found for a malformed page id, with %s", async (_name, input) => {
-    await expect(restorePage(MALFORMED_ID, input)).resolves.toEqual(PAGE_NOT_FOUND);
+    await expect(restorePage(ACTOR, MALFORMED_ID, input)).resolves.toEqual(PAGE_NOT_FOUND);
     expectDatabaseUntouched();
   });
 
   it.each([MALFORMED_ID, "guides", " ", ""])(
     "returns tab-not-found for the malformed tab id %j without writing anything",
     async (tabId) => {
-      await expect(restorePage(PAGE_ID, { name: "new-name", tabId })).resolves.toEqual(TAB_NOT_FOUND);
-      await expect(restorePage(PAGE_ID, { name: "", tabId })).resolves.toEqual(TAB_NOT_FOUND);
+      await expect(restorePage(ACTOR, PAGE_ID, { name: "new-name", tabId })).resolves.toEqual(TAB_NOT_FOUND);
+      await expect(restorePage(ACTOR, PAGE_ID, { name: "", tabId })).resolves.toEqual(TAB_NOT_FOUND);
       expectDatabaseUntouched();
     },
   );
 
   it("returns the field errors of an invalid name without writing anything", async () => {
-    await expect(restorePage(PAGE_ID, { name: "", tabId: null })).resolves.toEqual(NAME_REQUIRED);
+    await expect(restorePage(ACTOR, PAGE_ID, { name: "", tabId: null })).resolves.toEqual(NAME_REQUIRED);
     expectDatabaseUntouched();
   });
 
@@ -712,11 +749,11 @@ describe("restorePage", () => {
     mocks.findUnique.mockResolvedValue(stored);
 
     const input = { ...VALID, content: "No heading", title: "Given title" };
-    await expect(restorePage(PAGE_ID, input)).resolves.toEqual({ ok: true, value: stored });
+    await expect(restorePage(ACTOR, PAGE_ID, input)).resolves.toEqual({ ok: true, value: stored });
 
     expect(mocks.updateMany).toHaveBeenCalledWith({
       where: { id: PAGE_ID, deletedAt: { not: null } },
-      data: { deletedAt: null, name: "new-name", tabId: TAB_ID },
+      data: { deletedAt: null, name: "new-name", tabId: TAB_ID, lastEditedById: ACTOR_ID },
     });
     expect(mocks.findUnique).toHaveBeenCalledWith({
       where: { id: PAGE_ID, deletedAt: null },
@@ -729,17 +766,17 @@ describe("restorePage", () => {
     mocks.updateMany.mockResolvedValue({ count: 1 });
     mocks.findUnique.mockResolvedValue({ id: PAGE_ID, name: "n", folder: { name: "f" }, tab: null });
 
-    await restorePage(PAGE_ID, { name: "new-name", tabId: null });
+    await restorePage(ACTOR, PAGE_ID, { name: "new-name", tabId: null });
 
     expect(mocks.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { deletedAt: null, name: "new-name", tabId: null } }),
+      expect.objectContaining({ data: { deletedAt: null, name: "new-name", tabId: null, lastEditedById: ACTOR_ID } }),
     );
   });
 
   it.each(nameTakenErrors)("returns name-taken for a unique violation %s", async (_name, err) => {
     mocks.updateMany.mockRejectedValue(err);
 
-    await expect(restorePage(PAGE_ID, VALID)).resolves.toEqual(NAME_TAKEN);
+    await expect(restorePage(ACTOR, PAGE_ID, VALID)).resolves.toEqual(NAME_TAKEN);
 
     expect(mocks.warn).toHaveBeenCalledWith(
       { pageId: PAGE_ID, tabId: TAB_ID, name: "new-name" },
@@ -748,10 +785,10 @@ describe("restorePage", () => {
     expect(mocks.error).not.toHaveBeenCalled();
   });
 
-  it("returns tab-not-found for a foreign key violation", async () => {
-    mocks.updateMany.mockRejectedValue(knownError("P2003"));
+  it.each(placeKeyErrors)("returns tab-not-found for a foreign key violation %s", async (_n, err) => {
+    mocks.updateMany.mockRejectedValue(err);
 
-    await expect(restorePage(PAGE_ID, VALID)).resolves.toEqual(TAB_NOT_FOUND);
+    await expect(restorePage(ACTOR, PAGE_ID, VALID)).resolves.toEqual(TAB_NOT_FOUND);
 
     expect(mocks.warn).toHaveBeenCalledWith(
       { pageId: PAGE_ID, tabId: TAB_ID },
@@ -764,7 +801,7 @@ describe("restorePage", () => {
   it("returns page-not-found for a page that no longer exists or is not deleted", async () => {
     mocks.updateMany.mockResolvedValue({ count: 0 });
 
-    await expect(restorePage(PAGE_ID, VALID)).resolves.toEqual(PAGE_NOT_FOUND);
+    await expect(restorePage(ACTOR, PAGE_ID, VALID)).resolves.toEqual(PAGE_NOT_FOUND);
 
     expect(mocks.findUnique).not.toHaveBeenCalled();
     expect(mocks.warn).toHaveBeenCalledWith({ pageId: PAGE_ID }, "deleted page to restore not found");
@@ -774,7 +811,7 @@ describe("restorePage", () => {
     mocks.updateMany.mockResolvedValue({ count: 1 });
     mocks.findUnique.mockResolvedValue(null);
 
-    await expect(restorePage(PAGE_ID, VALID)).resolves.toEqual(PAGE_NOT_FOUND);
+    await expect(restorePage(ACTOR, PAGE_ID, VALID)).resolves.toEqual(PAGE_NOT_FOUND);
 
     expect(mocks.warn).toHaveBeenCalledWith({ pageId: PAGE_ID }, "deleted page to restore not found");
     expect(mocks.info).not.toHaveBeenCalled();
@@ -783,9 +820,56 @@ describe("restorePage", () => {
   it.each(otherErrors)("returns failed for %s", async (_name, err) => {
     mocks.updateMany.mockRejectedValue(err);
 
-    await expect(restorePage(PAGE_ID, VALID)).resolves.toEqual(FAILED);
+    await expect(restorePage(ACTOR, PAGE_ID, VALID)).resolves.toEqual(FAILED);
 
     expect(mocks.error).toHaveBeenCalledWith({ err, pageId: PAGE_ID, tabId: TAB_ID }, "failed to restore page");
+    expect(mocks.info).not.toHaveBeenCalled();
+  });
+});
+
+/** Every write, called by the given actor with valid input, and the database call it writes with. */
+const writes = [
+  [
+    "createPage",
+    (actor: Actor) => createPage(actor, FOLDER_ID, { name: "my-page", content: CONTENT, tabId: TAB_ID }),
+    mocks.create,
+  ],
+  ["updatePageContent", (actor: Actor) => updatePageContent(actor, PAGE_ID, { content: CONTENT }), mocks.updateMany],
+  [
+    "moveOrRenamePage",
+    (actor: Actor) => moveOrRenamePage(actor, PAGE_ID, { name: "new-name", tabId: TAB_ID }),
+    mocks.updateMany,
+  ],
+  ["deletePage", (actor: Actor) => deletePage(actor, PAGE_ID), mocks.updateMany],
+  ["restorePage", (actor: Actor) => restorePage(actor, PAGE_ID, { name: "new-name", tabId: TAB_ID }), mocks.updateMany],
+] as const;
+
+describe("the actor of a write", () => {
+  it.each(writes)("%s returns failed for a malformed actor id without touching the database", async (_name, write) => {
+    await expect(write(MALFORMED_ACTOR)).resolves.toEqual(FAILED);
+
+    for (const call of databaseWrites) expect(call).not.toHaveBeenCalled();
+    expect(readCount()).toBe(0);
+    expect(mocks.error).toHaveBeenCalledWith({ actorId: MALFORMED_ID }, "malformed actor id");
+    expect(mocks.warn).not.toHaveBeenCalled();
+    expect(mocks.info).not.toHaveBeenCalled();
+  });
+
+  // Also in the writes that report other foreign key violations as a missing folder or tab.
+  it.each(
+    writes.flatMap(([name, write, call]) => [
+      [name, "on the editor key", write, call, foreignKeyViolation({ index: "Page_lastEditedById_fkey" })] as const,
+      [name, "on the editor field", write, call, foreignKeyViolation({ fields: ["lastEditedById"] })] as const,
+    ]),
+  )("%s returns failed for a foreign key violation %s", async (_name, _kind, write, call, err) => {
+    // `deletePage` reads the page before it writes.
+    mocks.findFirst.mockResolvedValue({ folder: { name: "handbook" }, tab: null });
+    call.mockRejectedValue(err);
+
+    await expect(write(ACTOR)).resolves.toEqual(FAILED);
+
+    expect(mocks.error).toHaveBeenCalledWith({ err, actorId: ACTOR_ID }, "actor of write not found");
+    expect(mocks.warn).not.toHaveBeenCalled();
     expect(mocks.info).not.toHaveBeenCalled();
   });
 });

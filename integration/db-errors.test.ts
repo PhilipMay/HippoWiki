@@ -7,13 +7,14 @@ import {
   FOLDER_NAME,
   isForeignKeyViolation,
   isUniqueViolation,
+  LAST_EDITOR,
   PAGE_NAME,
   TAB_NAME,
   USER_NAME,
   type UniqueConstraint,
 } from "@/lib/db-errors";
 
-import { createFolder, createPage, createTab, getTestDb } from "../e2e/support/database";
+import { createFolder, createPage, createTab, createUser, getTestDb } from "../e2e/support/database";
 
 const NAME_CONSTRAINTS = { FOLDER_NAME, TAB_NAME, PAGE_NAME, USER_NAME } as const;
 
@@ -42,9 +43,13 @@ function expectUniqueViolationOf(err: unknown, expected: UniqueConstraint): void
   expect(isForeignKeyViolation(err)).toBe(false);
 }
 
-/** Asserts that the error is a foreign key violation and no unique violation. */
-function expectForeignKeyViolation(err: unknown): void {
+/**
+ * Asserts that the error is a foreign key violation and no unique violation, and whether it is a violation of the key
+ * of the last editor.
+ */
+function expectForeignKeyViolation(err: unknown, { ofLastEditor = false } = {}): void {
   expect(isForeignKeyViolation(err)).toBe(true);
+  expect(isForeignKeyViolation(err, LAST_EDITOR)).toBe(ofLastEditor);
   for (const [name, constraint] of Object.entries(NAME_CONSTRAINTS)) {
     expect(isUniqueViolation(err, constraint), name).toBe(false);
   }
@@ -152,7 +157,14 @@ describe("foreign key violations", () => {
     const otherFolder = await createFolder();
 
     const write = getTestDb().page.create({
-      data: { name: "intro", title: "Intro", content: "# Intro", folderId: otherFolder.id, tabId: tab.id },
+      data: {
+        name: "intro",
+        title: "Intro",
+        content: "# Intro",
+        folderId: otherFolder.id,
+        tabId: tab.id,
+        lastEditedById: tab.lastEditedById,
+      },
     });
 
     expectForeignKeyViolation(await errorOf(write));
@@ -168,5 +180,46 @@ describe("foreign key violations", () => {
     const page = await createPage();
 
     expectForeignKeyViolation(await errorOf(getTestDb().folder.delete({ where: { id: page.folderId } })));
+  });
+});
+
+describe("foreign key violations of the last editor", () => {
+  /** A user that does not exist: a well-formed id that no user has. */
+  const editor = { id: crypto.randomUUID() } as Awaited<ReturnType<typeof createUser>>;
+
+  it("reports a folder whose last editor does not exist", async () => {
+    expectForeignKeyViolation(await errorOf(createFolder({ editor })), { ofLastEditor: true });
+  });
+
+  it("reports a tab whose last editor does not exist", async () => {
+    const folder = await createFolder();
+
+    expectForeignKeyViolation(await errorOf(createTab({ folder, editor })), { ofLastEditor: true });
+  });
+
+  it("reports a page whose last editor does not exist, in a folder and in a tab", async () => {
+    const tab = await createTab();
+
+    expectForeignKeyViolation(await errorOf(createPage({ folder: await createFolder(), editor })), {
+      ofLastEditor: true,
+    });
+    expectForeignKeyViolation(await errorOf(createPage({ tab, editor })), { ofLastEditor: true });
+  });
+
+  it("reports a change of the last editor to a user that does not exist", async () => {
+    const page = await createPage();
+
+    const write = getTestDb().page.update({ where: { id: page.id }, data: { lastEditedById: editor.id } });
+
+    expectForeignKeyViolation(await errorOf(write), { ofLastEditor: true });
+  });
+
+  it("reports deleting a user who still is the last editor of a folder", async () => {
+    const user = await createUser();
+    await createFolder({ editor: user });
+
+    expectForeignKeyViolation(await errorOf(getTestDb().user.delete({ where: { id: user.id } })), {
+      ofLastEditor: true,
+    });
   });
 });

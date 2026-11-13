@@ -3,7 +3,7 @@
 // The writes of folders and tabs for forms: thin adapters that translate between a form and the service. Every action
 // calls `requireUser()` first, which redirects to the login page without a logged-in user: a Server Action is a
 // public endpoint, whatever page shows its form. The call stands outside every `try` block, because the redirect
-// throws.
+// throws. The user it returns is passed to the service write as the actor, who becomes the last editor.
 
 import { redirect } from "next/navigation";
 
@@ -28,12 +28,12 @@ const nameTakenState: NameFormState = { fieldErrors: { name: [NAME_TAKEN_MESSAGE
  * the name is invalid or taken or the folder cannot be stored.
  */
 export async function createFolder(_prevState: NameFormState, formData: FormData): Promise<NameFormState> {
-  await requireUser();
+  const user = await requireUser();
 
   const input = parseFolderFormData(formData);
   if (!input.success) return { fieldErrors: input.fieldErrors };
 
-  const result = await folderService.createFolder(input.data);
+  const result = await folderService.createFolder(user, input.data);
   if (!result.ok) {
     switch (result.error.code) {
       case "invalid-input":
@@ -56,7 +56,7 @@ export async function createFolder(_prevState: NameFormState, formData: FormData
  * with `renameFolder.bind(null, id)`.
  */
 export async function renameFolder(id: string, _prevState: NameFormState, formData: FormData): Promise<NameFormState> {
-  await requireUser();
+  const user = await requireUser();
 
   const folderId = parseFolderId(id);
   if (!folderId) return { message: FOLDER_GONE_MESSAGE };
@@ -64,7 +64,7 @@ export async function renameFolder(id: string, _prevState: NameFormState, formDa
   const input = parseFolderFormData(formData);
   if (!input.success) return { fieldErrors: input.fieldErrors };
 
-  const result = await folderService.renameFolder(folderId, input.data);
+  const result = await folderService.renameFolder(user, folderId, input.data);
   if (!result.ok) {
     switch (result.error.code) {
       case "folder-not-found":
@@ -92,7 +92,7 @@ export async function createTab(
   _prevState: NameFormState,
   formData: FormData,
 ): Promise<NameFormState> {
-  await requireUser();
+  const user = await requireUser();
 
   const parsedFolderId = parseFolderId(folderId);
   if (!parsedFolderId) return { message: FOLDER_GONE_MESSAGE };
@@ -100,7 +100,7 @@ export async function createTab(
   const input = parseTabFormData(formData);
   if (!input.success) return { fieldErrors: input.fieldErrors };
 
-  const result = await folderService.createTab(parsedFolderId, input.data);
+  const result = await folderService.createTab(user, parsedFolderId, input.data);
   if (!result.ok) {
     switch (result.error.code) {
       case "folder-not-found":
@@ -124,7 +124,7 @@ export async function createTab(
  * stored. Bind the id with `renameTab.bind(null, id)`.
  */
 export async function renameTab(id: string, _prevState: NameFormState, formData: FormData): Promise<NameFormState> {
-  await requireUser();
+  const user = await requireUser();
 
   const tabId = parseTabId(id);
   if (!tabId) return { message: TAB_GONE_MESSAGE };
@@ -132,7 +132,7 @@ export async function renameTab(id: string, _prevState: NameFormState, formData:
   const input = parseTabFormData(formData);
   if (!input.success) return { fieldErrors: input.fieldErrors };
 
-  const result = await folderService.renameTab(tabId, input.data);
+  const result = await folderService.renameTab(user, tabId, input.data);
   if (!result.ok) {
     switch (result.error.code) {
       case "tab-not-found":

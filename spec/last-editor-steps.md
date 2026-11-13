@@ -38,7 +38,7 @@ deleted pages show who deleted them.
 
 ## Checklist
 
-- [ ] Record the last editor
+- [x] Record the last editor
 - [ ] Show the last editor
 - [ ] Wrap-up
 

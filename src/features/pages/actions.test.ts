@@ -39,13 +39,16 @@ const serviceWrites = [
   mocks.restorePage,
 ];
 
+/** The logged-in user that `requireUser()` returns; every action passes it to its service write as the actor. */
+const USER = { id: crypto.randomUUID(), name: "alice", mustChangePassword: false };
+
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.redirect.mockImplementation((path: string) => {
     throw new RedirectError(path);
   });
   // A logged-in user, unless a test says otherwise.
-  mocks.requireUser.mockResolvedValue({ id: crypto.randomUUID(), name: "alice", mustChangePassword: false });
+  mocks.requireUser.mockResolvedValue(USER);
 });
 
 const SAVE_FAILED = { message: "The page could not be saved. Please try again." };
@@ -141,7 +144,7 @@ describe("createPage", () => {
       path: "/folders/stored-folder/stored-name.md",
     });
 
-    expect(mocks.createPage).toHaveBeenCalledWith(folderId, { name: "my-page", content: CONTENT, tabId: null });
+    expect(mocks.createPage).toHaveBeenCalledWith(USER, folderId, { name: "my-page", content: CONTENT, tabId: null });
     expectContentRevalidated();
   });
 
@@ -150,7 +153,7 @@ describe("createPage", () => {
 
     await expect(createPage(folderId, {}, formData({ ...VALID, place: "" }))).rejects.toBeInstanceOf(RedirectError);
 
-    expect(mocks.createPage).toHaveBeenCalledWith(folderId, expect.objectContaining({ tabId: null }));
+    expect(mocks.createPage).toHaveBeenCalledWith(USER, folderId, expect.objectContaining({ tabId: null }));
   });
 
   it("passes the chosen tab to the service and redirects to the stored address in the tab", async () => {
@@ -160,7 +163,7 @@ describe("createPage", () => {
       path: "/folders/stored-folder/stored-tab/stored-name.md",
     });
 
-    expect(mocks.createPage).toHaveBeenCalledWith(folderId, { name: "my-page", content: CONTENT, tabId });
+    expect(mocks.createPage).toHaveBeenCalledWith(USER, folderId, { name: "my-page", content: CONTENT, tabId });
     expectContentRevalidated();
   });
 
@@ -206,7 +209,7 @@ describe("updatePageContent", () => {
       path: "/folders/stored-folder/stored-name.md",
     });
 
-    expect(mocks.updatePageContent).toHaveBeenCalledWith(id, { content: CONTENT });
+    expect(mocks.updatePageContent).toHaveBeenCalledWith(USER, id, { content: CONTENT });
     expectContentRevalidated();
   });
 
@@ -259,7 +262,7 @@ describe("moveOrRenamePage", () => {
       path: "/folders/stored-folder/stored-tab/stored-name.md",
     });
 
-    expect(mocks.moveOrRenamePage).toHaveBeenCalledWith(id, { name: "new-name", tabId });
+    expect(mocks.moveOrRenamePage).toHaveBeenCalledWith(USER, id, { name: "new-name", tabId });
     expectContentRevalidated();
   });
 
@@ -273,7 +276,7 @@ describe("moveOrRenamePage", () => {
       path: "/folders/stored-folder/stored-name.md",
     });
 
-    expect(mocks.moveOrRenamePage).toHaveBeenCalledWith(id, { name: "new-name", tabId: null });
+    expect(mocks.moveOrRenamePage).toHaveBeenCalledWith(USER, id, { name: "new-name", tabId: null });
   });
 
   it.each([
@@ -308,7 +311,7 @@ describe("deletePage", () => {
 
     await expect(deletePage(id)).rejects.toMatchObject({ path: "/folders/stored-folder/stored-tab" });
 
-    expect(mocks.deletePage).toHaveBeenCalledWith(id);
+    expect(mocks.deletePage).toHaveBeenCalledWith(USER, id);
     expectContentRevalidated();
   });
 
@@ -367,7 +370,7 @@ describe("restorePage", () => {
       path: "/folders/stored-folder/stored-tab/stored-name.md",
     });
 
-    expect(mocks.restorePage).toHaveBeenCalledWith(id, { name: "new-name", tabId });
+    expect(mocks.restorePage).toHaveBeenCalledWith(USER, id, { name: "new-name", tabId });
     expectContentRevalidated();
   });
 
@@ -378,7 +381,7 @@ describe("restorePage", () => {
       path: "/folders/stored-folder/stored-name.md",
     });
 
-    expect(mocks.restorePage).toHaveBeenCalledWith(id, { name: "new-name", tabId: null });
+    expect(mocks.restorePage).toHaveBeenCalledWith(USER, id, { name: "new-name", tabId: null });
   });
 
   it.each([

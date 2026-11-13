@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   ADMIN_NAME,
   isAdmin,
+  parseUserId,
   parseUserName,
   passwordSchema,
   passwordSchemaFor,
@@ -16,6 +17,19 @@ function errorsOf(schema: z.ZodType, value: unknown): string[] {
   const result = schema.safeParse(value);
   return result.success ? [] : z.flattenError(result.error).formErrors;
 }
+
+describe("parseUserId", () => {
+  it("returns a well-formed id", () => {
+    const id = crypto.randomUUID();
+    expect(parseUserId(id)).toBe(id);
+  });
+
+  it("returns null for a malformed id", () => {
+    for (const id of ["", "not-a-uuid", "admin", `${crypto.randomUUID()}x`, ` ${crypto.randomUUID()}`]) {
+      expect(parseUserId(id)).toBeNull();
+    }
+  });
+});
 
 describe("ADMIN_NAME", () => {
   it("is a valid user name", () => {

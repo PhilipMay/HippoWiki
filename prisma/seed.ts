@@ -1,9 +1,10 @@
-// Inserts a sample folder with sample pages and the known users into the database configured by DATABASE_URL. Run it
+// Inserts the known users and a sample folder with sample pages into the database configured by DATABASE_URL. Run it
 // with `npm run db:seed`; the Prisma CLI loads `.env` before starting this script. The folder and its pages are
 // upserted by fixed ids, so running it again changes nothing. The known users are upserted by their names: running it
 // again gives them their known passwords back.
 import { titleFromContent } from "../src/features/pages/derive";
 import { CREDENTIAL_PROVIDER_ID, newUserData } from "../src/features/users/records";
+import { ADMIN_NAME } from "../src/features/users/schema";
 import { getDb } from "../src/lib/db";
 import { logger } from "../src/lib/logger";
 import { hashPassword } from "../src/lib/password-hash";
@@ -81,17 +82,6 @@ function greet(name: string): string {
 async function main() {
   const db = getDb();
   try {
-    await db.folder.upsert({ where: { id: folder.id }, create: folder, update: { name: folder.name } });
-    for (const { id, name, content } of pages) {
-      // Like the page form, the title comes from the content's first heading.
-      const title = titleFromContent(content);
-      if (title === null) throw new Error(`Sample page ${name} has no title heading`);
-      // Placed directly in the sample folder.
-      const data = { title, name, content, folderId: folder.id };
-      await db.page.upsert({ where: { id }, create: { id, ...data }, update: data });
-    }
-    logger.info({ folder: folder.name, count: pages.length }, "seeded sample folder and pages");
-
     for (const { id, name, password } of KNOWN_USERS) {
       const passwordHash = await hashPassword(password);
       // By name, not by id: an admin that `npm run admin:setup` created has another id and keeps it.
@@ -105,6 +95,25 @@ async function main() {
       });
     }
     logger.info({ users: KNOWN_USERS.map(({ name }) => name) }, "seeded known users");
+
+    // The known users come first: the admin is the last editor of the sample folder and pages. It is looked up by
+    // name, because one that `npm run admin:setup` created has another id.
+    const admin = await db.user.findUniqueOrThrow({ where: { username: ADMIN_NAME }, select: { id: true } });
+    const lastEditedById = admin.id;
+    await db.folder.upsert({
+      where: { id: folder.id },
+      create: { ...folder, lastEditedById },
+      update: { name: folder.name, lastEditedById },
+    });
+    for (const { id, name, content } of pages) {
+      // Like the page form, the title comes from the content's first heading.
+      const title = titleFromContent(content);
+      if (title === null) throw new Error(`Sample page ${name} has no title heading`);
+      // Placed directly in the sample folder.
+      const data = { title, name, content, folderId: folder.id, lastEditedById };
+      await db.page.upsert({ where: { id }, create: { id, ...data }, update: data });
+    }
+    logger.info({ folder: folder.name, count: pages.length }, "seeded sample folder and pages");
   } finally {
     await db.$disconnect();
   }

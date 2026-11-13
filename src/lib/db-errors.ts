@@ -44,7 +44,32 @@ export function isUniqueViolation(err: unknown, { indexes, field }: UniqueConstr
   return constraint?.fields?.includes(field) ?? false;
 }
 
-/** Whether the error is a foreign key violation, e.g. a row that refers to a folder that no longer exists. */
-export function isForeignKeyViolation(err: unknown): boolean {
-  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2003";
+/** A foreign key: the names of its constraints and the column that only these constraints cover. */
+export type ForeignKey = {
+  /** Constraint names as Prisma creates them, e.g. `Page_lastEditedById_fkey`. */
+  constraints: readonly string[];
+  /** The column of the key, used when the constraint name is unknown. */
+  field: string;
+};
+
+/** The foreign keys of the last editor of folders, tabs and pages, as Prisma creates them for the relations to `User`. */
+export const LAST_EDITOR: ForeignKey = {
+  constraints: ["Folder_lastEditedById_fkey", "Tab_lastEditedById_fkey", "Page_lastEditedById_fkey"],
+  field: "lastEditedById",
+};
+
+/**
+ * Whether the error is a foreign key violation, e.g. a row that refers to a folder that no longer exists; with a key,
+ * whether it is a violation of that key. With the `pg` driver adapter, Prisma reports the violated key in
+ * `meta.driverAdapterError.cause.constraint`: as the constraint name (`index`) or, if PostgreSQL names a column, as
+ * the fields.
+ */
+export function isForeignKeyViolation(err: unknown, key?: ForeignKey): boolean {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== "P2003") return false;
+  if (key === undefined) return true;
+  const adapterError = err.meta?.driverAdapterError as
+    { cause?: { constraint?: { index?: string; fields?: string[] } } } | undefined;
+  const constraint = adapterError?.cause?.constraint;
+  if (constraint?.index !== undefined) return key.constraints.includes(constraint.index);
+  return constraint?.fields?.includes(key.field) ?? false;
 }

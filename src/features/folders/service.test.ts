@@ -10,6 +10,7 @@ import {
   renameFolder,
   renameTab,
 } from "@/features/folders/service";
+import type { Actor } from "@/features/users/service";
 import { Prisma } from "@/generated/prisma/client";
 
 const mocks = vi.hoisted(() => ({
@@ -76,6 +77,11 @@ beforeEach(() => {
 const FOLDER_ID = "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10";
 const TAB_ID = "5a2c1c0e-3f55-4a55-8a42-5d2f0e6a9b11";
 const MALFORMED_ID = "not-a-uuid";
+const ACTOR_ID = "9d4b2f6e-1c3a-4e8b-b7d5-2a6c8e0f1b12";
+
+/** The user who makes the writes, and one whose id is malformed. */
+const ACTOR: Actor = { id: ACTOR_ID, name: "alice" };
+const MALFORMED_ACTOR: Actor = { id: MALFORMED_ID, name: "alice" };
 
 /** Names that are not valid as written: not lowercase, surrounding whitespace, a double hyphen, empty. */
 const MALFORMED_NAMES = ["Handbook", " handbook", "handbook ", "release--notes", "-handbook", ""];
@@ -97,6 +103,11 @@ function knownError(code: string, meta?: Record<string, unknown>): Prisma.Prisma
 /** A unique violation as reported with the `pg` adapter, on the given index or fields. */
 function uniqueViolation(constraint: { index?: string; fields?: string[] }): Prisma.PrismaClientKnownRequestError {
   return knownError("P2002", { driverAdapterError: { cause: { constraint } } });
+}
+
+/** A foreign key violation as reported with the `pg` adapter, on the given constraint or fields. */
+function foreignKeyViolation(constraint: { index?: string; fields?: string[] }): Prisma.PrismaClientKnownRequestError {
+  return knownError("P2003", { driverAdapterError: { cause: { constraint } } });
 }
 
 const nameTakenErrors = [
@@ -190,7 +201,7 @@ describe("getTab", () => {
 
 describe("createFolder", () => {
   it("returns the field errors of an invalid name without writing anything", async () => {
-    await expect(createFolder(INVALID)).resolves.toEqual(NAME_REQUIRED);
+    await expect(createFolder(ACTOR, INVALID)).resolves.toEqual(NAME_REQUIRED);
     expect(databaseCallCount()).toBe(0);
     expectNothingLogged();
   });
@@ -199,24 +210,34 @@ describe("createFolder", () => {
     const stored = { id: FOLDER_ID, name: "stored-name" };
     mocks.folderCreate.mockResolvedValue(stored);
 
-    await expect(createFolder(VALID)).resolves.toEqual({ ok: true, value: stored });
+    await expect(createFolder(ACTOR, VALID)).resolves.toEqual({ ok: true, value: stored });
 
-    expect(mocks.folderCreate).toHaveBeenCalledWith({ data: { name: "handbook" }, select: { id: true, name: true } });
+    expect(mocks.folderCreate).toHaveBeenCalledWith({
+      data: { name: "handbook", lastEditedById: ACTOR_ID },
+      select: { id: true, name: true },
+    });
     expect(mocks.info).toHaveBeenCalledWith({ folderId: FOLDER_ID }, "folder created");
   });
 
   it("stores only the name of the input", async () => {
     mocks.folderCreate.mockResolvedValue({ id: FOLDER_ID, name: "handbook" });
 
-    await createFolder({ name: "handbook", id: "other", createdAt: new Date(0) } as { name: string });
+    await createFolder(ACTOR, {
+      name: "handbook",
+      id: "other",
+      createdAt: new Date(0),
+      lastEditedById: "other",
+    } as { name: string });
 
-    expect(mocks.folderCreate).toHaveBeenCalledWith(expect.objectContaining({ data: { name: "handbook" } }));
+    expect(mocks.folderCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { name: "handbook", lastEditedById: ACTOR_ID } }),
+    );
   });
 
   it.each(nameTakenErrors)("returns name-taken for a unique violation %s", async (_name, err) => {
     mocks.folderCreate.mockRejectedValue(err);
 
-    await expect(createFolder(VALID)).resolves.toEqual(NAME_TAKEN);
+    await expect(createFolder(ACTOR, VALID)).resolves.toEqual(NAME_TAKEN);
 
     expect(mocks.warn).toHaveBeenCalledWith({ name: "handbook" }, "name of new folder already in use");
     expect(mocks.error).not.toHaveBeenCalled();
@@ -226,7 +247,7 @@ describe("createFolder", () => {
   it.each(otherErrors)("returns failed for %s", async (_name, err) => {
     mocks.folderCreate.mockRejectedValue(err);
 
-    await expect(createFolder(VALID)).resolves.toEqual(FAILED);
+    await expect(createFolder(ACTOR, VALID)).resolves.toEqual(FAILED);
 
     expect(mocks.error).toHaveBeenCalledWith({ err }, "failed to create folder");
     expect(mocks.info).not.toHaveBeenCalled();
@@ -238,13 +259,13 @@ describe("renameFolder", () => {
     ["a valid", VALID],
     ["an invalid", INVALID],
   ])("returns folder-not-found for a malformed id, with %s name", async (_name, input) => {
-    await expect(renameFolder(MALFORMED_ID, input)).resolves.toEqual(FOLDER_NOT_FOUND);
+    await expect(renameFolder(ACTOR, MALFORMED_ID, input)).resolves.toEqual(FOLDER_NOT_FOUND);
     expect(databaseCallCount()).toBe(0);
     expectNothingLogged();
   });
 
   it("returns the field errors of an invalid name without writing anything", async () => {
-    await expect(renameFolder(FOLDER_ID, INVALID)).resolves.toEqual(NAME_REQUIRED);
+    await expect(renameFolder(ACTOR, FOLDER_ID, INVALID)).resolves.toEqual(NAME_REQUIRED);
     expect(databaseCallCount()).toBe(0);
     expectNothingLogged();
   });
@@ -252,19 +273,22 @@ describe("renameFolder", () => {
   it("stores the trimmed name and returns the folder as stored", async () => {
     mocks.folderUpdateMany.mockResolvedValue({ count: 1 });
 
-    await expect(renameFolder(FOLDER_ID, VALID)).resolves.toEqual({
+    await expect(renameFolder(ACTOR, FOLDER_ID, VALID)).resolves.toEqual({
       ok: true,
       value: { id: FOLDER_ID, name: "handbook" },
     });
 
-    expect(mocks.folderUpdateMany).toHaveBeenCalledWith({ where: { id: FOLDER_ID }, data: { name: "handbook" } });
+    expect(mocks.folderUpdateMany).toHaveBeenCalledWith({
+      where: { id: FOLDER_ID },
+      data: { name: "handbook", lastEditedById: ACTOR_ID },
+    });
     expect(mocks.info).toHaveBeenCalledWith({ folderId: FOLDER_ID }, "folder renamed");
   });
 
   it("returns folder-not-found for a folder that no longer exists", async () => {
     mocks.folderUpdateMany.mockResolvedValue({ count: 0 });
 
-    await expect(renameFolder(FOLDER_ID, VALID)).resolves.toEqual(FOLDER_NOT_FOUND);
+    await expect(renameFolder(ACTOR, FOLDER_ID, VALID)).resolves.toEqual(FOLDER_NOT_FOUND);
 
     expect(mocks.warn).toHaveBeenCalledWith({ folderId: FOLDER_ID }, "folder to rename not found");
     expect(mocks.info).not.toHaveBeenCalled();
@@ -273,7 +297,7 @@ describe("renameFolder", () => {
   it.each(nameTakenErrors)("returns name-taken for a unique violation %s", async (_name, err) => {
     mocks.folderUpdateMany.mockRejectedValue(err);
 
-    await expect(renameFolder(FOLDER_ID, VALID)).resolves.toEqual(NAME_TAKEN);
+    await expect(renameFolder(ACTOR, FOLDER_ID, VALID)).resolves.toEqual(NAME_TAKEN);
 
     expect(mocks.warn).toHaveBeenCalledWith(
       { folderId: FOLDER_ID, name: "handbook" },
@@ -285,7 +309,7 @@ describe("renameFolder", () => {
   it.each(otherErrors)("returns failed for %s", async (_name, err) => {
     mocks.folderUpdateMany.mockRejectedValue(err);
 
-    await expect(renameFolder(FOLDER_ID, VALID)).resolves.toEqual(FAILED);
+    await expect(renameFolder(ACTOR, FOLDER_ID, VALID)).resolves.toEqual(FAILED);
 
     expect(mocks.error).toHaveBeenCalledWith({ err, folderId: FOLDER_ID }, "failed to rename folder");
     expect(mocks.info).not.toHaveBeenCalled();
@@ -311,13 +335,13 @@ describe("createTab", () => {
     ["a valid", TAB_VALID],
     ["an invalid", INVALID],
   ])("returns folder-not-found for a malformed folder id, with %s name", async (_name, input) => {
-    await expect(createTab(MALFORMED_ID, input)).resolves.toEqual(FOLDER_NOT_FOUND);
+    await expect(createTab(ACTOR, MALFORMED_ID, input)).resolves.toEqual(FOLDER_NOT_FOUND);
     expect(databaseCallCount()).toBe(0);
     expectNothingLogged();
   });
 
   it("returns the field errors of an invalid name without writing anything", async () => {
-    await expect(createTab(FOLDER_ID, INVALID)).resolves.toEqual(NAME_REQUIRED);
+    await expect(createTab(ACTOR, FOLDER_ID, INVALID)).resolves.toEqual(NAME_REQUIRED);
     expect(databaseCallCount()).toBe(0);
     expectNothingLogged();
   });
@@ -326,10 +350,10 @@ describe("createTab", () => {
     const stored = { id: TAB_ID, name: "stored-tab", folder: { name: "stored-folder" } };
     mocks.tabCreate.mockResolvedValue(stored);
 
-    await expect(createTab(FOLDER_ID, TAB_VALID)).resolves.toEqual({ ok: true, value: stored });
+    await expect(createTab(ACTOR, FOLDER_ID, TAB_VALID)).resolves.toEqual({ ok: true, value: stored });
 
     expect(mocks.tabCreate).toHaveBeenCalledWith({
-      data: { name: "guides", folderId: FOLDER_ID },
+      data: { name: "guides", folderId: FOLDER_ID, lastEditedById: ACTOR_ID },
       select: STORED_TAB_SELECT,
     });
     expect(mocks.info).toHaveBeenCalledWith({ tabId: TAB_ID }, "tab created");
@@ -338,16 +362,20 @@ describe("createTab", () => {
   it.each(tabNameTakenErrors)("returns name-taken for a unique violation %s", async (_name, err) => {
     mocks.tabCreate.mockRejectedValue(err);
 
-    await expect(createTab(FOLDER_ID, TAB_VALID)).resolves.toEqual(NAME_TAKEN);
+    await expect(createTab(ACTOR, FOLDER_ID, TAB_VALID)).resolves.toEqual(NAME_TAKEN);
 
     expect(mocks.warn).toHaveBeenCalledWith({ folderId: FOLDER_ID, name: "guides" }, "name of new tab already in use");
     expect(mocks.error).not.toHaveBeenCalled();
   });
 
-  it("returns folder-not-found for a foreign key violation", async () => {
-    mocks.tabCreate.mockRejectedValue(knownError("P2003"));
+  it.each([
+    ["without details", knownError("P2003")],
+    ["on the folder key", foreignKeyViolation({ index: "Tab_folderId_fkey" })],
+    ["on the folder field", foreignKeyViolation({ fields: ["folderId"] })],
+  ])("returns folder-not-found for a foreign key violation %s", async (_name, err) => {
+    mocks.tabCreate.mockRejectedValue(err);
 
-    await expect(createTab(FOLDER_ID, TAB_VALID)).resolves.toEqual(FOLDER_NOT_FOUND);
+    await expect(createTab(ACTOR, FOLDER_ID, TAB_VALID)).resolves.toEqual(FOLDER_NOT_FOUND);
 
     expect(mocks.warn).toHaveBeenCalledWith({ folderId: FOLDER_ID }, "folder of new tab not found");
     expect(mocks.error).not.toHaveBeenCalled();
@@ -356,7 +384,7 @@ describe("createTab", () => {
   it.each(otherTabErrors)("returns failed for %s", async (_name, err) => {
     mocks.tabCreate.mockRejectedValue(err);
 
-    await expect(createTab(FOLDER_ID, TAB_VALID)).resolves.toEqual(FAILED);
+    await expect(createTab(ACTOR, FOLDER_ID, TAB_VALID)).resolves.toEqual(FAILED);
 
     expect(mocks.error).toHaveBeenCalledWith({ err, folderId: FOLDER_ID }, "failed to create tab");
     expect(mocks.info).not.toHaveBeenCalled();
@@ -368,13 +396,13 @@ describe("renameTab", () => {
     ["a valid", TAB_VALID],
     ["an invalid", INVALID],
   ])("returns tab-not-found for a malformed id, with %s name", async (_name, input) => {
-    await expect(renameTab(MALFORMED_ID, input)).resolves.toEqual(TAB_NOT_FOUND);
+    await expect(renameTab(ACTOR, MALFORMED_ID, input)).resolves.toEqual(TAB_NOT_FOUND);
     expect(databaseCallCount()).toBe(0);
     expectNothingLogged();
   });
 
   it("returns the field errors of an invalid name without writing anything", async () => {
-    await expect(renameTab(TAB_ID, INVALID)).resolves.toEqual(NAME_REQUIRED);
+    await expect(renameTab(ACTOR, TAB_ID, INVALID)).resolves.toEqual(NAME_REQUIRED);
     expect(databaseCallCount()).toBe(0);
     expectNothingLogged();
   });
@@ -384,9 +412,12 @@ describe("renameTab", () => {
     mocks.tabUpdateMany.mockResolvedValue({ count: 1 });
     mocks.tabFindUnique.mockResolvedValue(stored);
 
-    await expect(renameTab(TAB_ID, TAB_VALID)).resolves.toEqual({ ok: true, value: stored });
+    await expect(renameTab(ACTOR, TAB_ID, TAB_VALID)).resolves.toEqual({ ok: true, value: stored });
 
-    expect(mocks.tabUpdateMany).toHaveBeenCalledWith({ where: { id: TAB_ID }, data: { name: "guides" } });
+    expect(mocks.tabUpdateMany).toHaveBeenCalledWith({
+      where: { id: TAB_ID },
+      data: { name: "guides", lastEditedById: ACTOR_ID },
+    });
     expect(mocks.tabFindUnique).toHaveBeenCalledWith({ where: { id: TAB_ID }, select: STORED_TAB_SELECT });
     expect(mocks.info).toHaveBeenCalledWith({ tabId: TAB_ID }, "tab renamed");
   });
@@ -394,7 +425,7 @@ describe("renameTab", () => {
   it("returns tab-not-found for a tab that no longer exists", async () => {
     mocks.tabUpdateMany.mockResolvedValue({ count: 0 });
 
-    await expect(renameTab(TAB_ID, TAB_VALID)).resolves.toEqual(TAB_NOT_FOUND);
+    await expect(renameTab(ACTOR, TAB_ID, TAB_VALID)).resolves.toEqual(TAB_NOT_FOUND);
 
     expect(mocks.tabFindUnique).not.toHaveBeenCalled();
     expect(mocks.warn).toHaveBeenCalledWith({ tabId: TAB_ID }, "tab to rename not found");
@@ -405,7 +436,7 @@ describe("renameTab", () => {
     mocks.tabUpdateMany.mockResolvedValue({ count: 1 });
     mocks.tabFindUnique.mockResolvedValue(null);
 
-    await expect(renameTab(TAB_ID, TAB_VALID)).resolves.toEqual(TAB_NOT_FOUND);
+    await expect(renameTab(ACTOR, TAB_ID, TAB_VALID)).resolves.toEqual(TAB_NOT_FOUND);
 
     expect(mocks.warn).toHaveBeenCalledWith({ tabId: TAB_ID }, "tab to rename not found");
     expect(mocks.info).not.toHaveBeenCalled();
@@ -414,7 +445,7 @@ describe("renameTab", () => {
   it.each(tabNameTakenErrors)("returns name-taken for a unique violation %s", async (_name, err) => {
     mocks.tabUpdateMany.mockRejectedValue(err);
 
-    await expect(renameTab(TAB_ID, TAB_VALID)).resolves.toEqual(NAME_TAKEN);
+    await expect(renameTab(ACTOR, TAB_ID, TAB_VALID)).resolves.toEqual(NAME_TAKEN);
 
     expect(mocks.warn).toHaveBeenCalledWith({ tabId: TAB_ID, name: "guides" }, "name of renamed tab already in use");
     expect(mocks.error).not.toHaveBeenCalled();
@@ -423,9 +454,48 @@ describe("renameTab", () => {
   it.each(otherTabErrors)("returns failed for %s", async (_name, err) => {
     mocks.tabUpdateMany.mockRejectedValue(err);
 
-    await expect(renameTab(TAB_ID, TAB_VALID)).resolves.toEqual(FAILED);
+    await expect(renameTab(ACTOR, TAB_ID, TAB_VALID)).resolves.toEqual(FAILED);
 
     expect(mocks.error).toHaveBeenCalledWith({ err, tabId: TAB_ID }, "failed to rename tab");
+    expect(mocks.info).not.toHaveBeenCalled();
+  });
+});
+
+/** Every write, called by the given actor with valid input, the database call it writes with, and its editor key. */
+const writes = [
+  ["createFolder", (actor: Actor) => createFolder(actor, VALID), mocks.folderCreate, "Folder_lastEditedById_fkey"],
+  [
+    "renameFolder",
+    (actor: Actor) => renameFolder(actor, FOLDER_ID, VALID),
+    mocks.folderUpdateMany,
+    "Folder_lastEditedById_fkey",
+  ],
+  ["createTab", (actor: Actor) => createTab(actor, FOLDER_ID, TAB_VALID), mocks.tabCreate, "Tab_lastEditedById_fkey"],
+  ["renameTab", (actor: Actor) => renameTab(actor, TAB_ID, TAB_VALID), mocks.tabUpdateMany, "Tab_lastEditedById_fkey"],
+] as const;
+
+describe("the actor of a write", () => {
+  it.each(writes)("%s returns failed for a malformed actor id without touching the database", async (_name, write) => {
+    await expect(write(MALFORMED_ACTOR)).resolves.toEqual(FAILED);
+
+    expect(databaseCallCount()).toBe(0);
+    expect(mocks.error).toHaveBeenCalledWith({ actorId: MALFORMED_ID }, "malformed actor id");
+    expect(mocks.warn).not.toHaveBeenCalled();
+    expect(mocks.info).not.toHaveBeenCalled();
+  });
+
+  it.each(
+    writes.flatMap(([name, write, call, constraint]) => [
+      [name, "on the editor key", write, call, foreignKeyViolation({ index: constraint })] as const,
+      [name, "on the editor field", write, call, foreignKeyViolation({ fields: ["lastEditedById"] })] as const,
+    ]),
+  )("%s returns failed for a foreign key violation %s", async (_name, _kind, write, call, err) => {
+    call.mockRejectedValue(err);
+
+    await expect(write(ACTOR)).resolves.toEqual(FAILED);
+
+    expect(mocks.error).toHaveBeenCalledWith({ err, actorId: ACTOR_ID }, "actor of write not found");
+    expect(mocks.warn).not.toHaveBeenCalled();
     expect(mocks.info).not.toHaveBeenCalled();
   });
 });

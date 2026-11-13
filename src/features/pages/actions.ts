@@ -2,7 +2,8 @@
 
 // The writes of pages for forms: thin adapters that translate between a form and the service. Every action calls
 // `requireUser()` first, which redirects to the login page without a logged-in user: a Server Action is a public
-// endpoint, whatever page shows its form. The call stands outside every `try` block, because the redirect throws.
+// endpoint, whatever page shows its form. The call stands outside every `try` block, because the redirect throws. The
+// user it returns is passed to the service write as the actor, who becomes the last editor.
 
 import { redirect } from "next/navigation";
 
@@ -50,7 +51,7 @@ export async function createPage(
   _prevState: PageFormState,
   formData: FormData,
 ): Promise<PageFormState> {
-  await requireUser();
+  const user = await requireUser();
 
   const parsedFolderId = parseFolderId(folderId);
   if (!parsedFolderId) return { message: FOLDER_GONE_MESSAGE };
@@ -65,7 +66,7 @@ export async function createPage(
   }
   const { name, content, tabId } = input.data;
 
-  const result = await pageService.createPage(parsedFolderId, { name, content, tabId });
+  const result = await pageService.createPage(user, parsedFolderId, { name, content, tabId });
   if (!result.ok) {
     switch (result.error.code) {
       case "folder-not-found":
@@ -96,7 +97,7 @@ export async function updatePageContent(
   _prevState: PageFormState,
   formData: FormData,
 ): Promise<PageFormState> {
-  await requireUser();
+  const user = await requireUser();
 
   const pageId = parsePageId(id);
   if (!pageId) return { message: PAGE_GONE_MESSAGE };
@@ -104,7 +105,7 @@ export async function updatePageContent(
   const input = parsePageContentFormData(formData);
   if (!input.success) return { fieldErrors: input.fieldErrors };
 
-  const result = await pageService.updatePageContent(pageId, { content: input.data.content });
+  const result = await pageService.updatePageContent(user, pageId, { content: input.data.content });
   if (!result.ok) {
     switch (result.error.code) {
       case "page-not-found":
@@ -132,7 +133,7 @@ export async function moveOrRenamePage(
   _prevState: PageMoveOrRenameFormState,
   formData: FormData,
 ): Promise<PageMoveOrRenameFormState> {
-  await requireUser();
+  const user = await requireUser();
 
   const pageId = parsePageId(id);
   if (!pageId) return { message: PAGE_GONE_MESSAGE };
@@ -145,7 +146,7 @@ export async function moveOrRenamePage(
     };
   }
 
-  const result = await pageService.moveOrRenamePage(pageId, input.data);
+  const result = await pageService.moveOrRenamePage(user, pageId, input.data);
   if (!result.ok) {
     switch (result.error.code) {
       case "page-not-found":
@@ -172,12 +173,12 @@ export async function moveOrRenamePage(
  * `deletePage.bind(null, id)`.
  */
 export async function deletePage(id: string): Promise<PageDeleteFormState> {
-  await requireUser();
+  const user = await requireUser();
 
   const pageId = parsePageId(id);
   if (!pageId) return { message: PAGE_GONE_MESSAGE };
 
-  const result = await pageService.deletePage(pageId);
+  const result = await pageService.deletePage(user, pageId);
   if (!result.ok) {
     switch (result.error.code) {
       case "page-not-found":
@@ -204,7 +205,7 @@ export async function restorePage(
   _prevState: PageRestoreFormState,
   formData: FormData,
 ): Promise<PageRestoreFormState> {
-  await requireUser();
+  const user = await requireUser();
 
   const pageId = parsePageId(id);
   if (!pageId) return { message: PAGE_GONE_MESSAGE };
@@ -218,7 +219,7 @@ export async function restorePage(
     };
   }
 
-  const result = await pageService.restorePage(pageId, input.data);
+  const result = await pageService.restorePage(user, pageId, input.data);
   if (!result.ok) {
     switch (result.error.code) {
       case "page-not-found":

@@ -31,13 +31,16 @@ vi.mock("@/features/auth/session", () => ({ requireUser: mocks.requireUser }));
 
 const serviceWrites = [mocks.createFolder, mocks.renameFolder, mocks.createTab, mocks.renameTab];
 
+/** The logged-in user that `requireUser()` returns; every action passes it to its service write as the actor. */
+const USER = { id: crypto.randomUUID(), name: "alice", mustChangePassword: false };
+
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.redirect.mockImplementation((path: string) => {
     throw new RedirectError(path);
   });
   // A logged-in user, unless a test says otherwise.
-  mocks.requireUser.mockResolvedValue({ id: crypto.randomUUID(), name: "alice", mustChangePassword: false });
+  mocks.requireUser.mockResolvedValue(USER);
 });
 
 const SAVE_FAILED = { message: "The folder could not be saved. Please try again." };
@@ -90,7 +93,7 @@ describe("createFolder", () => {
 
     await expect(createFolder({}, formData(VALID))).rejects.toMatchObject({ path: "/folders/stored-name" });
 
-    expect(mocks.createFolder).toHaveBeenCalledWith({ name: "handbook" });
+    expect(mocks.createFolder).toHaveBeenCalledWith(USER, { name: "handbook" });
     expectContentRevalidated();
   });
 
@@ -129,7 +132,7 @@ describe("renameFolder", () => {
 
     await expect(renameFolder(id, {}, formData(VALID))).rejects.toMatchObject({ path: "/folders/stored-name" });
 
-    expect(mocks.renameFolder).toHaveBeenCalledWith(id, { name: "handbook" });
+    expect(mocks.renameFolder).toHaveBeenCalledWith(USER, id, { name: "handbook" });
     expectContentRevalidated();
   });
 
@@ -178,7 +181,7 @@ describe("createTab", () => {
       path: "/folders/stored-folder/stored-tab",
     });
 
-    expect(mocks.createTab).toHaveBeenCalledWith(folderId, { name: "guides" });
+    expect(mocks.createTab).toHaveBeenCalledWith(USER, folderId, { name: "guides" });
     expectContentRevalidated();
   });
 
@@ -224,7 +227,7 @@ describe("renameTab", () => {
       path: "/folders/stored-folder/stored-tab",
     });
 
-    expect(mocks.renameTab).toHaveBeenCalledWith(id, { name: "guides" });
+    expect(mocks.renameTab).toHaveBeenCalledWith(USER, id, { name: "guides" });
     expectContentRevalidated();
   });
 

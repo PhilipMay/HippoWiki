@@ -1,6 +1,9 @@
 // The reads and writes of pages. The service knows nothing about Next.js, forms or addresses, so that the GUI (through
 // `queries.ts` and `actions.ts`) and any other caller can use it, also outside a request. It trusts no caller: ids,
 // names and input are parsed here again.
+//
+// Every write takes the acting user as its first argument and stores it as the last editor of the page, in the same
+// write that changes `updatedAt`. The folder and the tab of the page keep their `updatedAt` and last editor.
 
 import { z } from "zod";
 
@@ -12,8 +15,10 @@ import {
   parsePageId,
   type PageFieldErrors,
 } from "@/features/pages/schema";
+import { parseUserId } from "@/features/users/schema";
+import type { Actor } from "@/features/users/service";
 import { getDb } from "@/lib/db";
-import { isForeignKeyViolation, isUniqueViolation, PAGE_NAME } from "@/lib/db-errors";
+import { isForeignKeyViolation, isUniqueViolation, LAST_EDITOR, PAGE_NAME } from "@/lib/db-errors";
 import { logger } from "@/lib/logger";
 import { parseName, type NameFieldErrors } from "@/lib/names";
 import type { Result } from "@/lib/result";
@@ -63,7 +68,7 @@ type FolderNotFound = { code: "folder-not-found" };
 type TabNotFound = { code: "tab-not-found" };
 /** The page does not exist or is not in the state the write needs: deleted for a restore, not deleted otherwise. */
 type PageNotFound = { code: "page-not-found" };
-/** An unexpected database error; it has been logged. */
+/** An unexpected database error, or an actor that is malformed or does not exist; it has been logged. */
 type Failed = { code: "failed" };
 
 export type CreatePageError = FolderNotFound | TabNotFound | InvalidInput<PageFieldErrors> | NameTaken | Failed;
@@ -219,6 +224,22 @@ function invalidInput<Input>(error: z.ZodError<Input>): {
 }
 
 /**
+ * The id of the actor, to be stored as the last editor, or `null` if it is malformed, which is logged: the adapters
+ * take the actor from a valid session, so only a broken caller passes a malformed id.
+ */
+function editorIdOf(actor: Actor): string | null {
+  const id = parseUserId(actor.id);
+  if (!id) logger.error({ actorId: actor.id }, "malformed actor id");
+  return id;
+}
+
+/** The result of a write whose actor does not exist; it is logged, because only a broken caller can cause it. */
+function unknownActor(err: unknown, actor: Actor): { ok: false; error: Failed } {
+  logger.error({ err, actorId: actor.id }, "actor of write not found");
+  return { ok: false, error: { code: "failed" } };
+}
+
+/**
  * The tab of a place: the id of a tab, `null` for the folder itself, or `undefined` if the id is malformed, so that
  * it never reaches the database.
  */
@@ -238,12 +259,16 @@ async function findStoredPage(pageId: string): Promise<StoredPage | null> {
 /**
  * Creates a page with the given name and content, with the title derived from the content, and returns it as stored.
  * The page is placed in the tab with the id `tabId` or, with `null`, directly in the folder with the given id; the tab
- * must be one of that folder.
+ * must be one of that folder. The actor is the page's last editor.
  */
 export async function createPage(
+  actor: Actor,
   folderId: string,
   input: { name: string; content: string; tabId: string | null },
 ): Promise<Result<StoredPage, CreatePageError>> {
+  const lastEditedById = editorIdOf(actor);
+  if (!lastEditedById) return { ok: false, error: { code: "failed" } };
+
   const parsedFolderId = parseFolderId(folderId);
   if (!parsedFolderId) return { ok: false, error: { code: "folder-not-found" } };
 
@@ -256,10 +281,12 @@ export async function createPage(
   let page: StoredPage;
   try {
     page = await getDb().page.create({
-      data: { ...parsed.data, tabId, folderId: parsedFolderId },
+      data: { ...parsed.data, tabId, folderId: parsedFolderId, lastEditedById },
       select: STORED_PAGE_SELECT,
     });
   } catch (err) {
+    // Before the folder and tab keys: a missing actor must not be reported as a missing folder or tab.
+    if (isForeignKeyViolation(err, LAST_EDITOR)) return unknownActor(err, actor);
     if (isUniqueViolation(err, PAGE_NAME)) {
       logger.warn({ folderId: parsedFolderId, tabId, name: parsed.data.name }, "name of new page already in use");
       return { ok: false, error: { code: "name-taken" } };
@@ -279,12 +306,16 @@ export async function createPage(
 
 /**
  * Stores the given content of the page with the given id, with the title derived from it, and returns the page as
- * stored. Name and place are not touched. A deleted page counts as missing.
+ * stored, with the actor as its last editor. Name and place are not touched. A deleted page counts as missing.
  */
 export async function updatePageContent(
+  actor: Actor,
   id: string,
   input: { content: string },
 ): Promise<Result<StoredPage, UpdatePageContentError>> {
+  const lastEditedById = editorIdOf(actor);
+  if (!lastEditedById) return { ok: false, error: { code: "failed" } };
+
   const pageId = parsePageId(id);
   if (!pageId) return { ok: false, error: { code: "page-not-found" } };
 
@@ -295,9 +326,13 @@ export async function updatePageContent(
   try {
     // `updateMany` reports a missing page as a count of 0 instead of throwing; it sets `updatedAt` as well. A deleted
     // page counts as missing.
-    const { count } = await getDb().page.updateMany({ where: { id: pageId, deletedAt: null }, data: parsed.data });
+    const { count } = await getDb().page.updateMany({
+      where: { id: pageId, deletedAt: null },
+      data: { ...parsed.data, lastEditedById },
+    });
     page = count === 0 ? null : await findStoredPage(pageId);
   } catch (err) {
+    if (isForeignKeyViolation(err, LAST_EDITOR)) return unknownActor(err, actor);
     logger.error({ err, pageId }, "failed to update page");
     return { ok: false, error: { code: "failed" } };
   }
@@ -311,15 +346,20 @@ export async function updatePageContent(
 }
 
 /**
- * Stores the given name and place of the page with the given id in one update and returns the page as stored. The
+ * Stores the given name and place of the page with the given id in one update, with the actor as its last editor, and
+ * returns the page as stored. The
  * page is placed in the tab with the id `tabId` of its folder or, with `null`, directly in the folder. The content is
  * neither validated nor touched, so the content limit never blocks a move. A tab of another folder is refused by the
  * composite foreign key and counts as missing, like a deleted page.
  */
 export async function moveOrRenamePage(
+  actor: Actor,
   id: string,
   input: { name: string; tabId: string | null },
 ): Promise<Result<StoredPage, MoveOrRenamePageError>> {
+  const lastEditedById = editorIdOf(actor);
+  if (!lastEditedById) return { ok: false, error: { code: "failed" } };
+
   const pageId = parsePageId(id);
   if (!pageId) return { ok: false, error: { code: "page-not-found" } };
 
@@ -334,10 +374,12 @@ export async function moveOrRenamePage(
   try {
     const { count } = await getDb().page.updateMany({
       where: { id: pageId, deletedAt: null },
-      data: { name, tabId },
+      data: { name, tabId, lastEditedById },
     });
     page = count === 0 ? null : await findStoredPage(pageId);
   } catch (err) {
+    // Before the tab key: a missing actor must not be reported as a missing tab.
+    if (isForeignKeyViolation(err, LAST_EDITOR)) return unknownActor(err, actor);
     if (isUniqueViolation(err, PAGE_NAME)) {
       logger.warn({ pageId, tabId, name }, "name of moved or renamed page already in use at the target");
       return { ok: false, error: { code: "name-taken" } };
@@ -361,9 +403,13 @@ export async function moveOrRenamePage(
 /**
  * Deletes the page with the given id and returns the place it was in. The page keeps its row and its folder, so it
  * can be restored; it gets the time of deletion and loses its tab, because its place inside the folder is forgotten.
- * A page that is already deleted counts as missing.
+ * The actor becomes its last editor: for a deleted page, the user who deleted it. A page that is already deleted
+ * counts as missing.
  */
-export async function deletePage(id: string): Promise<Result<PagePlace, DeletePageError>> {
+export async function deletePage(actor: Actor, id: string): Promise<Result<PagePlace, DeletePageError>> {
+  const lastEditedById = editorIdOf(actor);
+  if (!lastEditedById) return { ok: false, error: { code: "failed" } };
+
   const pageId = parsePageId(id);
   if (!pageId) return { ok: false, error: { code: "page-not-found" } };
 
@@ -379,11 +425,12 @@ export async function deletePage(id: string): Promise<Result<PagePlace, DeletePa
       // `updateMany` reports a page deleted in the meantime as a count of 0; it sets `updatedAt` as well.
       const { count } = await tx.page.updateMany({
         where: { id: pageId, deletedAt: null },
-        data: { deletedAt: new Date(), tabId: null },
+        data: { deletedAt: new Date(), tabId: null, lastEditedById },
       });
       return count === 0 ? null : page;
     });
   } catch (err) {
+    if (isForeignKeyViolation(err, LAST_EDITOR)) return unknownActor(err, actor);
     logger.error({ err, pageId }, "failed to delete page");
     return { ok: false, error: { code: "failed" } };
   }
@@ -398,15 +445,20 @@ export async function deletePage(id: string): Promise<Result<PagePlace, DeletePa
 
 /**
  * Restores the deleted page with the given id into its folder, under the given name, at the given place, and returns
- * it as stored: in the tab with the id `tabId` of its folder or, with `null`, directly in the folder. The content is
+ * it as stored, with the actor as its last editor: in the tab with the id `tabId` of its folder or, with `null`,
+ * directly in the folder. The content is
  * neither validated nor touched. A page that is not deleted counts as missing; a tab of another folder is refused by
  * the composite foreign key and counts as missing as well. A name that is taken at the place gives `name-taken`, as
  * for a new page: a deleted page never holds a name, so the name may have been given away since the page was deleted.
  */
 export async function restorePage(
+  actor: Actor,
   id: string,
   input: { name: string; tabId: string | null },
 ): Promise<Result<StoredPage, RestorePageError>> {
+  const lastEditedById = editorIdOf(actor);
+  if (!lastEditedById) return { ok: false, error: { code: "failed" } };
+
   const pageId = parsePageId(id);
   if (!pageId) return { ok: false, error: { code: "page-not-found" } };
 
@@ -422,10 +474,12 @@ export async function restorePage(
     // Only a deleted page can be restored; `updateMany` reports any other as a count of 0. It sets `updatedAt` as well.
     const { count } = await getDb().page.updateMany({
       where: { id: pageId, deletedAt: { not: null } },
-      data: { deletedAt: null, name, tabId },
+      data: { deletedAt: null, name, tabId, lastEditedById },
     });
     page = count === 0 ? null : await findStoredPage(pageId);
   } catch (err) {
+    // Before the tab key: a missing actor must not be reported as a missing tab.
+    if (isForeignKeyViolation(err, LAST_EDITOR)) return unknownActor(err, actor);
     if (isUniqueViolation(err, PAGE_NAME)) {
       logger.warn({ pageId, tabId, name }, "name of restored page already in use at the target");
       return { ok: false, error: { code: "name-taken" } };

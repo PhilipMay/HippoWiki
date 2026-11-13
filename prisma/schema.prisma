@@ -14,25 +14,33 @@ datasource db {
 
 /// A folder: the top level of the content structure.
 model Folder {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   /// The part of the folder's address `/folders/<name>`; unique across the wiki.
-  name      String   @unique
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @db.Timestamptz(3)
-  tabs      Tab[]
-  pages     Page[]
+  name           String   @unique
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+  /// The user who last edited the folder: changes on the same writes as `updatedAt`, so that both describe the same
+  /// change. Creating it counts as an edit.
+  lastEditedById String   @db.Uuid
+  lastEditedBy   User     @relation("FolderLastEditedBy", fields: [lastEditedById], references: [id], onDelete: Restrict)
+  tabs           Tab[]
+  pages          Page[]
 }
 
 /// A tab: an optional section inside a folder.
 model Tab {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  folderId  String   @db.Uuid
-  folder    Folder   @relation(fields: [folderId], references: [id], onDelete: Restrict)
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  folderId       String   @db.Uuid
+  folder         Folder   @relation(fields: [folderId], references: [id], onDelete: Restrict)
   /// The tab's part of its address `/folders/<folder>/<name>`; unique among the tabs of its folder.
-  name      String
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @db.Timestamptz(3)
-  pages     Page[]
+  name           String
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+  /// The user who last edited the tab: changes on the same writes as `updatedAt`, so that both describe the same
+  /// change. Creating it counts as an edit.
+  lastEditedById String   @db.Uuid
+  lastEditedBy   User     @relation("TabLastEditedBy", fields: [lastEditedById], references: [id], onDelete: Restrict)
+  pages          Page[]
 
   @@unique([folderId, name])
   // Target of the composite foreign key of `Page`, which makes sure a page's tab belongs to the page's folder.
@@ -41,26 +49,31 @@ model Tab {
 
 /// A wiki page with its Markdown source. It lives in exactly one folder: directly in it or in one of its tabs.
 model Page {
-  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   /// Derived from the content's first heading (`# Title`) on every save; never entered directly.
-  title     String
+  title          String
   /// The page's part of its address, followed by `.md`: `/folders/<folder>/<name>.md` or, in a tab,
   /// `/folders/<folder>/<tab>/<name>.md`. Unique among the pages of its tab or, without a tab, among the pages placed
   /// directly in its folder.
-  name      String
+  name           String
   /// Markdown source of the page.
-  content   String
-  folderId  String    @db.Uuid
-  folder    Folder    @relation(fields: [folderId], references: [id], onDelete: Restrict)
+  content        String
+  folderId       String    @db.Uuid
+  folder         Folder    @relation(fields: [folderId], references: [id], onDelete: Restrict)
   /// The tab the page lives in; without one, the page is placed directly in its folder.
-  tabId     String?   @db.Uuid
+  tabId          String?   @db.Uuid
   /// The foreign key includes `folderId`, so the tab is always one of the page's folder.
-  tab       Tab?      @relation(fields: [tabId, folderId], references: [id, folderId], onDelete: Restrict)
-  createdAt DateTime  @default(now()) @db.Timestamptz(3)
-  updatedAt DateTime  @updatedAt @db.Timestamptz(3)
+  tab            Tab?      @relation(fields: [tabId, folderId], references: [id, folderId], onDelete: Restrict)
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(3)
   /// When the page was deleted, or `null` for a page that is not deleted. A deleted page keeps its folder but has no
   /// tab, because its place inside the folder is forgotten; it is missing from every list and every page address.
-  deletedAt DateTime? @db.Timestamptz(3)
+  deletedAt      DateTime? @db.Timestamptz(3)
+  /// The user who last edited the page: changes on the same writes as `updatedAt`, so that both describe the same
+  /// change. Creating, editing, moving or renaming, deleting and restoring the page count as edits; for a deleted page
+  /// it is the user who deleted it.
+  lastEditedById String    @db.Uuid
+  lastEditedBy   User      @relation("PageLastEditedBy", fields: [lastEditedById], references: [id], onDelete: Restrict)
 
   // Pages in a tab: unique within the tab. Deleted pages have no tab, so they are not covered.
   @@unique([tabId, name])
@@ -90,6 +103,10 @@ model User {
   updatedAt          DateTime  @updatedAt @db.Timestamptz(3)
   sessions           Session[]
   accounts           Account[]
+  /// The folders, tabs and pages the user edited last.
+  lastEditedFolders  Folder[]  @relation("FolderLastEditedBy")
+  lastEditedTabs     Tab[]     @relation("TabLastEditedBy")
+  lastEditedPages    Page[]    @relation("PageLastEditedBy")
 }
 
 /// A login of a user in one browser, in the shape of the `session` model of Better Auth.

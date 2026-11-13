@@ -15,6 +15,15 @@ export function isAdmin(user: { name: string }): boolean {
   return user.name === ADMIN_NAME;
 }
 
+/** A user id: a UUID, like the ids of folders, tabs and pages. */
+export const userIdSchema = z.guid();
+
+/** Returns the id if it is a well-formed user id, otherwise `null`, so that malformed ids never reach the database. */
+export function parseUserId(id: string): string | null {
+  const result = userIdSchema.safeParse(id);
+  return result.success ? result.data : null;
+}
+
 export const USER_NAME_MIN_LENGTH = 3;
 export const USER_NAME_MAX_LENGTH = 30;
 

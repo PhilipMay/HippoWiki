@@ -1,12 +1,17 @@
 // The reads and writes of folders and tabs. The service knows nothing about Next.js, forms or addresses, so that the
 // GUI (through `queries.ts` and `actions.ts`) and any other caller can use it, also outside a request. It trusts no
 // caller: ids, names and input are parsed here again.
+//
+// Every write takes the acting user as its first argument and stores it as the last editor of the folder or tab, in
+// the same write that changes `updatedAt`.
 
 import { z } from "zod";
 
 import { folderInputSchema, parseFolderId, parseTabId, tabInputSchema } from "@/features/folders/schema";
+import { parseUserId } from "@/features/users/schema";
+import type { Actor } from "@/features/users/service";
 import { getDb } from "@/lib/db";
-import { FOLDER_NAME, isForeignKeyViolation, isUniqueViolation, TAB_NAME } from "@/lib/db-errors";
+import { FOLDER_NAME, isForeignKeyViolation, isUniqueViolation, LAST_EDITOR, TAB_NAME } from "@/lib/db-errors";
 import { logger } from "@/lib/logger";
 import { parseName, type NameFieldErrors } from "@/lib/names";
 import type { Result } from "@/lib/result";
@@ -32,7 +37,7 @@ type InvalidName = { code: "invalid-input"; fieldErrors: NameFieldErrors };
 type NameTaken = { code: "name-taken" };
 type FolderNotFound = { code: "folder-not-found" };
 type TabNotFound = { code: "tab-not-found" };
-/** An unexpected database error; it has been logged. */
+/** An unexpected database error, or an actor that is malformed or does not exist; it has been logged. */
 type Failed = { code: "failed" };
 
 export type CreateFolderError = InvalidName | NameTaken | Failed;
@@ -45,6 +50,22 @@ const STORED_TAB_SELECT = { id: true, name: true, folder: { select: { name: true
 
 function invalidName(error: z.ZodError<{ name: string }>): { ok: false; error: InvalidName } {
   return { ok: false, error: { code: "invalid-input", fieldErrors: z.flattenError(error).fieldErrors } };
+}
+
+/**
+ * The id of the actor, to be stored as the last editor, or `null` if it is malformed, which is logged: the adapters
+ * take the actor from a valid session, so only a broken caller passes a malformed id.
+ */
+function editorIdOf(actor: Actor): string | null {
+  const id = parseUserId(actor.id);
+  if (!id) logger.error({ actorId: actor.id }, "malformed actor id");
+  return id;
+}
+
+/** The result of a write whose actor does not exist; it is logged, because only a broken caller can cause it. */
+function unknownActor(err: unknown, actor: Actor): { ok: false; error: Failed } {
+  logger.error({ err, actorId: actor.id }, "actor of write not found");
+  return { ok: false, error: { code: "failed" } };
 }
 
 /** All folders, by name. */
@@ -84,15 +105,22 @@ export async function getTab(folderName: string, tabName: string): Promise<TabWi
   });
 }
 
-/** Creates a folder with the given name and returns it as stored. */
-export async function createFolder(input: { name: string }): Promise<Result<Folder, CreateFolderError>> {
+/** Creates a folder with the given name, with the actor as its last editor, and returns it as stored. */
+export async function createFolder(actor: Actor, input: { name: string }): Promise<Result<Folder, CreateFolderError>> {
+  const lastEditedById = editorIdOf(actor);
+  if (!lastEditedById) return { ok: false, error: { code: "failed" } };
+
   const parsed = folderInputSchema.safeParse(input);
   if (!parsed.success) return invalidName(parsed.error);
 
   let folder: Folder;
   try {
-    folder = await getDb().folder.create({ data: parsed.data, select: { id: true, name: true } });
+    folder = await getDb().folder.create({
+      data: { ...parsed.data, lastEditedById },
+      select: { id: true, name: true },
+    });
   } catch (err) {
+    if (isForeignKeyViolation(err, LAST_EDITOR)) return unknownActor(err, actor);
     if (isUniqueViolation(err, FOLDER_NAME)) {
       logger.warn({ name: parsed.data.name }, "name of new folder already in use");
       return { ok: false, error: { code: "name-taken" } };
@@ -105,8 +133,15 @@ export async function createFolder(input: { name: string }): Promise<Result<Fold
   return { ok: true, value: folder };
 }
 
-/** Renames the folder with the given id and returns it as stored. */
-export async function renameFolder(id: string, input: { name: string }): Promise<Result<Folder, RenameFolderError>> {
+/** Renames the folder with the given id, with the actor as its last editor, and returns it as stored. */
+export async function renameFolder(
+  actor: Actor,
+  id: string,
+  input: { name: string },
+): Promise<Result<Folder, RenameFolderError>> {
+  const lastEditedById = editorIdOf(actor);
+  if (!lastEditedById) return { ok: false, error: { code: "failed" } };
+
   const folderId = parseFolderId(id);
   if (!folderId) return { ok: false, error: { code: "folder-not-found" } };
 
@@ -116,8 +151,12 @@ export async function renameFolder(id: string, input: { name: string }): Promise
   let count: number;
   try {
     // `updateMany` reports a missing folder as a count of 0 instead of throwing; it sets `updatedAt` as well.
-    ({ count } = await getDb().folder.updateMany({ where: { id: folderId }, data: parsed.data }));
+    ({ count } = await getDb().folder.updateMany({
+      where: { id: folderId },
+      data: { ...parsed.data, lastEditedById },
+    }));
   } catch (err) {
+    if (isForeignKeyViolation(err, LAST_EDITOR)) return unknownActor(err, actor);
     if (isUniqueViolation(err, FOLDER_NAME)) {
       logger.warn({ folderId, name: parsed.data.name }, "name of renamed folder already in use");
       return { ok: false, error: { code: "name-taken" } };
@@ -135,8 +174,18 @@ export async function renameFolder(id: string, input: { name: string }): Promise
   return { ok: true, value: { id: folderId, name: parsed.data.name } };
 }
 
-/** Creates a tab with the given name in the folder with the given id and returns it as stored. */
-export async function createTab(folderId: string, input: { name: string }): Promise<Result<StoredTab, CreateTabError>> {
+/**
+ * Creates a tab with the given name in the folder with the given id, with the actor as its last editor, and returns it
+ * as stored. The folder's `updatedAt` and last editor are not touched.
+ */
+export async function createTab(
+  actor: Actor,
+  folderId: string,
+  input: { name: string },
+): Promise<Result<StoredTab, CreateTabError>> {
+  const lastEditedById = editorIdOf(actor);
+  if (!lastEditedById) return { ok: false, error: { code: "failed" } };
+
   const parsedFolderId = parseFolderId(folderId);
   if (!parsedFolderId) return { ok: false, error: { code: "folder-not-found" } };
 
@@ -146,10 +195,12 @@ export async function createTab(folderId: string, input: { name: string }): Prom
   let tab: StoredTab;
   try {
     tab = await getDb().tab.create({
-      data: { ...parsed.data, folderId: parsedFolderId },
+      data: { ...parsed.data, folderId: parsedFolderId, lastEditedById },
       select: STORED_TAB_SELECT,
     });
   } catch (err) {
+    // Before the folder key: a missing actor must not be reported as a missing folder.
+    if (isForeignKeyViolation(err, LAST_EDITOR)) return unknownActor(err, actor);
     if (isUniqueViolation(err, TAB_NAME)) {
       logger.warn({ folderId: parsedFolderId, name: parsed.data.name }, "name of new tab already in use");
       return { ok: false, error: { code: "name-taken" } };
@@ -166,8 +217,15 @@ export async function createTab(folderId: string, input: { name: string }): Prom
   return { ok: true, value: tab };
 }
 
-/** Renames the tab with the given id and returns it as stored. */
-export async function renameTab(id: string, input: { name: string }): Promise<Result<StoredTab, RenameTabError>> {
+/** Renames the tab with the given id, with the actor as its last editor, and returns it as stored. */
+export async function renameTab(
+  actor: Actor,
+  id: string,
+  input: { name: string },
+): Promise<Result<StoredTab, RenameTabError>> {
+  const lastEditedById = editorIdOf(actor);
+  if (!lastEditedById) return { ok: false, error: { code: "failed" } };
+
   const tabId = parseTabId(id);
   if (!tabId) return { ok: false, error: { code: "tab-not-found" } };
 
@@ -178,10 +236,11 @@ export async function renameTab(id: string, input: { name: string }): Promise<Re
   try {
     const db = getDb();
     // `updateMany` reports a missing tab as a count of 0 instead of throwing; it sets `updatedAt` as well.
-    const { count } = await db.tab.updateMany({ where: { id: tabId }, data: parsed.data });
+    const { count } = await db.tab.updateMany({ where: { id: tabId }, data: { ...parsed.data, lastEditedById } });
     // The tab is read back, so that a caller gets the stored names, never submitted values.
     tab = count === 0 ? null : await db.tab.findUnique({ where: { id: tabId }, select: STORED_TAB_SELECT });
   } catch (err) {
+    if (isForeignKeyViolation(err, LAST_EDITOR)) return unknownActor(err, actor);
     if (isUniqueViolation(err, TAB_NAME)) {
       logger.warn({ tabId, name: parsed.data.name }, "name of renamed tab already in use");
       return { ok: false, error: { code: "name-taken" } };
