@@ -27,6 +27,8 @@ The specification lives in the `spec/` directory. This catalog should always be 
   password change, user list, creating users, routes, decisions, limits)
 - `spec/roadmap.md`: backlog of candidate features, grouped by theme, and things still to check
 - `spec/issue-report.md`: how to report issues found in code and document reviews
+- `spec/spec-refactoring-steps.md`: step plan that gives every fact one home (feature spec rules, a check of file
+  references, explanations moved into the code, rewritten feature specs, a shorter README)
 
 ## Running the Checks
 
