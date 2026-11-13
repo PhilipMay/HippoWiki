@@ -44,5 +44,5 @@ export const config = {
   // Every address except the two public ones, the login page and the health check, and the static files of Next.js,
   // which the login page needs. A Server Action is a POST to the address of its page, so the login itself passes as
   // well. The value must be a constant: Next.js reads it at build time.
-  matcher: ["/((?!login$|api/health$|_next/static/|_next/image).*)"],
+  matcher: ["/((?!login$|api/health$|_next/static/).*)"],
 };

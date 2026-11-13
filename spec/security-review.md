@@ -32,19 +32,6 @@ client address group and against the deployment, again with harmless requests on
   `reserveAttempt()`. It needs `HIPPOWIKI_TRUSTED_PROXIES` of at least 1: with `0` every login is in the group
   `shared`, and the limit would hold back all users together.
 
-### Nit: the image optimizer answers without a login
-
-- **Location:** `src/proxy.ts`, `config.matcher`, which leaves out `_next/image`
-- **Category:** security
-- **Problem:** `/_next/image` does not pass the login check of the proxy, although the application does not use
-  `next/image`: nothing imports it, and there is no `public/` folder.
-- **Impact:** Anyone can make the server fetch one of its own pages and answer with a 500. Nothing leaks, because the
-  result is not an image.
-- **Evidence:** `GET /_next/image?url=%2Ffolders&w=64&q=75` on the deployment without a session cookie answers
-  `500 "url" parameter is valid but internal response is invalid`.
-- **Suggestion (optional):** Remove `|_next/image` from the matcher, so that the address is sent to `/login` like
-  every other one.
-
 ### Nit: the runtime user can change the server code in the image
 
 - **Location:** `Containerfile`, lines 58–67, the `COPY --chown=node:node` lines
@@ -59,8 +46,9 @@ client address group and against the deployment, again with harmless requests on
 
 - **TLS:** Let's Encrypt certificate, valid until 2027-02-10; TLS 1.0 and 1.1 are refused; plain HTTP gets a 308
   redirect to HTTPS.
-- **Unauthenticated access:** Every address except `/login`, `/api/health`, `/_next/static` and `/_next/image` (see
-  the nit above) redirects to `/login`, including `/.env`, `/.git/config` and `/api/auth/*`.
+- **Unauthenticated access:** Every address except `/login`, `/api/health`, `/_next/static` and `/_next/image`
+  redirects to `/login` on the deployment, including `/.env`, `/.git/config` and `/api/auth/*`. The code now sends
+  `/_next/image` to `/login` as well; the deployment still answers it until it runs a release with this change.
 - **Forged session cookie:** It passes the proxy, but `requireUser()` sends the request to the login page. The HTTP
   handler of Better Auth is not mounted, so `/api/auth/*` answers 404.
 - **Server Actions:** Every action and query calls `requireUser()` first, and admin-only functions check the role in

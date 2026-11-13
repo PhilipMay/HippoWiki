@@ -32,7 +32,7 @@ login like every other address, and the server cannot change its own code in the
 ## Checklist
 
 - [x] Security headers
-- [ ] Image optimizer behind the login
+- [x] Image optimizer behind the login
 - [ ] Server files owned by root
 - [ ] Wrap-up
 

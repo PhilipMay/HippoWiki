@@ -328,8 +328,9 @@ cmd_smoke() {
     smoke_fail "/login references no /_next/static/ file."
   fi
   smoke_require_status "$asset"
-  # Everything else needs a login.
+  # Everything else needs a login, the image optimizer of Next.js included.
   smoke_require_login_redirect /folders
+  smoke_require_login_redirect "/_next/image?url=%2Ffolders&w=64&q=75"
 
   # The published port reaches the address of the pod; this shows that the server listens on 127.0.0.1 as well,
   # although Podman sets HOSTNAME to the name of the pod. The slim image has no curl, so node makes the request.

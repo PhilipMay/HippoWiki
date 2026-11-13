@@ -46,6 +46,7 @@ const PROTECTED_ADDRESSES = [
   ["an address that starts like the login page", "/login/more"],
   ["an address that starts like the health check", "/api/health/more"],
   ["an API address that does not exist", "/api/nowhere"],
+  ["the image optimizer", "/_next/image?url=%2Ffolders&w=64&q=75"],
 ] as const;
 
 async function expectLoginPage(page: Page) {
