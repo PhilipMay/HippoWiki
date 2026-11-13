@@ -1,81 +1,52 @@
 # HippoWiki – Page Deletion
 
-The soft delete of pages as built: deleting a page, the deleted pages of a folder and restoring a page. Code:
-`src/features/pages/` (`deletePage`, `restorePage`, `listDeletedPages`, `getDeletedPage` and the components
-`DeletePageDialog`, `DeletedPagesList`, `DeletedPageView`, `RestorePageDialog`), routes under `src/app/deleted-pages/`.
-Pages themselves are described in `pages.md`, folders, tabs and addresses in `content-structure.md`.
+The soft delete of pages as built: a deleted page disappears from the wiki but keeps its content, can be looked at in
+the deleted pages of its folder and can be restored from there. Pages themselves are described in `pages.md`, folders,
+tabs and addresses in `content-structure.md`.
 
-## Model
+Code: `src/features/pages/` (`deletePage`, `restorePage`, `listDeletedPages` and `getDeletedPage` in `service.ts`,
+the dialogs and lists in `components/`), routes under `src/app/deleted-pages/`. Tests: `e2e/delete-page.spec.ts`,
+`e2e/deleted-pages.spec.ts`, `e2e/restore-page.spec.ts`, `integration/page-service.test.ts`.
 
-- `Page.deletedAt` in `prisma/schema.prisma`: `null` for a page that is not deleted, the time of deletion otherwise.
-- A deleted page keeps its row, its content and its folder (`folderId`); its tab (`tabId`) is set to `null`, because
-  its place inside the folder is forgotten. The wiki only knows which folder a deleted page belongs to.
-- The partial unique index on the names of pages placed directly in a folder covers only pages that are not deleted
-  (`where: { tabId: null, deletedAt: null }`, migration `soft_delete_pages`). A deleted page never blocks a name, and
-  two deleted pages of a folder may share one. The index on `(tabId, name)` never covers deleted pages, because they
-  have no tab.
+## Deleting
+
+- A page is deleted from its page address with "Delete" (`?action=delete`), after a confirmation. Deleting leads to
+  the folder or tab the page was in.
+- A deleted page keeps its content and its folder, but forgets its tab: the wiki only knows which folder it belongs to.
 
 ## Deleted pages are invisible
 
-- The page lists (`listFolderPages`, `listTabPages`, `listAllFolderPages`) and `getPage` read only pages with
-  `deletedAt: null`. A deleted page is missing from the folder contents, its former tab and "All pages".
-- The old address of a deleted page shows the not-found page. There are no redirects.
-- The name of a deleted page is free right away: a new page of the same name can be created at the same place.
-- Editing, moving or renaming only changes pages that are not deleted (`updatePageContent`, `moveOrRenamePage`); for a
-  deleted page they show "This page no longer exists.", as for a missing one.
-
-## Deleting a page
-
-- A page address has a "Delete" button next to "Edit" and "Move or rename", a link to `?action=delete`.
-- `?action=delete` shows the "Delete page" dialog on top of the page. It names the page with `.md` and says that it can
-  be restored later from the deleted pages of its folder. "Delete" is disabled until hydration; "Cancel" and the Escape
-  key lead back to the page address.
-- `deletePage` of the page service reads the folder and tab of the page and marks it deleted in one transaction:
-  `updateMany` where the page is not deleted sets `deletedAt` to the current time, `tabId` to `null` and `updatedAt`.
-  It returns the place the page was in, and the action redirects to the stored address of that folder or tab.
-- A malformed id, a page that no longer exists and a page that was deleted in the meantime show "This page no longer
-  exists." in the dialog; any other database error is logged and shows "The page could not be deleted. Please try
-  again.".
+- A deleted page is missing from every list of the wiki (folder contents, tab, "All pages") and its old address shows
+  the not-found page. There are no redirects.
+- Its name is free at once: a new page of the same name can be created at the same place. Deleted pages never block a
+  name, and two deleted pages of a folder may share one.
+- A deleted page cannot be edited, moved or renamed; trying it answers as for a page that does not exist.
 
 ## Deleted pages of a folder
 
-- The folder address has a "Deleted pages" button next to "All pages".
-- `/deleted-pages/<folder>`: the breadcrumb `Folders › <folder> › Deleted pages`, the heading "Deleted pages", and the
-  deleted pages of the folder (`listDeletedPages`) in a table with name, title and the time of deletion, newest first,
-  each name linking to the deleted page. The list does not show where in the folder the pages were. A folder without
-  deleted pages shows the empty state "No deleted pages".
-- `/deleted-pages/<folder>/<id>`: the deleted page (`getDeletedPage`), read-only. The breadcrumb links to the folder
-  list, the folder and "Deleted pages", followed by the page name without `.md`, since a deleted page has no `.md`
-  address. Below it the time of deletion and a "Restore" button, then the rendered Markdown. There is no "Edit",
-  "Move or rename" or "Delete".
-- Deleted pages are addressed by their id, because their names need not be unique.
-- Browser titles: `Deleted pages – <folder>` and `Deleted: <title>`, so the tab shows that the page is a deleted copy.
-- An unknown or malformed folder or id, a page of another folder, a page that is not deleted, any view, and any action
-  other than `restore` on a deleted page show the not-found page. The list has no actions. `/deleted-pages` on its own
-  has no route and shows the not-found page.
+- The folder address links to "Deleted pages", `/deleted-pages/<folder>`: the deleted pages of the folder, newest
+  first, with name, title and time of deletion. The list does not show where in the folder a page was.
+- `/deleted-pages/<folder>/<id>` shows a deleted page read-only, with "Restore" as its only action. A deleted page is
+  addressed by its id, because its name need not be unique and it has no `.md` address.
+- Everything else under `/deleted-pages` (an unknown folder or id, a page of another folder or one that is not deleted,
+  `/deleted-pages` alone, any view or other action) shows the not-found page.
 
-## Restoring a page
+## Restoring
 
-- `?action=restore` on a deleted page shows the "Restore page" dialog on top of it, built like the "Move or rename page"
-  dialog with the shared `PageNameAndPlaceFields`: the name field, prefilled with the page's old name and focused once
-  the dialog has opened, and the places "Directly in the folder" and `Tab <name>` for each tab of the folder. Its
-  controls are locked until hydration.
-- No place is preselected: no radio button is checked and the address line below the name is not shown; it appears once
-  a place is chosen and follows name and place.
-- The form is parsed by `parsePageRestoreFormData` in `src/features/pages/forms.ts`: the name as for moving or
-  renaming; a missing place shows "Choose a place" at the place field, an empty place is the folder itself, a tab id is
-  that tab, and a malformed one shows "This tab no longer exists.". All errors are reported together. The name field is
-  focused when it has an error, otherwise the place field when it has one.
-- `restorePage` of the page service restores the page with `updateMany` where the page is deleted: it sets
-  `deletedAt` to `null` and stores name and tab; `updatedAt` is set as well. The content is neither validated nor
-  touched. It returns the page as stored, and the action redirects to its new address.
-  - A taken name at the chosen place shows "Name is already in use" at the name field and focuses it; name and place
-    are kept.
-  - A tab that no longer exists or belongs to another folder (foreign key violation) shows "This tab no longer
-    exists.".
-  - A malformed id, a page that no longer exists and a page that is not deleted show "This page no longer exists.".
-  - Any other database error is logged and shows "The page could not be restored. Please try again.".
-- "Cancel" and the Escape key lead back to the deleted page.
+- `?action=restore` on a deleted page asks for a name and a place in the page's own folder, directly in the folder or
+  in one of its tabs. The name is prefilled with the old name.
+- No place is preselected: the page's old place is not known, and the user has to choose one.
+- Restoring checks the name like moving a page (`content-structure.md`); the content is neither validated nor
+  touched. It leads to the page's new address.
+
+## Decisions
+
+- A soft delete instead of removing the row, so that a page deleted by mistake can be brought back.
+- A deleted page has no tab, so that no unique index on page names covers it: the index on the names of pages placed
+  directly in a folder leaves out deleted pages, and the one on the names within a tab never sees a page without a tab.
+  This frees the name at once.
+- Deleted pages have addresses of their own under `/deleted-pages`, named for what it holds, so that deleted tabs and
+  folders can get addresses there later.
 
 ## Current limits
 
@@ -83,4 +54,3 @@ Pages themselves are described in `pages.md`, folders, tabs and addresses in `co
 - A deleted page cannot be removed for good; there is no emptying of all deleted pages and no automatic cleanup.
 - A page is restored only into its own folder.
 - Who deleted a page is not recorded.
-- A deleted page cannot be edited, moved or renamed other than by restoring it.
