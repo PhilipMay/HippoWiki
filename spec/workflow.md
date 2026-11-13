@@ -77,17 +77,34 @@ A step is done only when both of the following hold:
   end-to-end tests use the same test database container and port (see `testing.md`).
   1. `npm run check`
   2. `npm run test:integration`
-  3. `npm run test:e2e`
+  3. The end-to-end tests: in every step except the wrap-up, only the specs the step affects (see below), for example
+     `npm run test:e2e -- e2e/login.spec.ts e2e/users.spec.ts`; in the wrap-up step, the complete `npm run test:e2e`,
+     so that the whole suite has passed before the push.
   4. `npm run build`
 - Its "Test" items have been verified. Do the manual checks you can yourself, for example in the browser. A manual
   check you cannot do does not hold the step back: list it in the report of the step so that the user can do it. Never report
   a check as done that you did not do.
 
+The end-to-end specs a step affects:
+
+- The specs the step adds or changes, and the specs that test the routes, actions and features whose code the step
+  changes.
+- The complete suite instead, when the step changes something every page depends on: `src/proxy.ts`, the root layout,
+  `src/features/auth/session.ts`, a module of `src/lib/` that every request uses, `next.config.ts`,
+  `playwright.config.ts`, `e2e/support/`, or `prisma/schema.prisma` and its migrations.
+- No spec, when the step changes nothing that the app runs yet, such as a pure module that nothing imports.
+- When it is unclear whether a spec is affected, run it.
+- The report of the step names the specs that ran, or says that none ran and why.
+
+A failure that only the complete suite of the wrap-up step shows is fixed in the wrap-up step, also when an earlier step
+caused it, and the fix is named in its report. If it cannot be fixed, follow "When a step cannot be finished": nothing
+is pushed.
+
 `npm run test:e2e:production` is left out of this list on purpose: CI runs it on every push to `main` and on every pull
 request (`end_to_end_tests_production`, see `testing.md`). Run it as well when the step changes something that only
-exists in a production build, such as prerendering, the route cache or `error.tsx`. When you run it, it runs last,
-after `npm run build` and never in parallel with the other commands (it uses the same test database container), and it
-must pass like them.
+exists in a production build, such as prerendering, the route cache or `error.tsx`, for the specs the step affects
+(`npm run test:e2e:production -- e2e/<spec>.spec.ts`). When you run it, it runs last, after `npm run build` and never in
+parallel with the other commands (it uses the same test database container), and it must pass like them.
 
 A test that fails and then passes when run again is flaky: the step is not done, so follow "When a step cannot be
 finished".
