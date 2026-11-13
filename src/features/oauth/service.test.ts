@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { challengeOf, hashSecret } from "@/features/oauth/secret";
+import { Prisma } from "@/generated/prisma/client";
 import {
   checkAuthorizationRequest,
   createCode,
@@ -13,7 +14,10 @@ import {
 const mocks = vi.hoisted(() => ({
   clientCreate: vi.fn(),
   clientFindUnique: vi.fn(),
+  clientFindFirst: vi.fn(),
   clientDeleteMany: vi.fn(),
+  clientUpsert: vi.fn(),
+  fetchMetadataDocument: vi.fn(),
   codeCreate: vi.fn(),
   codeFindUnique: vi.fn(),
   codeDeleteMany: vi.fn(),
@@ -32,7 +36,13 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/db", () => ({
   getDb: () => ({
-    oAuthClient: { create: mocks.clientCreate, findUnique: mocks.clientFindUnique, deleteMany: mocks.clientDeleteMany },
+    oAuthClient: {
+      create: mocks.clientCreate,
+      findUnique: mocks.clientFindUnique,
+      findFirst: mocks.clientFindFirst,
+      deleteMany: mocks.clientDeleteMany,
+      upsert: mocks.clientUpsert,
+    },
     oAuthCode: { create: mocks.codeCreate, findUnique: mocks.codeFindUnique, deleteMany: mocks.codeDeleteMany },
     apiToken: {
       count: mocks.tokenCount,
@@ -44,6 +54,7 @@ vi.mock("@/lib/db", () => ({
   }),
 }));
 vi.mock("@/lib/env", () => ({ getServerEnv: mocks.getServerEnv }));
+vi.mock("@/features/oauth/metadata-fetch", () => ({ fetchMetadataDocument: mocks.fetchMetadataDocument }));
 vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, error: mocks.error } }));
 
 const NOW = new Date("2026-03-01T12:00:00.000Z");
@@ -132,6 +143,7 @@ beforeEach(() => {
   vi.useFakeTimers({ now: NOW, toFake: ["Date"] });
   mocks.getServerEnv.mockReturnValue({ HIPPOWIKI_PUBLIC_URL: "https://wiki.example.com" });
   mocks.clientFindUnique.mockResolvedValue(CLIENT_ROW);
+  mocks.clientFindFirst.mockResolvedValue(CLIENT_ROW);
   mocks.clientCreate.mockResolvedValue(CLIENT_ROW);
   mocks.clientDeleteMany.mockResolvedValue({ count: 0 });
   mocks.codeCreate.mockResolvedValue({ id: "c0de0000-0000-4000-8000-000000000001" });
@@ -219,11 +231,12 @@ describe("checkAuthorizationRequest", () => {
   ])("reports %s as an invalid client without asking the database", async (_case, params) => {
     await expect(checkAuthorizationRequest(params)).resolves.toEqual({ ok: false, error: { code: "invalid-client" } });
 
+    expect(mocks.clientFindFirst).not.toHaveBeenCalled();
     expect(mocks.clientFindUnique).not.toHaveBeenCalled();
   });
 
   it("reports failed when the client cannot be read", async () => {
-    mocks.clientFindUnique.mockRejectedValue(new Error("connection lost"));
+    mocks.clientFindFirst.mockRejectedValue(new Error("connection lost"));
 
     await expect(checkAuthorizationRequest(PARAMS)).resolves.toEqual({ ok: false, error: { code: "failed" } });
   });
@@ -237,6 +250,157 @@ describe("checkAuthorizationRequest", () => {
     );
     expect(logged()).not.toContain("secret-state-of-the-client");
     expect(logged()).not.toContain(PARAMS.code_challenge);
+  });
+});
+
+describe("a client from a metadata document", () => {
+  const METADATA_URL = "https://client.example/metadata.json";
+  const DOCUMENT = { client_id: METADATA_URL, client_name: "Example", redirect_uris: [REDIRECT_URI] };
+  const METADATA_ROW = { ...CLIENT_ROW, metadataUrl: METADATA_URL };
+  const METADATA_PARAMS = { ...PARAMS, client_id: METADATA_URL };
+
+  beforeEach(() => {
+    mocks.clientFindUnique.mockResolvedValue(null);
+    mocks.clientUpsert.mockResolvedValue(METADATA_ROW);
+    mocks.fetchMetadataDocument.mockResolvedValue({ ok: true, document: DOCUMENT, cacheControl: "max-age=7200" });
+  });
+
+  it("is fetched, stored with the time until which it is fresh, and known by its URL", async () => {
+    const result = await checkAuthorizationRequest(METADATA_PARAMS);
+
+    expect(result).toMatchObject({ ok: true, value: { client: { id: CLIENT_ID, clientId: METADATA_URL } } });
+    expect(mocks.fetchMetadataDocument).toHaveBeenCalledExactlyOnceWith(METADATA_URL);
+    const document = {
+      name: "Example",
+      redirectUris: [REDIRECT_URI],
+      fetchedAt: NOW,
+      freshUntil: new Date(NOW.getTime() + 7200 * 1000),
+    };
+    expect(mocks.clientUpsert.mock.calls[0]?.[0]).toMatchObject({
+      where: { metadataUrl: METADATA_URL },
+      create: { metadataUrl: METADATA_URL, ...document },
+      update: document,
+    });
+  });
+
+  it.each([
+    ["a row that is fresh for another millisecond", new Date(NOW.getTime() + 1), false],
+    ["a row at the moment its cache time is over", NOW, true],
+    ["a row without a cache time", null, true],
+  ])("with %s, is fetched again: %s", async (_case, freshUntil, fetchedAgain) => {
+    mocks.clientFindUnique.mockResolvedValue({ ...METADATA_ROW, freshUntil });
+
+    await expect(checkAuthorizationRequest(METADATA_PARAMS)).resolves.toMatchObject({ ok: true });
+
+    expect(mocks.fetchMetadataDocument).toHaveBeenCalledTimes(fetchedAgain ? 1 : 0);
+    expect(mocks.clientUpsert).toHaveBeenCalledTimes(fetchedAgain ? 1 : 0);
+  });
+
+  it("refuses the request without a redirect when the fetch fails, and logs the reason with the URL", async () => {
+    mocks.fetchMetadataDocument.mockResolvedValue({ ok: false, reason: "address-not-public" });
+
+    await expect(checkAuthorizationRequest(METADATA_PARAMS)).resolves.toEqual({
+      ok: false,
+      error: { code: "invalid-client" },
+    });
+
+    expect(mocks.warn).toHaveBeenCalledWith(
+      { metadataUrl: METADATA_URL, reason: "address-not-public" },
+      "client metadata document not fetched",
+    );
+    expect(mocks.clientUpsert).not.toHaveBeenCalled();
+  });
+
+  it("refuses the request without a redirect for a document that is not valid, and logs the reason with the URL", async () => {
+    mocks.fetchMetadataDocument.mockResolvedValue({
+      ok: true,
+      document: { ...DOCUMENT, client_id: "https://evil.example/metadata.json" },
+      cacheControl: null,
+    });
+
+    await expect(checkAuthorizationRequest(METADATA_PARAMS)).resolves.toEqual({
+      ok: false,
+      error: { code: "invalid-client" },
+    });
+
+    expect(mocks.warn).toHaveBeenCalledWith(
+      { metadataUrl: METADATA_URL, reason: "client-id-mismatch" },
+      "client metadata document refused",
+    );
+    expect(mocks.clientUpsert).not.toHaveBeenCalled();
+  });
+
+  it("refuses the request also when an older row exists and the fetch fails", async () => {
+    mocks.clientFindUnique.mockResolvedValue({ ...METADATA_ROW, freshUntil: new Date(NOW.getTime() - 1) });
+    mocks.fetchMetadataDocument.mockResolvedValue({ ok: false, reason: "timeout" });
+
+    await expect(checkAuthorizationRequest(METADATA_PARAMS)).resolves.toEqual({
+      ok: false,
+      error: { code: "invalid-client" },
+    });
+  });
+
+  it("reads the row of the other request when two store the document of a new client at the same time", async () => {
+    mocks.clientUpsert.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("unique", {
+        code: "P2002",
+        clientVersion: "test",
+        meta: { driverAdapterError: { cause: { constraint: { index: "OAuthClient_metadataUrl_key" } } } },
+      }),
+    );
+    mocks.clientFindUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(METADATA_ROW);
+
+    await expect(checkAuthorizationRequest(METADATA_PARAMS)).resolves.toMatchObject({
+      ok: true,
+      value: { client: { clientId: METADATA_URL } },
+    });
+  });
+
+  it("reports failed when the document cannot be stored", async () => {
+    mocks.clientUpsert.mockRejectedValue(new Error("connection lost"));
+
+    await expect(checkAuthorizationRequest(METADATA_PARAMS)).resolves.toEqual({ ok: false, error: { code: "failed" } });
+  });
+
+  it.each([
+    ["http", "http://client.example/metadata.json"],
+    ["no path", "https://client.example/"],
+    ["a port", "https://client.example:8443/metadata.json"],
+    ["credentials", "https://user:secret@client.example/metadata.json"],
+  ])("is not fetched for a URL with %s", async (_case, client_id) => {
+    await expect(checkAuthorizationRequest({ ...PARAMS, client_id })).resolves.toEqual({
+      ok: false,
+      error: { code: "invalid-client" },
+    });
+
+    expect(mocks.fetchMetadataDocument).not.toHaveBeenCalled();
+    expect(mocks.clientFindUnique).not.toHaveBeenCalled();
+    expect(mocks.clientFindFirst).not.toHaveBeenCalled();
+  });
+
+  it("is looked up by its URL, a registered client by its id among the clients without a URL", async () => {
+    await checkAuthorizationRequest(METADATA_PARAMS);
+    await checkAuthorizationRequest(PARAMS);
+
+    expect(mocks.clientFindUnique.mock.calls[0]?.[0].where).toEqual({ metadataUrl: METADATA_URL });
+    expect(mocks.clientFindFirst.mock.calls[0]?.[0].where).toEqual({ id: CLIENT_ID, metadataUrl: null });
+  });
+
+  it("is named by its URL when its code is exchanged and its grant is refreshed, without another fetch", async () => {
+    mocks.codeFindUnique.mockResolvedValue(codeRow({ client: METADATA_ROW }));
+    mocks.tokenFindUnique.mockResolvedValue(grantRow({ client: METADATA_ROW }));
+
+    await expect(exchangeCode({ ...EXCHANGE, clientId: METADATA_URL })).resolves.toMatchObject({ ok: true });
+    await expect(refreshGrant({ refreshToken: REFRESH_TOKEN, clientId: METADATA_URL })).resolves.toMatchObject({
+      ok: true,
+    });
+    // The id of its row is not its client id.
+    await expect(refreshGrant({ refreshToken: REFRESH_TOKEN, clientId: CLIENT_ID })).resolves.toMatchObject({
+      ok: false,
+      error: { code: "invalid-grant" },
+    });
+
+    expect(mocks.fetchMetadataDocument).not.toHaveBeenCalled();
   });
 });
 

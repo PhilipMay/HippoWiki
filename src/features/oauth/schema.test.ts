@@ -8,8 +8,11 @@ import {
   isCodeChallenge,
   isCodeVerifier,
   isRedirectUriOf,
+  metadataCacheSeconds,
   OAUTH_ERRORS,
   parseClientRowId,
+  parseMetadataDocument,
+  parseMetadataUrl,
   parseRedirectUri,
   redirectTargetOf,
 } from "@/features/oauth/schema";
@@ -276,5 +279,156 @@ describe("the ids, scopes and error codes", () => {
     );
     // The codes are sent as they are: lower case with underscores.
     for (const error of OAUTH_ERRORS) expect(error).toMatch(/^[a-z_]+$/);
+  });
+});
+
+describe("parseMetadataUrl", () => {
+  it.each([
+    "https://claude.ai/oauth/claude-code-client-metadata",
+    "https://client.example/metadata.json",
+    "https://client.example/a/b/c",
+    "https://client.example/metadata.json?v=2",
+    "https://sub.client.example/.well-known/oauth-client",
+  ])("accepts %s as the client id of a metadata document", (url) => {
+    expect(parseMetadataUrl(url)).toBe(url);
+  });
+
+  it.each([
+    ["http", "http://client.example/metadata.json"],
+    ["http on a loopback address", "http://127.0.0.1/metadata.json"],
+    ["no path", "https://client.example"],
+    ["only a slash as its path", "https://client.example/"],
+    ["a port", "https://client.example:8443/metadata.json"],
+    ["the port 443 written out", "https://client.example:443/metadata.json"],
+    ["a user name", "https://user@client.example/metadata.json"],
+    ["a user name and a password", "https://user:secret@client.example/metadata.json"],
+    ["a fragment", "https://client.example/metadata.json#top"],
+    ["a path with ..", "https://client.example/a/../metadata.json"],
+    ["a path with .", "https://client.example/./metadata.json"],
+    ["upper case in the host", "https://Client.Example/metadata.json"],
+    ["upper case in the scheme", "HTTPS://client.example/metadata.json"],
+    ["a space", "https://client.example/meta data.json"],
+    ["three slashes", "https:///client.example/metadata.json"],
+    ["a client id that is an id", "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10"],
+    ["an empty text", ""],
+  ])("refuses a URL with %s", (_case, url) => {
+    expect(parseMetadataUrl(url)).toBeNull();
+  });
+
+  it("accepts a URL of 2048 characters and refuses a longer one", () => {
+    const longest = `https://client.example/${"a".repeat(2048 - 23)}`;
+
+    expect(parseMetadataUrl(longest)).toBe(longest);
+    expect(parseMetadataUrl(`${longest}a`)).toBeNull();
+  });
+});
+
+describe("metadataCacheSeconds", () => {
+  it.each([
+    ["no header", null, 3600],
+    ["an empty header", "", 3600],
+    ["a header without max-age", "public", 3600],
+    ["max-age of an hour and a half", "max-age=5400", 5400],
+    ["max-age among other directives", "public, max-age=7200, must-revalidate", 7200],
+    ["max-age in upper case with spaces", "Public,  Max-Age = 600", 600],
+    ["max-age in quotes", 'max-age="900"', 900],
+    ["max-age below five minutes", "max-age=60", 300],
+    ["max-age of zero", "max-age=0", 300],
+    ["max-age above a day", "max-age=604800", 86400],
+    ["a huge max-age", "max-age=999999999999", 86400],
+    ["no-store", "no-store", 300],
+    ["no-cache with a max-age", "no-cache, max-age=7200", 300],
+    ["a max-age that is no number", "max-age=soon", 3600],
+    ["a negative max-age", "max-age=-5", 3600],
+    ["s-maxage only, which is for shared caches", "s-maxage=7200", 3600],
+  ])("is right for %s", (_case, header, seconds) => {
+    expect(metadataCacheSeconds(header)).toBe(seconds);
+  });
+
+  it("is an hour for a missing header", () => {
+    expect(metadataCacheSeconds(undefined)).toBe(3600);
+  });
+});
+
+describe("parseMetadataDocument", () => {
+  const URL_OF_DOCUMENT = "https://client.example/metadata.json";
+  const DOCUMENT = {
+    client_id: URL_OF_DOCUMENT,
+    client_name: "Example",
+    redirect_uris: ["https://client.example/callback", "http://127.0.0.1/callback"],
+  };
+
+  it("accepts a document of a public client and keeps its name and redirect addresses", () => {
+    expect(parseMetadataDocument(URL_OF_DOCUMENT, DOCUMENT)).toEqual({
+      ok: true,
+      metadata: { name: "Example", redirectUris: ["https://client.example/callback", "http://127.0.0.1/callback"] },
+    });
+  });
+
+  it("accepts the auth method none and ignores what else the document says", () => {
+    const document = {
+      ...DOCUMENT,
+      token_endpoint_auth_method: "none",
+      grant_types: ["authorization_code", "refresh_token"],
+      response_types: ["code"],
+      client_uri: "https://client.example",
+      logo_uri: "https://client.example/logo.png",
+      scope: "read write",
+    };
+
+    expect(parseMetadataDocument(URL_OF_DOCUMENT, document).ok).toBe(true);
+  });
+
+  it("trims a name and cuts it to 50 characters", () => {
+    const result = parseMetadataDocument(URL_OF_DOCUMENT, { ...DOCUMENT, client_name: `  ${"a".repeat(80)}  ` });
+
+    expect(result).toMatchObject({ ok: true, metadata: { name: "a".repeat(50) } });
+  });
+
+  it.each([
+    ["a text", "client", "not-an-object"],
+    ["a list", [DOCUMENT], "not-an-object"],
+    ["null", null, "not-an-object"],
+    ["no client id", { ...DOCUMENT, client_id: undefined }, "client-id-mismatch"],
+    [
+      "the client id of another document",
+      { ...DOCUMENT, client_id: "https://evil.example/metadata.json" },
+      "client-id-mismatch",
+    ],
+    ["a client id that differs by a slash", { ...DOCUMENT, client_id: `${URL_OF_DOCUMENT}/` }, "client-id-mismatch"],
+    [
+      "a client id that differs in case",
+      { ...DOCUMENT, client_id: URL_OF_DOCUMENT.toUpperCase() },
+      "client-id-mismatch",
+    ],
+    ["no name", { ...DOCUMENT, client_name: undefined }, "missing-client-name"],
+    ["an empty name", { ...DOCUMENT, client_name: "   " }, "missing-client-name"],
+    ["a name that is no text", { ...DOCUMENT, client_name: 5 }, "missing-client-name"],
+    [
+      "a client secret method",
+      { ...DOCUMENT, token_endpoint_auth_method: "client_secret_basic" },
+      "not-a-public-client",
+    ],
+    ["a private key method", { ...DOCUMENT, token_endpoint_auth_method: "private_key_jwt" }, "not-a-public-client"],
+    ["an auth method that is no text", { ...DOCUMENT, token_endpoint_auth_method: null }, "not-a-public-client"],
+    ["no redirect addresses", { ...DOCUMENT, redirect_uris: undefined }, "invalid-redirect-uris"],
+    ["an empty list of redirect addresses", { ...DOCUMENT, redirect_uris: [] }, "invalid-redirect-uris"],
+    [
+      "a script as a redirect address",
+      { ...DOCUMENT, redirect_uris: ["javascript:alert(1)"] },
+      "invalid-redirect-uris",
+    ],
+    [
+      "http on another host as a redirect address",
+      { ...DOCUMENT, redirect_uris: ["http://client.example/cb"] },
+      "invalid-redirect-uris",
+    ],
+    [
+      "11 redirect addresses",
+      { ...DOCUMENT, redirect_uris: Array.from({ length: 11 }, (_, i) => `https://client.example/${i}`) },
+      "invalid-redirect-uris",
+    ],
+  ])("refuses %s", (_case, document, reason) => {
+    expect(parseMetadataDocument(URL_OF_DOCUMENT, document)).toEqual({ ok: false, reason });
   });
 });

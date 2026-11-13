@@ -2,7 +2,8 @@
 // nothing about HTTP, Next.js or forms: the adapters (`http.ts`, `queries.ts`, `actions.ts`) translate between a
 // request and these functions, so the rules are tested on their own.
 //
-// - A client is public: it has no secret and proves itself with PKCE (`S256`).
+// - A client is public: it has no secret and proves itself with PKCE (`S256`). It either registered itself
+//   (`registerClient()`) or names the URL of its metadata document as its `client_id`, which is then fetched and kept.
 // - A code is what a client gets when a user approves it. It works once and for ten minutes.
 // - A grant is what a code is exchanged for: a row of `ApiToken` with a client, listed and revoked like every other
 //   token of the user and counted in the same limit. The client holds an access token that works for an hour and a
@@ -12,13 +13,17 @@
 import { randomUUID } from "node:crypto";
 
 import { mcpResource } from "@/features/oauth/issuer";
+import { fetchMetadataDocument } from "@/features/oauth/metadata-fetch";
 import {
   clientRegistrationSchema,
   GRANT_SCOPES,
   isCodeChallenge,
   isCodeVerifier,
   isRedirectUriOf,
+  metadataCacheSeconds,
   parseClientRowId,
+  parseMetadataDocument,
+  parseMetadataUrl,
   URL_MAX_LENGTH,
   type AuthorizationParams,
   type OAuthError,
@@ -39,6 +44,7 @@ import { parseUserId } from "@/features/users/schema";
 import type { Actor } from "@/features/users/service";
 import type { Prisma } from "@/generated/prisma/client";
 import { getDb } from "@/lib/db";
+import { isUniqueViolation, OAUTH_CLIENT_METADATA_URL } from "@/lib/db-errors";
 import { logger } from "@/lib/logger";
 import type { Result } from "@/lib/result";
 
@@ -120,13 +126,69 @@ export async function registerClient(metadata: unknown): Promise<Result<OAuthCli
 }
 
 /**
- * The client that calls itself `clientId` in a request, or `null` if there is none: a registered client by its id. A
- * value that is not an id never reaches the database.
+ * The client that calls itself `clientId` in a request, or `null` if there is none: a client from a metadata document
+ * by the URL of the document, or a registered client by its id. A value that is neither never reaches the database.
  */
 async function findClient(clientId: string): Promise<ClientRow | null> {
+  const metadataUrl = parseMetadataUrl(clientId);
+  if (metadataUrl) return findMetadataClient(metadataUrl);
   const id = parseClientRowId(clientId);
   if (!id) return null;
-  return getDb().oAuthClient.findUnique({ where: { id }, select: CLIENT_SELECT });
+  // Only a registered client is known by the id of its row; a client from a metadata document only by its URL.
+  return getDb().oAuthClient.findFirst({ where: { id, metadataUrl: null }, select: CLIENT_SELECT });
+}
+
+/**
+ * The client whose metadata document is at the given URL (Client ID Metadata Document), or `null` if the document
+ * cannot be fetched or is not valid; the reason is logged with the URL. The document is kept as a row and fetched
+ * again once the row is older than the cache time of its response (`metadataCacheSeconds()`). A fetch that fails
+ * refuses the request also when an older row exists: the row and its grants stay as they are.
+ */
+async function findMetadataClient(metadataUrl: string): Promise<ClientRow | null> {
+  const db = getDb();
+  const now = currentTime();
+  const stored = await db.oAuthClient.findUnique({
+    where: { metadataUrl },
+    select: { ...CLIENT_SELECT, freshUntil: true },
+  });
+  if (stored?.freshUntil && stored.freshUntil.getTime() > now.getTime()) return stored;
+
+  const fetched = await fetchMetadataDocument(metadataUrl);
+  if (!fetched.ok) {
+    logger.warn({ metadataUrl, reason: fetched.reason }, "client metadata document not fetched");
+    return null;
+  }
+  const parsed = parseMetadataDocument(metadataUrl, fetched.document);
+  if (!parsed.ok) {
+    logger.warn({ metadataUrl, reason: parsed.reason }, "client metadata document refused");
+    return null;
+  }
+
+  const document = {
+    name: parsed.metadata.name,
+    redirectUris: parsed.metadata.redirectUris,
+    fetchedAt: now,
+    freshUntil: new Date(now.getTime() + metadataCacheSeconds(fetched.cacheControl) * 1000),
+  };
+  try {
+    const row = await db.oAuthClient.upsert({
+      where: { metadataUrl },
+      create: { metadataUrl, ...document },
+      update: document,
+      select: CLIENT_SELECT,
+    });
+    logger.info(
+      { clientId: row.id, metadataUrl },
+      stored ? "client metadata document fetched again" : "oauth client created from its metadata document",
+    );
+    return row;
+  } catch (err) {
+    // Two requests fetched the document of a new client at the same time; the other one stored it.
+    if (isUniqueViolation(err, OAUTH_CLIENT_METADATA_URL)) {
+      return db.oAuthClient.findUnique({ where: { metadataUrl }, select: CLIENT_SELECT });
+    }
+    throw err;
+  }
 }
 
 /** An authorization request that passed every check: what the consent page shows and a code is created for. */

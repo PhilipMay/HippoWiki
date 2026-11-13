@@ -44,7 +44,7 @@ ChatGPT connect through OAuth: the user logs in, approves the connector on a con
 - [x] Public URL and login with a way back
 - [x] MCP endpoint with read tools
 - [x] OAuth clients, codes and grants
-- [ ] Client ID Metadata Documents
+- [x] Client ID Metadata Documents
 - [ ] Discovery, registration and token endpoints
 - [ ] Consent page
 - [ ] Grants on `/account`

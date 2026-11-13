@@ -238,3 +238,70 @@ export const AUTHORIZATION_PARAMS = [
   "scope",
   "resource",
 ] as const satisfies readonly (keyof AuthorizationParams)[];
+
+/**
+ * Returns the `client_id` if it is the URL of a client's metadata document (Client ID Metadata Document), otherwise
+ * `null`: an `https` URL with a path, on port 443, without user name, password or fragment, at most 2048 characters
+ * long. It must be written the way a URL parser writes it, so that one document has one `client_id`: no upper case in
+ * the host, no `.` or `..` in the path, no port that says 443 again.
+ */
+export function parseMetadataUrl(value: string): string | null {
+  if (value.length > URL_MAX_LENGTH || !value.startsWith("https://") || value.includes("#")) return null;
+  const url = parseUrl(value);
+  if (!url || url.href !== value) return null;
+  if (url.username !== "" || url.password !== "" || url.port !== "") return null;
+  // A URL without a path is the address of a site, not of a document.
+  return url.pathname === "/" ? null : value;
+}
+
+/** How long a fetched metadata document is used when its response does not say: an hour. */
+export const METADATA_DEFAULT_CACHE_SECONDS = 60 * 60;
+/** The shortest time a fetched metadata document is used, whatever its response says: five minutes. */
+export const METADATA_MIN_CACHE_SECONDS = 5 * 60;
+/** The longest time a fetched metadata document is used, whatever its response says: a day. */
+export const METADATA_MAX_CACHE_SECONDS = 24 * 60 * 60;
+
+/**
+ * How many seconds a fetched metadata document is used before it is fetched again, from the `Cache-Control` header of
+ * its response: its `max-age`, but at least five minutes and at most a day, and an hour without one. `no-store` and
+ * `no-cache` count as the shortest time: the document is not fetched on every request.
+ */
+export function metadataCacheSeconds(cacheControl: string | null | undefined): number {
+  if (!cacheControl) return METADATA_DEFAULT_CACHE_SECONDS;
+  const directives = cacheControl.split(",").map((directive) => directive.trim().toLowerCase());
+  if (directives.includes("no-store") || directives.includes("no-cache")) return METADATA_MIN_CACHE_SECONDS;
+  for (const directive of directives) {
+    const maxAge = /^max-age\s*=\s*"?(\d{1,12})"?$/.exec(directive)?.[1];
+    if (maxAge !== undefined) {
+      return Math.min(METADATA_MAX_CACHE_SECONDS, Math.max(METADATA_MIN_CACHE_SECONDS, Number(maxAge)));
+    }
+  }
+  return METADATA_DEFAULT_CACHE_SECONDS;
+}
+
+/** A metadata document that passed the checks: what is stored of it. */
+export type ClientMetadata = { name: string; redirectUris: string[] };
+
+/** A metadata document, or why it was refused. */
+export type ParseMetadataResult = { ok: true; metadata: ClientMetadata } | { ok: false; reason: string };
+
+/**
+ * Checks the metadata document that was fetched from the given URL. It must be a JSON object whose `client_id` is
+ * exactly its URL, with a `client_name` and with `redirect_uris` that follow the rules of registered clients, and it
+ * must not ask for anything but a public client: `token_endpoint_auth_method` is `none` or missing.
+ */
+export function parseMetadataDocument(url: string, document: unknown): ParseMetadataResult {
+  if (typeof document !== "object" || document === null || Array.isArray(document)) {
+    return { ok: false, reason: "not-an-object" };
+  }
+  const fields = document as Record<string, unknown>;
+  if (fields.client_id !== url) return { ok: false, reason: "client-id-mismatch" };
+  if (typeof fields.client_name !== "string" || fields.client_name.trim() === "") {
+    return { ok: false, reason: "missing-client-name" };
+  }
+  const authMethod = fields.token_endpoint_auth_method;
+  if (authMethod !== undefined && authMethod !== "none") return { ok: false, reason: "not-a-public-client" };
+  const redirectUris = redirectUrisSchema.safeParse(fields.redirect_uris);
+  if (!redirectUris.success) return { ok: false, reason: "invalid-redirect-uris" };
+  return { ok: true, metadata: { name: clientNameOf(fields.client_name), redirectUris: redirectUris.data } };
+}
