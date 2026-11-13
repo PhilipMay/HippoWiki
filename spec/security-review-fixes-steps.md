@@ -33,7 +33,7 @@ login like every other address, and the server cannot change its own code in the
 
 - [x] Security headers
 - [x] Image optimizer behind the login
-- [ ] Server files owned by root
+- [x] Server files owned by root
 - [ ] Wrap-up
 
 ## Security headers

@@ -54,9 +54,9 @@ ENV NODE_ENV=production \
     PORT=3000 \
     NEXT_TELEMETRY_DISABLED=1 \
     CHECKPOINT_DISABLE=1
-# Owned by `node`, so that the server can write its cache below .next.
-COPY --from=build --chown=node:node /src/.next/standalone ./
-COPY --from=build --chown=node:node /src/.next/static ./.next/static
+# Like every file of the image, owned by root, so that the server, which runs as `node`, cannot change its own code.
+COPY --from=build /src/.next/standalone ./
+COPY --from=build /src/.next/static ./.next/static
 # prisma.config.ts imports dotenv and prisma/config, which are found only next to this node_modules, and its paths to
 # the schema and the migrations are relative to it. The seed script is left out.
 COPY --from=migrate-tools /migrate/node_modules ./migrate/node_modules
@@ -64,11 +64,13 @@ COPY prisma.config.ts ./migrate/
 COPY prisma/schema.prisma ./migrate/prisma/
 COPY prisma/migrations ./migrate/prisma/migrations
 # The admin setup, next to the node_modules of the standalone output.
-COPY --from=build --chown=node:node /src/build/admin.mjs ./admin.mjs
+COPY --from=build /src/build/admin.mjs ./admin.mjs
 # The password hashing with its native build for the platform of the image, whatever the standalone output contains
 # of it: Next.js only traces what the server imports.
 COPY --from=deps /src/node_modules/@node-rs ./node_modules/@node-rs
 COPY scripts/image-admin.sh scripts/image-migrate.sh scripts/image-start.sh ./
+# The cache of Next.js is the only place below /app that `node` can write to.
+RUN mkdir -p .next/cache && chown -R node:node .next/cache
 USER node
 EXPOSE 3000
 CMD ["./image-start.sh"]

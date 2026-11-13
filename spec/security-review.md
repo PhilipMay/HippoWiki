@@ -32,16 +32,6 @@ client address group and against the deployment, again with harmless requests on
   `reserveAttempt()`. It needs `HIPPOWIKI_TRUSTED_PROXIES` of at least 1: with `0` every login is in the group
   `shared`, and the limit would hold back all users together.
 
-### Nit: the runtime user can change the server code in the image
-
-- **Location:** `Containerfile`, lines 58–67, the `COPY --chown=node:node` lines
-- **Category:** security
-- **Problem:** The files of the server belong to `node`, the user the server runs as.
-- **Impact:** If an attacker ever runs code as `node`, they can change `server.js` for good, until the container is
-  recreated.
-- **Suggestion (optional):** Copy the files as root, without `--chown`, and give `node` write access only to
-  `.next/cache`.
-
 ## Checked and Found Fine
 
 - **TLS:** Let's Encrypt certificate, valid until 2027-02-10; TLS 1.0 and 1.1 are refused; plain HTTP gets a 308

@@ -351,6 +351,17 @@ cmd_smoke() {
     smoke_fail "the container has a .env file."
   fi
   echo "ok: no .env file next to server.js or the migration tools"
+  # The files of the server belong to root: the user of the server can write only the cache of Next.js.
+  if ! podman exec --user node "$SMOKE_APP" sh -c \
+    'test ! -w /app/server.js && test ! -w /app/admin.mjs && test ! -w /app/.next/server'; then
+    smoke_fail "the user node can write /app/server.js, /app/admin.mjs or /app/.next/server."
+  fi
+  echo "ok: the user node cannot write server.js, admin.mjs or .next/server"
+  if ! podman exec --user node "$SMOKE_APP" sh -c \
+    'file=/app/.next/cache/smoke-write-test && touch "$file" && rm "$file"'; then
+    smoke_fail "the user node cannot create and remove a file in /app/.next/cache."
+  fi
+  echo "ok: the user node can write /app/.next/cache"
 
   local migrations
   migrations="$(smoke_migrations)"
