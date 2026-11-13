@@ -29,8 +29,27 @@ missing security headers.
 - **Evidence:** `logIn()` returns the code `wait` without checking the password while `reserveAttempt(name)` reports a
   wait; the wait grows to `MAX_WAIT_MS` (15 minutes) and starts again with every further failure.
 - **Suggestion (required):** Key the wait on the user name and the client address, and keep a much higher limit for the
-  user name alone. The client address has to come from a header set by a trusted reverse proxy, which needs to be
-  configured and documented in `container-image.md`.
+  user name alone. Take the client address from the rightmost entry of `X-Forwarded-For`, with one trusted proxy, and
+  read no forwarding header unless this is configured. Read it in the login action, not in `src/proxy.ts` (see the
+  checks below). Document the setup in `container-image.md`.
+- **Checks on the deployment:** On 2026-11-13 the deployment was checked with `HIPPOWIKI_LOG_CLIENT_ADDRESS=true` (see
+  "Configuration" in `container-image.md`). The results:
+  - Traefik writes `X-Forwarded-For` and `X-Real-Ip` with a single entry each, the same in both. Requests from a client
+    outside the network of the server arrived with that client's own public address, so the container network
+    (rootless Podman with `pasta`) keeps the source address.
+  - A request with a forged `X-Forwarded-For: 203.0.113.7` and `X-Real-Ip: 203.0.113.7` arrived with only the real
+    address: Traefik replaces these headers of the client instead of appending to them.
+  - `pasta` publishes port 3000 on `127.0.0.1` only (`ss -ltnp`), so no other machine can reach the server around
+    Traefik. A process on the host itself can: a request to `http://127.0.0.1:3000/` on the host with a forged
+    `X-Forwarded-For: 203.0.113.7` arrived with that value, without `X-Real-Ip` and with `X-Forwarded-Proto: http`.
+    Every request through Traefik carried `X-Real-Ip`, which Next.js never sets itself.
+  - The login action sees the same `X-Forwarded-For` and `X-Real-Ip` as the proxy of Next.js. `/login` does not pass
+    the proxy, so the action is the only place that sees the login request.
+  - After a Server Action redirects, Next.js requests the target page from itself (`Host: localhost:3000`) with the
+    headers of the client, so the proxy of Next.js sees such requests too.
+  - Not checked: a request over IPv6.
+- **Reference:** `reports/Login lockout and client IP handling.md`: how other systems key the wait and find the client
+  address, and why a separate budget for clients that logged in before is what closes the lockout for good.
 
 ### Minor: no security headers
 
