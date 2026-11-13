@@ -28,6 +28,8 @@ The specification lives in the `spec/` directory. This catalog should always be 
 - `spec/api-tokens.md`: the API tokens as built (tokens shown once and stored as a hash, scopes and expiry, the limit
   per user, the own tokens only, the check of a bearer token and its codes, the own account page `/account`,
   decisions, limits)
+- `spec/mcp-oauth-steps.md`: step plan for the MCP server with read tools and OAuth for MCP clients (public URL, login
+  with a way back, the MCP endpoint, clients by CIMD and DCR, codes, grants as API tokens, consent page)
 - `spec/roadmap.md`: backlog of candidate features, grouped by theme, and things still to check
 - `spec/issue-report.md`: how to report issues found in code and document reviews
 
