@@ -95,6 +95,14 @@ export function revokeTokenPath(id: string): string {
   return `${accountPath("revoke")}&token=${id}`;
 }
 
+/** The address of the MCP endpoint, where AI assistants read the wiki with a bearer token. */
+const MCP_PATH = "/mcp";
+
+/** The address of the MCP endpoint. */
+export function mcpPath(): string {
+  return MCP_PATH;
+}
+
 /** The address where a user who logged in with a first password sets a password of their own. */
 const CHANGE_PASSWORD_PATH = "/change-password";
 

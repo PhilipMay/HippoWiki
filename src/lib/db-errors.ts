@@ -38,6 +38,27 @@ export const USER_NAME: UniqueConstraint = { indexes: ["User_username_key", "Use
 export const API_TOKEN_HASH: UniqueConstraint = { indexes: ["ApiToken_tokenHash_key"], field: "tokenHash" };
 
 /**
+ * The unique index on the hash of the access token of a grant, as Prisma creates it for `@unique`. Like a token, an
+ * access token has 256 random bits.
+ */
+export const API_TOKEN_ACCESS_HASH: UniqueConstraint = {
+  indexes: ["ApiToken_accessTokenHash_key"],
+  field: "accessTokenHash",
+};
+
+/**
+ * The unique index on the URL of the metadata document of an OAuth client, as Prisma creates it for `@unique`. Two
+ * requests that fetch the document of a new client at the same time both try to store it.
+ */
+export const OAUTH_CLIENT_METADATA_URL: UniqueConstraint = {
+  indexes: ["OAuthClient_metadataUrl_key"],
+  field: "metadataUrl",
+};
+
+/** The unique index on the hash of an authorization code, as Prisma creates it for `@unique`. */
+export const OAUTH_CODE_HASH: UniqueConstraint = { indexes: ["OAuthCode_codeHash_key"], field: "codeHash" };
+
+/**
  * Whether the error is a violation of the given unique constraint. With a driver adapter, Prisma reports the violated
  * constraint in `meta.driverAdapterError.cause.constraint`: as the index name or, if that is unknown, as the fields.
  */

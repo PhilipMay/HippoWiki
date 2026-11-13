@@ -5,9 +5,13 @@
 // tokens: nobody, the admin included, sees or revokes the tokens of another user. `authenticateToken()` is the other
 // way round: it finds the actor of a request from its bearer token. A token leaves the service only once, when it is
 // created; only its hash is stored, and neither is ever logged.
+//
+// A row of `ApiToken` is either a token created here or the grant of the user to an OAuth client, which the OAuth
+// service creates (`src/features/oauth/service.ts`). A grant is listed, counted in the limit and revoked like a token.
 
 import { z } from "zod";
 
+import { looksLikeAccessToken } from "@/features/oauth/secret";
 import {
   expiresAtFor,
   isTokenScope,
@@ -207,43 +211,58 @@ function bearerTokenOf(headers: Headers): string | null {
   return match?.[1] ?? null;
 }
 
+/** What `authenticateToken()` accepts besides API tokens. */
+export type AuthenticateTokenOptions = {
+  /**
+   * Whether the access token of a grant to an OAuth client is accepted as well. Off unless a caller asks for it, so
+   * that only the MCP endpoint accepts such tokens.
+   */
+  acceptOAuth?: boolean;
+};
+
 /**
  * Who a request acts for, from the bearer token in its `Authorization` header: the actor of the token's user, if the
  * token is valid and has the given scope. It is for callers other than the browser, such as the MCP server; the
  * browser uses the session (`src/features/auth/session.ts`).
  *
  * - `missing-token`: no header, another scheme, or a value that does not look like a token; the database is not asked
- *   and nothing is logged.
+ *   and nothing is logged. Without `acceptOAuth`, an OAuth access token does not look like a token.
  * - `invalid-token`: an unknown or expired token, or one whose user still has the first password, who may do nothing
- *   but change it.
+ *   but change it. An OAuth access token is looked up by its hash and refused when it or its grant has expired.
  * - `insufficient-scope`: a valid token without the scope; `write` does not include `read`.
  * - `failed`: the database could not be read.
  *
- * The MCP route is to answer `missing-token` and `invalid-token` with 401 and `WWW-Authenticate: Bearer`, and
+ * The MCP route answers `missing-token` and `invalid-token` with 401 and `WWW-Authenticate: Bearer`, and
  * `insufficient-scope` with 403. A valid token gets its last use written, at most once a minute; a failure of that
  * write is logged and does not refuse the request. The token is never logged.
  */
 export async function authenticateToken(
   headers: Headers,
   scope: TokenScope,
+  { acceptOAuth = false }: AuthenticateTokenOptions = {},
 ): Promise<Result<Actor, AuthenticateTokenError>> {
   const secret = bearerTokenOf(headers);
-  if (secret === null || !looksLikeToken(secret)) return { ok: false, error: { code: "missing-token" } };
+  if (secret === null) return { ok: false, error: { code: "missing-token" } };
+  const kind = looksLikeToken(secret) ? "token" : acceptOAuth && looksLikeAccessToken(secret) ? "access-token" : null;
+  if (kind === null) return { ok: false, error: { code: "missing-token" } };
 
   let token: {
     id: string;
     scopes: string[];
     expiresAt: Date;
+    accessTokenExpiresAt: Date | null;
     lastUsedAt: Date | null;
     user: { id: string; username: string; mustChangePassword: boolean };
   } | null;
   try {
     token = await getDb().apiToken.findUnique({
-      where: { tokenHash: hashToken(secret) },
+      // The two hashes are columns of their own, so a token is never taken for an access token or the other way round.
+      where: kind === "token" ? { tokenHash: hashToken(secret) } : { accessTokenHash: hashToken(secret) },
       select: {
         id: true,
         scopes: true,
         expiresAt: true,
+        accessTokenExpiresAt: true,
         lastUsedAt: true,
         user: { select: { id: true, username: true, mustChangePassword: true } },
       },
@@ -261,6 +280,11 @@ export async function authenticateToken(
   const tokenId = token.id;
   if (token.expiresAt.getTime() <= now.getTime()) {
     logger.warn({ reason: "expired", tokenId }, "token refused");
+    return { ok: false, error: { code: "invalid-token" } };
+  }
+  // The access token of a grant ends long before its grant; the client then asks for a new one.
+  if (kind === "access-token" && (token.accessTokenExpiresAt?.getTime() ?? 0) <= now.getTime()) {
+    logger.warn({ reason: "access-token-expired", tokenId }, "token refused");
     return { ok: false, error: { code: "invalid-token" } };
   }
   if (token.user.mustChangePassword) {

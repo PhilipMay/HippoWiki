@@ -4,11 +4,14 @@ import { describe, expect, it } from "vitest";
 
 import { newUserData } from "@/features/users/records";
 import {
+  API_TOKEN_ACCESS_HASH,
   API_TOKEN_HASH,
   FOLDER_NAME,
   isForeignKeyViolation,
   isUniqueViolation,
   LAST_EDITOR,
+  OAUTH_CLIENT_METADATA_URL,
+  OAUTH_CODE_HASH,
   PAGE_NAME,
   TAB_NAME,
   USER_NAME,
@@ -17,7 +20,23 @@ import {
 
 import { createFolder, createPage, createTab, createUser, getTestDb } from "../e2e/support/database";
 
-const NAME_CONSTRAINTS = { FOLDER_NAME, TAB_NAME, PAGE_NAME, USER_NAME, API_TOKEN_HASH } as const;
+const NAME_CONSTRAINTS = {
+  FOLDER_NAME,
+  TAB_NAME,
+  PAGE_NAME,
+  USER_NAME,
+  API_TOKEN_HASH,
+  API_TOKEN_ACCESS_HASH,
+  OAUTH_CLIENT_METADATA_URL,
+  OAUTH_CODE_HASH,
+} as const;
+
+/** Creates an OAuth client directly in the test database. */
+function createClientRow(data: { metadataUrl?: string } = {}) {
+  return getTestDb().oAuthClient.create({
+    data: { name: "Example", redirectUris: ["https://client.example/callback"], ...data },
+  });
+}
 
 /** Creates a user with the given name directly in the test database; other fields of the row can be overridden. */
 function createUserRow(name: string, data: { username?: string; email?: string } = {}) {
@@ -142,6 +161,66 @@ describe("unique violations", () => {
       await errorOf(getTestDb().apiToken.create({ data: { ...token, userId: bob.id } })),
       API_TOKEN_HASH,
     );
+  });
+
+  it("reports an access token hash that is already stored as a violation of API_TOKEN_ACCESS_HASH", async () => {
+    const [alice, bob, client] = [await createUser(), await createUser(), await createClientRow()];
+    const grant = {
+      name: "Example",
+      scopes: ["read"],
+      clientId: client.id,
+      accessTokenHash: "b".repeat(64),
+      expiresAt: new Date(),
+    };
+    await getTestDb().apiToken.create({ data: { ...grant, userId: alice.id } });
+
+    expectUniqueViolationOf(
+      await errorOf(getTestDb().apiToken.create({ data: { ...grant, userId: bob.id } })),
+      API_TOKEN_ACCESS_HASH,
+    );
+  });
+
+  it("allows many grants without an access token hash and many tokens without one", async () => {
+    const [alice, client] = [await createUser(), await createClientRow()];
+    const grant = { name: "Example", scopes: ["read"], clientId: client.id, expiresAt: new Date(), userId: alice.id };
+
+    await getTestDb().apiToken.create({ data: grant });
+    await getTestDb().apiToken.create({ data: grant });
+
+    expect(await getTestDb().apiToken.count()).toBe(2);
+  });
+
+  it("reports a metadata URL that is already stored as a violation of OAUTH_CLIENT_METADATA_URL", async () => {
+    await createClientRow({ metadataUrl: "https://client.example/metadata.json" });
+
+    expectUniqueViolationOf(
+      await errorOf(createClientRow({ metadataUrl: "https://client.example/metadata.json" })),
+      OAUTH_CLIENT_METADATA_URL,
+    );
+  });
+
+  it("allows many registered clients, which have no metadata URL", async () => {
+    await createClientRow();
+    await createClientRow();
+
+    expect(await getTestDb().oAuthClient.count()).toBe(2);
+  });
+
+  it("reports a code hash that is already stored as a violation of OAUTH_CODE_HASH", async () => {
+    const [alice, client] = [await createUser(), await createClientRow()];
+    const code = {
+      codeHash: "c".repeat(64),
+      clientId: client.id,
+      userId: alice.id,
+      redirectUri: "https://client.example/callback",
+      codeChallenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+      scopes: ["read"],
+      lifetime: "90d",
+      expiresAt: new Date(),
+    };
+    await getTestDb().oAuthCode.create({ data: code });
+
+    expectUniqueViolationOf(await errorOf(getTestDb().oAuthCode.create({ data: code })), OAUTH_CODE_HASH);
   });
 });
 

@@ -2,7 +2,25 @@ import { createHash } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
-import { generateToken, hashToken, looksLikeToken, TOKEN_BYTES, TOKEN_PREFIX } from "@/features/tokens/secret";
+import {
+  generateSecret,
+  generateToken,
+  hashToken,
+  looksLikeToken,
+  SECRET_PATTERN,
+  TOKEN_BYTES,
+  TOKEN_PREFIX,
+} from "@/features/tokens/secret";
+
+describe("generateSecret", () => {
+  it("puts 32 random bytes in base64url behind the given prefix", () => {
+    const secret = generateSecret("hwx_");
+
+    expect(secret).toMatch(new RegExp(`^hwx_${SECRET_PATTERN}$`));
+    expect(Buffer.from(secret.slice(4), "base64url")).toHaveLength(32);
+    expect(generateSecret("hwx_")).not.toBe(secret);
+  });
+});
 
 describe("generateToken", () => {
   const tokens = Array.from({ length: 500 }, generateToken);

@@ -25,7 +25,8 @@ vi.mock(import("@/lib/env"), async (importOriginal) => {
       NODE_ENV: "test",
       HIPPOWIKI_LOG_CLIENT_ADDRESS: false,
       HIPPOWIKI_TRUSTED_PROXIES: 0,
-      HIPPOWIKI_PUBLIC_URL: undefined,
+      // The public address of the wiki, which the OAuth service needs for the address of the MCP endpoint.
+      HIPPOWIKI_PUBLIC_URL: "https://wiki.example.com",
     }),
   };
 });

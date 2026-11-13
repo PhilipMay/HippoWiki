@@ -43,7 +43,7 @@ ChatGPT connect through OAuth: the user logs in, approves the connector on a con
 
 - [x] Public URL and login with a way back
 - [x] MCP endpoint with read tools
-- [ ] OAuth clients, codes and grants
+- [x] OAuth clients, codes and grants
 - [ ] Client ID Metadata Documents
 - [ ] Discovery, registration and token endpoints
 - [ ] Consent page
@@ -166,7 +166,8 @@ The rules of the authorization code flow, in a service that knows nothing about 
     grant without the replaced ones.
   - Refresh: the refresh token names its grant; a secret that is not the current one revokes the grant (logged as a
     warning with the grant id). The swap of the hashes is conditional, so two refreshes at the same time cannot both
-    succeed. A grant past its expiry or of a user with the first password is refused. Each refresh gives a new access
+    succeed; the one that loses is refused without revoking the grant, because it showed the token that was current
+    when it was read. A grant past its expiry or of a user with the first password is refused. Each refresh gives a new access
     token (1 hour) and a new refresh token; the previous access token stops working.
   - Clean up on write, since there is no job scheduler: expired codes, and clients older than 24 hours that no grant
     and no code names, when a client is registered or a code is created.

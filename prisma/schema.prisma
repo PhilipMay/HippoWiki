@@ -84,31 +84,33 @@ model Page {
 /// A user account. The table has the shape Better Auth expects for its `user` model with the `username` plugin; Better
 /// Auth reads it through its Prisma adapter, and the users service writes it with Prisma.
 model User {
-  id                 String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id                 String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   /// Better Auth needs a display name; it is always the same as `username`.
   name               String
   /// Better Auth needs an email address; it is the hidden placeholder `<username>@users.hippowiki.invalid`, which is
   /// never shown and never gets mail.
-  email              String     @unique
-  emailVerified      Boolean    @default(false)
+  email              String      @unique
+  emailVerified      Boolean     @default(false)
   /// A field of Better Auth that HippoWiki does not use.
   image              String?
   /// The user name people log in with; unique across the wiki. The admin is the user named `admin`.
-  username           String     @unique
+  username           String      @unique
   /// A field of the `username` plugin that HippoWiki does not use.
   displayUsername    String?
   /// Whether the user still has the first password and must set an own one before doing anything else.
-  mustChangePassword Boolean    @default(true)
-  createdAt          DateTime   @default(now()) @db.Timestamptz(3)
-  updatedAt          DateTime   @updatedAt @db.Timestamptz(3)
+  mustChangePassword Boolean     @default(true)
+  createdAt          DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime    @updatedAt @db.Timestamptz(3)
   sessions           Session[]
   accounts           Account[]
   /// The folders, tabs and pages the user edited last.
-  lastEditedFolders  Folder[]   @relation("FolderLastEditedBy")
-  lastEditedTabs     Tab[]      @relation("TabLastEditedBy")
-  lastEditedPages    Page[]     @relation("PageLastEditedBy")
-  /// The API tokens of the user, for scripts and tools.
+  lastEditedFolders  Folder[]    @relation("FolderLastEditedBy")
+  lastEditedTabs     Tab[]       @relation("TabLastEditedBy")
+  lastEditedPages    Page[]      @relation("PageLastEditedBy")
+  /// The API tokens of the user, for scripts and tools, and the grants of the user to OAuth clients.
   apiTokens          ApiToken[]
+  /// The authorization codes that wait to be exchanged for a grant of the user.
+  oauthCodes         OAuthCode[]
 }
 
 /// A login of a user in one browser, in the shape of the `session` model of Better Auth.
@@ -149,25 +151,104 @@ model Account {
   @@index([userId])
 }
 
-/// A long-lived API token of a user, for scripts and tools such as an MCP client. It stands for its user, limited to its
-/// scopes, until it expires or is revoked; revoking deletes the row. The token itself is never stored, only its hash.
+/// A long-lived API token of a user, for scripts and tools such as an MCP client, or the grant of a user to an OAuth
+/// client, such as the connector of an AI assistant. It stands for its user, limited to its scopes, until it expires
+/// or is revoked; revoking deletes the row. A token is never stored, only its hash.
+///
+/// - A token created on `/account` has a `tokenHash` and no client.
+/// - A grant has a client and no `tokenHash`: the client holds a short-lived access token and a refresh token that
+///   changes with every use, and the row holds the hashes of the current ones. A check constraint in the migration
+///   makes sure a row is one or the other.
 model ApiToken {
-  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId     String    @db.Uuid
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  /// The name the user gave the token, to tell it apart from the others.
-  name       String
-  /// What the token may do: `read`, `write` or both (`src/features/tokens/schema.ts`).
-  scopes     String[]
-  /// The SHA-256 hash of the token, in hex (`src/features/tokens/secret.ts`). A request with a token is looked up by it.
-  tokenHash  String    @unique
-  /// When the token stops working.
-  expiresAt  DateTime  @db.Timestamptz(3)
+  id                   String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId               String       @db.Uuid
+  user                 User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// The name the user gave the token, to tell it apart from the others; for a grant, the name of its client.
+  name                 String
+  /// What the token may do: `read`, `write` or both (`src/features/tokens/schema.ts`). A grant has only `read`.
+  scopes               String[]
+  /// The SHA-256 hash of the token, in hex (`src/features/tokens/secret.ts`). A request with a token is looked up by
+  /// it. `null` for a grant.
+  tokenHash            String?      @unique
+  /// When the token stops working; for a grant, when it can no longer be refreshed and its access token ends.
+  expiresAt            DateTime     @db.Timestamptz(3)
   /// When the token was last used, at most once a minute; `null` for a token that was never used.
-  lastUsedAt DateTime? @db.Timestamptz(3)
-  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  lastUsedAt           DateTime?    @db.Timestamptz(3)
+  createdAt            DateTime     @default(now()) @db.Timestamptz(3)
+  /// The OAuth client the row is a grant to; `null` for a token created on `/account`. Deleting the client deletes
+  /// its grants.
+  clientId             String?      @db.Uuid
+  client               OAuthClient? @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  /// The SHA-256 hash of the current refresh token of a grant, in hex (`src/features/oauth/secret.ts`). A refresh
+  /// replaces it; a refresh token with another hash is an old one and revokes the grant.
+  refreshTokenHash     String?
+  /// The SHA-256 hash of the current access token of a grant, in hex. A request with an access token is looked up by
+  /// it. A refresh replaces it, so the previous access token stops working.
+  accessTokenHash      String?      @unique
+  /// When the current access token of a grant stops working.
+  accessTokenExpiresAt DateTime?    @db.Timestamptz(3)
 
   @@index([userId])
+  @@index([clientId])
+}
+
+/// An OAuth client: an application, such as the connector of an AI assistant, that asks a user for access to the wiki
+/// (`src/features/oauth/service.ts`). All clients are public: none has a secret.
+///
+/// - A registered client (dynamic client registration) has no `metadataUrl`; its `client_id` is its `id`.
+/// - A client from a metadata document (Client ID Metadata Document) has the URL of the document, which is its
+///   `client_id`; the row is the document as it was fetched last.
+///
+/// Anyone can register a client, so a client that no grant and no code names is deleted after a day.
+model OAuthClient {
+  id           String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// The URL of the metadata document of the client; `null` for a registered client.
+  metadataUrl  String?     @unique
+  /// When the metadata document was fetched last; `null` for a registered client.
+  fetchedAt    DateTime?   @db.Timestamptz(3)
+  /// Until when the fetched document is used without fetching it again; `null` for a registered client.
+  freshUntil   DateTime?   @db.Timestamptz(3)
+  /// The name the client gave itself, shown on the consent page and as the name of its grants. Chosen by the client,
+  /// so it proves nothing.
+  name         String
+  /// The addresses the client may be sent back to with a code.
+  redirectUris String[]
+  createdAt    DateTime    @default(now()) @db.Timestamptz(3)
+  codes        OAuthCode[]
+  grants       ApiToken[]
+
+  // For deleting the clients that are more than a day old and that nothing names.
+  @@index([createdAt])
+}
+
+/// An authorization code: what a client gets when a user approves it on the consent page, and exchanges once for a
+/// grant. The code itself is never stored, only its hash. The row is deleted when the code is exchanged, also when
+/// the exchange fails; a code that was never exchanged is deleted after it has expired.
+model OAuthCode {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// The SHA-256 hash of the code, in hex (`src/features/oauth/secret.ts`).
+  codeHash      String      @unique
+  clientId      String      @db.Uuid
+  client        OAuthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  /// The user who approved the client.
+  userId        String      @db.Uuid
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// The redirect address of the authorization request; the exchange must name the same one.
+  redirectUri   String
+  /// The PKCE challenge of the authorization request (`S256`); the exchange must show its verifier.
+  codeChallenge String
+  /// The scopes of the grant the code stands for: always `read`.
+  scopes        String[]
+  /// How long the grant lasts, as the user chose it on the consent page: `30d`, `90d` or `365d`.
+  lifetime      String
+  /// When the code stops working, ten minutes after it was created.
+  expiresAt     DateTime    @db.Timestamptz(3)
+  createdAt     DateTime    @default(now()) @db.Timestamptz(3)
+
+  @@index([clientId])
+  @@index([userId])
+  // For deleting the codes that have expired.
+  @@index([expiresAt])
 }
 
 /// The `verification` model of Better Auth, for values that are valid for a short time. HippoWiki uses no feature that
