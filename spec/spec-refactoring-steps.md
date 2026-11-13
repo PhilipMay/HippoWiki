@@ -48,7 +48,7 @@ Where each kind of information lives after this plan:
 - [x] Explanations into the code
 - [x] Content specs
 - [x] Users and login spec
-- [ ] Container image spec
+- [x] Container image spec
 - [ ] README and architecture
 - [ ] Wrap-up
 
