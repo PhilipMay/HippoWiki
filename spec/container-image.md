@@ -81,8 +81,9 @@ Code: `Containerfile`, `.containerignore`, `scripts/image.sh`, `scripts/image-mi
 - When the admin has to be created and `HIPPOWIKI_ADMIN_PASSWORD` is missing, empty or not a valid password, it
   creates nothing and fails, and the container exits without serving. The same holds when the database is not
   reachable or `DATABASE_URL` is missing.
-- It prints one line that says what it did, or on the error output why it failed; a password is never printed or
-  logged. The messages and exit codes are in `scripts/admin.ts`.
+- It exits with 0 when the admin was created or exists, and with 1 in every other case. It prints one line that says
+  what it did, or on the error output why it failed; a password is never printed or logged. The messages are in
+  `scripts/admin.ts`.
 - To run it on its own, in a running container or in a one-off container after the migration, see the comment of
   `scripts/image-admin.sh`.
 

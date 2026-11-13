@@ -40,7 +40,8 @@ Tests: `e2e/login.spec.ts`, `e2e/change-password.spec.ts`, `e2e/users.spec.ts`, 
 - Passwords are hashed with Argon2id at the minimum settings of OWASP (`src/lib/password-hash.ts`). Better Auth handles
   the login, the sessions and the logout; only its password hashing is replaced.
 - One server process runs only a few hashes at the same time; further callers wait in the order they came and give up
-  after a while. A login, password change or user creation that gives up is answered as busy and writes nothing.
+  after a while. A login, password change or user creation that gives up is answered as busy: a user creation or
+  password change writes nothing, and a login is not counted (see "Failed logins").
 
 ## Admin account and setup
 
@@ -99,8 +100,8 @@ What a user and an operator can rely on:
 - Every other login is counted in both limits before its password is checked, or in neither. Logins at the same time
   therefore get no more guesses than logins one after another: 5 per group, one more after each wait, and 20 per name
   and hour. The others are refused with the wait, whatever their password.
-- A login that cannot be counted, because the database fails, is answered with the general error, without checking the
-  password.
+- A login that cannot be counted, because the database fails or the counts keep changing under logins at the same
+  time, is answered with the general error, without checking the password.
 - A successful login forgets the count of its name and group and the hour of its name. The counts of the name from
   other groups stay.
 - A login whose password was not checked, because the hashing was busy or something failed, takes its counts back, so

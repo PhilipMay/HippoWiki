@@ -58,4 +58,4 @@ Avoid:
 - [ ] Claims are backed by evidence or phrased as questions
 - [ ] Each issue has a concrete suggestion, marked as required or optional
 - [ ] Repeated problems are grouped into one report
-- [ ] A spec restates code, a constant or a message instead of pointing to it
+- [ ] Every spec that restates code, a constant or a message instead of pointing to it is reported

@@ -7,7 +7,8 @@ live (folders, tabs, names and addresses) is described in `content-structure.md`
 Code: `src/features/pages/` (the model is `Page` in `prisma/schema.prisma`, the length limits are in
 `src/features/pages/limits.ts`, the title and the suggested name in `src/features/pages/derive.ts`), routes under
 `src/app/folders/`. Tests: `src/features/pages/derive.test.ts`, `src/features/pages/schema.test.ts`,
-`e2e/create-page.spec.ts`, `e2e/edit-page.spec.ts`, `e2e/pages.spec.ts`, `integration/page-service.test.ts`.
+`src/features/pages/forms.test.ts`, `src/features/pages/actions.test.ts`, `e2e/create-page.spec.ts`,
+`e2e/edit-page.spec.ts`, `e2e/pages.spec.ts`, `integration/page-service.test.ts`.
 
 ## Content and title
 
@@ -51,10 +52,8 @@ given as `?action=<action>` (see `content-structure.md`).
 
 ## Decisions
 
-- The title is derived from the content instead of being a field of its own, so that the heading a reader sees and the
-  title in the lists never differ. It is still stored, for the page lists and the browser tab.
-- The suggested name is only a suggestion and is never changed later, so that an address stays the same until someone
-  renames the page.
+- The title is derived from the content's heading instead of being entered in a field of its own. It is still stored
+  as a column, for the page lists and the browser tab.
 
 ## Current limits
 

@@ -73,6 +73,9 @@ A feature spec (`spec/<feature>.md`) describes a feature as built. The wrap-up s
 - A feature spec does not contain: the field lists of the models, constants and patterns that the code names, exact
   messages, focus, hydration and layout details, and how a read or write works (which query, condition or transaction
   it uses). These live in the code, its comments and the tests.
+- A number that a user or an operator relies on, such as the lengths of a password or the waits after failed logins,
+  is a rule and stays in the spec, next to a pointer to the file that defines it. Internal limits that nobody outside
+  the code meets, such as a retry count, stay in the code.
 - Pointers name files, directories and test files, and a function only where a reader needs that one function. They
   never name line numbers. `npm run docs:check` checks that the files they name exist (see `testing.md`).
 - "Decisions" gives the reasons and the alternatives that were rejected; "Current limits" says what is deliberately

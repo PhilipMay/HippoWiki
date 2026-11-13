@@ -14,7 +14,7 @@ listed first; there is no order across themes.
 - Soft delete of folders and tabs: delete a folder or a tab together with its pages, as pages can be deleted today
   (`content-structure.md`).
 - Deleted folders and tabs: lists of the deleted folders and tabs at addresses of their own, next to
-  `/deleted-pages` (`content-structure.md`).
+  `/deleted-pages` (`page-deletion.md`).
 - Restoring deleted folders and tabs: bring a deleted folder or tab back with its pages.
 - Moving pages and tabs to another folder: today a page or a tab can only be moved within its folder
   (`content-structure.md`).

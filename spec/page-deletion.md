@@ -41,10 +41,9 @@ the dialogs and lists in `components/`), routes under `src/app/deleted-pages/`. 
 
 ## Decisions
 
-- A soft delete instead of removing the row, so that a page deleted by mistake can be brought back.
-- A deleted page has no tab, so that no unique index on page names covers it: the index on the names of pages placed
-  directly in a folder leaves out deleted pages, and the one on the names within a tab never sees a page without a tab.
-  This frees the name at once.
+- A deleted page loses its tab, because its place inside the folder is forgotten. As a result no unique index on page
+  names covers it: the index on the names of pages placed directly in a folder leaves out deleted pages, and the one
+  on the names within a tab never sees a page without a tab. So the name is free at once.
 - Deleted pages have addresses of their own under `/deleted-pages`, named for what it holds, so that deleted tabs and
   folders can get addresses there later.
 

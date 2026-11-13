@@ -8,8 +8,8 @@ Code: `src/features/folders/` (folders and tabs), `src/features/pages/` (pages),
 `src/lib/addresses.ts` (building and parsing addresses), the models `Folder`, `Tab` and `Page` in
 `prisma/schema.prisma`, and the routes under `src/app/folders/` and `src/app/deleted-pages/`. Tests:
 `e2e/folders.spec.ts`, `e2e/tabs.spec.ts`, `e2e/all-pages.spec.ts`, `e2e/create-page.spec.ts`,
-`e2e/move-or-rename-page.spec.ts`, `integration/folder-service.test.ts`, `integration/page-service.test.ts`,
-`integration/db-errors.test.ts`.
+`e2e/move-or-rename-page.spec.ts`, `src/lib/names.test.ts`, `src/lib/addresses.test.ts`,
+`integration/folder-service.test.ts`, `integration/page-service.test.ts`, `integration/db-errors.test.ts`.
 
 ## Overview
 
@@ -26,7 +26,7 @@ hold pages directly and have tabs at the same time.
 
 - The database guarantees that a page's tab belongs to the page's folder: a composite foreign key from the page's tab
   and folder to the tab's id and folder. A tab of another folder is refused like a tab that no longer exists.
-- Nothing is deleted from the database by a cascade: every foreign key restricts deleting.
+- No folder, tab or page is deleted by a cascade: every foreign key between them restricts deleting.
 
 ## Names
 
@@ -122,8 +122,6 @@ hold pages directly and have tabs at the same time.
   for a route of the app.
 - The `.md` suffix tells pages from tabs in an address, so that a tab and a page placed directly in the folder may
   share a name.
-- A write redirects to the address built from the stored item, so that a value that the service changed (such as a
-  trimmed name) never leads to a wrong address.
 
 ## Current limits
 
