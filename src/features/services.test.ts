@@ -23,11 +23,13 @@ it("the services load without Next.js and React", async () => {
   const folderService = await import("@/features/folders/service");
   const pageService = await import("@/features/pages/service");
   const userService = await import("@/features/users/service");
+  const tokenService = await import("@/features/tokens/service");
   // The auth service loads Better Auth with its `nextCookies()` plugin, which must not need Next.js to be loaded.
   const authService = await import("@/features/auth/service");
 
   expect(folderService.listFolders).toBeTypeOf("function");
   expect(pageService.listFolderPages).toBeTypeOf("function");
   expect(userService.ensureAdmin).toBeTypeOf("function");
+  expect(tokenService.createToken).toBeTypeOf("function");
   expect(authService.logIn).toBeTypeOf("function");
 });

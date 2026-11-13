@@ -84,29 +84,31 @@ model Page {
 /// A user account. The table has the shape Better Auth expects for its `user` model with the `username` plugin; Better
 /// Auth reads it through its Prisma adapter, and the users service writes it with Prisma.
 model User {
-  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id                 String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   /// Better Auth needs a display name; it is always the same as `username`.
   name               String
   /// Better Auth needs an email address; it is the hidden placeholder `<username>@users.hippowiki.invalid`, which is
   /// never shown and never gets mail.
-  email              String    @unique
-  emailVerified      Boolean   @default(false)
+  email              String     @unique
+  emailVerified      Boolean    @default(false)
   /// A field of Better Auth that HippoWiki does not use.
   image              String?
   /// The user name people log in with; unique across the wiki. The admin is the user named `admin`.
-  username           String    @unique
+  username           String     @unique
   /// A field of the `username` plugin that HippoWiki does not use.
   displayUsername    String?
   /// Whether the user still has the first password and must set an own one before doing anything else.
-  mustChangePassword Boolean   @default(true)
-  createdAt          DateTime  @default(now()) @db.Timestamptz(3)
-  updatedAt          DateTime  @updatedAt @db.Timestamptz(3)
+  mustChangePassword Boolean    @default(true)
+  createdAt          DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime   @updatedAt @db.Timestamptz(3)
   sessions           Session[]
   accounts           Account[]
   /// The folders, tabs and pages the user edited last.
-  lastEditedFolders  Folder[]  @relation("FolderLastEditedBy")
-  lastEditedTabs     Tab[]     @relation("TabLastEditedBy")
-  lastEditedPages    Page[]    @relation("PageLastEditedBy")
+  lastEditedFolders  Folder[]   @relation("FolderLastEditedBy")
+  lastEditedTabs     Tab[]      @relation("TabLastEditedBy")
+  lastEditedPages    Page[]     @relation("PageLastEditedBy")
+  /// The API tokens of the user, for scripts and tools.
+  apiTokens          ApiToken[]
 }
 
 /// A login of a user in one browser, in the shape of the `session` model of Better Auth.
@@ -143,6 +145,27 @@ model Account {
   password              String?
   createdAt             DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt             DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@index([userId])
+}
+
+/// A long-lived API token of a user, for scripts and tools such as an MCP client. It stands for its user, limited to its
+/// scopes, until it expires or is revoked; revoking deletes the row. The token itself is never stored, only its hash.
+model ApiToken {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String    @db.Uuid
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// The name the user gave the token, to tell it apart from the others.
+  name       String
+  /// What the token may do: `read`, `write` or both (`src/features/tokens/schema.ts`).
+  scopes     String[]
+  /// The SHA-256 hash of the token, in hex (`src/features/tokens/secret.ts`). A request with a token is looked up by it.
+  tokenHash  String    @unique
+  /// When the token stops working.
+  expiresAt  DateTime  @db.Timestamptz(3)
+  /// When the token was last used, at most once a minute; `null` for a token that was never used.
+  lastUsedAt DateTime? @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
 
   @@index([userId])
 }

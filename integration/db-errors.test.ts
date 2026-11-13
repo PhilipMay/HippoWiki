@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { newUserData } from "@/features/users/records";
 import {
+  API_TOKEN_HASH,
   FOLDER_NAME,
   isForeignKeyViolation,
   isUniqueViolation,
@@ -16,7 +17,7 @@ import {
 
 import { createFolder, createPage, createTab, createUser, getTestDb } from "../e2e/support/database";
 
-const NAME_CONSTRAINTS = { FOLDER_NAME, TAB_NAME, PAGE_NAME, USER_NAME } as const;
+const NAME_CONSTRAINTS = { FOLDER_NAME, TAB_NAME, PAGE_NAME, USER_NAME, API_TOKEN_HASH } as const;
 
 /** Creates a user with the given name directly in the test database; other fields of the row can be overridden. */
 function createUserRow(name: string, data: { username?: string; email?: string } = {}) {
@@ -130,6 +131,17 @@ describe("unique violations", () => {
     const alice = await createUserRow("alice");
 
     expectUniqueViolationOf(await errorOf(createUserRow("bob", { email: alice.email })), USER_NAME);
+  });
+
+  it("reports a token hash that is already stored as a violation of API_TOKEN_HASH", async () => {
+    const [alice, bob] = [await createUser(), await createUser()];
+    const token = { name: "MCP client", scopes: ["read"], tokenHash: "a".repeat(64), expiresAt: new Date() };
+    await getTestDb().apiToken.create({ data: { ...token, userId: alice.id } });
+
+    expectUniqueViolationOf(
+      await errorOf(getTestDb().apiToken.create({ data: { ...token, userId: bob.id } })),
+      API_TOKEN_HASH,
+    );
   });
 });
 

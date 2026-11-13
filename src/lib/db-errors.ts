@@ -32,6 +32,12 @@ export const PAGE_NAME: UniqueConstraint = {
 export const USER_NAME: UniqueConstraint = { indexes: ["User_username_key", "User_email_key"], field: "username" };
 
 /**
+ * The unique index on the hash of an API token, as Prisma creates it for `@unique`. A token has 256 random bits, so a
+ * violation means a broken token generator rather than bad luck.
+ */
+export const API_TOKEN_HASH: UniqueConstraint = { indexes: ["ApiToken_tokenHash_key"], field: "tokenHash" };
+
+/**
  * Whether the error is a violation of the given unique constraint. With a driver adapter, Prisma reports the violated
  * constraint in `meta.driverAdapterError.cause.constraint`: as the index name or, if that is unknown, as the fields.
  */

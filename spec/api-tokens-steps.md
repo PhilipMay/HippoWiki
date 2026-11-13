@@ -33,7 +33,7 @@ caller of the check.
 
 ## Checklist
 
-- [ ] Token model and service
+- [x] Token model and service
 - [ ] Check of a bearer token
 - [ ] Own-account page
 - [ ] Wrap-up
