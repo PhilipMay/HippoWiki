@@ -298,3 +298,33 @@ describe("the last editor of tabs", () => {
     expect(await getTestDb().tab.findMany()).toStrictEqual([before]);
   });
 });
+
+describe("the last editor in the folder and tab reads", () => {
+  it("is the user name of the last editor in the folder list and the tab list", async () => {
+    const bob = await createUser({ name: "bob" });
+    const folder = await createFolder({ name: "docs", editor: actor });
+    await createFolder({ name: "news", editor: bob });
+    await createTab({ folder, name: "guides", editor: bob });
+
+    // `toStrictEqual` fails on any further field of the user.
+    expect((await folderService.listFolders()).map(({ name, lastEditedBy }) => [name, lastEditedBy])).toStrictEqual([
+      ["docs", { name: "alice" }],
+      ["news", { name: "bob" }],
+    ]);
+    expect((await folderService.listTabs(folder.id)).map(({ lastEditedBy }) => lastEditedBy)).toStrictEqual([
+      { name: "bob" },
+    ]);
+  });
+
+  it("is the user who changed the folder or tab last, after a write through the service", async () => {
+    const bob = await createUser({ name: "bob" });
+    const folder = await createFolder({ name: "docs", editor: actor });
+    const tab = await createTab({ folder, name: "guides", editor: actor });
+
+    await folderService.renameFolder(bob, folder.id, { name: "handbook" });
+    await folderService.renameTab(bob, tab.id, { name: "news" });
+
+    expect((await folderService.listFolders())[0]?.lastEditedBy).toEqual({ name: "bob" });
+    expect((await folderService.listTabs(folder.id))[0]?.lastEditedBy).toEqual({ name: "bob" });
+  });
+});

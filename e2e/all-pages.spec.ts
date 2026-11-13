@@ -1,7 +1,8 @@
 import type { Page } from "@playwright/test";
 
+import { KNOWN_USER } from "../prisma/known-users";
 import { collectErrors } from "./support/browser";
-import { createFolder, createPage, createTab, resetTestDatabase } from "./support/database";
+import { createFolder, createPage, createTab, createUser, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
 
 let handbook: Awaited<ReturnType<typeof createFolder>>;
@@ -22,6 +23,9 @@ async function expectNotFound(page: Page, address: string) {
   expect(response?.status()).toBe(404);
   await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
 }
+
+/** The logged-in user of the tests, who makes every change through the GUI. */
+const USER = KNOWN_USER.name;
 
 test("all pages of a folder are listed by name and then by tab, each with its tab", async ({ page }) => {
   const errors = collectErrors(page);
@@ -52,7 +56,7 @@ test("all pages of a folder are listed by name and then by tab, each with its ta
   await expect(page.getByRole("main").getByRole("link", { name: /^(Rename|New page|New tab)$/ })).toHaveCount(0);
 
   const table = page.getByRole("table", { name: "All pages" });
-  await expect(table.getByRole("columnheader")).toHaveText(["Name", "Tab", "Title", "Last update"]);
+  await expect(table.getByRole("columnheader")).toHaveText(["Name", "Tab", "Title", "Last update", "Updated by"]);
   const rows = table.getByRole("row").filter({ has: page.getByRole("cell") });
   // By name; among pages of the same name the one placed directly in the folder first, then by tab.
   await expect(rows).toHaveText([
@@ -130,3 +134,25 @@ for (const address of [
     await expectNotFound(page, address);
   });
 }
+
+test("the list of all pages shows who changed each page last", async ({ page }) => {
+  const errors = collectErrors(page);
+  const bob = await createUser({ name: "bob" });
+  const folder = await createFolder({ name: "docs" });
+  const guides = await createTab({ folder, name: "guides" });
+  await createPage({ folder, name: "direct", editor: bob });
+  await createPage({ tab: guides, name: "in-tab", content: "# In tab", editor: bob });
+
+  await page.goto("/folders/docs/guides/in-tab.md?action=edit");
+  await page.getByLabel("Content").fill("# In tab\n\nChanged");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page).toHaveURL("/folders/docs/guides/in-tab.md");
+
+  await page.goto("/folders/docs?view=all");
+  const table = page.getByRole("table", { name: "All pages" });
+  const rows = table.getByRole("row").filter({ has: page.getByRole("cell") });
+  await expect(rows).toHaveText([/^direct\.md/, /^in-tab\.md/]);
+  await expect(rows.nth(0).getByRole("cell").last()).toHaveText("bob");
+  await expect(rows.nth(1).getByRole("cell").last()).toHaveText(USER);
+  expect(errors).toEqual([]);
+});

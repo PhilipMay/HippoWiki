@@ -45,6 +45,7 @@ export default function DeletedPagesList({ pages, folderName }: DeletedPagesList
             <TableCell>Name</TableCell>
             <TableCell>Title</TableCell>
             <TableCell>Deleted</TableCell>
+            <TableCell>Deleted by</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -60,6 +61,7 @@ export default function DeletedPagesList({ pages, folderName }: DeletedPagesList
               <TableCell sx={{ whiteSpace: "nowrap" }}>
                 <time dateTime={page.deletedAt.toISOString()}>{formatDateTime(page.deletedAt)}</time>
               </TableCell>
+              <TableCell sx={{ overflowWrap: "anywhere" }}>{page.lastEditedBy.name}</TableCell>
             </TableRow>
           ))}
         </TableBody>

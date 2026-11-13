@@ -81,6 +81,10 @@ const MALFORMED_ACTOR: Actor = { id: MALFORMED_ID, name: "alice" };
 /** Names that are not valid as written: not lowercase, surrounding whitespace, a double hyphen, empty. */
 const MALFORMED_NAMES = ["Overview", " overview", "overview ", "release--notes", "-overview", ""];
 
+/** The last editor as the database returns it for a read, and as the service returns it. */
+const EDITOR_ROW = { lastEditedBy: { username: "alice" } };
+const EDITOR = { lastEditedBy: { name: "alice" } };
+
 function page(name: string, tab: string | null) {
   return { name, tab: tab === null ? null : { name: tab } };
 }
@@ -117,24 +121,26 @@ describe("the lists of a folder or tab", () => {
 describe("listAllFolderPages", () => {
   it("returns the pages of the database with the page without a tab before those of the same name in tabs", async () => {
     // As the database returns them: by name, then by tab name, a missing tab last.
-    mocks.findMany.mockResolvedValue([
-      page("overview", "guides"),
-      page("overview", "meetings"),
-      page("overview", null),
-    ]);
+    mocks.findMany.mockResolvedValue(
+      [page("overview", "guides"), page("overview", "meetings"), page("overview", null)].map((entry) => ({
+        ...entry,
+        ...EDITOR_ROW,
+      })),
+    );
 
     const pages = await listAllFolderPages(FOLDER_ID);
 
     expect(places(pages)).toEqual(["overview", "guides/overview", "meetings/overview"]);
+    for (const entry of pages) expect(entry.lastEditedBy).toEqual(EDITOR.lastEditedBy);
   });
 });
 
 describe("getPage", () => {
   it("looks for a page without a tab when no tab is given", async () => {
     const stored = { id: "page-id", name: "overview", folder: { id: FOLDER_ID, name: "handbook" }, tab: null };
-    mocks.findFirst.mockResolvedValue(stored);
+    mocks.findFirst.mockResolvedValue({ ...stored, ...EDITOR_ROW });
 
-    await expect(getPage("handbook", null, "overview")).resolves.toBe(stored);
+    await expect(getPage("handbook", null, "overview")).resolves.toEqual({ ...stored, ...EDITOR });
     // `tabId: null` keeps a page of the same name in a tab of the folder from being returned.
     expect(mocks.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -150,9 +156,9 @@ describe("getPage", () => {
       folder: { id: FOLDER_ID, name: "handbook" },
       tab: { id: TAB_ID },
     };
-    mocks.findFirst.mockResolvedValue(stored);
+    mocks.findFirst.mockResolvedValue({ ...stored, ...EDITOR_ROW });
 
-    await expect(getPage("handbook", "guides", "overview")).resolves.toBe(stored);
+    await expect(getPage("handbook", "guides", "overview")).resolves.toEqual({ ...stored, ...EDITOR });
     expect(mocks.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { name: "overview", folder: { name: "handbook" }, deletedAt: null, tab: { name: "guides" } },
@@ -190,10 +196,10 @@ describe("getPage", () => {
 describe("listDeletedPages", () => {
   it("lists only the deleted pages of the folder", async () => {
     const deletedAt = new Date("2026-11-12T10:00:00Z");
-    mocks.findMany.mockResolvedValue([{ id: PAGE_ID, name: "overview", title: "Overview", deletedAt }]);
+    mocks.findMany.mockResolvedValue([{ id: PAGE_ID, name: "overview", title: "Overview", deletedAt, ...EDITOR_ROW }]);
 
     await expect(listDeletedPages(FOLDER_ID)).resolves.toEqual([
-      { id: PAGE_ID, name: "overview", title: "Overview", deletedAt },
+      { id: PAGE_ID, name: "overview", title: "Overview", deletedAt, ...EDITOR },
     ]);
     expect(mocks.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { folderId: FOLDER_ID, deletedAt: { not: null } } }),
@@ -204,9 +210,9 @@ describe("listDeletedPages", () => {
 describe("getDeletedPage", () => {
   it("looks for a deleted page with the id in the folder of that name", async () => {
     const stored = { id: PAGE_ID, deletedAt: new Date(), folder: { id: FOLDER_ID, name: "handbook" } };
-    mocks.findFirst.mockResolvedValue(stored);
+    mocks.findFirst.mockResolvedValue({ ...stored, ...EDITOR_ROW });
 
-    await expect(getDeletedPage("handbook", PAGE_ID)).resolves.toEqual(stored);
+    await expect(getDeletedPage("handbook", PAGE_ID)).resolves.toEqual({ ...stored, ...EDITOR });
     expect(mocks.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: PAGE_ID, folder: { name: "handbook" }, deletedAt: { not: null } } }),
     );

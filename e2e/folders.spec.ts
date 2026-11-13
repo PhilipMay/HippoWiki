@@ -1,7 +1,8 @@
 import type { Page } from "@playwright/test";
 
+import { KNOWN_USER } from "../prisma/known-users";
 import { collectErrors } from "./support/browser";
-import { createFolder, getTestDb, resetTestDatabase } from "./support/database";
+import { createFolder, createUser, getTestDb, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
 
 test.beforeEach(async () => {
@@ -18,6 +19,14 @@ async function expectNotFound(page: Page, address: string) {
 
   expect(response?.status()).toBe(404);
   await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
+}
+
+/** The logged-in user of the tests, who makes every change through the GUI. */
+const USER = KNOWN_USER.name;
+
+/** Text that ends with "by <user>", as the lists and views show the last editor. */
+function by(user: string): RegExp {
+  return new RegExp(`by ${user}$`);
 }
 
 test("the folder list shows an empty state without folders", async ({ page }) => {
@@ -269,4 +278,36 @@ test("the Escape key closes the rename dialog and returns to the folder", async 
   await expect(page).toHaveURL("/folders/kept-name");
   await expect(page.getByRole("dialog")).toHaveCount(0);
   expect((await getTestDb().folder.findUniqueOrThrow({ where: { id: folder.id } })).name).toBe("kept-name");
+});
+
+test("the folder list shows who changed each folder last; creating and renaming make it the logged-in user", async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  const bob = await createUser({ name: "bob" });
+  await createFolder({ name: "archive", editor: bob });
+  const items = page.getByRole("list", { name: "Folders" }).getByRole("listitem");
+
+  await page.goto("/folders");
+  await expect(items).toHaveText([by("bob")]);
+
+  await page.goto("/folders?action=new");
+  const dialog = page.getByRole("dialog", { name: "New folder" });
+  await dialog.getByLabel("Name").fill("handbook");
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(page).toHaveURL("/folders/handbook");
+
+  await page.goto("/folders");
+  await expect(items).toHaveText([by("bob"), by(USER)]);
+
+  await page.goto("/folders/archive?action=rename");
+  const rename = page.getByRole("dialog", { name: "Rename folder" });
+  await rename.getByLabel("Name").fill("old-stuff");
+  await rename.getByRole("button", { name: "Save" }).click();
+  await expect(page).toHaveURL("/folders/old-stuff");
+
+  await page.goto("/folders");
+  await expect(listLinks(page)).toHaveText([/^handbook/, /^old-stuff/]);
+  await expect(items).toHaveText([by(USER), by(USER)]);
+  expect(errors).toEqual([]);
 });

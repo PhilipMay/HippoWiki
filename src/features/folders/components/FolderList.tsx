@@ -35,7 +35,8 @@ export default function FolderList({ folders }: { folders: FolderSummary[] }) {
                 primary={folder.name}
                 secondary={
                   <>
-                    Updated <time dateTime={folder.updatedAt.toISOString()}>{formatDateTime(folder.updatedAt)}</time>
+                    Updated <time dateTime={folder.updatedAt.toISOString()}>{formatDateTime(folder.updatedAt)}</time> by{" "}
+                    {folder.lastEditedBy.name}
                   </>
                 }
               />

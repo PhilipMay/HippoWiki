@@ -1,7 +1,8 @@
 import type { Page } from "@playwright/test";
 
+import { KNOWN_USER } from "../prisma/known-users";
 import { collectErrors } from "./support/browser";
-import { createFolder, createPage, createTab, getTestDb, resetTestDatabase } from "./support/database";
+import { createFolder, createPage, createTab, createUser, getTestDb, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
 
 let handbook: Awaited<ReturnType<typeof createFolder>>;
@@ -29,6 +30,14 @@ async function deleteThroughDialog(page: Page, address: string) {
   await page.getByRole("main").getByRole("link", { name: "Delete" }).click();
   await expect(page).toHaveURL(`${address}?action=delete`);
   await deleteDialog(page).getByRole("button", { name: "Delete" }).click();
+}
+
+/** The logged-in user of the tests, who makes every change through the GUI. */
+const USER = KNOWN_USER.name;
+
+/** Text that ends with "by <user>", as the lists and views show the last editor. */
+function by(user: string): RegExp {
+  return new RegExp(`by ${user}$`);
 }
 
 test("deleting a page placed directly in a folder leads to the folder and removes it everywhere", async ({ page }) => {
@@ -146,4 +155,23 @@ test("deleting a page that was deleted in the meantime shows an error in the dia
 
   await expect(dialog.getByRole("alert")).toHaveText("This page no longer exists.");
   expect(await getTestDb().page.findUniqueOrThrow({ where: { id: created.id } })).toMatchObject({ deletedAt });
+});
+
+test("the deleted pages and the deleted page show the logged-in user who deleted the page", async ({ page }) => {
+  const errors = collectErrors(page);
+  const bob = await createUser({ name: "bob" });
+  const removed = await createPage({ folder: handbook, name: "removed", editor: bob });
+
+  await deleteThroughDialog(page, "/folders/handbook/removed.md");
+  await expect(page).toHaveURL("/folders/handbook");
+
+  await page.goto("/deleted-pages/handbook");
+  const rows = page
+    .getByRole("table", { name: "Deleted pages" })
+    .getByRole("row")
+    .filter({ has: page.getByRole("cell") });
+  await expect(rows.getByRole("cell").last()).toHaveText(USER);
+  await page.goto(`/deleted-pages/handbook/${removed.id}`);
+  await expect(page.getByRole("article").getByText(/^Deleted /)).toHaveText(by(USER));
+  expect(errors).toEqual([]);
 });

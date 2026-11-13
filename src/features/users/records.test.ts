@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { newUserData, placeholderEmail } from "@/features/users/records";
+import { newUserData, placeholderEmail, withLastEditor } from "@/features/users/records";
 
 describe("placeholderEmail", () => {
   it("is an address of the user in a domain that never resolves", () => {
@@ -44,5 +44,17 @@ describe("newUserData", () => {
 
     expect(data.name).toBe(data.username);
     expect(data.email).toBe(placeholderEmail("user-2"));
+  });
+});
+
+describe("withLastEditor", () => {
+  it("replaces the selected user row by the user name, named as the users service names it", () => {
+    const updatedAt = new Date();
+
+    expect(withLastEditor({ id: "1", updatedAt, lastEditedBy: { username: "alice" } })).toStrictEqual({
+      id: "1",
+      updatedAt,
+      lastEditedBy: { name: "alice" },
+    });
   });
 });

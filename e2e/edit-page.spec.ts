@@ -2,8 +2,9 @@ import type { Page as BrowserPage } from "@playwright/test";
 
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 
+import { KNOWN_USER } from "../prisma/known-users";
 import { collectErrors } from "./support/browser";
-import { createFolder, createPage, getTestDb, resetTestDatabase } from "./support/database";
+import { createFolder, createPage, createUser, getTestDb, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
 
 let handbook: Awaited<ReturnType<typeof createFolder>>;
@@ -28,6 +29,14 @@ async function expectNotFound(page: BrowserPage, address: string) {
 
   expect(response?.status()).toBe(404);
   await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
+}
+
+/** The logged-in user of the tests, who makes every change through the GUI. */
+const USER = KNOWN_USER.name;
+
+/** Text that ends with "by <user>", as the lists and views show the last editor. */
+function by(user: string): RegExp {
+  return new RegExp(`by ${user}$`);
 }
 
 test("editing the content shows the new version and keeps the name", async ({ page }) => {
@@ -284,5 +293,23 @@ test("a folder and a page can be created, and the page edited and renamed", asyn
   await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("link", { name: "lifecycle" }).click();
   await expect(listLinks(page)).toHaveText([/^Lifecycle page, edited.*lifecycle-renamed\.md/]);
   expect(await getTestDb().page.count()).toBe(1);
+  expect(errors).toEqual([]);
+});
+
+test("editing a page makes the logged-in user its last editor in the page view and the list", async ({ page }) => {
+  const errors = collectErrors(page);
+  const bob = await createUser({ name: "bob" });
+  await createPage({ folder: handbook, name: "edited", content: "# Edited", editor: bob });
+
+  await page.goto("/folders/handbook/edited.md");
+  await expect(page.getByText(/^Last updated /)).toHaveText(by("bob"));
+  await page.goto("/folders/handbook/edited.md?action=edit");
+  await page.getByLabel("Content").fill("# Edited\n\nNew text");
+  await page.getByRole("button", { name: "Save" }).click();
+
+  await expect(page).toHaveURL("/folders/handbook/edited.md");
+  await expect(page.getByText(/^Last updated /)).toHaveText(by(USER));
+  await page.goto("/folders/handbook");
+  await expect(page.getByRole("list", { name: "Contents" }).getByRole("listitem")).toHaveText([by(USER)]);
   expect(errors).toEqual([]);
 });

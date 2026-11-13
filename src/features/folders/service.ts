@@ -8,6 +8,7 @@
 import { z } from "zod";
 
 import { folderInputSchema, parseFolderId, parseTabId, tabInputSchema } from "@/features/folders/schema";
+import { LAST_EDITOR_SELECT, withLastEditor, type LastEditor } from "@/features/users/records";
 import { parseUserId } from "@/features/users/schema";
 import type { Actor } from "@/features/users/service";
 import { getDb } from "@/lib/db";
@@ -16,14 +17,14 @@ import { logger } from "@/lib/logger";
 import { parseName, type NameFieldErrors } from "@/lib/names";
 import type { Result } from "@/lib/result";
 
-/** What the list of folders shows of a folder. */
-export type FolderSummary = { id: string; name: string; updatedAt: Date };
+/** What the list of folders shows of a folder: when and by whom it was last changed. */
+export type FolderSummary = { id: string; name: string; updatedAt: Date; lastEditedBy: LastEditor };
 
 /** A folder: its id and its name, which is all an address or a write needs. */
 export type Folder = { id: string; name: string };
 
-/** What the list of tabs shows of a tab. */
-export type TabSummary = { id: string; name: string; updatedAt: Date };
+/** What the list of tabs shows of a tab: when and by whom it was last changed. */
+export type TabSummary = { id: string; name: string; updatedAt: Date; lastEditedBy: LastEditor };
 
 /** A tab together with its folder, as a tab address shows it. */
 export type TabWithFolder = { id: string; name: string; folder: { id: string; name: string } };
@@ -45,7 +46,7 @@ export type RenameFolderError = FolderNotFound | InvalidName | NameTaken | Faile
 export type CreateTabError = FolderNotFound | InvalidName | NameTaken | Failed;
 export type RenameTabError = TabNotFound | InvalidName | NameTaken | Failed;
 
-const SUMMARY_SELECT = { id: true, name: true, updatedAt: true } as const;
+const SUMMARY_SELECT = { id: true, name: true, updatedAt: true, ...LAST_EDITOR_SELECT } as const;
 const STORED_TAB_SELECT = { id: true, name: true, folder: { select: { name: true } } } as const;
 
 function invalidName(error: z.ZodError<{ name: string }>): { ok: false; error: InvalidName } {
@@ -70,7 +71,8 @@ function unknownActor(err: unknown, actor: Actor): { ok: false; error: Failed } 
 
 /** All folders, by name. */
 export async function listFolders(): Promise<FolderSummary[]> {
-  return getDb().folder.findMany({ select: SUMMARY_SELECT, orderBy: { name: "asc" } });
+  const folders = await getDb().folder.findMany({ select: SUMMARY_SELECT, orderBy: { name: "asc" } });
+  return folders.map(withLastEditor);
 }
 
 /** The folder with the given name, or `null` if the name is malformed or no such folder exists. */
@@ -84,11 +86,12 @@ export async function getFolderByName(name: string): Promise<Folder | null> {
 export async function listTabs(folderId: string): Promise<TabSummary[]> {
   const parsedFolderId = parseFolderId(folderId);
   if (!parsedFolderId) return [];
-  return getDb().tab.findMany({
+  const tabs = await getDb().tab.findMany({
     where: { folderId: parsedFolderId },
     select: SUMMARY_SELECT,
     orderBy: { name: "asc" },
   });
+  return tabs.map(withLastEditor);
 }
 
 /**

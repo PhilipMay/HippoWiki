@@ -1,7 +1,8 @@
 import type { Page } from "@playwright/test";
 
+import { KNOWN_USER } from "../prisma/known-users";
 import { collectErrors } from "./support/browser";
-import { createFolder, createPage, createTab, getTestDb, resetTestDatabase } from "./support/database";
+import { createFolder, createPage, createTab, createUser, getTestDb, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
 
 let handbook: Awaited<ReturnType<typeof createFolder>>;
@@ -31,6 +32,14 @@ async function openRestoreDialog(page: Page, id: string) {
   const dialog = restoreDialog(page);
   await expect(dialog).toBeVisible();
   return dialog;
+}
+
+/** The logged-in user of the tests, who makes every change through the GUI. */
+const USER = KNOWN_USER.name;
+
+/** Text that ends with "by <user>", as the lists and views show the last editor. */
+function by(user: string): RegExp {
+  return new RegExp(`by ${user}$`);
 }
 
 test("restoring a page directly into the folder under its old name leads to it", async ({ page }) => {
@@ -198,4 +207,26 @@ test("restoring a page that was restored in the meantime shows an error in the d
 
   await expect(dialog.getByRole("alert")).toHaveText("This page no longer exists.");
   await expect(dialog.getByLabel("Name")).toHaveValue("removed");
+});
+
+test("the restored page shows the logged-in user who restored it", async ({ page }) => {
+  const errors = collectErrors(page);
+  const bob = await createUser({ name: "bob" });
+  const removed = await createPage({
+    folder: handbook,
+    name: "removed",
+    content: CONTENT,
+    deletedAt: new Date("2026-11-01T10:00:00Z"),
+    editor: bob,
+  });
+
+  const dialog = await openRestoreDialog(page, removed.id);
+  await dialog.getByRole("radio", { name: "Directly in the folder" }).check();
+  await dialog.getByRole("button", { name: "Save" }).click();
+
+  await expect(page).toHaveURL("/folders/handbook/removed.md");
+  await expect(page.getByText(/^Last updated /)).toHaveText(by(USER));
+  await page.goto("/folders/handbook");
+  await expect(page.getByRole("list", { name: "Contents" }).getByRole("listitem")).toHaveText([by(USER)]);
+  expect(errors).toEqual([]);
 });

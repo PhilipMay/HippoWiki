@@ -2,8 +2,9 @@ import type { Page } from "@playwright/test";
 
 import { PLACE_FIELD } from "@/features/pages/forms";
 
+import { KNOWN_USER } from "../prisma/known-users";
 import { collectErrors } from "./support/browser";
-import { createFolder, createPage, createTab, getTestDb, resetTestDatabase } from "./support/database";
+import { createFolder, createPage, createTab, createUser, getTestDb, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
 
 const TITLE_HEADING_MISSING = "Content must start with a title heading: # Title";
@@ -33,6 +34,14 @@ async function openSaveDialog(page: Page, content: string, address = NEW_PAGE) {
   const dialog = saveDialog(page);
   await expect(dialog).toBeVisible();
   return dialog;
+}
+
+/** The logged-in user of the tests, who makes every change through the GUI. */
+const USER = KNOWN_USER.name;
+
+/** Text that ends with "by <user>", as the lists and views show the last editor. */
+function by(user: string): RegExp {
+  return new RegExp(`by ${user}$`);
 }
 
 test("creating a page derives title and name from the title heading and shows the page", async ({ page }) => {
@@ -418,5 +427,34 @@ test("in a folder without tabs the dialog offers only the folder itself", async 
   await expect(places).toHaveCount(1);
   await expect(places).toHaveAccessibleName("Directly in the folder");
   await expect(places).toBeChecked();
+  expect(errors).toEqual([]);
+});
+
+test("a new page shows the logged-in user as its last editor in the page view and the lists", async ({ page }) => {
+  const errors = collectErrors(page);
+  const bob = await createUser({ name: "bob" });
+  await createPage({ folder: handbook, name: "older-page", title: "Older page", editor: bob });
+  const guides = await createTab({ folder: handbook, name: "guides" });
+  await createPage({ tab: guides, name: "older-in-tab", title: "Older in tab", editor: bob });
+
+  const dialog = await openSaveDialog(page, "# Getting started");
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(page).toHaveURL("/folders/handbook/getting-started.md");
+  await expect(page.getByText(/^Last updated /)).toHaveText(by(USER));
+
+  const inTab = await openSaveDialog(page, "# In the tab", "/folders/handbook/guides?action=new");
+  await inTab.getByRole("button", { name: "Save" }).click();
+  await expect(page).toHaveURL("/folders/handbook/guides/in-the-tab.md");
+  await expect(page.getByText(/^Last updated /)).toHaveText(by(USER));
+
+  await page.goto("/folders/handbook");
+  const items = page.getByRole("list", { name: "Contents" }).getByRole("listitem");
+  // The pages placed directly in the folder, by title, then the tab.
+  await expect(items).toHaveText([/^Getting started.*/, /^Older page.*/, /^guides/]);
+  await expect(items.nth(0)).toHaveText(by(USER));
+  await expect(items.nth(1)).toHaveText(by("bob"));
+
+  await page.goto("/folders/handbook/guides");
+  await expect(page.getByRole("list", { name: "Pages" }).getByRole("listitem")).toHaveText([by(USER), by("bob")]);
   expect(errors).toEqual([]);
 });

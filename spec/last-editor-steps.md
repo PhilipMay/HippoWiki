@@ -39,7 +39,7 @@ deleted pages show who deleted them.
 ## Checklist
 
 - [x] Record the last editor
-- [ ] Show the last editor
+- [x] Show the last editor
 - [ ] Wrap-up
 
 ## Record the last editor
@@ -128,7 +128,9 @@ deleted them.
   that no other field of the user reaches a caller.
 - The components add "by <user name>" after the time that is already there:
   - `FolderList`: "Updated <time> by <user>"
-  - `FolderContentsList` (pages and tabs), `PageListItem` and `AllPagesList`: "Updated <time> by <user>"
+  - `FolderContentsList` (pages and tabs) and `PageListItem`: "Updated <time> by <user>"
+  - `AllPagesList`: a column "Updated by" after the column "Last update", because the list is a table like
+    `DeletedPagesList`
   - `PageView`: "Last updated <time> by <user>"
   - `DeletedPagesList`: a column "Deleted by" after the column "Deleted"
   - `DeletedPageView`: "Deleted <time> by <user>"

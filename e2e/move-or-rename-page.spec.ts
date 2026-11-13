@@ -3,8 +3,9 @@ import type { Page } from "@playwright/test";
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 import { PLACE_FIELD } from "@/features/pages/forms";
 
+import { KNOWN_USER } from "../prisma/known-users";
 import { collectErrors } from "./support/browser";
-import { createFolder, createPage, createTab, getTestDb, resetTestDatabase } from "./support/database";
+import { createFolder, createPage, createTab, createUser, getTestDb, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
 
 let handbook: Awaited<ReturnType<typeof createFolder>>;
@@ -33,6 +34,14 @@ async function expectNotFound(page: Page, address: string) {
 
   expect(response?.status()).toBe(404);
   await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
+}
+
+/** The logged-in user of the tests, who makes every change through the GUI. */
+const USER = KNOWN_USER.name;
+
+/** Text that ends with "by <user>", as the lists and views show the last editor. */
+function by(user: string): RegExp {
+  return new RegExp(`by ${user}$`);
 }
 
 test("Move or rename opens the dialog with the current name, place and address", async ({ page }) => {
@@ -428,3 +437,26 @@ for (const address of [
     await expect(page.getByRole("dialog")).toHaveCount(0);
   });
 }
+
+test("moving or renaming a page makes the logged-in user its last editor in the page view and the lists", async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  const bob = await createUser({ name: "bob" });
+  await createPage({ folder: handbook, name: "moved", content: "# Moved page", editor: bob });
+  await createPage({ tab: guides, name: "kept", content: "# Kept page", editor: bob });
+
+  await page.goto("/folders/handbook/moved.md?action=move-or-rename");
+  const dialog = dialogOf(page);
+  await dialog.getByLabel("Name").fill("renamed");
+  await dialog.getByRole("radio", { name: "Tab guides" }).check();
+  await dialog.getByRole("button", { name: "Save" }).click();
+
+  await expect(page).toHaveURL("/folders/handbook/guides/renamed.md");
+  await expect(page.getByText(/^Last updated /)).toHaveText(by(USER));
+  await page.goto("/folders/handbook/guides");
+  const items = page.getByRole("list", { name: "Pages" }).getByRole("listitem");
+  await expect(items).toHaveText([/^Kept page/, /^Moved page/]);
+  await expect(items).toHaveText([by("bob"), by(USER)]);
+  expect(errors).toEqual([]);
+});

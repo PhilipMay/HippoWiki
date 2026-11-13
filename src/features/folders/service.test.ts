@@ -125,10 +125,10 @@ const otherErrors = [
 
 describe("listFolders", () => {
   it("returns the folders of the database", async () => {
-    const folders = [{ id: FOLDER_ID, name: "handbook", updatedAt: new Date() }];
-    mocks.folderFindMany.mockResolvedValue(folders);
+    const folder = { id: FOLDER_ID, name: "handbook", updatedAt: new Date() };
+    mocks.folderFindMany.mockResolvedValue([{ ...folder, lastEditedBy: { username: "alice" } }]);
 
-    await expect(listFolders()).resolves.toBe(folders);
+    await expect(listFolders()).resolves.toEqual([{ ...folder, lastEditedBy: { name: "alice" } }]);
   });
 });
 
@@ -155,10 +155,10 @@ describe("getFolderByName", () => {
 
 describe("listTabs", () => {
   it("returns the tabs of the folder", async () => {
-    const tabs = [{ id: TAB_ID, name: "guides", updatedAt: new Date() }];
-    mocks.tabFindMany.mockResolvedValue(tabs);
+    const tab = { id: TAB_ID, name: "guides", updatedAt: new Date() };
+    mocks.tabFindMany.mockResolvedValue([{ ...tab, lastEditedBy: { username: "alice" } }]);
 
-    await expect(listTabs(FOLDER_ID)).resolves.toBe(tabs);
+    await expect(listTabs(FOLDER_ID)).resolves.toEqual([{ ...tab, lastEditedBy: { name: "alice" } }]);
     expect(mocks.tabFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { folderId: FOLDER_ID } }));
   });
 

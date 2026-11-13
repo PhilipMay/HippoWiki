@@ -46,7 +46,8 @@ export default async function DeletedPageView({ page, action }: DeletedPageViewP
       <Paper component="article" variant="outlined" sx={{ p: { xs: 2, sm: 4 } }}>
         <Stack spacing={1} sx={{ mb: 3 }}>
           <Typography variant="body2" color="text.secondary">
-            Deleted <time dateTime={page.deletedAt.toISOString()}>{formatDateTime(page.deletedAt)}</time>
+            Deleted <time dateTime={page.deletedAt.toISOString()}>{formatDateTime(page.deletedAt)}</time> by{" "}
+            {page.lastEditedBy.name}
           </Typography>
           <Stack direction="row" spacing={2} sx={{ pt: 1 }}>
             <Button component={Link} href={deletedPagePath(folderName, page.id, "restore")} variant="outlined">

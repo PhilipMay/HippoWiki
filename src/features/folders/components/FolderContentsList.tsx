@@ -60,7 +60,8 @@ export default function FolderContentsList({ folderName, pages, tabs }: FolderCo
                 primary={tab.name}
                 secondary={
                   <>
-                    Updated <time dateTime={tab.updatedAt.toISOString()}>{formatDateTime(tab.updatedAt)}</time>
+                    Updated <time dateTime={tab.updatedAt.toISOString()}>{formatDateTime(tab.updatedAt)}</time> by{" "}
+                    {tab.lastEditedBy.name}
                   </>
                 }
                 sx={{ overflowWrap: "anywhere" }}

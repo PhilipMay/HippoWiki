@@ -35,7 +35,8 @@ export default function PageListItem({ page, folderName, tabName, divider }: Pag
           secondary={
             <>
               {page.name}.md · Updated{" "}
-              <time dateTime={page.updatedAt.toISOString()}>{formatDateTime(page.updatedAt)}</time>
+              <time dateTime={page.updatedAt.toISOString()}>{formatDateTime(page.updatedAt)}</time> by{" "}
+              {page.lastEditedBy.name}
             </>
           }
           slotProps={{ primary: { sx: { overflowWrap: "anywhere" } } }}

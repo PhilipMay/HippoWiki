@@ -1,7 +1,8 @@
 import type { Page } from "@playwright/test";
 
+import { KNOWN_USER } from "../prisma/known-users";
 import { collectErrors } from "./support/browser";
-import { createFolder, createPage, createTab, getTestDb, resetTestDatabase } from "./support/database";
+import { createFolder, createPage, createTab, createUser, getTestDb, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
 
 let handbook: Awaited<ReturnType<typeof createFolder>>;
@@ -31,6 +32,14 @@ async function expectNotFound(page: Page, address: string) {
 
   expect(response?.status()).toBe(404);
   await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
+}
+
+/** The logged-in user of the tests, who makes every change through the GUI. */
+const USER = KNOWN_USER.name;
+
+/** Text that ends with "by <user>", as the lists and views show the last editor. */
+function by(user: string): RegExp {
+  return new RegExp(`by ${user}$`);
 }
 
 test("creating a tab through the dialog shows the new tab", async ({ page }) => {
@@ -541,3 +550,35 @@ for (const address of [
     await expect(page.getByRole("dialog")).toHaveCount(0);
   });
 }
+
+test("the folder contents show who changed each tab last; creating and renaming make it the logged-in user", async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  const bob = await createUser({ name: "bob" });
+  await createTab({ folder: handbook, name: "guides", editor: bob });
+  const items = page.getByRole("list", { name: "Contents" }).getByRole("listitem");
+
+  await page.goto("/folders/handbook");
+  await expect(items).toHaveText([by("bob")]);
+
+  await page.goto("/folders/handbook?action=new-tab");
+  const dialog = page.getByRole("dialog", { name: "New tab" });
+  await dialog.getByLabel("Name").fill("news");
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(page).toHaveURL("/folders/handbook/news");
+
+  await page.goto("/folders/handbook");
+  await expect(items).toHaveText([by("bob"), by(USER)]);
+
+  await page.goto("/folders/handbook/guides?action=rename");
+  const rename = page.getByRole("dialog", { name: "Rename tab" });
+  await rename.getByLabel("Name").fill("manuals");
+  await rename.getByRole("button", { name: "Save" }).click();
+  await expect(page).toHaveURL("/folders/handbook/manuals");
+
+  await page.goto("/folders/handbook");
+  await expect(contentsLinks(page)).toHaveText([/^manuals/, /^news/]);
+  await expect(items).toHaveText([by(USER), by(USER)]);
+  expect(errors).toEqual([]);
+});

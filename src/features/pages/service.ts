@@ -15,6 +15,7 @@ import {
   parsePageId,
   type PageFieldErrors,
 } from "@/features/pages/schema";
+import { LAST_EDITOR_SELECT, withLastEditor, type LastEditor } from "@/features/users/records";
 import { parseUserId } from "@/features/users/schema";
 import type { Actor } from "@/features/users/service";
 import { getDb } from "@/lib/db";
@@ -23,8 +24,8 @@ import { logger } from "@/lib/logger";
 import { parseName, type NameFieldErrors } from "@/lib/names";
 import type { Result } from "@/lib/result";
 
-/** What the lists show of a page: no content. */
-export type PageSummary = { id: string; name: string; title: string; updatedAt: Date };
+/** What the lists show of a page: no content, and when and by whom it was last changed. */
+export type PageSummary = { id: string; name: string; title: string; updatedAt: Date; lastEditedBy: LastEditor };
 
 /** What the list of all pages of a folder shows of a page: its summary and its tab, if it has one. */
 export type PageWithTabSummary = PageSummary & { tab: { name: string } | null };
@@ -36,20 +37,34 @@ export type PageWithPlace = {
   title: string;
   content: string;
   updatedAt: Date;
+  lastEditedBy: LastEditor;
   folder: { id: string; name: string };
   tab: { id: string; name: string } | null;
 };
 
-/** What the list of deleted pages shows of a page: no content. */
-export type DeletedPageSummary = { id: string; name: string; title: string; deletedAt: Date };
+/**
+ * What the list of deleted pages shows of a page: no content, and when and by whom it was deleted. Nothing writes to a
+ * deleted page, so its last editor is the user who deleted it.
+ */
+export type DeletedPageSummary = {
+  id: string;
+  name: string;
+  title: string;
+  deletedAt: Date;
+  lastEditedBy: LastEditor;
+};
 
-/** A deleted page with its folder, as the deleted page view shows it. A deleted page has no tab. */
+/**
+ * A deleted page with its folder, as the deleted page view shows it. A deleted page has no tab; its last editor is the
+ * user who deleted it.
+ */
 export type DeletedPage = {
   id: string;
   name: string;
   title: string;
   content: string;
   deletedAt: Date;
+  lastEditedBy: LastEditor;
   folder: { id: string; name: string };
 };
 
@@ -77,7 +92,7 @@ export type MoveOrRenamePageError = PageNotFound | TabNotFound | InvalidInput<Na
 export type DeletePageError = PageNotFound | Failed;
 export type RestorePageError = PageNotFound | TabNotFound | InvalidInput<NameFieldErrors> | NameTaken | Failed;
 
-const SUMMARY_SELECT = { id: true, name: true, title: true, updatedAt: true } as const;
+const SUMMARY_SELECT = { id: true, name: true, title: true, updatedAt: true, ...LAST_EDITOR_SELECT } as const;
 
 const STORED_PAGE_SELECT = {
   id: true,
@@ -90,22 +105,24 @@ const STORED_PAGE_SELECT = {
 export async function listFolderPages(folderId: string): Promise<PageSummary[]> {
   const parsedFolderId = parseFolderId(folderId);
   if (!parsedFolderId) return [];
-  return getDb().page.findMany({
+  const pages = await getDb().page.findMany({
     where: { folderId: parsedFolderId, tabId: null, deletedAt: null },
     select: SUMMARY_SELECT,
     orderBy: { name: "asc" },
   });
+  return pages.map(withLastEditor);
 }
 
 /** The pages of the tab, without their content, by name; deleted pages are left out. */
 export async function listTabPages(tabId: string): Promise<PageSummary[]> {
   const parsedTabId = parseTabId(tabId);
   if (!parsedTabId) return [];
-  return getDb().page.findMany({
+  const pages = await getDb().page.findMany({
     where: { tabId: parsedTabId, deletedAt: null },
     select: SUMMARY_SELECT,
     orderBy: { name: "asc" },
   });
+  return pages.map(withLastEditor);
 }
 
 /**
@@ -120,7 +137,7 @@ export async function listAllFolderPages(folderId: string): Promise<PageWithTabS
     select: { ...SUMMARY_SELECT, tab: { select: { name: true } } },
     orderBy: [{ name: "asc" }, { tab: { name: "asc" } }],
   });
-  return directPagesFirst(pages);
+  return directPagesFirst(pages.map(withLastEditor));
 }
 
 /**
@@ -153,7 +170,7 @@ export async function getPage(
   const tab = tabName === null ? null : parseName(tabName);
   const name = parseName(pageName);
   if (!folder || !name || (tabName !== null && !tab)) return null;
-  return getDb().page.findFirst({
+  const page = await getDb().page.findFirst({
     where: {
       name,
       folder: { name: folder },
@@ -166,10 +183,12 @@ export async function getPage(
       title: true,
       content: true,
       updatedAt: true,
+      ...LAST_EDITOR_SELECT,
       folder: { select: { id: true, name: true } },
       tab: { select: { id: true, name: true } },
     },
   });
+  return page && withLastEditor(page);
 }
 
 /**
@@ -187,11 +206,11 @@ export async function listDeletedPages(folderId: string): Promise<DeletedPageSum
   if (!parsedFolderId) return [];
   const pages = await getDb().page.findMany({
     where: { folderId: parsedFolderId, deletedAt: { not: null } },
-    select: { id: true, name: true, title: true, deletedAt: true },
+    select: { id: true, name: true, title: true, deletedAt: true, ...LAST_EDITOR_SELECT },
     // The id keeps pages deleted at the same moment in a stable order.
     orderBy: [{ deletedAt: "desc" }, { id: "asc" }],
   });
-  return pages.flatMap((page) => asDeleted(page) ?? []);
+  return pages.flatMap((page) => asDeleted(withLastEditor(page)) ?? []);
 }
 
 /**
@@ -210,10 +229,11 @@ export async function getDeletedPage(folderName: string, id: string): Promise<De
       title: true,
       content: true,
       deletedAt: true,
+      ...LAST_EDITOR_SELECT,
       folder: { select: { id: true, name: true } },
     },
   });
-  return page && asDeleted(page);
+  return page && asDeleted(withLastEditor(page));
 }
 
 function invalidInput<Input>(error: z.ZodError<Input>): {

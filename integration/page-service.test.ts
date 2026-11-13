@@ -111,7 +111,7 @@ describe("the fields of a page", () => {
   it("returns exactly the declared fields of a page in a tab", async () => {
     const folder = await createFolder({ name: "docs" });
     const tab = await createTab({ folder, name: "guides" });
-    const page = await createPage({ tab, name: "intro", content: "# Intro\n\nText" });
+    const page = await createPage({ tab, name: "intro", content: "# Intro\n\nText", editor: actor });
 
     await expect(pageService.getPage("docs", "guides", "intro")).resolves.toStrictEqual({
       id: page.id,
@@ -119,6 +119,7 @@ describe("the fields of a page", () => {
       title: "Intro",
       content: "# Intro\n\nText",
       updatedAt: page.updatedAt,
+      lastEditedBy: { name: "alice" },
       folder: { id: folder.id, name: "docs" },
       tab: { id: tab.id, name: "guides" },
     });
@@ -126,7 +127,7 @@ describe("the fields of a page", () => {
 
   it("returns exactly the declared fields of a page placed directly in a folder", async () => {
     const folder = await createFolder({ name: "docs" });
-    const page = await createPage({ folder, name: "intro" });
+    const page = await createPage({ folder, name: "intro", editor: actor });
 
     await expect(pageService.getPage("docs", null, "intro")).resolves.toStrictEqual({
       id: page.id,
@@ -134,6 +135,7 @@ describe("the fields of a page", () => {
       title: page.title,
       content: page.content,
       updatedAt: page.updatedAt,
+      lastEditedBy: { name: "alice" },
       folder: { id: folder.id, name: "docs" },
       tab: null,
     });
@@ -142,7 +144,7 @@ describe("the fields of a page", () => {
   it("returns exactly the declared fields of a deleted page", async () => {
     const folder = await createFolder({ name: "docs" });
     const deletedAt = new Date("2026-11-03T10:00:00Z");
-    const page = await createPage({ folder, name: "intro", content: "# Intro", deletedAt });
+    const page = await createPage({ folder, name: "intro", content: "# Intro", deletedAt, editor: actor });
 
     await expect(pageService.getDeletedPage("docs", page.id)).resolves.toStrictEqual({
       id: page.id,
@@ -150,6 +152,7 @@ describe("the fields of a page", () => {
       title: "Intro",
       content: "# Intro",
       deletedAt,
+      lastEditedBy: { name: "alice" },
       folder: { id: folder.id, name: "docs" },
     });
   });
@@ -561,5 +564,58 @@ describe("the last editor of pages", () => {
     );
 
     expect(await getTestDb().page.findMany({ orderBy: { name: "asc" } })).toStrictEqual(before);
+  });
+});
+
+describe("the last editor in the page reads", () => {
+  it("is the user name of the last editor in every list and in the page view", async () => {
+    const bob = await createUser({ name: "bob" });
+    const folder = await createFolder({ name: "docs" });
+    const tab = await createTab({ folder, name: "guides" });
+    await createPage({ folder, name: "direct", editor: actor });
+    await createPage({ tab, name: "in-tab", editor: bob });
+
+    const editors = (pages: { name: string; lastEditedBy: { name: string } }[]) =>
+      pages.map(({ name, lastEditedBy }) => [name, lastEditedBy.name]);
+    expect(editors(await pageService.listFolderPages(folder.id))).toEqual([["direct", "alice"]]);
+    expect(editors(await pageService.listTabPages(tab.id))).toEqual([["in-tab", "bob"]]);
+    expect(editors(await pageService.listAllFolderPages(folder.id))).toEqual([
+      ["direct", "alice"],
+      ["in-tab", "bob"],
+    ]);
+    await expect(pageService.getPage("docs", "guides", "in-tab")).resolves.toMatchObject({
+      lastEditedBy: { name: "bob" },
+    });
+  });
+
+  it("is the user who changed the page last, after a write through the service", async () => {
+    const bob = await createUser({ name: "bob" });
+    const folder = await createFolder({ name: "docs" });
+    const page = await createPage({ folder, name: "intro", editor: actor });
+
+    await pageService.updatePageContent(bob, page.id, { content: "# New" });
+
+    await expect(pageService.getPage("docs", null, "intro")).resolves.toMatchObject({ lastEditedBy: { name: "bob" } });
+    expect((await pageService.listFolderPages(folder.id))[0]?.lastEditedBy).toEqual({ name: "bob" });
+  });
+
+  it("is the user who deleted the page in the deleted pages and the deleted page view", async () => {
+    const bob = await createUser({ name: "bob" });
+    const folder = await createFolder({ name: "docs" });
+    const page = await createPage({ folder, name: "intro", editor: actor });
+
+    await pageService.deletePage(bob, page.id);
+
+    await expect(pageService.listDeletedPages(folder.id)).resolves.toMatchObject([{ lastEditedBy: { name: "bob" } }]);
+    await expect(pageService.getDeletedPage("docs", page.id)).resolves.toMatchObject({ lastEditedBy: { name: "bob" } });
+  });
+
+  it("returns no other field of the user", async () => {
+    const folder = await createFolder({ name: "docs" });
+    await createPage({ folder, name: "intro", editor: actor });
+
+    const [summary] = await pageService.listFolderPages(folder.id);
+
+    expect(summary?.lastEditedBy).toStrictEqual({ name: "alice" });
   });
 });
