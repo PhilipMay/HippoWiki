@@ -44,7 +44,7 @@ Where each kind of information lives after this plan:
 
 ## Checklist
 
-- [ ] Feature spec rules and reference check
+- [x] Feature spec rules and reference check
 - [ ] Explanations into the code
 - [ ] Content specs
 - [ ] Users and login spec
@@ -86,6 +86,11 @@ The rules for feature specs are written down before any spec is rewritten, and b
     existing file.
   - Every broken reference is printed with its file and line; the script exits with 1 if there is any.
   - Bare file names inside a sentence that already names their directory, such as `wait.ts`, are not checked.
+  - A span that ends in `.md` is checked as a whole path, from the repository root and, for a bare name, also in
+    `spec/`, so that a reference into a directory that does not exist at all (such as `reports/`) is caught. A rule
+    "every span with a slash" would flag package names and other non-paths such as `next/server` or `linux/arm64`.
+  - Step plans (`spec/*-steps.md`) are skipped: they name files that do not exist yet, and this plan quotes the
+    broken `reports/` reference itself. `testing.md` says so.
 - Add a step `npm run docs:check` to the `lint` workflow, after `npm run lint`.
 - Remove the reference to `reports/Login lockout and client IP handling.md` from `users-and-login.md` ("Decisions")
   and `roadmap.md` ("Login and Sessions"); the text around it stays.

@@ -105,8 +105,7 @@ listed first; there is no order across themes.
   (`users-and-login.md`, `container-image.md`).
 - Login budget for known clients: a budget of its own for clients that have logged in before, so that the right
   password from such a client is not refused while the hour window of its name is full. The candidate is a signed
-  device cookie that a successful login sets; see `reports/Login lockout and client IP handling.md` and "Current
-  limits" in `users-and-login.md`.
+  device cookie that a successful login sets; see "Current limits" in `users-and-login.md`.
 - Ending all sessions at once: a user logs out of all browsers at once.
 - TOTP: a second factor with one-time codes from an authenticator app (`users-and-login.md`).
 - Passkeys (WebAuthn): login with a passkey (`users-and-login.md`).

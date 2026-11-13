@@ -284,10 +284,11 @@ first, with a token that has the `read:packages` scope.
 | `npm run lint`                | Lint with ESLint                                                      |
 | `npm run format`              | Format all files with Prettier                                        |
 | `npm run format:check`        | Check formatting without changing files                               |
+| `npm run docs:check`          | Check that the file references in the docs point to existing files    |
 | `npm run typecheck`           | Generate the Next.js route types and run the type checker             |
 | `npm run test`                | Run the unit tests with Vitest                                        |
 | `npm run test:coverage`       | Run the unit tests and measure their coverage (report in `coverage/`) |
-| `npm run check`               | Run `format:check`, `lint`, `typecheck` and `test` in a row           |
+| `npm run check`               | Run `format:check`, `docs:check`, `lint`, `typecheck` and `test`      |
 | `npm run test:integration`    | Run the integration tests against a throwaway test database           |
 | `npm run test:e2e`            | Run the end-to-end tests with Playwright                              |
 | `npm run test:e2e:ui`         | Run the end-to-end tests in the Playwright UI                         |

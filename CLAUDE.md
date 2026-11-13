@@ -37,7 +37,7 @@ Node.js is managed with nvm; every shell session needs `nvm use` first (it reads
 ```bash
 source ~/.nvm/nvm.sh && nvm use
 npm install
-npm run check   # format:check, lint, typecheck, test
+npm run check   # format:check, docs:check, lint, typecheck, test
 npm run test:coverage  # unit test coverage, report in coverage/
 npm run build
 npm run test:integration  # integration tests against a throwaway database container, needs only Podman

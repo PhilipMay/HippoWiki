@@ -56,6 +56,17 @@ How the code is tested. Commands are listed in `README.md`.
   Markdown tables, the totals and a collapsed table per file: appended to the GitHub job summary when
   `GITHUB_STEP_SUMMARY` is set, printed otherwise.
 
+## Doc references
+
+- `npm run docs:check` (`scripts/check-doc-references.ts`) checks that the files named in `spec/*.md`, `README.md` and
+  `CLAUDE.md` exist. It is part of `npm run check` and of the `lint` workflow.
+- A code span counts as a reference when it starts with a top-level file or directory of the repository (checked by its
+  first word, so a command such as `scripts/image.sh smoke` passes) or ends in `.md` (a bare name such as `pages.md`
+  is also looked up in `spec/`). Bare file names such as `wait.ts`, spans with a placeholder or a glob (`<`, `*`) and
+  paths that Git ignores are not checked.
+- Step plans (`spec/*-steps.md`) are not checked: they name files that do not exist yet.
+- A broken reference is printed with its file and line, and the check fails.
+
 ## Integration tests
 
 - Vitest project `integration` (`vitest.config.ts`); tests live in `integration/` (`npm run test:integration`). They
@@ -191,7 +202,7 @@ How the code is tested. Commands are listed in `README.md`.
 - GitHub Actions runs the checks in seven workflows in `.github/workflows/`, each named like its file, so a failure
   shows at a glance which kind of check broke:
   - `format_check`: `npm run format:check`
-  - `lint`: `npm run build`, `npm run typecheck`, `npm run lint`, as separate steps in this order
+  - `lint`: `npm run build`, `npm run typecheck`, `npm run lint`, `npm run docs:check`, as separate steps in this order
   - `unit_tests`: `npm run test:coverage`
   - `integration_tests`: `npm run test:integration`, using the Podman preinstalled on the runner
   - `end_to_end_tests`: `npm run test:e2e`, against the development server

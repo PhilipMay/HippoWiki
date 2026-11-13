@@ -49,8 +49,8 @@ The last step of every plan moves its lasting content into the other spec files 
 Goal/Build/Test sections as the other steps, and its Build section covers, in this order (the template below has the
 same items, ready to copy):
 
-1. Describe the feature as built in `spec/<feature>.md` (in the style of `pages.md`), or extend an existing feature
-   spec; update `architecture.md`, `testing.md` or `tech.md` where conventions changed.
+1. Describe the feature as built in `spec/<feature>.md` (see "Feature specs"), or extend an existing feature spec;
+   update `architecture.md`, `testing.md` or `tech.md` where conventions changed.
 2. Remove the feature from `roadmap.md`.
 3. Check that `README.md` has all the commands a developer needs.
 4. Delete this step file.
@@ -59,6 +59,24 @@ same items, ready to copy):
 The wrap-up step is not ticked off, because its step file is deleted; its commit includes the deletion of the step
 file. The push of the finished plan follows this commit (see "Step plans"). Otherwise it follows the same rules as
 every other step.
+
+## Feature specs
+
+A feature spec (`spec/<feature>.md`) describes a feature as built. The wrap-up step of its plan writes or extends it.
+
+- A feature spec says what a user or operator can rely on and why, and points to the code for how.
+- Its parts, in this order: a short purpose; pointers to the code and the tests; the rules, under headings of their own
+  as the feature needs them (such as "Addresses" or "Failed logins"); "Decisions"; "Current limits".
+- A rule is something a user, an operator or other code relies on. A guarantee that must hold, above all one about
+  security, stays in the spec as a rule even where the code shows the mechanism, because the spec is what a review
+  checks the code against.
+- A feature spec does not contain: the field lists of the models, constants and patterns that the code names, exact
+  messages, focus, hydration and layout details, and how a read or write works (which query, condition or transaction
+  it uses). These live in the code, its comments and the tests.
+- Pointers name files, directories and test files, and a function only where a reader needs that one function. They
+  never name line numbers. `npm run docs:check` checks that the files they name exist (see `testing.md`).
+- "Decisions" gives the reasons and the alternatives that were rejected; "Current limits" says what is deliberately
+  missing, and `roadmap.md` holds what may come later.
 
 ## Rules for every step
 
@@ -160,8 +178,8 @@ Move the lasting content of this plan into the other spec files and remove the p
 
 ### Build
 
-1. Describe the feature as built in `spec/<feature>.md` (in the style of `pages.md`), or extend an existing feature
-   spec; update `architecture.md`, `testing.md` or `tech.md` where conventions changed.
+1. Describe the feature as built in `spec/<feature>.md` (see "Feature specs" in `workflow.md`), or extend an existing
+   feature spec; update `architecture.md`, `testing.md` or `tech.md` where conventions changed.
 2. Remove the feature from `roadmap.md`.
 3. Check that `README.md` has all the commands a developer needs.
 4. Delete this step file.

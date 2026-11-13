@@ -308,8 +308,6 @@ in two layers, as the authentication guide of Next.js describes:
   `Headers`: the service stays free of forwarding headers and of the configuration of the deployment.
 - An account is never disabled after many failures, unlike NIST SP 800-63B-4 asks after 100 failures in a row: with
   one admin and no mail there would be no way back in.
-- `reports/Login lockout and client IP handling.md` compares how other systems key the wait and find the client
-  address.
 - A container needs `DATABASE_URL` and `HIPPOWIKI_ADMIN_PASSWORD` and nothing else, so the secret of the session
   cookies is stored in the database instead of a variable.
 - Who is calling is found out in the adapters, from the session cookie. What the caller may do is checked in the
