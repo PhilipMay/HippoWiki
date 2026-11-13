@@ -7,23 +7,15 @@ HippoWiki is a knowledge management system, built with Next.js (App Router) and 
 
 ## What the prototype can do
 
-The prototype manages wiki pages written in Markdown, organises them in folders and stores them in PostgreSQL:
+The prototype manages wiki pages written in Markdown, organises them in folders and optional tabs and stores them in
+PostgreSQL: create, view, edit, move and rename pages, create and rename folders and tabs, and delete pages and
+restore them from the deleted pages of their folder. Folders and tabs cannot be deleted yet.
 
-- create, list and rename folders; every folder has its own address `/folders/<folder>`,
-- divide a folder into tabs (`/folders/<folder>/<tab>`), listed like sub-folders in one list with the folder's pages,
-  after them; create and rename tabs,
-- list the pages placed directly in a folder, the pages of a tab, or all pages of a folder with their tabs, by name,
-- view a page with its Markdown rendered at `/folders/<folder>/<page>.md` or `/folders/<folder>/<tab>/<page>.md`,
-- create and edit pages; a new page goes directly into the folder or into one of its tabs,
-- move or rename a page in one dialog: a new name, a new place within its folder (into a tab, to another tab or back
-  to the folder), or both,
-- delete a page; each folder lists its deleted pages at `/deleted-pages/<folder>`, where they can be read and restored
-  into the folder under a chosen name and place.
+The wiki can only be used after a login, and the admin creates the other users. Everyone who is logged in can read and
+change all content.
 
-Folders and tabs cannot be deleted yet.
-
-The wiki can only be used after a login: every address except the login page `/login` and `/api/health` leads to
-the login page. Everyone who is logged in can read and change all content (see "Users").
+What is built is described in `spec/`: `spec/content-structure.md`, `spec/pages.md`, `spec/page-deletion.md`,
+`spec/users-and-login.md` and `spec/container-image.md`. `CLAUDE.md` lists all spec files.
 
 ## Prerequisites
 
@@ -109,20 +101,9 @@ The application accesses the database with [Prisma](https://www.prisma.io/) 7. T
 
 ## Users
 
-Users log in at `/login` with a user name and a password; the header shows who is logged in and has "Log out". A
-session lasts 30 days. Nothing can be read or changed without a login. After 5 failed logins in a row for a user
-name, the next login for that name has to wait 1 minute, and twice as long after each further failure, up to 15
-minutes; the answer is the same for names that exist and names that do not. Whoever logs in with a first password,
-such as the admin after the admin setup, has to set a password of their own at `/change-password` before doing
-anything else; that ends the other sessions of the user.
-
-The admin sees all users at `/users`, each with the time it was created and a mark while it still has its first
-password; the header shows the menu entry "Users" to the admin only, and for every other user the address is not
-found. There the admin also creates users, with "New user" (`/users?action=create`): the admin enters a
-user name, HippoWiki generates a first password of 20 characters and shows it exactly once, with a copy button, for
-the admin to pass on. The new user has to change it at the first login. A lost first password cannot be shown again
-or reset yet. User accounts are stored in the database. There is one admin account, named `admin`; it is
-created by the admin setup or by the seed:
+The login, the wait after failed logins, the forced password change of a first password and the user list of the admin
+are described in `spec/users-and-login.md`. There is one admin account, named `admin`; it is created by the seed or by
+the admin setup:
 
 - `npm run db:seed` inserts two known users for development (`prisma/known-users.ts`), with the password change
   already done. Running it again gives them these passwords back.
@@ -134,8 +115,7 @@ created by the admin setup or by the seed:
 
 - `npm run admin:setup` creates the admin account with the password from `HIPPOWIKI_ADMIN_PASSWORD` (8 to 128
   characters), which it reads from the environment or from `.env`, and which the admin has to change at the first
-  login. When the admin exists, it does nothing and ignores the variable. It exits with a non-zero code when the admin
-  has to be created and the variable is missing or not a valid password.
+  login. When the admin exists, it does nothing and ignores the variable.
 
   ```bash
   HIPPOWIKI_ADMIN_PASSWORD=first-password npm run admin:setup
@@ -160,34 +140,21 @@ npm run test:e2e:ui           # open the Playwright UI to run and debug tests
 npx playwright show-report   # open the HTML report of the last run
 ```
 
-- Each run starts its own throwaway PostgreSQL container `hippowiki-test-db` (port 5433, data in memory only, database
-  `hippowiki_test`). The global setup (`e2e/global-setup.ts`) starts it and applies the migrations; the global
-  teardown (`e2e/global-teardown.ts`) removes it again, also when tests fail or the run is stopped with Ctrl+C. If a
-  run is killed hard and leaves the container behind, the next run removes it first. The development database and
-  its container `hippowiki-db` are never touched, and do not need to run.
-- Playwright starts its own development server on port 3100 with the build directory `.next-e2e`, so it can run next
-  to `npm run dev`, and stops it after the run. `npm run test:e2e:production` builds the app and starts the
-  production server instead, to test what only a production build does, such as prerendering and caching; it takes
-  longer because of the build.
-- The tests log in once: the setup project `e2e/auth.setup.ts` logs in as the known users `admin` and `alice` and
-  saves their browser states and sessions in `e2e/.auth/` (ignored by Git). Every test starts logged in as `alice`;
-  a spec that needs the admin or no user says so with `test.use({ storageState: ... })` and the constants of
-  `e2e/support/auth.ts`. `npx playwright test` runs the setup project by itself, also for a single spec. The
-  Playwright UI (`npm run test:e2e:ui`) does not: run `auth.setup.ts` there once first, or enable the `setup`
-  project in the project filter of the UI, otherwise every test ends on the login page.
-- `e2e/support/browser.ts` has `collectErrors()`, which records console errors of the browser page.
-- `e2e/support/database.ts` has helpers for tests: `createFolder()`, `createTab()` and `createPage()` insert a folder,
-  a tab or a page (in a given folder or tab, or in a new folder) directly into the test database, `createUser()`
-  inserts a user with a password, `resetTestDatabase()` empties it and puts the known users (`admin` and `alice`, see
-  "Users") and the sessions of their saved logins back, and `getTestDb()` returns a Prisma client for it. All tests share this database and run one
-  after another.
+- Each run starts its own throwaway PostgreSQL container `hippowiki-test-db` (port 5433) and removes it afterwards, also
+  when tests fail or the run is stopped with Ctrl+C. The development database is never touched and does not need to
+  run.
+- Playwright starts its own server on port 3100, so the tests can run next to `npm run dev`.
+  `npm run test:e2e:production` builds the app first and takes longer.
+- Every test starts logged in as `alice`, with a session that the setup project `e2e/auth.setup.ts` saves once per
+  run. `npx playwright test` runs the setup project by itself, also for a single spec. The Playwright UI
+  (`npm run test:e2e:ui`) does not: run `auth.setup.ts` there once first, or enable the `setup` project in the project
+  filter of the UI, otherwise every test ends on the login page.
+- The conventions and helpers of the tests are described in `spec/testing.md`.
 
 ## Integration tests
 
-The integration tests run with Vitest against the same throwaway PostgreSQL container `hippowiki-test-db` as the
-end-to-end tests, and live in `integration/`. They check what the unit tests can only mock: the errors that Prisma
-reports for the unique and foreign key constraints (`src/lib/db-errors.ts`) and the services of the features on real
-data. Like the end-to-end tests, they need only the Podman machine:
+The integration tests run with Vitest against the same throwaway database container as the end-to-end tests and live
+in `integration/`. Like the end-to-end tests, they need only the Podman machine:
 
 ```bash
 npm run test:integration
@@ -213,25 +180,9 @@ npm run image:build   # build the image hippowiki:local for this machine
 npm run image:smoke   # check the built image against a throwaway database
 ```
 
-- The wiki needs HTTPS in front of the container, for example a reverse proxy with TLS: the session cookie is
-  `Secure`, so over plain HTTP nobody stays logged in (browsers make an exception for `localhost`).
-- The image reads `DATABASE_URL` in the form `postgresql://<user>:<password>@<host>:<port>/<database>`, without
-  parameters such as `sslmode`; special characters in the password are percent-encoded. `PORT` is optional (default
-  3000). The image contains no `.env` file and no database address.
-- The second variable is `HIPPOWIKI_ADMIN_PASSWORD`: the first password of the admin account `admin`, 8 to 128
-  characters. A container needs it only while the database has no admin.
-- The optional `HIPPOWIKI_LOG_CLIENT_ADDRESS=true` logs the forwarding headers (`X-Forwarded-For`, `X-Real-Ip` and the
-  like, never cookies) of every request, to check the reverse proxy in front of the container; see "Configuration" in
-  `spec/container-image.md`. It is off by default.
-- The optional `HIPPOWIKI_TRUSTED_PROXIES` says how many reverse proxies are in front of the container, one digit from
-  `0` to `9`. With `1` or more the wait after failed logins counts per client address, taken from `X-Forwarded-For`;
-  set it only when the container is reachable through the reverse proxy alone. It is `0` by default: no header is read
-  and the wait counts per user name; see "Configuration" in `spec/container-image.md`.
-- On every start the container applies the pending migrations to the database of `DATABASE_URL`
-  (`prisma migrate deploy`): an empty database gets its tables, a migrated one stays as it is. Then it creates the
-  admin account with the password from `HIPPOWIKI_ADMIN_PASSWORD` if the database has none; an existing admin stays
-  as it is and the variable is ignored. Then the server starts on port 3000. When the migration fails, or the admin
-  has to be created and the variable is missing or not a valid password, the container exits without serving.
+- What a container needs (`DATABASE_URL`, `HIPPOWIKI_ADMIN_PASSWORD` for the first start, HTTPS in front of it, and
+  the optional variables), what it does when it starts and what the smoke test checks is described in
+  `spec/container-image.md`.
 - To only apply the migrations, start the image with `./image-migrate.sh` as its command:
 
   ```bash
@@ -248,24 +199,10 @@ npm run image:smoke   # check the built image against a throwaway database
   podman run --rm --env DATABASE_URL=postgresql://user:password@host:5432/hippowiki --env HIPPOWIKI_ADMIN_PASSWORD=first-password hippowiki:local ./image-admin.sh
   ```
 
-- `npm run image:smoke` checks the image of `npm run image:build`. In the pod `hippowiki-smoke` it starts PostgreSQL
-  with an empty database in memory and a container of the image, whose port 3000 is published as `127.0.0.1:3200`.
-  It checks that a container without a valid `HIPPOWIKI_ADMIN_PASSWORD` exits instead of serving, that the start
-  creates the tables and the admin account and serves the login page, `/api/health` and the static files, that the
-  login page carries the security headers, that `/folders` and the image optimizer lead to the login page, that the
-  password hashing works in the image, that the server listens on all interfaces and not as root, that the user of the
-  server can write only the cache of Next.js, and that the image has no `.env` file. A second container and `./image-migrate.sh` against the migrated database must apply no
-  migration, and the second container and `./image-admin.sh` must leave the admin account as it is. The pod is
-  removed at the end, also when a check fails; then the last log lines of the containers are printed. It can run next to the development
-  database, the test database and the development server.
-
 ### Publishing
 
-The workflow `container_image` builds the image and runs `npm run image:smoke` on every push to `main`, on pull
-requests and when started by hand, without publishing anything. Publishing a release on GitHub, a pre-release
-included, also pushes the image to the GitHub Container Registry under the tag name of the release, unchanged; a draft
-does not. A tag name that is not a valid image tag, or is `latest`, fails the run before the build. There is no
-`latest` tag: pull the image by the tag of the release:
+A published release on GitHub pushes the image to the GitHub Container Registry under the tag name of the release (see
+"Publishing" in `spec/container-image.md`). There is no `latest` tag: pull the image by the tag of the release:
 
 ```bash
 podman pull ghcr.io/<owner>/hippowiki:<tag>

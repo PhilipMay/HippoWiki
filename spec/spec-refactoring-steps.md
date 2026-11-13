@@ -49,7 +49,7 @@ Where each kind of information lives after this plan:
 - [x] Content specs
 - [x] Users and login spec
 - [x] Container image spec
-- [ ] README and architecture
+- [x] README and architecture
 - [ ] Wrap-up
 
 ## Feature spec rules and reference check

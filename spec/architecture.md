@@ -9,23 +9,10 @@ How the code is organised and which patterns new code follows. The technology st
 - `src/proxy.ts`: the proxy of Next.js, which sends requests without a session cookie to the login page (see "Login
   and sessions")
 - `src/components/`: shared UI components (app bar, `Link`)
-- `src/lib/`: cross-cutting modules (`env.ts`, `db.ts`, `db-errors.ts`, `logger.ts`, `theme.ts`, `site.ts`,
-  `format.ts`, `hydration.ts`, `focus.ts`, `names.ts`, `addresses.ts`, `revalidate.ts`, `result.ts`, `auth.ts`,
-  `password-hash.ts`, `client-address-probe.ts`)
-  - `names.ts`: the name rule shared by folders, tabs and pages (`nameSchema`, `parseName`) and the form state of
-    forms that ask for a name
-  - `addresses.ts`: the addresses under `/folders` (`folderPath`, `tabPath`, `pagePath`, `parsePageSegment`) and
-    `/deleted-pages` (`deletedPagesPath`, `deletedPagePath`), those of the users, the login and the password change
-    (`usersPath`, `loginPath`, `changePasswordPath`), and the actions and views in their query string (`parseAction`,
-    `parseView`)
-  - `names.ts` and `addresses.ts` have no server-only imports, so Client Components can use them.
-  - `revalidate.ts`: `revalidateContent()`, the revalidation after every write to folders, tabs and pages
-  - `result.ts`: the type `Result`, which the writes of a service return; no server-only imports
-  - `auth.ts`: `getAuth()`, the single Better Auth instance, created on first use like the client of `getDb()`
-  - `password-hash.ts`: `hashPassword()` and `verifyPassword()` with Argon2id, and the limit on concurrent hashes
-  - `client-address-probe.ts`: `logClientAddressProbe()`, which logs the forwarding headers of a request while
-    `HIPPOWIKI_LOG_CLIENT_ADDRESS` is `true`; called by `src/proxy.ts` and the login action (see "Configuration" in
-    `container-image.md`)
+- `src/lib/`: cross-cutting modules that more than one feature uses, such as the environment, the database client,
+  the logger, the name rule, the addresses, the revalidation after a write, the type `Result`, the Better Auth instance
+  and the password hashing. What each module holds is in the module itself. A module that a Client Component imports, such
+  as `names.ts` or `addresses.ts`, has no server-only imports.
 - `src/features/<feature>/`: everything about one feature – `schema.ts`, `service.ts`, `forms.ts`, `queries.ts`,
   `actions.ts`, `components/` and pure helpers such as `derive.ts` and `limits.ts` for pages (no server-only imports,
   so Client Components can use them). `limits.ts` holds the field length limits, so that `schema.ts` can import
@@ -35,12 +22,9 @@ How the code is organised and which patterns new code follows. The technology st
   - `forms.ts`: what only a form needs: the `parse*FormData` functions, the form states, the types of the form
     actions and the names of form fields. It has no server-only imports, so Client Components can use it.
   - `queries.ts` and `actions.ts`: the adapters between the web and the service
-  - `folders`: folders and their tabs, and the name dialog used for folders, tabs and pages
-  - `pages`: pages
-  - `users`: the user accounts (see `users-and-login.md`), with `records.ts` (the rows of a new user in the shape
-    Better Auth expects) and `password.ts` (the generated first password)
-  - `auth`: login, logout, the session, the login wait and the forced password change, with `session.ts` (who is
-    calling, see "Login and sessions") and `wait.ts` (the waits after failed logins)
+  - The features are `folders` (folders and their tabs), `pages`, `users` (the accounts) and `auth` (login, logout,
+    the session and the login wait, with `session.ts` for who is calling, see "Login and sessions"). Their specs are
+    listed in `CLAUDE.md`.
 - `src/generated/prisma/`: the generated Prisma client (`npm run db:generate`), not checked in
 - `prisma/`: schema, migrations, seed, and `known-users.ts`, the known users of the seed and the tests
 - `scripts/`: development scripts (`db.sh`), the admin setup (`admin.ts`) and the scripts of the container image
