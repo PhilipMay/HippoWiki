@@ -18,14 +18,13 @@ The specification lives in the `spec/` directory. This catalog should always be 
 - `spec/page-deletion.md`: the soft delete of pages as built (deleting, the deleted pages of a folder under
   `/deleted-pages`, restoring, limits)
 - `spec/container-image.md`: the container image as built (image and build stages, start with the migration, the
-  command that only migrates, the admin setup, configuration, smoke test, publishing on a release, what the
-  environment has to provide, decisions, limits)
+  command that only migrates, the admin setup, configuration including the trusted reverse proxies, smoke test,
+  publishing on a release, what the environment has to provide for the client address of a login, decisions, limits)
 - `spec/users-and-login.md`: the users and login feature as built (models, user names and email, passwords and
-  hashing, admin account and setup, login and logout, sessions, failed logins, authenticated access only, forced
+  hashing, admin account and setup, login and logout, sessions, failed logins with the wait per user name and client
+  address group, the hour window per user name and the deleting of old rows, authenticated access only, forced
   password change, user list, creating users, routes, decisions, limits)
-- `spec/login-limit-steps.md`: step plan for the login limit per user name and client address, which fixes the Major
-  finding in `security-review.md`
-- `spec/roadmap.md`: backlog of candidate features, grouped by theme
+- `spec/roadmap.md`: backlog of candidate features, grouped by theme, and things still to check
 - `spec/security-review.md`: open findings of the security review of the deployment and the code, to be fixed later
 - `spec/issue-report.md`: how to report issues found in code and document reviews
 

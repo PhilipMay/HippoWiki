@@ -6,7 +6,8 @@ sets its own password at the first login. Everyone who is logged in can read and
 rights yet.
 
 Code: `src/features/users/` (the accounts), `src/features/auth/` (login, logout, the session, the login wait and the
-forced password change), `src/lib/auth.ts`, `src/lib/password-hash.ts`, `src/proxy.ts`, `scripts/admin.ts` and the
+forced password change), `src/lib/auth.ts`, `src/lib/client-address.ts`, `src/lib/password-hash.ts`, `src/proxy.ts`,
+`scripts/admin.ts` and the
 routes `src/app/login/`, `src/app/change-password/` and `src/app/users/`. The admin setup in the container image is
 described in `container-image.md`.
 
@@ -30,9 +31,13 @@ PostgreSQL and `timestamptz(3)` for all times.
 - `Verification`: a table that Better Auth expects; no feature of HippoWiki writes it.
 - `AuthSecret`: the secret that signs the session cookies, in a single row (`id` is always 1; a check constraint that
   the migration adds by hand allows no other row).
-- `LoginAttempt`: the failed logins in a row for a submitted user name, with `username` as its key, `failures` and
-  `lastFailedAt`, the time the last of them was counted. It has no relation to `User`, because unknown names are
-  counted too.
+- `LoginAttempt`: the failed logins in a row for a submitted user name from one client address group, with `username`
+  and `clientAddress` as its key, `failures` and `lastFailedAt`, the time the last of them was counted. It has an index
+  on `lastFailedAt` for the deleting of old rows.
+- `LoginWindow`: the logins counted for a submitted user name in the current hour, from all client address groups
+  together, with `username` as its key, `attempts` and `startedAt`, the time the first of them was counted. It has an
+  index on `startedAt` for the deleting of old rows.
+- Neither of the two has a relation to `User`, because unknown names are counted too.
 
 The admin is the user named `admin`. There is no role column.
 
@@ -134,29 +139,78 @@ In `src/lib/password-hash.ts`, with `hashPassword()` and `verifyPassword()`:
 
 ## Failed logins
 
-- After 5 failed logins in a row for a user name, the next login for that name has to wait 1 minute. Each further
-  failure doubles the wait, up to 15 minutes (`src/features/auth/wait.ts`).
-- A login during the wait is refused with "Too many failed logins. Please try again in N minutes.", without checking
-  the password and without counting the attempt.
-- Every other login is counted as a failure before its password is checked (`reserveAttempt()` in the auth service).
-  A wrong password then needs no further write, and the wait counts from the time the login was counted.
-- The write that counts a login only succeeds if the count is still the one the login has read: an update names the
-  old `failures` and `lastFailedAt` in its condition, and the first login for a name inserts a row and skips one that
-  exists. A login that finds the count changed reads it again, at most 10 times; after that it is answered with the
-  general error, without checking the password.
-- Logins for a name at the same time therefore get no more guesses than logins one after another: 5, and one more
-  after each wait. The others are refused with the wait, whatever their password.
-- A successful login deletes the count of its name.
-- The count is stored in `LoginAttempt`, so it survives a restart of the server.
-- An unknown name is counted and has to wait like a known one. A name that breaks the name rule gets no row, because
-  it cannot belong to a user and the table would otherwise take any text.
-- A password of more than 128 characters for a valid name counts as a failure.
+Two limits hold back the guessing of passwords (`src/features/auth/wait.ts`), and a login is refused while either of
+them asks for a wait:
+
+- Per user name and client address group: after 5 failed logins in a row for a name from one group, the next login
+  for that name from that group has to wait 1 minute. Each further failure doubles the wait, up to 15 minutes.
+- Per user name alone: at most 20 logins are counted per name and hour, from all groups together. The hour starts with
+  the first login that is counted; a further login waits until the hour is over, and the login after that starts a new
+  hour.
+
+The client address group:
+
+- The login action reads it from the headers of the request (`clientAddressGroup()` in `src/lib/client-address.ts`),
+  because `/login` does not pass `src/proxy.ts`, and passes it to `logIn()` of the auth service as a plain argument.
+  The service knows nothing about forwarding headers.
+- With `HIPPOWIKI_TRUSTED_PROXIES=0`, the default, no header is read and every login is in the group `shared`: the
+  wait then counts per user name alone.
+- With `HIPPOWIKI_TRUSTED_PROXIES=n`, the group comes from the n-th entry from the right of `X-Forwarded-For`, the
+  address that the outermost trusted reverse proxy saw. The leftmost entry is never used, because a client can write
+  it. `X-Real-Ip` and `Forwarded` are never read. What the environment has to provide for this is described in
+  `container-image.md`.
+- An entry that is missing or not an address puts the login into `shared`, and the action logs a warning with the
+  reason, without the value of the header. A login never goes uncounted because its address is unknown.
+- An IPv4 address is its own group; an IPv4-mapped IPv6 address counts as its IPv4 address. An IPv6 address is in the
+  group of its /64, written as its first four blocks in lower case without leading zeros and `::/64`, because one
+  customer controls at least that many addresses. A port, square brackets and a zone id are dropped.
+- The service trusts no caller: a value that is not a group as `client-address.ts` writes them counts in `shared`, and
+  an error is logged.
+- Every log line of a login has the group next to the name.
+
+Counting:
+
+- A login during a wait is refused with "Too many failed logins. Please try again in N minutes.", with the longer of
+  the two waits, up to 60 minutes, without checking the password and without counting the attempt. The log line says
+  which limit asked for the wait.
+- Every other login is counted in both limits before its password is checked (`reserveAttempt()` in the auth
+  service), or in neither: the two writes run in one interactive transaction of the Prisma client. A wrong password
+  then needs no further write, and the wait counts from the time the login was counted.
+- Each write only succeeds if its row is still the one the login has read: the update of `LoginAttempt` names the old
+  `failures` and `lastFailedAt` in its condition, a new hour names the old `attempts` and `startedAt`, and the first
+  login for a name or a group inserts a row and skips one that exists. A running hour is counted up with a condition on
+  its `startedAt` and on fewer than 20 attempts only, so that logins from different groups do not make each other read
+  again.
+- If a write finds its row changed, an error that only `reserveAttempt()` knows rolls the transaction back, and the
+  login reads the counts again, at most 50 times; after that it is answered with the general error, without checking
+  the password. A round is only lost to another login for the name that wrote in between, at most twice per such
+  login.
+- Logins at the same time therefore get no more guesses than logins one after another: 5 per group, one more after
+  each wait, and 20 per name and hour. The others are refused with the wait, whatever their password.
+- A successful login deletes the count of its name and group and the hour of its name. The counts of the name from
+  other groups stay.
+- The counts are stored in the database, so they survive a restart of the server.
+- An unknown name is counted and has to wait like a known one. A name that breaks the name rule gets no row in either
+  table, because it cannot belong to a user and the tables would otherwise take any text.
+- A password of more than 128 characters for a valid name counts as a failure in both limits.
 - A login that is refused because the password hashing is busy or because of an error is not counted: its password
-  was not found wrong, so it takes its count back (`releaseAttempt()`). If the row is still the one the login wrote,
-  it gets the count from before, so that a wait that was over does not start again; if other logins have counted
-  since, only the number goes down by one.
+  was not found wrong, so it takes its counts back (`releaseAttempt()`). If the row of `LoginAttempt` is still the one
+  the login wrote, it gets the count from before, so that a wait that was over does not start again; if other logins
+  have counted since, only the number goes down by one. The hour goes down by one for the `startedAt` the login
+  counted in; an hour that the login started and that still has only this login is deleted. A database error here is
+  logged and does not change the answer.
 - A login that cannot be counted, because the database fails, is answered with the general error, without checking the
   password.
+
+Deleting old rows:
+
+- After a login has been counted, it deletes the rows of `LoginAttempt` of all names and groups whose last failure is
+  more than 24 hours ago, and the rows of `LoginWindow` whose hour is over. The deletes run outside the transaction; a
+  database error is logged and does not change the answer.
+- A login that is refused because of a wait, or for a name that breaks the name rule, deletes nothing.
+- The longest wait is 15 minutes, so no row that still makes a login wait is deleted. Failures in a row are failures
+  with less than 24 hours between them: a row whose last failure is older counts as no failure, also before it is
+  deleted.
 
 ## Authenticated access only
 
@@ -234,9 +288,27 @@ in two layers, as the authentication guide of Next.js describes:
 - Two features: `users` writes accounts with Prisma and the password hashing and does not use Better Auth; `auth` is
   the only code that uses Better Auth, through `getAuth()`. A lint rule keeps `@/lib/auth` to the auth service and
   `src/lib/`.
-- A login is counted with a conditional write of the Prisma client, repeated when another login got in between,
-  instead of one SQL statement that checks the wait and counts: the rule of the wait stays in `wait.ts` alone and is
+- A login is counted with conditional writes of the Prisma client, repeated when another login got in between,
+  instead of one SQL statement that checks the wait and counts: the rules of the waits stay in `wait.ts` alone and are
   not written a second time in SQL.
+- The two counts of a login are written in one interactive transaction, so that a login is counted in both limits or
+  in neither and no login slips past one of them.
+- The limit per user name is an hour window and not a count of failures in a row. One address gets 5 guesses at once
+  and then one more after each wait, so it would reach 20 failures in a row after about 3 hours and could then hold a
+  wait for the name with one request every 15 minutes. In one hour a single address manages 11 counted logins at most,
+  and 4 per hour after that, so it never fills the window.
+- The wait is counted per user name and client address group, so the owner of an account does not share a wait with a
+  stranger who guesses its password. The limit per name alone keeps a bound on the guesses for an account, however
+  many addresses they come from.
+- The client address comes from a number of trusted reverse proxies (`HIPPOWIKI_TRUSTED_PROXIES`), not from a list of
+  their addresses: Next.js never shows the application the address of the connecting peer, so a list could not be
+  checked anyway. Without the setting, no header is read.
+- The login action reads the client address and the service takes the group as a plain argument, as it takes the
+  `Headers`: the service stays free of forwarding headers and of the configuration of the deployment.
+- An account is never disabled after many failures, unlike NIST SP 800-63B-4 asks after 100 failures in a row: with
+  one admin and no mail there would be no way back in.
+- `reports/Login lockout and client IP handling.md` compares how other systems key the wait and find the client
+  address.
 - A container needs `DATABASE_URL` and `HIPPOWIKI_ADMIN_PASSWORD` and nothing else, so the secret of the session
   cookies is stored in the database instead of a variable.
 - Who is calling is found out in the adapters, from the session cookie. What the caller may do is checked in the
@@ -266,11 +338,14 @@ in two layers, as the authentication guide of Next.js describes:
 - no expiry of first passwords
 - no page for each user, and no pages with an author
 - no mail, no TOTP, no passkeys, no sign-in with other providers
-- no limit on logins per client address
+- while the hour of a name is full, the right password is refused as well. Roughly 10 to 20 address groups that work
+  together, or 4 unused ones every hour, can keep a name locked most of the time; a routed IPv6 /48 or a botnet
+  provides them. Closing this needs a budget of its own for clients that have logged in before, see `roadmap.md`.
+- no limit on logins per client address across user names; that is a task of the reverse proxy
+- the group of an IPv6 address is always its /64; there is no setting for the prefix
 - no audit log
 - no HTTP API and no browser client of Better Auth
 - no switch for session cookies without `Secure`: a production build needs HTTPS in front of it, or `localhost`
 - no return to the address that was asked for after the login
-- old rows of `LoginAttempt` are never removed
 - the password change is not atomic: Better Auth ends the sessions, stores the password and starts the new session in
   separate statements, and the flag is cleared after them

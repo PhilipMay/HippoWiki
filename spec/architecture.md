@@ -40,7 +40,7 @@ How the code is organised and which patterns new code follows. The technology st
   - `users`: the user accounts (see `users-and-login.md`), with `records.ts` (the rows of a new user in the shape
     Better Auth expects) and `password.ts` (the generated first password)
   - `auth`: login, logout, the session, the login wait and the forced password change, with `session.ts` (who is
-    calling, see "Login and sessions") and `wait.ts` (the wait after failed logins)
+    calling, see "Login and sessions") and `wait.ts` (the waits after failed logins)
 - `src/generated/prisma/`: the generated Prisma client (`npm run db:generate`), not checked in
 - `prisma/`: schema, migrations, seed, and `known-users.ts`, the known users of the seed and the tests
 - `scripts/`: development scripts (`db.sh`), the admin setup (`admin.ts`) and the scripts of the container image
@@ -85,7 +85,8 @@ How the code is organised and which patterns new code follows. The technology st
     out from the session (see "Login and sessions").
   - The auth service is the only code that uses Better Auth (`getAuth()` from `src/lib/auth.ts`). It takes the
     `Headers` of the request, a web standard, because the session lives in a cookie, and returns the response headers
-    that set or clear it.
+    that set or clear it. `logIn()` also takes the client address group of the request as a plain string, after the
+    headers; the service never reads a forwarding header itself.
   - Its functions have the names of the queries and actions, so the adapters import it as a namespace:
     `import * as folderService from "@/features/folders/service"`.
 - Reads happen in Server Components through the feature's `queries.ts`.
@@ -126,7 +127,11 @@ The feature is described in `users-and-login.md`. What every new route, query an
 - `requireSession()` only asks for a session; only the password change page and its action use it. `getCurrentUser()`
   returns the user or `null` without redirecting, for the header and the login page; it is wrapped in React `cache()`.
 - These three functions and the actions of the auth feature are the only code that reads the headers of the request
-  for the session. `src/lib/auth.ts` is imported only by the auth service and by `src/lib/`.
+  for the session.
+- The login action also reads the client address of the request, with `clientAddressGroup()` from
+  `src/lib/client-address.ts` and `HIPPOWIKI_TRUSTED_PROXIES`, because `/login` does not pass `src/proxy.ts`; it
+  passes the group to the auth service. No other code reads a forwarding header for anything but the diagnostic
+  `client-address-probe.ts`. `src/lib/auth.ts` is imported only by the auth service and by `src/lib/`.
 
 ## Validation and errors
 
@@ -180,6 +185,10 @@ The feature is described in `users-and-login.md`. What every new route, query an
   then `npm run db:migrate`).
 - The tables `User`, `Session`, `Account` and `Verification` have the shape Better Auth expects; a change to them
   follows the schema of the installed Better Auth version.
+- Writes that must succeed together run in one interactive transaction of the Prisma client
+  (`getDb().$transaction(async (tx) => ...)`), such as the two counts of a login in `reserveAttempt()` of the auth
+  service. A conditional write inside it that finds its row changed throws an error that only the caller knows, which
+  rolls the transaction back, and the caller reads again.
 - Prisma is used for CRUD. The `fullTextSearchPostgres` preview feature is not enabled; search uses PostgreSQL
   full-text search directly.
 - The `partialIndexes` preview feature is enabled for partial unique indexes (`where` in `@@unique`), such as the one

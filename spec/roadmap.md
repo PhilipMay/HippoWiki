@@ -7,6 +7,8 @@ listed first; there is no order across themes.
   from this file (see `workflow.md`).
 - Where a feature lifts a limit, the entry names the spec whose "Current limits" list it.
 - The open findings of the security review are tracked and fixed in `security-review.md`, not here.
+- "Things to Check" at the end lists checks and open questions that came up while building a feature and that are not
+  features of their own.
 
 ## Content Structure
 
@@ -94,11 +96,12 @@ listed first; there is no order across themes.
 - Return to the requested address: after the login, lead to the address that was asked for instead of `/folders`
   (`users-and-login.md`).
 - Audit log: record logins, changes of rights and password changes and resets (`users-and-login.md`).
-- Unlock command: a command of `scripts/admin.ts` that deletes the `LoginAttempt` row of a user name and so ends its
-  wait after failed logins; this does not stop a lockout, it only shortens it (see the Major finding in
-  `security-review.md`).
-- Login limit per client address: wait after failed logins per user name and client address; see the Major finding
-  in `security-review.md` (`users-and-login.md`).
+- Unlock command: a command of `scripts/admin.ts` that deletes the rows of `LoginAttempt` and `LoginWindow` of a user
+  name and so ends its waits after failed logins; this does not stop a lockout, it only shortens it.
+- Login budget for known clients: a budget of its own for clients that have logged in before, so that the right
+  password from such a client is not refused while the hour window of its name is full. The candidate is a signed
+  device cookie that a successful login sets; see `reports/Login lockout and client IP handling.md` and "Current
+  limits" in `users-and-login.md`.
 - Ending all sessions at once: a user logs out of all browsers at once.
 - TOTP: a second factor with one-time codes from an authenticator app (`users-and-login.md`).
 - Passkeys (WebAuthn): login with a passkey (`users-and-login.md`).
@@ -136,3 +139,22 @@ All from "Current limits" in `container-image.md`:
 - Waiting for the database: the start waits for the database instead of failing when it is not reachable yet.
 - Images for `linux/arm64`: publish the image for `linux/arm64` next to `linux/amd64`.
 - Image signing and scans: signatures, provenance attestations and vulnerability scans of the published image.
+
+## Things to Check
+
+- Login limit on the deployment: with `HIPPOWIKI_TRUSTED_PROXIES=1` behind Traefik, a failed login from a known
+  address outside the network of the server is logged with that address as `clientAddress`
+  (`users-and-login.md`, `container-image.md`).
+- Forged headers on the deployment: the same failed login with a forged `X-Forwarded-For` and `X-Real-Ip` is logged
+  with the same address as before.
+- IPv6 on the deployment: a failed login over IPv6 is logged with the /64 of the client. Not checked on 2026-11-13,
+  neither for the probe nor for the login limit.
+- Logins at the same time on the deployment: each counted login holds a database connection for an interactive
+  transaction, and the pool of the `pg` adapter has 10 connections by default. Check that a burst of logins for one
+  name is answered with waits and not with "The login failed", and whether the 50 rounds of `reserveAttempt()` are
+  enough when many logins with the right password arrive at the same moment.
+- Log volume: every login whose `X-Forwarded-For` has no usable entry logs a warning; check that a correct setup
+  behind Traefik writes none, so that a warning points to a broken setup.
+- Reset of the end-to-end database: `resetTestDatabase()` truncates all tables in the order PostgreSQL lists them, so
+  a login transaction that is still running can deadlock with it (`testing.md`). Check whether truncating in a fixed
+  order, or retrying on a deadlock, makes the reset robust against a test that does not wait for its last login.

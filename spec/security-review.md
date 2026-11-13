@@ -8,48 +8,15 @@ fixed.
 ## Summary
 
 The authentication design holds: every page, query and Server Action checks the session again in the database, so
-getting past the proxy does not help an attacker. The weaknesses are in the throttling of failed logins and in the
-missing security headers.
+getting past the proxy does not help an attacker. The weaknesses are in the missing security headers and in the cost
+of logins for unknown names.
 
 - Blocker: 0
-- Major: 1
+- Major: 0
 - Minor: 3
 - Nit: 2
 
 ## Issues
-
-### Major: anyone can keep the admin locked out
-
-- **Location:** `src/features/auth/service.ts`, lines 203–213, `logIn()`; `src/features/auth/wait.ts`,
-  `waitAfterFailures()`
-- **Category:** security
-- **Problem:** The wait is keyed only on the user name, and during the wait the correct password is refused as well.
-- **Impact:** From any address, five wrong passwords for `admin` and then one more each time the wait runs out keep the
-  admin locked out for good, with about 100 requests a day. There is no unlock and no second admin.
-- **Evidence:** `logIn()` returns the code `wait` without checking the password while `reserveAttempt(name)` reports a
-  wait; the wait grows to `MAX_WAIT_MS` (15 minutes) and starts again with every further failure.
-- **Suggestion (required):** Key the wait on the user name and the client address, and keep a much higher limit for the
-  user name alone. Take the client address from the rightmost entry of `X-Forwarded-For`, with one trusted proxy, and
-  read no forwarding header unless this is configured. Read it in the login action, not in `src/proxy.ts` (see the
-  checks below). Document the setup in `container-image.md`.
-- **Checks on the deployment:** On 2026-11-13 the deployment was checked with `HIPPOWIKI_LOG_CLIENT_ADDRESS=true` (see
-  "Configuration" in `container-image.md`). The results:
-  - Traefik writes `X-Forwarded-For` and `X-Real-Ip` with a single entry each, the same in both. Requests from a client
-    outside the network of the server arrived with that client's own public address, so the container network
-    (rootless Podman with `pasta`) keeps the source address.
-  - A request with a forged `X-Forwarded-For: 203.0.113.7` and `X-Real-Ip: 203.0.113.7` arrived with only the real
-    address: Traefik replaces these headers of the client instead of appending to them.
-  - `pasta` publishes port 3000 on `127.0.0.1` only (`ss -ltnp`), so no other machine can reach the server around
-    Traefik. A process on the host itself can: a request to `http://127.0.0.1:3000/` on the host with a forged
-    `X-Forwarded-For: 203.0.113.7` arrived with that value, without `X-Real-Ip` and with `X-Forwarded-Proto: http`.
-    Every request through Traefik carried `X-Real-Ip`, which Next.js never sets itself.
-  - The login action sees the same `X-Forwarded-For` and `X-Real-Ip` as the proxy of Next.js. `/login` does not pass
-    the proxy, so the action is the only place that sees the login request.
-  - After a Server Action redirects, Next.js requests the target page from itself (`Host: localhost:3000`) with the
-    headers of the client, so the proxy of Next.js sees such requests too.
-  - Not checked: a request over IPv6.
-- **Reference:** `reports/Login lockout and client IP handling.md`: how other systems key the wait and find the client
-  address, and why a separate budget for clients that logged in before is what closes the lockout for good.
 
 ### Minor: no security headers
 
@@ -90,19 +57,17 @@ missing security headers.
 - **Suggestion (optional):** `img-src 'self' data:` and `Referrer-Policy: same-origin` from the issue above fix this.
 - **Alternatives:** An `img` component that only allows relative addresses.
 
-### Minor: logins without an account can block all logins and grow the database
+### Minor: logins without an account can block all logins
 
 - **Location:** `src/lib/password-hash.ts` (`MAX_CONCURRENT_HASHES = 4`); `src/features/auth/service.ts`,
   `reserveAttempt()`
 - **Category:** security
-- **Problem:** Every login with a valid-looking but unknown name costs one argon2 hash, and every new name adds a
-  `LoginAttempt` row that is never deleted.
+- **Problem:** Every login with a valid-looking but unknown name costs one argon2 hash.
 - **Impact:** A steady stream of such logins fills the 4 hash slots, so real users get "too many logins at the
-  moment", and the `LoginAttempt` table grows without limit.
-- **Evidence:** The hash limiter allows 4 hashes at a time and queues the rest for at most 10 seconds; no code deletes
-  old `LoginAttempt` rows.
-- **Suggestion (optional):** A rate limit per client address at the reverse proxy, documented in `container-image.md`,
-  and deleting rows older than `MAX_WAIT_MS` when a login is counted.
+  moment".
+- **Evidence:** The hash limiter allows 4 hashes at a time and queues the rest for at most 10 seconds; the limits of
+  the login count per user name, so every new name gets its own 20 logins per hour.
+- **Suggestion (optional):** A rate limit per client address at the reverse proxy, documented in `container-image.md`.
 
 ### Nit: the `X-Powered-By: Next.js` header is sent
 

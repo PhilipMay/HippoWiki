@@ -152,6 +152,9 @@ test("a name that cannot belong to a user and a password in another case show th
   await expect(page.getByLabel("User name")).toHaveValue("Not A Name!");
 
   await submitLogin(page, KNOWN_USER.name, KNOWN_USER.password.toUpperCase());
+  // The alert shows the same text already, so the emptied password field tells that the answer has arrived. Without
+  // the wait the next test would reset the database while this login is still being counted.
+  await expect(page.getByLabel("Password")).toHaveValue("");
   await expect(formAlert(page)).toHaveText(INVALID_CREDENTIALS);
   expect(await newSessionCount()).toBe(0);
 });

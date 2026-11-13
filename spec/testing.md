@@ -110,6 +110,13 @@ How the code is tested. Commands are listed in `README.md`.
   and rendering without the double rendering of StrictMode. The build needs no running database, because no route is
   prerendered; the global setup starts the test database only after the server.
 - All tests share the test database and run one after another.
+- The test server trusts one reverse proxy (`HIPPOWIKI_TRUSTED_PROXIES=1` in `playwright.config.ts`), so a test
+  chooses the client address of its logins with an `X-Forwarded-For` header: `extraHTTPHeaders` in `test.use()` for
+  the page of the spec, or a browser context of its own for a second address. Next.js keeps a header that the browser
+  sends and writes the address of the connection into it only when it is missing.
+- A test waits for the answer of every login it submits, for example until the password field is emptied, also when
+  the alert already shows the expected text from an earlier attempt. A login that is still being counted when the next
+  test resets the database can deadlock with the `TRUNCATE` of the reset, because its transaction writes two tables.
 - The tests log in once and reuse the session:
   - The Playwright project `setup` (`e2e/auth.setup.ts`) logs in on the login page as the known admin and the known
     normal user of `prisma/known-users.ts` and saves one browser state each in `e2e/.auth/` (ignored by Git and by

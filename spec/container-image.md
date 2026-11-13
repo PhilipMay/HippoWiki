@@ -117,7 +117,7 @@ password for the admin. Code: `Containerfile`, `.containerignore`, `scripts/imag
 ## Configuration
 
 - A container needs two variables, `DATABASE_URL` and `HIPPOWIKI_ADMIN_PASSWORD`, and nothing else. The optional
-  diagnostic variable `HIPPOWIKI_LOG_CLIENT_ADDRESS` is described below.
+  variables `HIPPOWIKI_TRUSTED_PROXIES` and `HIPPOWIKI_LOG_CLIENT_ADDRESS` are described below.
 - `DATABASE_URL`: `postgresql://<user>:<password>@<host>:<port>/<database>`. The migration, the admin setup and the
   server read it. Special characters in the password are percent-encoded.
 - Only this form, without parameters, is supported and tested. The migration reads the URL with the schema engine of
@@ -140,6 +140,20 @@ password for the admin. Code: `Containerfile`, `.containerignore`, `scripts/imag
     network keeps the source address or every client arrives with the same private one.
   - Client addresses are personal data, and every proxied request writes a line: switch it on for such a check only,
     not permanently in production.
+- `HIPPOWIKI_TRUSTED_PROXIES` is optional, one digit from `0` to `9`, default `0`; any other value, such as `10`,
+  `1.5` or an empty string, stops the server with an error like a wrong `DATABASE_URL`. It is read when the server
+  runs. It says how many reverse proxies are in front of the server, and so where the login finds the client address
+  for the wait after failed logins (see "Failed logins" in `users-and-login.md`):
+  - `0`: no forwarding header is read, every login is in the client address group `shared`, and the wait after failed
+    logins counts per user name alone.
+  - `1`: the rightmost entry of `X-Forwarded-For` is the client address, the one that a single reverse proxy such as
+    Traefik wrote.
+  - `n`: the n-th entry from the right, for n reverse proxies in a row. The entries to its left are never used,
+    because a client can write them.
+  - A login whose entry is missing or not an address counts in `shared`, and the server logs a warning with the
+    reason.
+  - Set it only when the environment provides what "What the environment has to provide" names for it; otherwise a
+    client that reaches the server around the reverse proxy chooses its own address.
 - There is no variable for the secret that signs the session cookies: the server generates it on first use and
   stores it in the database (table `AuthSecret`). It therefore survives a new container, and all sessions with it.
 - The database is PostgreSQL in the version pinned in `scripts/Containerfile`. The database and its user are created
@@ -243,8 +257,36 @@ These are not built into the image; whoever runs it takes care of them.
   needs HTTPS. The session cookie is `Secure`, so a browser that reaches the wiki over plain HTTP does not send it
   back and nobody can stay logged in. `localhost` is the one exception that browsers make.
 - The login is the protection from the public: nothing can be read or changed without it, and only the login page and
-  `/api/health` answer without one. There is no limit on login attempts per client address; a reverse proxy can add
-  one.
+  `/api/health` answer without one. The server limits the logins per user name and client address and per user name
+  (see "Failed logins" in `users-and-login.md`), but not the logins per client address across all user names; a
+  reverse proxy can add that limit.
+- For `HIPPOWIKI_TRUSTED_PROXIES` above `0`, a setup in which `X-Forwarded-For` can be trusted. Next.js never shows the
+  application the address of the connecting peer, so the server cannot check where the header came from:
+  - The port of the server is reachable through the reverse proxy alone, for example published on `127.0.0.1` only.
+    A process on the host itself can still reach it and choose its own address.
+  - The reverse proxy replaces the `X-Forwarded-For` that the client sent with the address it sees, or appends that
+    address as the rightmost entry. Traefik replaces it by default, unless the client is one of its trusted IPs.
+  - The container network keeps the source address of a client, so that every client does not arrive with the same
+    private address.
+  - The setup is checked once with `HIPPOWIKI_LOG_CLIENT_ADDRESS=true`: a failed login from a known address outside the
+    network of the server is logged with that address, and the same login with a forged `X-Forwarded-For` and
+    `X-Real-Ip` is logged with the same address as before.
+  - The checks of the deployment behind Traefik on 2026-11-13, with `HIPPOWIKI_LOG_CLIENT_ADDRESS=true`:
+    - Traefik writes `X-Forwarded-For` and `X-Real-Ip` with a single entry each, the same in both. Requests from a
+      client outside the network of the server arrived with that client's own public address, so the container
+      network (rootless Podman with `pasta`) keeps the source address.
+    - A request with a forged `X-Forwarded-For: 203.0.113.7` and `X-Real-Ip: 203.0.113.7` arrived with only the real
+      address: Traefik replaces these headers of the client instead of appending to them.
+    - `pasta` publishes port 3000 on `127.0.0.1` only (`ss -ltnp`), so no other machine can reach the server around
+      Traefik. A process on the host itself can: a request to `http://127.0.0.1:3000/` on the host with a forged
+      `X-Forwarded-For: 203.0.113.7` arrived with that value, without `X-Real-Ip` and with `X-Forwarded-Proto: http`.
+      Every request through Traefik carried `X-Real-Ip`, which Next.js never sets itself.
+    - The login action sees the same `X-Forwarded-For` and `X-Real-Ip` as the proxy of Next.js. `/login` does not pass
+      the proxy, so the action is the only place that sees the login request.
+    - After a Server Action redirects, Next.js requests the target page from itself (`Host: localhost:3000`) with the
+      headers of the client, so the proxy of Next.js sees such requests too.
+    - Not checked: a request over IPv6, and the login limit itself with `HIPPOWIKI_TRUSTED_PROXIES=1` (see "Things to
+      Check" in `roadmap.md`).
 - One instance only. Instances that start together would all try to migrate, and each instance has its own page
   cache.
 - Access to the package: a new package in the GitHub Container Registry is private until its visibility is changed, so
