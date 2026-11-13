@@ -45,6 +45,13 @@ npm run test:e2e:production  # the same end-to-end tests against a production bu
 
 Run `npm run format` to fix formatting issues reported by `format:check`.
 
+For every change, inside a step plan or not, the end-to-end tests run in two stages, as "When a step is done" in
+`spec/workflow.md` describes:
+
+- While working, run only the specs the change affects: `npm run test:e2e -- e2e/<name>.spec.ts`, one path per spec.
+  Which specs count as affected, and when the complete suite is needed right away, is listed there.
+- Before the work is finished, committed or pushed, run the complete `npm run test:e2e` once.
+
 ## Next.js Agent Rules
 
 `AGENTS.md` is managed by Next.js (`next dev` rewrites it) and points to the version-matched Next.js docs in

@@ -154,7 +154,7 @@ The tests need only the Podman machine (`podman machine start`); they bring thei
 
 ```bash
 npm run test:e2e              # run all end-to-end tests against the development server
-npm run test:e2e -- e2e/login.spec.ts   # run only the given specs
+npm run test:e2e -- e2e/<name>.spec.ts   # run only the given specs, one path per spec
 npm run test:e2e:production   # run them against a production build (next build, next start)
 npm run test:e2e:ui           # open the Playwright UI to run and debug tests
 npx playwright show-report   # open the HTML report of the last run
