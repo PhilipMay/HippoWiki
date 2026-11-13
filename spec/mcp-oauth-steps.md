@@ -47,7 +47,7 @@ ChatGPT connect through OAuth: the user logs in, approves the connector on a con
 - [x] Client ID Metadata Documents
 - [x] Discovery, registration and token endpoints
 - [x] Consent page
-- [ ] Grants on `/account`
+- [x] Grants on `/account`
 - [ ] Wrap-up
 
 ## Public URL and login with a way back
@@ -310,7 +310,8 @@ The user sees the connected apps among the tokens and can revoke them.
 
 ### Test
 
-- Unit: the list component and the service read with grants.
+- Unit: the service read with grants. The list component has no unit test: the project has no component tests, and
+  `e2e/account.spec.ts` covers it.
 - End-to-end: `e2e/account.spec.ts`: a grant created through the flow is listed as a connected app; revoking it makes
   `/mcp` answer 401 for its access token and the token endpoint refuse its refresh token.
 - Manual (by the user), on a public HTTPS deployment, after the open checks of "Things to Check" in `roadmap.md`

@@ -34,12 +34,18 @@ export const MAX_TOKENS_PER_USER = 20;
 /** A token as the token list shows it; never the token or its hash. */
 export type TokenSummary = {
   id: string;
+  /** The name the user gave the token; for a grant, the name of the app it was given to. */
   name: string;
   scopes: TokenScope[];
   createdAt: Date;
   expiresAt: Date;
   /** When the token was last used, to the minute; `null` if it was never used. */
   lastUsedAt: Date | null;
+  /**
+   * Whether the row is a grant to an OAuth client, a connected app, instead of a token created on the account page.
+   * A grant has no token to show: the app holds its tokens itself.
+   */
+  isGrant: boolean;
 };
 
 /** The columns of a token that make up a `TokenSummary`. */
@@ -50,12 +56,29 @@ const TOKEN_SUMMARY_SELECT = {
   createdAt: true,
   expiresAt: true,
   lastUsedAt: true,
+  clientId: true,
 } as const;
 
-type TokenSummaryRow = Omit<TokenSummary, "scopes"> & { scopes: string[] };
+type TokenSummaryRow = Omit<TokenSummary, "scopes" | "isGrant"> & { scopes: string[]; clientId: string | null };
 
-function toTokenSummary({ id, name, scopes, createdAt, expiresAt, lastUsedAt }: TokenSummaryRow): TokenSummary {
-  return { id, name, scopes: scopes.filter(isTokenScope), createdAt, expiresAt, lastUsedAt };
+function toTokenSummary({
+  id,
+  name,
+  scopes,
+  createdAt,
+  expiresAt,
+  lastUsedAt,
+  clientId,
+}: TokenSummaryRow): TokenSummary {
+  return {
+    id,
+    name,
+    scopes: scopes.filter(isTokenScope),
+    createdAt,
+    expiresAt,
+    lastUsedAt,
+    isGrant: clientId !== null,
+  };
 }
 
 /** The current time. The one place the service takes it from, so that tests can set the clock. */
@@ -73,7 +96,7 @@ function actorIdOf(actor: Actor): string | null {
   return id;
 }
 
-/** The actor's tokens, newest first. A malformed actor id has no tokens. */
+/** The actor's tokens and grants to OAuth clients, newest first. A malformed actor id has no tokens. */
 export async function listTokens(actor: Actor): Promise<TokenSummary[]> {
   const userId = parseUserId(actor.id);
   if (!userId) return [];
@@ -171,7 +194,8 @@ export async function createToken(
 }
 
 /**
- * Revokes the actor's token with the given id: deletes it, so that it stops working at once. A malformed id, an
+ * Revokes the actor's token with the given id: deletes it, so that it stops working at once. A grant to an OAuth
+ * client is revoked the same way, which ends its access token and its refresh token together. A malformed id, an
  * unknown one and the token of another user all give `token-not-found`; only the log tells the last two from the
  * first.
  */

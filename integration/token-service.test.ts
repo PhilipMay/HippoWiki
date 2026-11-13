@@ -47,6 +47,7 @@ describe("createToken", () => {
       createdAt: row?.createdAt,
       expiresAt: row?.expiresAt,
       lastUsedAt: null,
+      isGrant: false,
     });
   });
 
@@ -117,9 +118,69 @@ describe("listTokens", () => {
         createdAt: stored.createdAt,
         expiresAt: stored.expiresAt,
         lastUsedAt: stored.lastUsedAt,
+        isGrant: false,
       },
     ]);
     expect(await tokenService.listTokens(bob)).toMatchObject([{ name: "bob's" }]);
+  });
+
+  it("lists a grant to an OAuth client among the tokens, marked as a grant and named after the client", async () => {
+    const alice = await createActor();
+    const { token } = await createToken(alice, { name: "script" });
+    const client = await getTestDb().oAuthClient.create({
+      data: { name: "Example connector", redirectUris: ["https://client.example/callback"] },
+    });
+    const grant = await getTestDb().apiToken.create({
+      data: {
+        userId: alice.id,
+        clientId: client.id,
+        name: client.name,
+        scopes: ["read"],
+        accessTokenHash: "a".repeat(64),
+        refreshTokenHash: "b".repeat(64),
+        accessTokenExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
+        expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+        createdAt: new Date(Date.now() + 1000),
+      },
+    });
+
+    const tokens = await tokenService.listTokens(alice);
+
+    expect(tokens).toStrictEqual([
+      {
+        id: grant.id,
+        name: "Example connector",
+        scopes: ["read"],
+        createdAt: grant.createdAt,
+        expiresAt: grant.expiresAt,
+        lastUsedAt: null,
+        isGrant: true,
+      },
+      token,
+    ]);
+    // Neither hash and no client leaves the service.
+    expect(JSON.stringify(tokens)).not.toContain("a".repeat(64));
+    expect(JSON.stringify(tokens)).not.toContain(client.id);
+  });
+
+  it("revokes a grant like a token, and only the actor's own", async () => {
+    const [alice, bob] = [await createActor(), await createActor()];
+    const client = await getTestDb().oAuthClient.create({
+      data: { name: "Example connector", redirectUris: ["https://client.example/callback"] },
+    });
+    const grant = await getTestDb().apiToken.create({
+      data: { userId: alice.id, clientId: client.id, name: client.name, scopes: ["read"], expiresAt: new Date() },
+    });
+
+    await expect(tokenService.revokeToken(bob, grant.id)).resolves.toEqual({
+      ok: false,
+      error: { code: "token-not-found" },
+    });
+    await expect(tokenService.revokeToken(alice, grant.id)).resolves.toEqual({ ok: true, value: { id: grant.id } });
+
+    expect(await getTestDb().apiToken.count()).toBe(0);
+    // The client stays: another user may have a grant to it.
+    expect(await getTestDb().oAuthClient.count()).toBe(1);
   });
 
   it("lists no tokens for a user without tokens", async () => {

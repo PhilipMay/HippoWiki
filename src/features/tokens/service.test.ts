@@ -59,8 +59,15 @@ function storedRow(data: Record<string, unknown> = {}) {
     createdAt: NOW,
     expiresAt: new Date("2026-05-30T12:00:00.000Z"),
     lastUsedAt: null,
+    // A token of the account page has no client.
+    clientId: null,
     ...data,
   };
+}
+
+/** The summary that the service makes of a stored row: the client is told as whether the row is a grant. */
+function summaryOf({ clientId, ...row }: ReturnType<typeof storedRow>) {
+  return { ...row, isGrant: clientId !== null };
 }
 
 /** A token with its user as `authenticateToken` reads it: valid, with the scope `read` and never used. */
@@ -125,13 +132,42 @@ describe("listTokens", () => {
     const row = storedRow({ lastUsedAt: NOW });
     mocks.findMany.mockResolvedValue([row]);
 
-    await expect(listTokens(ALICE)).resolves.toStrictEqual([row]);
+    await expect(listTokens(ALICE)).resolves.toStrictEqual([summaryOf(row)]);
 
     expect(mocks.findMany).toHaveBeenCalledExactlyOnceWith({
       where: { userId: ALICE_ID },
-      select: { id: true, name: true, scopes: true, createdAt: true, expiresAt: true, lastUsedAt: true },
+      select: {
+        id: true,
+        name: true,
+        scopes: true,
+        createdAt: true,
+        expiresAt: true,
+        lastUsedAt: true,
+        clientId: true,
+      },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     });
+  });
+
+  it("says which rows are grants to OAuth clients, and never passes on the client or a hash", async () => {
+    const grant = storedRow({
+      id: "1d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a02",
+      name: "Example connector",
+      clientId: "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10",
+    });
+    mocks.findMany.mockResolvedValue([grant, storedRow()]);
+
+    const tokens = await listTokens(ALICE);
+
+    expect(tokens.map(({ name, isGrant }) => [name, isGrant])).toEqual([
+      ["Example connector", true],
+      ["MCP client", false],
+    ]);
+    expect(Object.keys(tokens[0] ?? {}).sort()).toEqual(
+      ["createdAt", "expiresAt", "id", "isGrant", "lastUsedAt", "name", "scopes"].sort(),
+    );
+    // The grant is read like every other token: one read, for the user's rows.
+    expect(mocks.findMany.mock.calls[0]?.[0].where).toEqual({ userId: ALICE_ID });
   });
 
   it("leaves out scopes it does not know", async () => {
@@ -157,7 +193,7 @@ describe("createToken", () => {
   it("stores the hash of a new token and returns the token as stored together with the token itself", async () => {
     const result = await createToken(ALICE, { ...INPUT, name: "  MCP client  " });
 
-    expect(result).toStrictEqual({ ok: true, value: { token: storedRow(), secret: SECRET } });
+    expect(result).toStrictEqual({ ok: true, value: { token: summaryOf(storedRow()), secret: SECRET } });
     expect(mocks.create).toHaveBeenCalledExactlyOnceWith({
       data: {
         userId: ALICE_ID,
@@ -166,7 +202,15 @@ describe("createToken", () => {
         tokenHash: hashToken(SECRET),
         expiresAt: new Date("2026-05-30T12:00:00.000Z"),
       },
-      select: { id: true, name: true, scopes: true, createdAt: true, expiresAt: true, lastUsedAt: true },
+      select: {
+        id: true,
+        name: true,
+        scopes: true,
+        createdAt: true,
+        expiresAt: true,
+        lastUsedAt: true,
+        clientId: true,
+      },
     });
     expect(JSON.stringify(mocks.create.mock.calls)).not.toContain(SECRET);
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith({ userId: ALICE_ID, tokenId: TOKEN_ID }, "token created");

@@ -4,6 +4,7 @@ import { KNOWN_ADMIN, KNOWN_USER } from "../prisma/known-users";
 import { ADMIN_STORAGE_STATE } from "./support/auth";
 import { collectErrors } from "./support/browser";
 import { createApiToken, getTestDb, resetTestDatabase } from "./support/database";
+import { connect, listFoldersStatus, refresh, registerClient } from "./support/oauth";
 import { expect, test } from "./support/test";
 
 test.beforeEach(async () => {
@@ -61,7 +62,7 @@ test("the page shows the user name and an empty token list; the name in the head
   await expect(page).toHaveTitle("Account – HippoWiki");
   await expect(page.getByRole("heading", { level: 1, name: KNOWN_USER.name })).toBeVisible();
   await expect(page.getByRole("heading", { level: 2, name: "API tokens" })).toBeVisible();
-  await expect(page.getByText("You have no API tokens yet.")).toBeVisible();
+  await expect(page.getByText("You have no API tokens and no connected apps yet.")).toBeVisible();
   await expect(page.getByRole("list", { name: "API tokens" })).toHaveCount(0);
   expect(errors).toEqual([]);
 });
@@ -356,6 +357,102 @@ test.describe("addresses that are not found", () => {
 
     await expectNotFound(page, `/account?action=create&token=${token.id}`);
     await expectNotFound(page, `/account?token=${token.id}`);
+  });
+});
+
+test.describe("an app connected through OAuth", () => {
+  test("is listed among the tokens as a connected app, with the name of the app, its scope, expiry and last use", async ({
+    page,
+    request,
+  }) => {
+    const errors = collectErrors(page);
+    await createApiToken({ owner: KNOWN_USER, name: "laptop", createdAt: new Date(Date.now() - DAY_MS) });
+    const tokens = await connect(page, request, await registerClient(request, "Example connector"));
+
+    await page.goto("/account");
+
+    const rows = tokenRows(page);
+    await expect(rows).toHaveCount(2);
+    // The grant is the newer one.
+    const grant = rows.nth(0);
+    await expect(grant).toContainText("Example connector");
+    await expect(grant.getByText("Connected app", { exact: true })).toBeVisible();
+    await expect(grant.getByText("read", { exact: true })).toBeVisible();
+    await expect(grant).toContainText("Connected ");
+    await expect(grant).toContainText("Expires");
+    await expect(grant).toContainText("Last used never");
+    await expect(grant.getByRole("link", { name: "Revoke Example connector" })).toBeVisible();
+    // A token of the account page is not marked.
+    await expect(rows.nth(1)).toContainText("laptop");
+    await expect(rows.nth(1).getByText("Connected app")).toHaveCount(0);
+    await expect(rows.nth(1)).toContainText("Created ");
+    // Neither token of the grant is on the page.
+    const html = await page.content();
+    expect(html).not.toContain(tokens.access_token);
+    expect(html).not.toContain(tokens.refresh_token);
+    expect(html).not.toContain("hwa_");
+    expect(html).not.toContain("hwr_");
+
+    // A use through /mcp shows as the last use.
+    expect(await listFoldersStatus(request, tokens.access_token)).toBe(200);
+    await page.reload();
+    await expect(tokenRows(page).nth(0)).not.toContainText("Last used never");
+    expect(errors).toEqual([]);
+  });
+
+  test("revoking it asks first and then ends its access token and its refresh token at once", async ({
+    page,
+    request,
+  }) => {
+    const clientId = await registerClient(request, "Example connector");
+    const tokens = await connect(page, request, clientId);
+    expect(await listFoldersStatus(request, tokens.access_token)).toBe(200);
+    await page.goto("/account");
+
+    await page.getByRole("link", { name: "Revoke Example connector" }).click();
+    const dialog = page.getByRole("dialog", { name: "Revoke token" });
+    await expect(dialog).toContainText("Revoke the access of the connected app Example connector?");
+    await expect(dialog).toContainText("has to be connected again");
+    // Nothing happens before the user confirms.
+    expect(await listFoldersStatus(request, tokens.access_token)).toBe(200);
+    await dialog.getByRole("button", { name: "Revoke" }).click();
+
+    await expect(page).toHaveURL("/account");
+    await expect(page.getByText("You have no API tokens and no connected apps yet.")).toBeVisible();
+    expect(await getTestDb().apiToken.count()).toBe(0);
+    expect(await listFoldersStatus(request, tokens.access_token)).toBe(401);
+    const refreshed = await refresh(request, clientId, tokens.refresh_token);
+    expect(refreshed.status()).toBe(400);
+    expect(await refreshed.json()).toMatchObject({ error: "invalid_grant" });
+    // The app can be connected again.
+    const again = await connect(page, request, clientId);
+    expect(await listFoldersStatus(request, again.access_token)).toBe(200);
+  });
+
+  test("an expired grant is listed as expired, like a token", async ({ page, request }) => {
+    await connect(page, request, await registerClient(request, "Example connector"));
+    await getTestDb().apiToken.updateMany({ data: { expiresAt: new Date(Date.now() - 1000) } });
+
+    await page.goto("/account");
+
+    await expect(tokenRows(page).nth(0)).toContainText("Example connector");
+    await expect(tokenRows(page).nth(0).getByText("Expired", { exact: true })).toBeVisible();
+  });
+
+  test("the grant of another user is not listed and cannot be revoked", async ({ page, request, browser }) => {
+    // The admin connects an app in a browser of their own.
+    const adminContext = await browser.newContext({ storageState: ADMIN_STORAGE_STATE });
+    const adminPage = await adminContext.newPage();
+    const tokens = await connect(adminPage, adminContext.request, await registerClient(request, "Admin connector"));
+    await adminContext.close();
+    const grant = await getTestDb().apiToken.findFirstOrThrow({ where: { userId: KNOWN_ADMIN.id } });
+
+    await page.goto("/account");
+    await expect(page.getByText("Admin connector")).toHaveCount(0);
+    const response = await page.goto(`/account?action=revoke&token=${grant.id}`);
+
+    expect(response?.status()).toBe(404);
+    expect(await listFoldersStatus(request, tokens.access_token)).toBe(200);
   });
 });
 

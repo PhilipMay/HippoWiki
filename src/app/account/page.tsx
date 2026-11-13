@@ -22,7 +22,8 @@ export const metadata: Metadata = {
 const ACTIONS = ["create", "revoke"] as const;
 
 /**
- * The own account of the logged-in user: the user name and the user's API tokens. `?action=revoke` needs the parameter
+ * The own account of the logged-in user: the user name and the user's API tokens, with the apps the user connected
+ * through OAuth among them. `?action=revoke` needs the parameter
  * `token` with the id of one of the user's tokens; every other address with a token, an unknown action or a view is
  * not found.
  */
@@ -64,7 +65,7 @@ export default async function AccountPage({ searchParams }: PageProps<"/account"
       </Stack>
       <Typography color="text.secondary">
         A token lets a script or a tool, such as an MCP client, act as you, limited to its scopes, until it expires or
-        you revoke it.
+        you revoke it. Apps that you connected, such as the connector of an AI assistant, are listed here as well.
       </Typography>
       <TokenList tokens={tokens} now={now} />
       {action === "create" && <CreateTokenDialog action={createToken} closeHref={accountPath()} />}
@@ -72,6 +73,7 @@ export default async function AccountPage({ searchParams }: PageProps<"/account"
         <RevokeTokenDialog
           action={revokeToken.bind(null, tokenToRevoke.id)}
           tokenName={tokenToRevoke.name}
+          isGrant={tokenToRevoke.isGrant}
           closeHref={accountPath()}
         />
       )}

@@ -26,15 +26,16 @@ type TokenListProps = {
 
 /**
  * The API tokens of the logged-in user, newest first: each with its scopes, when it was created, when it expires or
- * that it has expired, and when it was last used, with a link that opens the "Revoke token" dialog. Without tokens it
- * says so.
+ * that it has expired, and when it was last used, with a link that opens the "Revoke token" dialog. A grant to an
+ * OAuth client is in the same list, marked as a connected app and named after the app. Without tokens it says so.
  */
 export default function TokenList({ tokens, now }: TokenListProps) {
   if (tokens.length === 0) {
     return (
       <Paper variant="outlined" sx={{ p: 3 }}>
         <Typography color="text.secondary">
-          You have no API tokens yet. Create one for a script or a tool, such as an MCP client.
+          You have no API tokens and no connected apps yet. Create a token for a script or a tool, such as an MCP
+          client.
         </Typography>
       </Paper>
     );
@@ -66,6 +67,7 @@ export default function TokenList({ tokens, now }: TokenListProps) {
                 primary={
                   <Stack direction="row" spacing={1} sx={{ alignItems: "center", flexWrap: "wrap" }}>
                     <Typography sx={{ overflowWrap: "anywhere" }}>{token.name}</Typography>
+                    {token.isGrant && <Chip label="Connected app" size="small" color="primary" variant="outlined" />}
                     {token.scopes.map((scope) => (
                       <Chip key={scope} label={scope} size="small" variant="outlined" />
                     ))}
@@ -74,7 +76,7 @@ export default function TokenList({ tokens, now }: TokenListProps) {
                 }
                 secondary={
                   <Typography variant="body2" color="text.secondary">
-                    Created <Time date={token.createdAt} />
+                    {token.isGrant ? "Connected" : "Created"} <Time date={token.createdAt} />
                     {" · "}
                     {expired ? (
                       <>

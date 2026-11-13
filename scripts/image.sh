@@ -158,13 +158,14 @@ smoke_start_app() {
   echo "ok: /api/health reports ok"
 }
 
+# Fails unless a GET of the path answers the given status, 200 unless another one is given.
 smoke_require_status() {
-  local path="$1" status
+  local path="$1" expected="${2:-200}" status
   status="$(http_status "${SMOKE_URL}${path}")"
-  if [[ "$status" != "200" ]]; then
-    smoke_fail "${path} answered ${status} instead of 200."
+  if [[ "$status" != "$expected" ]]; then
+    smoke_fail "${path} answered ${status} instead of ${expected}."
   fi
-  echo "ok: ${path} answers 200"
+  echo "ok: ${path} answers ${expected}"
 }
 
 # Prints the value of a response header of a GET request, or nothing when the response lacks it. Header names are
@@ -248,12 +249,15 @@ smoke_sql() {
   podman exec "$SMOKE_DB" psql -At -U "$SMOKE_DB_USER" -d "$SMOKE_DB_NAME" -c "$1"
 }
 
-# Fails unless the path redirects to the login page, as every address does without a login.
+# Fails unless the path redirects to the login page, as every address does without a login. The second argument is
+# the way back that the redirect carries, as the value of its `next` parameter: the path itself, percent-encoded. It
+# is left out for /folders, where a login leads anyway.
 smoke_require_login_redirect() {
-  local path="$1" answer
+  local path="$1" next="${2:-}" answer expected
+  expected="307 ${SMOKE_URL}/login${next:+?next=${next}}"
   answer="$(curl --silent --output /dev/null --write-out '%{http_code} %{redirect_url}' --max-time 10 "${SMOKE_URL}${path}" || true)"
-  if [[ "$answer" != "307 ${SMOKE_URL}/login" ]]; then
-    smoke_fail "${path} answered '${answer}' instead of a redirect to the login page."
+  if [[ "$answer" != "$expected" ]]; then
+    smoke_fail "${path} answered '${answer}' instead of '${expected}', a redirect to the login page."
   fi
   echo "ok: ${path} redirects to the login page"
 }
@@ -274,6 +278,8 @@ smoke_users() {
 #   Argon2id hash; @node-rs/argon2 loads and hashes in /app.
 # - /login answers and stores the secret of the session cookies, sends the security headers of next.config.ts and no
 #   X-Powered-By, and its first /_next/static/ file answers; /folders and the image optimizer redirect to the login.
+# - /mcp answers 405 to a GET instead of redirecting to the login, and the metadata of the OAuth authorization server
+#   is not found, because the container has no HIPPOWIKI_PUBLIC_URL.
 # - /api/health answers on 127.0.0.1 inside the container; the server does not run as root; there is no .env file;
 #   the user node can write only the cache of Next.js.
 # - A second container without HIPPOWIKI_ADMIN_PASSWORD serves, applies no migration and leaves the admin as it was.
@@ -343,7 +349,12 @@ cmd_smoke() {
   smoke_require_status "$asset"
   # Everything else needs a login, the image optimizer of Next.js included.
   smoke_require_login_redirect /folders
-  smoke_require_login_redirect "/_next/image?url=%2Ffolders&w=64&q=75"
+  smoke_require_login_redirect "/_next/image?url=%2Ffolders&w=64&q=75" \
+    "%2F_next%2Fimage%3Furl%3D%252Ffolders%26w%3D64%26q%3D75"
+  # The MCP endpoint is not behind the login: it asks for a bearer token itself, and takes only POST. Without
+  # HIPPOWIKI_PUBLIC_URL there is no OAuth, so its endpoints are not found.
+  smoke_require_status /mcp 405
+  smoke_require_status /.well-known/oauth-authorization-server 404
 
   # The published port reaches the address of the pod; this shows that the server listens on 127.0.0.1 as well,
   # although Podman sets HOSTNAME to the name of the pod. The slim image has no curl, so node makes the request.

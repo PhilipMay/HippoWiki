@@ -19,17 +19,20 @@ import { useHydrated } from "@/lib/hydration";
 type RevokeTokenDialogProps = {
   /** Server Action that revokes the token; it returns the error to show, or redirects on success. */
   action: RevokeTokenFormAction;
-  /** The name of the token. */
+  /** The name of the token; for a grant, the name of the connected app. */
   tokenName: string;
+  /** Whether the token is a grant to an OAuth client, a connected app. */
+  isGrant: boolean;
   /** The account address without the action, where closing the dialog leads. */
   closeHref: string;
 };
 
 /**
- * Dialog "Revoke token" that names the token and says that the scripts and tools using it stop working at once. The
- * account page renders it for `?action=revoke`, so it is open from the start; closing it leads to the account.
+ * Dialog "Revoke token" that names the token and says that the scripts and tools using it stop working at once; for a
+ * connected app, that the app loses its access. The account page renders it for `?action=revoke`, so it is open from
+ * the start; closing it leads to the account.
  */
-export default function RevokeTokenDialog({ action, tokenName, closeHref }: RevokeTokenDialogProps) {
+export default function RevokeTokenDialog({ action, tokenName, isGrant, closeHref }: RevokeTokenDialogProps) {
   const [state, formAction, pending] = useActionState(action, {});
   const router = useRouter();
   const titleId = useId();
@@ -60,8 +63,17 @@ export default function RevokeTokenDialog({ action, tokenName, closeHref }: Revo
           <Stack spacing={3}>
             {state.message && <Alert severity="error">{state.message}</Alert>}
             <DialogContentText id={descriptionId} sx={{ overflowWrap: "anywhere" }}>
-              Revoke the token <strong>{tokenName}</strong>? Scripts and tools that use it stop working at once. This
-              cannot be undone.
+              {isGrant ? (
+                <>
+                  Revoke the access of the connected app <strong>{tokenName}</strong>? It stops working at once and has
+                  to be connected again to get access. This cannot be undone.
+                </>
+              ) : (
+                <>
+                  Revoke the token <strong>{tokenName}</strong>? Scripts and tools that use it stop working at once.
+                  This cannot be undone.
+                </>
+              )}
             </DialogContentText>
           </Stack>
         </Box>

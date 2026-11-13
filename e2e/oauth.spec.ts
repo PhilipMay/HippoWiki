@@ -1,6 +1,4 @@
-import { createHash } from "node:crypto";
-
-import type { APIRequestContext, Page } from "@playwright/test";
+import type { APIRequestContext } from "@playwright/test";
 
 import { KNOWN_USER } from "../prisma/known-users";
 import { NO_STORAGE_STATE, USER_STORAGE_STATE } from "./support/auth";
@@ -13,23 +11,28 @@ import {
   resetTestDatabase,
   TEST_PASSWORD,
 } from "./support/database";
+import {
+  authorizeUrl,
+  awaitCallback,
+  connect,
+  exchange,
+  ISSUER,
+  listFoldersStatus,
+  REDIRECT_URI,
+  refresh,
+  register,
+  registerClient,
+  STATE,
+  type Tokens,
+} from "./support/oauth";
 import { expect, test } from "./support/test";
 
 // An OAuth client has no session cookie when it reads the metadata, registers or asks for tokens.
 test.use({ storageState: NO_STORAGE_STATE });
 
-/** The public URL of the test server (`HIPPOWIKI_PUBLIC_URL` in `playwright.config.ts`): the issuer. */
-const ISSUER = "http://localhost:3100";
-const REDIRECT_URI = "http://127.0.0.1:53682/callback";
-
 test.beforeEach(async () => {
   await resetTestDatabase();
 });
-
-/** Registers a client as a connector does, and returns the answer. */
-function register(request: APIRequestContext, metadata: unknown, headers: Record<string, string> = {}) {
-  return request.post("/oauth/register", { data: metadata, headers, maxRedirects: 0 });
-}
 
 test.describe("discovery", () => {
   test("the metadata of the authorization server names the public URL as the issuer and the endpoints under /oauth", async ({
@@ -272,86 +275,7 @@ test.describe("the token endpoint", () => {
   });
 });
 
-/** The PKCE verifier of the client of these tests, and its challenge (`S256`). */
-const VERIFIER = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
-const CHALLENGE = createHash("sha256").update(VERIFIER).digest("base64url");
-const STATE = "state/of the client&more";
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-/** Registers a client with the redirect address of these tests and returns its id. */
-async function registerClient(request: APIRequestContext, name = "Example connector"): Promise<string> {
-  const response = await register(request, { redirect_uris: [REDIRECT_URI], client_name: name });
-  expect(response.status()).toBe(201);
-  return ((await response.json()) as { client_id: string }).client_id;
-}
-
-/** The address of the consent page for an authorization request of the client. */
-function authorizeUrl(clientId: string, params: Record<string, string> = {}): string {
-  const query = new URLSearchParams({
-    client_id: clientId,
-    redirect_uri: REDIRECT_URI,
-    response_type: "code",
-    code_challenge: CHALLENGE,
-    code_challenge_method: "S256",
-    state: STATE,
-    scope: "read",
-    resource: `${ISSUER}/mcp`,
-    ...params,
-  });
-  return `/oauth/authorize?${query.toString()}`;
-}
-
-/**
- * Stands in for the client: answers everything at its redirect address, which is on a loopback address where nothing
- * listens, and returns the parameters of the next answer that arrives there.
- */
-async function awaitCallback(page: Page): Promise<() => Promise<Record<string, string>>> {
-  await page.route("http://127.0.0.1:53682/**", (route) =>
-    route.fulfill({ status: 200, contentType: "text/html", body: "<title>Client</title><h1>Back at the client</h1>" }),
-  );
-  return async () => {
-    await page.waitForURL((url) => url.host === "127.0.0.1:53682");
-    const url = new URL(page.url());
-    expect(url.pathname).toBe("/callback");
-    return Object.fromEntries(url.searchParams);
-  };
-}
-
-/** Exchanges a code for tokens, as the client does. */
-async function exchange(request: APIRequestContext, clientId: string, code: string) {
-  return request.post("/oauth/token", {
-    form: {
-      grant_type: "authorization_code",
-      code,
-      client_id: clientId,
-      redirect_uri: REDIRECT_URI,
-      code_verifier: VERIFIER,
-      resource: `${ISSUER}/mcp`,
-    },
-  });
-}
-
-type Tokens = { access_token: string; refresh_token: string; expires_in: number; token_type: string; scope: string };
-
-/** Calls the tool `list_folders` of `/mcp` with the access token and returns the status. */
-async function listFoldersStatus(request: APIRequestContext, accessToken: string): Promise<number> {
-  const response = await request.post("/mcp", {
-    headers: { authorization: `Bearer ${accessToken}`, accept: "application/json, text/event-stream" },
-    data: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "list_folders", arguments: {} } },
-  });
-  return response.status();
-}
-
-/** Approves the client on its consent page as the logged-in user and returns the tokens of the new grant. */
-async function connect(page: Page, request: APIRequestContext, clientId: string): Promise<Tokens> {
-  const callback = await awaitCallback(page);
-  await page.goto(authorizeUrl(clientId));
-  await page.getByRole("button", { name: "Approve" }).click();
-  const { code } = await callback();
-  const response = await exchange(request, clientId, code ?? "");
-  expect(response.status()).toBe(200);
-  return (await response.json()) as Tokens;
-}
 
 test.describe("the whole flow", () => {
   test("logged out: login, consent, code, tokens, a tool call, a refresh, and the old refresh token revokes the grant", async ({
@@ -425,11 +349,7 @@ test.describe("the whole flow", () => {
     expect(JSON.stringify(await call.json())).toContain(`${ISSUER}/folders/handbook`);
 
     // A refresh gives new tokens, and the previous access token stops working.
-    const refresh = (refreshToken: string) =>
-      request.post("/oauth/token", {
-        form: { grant_type: "refresh_token", refresh_token: refreshToken, client_id: clientId },
-      });
-    const refreshed = await refresh(tokens.refresh_token);
+    const refreshed = await refresh(request, clientId, tokens.refresh_token);
     expect(refreshed.status()).toBe(200);
     const newer = (await refreshed.json()) as Tokens;
     expect(newer.access_token).not.toBe(tokens.access_token);
@@ -438,12 +358,12 @@ test.describe("the whole flow", () => {
     expect(await listFoldersStatus(request, newer.access_token)).toBe(200);
 
     // The old refresh token is used again: the grant is revoked, with the newer tokens.
-    const reused = await refresh(tokens.refresh_token);
+    const reused = await refresh(request, clientId, tokens.refresh_token);
     expect(reused.status()).toBe(400);
     expect(await reused.json()).toMatchObject({ error: "invalid_grant" });
     expect(await getTestDb().apiToken.count()).toBe(0);
     expect(await listFoldersStatus(request, newer.access_token)).toBe(401);
-    expect((await refresh(newer.refresh_token)).status()).toBe(400);
+    expect((await refresh(request, clientId, newer.refresh_token)).status()).toBe(400);
   });
 
   test("a user with the first password changes it first and then reaches the consent page", async ({
