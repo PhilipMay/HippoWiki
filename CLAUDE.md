@@ -54,6 +54,10 @@ For every change, inside a step plan or not, the end-to-end tests run in two sta
   Which specs count as affected, and when the complete suite is needed right away, is listed there.
 - Before the work is finished, committed or pushed, run the complete `npm run test:e2e` once.
 
+A change that touches only documentation (the files in `spec/`, `README.md`, `CLAUDE.md`, `AGENTS.md` and the skills in
+`.claude/skills/`) runs only `npm run check`: no integration tests, no end-to-end tests and no build. This also holds
+for the wrap-up step of a step plan; see "Changes to documentation only" in `spec/workflow.md`.
+
 ## Next.js Agent Rules
 
 `AGENTS.md` is managed by Next.js (`next dev` rewrites it) and points to the version-matched Next.js docs in

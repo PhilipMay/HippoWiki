@@ -95,12 +95,13 @@ A feature spec (`spec/<feature>.md`) describes a feature as built. The wrap-up s
 A step is done only when both of the following hold:
 
 - These commands pass. Run them one after another, in this order, and never in parallel: the integration and
-  end-to-end tests use the same test database container and port (see `testing.md`).
+  end-to-end tests use the same test database container and port (see `testing.md`). A step that changes only
+  documentation runs only the first one (see "Changes to documentation only" below).
   1. `npm run check`
   2. `npm run test:integration`
   3. The end-to-end tests: in every step except the wrap-up, only the specs the step affects (see below), for example
-     `npm run test:e2e -- e2e/<name>.spec.ts`; in the wrap-up step, the complete `npm run test:e2e`,
-     so that the whole suite has passed before the push.
+     `npm run test:e2e -- e2e/<name>.spec.ts`; in a wrap-up step that changes more than documentation, the complete
+     `npm run test:e2e`, so that the whole suite has passed before the push.
   4. `npm run build`
 - Its "Test" items have been verified. Do the manual checks you can yourself, for example in the browser. A manual
   check you cannot do does not hold the step back: list it in the report of the step so that the user can do it. Never report
@@ -115,6 +116,17 @@ The end-to-end specs a step affects:
   `playwright.config.ts`, `e2e/support/`, or `prisma/schema.prisma` and its migrations.
 - No spec, when the step changes nothing that the app runs yet, such as a pure module that nothing imports.
 - When it is unclear whether a spec is affected, run it.
+
+Changes to documentation only:
+
+- A step that changes only documentation (the files in `spec/`, `README.md`, `CLAUDE.md`, `AGENTS.md` and the skills in
+  `.claude/skills/`) is done when `npm run check` passes and its "Test" items have been verified. The integration
+  tests, the end-to-end tests and the build do not run, because none of them reads these files.
+- This also holds for the wrap-up step. When the wrap-up step changes only documentation, the complete end-to-end
+  suite does not run locally before the push; CI runs it on the push (see `testing.md`).
+- A step that also changes any other file, such as code, configuration, `.env.example` or a fixture, is not
+  documentation only and runs all the commands above.
+- The report of the step says that only `npm run check` ran and why.
 - The report of the step names the specs that ran, or says that none ran and why.
 
 A failure that only the complete suite of the wrap-up step shows is fixed in the wrap-up step, also when an earlier step
