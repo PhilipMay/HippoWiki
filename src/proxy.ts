@@ -49,8 +49,15 @@ export function proxy(request: NextRequest): NextResponse {
 
 export const config = {
   // Every address except the public ones and the static files of Next.js, which the login page needs. The public
-  // ones are the login page, the health check and the MCP endpoint `/mcp`, whose callers have no session cookie: its
-  // route checks their bearer token itself. A Server Action is a POST to the address of its page, so the login itself
-  // passes as well. The value must be a constant: Next.js reads it at build time.
-  matcher: ["/((?!login$|api/health$|mcp$|_next/static/).*)"],
+  // ones are:
+  // - the login page and the health check;
+  // - the MCP endpoint `/mcp`, whose callers have no session cookie: its route checks their bearer token itself;
+  // - what an OAuth client calls before it has a token: the metadata of the authorization server and of the
+  //   protected resource under `/.well-known/`, the registration `/oauth/register` and the token endpoint
+  //   `/oauth/token`. The consent page `/oauth/authorize` is not public: a user approves a client only when logged in.
+  // A Server Action is a POST to the address of its page, so the login itself passes as well. The value must be a
+  // constant: Next.js reads it at build time.
+  matcher: [
+    "/((?!login$|api/health$|mcp$|oauth/register$|oauth/token$|\\.well-known/oauth-authorization-server$|\\.well-known/oauth-protected-resource(?:/.*)?$|_next/static/).*)",
+  ],
 };

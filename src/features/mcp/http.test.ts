@@ -131,8 +131,42 @@ describe("the token", () => {
 
     await handleMcpRequest(request);
 
-    expect(mocks.authenticateToken).toHaveBeenCalledExactlyOnceWith(request.headers, "read");
+    expect(mocks.authenticateToken).toHaveBeenCalledExactlyOnceWith(request.headers, "read", { acceptOAuth: false });
   });
+
+  it("accepts the access tokens of OAuth as well once the wiki has a public URL", async () => {
+    setPublicUrl("https://wiki.example.com");
+    const request = post(TOOLS_LIST);
+
+    await handleMcpRequest(request);
+
+    expect(mocks.authenticateToken).toHaveBeenCalledExactlyOnceWith(request.headers, "read", { acceptOAuth: true });
+  });
+
+  it.each([
+    [
+      "missing-token",
+      401,
+      'Bearer resource_metadata="https://wiki.example.com/.well-known/oauth-protected-resource/mcp", scope="read"',
+    ],
+    [
+      "invalid-token",
+      401,
+      'Bearer error="invalid_token", resource_metadata="https://wiki.example.com/.well-known/oauth-protected-resource/mcp", scope="read"',
+    ],
+    ["insufficient-scope", 403, 'Bearer error="insufficient_scope", scope="read"'],
+  ])(
+    "with a public URL, answers %s with %i and says where the authorization server is found",
+    async (code, status, challenge) => {
+      setPublicUrl("https://wiki.example.com");
+      mocks.authenticateToken.mockResolvedValue({ ok: false, error: { code } });
+
+      const response = await handleMcpRequest(post(TOOLS_LIST));
+
+      expect(response.status).toBe(status);
+      expect(response.headers.get("www-authenticate")).toBe(challenge);
+    },
+  );
 
   it.each([
     ["missing-token", 401, "Bearer", "unauthorized"],

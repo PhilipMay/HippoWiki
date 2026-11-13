@@ -1,7 +1,9 @@
 // The adapter between the route `/mcp` and the MCP server: it is to an MCP client what `queries.ts` is to the GUI. It is
 // the place where the actor of a request comes from the bearer token instead of the session: every request is
 // checked with `authenticateToken()` before the SDK sees it. The SDK then speaks the protocol (Streamable HTTP,
-// stateless, with JSON answers and no SSE) and calls the tools of `tools.ts`.
+// stateless, with JSON answers and no SSE) and calls the tools of `tools.ts`. With `HIPPOWIKI_PUBLIC_URL` set, OAuth
+// is on: the access token of a grant is accepted next to an API token, and the 401 says where a client finds the
+// authorization server.
 
 import {
   createMcpHandler,
@@ -11,6 +13,7 @@ import {
 } from "@modelcontextprotocol/server";
 
 import { createWikiServer } from "@/features/mcp/tools";
+import { protectedResourceMetadataUrl } from "@/features/oauth/issuer";
 import * as tokenService from "@/features/tokens/service";
 import { getServerEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";
@@ -21,6 +24,11 @@ const MCP_SCOPE = "read";
 /** An answer that is not one of the protocol: a status, a short reason as JSON and headers. */
 function refusal(status: number, error: string, headers: Record<string, string> = {}): Response {
   return Response.json({ error }, { status, headers });
+}
+
+/** The value of a `WWW-Authenticate` header with the scheme `Bearer` and the given parameters (RFC 6750). */
+function bearerChallenge(...parameters: string[]): string {
+  return parameters.length === 0 ? "Bearer" : `Bearer ${parameters.join(", ")}`;
 }
 
 /**
@@ -86,7 +94,8 @@ async function serveLegacy(request: Request): Promise<Response> {
  * - Anything but `POST` answers 405: there are no sessions to end and no stream to open.
  * - An `Origin` that is not the wiki's own answers 403.
  * - Without a valid token it answers 401 with `WWW-Authenticate: Bearer`, for a token without the scope `read` 403
- *   with `error="insufficient_scope"`, and 500 when the token could not be checked.
+ *   with `error="insufficient_scope"`, and 500 when the token could not be checked. With OAuth on, the 401 also
+ *   names the metadata of the protected resource (`resource_metadata`, RFC 9728) and the scope to ask for.
  * - Everything else goes to the MCP server.
  */
 export async function handleMcpRequest(request: Request): Promise<Response> {
@@ -100,16 +109,22 @@ export async function handleMcpRequest(request: Request): Promise<Response> {
 
   // The reads of the folders and pages take no actor: everyone who is logged in may read everything. The token only
   // has to be valid and to have the scope.
-  const actor = await tokenService.authenticateToken(request.headers, MCP_SCOPE);
+  const resourceMetadata = protectedResourceMetadataUrl();
+  const oauth = resourceMetadata !== null;
+  const actor = await tokenService.authenticateToken(request.headers, MCP_SCOPE, { acceptOAuth: oauth });
   if (!actor.ok) {
+    // What a client needs to start the OAuth flow, after the error if there is one.
+    const discovery = oauth ? [`resource_metadata="${resourceMetadata}"`, `scope="${MCP_SCOPE}"`] : [];
     switch (actor.error.code) {
       case "missing-token":
-        return refusal(401, "unauthorized", { "WWW-Authenticate": "Bearer" });
+        return refusal(401, "unauthorized", { "WWW-Authenticate": bearerChallenge(...discovery) });
       case "invalid-token":
-        return refusal(401, "invalid_token", { "WWW-Authenticate": 'Bearer error="invalid_token"' });
+        return refusal(401, "invalid_token", {
+          "WWW-Authenticate": bearerChallenge('error="invalid_token"', ...discovery),
+        });
       case "insufficient-scope":
         return refusal(403, "insufficient_scope", {
-          "WWW-Authenticate": `Bearer error="insufficient_scope", scope="${MCP_SCOPE}"`,
+          "WWW-Authenticate": bearerChallenge('error="insufficient_scope"', `scope="${MCP_SCOPE}"`),
         });
       case "failed":
         return refusal(500, "server_error");

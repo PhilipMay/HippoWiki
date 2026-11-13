@@ -49,6 +49,11 @@ const PROTECTED_ADDRESSES = [
   ["an address that starts like the health check", "/api/health/more"],
   ["an API address that does not exist", "/api/nowhere"],
   ["an address that starts like the MCP endpoint", "/mcp/more"],
+  ["the consent page of OAuth", "/oauth/authorize?client_id=abc&state=x"],
+  ["an OAuth address that does not exist", "/oauth/nowhere"],
+  ["an address that starts like the token endpoint", "/oauth/token/more"],
+  ["a well-known address that does not exist", "/.well-known/openid-configuration"],
+  ["an address that starts like the metadata of the authorization server", "/.well-known/oauth-authorization-server/x"],
   ["the image optimizer", "/_next/image?url=%2Ffolders&w=64&q=75"],
 ] as const;
 
@@ -135,9 +140,26 @@ test.describe("without a login", () => {
     });
 
     expect(response.status()).toBe(401);
-    expect(response.headers()["www-authenticate"]).toBe("Bearer");
+    expect(response.headers()["www-authenticate"]).toMatch(/^Bearer\b/);
     expect(await response.text()).not.toContain("handbook");
   });
+
+  // What they answer is tested in oauth.spec.ts.
+  for (const [what, method, address, status] of [
+    ["the metadata of the authorization server", "get", "/.well-known/oauth-authorization-server", 200],
+    ["the metadata of the protected resource", "get", "/.well-known/oauth-protected-resource", 200],
+    ["the metadata of the protected resource /mcp", "get", "/.well-known/oauth-protected-resource/mcp", 200],
+    ["the registration of an OAuth client", "post", "/oauth/register", 400],
+    ["the token endpoint", "post", "/oauth/token", 400],
+  ] as const) {
+    test(`${what} (${address}) is not sent to the login page`, async ({ request }) => {
+      const response = await request[method](address, { maxRedirects: 0 });
+
+      expect(response.status()).toBe(status);
+      expect(response.headers().location).toBeUndefined();
+      expect(await response.text()).not.toContain("Secret");
+    });
+  }
 
   for (const cookieName of ["better-auth.session_token", "__Secure-better-auth.session_token"]) {
     test(`with a ${cookieName} cookie that the server does not know, the folder list leads to the login page`, async ({

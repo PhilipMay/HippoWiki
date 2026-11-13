@@ -43,6 +43,7 @@ import { MAX_TOKENS_PER_USER } from "@/features/tokens/service";
 import { parseUserId } from "@/features/users/schema";
 import type { Actor } from "@/features/users/service";
 import type { Prisma } from "@/generated/prisma/client";
+import { isClientAddressGroup, SHARED_CLIENT_ADDRESS } from "@/lib/client-address";
 import { getDb } from "@/lib/db";
 import { isUniqueViolation, OAUTH_CLIENT_METADATA_URL } from "@/lib/db-errors";
 import { logger } from "@/lib/logger";
@@ -56,6 +57,15 @@ export const ACCESS_TOKEN_LIFETIME_MS = 60 * 60 * 1000;
 
 /** How old a client that no grant and no code names has to be before it is deleted. */
 export const UNUSED_CLIENT_RETENTION_MS = 24 * 60 * 60 * 1000;
+
+/** At most this many clients are registered per client address group and hour. */
+export const MAX_REGISTRATIONS_PER_WINDOW = 20;
+
+/** How long the window of a client address group lasts, from the first registration counted in it. */
+export const REGISTRATION_WINDOW_MS = 60 * 60 * 1000;
+
+/** How often a registration reads the window again when other registrations of its group got in between. */
+const MAX_RESERVE_ROUNDS = 50;
 
 /** A client as the consent page and the registration answer show it. */
 export type OAuthClient = {
@@ -88,14 +98,63 @@ type Failed = { code: "failed" };
 /** The metadata of a registration is not an object, or its redirect addresses are missing or not allowed. */
 type InvalidClientMetadata = { code: "invalid-client-metadata" | "invalid-redirect-uri"; description: string };
 
-export type RegisterClientError = InvalidClientMetadata | Failed;
+/** The client address group has registered the most clients allowed in its hour; `waitMs` until the hour is over. */
+type TooManyRegistrations = { code: "wait"; waitMs: number };
+
+export type RegisterClientError = InvalidClientMetadata | TooManyRegistrations | Failed;
+
+/**
+ * Counts a registration of the client address group in its hour, or returns how long the group has to wait when the
+ * hour is full. The count is a conditional write that is repeated when another registration of the group got in
+ * between, as the logins are counted (`reserveAttempt()` of the auth service), so registrations at the same time
+ * cannot pass the limit together. `null` when the registration was counted.
+ */
+async function reserveRegistration(clientAddress: string): Promise<{ waitMs: number } | null> {
+  const db = getDb();
+  for (let round = 0; round < MAX_RESERVE_ROUNDS; round += 1) {
+    const now = currentTime();
+    const window = await db.oAuthRegistrationWindow.findUnique({
+      where: { clientAddress },
+      select: { registrations: true, startedAt: true },
+    });
+    const running = window && now.getTime() < window.startedAt.getTime() + REGISTRATION_WINDOW_MS ? window : null;
+    if (running && running.registrations >= MAX_REGISTRATIONS_PER_WINDOW) {
+      return { waitMs: running.startedAt.getTime() + REGISTRATION_WINDOW_MS - now.getTime() };
+    }
+    const counted = running
+      ? await db.oAuthRegistrationWindow.updateMany({
+          where: { clientAddress, startedAt: running.startedAt, registrations: { lt: MAX_REGISTRATIONS_PER_WINDOW } },
+          data: { registrations: { increment: 1 } },
+        })
+      : window
+        ? // The hour is over: the window starts again, unless another registration has started it already.
+          await db.oAuthRegistrationWindow.updateMany({
+            where: { clientAddress, registrations: window.registrations, startedAt: window.startedAt },
+            data: { registrations: 1, startedAt: now },
+          })
+        : // A row that another registration created in the meantime is skipped and reported as a count of 0.
+          await db.oAuthRegistrationWindow.createMany({
+            data: [{ clientAddress, registrations: 1, startedAt: now }],
+            skipDuplicates: true,
+          });
+    if (counted.count === 1) return null;
+  }
+  throw new Error("the count of the registrations kept changing, the registration was not counted");
+}
 
 /**
  * Registers a client from the metadata it sent (dynamic client registration, RFC 7591). Only the redirect addresses
- * and the name are read; the client is public, whatever it asked for. Anyone can register, so the adapter limits how
- * often, and a client that nothing names is deleted after a day.
+ * and the name are read; the client is public, whatever it asked for.
+ *
+ * Anyone can register without a login, so at most 20 clients are registered per client address group and hour
+ * (`wait`), and a client that nothing names is deleted after a day. The adapter reads the group from the request and
+ * passes it as a plain string; a value that is not a group counts in the shared group. Metadata that is refused is
+ * not counted, because it writes nothing.
  */
-export async function registerClient(metadata: unknown): Promise<Result<OAuthClient, RegisterClientError>> {
+export async function registerClient(
+  metadata: unknown,
+  clientAddressGroup: string,
+): Promise<Result<OAuthClient, RegisterClientError>> {
   if (typeof metadata !== "object" || metadata === null || Array.isArray(metadata)) {
     return {
       ok: false,
@@ -108,19 +167,31 @@ export async function registerClient(metadata: unknown): Promise<Result<OAuthCli
     return { ok: false, error: { code: "invalid-redirect-uri", description } };
   }
 
+  // The service trusts no caller: a group that `client-address.ts` would not write could be any text.
+  let clientAddress = clientAddressGroup;
+  if (!isClientAddressGroup(clientAddress)) {
+    logger.error("registration with an invalid client address group, counted in the shared group");
+    clientAddress = SHARED_CLIENT_ADDRESS;
+  }
+
   let client: OAuthClient;
   try {
+    const wait = await reserveRegistration(clientAddress);
+    if (wait) {
+      logger.warn({ clientAddress, waitMs: wait.waitMs }, "oauth client not registered: too many registrations");
+      return { ok: false, error: { code: "wait", waitMs: wait.waitMs } };
+    }
     const row = await getDb().oAuthClient.create({
       data: { name: parsed.data.client_name, redirectUris: parsed.data.redirect_uris },
       select: CLIENT_SELECT,
     });
     client = toClient(row);
   } catch (err) {
-    logger.error({ err }, "failed to register oauth client");
+    logger.error({ err, clientAddress }, "failed to register oauth client");
     return { ok: false, error: { code: "failed" } };
   }
 
-  logger.info({ clientId: client.id }, "oauth client registered");
+  logger.info({ clientId: client.id, clientAddress }, "oauth client registered");
   await deleteStaleRows();
   return { ok: true, value: client };
 }
@@ -392,8 +463,10 @@ type InvalidRequest = { code: "invalid-request"; description: string };
 type InvalidGrant = { code: "invalid-grant"; description: string };
 /** The `resource` is not the MCP endpoint. */
 type InvalidTarget = { code: "invalid-target"; description: string };
+/** The request does not say which client it comes from. */
+type MissingClient = { code: "invalid-client"; description: string };
 
-export type TokenError = InvalidRequest | InvalidGrant | InvalidTarget | Failed;
+export type TokenError = InvalidRequest | InvalidGrant | InvalidTarget | MissingClient | Failed;
 
 function invalidGrant(description: string): { ok: false; error: InvalidGrant } {
   return { ok: false, error: { code: "invalid-grant", description } };
@@ -402,6 +475,7 @@ function invalidGrant(description: string): { ok: false; error: InvalidGrant } {
 const INVALID_CODE = "The authorization code is not valid";
 const INVALID_REFRESH_TOKEN = "The refresh token is not valid";
 const NOT_MCP_RESOURCE = "resource is not the MCP endpoint of this wiki";
+const MISSING_CLIENT: MissingClient = { code: "invalid-client", description: "client_id is missing" };
 
 /** Thrown inside the transaction of `exchangeCode()` to roll it back: the user is gone or still has the first password. */
 class UserMayNotGrantError extends Error {}
@@ -434,7 +508,8 @@ function newTokens(grantId: string, grantExpiresAt: Date, now: Date) {
  * - The code is deleted as it is read, so it works once, also when two exchanges arrive at the same time, and a
  *   failed check uses it up.
  * - The client, the redirect address and the PKCE verifier must be the ones of the authorization request, and a
- *   `resource` that is sent must be the MCP endpoint. A user with the first password gets no grant.
+ *   `resource` that is sent must be the MCP endpoint. A request that names no client is refused (`invalid-client`).
+ *   A user with the first password gets no grant.
  * - In one transaction the grant is created and the user's older grants to the same client are deleted
  *   (`replacedGrants()`). The limit of tokens per user counts the new grant without the replaced ones.
  */
@@ -492,6 +567,7 @@ export async function exchangeCode(input: {
   };
   const now = currentTime();
   if (code.expiresAt.getTime() <= now.getTime()) return refuse("expired-code", invalidGrant(INVALID_CODE).error);
+  if (input.clientId === undefined) return refuse("no-client", MISSING_CLIENT);
   if (input.clientId !== toClient(client).clientId) {
     return refuse("other-client", invalidGrant("The authorization code was given to another client").error);
   }
@@ -564,7 +640,8 @@ export async function exchangeCode(input: {
  *   client, or by someone who stole it. Nobody can tell which, so the grant is revoked, and the user connects again.
  * - The swap of the hashes is conditional, so that of two refreshes at the same time only one succeeds; the other is
  *   refused, and the grant stays.
- * - A grant past its expiry, a grant of a user with the first password and a refresh by another client are refused.
+ * - A grant past its expiry, a grant of a user with the first password and a refresh by another client are refused,
+ *   and so is a request that names no client (`invalid-client`).
  */
 export async function refreshGrant(input: {
   refreshToken?: string;
@@ -622,6 +699,7 @@ export async function refreshGrant(input: {
     logger.warn({ reason, grantId, userId, clientId: client.id }, "refresh refused");
     return { ok: false, error };
   };
+  if (input.clientId === undefined) return refuse("no-client", MISSING_CLIENT);
   if (input.clientId !== toClient(client).clientId) {
     return refuse("other-client", invalidGrant("The refresh token was given to another client").error);
   }
@@ -652,8 +730,8 @@ export async function refreshGrant(input: {
 }
 
 /**
- * Deletes what nothing needs any more: the codes that have expired, and the clients that are more than a day old and
- * that no grant and no code names. There is no job scheduler, so this runs when a client is registered or a code is
+ * Deletes what nothing needs any more: the codes that have expired, the windows of registrations whose hour is over,
+ * and the clients that are more than a day old and that no grant and no code names. There is no job scheduler, so this runs when a client is registered or a code is
  * created. A failure is logged and does not fail the write that caused the clean-up.
  */
 async function deleteStaleRows(): Promise<void> {
@@ -663,6 +741,13 @@ async function deleteStaleRows(): Promise<void> {
     await db.oAuthCode.deleteMany({ where: { expiresAt: { lte: new Date(now) } } });
   } catch (err) {
     logger.error({ err }, "failed to delete the expired authorization codes");
+  }
+  try {
+    await db.oAuthRegistrationWindow.deleteMany({
+      where: { startedAt: { lte: new Date(now - REGISTRATION_WINDOW_MS) } },
+    });
+  } catch (err) {
+    logger.error({ err }, "failed to delete the windows of registrations whose hour is over");
   }
   try {
     await db.oAuthClient.deleteMany({

@@ -45,7 +45,7 @@ ChatGPT connect through OAuth: the user logs in, approves the connector on a con
 - [x] MCP endpoint with read tools
 - [x] OAuth clients, codes and grants
 - [x] Client ID Metadata Documents
-- [ ] Discovery, registration and token endpoints
+- [x] Discovery, registration and token endpoints
 - [ ] Consent page
 - [ ] Grants on `/account`
 - [ ] Wrap-up
@@ -236,7 +236,9 @@ tokens.
     Limited to 20 registrations per client address group and hour (a table like `LoginWindow`); over the limit 429
     with `Retry-After`. The group comes from `clientAddressGroup()` and `HIPPOWIKI_TRUSTED_PROXIES`.
   - `src/app/oauth/token/route.ts`: `application/x-www-form-urlencoded`, and JSON as well; `authorization_code` and
-    `refresh_token`; errors in the shape of RFC 6749 with status 400 (`invalid_client` 401).
+    `refresh_token`; errors in the shape of RFC 6749 with status 400 (`invalid_client` 401). `invalid_client` is the
+    answer to a token request that names no client; a client that is not the one of the code or of the grant is
+    `invalid_grant`.
   - Every answer of the register and token endpoints has `Cache-Control: no-store`.
 - `/mcp` with OAuth on: its 401 adds `resource_metadata="<public URL>/.well-known/oauth-protected-resource/mcp"` and
   `scope="read"`, and it accepts OAuth access tokens.

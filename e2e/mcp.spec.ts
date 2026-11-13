@@ -85,7 +85,7 @@ test("with an expired token and with the token of a user with the first password
     const response = await send(request, { method: "tools/list" }, token);
 
     expect(response.status()).toBe(401);
-    expect(response.headers()["www-authenticate"]).toBe('Bearer error="invalid_token"');
+    expect(response.headers()["www-authenticate"]).toMatch(/^Bearer error="invalid_token"/);
   }
 });
 

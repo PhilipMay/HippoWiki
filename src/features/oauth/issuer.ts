@@ -2,7 +2,7 @@
 // to. Both come from `HIPPOWIKI_PUBLIC_URL`; without it there is no OAuth. No import of `next`, so the service and the
 // adapters share it.
 
-import { mcpPath } from "@/lib/addresses";
+import { mcpPath, protectedResourceMetadataPath } from "@/lib/addresses";
 import { getServerEnv } from "@/lib/env";
 
 /**
@@ -20,4 +20,14 @@ export function issuer(): string | null {
 export function mcpResource(): string | null {
   const publicUrl = issuer();
   return publicUrl === null ? null : `${publicUrl}${mcpPath()}`;
+}
+
+/**
+ * Where the metadata of the protected resource `/mcp` is (RFC 9728), for the `resource_metadata` of its
+ * `WWW-Authenticate` header: a client that gets a 401 finds the authorization server from there. `null` while OAuth
+ * is off.
+ */
+export function protectedResourceMetadataUrl(): string | null {
+  const publicUrl = issuer();
+  return publicUrl === null ? null : `${publicUrl}${protectedResourceMetadataPath()}`;
 }

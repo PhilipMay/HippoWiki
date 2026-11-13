@@ -103,6 +103,37 @@ export function mcpPath(): string {
   return MCP_PATH;
 }
 
+/** The address of the consent page of OAuth, where a logged-in user approves or denies a client. */
+const OAUTH_AUTHORIZE_PATH = "/oauth/authorize";
+
+/** The address of the consent page of OAuth, the authorization endpoint. */
+export function oauthAuthorizePath(): string {
+  return OAUTH_AUTHORIZE_PATH;
+}
+
+/** The address of the token endpoint of OAuth, where a client exchanges a code or refreshes a grant. */
+export function oauthTokenPath(): string {
+  return "/oauth/token";
+}
+
+/** The address of the registration endpoint of OAuth, where a client registers itself. */
+export function oauthRegisterPath(): string {
+  return "/oauth/register";
+}
+
+/** The address of the metadata of the OAuth authorization server (RFC 8414). */
+export function authorizationServerMetadataPath(): string {
+  return "/.well-known/oauth-authorization-server";
+}
+
+/**
+ * The address of the metadata of the protected resource `/mcp` (RFC 9728): the well-known prefix followed by the path
+ * of the resource.
+ */
+export function protectedResourceMetadataPath(): string {
+  return `/.well-known/oauth-protected-resource${MCP_PATH}`;
+}
+
 /** The address where a user who logged in with a first password sets a password of their own. */
 const CHANGE_PASSWORD_PATH = "/change-password";
 

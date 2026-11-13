@@ -36,11 +36,14 @@ async function createActor(data: { mustChangePassword?: boolean } = {}): Promise
 
 /** Registers a client and fails the test if that does not succeed. */
 async function register(metadata: Record<string, unknown> = {}): Promise<Client> {
-  const result = await oauthService.registerClient({
-    redirect_uris: [REDIRECT_URI],
-    client_name: "Example",
-    ...metadata,
-  });
+  const result = await oauthService.registerClient(
+    {
+      redirect_uris: [REDIRECT_URI],
+      client_name: "Example",
+      ...metadata,
+    },
+    "shared",
+  );
   if (!result.ok) return expect.fail(`client not registered: ${result.error.code}`);
   return result.value;
 }
@@ -134,10 +137,128 @@ describe("registerClient", () => {
     ["http on another host", { redirect_uris: ["http://client.example/callback"] }],
     ["a fragment", { redirect_uris: [`${REDIRECT_URI}#fragment`] }],
   ])("refuses %s and stores nothing", async (_case, metadata) => {
-    const result = await oauthService.registerClient({ client_name: "Example", ...metadata });
+    const result = await oauthService.registerClient({ client_name: "Example", ...metadata }, "shared");
 
     expect(result).toMatchObject({ ok: false, error: { code: "invalid-redirect-uri" } });
     expect(await getTestDb().oAuthClient.count()).toBe(0);
+  });
+});
+
+describe("the limit of registrations per client address group and hour", () => {
+  const METADATA = { redirect_uris: [REDIRECT_URI], client_name: "Example" };
+  const LIMIT = oauthService.MAX_REGISTRATIONS_PER_WINDOW;
+
+  /** Registers the given number of clients from the group, one after another, and returns how many succeeded. */
+  async function registerFrom(group: string, count: number): Promise<number> {
+    let registered = 0;
+    for (let index = 0; index < count; index += 1) {
+      if ((await oauthService.registerClient(METADATA, group)).ok) registered += 1;
+    }
+    return registered;
+  }
+
+  it("registers 20 clients of a group in an hour and refuses the 21st with the time that is left", async () => {
+    const start = Date.now();
+    setClock(start);
+    expect(LIMIT).toBe(20);
+    expect(await registerFrom("203.0.113.7", LIMIT)).toBe(LIMIT);
+
+    vi.setSystemTime(start + 20 * MINUTE_MS);
+    await expect(oauthService.registerClient(METADATA, "203.0.113.7")).resolves.toEqual({
+      ok: false,
+      error: { code: "wait", waitMs: 40 * MINUTE_MS },
+    });
+
+    expect(await getTestDb().oAuthClient.count()).toBe(LIMIT);
+    expect(await getTestDb().oAuthRegistrationWindow.findMany()).toEqual([
+      { clientAddress: "203.0.113.7", registrations: LIMIT, startedAt: new Date(start) },
+    ]);
+  });
+
+  it("counts every group on its own", async () => {
+    await registerFrom("203.0.113.7", LIMIT);
+
+    await expect(oauthService.registerClient(METADATA, "203.0.113.7")).resolves.toMatchObject({
+      ok: false,
+      error: { code: "wait" },
+    });
+    for (const group of ["198.51.100.9", "2001:db8:1:2::/64", "shared"]) {
+      await expect(oauthService.registerClient(METADATA, group)).resolves.toMatchObject({ ok: true });
+    }
+  });
+
+  it("starts a new hour with the first registration after the hour is over", async () => {
+    const start = Date.now();
+    setClock(start);
+    await registerFrom("203.0.113.7", LIMIT);
+
+    vi.setSystemTime(start + HOUR_MS - 1);
+    await expect(oauthService.registerClient(METADATA, "203.0.113.7")).resolves.toMatchObject({
+      ok: false,
+      error: { code: "wait", waitMs: 1 },
+    });
+    vi.setSystemTime(start + HOUR_MS);
+    await expect(oauthService.registerClient(METADATA, "203.0.113.7")).resolves.toMatchObject({ ok: true });
+
+    expect(await getTestDb().oAuthRegistrationWindow.findMany()).toEqual([
+      { clientAddress: "203.0.113.7", registrations: 1, startedAt: new Date(start + HOUR_MS) },
+    ]);
+  });
+
+  it("cannot be passed by registrations at the same time", async () => {
+    const results = await Promise.all(
+      Array.from({ length: LIMIT + 8 }, () => oauthService.registerClient(METADATA, "203.0.113.7")),
+    );
+
+    expect(results.filter((result) => result.ok)).toHaveLength(LIMIT);
+    expect(results.filter((result) => !result.ok && result.error.code === "wait")).toHaveLength(8);
+    expect(await getTestDb().oAuthClient.count()).toBe(LIMIT);
+    expect((await getTestDb().oAuthRegistrationWindow.findFirstOrThrow()).registrations).toBe(LIMIT);
+  });
+
+  it("cannot be passed by registrations at the same time when the hour has just ended", async () => {
+    const start = Date.now();
+    setClock(start);
+    await registerFrom("203.0.113.7", LIMIT);
+    vi.setSystemTime(start + HOUR_MS);
+
+    const results = await Promise.all(
+      Array.from({ length: LIMIT + 5 }, () => oauthService.registerClient(METADATA, "203.0.113.7")),
+    );
+
+    expect(results.filter((result) => result.ok)).toHaveLength(LIMIT);
+    expect(await getTestDb().oAuthClient.count()).toBe(2 * LIMIT);
+  });
+
+  it("does not count metadata that is refused", async () => {
+    for (let index = 0; index < LIMIT + 5; index += 1) {
+      await oauthService.registerClient({ redirect_uris: ["javascript:alert(1)"] }, "203.0.113.7");
+    }
+
+    expect(await getTestDb().oAuthRegistrationWindow.count()).toBe(0);
+    await expect(oauthService.registerClient(METADATA, "203.0.113.7")).resolves.toMatchObject({ ok: true });
+  });
+
+  it("counts a group that is no group in the shared group", async () => {
+    await oauthService.registerClient(METADATA, "not-an-address");
+
+    expect((await getTestDb().oAuthRegistrationWindow.findMany()).map((window) => window.clientAddress)).toEqual([
+      "shared",
+    ]);
+  });
+
+  it("deletes the windows of other groups whose hour is over", async () => {
+    const start = Date.now();
+    setClock(start);
+    await oauthService.registerClient(METADATA, "203.0.113.7");
+    vi.setSystemTime(start + 30 * MINUTE_MS);
+    await oauthService.registerClient(METADATA, "198.51.100.9");
+
+    vi.setSystemTime(start + HOUR_MS);
+    await oauthService.registerClient(METADATA, "shared");
+
+    const groups = (await getTestDb().oAuthRegistrationWindow.findMany()).map((window) => window.clientAddress);
+    expect(groups.sort()).toEqual(["198.51.100.9", "shared"]);
   });
 });
 
@@ -669,11 +790,13 @@ describe("refreshGrant", () => {
     const [alice, client, other] = [await createActor(), await register(), await register({ client_name: "Other" })];
     const tokens = await grant(alice, client);
 
-    for (const clientId of [other.clientId, undefined]) {
-      await expect(oauthService.refreshGrant({ refreshToken: tokens.refreshToken, clientId })).resolves.toMatchObject(
-        INVALID_GRANT,
-      );
-    }
+    await expect(
+      oauthService.refreshGrant({ refreshToken: tokens.refreshToken, clientId: other.clientId }),
+    ).resolves.toMatchObject(INVALID_GRANT);
+    await expect(oauthService.refreshGrant({ refreshToken: tokens.refreshToken })).resolves.toMatchObject({
+      ok: false,
+      error: { code: "invalid-client" },
+    });
 
     await expect(
       oauthService.refreshGrant({ refreshToken: tokens.refreshToken, clientId: client.clientId }),

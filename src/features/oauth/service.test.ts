@@ -17,6 +17,10 @@ const mocks = vi.hoisted(() => ({
   clientFindFirst: vi.fn(),
   clientDeleteMany: vi.fn(),
   clientUpsert: vi.fn(),
+  windowFindUnique: vi.fn(),
+  windowUpdateMany: vi.fn(),
+  windowCreateMany: vi.fn(),
+  windowDeleteMany: vi.fn(),
   fetchMetadataDocument: vi.fn(),
   codeCreate: vi.fn(),
   codeFindUnique: vi.fn(),
@@ -44,6 +48,12 @@ vi.mock("@/lib/db", () => ({
       upsert: mocks.clientUpsert,
     },
     oAuthCode: { create: mocks.codeCreate, findUnique: mocks.codeFindUnique, deleteMany: mocks.codeDeleteMany },
+    oAuthRegistrationWindow: {
+      findUnique: mocks.windowFindUnique,
+      updateMany: mocks.windowUpdateMany,
+      createMany: mocks.windowCreateMany,
+      deleteMany: mocks.windowDeleteMany,
+    },
     apiToken: {
       count: mocks.tokenCount,
       findUnique: mocks.tokenFindUnique,
@@ -146,6 +156,11 @@ beforeEach(() => {
   mocks.clientFindFirst.mockResolvedValue(CLIENT_ROW);
   mocks.clientCreate.mockResolvedValue(CLIENT_ROW);
   mocks.clientDeleteMany.mockResolvedValue({ count: 0 });
+  // No registration has been counted yet: the first one creates the window of its group.
+  mocks.windowFindUnique.mockResolvedValue(null);
+  mocks.windowCreateMany.mockResolvedValue({ count: 1 });
+  mocks.windowUpdateMany.mockResolvedValue({ count: 1 });
+  mocks.windowDeleteMany.mockResolvedValue({ count: 0 });
   mocks.codeCreate.mockResolvedValue({ id: "c0de0000-0000-4000-8000-000000000001" });
   mocks.codeFindUnique.mockResolvedValue(codeRow());
   mocks.codeDeleteMany.mockResolvedValue({ count: 1 });
@@ -171,7 +186,7 @@ describe("registerClient", () => {
   it.each([null, undefined, "text", 5, ["https://client.example/callback"]])(
     "refuses %j, which is no object, without writing",
     async (metadata) => {
-      await expect(registerClient(metadata)).resolves.toMatchObject({
+      await expect(registerClient(metadata, "shared")).resolves.toMatchObject({
         ok: false,
         error: { code: "invalid-client-metadata" },
       });
@@ -181,7 +196,7 @@ describe("registerClient", () => {
   );
 
   it("refuses redirect addresses that are not allowed, without writing or logging", async () => {
-    await expect(registerClient({ redirect_uris: ["javascript:alert(1)"] })).resolves.toMatchObject({
+    await expect(registerClient({ redirect_uris: ["javascript:alert(1)"] }, "shared")).resolves.toMatchObject({
       ok: false,
       error: { code: "invalid-redirect-uri", description: "redirect_uris has an address that is not allowed" },
     });
@@ -191,12 +206,15 @@ describe("registerClient", () => {
   });
 
   it("stores only the name and the redirect addresses, whatever else the client asked for", async () => {
-    await registerClient({
-      redirect_uris: [REDIRECT_URI],
-      client_name: "Example",
-      token_endpoint_auth_method: "client_secret_post",
-      client_secret: "a-secret-the-client-made-up",
-    });
+    await registerClient(
+      {
+        redirect_uris: [REDIRECT_URI],
+        client_name: "Example",
+        token_endpoint_auth_method: "client_secret_post",
+        client_secret: "a-secret-the-client-made-up",
+      },
+      "shared",
+    );
 
     expect(mocks.clientCreate.mock.calls[0]?.[0].data).toEqual({ name: "Example", redirectUris: [REDIRECT_URI] });
   });
@@ -205,21 +223,126 @@ describe("registerClient", () => {
     const err = new Error("connection lost");
     mocks.clientCreate.mockRejectedValue(err);
 
-    await expect(registerClient({ redirect_uris: [REDIRECT_URI] })).resolves.toEqual({
+    await expect(registerClient({ redirect_uris: [REDIRECT_URI] }, "shared")).resolves.toEqual({
       ok: false,
       error: { code: "failed" },
     });
 
-    expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ err }, "failed to register oauth client");
+    expect(mocks.error).toHaveBeenCalledExactlyOnceWith(
+      { err, clientAddress: "shared" },
+      "failed to register oauth client",
+    );
   });
 
   it("still registers when the clean-up fails, and logs the failure", async () => {
     mocks.codeDeleteMany.mockRejectedValue(new Error("deadlock"));
+    mocks.windowDeleteMany.mockRejectedValue(new Error("deadlock"));
     mocks.clientDeleteMany.mockRejectedValue(new Error("deadlock"));
 
-    await expect(registerClient({ redirect_uris: [REDIRECT_URI] })).resolves.toMatchObject({ ok: true });
+    await expect(registerClient({ redirect_uris: [REDIRECT_URI] }, "shared")).resolves.toMatchObject({ ok: true });
 
-    expect(mocks.error).toHaveBeenCalledTimes(2);
+    expect(mocks.error).toHaveBeenCalledTimes(3);
+  });
+
+  describe("the limit of registrations per client address group and hour", () => {
+    const METADATA = { redirect_uris: [REDIRECT_URI] };
+    const HOUR_MS = 60 * 60 * 1000;
+
+    it("creates the window of a group with its first registration", async () => {
+      await expect(registerClient(METADATA, "203.0.113.7")).resolves.toMatchObject({ ok: true });
+
+      expect(mocks.windowFindUnique.mock.calls[0]?.[0].where).toEqual({ clientAddress: "203.0.113.7" });
+      expect(mocks.windowCreateMany).toHaveBeenCalledExactlyOnceWith({
+        data: [{ clientAddress: "203.0.113.7", registrations: 1, startedAt: NOW }],
+        skipDuplicates: true,
+      });
+      expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+        { clientId: CLIENT_ID, clientAddress: "203.0.113.7" },
+        "oauth client registered",
+      );
+    });
+
+    it("counts a registration in the running window on the condition that the window is not full", async () => {
+      const startedAt = new Date(NOW.getTime() - HOUR_MS + 1);
+      mocks.windowFindUnique.mockResolvedValue({ registrations: 19, startedAt });
+
+      await expect(registerClient(METADATA, "shared")).resolves.toMatchObject({ ok: true });
+
+      expect(mocks.windowUpdateMany).toHaveBeenCalledExactlyOnceWith({
+        where: { clientAddress: "shared", startedAt, registrations: { lt: 20 } },
+        data: { registrations: { increment: 1 } },
+      });
+      expect(mocks.windowCreateMany).not.toHaveBeenCalled();
+    });
+
+    it("refuses the 21st registration of the hour with the time that is left, and writes nothing", async () => {
+      const startedAt = new Date(NOW.getTime() - 20 * 60 * 1000);
+      mocks.windowFindUnique.mockResolvedValue({ registrations: 20, startedAt });
+
+      await expect(registerClient(METADATA, "203.0.113.7")).resolves.toEqual({
+        ok: false,
+        error: { code: "wait", waitMs: 40 * 60 * 1000 },
+      });
+
+      expect(mocks.windowUpdateMany).not.toHaveBeenCalled();
+      expect(mocks.clientCreate).not.toHaveBeenCalled();
+      expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
+        { clientAddress: "203.0.113.7", waitMs: 40 * 60 * 1000 },
+        "oauth client not registered: too many registrations",
+      );
+    });
+
+    it("starts a new window once the hour is over, on the condition that nobody else has started it", async () => {
+      const startedAt = new Date(NOW.getTime() - HOUR_MS);
+      mocks.windowFindUnique.mockResolvedValue({ registrations: 20, startedAt });
+
+      await expect(registerClient(METADATA, "shared")).resolves.toMatchObject({ ok: true });
+
+      expect(mocks.windowUpdateMany).toHaveBeenCalledExactlyOnceWith({
+        where: { clientAddress: "shared", registrations: 20, startedAt },
+        data: { registrations: 1, startedAt: NOW },
+      });
+    });
+
+    it("reads the window again when another registration got in between", async () => {
+      mocks.windowCreateMany.mockResolvedValueOnce({ count: 0 });
+      mocks.windowFindUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ registrations: 1, startedAt: NOW });
+
+      await expect(registerClient(METADATA, "shared")).resolves.toMatchObject({ ok: true });
+
+      expect(mocks.windowFindUnique).toHaveBeenCalledTimes(2);
+      expect(mocks.windowUpdateMany).toHaveBeenCalledOnce();
+      expect(mocks.clientCreate).toHaveBeenCalledOnce();
+    });
+
+    it("gives up and reports failed when the count keeps changing, without registering", async () => {
+      mocks.windowCreateMany.mockResolvedValue({ count: 0 });
+
+      await expect(registerClient(METADATA, "shared")).resolves.toEqual({ ok: false, error: { code: "failed" } });
+
+      expect(mocks.windowFindUnique).toHaveBeenCalledTimes(50);
+      expect(mocks.clientCreate).not.toHaveBeenCalled();
+      expect(mocks.error).toHaveBeenCalledOnce();
+    });
+
+    it.each(["", "not-an-address", "203.0.113.7, 198.51.100.9", "2001:DB8::/64", "a".repeat(5000)])(
+      "counts a group that the client address helper would not write (%j) in the shared group, and logs an error",
+      async (group) => {
+        await expect(registerClient(METADATA, group)).resolves.toMatchObject({ ok: true });
+
+        expect(mocks.windowFindUnique.mock.calls[0]?.[0].where).toEqual({ clientAddress: "shared" });
+        expect(mocks.error).toHaveBeenCalledExactlyOnceWith(
+          "registration with an invalid client address group, counted in the shared group",
+        );
+      },
+    );
+
+    it("does not count metadata that is refused", async () => {
+      await registerClient({ redirect_uris: ["javascript:alert(1)"] }, "shared");
+      await registerClient("not an object", "shared");
+
+      expect(mocks.windowFindUnique).not.toHaveBeenCalled();
+    });
   });
 });
 
@@ -543,7 +666,6 @@ describe("exchangeCode", () => {
   it.each([
     ["an expired code", { code: codeRow({ expiresAt: NOW }) }, "expired-code"],
     ["another client", { input: { clientId: "1b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a11" } }, "other-client"],
-    ["no client", { input: { clientId: undefined } }, "other-client"],
     ["another redirect address", { input: { redirectUri: `${REDIRECT_URI}/` } }, "other-redirect-uri"],
     ["no redirect address", { input: { redirectUri: undefined } }, "other-redirect-uri"],
     ["another verifier", { input: { codeVerifier: "a".repeat(43) } }, "wrong-verifier"],
@@ -564,6 +686,20 @@ describe("exchangeCode", () => {
     );
     expect(mocks.transaction).not.toHaveBeenCalled();
     expectNotLogged(CODE, VERIFIER);
+  });
+
+  it("reports a request that names no client as an invalid client, after the code is used up", async () => {
+    await expect(exchangeCode({ ...EXCHANGE, clientId: undefined })).resolves.toMatchObject({
+      ok: false,
+      error: { code: "invalid-client" },
+    });
+
+    expect(mocks.codeDeleteMany).toHaveBeenCalledOnce();
+    expect(mocks.transaction).not.toHaveBeenCalled();
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
+      { reason: "no-client", userId: ALICE_ID, clientId: CLIENT_ID },
+      "code exchange refused",
+    );
   });
 
   it("refuses a resource that is not the MCP endpoint, and accepts the MCP endpoint", async () => {
@@ -685,7 +821,6 @@ describe("refreshGrant", () => {
 
   it.each([
     ["another client", { input: { clientId: "1b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a11" } }, "other-client"],
-    ["no client", { input: { clientId: undefined } }, "other-client"],
     ["a grant at the moment it expires", { grant: grantRow({ expiresAt: NOW }) }, "expired-grant"],
     ["a user with the first password", { grant: grantRow({ user: { mustChangePassword: true } }) }, "first-password"],
   ])("refuses %s without revoking the grant, with the reason in the log", async (_case, change, reason) => {
@@ -704,6 +839,16 @@ describe("refreshGrant", () => {
       "refresh refused",
     );
     expectNotLogged(REFRESH_TOKEN);
+  });
+
+  it("reports a refresh that names no client as an invalid client, without revoking the grant", async () => {
+    await expect(refreshGrant({ refreshToken: REFRESH_TOKEN })).resolves.toMatchObject({
+      ok: false,
+      error: { code: "invalid-client" },
+    });
+
+    expect(mocks.tokenDeleteMany).not.toHaveBeenCalled();
+    expect(mocks.tokenUpdateMany).not.toHaveBeenCalled();
   });
 
   it("refuses a resource that is not the MCP endpoint without revoking the grant", async () => {

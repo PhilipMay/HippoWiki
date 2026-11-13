@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   accountPath,
   allPagesPath,
+  authorizationServerMetadataPath,
   changePasswordPath,
   deletedPagePath,
   deletedPagesPath,
@@ -10,11 +11,15 @@ import {
   foldersPath,
   loginPath,
   mcpPath,
+  oauthAuthorizePath,
+  oauthRegisterPath,
+  oauthTokenPath,
   pagePath,
   parseAction,
   parseChoice,
   parsePageSegment,
   parseView,
+  protectedResourceMetadataPath,
   revokeTokenPath,
   safeNextPath,
   tabPath,
@@ -62,6 +67,14 @@ describe("paths", () => {
 
   it("builds the address of the MCP endpoint", () => {
     expect(mcpPath()).toBe("/mcp");
+  });
+
+  it("builds the addresses of OAuth", () => {
+    expect(oauthAuthorizePath()).toBe("/oauth/authorize");
+    expect(oauthTokenPath()).toBe("/oauth/token");
+    expect(oauthRegisterPath()).toBe("/oauth/register");
+    expect(authorizationServerMetadataPath()).toBe("/.well-known/oauth-authorization-server");
+    expect(protectedResourceMetadataPath()).toBe("/.well-known/oauth-protected-resource/mcp");
   });
 
   it("builds the address of the own account", () => {

@@ -312,3 +312,20 @@ model LoginWindow {
   // For deleting the windows whose hour is over.
   @@index([startedAt])
 }
+
+/// The registrations of OAuth clients counted for one client address group in the current hour, for the limit on
+/// dynamic client registration, which anyone can call without a login. A registration is counted before the client
+/// is written; when the hour is over, the next registration starts a new window, and the row of a group whose hour
+/// is over is deleted by a later registration of any group.
+model OAuthRegistrationWindow {
+  /// The client address group the registrations came from (`src/lib/client-address.ts`): `shared`, an IPv4 address or
+  /// the /64 of an IPv6 address.
+  clientAddress String   @id
+  /// How many registrations from the group were counted since `startedAt`.
+  registrations Int
+  /// When the first of them was counted; the window ends one hour later.
+  startedAt     DateTime @db.Timestamptz(3)
+
+  // For deleting the windows whose hour is over.
+  @@index([startedAt])
+}
