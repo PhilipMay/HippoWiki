@@ -26,8 +26,6 @@ The specification lives in the `spec/` directory. This catalog should always be 
   address group, the hour window per user name and the deleting of old rows, authenticated access only, forced
   password change, user list, creating users, routes, decisions, limits)
 - `spec/roadmap.md`: backlog of candidate features, grouped by theme, and things still to check
-- `spec/security-review.md`: open findings of the security review of the deployment and the code, to be fixed later,
-  and the findings fixed since
 - `spec/issue-report.md`: how to report issues found in code and document reviews
 
 ## Running the Checks

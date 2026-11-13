@@ -6,7 +6,6 @@ listed first; there is no order across themes.
 - Before a feature is started, it gets its own step plan `spec/<feature>-steps.md`, and once it is built it is removed
   from this file (see `workflow.md`).
 - Where a feature lifts a limit, the entry names the spec whose "Current limits" list it.
-- The open findings of the security review are tracked and fixed in `security-review.md`, not here.
 - "Things to Check" at the end lists checks and open questions that came up while building a feature and that are not
   features of their own.
 
@@ -98,6 +97,12 @@ listed first; there is no order across themes.
 - Audit log: record logins, changes of rights and password changes and resets (`users-and-login.md`).
 - Unlock command: a command of `scripts/admin.ts` that deletes the rows of `LoginAttempt` and `LoginWindow` of a user
   name and so ends its waits after failed logins; this does not stop a lockout, it only shortens it.
+- Login limit per client address: a limit across all user names per client address group, next to the two limits per
+  user name in `reserveAttempt()`, so that a stream of logins with valid-looking but unknown names cannot fill the
+  hash slots of `password-hash.ts` or let `LoginAttempt` and `LoginWindow` grow. It needs `HIPPOWIKI_TRUSTED_PROXIES`
+  of at least 1, as with `0` every login is in the group `shared` and the limit would hold back all users together. A
+  rate limit per client address in the reverse proxy of the deployment does the same from outside
+  (`users-and-login.md`, `container-image.md`).
 - Login budget for known clients: a budget of its own for clients that have logged in before, so that the right
   password from such a client is not refused while the hour window of its name is full. The candidate is a signed
   device cookie that a successful login sets; see `reports/Login lockout and client IP handling.md` and "Current
@@ -121,8 +126,8 @@ listed first; there is no order across themes.
 
 - Compose setup for self-hosting: a compose file that runs the image together with its database
   (`container-image.md`).
-- Reverse proxy with TLS: HTTPS in front of the container, with the login rate limit from `security-review.md`
-  (`container-image.md`).
+- Reverse proxy with TLS: HTTPS in front of the container, with the login rate limit per client address of "Login and
+  Sessions" (`container-image.md`).
 - Database backups: back up the database, at least before a new version starts (`container-image.md`).
 - Backup schedule, retention and tested restore: regular backups, how long they are kept, and a restore that is
   tried out.
@@ -142,14 +147,16 @@ All from "Current limits" in `container-image.md`:
 
 ## Things to Check
 
-- Security fixes on the deployment, after the next release: every response carries the five security headers of
-  `next.config.ts` and no `X-Powered-By`, and `/_next/image?url=%2Ffolders&w=64&q=75` redirects to `/login`
-  (`security-review.md`, `architecture.md`).
+- Security fixes on the deployment, after the next release: the fixes of the security review of 2026-11-12 are live,
+  so every response carries the five security headers of `next.config.ts` and no `X-Powered-By`, and
+  `/_next/image?url=%2Ffolders&w=64&q=75` redirects to `/login` (`architecture.md`).
 - Login limit on the deployment: with `HIPPOWIKI_TRUSTED_PROXIES=1` behind Traefik, a failed login from a known
   address outside the network of the server is logged with that address as `clientAddress`
   (`users-and-login.md`, `container-image.md`).
 - Forged headers on the deployment: the same failed login with a forged `X-Forwarded-For` and `X-Real-Ip` is logged
   with the same address as before.
+- Server port on the deployment: the port of the server is reachable only through Traefik and not directly
+  (`container-image.md`).
 - IPv6 on the deployment: a failed login over IPv6 is logged with the /64 of the client. Not checked on 2026-11-13,
   neither for the probe nor for the login limit.
 - Logins at the same time on the deployment: each counted login holds a database connection for an interactive
