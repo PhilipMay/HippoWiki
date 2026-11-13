@@ -116,7 +116,8 @@ password for the admin. Code: `Containerfile`, `.containerignore`, `scripts/imag
 
 ## Configuration
 
-- A container needs two variables, `DATABASE_URL` and `HIPPOWIKI_ADMIN_PASSWORD`, and nothing else.
+- A container needs two variables, `DATABASE_URL` and `HIPPOWIKI_ADMIN_PASSWORD`, and nothing else. The optional
+  diagnostic variable `HIPPOWIKI_LOG_CLIENT_ADDRESS` is described below.
 - `DATABASE_URL`: `postgresql://<user>:<password>@<host>:<port>/<database>`. The migration, the admin setup and the
   server read it. Special characters in the password are percent-encoded.
 - Only this form, without parameters, is supported and tested. The migration reads the URL with the schema engine of
@@ -127,6 +128,18 @@ password for the admin. Code: `Containerfile`, `.containerignore`, `scripts/imag
   against a database with an admin does not need it.
 - `PORT` is optional (default 3000). `HOSTNAME` has no effect (see above). `NODE_ENV` is `production`, which makes
   the session cookies `Secure`.
+- `HIPPOWIKI_LOG_CLIENT_ADDRESS` is optional, `true` or `false`, default `false`; any other value stops the server with
+  an error like a wrong `DATABASE_URL`. It is read when the server runs, not when the image is built. With `true` the
+  server logs one `info` line `client address probe` for every request that passes the proxy of Next.js (with
+  `"source":"proxy"`, the method and the path; not for `/login` and `/api/health`) and for every submitted login (with
+  `"source":"login"`). The line holds only the headers `X-Forwarded-For`, `X-Real-Ip`, `Forwarded`,
+  `X-Forwarded-Proto`, `X-Forwarded-Host`, `X-Forwarded-Port` and `Host`, each cut to 200 characters, never cookies,
+  `Authorization` or the body (`src/lib/client-address-probe.ts`).
+  - It is meant for checking a reverse proxy in front of the container: whether a request from a known address arrives
+    with that address, whether a forged `X-Forwarded-For` sent by the client is removed, and whether the container
+    network keeps the source address or every client arrives with the same private one.
+  - Client addresses are personal data, and every proxied request writes a line: switch it on for such a check only,
+    not permanently in production.
 - There is no variable for the secret that signs the session cookies: the server generates it on first use and
   stores it in the database (table `AuthSecret`). It therefore survives a new container, and all sessions with it.
 - The database is PostgreSQL in the version pinned in `scripts/Containerfile`. The database and its user are created

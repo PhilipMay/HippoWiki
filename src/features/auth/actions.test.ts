@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   headers: vi.fn(),
   revalidatePath: vi.fn(),
   redirect: vi.fn(),
+  logClientAddressProbe: vi.fn(),
 }));
 
 vi.mock("@/features/auth/service", () => ({
@@ -28,6 +29,7 @@ vi.mock("@/features/auth/session", () => ({ requireSession: mocks.requireSession
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("next/headers", () => ({ headers: mocks.headers }));
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
+vi.mock("@/lib/client-address-probe", () => ({ logClientAddressProbe: mocks.logClientAddressProbe }));
 
 const REQUEST_HEADERS = new Headers({ cookie: "better-auth.session_token=token.signature" });
 const USER = { id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002", name: "alice", mustChangePassword: false };
@@ -56,6 +58,17 @@ describe("logIn", () => {
 
     expect(mocks.logIn).toHaveBeenCalledExactlyOnceWith(LOGIN_FORM, REQUEST_HEADERS);
     expect(mocks.revalidatePath).toHaveBeenCalledExactlyOnceWith("/", "layout");
+  });
+
+  it("hands the headers of the request to the client address probe before the service", async () => {
+    mocks.logIn.mockResolvedValue({ ok: false, error: { code: "invalid-credentials" } });
+
+    await logIn({}, formData(LOGIN_FORM));
+
+    expect(mocks.logClientAddressProbe).toHaveBeenCalledExactlyOnceWith(REQUEST_HEADERS, { source: "login" });
+    expect(mocks.logClientAddressProbe.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.logIn.mock.invocationCallOrder[0] ?? 0,
+    );
   });
 
   it("leads to the password change after a login with a first password", async () => {
@@ -108,6 +121,7 @@ describe("logIn", () => {
   ])("shows the field errors of %s without reaching the service", async (_case, fields, fieldErrors) => {
     await expect(logIn({}, formData(fields))).resolves.toEqual({ fieldErrors });
 
+    expect(mocks.logClientAddressProbe).not.toHaveBeenCalled();
     expect(mocks.logIn).not.toHaveBeenCalled();
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
     expect(mocks.redirect).not.toHaveBeenCalled();

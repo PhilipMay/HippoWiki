@@ -2,11 +2,13 @@
 // a session cookie is sent to the login page before it reaches a route. The proxy only looks whether the cookie is
 // there and does not ask the database. Whether the cookie belongs to a session is checked by `requireUser()` in every
 // page, every query and every Server Action (`src/features/auth/session.ts`), which is the layer that protects the
-// data.
+// data. With `HIPPOWIKI_LOG_CLIENT_ADDRESS=true` it also logs the forwarding headers of every request it sees
+// (`src/lib/client-address-probe.ts`).
 import { getSessionCookie } from "better-auth/cookies";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { loginPath } from "@/lib/addresses";
+import { logClientAddressProbe } from "@/lib/client-address-probe";
 
 /** The request header with which the client of Next.js calls a Server Action. */
 const ACTION_HEADER = "next-action";
@@ -14,6 +16,13 @@ const ACTION_HEADER = "next-action";
 const ACTION_REDIRECT_HEADER = "x-action-redirect";
 
 export function proxy(request: NextRequest): NextResponse {
+  // Before the cookie check, so that a request without a login is logged as well.
+  logClientAddressProbe(request.headers, {
+    source: "proxy",
+    method: request.method,
+    path: request.nextUrl.pathname,
+  });
+
   // The helper of Better Auth knows the name of the cookie, with and without the prefix of `Secure` cookies.
   if (getSessionCookie(request)) return NextResponse.next();
 

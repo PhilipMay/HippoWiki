@@ -4,6 +4,12 @@ import { z } from "zod";
 export const serverEnvSchema = z.object({
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/, error: "must be a postgresql:// URL" }),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  // Logs the forwarding headers of every request, to check the setup of a reverse proxy (`client-address-probe.ts`).
+  // Only `true` and `false` are accepted, so that a typo such as `1` or `yes` stops the server instead of doing nothing.
+  HIPPOWIKI_LOG_CLIENT_ADDRESS: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

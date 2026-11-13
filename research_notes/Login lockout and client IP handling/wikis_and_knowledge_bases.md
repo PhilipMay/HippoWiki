@@ -33,19 +33,19 @@ trust is on (Wiki.js, Outline by default, Docmost always).
 
 - Comparison of defaults (all from the per-system sections below):
 
-  | System | Limiter key | Default numbers | Kind | Correct password works while limited? | Anonymous lockout of a known account |
-  | --- | --- | --- | --- | --- | --- |
-  | MediaWiki core | IP + user name | 5 / 300 s and 150 / 48 h | throttle (fixed window) | No | Only from the same IP; from anywhere if `allIPs` is configured |
-  | MediaWiki + ConfirmEdit | IP; user name | 3 / 300 s per IP; 20 / 600 s per user | CAPTCHA | Yes, with CAPTCHA | No lockout, only a forced CAPTCHA |
-  | DokuWiki core | none | none | none | n/a | No (no limiter) |
-  | BookStack | lower-cased user name + IP | 5 failures, 1 minute | throttle | No | Only from the same IP (or when all users share the proxy IP) |
-  | Wiki.js 2.5 | IP + mutation | 5 / 60 s | throttle | No (same IP) | No per-account state |
-  | Wiki.js 3 | IP (all auth endpoints together) | 10 / 5 min, then 15 min ban | throttle with ban | No (same IP) | No per-account state |
-  | Outline | IP (unauthenticated) | 10 / hour on email sign-in | throttle | n/a (no passwords) | No per-account state |
-  | Docmost | IP + route | 10 / 60 s | throttle | No (same IP) | No per-account state |
-  | XWiki | user name (+ session) | 3 / 300 s | CAPTCHA by default; optional account disabling | Yes with CAPTCHA; No with `disableAccount` | Forced CAPTCHA; real lockout with `disableAccount` |
-  | Confluence DC | user (per-user counter) | 3 failures | CAPTCHA | Yes, with CAPTCHA | Forced CAPTCHA; API logins refused until a web login |
-  | TiddlyWiki server | none | none | none | n/a | No (no limiter) |
+  | System                  | Limiter key                      | Default numbers                       | Kind                                           | Correct password works while limited?      | Anonymous lockout of a known account                           |
+  | ----------------------- | -------------------------------- | ------------------------------------- | ---------------------------------------------- | ------------------------------------------ | -------------------------------------------------------------- |
+  | MediaWiki core          | IP + user name                   | 5 / 300 s and 150 / 48 h              | throttle (fixed window)                        | No                                         | Only from the same IP; from anywhere if `allIPs` is configured |
+  | MediaWiki + ConfirmEdit | IP; user name                    | 3 / 300 s per IP; 20 / 600 s per user | CAPTCHA                                        | Yes, with CAPTCHA                          | No lockout, only a forced CAPTCHA                              |
+  | DokuWiki core           | none                             | none                                  | none                                           | n/a                                        | No (no limiter)                                                |
+  | BookStack               | lower-cased user name + IP       | 5 failures, 1 minute                  | throttle                                       | No                                         | Only from the same IP (or when all users share the proxy IP)   |
+  | Wiki.js 2.5             | IP + mutation                    | 5 / 60 s                              | throttle                                       | No (same IP)                               | No per-account state                                           |
+  | Wiki.js 3               | IP (all auth endpoints together) | 10 / 5 min, then 15 min ban           | throttle with ban                              | No (same IP)                               | No per-account state                                           |
+  | Outline                 | IP (unauthenticated)             | 10 / hour on email sign-in            | throttle                                       | n/a (no passwords)                         | No per-account state                                           |
+  | Docmost                 | IP + route                       | 10 / 60 s                             | throttle                                       | No (same IP)                               | No per-account state                                           |
+  | XWiki                   | user name (+ session)            | 3 / 300 s                             | CAPTCHA by default; optional account disabling | Yes with CAPTCHA; No with `disableAccount` | Forced CAPTCHA; real lockout with `disableAccount`             |
+  | Confluence DC           | user (per-user counter)          | 3 failures                            | CAPTCHA                                        | Yes, with CAPTCHA                          | Forced CAPTCHA; API logins refused until a web login           |
+  | TiddlyWiki server       | none                             | none                                  | none                                           | n/a                                        | No (no limiter)                                                |
 
 - Systems that key on IP alone or IP + user name avoid the lockout DoS but depend entirely on a correct client IP.
   Behind an unconfigured proxy every user shares the proxy's address, which turns an IP-keyed limiter into a global

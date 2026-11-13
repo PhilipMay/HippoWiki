@@ -29,7 +29,7 @@ Mechanism and defaults (1.7.22)
 
 - Defaults are set in the context: `enabled: options.rateLimit?.enabled ?? isProduction`, `window: ... || 10`,
   `max: ... || 100`, `storage: options.rateLimit?.storage || (options.secondaryStorage ? "secondary-storage" :
-  "memory")`; `isProduction` is `nodeENV === "production"` — installed source
+"memory")`; `isProduction` is `nodeENV === "production"` — installed source
   `node_modules/better-auth/dist/context/create-context.mjs` lines 170-175 and
   `node_modules/@better-auth/core/dist/env/env-impl.mjs` line 33;
   [upstream repository](https://github.com/better-auth/better-auth)
@@ -119,7 +119,7 @@ Client IP resolution (1.7.22)
 Server-side `auth.api` calls
 
 - `onRequestRateLimit` is called in exactly one place, the router's `onRequest` hook (`createRouter(... async
-  onRequest(req) { ... const rateLimitResponse = await onRequestRateLimit(currentRequest, ctx); ...`). The direct
+onRequest(req) { ... const rateLimitResponse = await onRequestRateLimit(currentRequest, ctx); ...`). The direct
   endpoint wrapper (`to-auth-endpoints.mjs`) contains no reference to the rate limiter — installed source
   `node_modules/better-auth/dist/api/index.mjs` lines 168-176 and a search of
   `node_modules/better-auth/dist/api/to-auth-endpoints.mjs`
@@ -547,7 +547,7 @@ by IP and by user name together and warn that field-based limits "may open a den
 - django-ratelimit: "Django-Ratelimit is not the correct place to handle reverse proxies and adjust the IP address";
   "Mishandling client IP data creates an IP spoofing vector that allows attackers to circumvent IP ratelimiting
   entirely."; recommended is a small middleware that sets `REMOTE_ADDR`, or a key such as `header:x-real-ip` when the
-  header "*only* contains the client IP" —
+  header "_only_ contains the client IP" —
   [django-ratelimit docs, Security considerations](https://django-ratelimit.readthedocs.io/en/stable/security.html)
 - django-ratelimit on login: "Protecting against the single IP address cases is easy" (`@ratelimit(key='ip')`);
   "Also limiting by username provides better protection" (`@ratelimit(key='ip')` stacked with
@@ -585,7 +585,7 @@ ASP.NET Core Identity locks per account after 5 failed attempts for 5 minutes, b
   `MaxFailedAccessAttempts` 5; "A successful authentication resets the failed access attempts count and resets the
   clock." — [Microsoft Learn, Configure ASP.NET Core Identity](https://learn.microsoft.com/en-us/aspnet/core/security/authentication/identity-configuration)
 - The login template calls `PasswordSignInAsync(Input.Email, Input.Password, Input.RememberMe, lockoutOnFailure:
-  false)` with the comment "This doesn't count login failures towards account lockout. To enable password failures to
+false)` with the comment "This doesn't count login failures towards account lockout. To enable password failures to
   trigger account lockout, set lockoutOnFailure: true" —
   [Microsoft Learn, Configure ASP.NET Core Identity](https://learn.microsoft.com/en-us/aspnet/core/security/authentication/identity-configuration)
 - Source: `CheckPasswordSignInCoreAsync` runs `PreSignInCheck(user)` first, which returns `SignInResult.LockedOut`

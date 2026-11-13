@@ -41,14 +41,14 @@ Revision 3, section 5.2.2 "Rate Limiting (Throttling)" (complete normative text,
 - "Additional techniques MAY be used to reduce the likelihood that an attacker will lock the legitimate claimant out
   as a result of rate limiting. These include:" —
   [NIST SP 800-63B Rev. 3, 5.2.2](https://pages.nist.gov/800-63-3/sp800-63b.html)
-    - "Requiring the claimant to complete a CAPTCHA before attempting authentication."
-    - "Requiring the claimant to wait following a failed attempt for a period of time that increases as the account
-      approaches its maximum allowance for consecutive failed attempts (e.g., 30 seconds up to an hour)."
-    - "Accepting only authentication requests that come from a white list of IP addresses from which the subscriber
-      has been successfully authenticated before."
-    - "Leveraging other risk-based or adaptive authentication techniques to identify user behavior that falls within,
-      or out of, typical norms. These might, for example, include use of IP address, geolocation, timing of request
-      patterns, or browser metadata."
+  - "Requiring the claimant to complete a CAPTCHA before attempting authentication."
+  - "Requiring the claimant to wait following a failed attempt for a period of time that increases as the account
+    approaches its maximum allowance for consecutive failed attempts (e.g., 30 seconds up to an hour)."
+  - "Accepting only authentication requests that come from a white list of IP addresses from which the subscriber
+    has been successfully authenticated before."
+  - "Leveraging other risk-based or adaptive authentication techniques to identify user behavior that falls within,
+    or out of, typical norms. These might, for example, include use of IP address, geolocation, timing of request
+    patterns, or browser metadata."
 - "When the subscriber successfully authenticates, the verifier SHOULD disregard any previous failed attempts for
   that user from the same IP address." —
   [NIST SP 800-63B Rev. 3, 5.2.2](https://pages.nist.gov/800-63-3/sp800-63b.html)
@@ -72,12 +72,12 @@ Revision 4, section 3.2.2 "Rate Limiting (Throttling)" (complete normative text,
   [NIST SP 800-63B-4, 3.2.2](https://pages.nist.gov/800-63-4/sp800-63b.html)
 - "Additional techniques MAY be used to reduce the likelihood that an attacker will lock the legitimate claimant out
   due to rate limiting. These include:" — [NIST SP 800-63B-4, 3.2.2](https://pages.nist.gov/800-63-4/sp800-63b.html)
-    - "Requiring the claimant to complete a bot detection and mitigation challenge before attempting authentication"
-    - "Requiring the claimant to wait after a failed attempt for a period of time that increases as the subscriber
-      account approaches its maximum allowance for consecutive failed attempts (e.g., 30 seconds up to an hour)"
-    - "Leveraging other risk-based or adaptive authentication techniques to identify claimant behaviors that fall
-      within or outside of typical norms (e.g., the use of the claimant's IP address, geolocation, timing of request
-      patterns, or browser metadata)"
+  - "Requiring the claimant to complete a bot detection and mitigation challenge before attempting authentication"
+  - "Requiring the claimant to wait after a failed attempt for a period of time that increases as the subscriber
+    account approaches its maximum allowance for consecutive failed attempts (e.g., 30 seconds up to an hour)"
+  - "Leveraging other risk-based or adaptive authentication techniques to identify claimant behaviors that fall
+    within or outside of typical norms (e.g., the use of the claimant's IP address, geolocation, timing of request
+    patterns, or browser metadata)"
 - "When the subscriber successfully authenticates, the verifier SHOULD disregard any previous failed attempts for the
   authenticators used in the successful authentication." —
   [NIST SP 800-63B-4, 3.2.2](https://pages.nist.gov/800-63-4/sp800-63b.html)
@@ -211,15 +211,15 @@ text of the source file)
   [OWASP Blocking Brute Force Attacks](https://community.owasp.org/controls/Blocking_Brute_Force_Attacks)
 - Listed problems with account lockouts (selection, verbatim): —
   [OWASP Blocking Brute Force Attacks](https://community.owasp.org/controls/Blocking_Brute_Force_Attacks)
-    - "An attacker can cause a denial of service (DoS) by locking out large numbers of accounts."
-    - "Because you cannot lock out an account that does not exist, only valid account names will lock. An attacker
-      could use this fact to harvest usernames from the site, depending on the error responses."
-    - "An attacker can continuously lock out the same account, even seconds after an administrator unlocks it,
-      effectively disabling the account."
-    - "Account lockout is ineffective against slow attacks that try only a few passwords every hour."
-    - "Account lockout is ineffective against attacks that try one password against a large list of usernames."
-    - "Powerful accounts such as administrator accounts often bypass lockout policy, but these are the most desirable
-      accounts to attack. Some systems lock out administrator accounts only on network-based logins."
+  - "An attacker can cause a denial of service (DoS) by locking out large numbers of accounts."
+  - "Because you cannot lock out an account that does not exist, only valid account names will lock. An attacker
+    could use this fact to harvest usernames from the site, depending on the error responses."
+  - "An attacker can continuously lock out the same account, even seconds after an administrator unlocks it,
+    effectively disabling the account."
+  - "Account lockout is ineffective against slow attacks that try only a few passwords every hour."
+  - "Account lockout is ineffective against attacks that try one password against a large list of usernames."
+  - "Powerful accounts such as administrator accounts often bypass lockout policy, but these are the most desirable
+    accounts to attack. Some systems lock out administrator accounts only on network-based logins."
 - Verdict: "Account lockout is sometimes effective, but only in controlled environments or in cases where the risk is
   so great that even continuous DoS attacks are preferable to account compromise." —
   [OWASP Blocking Brute Force Attacks](https://community.owasp.org/controls/Blocking_Brute_Force_Attacks)
@@ -577,18 +577,18 @@ branch)
 ### Inferences
 
 - Summary of keys and responses:
-    - Entra ID: account, with separate counters for familiar and unfamiliar locations; temporary lock that grows;
-      unlock by password reset or administrator.
-    - AD FS smart lockout: account plus a per-user list of up to 20 familiar addresses; only unknown locations are
-      locked; one attempt per observation window afterwards; unlock by time or cmdlet.
-    - Auth0: user plus IP address by default (a block only for that pair), optional account-wide lock; long block
-      (up to 30 days) with email unblock link, password change or administrator API; a second limiter on IP address
-      alone.
-    - Okta: account, optionally split into known and unknown devices; timed auto-unlock, self-service unlock,
-      administrator action.
-    - Cognito: account; exponential delay from 1 second capped near 15 minutes; never a permanent lock.
-    - Google: risk-based challenge instead of a lock.
-    - Keycloak: account only; temporary or permanent lock; documents its own denial-of-service weakness.
+  - Entra ID: account, with separate counters for familiar and unfamiliar locations; temporary lock that grows;
+    unlock by password reset or administrator.
+  - AD FS smart lockout: account plus a per-user list of up to 20 familiar addresses; only unknown locations are
+    locked; one attempt per observation window afterwards; unlock by time or cmdlet.
+  - Auth0: user plus IP address by default (a block only for that pair), optional account-wide lock; long block
+    (up to 30 days) with email unblock link, password change or administrator API; a second limiter on IP address
+    alone.
+  - Okta: account, optionally split into known and unknown devices; timed auto-unlock, self-service unlock,
+    administrator action.
+  - Cognito: account; exponential delay from 1 second capped near 15 minutes; never a permanent lock.
+  - Google: risk-based challenge instead of a lock.
+  - Keycloak: account only; temporary or permanent lock; documents its own denial-of-service weakness.
 - The pattern shared by Microsoft, Okta, the device-cookie protocol and the academic PGRP protocol is the same idea:
   a client that has proven itself by an earlier successful login (address, device or cookie) gets its own budget of
   failures, so attempts from elsewhere cannot use it up.
@@ -765,22 +765,22 @@ PCI DSS (secondary sources only)
 ### Inferences
 
 - Comparison of keys, combining the sources above:
-    - User name alone, hard lock: gives a true bound on guesses per account regardless of botnet size, but lets
-      anyone who knows the name lock the owner out (OWASP, NCSC, Microsoft, Keycloak, LISA paper). Worst for a
-      well-known name such as `admin`.
-    - User name alone, growing delay with a cap and automatic expiry: keeps the bound (for example Cognito's cap
-      yields about 100 guesses per day), and turns the denial of service from "locked until someone unlocks" into
-      "slow while the attack runs". The owner still competes with the attacker for the next attempt slot.
-    - User name plus address: an attacker cannot lock the owner out from a different address, but every new address
-      gives the attacker a fresh budget, so there is no global bound (OWASP names botnets and proxies; Auth0's default
-      works this way and adds other layers). It also depends on getting the real client address right behind proxies
-      and on a sensible treatment of IPv6.
-    - Address alone: no account lockout at all, cheap, stops single-source tools; bypassed by distributed attacks and
-      can slow down many users behind one address or the whole site if the proxy configuration is wrong (OWASP,
-      Nextcloud).
-    - User name with a separate budget for known clients (cookie, address list, device): global bound for unknown
-      clients plus availability for the owner on a known client (device cookies, PGRP, AD FS and Entra smart lockout,
-      Okta). The cost is the state to keep and the special case of the owner on a new client.
+  - User name alone, hard lock: gives a true bound on guesses per account regardless of botnet size, but lets
+    anyone who knows the name lock the owner out (OWASP, NCSC, Microsoft, Keycloak, LISA paper). Worst for a
+    well-known name such as `admin`.
+  - User name alone, growing delay with a cap and automatic expiry: keeps the bound (for example Cognito's cap
+    yields about 100 guesses per day), and turns the denial of service from "locked until someone unlocks" into
+    "slow while the attack runs". The owner still competes with the attacker for the next attempt slot.
+  - User name plus address: an attacker cannot lock the owner out from a different address, but every new address
+    gives the attacker a fresh budget, so there is no global bound (OWASP names botnets and proxies; Auth0's default
+    works this way and adds other layers). It also depends on getting the real client address right behind proxies
+    and on a sensible treatment of IPv6.
+  - Address alone: no account lockout at all, cheap, stops single-source tools; bypassed by distributed attacks and
+    can slow down many users behind one address or the whole site if the proxy configuration is wrong (OWASP,
+    Nextcloud).
+  - User name with a separate budget for known clients (cookie, address list, device): global bound for unknown
+    clients plus availability for the owner on a known client (device cookies, PGRP, AD FS and Entra smart lockout,
+    Okta). The cost is the state to keep and the special case of the owner on a new client.
 - Password spraying is not stopped by any per-account counter; the sources answer it with password deny lists, a
   per-address or global velocity limit, monitoring and MFA.
 - CAPTCHA and proof of work raise the attacker's cost per guess but do not bound the number of guesses; the sources

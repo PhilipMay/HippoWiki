@@ -9,6 +9,7 @@ describe("parseServerEnv", () => {
     expect(parseServerEnv({ DATABASE_URL: databaseUrl, NODE_ENV: "production" })).toEqual({
       DATABASE_URL: databaseUrl,
       NODE_ENV: "production",
+      HIPPOWIKI_LOG_CLIENT_ADDRESS: false,
     });
   });
 
@@ -19,6 +20,25 @@ describe("parseServerEnv", () => {
 
   it("defaults NODE_ENV to development", () => {
     expect(parseServerEnv({ DATABASE_URL: databaseUrl }).NODE_ENV).toBe("development");
+  });
+
+  it("switches the client address probe off by default", () => {
+    expect(parseServerEnv({ DATABASE_URL: databaseUrl }).HIPPOWIKI_LOG_CLIENT_ADDRESS).toBe(false);
+  });
+
+  it.each([
+    ["true", true],
+    ["false", false],
+  ])("reads HIPPOWIKI_LOG_CLIENT_ADDRESS=%s as %s", (value, expected) => {
+    expect(
+      parseServerEnv({ DATABASE_URL: databaseUrl, HIPPOWIKI_LOG_CLIENT_ADDRESS: value }).HIPPOWIKI_LOG_CLIENT_ADDRESS,
+    ).toBe(expected);
+  });
+
+  it.each(["1", "yes", "TRUE", ""])("rejects HIPPOWIKI_LOG_CLIENT_ADDRESS=%j", (value) => {
+    expect(() => parseServerEnv({ DATABASE_URL: databaseUrl, HIPPOWIKI_LOG_CLIENT_ADDRESS: value })).toThrow(
+      /HIPPOWIKI_LOG_CLIENT_ADDRESS/,
+    );
   });
 
   it("ignores unrelated variables", () => {
@@ -57,7 +77,11 @@ describe("getServerEnv", () => {
     vi.stubEnv("NODE_ENV", "production");
     const { getServerEnv } = await import("@/lib/env");
 
-    expect(getServerEnv()).toEqual({ DATABASE_URL: databaseUrl, NODE_ENV: "production" });
+    expect(getServerEnv()).toEqual({
+      DATABASE_URL: databaseUrl,
+      NODE_ENV: "production",
+      HIPPOWIKI_LOG_CLIENT_ADDRESS: false,
+    });
   });
 
   it("validates on first use, not when the module is imported", async () => {

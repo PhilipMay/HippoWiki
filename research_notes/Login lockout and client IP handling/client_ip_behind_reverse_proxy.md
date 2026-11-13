@@ -94,7 +94,7 @@ proxies ("rightmost untrusted" / "rightmost-ish"); the leftmost entry is whateve
   - Fastly (`Fastly-Client-IP` spoofable by default), Akamai (`True-Client-IP` spoofable depending on two settings),
     Azure Front Door (`X-Azure-ClientIP` is leftmost-ish, `X-Azure-SocketIP` rightmost-ish)
   - two redacted entries pending disclosure
-  — [adam-p](https://adam-p.ca/blog/2022/03/x-forwarded-for/)
+    — [adam-p](https://adam-p.ca/blog/2022/03/x-forwarded-for/)
 - Rated good or acceptable by the article: Cloudflare `CF-Connecting-IP` (rightmost-ish), nginx realip module when
   fully configured, Apache mod_remoteip, Traefik's rate limiter (trusted proxy count), Express (XFF ignored by
   default; rightmost-ish option exists). The article itself names no CVE numbers —
@@ -276,7 +276,7 @@ Spring Boot and Tomcat
   [Spring Boot how-to: embedded web servers](https://docs.spring.io/spring-boot/how-to/webserver.html)
 - Tomcat 11 `RemoteIpValve`: `remoteIpHeader` default `x-forwarded-for`; `internalProxies` default
   `10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10, 127.0.0.0/8, ::1/128, fe80::/10,
-  fc00::/7`; `trustedProxies` default none. The docs note the first proxy must strip incoming forwarded headers and
+fc00::/7`; `trustedProxies` default none. The docs note the first proxy must strip incoming forwarded headers and
   that the default assumes all local networks are trusted —
   [Tomcat 11 valve reference](https://tomcat.apache.org/tomcat-11.0-doc/config/valve.html)
 
@@ -495,7 +495,7 @@ Caddy
   spoofing of the X-Forwarded-For header" without further configuration —
   [Caddy reverse_proxy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)
 - Global server options: `trusted_proxies` ("By default, no proxies are trusted"; `static [private_ranges]
-  <ranges...>`; enables client IP parsing for logs, `{client_ip}` and the `client_ip` matcher); `client_ip_headers`
+<ranges...>`; enables client IP parsing for logs, `{client_ip}` and the `client_ip` matcher); `client_ip_headers`
   ("By default, only `X-Forwarded-For` is considered"; "the first non-empty header value is used");
   `trusted_proxies_strict` (right-to-left parsing; opt-in since v2.8, disabled by default for backward
   compatibility; without it parsing is left-to-right and "The first untrusted IP address found becomes the real

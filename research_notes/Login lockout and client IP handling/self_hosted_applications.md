@@ -6,22 +6,22 @@ from a primary source in this session.
 
 Quick comparison (details and sources in the sections below):
 
-| System | Failed-login limit keyed on | Kind | Default | Anonymous lockout of a known account possible? | Client IP behind proxy |
-|---|---|---|---|---|---|
-| Nextcloud | IP subnet (IPv4 /32, IPv6 /56) + action | Growing delay, then HTTP 429 | on; max delay 25 s; 429 above 10 attempts in 30 min | No (only for clients sharing the attacker's subnet) | `trusted_proxies` list (default empty), header read right to left |
-| GitLab | User account (Devise lock) + per-IP path throttle | Hard lock, auto unlock | 10 attempts, 10 min; 10 req/min/IP on sign-in paths | Yes, for the unlock period, repeatable | Trusted-proxy list; private ranges trusted when nothing is set |
-| Gitea / Forgejo | Nothing built in | Optional CAPTCHA; fail2ban on the log | none | No | Hop limit `REVERSE_PROXY_LIMIT = 1` plus trusted list (loopback) |
-| Vaultwarden | Client IP | Token-bucket throttle, HTTP 429 | burst 10, then 1 per 60 s | No | `IP_HEADER` (X-Real-IP), accepted only from `IP_HEADER_TRUSTED_PROXIES` (default `local`, since 1.37.0) |
-| Grafana | User name (default) and optionally IP | Hard block for the window | 5 attempts in 5 min; IP part off | Yes, by user name | `X-Real-IP`, then leftmost `X-Forwarded-For`, trusted blindly |
-| Discourse | Client IP (password step); IP and user name (2FA step) | Request rate limit | 6/min and 30/h per IP | Not for the password step | Rails `remote_ip`; bundled nginx overwrites `X-Forwarded-For` |
-| WordPress core | Nothing | none | none | No | `REMOTE_ADDR` only |
-| Limit Login Attempts Reloaded | IP and user name | Hard lockout | 4 retries, 20 min; 24 h after 4 lockouts | Not verified (see section) | `REMOTE_ADDR`; optional "trusted IP origins" |
-| Wordfence | IP | Hard lockout | 20 failures in 4 h, locked 4 h | No | Auto-detect, or one chosen header, optional trusted proxies |
-| Home Assistant | Client IP | Permanent IP ban | ban feature on, but threshold -1 (never bans) | No | Off by default; request with `X-Forwarded-For` is refused with HTTP 400 |
-| Jellyfin | User account | Account disabled until an admin re-enables | no lockout unless set (0 means 3) | Yes, when a limit is set | `KnownProxies` list; forwarded headers ignored when empty |
-| Paperless-ngx | IP (API token endpoint), allauth limits | Throttle | `5/min` on `/api/token/` | Not verified | `PAPERLESS_TRUSTED_PROXIES` list plus allauth hop count |
-| Mattermost | User account | Hard lock until password reset | 10 attempts | Yes, until password reset | `TrustedProxyIPHeader` (default empty), leftmost entry, no proxy list |
-| Immich | Nothing built in | Log line only | none | No | `IMMICH_TRUSTED_PROXIES` (default link-local and unique-local) |
+| System                        | Failed-login limit keyed on                            | Kind                                       | Default                                             | Anonymous lockout of a known account possible?      | Client IP behind proxy                                                                                  |
+| ----------------------------- | ------------------------------------------------------ | ------------------------------------------ | --------------------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Nextcloud                     | IP subnet (IPv4 /32, IPv6 /56) + action                | Growing delay, then HTTP 429               | on; max delay 25 s; 429 above 10 attempts in 30 min | No (only for clients sharing the attacker's subnet) | `trusted_proxies` list (default empty), header read right to left                                       |
+| GitLab                        | User account (Devise lock) + per-IP path throttle      | Hard lock, auto unlock                     | 10 attempts, 10 min; 10 req/min/IP on sign-in paths | Yes, for the unlock period, repeatable              | Trusted-proxy list; private ranges trusted when nothing is set                                          |
+| Gitea / Forgejo               | Nothing built in                                       | Optional CAPTCHA; fail2ban on the log      | none                                                | No                                                  | Hop limit `REVERSE_PROXY_LIMIT = 1` plus trusted list (loopback)                                        |
+| Vaultwarden                   | Client IP                                              | Token-bucket throttle, HTTP 429            | burst 10, then 1 per 60 s                           | No                                                  | `IP_HEADER` (X-Real-IP), accepted only from `IP_HEADER_TRUSTED_PROXIES` (default `local`, since 1.37.0) |
+| Grafana                       | User name (default) and optionally IP                  | Hard block for the window                  | 5 attempts in 5 min; IP part off                    | Yes, by user name                                   | `X-Real-IP`, then leftmost `X-Forwarded-For`, trusted blindly                                           |
+| Discourse                     | Client IP (password step); IP and user name (2FA step) | Request rate limit                         | 6/min and 30/h per IP                               | Not for the password step                           | Rails `remote_ip`; bundled nginx overwrites `X-Forwarded-For`                                           |
+| WordPress core                | Nothing                                                | none                                       | none                                                | No                                                  | `REMOTE_ADDR` only                                                                                      |
+| Limit Login Attempts Reloaded | IP and user name                                       | Hard lockout                               | 4 retries, 20 min; 24 h after 4 lockouts            | Not verified (see section)                          | `REMOTE_ADDR`; optional "trusted IP origins"                                                            |
+| Wordfence                     | IP                                                     | Hard lockout                               | 20 failures in 4 h, locked 4 h                      | No                                                  | Auto-detect, or one chosen header, optional trusted proxies                                             |
+| Home Assistant                | Client IP                                              | Permanent IP ban                           | ban feature on, but threshold -1 (never bans)       | No                                                  | Off by default; request with `X-Forwarded-For` is refused with HTTP 400                                 |
+| Jellyfin                      | User account                                           | Account disabled until an admin re-enables | no lockout unless set (0 means 3)                   | Yes, when a limit is set                            | `KnownProxies` list; forwarded headers ignored when empty                                               |
+| Paperless-ngx                 | IP (API token endpoint), allauth limits                | Throttle                                   | `5/min` on `/api/token/`                            | Not verified                                        | `PAPERLESS_TRUSTED_PROXIES` list plus allauth hop count                                                 |
+| Mattermost                    | User account                                           | Hard lock until password reset             | 10 attempts                                         | Yes, until password reset                           | `TrustedProxyIPHeader` (default empty), leftmost entry, no proxy list                                   |
+| Immich                        | Nothing built in                                       | Log line only                              | none                                                | No                                                  | `IMMICH_TRUSTED_PROXIES` (default link-local and unique-local)                                          |
 
 ## Nextcloud (docs for Nextcloud 36 "upcoming" / 35 "latest"; source `master` = 36.0.0 dev)
 
@@ -154,7 +154,7 @@ and can ban IPs for failed Git/registry authentication (off by default).
     API — [Locked user accounts](https://docs.gitlab.com/security/unlock_user/)
   - Implementation: Devise `lock_strategy = :failed_attempts`, `unlock_strategy = :both` (email link and time),
     `maximum_attempts = max_login_attempts || 10`, `unlock_in = (failed_login_attempts_unlock_period_in_minutes ||
-    10).minutes` — [8_devise.rb](https://github.com/gitlabhq/gitlabhq/blob/master/config/initializers/8_devise.rb)
+10).minutes` — [8_devise.rb](https://github.com/gitlabhq/gitlabhq/blob/master/config/initializers/8_devise.rb)
   - Per-IP throttle on protected paths: "10 requests per minute per IP address", blocked requests get HTTP 429, on by
     default — [Protected paths](https://docs.gitlab.com/administration/settings/protected_paths/)
   - Default protected POST paths include `/users/password`, `/users/sign_in`, `/api/v4/session`, `/users`,
@@ -238,7 +238,7 @@ login and a log line for fail2ban, which makes correct client IP detection (`REV
     [Gitea routers/web/auth/auth.go](https://github.com/go-gitea/gitea/blob/main/routers/web/auth/auth.go),
     [Forgejo routers/web/auth/auth.go](https://codeberg.org/forgejo/forgejo/src/branch/forgejo/routers/web/auth/auth.go)
   - Official fail2ban guide: filter `failregex = .*(Failed authentication attempt|invalid credentials|Attempted access
-    of unknown user).* from <HOST>`, jail `maxretry = 10`, `findtime = 3600`, `bantime = 900`; Gitea returns HTTP 200
+of unknown user).* from <HOST>`, jail `maxretry = 10`, `findtime = 3600`, `bantime = 900`; Gitea returns HTTP 200
     for bad logins, so the Gitea log is the source —
     [Fail2ban setup](https://docs.gitea.com/administration/fail2ban-setup)
 - Lockout of a known account
@@ -465,7 +465,7 @@ retries by IP and user name, Wordfence after 20 failures by IP, and both make th
 - Limit Login Attempts Reloaded
   - Defaults: `allowed_retries => 4`, `lockout_duration => 1200` (20 minutes), `allowed_lockouts => 4`,
     `long_duration => 86400` (24 hours), `valid_duration => 86400` (code comment says 12 hours), `client_type =>
-    LLA_DIRECT_ADDR`, `notify_email_after => 3` —
+LLA_DIRECT_ADDR`, `notify_email_after => 3` —
     [core/Config.php](https://plugins.svn.wordpress.org/limit-login-attempts-reloaded/trunk/core/Config.php)
   - Readme: "Limit login attempts by IP address and by username"; "Custom trusted IP origin for Cloudflare and
     reverse proxy setups" — [readme.txt](https://plugins.svn.wordpress.org/limit-login-attempts-reloaded/trunk/readme.txt)
@@ -519,7 +519,7 @@ trusted proxy.
 - What limits failed logins
   - Schema: `ip_ban_enabled` default `True`; `login_attempts_threshold` default `NO_LOGIN_ATTEMPT_THRESHOLD`, which
     is `-1` —
-    [http/__init__.py](https://github.com/home-assistant/core/blob/dev/homeassistant/components/http/__init__.py),
+    [http/**init**.py](https://github.com/home-assistant/core/blob/dev/homeassistant/components/http/__init__.py),
     [http/const.py](https://github.com/home-assistant/core/blob/dev/homeassistant/components/http/const.py)
   - Docs: threshold is "Failed login attempts before an IP address is banned, from 1 to 1000"; alternative option
     "Never ban an IP address, no matter how many login attempts fail" —
@@ -540,7 +540,7 @@ trusted proxy.
 - Client IP behind a reverse proxy
   - `use_x_forwarded_for` (default false) and `trusted_proxies` (addresses or CIDR networks) form one inclusive
     group, so they must be set together —
-    [http/__init__.py](https://github.com/home-assistant/core/blob/dev/homeassistant/components/http/__init__.py)
+    [http/**init**.py](https://github.com/home-assistant/core/blob/dev/homeassistant/components/http/__init__.py)
   - If a request has `X-Forwarded-For` and `use_x_forwarded_for` is not set: log "A request from a reverse proxy was
     received from %s, but your HTTP integration is not set-up for reverse proxies" and `raise HTTPBadRequest`; if the
     connected peer is not in `trusted_proxies`: "Received X-Forwarded-For header from an untrusted proxy" and HTTP

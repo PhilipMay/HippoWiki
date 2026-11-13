@@ -15,6 +15,7 @@ import {
 import * as authService from "@/features/auth/service";
 import { requireSession } from "@/features/auth/session";
 import { changePasswordPath, foldersPath, loginPath } from "@/lib/addresses";
+import { logClientAddressProbe } from "@/lib/client-address-probe";
 
 const INVALID_CREDENTIALS_MESSAGE = "Invalid user name or password";
 const BUSY_MESSAGE = "Too many logins at the moment, please try again";
@@ -43,8 +44,12 @@ export async function logIn(_prevState: LoginFormState, formData: FormData): Pro
   const input = parseLoginFormData(formData);
   if (!input.success) return { fieldErrors: input.fieldErrors };
 
+  const requestHeaders = await headers();
+  // Shows whether a Server Action sees the same forwarding headers as the proxy of Next.js.
+  logClientAddressProbe(requestHeaders, { source: "login" });
+
   // Better Auth sets the session cookie on the response of this action (`nextCookies()` in `src/lib/auth.ts`).
-  const result = await authService.logIn(input.data, await headers());
+  const result = await authService.logIn(input.data, requestHeaders);
   if (!result.ok) {
     switch (result.error.code) {
       case "invalid-credentials":

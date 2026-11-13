@@ -219,6 +219,9 @@ npm run image:smoke   # check the built image against a throwaway database
   3000). The image contains no `.env` file and no database address.
 - The second variable is `HIPPOWIKI_ADMIN_PASSWORD`: the first password of the admin account `admin`, 8 to 128
   characters. A container needs it only while the database has no admin.
+- The optional `HIPPOWIKI_LOG_CLIENT_ADDRESS=true` logs the forwarding headers (`X-Forwarded-For`, `X-Real-Ip` and the
+  like, never cookies) of every request, to check the reverse proxy in front of the container; see "Configuration" in
+  `spec/container-image.md`. It is off by default.
 - On every start the container applies the pending migrations to the database of `DATABASE_URL`
   (`prisma migrate deploy`): an empty database gets its tables, a migrated one stays as it is. Then it creates the
   admin account with the password from `HIPPOWIKI_ADMIN_PASSWORD` if the database has none; an existing admin stays

@@ -18,7 +18,10 @@ vi.mock("@/lib/db", async () => {
 // is still reached through the mocked `getDb()` above, never through this URL.
 vi.mock(import("@/lib/env"), async (importOriginal) => {
   const { TEST_DATABASE_URL } = await import("../e2e/support/container");
-  return { ...(await importOriginal()), getServerEnv: () => ({ DATABASE_URL: TEST_DATABASE_URL, NODE_ENV: "test" }) };
+  return {
+    ...(await importOriginal()),
+    getServerEnv: () => ({ DATABASE_URL: TEST_DATABASE_URL, NODE_ENV: "test", HIPPOWIKI_LOG_CLIENT_ADDRESS: false }),
+  };
 });
 
 // The integration tests start from empty tables; the known users of the end-to-end tests are not created here.

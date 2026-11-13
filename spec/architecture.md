@@ -11,7 +11,7 @@ How the code is organised and which patterns new code follows. The technology st
 - `src/components/`: shared UI components (app bar, `Link`)
 - `src/lib/`: cross-cutting modules (`env.ts`, `db.ts`, `db-errors.ts`, `logger.ts`, `theme.ts`, `site.ts`,
   `format.ts`, `hydration.ts`, `focus.ts`, `names.ts`, `addresses.ts`, `revalidate.ts`, `result.ts`, `auth.ts`,
-  `password-hash.ts`)
+  `password-hash.ts`, `client-address-probe.ts`)
   - `names.ts`: the name rule shared by folders, tabs and pages (`nameSchema`, `parseName`) and the form state of
     forms that ask for a name
   - `addresses.ts`: the addresses under `/folders` (`folderPath`, `tabPath`, `pagePath`, `parsePageSegment`) and
@@ -23,6 +23,9 @@ How the code is organised and which patterns new code follows. The technology st
   - `result.ts`: the type `Result`, which the writes of a service return; no server-only imports
   - `auth.ts`: `getAuth()`, the single Better Auth instance, created on first use like the client of `getDb()`
   - `password-hash.ts`: `hashPassword()` and `verifyPassword()` with Argon2id, and the limit on concurrent hashes
+  - `client-address-probe.ts`: `logClientAddressProbe()`, which logs the forwarding headers of a request while
+    `HIPPOWIKI_LOG_CLIENT_ADDRESS` is `true`; called by `src/proxy.ts` and the login action (see "Configuration" in
+    `container-image.md`)
 - `src/features/<feature>/`: everything about one feature – `schema.ts`, `service.ts`, `forms.ts`, `queries.ts`,
   `actions.ts`, `components/` and pure helpers such as `derive.ts` and `limits.ts` for pages (no server-only imports,
   so Client Components can use them). `limits.ts` holds the field length limits, so that `schema.ts` can import
