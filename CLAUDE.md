@@ -23,6 +23,8 @@ The specification lives in the `spec/` directory. This catalog should always be 
 - `spec/users-and-login.md`: the users and login feature as built (models, user names and email, passwords and
   hashing, admin account and setup, login and logout, sessions, failed logins, authenticated access only, forced
   password change, user list, creating users, routes, decisions, limits)
+- `spec/login-limit-steps.md`: step plan for the login limit per user name and client address, which fixes the Major
+  finding in `security-review.md`
 - `spec/roadmap.md`: backlog of candidate features, grouped by theme
 - `spec/security-review.md`: open findings of the security review of the deployment and the code, to be fixed later
 - `spec/issue-report.md`: how to report issues found in code and document reviews
