@@ -25,6 +25,7 @@ The specification lives in the `spec/` directory. This catalog should always be 
   account and setup, login and logout, sessions, failed logins with the wait per user name and client address group
   and the hour window per user name, authenticated access only, forced password change, user list and creating users,
   routes, decisions, limits)
+- `spec/last-editor-steps.md`: step plan for recording and showing the user who last edited a folder, tab or page
 - `spec/roadmap.md`: backlog of candidate features, grouped by theme, and things still to check
 - `spec/issue-report.md`: how to report issues found in code and document reviews
 
