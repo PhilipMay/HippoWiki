@@ -24,6 +24,7 @@ The specification lives in the `spec/` directory. This catalog should always be 
   hashing, admin account and setup, login and logout, sessions, failed logins, authenticated access only, forced
   password change, user list, creating users, routes, decisions, limits)
 - `spec/roadmap.md`: backlog of candidate features
+- `spec/security-review.md`: open findings of the security review of the deployment and the code, to be fixed later
 - `spec/issue-report.md`: how to report issues found in code and document reviews
 
 ## Running the Checks
