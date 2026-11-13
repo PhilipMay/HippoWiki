@@ -5,17 +5,6 @@ Open findings of the security review of 2026-11-12, to be fixed later. The revie
 and a read-only review of the code. The issues follow `issue-report.md`. Remove an issue from this file once it is
 fixed.
 
-## Summary
-
-The authentication design holds: every page, query and Server Action checks the session again in the database, so
-getting past the proxy does not help an attacker. The weaknesses are in the missing security headers and in the cost
-of logins for unknown names.
-
-- Blocker: 0
-- Major: 0
-- Minor: 3
-- Nit: 2
-
 ## Issues
 
 ### Minor: no security headers
@@ -42,8 +31,6 @@ of logins for unknown names.
   - `X-Frame-Options: DENY`
   - `X-Content-Type-Options: nosniff`
   - `Referrer-Policy: same-origin`
-- **Alternatives:** The reverse proxy sets the headers, and `container-image.md` lists them under what the environment
-  has to provide. A CSP for scripts needs nonces because of MUI and emotion and can follow later.
 
 ### Minor: Markdown images load from any host
 
@@ -55,7 +42,6 @@ of logins for unknown names.
   `Referrer-Policy`, the address of the page with folder and page names can leak as well.
 - **Evidence:** `MarkdownContent.tsx` passes no `img` in `components` and no `urlTransform` that restricts images.
 - **Suggestion (optional):** `img-src 'self' data:` and `Referrer-Policy: same-origin` from the issue above fix this.
-- **Alternatives:** An `img` component that only allows relative addresses.
 
 ### Minor: logins without an account can block all logins
 
