@@ -120,7 +120,7 @@ user chooses.
 - [x] Logging, errors and failure handling
 - [x] Configuration and container image
 - [x] Supply chain: dependencies, CI and release
-- [ ] Cross-cutting: data model, architecture, documentation and tests
+- [x] Cross-cutting: data model, architecture, documentation and tests
 - [ ] Standards cross-check
 - [ ] Summary and final check of the report
 - [ ] Wrap-up

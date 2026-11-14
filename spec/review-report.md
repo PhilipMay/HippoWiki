@@ -2174,6 +2174,208 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 
 ### Cross-cutting: data model, architecture, documentation and tests
 
+#### issue: no inventory of the cryptography, and no documented way to replace the cookie secret
+
+- Location: `spec/users-and-login.md`, sections "Passwords" and "Sessions"; `spec/api-tokens.md`; `spec/oauth.md`,
+  section "Secrets"; `src/lib/auth.ts`, lines 29–46, `readSecret()`, and lines 111–123, `getAuth()`
+- Severity: Minor. The algorithms are sound; the documentation and a safe replacement of the one key are missing.
+- Category: docs
+- Problem: the facts are spread over three specs, and some are written nowhere: the HMAC-SHA256 signature of the
+  session cookie, the session token of about 190 bits, the 256-bit secret in `AuthSecret`, where each key is used and
+  how it is replaced. `getAuth()` keeps the secret for the life of the process, so deleting the row changes nothing
+  until every process restarts. Argon2 hashes carry their parameters, but no password is rehashed at a login.
+- Impact: after a leak of a backup, an operator cannot rotate the cookie secret without guessing the procedure, and a
+  later change of an algorithm has no path.
+- Evidence: `users-and-login.md`: "There is no variable for the secret." No spec names HMAC or a rotation.
+- Suggestion (required): a section on cryptography in `architecture.md` with algorithm, key size, purpose and storage
+  of each item (Argon2id, SHA-256 for tokens, codes, access and refresh tokens, HMAC-SHA256 with `AuthSecret`, the
+  session token, `randomBytes`, `randomInt`, PKCE S256, TLS at the proxy) and the procedure to replace `AuthSecret`.
+- Reference: OWASP A04:2025 Cryptographic Failures; ASVS 11.1.1, 11.1.2, 11.2.2; CWE-320; BSI TR-02102-1.
+
+#### issue: no security overview places the security mechanisms, the outgoing connections and the sensitive data, and no spec mentions CSRF
+
+- Location: `spec/architecture.md`; `spec/container-image.md`, section "What the environment has to provide"
+- Severity: Minor
+- Category: docs
+- Problem: `architecture.md` describes the layers, the two login layers and the headers, but not where each mechanism
+  lives (authentication, authorisation in the services, CSRF by the origin check of Server Actions and
+  `SameSite=Lax`, XSS by React, react-markdown and the CSP, limits, the SSRF guard, logging). No spec lists the
+  outgoing connections (PostgreSQL, and DNS and `https` to any public host for metadata documents while
+  `HIPPOWIKI_PUBLIC_URL` is set) or classifies the sensitive data. That the CSRF check needs the proxy to pass `Host`
+  unchanged stands only in this report.
+- Impact: someone who changes the deployment or adds a route cannot see which control they rely on.
+- Evidence: `grep -i "csrf\|cross-site" spec/*.md` finds only the review files.
+- Suggestion (required): a section "Security overview" in `architecture.md` with one line per mechanism, the outgoing
+  connections, and the classes of data with their protection and retention; in `container-image.md`, that the proxy
+  passes `Host` unchanged and that DNS and port 443 are needed when OAuth is on. The threat model of this report can
+  be the base.
+- Reference: OWASP A06:2025 Insecure Design; `CON.10.A11`; ASVS 13.1.1, 13.2.4, 14.1.1, 14.1.2; CWE-1059.
+
+#### issue: no spec lists the costly functions and how each is protected
+
+- Location: `spec/pages.md`, `spec/users-and-login.md`, `spec/oauth.md`, `spec/mcp.md`
+- Severity: Minor
+- Category: docs
+- Problem: this ties together the findings on the quadratic Markdown parse, the queue of the password hashing, the
+  batches at `/mcp`, the unbounded bodies of the OAuth endpoints and the unpaged lists. ASVS 15.1.3 asks for one place
+  that names each function that needs much time or memory and its guard; today the parts are scattered (the Argon2
+  limiter in `users-and-login.md`, the limits of the metadata fetch in `oauth.md`) or missing (the 4 MiB of the MCP
+  SDK, the Markdown parse).
+- Suggestion (required): one table, for example in the security overview, with each costly function, its limit, or
+  "none, a task of the proxy", and a link to its finding.
+- Reference: OWASP A06:2025 Insecure Design; ASVS 15.1.3, 15.2.2; CWE-400.
+
+#### issue: the protections that come from Next.js, the MCP SDK and Better Auth have no regression test
+
+- Location: `e2e/security-headers.spec.ts`, `e2e/access.spec.ts`, `e2e/pages.spec.ts`, `src/features/mcp/http.test.ts`
+- Severity: Minor
+- Category: tests
+- Problem: the rules of the features are tested thoroughly, but these were checked only by hand in this review: a
+  Server Action with a foreign `Origin` is refused; pages, RSC payloads and action answers carry `no-store`; no answer
+  carries `Access-Control-*`; `/mcp` refuses a body over 4 MiB; there is no `/api/auth/*`; and the Markdown test
+  covers only lower-case `javascript:`.
+- Impact: an upgrade of Next.js or the SDK, a setting such as `serverActions.allowedOrigins`, a `use cache` or a new
+  route under `api/auth` could weaken CSRF, caching or XSS protection unnoticed.
+- Suggestion (required): end-to-end tests for each of these (the CSRF test can rewrite the `Origin` with `page.route`),
+  and the URL variants of the area "Content" in the Markdown test.
+- Reference: OWASP A01:2025 Broken Access Control; OWASP A05:2025 Injection; ASVS 3.5.1, 3.4.2, 14.3.2, 1.3.5;
+  CWE-352; `CON.10.A15`.
+
+#### issue: Better Auth takes `BETTER_AUTH_SECRETS` from the environment, which replaces the cookie secret of `AuthSecret`
+
+- Location: `src/lib/auth.ts`, lines 48–51, `createAuth()`; `spec/users-and-login.md`, section "Sessions"
+- Severity: Minor. It needs an operator who sets the variable; the session token is still looked up in the database.
+- Category: security
+- Problem: `createAuth()` passes `secret` but not `secrets`, and Better Auth then uses
+  `options.secrets ?? parseSecretsEnv(env.BETTER_AUTH_SECRETS)` and, when it is set, takes its first value instead.
+  A weak value only gives a warning. The variable bypasses `getServerEnv()` and contradicts the spec ("There is no
+  variable for the secret"); Better Auth also reads `BETTER_AUTH_URL` and `BETTER_AUTH_TRUSTED_ORIGINS` by itself.
+- Impact: an operator who follows the documentation of Better Auth silently replaces the secret, and every session
+  ends when the variable appears or disappears.
+- Evidence: in `node_modules/better-auth/dist/context/create-context.mjs`: `const secretsArray = options.secrets ??
+parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`.
+- Suggestion (required): pass `secrets: [{ version: 1, value: secret }]` from `AuthSecret` (which also allows a
+  versioned rotation), or document the variable as the way to rotate.
+- Reference: OWASP A02:2025 Security Misconfiguration; ASVS 11.1.1; CWE-15.
+
+#### nit: the generated first password has about 116.7 bits, below 128 (ASVS) and 120 (TR-02102-1)
+
+- Location: `src/features/users/password.ts`, lines 4–12
+- Severity: Nit. It is guessed online behind the login wait and must be changed at the first login.
+- Category: security
+- Problem: 20 characters from an alphabet of 57 give 20 × log2(57) ≈ 116.7 bits.
+- Suggestion (optional): 22 characters give about 128.3 bits.
+- Reference: ASVS 11.5.1; BSI TR-02102-1.
+
+#### nit: the database does not hold every invariant that the comments of the schema state
+
+- Location: `prisma/schema.prisma`, models `Account` and `ApiToken`; the check `ApiToken_token_or_grant` in
+  `prisma/migrations/20261113200522_add_oauth/migration.sql`
+- Severity: Nit. Only a broken caller can break them.
+- Category: correctness
+- Problem: the check ties only `tokenHash` to `clientId`, so a token row could carry an access token hash, which
+  `authenticateToken()` would accept; "Every user has exactly one" `Account` has no unique constraint behind it.
+- Suggestion (optional): extend the check to the access and refresh columns, and add a unique key on `Account`.
+- Reference: CWE-20.
+
+#### nit: no index serves the lists of all pages and of the deleted pages of a folder
+
+- Location: `src/features/pages/service.ts`, `listAllFolderPages()` and `listDeletedPages()`; `prisma/schema.prisma`,
+  model `Page`
+- Severity: Nit. It matters only together with the unlimited number of pages.
+- Category: performance
+- Problem: both filter by `folderId`, but the only index that starts with it is the partial unique one of pages
+  directly in a folder.
+- Suggestion (optional): `@@index([folderId, deletedAt])` on `Page`.
+
+#### nit: `architecture.md` and `tech.md` describe ids and a search that do not exist
+
+- Location: `spec/architecture.md`, section "Database"; `spec/tech.md`, line 15
+- Severity: Nit
+- Category: docs
+- Problem: "Every model has a UUID id generated by PostgreSQL (`gen_random_uuid()`)" is not true: the app creates the
+  ids of users and grants with `randomUUID()`, and the tables of the login counts and `AuthSecret` have no UUID key.
+  "for search use Postgres full-text search" and the matching sentence in `architecture.md` describe a search that
+  does not exist (`content-structure.md`: "no search").
+- Suggestion (required): correct the sentence on ids and mark the search as later.
+
+#### nit: the longest functions of the services mix several steps, and helpers are repeated or unused
+
+- Location: `src/features/oauth/service.ts` (763 lines), `exchangeCode()` (118 lines) and `refreshGrant()` (85
+  lines); `src/features/auth/service.ts`, `reserveAttempt()` (82 lines); unused exports such as `parseUserName()` in
+  `src/features/users/schema.ts` and `authorizationServerMetadataPath()` in `src/lib/addresses.ts`; six identical
+  `parse*Id()` wrappers of `z.guid()`; three copies of `currentTime()`; `hashSecret()` in `src/features/oauth/secret.ts`
+  only forwards to `hashToken()`
+- Severity: Nit
+- Category: readability
+- Suggestion (optional): split `exchangeCode()` and `refreshGrant()` into reading the code or grant, the checks and
+  the transaction; remove the unused exports and share one id parser.
+- Reference: CWE-561.
+
+#### suggestion: CI does not check that the migrations produce the schema
+
+- Location: `.github/workflows/integration_tests.yml`; `e2e/support/database.ts`, `migrateTestDatabase()`
+- Severity: Nit
+- Category: tests
+- Problem: an index or constraint in `schema.prisma` but not in a migration, or the other way round, would go
+  unnoticed; a comparison by hand found no drift today.
+- Suggestion (optional): run `prisma migrate diff … --exit-code` against the migrated test database in the job of the
+  integration tests.
+
+#### suggestion: expired sessions and old login counts stay in the database
+
+- Location: `prisma/schema.prisma`, models `Session`, `LoginAttempt` and `LoginWindow`; the cleanup in
+  `reserveAttempt()` of `src/features/auth/service.ts`
+- Severity: Nit
+- Category: security
+- Problem: Better Auth deletes an expired session only when its cookie comes back, so sessions of browsers that never
+  return keep their token, address and user agent for good; login counts are deleted only by a later login, and their
+  name may be a password typed into the wrong field (see the area "Logging"). No spec states a retention.
+- Suggestion (optional): delete expired sessions in the same cleanup, and state the retention.
+- Reference: ASVS 14.2.7 (Level 3); CWE-359.
+
+#### suggestion: no lint rule keeps comparisons strict
+
+- Location: `eslint.config.mjs`
+- Severity: Nit
+- Category: style
+- Problem: the code has no `==`, `as any`, `@ts-ignore` or `eslint-disable`, but nothing would stop the first one.
+- Suggestion (optional): `eqeqeq` and `@typescript-eslint/no-explicit-any` as errors.
+- Reference: ASVS 15.3.5.
+
+#### Reviewed
+
+- Files read: `prisma/schema.prisma` and all 16 migrations, `eslint.config.mjs`, `tsconfig.json`, `src/lib/`, the
+  secrets, services and queries of every feature, `src/features/services.test.ts`, the titles of every test in
+  `integration/` and `e2e/`, the feature specs, `architecture.md`, `testing.md` and `tech.md`; Better Auth (context,
+  adapter, session, cookies) and the signing of better-call.
+- Unique constraints: every rule has its index or key (folder name, tab per folder, page per tab, page directly in a
+  folder and not deleted, user name and email, session token, token, access token and code hashes, metadata URL,
+  login counts); `db-errors.test.ts` pins the index names.
+- `onDelete` matches `architecture.md`: Restrict within content and for the last editor, Cascade for the sessions,
+  accounts, tokens and codes of a user and for the codes and grants of a client.
+- Migrations against the schema: compared table by table, no drift; the hand-written SQL (the partial index, two check
+  constraints, data moves) is commented.
+- Layers: only services, `src/lib/` and the health route call `getDb()`; only the auth service imports `@/lib/auth`;
+  no service imports `next`, `react`, `revalidate` or a `forms.ts`. Raw SQL is three parameterised tagged templates;
+  no `include`.
+- Type juggling (ASVS 15.3.5): none in `src/`; `strict` and `noUncheckedIndexedAccess` are on.
+- BSI TR-02102-1: SHA-256, HMAC-SHA256 with a 256-bit key, 256-bit secrets from `randomBytes`, session tokens of about
+  190 bits, Argon2id with the parameters of OWASP, PKCE S256 compared in constant time; all at least 120 bits except
+  the first password (nit above).
+- Documentation of ASVS Level 2: the waits after failed logins (6.1.1), the ways of authentication (6.1.3), the
+  authorisation rules (8.1.1, 8.1.2) and the input rules (2.1.1) are documented; session lifetimes (7.1.1, 7.1.2),
+  limits (2.1.3) and logging (16.1.1) are findings of earlier areas; the architecture (`CON.10.A11`), the outgoing
+  connections (13.1.1) and the costly functions (15.1.3) are findings above.
+- Tests: the security rules of the specs have tests, among them another user's token, the reuse of a code and of a
+  refresh token, PKCE `plain`, private addresses and redirects of the metadata fetch, deleted pages over MCP, a foreign
+  `Origin` at `/mcp`, the security headers, the login wait under concurrency, raw HTML and `javascript:` links, and no
+  secret in the logs. The gaps are the finding above.
+- Test runs of this review on 2026-11-14: `npm run test:coverage`: 1,737 unit tests passed; statements 77.16 %
+  (2,048 of 2,654), branches 72.81 %, functions 66.73 %, lines 77.53 %, with the components covered by the end-to-end
+  tests instead; `npm run test:integration`: 301 tests passed in 19 s; `npm run test:e2e`: 485 tests passed in 3.3
+  minutes. No test failed or needed a retry, so no flaky test was seen.
+
 ## Accepted deviations
 
 - ASVS 8.2.2 and 8.4.1 for content (Access control): every logged-in user may read and change all folders, tabs and
@@ -2212,6 +2414,8 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   environment has to provide" and "Current limits", with `roadmap.md`. The missing signing, provenance and scan of the
   image has no reason and is a finding in "Supply chain".
 - `/api/health` is public (Configuration, ASVS 13.4.5): `container-image.md`, "Health".
+- Expired API tokens are not deleted by themselves (Cross-cutting, ASVS 14.2.7, Level 3): `api-tokens.md`,
+  "Current limits".
 
 ## What is good
 
@@ -2295,6 +2499,12 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 - Supply chain: the release pushes exactly the image that passed the smoke test, and its digest and OCI labels are
   recorded.
 - Supply chain: `npm ci` from a lockfile with integrity hashes in CI and in the image, and `strict-peer-deps`.
+- Cross-cutting: `src/features/services.test.ts` loads every service and the MCP tools with `next` and `react` mocked to
+  throw, which catches indirect imports that lint cannot see.
+- Cross-cutting: concurrency is tested against a real database for every limit (logins, tokens, registrations, code
+  exchange, refresh), and tests assert that no password, token, hash or address reaches the logs.
+- Cross-cutting: hand-written migrations explain themselves, and `db-errors.test.ts` pins the index names the services
+  rely on.
 
 ## Checks on the deployment
 
@@ -2355,6 +2565,9 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 - The deployment pulls the image by digest, not by tag (Supply chain).
 - No vulnerability scanner is installed on the review machine, so the image was not scanned; a scan of the published
   image (for example with Trivy or Grype) is left to the deployment (Supply chain).
+- The operator knows how to replace `AuthSecret` (stop every instance, delete the row, start; all sessions end), and
+  `BETTER_AUTH_SECRETS`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` and `BETTER_AUTH_TRUSTED_ORIGINS` are not set in the
+  container (Cross-cutting).
 
 ## Standards coverage
 
