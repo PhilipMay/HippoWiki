@@ -2,7 +2,32 @@
 
 ## Summary
 
-Written in the last review step.
+- Verdict: no Blocker. The core holds: every page, query and Server Action checks the login, the admin rights and the
+  owner of tokens and grants on the server; the session, API token and OAuth secrets are random, stored as hashes and
+  kept apart by kind; the OAuth server follows PKCE, exact redirect addresses, single-use codes and refresh rotation
+  with reuse detection; the fetch of client metadata documents resists SSRF; Markdown cannot run script; and the
+  tests cover the security rules of the specs well. The weak points are availability (a slow Markdown parse, unbounded
+  bodies and batches, a lockout per name in the default configuration), the password policy, the trust that the OAuth
+  server gives to clients nobody verified, and documentation that ASVS Level 2 asks for.
+- Findings: 116 in all, 0 Blocker, 5 Major, 70 Minor and 41 Nit (62 `issue:`, 20 `suggestion:`, 29 `nit:` and 5
+  `question:`). Accepted deviations: 19.
+- To fix first:
+  1. Some Markdown takes quadratic time to parse, so one page blocks the whole server (Content; ASVS 15.1.3, 15.2.2;
+     CWE-407).
+  2. An invalid authorization request sends the browser, without a click, to any address an anonymous party
+     registered (OAuth; ASVS 3.7.2, 10.4.7; CWE-601; `CON.10.A4`).
+  3. New passwords are not checked against common or breached passwords (Login; ASVS 6.2.4, 6.2.12; NIST SP 800-63B-4
+     3.1.1.2).
+  4. The admin password of the public `.env.example` is accepted as the first password of the admin (Configuration;
+     ASVS 6.3.2; CWE-1392).
+  5. After the first password change, a user cannot change the password or end sessions, and the admin cannot end
+     them either (Login; ASVS 6.2.2, 7.4.3, 7.4.5).
+- Not covered by this review: everything under "Checks on the deployment" (the reverse proxy and its TLS, the host,
+  the network, backups, log storage and the settings of the GitHub repository); a scan of the image for
+  vulnerabilities, because no scanner is installed on the review machine; the exact wording of BSI TR-03185-2 (see
+  "Open questions"); and a few checks that were not run on the local server and say so in their finding: the logout
+  during a failed database (shown from the code), the `Origin` check of `/mcp` without a public URL, the load test of
+  the hash queue, and the behaviour of other browser tabs and of password managers.
 
 ## Scope and method
 
@@ -463,7 +488,8 @@ the threat.
   preflight. With `HIPPOWIKI_TRUSTED_PROXIES` set, a page with many visitors registers clients from many address
   groups, past the limit per group; with `0`, it fills the one shared group.
 - Impact: the table of clients fills up until unused clients are removed; the shared group can be blocked for an hour.
-- Evidence: `curl -si -X POST -H 'Content-Type: text/plain' --data '{"redirect_uris":["http://127.0.0.1:9999/cb"],"client_name":"textplain"}' http://localhost:3100/oauth/register`
+- Evidence:
+  `curl -si -X POST -H 'Content-Type: text/plain' --data '{"redirect_uris":["http://127.0.0.1:9999/cb"],"client_name":"textplain"}' http://localhost:3100/oauth/register`
   gives `201 Created` with a `client_id`.
 - Suggestion (optional): answer 400 `invalid_client_metadata` unless the media type is `application/json`, with the
   helper `mediaTypeOf()` that the token endpoint uses already.
@@ -727,6 +753,7 @@ the threat.
   change of the password (ASVS 6.3.7 is Level 3). The spec lists both as limits, without the reason, the accepted risk
   or what lowers it.
 - Impact: neither can count as an accepted deviation.
+- Evidence: "no mail, no TOTP, no passkeys, no sign-in with other providers", with no entry under "Decisions".
 - Suggestion (required): add a decision with the reason and the risk accepted, or add TOTP (the `twoFactor` plugin of
   Better Auth; TOTP is in `roadmap.md`).
 - Reference: OWASP A07:2025 Authentication Failures; ASVS 6.3.3; `CON.10.A16`, `CON.10.A1`.
@@ -797,8 +824,8 @@ the threat.
 
 #### question: do password managers fill the login form and save the new password at the change?
 
-- Location: `src/features/auth/components/LoginForm.tsx`, lines 58–70; `src/features/auth/components/ChangePasswordForm.tsx`,
-  lines 53–96
+- Location: `src/features/auth/components/LoginForm.tsx`, lines 58–70;
+  `src/features/auth/components/ChangePasswordForm.tsx`, lines 53–96
 - Severity: Nit
 - Category: usability
 - Problem: the fields are `readOnly` until hydration, and some browsers skip read-only fields when they fill at load;
@@ -897,6 +924,25 @@ the threat.
   or document the limit as a decision with a pointer to the roadmap entry on deactivating users.
 - Reference: OWASP A07:2025 Authentication Failures; ASVS 7.4.5, 7.4.2; CWE-613.
 
+#### question: creating an API token or approving an OAuth grant needs no new authentication
+
+- Location: `src/features/tokens/actions.ts`, lines 26–32, `createToken()`; `src/features/oauth/actions.ts`, lines
+  42–47, `approve()`
+- Severity: Minor. It needs a stolen session first; the question is whether the step from a session to a credential of
+  its own should cost more.
+- Category: security
+- Problem: both actions need only the session. A token lives up to 365 days and a grant as long as chosen, and neither
+  ends with the session that created it, so whoever holds a stolen session cookie for a moment can turn it into access
+  that outlives a logout and the 30 days of the session. ASVS 7.5.1 asks for a new authentication before changes to
+  what the account uses to authenticate; a new credential is such a change in effect.
+- Impact: a short session theft (a shared computer, a leaked cookie) becomes access for up to a year, visible only on
+  `/account`.
+- Evidence: `const user = await requireUser();` and then `tokenService.createToken(user, input.data)`; `approve()` the
+  same with `oauthService.createCode()`.
+- Suggestion (optional): ask for the password again before a token is created (or for tokens longer than 30 days), or
+  document that the session alone is enough as a decision with its reason.
+- Reference: OWASP A07:2025 Authentication Failures; ASVS 7.5.1; CWE-306.
+
 #### nit: a bearer value of the wrong shape is answered without `error="invalid_token"`
 
 - Location: `src/features/tokens/service.ts`, lines 269–271, `authenticateToken()`; `src/features/mcp/http.ts`, lines
@@ -931,25 +977,6 @@ the threat.
 - Problem: requests other than `POST` get 405, and a foreign `Origin` gets 403, before `authenticateToken()` runs.
 - Evidence: "The adapter of `/mcp` calls it for every request."
 - Suggestion (optional): "for every `POST` from an allowed origin (see `mcp.md`)".
-
-#### question: creating an API token or approving an OAuth grant needs no new authentication
-
-- Location: `src/features/tokens/actions.ts`, lines 26–32, `createToken()`; `src/features/oauth/actions.ts`, lines
-  42–47, `approve()`
-- Severity: Minor. It needs a stolen session first; the question is whether the step from a session to a credential of
-  its own should cost more.
-- Category: security
-- Problem: both actions need only the session. A token lives up to 365 days and a grant as long as chosen, and neither
-  ends with the session that created it, so whoever holds a stolen session cookie for a moment can turn it into access
-  that outlives a logout and the 30 days of the session. ASVS 7.5.1 asks for a new authentication before changes to
-  what the account uses to authenticate; a new credential is such a change in effect.
-- Impact: a short session theft (a shared computer, a leaked cookie) becomes access for up to a year, visible only on
-  `/account`.
-- Evidence: `const user = await requireUser();` and then `tokenService.createToken(user, input.data)`; `approve()` the
-  same with `oauthService.createCode()`.
-- Suggestion (optional): ask for the password again before a token is created (or for tokens longer than 30 days), or
-  document that the session alone is enough as a decision with its reason.
-- Reference: OWASP A07:2025 Authentication Failures; ASVS 7.5.1; CWE-306.
 
 #### Reviewed
 
@@ -1503,9 +1530,9 @@ scope="read"`.
 
 #### issue: deeply nested Markdown overflows the stack, so a page can be saved but not viewed or deleted
 
-- Location: `src/features/pages/components/MarkdownContent.tsx`, lines 128–130; `src/features/pages/derive.ts`,
-  line 25; `src/features/pages/components/PageView.tsx`, lines 88–102; `src/features/pages/components/DeletedPageView.tsx`,
-  line 59
+- Location: `src/features/pages/components/MarkdownContent.tsx`, lines 128–130; `src/features/pages/derive.ts`, line 25;
+  `src/features/pages/components/PageView.tsx`, lines 88–102; `src/features/pages/components/DeletedPageView.tsx`, line
+  59
 - Severity: Minor. Any user can make a page unusable, but "Edit" still works, so the page can be repaired, and all
   content can be changed by everyone anyway.
 - Category: error handling
@@ -1558,6 +1585,7 @@ scope="read"`.
 - Category: error handling
 - Problem: nothing refuses U+0000, and PostgreSQL refuses it in `text`, so the write fails as `failed`, the user is
   told to try again (which cannot help), and an error is logged.
+- Impact: users get a message that does not help, and the log fills with errors that any user can cause.
 - Evidence: on the local server, creating a page whose content contains a NUL byte answers "The page could not be
   saved. Please try again."
 - Suggestion (required): refuse or strip `\u0000` in `contentSchema`, with a field error.
@@ -1677,8 +1705,9 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   misses them.
 - Evidence: the log of the local server shows the refusal of `createFolder` with a foreign `Origin` as the text
   "`x-forwarded-host` header with value … does not match `origin` header … Aborting the action.", not as a pino line.
-- Suggestion (required): add an instrumentation file (`instrumentation.ts` under `src/`) with `onRequestError()`
-  that logs through pino (error, digest, method, path, route), never the headers; say in `architecture.md` where uncaught errors are logged.
+- Suggestion (required): add an instrumentation file (`instrumentation.ts` under `src/`) with `onRequestError()` that
+  logs through pino (error, digest, method, path, route), never the headers; say in `architecture.md` where uncaught
+  errors are logged.
 - Reference: OWASP A09:2025 Security Logging and Alerting Failures; ASVS 16.2.4, 16.3.4, 16.5.4 (Level 3); CWE-778.
 
 #### issue: errors logged through Better Auth lose their message and stack
@@ -1743,6 +1772,9 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   epoch milliseconds (UTC), that the level is fixed at `info` in production, which events are logged, that the logs
   hold personal data (user names, address groups), or that the environment has to collect, protect and keep them.
 - Impact: an operator does not know what to collect, protect or keep, and for how long.
+- Evidence: the specs name pino only as the logger to use (`architecture.md`, `tech.md`) and the logging of Better
+  Auth (`users-and-login.md`); none says where the logs go, in which format and time, at which level, or how long
+  they are kept.
 - Suggestion (required): add a section on the logs to `container-image.md` and a matching item under "What the
   environment has to provide".
 - Reference: OWASP A09:2025 Security Logging and Alerting Failures; ASVS 16.1.1, 16.2.2, 16.2.3, 16.4.2, 16.4.3;
@@ -1968,11 +2000,11 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   only on loopback), `HIPPOWIKI_TRUSTED_PROXIES` one digit; errors do not echo values; the standalone server forces
   `NODE_ENV=production`, so secure cookies cannot be switched off. In the image the session cookie is
   `__Secure-better-auth.session_token` with `Secure`.
-- Forwarding headers (ASVS 4.1.3, 15.3.4, CWE-290): the app reads only `X-Forwarded-For`, and only with trusted proxies; the
-  issuer and the addresses of MCP come from `HIPPOWIKI_PUBLIC_URL`. On the local server a login with a forged
-  `X-Forwarded-For` is counted in the group `shared`, a forged `X-Forwarded-Host` and `X-Forwarded-Proto` do not
-  change the `Location` of the proxy, and the issuer stays `http://localhost:3100`. Next.js accepts a Server Action
-  whose `Origin` matches a forged `X-Forwarded-Host`, but a browser cannot add that header across sites, so a directly
+- Forwarding headers (ASVS 4.1.3, 15.3.4, CWE-290): the app reads only `X-Forwarded-For`, and only with trusted proxies;
+  the issuer and the addresses of MCP come from `HIPPOWIKI_PUBLIC_URL`. On the local server a login with a forged
+  `X-Forwarded-For` is counted in the group `shared`, a forged `X-Forwarded-Host` and `X-Forwarded-Proto` do not change
+  the `Location` of the proxy, and the issuer stays `http://localhost:3100`. Next.js accepts a Server Action whose
+  `Origin` matches a forged `X-Forwarded-Host`, but a browser cannot add that header across sites, so a directly
   reachable port opens no CSRF.
 - Several instances: the key of Server Actions is part of the build, so all containers of one image share it; all
   actions are module-level, so the key protects no closures.
@@ -2273,6 +2305,10 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   that names each function that needs much time or memory and its guard; today the parts are scattered (the Argon2
   limiter in `users-and-login.md`, the limits of the metadata fetch in `oauth.md`) or missing (the 4 MiB of the MCP
   SDK, the Markdown parse).
+- Impact: there is no single list to check a new costly path against, and no statement of what the timeout of the
+  proxy has to cover.
+- Evidence: `grep -n "4 MiB\|maxRequestBodySize" spec/*.md` finds nothing outside this report; `pages.md` does
+  not mention the cost of the Markdown parse.
 - Suggestion (required): one table, for example in the security overview, with each costly function, its limit, or
   "none, a task of the proxy", and a link to its finding.
 - Reference: OWASP A06:2025 Insecure Design; ASVS 15.1.3, 15.2.2; CWE-400.
@@ -2288,6 +2324,8 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   covers only lower-case `javascript:`.
 - Impact: an upgrade of Next.js or the SDK, a setting such as `serverActions.allowedOrigins`, a `use cache` or a new
   route under `api/auth` could weaken CSRF, caching or XSS protection unnoticed.
+- Evidence: no test file under `e2e/` or `src/` sends a Server Action with a foreign `Origin`, asserts
+  `Cache-Control` on a page, or calls `/api/auth/`; `e2e/pages.spec.ts` tests only `javascript:` in lower case.
 - Suggestion (required): end-to-end tests for each of these (the CSRF test can rewrite the `Origin` with `page.route`),
   and the URL variants of the area "Content" in the Markdown test.
 - Reference: OWASP A01:2025 Broken Access Control; OWASP A05:2025 Injection; ASVS 3.5.1, 3.4.2, 14.3.2, 1.3.5;
@@ -2360,6 +2398,8 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
   only forwards to `hashToken()`
 - Severity: Nit
 - Category: readability
+- Problem: `exchangeCode()` reads and deletes the code, makes six checks with their log reasons, builds the tokens
+  and runs the transaction with two errors of its own in one body; small helpers are repeated or unused.
 - Suggestion (optional): split `exchangeCode()` and `refreshGrant()` into reading the code or grant, the checks and
   the transaction; remove the unused exports and share one id parser.
 - Reference: CWE-561.
@@ -2525,7 +2565,8 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
   the connection to the checked address and follows no redirect.
 - OAuth: `exchangeCode()` deletes the code conditionally before any check and locks the row of the user, and
   `refreshGrant()` swaps the hash conditionally, with the grant id in the refresh token so that reuse can be found.
-- OAuth: a prefix and a hash column per kind of secret, and comparisons in constant time (`src/features/oauth/secret.ts`).
+- OAuth: a prefix and a hash column per kind of secret, and comparisons in constant time
+  (`src/features/oauth/secret.ts`).
 - OAuth: revoking deletes one row, so the access and the refresh token end together.
 - MCP server: `handleMcpRequest()` checks the token before it reads the body or calls the SDK, so a caller without a
   token costs one header parse and at most one lookup; answers are JSON only, without sessions or subscriptions.

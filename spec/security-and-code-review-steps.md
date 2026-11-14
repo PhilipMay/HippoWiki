@@ -122,7 +122,7 @@ user chooses.
 - [x] Supply chain: dependencies, CI and release
 - [x] Cross-cutting: data model, architecture, documentation and tests
 - [x] Standards cross-check
-- [ ] Summary and final check of the report
+- [x] Summary and final check of the report
 - [ ] Wrap-up
 
 ## Report outline, threat model and standards
