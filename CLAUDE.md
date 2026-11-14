@@ -38,9 +38,7 @@ The specification lives in the `spec/` directory. This catalog should always be 
 - `spec/issue-report.md`: how to report issues found in code and document reviews
 - `spec/review-report.md`: the report of the security and code review (scope and method, standards and target level,
   threat model, findings per area, accepted deviations, what is good, checks on the deployment, standards coverage,
-  open questions)
-- `spec/security-and-code-review-steps.md`: step plan for a security and code review of the whole project, whose
-  result is a review report in `spec/`
+  open questions); it stays until a fix plan works its findings off
 
 ## Running the Checks
 

@@ -174,3 +174,27 @@ All from "Current limits" in `container-image.md`:
   - Which redirect addresses and which way of identifying themselves (metadata document or registration) the
     connectors really use, and whether a connector that loses the answer to a refresh has to be connected again too
     often for the strict refresh rule (`oauth.md`).
+- The checks on the deployment of the security and code review of 2026-11-14, each described with its area in the
+  section "Checks on the deployment" of `review-report.md`:
+  - The reverse proxy: TLS by BSI TR-02102-2 and a redirect to HTTPS with HSTS passed on; `Host` passed unchanged and
+    unknown hosts refused; `X-Forwarded-For`, `X-Forwarded-Host` and `X-Forwarded-Proto` of clients replaced; body
+    limits, timeouts and rate limits for `/login`, `/oauth/register`, `/oauth/token` and `/mcp`; no CORS headers, no
+    change of the CSP, no shared cache; no `Authorization` header in its access logs; `/api/health` only for the
+    health checker.
+  - The configuration: `HIPPOWIKI_TRUSTED_PROXIES` set to the real number of proxies, `HIPPOWIKI_PUBLIC_URL` set, no
+    `next dev` reachable, no `NODE_TLS_REJECT_UNAUTHORIZED=0`, no proxy for outgoing requests, no `--inspect`,
+    `HIPPOWIKI_LOG_CLIENT_ADDRESS=false`, none of the `BETTER_AUTH_*` variables set.
+  - Secrets: an environment file with mode 0600 or Podman secrets; `HIPPOWIKI_ADMIN_PASSWORD` not the value of
+    `.env.example` and removed once the admin exists; the admin logs in right after the first start; the operator
+    knows how to replace `AuthSecret`.
+  - The network and the database: the ports of the container and of the database reachable from no other host;
+    outgoing connections only to DNS and `443/tcp` on the public internet; the database role no superuser, with a
+    strong password; backups protected like the sessions and taken before a new version starts; a storage quota.
+  - The container: rootless Podman with `--cap-drop=ALL`, `--security-opt=no-new-privileges`, SELinux,
+    `--read-only` with a tmpfs for `.next/cache`, limits for memory, CPU and processes; the image pulled by digest and
+    released regularly for fixes of the base image; a scan of the published image for vulnerabilities.
+  - The logs: stdout and stderr collected into a separate system with limited access, a retention period and
+    synchronised time; alerts on a reused refresh token, on waits after failed logins and on a failed health check.
+  - The GitHub repository: rules for `main` and release tags, who may publish releases and push to the image package,
+    private vulnerability reporting, alerts and security updates of Dependabot, read-only default permissions of
+    workflows, approval for workflows of fork pull requests.
