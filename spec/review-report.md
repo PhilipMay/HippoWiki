@@ -740,8 +740,8 @@ the threat.
   column.") but gives no reason.
 - Impact: a known target for guessing and for the lockout above.
 - Evidence: `export const ADMIN_NAME = "admin";`
-- Suggestion (required): let the operator choose the name of the admin, or document the fixed name as a decision with
-  its reason.
+- Suggestion (required): document the fixed name as a decision with
+  its reason
 - Reference: OWASP A07:2025 Authentication Failures; ASVS 6.3.2; CWE-1392.
 
 #### issue: the missing second factor and the missing notification of a password change are limits without a reason
