@@ -286,7 +286,7 @@ the threat.
   `internal image response failed for /folders 307`. An external address gives `400`. Without a cookie the proxy
   answers `307` to the login.
 - Suggestion (optional): switch the optimizer off with `images: { unoptimized: true }` in `next.config.ts`.
-- Reference: OWASP A02:2025 Security Misconfiguration; CWE-1188.
+- Reference: OWASP A02:2025 Security Misconfiguration; ASVS 15.2.3; CWE-1188.
 
 #### Reviewed
 
@@ -337,6 +337,10 @@ the threat.
 - Existence leaks (CWE-200): without a session, every request ends at the proxy or at `requireUser()` before any
   not-found; another user's token, an unknown and a malformed one give the same not-found; the error pages show only
   the digest. The only difference found is the first finding.
+- Standards cross-check: business flows keep their order (ASVS 2.3.1): the forced password change comes before every
+  other page, and an OAuth code exists only after consent and is exchanged only with its verifier; combined items are
+  checked together (ASVS 2.1.2, 2.2.3): a tab must belong to the folder of its page (composite foreign key), a redirect
+  address to its client.
 
 ### Browser security: headers, CSRF, caching and data sent to the client
 
@@ -517,6 +521,10 @@ the threat.
   `Referrer-Policy: same-origin` keeps page addresses on the site.
 - Browser storage (ASVS 14.3.3): no `localStorage` or `sessionStorage` in `src/`.
 - The prefix of the session cookie (ASVS 3.3.3) is part of the area "Login, passwords, sessions and users".
+- Standards cross-check: no `postMessage`, `localStorage` or `innerHTML` in `src/` (ASVS 3.5.5); the client side uses
+  current versions of React and Next.js and no plugins (ASVS 3.7.1); no data goes to trackers or other parties, and
+  the telemetry of Next.js, Prisma and Better Auth is off (ASVS 14.2.3); separate applications on different host names
+  (ASVS 3.5.4) is a question of the deployment.
 
 ### Login, passwords, sessions and users
 
@@ -841,6 +849,13 @@ the threat.
 - Admin setup (ASVS 6.3.2, CWE-798): it creates the admin only when there is none, never overwrites it, never logs the
   password, and fails without the variable, so there is no default password.
 - Seed and known users: not in the image and not run at its start (see the suggestion above for a guard).
+- Standards cross-check: password fields have `type="password"` (ASVS 6.2.6); passwords never expire by time (ASVS
+  6.2.10); there are no password hints or secret questions (ASVS 6.4.2); every session is checked against the database
+  on the server (ASVS 7.2.1) with a random reference token (ASVS 7.2.2); the absolute lifetime of 30 days is documented
+  (ASVS 7.3.2); every page that needs a login shows "Log out" in the header (ASVS 7.4.4); the only change of an
+  authentication attribute, the password, needs the current password (ASVS 7.5.1; see the question in "API tokens");
+  there is no reset of a forgotten password, which `users-and-login.md` lists as a limit, so ASVS 6.4.3 has nothing to
+  check.
 
 ### API tokens
 
@@ -917,6 +932,25 @@ the threat.
 - Evidence: "The adapter of `/mcp` calls it for every request."
 - Suggestion (optional): "for every `POST` from an allowed origin (see `mcp.md`)".
 
+#### question: creating an API token or approving an OAuth grant needs no new authentication
+
+- Location: `src/features/tokens/actions.ts`, lines 26–32, `createToken()`; `src/features/oauth/actions.ts`, lines
+  42–47, `approve()`
+- Severity: Minor. It needs a stolen session first; the question is whether the step from a session to a credential of
+  its own should cost more.
+- Category: security
+- Problem: both actions need only the session. A token lives up to 365 days and a grant as long as chosen, and neither
+  ends with the session that created it, so whoever holds a stolen session cookie for a moment can turn it into access
+  that outlives a logout and the 30 days of the session. ASVS 7.5.1 asks for a new authentication before changes to
+  what the account uses to authenticate; a new credential is such a change in effect.
+- Impact: a short session theft (a shared computer, a leaked cookie) becomes access for up to a year, visible only on
+  `/account`.
+- Evidence: `const user = await requireUser();` and then `tokenService.createToken(user, input.data)`; `approve()` the
+  same with `oauthService.createCode()`.
+- Suggestion (optional): ask for the password again before a token is created (or for tokens longer than 30 days), or
+  document that the session alone is enough as a decision with its reason.
+- Reference: OWASP A07:2025 Authentication Failures; ASVS 7.5.1; CWE-306.
+
 #### Reviewed
 
 - Files read: `src/features/tokens/` (`secret.ts`, `service.ts`, `schema.ts`, `forms.ts`, `actions.ts`, `queries.ts`
@@ -946,6 +980,10 @@ the threat.
 - A removed user: tokens and grants are deleted with the user (`onDelete: Cascade`).
 - Expiry choices: only 30, 90 or 365 days, and `expiresAt` cannot be empty, so there is no token without an expiry.
 - Two `Authorization` headers: Node.js keeps the first and drops the others, so the value is never ambiguous.
+- Standards cross-check: the limit of tokens per user is counted under a lock of the user row (ASVS 2.3.4); API
+  tokens are reference tokens, not self-contained, so ASVS 9.1 does not apply; their type
+  and purpose (ASVS 9.2.2) and their audience (ASVS 9.2.3) are checked by the separate prefixes and hash columns and by
+  accepting them only at `/mcp`; the user of a token is the user of its row (ASVS 10.3.3).
 
 ### OAuth
 
@@ -972,8 +1010,8 @@ the threat.
 - Suggestion (required): do not navigate by itself for `refused`: show the error and a link "Return to <host>" that
   the user has to click (RFC 9700 allows informing the user instead). Change the rule in `oauth.md` and give the reason
   under "Decisions". The "Deny" button is a click and can stay.
-- Reference: OWASP A01:2025 Broken Access Control; ASVS 3.7.2, 10.4.7; CWE-601; RFC 9700 section 4.11.2; MCP
-  specification 2026-07-28, "Security Considerations", "Open Redirection".
+- Reference: OWASP A01:2025 Broken Access Control; ASVS 3.7.2, 10.4.7; CWE-601; `CON.10.A4`; RFC 9700 section 4.11.2;
+  MCP specification 2026-07-28, "Security Considerations", "Open Redirection".
 
 #### issue: custom redirect schemes are filtered with a list of forbidden schemes, so dangerous handlers of the operating system are accepted
 
@@ -1269,6 +1307,10 @@ the threat.
   `http://localhost:3100`.
 - Level 3: pushed authorization requests (ASVS 10.4.13) and sender-constrained tokens (10.4.14) are not cheap and are
   not suggested.
+- Standards cross-check: a client is given only the scope `read` (ASVS 10.4.11); the metadata fetch checks the
+  certificate of the host with the default of Node.js (ASVS 12.3.2); the wiki is no OAuth client and no OpenID provider,
+  so ASVS 10.1, 10.2, 10.5 and 10.6 do not apply; the resource server needs no particular strength of authentication
+  (ASVS 10.3.4).
 
 ### MCP server
 
@@ -1575,6 +1617,12 @@ scope="read"`.
 - The last editor: every write of a page, folder or tab takes the user from `requireUser()`.
 - `revalidate.ts` is called only in Server Actions after a successful write; nothing is cached per user on the
   server, so no data can pass between users.
+- Standards cross-check: output is encoded by React for HTML and by `JSON.stringify` for JSON (ASVS 1.1.2, 1.2.1,
+  1.2.3); no HTML input is accepted, raw HTML is shown as text (ASVS 1.3.1); there is no `eval`, `new Function`,
+  template built from input, or regular expression built from input (ASVS 1.3.2, 1.3.7, 1.2.9: the four
+  `new RegExp` build fixed patterns of the secrets); names are limited to `[a-z0-9-]` before any use (ASVS 1.3.3); no
+  SVG from users is rendered (a `data:` image is dropped, other hosts are blocked by the CSP), so ASVS 1.3.4 does not
+  apply; the limits of content and names are implemented as documented (ASVS 2.3.2).
 
 ### Logging, errors and failure handling
 
@@ -1697,7 +1745,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 - Impact: an operator does not know what to collect, protect or keep, and for how long.
 - Suggestion (required): add a section on the logs to `container-image.md` and a matching item under "What the
   environment has to provide".
-- Reference: OWASP A09:2025 Security Logging and Alerting Failures; ASVS 16.1.1, 16.2.2, 16.4.2, 16.4.3;
+- Reference: OWASP A09:2025 Security Logging and Alerting Failures; ASVS 16.1.1, 16.2.2, 16.2.3, 16.4.2, 16.4.3;
   `OPS.1.1.5.A1`, `OPS.1.1.5.A3`, `OPS.1.1.5.A4`.
 
 #### issue: a password typed into the name field is logged as the user name of a failed login
@@ -1920,7 +1968,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   only on loopback), `HIPPOWIKI_TRUSTED_PROXIES` one digit; errors do not echo values; the standalone server forces
   `NODE_ENV=production`, so secure cookies cannot be switched off. In the image the session cookie is
   `__Secure-better-auth.session_token` with `Secure`.
-- Forwarding headers (ASVS 4.1.3, CWE-290): the app reads only `X-Forwarded-For`, and only with trusted proxies; the
+- Forwarding headers (ASVS 4.1.3, 15.3.4, CWE-290): the app reads only `X-Forwarded-For`, and only with trusted proxies; the
   issuer and the addresses of MCP come from `HIPPOWIKI_PUBLIC_URL`. On the local server a login with a forged
   `X-Forwarded-For` is counted in the group `shared`, a forged `X-Forwarded-Host` and `X-Forwarded-Proto` do not
   change the `Location` of the proxy, and the issuer stays `http://localhost:3100`. Next.js accepts a Server Action
@@ -1931,6 +1979,10 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 - `/api/health` (ASVS 13.4.5): `{"status":"ok"}` or `{"status":"error"}`, no version, no `X-Powered-By`; `POST` gives
   `405`. Pages answer `TRACE`, `PUT` and `DELETE` with the page (`200` in the image) and echo nothing, so there is no
   cross-site tracing; only OPTIONS is refused.
+- Standards cross-check: no `.git` in the image (ASVS 13.4.1); Next.js lists no directories (ASVS 13.4.3); `TRACE`
+  is not echoed (ASVS 13.4.4); the database is reached with a password of its own (ASVS 13.2.1), whose strength and
+  defaults are deployment checks (ASVS 13.2.3); the only `child_process` call is in `scripts/check-doc-references.ts`,
+  a development tool with fixed arguments (ASVS 1.2.5).
 
 ### Supply chain: dependencies, CI and release
 
@@ -2375,6 +2427,11 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
   (2,048 of 2,654), branches 72.81 %, functions 66.73 %, lines 77.53 %, with the components covered by the end-to-end
   tests instead; `npm run test:integration`: 301 tests passed in 19 s; `npm run test:e2e`: 485 tests passed in 3.3
   minutes. No test failed or needed a retry, so no flaky test was seen.
+- Standards cross-check: every query goes through Prisma or a tagged template with parameters (ASVS 1.2.4); JSON is
+  parsed without revivers or class types (ASVS 1.5.2); the cryptography uses Node.js `crypto` and `@node-rs/argon2`,
+  established implementations (ASVS 11.2.1); the hash functions are SHA-256 and Argon2id (ASVS 11.4.1, 11.4.3); the app
+  encrypts nothing itself and creates no key pairs, so ASVS 11.3, 11.4.4 and 11.6.1 do not apply; ASVS 11.2.3 (128
+  bits) is met except for the first password (nit above).
 
 ## Accepted deviations
 
@@ -2571,7 +2628,141 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
 
 ## Standards coverage
 
-Written in the standards cross-check.
+Every requirement of the named standards that applies to HippoWiki has a result in this report: a finding, an entry
+under "Reviewed" of an area, an entry in "Accepted deviations", or an entry in "Checks on the deployment". The
+requirements that the area steps did not name were checked in the standards cross-check and added to the "Reviewed"
+list of their area, marked "Standards cross-check".
+
+### OWASP ASVS 5.0.0, Levels 1 and 2
+
+| Chapter                                 | Covered in                                                                         | Not applicable, with the reason                                                                                                                                                           |
+| --------------------------------------- | ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| V1 Encoding and Sanitization            | Content; OAuth (1.3.6, 1.5.3); Configuration (1.2.5); Cross-cutting (1.2.4, 1.5.2) | 1.2.6–1.2.8, 1.3.8, 1.3.9, 1.3.11 (no LDAP, XPath, LaTeX, JNDI, memcache or mail); 1.3.10 (no format strings in JavaScript); 1.4 (memory-safe runtime); 1.5.1 (no XML)                    |
+| V2 Validation and Business Logic        | Access control; Content; Login; MCP server; OAuth                                  | none                                                                                                                                                                                      |
+| V3 Web Frontend Security                | Browser security; Access control (3.7.2); OAuth (3.7.2); Login (3.3.3)             | 3.5.4 is a deployment check                                                                                                                                                               |
+| V4 API and Web Service                  | Access control (4.1.4); Browser security (4.1.1); Configuration (4.1.3)            | 4.2.1 is a deployment check (message boundaries at the proxy); 4.3 (no GraphQL); 4.4 (no WebSockets: MCP answers JSON only, and the server of development is not reachable in production) |
+| V5 File Handling                        | none                                                                               | the app has no upload, no download of user files and no file path built from input                                                                                                        |
+| V6 Authentication                       | Login; Configuration (6.3.2); API tokens                                           | 6.4.3 (no reset of a forgotten password, a documented limit); 6.4.4, 6.5, 6.6 (no second factor, no out-of-band codes, no PSTN); 6.8 (no identity provider)                               |
+| V7 Session Management                   | Login; Browser security (7.4.1 and 14.3.1); Logging (7.4.1); API tokens (7.5.1)    | 7.1.3, 7.6 (no federation)                                                                                                                                                                |
+| V8 Authorization                        | Access control; API tokens; MCP server                                             | none; object-level rules for content are an accepted deviation                                                                                                                            |
+| V9 Self-contained Tokens                | API tokens (9.2.2, 9.2.3)                                                          | 9.1, 9.2.1, 9.2.4 (no self-contained tokens such as JWT; all tokens are reference tokens)                                                                                                 |
+| V10 OAuth and OIDC                      | OAuth; API tokens (10.3.3); MCP server (10.3.1, 10.3.2)                            | 10.1, 10.2 (the wiki is no OAuth client); 10.3.4 (no step-up); 10.5, 10.6 (no OpenID Connect)                                                                                             |
+| V11 Cryptography                        | Cross-cutting; Login (11.4.2); API tokens (11.5.1)                                 | 11.3 (the app encrypts nothing), 11.4.4 (no keys derived from passwords), 11.6.1 (no key pairs or signatures of its own)                                                                  |
+| V12 Secure Communication                | Configuration (12.3.1, accepted deviation); OAuth (12.3.2)                         | 12.1.1, 12.1.2, 12.2.1, 12.2.2 are deployment checks (TLS at the reverse proxy); 12.1.3 (no mTLS); 12.3.3, 12.3.4 (no internal HTTP services)                                             |
+| V13 Configuration                       | Configuration; Cross-cutting (13.1.1); Logging (13.4.2); OAuth (13.2.4, 13.2.5)    | none                                                                                                                                                                                      |
+| V14 Data Protection                     | Browser security; Login (14.1.1); Cross-cutting (14.1.2, 14.2.4)                   | none                                                                                                                                                                                      |
+| V15 Secure Coding and Architecture      | every area; Supply chain (15.1.1, 15.1.2, 15.2.1); Cross-cutting (15.1.3, 15.3.5)  | none                                                                                                                                                                                      |
+| V16 Security Logging and Error Handling | Logging; Login; API tokens; Cross-cutting                                          | none                                                                                                                                                                                      |
+| V17 WebRTC                              | none                                                                               | the app has no WebRTC                                                                                                                                                                     |
+
+Level 3 requirements are named only where they were cheap to meet: 3.4.7, 3.4.8, 4.1.4, 6.3.7, 6.3.8, 10.4.12, 13.4.7,
+14.2.7, 15.4.2 and 16.5.4.
+
+### BSI IT-Grundschutz: CON.10 and APP.3.1
+
+The requirements are those of the module texts on bsi.bund.de as fetched on 2026-11-14. Requirements marked
+"ENTFALLEN" there are left out.
+
+| Requirement                                                       | Covered in                                                                         |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `CON.10.A1` authentication, limits on failed logins, notification | Login (findings on the blocklist, the notification and the lockout)                |
+| `CON.10.A2` access control                                        | Access control                                                                     |
+| `CON.10.A3` session management                                    | Login                                                                              |
+| `CON.10.A4` controlled inclusion of content, redirects            | Access control; OAuth (the open redirect); Content                                 |
+| `CON.10.A5` upload functions                                      | not applicable: no uploads                                                         |
+| `CON.10.A6` protection against automated use                      | Login; OAuth; MCP server                                                           |
+| `CON.10.A7` protection of confidential data                       | Browser security; Login; Cross-cutting                                             |
+| `CON.10.A8` input validation and output encoding                  | Content; Access control                                                            |
+| `CON.10.A9` protection against SQL injection                      | Cross-cutting (parameterised queries)                                              |
+| `CON.10.A10` restrictive release of security information          | Logging; Browser security; Configuration                                           |
+| `CON.10.A11` software architecture                                | Cross-cutting (finding on the security overview)                                   |
+| `CON.10.A12` verification of essential changes                    | Login (current password at the change); API tokens (question on re-authentication) |
+| `CON.10.A13` error handling                                       | Logging                                                                            |
+| `CON.10.A14` secure HTTP configuration                            | Browser security                                                                   |
+| `CON.10.A15` prevention of CSRF                                   | Browser security; Cross-cutting (tests)                                            |
+| `CON.10.A16` multi-factor authentication                          | Login (finding on the missing reason)                                              |
+| `CON.10.A17` prevention of resource blocking (high)               | Login; Content; MCP server; OAuth                                                  |
+| `CON.10.A18` cryptographic protection of confidential data (high) | Cross-cutting; Configuration (no TLS to the database)                              |
+| `APP.3.1.A1` authentication                                       | Login; API tokens; OAuth                                                           |
+| `APP.3.1.A4` controlled inclusion of files and content            | Content; OAuth (metadata fetch)                                                    |
+| `APP.3.1.A7` protection against automated use                     | Login; OAuth; MCP server                                                           |
+| `APP.3.1.A8` system architecture                                  | Cross-cutting                                                                      |
+| `APP.3.1.A9` procurement                                          | not applicable: the app is developed, not procured                                 |
+| `APP.3.1.A11` secure connection of backend systems                | Configuration (database role, no TLS to the database)                              |
+| `APP.3.1.A12` secure configuration                                | Configuration                                                                      |
+| `APP.3.1.A14` protection of confidential data                     | Browser security; Login; Cross-cutting                                             |
+| `APP.3.1.A21` secure HTTP configuration                           | Browser security                                                                   |
+| `APP.3.1.A22` penetration test and revision                       | this review; a penetration test of the deployment is a deployment check            |
+| `APP.3.1.A20` web application firewall (high)                     | a deployment decision; not required by the target level                            |
+
+### BSI IT-Grundschutz: SYS.1.6 and OPS.1.1.5, as far as they concern the code or the repository
+
+- `SYS.1.6.A6` secure images, `SYS.1.6.A12` distribution of secure images, `SYS.1.6.A14` updating images:
+  Configuration and Supply chain (findings on the digest, signing and releases).
+- `SYS.1.6.A8` secure storage of credentials, `SYS.1.6.A20` protection of configuration data: Configuration
+  (admin password in the environment, secret store).
+- `SYS.1.6.A11` one service per container, `SYS.1.6.A16` no remote access, `SYS.1.6.A17` no privileges, `SYS.1.6.A18`
+  accounts of application services: Configuration ("Reviewed").
+- `SYS.1.6.A7` persistence of logs, `SYS.1.6.A15` resource limits, `SYS.1.6.A21` extended security policies,
+  `SYS.1.6.A23` immutable containers: "Checks on the deployment", with `SYS.1.6.A23` also a suggestion in
+  Configuration.
+- Operational requirements (`SYS.1.6.A1`–`A5`, `A9`, `A10`, `A13`, `A19`, `A22`, `A24`–`A26`) concern the planning
+  and running of the container platform, not the code; they are left to the deployment.
+- `OPS.1.1.5.A1` policy for logging, `OPS.1.1.5.A3` configuration of logging, `OPS.1.1.5.A4` time synchronisation:
+  Logging (findings on the events and the missing description of the logs) and "Checks on the deployment".
+- `OPS.1.1.5.A5`, `A6`, `A8`–`A13` (legal framework, central infrastructure, archiving, evaluation, access protection,
+  encryption and availability of logs) are operational; they are covered by the deployment checks on log collection,
+  access and retention.
+
+### OWASP Top 10:2025
+
+| Category                                   | Covered in                                                               |
+| ------------------------------------------ | ------------------------------------------------------------------------ |
+| A01 Broken Access Control                  | Access control; OAuth (open redirect, repeated parameters); MCP server   |
+| A02 Security Misconfiguration              | Browser security; Configuration; Login (cookie prefix)                   |
+| A03 Software Supply Chain Failures         | Supply chain; Configuration (base image)                                 |
+| A04 Cryptographic Failures                 | Cross-cutting (inventory); Login (hashing)                               |
+| A05 Injection                              | Content (XSS); Cross-cutting (SQL); MCP server (arguments)               |
+| A06 Insecure Design                        | Content (Markdown); MCP server (prompt injection, batches); Login; OAuth |
+| A07 Authentication Failures                | Login; API tokens; OAuth                                                 |
+| A08 Software or Data Integrity Failures    | Supply chain                                                             |
+| A09 Security Logging and Alerting Failures | Logging; Login; API tokens                                               |
+| A10 Mishandling of Exceptional Conditions  | Logging; Content (stack overflow); Configuration (validation at start)   |
+
+The OWASP API Security Top 10 2023 is covered by the same areas: object and function level authorisation (API1,
+API5) in Access control and API tokens, authentication (API2) in API tokens and OAuth, property level authorisation
+(API3) in Access control (mass assignment) and Browser security, resource consumption (API4) in Content, MCP server
+and OAuth, business flows (API6) in Login and OAuth, SSRF (API7) in OAuth, misconfiguration (API8) in Configuration,
+inventory (API9) in Cross-cutting, and unsafe use of other APIs (API10) in OAuth (metadata documents).
+
+### CWE Top 25 2025
+
+- Covered: CWE-79 (Content), CWE-89 (Cross-cutting), CWE-352 (Browser security), CWE-862, CWE-863, CWE-284 and
+  CWE-639 (Access control, API tokens), CWE-22 (Content: names are `[a-z0-9-]` only, no file paths from input), CWE-78
+  and CWE-77 (Configuration: no command built from input), CWE-94 (Content: no `eval`), CWE-20 (Access control,
+  Content), CWE-200 (Access control, Logging), CWE-306 (API tokens, question on re-authentication), CWE-918 (OAuth),
+  CWE-770 (Content, Login, MCP server, OAuth), CWE-502 (Cross-cutting: JSON only, no revivers).
+- Not applicable: CWE-787, CWE-416, CWE-125, CWE-120, CWE-476, CWE-121 and CWE-122 (memory safety; the app runs in a
+  managed runtime), CWE-434 (no uploads).
+
+### OWASP MCP Top 10 (2025)
+
+MCP01 Token Mismanagement and Secret Exposure, MCP02 Privilege Escalation via Scope Creep, MCP03 Tool Poisoning,
+MCP05 Command Injection and Execution, MCP07 Insufficient Authentication and Authorization and MCP10 Context Injection
+and Over-Sharing are reviewed in "MCP server" and "API tokens"; MCP04 Software Supply Chain Attacks is covered by
+"Supply chain"; MCP06 Prompt Injection via Contextual Payloads and MCP08 Lack of Audit and Telemetry are findings in
+"MCP server"; MCP09 Shadow MCP Servers does not apply to the code (one server, behind the token check).
+
+### Other standards
+
+- NIST SP 800-63B-4: Login (length, blocklist, normalisation, failures, sessions, lifetime, cookies).
+- OAuth (RFC 9700, OAuth 2.1, RFC 7636, RFC 8414, RFC 9728, RFC 7591, RFC 8707, RFC 9207, the client ID metadata
+  document draft) and the MCP specification 2026-07-28: OAuth and MCP server.
+- OWASP Top 10 for LLM Applications 2025, LLM01: MCP server (prompt injection).
+- Next.js guides (data security, Server Actions, authentication, self-hosting, production checklist): Access control,
+  Browser security, Configuration.
+- BSI TR-02102-1: Login (Argon2id) and Cross-cutting (inventory); TR-02102-2: "Checks on the deployment"; TR-03183-2
+  and TR-03185-2: Supply chain.
 
 ## Open questions
 

@@ -121,7 +121,7 @@ user chooses.
 - [x] Configuration and container image
 - [x] Supply chain: dependencies, CI and release
 - [x] Cross-cutting: data model, architecture, documentation and tests
-- [ ] Standards cross-check
+- [x] Standards cross-check
 - [ ] Summary and final check of the report
 - [ ] Wrap-up
 
