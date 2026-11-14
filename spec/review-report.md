@@ -844,6 +844,109 @@ the threat.
 
 ### API tokens
 
+#### issue: a successful use of a token, and a bearer value that does not look like a token, leave no log line, and refused tokens are logged without the client address
+
+- Location: `src/features/tokens/service.ts`, lines 268–271, 299–302 and 336, `authenticateToken()`;
+  `src/features/mcp/http.ts`, lines 114–132, `handleMcpRequest()`
+- Severity: Minor. Guessing a token of 256 bits is not practical, so this costs the means to investigate, not access.
+- Category: security
+- Problem: a bearer value that does not look like a token (a refresh token, a code, a session cookie, garbage) returns
+  `missing-token` without a log line; a successful authentication is not logged at all, only `lastUsedAt` is written
+  at most once a minute; the line "token refused" has only `reason` and `tokenId`, and for an unknown token only
+  `reason`. None has the client address group. `api-tokens.md` says "nothing is logged" for a missing token and lists
+  "no audit log" under "Current limits", without a reason.
+- Impact: after a token leaks, the logs cannot show who used it, from where, or when beyond the minute; spraying
+  refresh tokens, codes or cookies at `/mcp` stays invisible.
+- Evidence: on the local server, an expired token logs `WARN: token refused` with `reason: "expired"` and `tokenId`,
+  a revoked one `reason: "unknown"` and nothing else; a refresh token, a code and a session cookie as bearer, and every
+  successful call, log nothing.
+- Suggestion (required): log a warning for a bearer value of the wrong shape (the reason and the kind, never the
+  value), an info line on success with `tokenId`, `userId` and the kind, and the client address group on every line;
+  or document the choice as a decision with its reason.
+- Reference: OWASP A09:2025 Security Logging and Alerting Failures; ASVS 16.3.1, 16.3.2, 16.2.1; CWE-778.
+
+#### issue: the admin has no way to stop the tokens or grants of another user
+
+- Location: `src/features/tokens/service.ts`, lines 202–224, `revokeToken()`; `spec/api-tokens.md`, sections "The own
+  tokens only" and "Current limits"
+- Severity: Minor. It needs a leaked token and an owner who cannot act.
+- Category: security
+- Problem: revoking works only for the actor's own rows, users cannot be deactivated or deleted, and there is no admin
+  command, so a compromised token of a user who is not available can only be stopped by a `DELETE` in the database.
+  A token lives up to 365 days. The spec says "the admin cannot see or revoke the tokens of other users" without a
+  reason. This is the token side of the missing ending of sessions by the admin (area "Login, passwords, sessions and
+  users").
+- Impact: a leaked token keeps its access until it expires.
+- Evidence: "Every user sees and revokes only their own tokens, the admin included."
+- Suggestion (required): add a command to `scripts/admin.ts` that deletes all tokens and grants of a user and logs it,
+  or document the limit as a decision with a pointer to the roadmap entry on deactivating users.
+- Reference: OWASP A07:2025 Authentication Failures; ASVS 7.4.5, 7.4.2; CWE-613.
+
+#### nit: a bearer value of the wrong shape is answered without `error="invalid_token"`
+
+- Location: `src/features/tokens/service.ts`, lines 269–271, `authenticateToken()`; `src/features/mcp/http.ts`, lines
+  119–120; `spec/api-tokens.md`, section "The check of a bearer token"
+- Severity: Nit. It concerns clients, not access.
+- Category: correctness
+- Problem: RFC 6750 section 3.1 counts a malformed token as `invalid_token` and leaves the error out only when the
+  request has no authentication. `Bearer hwr_…`, `Bearer hwc_…` or `Basic …` get the same answer as no header.
+- Evidence: on the local server, `Bearer xx_…`, a refresh token and a code give `401` with
+  `WWW-Authenticate: Bearer resource_metadata="…", scope="read"` and `{"error":"unauthorized"}`; a well-formed unknown
+  token gives `error="invalid_token"`.
+- Suggestion (optional): answer `missing-token` only without an `Authorization` header with the scheme `Bearer`, and a
+  value of the wrong shape with `invalid-token`, without a database lookup.
+- Reference: RFC 6750 section 3.1.
+
+#### suggestion: the format of a token does not let secret scanners recognise a leak with few false positives
+
+- Location: `src/features/tokens/secret.ts`, lines 7 and 16–24, `TOKEN_PREFIX` and `generateSecret()`
+- Severity: Nit
+- Category: security
+- Problem: the spec says the prefix lets scanners recognise a token, but `hw_` has 3 characters, the base64url body
+  contains `-` and `_`, and there is no checksum that a scanner could check offline.
+- Suggestion (optional): a more distinctive prefix, a base62 body and a CRC32 checksum, with the pattern published for
+  custom secret scanning; `looksLikeToken()` can accept both formats for a while.
+- Reference: OWASP Secrets Management Cheat Sheet, "Detection".
+
+#### nit: `api-tokens.md` says `/mcp` checks the token "for every request", but some requests are answered first
+
+- Location: `spec/api-tokens.md`, section "The check of a bearer token"; `src/features/mcp/http.ts`, lines 102–108
+- Severity: Nit
+- Category: docs
+- Problem: requests other than `POST` get 405, and a foreign `Origin` gets 403, before `authenticateToken()` runs.
+- Evidence: "The adapter of `/mcp` calls it for every request."
+- Suggestion (optional): "for every `POST` from an allowed origin (see `mcp.md`)".
+
+#### Reviewed
+
+- Files read: `src/features/tokens/` (`secret.ts`, `service.ts`, `schema.ts`, `forms.ts`, `actions.ts`, `queries.ts`
+  and the components), `src/app/account/page.tsx`, `src/features/mcp/http.ts`, `src/app/mcp/route.ts`,
+  `src/features/oauth/secret.ts`, the access token parts of `src/features/oauth/service.ts`, the model `ApiToken` and
+  its migrations, `e2e/mcp.spec.ts`, `integration/token-service.test.ts`.
+- Randomness, storage and showing once (ASVS 11.5.1): `randomBytes(32)` gives 256 bits; only the SHA-256 hash is
+  stored, in a unique column, and found with `findUnique`, so no comparison can leak timing; the secret leaves only in
+  the answer of the creation action, never in an address. SHA-256 is a hash function of TR-02102-1 chapter 4.
+- The prefix: neither the secret nor its hash is stored or logged; on the local server the log holds no token, no hash
+  and no `hw_`.
+- The check (`authenticateToken()`): unknown, revoked and expired tokens are refused with `invalid_token`; the scope,
+  the first password and, for an access token, its own expiry are checked on every use. On the local server: an
+  expired token (`expiresAt` set into the past) and a revoked one give `401` with `error="invalid_token"`; a
+  `write`-only token gives `403` with `error="insufficient_scope", scope="read"`; the token of a user whose first
+  password is pending gives `401 invalid_token` and logs `reason: "first-password"`; `bearer` in lowercase is
+  accepted. A failed lookup gives `500`; only the `lastUsedAt` write fails open, on purpose.
+- Token kinds: the prefixes `hw_`, `hwc_`, `hwa_` and `hwr_` are matched exactly, API tokens and access tokens are
+  looked up in separate hash columns, and a check constraint keeps token rows and grant rows apart; there is no bearer
+  plugin of Better Auth. On the local server a refresh token, a code and the value of a session cookie are refused at
+  `/mcp` with `401`, and an API token and an access token are refused as refresh tokens with `400 invalid_grant`.
+- Owner checks (ASVS 8.2.2): see the area "Access control"; grants are revoked by the same action with the same check.
+- Tokens in addresses, logs and pages (ASVS 14.2.1): only the id of a token is part of `?action=revoke&token=`; no
+  logger call has the secret or the hash.
+- The limit per user: `createToken()` and `exchangeCode()` lock the row of the user (`FOR UPDATE`) before they count,
+  and `integration/token-service.test.ts` creates 21 tokens at once.
+- A removed user: tokens and grants are deleted with the user (`onDelete: Cascade`).
+- Expiry choices: only 30, 90 or 365 days, and `expiresAt` cannot be empty, so there is no token without an expiry.
+- Two `Authorization` headers: Node.js keeps the first and drops the others, so the value is never ambiguous.
+
 ### OAuth
 
 ### MCP server
@@ -873,6 +976,9 @@ the threat.
   `container-image.md`, "What the environment has to provide": a task of the reverse proxy.
 - ASVS 13.3.1, no secrets management solution for the cookie secret (Login): `users-and-login.md`, "Decisions": the
   secret is kept in the database so that a container needs only two variables.
+- ASVS 11.4.2 for API tokens (API tokens): a token of 256 random bits is stored as SHA-256, not with a password hash
+  function; `api-tokens.md`, "Decisions", gives the reason.
+- ASVS 7.2 and 7.4 for API tokens (API tokens): a token is not a session of Better Auth; `api-tokens.md`, "Decisions".
 
 ## What is good
 
@@ -911,6 +1017,13 @@ the threat.
 - Login: `ensureAdmin()` never overwrites an admin, is safe with two containers and never logs the password.
 - Login: the cookie cache of Better Auth is off and sessions are not refreshed, so an ended session is refused at once
   (`src/lib/auth.ts`).
+- API tokens: `looksLikeToken()` in `src/features/tokens/secret.ts` checks the exact shape, so malformed values never
+  reach the database, and one generator with a prefix per kind serves all four kinds of secret.
+- API tokens: `createToken()` locks the row of the user, as `exchangeCode()` does, so one limit covers tokens and
+  grants without a race; `revokeToken()` has the owner in the delete itself.
+- API tokens: the check constraint `ApiToken_token_or_grant` and a unique hash column per kind keep the kinds apart.
+- API tokens: the dialog that shows a new token cannot be closed by a stray click, and the token lives only in the
+  state of the component.
 
 ## Checks on the deployment
 
@@ -932,6 +1045,7 @@ the threat.
 - Retention of and access to the logs, which hold user names and client address groups (Login).
 - `HIPPOWIKI_ADMIN_PASSWORD` is removed from the environment once the admin exists, and `npm run db:seed` is never run
   against a production database (Login).
+- The reverse proxy and its access logs do not record the `Authorization` header (API tokens).
 
 ## Standards coverage
 

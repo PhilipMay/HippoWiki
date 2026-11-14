@@ -113,7 +113,7 @@ user chooses.
 - [x] Access control and the entry points of requests
 - [x] Browser security: headers, CSRF, caching and data sent to the client
 - [x] Login, passwords, sessions and users
-- [ ] API tokens
+- [x] API tokens
 - [ ] OAuth
 - [ ] MCP server
 - [ ] Content: pages, folders, tabs, deletion and rendering
