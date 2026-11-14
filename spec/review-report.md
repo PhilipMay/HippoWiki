@@ -18,8 +18,8 @@
      registered (OAuth; ASVS 3.7.2, 10.4.7; CWE-601; `CON.10.A4`).
   3. New passwords are not checked against common or breached passwords (Login; ASVS 6.2.4, 6.2.12; NIST SP 800-63B-4
      3.1.1.2).
-  4. The admin password of the public `.env.example` is accepted as the first password of the admin (Configuration;
-     ASVS 6.3.2; CWE-1392).
+  4. The admin passwords of `.env.example` and `README.md` are public, and the admin setup accepts them
+     (Configuration; ASVS 6.3.2; CWE-1392).
   5. After the first password change, a user cannot change the password or end sessions, and the admin cannot end
      them either (Login; ASVS 6.2.2, 7.4.3, 7.4.5).
 - Not covered by this review: everything under "Checks on the deployment" (the reverse proxy and its TLS, the host,
@@ -1849,20 +1849,29 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 
 ### Configuration and container image
 
-#### issue: the admin password of the public `.env.example` is accepted as the first password of the admin
+#### issue: the admin passwords of `.env.example` and `README.md` are public, and the admin setup accepts them
 
-- Location: `.env.example`, lines 13–16; `src/features/users/service.ts`, lines 165–170, `ensureAdmin()`
-- Severity: Major. It needs an operator who uses `.env.example` as the template of a deployment, but the result is a
-  takeover of the admin account by anyone who has read the repository, so it is at least Major.
+- Location: `.env.example`, lines 13–16; `README.md`, section "Users" (line 127) and section "Container image" (line
+  226); `src/features/users/service.ts`, lines 165–170, `ensureAdmin()`
+- Severity: Major. It needs an operator who uses `.env.example` as the template of a deployment, or copies the command
+  of the README, but the result is a takeover of the admin account by anyone who has read the repository, so it is at
+  least Major.
 - Category: security
-- Problem: `.env.example` sets `HIPPOWIKI_ADMIN_PASSWORD=change-me-at-first-login`, a public value that passes the
-  password rules. `container-image.md` tells operators to keep the password in an environment file, and
-  `.env.example` is the only template. The first password stays valid until the first login, and the forced change is
-  made by whoever logs in first.
-- Impact: a deployment started with the example value and reachable before the real admin logs in can be taken over.
-- Evidence: `passwordSchemaFor("admin").safeParse("change-me-at-first-login").success` is `true` in the project.
-- Suggestion (required): refuse the example value in `ensureAdmin()` (with a test that reads `.env.example`), or leave
-  the line in `.env.example` empty; say in `container-image.md` never to use the example value.
+- Problem: `.env.example` sets `HIPPOWIKI_ADMIN_PASSWORD=change-me-at-first-login`, and the README sets
+  `HIPPOWIKI_ADMIN_PASSWORD=first-password` in the commands that set up the admin, in the image command as a complete
+  `podman run` line that is ready to copy. Both are public values that pass the password rules, so they act as
+  default passwords of the admin. `container-image.md` tells operators to keep the password in an environment file,
+  and `.env.example` is the only template. The first password stays valid until the first login, and the forced
+  change is made by whoever logs in first.
+- Impact: a deployment started with one of the example values and reachable before the real admin logs in can be
+  taken over.
+- Evidence: `passwordSchemaFor("admin").safeParse(...)` gives `success: true` in the project for both
+  `"change-me-at-first-login"` and `"first-password"`.
+- Suggestion (required): leave the line in `.env.example` empty, so that the admin setup fails until a password is
+  chosen, and write the README commands with a placeholder that cannot run as written, such as
+  `HIPPOWIKI_ADMIN_PASSWORD='<first password>'`, with a hint to generate one (`openssl rand -base64 24`); say in
+  `container-image.md` never to use an example value. Optionally, refuse the known example values in `ensureAdmin()`,
+  with a test that reads them from `.env.example` and `README.md`.
 - Reference: OWASP A07:2025 Authentication Failures; ASVS 6.3.2; CWE-1392; CWE-1188.
 
 #### issue: `HIPPOWIKI_ADMIN_PASSWORD` stays in the environment of the running server
@@ -2648,8 +2657,8 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
   sizes, timeouts and rate limits; `/api/health` is ideally routed only to the health checker (Configuration).
 - Port 3000 of the container and the port of the database are reachable from no other host (Configuration).
 - The database role is not a superuser and has a strong password of its own (Configuration).
-- The environment file has mode 0600 or Podman secrets are used; `HIPPOWIKI_ADMIN_PASSWORD` is not the value of
-  `.env.example`, and the admin logs in right after the first start (Configuration).
+- The environment file has mode 0600 or Podman secrets are used; `HIPPOWIKI_ADMIN_PASSWORD` is not a value of
+  `.env.example` or `README.md`, and the admin logs in right after the first start (Configuration).
 - Rootless Podman with `--cap-drop=ALL`, `--security-opt=no-new-privileges`, SELinux confinement, `--read-only` with a
   tmpfs for `.next/cache`, and limits for memory, CPU and processes (Configuration, `SYS.1.6.A15`, `SYS.1.6.A17`,
   `SYS.1.6.A21`, `SYS.1.6.A23`).
