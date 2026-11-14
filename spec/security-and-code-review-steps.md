@@ -116,7 +116,7 @@ user chooses.
 - [x] API tokens
 - [x] OAuth
 - [x] MCP server
-- [ ] Content: pages, folders, tabs, deletion and rendering
+- [x] Content: pages, folders, tabs, deletion and rendering
 - [ ] Logging, errors and failure handling
 - [ ] Configuration and container image
 - [ ] Supply chain: dependencies, CI and release

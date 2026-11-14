@@ -1437,6 +1437,145 @@ scope="read"`.
 
 ### Content: pages, folders, tabs, deletion and rendering
 
+#### issue: some Markdown takes quadratic time to parse, so one page blocks the whole server for seconds on every view and save
+
+- Location: `src/features/pages/components/MarkdownContent.tsx`, lines 128–130, `MarkdownContent()`;
+  `src/features/pages/derive.ts`, lines 24–36, `titleFromContent()`; `src/features/pages/schema.ts`, lines 33–58,
+  `withDerivedTitle()`; `src/features/pages/actions.ts` and `src/features/pages/service.ts`, which parse the content
+  once each per save; `src/features/pages/limits.ts`, line 5
+- Severity: Major. Any logged-in user can store one page that ties up the single event loop of the server, so every
+  user and the health check wait, as often as the page is requested. No data is exposed, but the wiki is unavailable.
+- Category: security
+- Problem: the content, up to 100,000 characters, is parsed by micromark with GFM without any bound on time. Some GFM
+  constructs grow quadratically (strikethrough `a~`, emphasis `**a`, references `[a][`). A save parses the content
+  twice (the form parser and the service), the redirect then renders the page, and the editor parses it in the browser
+  on save as well.
+- Impact: every user of the instance, for as long as the page exists or someone keeps requesting it.
+- Evidence: on the local server (development mode), a page with `"a~"` repeated 49,990 times takes 28 s to create and
+  12.3 s to view, and `/api/health`, sent one second after the view, answers after 11.2 s; with 12,500 repetitions
+  the create takes 2.6 s and the view 1.4 s.
+- Suggestion (required): bound the work: lower `CONTENT_MAX_LENGTH` to a size whose worst case is acceptable, or parse
+  in a worker thread with a time limit and show a fallback; parse only once per save; document the costly function
+  and how it is protected (ASVS 15.1.3).
+- Reference: OWASP A06:2025 Insecure Design; ASVS 15.1.3, 15.2.2; CWE-407; CWE-400.
+
+#### issue: deeply nested Markdown overflows the stack, so a page can be saved but not viewed or deleted
+
+- Location: `src/features/pages/components/MarkdownContent.tsx`, lines 128–130; `src/features/pages/derive.ts`,
+  line 25; `src/features/pages/components/PageView.tsx`, lines 88–102; `src/features/pages/components/DeletedPageView.tsx`,
+  line 59
+- Severity: Minor. Any user can make a page unusable, but "Edit" still works, so the page can be repaired, and all
+  content can be changed by everyone anyway.
+- Category: error handling
+- Problem: a quote nested 3,000 deep is stored, but rendering it throws `RangeError: Maximum call stack size exceeded`;
+  10,000 deep throws already in the parse of the form, so the action fails instead of returning a field error and the
+  typed content is lost.
+- Impact: the page, its delete and move dialogs, and after a delete its deleted view and restore, show the error page.
+- Evidence: on the local server, creating a page with `">"` repeated 3,000 times succeeds; then `GET` of the page and of
+  `?action=delete` give `500`, `?action=edit` gives `200`; with 10,000 the create answers `500` with
+  `"name":"RangeError","message":"Maximum call stack size exceeded"`.
+- Suggestion (required): refuse content nested deeper than a fixed limit with a field error, and catch a failed render
+  in `MarkdownContent` (for example show the source as text), so that "Delete" and "Move or rename" stay usable.
+- Reference: OWASP A10:2025 Mishandling of Exceptional Conditions; ASVS 16.5.3, 15.2.2; CWE-674.
+
+#### issue: there is no limit on the number of folders, tabs, pages and deleted pages, the lists are not paged, and no spec says so
+
+- Location: `src/features/pages/service.ts`, `listFolderPages()`, `listTabPages()`, `listAllFolderPages()` and
+  `listDeletedPages()`; `src/features/folders/service.ts`, `listFolders()` and `listTabs()`;
+  `spec/content-structure.md` and `spec/page-deletion.md`, sections "Current limits"
+- Severity: Minor
+- Category: docs
+- Problem: any user can create any number of items, each page up to 100,000 characters, with no limit on the rate of
+  Server Actions; every list reads all rows without `take`; deleted pages are kept forever. The specs document the
+  sizes, but not that counts are unlimited and lists not paged.
+- Impact: one user can fill the database and make folder views slow.
+- Evidence: "Current limits" of `content-structure.md` names "No history, no handling of concurrent changes, no links
+  between pages, no search", nothing about counts.
+- Suggestion (required): add limits and paging, or record in the specs that there are none, as a decision with its
+  reason.
+- Reference: OWASP A06:2025 Insecure Design; ASVS 2.1.3, 2.4.1; CWE-770.
+
+#### issue: the content limit is checked before line breaks are normalised, so content that fits the editor can be refused
+
+- Location: `src/features/pages/schema.ts`, lines 23–27, `contentSchema`
+- Severity: Minor
+- Category: correctness
+- Problem: `.max(CONTENT_MAX_LENGTH)` checks the submitted text, and the transform from CRLF to LF comes after it. A
+  browser submits each line break as CRLF, while the `maxLength` of the editor counts it as one character.
+- Impact: authors of long pages get an error the editor did not warn about.
+- Evidence: on the local server, content of 100,903 characters with CRLF, 99,904 after normalisation, is refused with
+  "Content must be at most 100,000 characters".
+- Suggestion (required): normalise first, then check the length, and add a test with CRLF content at the limit.
+- Reference: ASVS 2.2.1; CWE-180.
+
+#### issue: a NUL character in the content reaches the database and gives "could not be saved" and an error in the log
+
+- Location: `src/features/pages/schema.ts`, lines 23–27, `contentSchema`; `src/features/pages/service.ts`, lines 319
+  and 356
+- Severity: Minor. It fails safe, but any user can produce error lines in the log at will.
+- Category: error handling
+- Problem: nothing refuses U+0000, and PostgreSQL refuses it in `text`, so the write fails as `failed`, the user is
+  told to try again (which cannot help), and an error is logged.
+- Evidence: on the local server, creating a page whose content contains a NUL byte answers "The page could not be
+  saved. Please try again."
+- Suggestion (required): refuse or strip `\u0000` in `contentSchema`, with a field error.
+- Reference: ASVS 2.2.1, 16.5.3; CWE-20.
+
+#### suggestion: when two users edit the same page at once, the last save wins without a warning
+
+- Location: `src/features/pages/service.ts`, lines 349–352, `updatePageContent()`; `spec/content-structure.md`,
+  section "Current limits"
+- Severity: Minor
+- Category: correctness
+- Problem: a save writes by id without checking whether the page changed since the editor opened; the spec lists "no
+  handling of concurrent changes" without a reason, and there is no history to recover a lost edit.
+- Suggestion (optional): send the loaded `updatedAt` along and write only when it is unchanged, with a message about
+  the other editor; otherwise record the behaviour as a decision.
+- Reference: CWE-362; ASVS 15.4.2 (Level 3).
+
+#### nit: writes read the page back in a second statement, and the comment of `deletePage()` claims more than its transaction gives
+
+- Location: `src/features/pages/service.ts`, `updatePageContent()`, `moveOrRenamePage()`, `restorePage()` and
+  `deletePage()`; `src/features/folders/service.ts`, `renameTab()`
+- Severity: Nit
+- Category: correctness
+- Problem: `updateMany` and the following read are two statements, so a page deleted in between is saved but reported
+  as gone. In `deletePage()` the transaction runs at Read Committed, so a move between the read and the update still
+  succeeds and the returned place is the old one, unlike the comment says.
+- Suggestion (optional): use one `update` with the state condition and `select`, and lock the row in `deletePage()` or
+  correct the comment.
+
+#### Reviewed
+
+- Files read: `MarkdownContent.tsx`, `PageView.tsx`, `DeletedPageView.tsx`, the list components, `derive.ts`,
+  `schema.ts`, `forms.ts`, `limits.ts`, `actions.ts`, `service.ts` and `queries.ts` of pages and folders,
+  `src/lib/names.ts`, `addresses.ts`, `db-errors.ts`, `revalidate.ts`, the routes under `src/app/folders/` and
+  `src/app/deleted-pages/`, the content models and migrations, the three specs; react-markdown's handling of raw HTML
+  and its default URL transform.
+- Rendering and XSS (ASVS 1.2.2, 1.3.5, `CON.10.A8`, CWE-79): react-markdown runs with `remark-gfm` only, without a
+  raw HTML plugin and with its default URL transform (http, https, irc, ircs, mailto, xmpp or relative); there is no
+  `dangerouslySetInnerHTML` in `src/`. On the local server a page with `<script>`, `<img onerror>`, links to
+  `javascript:`, `JaVaScRiPt:`, `&#106;avascript:`, `vbscript:` and `data:`, a reference to `javascript:`, an autolink
+  `<javascript:…>` and a `data:` image renders the HTML as text, every such link with `href=""`, and no `data:`
+  image; `https:`, relative and `mailto:` links stay. An image of another host keeps its `src`, which the CSP
+  `img-src 'self' data:` blocks, as `pages.md` says.
+- DOM clobbering: the only ids are footnote ids with the prefix `user-content-`; no heading ids, no `name` attributes.
+- Regular expressions (ASVS 1.3.12, CWE-1333): `NAME_PATTERN` and the other patterns are linear; the slow part is the
+  Markdown parser (finding above).
+- Names and addresses: names are ASCII `[a-z0-9-]` only, checked in the service on create, rename, move and restore,
+  so there are no look-alikes and no dots; every address lives under `/folders` or `/deleted-pages`, so no name
+  collides with a route; `parsePageSegment` refuses an upper-case or doubled `.md` suffix.
+- Concurrent writes (ASVS 2.3.3): the unique indexes (with a partial one for pages directly in a folder that are not
+  deleted) and the composite foreign key of a page and its tab decide, every write is one statement, and a taken name
+  is shown as "Name is already in use".
+- Deleted pages: every list and `getPage` filter `deletedAt: null`; restoring needs a place and reports a taken name;
+  a new page may take the name of a deleted one, as the spec says. Checked through MCP in the area "MCP server".
+- Limits (ASVS 2.1.3): content 100,000 characters, names 80, titles cut to 200, each documented by a pointer and
+  checked in the service; counts are a finding above.
+- The last editor: every write of a page, folder or tab takes the user from `requireUser()`.
+- `revalidate.ts` is called only in Server Actions after a successful write; nothing is cached per user on the
+  server, so no data can pass between users.
+
 ### Logging, errors and failure handling
 
 ### Configuration and container image
@@ -1472,6 +1611,9 @@ scope="read"`.
   meets ASVS 10.4.9.
 - Scopes are not checked, the grant is always `read` (OAuth): `oauth.md`, "The authorization request and the consent
   page"; RFC 6749 section 3.3 allows it, and the answer names the scope.
+- Deleted pages are kept for good, without automatic cleanup (Content): `page-deletion.md`, "Current limits".
+- Images of other hosts are blocked by the CSP instead of being removed (Content): `pages.md`, "Rendering" and
+  "Current limits".
 
 ## What is good
 
@@ -1531,6 +1673,12 @@ scope="read"`.
 - MCP server: `run()` in `src/features/mcp/tools.ts` catches every unexpected error and answers with a general tool
   error; not found, deleted and malformed names get the same kind of error, with a hint what to do next.
 - MCP server: the tools carry `readOnlyHint` and `openWorldHint: false` and output schemas that match the data.
+- Content: `MarkdownContent.tsx` keeps the safe defaults of react-markdown and drops an image whose address was
+  emptied instead of rendering `src=""`.
+- Content: the composite foreign key of a page and its tab keeps a page's tab in its folder, and the partial unique
+  index frees the name of a deleted page at once.
+- Content: the services parse ids and names again, write with a condition on the state (`deletedAt`), check the key of
+  the last editor first and redirect only to stored addresses.
 
 ## Checks on the deployment
 
@@ -1564,6 +1712,9 @@ scope="read"`.
   reverse proxy sets a body limit and a rate limit for `/mcp` and passes `Host` unchanged (MCP server).
 - No intermediary routes or applies policy by `Mcp-*` headers, or it trusts them only for requests of the 2026-07-28
   revision (MCP server).
+- How many processes serve the app, and whether the reverse proxy has a request timeout; with one process a slow page
+  stops the whole wiki (Content).
+- A storage quota and alerts for the database, since the number of items is not limited (Content).
 
 ## Standards coverage
 
