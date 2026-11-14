@@ -1578,6 +1578,195 @@ scope="read"`.
 
 ### Logging, errors and failure handling
 
+#### issue: a logout reports success and logs "session ended" although the session row could not be deleted
+
+- Location: `src/features/auth/service.ts`, lines 413–423, `logOut()`; `src/features/auth/actions.ts`, lines
+  126–134, `logOut()`
+- Severity: Minor. It needs a database failure at the moment of the logout and another copy of the cookie; the
+  session then stays valid for up to 30 days while the user believes it ended.
+- Category: security
+- Problem: `signOut` of Better Auth catches a failure of `findSession` and of `deleteSession`, logs it and still clears
+  the cookie and answers success, so `logOut()` returns `ok` and logs "session ended". `users-and-login.md` says "a
+  session that could not be ended must not look ended", which cannot hold for this case.
+- Impact: another copy of the cookie (a stolen one, another device) keeps working.
+- Evidence: Better Auth `sign-out.mjs`: `try { await ctx.context.internalAdapter.deleteSession(sessionCookieToken); }
+catch (e) { ctx.context.logger.error("Failed to delete session from database", e); }`, then
+  `deleteSessionCookie(ctx)`. Not shown on the local server: stopping the throwaway container would have removed it,
+  and a paused database makes the logout hang instead (next finding).
+- Suggestion (required): delete the session row in the auth service itself, or check afterwards that the session is
+  gone, and return `failed` otherwise; add a unit test with a failing database.
+- Reference: OWASP A07:2025 Authentication Failures; OWASP A10:2025 Mishandling of Exceptional Conditions; ASVS
+  7.4.1, 16.5.3; CWE-613; CWE-636.
+
+#### issue: database queries have no time limit, so a database that stops answering makes requests hang
+
+- Location: `src/lib/db.ts`, lines 6–13, `createClient()`; `src/app/api/health/route.ts`, lines 5–13, `GET()`
+- Severity: Minor. It concerns availability; nothing is let through.
+- Category: error handling
+- Problem: the adapter gets only `connectionTimeoutMillis: 5_000`, which covers opening a connection. A query on a
+  pooled connection to a database that no longer answers waits without end, because `query_timeout` and
+  `statement_timeout` of `pg` are off. The comment "Fail fast instead of hanging" holds only for new connections.
+- Impact: when the database stalls, logins, `/mcp`, `/oauth/token`, pages and the health check hang and hold pool
+  connections; an orchestrator sees a timeout instead of 503.
+- Evidence: on the local server, a logout sent right after a request, with the database paused, got no answer within
+  40 seconds and finished only once the database ran again; requests after an idle pause failed after the 5 seconds of
+  the connection timeout (health `503`, `/folders` `500`, `/mcp` `500 server_error`).
+- Suggestion (required): set `query_timeout` and `statement_timeout` in the options of `PrismaPg`, give the health
+  query a short limit of its own, and name the timeouts in `architecture.md`.
+- Reference: OWASP A10:2025 Mishandling of Exceptional Conditions; ASVS 16.5.2; CWE-400; `CON.10.A13`.
+
+#### issue: errors the code does not catch, and the security messages of Next.js, bypass pino and reach stderr as plain text
+
+- Location: no `instrumentation.ts` in the project; `spec/architecture.md`, section "Validation and errors"
+- Severity: Minor
+- Category: error handling
+- Problem: reads throw database errors by design, `getSessionUser()` throws, and `logOut()` throws "The logout
+  failed."; none of this is logged by the app. Next.js prints it with `console.error` as text with a stack and the
+  `digest`, and so it prints its refusal of a Server Action with a foreign `Origin`. In production JSON lines of pino on
+  stdout mix with text on stderr that has no user, path field or level, and the digest that `error.tsx` shows appears
+  only in the text.
+- Impact: database outages during reads and CSRF refusals are visible only as unstructured text; alerting on JSON
+  misses them.
+- Evidence: the log of the local server shows the refusal of `createFolder` with a foreign `Origin` as the text
+  "`x-forwarded-host` header with value … does not match `origin` header … Aborting the action.", not as a pino line.
+- Suggestion (required): add an instrumentation file (`instrumentation.ts` under `src/`) with `onRequestError()`
+  that logs through pino (error, digest, method, path, route), never the headers; say in `architecture.md` where uncaught errors are logged.
+- Reference: OWASP A09:2025 Security Logging and Alerting Failures; ASVS 16.2.4, 16.3.4, 16.5.4 (Level 3); CWE-778.
+
+#### issue: errors logged through Better Auth lose their message and stack
+
+- Location: `src/lib/auth.ts`, lines 84–93, the `logger` option of `createAuth()`
+- Severity: Minor
+- Category: error handling
+- Problem: `logger[level]({ betterAuth: args }, message)` puts the arguments, often an `Error`, under `betterAuth`;
+  pino serialises errors only under `err`, and JSON keeps only enumerable properties, so an `Error` becomes `{}`.
+- Impact: the cause of exactly the failures above ("Failed to delete session from database") cannot be read from the
+  log.
+- Evidence: on the local server, with the database paused, the log shows `ERROR: INTERNAL_SERVER_ERROR` with only
+  `body: { message: 'Failed to get session', code: 'FAILED_TO_GET_SESSION' }`.
+- Suggestion (required): log the first `Error` of the arguments as `err` and the rest under `betterAuth`.
+- Reference: OWASP A09:2025 Security Logging and Alerting Failures; ASVS 16.3.4; CWE-778.
+
+#### issue: several security events are logged without the actor or the client address, or not at all
+
+- Location: `src/features/users/service.ts`, `listUsers()`; `src/features/oauth/actions.ts`, `deny()`; the writes of
+  `src/features/folders/service.ts` and `src/features/pages/service.ts`; `src/features/mcp/http.ts`, lines 66, 82 and
+  106; `src/features/oauth/service.ts`, `exchangeCode()` and `refreshGrant()`; `src/features/tokens/service.ts`,
+  `revokeToken()`
+- Severity: Minor
+- Category: security
+- Problem: a non-admin who opens `/users` is refused without a log line; a denied consent is not logged; every write of
+  content is logged without the actor; "mcp request with a foreign origin refused" has no origin, and the refusals of
+  the SDK no user or token; the lines of the token endpoint (a reused refresh token above all) have no client address
+  group, and "unknown-grant" leaves out the grant id; "token revoked" does not say whether it was a grant. The items
+  already reported in "Login" and "API tokens" are not repeated here.
+- Impact: who did what from where cannot be traced for content changes, refused admin reads, denied consents and the
+  token endpoint.
+- Evidence: `if (!isAdmin(actor)) return null;` without a log; `logger.info({ pageId }, "page deleted")`; on the local
+  server the refused foreign `Origin` at `/mcp` logs `WARN: mcp request with a foreign origin refused` with no field.
+- Suggestion (required): add `actorId` to every write of content, log the refused user list and the denied consent,
+  add the origin (cut) and the user and token to the lines of `/mcp`, and the client address group and grant id to the
+  lines of the token endpoint.
+- Reference: OWASP A09:2025 Security Logging and Alerting Failures; ASVS 16.2.1, 16.3.2, 16.3.3; `OPS.1.1.5.A3`;
+  OWASP MCP08:2025 Lack of Audit and Telemetry; CWE-778.
+
+#### issue: rejected input at the public OAuth endpoints is never logged, and the rule not to log it has no reason
+
+- Location: `spec/architecture.md`, section "Reads and writes" ("A malformed id and invalid input are not logged");
+  `src/features/oauth/service.ts`, line 526, `exchangeCode()`, and line 655, `refreshGrant()`;
+  `src/features/oauth/http.ts`, `handleRegister()` and `handleToken()`
+- Severity: Minor
+- Category: docs
+- Problem: codes and refresh tokens of the wrong shape, unreadable bodies and refused registrations leave no log line.
+  In forms this is normal use; at the public OAuth endpoints it comes only from a broken or probing client.
+- Impact: probing of `/oauth/token` and `/oauth/register` is invisible.
+- Evidence: `if (!looksLikeCode(input.code)) return invalidGrant(INVALID_CODE);` without a log.
+- Suggestion (required): log refused requests of the wrong shape at the two public endpoints as warnings with a reason,
+  never the value, and give the reason for not logging form input in `architecture.md`.
+- Reference: OWASP A09:2025 Security Logging and Alerting Failures; ASVS 16.3.3; CWE-778.
+
+#### issue: no spec describes the logs: format, time, levels, destination, retention and access
+
+- Location: `spec/container-image.md`, section "What the environment has to provide"; `spec/architecture.md`,
+  section "Validation and errors"; `src/lib/logger.ts`, lines 11–16
+- Severity: Minor
+- Category: docs
+- Problem: no spec says that the server writes JSON lines to stdout and Next.js text to stderr, that `time` is in
+  epoch milliseconds (UTC), that the level is fixed at `info` in production, which events are logged, that the logs
+  hold personal data (user names, address groups), or that the environment has to collect, protect and keep them.
+- Impact: an operator does not know what to collect, protect or keep, and for how long.
+- Suggestion (required): add a section on the logs to `container-image.md` and a matching item under "What the
+  environment has to provide".
+- Reference: OWASP A09:2025 Security Logging and Alerting Failures; ASVS 16.1.1, 16.2.2, 16.4.2, 16.4.3;
+  `OPS.1.1.5.A1`, `OPS.1.1.5.A3`, `OPS.1.1.5.A4`.
+
+#### issue: a password typed into the name field is logged as the user name of a failed login
+
+- Location: `src/features/auth/service.ts`, lines 379 and 394, `logIn()`
+- Severity: Minor. It needs a user who types the password into the wrong field and a password that fits the name rule
+  (lowercase letters, digits and single hyphens, such as `summer-2024`).
+- Category: security
+- Problem: every refused login logs `{ name, clientAddress }`, also for an unknown name, so such a password stands in
+  the log in plain text, next to the group, and the next successful login shows the account.
+- Impact: whoever reads the logs can learn a password.
+- Evidence: `logger.warn({ name, clientAddress }, "login refused: unknown name or wrong password");`
+- Suggestion (optional): for a name without a user, log a keyed hash of the name and a flag; or record the trade-off as
+  a decision in `users-and-login.md`.
+- Reference: OWASP A09:2025 Security Logging and Alerting Failures; ASVS 16.2.5; CWE-532.
+
+#### suggestion: the logger has no redaction, so a secret inside an error object would be logged
+
+- Location: `src/lib/logger.ts`, lines 11–16, `createLogger()`
+- Severity: Nit. No reachable path was found; it is defence in depth.
+- Category: security
+- Problem: pino copies every enumerable property of `err`. For a PostgreSQL error the adapter does not map, such as a
+  violation of the check constraint `ApiToken_token_or_grant`, the cause includes "Failing row contains (…)" with the
+  hashes; a validation error of Prisma prints its arguments, for `user.create` the password hash. Both need a
+  programming error first.
+- Suggestion (optional): a `redact` list in pino for passwords, secrets, tokens, `authorization`, `cookie` and the
+  `detail` of driver errors, with a unit test.
+- Reference: ASVS 16.2.5; CWE-532.
+
+#### nit: a failed fetch of a metadata document does not tell a TLS failure from a refused connection
+
+- Location: `src/features/oauth/metadata-fetch.ts`, lines 120 and 134, `fetchWithin()`
+- Severity: Nit
+- Category: error handling
+- Problem: the error of the request is dropped and logged as `request-failed`, so an expired or wrong certificate looks
+  like a refused connection.
+- Suggestion (optional): add the error code (only the code) to the reason in the log.
+- Reference: ASVS 16.3.4.
+
+#### Reviewed
+
+- Files read: `src/lib/logger.ts`, `result.ts`, `db-errors.ts`, `db.ts`, `env.ts`, `auth.ts`, `password-hash.ts`,
+  `client-address-probe.ts`, `src/proxy.ts`, the error pages, every route handler, every `catch` in `src/` and
+  `scripts/`, the specs on validation, errors and the image; Better Auth (origin check, sign-out, session), the error
+  mapping of the Prisma adapter and the error serialiser of pino.
+- Logged events: refused logins (name and group), waits (name, group, wait), busy hashing, the first password change,
+  users created and refused creations (with the actor), the admin setup, tokens created, revoked and refused, client
+  registrations and their limit, refused metadata documents (URL and reason), refused authorization requests,
+  approved consent (`authorization code created` with user and client), refused code exchanges and refreshes, grants
+  created and refreshed, a reused refresh token, failures of tools and the health check. The gaps are the findings
+  above and in "Login" and "API tokens".
+- Failing closed (ASVS 16.5.3, A10, CWE-636): every `catch` around a check of a login, a token, a scope, the wait, the
+  metadata fetch or the `Origin` refuses or answers `failed`; an `Origin` that cannot be parsed counts as foreign; only
+  the write of the last use of a token is allowed to fail, as `api-tokens.md` documents. On the local server, with the
+  database paused, a login answers "The login failed. Please try again." and logs `ERROR login failed`, `/mcp`
+  answers `500 {"error":"server_error"}` and logs "failed to look up token", a refresh answers `500 server_error`
+  ("failed to read grant"), `/folders` the error page and `/api/health` `503 {"status":"error"}`.
+- Generic error answers (ASVS 16.5.1, `CON.10.A10`, CWE-209): `error.tsx` and `global-error.tsx` show only the digest;
+  `/mcp`, the OAuth endpoints and the health check answer fixed texts; no stack, SQL or path reaches a client. Database
+  errors are mapped as `architecture.md` says.
+- `Result` is used by every write of every service, and every action maps every code; no `catch` is empty without
+  returning a refusal.
+- Log injection (ASVS 16.4.1, CWE-117): every message text of the app is a constant; names, client names, metadata
+  addresses and forwarded headers are JSON fields, and production writes JSON.
+- Timestamps (ASVS 16.2.2): epoch milliseconds, which is UTC (the missing description is a finding above).
+- Levels (ASVS 13.4.2): `info` in production, `NODE_ENV=production` in the image, no debug output.
+- Secrets: no log call passes a password, token, code, verifier, cookie or `Authorization` header; the probe of
+  forwarding headers uses an allowlist of headers.
+
 ### Configuration and container image
 
 ### Supply chain: dependencies, CI and release
@@ -1614,6 +1803,8 @@ scope="read"`.
 - Deleted pages are kept for good, without automatic cleanup (Content): `page-deletion.md`, "Current limits".
 - Images of other hosts are blocked by the CSP instead of being removed (Content): `pages.md`, "Rendering" and
   "Current limits".
+- ASVS 16.5.3, the write of the last use of a token may fail and the request is still allowed after every check
+  (Logging): `api-tokens.md`, "The check of a bearer token".
 
 ## What is good
 
@@ -1679,6 +1870,11 @@ scope="read"`.
   index frees the name of a deleted page at once.
 - Content: the services parse ids and names again, write with a condition on the state (`deletedAt`), check the key of
   the last editor first and redirect only to stored addresses.
+- Logging: every refusal of `authenticateToken()`, `exchangeCode()` and `refreshGrant()` is logged with a
+  machine-readable `reason`, and never with the token, the code or a hash.
+- Logging: `logIn()` counts an attempt before the password is checked and refuses when the database or the hash fails;
+  `refreshGrant()` answers `failed`, not a token, when revoking after a reuse fails.
+- Logging: `client-address-probe.ts` logs only an allowlist of headers, cut to a fixed length, and is off by default.
 
 ## Checks on the deployment
 
@@ -1715,6 +1911,9 @@ scope="read"`.
 - How many processes serve the app, and whether the reverse proxy has a request timeout; with one process a slow page
   stops the whole wiki (Content).
 - A storage quota and alerts for the database, since the number of items is not limited (Content).
+- stdout and stderr of the container are collected into a separate log system with access limited to operators, a
+  retention period and synchronised time on the host; it parses the JSON of pino and the text of Next.js (Logging).
+- Alerts on "refresh token used again", on waits after failed logins and on "health check failed" (Logging).
 
 ## Standards coverage
 

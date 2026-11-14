@@ -117,7 +117,7 @@ user chooses.
 - [x] OAuth
 - [x] MCP server
 - [x] Content: pages, folders, tabs, deletion and rendering
-- [ ] Logging, errors and failure handling
+- [x] Logging, errors and failure handling
 - [ ] Configuration and container image
 - [ ] Supply chain: dependencies, CI and release
 - [ ] Cross-cutting: data model, architecture, documentation and tests
