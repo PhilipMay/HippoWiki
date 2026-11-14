@@ -115,7 +115,7 @@ user chooses.
 - [x] Login, passwords, sessions and users
 - [x] API tokens
 - [x] OAuth
-- [ ] MCP server
+- [x] MCP server
 - [ ] Content: pages, folders, tabs, deletion and rendering
 - [ ] Logging, errors and failure handling
 - [ ] Configuration and container image
