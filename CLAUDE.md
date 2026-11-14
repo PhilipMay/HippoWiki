@@ -36,6 +36,8 @@ The specification lives in the `spec/` directory. This catalog should always be 
   limits)
 - `spec/roadmap.md`: backlog of candidate features, grouped by theme, and things still to check
 - `spec/issue-report.md`: how to report issues found in code and document reviews
+- `spec/security-and-code-review-steps.md`: step plan for a security and code review of the whole project, whose
+  result is a review report in `spec/`
 
 ## Running the Checks
 
