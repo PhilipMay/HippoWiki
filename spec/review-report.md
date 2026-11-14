@@ -236,6 +236,108 @@ the threat.
 
 ### Access control and the entry points of requests
 
+#### nit: `createUser()` checks the name before the admin check, so a non-admin sees form errors instead of "not found"
+
+- Location: `src/features/users/actions.ts`, lines 25–36, `createUser()`
+- Severity: Nit. Nothing is created and nothing secret is revealed, because the name rule is public; only the answer
+  differs from the one the spec promises.
+- Category: correctness
+- Problem: the action calls `requireUser()`, then `parseUserFormData()` and returns the field errors for an invalid
+  name. Only then does it call the service, whose admin check gives `not-allowed`, which the action maps to
+  `notFound()`.
+- Impact: a logged-in user who is not the admin can tell that the action exists. This breaks the rule in
+  `users-and-login.md` (section "User list and creating users") that the user list is not found for everyone else,
+  "with and without an action". It is no way past the admin check.
+- Evidence: called as the user `dave` on the local server with `Next-Action` of `createUser` and the name `Bad Name`:
+  `200 OK` with `{"fieldErrors":{"name":["Use lowercase letters, digits and single hyphens"]}}`. With a valid name the
+  answer is `404` with `NEXT_HTTP_ERROR_FALLBACK;404`, and no user is created.
+- Suggestion (optional): let the service validate the name after its admin check and drop the parse from the action,
+  or check the admin in the action before the parse.
+- Reference: OWASP A01:2025 Broken Access Control; ASVS 8.2.1; CWE-204.
+
+#### suggestion: `OPTIONS /mcp` lists `GET` and `DELETE` as allowed, though both answer 405
+
+- Location: `src/app/mcp/route.ts`, lines 6–19 (the exports `POST`, `GET`, `DELETE`); `src/features/mcp/http.ts`,
+  lines 94–102, `handleMcpRequest()`
+- Severity: Nit. Nothing is exposed; the requirement is Level 3.
+- Category: correctness
+- Problem: Next.js answers `OPTIONS` itself for a route that does not export it, with an `Allow` header built from the
+  exported methods. `/mcp` exports `GET` and `DELETE` only to answer them with 405 and `Allow: POST`, so `OPTIONS`
+  names methods that the endpoint refuses. The comment "Anything but `POST` answers 405" does not hold for `OPTIONS`.
+- Impact: a client or scanner gets two different lists of methods for the same endpoint.
+- Evidence: `curl -si -X OPTIONS http://localhost:3100/mcp` gives `204 No Content` with
+  `allow: DELETE, GET, HEAD, OPTIONS, POST`; `curl -si http://localhost:3100/mcp` gives `405` with `allow: POST`.
+- Suggestion (optional): export `OPTIONS` from `src/app/mcp/route.ts` and hand it to `handleMcpRequest()`, so that it
+  answers 405 with `Allow: POST` like `GET` and `DELETE`.
+- Reference: ASVS 4.1.4 (Level 3); RFC 9110 section 10.2.1.
+
+#### nit: the image optimizer of Next.js stays switched on although the app uses no `next/image`
+
+- Location: `next.config.ts`, `nextConfig` (no `images` option)
+- Severity: Nit. Only logged-in users reach it, and it fetches only addresses of the app itself; it is unused attack
+  surface, not a hole.
+- Category: security
+- Problem: `/_next/image` is served with the default settings. With a session it fetches the given local address
+  from the server itself, without the cookie, and fails with a 500 when the answer is not an image.
+- Impact: a logged-in user can make the server fetch and resize images on request, a function the app does not need.
+  `architecture.md` (section "Login and sessions") already says the app does not use it.
+- Evidence: with a session cookie, `curl -s -o /dev/null -w '%{http_code}' -b <jar>
+'http://localhost:3100/_next/image?url=%2Ffolders&w=64&q=75'` gives `500`, and the server logs
+  `internal image response failed for /folders 307`. An external address gives `400`. Without a cookie the proxy
+  answers `307` to the login.
+- Suggestion (optional): switch the optimizer off with `images: { unoptimized: true }` in `next.config.ts`.
+- Reference: OWASP A02:2025 Security Misconfiguration; CWE-1188.
+
+#### Reviewed
+
+- Files read: `src/proxy.ts`, `src/features/auth/session.ts`, `src/lib/auth.ts`, `src/lib/addresses.ts`, the
+  `actions.ts` of all six features, the `queries.ts` of folders, pages, oauth, tokens and users, the `service.ts` of
+  auth, users and tokens in full and the writes of folders, pages and oauth, the `forms.ts` of tokens, users, oauth
+  and auth, `src/features/users/records.ts` and `schema.ts`, every `page.tsx` and `route.ts` under `src/app/`,
+  `layout.tsx`, the error pages, `src/components/AppHeader.tsx`, `next.config.ts`, `e2e/access.spec.ts`.
+- `requireUser()` before every read and write (ASVS 8.3.1, `CON.10.A2`): every page calls it first (the login page
+  uses `getCurrentUser()`, the password change `requireSession()`), every query after `connection()`, and every
+  exported Server Action first, outside its `try` blocks. No layout, loading or template file reads data. An action
+  without a cookie is answered by the proxy with `303` and `x-action-redirect: /login;push` (local server).
+- The forced password change blocks everything else: `requireUser()` redirects to `/change-password`
+  (`src/features/auth/session.ts`), `authenticateToken()` refuses the token of such a user, and the OAuth token
+  exchange and refresh refuse it too.
+- The `matcher` of the proxy: every exception is anchored with `$` except `oauth-protected-resource(?:/.*)?` and
+  `_next/static/`, which lead only to a catch-all route that answers 404 for other paths and to static files. Next.js
+  matches the raw and the decoded path and resolves `..` before matching. On the local server, `/mcp/x`, `/MCP`,
+  `/%6Cogin`, `/.well-known/oauth-protected-resource/../../users` and `/_next/static/../../users` all give `307` to
+  the login; `/login/`, `/mcp/` and `/api/health/` give `308` to the address without the slash.
+- Nothing relies on the proxy alone: all pages and actions check again, and the public route handlers check bearer
+  tokens or PKCE themselves.
+- Admin only on the server (ASVS 8.2.1): `listUsers()` returns `null` and `createUser()` returns `not-allowed` in
+  `src/features/users/service.ts`. On the local server, `createUser` called as `dave` with a valid name gives `404`
+  and creates nothing.
+- Arguments a form never sends (ASVS 2.2.1, 2.2.2): bound ids are parsed in every action (`parseFolderId`,
+  `parseTabId`, `parsePageId`, `parseTokenId`) and again in the services; route segments go through `parseName` and
+  `parsePageSegment`. A tab of another folder is refused by the composite foreign key in the pages service.
+- Object level (ASVS 8.2.2, CWE-639): `revokeToken()` deletes with the token id and the user id in one condition
+  (`src/features/tokens/service.ts`); the revoke dialog of `/account` accepts only the caller's own token ids;
+  `listTokens()` filters by user; codes and grants are bound to the user of the session. On the local server,
+  `revokeToken` called as `dave` with the id of `erin`'s token gives `404` with `NEXT_HTTP_ERROR_FALLBACK;404`, and the
+  token stays. Content has no owner on purpose (see "Accepted deviations").
+- Mass assignment (ASVS 8.2.3, 15.3.3): every spread of parsed data comes from a `z.object` schema, which strips
+  unknown keys; the last editor always comes from `requireUser()`, the scopes from the token schema or the fixed
+  scopes of a grant, `mustChangePassword` is only ever set to `true` for a new user, and the field is `input: false` in
+  Better Auth.
+- Missing and repeated parameters (ASVS 15.3.7, CWE-234): `parseChoice()` and `safeNextPath()` refuse arrays, the
+  OAuth readers treat a repeated parameter as missing, a token needs at least one scope and `authenticateToken()`
+  requires the exact scope.
+- HTTP methods: Next.js answers 405 for every method a route does not export; on the local server `GET`, `PUT` and
+  `DELETE /oauth/token` and `POST /api/health` give `405`. `OPTIONS /mcp` is the exception (finding above).
+- Open redirects (ASVS 3.7.2, `CON.10.A4`, CWE-601): `safeNextPath()` in `src/lib/addresses.ts` is used wherever
+  `next` is read, and every other redirect is built from stored names. On the local server a login with `next` set to
+  `//evil.example/`, `/\evil.example`, `https://evil.example`, `/\/evil.example`, ` //evil.example` and
+  `javascript:alert(1)` redirects to `/folders`; `/%2F%2Fevil.example` and `/%09/evil.example` stay paths on the same
+  site. A request with `Host: evil.example` gets a relative `Location`.
+- Existence leaks (CWE-200): without a session, every request ends at the proxy or at `requireUser()` before any
+  not-found; another user's token, an unknown and a malformed one give the same not-found; the error pages show only
+  the digest. The only difference found is the first finding.
+
 ### Browser security: headers, CSRF, caching and data sent to the client
 
 ### Login, passwords, sessions and users
@@ -258,9 +360,35 @@ the threat.
 
 ## Accepted deviations
 
+- ASVS 8.2.2 and 8.4.1 for content (Access control): every logged-in user may read and change all folders, tabs and
+  pages, so content has no owner to check. Documented in `users-and-login.md` ("Current limits": no rights and roles)
+  and `mcp.md` (a caller reads everything, like every logged-in user).
+- ASVS 6.3.2, a default account named `admin` (Access control): the admin is the user named `admin`, with a password
+  that the setup takes from the environment and that must be changed at the first login. Documented in
+  `users-and-login.md` ("Admin account and setup", "Decisions"). There is no default password.
+
 ## What is good
 
+- Access control: two layers of the login check, with the check that protects the data in `requireUser()`
+  (`src/features/auth/session.ts`), and an answer of the proxy that the client of Next.js understands for an action
+  without a cookie (`src/proxy.ts`).
+- Access control: the decisions of who may do what live in the services (`listUsers()` and `createUser()` in
+  `src/features/users/service.ts`, `revokeToken()`, `listTokens()` and `authenticateToken()` in
+  `src/features/tokens/service.ts`), so that the MCP and OAuth adapters cannot skip them.
+- Access control: the owner of a token is part of the condition of the delete itself (`revokeToken()` in
+  `src/features/tokens/service.ts`), with no gap between a read and a check.
+- Access control: `safeNextPath()` in `src/lib/addresses.ts` combines a prefix check, a check for control characters
+  and a check of the origin with the WHATWG `URL`.
+- Access control: `e2e/access.spec.ts` covers the protected addresses with the edge cases of the matcher, stale
+  cookies and actions without a session; `integration/token-service.test.ts` covers revoking another user's token.
+
 ## Checks on the deployment
+
+- The reverse proxy passes a `Host` and an `X-Forwarded-Host` that a client cannot choose: the origin check of
+  Server Actions compares the `Origin` with them, and `serverActions.allowedOrigins` is not set (Access control).
+- No `next dev` server is reachable from an untrusted network: the development server speaks plain HTTP and serves the
+  endpoints of the development tools (Access control).
+- Whether the reverse proxy exposes `/api/health` to the internet or only to the orchestrator (Access control).
 
 ## Standards coverage
 

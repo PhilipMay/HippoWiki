@@ -110,7 +110,7 @@ user chooses.
 ## Checklist
 
 - [x] Report outline, threat model and standards
-- [ ] Access control and the entry points of requests
+- [x] Access control and the entry points of requests
 - [ ] Browser security: headers, CSRF, caching and data sent to the client
 - [ ] Login, passwords, sessions and users
 - [ ] API tokens
