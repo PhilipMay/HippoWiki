@@ -55,6 +55,12 @@ given as `?action=<action>` (see `content-structure.md`).
 
 - The title is derived from the content's heading instead of being entered in a field of its own. It is still stored
   as a column, for the page lists and the browser tab.
+- Pages are rendered on the server, not in the browser:
+  - Rendering in the browser before a save would leave pages saved through MCP, or another client without a browser,
+    without a render, and the stored HTML would not be derived from the Markdown.
+  - Rendering in the browser on every view would put the page text only behind JavaScript, slow down the first
+    display, and keep public pages out of search engines. The server parses the content anyway (the title, and later
+    links and search).
 
 ## Current limits
 

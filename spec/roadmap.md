@@ -87,6 +87,9 @@ listed first; there is no order across themes.
 - Assigning and removing rights: give users rights on a folder and take them away.
 - Own rights list: each user sees the folders they have rights on, and which.
 - Rights overview for all folders: who has which rights on every folder.
+- Public content: pages that can be read without a login, rendered on the server so that search engines see them.
+  Needs a time limit and a depth limit on the Markdown parse at save time and a stored or cached render, since
+  anonymous visitors can then trigger renders (`pages.md`, `users-and-login.md`).
 
 ## Login and Sessions
 

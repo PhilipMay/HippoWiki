@@ -254,6 +254,7 @@ the authentication guide of Next.js describes:
 ## Current limits
 
 - no rights and roles: everyone who is logged in can read and change all content
+- no public content: nothing can be read without a login (see "Public content" in `roadmap.md`)
 - no way to reset a lost admin password; for now the only way is a change directly in the database
 - no password reset by the admin for other users, so a lost first password cannot be replaced
 - no change of the own password after the forced password change
