@@ -520,6 +520,328 @@ the threat.
 
 ### Login, passwords, sessions and users
 
+#### issue: new passwords are not checked against common or breached passwords or context words
+
+- Location: `src/features/users/schema.ts`, lines 70–88, `passwordSchema` and `passwordSchemaFor()`, used by
+  `passwordChangeInputSchema()` in `src/features/auth/schema.ts` and by `ensureAdmin()` in
+  `src/features/users/service.ts`
+- Severity: Major. It is a Level 1 requirement and a "shall" of NIST; with 20 guesses per name and hour, from
+  distributed addresses, a password such as `password1234` falls within days, and the name `admin` is known.
+- Category: security
+- Problem: the only rules are the length and "not the same as the user name". Neither the forced change nor
+  `HIPPOWIKI_ADMIN_PASSWORD` is checked against a list of common or breached passwords, and there is no documented
+  list of context words such as `hippowiki`, `wiki` or `admin`.
+- Impact: every account with a weak password can be taken over by guessing, the admin above all.
+- Evidence: on the local server, the forced change of a fresh user accepts `password1234`, `qwertyuiop`, `12345678`
+  and `hippowiki2026` (each answered with `x-action-redirect: /folders`); only the user name itself is refused.
+- Suggestion (required): check every new password, the admin setup included, against a bundled list of at least the
+  10,000 most common passwords that meet the minimum length, and against a documented list of context words; name the
+  list in `users-and-login.md`. A check against breached passwords by k-anonymity is optional where outgoing requests
+  are allowed.
+- Reference: OWASP A07:2025 Authentication Failures; ASVS 6.2.4, 6.2.12, 6.1.2, 6.2.11; NIST SP 800-63B-4 3.1.1.2;
+  CWE-521.
+
+#### issue: after the first password change, a user cannot change the password or end sessions, and the admin cannot end them either
+
+- Location: `src/features/auth/service.ts`, lines 444–456, `changeFirstPassword()`; `spec/users-and-login.md`,
+  section "Current limits"
+- Severity: Major. ASVS 6.2.2 is Level 1; a user or admin who suspects a leaked password or a stolen session has no way
+  to react but a change in the database.
+- Category: security
+- Problem: once the forced change is done, `changeFirstPassword()` refuses with `not-required`, and there is no other
+  password change. A user cannot list or end other sessions, the admin cannot end the sessions of a user, and there is
+  no option to end other sessions or the API tokens after a change. "Current limits" lists "no change of the own
+  password after the forced password change" without a reason.
+- Impact: a leaked password stays valid for good, and a stolen session cookie for up to 30 days.
+- Evidence: `if (!user.mustChangePassword) return { ok: false, error: { code: "not-required" } };`
+- Suggestion (required): allow a change at any time on `/account`, with the current password and the same rules,
+  through `changePassword` of Better Auth with `revokeOtherSessions: true`, and offer to revoke the API tokens; add "end
+  all other sessions" for a user and "end all sessions of a user" for the admin. Until then, document it as a decision
+  with its reason and the steps for an operator.
+- Reference: OWASP A07:2025 Authentication Failures; ASVS 6.2.2, 7.4.3, 7.4.5, 7.5.2; `CON.10.A12`.
+
+#### issue: in the default configuration a single client can lock any known user, the admin included, out of the login
+
+- Location: `src/lib/client-address.ts`, line 33, `clientAddressGroup()`; `src/features/auth/service.ts`, lines
+  149–169, `reserveAttempt()`; `spec/users-and-login.md`, sections "Decisions" and "Current limits";
+  `spec/container-image.md`, section "Configuration"
+- Severity: Minor. "Current limits" already accepts that a few address groups can keep a name locked; the default
+  only lowers that to one client, and existing sessions keep working. It is no takeover.
+- Category: security
+- Problem: with `HIPPOWIKI_TRUSTED_PROXIES=0`, the default, every login is in the group `shared`, so the wait per name
+  and group becomes a wait per name alone. Five wrong passwords from anyone make the next login for the name wait 1
+  minute, doubling up to 15 minutes, and the right password is refused during the wait. The decision that "the owner
+  of an account does not share a wait with a stranger" does not hold in the default, and no spec says that one client
+  is enough.
+- Impact: anyone on the internet can keep the admin, or any user whose name is shown as a last editor, from logging in
+  for as long as they keep sending about four requests an hour.
+- Evidence: on the local server (no trusted proxy), after 5 wrong logins for `erin` the correct password is refused
+  with "Too many failed logins. Please try again in 1 minute."; after 5 for `bob`, `bob` is refused the same way.
+- Suggestion (required): say in "Current limits" and in `container-image.md` that `HIPPOWIKI_TRUSTED_PROXIES` must be
+  set for every deployment that the internet reaches, and why; better, log a warning at the start of a production
+  server while it is `0`. The "login budget for known clients" in `roadmap.md` would close it.
+- Alternatives: let a client that holds a valid earlier session pass the wait per name.
+- Reference: OWASP A07:2025 Authentication Failures; ASVS 6.1.1, 6.3.1; CWE-645; NIST SP 800-63B-4 3.2.2.
+
+#### issue: the minimum password length is 8, not the 15 NIST asks for a single factor, without a documented reason
+
+- Location: `src/features/users/schema.ts`, lines 60 and 76–79, `PASSWORD_MIN_LENGTH` and `passwordSchema`;
+  `spec/users-and-login.md`, section "Passwords"
+- Severity: Minor. ASVS 6.2.1 is met (8, with 15 recommended); the deviation from NIST is not documented.
+- Category: security
+- Problem: the password is the only factor, and NIST SP 800-63B-4 then asks for at least 15 characters. The length is
+  counted in UTF-16 code units, while NIST counts each code point as one character, so four emoji pass the minimum.
+- Impact: shorter passwords than the standard allows, together with the missing blocklist.
+- Evidence: on the local server the forced change refuses 7 characters ("Password must be at least 8 characters") and
+  accepts 8, 15, 64 and 128 characters; 129 are refused.
+- Suggestion (required): raise the minimum for new passwords to 15 and count code points for it, or document 8 as a
+  decision with its reason.
+- Reference: OWASP A07:2025 Authentication Failures; ASVS 6.2.1; NIST SP 800-63B-4 3.1.1.2; CWE-521.
+
+#### issue: a login does not end the session that the request already carries
+
+- Location: `src/features/auth/service.ts`, lines 383–391, `logIn()`
+- Severity: Minor. It needs a login sent while already logged in (a stale tab, or another user in the same browser),
+  because `/login` redirects a logged-in user.
+- Category: security
+- Problem: `signInUsername` of Better Auth creates a new session and sets its cookie, but does not delete the session of
+  the cookie the request sent. ASVS 7.2.4 asks that the current session token is ended. The spec says a user has "one
+  [session] per browser".
+- Impact: after user B logs in where A was logged in, A's session and every copy of its cookie stay valid for up to 30
+  days.
+- Evidence: on the local server, the login action called with `dave`'s session cookie sets a new cookie, the sessions
+  of `dave` go from 11 to 12, and the old cookie still gets `200` on `/account`.
+- Suggestion (required): end the session of the incoming cookie in `logIn()`, for example with `auth.api.signOut()`
+  before the sign-in.
+- Reference: OWASP A07:2025 Authentication Failures; ASVS 7.2.4; CWE-613.
+
+#### issue: the session cookie uses the prefix `__Secure-`, not `__Host-`, and no spec says why
+
+- Location: `src/lib/auth.ts`, lines 52–58, `createAuth()` (`useSecureCookies`); `spec/users-and-login.md`, section
+  "Sessions"
+- Severity: Minor
+- Category: security
+- Problem: in production Better Auth names the cookie `__Secure-better-auth.session_token`, with `Path=/` and no
+  `Domain`. ASVS 3.3.3 asks for `__Host-` unless a cookie is meant for other hosts; nothing here is shared.
+- Impact: a sibling subdomain can set a cookie of the same name for the parent domain (cookie tossing). The token is
+  signed, so no session can be forged, but a user can be logged out or logged in as the attacker.
+- Evidence: Better Auth builds the name as `${secureCookiePrefix}${name}` with the prefix `"__Secure-"`; on the local
+  server (development) the cookie is `better-auth.session_token; HttpOnly; SameSite=lax`.
+- Suggestion (required): name the session cookie with `__Host-` in production through the cookie options of Better
+  Auth, and pass the same name to `getSessionCookie()` in `src/proxy.ts`; or document `__Secure-` as a decision.
+- Reference: OWASP A02:2025 Security Misconfiguration; ASVS 3.3.3; NIST SP 800-63B-4 5.1.1.
+
+#### issue: one client can fill the queue of the password hashing and make every login "busy"
+
+- Location: `src/lib/password-hash.ts`, lines 14–17 and 35–73, `createLimiter()`; `spec/container-image.md`, section
+  "What the environment has to provide"
+- Severity: Minor. The spec names a limit per client at the reverse proxy, but not that without it one client blocks
+  every login.
+- Category: security
+- Problem: each counted login costs one hash, unknown names are hashed like known ones (against enumeration), and
+  every unknown name gets 5 tries. A few hashes run at once and the others wait up to 10 seconds in an unbounded queue,
+  so about 100 requests per second from one client keep it full.
+- Impact: nobody can log in, change the first password or be created while the flood lasts.
+- Evidence: `const waiting: (() => void)[] = [];`; the spec says only "a reverse proxy can add that limit". Not
+  tried on the local server, because it is a load test.
+- Suggestion (required): say in `container-image.md` that a limit per client on `POST /login` at the reverse proxy is
+  needed and what happens without it; optionally refuse at once when the queue is long.
+- Reference: OWASP A06:2025 Insecure Design; ASVS 15.2.2, 2.4.1; CWE-770; `CON.10.A17`.
+
+#### issue: wrong current passwords at the password change are not limited
+
+- Location: `src/features/auth/service.ts`, lines 444–485, `changeFirstPassword()`
+- Severity: Minor. It needs a valid session of a user whose change is pending, and the generated first password is
+  random; only a weak `HIPPOWIKI_ADMIN_PASSWORD` is at risk.
+- Category: security
+- Problem: a wrong current password is answered "Current password is wrong" without being counted, as often as the
+  caller likes, and each try costs two Argon2id hashes (Better Auth hashes the new password before it checks the
+  current one).
+- Impact: with a stolen session of a pending user, the first password can be guessed without limit; it is also a cheap
+  way to load the hash queue.
+- Evidence: on the local server, 8 tries with a wrong current password give 8 times
+  `{"fieldErrors":{"currentPassword":["Current password is wrong"]}}`, never a wait.
+- Suggestion (required): count wrong current passwords with the same wait as the login, and end the session after
+  several failures.
+- Reference: OWASP A07:2025 Authentication Failures; ASVS 6.3.1, 2.4.1; CWE-307.
+
+#### issue: the session rules document no inactivity timeout and no number of sessions per user
+
+- Location: `spec/users-and-login.md`, section "Sessions"; `src/lib/auth.ts`, lines 71–76
+- Severity: Minor
+- Category: docs
+- Problem: the absolute lifetime of 30 days is documented. That there is no inactivity timeout, and why, is not, and
+  neither is that the number of sessions per user is unlimited (ASVS 7.1.1, 7.1.2, 7.3.1).
+- Impact: an unattended browser stays logged in for 30 days, and an operator cannot see that this is a choice.
+- Evidence: "A user can have several sessions at the same time, one per browser."
+- Suggestion (required): add a decision: 30 days absolute, as NIST SP 800-63B-4 allows for AAL1, no inactivity timeout
+  and why, no limit of sessions; or add an inactivity timeout.
+- Reference: ASVS 7.1.1, 7.1.2, 7.3.1; `CON.10.A3`.
+
+#### issue: first passwords never expire
+
+- Location: `src/features/users/service.ts`, lines 85–133, `createUser()`, and lines 153–202, `ensureAdmin()`;
+  `spec/users-and-login.md`, section "Current limits"
+- Severity: Minor
+- Category: security
+- Problem: a generated first password, and `HIPPOWIKI_ADMIN_PASSWORD`, stay valid until the user changes them. ASVS
+  6.4.1 asks that system-generated first passwords expire after a short time. "Current limits" lists "no expiry of
+  first passwords" without a reason.
+- Impact: whoever reads a first password that the admin passed on (chat, mail, a note) can log in weeks later, set a
+  password and own the account.
+- Evidence: the model `User` has no field for when the first password was issued, and `logIn()` checks none.
+- Suggestion (required): refuse a login with a pending change some days after the account was created, or document
+  the reason.
+- Reference: OWASP A07:2025 Authentication Failures; ASVS 6.4.1; NIST SP 800-63B-4 3.1.1.1.
+
+#### issue: the admin is a fixed, well-known account name, without a documented reason
+
+- Location: `src/features/users/schema.ts`, lines 7–16, `ADMIN_NAME` and `isAdmin()`; `spec/users-and-login.md`,
+  section "User names and email"
+- Severity: Minor. There is no default password: the setup fails without `HIPPOWIKI_ADMIN_PASSWORD`, and the password
+  must be changed at the first login.
+- Category: security
+- Problem: ASVS 6.3.2 names "admin" as a default account that should not be present. Every installation has `admin`,
+  its most privileged account. The spec states the name ("The admin is the user named `admin`. There is no role
+  column.") but gives no reason.
+- Impact: a known target for guessing and for the lockout above.
+- Evidence: `export const ADMIN_NAME = "admin";`
+- Suggestion (required): let the operator choose the name of the admin, or document the fixed name as a decision with
+  its reason.
+- Reference: OWASP A07:2025 Authentication Failures; ASVS 6.3.2; CWE-1392.
+
+#### issue: the missing second factor and the missing notification of a password change are limits without a reason
+
+- Location: `spec/users-and-login.md`, section "Current limits" ("no mail, no TOTP, no passkeys, …")
+- Severity: Minor
+- Category: docs
+- Problem: ASVS 6.3.3 (Level 2) and `CON.10.A16` ask for a second factor; `CON.10.A1` asks that a user learns of a
+  change of the password (ASVS 6.3.7 is Level 3). The spec lists both as limits, without the reason, the accepted risk
+  or what lowers it.
+- Impact: neither can count as an accepted deviation.
+- Suggestion (required): add a decision with the reason and the risk accepted, or add TOTP (the `twoFactor` plugin of
+  Better Auth; TOTP is in `roadmap.md`).
+- Reference: OWASP A07:2025 Authentication Failures; ASVS 6.3.3; `CON.10.A16`, `CON.10.A1`.
+
+#### issue: the log line of a successful login has no name or group, and the logout line names no user
+
+- Location: `src/features/auth/service.ts`, line 408, `logIn()`, and line 417, `logOut()`
+- Severity: Minor
+- Category: error handling
+- Problem: `users-and-login.md` says "Every log line of a login has the group next to the name". The line of a
+  successful login has only `userId`, and "session ended" has no field at all.
+- Impact: a successful login after many failures cannot be tied to its group, and a logout to nobody.
+- Evidence: the log of the local server shows `INFO: user logged in` with only `userId`, and `INFO: session ended`
+  with nothing.
+- Suggestion (required): log `userId`, `name` and the group at a login, and the `userId` of the session at a logout.
+- Reference: OWASP A09:2025 Security Logging and Alerting Failures; ASVS 16.3.1, 16.2.1.
+
+#### issue: every session stores a client address from an unchecked `X-Forwarded-For`, and the user agent, which no spec mentions
+
+- Location: `src/lib/auth.ts`, lines 52–58, `createAuth()` (no `advanced.ipAddress`)
+- Severity: Minor
+- Category: security
+- Problem: Better Auth fills `Session.ipAddress` from `X-Forwarded-For`, whatever `HIPPOWIKI_TRUSTED_PROXIES` says, so
+  a client chooses it, and stores the `User-Agent` as sent. Neither is used or shown, and no spec names them.
+- Impact: personal data kept for 30 days without a purpose, and a forged address that can mislead a later look at the
+  database.
+- Evidence: on the local server, a login with `X-Forwarded-For: 198.51.100.7` and `User-Agent: probe-agent/1` stores
+  `198.51.100.7|probe-agent/1` in the newest `Session` row; without the header the address is
+  `0000:0000:0000:0000:0000:0000:0000:0000`.
+- Suggestion (required): switch the tracking of the address off (`advanced.ipAddress.disableIpTracking`) and drop the
+  user agent, or document both and fill the address from `clientAddressGroup()`.
+- Reference: ASVS 14.1.1; CWE-348; CWE-359.
+
+#### suggestion: the seed resets the admin to a public password on whatever database `DATABASE_URL` names
+
+- Location: `prisma/seed.ts`, lines 85–97, `main()`; `prisma/known-users.ts`, lines 9–13
+- Severity: Minor. The seed is not in the image and does not run at its start, so it needs an operator's mistake.
+- Category: security
+- Problem: `npm run db:seed` upserts `admin` with a known password and no pending change, also over an existing admin,
+  and has no guard against a production database.
+- Impact: one wrong run against production gives anyone the admin account.
+- Suggestion (optional): refuse to run with `NODE_ENV=production`, or when the database has users the seed did not
+  create.
+- Reference: ASVS 6.3.2; CWE-798.
+
+#### suggestion: session tokens are stored in plain text, next to the secret that signs them
+
+- Location: `prisma/schema.prisma`, models `Session` and `AuthSecret`; `src/lib/auth.ts`, lines 34–46, `readSecret()`
+- Severity: Minor
+- Category: security
+- Problem: API tokens are stored only as hashes, but session tokens in plain text, and the signing secret is in the
+  same database.
+- Impact: anyone who can read the database or a backup can build valid cookies for every session for up to 30 days.
+- Suggestion (optional): say in `container-image.md` that backups and read access to the database are as sensitive as
+  the sessions; optionally keep the secret outside the database.
+- Reference: ASVS 13.3.2; CWE-312.
+
+#### nit: the spec says passwords are not normalised, but not why
+
+- Location: `spec/users-and-login.md`, section "Passwords"
+- Severity: Nit
+- Category: docs
+- Problem: NIST SP 800-63B-4 3.1.1.2 recommends normalisation (NFKC or NFKD); ASVS 6.2.8 asks to verify the password
+  exactly as received. The code follows ASVS, but the spec does not name the trade-off: a password typed in NFD on one
+  device and NFC on another does not match.
+- Evidence: "Nothing is trimmed or normalised".
+- Suggestion (optional): add the reason as a decision.
+
+#### question: do password managers fill the login form and save the new password at the change?
+
+- Location: `src/features/auth/components/LoginForm.tsx`, lines 58–70; `src/features/auth/components/ChangePasswordForm.tsx`,
+  lines 53–96
+- Severity: Nit
+- Category: usability
+- Problem: the fields are `readOnly` until hydration, and some browsers skip read-only fields when they fill at load;
+  the change form has no `autocomplete="username"` field, so a password manager may not know the account.
+- Suggestion (optional): try it in Chrome and Firefox; add a hidden user name field with `autocomplete="username"` to
+  the change form.
+- Reference: ASVS 6.2.7.
+
+#### Reviewed
+
+- Files read: `src/lib/auth.ts`, `src/lib/password-hash.ts`, `src/lib/client-address.ts`,
+  `src/lib/client-address-probe.ts`, `src/lib/names.ts`, the files of `src/features/auth/` and `src/features/users/`,
+  `src/app/change-password/page.tsx`, `src/proxy.ts`, `scripts/admin.ts`, `prisma/seed.ts`, `prisma/known-users.ts`,
+  the auth models of `prisma/schema.prisma`; Better Auth 1.7 (the username plugin, sessions, cookies, sign-out,
+  `changePassword`, ids, the address helper).
+- Hashing (ASVS 11.4.2, NIST SP 800-63B-4 3.1.1.2): Argon2id with m = 19 MiB, t = 2, p = 1, exactly the minimum of the
+  OWASP Password Storage Cheat Sheet, which is the source of the parameters (TR-02102-1 names Argon2id without
+  parameters). A random salt of 128 bits; the parameters are in each hash, so they can be raised. Unknown names get a
+  hash of the same cost.
+- Enumeration (ASVS 6.3.8 is Level 3, CWE-204): an unknown name and a wrong password give the same message, status,
+  count and wait. On the local server both answers are `200` with "Invalid user name or password", in about 40 ms
+  each over four tries each; `Bob`, which breaks the name rule, is answered without a hash in 17 ms, but no user can
+  have such a name. Only the admin learns at user creation whether a name exists.
+- The maximum (ASVS 6.2.9): 128 characters are accepted, counted the same way on every path. No composition rules
+  (ASVS 6.2.5).
+- Unicode (ASVS 6.2.8): the password is used exactly as typed when set and when checked.
+- Paste and autocomplete (ASVS 6.2.7): `type="password"`, `autocomplete` `username`, `current-password` and
+  `new-password`, and nothing blocks paste (see the question above for the filling). The change needs the current
+  password (ASVS 6.2.3).
+- The generated first password: 20 characters from 57 by `crypto.randomInt`, about 116 bits, and its change is forced.
+- The wait (ASVS 6.3.1): `Dave` breaks the name rule and is refused without being counted; `dave` is trimmed and
+  counted as `dave`. With 0 trusted proxies `X-Forwarded-For` is not read. Both counts are written with conditional
+  writes in one transaction, so parallel logins get no more guesses; a success clears the count of its name and
+  group. On the local server the wait came after the fifth failure for `bob`.
+- Session ids (ASVS 7.2.3): 32 characters of `[A-Za-z0-9]` from `crypto.getRandomValues`, about 190 bits (32 characters
+  in every `Session` row of the local server). A new token at every login and at the forced change, which also ends all
+  sessions of the user. The cookie carries an HMAC-SHA256 of the token with a 256-bit secret, and every check reads
+  the database.
+- Cookie flags (ASVS 3.3.1, 3.3.2, 3.3.4): `HttpOnly`, `SameSite=Lax`, and `Secure` in production; the prefix is a
+  finding above.
+- Ending sessions (ASVS 7.4.1): a logout deletes the session row; on the local server the old cookie gets `307` to the
+  login after the logout. Users cannot be deleted; `Session` and `ApiToken` cascade on a deleted user.
+- The forced change blocks everything: every query and action calls `requireUser()`, only `/change-password` uses
+  `requireSession()`, and bearer tokens and grants check `mustChangePassword`.
+- Better Auth (ASVS 6.3.4): only `signInUsername`, `signOut`, `getSession` and `changePassword` are called; no route
+  handler is mounted, sign-up is off, and a lint rule keeps `@/lib/auth` to the auth service. No login path the specs
+  do not describe.
+- Admin setup (ASVS 6.3.2, CWE-798): it creates the admin only when there is none, never overwrites it, never logs the
+  password, and fails without the variable, so there is no default password.
+- Seed and known users: not in the image and not run at its start (see the suggestion above for a guard).
+
 ### API tokens
 
 ### OAuth
@@ -541,9 +863,16 @@ the threat.
 - ASVS 8.2.2 and 8.4.1 for content (Access control): every logged-in user may read and change all folders, tabs and
   pages, so content has no owner to check. Documented in `users-and-login.md` ("Current limits": no rights and roles)
   and `mcp.md` (a caller reads everything, like every logged-in user).
-- ASVS 6.3.2, a default account named `admin` (Access control): the admin is the user named `admin`, with a password
-  that the setup takes from the environment and that must be changed at the first login. Documented in
-  `users-and-login.md` ("Admin account and setup", "Decisions"). There is no default password.
+- NIST SP 800-63B-4 3.2.2, disabling an account after 100 failures in a row (Login): `users-and-login.md`,
+  "Decisions": "An account is never disabled after many failures … with one admin and no mail there would be no way
+  back in." The hour window per name caps the guesses at 20 per hour instead.
+- ASVS 6.1.1 and CWE-645, a name locked by about 10 to 20 cooperating address groups when proxies are trusted (Login):
+  `users-and-login.md`, "Current limits", with the "login budget for known clients" in `roadmap.md`. It does not
+  cover the default of no trusted proxy (see the finding).
+- ASVS 2.4.1, no limit per client across user names (Login): `users-and-login.md`, "Current limits", and
+  `container-image.md`, "What the environment has to provide": a task of the reverse proxy.
+- ASVS 13.3.1, no secrets management solution for the cookie secret (Login): `users-and-login.md`, "Decisions": the
+  secret is kept in the database so that a container needs only two variables.
 
 ## What is good
 
@@ -568,6 +897,20 @@ the threat.
   with JavaScript instead of loosening `form-action 'self'`.
 - Browser security: the services name their columns and return their own types, such as the last editor with the
   name only, and lists are Server Components that render only what they show.
+- Login: `reserveAttempt()` and `releaseAttempt()` in `src/features/auth/service.ts` count a login in both limits or
+  in neither, with conditional writes in one transaction, before the hash, and take the count back when the password
+  was not checked.
+- Login: `logIn()` counts and hashes unknown names like known ones, so neither the answer nor the wait tells which
+  names exist.
+- Login: `createLimiter()` in `src/lib/password-hash.ts` hands slots on in order with a bounded wait, and the Argon2id
+  parameters are explicit.
+- Login: `clientAddressGroup()` in `src/lib/client-address.ts` counts the trusted proxies from the right, never uses
+  the leftmost entry, groups IPv6 by /64 and is checked again in the service.
+- Login: `generateFirstPassword()` in `src/features/users/password.ts` uses `randomInt` without modulo bias and an
+  alphabet without look-alike characters.
+- Login: `ensureAdmin()` never overwrites an admin, is safe with two containers and never logs the password.
+- Login: the cookie cache of Better Auth is off and sessions are not refreshed, so an ended session is refused at once
+  (`src/lib/auth.ts`).
 
 ## Checks on the deployment
 
@@ -581,6 +924,14 @@ the threat.
 - No shared cache or CDN stores answers, and the reverse proxy adds no CORS headers and does not change the CSP or
   `X-Frame-Options` (Browser security).
 - The reverse proxy refuses requests for unknown `Host` values (Browser security).
+- `HIPPOWIKI_TRUSTED_PROXIES` is set to the real number of proxies, the port of the container is reachable only through
+  the proxy, and the proxy appends to or replaces `X-Forwarded-For` (Login).
+- A limit per client on `POST /login`, `/oauth/register` and `/oauth/token` at the reverse proxy (Login).
+- Backups and read access to the database are protected like the sessions, because they hold the session tokens and
+  the cookie secret (Login).
+- Retention of and access to the logs, which hold user names and client address groups (Login).
+- `HIPPOWIKI_ADMIN_PASSWORD` is removed from the environment once the admin exists, and `npm run db:seed` is never run
+  against a production database (Login).
 
 ## Standards coverage
 

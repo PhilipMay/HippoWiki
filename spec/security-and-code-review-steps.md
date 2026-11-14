@@ -112,7 +112,7 @@ user chooses.
 - [x] Report outline, threat model and standards
 - [x] Access control and the entry points of requests
 - [x] Browser security: headers, CSRF, caching and data sent to the client
-- [ ] Login, passwords, sessions and users
+- [x] Login, passwords, sessions and users
 - [ ] API tokens
 - [ ] OAuth
 - [ ] MCP server
