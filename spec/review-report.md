@@ -259,6 +259,10 @@ the threat.
 
 ## Findings
 
+This section holds only open findings, and the counts in "Summary" are those of the open findings. A fixed finding is
+deleted, and the rest of this report and the other documents are brought in line in the same change, as "Fixing a
+finding of the review report" in `workflow.md` describes.
+
 ### Access control and the entry points of requests
 
 #### nit: `createUser()` checks the name before the admin check, so a non-admin sees form errors instead of "not found"

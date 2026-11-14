@@ -157,6 +157,35 @@ Podman is not running, or an end-to-end test fails only now and then):
   say why. Do not stash, reset or check out anything to find out.
 - Do not rerun a failing command over and over until it passes; report a flaky test instead.
 
+## Fixing a finding of the review report
+
+`review-report.md` holds only open findings. A fixed finding is deleted from it, and every document that relies on the
+finding is brought in line in the same change, so the report and the specs never disagree. This holds for a finding
+fixed on its own and for one fixed in a step of a plan, where all of it goes into the commit of that step. The checks
+are those of "When a step is done", with "Changes to documentation only" for a fix that changes only documentation.
+
+1. Fix the finding in the code or in the documentation, as its Suggestion describes or as agreed with the user.
+2. Update the feature spec that the fix touches, and `architecture.md`, `testing.md` or `tech.md` where a rule or a
+   convention changed. A finding that is closed by a documented reason instead of a change (a decision or a current
+   limit in a feature spec) gets an entry in "Accepted deviations" of the report, with the ID of the requirement and
+   the place in the spec.
+3. Delete the section of the finding from `review-report.md`.
+4. Bring the rest of the report in line:
+   - "Summary": the counts by severity and by label, the "To fix first" list (remove the item and renumber the
+     others), and "Not covered by this review" where it names the finding.
+   - Each requirement the finding was the result for (ASVS, BSI, CWE, OWASP and the other standards) moves into the
+     "Reviewed" list of its area, with what the fix does and how it was checked, so that "Standards coverage" stays
+     complete.
+   - Remove or reword every reference to the finding: "finding above" and similar in the "Reviewed" lists, "Accepted
+     deviations", the tables of "Standards coverage" and "Open questions".
+5. Update `roadmap.md` where it holds the same item, and `README.md` where a command or a setup step changed.
+6. Search `spec/`, `README.md` and `CLAUDE.md` for the title and the key words of the finding, so that no reference to
+   it is left.
+7. When the last finding and the last open question are gone, move the content of the report that still applies to
+   its place ("Checks on the deployment" into "What the environment has to provide" of `container-image.md`, and the
+   item of `roadmap.md` that points to it), delete `review-report.md` and remove it from the spec catalog in
+   `CLAUDE.md`.
+
 ## Step plan template
 
 ```markdown

@@ -8,7 +8,8 @@ The specification lives in the `spec/` directory. This catalog should always be 
 
 - `spec/tech.md`: technology stack
 - `spec/workflow.md`: how features are planned in step files, when a step is done, what to do when it cannot be
-  finished, how a feature is wrapped up and what a feature spec holds
+  finished, how a feature is wrapped up, what a feature spec holds, and how a finding of the review report is fixed
+  and deleted
 - `spec/architecture.md`: code layout and conventions (layers and services, reads, writes, the adapters of callers
   other than the GUI, login and sessions, the public addresses, security headers, validation, addresses, database, UI)
 - `spec/testing.md`: the check of doc references, and unit, integration and end-to-end test conventions
@@ -38,7 +39,8 @@ The specification lives in the `spec/` directory. This catalog should always be 
 - `spec/issue-report.md`: how to report issues found in code and document reviews
 - `spec/review-report.md`: the report of the security and code review (scope and method, standards and target level,
   threat model, findings per area, accepted deviations, what is good, checks on the deployment, standards coverage,
-  open questions); it stays until a fix plan works its findings off
+  open questions); it holds only open findings: a fixed finding is deleted, and the file is deleted with its last
+  finding
 
 ## Running the Checks
 
@@ -88,6 +90,8 @@ This applies to code reviews and to reviews of documents such as the files in `s
 - For code, Location is the file, line range and function.
 - For documents, Location is the file and the heading of the section; Evidence is a short quote of the passage.
 - Start the review with a short summary: the overall verdict and how many issues there are at each severity level.
+- When a finding of `spec/review-report.md` is fixed, delete it from the report and update the other documents in the
+  same change, as "Fixing a finding of the review report" in `spec/workflow.md` describes.
 
 ## Git Handling
 
