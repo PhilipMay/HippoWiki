@@ -118,7 +118,7 @@ user chooses.
 - [x] MCP server
 - [x] Content: pages, folders, tabs, deletion and rendering
 - [x] Logging, errors and failure handling
-- [ ] Configuration and container image
+- [x] Configuration and container image
 - [ ] Supply chain: dependencies, CI and release
 - [ ] Cross-cutting: data model, architecture, documentation and tests
 - [ ] Standards cross-check

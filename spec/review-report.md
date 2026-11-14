@@ -1769,6 +1769,169 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 
 ### Configuration and container image
 
+#### issue: the admin password of the public `.env.example` is accepted as the first password of the admin
+
+- Location: `.env.example`, lines 13–16; `src/features/users/service.ts`, lines 165–170, `ensureAdmin()`
+- Severity: Major. It needs an operator who uses `.env.example` as the template of a deployment, but the result is a
+  takeover of the admin account by anyone who has read the repository, so it is at least Major.
+- Category: security
+- Problem: `.env.example` sets `HIPPOWIKI_ADMIN_PASSWORD=change-me-at-first-login`, a public value that passes the
+  password rules. `container-image.md` tells operators to keep the password in an environment file, and
+  `.env.example` is the only template. The first password stays valid until the first login, and the forced change is
+  made by whoever logs in first.
+- Impact: a deployment started with the example value and reachable before the real admin logs in can be taken over.
+- Evidence: `passwordSchemaFor("admin").safeParse("change-me-at-first-login").success` is `true` in the project.
+- Suggestion (required): refuse the example value in `ensureAdmin()` (with a test that reads `.env.example`), or leave
+  the line in `.env.example` empty; say in `container-image.md` never to use the example value.
+- Reference: OWASP A07:2025 Authentication Failures; ASVS 6.3.2; CWE-1392; CWE-1188.
+
+#### issue: `HIPPOWIKI_ADMIN_PASSWORD` stays in the environment of the running server
+
+- Location: `scripts/image-start.sh`, lines 11–18; `spec/container-image.md`, sections "Configuration" and "What the
+  environment has to provide"
+- Severity: Minor. Reading it needs a second flaw (a file read or code execution in the process) or access to the
+  container, and the password is valid only until the first login.
+- Category: security
+- Problem: `image-start.sh` runs the admin setup and then `exec node server.js` without `unset`, so the server keeps
+  the first admin password in its environment for its whole life. "The server never reads it" is true, but suggests
+  that the server never holds it.
+- Impact: until the first login, any file read or code execution in the server, or `podman inspect`, reveals a valid
+  admin password.
+- Evidence: in the image started on the local machine, `/proc/1/environ` of the server process (`next-server`)
+  contains `HIPPOWIKI_ADMIN_PASSWORD` and `DATABASE_URL`.
+- Suggestion (required): `unset HIPPOWIKI_ADMIN_PASSWORD` before `exec node server.js`, a check in the smoke test, and
+  in the spec: remove the variable from the container configuration once the admin exists.
+- Reference: OWASP A02:2025 Security Misconfiguration; ASVS 13.3.2; CWE-526; `SYS.1.6.A8`.
+
+#### issue: the server uses the role of the migration, with rights to change the schema, in the documented setup a superuser
+
+- Location: `spec/container-image.md`, section "Configuration"; `scripts/image-start.sh`, lines 11–18;
+  `src/lib/db.ts`, lines 6–13, `createClient()`
+- Severity: Minor. It is defence in depth: every query goes through Prisma, and there is no raw unsafe query in `src/`.
+- Category: security
+- Problem: one `DATABASE_URL` serves the migration and the server, so the server always runs as the owner of the
+  schema. With the official `postgres` image, which the smoke test and `.env.example` use, the user of
+  `POSTGRES_USER` is a superuser, who can even run commands on the database host (`COPY … TO PROGRAM`). The spec names
+  only the minimum ("allowed to create tables").
+- Impact: an SQL injection or code execution in the server could drop the schema or, with a superuser, run commands on
+  the database container.
+- Evidence: the throwaway database of the review, created like the documented one, has `rolsuper = t` for its user.
+- Suggestion (required): say in "What the environment has to provide" that the role must not be a superuser and owns
+  only its database; better, an optional URL of its own for the migration, so that the server can run with a role
+  that may only read and write rows.
+- Reference: OWASP A02:2025 Security Misconfiguration; ASVS 13.2.2; CWE-250.
+
+#### issue: the base image is pinned by a tag, not a digest, and its fixes reach production only with a release
+
+- Location: `Containerfile`, line 7; `spec/container-image.md`, sections "Image" and "Publishing"
+- Severity: Minor
+- Category: security
+- Problem: `node:26.13-slim` is pushed again with every Node patch and Debian rebuild, so two builds of one commit can
+  get different base layers, and nothing checks their integrity. Only a release publishes the image, so fixes of the
+  base image reach a deployment only when someone cuts one. The spec gives no reason for either.
+- Impact: builds are not reproducible, and a deployment can keep a vulnerable system or Node.js layer.
+- Evidence: `FROM docker.io/library/node:26.13-slim AS base`.
+- Suggestion (required): pin with `@sha256:<digest>` (Dependabot updates digests), and say when a release is cut for
+  fixes of the base image; or document both as a decision.
+- Reference: OWASP A03:2025 Software Supply Chain Failures; OWASP A08:2025 Software or Data Integrity Failures; ASVS
+  15.2.1; CWE-494; `SYS.1.6.A6`, `SYS.1.6.A14`.
+
+#### issue: an invalid value of the environment does not stop the server itself, only the admin setup stops the container
+
+- Location: `src/lib/env.ts`, lines 66–75, `getServerEnv()`; `spec/container-image.md`, section "Configuration"
+- Severity: Minor
+- Category: correctness
+- Problem: the environment is validated on first use, and nothing validates it at the start of the server. In the
+  image, a bad value stops the container only because the admin setup calls `getDb()` before the server starts;
+  `next start`, or a start without that step, would serve and answer every request with 500. The spec says such a value
+  "stops the server".
+- Impact: the promise of the spec depends on an unrelated script; a change to the admin setup would quietly turn
+  "refuses to start" into "starts and answers 500".
+- Evidence: "Validation runs on first use, so importing this module never fails by itself" (`env.ts`).
+- Suggestion (required): validate in `register()` of an instrumentation file, and add a smoke case with an invalid
+  optional value.
+- Reference: OWASP A02:2025 Security Misconfiguration; OWASP A10:2025 Mishandling of Exceptional Conditions;
+  CWE-1188.
+
+#### suggestion: a read-only root file system works, but is neither documented nor tested
+
+- Location: `Containerfile`, line 73; `spec/container-image.md`, section "Image"
+- Severity: Minor
+- Category: security
+- Problem: the server writes only below `.next/cache`, but the spec does not say that the container can run with a
+  read-only root file system or which directories need to be writable.
+- Evidence: on the local machine the image starts with `--read-only --tmpfs /app/.next/cache --tmpfs /tmp`, and
+  `/api/health` answers `200 {"status":"ok"}`.
+- Suggestion (optional): document the flags in "What the environment has to provide" and use them in one smoke start.
+- Reference: `SYS.1.6.A23`.
+
+#### suggestion: the spec names no secret store for `DATABASE_URL` and the admin password
+
+- Location: `spec/container-image.md`, section "What the environment has to provide"
+- Severity: Minor
+- Category: docs
+- Problem: both secrets reach the container as plain variables, visible in `podman inspect` and `/proc/*/environ`.
+  Podman secrets (`--secret name,type=env,target=DATABASE_URL`) work without code changes; the spec does not mention
+  them.
+- Suggestion (optional): recommend Podman secrets or an environment file with mode 0600, and record the choice as the
+  answer to ASVS 13.3.1.
+- Reference: ASVS 13.3.1, 13.3.2; CWE-526; `SYS.1.6.A8`.
+
+#### suggestion: the final image carries `npm`, `npx` and `apt`
+
+- Location: `Containerfile`, lines 50–76, the stage `app`
+- Severity: Nit
+- Category: security
+- Problem: the runtime needs `node`, `sh` and the Prisma CLI; `npm` and `npx` can fetch and run packages as the user
+  `node`.
+- Evidence: in the image, `which npm npx apt` finds `/usr/local/bin/npm`, `/usr/local/bin/npx` and `/usr/bin/apt`.
+- Suggestion (optional): remove npm, npx and yarn in the stage `app` before `USER node`.
+- Reference: ASVS 15.2.3.
+
+#### nit: `container-image.md` restates the tag of the base image, and does not say what several instances need
+
+- Location: `spec/container-image.md`, sections "Image" and "What the environment has to provide"
+- Severity: Nit
+- Category: docs
+- Problem: "pinned to a minor version (`node:26.13-slim`)" goes stale with every update by Dependabot. "One instance
+  only" does not say that instances of different images do not share the key of Server Actions, and that an update
+  makes open forms fail once without a `deploymentId` (Next.js guide on self-hosting).
+- Suggestion (optional): point to the first `FROM` line of the `Containerfile`, and add one line on several instances
+  and updates.
+- Reference: `issue-report.md`, last item of the checklist.
+
+#### Reviewed
+
+- Files read: `Containerfile`, `.containerignore`, `scripts/image-start.sh`, `image-migrate.sh`, `image-admin.sh`,
+  `image.sh`, `db.sh`, `scripts/Containerfile`, `scripts/admin.ts`, `src/lib/env.ts`, `client-address.ts`, `db.ts`,
+  `src/app/api/health/route.ts`, `next.config.ts`, `prisma.config.ts`, `.env.example`, `spec/container-image.md`,
+  `spec/tech.md`; the Next.js guides on self-hosting and data security and the origin check of Server Actions.
+- The image (built on the local machine with `npm run image:build`): user `node` (uid 1000), every file in `/app`
+  owned by root, only `.next/cache` writable by `node`, only port 3000, `NODE_ENV=production`, no `.git` and no `.env`
+  file, no source maps under `.next/static` (the 20 under `.next/server` are not served), no dev dependencies in the
+  stage `app` (only the standalone trace, the migration tools and `@node-rs`), one process, no remote access
+  (`SYS.1.6.A11`, `SYS.1.6.A16`, `SYS.1.6.A17`). The missing `HEALTHCHECK` is an accepted deviation.
+- `.containerignore` lists `.env*` (except `.env.example`), `.git`, `node_modules`, `.next`, `build`, `coverage`,
+  `playwright-report`, `test-results` and the generated client; a second check in the `Containerfile` refuses a `.env`
+  in the standalone output.
+- The start: the migration runs first and `set -eu` stops the start on failure; the variables are quoted; `exec`
+  makes the server PID 1, and Next.js ends gracefully on SIGTERM.
+- Configuration: `DATABASE_URL` must be a `postgres(ql)://` URL, `HIPPOWIKI_PUBLIC_URL` an `https` origin (`http`
+  only on loopback), `HIPPOWIKI_TRUSTED_PROXIES` one digit; errors do not echo values; the standalone server forces
+  `NODE_ENV=production`, so secure cookies cannot be switched off. In the image the session cookie is
+  `__Secure-better-auth.session_token` with `Secure`.
+- Forwarding headers (ASVS 4.1.3, CWE-290): the app reads only `X-Forwarded-For`, and only with trusted proxies; the
+  issuer and the addresses of MCP come from `HIPPOWIKI_PUBLIC_URL`. On the local server a login with a forged
+  `X-Forwarded-For` is counted in the group `shared`, a forged `X-Forwarded-Host` and `X-Forwarded-Proto` do not
+  change the `Location` of the proxy, and the issuer stays `http://localhost:3100`. Next.js accepts a Server Action
+  whose `Origin` matches a forged `X-Forwarded-Host`, but a browser cannot add that header across sites, so a directly
+  reachable port opens no CSRF.
+- Several instances: the key of Server Actions is part of the build, so all containers of one image share it; all
+  actions are module-level, so the key protects no closures.
+- `/api/health` (ASVS 13.4.5): `{"status":"ok"}` or `{"status":"error"}`, no version, no `X-Powered-By`; `POST` gives
+  `405`. Pages answer `TRACE`, `PUT` and `DELETE` with the page (`200` in the image) and echo nothing, so there is no
+  cross-site tracing; only OPTIONS is refused.
+
 ### Supply chain: dependencies, CI and release
 
 ### Cross-cutting: data model, architecture, documentation and tests
@@ -1805,6 +1968,11 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   "Current limits".
 - ASVS 16.5.3, the write of the last use of a token may fail and the request is still allowed after every check
   (Logging): `api-tokens.md`, "The check of a bearer token".
+- ASVS 12.3.1, no TLS to the database (Configuration): `container-image.md`, "Configuration" and "Current limits":
+  `DATABASE_URL` takes no parameters such as `sslmode`, so the database must stay on a network inside the host.
+- No `HEALTHCHECK` in the image, one instance only, and no signing, provenance or scan of the image (Configuration):
+  `container-image.md`, "Health", "What the environment has to provide" and "Current limits", with `roadmap.md`.
+- `/api/health` is public (Configuration, ASVS 13.4.5): `container-image.md`, "Health".
 
 ## What is good
 
@@ -1875,6 +2043,13 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 - Logging: `logIn()` counts an attempt before the password is checked and refuses when the database or the hash fails;
   `refreshGrant()` answers `failed`, not a token, when revoking after a reuse fails.
 - Logging: `client-address-probe.ts` logs only an allowlist of headers, cut to a fixed length, and is off by default.
+- Configuration: the `Containerfile` has a minimal final stage, server files owned by root with only `.next/cache`
+  writable, and a second guard against a `.env` file in the standalone output.
+- Configuration: `scripts/image-start.sh` runs the migration and the admin setup before the server with `set -eu`, uses
+  `exec` for signals and sets `HOSTNAME` after Podman's override.
+- Configuration: the smoke test in `scripts/image.sh` checks the user, the write protection, the absence of `.env`
+  files, the security headers and that failed starts do not serve.
+- Configuration: `parsePublicUrl()` in `src/lib/env.ts` accepts only a bare origin.
 
 ## Checks on the deployment
 
@@ -1914,6 +2089,21 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 - stdout and stderr of the container are collected into a separate log system with access limited to operators, a
   retention period and synchronised time on the host; it parses the JSON of pino and the text of Next.js (Logging).
 - Alerts on "refresh token used again", on waits after failed logins and on "health check failed" (Logging).
+- The reverse proxy uses TLS 1.2 and 1.3 only with the cipher suites of BSI TR-02102-2, a certificate of at least RSA
+  3000 or EC 256 bits, and redirects HTTP to HTTPS (Configuration).
+- The reverse proxy replaces `X-Forwarded-For`, `X-Forwarded-Host` and `X-Forwarded-Proto` of clients, and sets body
+  sizes, timeouts and rate limits; `/api/health` is ideally routed only to the health checker (Configuration).
+- Port 3000 of the container and the port of the database are reachable from no other host (Configuration).
+- The database role is not a superuser and has a strong password of its own (Configuration).
+- The environment file has mode 0600 or Podman secrets are used; `HIPPOWIKI_ADMIN_PASSWORD` is not the value of
+  `.env.example`, and the admin logs in right after the first start (Configuration).
+- Rootless Podman with `--cap-drop=ALL`, `--security-opt=no-new-privileges`, SELinux confinement, `--read-only` with a
+  tmpfs for `.next/cache`, and limits for memory, CPU and processes (Configuration, `SYS.1.6.A15`, `SYS.1.6.A17`,
+  `SYS.1.6.A21`, `SYS.1.6.A23`).
+- The image is pulled by digest, a release is cut regularly for fixes of the base image, and a backup of the database
+  is taken before a new version starts (Configuration).
+- `NODE_OPTIONS` has no `--inspect`, and `HIPPOWIKI_LOG_CLIENT_ADDRESS` is `false` outside a deliberate check
+  (Configuration).
 
 ## Standards coverage
 
