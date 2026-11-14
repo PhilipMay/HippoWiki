@@ -23,7 +23,7 @@ Tests: `e2e/login.spec.ts`, `e2e/change-password.spec.ts`, `e2e/users.spec.ts`, 
 - A user name follows the name rule of folders, tabs and pages (`src/lib/names.ts`), so it can be part of an address
   as it is. It is 3 to 30 characters long and unique. Surrounding spaces are removed. The rules are in
   `src/features/users/schema.ts`.
-- The admin is the user named `admin`. There is no role column.
+- The admin is the user named `admin`. There is no role column. Why the name is fixed is under "Decisions".
 - Each user gets a hidden placeholder email in the reserved domain `.invalid`, because Better Auth needs an email
   address. It is never shown and no mail is sent.
 - Users are written with Prisma, not through the sign-up of Better Auth, which stays disabled.
@@ -232,6 +232,13 @@ the authentication guide of Next.js describes:
   `Headers`: the service stays free of forwarding headers and of the configuration of the deployment.
 - An account is never disabled after many failures, unlike NIST SP 800-63B-4 asks after 100 failures in a row: with
   one admin and no mail there would be no way back in.
+- The admin has the fixed name `admin`, which ASVS 6.3.2 counts as a default account, instead of a name chosen at the
+  setup or a role column. The setup then needs only `HIPPOWIKI_ADMIN_PASSWORD`, and `isAdmin()` compares the name in
+  one place. The name would not stay secret anyway: every logged-in user sees user names as the last editor of content
+  and as who deleted a page. What makes a default account dangerous does not apply: there is no default password, the
+  setup fails without one, and the first password must be changed at the first login. Guesses for `admin` are held
+  back by the waits of "Failed logins" like those for any other name. The risk accepted is that every installation has
+  a known name to guess and to lock out (see "Current limits").
 - A container needs `DATABASE_URL` and `HIPPOWIKI_ADMIN_PASSWORD` and nothing else, so the secret of the session
   cookies is stored in the database instead of a variable.
 - Who is calling is found out in the adapters, from the session cookie. What the caller may do is checked in the

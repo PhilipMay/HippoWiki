@@ -9,8 +9,8 @@
   tests cover the security rules of the specs well. The weak points are availability (a slow Markdown parse, unbounded
   bodies and batches, a lockout per name in the default configuration), the password policy, the trust that the OAuth
   server gives to clients nobody verified, and documentation that ASVS Level 2 asks for.
-- Findings: 116 in all, 0 Blocker, 5 Major, 70 Minor and 41 Nit (62 `issue:`, 20 `suggestion:`, 29 `nit:` and 5
-  `question:`). Accepted deviations: 19.
+- Findings: 115 in all, 0 Blocker, 5 Major, 69 Minor and 41 Nit (61 `issue:`, 20 `suggestion:`, 29 `nit:` and 5
+  `question:`). Accepted deviations: 20.
 - To fix first:
   1. Some Markdown takes quadratic time to parse, so one page blocks the whole server (Content; ASVS 15.1.3, 15.2.2;
      CWE-407).
@@ -727,22 +727,6 @@ the threat.
 - Suggestion (required): refuse a login with a pending change some days after the account was created, or document
   the reason.
 - Reference: OWASP A07:2025 Authentication Failures; ASVS 6.4.1; NIST SP 800-63B-4 3.1.1.1.
-
-#### issue: the admin is a fixed, well-known account name, without a documented reason
-
-- Location: `src/features/users/schema.ts`, lines 7–16, `ADMIN_NAME` and `isAdmin()`; `spec/users-and-login.md`,
-  section "User names and email"
-- Severity: Minor. There is no default password: the setup fails without `HIPPOWIKI_ADMIN_PASSWORD`, and the password
-  must be changed at the first login.
-- Category: security
-- Problem: ASVS 6.3.2 names "admin" as a default account that should not be present. Every installation has `admin`,
-  its most privileged account. The spec states the name ("The admin is the user named `admin`. There is no role
-  column.") but gives no reason.
-- Impact: a known target for guessing and for the lockout above.
-- Evidence: `export const ADMIN_NAME = "admin";`
-- Suggestion (required): document the fixed name as a decision with
-  its reason
-- Reference: OWASP A07:2025 Authentication Failures; ASVS 6.3.2; CWE-1392.
 
 #### issue: the missing second factor and the missing notification of a password change are limits without a reason
 
@@ -2495,6 +2479,9 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
   cover the default of no trusted proxy (see the finding).
 - ASVS 2.4.1, no limit per client across user names (Login): `users-and-login.md`, "Current limits", and
   `container-image.md`, "What the environment has to provide": a task of the reverse proxy.
+- ASVS 6.3.2 and CWE-1392, the fixed admin name `admin` (Login): `users-and-login.md`, "Decisions": there is no
+  default password, the first password must be changed at the first login, and every logged-in user sees the user
+  names anyway.
 - ASVS 13.3.1, no secrets management solution for the cookie secret (Login): `users-and-login.md`, "Decisions": the
   secret is kept in the database so that a container needs only two variables.
 - ASVS 11.4.2 for API tokens (API tokens): a token of 256 random bits is stored as SHA-256, not with a password hash
