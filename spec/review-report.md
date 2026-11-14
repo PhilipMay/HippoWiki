@@ -340,6 +340,184 @@ the threat.
 
 ### Browser security: headers, CSRF, caching and data sent to the client
 
+#### issue: the Content Security Policy sends `base-uri 'self'` where ASVS asks for `'none'`, without a reason in a spec
+
+- Location: `next.config.ts`, lines 8–15, `SECURITY_HEADERS`; `e2e/security-headers.spec.ts`, line 12
+- Severity: Minor. Raw HTML in Markdown is not rendered, so nobody can inject a `<base>` element today; a Level 2
+  requirement is still not met, and no spec gives the reason.
+- Category: security
+- Problem: ASVS 3.4.3 asks for a global policy with `object-src 'none'` and `base-uri 'none'`. The policy sends
+  `base-uri 'self'`. Neither Next.js nor Material UI emits a `<base>` element, so `'none'` costs nothing.
+- Impact: after an HTML injection, an injected `<base href="/x/">` could still move relative addresses of scripts and
+  links to other paths of the site.
+- Evidence: every response of the local server carries
+  `Content-Security-Policy: frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; img-src 'self' data:`.
+- Suggestion (required): change it to `base-uri 'none'` in `next.config.ts` and in the expectation of
+  `e2e/security-headers.spec.ts`.
+- Reference: OWASP A02:2025 Security Misconfiguration; ASVS 3.4.3; `CON.10.A14`.
+
+#### issue: the answers of `/mcp` carry no `Cache-Control: no-store`
+
+- Location: `src/features/mcp/http.ts`, lines 25–27, `refusal()`, and lines 134–135, `handleMcpRequest()`
+- Severity: Minor. Browsers and shared caches do not store the answer to a `POST` with an `Authorization` header
+  without explicit freshness, so the real risk is small.
+- Category: security
+- Problem: the OAuth adapters set `Cache-Control: no-store` and `Pragma: no-cache` on every answer
+  (`src/features/oauth/http.ts`). The MCP adapter sets nothing, the MCP SDK sets `Cache-Control` only on SSE streams,
+  which are off, and Next.js adds nothing to the answer of a route handler. An MCP answer holds the content of wiki
+  pages.
+- Impact: a misconfigured cache in front of the app or an HTTP cache in an MCP client could keep page content that
+  the server never marked as private.
+- Evidence: `curl -si -X POST http://localhost:3100/mcp -H "Authorization: Bearer <token>" …` with a `tools/list`
+  request gives `200 OK` and `content-type: application/json` with no `Cache-Control`.
+- Suggestion (optional): set `Cache-Control: no-store` on every answer in `handleMcpRequest()`, on the refusals and on
+  the `Response` of the SDK alike, and add the rule to `mcp.md` next to the one in `oauth.md`.
+- Reference: OWASP A02:2025 Security Misconfiguration; ASVS 14.3.2, 14.2.2; CWE-525.
+
+#### issue: Client Components get whole `TabSummary` rows with fields they do not show
+
+- Location: `src/app/folders/[folder]/page.tsx`, lines 66–72; `src/app/folders/[folder]/[item]/page.tsx`, lines
+  82–88; `src/features/pages/components/PageView.tsx`, lines 60 and 91–98;
+  `src/features/pages/components/DeletedPageView.tsx`, lines 41 and 62–68; the type `TabSummary` in
+  `src/features/folders/service.ts`, line 27
+- Severity: Minor. Every logged-in user can see these fields in the tab list anyway, so nothing is disclosed; the rule
+  that only the shown fields reach the browser is broken.
+- Category: security
+- Problem: `NewPageForm`, `MoveOrRenamePageDialog` and `RestorePageDialog` take `tabs: { id: string; name: string }[]`,
+  but the pages pass the result of `listTabs()`, a `TabSummary` with `updatedAt` and `lastEditedBy` as well.
+  TypeScript accepts the extra fields, and React serialises the whole objects into the RSC payload.
+- Impact: none today. A field added to `TabSummary` later reaches the browser without anyone noticing.
+- Evidence: the RSC payload of `/folders/csrf-same?action=new` on the local server, for a folder with one tab,
+  contains the keys `"updatedAt"` and `"lastEditedBy"` once each.
+- Suggestion (optional): map before passing, `(await listTabs(folder.id)).map(({ id, name }) => ({ id, name }))`, or
+  add a query that returns only `{ id, name }`.
+- Reference: OWASP A01:2025 Broken Access Control; ASVS 15.3.1; CWE-213; the Next.js data security guide, "Passing data
+  from server to client".
+
+#### suggestion: the modules that read the database or hold secrets do not import `server-only`
+
+- Location: `src/lib/db.ts`, `src/lib/auth.ts`, `src/lib/env.ts`, `src/lib/password-hash.ts`, every
+  `src/features/*/service.ts` and `queries.ts`, `src/features/tokens/secret.ts`, `src/features/oauth/secret.ts`
+- Severity: Minor. It is defence in depth: the lint rules in `eslint.config.mjs` already stop routes and components
+  from importing `@/lib/db`, `@/lib/auth` and the values of services.
+- Category: security
+- Problem: the Next.js data security guide asks for a data access layer marked with `import "server-only"`, so that
+  an import into a Client Component fails the build. No file in `src/` has it. The lint rules cover only `@/lib/db`,
+  `@/lib/auth` and services, and only for files under `src/app/` and `components/`: a Client Component could import
+  `@/lib/env`, a `secret.ts` or a `queries.ts` without an error.
+- Impact: a later change could bundle server code into the browser. Secrets would not leak, because only
+  `NEXT_PUBLIC_` variables are inlined, but the rule that keeps data access on the server would no longer be enforced.
+- Evidence: `grep -rn "import ['\"]server-only['\"]" src` finds nothing.
+- Suggestion (optional): add `import "server-only";` to the modules above, check that Vitest resolves it, and say so
+  in "Layout" in `architecture.md`.
+- Reference: OWASP A06:2025 Insecure Design; the Next.js data security guide, "Preventing client-side execution of
+  server-only code" and "Auditing".
+
+#### suggestion: a logout leaves wiki pages open in other tabs and clears nothing in the browser
+
+- Location: `src/features/auth/actions.ts`, lines 43–45, `revalidateEverything()`, and lines 125–134, `logOut()`
+- Severity: Minor. It matters only on a shared computer, and the pages are `no-store` already.
+- Category: security
+- Problem: `logOut()` ends the session, revalidates every route and redirects the tab that sent the form. Other open
+  tabs keep the rendered pages until someone navigates in them, and the answer sends no `Clear-Site-Data`.
+  `users-and-login.md` (section "Login and logout") does not mention other tabs.
+- Impact: someone who uses the browser after the user logged out can read the pages still open in other tabs.
+- Evidence: `revalidateEverything(); redirect(loginPath());` with no signal to other tabs and no `Clear-Site-Data`
+  header. Not checked in a browser.
+- Suggestion (optional): send `Clear-Site-Data: "cache"` with the answer of the logout and let other tabs follow a
+  logout through a `BroadcastChannel`; otherwise name the behaviour under "Current limits" in `users-and-login.md`.
+- Reference: OWASP A07:2025 Authentication Failures; ASVS 14.3.1; CWE-524.
+
+#### suggestion: the Content Security Policy has no `default-src`, `script-src` or `connect-src` at all
+
+- Location: `next.config.ts`, lines 8–15, `SECURITY_HEADERS`
+- Severity: Minor
+- Category: security
+- Problem: the documented reason ("Material UI and Next.js insert inline styles and scripts") rules out a policy
+  without `'unsafe-inline'`, but not an allowlist. Without `default-src`, `script-src` and `connect-src`, injected
+  script could load code from any host and send data anywhere.
+- Impact: no effect while no script can be injected (see the area "Content"); a weaker second line of defence if one
+  ever can.
+- Evidence: the policy above.
+- Suggestion (optional): the cheap step is `default-src 'self'; script-src 'self' 'unsafe-inline'` (plus
+  `'unsafe-eval'` only in development), `style-src 'self' 'unsafe-inline'; connect-src 'self'; font-src 'self'`; the
+  check for CSP violations in `e2e/security-headers.spec.ts` would catch a page that breaks. Nonces are possible as
+  well, because every page renders per request: the proxy would have to run for `/login` too, create the nonce and set
+  the policy, and the emotion cache of Material UI would take the nonce. CSP reporting (ASVS 3.4.7) and
+  `Cross-Origin-Opener-Policy` (ASVS 3.4.8) are Level 3; COOP would have to leave out `/oauth/authorize`, which a
+  connector may open in a popup.
+- Reference: ASVS 3.4.3, 3.4.7, 3.4.8; the Next.js guide on the Content Security Policy.
+
+#### nit: `/oauth/register` reads a JSON body of any media type, so another site can register clients from its visitors' browsers
+
+- Location: `src/features/oauth/http.ts`, lines 100–110, `handleRegister()`
+- Severity: Nit. The endpoint is public on purpose and needs no credentials; the only gain is spreading registrations
+  over the address groups of the visitors.
+- Category: security
+- Problem: RFC 7591 section 3.1 has the client send `application/json`. `handleRegister()` parses any body, so a form
+  of another site with `enctype="text/plain"` can send a valid JSON body as a simple request, without a CORS
+  preflight. With `HIPPOWIKI_TRUSTED_PROXIES` set, a page with many visitors registers clients from many address
+  groups, past the limit per group; with `0`, it fills the one shared group.
+- Impact: the table of clients fills up until unused clients are removed; the shared group can be blocked for an hour.
+- Evidence: `curl -si -X POST -H 'Content-Type: text/plain' --data '{"redirect_uris":["http://127.0.0.1:9999/cb"],"client_name":"textplain"}' http://localhost:3100/oauth/register`
+  gives `201 Created` with a `client_id`.
+- Suggestion (optional): answer 400 `invalid_client_metadata` unless the media type is `application/json`, with the
+  helper `mediaTypeOf()` that the token endpoint uses already.
+- Reference: ASVS 3.5.2; RFC 7591 section 3.1; CWE-352.
+
+#### nit: `architecture.md` writes out the values of the security headers instead of pointing to `next.config.ts`
+
+- Location: `spec/architecture.md`, section "Security headers"
+- Severity: Nit
+- Category: docs
+- Problem: the spec repeats the HSTS value and the whole CSP string, which `next.config.ts` and
+  `e2e/security-headers.spec.ts` hold already, so a change has to be made in three places.
+- Evidence: "`Content-Security-Policy: frame-ancestors 'none'; object-src 'none'; base-uri 'self'; …`"
+- Suggestion (optional): name the headers and their reasons, and point to `SECURITY_HEADERS` in `next.config.ts` for
+  the values.
+- Reference: `issue-report.md`, last item of the checklist.
+
+#### Reviewed
+
+- Files read: `next.config.ts`, `src/proxy.ts`, `src/app/layout.tsx`, the error pages, every route handler,
+  `src/features/oauth/http.ts`, `src/features/mcp/http.ts`, `src/features/oauth/components/`,
+  `src/features/pages/components/MarkdownContent.tsx`, `src/components/AppHeader.tsx`, the return values of every
+  `"use server"` file, the props of every `"use client"` file, `eslint.config.mjs`, `e2e/security-headers.spec.ts`;
+  the Next.js sources of the origin check of Server Actions and of route handlers.
+- CSRF of Server Actions (ASVS 3.5.1, `CON.10.A15`, CWE-352): Next.js compares the host of the `Origin` with
+  `X-Forwarded-Host` or `Host` and refuses a mismatch and `Origin: null`; `serverActions.allowedOrigins` is not set,
+  which is right. On the local server `createFolder` with `Origin: http://evil.example` gives
+  `500 Invalid Server Actions request` and creates nothing, and the log says the `x-forwarded-host` "does not match
+  `origin`". A request without `Origin` passes, but browsers always send one with a `POST`, and the cookie is
+  `SameSite=Lax`.
+- Login CSRF: the login is a Server Action under the same check. On the local server, the login form sent without
+  JavaScript and with `Origin: http://evil.example` gives `500` and sets no cookie. The logout and the consent buttons
+  are Server Actions as well.
+- `/oauth/token` uses no cookie: the code with its verifier and the refresh token are the credentials. `/mcp` needs a
+  bearer token and refuses a foreign `Origin`: on the local server it gives `403`.
+- No state-changing `GET` (ASVS 3.5.3): the `?action=` addresses only open dialogs.
+- Clickjacking (ASVS 3.4.6, CWE-1021): `frame-ancestors 'none'` and `X-Frame-Options: DENY` are on every response.
+- Headers on every response (ASVS 3.4.1, 3.4.4–3.4.6, `CON.10.A14`, `APP.3.1.A21`): on the local server a page, its
+  RSC payload, a 404, a redirect of the proxy, a Server Action answer, `/api/health`, a `/.well-known/` document and a
+  static file all carry HSTS, the CSP, `X-Frame-Options`, `nosniff` and `Referrer-Policy: same-origin`.
+- JSON answers (ASVS 3.2.1, 4.1.1): `application/json` with `nosniff`; JSON takes no `charset` parameter, and 4.1.1
+  asks for one only for text and XML types.
+- Caching of pages and actions (ASVS 14.3.2, 14.2.2, `CON.10.A7`): every page renders per request; on the local
+  server pages, RSC payloads and action answers carry `Cache-Control: no-store`, and the OAuth answers `no-store` and
+  `Pragma: no-cache`. There is no `staleTimes`, `cacheComponents` or `use cache`, so nothing of one user is cached for
+  another.
+- CORS (ASVS 3.4.2, CWE-942): no response sends an `Access-Control-*` header. On the local server a preflight to
+  `/mcp` and requests with a foreign `Origin` to `/oauth/token`, `/oauth/register` and `/.well-known/…` get none.
+- Data sent to the client (ASVS 15.3.1): the actions return small form states; `createUser` returns the generated
+  first password and `createToken` the secret, both on purpose and once. The RSC payloads of `/users` and `/account`
+  on the local server contain no hash, email, `mustChangePassword` or user id; the ids of tokens appear only as list
+  keys. The only extra fields are those of the `TabSummary` finding.
+- Error answers: the error pages show only the digest; the 500 answers of MCP and OAuth say only `server_error`.
+- Markdown links (CWE-1022): no link opens a new window (no `target="_blank"` in `src/`), and
+  `Referrer-Policy: same-origin` keeps page addresses on the site.
+- Browser storage (ASVS 14.3.3): no `localStorage` or `sessionStorage` in `src/`.
+- The prefix of the session cookie (ASVS 3.3.3) is part of the area "Login, passwords, sessions and users".
+
 ### Login, passwords, sessions and users
 
 ### API tokens
@@ -381,6 +559,15 @@ the threat.
   and a check of the origin with the WHATWG `URL`.
 - Access control: `e2e/access.spec.ts` covers the protected addresses with the edge cases of the matcher, stale
   cookies and actions without a session; `integration/token-service.test.ts` covers revoking another user's token.
+- Browser security: one rule with the source `/:path*` in `next.config.ts` puts the security headers on every
+  response, the redirects of the proxy included; `e2e/security-headers.spec.ts` checks them and collects CSP
+  violations in a real browser.
+- Browser security: `hasForeignOrigin()` in `src/features/mcp/http.ts` compares the `Origin` exactly with
+  `HIPPOWIKI_PUBLIC_URL`, against DNS rebinding, as the MCP specification asks.
+- Browser security: the consent form (`src/features/oauth/components/ConsentForm.tsx`) opens the redirect address
+  with JavaScript instead of loosening `form-action 'self'`.
+- Browser security: the services name their columns and return their own types, such as the last editor with the
+  name only, and lists are Server Components that render only what they show.
 
 ## Checks on the deployment
 
@@ -389,6 +576,11 @@ the threat.
 - No `next dev` server is reachable from an untrusted network: the development server speaks plain HTTP and serves the
   endpoints of the development tools (Access control).
 - Whether the reverse proxy exposes `/api/health` to the internet or only to the orchestrator (Access control).
+- The reverse proxy refuses a foreign `Origin` for a Server Action as well (repeat the CSRF probe through it),
+  redirects plain HTTP to HTTPS and passes the HSTS header (Browser security).
+- No shared cache or CDN stores answers, and the reverse proxy adds no CORS headers and does not change the CSP or
+  `X-Frame-Options` (Browser security).
+- The reverse proxy refuses requests for unknown `Host` values (Browser security).
 
 ## Standards coverage
 
