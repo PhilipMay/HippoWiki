@@ -949,6 +949,327 @@ the threat.
 
 ### OAuth
 
+#### issue: an invalid authorization request sends the browser, without a click, to any address that an anonymous party registered
+
+- Location: `src/features/oauth/components/ReturnToClient.tsx`, lines 19–34, `ReturnToClient()`;
+  `src/features/oauth/queries.ts`, lines 60–70, `loadConsent()`; `src/app/oauth/authorize/page.tsx`, line 46;
+  `spec/oauth.md`, section "The authorization request and the consent page"
+- Severity: Major. Anyone can register a client with any redirect address, and the redirect happens right after a
+  real login on the wiki, so the wiki becomes an open redirect for phishing; the MCP specification says the
+  authorization server must prevent this.
+- Category: security
+- Problem: `/oauth/register` is open to everyone, and a metadata document can be any public `https` address, so the
+  "registered" redirect address is chosen by whoever sends the link. For a request that fails a check after the client
+  and the redirect address (for example `response_type=token`), `loadConsent()` returns `refused`, and
+  `ReturnToClient` calls `window.location.replace(redirectTo)` on page load. A user without a session first logs in on
+  the real login page and is then sent on.
+- Impact: a mailed link to `https://<wiki>/oauth/authorize?…` shows the real wiki, the user logs in, and lands on the
+  attacker's page, for example a fake "session expired" form.
+- Evidence: on the local server, after registering a client with the redirect address `https://example.org/phish`,
+  `GET /oauth/authorize?client_id=<id>&redirect_uri=https%3A%2F%2Fexample.org%2Fphish&response_type=token` as a
+  logged-in user returns a page that navigates to
+  `https://example.org/phish?error=unsupported_response_type&…&iss=http%3A%2F%2Flocalhost%3A3100`.
+- Suggestion (required): do not navigate by itself for `refused`: show the error and a link "Return to <host>" that
+  the user has to click (RFC 9700 allows informing the user instead). Change the rule in `oauth.md` and give the reason
+  under "Decisions". The "Deny" button is a click and can stay.
+- Reference: OWASP A01:2025 Broken Access Control; ASVS 3.7.2, 10.4.7; CWE-601; RFC 9700 section 4.11.2; MCP
+  specification 2026-07-28, "Security Considerations", "Open Redirection".
+
+#### issue: custom redirect schemes are filtered with a list of forbidden schemes, so dangerous handlers of the operating system are accepted
+
+- Location: `src/features/oauth/schema.ts`, lines 59–79, `FORBIDDEN_SCHEMES`, and lines 106–123, `parseRedirectUri()`;
+  `spec/oauth.md`, section "Clients"
+- Severity: Minor. It needs the user to accept the browser's prompt to open an external application.
+- Category: security
+- Problem: every scheme that is not one of 19 forbidden ones is accepted, among them `search-ms:`, `ms-msdt:` and
+  `intent:`. Together with the redirect above, a link to the wiki starts such a handler; "Deny" navigates there too.
+  The MCP specification says redirect addresses must be `localhost` or HTTPS; the spec allows custom schemes without
+  a reason.
+- Impact: users on Windows or Android can be pushed from a trusted origin into a known malware delivery chain.
+- Evidence: on the local server, registrations with `search-ms:query=x`, `ms-msdt:/id` and `intent://example.org/cb`
+  give `201`; `javascript:`, `data:` and `file:` give `400`.
+- Suggestion (required): accept a private scheme only in the reverse domain form that RFC 8252 section 7.1 asks for,
+  and document the deviation from the MCP rule as a decision.
+- Reference: OWASP A06:2025 Insecure Design; ASVS 1.2.2, 2.2.1, 10.4.7; CWE-184; RFC 8252 sections 7.1 and 8.4.
+
+#### issue: the consent page shows no verified identity of the client and no warning for clients it cannot verify or for loopback addresses
+
+- Location: `src/app/oauth/authorize/page.tsx`, lines 49–56; `src/features/oauth/queries.ts`, lines 82–89,
+  `loadConsent()`; `src/features/oauth/schema.ts`, lines 155–159, `redirectTargetOf()`
+- Severity: Minor. A general caution is shown, and the code goes only to the host that is shown.
+- Category: security
+- Problem: for a metadata document client the host of its `client_id`, the only identity the wiki verified, is not
+  shown, though the metadata document draft asks for it; a registered client looks the same as a metadata document
+  client; for a loopback address the page shows `127.0.0.1:9999`, which tells the user nothing, with no extra warning
+  as the MCP specification asks.
+- Impact: on a machine with malicious local software, a client that calls itself "Claude Code" cannot be told from the
+  real one.
+- Evidence: `An app at <strong>{consent.target}</strong> asks for access to this wiki.` and `It calls itself
+“{consent.clientName}”.`
+- Suggestion (required): show "Identified by <host of the client_id>" for a metadata document client, "This app
+  registered itself; the wiki cannot verify who it is" for a registered one, and a warning for a loopback or custom
+  scheme target.
+- Reference: OWASP A07:2025 Authentication Failures; ASVS 10.4.7, 10.7.2; CWE-451; the client ID metadata document
+  draft, section 10.6; MCP specification 2026-07-28, "Security Considerations", "Localhost Redirect URI Risks".
+
+#### issue: a repeated parameter of the authorization request counts as missing instead of refusing the request
+
+- Location: `src/features/oauth/forms.ts`, lines 15–22, `readAuthorizationParams()`, and lines 28–36,
+  `readAuthorizationFormData()`; `src/features/oauth/service.ts`, lines 328–349, `checkAuthorizationRequest()`
+- Severity: Minor
+- Category: correctness
+- Problem: a parameter sent twice is dropped. For `resource` and `state` "missing" is valid, so two foreign
+  resources pass as no resource, and two values of `state` give a code without `state`. The token endpoint refuses
+  repeated parameters.
+- Impact: a client that asks for a token for another resource gets one for `/mcp` without being told, which RFC 8707
+  wants to prevent; a client loses its `state` without an error.
+- Evidence: on the local server, the consent page for a request with `resource=https://example.org/mcp` twice shows
+  "Approve"; with the parameter once it answers `invalid_target`.
+- Suggestion (required): mark a repeated parameter and answer `invalid_request` (`invalid_target` for `resource`) once
+  the client and the redirect address are known; write the rule into `oauth.md`.
+- Reference: OWASP A01:2025 Broken Access Control; RFC 6749 section 3.1; RFC 8707 section 2; CWE-235.
+
+#### issue: client names keep bidi, format and control characters and can fake text on the consent page
+
+- Location: `src/features/oauth/schema.ts`, lines 162–167, `clientNameOf()`; `src/app/oauth/authorize/page.tsx`,
+  line 54
+- Severity: Minor
+- Category: security
+- Problem: a name is only trimmed and cut. U+202E, zero-width and control characters stay, and the name stands in
+  quotes inside the sentence of the warning, so it can reverse the rest of the paragraph or close the quote and add a
+  sentence of its own ("Verified by your wiki admin"). React escaping stops script, not this.
+- Impact: a client can make the consent text look like an endorsement; the same name becomes the name of the grant on
+  `/account`.
+- Evidence: on the local server a client registered with the name `"‮evil Claude”. Verified by admin"`
+  shows U+202E in the HTML of the consent page.
+- Suggestion (required): remove `\p{Cc}`, `\p{Cf}`, `\p{Zl}` and `\p{Zp}` and collapse white space in
+  `clientNameOf()`, and show the name in an element of its own (`<bdi>`), not in running text.
+- Reference: OWASP A06:2025 Insecure Design; ASVS 10.7.2; CWE-451; CWE-1007.
+
+#### issue: the token endpoint and the registration read a body of any size into memory when it has no `Content-Length`
+
+- Location: `src/features/oauth/http.ts`, lines 77–85, `readBody()`, used by `handleToken()` and `handleRegister()`
+- Severity: Minor. Both endpoints are public, but a reverse proxy usually caps request bodies.
+- Category: security
+- Problem: the limit of 64 KB is checked against `Content-Length` only. A chunked body is read whole by
+  `request.text()` and measured afterwards. Both addresses bypass the proxy of Next.js, so its body limit does not
+  apply either, and `oauth.md` does not name a limit.
+- Impact: an anonymous caller can make the server hold large bodies in memory, up to a crash.
+- Evidence: on the local server a chunked body of 400 MB to `/oauth/token` is answered `400` after 354 ms of
+  application code, and the memory of `next-server` grows from about 1.7 GB to 2.9 GB; the same body with
+  `Content-Length` is refused at once.
+- Suggestion (required): read `request.body` with a reader, count the bytes and cancel once the limit is passed; name
+  the limit in `oauth.md`.
+- Reference: OWASP A06:2025 Insecure Design; ASVS 15.2.2; CWE-770.
+
+#### issue: using a code a second time does not revoke the tokens issued with it
+
+- Location: `src/features/oauth/service.ts`, lines 538–560, `exchangeCode()`; `spec/oauth.md`, sections "Codes" and
+  "Decisions"
+- Severity: Minor. It needs the code and the PKCE verifier, and the code still works only once.
+- Category: security
+- Problem: the code row is deleted when it is read, so a second exchange is answered like an unknown code and the
+  grant of the first exchange stays. ASVS 10.4.2 asks that the second request is refused and the tokens issued for the
+  code are revoked; the spec does not say that this is left out.
+- Impact: an attacker who redeemed a stolen code and verifier first keeps a working grant, and the only sign of it is
+  not acted on.
+- Evidence: on the local server the second exchange gives `400 invalid_grant` ("The authorization code is not valid"),
+  but the access token of the first still gets `200` at `/mcp`, and its refresh token still works.
+- Suggestion (required): mark the code as used instead of deleting it, store the id of the grant on it, and delete
+  that grant when a used code comes again; or document the choice as a decision.
+- Reference: OWASP A07:2025 Authentication Failures; ASVS 10.4.2; RFC 6749 section 4.1.2; CWE-294.
+
+#### issue: a forged refresh token that names a grant revokes that grant
+
+- Location: `src/features/oauth/service.ts`, lines 654–696, `refreshGrant()`; `spec/oauth.md`, section "Refresh"
+- Severity: Minor. The worst outcome is that a user has to connect the app again, and it needs the id of the grant.
+- Category: security
+- Problem: the grant is found by the id inside the token (`hwr_<grant id>.<secret>`), and any secret that is not the
+  current one counts as reuse and deletes the grant, before the `client_id` is checked. The id is no secret: it is in
+  log lines, in the revoke address on `/account` and in every refresh token the client held. The spec speaks only of a
+  token "used a second time".
+- Impact: whoever learns the id of a grant can end that connection without holding any secret.
+- Evidence: on the local server, a refresh with `hwr_<grant id>.AAAA…` and a foreign `client_id` gives
+  `400 invalid_grant`, and the real refresh token of that grant is refused afterwards.
+- Suggestion (optional): revoke only for a token that was really issued before, for example by storing the hash of the
+  previous refresh token; at least say in the spec that any unknown secret for an existing grant revokes it.
+- Reference: OWASP A07:2025 Authentication Failures; RFC 9700 section 4.14.2; CWE-400.
+
+#### issue: registrations have a limit per address group but none overall
+
+- Location: `src/features/oauth/service.ts`, lines 112–143, `reserveRegistration()`, and lines 154–197,
+  `registerClient()`; `spec/oauth.md`, section "Clients"
+- Severity: Minor. It concerns availability.
+- Category: security
+- Problem: the limit is 20 per hour and group, and an IPv6 group is a /64, so a /48 gives about 1.3 million
+  registrations an hour, each up to about 20 KB. Unused clients are deleted a day later, and only when a registration
+  or a code starts the cleanup. With no trusted proxy every client shares one group, so the limit then works the other
+  way round: one client blocks registrations for everyone for an hour.
+- Impact: the table of clients can be filled until the wiki slows down, or registrations blocked.
+- Evidence: `MAX_REGISTRATIONS_PER_WINDOW = 20` and no count over all groups.
+- Suggestion (required): add an overall cap on registrations per hour or on unused clients, and name it in
+  `oauth.md`.
+- Reference: OWASP A06:2025 Insecure Design; ASVS 2.4.1; CWE-770.
+
+#### suggestion: that metadata documents may come from any host is not written down as a decision, and a failed fetch is repeated on every page load
+
+- Location: `src/features/oauth/metadata-fetch.ts`, lines 55–85; `src/features/oauth/service.ts`, lines 218–231;
+  `spec/oauth.md`, section "Clients"
+- Severity: Minor
+- Category: docs
+- Problem: ASVS 1.3.6 asks for an allowlist of protocols, domains and ports. The code allows only `https` on port 443
+  and only public addresses, but any domain, by the nature of client ID metadata documents; the spec does not state
+  this as a decision. A failed fetch is not cached, so every load of the consent page fetches again and waits up to
+  5 seconds.
+- Suggestion (optional): add the decision to `oauth.md`, optionally a variable with allowed metadata hosts, and cache a
+  failed fetch for a short time.
+- Reference: ASVS 1.3.6, 13.2.4, 15.1.3; CWE-918.
+
+#### question: should dynamic registration stay switched on?
+
+- Location: `spec/oauth.md`, sections "Clients" and "Decisions"
+- Severity: Minor
+- Category: security
+- Problem: the MCP specification of 2026-07-28 keeps dynamic registration only for backward compatibility, and the
+  spec names claude.ai, ChatGPT and Claude Code as clients with metadata documents. Open registration is the source of
+  the open redirect, the custom schemes, the names that cannot be verified and the flood of registrations above.
+- Suggestion (optional): name the clients that still need it; otherwise add a switch for the operator, off by default,
+  or mark registered clients as not verified on the consent page.
+- Reference: MCP specification 2026-07-28, "Client Registration"; ASVS 10.4.7.
+
+#### nit: for a loopback address the comparison also ignores user name, password, fragment and `..`
+
+- Location: `src/features/oauth/schema.ts`, lines 130–144, `isRedirectUriOf()`
+- Severity: Nit. The code still goes only to the loopback host.
+- Category: correctness
+- Problem: for loopback only host name, path and query are compared, and the requested address is not checked by
+  `parseRedirectUri()`, though the spec says a redirect address has "no fragment and no user name or password".
+- Evidence: on the local server, `approve` with the redirect address `http://127.0.0.1:9999/cb#frag` returns
+  `http://127.0.0.1:9999/cb?code=…&state=st123&iss=…#frag`.
+- Suggestion (optional): run the requested address through `parseRedirectUri()` and compare everything but the port.
+- Reference: ASVS 10.4.1; RFC 9700 section 4.1.3; RFC 8252 section 7.3.
+
+#### nit: the authorization response rewrites the query of the redirect address
+
+- Location: `src/features/oauth/schema.ts`, lines 314–320, `authorizationResponseUrl()`
+- Severity: Nit
+- Category: correctness
+- Problem: `url.searchParams.set()` serialises the whole query again, so `?x=a%20b` becomes `?x=a+b`; RFC 6749 section
+  3.1.2 asks to keep the query.
+- Suggestion (optional): append the encoded parameters to the original query text.
+
+#### nit: the metadata has no `response_modes_supported`, and `response_mode` is ignored
+
+- Location: `src/features/oauth/http.ts`, lines 39–55, `authorizationServerMetadata()`
+- Severity: Nit
+- Category: correctness
+- Problem: without the field RFC 8414 implies `["query","fragment"]`, but the server answers only in the query and
+  ignores `response_mode`.
+- Suggestion (optional): advertise `response_modes_supported: ["query"]`; refusing other modes also meets ASVS 10.4.12
+  (Level 3) cheaply.
+- Reference: RFC 8414 section 2; ASVS 10.4.12.
+
+#### nit: the comparison of `resource` is case-sensitive in scheme and host
+
+- Location: `src/features/oauth/service.ts`, lines 347–349, 583–585 and 706–707
+- Severity: Nit
+- Category: correctness
+- Problem: `HTTP://LOCALHOST:3100/mcp` gets `invalid_target`; the MCP specification ("Canonical Server URI") says
+  scheme and host in upper case should be accepted.
+- Suggestion (optional): compare scheme and host after parsing, path and query exactly.
+
+#### nit: the spec promises that the grant stays after two refreshes at the same time, which holds only if both read before the swap
+
+- Location: `spec/oauth.md`, section "Refresh"; `src/features/oauth/service.ts`, lines 687 and 721–726
+- Severity: Nit
+- Category: docs
+- Problem: a refresh that reads the grant after the other one swapped the hash counts as reuse and revokes the grant.
+- Evidence: "Of two refreshes at the same time only one succeeds. The other is refused, and the grant stays."
+- Suggestion (optional): say that this holds for two refreshes that both read the grant before either swapped it.
+
+#### nit: an `invalid_client` answer with 401 has no `WWW-Authenticate`, and repeated keys in a JSON body are not refused
+
+- Location: `src/features/oauth/http.ts`, lines 172–184, `readTokenParams()`, and lines 244–245, `handleToken()`
+- Severity: Nit
+- Category: correctness
+- Problem: RFC 6749 section 5.2 asks for `WWW-Authenticate` with a 401 `invalid_client`. A repeated parameter is
+  refused in a form body, but in a JSON body the last value wins, though the error text promises "every parameter at
+  most once" for both.
+- Suggestion (optional): answer 400 `invalid_client` (there is no client authentication) or add the header; drop the
+  claim for JSON or detect repeated keys.
+- Reference: RFC 6749 section 5.2.
+
+#### nit: `oauth.md` repeats constants that no operator relies on, and places the cleanup of unused clients under registration only
+
+- Location: `spec/oauth.md`, section "Clients"
+- Severity: Nit
+- Category: docs
+- Problem: "1 to 10 redirect addresses of at most 2048 characters each", "cut to 50 characters" and "is called
+  \"Connected app\"" restate constants of `src/features/oauth/schema.ts`. The bullet on deleting unused clients stands
+  under registration, but metadata document clients are deleted the same way.
+- Suggestion (optional): point to the constants, and move the bullet to what holds for both kinds of client.
+- Reference: `issue-report.md`, last item of the checklist.
+
+#### Reviewed
+
+- Files read: `src/features/oauth/` (`service.ts`, `http.ts`, `schema.ts`, `metadata-fetch.ts`, `public-address.ts`,
+  `issuer.ts`, `secret.ts`, `actions.ts`, `queries.ts`, `forms.ts`, the components), `src/app/oauth/`,
+  `src/app/.well-known/`, the OAuth models of `prisma/schema.prisma`, `spec/oauth.md`; RFC 9700, the client ID metadata
+  document draft and the authorization pages of the MCP specification of 2026-07-28.
+- The flow on the local server (registration, consent, `approve`, exchange with PKCE, refresh) works and every answer
+  to the client carries `iss`.
+- Exact redirect addresses (ASVS 10.4.1): text comparison against the registered ones; only the port of an `http`
+  loopback address is ignored, as `oauth.md` says (RFC 8252 section 7.3). On the local server another path
+  (`/other`), `localhost` for `127.0.0.1`, an added query and an unknown client give the message "This request is no
+  longer valid…" without a redirect; another loopback port is accepted as documented.
+- PKCE (ASVS 10.4.6, RFC 7636): only `S256`, required for every client, no default to `plain`. On the local server a
+  missing method, `plain`, a missing and a short challenge give `error=invalid_request` with `state` and `iss`; a wrong
+  verifier gives `invalid_grant` and uses the code up, so the right verifier afterwards fails too. The verifier is
+  compared with `timingSafeEqual`.
+- Codes (ASVS 10.4.2, 10.4.3): 256 random bits, stored as SHA-256, 10 minutes, bound to client, user, redirect
+  address and challenge, deleted conditionally before any check, so of two exchanges only one goes on. On the local
+  server the second use gives `invalid_grant` (see the finding on revoking). A wrong redirect address at the exchange
+  gives `invalid_grant`.
+- Grant and response types (ASVS 10.4.4): only `code`, and only `authorization_code` and `refresh_token`; on the local
+  server `response_type=token` gives `unsupported_response_type`.
+- Scopes and resource (RFC 8707, ASVS 10.3.1): the grant is always `read`; on the local server `scope=read write admin`
+  gives a token with `"scope":"read"`. A foreign `resource` gives `invalid_target` at the authorization, the exchange
+  and the refresh (except for the repeated parameter above); without `resource` the token is for `/mcp`, the only
+  resource, and access tokens are accepted only there.
+- Refresh with rotation (ASVS 10.4.5, 10.4.8): on the local server the old access token is refused after a refresh;
+  reusing an old refresh token gives `invalid_grant` and revokes the grant, so the newest access and refresh tokens are
+  refused too; the refresh token of one client with the `client_id` of another gives "The refresh token was given to
+  another client" and the grant stays. The grant expires after its lifetime, and an access token never outlives it.
+- Revoking a grant (ASVS 10.4.9, 10.7.3): the access and the refresh hash are in the one row that revoking deletes.
+- Secrets (ASVS 11.5.1): 256 bits from `randomBytes`, stored as SHA-256; the refresh token is compared with
+  `timingSafeEqual`, codes and access tokens are found by a unique hash.
+- The token endpoint: RFC 6749 error codes, no stack traces, `Cache-Control: no-store` and `Pragma: no-cache` on every
+  answer, only form and JSON bodies, repeated form parameters refused, no client secrets because every client is public.
+- Consent (ASVS 10.7.1, 10.7.2): every request asks again; the user, what `read` allows and the lifetime are shown;
+  the actions check the submitted request again and are protected by the origin check of Server Actions. Client names
+  and targets are text, and no client address is shown as a link.
+- The metadata fetch (ASVS 1.3.6, 1.5.3, 15.3.2, CWE-918): `https` on port 443 only, the address must equal its own
+  WHATWG serialisation, every resolved address must be public (IPv4 without the special-purpose ranges, IPv6 only in
+  `2000::/3` without Teredo, documentation and 6to4), the connection is pinned to the checked address, redirects are
+  not followed, 5 seconds and 10 KB at most, only `application/json`. It runs only for a logged-in user on the consent
+  page and in its actions, never at `/oauth/token` or `/oauth/register`. On the local server `https://127.0.0.1/…`,
+  `https://localhost/…`, `https://[::1]/…`, `https://10.0.0.1/…`, `https://169.254.169.254/…`, `https://[fd00::1]/…`
+  and `https://[::ffff:7f00:1]/…` are refused with `address-not-public`, and `https://2130706433/…`,
+  `https://0x7f000001/…`, `https://127.1/…`, `https://127.0.0.1:8443/…` and `http://example.com/…` as an unknown
+  client, each within about 50 ms and with "This app is not known to the wiki".
+- Metadata documents: `client_id` must equal the address, `client_name` and `redirect_uris` are required, the cache
+  follows `max-age` between 5 minutes and 24 hours.
+- Prototype pollution (ASVS 15.3.6, CWE-1321): registrations go through a `z.object` that drops unknown keys, token
+  parameters into a `Map`, authorization parameters are copied by fixed names, metadata fields are read by name.
+- Registration (RFC 7591): only `redirect_uris` and `client_name` are read; the answer states `none`, `code` and the two
+  grant types and has no secret. A registered client cannot replace the grant of a metadata document client.
+- Discovery (RFC 8414, RFC 9728): the metadata matches the endpoints (code, the two grant types, `S256`, `none`,
+  metadata documents, the `iss` flag, `scopes_supported: ["read"]` without `offline_access`); the issuer comes only
+  from `HIPPOWIKI_PUBLIC_URL`. On the local server a request with `X-Forwarded-Host: evil.example` gets the issuer
+  `http://localhost:3100`.
+- Level 3: pushed authorization requests (ASVS 10.4.13) and sender-constrained tokens (10.4.14) are not cheap and are
+  not suggested.
+
 ### MCP server
 
 ### Content: pages, folders, tabs, deletion and rendering
@@ -979,6 +1300,15 @@ the threat.
 - ASVS 11.4.2 for API tokens (API tokens): a token of 256 random bits is stored as SHA-256, not with a password hash
   function; `api-tokens.md`, "Decisions", gives the reason.
 - ASVS 7.2 and 7.4 for API tokens (API tokens): a token is not a session of Better Auth; `api-tokens.md`, "Decisions".
+- ASVS 10.4.10 and 10.4.16, authentication of confidential clients (OAuth): every client is public; `oauth.md`,
+  "Decisions" and "Current limits".
+- ASVS 2.4.1, no limit on token requests (OAuth): `oauth.md`, "Current limits"; every secret has 256 bits.
+- Refresh rotation instead of sender-constrained tokens, without a grace period (OAuth, ASVS 10.4.5): `oauth.md`,
+  "Decisions".
+- No revocation endpoint (RFC 7009) and no introspection (OAuth): `oauth.md`, "Current limits"; revoking on `/account`
+  meets ASVS 10.4.9.
+- Scopes are not checked, the grant is always `read` (OAuth): `oauth.md`, "The authorization request and the consent
+  page"; RFC 6749 section 3.3 allows it, and the answer names the scope.
 
 ## What is good
 
@@ -1024,6 +1354,15 @@ the threat.
 - API tokens: the check constraint `ApiToken_token_or_grant` and a unique hash column per kind keep the kinds apart.
 - API tokens: the dialog that shows a new token cannot be closed by a stray click, and the token lives only in the
   state of the component.
+- OAuth: `requireUser()` runs before any redirect and before any fetch of a metadata document
+  (`src/app/oauth/authorize/page.tsx`, `loadConsent()`), as RFC 9700 asks.
+- OAuth: `parseMetadataUrl()` requires the address to equal its own WHATWG serialisation, which removes all numeric and
+  odd host forms before any DNS lookup; `public-address.ts` allows IPv6 only in `2000::/3`; `metadata-fetch.ts` pins
+  the connection to the checked address and follows no redirect.
+- OAuth: `exchangeCode()` deletes the code conditionally before any check and locks the row of the user, and
+  `refreshGrant()` swaps the hash conditionally, with the grant id in the refresh token so that reuse can be found.
+- OAuth: a prefix and a hash column per kind of secret, and comparisons in constant time (`src/features/oauth/secret.ts`).
+- OAuth: revoking deletes one row, so the access and the refresh token end together.
 
 ## Checks on the deployment
 
@@ -1046,6 +1385,13 @@ the threat.
 - `HIPPOWIKI_ADMIN_PASSWORD` is removed from the environment once the admin exists, and `npm run db:seed` is never run
   against a production database (Login).
 - The reverse proxy and its access logs do not record the `Authorization` header (API tokens).
+- The reverse proxy caps the request bodies of `/oauth/token` and `/oauth/register` (OAuth).
+- Outgoing connections of the container are allowed only to `443/tcp` on the public internet, so that no cloud
+  metadata service or internal network is reachable behind `public-address.ts` (OAuth).
+- The runtime does not set `NODE_TLS_REJECT_UNAUTHORIZED=0` or a proxy for outgoing requests, which would switch off
+  the certificate check or the pinned address of the metadata fetch (OAuth).
+- The issuer is the public `https` address, and the reverse proxy serves the `/.well-known/` documents under no other
+  host (OAuth).
 
 ## Standards coverage
 

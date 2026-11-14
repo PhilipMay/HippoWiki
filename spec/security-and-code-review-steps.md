@@ -114,7 +114,7 @@ user chooses.
 - [x] Browser security: headers, CSRF, caching and data sent to the client
 - [x] Login, passwords, sessions and users
 - [x] API tokens
-- [ ] OAuth
+- [x] OAuth
 - [ ] MCP server
 - [ ] Content: pages, folders, tabs, deletion and rendering
 - [ ] Logging, errors and failure handling
