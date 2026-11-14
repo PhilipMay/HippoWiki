@@ -119,7 +119,7 @@ user chooses.
 - [x] Content: pages, folders, tabs, deletion and rendering
 - [x] Logging, errors and failure handling
 - [x] Configuration and container image
-- [ ] Supply chain: dependencies, CI and release
+- [x] Supply chain: dependencies, CI and release
 - [ ] Cross-cutting: data model, architecture, documentation and tests
 - [ ] Standards cross-check
 - [ ] Summary and final check of the report

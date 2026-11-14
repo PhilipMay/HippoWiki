@@ -1934,6 +1934,244 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 
 ### Supply chain: dependencies, CI and release
 
+#### issue: no security contact and no private way to report vulnerabilities
+
+- Location: the root of the repository (no SECURITY.md); `README.md`, all sections
+- Severity: Minor. It is documentation only, but the project publishes an image that others run.
+- Category: docs
+- Problem: nothing in the repository says where to report a vulnerability, through which private channel, or what
+  answer to expect. Private vulnerability reporting of GitHub is a setting that cannot be seen from the repository.
+- Impact: someone who finds a flaw in the OAuth server or the MCP endpoint can only open a public issue.
+- Evidence: there is no SECURITY.md, CONTRIBUTING.md or CHANGELOG.md, and `README.md` does not mention security.
+- Suggestion (required): add SECURITY.md with the supported versions, the private channel, the expected time to
+  answer and how fixes are released.
+- Reference: OWASP A03:2025 Software Supply Chain Failures; BSI TR-03185-2 VM.01; ISO/IEC 29147.
+
+#### issue: no rule for how fast vulnerable dependencies are fixed, and nothing in CI detects them
+
+- Location: `spec/workflow.md`, section "Rules for every step"; `.github/dependabot.yml`; `.github/workflows/`
+- Severity: Minor. It is a gap in the documentation, and the alerts of Dependabot may be switched on in the settings.
+- Category: security
+- Problem: the only rule is that upgrading packages is "a task of its own", with no time frame by severity. No workflow
+  runs `npm audit`, a dependency review or a scan of the image.
+- Impact: a vulnerable `next` or `better-auth` can stay in the published image for an unbounded time, and nobody can
+  tell.
+- Evidence: "Upgrading existing packages is a task of its own, not part of a feature step." On 2026-11-14,
+  `npm audit` reports 7 moderate vulnerabilities, all in development tools (`minimatch` below
+  `@typescript-eslint/typescript-estree`, GHSA-g3hv-75wg-m249), and `npm audit --omit=dev` reports none; no check
+  would have failed either way.
+- Suggestion (required): add a rule with time frames (for example critical and high in production within 7 days,
+  moderate within 30) that makes a security fix not wait; make sure alerts and security updates of Dependabot are on;
+  optionally `npm audit --omit=dev --audit-level=high` in CI.
+- Reference: OWASP A03:2025 Software Supply Chain Failures; ASVS 15.1.1, 15.2.1; CWE-1395.
+
+#### issue: users cannot check that a published image is the one CI built, and "no signing" has no reason
+
+- Location: `spec/container-image.md`, section "Current limits"; `spec/roadmap.md`, section "Container Image";
+  `README.md`, section "Publishing"; `.github/workflows/container_image.yml`, lines 69–76
+- Severity: Minor. Changing the image needs write access to the package or the repository.
+- Category: security
+- Problem: "no image signing, provenance attestations or vulnerability scans" is listed as a limit without a reason.
+  The only check is the digest in the job summary, and `README.md` tells users to pull by tag, which can change.
+- Impact: an image pushed or replaced under a release tag cannot be told from the one CI built.
+- Evidence: "- no image signing, provenance attestations or vulnerability scans"; `README.md` pulls
+  `ghcr.io/<owner>/hippowiki:<tag>`.
+- Suggestion (required): give the reason as a decision, or add a provenance attestation
+  (`actions/attest-build-provenance` with the digest); in any case put the digest into the release notes and tell
+  users to pin it.
+- Reference: OWASP A03:2025 Software Supply Chain Failures; OWASP A08:2025 Software or Data Integrity Failures; BSI
+  TR-03185-2 BR.03; `SYS.1.6.A12`; CWE-494.
+
+#### issue: the release job holds `packages: write` for every trigger, and the spec overstates how the token is kept from the code
+
+- Location: `.github/workflows/container_image.yml`, lines 26–31; `spec/container-image.md`, section "Publishing"
+- Severity: Minor. Fork pull requests and Dependabot get a read-only token, and the dependencies run inside
+  `podman build`, not on the runner.
+- Category: security
+- Problem: the job gets `packages: write` for pushes, pull requests, manual runs and releases, though only a release
+  pushes. The comment says "the token is kept away from that code: … only the login step gets it", but the token is in
+  the memory of the runner process from the start of the job, and `scripts/image.sh` of the commit runs on the runner
+  before the login.
+- Impact: someone who can push a branch to the repository, or a malicious change merged to `main`, could push images
+  to the package without a release.
+- Evidence: `permissions: contents: read / packages: write` with the comment above.
+- Suggestion (required): split into a job that builds and tests without write rights and a job that only pushes, for
+  releases; at least correct the comment and the spec.
+- Reference: OWASP A03:2025 Software Supply Chain Failures; CWE-272.
+
+#### issue: GitHub actions are pinned to tags, not commit SHAs
+
+- Location: `.github/workflows/*.yml`, every `uses:` line (`actions/checkout@v7`, `actions/setup-node@v7`,
+  `actions/upload-artifact@v7`)
+- Severity: Minor. All actions are GitHub's own.
+- Category: security
+- Problem: a tag can be moved by the owner of the action, and in the release job `actions/checkout@v7` runs where
+  `packages: write` is available.
+- Impact: a compromised or moved tag runs foreign code in every workflow, the release included.
+- Evidence: all 17 `uses:` lines name a `@v7` tag.
+- Suggestion (required): pin each action to its commit SHA with the version as a comment; Dependabot keeps both up to
+  date.
+- Reference: OWASP A03:2025 Software Supply Chain Failures; OWASP A08:2025 Software or Data Integrity Failures;
+  CWE-829.
+
+#### issue: no list of the third-party components of the published image
+
+- Location: the repository and the releases; `Containerfile`, lines 35–42, the stage `migrate-tools`
+- Severity: Minor
+- Category: security
+- Problem: `package-lock.json` lists the npm tree of the repository, but not the image: the migration tools are
+  resolved anew at every build without a lockfile, and the Debian packages of the base image and the schema engine of
+  Prisma are listed nowhere.
+- Impact: when a vulnerability is announced, nobody can tell whether a release is affected.
+- Evidence: `npm install --no-audit --no-fund "prisma@${PRISMA_VERSION}" "dotenv@${DOTENV_VERSION}"`.
+- Suggestion (required): create an SBOM of the image for every release and attach it; an SBOM by TR-03183-2
+  (CycloneDX 1.6 or SPDX 3.0.1 with transitive dependencies) is a suggestion only.
+- Reference: OWASP A03:2025 Software Supply Chain Failures; ASVS 15.1.2; BSI TR-03185-2 QA.01; BSI TR-03183-2.
+
+#### issue: no changelog, and the release version is not tied to the version of the project
+
+- Location: the repository (no CHANGELOG.md); `package.json`, line 3; `spec/container-image.md`, section
+  "Publishing"
+- Severity: Minor
+- Category: docs
+- Problem: the image tag is the free-form release tag, checked only for its syntax; no file or rule says that a
+  release lists its changes and its security fixes. `roadmap.md` already expects fixes of a security review to reach
+  the deployment "with the next release".
+- Impact: operators cannot tell whether they need to update, or which release fixes what.
+- Evidence: `"version": "0.1.0"` and no changelog.
+- Suggestion (required): a changelog, or a rule that every release names its changes with a section "Security", and
+  version tags compared with `package.json`.
+- Reference: BSI TR-03185-2 BR.02, BR.04.
+
+#### issue: changes reach `main` without a second review, and this is not documented as a decision
+
+- Location: `CLAUDE.md`, section "Git Handling"; `spec/workflow.md`, section "Step plans"
+- Severity: Minor. It describes the process of a single maintainer.
+- Category: docs
+- Problem: the documented process commits to the current branch and pushes it; any review comes afterwards. Whether
+  rules of the repository require reviews or checks on `main` or protect release tags cannot be seen from the
+  repository.
+- Impact: one compromised developer account or machine can put code into `main` and publish a release.
+- Evidence: "push the current branch with `git push`, without asking first".
+- Suggestion (required): document it as a decision (single maintainer, CI as the gate, periodic reviews), or require
+  pull requests with passing checks and protect `v*` tags.
+- Reference: BSI TR-03185-2 QA.06; OWASP A03:2025 Software Supply Chain Failures.
+
+#### suggestion: new versions of dependencies arrive without a waiting period, and all install scripts run
+
+- Location: `.github/dependabot.yml` (no `cooldown`); `.npmrc`
+- Severity: Minor
+- Category: security
+- Problem: Dependabot proposes the newest versions every week however fresh they are, and every `npm ci` runs the
+  install scripts of the whole tree (today the root `postinstall`, `prisma`, `@prisma/engines`, `esbuild` and the
+  optional `fsevents`). A malicious new version with an install script would run on the next install.
+- Suggestion (optional): `cooldown` of about 7 days for `npm` and `docker` (security updates are not delayed), and
+  consider `ignore-scripts=true` with an explicit rebuild of the packages that need it, or write down why scripts
+  stay on.
+- Reference: OWASP A03:2025 Software Supply Chain Failures; CWE-829.
+
+#### suggestion: a release can publish an image of any commit, and the migration tools are resolved at release time
+
+- Location: `.github/workflows/container_image.yml`, lines 11–12 and 33–34; `Containerfile`, lines 35–42;
+  `spec/container-image.md`, section "Decisions"
+- Severity: Minor
+- Category: security
+- Problem: a published release builds the commit its tag points to, which need not be on `main` or have passed the
+  other workflows. The migration tools come outside the lockfile, Dependabot and `npm audit`; the decision weighs
+  reproducibility and cost, not this exposure.
+- Suggestion (optional): check in the release job that the commit is on `main`, protect `v*` tags, and lock the
+  migration tools with a lockfile of their own that Dependabot maintains.
+- Reference: OWASP A03:2025 Software Supply Chain Failures; CWE-829.
+
+#### nit: six workflows keep the default `persist-credentials: true` while `npm ci` runs install scripts
+
+- Location: `.github/workflows/end_to_end_tests.yml`, `end_to_end_tests_production.yml`, `format_check.yml`,
+  `integration_tests.yml`, `lint.yml`, `unit_tests.yml`, line 21 each
+- Severity: Nit. The token can only read and expires with the job.
+- Category: security
+- Problem: the checkout writes the token into `.git/config` before install scripts and tests run.
+- Suggestion (optional): `persist-credentials: false` on every checkout, as `container_image.yml` has.
+- Reference: CWE-522.
+
+#### nit: the licence is missing in `package.json`, and the licence sentence of the README is not MIT's
+
+- Location: `package.json`; `README.md`, section "Licensing"
+- Severity: Nit
+- Category: docs
+- Problem: `LICENSE` is MIT, but `package.json` has no `license` field, so SBOM tools report the project as
+  unlicensed; "you may not use this file except in compliance with the License" is wording of Apache 2.0.
+- Suggestion (optional): add `"license": "MIT"` and shorten the sentence.
+- Reference: BSI TR-03185-2 LE.01, LE.02.
+
+#### nit: no guide for contributions
+
+- Location: the repository (no CONTRIBUTING.md); `README.md`
+- Severity: Nit
+- Category: docs
+- Problem: nothing says whether and how outside contributions are accepted and which checks they must pass.
+- Suggestion (optional): a short CONTRIBUTING.md or a section in `README.md`.
+- Reference: BSI TR-03185-2 GV.01.
+
+#### nit: ESLint 9 is marked as no longer supported, and the hold-back is not written down
+
+- Location: `package.json`, `eslint`; the entry `node_modules/eslint` in `package-lock.json`
+- Severity: Nit. It is a development tool.
+- Category: security
+- Problem: the lockfile marks ESLint 9.39.5 deprecated; the plugins of `eslint-config-next` do not accept ESLint 10
+  yet, and no spec says so.
+- Suggestion (optional): note the hold-back and its cause in `tech.md`.
+- Reference: CWE-1104.
+
+#### question: does Dependabot find the files named `Containerfile`?
+
+- Location: `.github/dependabot.yml`, the two `docker` entries
+- Severity: Nit
+- Category: correctness
+- Problem: both entries rely on Dependabot recognising the name `Containerfile` instead of `Dockerfile`, and
+  `container-image.md` says the first runs on GitHub are still to come. If it does not, neither image is ever updated,
+  though three specs say it is.
+- Suggestion (optional): check in the dependency graph of the repository that both files are listed.
+
+#### question: does the image carry the licence notices of the third-party code, including the LGPL `libvips` of `sharp`?
+
+- Location: `Containerfile`, lines 58–70, the stage `app`
+- Severity: Nit
+- Category: docs
+- Problem: the standalone output copies only the files that are imported, in minified bundles, so licence texts may be
+  missing; `sharp`, an optional dependency of `next`, brings `@img/sharp-libvips-*` under LGPL-3.0-or-later. The image
+  holds `@img` in `/app/node_modules`.
+- Suggestion (optional): count the licence files in the image against the packages and, if they are missing, add a
+  file of third-party notices from the SBOM.
+- Reference: BSI TR-03185-2 LE.02.
+
+#### Reviewed
+
+- Files read: the seven workflows, `.github/dependabot.yml`, `package.json`, `.npmrc`, `.nvmrc`, `LICENSE`,
+  `README.md`, `Containerfile`, `scripts/Containerfile`, `scripts/image.sh`, `.containerignore`, the CI and image
+  sections of the specs, and `package-lock.json` entry by entry (install scripts, deprecations, sources, integrity,
+  licences).
+- Evidence from commands on 2026-11-14: `npm audit` 7 moderate (development tools only), `npm audit --omit=dev` 0;
+  `npm audit signatures`: 727 packages with verified registry signatures, 197 with verified attestations; `npm ls`
+  reports no invalid, extraneous or missing package apart from optional packages of other platforms.
+- Permissions: every workflow sets `permissions: contents: read` at the top; only the job of the image widens it
+  (finding above). No workflow uses `pull_request_target`; the only secret is `GITHUB_TOKEN`, used in the login step
+  of a release only.
+- Caches: `setup-node` caches npm only in the six test workflows, scoped to the ref; the release job uses no cache, and
+  `npm ci` checks the integrity of every package anyway.
+- Script injection (CWE-94): the release tag, the actor and the commit reach the shell only through `env`, and the tag
+  is checked by `check_tag()` before the build; no other workflow uses `${{ github.event.* }}`.
+- The release pushes the image that passed the smoke test, without a rebuild, with the token on stdin and
+  `persist-credentials: false`; `latest` is never pushed, with the reason documented.
+- Installs: `npm ci` from the lockfile in CI and in the image; all 840 entries come from `registry.npmjs.org` with an
+  integrity hash; no private scopes. `.npmrc` holds only `strict-peer-deps=true`.
+- Versions: `next`, `react` and `react-dom` are pinned exactly; no runtime package is in `devDependencies` or the other
+  way round.
+- Dependabot covers npm, both container images and the actions, weekly, as the specs say (see the question on the
+  file name).
+- Build instructions (BSI TR-03185-2 BR.01): `README.md` covers the local build, the tests and the image.
+- The IDs of BSI TR-03185-2 are taken from the plan of this review; their exact wording could not be checked (see
+  "Open questions").
+
 ### Cross-cutting: data model, architecture, documentation and tests
 
 ## Accepted deviations
@@ -1970,8 +2208,9 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   (Logging): `api-tokens.md`, "The check of a bearer token".
 - ASVS 12.3.1, no TLS to the database (Configuration): `container-image.md`, "Configuration" and "Current limits":
   `DATABASE_URL` takes no parameters such as `sslmode`, so the database must stay on a network inside the host.
-- No `HEALTHCHECK` in the image, one instance only, and no signing, provenance or scan of the image (Configuration):
-  `container-image.md`, "Health", "What the environment has to provide" and "Current limits", with `roadmap.md`.
+- No `HEALTHCHECK` in the image and one instance only (Configuration): `container-image.md`, "Health", "What the
+  environment has to provide" and "Current limits", with `roadmap.md`. The missing signing, provenance and scan of the
+  image has no reason and is a finding in "Supply chain".
 - `/api/health` is public (Configuration, ASVS 13.4.5): `container-image.md`, "Health".
 
 ## What is good
@@ -2050,6 +2289,12 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 - Configuration: the smoke test in `scripts/image.sh` checks the user, the write protection, the absence of `.env`
   files, the security headers and that failed starts do not serve.
 - Configuration: `parsePublicUrl()` in `src/lib/env.ts` accepts only a bare origin.
+- Supply chain: every workflow defaults to `permissions: contents: read`, untrusted values reach the shell only
+  through `env`, and the release tag is checked against an allowlist before the build (`check_tag()` in
+  `scripts/image.sh`).
+- Supply chain: the release pushes exactly the image that passed the smoke test, and its digest and OCI labels are
+  recorded.
+- Supply chain: `npm ci` from a lockfile with integrity hashes in CI and in the image, and `strict-peer-deps`.
 
 ## Checks on the deployment
 
@@ -2104,9 +2349,19 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   is taken before a new version starts (Configuration).
 - `NODE_OPTIONS` has no `--inspect`, and `HIPPOWIKI_LOG_CLIENT_ADDRESS` is `false` outside a deliberate check
   (Configuration).
+- In the settings of the repository: rules for `main` (review, required checks) and for release tags, who may publish
+  releases, private vulnerability reporting, alerts and security updates of Dependabot, read-only default permissions
+  of workflows, approval for workflows of fork pull requests, and who may push to the image package (Supply chain).
+- The deployment pulls the image by digest, not by tag (Supply chain).
+- No vulnerability scanner is installed on the review machine, so the image was not scanned; a scan of the published
+  image (for example with Trivy or Grype) is left to the deployment (Supply chain).
 
 ## Standards coverage
 
 Written in the standards cross-check.
 
 ## Open questions
+
+- The exact wording of BSI TR-03185-2 could not be checked during the review; the requirement IDs (VM.01, LE.01,
+  LE.02, GV.01, BR.01–BR.04, QA.01, QA.06) are those of the plan of the review. Check them against the document before
+  a fix plan relies on them.
