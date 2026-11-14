@@ -30,6 +30,33 @@ user chooses.
 - Not in: installing tools, scanners or packages, upgrading packages, and the Git history (see "Git Handling" in
   `CLAUDE.md`).
 
+## How the review is run
+
+- The plan runs in one session, step by step in checklist order, as "Step plans" in `spec/workflow.md` describes. No
+  two steps run at the same time, and no step runs in a session or agent of its own in parallel with another.
+- Only the session writes `spec/review-report.md`, ticks the checklist and commits. It also alone starts and stops the
+  local server and the database (`npm run dev`, `npm run db:up`), runs the test commands and sends the `curl` requests,
+  so that no two runs compete for ports or containers.
+- The steps "Report outline, threat model and standards", "Standards cross-check", "Summary and final check of the
+  report" and "Wrap-up" are done by the session itself, because they need the whole report.
+- For each area step in between, from "Access control and the entry points of requests" to "Cross-cutting: data model,
+  architecture, documentation and tests", the session hands the reading of the code to a read-only subagent with a
+  fresh context. Its brief names:
+  - the files in scope of the step and the feature specs they are checked against,
+  - the questions of the step's "Build" section and the threats of the threat model that the step checks,
+  - the standards of "Rules for the review" that the step concerns,
+  - the format of a finding (`issue-report.md` and "Rules for the review") and what to return: the findings, the
+    "Reviewed" list and the good solutions with their location.
+- The subagent changes nothing: no file edits, no commands that write, no server or container of its own. What it can
+  only show with a running server or a test, it returns as a probe for the session to run.
+- Where an area splits cleanly, the session may run two such subagents of the same step in parallel, for example the
+  authorization request and consent next to the token endpoint and refresh, or the dependencies next to the CI
+  workflows.
+- The session checks the evidence of every returned finding before it goes into the report: it opens the cited lines,
+  runs the probes, and writes a finding it cannot confirm as a `question:`. It merges findings that an earlier area
+  already reported (the same problem in several places is one finding) and keeps the severities consistent across
+  areas.
+
 ## Rules for the review
 
 - Every finding follows `issue-report.md`: Title, Location, Severity, Category, Problem, Impact, Evidence,
