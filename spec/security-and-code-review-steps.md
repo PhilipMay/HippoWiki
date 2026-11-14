@@ -17,9 +17,11 @@ user chooses.
   seen them yet.
 - In: evidence from reading the code, from running the existing commands (`npm run check`, `npm run test:coverage`,
   `npm run test:integration`, `npm run test:e2e`, `npm audit`), from the read-only commands `npm ls` and
-  `npm audit signatures`, and from requests to a local server (`npm run dev` against the database of `npm run db:up`,
-  or the image of `npm run image:build`) sent with `curl`. Throwaway probe scripts go to a temporary directory outside
-  the repository and are never committed.
+  `npm audit signatures`, and from requests to a local server sent with `curl`. The server is `next dev` (or the
+  image of `npm run image:build`) against a throwaway PostgreSQL container of its own, with the image of
+  `scripts/Containerfile`, another port and no volume, so that the probe users, pages, tokens and clients never reach
+  the development database of `npm run db:up`. The container is removed when the review ends. Throwaway probe scripts
+  go to a temporary directory outside the repository and are never committed.
 - In: a vulnerability scan of the image, but only with a scanner that is already installed on the machine.
 - Not in: any change to code, tests, configuration, migrations, `README.md` or a spec other than
   `spec/review-report.md`, this step file and the catalog in `CLAUDE.md`. A finding that needs a fix describes the
@@ -35,7 +37,7 @@ user chooses.
 - The plan runs in one session, step by step in checklist order, as "Step plans" in `spec/workflow.md` describes. No
   two steps run at the same time, and no step runs in a session or agent of its own in parallel with another.
 - Only the session writes `spec/review-report.md`, ticks the checklist and commits. It also alone starts and stops the
-  local server and the database (`npm run dev`, `npm run db:up`), runs the test commands and sends the `curl` requests,
+  local server and its throwaway database (see "Scope"), runs the test commands and sends the `curl` requests,
   so that no two runs compete for ports or containers.
 - The steps "Report outline, threat model and standards", "Standards cross-check", "Summary and final check of the
   report" and "Wrap-up" are done by the session itself, because they need the whole report.
@@ -107,7 +109,7 @@ user chooses.
 
 ## Checklist
 
-- [ ] Report outline, threat model and standards
+- [x] Report outline, threat model and standards
 - [ ] Access control and the entry points of requests
 - [ ] Browser security: headers, CSRF, caching and data sent to the client
 - [ ] Login, passwords, sessions and users
@@ -549,8 +551,8 @@ Questions:
 - `npm run check` passes.
 - Each question above is answered by a finding or under "Reviewed" in this area of the report.
 - A failed login, a forged token and a refused metadata document address are tried on a local server, and the log
-  lines they write are noted as evidence. A database that is stopped during a request is tried if it is simple with
-  `npm run db:up`; otherwise this is noted as not checked.
+  lines they write are noted as evidence. A database that is stopped during a request is tried if it is simple with the
+  throwaway database container; otherwise this is noted as not checked.
 
 ## Configuration and container image
 
