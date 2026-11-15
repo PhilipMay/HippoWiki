@@ -13,6 +13,9 @@ The specification lives in the `spec/` directory. This catalog should always be 
   listed here while it exists
 - `spec/user-types-requirements.md`: the requirements of the user types in progress (admin and user, the type chosen
   at creation and never changed, what each type can reach, existing installations)
+- `spec/user-types-steps.md`: the step plan of the user types in progress (types in the database and the update of
+  existing installations, the user list for every account, where the login leads, no content for admins, choosing the
+  type of a new account, no tokens and no apps for admins, wrap-up)
 - `spec/step-plan-workflow.md`: how features are planned in step files, when a step is done, what to do when it
   cannot be finished, how a feature is wrapped up, what a feature spec holds, and how a finding of the review report is
   fixed and deleted
