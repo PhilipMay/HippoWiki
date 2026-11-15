@@ -59,6 +59,12 @@ export const OAUTH_CLIENT_METADATA_URL: UniqueConstraint = {
 export const OAUTH_CODE_HASH: UniqueConstraint = { indexes: ["OAuthCode_codeHash_key"], field: "codeHash" };
 
 /**
+ * The unique index on the folder and the user of a role, as Prisma creates it for `@@unique`: a user holds at most one
+ * role per folder.
+ */
+export const FOLDER_ROLE_USER: UniqueConstraint = { indexes: ["FolderRole_folderId_userId_key"], field: "userId" };
+
+/**
  * Whether the error is a violation of the given unique constraint. With a driver adapter, Prisma reports the violated
  * constraint in `meta.driverAdapterError.cause.constraint`: as the index name or, if that is unknown, as the fields.
  */
@@ -99,4 +105,22 @@ export function isForeignKeyViolation(err: unknown, key?: ForeignKey): boolean {
   const constraint = adapterError?.cause?.constraint;
   if (constraint?.index !== undefined) return key.constraints.includes(constraint.index);
   return constraint?.fields?.includes(key.field) ?? false;
+}
+
+/** The SQLSTATE of a `check_violation`, which the triggers of the migrations raise. */
+const CHECK_VIOLATION = "23514";
+
+/** The message of the trigger that refuses a role of an admin (`prisma/migrations/*_add_folder_roles/`). */
+const ADMIN_ROLE_MESSAGE = "an admin cannot have a role on a folder";
+
+/**
+ * Whether the error is the refusal of the trigger that keeps admins without a role on any folder. Prisma reports an
+ * error that a trigger raises with a code of its own, which differs between writes, so only the PostgreSQL error in
+ * `meta.driverAdapterError.cause` is read: its SQLSTATE and its message.
+ */
+export function isAdminRoleViolation(err: unknown): boolean {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError)) return false;
+  const adapterError = err.meta?.driverAdapterError as { cause?: { code?: string; message?: string } } | undefined;
+  const cause = adapterError?.cause;
+  return cause?.code === CHECK_VIOLATION && cause.message === ADMIN_ROLE_MESSAGE;
 }

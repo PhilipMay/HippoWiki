@@ -7,6 +7,8 @@ import {
   API_TOKEN_ACCESS_HASH,
   API_TOKEN_HASH,
   FOLDER_NAME,
+  FOLDER_ROLE_USER,
+  isAdminRoleViolation,
   isForeignKeyViolation,
   isUniqueViolation,
   LAST_EDITOR,
@@ -18,7 +20,7 @@ import {
   type UniqueConstraint,
 } from "@/lib/db-errors";
 
-import { createFolder, createPage, createTab, createUser, getTestDb } from "../e2e/support/database";
+import { createFolder, createFolderRole, createPage, createTab, createUser, getTestDb } from "../e2e/support/database";
 
 const NAME_CONSTRAINTS = {
   FOLDER_NAME,
@@ -29,6 +31,7 @@ const NAME_CONSTRAINTS = {
   API_TOKEN_ACCESS_HASH,
   OAUTH_CLIENT_METADATA_URL,
   OAUTH_CODE_HASH,
+  FOLDER_ROLE_USER,
 } as const;
 
 /** Creates an OAuth client directly in the test database. */
@@ -61,6 +64,7 @@ function expectUniqueViolationOf(err: unknown, expected: UniqueConstraint): void
     expect(isUniqueViolation(err, constraint), name).toBe(constraint === expected);
   }
   expect(isForeignKeyViolation(err)).toBe(false);
+  expect(isAdminRoleViolation(err)).toBe(false);
 }
 
 /**
@@ -221,6 +225,75 @@ describe("unique violations", () => {
     await getTestDb().oAuthCode.create({ data: code });
 
     expectUniqueViolationOf(await errorOf(getTestDb().oAuthCode.create({ data: code })), OAUTH_CODE_HASH);
+  });
+});
+
+describe("roles on folders", () => {
+  it("reports a second role of the same user on the same folder as a violation of FOLDER_ROLE_USER", async () => {
+    const [folder, user] = [await createFolder(), await createUser()];
+    await createFolderRole({ folder, user, role: "reader" });
+
+    expectUniqueViolationOf(await errorOf(createFolderRole({ folder, user, role: "owner" })), FOLDER_ROLE_USER);
+  });
+
+  it("stores a role of a user who is not an admin, and roles of one user on several folders", async () => {
+    const user = await createUser();
+    const [first, second] = [await createFolder(), await createFolder()];
+
+    await createFolderRole({ folder: first, user, role: "writer" });
+    await createFolderRole({ folder: second, user, role: "owner" });
+
+    expect(await getTestDb().folderRole.findMany({ where: { userId: user.id }, orderBy: { role: "asc" } })).toEqual([
+      expect.objectContaining({ folderId: first.id, role: "writer" }),
+      expect.objectContaining({ folderId: second.id, role: "owner" }),
+    ]);
+  });
+
+  it("refuses to insert a role of an admin, and the refusal is recognised", async () => {
+    const [folder, admin] = [await createFolder(), await createUser({ type: "admin" })];
+
+    const err = await errorOf(createFolderRole({ folder, user: admin, role: "reader" }));
+
+    expect(isAdminRoleViolation(err)).toBe(true);
+    for (const [name, constraint] of Object.entries(NAME_CONSTRAINTS)) {
+      expect(isUniqueViolation(err, constraint), name).toBe(false);
+    }
+    expect(isForeignKeyViolation(err)).toBe(false);
+    expect(await getTestDb().folderRole.count()).toBe(0);
+  });
+
+  it("refuses to move a role to an admin, with update and with updateMany, and changes nothing", async () => {
+    const [folder, user, admin] = [await createFolder(), await createUser(), await createUser({ type: "admin" })];
+    const role = await createFolderRole({ folder, user, role: "owner" });
+
+    expect(
+      isAdminRoleViolation(
+        await errorOf(getTestDb().folderRole.update({ where: { id: role.id }, data: { userId: admin.id } })),
+      ),
+    ).toBe(true);
+    expect(isAdminRoleViolation(await errorOf(getTestDb().folderRole.updateMany({ data: { userId: admin.id } })))).toBe(
+      true,
+    );
+    expect(await getTestDb().folderRole.findUniqueOrThrow({ where: { id: role.id } })).toStrictEqual(role);
+  });
+
+  it("does not take other errors for the refusal of an admin", async () => {
+    const folder = await createFolder();
+    const user = { id: crypto.randomUUID() };
+
+    const err = await errorOf(createFolderRole({ folder, user, role: "reader" }));
+
+    expect(isForeignKeyViolation(err)).toBe(true);
+    expect(isAdminRoleViolation(err)).toBe(false);
+    expect(isAdminRoleViolation(new Error("an admin cannot have a role on a folder"))).toBe(false);
+  });
+
+  it("reports deleting a folder or a user that still has a role", async () => {
+    const [folder, user] = [await createFolder(), await createUser()];
+    await createFolderRole({ folder, user, role: "reader" });
+
+    expectForeignKeyViolation(await errorOf(getTestDb().folder.delete({ where: { id: folder.id } })));
+    expectForeignKeyViolation(await errorOf(getTestDb().user.delete({ where: { id: user.id } })));
   });
 });
 

@@ -269,6 +269,8 @@ test("cancel on the form returns to the folder and creates nothing", async ({ pa
 
 test("saving into a folder that no longer exists shows an error and keeps the values", async ({ page }) => {
   const dialog = await openSaveDialog(page, "# Orphan\n\nContent that must not get lost");
+  // The roles of a folder keep it from being deleted, so they go first.
+  await getTestDb().folderRole.deleteMany({ where: { folderId: handbook.id } });
   await getTestDb().folder.delete({ where: { id: handbook.id } });
   await dialog.getByRole("button", { name: "Save" }).click();
 

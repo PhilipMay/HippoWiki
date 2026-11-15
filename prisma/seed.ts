@@ -1,6 +1,6 @@
-// Inserts the known users and a sample folder with sample pages into the database configured by DATABASE_URL. Run it
-// with `npm run db:seed`; the Prisma CLI loads `.env` before starting this script. The folder and its pages are
-// upserted by fixed ids, so running it again changes nothing. The known users are upserted by their names: running it
+// Inserts the known users and a sample folder with sample pages, owned by the known user, into the database configured
+// by DATABASE_URL. Run it with `npm run db:seed`; the Prisma CLI loads `.env` before starting this script. The folder,
+// its pages and the role of the known user are upserted by fixed keys, so running it again changes nothing. The known users are upserted by their names: running it
 // again gives them their known passwords back and leaves their types as they are, because a type never changes.
 import { titleFromContent } from "../src/features/pages/derive";
 import { CREDENTIAL_PROVIDER_ID, newUserData } from "../src/features/users/records";
@@ -103,6 +103,13 @@ async function main() {
       where: { id: folder.id },
       create: { ...folder, lastEditedById },
       update: { name: folder.name, lastEditedById },
+    });
+    // The known user owns the sample folder, as every user owns every folder after the update of an existing
+    // installation. Admins get no role.
+    await db.folderRole.upsert({
+      where: { folderId_userId: { folderId: folder.id, userId: user.id } },
+      create: { folderId: folder.id, userId: user.id, role: "owner" },
+      update: { role: "owner" },
     });
     for (const { id, name, content } of pages) {
       // Like the page form, the title comes from the content's first heading.

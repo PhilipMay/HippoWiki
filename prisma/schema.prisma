@@ -14,17 +14,45 @@ datasource db {
 
 /// A folder: the top level of the content structure.
 model Folder {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   /// The part of the folder's address `/folders/<name>`; unique across the wiki.
-  name           String   @unique
-  createdAt      DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+  name           String       @unique
+  createdAt      DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime     @updatedAt @db.Timestamptz(3)
   /// The user who last edited the folder: changes on the same writes as `updatedAt`, so that both describe the same
   /// change. Creating it counts as an edit.
-  lastEditedById String   @db.Uuid
-  lastEditedBy   User     @relation("FolderLastEditedBy", fields: [lastEditedById], references: [id], onDelete: Restrict)
+  lastEditedById String       @db.Uuid
+  lastEditedBy   User         @relation("FolderLastEditedBy", fields: [lastEditedById], references: [id], onDelete: Restrict)
   tabs           Tab[]
   pages          Page[]
+  /// The roles of the users on the folder.
+  roles          FolderRole[]
+}
+
+/// The role of a user on a folder (`src/features/folder-roles/roles.ts`): what the user may see and do with the folder
+/// in the browser. A user has at most one role per folder, and a user without a role does not see the folder. A trigger
+/// in the migration refuses every role of an admin, so that no code, command or crafted request gives an admin a role.
+model FolderRole {
+  id        String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  folderId  String         @db.Uuid
+  folder    Folder         @relation(fields: [folderId], references: [id], onDelete: Restrict)
+  userId    String         @db.Uuid
+  user      User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  role      FolderRoleType
+  createdAt DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime       @updatedAt @db.Timestamptz(3)
+
+  @@unique([folderId, userId])
+  // For the folders of a user.
+  @@index([userId])
+}
+
+/// A role on a folder, from the lowest to the highest (`src/features/folder-roles/roles.ts`).
+enum FolderRoleType {
+  reader
+  writer
+  manager
+  owner
 }
 
 /// A tab: an optional section inside a folder.
@@ -84,17 +112,17 @@ model Page {
 /// A user account. The table has the shape Better Auth expects for its `user` model with the `username` plugin; Better
 /// Auth reads it through its Prisma adapter, and the users service writes it with Prisma.
 model User {
-  id                 String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id                 String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   /// Better Auth needs a display name; it is always the same as `username`.
   name               String
   /// Better Auth needs an email address; it is the hidden placeholder `<username>@users.hippowiki.invalid`, which is
   /// never shown and never gets mail.
-  email              String      @unique
-  emailVerified      Boolean     @default(false)
+  email              String       @unique
+  emailVerified      Boolean      @default(false)
   /// A field of Better Auth that HippoWiki does not use.
   image              String?
   /// The user name people log in with; unique across the wiki.
-  username           String      @unique
+  username           String       @unique
   /// What the account may do: an admin manages the accounts, a user works with the content. Chosen when the account is
   /// created and never changed: a trigger in the migration refuses every update that changes it. No default, so that
   /// every write that creates a user has to name it.
@@ -102,19 +130,21 @@ model User {
   /// A field of the `username` plugin that HippoWiki does not use.
   displayUsername    String?
   /// Whether the user still has the first password and must set an own one before doing anything else.
-  mustChangePassword Boolean     @default(true)
-  createdAt          DateTime    @default(now()) @db.Timestamptz(3)
-  updatedAt          DateTime    @updatedAt @db.Timestamptz(3)
+  mustChangePassword Boolean      @default(true)
+  createdAt          DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime     @updatedAt @db.Timestamptz(3)
   sessions           Session[]
   accounts           Account[]
   /// The folders, tabs and pages the user edited last.
-  lastEditedFolders  Folder[]    @relation("FolderLastEditedBy")
-  lastEditedTabs     Tab[]       @relation("TabLastEditedBy")
-  lastEditedPages    Page[]      @relation("PageLastEditedBy")
+  lastEditedFolders  Folder[]     @relation("FolderLastEditedBy")
+  lastEditedTabs     Tab[]        @relation("TabLastEditedBy")
+  lastEditedPages    Page[]       @relation("PageLastEditedBy")
   /// The API tokens of the user, for scripts and tools, and the grants of the user to OAuth clients.
   apiTokens          ApiToken[]
   /// The authorization codes that wait to be exchanged for a grant of the user.
   oauthCodes         OAuthCode[]
+  /// The roles of the user on folders; an admin has none.
+  folderRoles        FolderRole[]
 }
 
 /// The type of an account (`src/features/users/user-type.ts`).

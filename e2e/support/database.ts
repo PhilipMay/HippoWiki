@@ -13,6 +13,8 @@ import {
   PrismaClient,
   type ApiToken,
   type Folder,
+  type FolderRole,
+  type FolderRoleType,
   type Page,
   type Prisma,
   type Session,
@@ -21,7 +23,7 @@ import {
 } from "@/generated/prisma/client";
 import { hashPassword } from "@/lib/password-hash";
 
-import { KNOWN_USERS } from "../../prisma/known-users";
+import { KNOWN_USER, KNOWN_USERS } from "../../prisma/known-users";
 import { SESSIONS_FILE } from "./auth";
 import { TEST_DATABASE_NAME, TEST_DATABASE_URL } from "./container";
 
@@ -210,17 +212,56 @@ export async function createUser({
   });
 }
 
-/** The fields of a folder that `createFolder()` can set, and the user who last edited it. */
-type CreateFolderData = Partial<Omit<Prisma.FolderUncheckedCreateInput, "lastEditedById">> & { editor?: User };
+/** A role on a folder that `createFolder()` gives: the user and the role. */
+export type FolderRoleData = { user: { id: string }; role: FolderRoleType };
+
+/**
+ * The fields of a folder that `createFolder()` can set, the user who last edited it and the roles of users on the
+ * folder.
+ */
+type CreateFolderData = Partial<Omit<Prisma.FolderUncheckedCreateInput, "lastEditedById" | "roles">> & {
+  editor?: User;
+  roles?: readonly FolderRoleData[];
+};
+
+/**
+ * The roles a folder gets when a test names none: the known user `alice` is Owner when that user exists, as after
+ * `resetTestDatabase()`, so that the end-to-end tests, which run as `alice`, see every folder they create. The
+ * integration tests start from empty tables, so their folders get no role unless the test gives one.
+ */
+async function defaultRoles(): Promise<FolderRoleData[]> {
+  const alice = await getTestDb().user.findUnique({ where: { id: KNOWN_USER.id }, select: { id: true } });
+  return alice ? [{ user: alice, role: "owner" }] : [];
+}
 
 /**
  * Creates a folder directly in the test database, with a unique name unless one is given. The given editor is its last
  * editor; without one, a new user is created for it, so that a test that starts from an empty database needs no user
- * of its own. Any other field can be overridden, e.g. `updatedAt`.
+ * of its own. The given roles are stored with it; without them, `alice` is its Owner if that user exists (see
+ * `defaultRoles()`). Any other field can be overridden, e.g. `updatedAt`.
  */
-export async function createFolder({ editor, ...data }: CreateFolderData = {}): Promise<Folder> {
+export async function createFolder({ editor, roles, ...data }: CreateFolderData = {}): Promise<Folder> {
   const lastEditedById = (editor ?? (await createUser())).id;
-  return getTestDb().folder.create({ data: { name: `test-folder-${crypto.randomUUID()}`, ...data, lastEditedById } });
+  const folder = await getTestDb().folder.create({
+    data: { name: `test-folder-${crypto.randomUUID()}`, ...data, lastEditedById },
+  });
+  for (const { user, role } of roles ?? (await defaultRoles())) {
+    await createFolderRole({ folder, user, role });
+  }
+  return folder;
+}
+
+/** Gives the user the role on the folder, directly in the test database. */
+export async function createFolderRole({
+  folder,
+  user,
+  role,
+}: {
+  folder: { id: string };
+  user: { id: string };
+  role: FolderRoleType;
+}): Promise<FolderRole> {
+  return getTestDb().folderRole.create({ data: { folderId: folder.id, userId: user.id, role } });
 }
 
 /** The fields of a tab that `createTab()` can set, the folder it belongs to and the user who last edited it. */
