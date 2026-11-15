@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { KNOWN_USER } from "../prisma/known-users";
-import { NO_STORAGE_STATE, USER_STORAGE_STATE } from "./support/auth";
+import { ADMIN_STORAGE_STATE, NO_STORAGE_STATE, USER_STORAGE_STATE } from "./support/auth";
 import { collectErrors } from "./support/browser";
 import { createFolder, createPage, createUser, getTestDb, resetTestDatabase, TEST_PASSWORD } from "./support/database";
 import { expect, test } from "./support/test";
@@ -346,6 +346,43 @@ test("a crafted way back to another site leads to the folder list after the pass
   await submitChange(page, {});
 
   await expect(page).toHaveURL("/folders");
+});
+
+test("a new admin lands on the user list after the first password change", async ({ page }) => {
+  const errors = collectErrors(page);
+  await createUser({ name: "maria", type: "admin" });
+  await submitLogin(page, "maria");
+  await expectChangePasswordPage(page);
+
+  await submitChange(page, {});
+
+  await expect(page).toHaveURL("/users");
+  await expect(page.getByRole("heading", { level: 1, name: "Users" })).toBeVisible();
+  await expect(page.getByRole("banner").getByRole("link", { name: "Folders" })).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test("a new admin with a way back into the content lands on the user list after the change", async ({ page }) => {
+  await createUser({ name: "maria", type: "admin" });
+  await page.goto("/login?next=%2Ffolders%2Fteam");
+  await page.getByLabel("User name").fill("maria");
+  await page.getByLabel("Password").fill(TEST_PASSWORD);
+  await page.getByRole("button", { name: "Log in" }).click();
+  await expect(page).toHaveURL("/change-password?next=%2Ffolders%2Fteam");
+
+  await submitChange(page, {});
+
+  await expect(page).toHaveURL("/users");
+});
+
+test.describe("an admin without a pending password change", () => {
+  test.use({ storageState: ADMIN_STORAGE_STATE });
+
+  test("who opens the password change lands on the user list", async ({ page }) => {
+    await page.goto("/change-password?next=%2Ffolders");
+
+    await expect(page).toHaveURL("/users");
+  });
 });
 
 test.describe("a user without a pending password change", () => {

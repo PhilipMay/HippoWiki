@@ -9,6 +9,7 @@ import {
   deletedPagesPath,
   folderPath,
   foldersPath,
+  landingPath,
   loginPath,
   mcpPath,
   oauthAuthorizePath,
@@ -259,4 +260,53 @@ describe("loginPath and changePasswordPath", () => {
       expect(changePasswordPath(next)).toBe("/change-password");
     },
   );
+});
+
+describe("landingPath", () => {
+  const ADMIN = { type: "admin" } as const;
+  const USER = { type: "user" } as const;
+
+  it.each([
+    "/",
+    "/folders",
+    "/folders/team",
+    "/folders/team/guides",
+    "/folders/team/intro.md?action=edit",
+    "/folders/team?action=create",
+    "/folders?view=all",
+    "/deleted-pages",
+    "/deleted-pages/team",
+    "/deleted-pages/team/7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002?action=restore",
+    "/?next=/users",
+    "/folders#top",
+  ])("leads an admin from the home page or the content %j to the user list", (next) => {
+    expect(landingPath(next, ADMIN)).toBe("/users");
+  });
+
+  it.each([
+    "/folderstuff",
+    "/deleted-pages-old",
+    "/users",
+    "/users?action=create",
+    "/account",
+    "/account?action=create",
+    "/oauth/authorize?client_id=abc&state=x%2Fy&redirect_uri=%2Ffolders",
+    "/users?next=/folders",
+  ])("keeps every other way back %j of an admin", (next) => {
+    expect(landingPath(next, ADMIN)).toBe(next);
+  });
+
+  it.each([
+    "/",
+    "/folders",
+    "/folders/team",
+    "/folders/team?action=create",
+    "/deleted-pages/team",
+    "/folderstuff",
+    "/users",
+    "/account",
+    "/oauth/authorize?client_id=abc&state=x%2Fy",
+  ])("keeps every way back %j of a user", (next) => {
+    expect(landingPath(next, USER)).toBe(next);
+  });
 });

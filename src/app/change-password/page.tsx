@@ -6,7 +6,7 @@ import { notFound, redirect } from "next/navigation";
 import { changeFirstPassword } from "@/features/auth/actions";
 import ChangePasswordForm from "@/features/auth/components/ChangePasswordForm";
 import { requireSession } from "@/features/auth/session";
-import { NEXT_PARAM, parseAction, parseView, safeNextPath } from "@/lib/addresses";
+import { landingPath, NEXT_PARAM, parseAction, parseView, safeNextPath } from "@/lib/addresses";
 import { pageTitle } from "@/lib/site";
 
 export const metadata: Metadata = {
@@ -29,7 +29,7 @@ export default async function ChangePasswordPage({ searchParams }: PageProps<"/c
   const next = safeNextPath(query[NEXT_PARAM]);
 
   // Without a pending change there is nothing to do here.
-  if (!user.mustChangePassword) redirect(next);
+  if (!user.mustChangePassword) redirect(landingPath(next, user));
 
   return (
     <Stack spacing={3} sx={{ maxWidth: 400, mx: "auto" }}>

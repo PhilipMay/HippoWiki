@@ -6,7 +6,7 @@ import { notFound, redirect } from "next/navigation";
 import { logIn } from "@/features/auth/actions";
 import LoginForm from "@/features/auth/components/LoginForm";
 import { getCurrentUser } from "@/features/auth/session";
-import { changePasswordPath, NEXT_PARAM, parseAction, parseView, safeNextPath } from "@/lib/addresses";
+import { changePasswordPath, landingPath, NEXT_PARAM, parseAction, parseView, safeNextPath } from "@/lib/addresses";
 import { pageTitle } from "@/lib/site";
 
 export const metadata: Metadata = {
@@ -26,7 +26,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
 
   // Who is logged in already has nothing to do here and goes on.
   const user = await getCurrentUser();
-  if (user) redirect(user.mustChangePassword ? changePasswordPath(next) : next);
+  if (user) redirect(user.mustChangePassword ? changePasswordPath(next) : landingPath(next, user));
 
   return (
     <Stack spacing={3} sx={{ maxWidth: 400, mx: "auto" }}>

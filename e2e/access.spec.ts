@@ -268,10 +268,23 @@ test.describe("with the saved login of the normal user", () => {
     expect(response?.status()).toBe(404);
     await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
   });
+
+  test("the home page leads to the folder list", async ({ page }) => {
+    await page.goto("/");
+
+    await expect(page).toHaveURL("/folders");
+  });
 });
 
 test.describe("with the saved login of the admin", () => {
   test.use({ storageState: ADMIN_STORAGE_STATE });
+
+  test("the home page leads to the user list", async ({ page }) => {
+    await page.goto("/");
+
+    await expect(page).toHaveURL("/users");
+    await expect(page.getByRole("heading", { level: 1, name: "Users" })).toBeVisible();
+  });
 
   test("the content opens", async ({ page }) => {
     await page.goto("/folders");

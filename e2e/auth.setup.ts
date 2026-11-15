@@ -18,7 +18,8 @@ for (const { user, storageState } of LOGINS) {
     await page.getByLabel("User name").fill(user.name);
     await page.getByLabel("Password").fill(user.password);
     await page.getByRole("button", { name: "Log in" }).click();
-    await expect(page).toHaveURL("/folders");
+    // A user lands on the folder list, an admin on the user list.
+    await expect(page).toHaveURL(user.type === "admin" ? "/users" : "/folders");
 
     await page.context().storageState({ path: storageState });
   });

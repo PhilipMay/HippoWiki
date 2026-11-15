@@ -15,7 +15,7 @@ import {
 } from "@/features/auth/forms";
 import * as authService from "@/features/auth/service";
 import { requireSession } from "@/features/auth/session";
-import { changePasswordPath, loginPath } from "@/lib/addresses";
+import { changePasswordPath, landingPath, loginPath } from "@/lib/addresses";
 import { clientAddressGroup } from "@/lib/client-address";
 import { logClientAddressProbe } from "@/lib/client-address-probe";
 import { getServerEnv } from "@/lib/env";
@@ -82,7 +82,8 @@ export async function logIn(_prevState: LoginFormState, formData: FormData): Pro
   revalidateEverything();
   // Who logged in with a first password sets a password of their own before anything else, and goes on from there.
   const next = readNextPath(formData);
-  redirect(result.value.user.mustChangePassword ? changePasswordPath(next) : next);
+  const { user } = result.value;
+  redirect(user.mustChangePassword ? changePasswordPath(next) : landingPath(next, user));
 }
 
 /**
@@ -95,7 +96,7 @@ export async function changeFirstPassword(
   formData: FormData,
 ): Promise<PasswordChangeFormState> {
   // Not `requireUser()`, which would send the user back to the password change.
-  await requireSession();
+  const user = await requireSession();
   const next = readNextPath(formData);
 
   // Better Auth ends all sessions of the user and sets the cookie of a new one on the response of this action.
@@ -110,7 +111,7 @@ export async function changeFirstPassword(
         redirect(loginPath(next));
       // The change is done already, e.g. in another tab: there is nothing left to do here.
       case "not-required":
-        redirect(next);
+        redirect(landingPath(next, user));
       case "busy":
         return { message: BUSY_MESSAGE };
       case "failed":
@@ -119,7 +120,7 @@ export async function changeFirstPassword(
   }
 
   revalidateEverything();
-  redirect(next);
+  redirect(landingPath(next, result.value.user));
 }
 
 /** Ends the session of the browser and leads to the login page. */

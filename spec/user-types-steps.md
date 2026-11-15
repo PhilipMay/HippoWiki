@@ -23,7 +23,7 @@ step below.
 
 - [x] Account types in the database
 - [x] The user list for every account
-- [ ] Where the login leads
+- [x] Where the login leads
 - [ ] No content for admins
 - [ ] Choosing the type of a new account
 - [ ] No tokens and no apps for admins

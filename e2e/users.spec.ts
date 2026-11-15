@@ -54,10 +54,14 @@ test.describe("the admin", () => {
     expect(errors).toEqual([]);
   });
 
-  test("has the menu entry Users, which leads to the list", async ({ page }) => {
-    await page.goto("/folders");
+  test("has the menu entries Users, the name and Log out, but no Folders", async ({ page }) => {
+    await page.goto("/account");
 
-    await page.getByRole("banner").getByRole("link", { name: "Users" }).click();
+    const banner = page.getByRole("banner");
+    await expect(banner.getByRole("navigation", { name: "Main" }).getByRole("link")).toHaveText(["Users"]);
+    await expect(banner.getByRole("link", { name: KNOWN_ADMIN.name })).toBeVisible();
+    await expect(banner.getByRole("button", { name: "Log out" })).toBeVisible();
+    await banner.getByRole("link", { name: "Users" }).click();
 
     await expect(page).toHaveURL("/users");
     await expect(userRows(page)).toHaveText([new RegExp(`^${KNOWN_ADMIN.name}`), new RegExp(`^${KNOWN_USER.name}`)]);
@@ -368,7 +372,7 @@ test.describe("a user", () => {
     await page.goto("/folders");
 
     const banner = page.getByRole("banner");
-    await expect(banner.getByRole("link", { name: "Folders" })).toBeVisible();
+    await expect(banner.getByRole("navigation", { name: "Main" }).getByRole("link")).toHaveText(["Folders", "Users"]);
     await banner.getByRole("link", { name: "Users" }).click();
 
     await expect(page).toHaveURL("/users");

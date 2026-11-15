@@ -2,6 +2,7 @@
 // account, the login and the password change, the actions in their query string and the way back after a login. Pure
 // functions used by routes, Server Actions and links; no server-only imports.
 
+import { isAdmin, type UserType } from "@/features/users/user-type";
 import { parseName } from "@/lib/names";
 
 /** The fixed prefix of all content addresses. */
@@ -67,6 +68,23 @@ export function safeNextPath(next: string | string[] | null | undefined): string
 function withNext(path: string, next?: string | string[] | null): string {
   const safe = safeNextPath(next);
   return safe === FOLDERS_PATH ? path : `${path}?${NEXT_PARAM}=${encodeURIComponent(safe)}`;
+}
+
+/** Whether the path is the home page or lies under the content: the folders or the deleted pages. */
+function isContentPath(path: string): boolean {
+  return [FOLDERS_PATH, DELETED_PAGES_PATH].some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+}
+
+/**
+ * Where a login or a password change leads the user, given the way back from `safeNextPath()`. An admin sees no
+ * content, so for an admin a way back to the home page or to the content, judged by its path and not by its query
+ * string, leads to the user list instead of the not-found page. Every other way back, and every way back of a user,
+ * stays as it is.
+ */
+export function landingPath(next: string, user: { type: UserType }): string {
+  if (!isAdmin(user)) return next;
+  const { pathname } = new URL(next, NEXT_BASE);
+  return pathname === "/" || isContentPath(pathname) ? USERS_PATH : next;
 }
 
 /** The address of the login page, optionally with the address to go to after the login. */

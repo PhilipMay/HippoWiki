@@ -7,13 +7,14 @@ import Typography from "@mui/material/Typography";
 import Link from "@/components/Link";
 import { logOut } from "@/features/auth/actions";
 import { getCurrentUser } from "@/features/auth/session";
+import { isAdmin } from "@/features/users/user-type";
 import { accountPath, foldersPath, usersPath } from "@/lib/addresses";
 import { siteName } from "@/lib/site";
 
 /**
  * The app bar of every page. For a logged-in user it has the menu, the user name, which links to the own account, and
  * "Log out"; while the user still has to change the first password, only the name as plain text and "Log out". Every
- * account has the menu entry "Users".
+ * account has the menu entry "Users"; only a user has "Folders", because an admin sees no content.
  */
 export default async function AppHeader() {
   const user = await getCurrentUser();
@@ -32,9 +33,12 @@ export default async function AppHeader() {
         {/* No menu while the first password is still to change: every address of it leads to the password change. */}
         {user && !user.mustChangePassword && (
           <nav aria-label="Main">
-            <Button component={Link} href={foldersPath()} color="inherit">
-              Folders
-            </Button>
+            {/* An admin sees no content: for an admin every address of it is not found. */}
+            {!isAdmin(user) && (
+              <Button component={Link} href={foldersPath()} color="inherit">
+                Folders
+              </Button>
+            )}
             <Button component={Link} href={usersPath()} color="inherit">
               Users
             </Button>

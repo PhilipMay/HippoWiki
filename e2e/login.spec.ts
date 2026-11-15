@@ -43,11 +43,11 @@ async function submitLogin(page: Page, name: string, password: string) {
   await page.getByRole("button", { name: "Log in" }).click();
 }
 
-/** Opens the login page and logs in. */
-async function logIn(page: Page, { name, password }: { name: string; password: string }) {
+/** Opens the login page and logs in; a user lands on the folder list, an admin on the user list. */
+async function logIn(page: Page, { name, type, password }: { name: string; type: string; password: string }) {
   await page.goto("/login");
   await submitLogin(page, name, password);
-  await expect(page).toHaveURL("/folders");
+  await expect(page).toHaveURL(type === "admin" ? "/users" : "/folders");
 }
 
 test("the login page shows the form and no user in the header", async ({ page }) => {
@@ -77,10 +77,44 @@ test("a login leads to the folder list and the header shows the name", async ({ 
   expect(errors).toEqual([]);
 });
 
-test("the admin logs in like every other user", async ({ page }) => {
+test("an admin who logs in lands on the user list, and the header has no Folders", async ({ page }) => {
+  const errors = collectErrors(page);
+
   await logIn(page, KNOWN_ADMIN);
 
-  await expect(page.getByRole("banner").getByText(KNOWN_ADMIN.name, { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Users" })).toBeVisible();
+  const banner = page.getByRole("banner");
+  await expect(banner.getByText(KNOWN_ADMIN.name, { exact: true })).toBeVisible();
+  await expect(banner.getByRole("link", { name: "Users" })).toBeVisible();
+  await expect(banner.getByRole("link", { name: "Folders" })).toHaveCount(0);
+  await expect(banner.getByRole("button", { name: "Log out" })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test("an admin with a way back into the content lands on the user list", async ({ page }) => {
+  await page.goto("/login?next=%2Ffolders%2Fteam");
+
+  await submitLogin(page, KNOWN_ADMIN.name, KNOWN_ADMIN.password);
+
+  await expect(page).toHaveURL("/users");
+  await expect(page.getByRole("heading", { level: 1, name: "Users" })).toBeVisible();
+});
+
+test("a user with a way back into the content lands there", async ({ page }) => {
+  await page.goto("/login?next=%2Ffolders%2Fteam");
+
+  await submitLogin(page, KNOWN_USER.name, KNOWN_USER.password);
+
+  await expect(page).toHaveURL("/folders/team");
+});
+
+test("an admin who is logged in already and opens the login page goes to the user list", async ({ page }) => {
+  await logIn(page, KNOWN_ADMIN);
+
+  await page.goto("/login?next=%2Ffolders");
+
+  await expect(page).toHaveURL("/users");
+  await expect(page.getByRole("heading", { level: 1, name: "Users" })).toBeVisible();
 });
 
 test("the Enter key in the password field logs in", async ({ page }) => {
@@ -237,7 +271,7 @@ test("the wait of one name does not hold back another user", async ({ page }) =>
   await expect(formAlert(page)).toHaveText("Too many failed logins. Please try again in 15 minutes.");
 
   await submitLogin(page, KNOWN_ADMIN.name, KNOWN_ADMIN.password);
-  await expect(page).toHaveURL("/folders");
+  await expect(page).toHaveURL("/users");
 });
 
 test("with 20 logins for a name within the hour, the right password waits for the rest of the hour", async ({
@@ -254,7 +288,7 @@ test("with 20 logins for a name within the hour, the right password waits for th
   expect(await newSessionCount()).toBe(0);
 
   await submitLogin(page, KNOWN_ADMIN.name, KNOWN_ADMIN.password);
-  await expect(page).toHaveURL("/folders");
+  await expect(page).toHaveURL("/users");
 });
 
 /**
@@ -381,7 +415,7 @@ test("a new login after a logout works", async ({ page }) => {
 
   await submitLogin(page, KNOWN_ADMIN.name, KNOWN_ADMIN.password);
 
-  await expect(page).toHaveURL("/folders");
+  await expect(page).toHaveURL("/users");
   await expect(page.getByRole("banner").getByText(KNOWN_ADMIN.name, { exact: true })).toBeVisible();
 });
 

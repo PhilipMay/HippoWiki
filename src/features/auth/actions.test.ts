@@ -48,7 +48,18 @@ function trustProxies(count: number): void {
 }
 
 const REQUEST_HEADERS = new Headers({ cookie: "better-auth.session_token=token.signature" });
-const USER = { id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002", name: "alice", mustChangePassword: false };
+const USER = {
+  id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002",
+  name: "alice",
+  type: "user" as const,
+  mustChangePassword: false,
+};
+const ADMIN = {
+  id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1001",
+  name: "maria",
+  type: "admin" as const,
+  mustChangePassword: false,
+};
 
 function formData(fields: Record<string, string>): FormData {
   const data = new FormData();
@@ -140,6 +151,35 @@ describe("logIn", () => {
         { reason: "too-few-entries" },
         "no client address in X-Forwarded-For, the login counts in the shared group",
       );
+    });
+  });
+
+  it.each([
+    [undefined, "/users"],
+    ["/folders/team", "/users"],
+    ["/deleted-pages/team", "/users"],
+    ["/account", "/account"],
+  ])("leads an admin with the way back %s to %s", async (next, path) => {
+    mocks.logIn.mockResolvedValue({ ok: true, value: { user: ADMIN, headers: new Headers() } });
+    const form = next === undefined ? LOGIN_FORM : { ...LOGIN_FORM, next };
+
+    await expect(logIn({}, formData(form))).rejects.toMatchObject({ path });
+  });
+
+  it("leads a user to the way back into the content", async () => {
+    mocks.logIn.mockResolvedValue({ ok: true, value: { user: USER, headers: new Headers() } });
+
+    await expect(logIn({}, formData({ ...LOGIN_FORM, next: "/folders/team" }))).rejects.toMatchObject({
+      path: "/folders/team",
+    });
+  });
+
+  it("keeps the way back into the content for the password change of an admin", async () => {
+    const user = { ...ADMIN, mustChangePassword: true };
+    mocks.logIn.mockResolvedValue({ ok: true, value: { user, headers: new Headers() } });
+
+    await expect(logIn({}, formData({ ...LOGIN_FORM, next: "/folders/team" }))).rejects.toMatchObject({
+      path: "/change-password?next=%2Ffolders%2Fteam",
     });
   });
 
@@ -333,6 +373,35 @@ describe("changeFirstPassword", () => {
       await expect(changeFirstPassword({}, formData({ ...FORM, next }))).rejects.toMatchObject({ path: "/folders" });
     },
   );
+
+  it.each([
+    [undefined, "/users"],
+    ["/folders/team", "/users"],
+    ["/account", "/account"],
+  ])("leads an admin with the way back %s to %s after the change", async (next, path) => {
+    mocks.requireSession.mockResolvedValue({ ...ADMIN, mustChangePassword: true });
+    mocks.changeFirstPassword.mockResolvedValue({ ok: true, value: { user: ADMIN, headers: new Headers() } });
+    const form = next === undefined ? FORM : { ...FORM, next };
+
+    await expect(changeFirstPassword({}, formData(form))).rejects.toMatchObject({ path });
+  });
+
+  it("leads a user to the way back into the content after the change", async () => {
+    mocks.changeFirstPassword.mockResolvedValue({ ok: true, value: { user: USER, headers: new Headers() } });
+
+    await expect(changeFirstPassword({}, formData({ ...FORM, next: "/folders/team" }))).rejects.toMatchObject({
+      path: "/folders/team",
+    });
+  });
+
+  it("leads an admin whose change is done already to the user list", async () => {
+    mocks.requireSession.mockResolvedValue(ADMIN);
+    mocks.changeFirstPassword.mockResolvedValue({ ok: false, error: { code: "not-required" } });
+
+    await expect(changeFirstPassword({}, formData({ ...FORM, next: "/folders/team" }))).rejects.toMatchObject({
+      path: "/users",
+    });
+  });
 
   it.each([
     ["not-logged-in", "/login?next=%2Faccount"],
