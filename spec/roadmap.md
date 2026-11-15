@@ -3,8 +3,9 @@
 Candidates for the next features, grouped by theme. Within a theme, the features that are likely to come first are
 listed first; there is no order across themes.
 
-- Before a feature is started, it gets its own step plan `spec/<feature>-steps.md`, and once it is built it is removed
-  from this file (see `workflow.md`).
+- Before a feature is started, its requirements may be gathered in a file of their own (see
+  `requirements-workflow.md`). Then it gets its own step plan `spec/<feature>-steps.md`, and once it is built it is
+  removed from this file (see `workflow.md`).
 - Where a feature lifts a limit, the entry names the spec whose "Current limits" list it.
 - "Things to Check" at the end lists checks and open questions that came up while building a feature and that are not
   features of their own.

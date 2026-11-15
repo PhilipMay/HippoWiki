@@ -7,6 +7,10 @@ HippoWiki is a knowledge management system.
 The specification lives in the `spec/` directory. This catalog should always be kept in sync with the files.
 
 - `spec/tech.md`: technology stack
+- `spec/requirements-workflow.md`: how the requirements of a feature are gathered in a guided conversation before its
+  step plan (starting and resuming, what may change, the rounds of questions, the checks for contradictions and
+  feasibility, how requirements are written, the template); the result is one file `spec/<feature>-requirements.md`,
+  listed here while it exists
 - `spec/workflow.md`: how features are planned in step files, when a step is done, what to do when it cannot be
   finished, how a feature is wrapped up, what a feature spec holds, and how a finding of the review report is fixed
   and deleted

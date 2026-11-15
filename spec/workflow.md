@@ -7,6 +7,10 @@ implements it.
 
 - Each feature from `roadmap.md` is planned in its own file `spec/<feature>-steps.md` before work starts. The new file
   gets an entry in the spec catalog in `CLAUDE.md`.
+- When the feature has a requirements file `spec/<feature>-requirements.md` (see `requirements-workflow.md`), the step
+  plan is written only once that file has the status `approved`, and it is written from it: its scope matches the
+  scope of the requirements, every requirement ID is covered by a step, and the "Test" sections check the acceptance
+  criteria. The commit of the first step includes the requirements file.
 - A step plan has a goal, a scope (what is in, what is explicitly not in), an ordered checklist of steps, and for every
   step a "Goal", "Build" and "Test" section. "Test" lists the unit, integration and end-to-end tests the step adds (see
   `testing.md`), plus any manual checks that cannot be automated.
@@ -37,9 +41,9 @@ implements it.
   stopped, sums up all steps of the session and says whether the push succeeded.
 - If a step shows that the scope needs to change (something the plan puts out of scope is needed, or something in scope
   should be dropped): stop before writing any code for the change, ask the user, and commit nothing. Once the user has
-  approved the change, update the scope in the step file and continue with the step and the rest of the plan. If the
-  user declines it, continue within the existing scope, or follow "When a step cannot be finished" if the step cannot
-  be done without the change.
+  approved the change, update the scope in the step file, and in the requirements file if there is one, and continue
+  with the step and the rest of the plan. If the user declines it, continue within the existing scope, or follow "When
+  a step cannot be finished" if the step cannot be done without the change.
 - If a step shows that the plan needs another change (a missing step, a wrong order, a wrong assumption): update the
   step file first, then continue. Name the change in the report of the step, and commit it together with the step.
 
@@ -49,16 +53,17 @@ The last step of every plan moves its lasting content into the other spec files 
 Goal/Build/Test sections as the other steps, and its Build section covers, in this order (the template below has the
 same items, ready to copy):
 
-1. Describe the feature as built in `spec/<feature>.md` (see "Feature specs"), or extend an existing feature spec;
-   update `architecture.md`, `testing.md` or `tech.md` where conventions changed.
+1. Describe the feature as built in `spec/<feature>.md` (see "Feature specs"), or extend an existing feature spec, and
+   move the rules and decisions of the requirements file that still hold into it; update `architecture.md`,
+   `testing.md` or `tech.md` where conventions changed.
 2. Remove the feature from `roadmap.md`.
 3. Check that `README.md` has all the commands a developer needs.
-4. Delete this step file.
-5. Update the spec catalog in `CLAUDE.md`: add new spec files, remove this step file.
+4. Delete this step file and the requirements file of the feature, if there is one.
+5. Update the spec catalog in `CLAUDE.md`: add new spec files, remove this step file and the requirements file.
 
 The wrap-up step is not ticked off, because its step file is deleted; its commit includes the deletion of the step
-file. The push of the finished plan follows this commit (see "Step plans"). Otherwise it follows the same rules as
-every other step.
+file and the requirements file. The push of the finished plan follows this commit (see "Step plans"). Otherwise it
+follows the same rules as every other step.
 
 ## Feature specs
 
@@ -223,11 +228,12 @@ Move the lasting content of this plan into the other spec files and remove the p
 ### Build
 
 1. Describe the feature as built in `spec/<feature>.md` (see "Feature specs" in `workflow.md`), or extend an existing
-   feature spec; update `architecture.md`, `testing.md` or `tech.md` where conventions changed.
+   feature spec, and move the rules and decisions of the requirements file that still hold into it; update
+   `architecture.md`, `testing.md` or `tech.md` where conventions changed.
 2. Remove the feature from `roadmap.md`.
 3. Check that `README.md` has all the commands a developer needs.
-4. Delete this step file.
-5. Update the spec catalog in `CLAUDE.md`: add new spec files, remove this step file.
+4. Delete this step file and the requirements file of the feature, if there is one.
+5. Update the spec catalog in `CLAUDE.md`: add new spec files, remove this step file and the requirements file.
 
 ### Test
 
