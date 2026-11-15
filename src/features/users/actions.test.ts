@@ -30,9 +30,10 @@ const ADMIN = {
 };
 const PASSWORD = "Gx7pQ2mWk9RtZ4vNc8Hs";
 
-function formData(name: string): FormData {
+function formData(name: string, type: string | null = "user"): FormData {
   const data = new FormData();
   data.set("name", name);
+  if (type !== null) data.set("type", type);
   return data;
 }
 
@@ -52,17 +53,20 @@ beforeEach(() => {
 });
 
 describe("createUser", () => {
-  it("creates the user as the logged-in user, revalidates the user list and returns the name with the password", async () => {
+  it("creates the user as the logged-in user, revalidates the user list and returns name and type with the password", async () => {
     mocks.createUser.mockResolvedValue({
       ok: true,
-      value: { user: { id: crypto.randomUUID(), name: "stored-name", mustChangePassword: true }, password: PASSWORD },
+      value: {
+        user: { id: crypto.randomUUID(), name: "stored-name", type: "admin", mustChangePassword: true },
+        password: PASSWORD,
+      },
     });
 
-    const state = await createUser({}, formData(" jane "));
+    const state = await createUser({}, formData(" jane ", "admin"));
 
-    // The name comes from the stored user, never from the submitted value.
-    expect(state).toStrictEqual({ created: { name: "stored-name", password: PASSWORD } });
-    expect(mocks.createUser).toHaveBeenCalledExactlyOnceWith(ADMIN, { name: "jane" });
+    // Name and type come from the stored user, never from the submitted values.
+    expect(state).toStrictEqual({ created: { name: "stored-name", type: "admin", password: PASSWORD } });
+    expect(mocks.createUser).toHaveBeenCalledExactlyOnceWith(ADMIN, { name: "jane", type: "admin" });
     expect(mocks.revalidatePath).toHaveBeenCalledExactlyOnceWith("/users");
     // No redirect: the password must not be part of an address or of a stored page.
     expect(mocks.redirect).not.toHaveBeenCalled();
@@ -71,6 +75,7 @@ describe("createUser", () => {
 
   it.each([
     ["invalid-input", { name: ["Reported by the service"] }, { fieldErrors: { name: ["Reported by the service"] } }],
+    ["invalid-input", { type: ["Reported by the service"] }, { fieldErrors: { type: ["Reported by the service"] } }],
     ["name-taken", undefined, { fieldErrors: { name: ["Name is already in use"] } }],
     ["busy", undefined, { message: "Too many logins at the moment, please try again" }],
     ["failed", undefined, { message: "The user could not be created. Please try again." }],
@@ -98,6 +103,19 @@ describe("createUser", () => {
     ["a name that breaks the rule", "Jane Doe", "Use lowercase letters, digits and single hyphens"],
   ])("shows the field error of %s without reaching the service", async (_case, name, error) => {
     await expect(createUser({}, formData(name))).resolves.toEqual({ fieldErrors: { name: [error] } });
+
+    expect(mocks.createUser).not.toHaveBeenCalled();
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["no type", null],
+    ["an empty type", ""],
+    ["an unknown type", "root"],
+  ])("shows the field error of the type for %s without reaching the service", async (_case, type) => {
+    await expect(createUser({}, formData("jane", type))).resolves.toEqual({
+      fieldErrors: { type: ["Choose the type of the account"] },
+    });
 
     expect(mocks.createUser).not.toHaveBeenCalled();
     expect(mocks.revalidatePath).not.toHaveBeenCalled();

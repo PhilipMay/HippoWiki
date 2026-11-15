@@ -7,17 +7,27 @@ import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
+import FormControl from "@mui/material/FormControl";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import FormHelperText from "@mui/material/FormHelperText";
+import FormLabel from "@mui/material/FormLabel";
+import Radio from "@mui/material/Radio";
+import RadioGroup from "@mui/material/RadioGroup";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useId, useRef, useState } from "react";
+import { startTransition, useActionState, useEffect, useId, useRef, useState, type SubmitEvent } from "react";
 
 import Link from "@/components/Link";
 import { type CreateUserFormAction } from "@/features/users/forms";
 import { USER_NAME_MAX_LENGTH, USER_NAME_MIN_LENGTH } from "@/features/users/limits";
+import { USER_TYPES, type UserType } from "@/features/users/user-type";
 import { focusOnEntered } from "@/lib/focus";
 import { useHydrated } from "@/lib/hydration";
+
+/** The label of each type in the radio group. */
+const TYPE_LABELS: Record<UserType, string> = { user: "User", admin: "Admin" };
 
 type CreateUserDialogProps = {
   /** Server Action that creates the user; it returns the errors to show, or the user with its first password. */
@@ -27,13 +37,16 @@ type CreateUserDialogProps = {
 };
 
 /**
- * The "New user" dialog. First it asks for the user name. After the creation it shows, in place of the form, the name
- * and the generated first password with a copy button. The password is shown only this once: it lives in the state of
+ * The "New user" dialog. First it asks for the user name and the type of the account, with "User" chosen and the note
+ * that the type cannot be changed later. After the creation it shows, in place of the form, the name, the type and the
+ * generated first password with a copy button. The password is shown only this once: it lives in the state of
  * this dialog and nowhere else in the browser.
  */
 export default function CreateUserDialog({ action, closeHref }: CreateUserDialogProps) {
   const [state, formAction, pending] = useActionState(action, {});
   const [name, setName] = useState("");
+  // Most accounts are users; an admin is chosen on purpose.
+  const [type, setType] = useState<UserType>("user");
   /** Whether the password was copied: not yet, done, or the browser refused. */
   const [copy, setCopy] = useState<"idle" | "copied" | "failed">("idle");
   const nameRef = useRef<HTMLInputElement>(null);
@@ -41,17 +54,31 @@ export default function CreateUserDialog({ action, closeHref }: CreateUserDialog
   const router = useRouter();
   const titleId = useId();
   const formId = useId();
+  const typeLabelId = useId();
+  const typeNoteId = useId();
+  const typeErrorId = useId();
   const hydrated = useHydrated();
 
   const created = state.created;
   const nameError = state.fieldErrors?.name?.[0];
+  const typeError = state.fieldErrors?.type?.[0];
+  const typeRef = useRef<HTMLInputElement>(null);
 
   // Field errors come back from the Server Action, so the focus moves once the new state arrives. The password of a
   // created user is selected, ready to be copied by hand as well.
   useEffect(() => {
     if (state.created) passwordRef.current?.select();
     else if (state.fieldErrors?.name) nameRef.current?.focus();
+    else if (state.fieldErrors?.type) typeRef.current?.focus();
   }, [state]);
+
+  // The form calls the action itself instead of passing it as the form's `action`: React resets a form after its
+  // action, and that reset puts the radio buttons back to the initial choice, out of sync with the controlled one.
+  const submit = (event: SubmitEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    startTransition(() => formAction(formData));
+  };
 
   const close = () => {
     if (!pending) router.push(closeHref);
@@ -86,8 +113,8 @@ export default function CreateUserDialog({ action, closeHref }: CreateUserDialog
           <DialogContent>
             <Stack spacing={3} sx={{ pt: 1 }}>
               <Typography>
-                The user <strong>{created.name}</strong> was created. Pass the first password on to the user, who has to
-                change it at the first login.
+                The {created.type} <strong>{created.name}</strong> was created. Pass the first password on to the user,
+                who has to change it at the first login.
               </Typography>
               <TextField
                 label="First password"
@@ -121,7 +148,7 @@ export default function CreateUserDialog({ action, closeHref }: CreateUserDialog
         <>
           <DialogContent>
             {/* `noValidate`: the server validates, and its errors are shown at the field. */}
-            <Box component="form" id={formId} action={formAction} noValidate>
+            <Box component="form" id={formId} onSubmit={submit} noValidate>
               <Stack spacing={3} sx={{ pt: 1 }}>
                 {state.message && <Alert severity="error">{state.message}</Alert>}
                 <TextField
@@ -147,6 +174,30 @@ export default function CreateUserDialog({ action, closeHref }: CreateUserDialog
                     },
                   }}
                 />
+                <FormControl disabled={!hydrated} error={!!typeError}>
+                  <FormLabel id={typeLabelId}>Type</FormLabel>
+                  <RadioGroup
+                    name="type"
+                    value={type}
+                    onChange={(event) => setType(event.target.value as UserType)}
+                    aria-labelledby={typeLabelId}
+                    aria-describedby={typeError ? `${typeErrorId} ${typeNoteId}` : typeNoteId}
+                  >
+                    {USER_TYPES.map((value, index) => (
+                      <FormControlLabel
+                        key={value}
+                        value={value}
+                        control={<Radio slotProps={{ input: index === 0 ? { ref: typeRef } : {} }} />}
+                        label={TYPE_LABELS[value]}
+                      />
+                    ))}
+                  </RadioGroup>
+                  {typeError && <FormHelperText id={typeErrorId}>{typeError}</FormHelperText>}
+                  <FormHelperText id={typeNoteId}>
+                    A user works with the folders and pages; an admin manages the accounts and sees no content. The type
+                    cannot be changed later.
+                  </FormHelperText>
+                </FormControl>
               </Stack>
             </Box>
           </DialogContent>

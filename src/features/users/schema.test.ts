@@ -79,7 +79,28 @@ describe("userNameSchema", () => {
 
   it("trims the name of a form", () => {
     expect(userNameSchema.parse("  alice ")).toBe("alice");
-    expect(userInputSchema.parse({ name: " bob " })).toEqual({ name: "bob" });
+    expect(userInputSchema.parse({ name: " bob ", type: "user" })).toEqual({ name: "bob", type: "user" });
+  });
+});
+
+describe("userInputSchema", () => {
+  it.each(["user", "admin"])("accepts the type %s", (type) => {
+    expect(userInputSchema.parse({ name: "maria", type })).toEqual({ name: "maria", type });
+  });
+
+  it.each([
+    ["no type", undefined],
+    ["an empty type", ""],
+    ["an unknown type", "root"],
+    ["a type in another case", "Admin"],
+    ["a type of another kind", 1],
+  ])("refuses %s with its own message, and chooses no type in its place", (_case, type) => {
+    const result = userInputSchema.safeParse({ name: "maria", type });
+
+    expect(result.success).toBe(false);
+    expect(result.error && z.flattenError(result.error).fieldErrors).toEqual({
+      type: ["Choose the type of the account"],
+    });
   });
 });
 

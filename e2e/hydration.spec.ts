@@ -28,6 +28,10 @@ test.describe("as the admin", () => {
     const dialog = page.getByRole("dialog", { name: "New user" });
     await expect(dialog.getByLabel("User name")).not.toBeEditable();
     await expect(dialog.getByRole("button", { name: "Create" })).toBeDisabled();
+    await expect(dialog.getByRole("radio", { name: "User" })).toBeDisabled();
+    await expect(dialog.getByRole("radio", { name: "Admin" })).toBeDisabled();
+    // The server-rendered dialog already shows "User" as the choice.
+    await expect(dialog.getByRole("radio", { name: "User" })).toBeChecked();
     await expect(dialog.getByRole("link", { name: "Cancel" })).toHaveAttribute("href", "/users");
   });
 });

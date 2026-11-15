@@ -11,6 +11,7 @@ import {
   USER_NAME_MAX_LENGTH,
   USER_NAME_MIN_LENGTH,
 } from "@/features/users/limits";
+import { USER_TYPES } from "@/features/users/user-type";
 import { NAME_PATTERN } from "@/lib/names";
 
 /**
@@ -50,13 +51,21 @@ export function parseUserName(name: string): string | null {
   return result.success && result.data === name ? result.data : null;
 }
 
-/** Input for creating a user: the name. */
-export const userInputSchema = z.object({ name: userNameSchema });
+export const USER_TYPE_MESSAGE = "Choose the type of the account";
 
-/** A validated user name. */
+/**
+ * The type of a new account. It has no default: a request without a type or with an unknown one is refused, so that
+ * a broken or crafted request is noticed instead of creating a user of a type nobody chose.
+ */
+export const userTypeSchema = z.enum(USER_TYPES, { error: USER_TYPE_MESSAGE });
+
+/** Input for creating a user: the name and the type. */
+export const userInputSchema = z.object({ name: userNameSchema, type: userTypeSchema });
+
+/** A validated user name and type. */
 export type UserInput = z.output<typeof userInputSchema>;
 
-export type UserFieldErrors = { name?: string[] };
+export type UserFieldErrors = { name?: string[]; type?: string[] };
 
 /**
  * The context words: words that an attacker who targets this wiki tries first, together with the user name. A password

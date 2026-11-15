@@ -99,18 +99,19 @@ function userCreatedDialog(page: Page) {
   return page.getByRole("dialog", { name: "User created" });
 }
 
-/** Opens the "New user" dialog, submits the name and returns the dialog. */
-async function submitNewUser(page: Page, name: string) {
+/** Opens the "New user" dialog, submits the name with the type and returns the dialog. */
+async function submitNewUser(page: Page, name: string, type: "User" | "Admin" = "User") {
   await page.goto("/users?action=create");
   const dialog = newUserDialog(page);
   await dialog.getByLabel("User name").fill(name);
+  await dialog.getByRole("radio", { name: type }).check();
   await dialog.getByRole("button", { name: "Create" }).click();
   return dialog;
 }
 
-/** Creates a user through the dialog and returns the first password that the dialog shows. */
-async function createUserInDialog(page: Page, name: string): Promise<string> {
-  await submitNewUser(page, name);
+/** Creates a user of the type through the dialog and returns the first password that the dialog shows. */
+async function createUserInDialog(page: Page, name: string, type: "User" | "Admin" = "User"): Promise<string> {
+  await submitNewUser(page, name, type);
   const password = await userCreatedDialog(page).getByLabel("First password").inputValue();
   expect(password).toMatch(FIRST_PASSWORD);
   return password;
@@ -127,6 +128,12 @@ test.describe("the admin, creating a user", () => {
     await expect(page).toHaveURL("/users?action=create");
     const dialog = newUserDialog(page);
     await expect(dialog.getByLabel("User name")).toBeFocused();
+    // "User" is chosen when the dialog opens, and the dialog says that the type is final.
+    await expect(dialog.getByRole("radio", { name: "User" })).toBeChecked();
+    await expect(dialog.getByRole("radio", { name: "Admin" })).not.toBeChecked();
+    await expect(dialog.getByRole("radiogroup", { name: "Type" })).toHaveAccessibleDescription(
+      /The type cannot be changed later\./,
+    );
     await dialog.getByLabel("User name").fill("jane-doe");
     await dialog.getByRole("button", { name: "Create" }).click();
 
@@ -134,6 +141,7 @@ test.describe("the admin, creating a user", () => {
     await expect(created).toBeVisible();
     await expect(newUserDialog(page)).toHaveCount(0);
     await expect(created.getByText("jane-doe", { exact: true })).toBeVisible();
+    await expect(created).toContainText("The user jane-doe was created.");
     await expect(created.getByLabel("First password")).toHaveValue(FIRST_PASSWORD);
     await expect(created.getByLabel("First password")).not.toBeEditable();
     await expect(created.getByText(/shown only this once/)).toBeVisible();
@@ -141,9 +149,10 @@ test.describe("the admin, creating a user", () => {
     await expect(page).toHaveURL("/users?action=create");
     // The list behind the dialog shows the new user, with the first password still to change.
     const rows = userRowsBehindDialog(page);
-    await expect(rows).toHaveText([/^admin/, /^alice/, /^jane-doe/]);
+    await expect(rows).toHaveText([/^adminAdmin · /, /^aliceUser · /, /^jane-doeUser · /]);
     await expect(rows.nth(2)).toContainText("Password change pending");
     expect(await getTestDb().user.findUniqueOrThrow({ where: { username: "jane-doe" } })).toMatchObject({
+      type: "user",
       mustChangePassword: true,
       email: "jane-doe@users.hippowiki.invalid",
     });
@@ -152,6 +161,86 @@ test.describe("the admin, creating a user", () => {
     await expect(page).toHaveURL("/users");
     await expect(page.getByRole("dialog")).toHaveCount(0);
     expect(errors).toEqual([]);
+  });
+
+  test("creates an admin, who appears with the type in the list", async ({ page }) => {
+    await createUserInDialog(page, "maria", "Admin");
+
+    const created = userCreatedDialog(page);
+    await expect(created).toContainText("The admin maria was created.");
+    await expect(userRowsBehindDialog(page)).toHaveText([/^adminAdmin · /, /^aliceUser · /, /^mariaAdmin · /]);
+    expect((await getTestDb().user.findUniqueOrThrow({ where: { username: "maria" } })).type).toBe("admin");
+  });
+
+  for (const [what, change] of [
+    ["without a type", (radio: HTMLInputElement) => radio.removeAttribute("name")],
+    [
+      "with an unknown type",
+      (radio: HTMLInputElement) => {
+        radio.value = "root";
+      },
+    ],
+  ] as const) {
+    test(`a crafted submission ${what} shows the error at the type, keeps the dialog open and creates nothing`, async ({
+      page,
+    }) => {
+      await page.goto("/users?action=create");
+      const dialog = newUserDialog(page);
+      await dialog.getByLabel("User name").fill("jane-doe");
+      // Change the radio buttons of the form as a crafted request would.
+      for (const radio of await dialog.getByRole("radio").all()) await radio.evaluate(change);
+
+      await dialog.getByRole("button", { name: "Create" }).click();
+
+      await expect(dialog.getByText("Choose the type of the account", { exact: true })).toBeVisible();
+      await expect(dialog.getByRole("radiogroup", { name: "Type" })).toHaveAccessibleDescription(
+        /^Choose the type of the account/,
+      );
+      await expect(userCreatedDialog(page)).toHaveCount(0);
+      await expect(page).toHaveURL("/users?action=create");
+      expect(await getTestDb().user.count()).toBe(2);
+    });
+  }
+
+  test("the type chosen before a name error is kept when the name is corrected", async ({ page }) => {
+    const dialog = await submitNewUser(page, "alice", "Admin");
+    await expect(dialog.getByText("Name is already in use")).toBeVisible();
+    await expect(dialog.getByRole("radio", { name: "Admin" })).toBeChecked();
+
+    await dialog.getByLabel("User name").fill("maria");
+    await dialog.getByRole("button", { name: "Create" }).click();
+
+    await expect(userCreatedDialog(page)).toContainText("The admin maria was created.");
+    expect((await getTestDb().user.findUniqueOrThrow({ where: { username: "maria" } })).type).toBe("admin");
+  });
+
+  test("the whole chain for a new admin: logs in, changes the password, lands on the user list and creates a user", async ({
+    page,
+    browser,
+  }) => {
+    const password = await createUserInDialog(page, "maria", "Admin");
+
+    // The new admin, in a browser of their own.
+    const adminContext = await browser.newContext({ storageState: NO_STORAGE_STATE });
+    const adminPage = await adminContext.newPage();
+    await adminPage.goto("/login");
+    await adminPage.getByLabel("User name").fill("maria");
+    await adminPage.getByLabel("Password").fill(password);
+    await adminPage.getByRole("button", { name: "Log in" }).click();
+    await expect(adminPage).toHaveURL("/change-password");
+    await adminPage.getByLabel("Current password").fill(password);
+    await adminPage.getByLabel(/^New password/).fill("my-own-password");
+    await adminPage.getByLabel("Repeat new password").fill("my-own-password");
+    await adminPage.getByRole("button", { name: "Change password" }).click();
+
+    await expect(adminPage).toHaveURL("/users");
+    const banner = adminPage.getByRole("banner");
+    await expect(banner.getByRole("link", { name: "Folders" })).toHaveCount(0);
+    await expect(banner.getByRole("link", { name: "maria" })).toBeVisible();
+    await expect(adminPage.getByText("Password change pending")).toHaveCount(0);
+    await createUserInDialog(adminPage, "jane-doe");
+    expect((await getTestDb().user.findUniqueOrThrow({ where: { username: "jane-doe" } })).type).toBe("user");
+    await adminContext.close();
   });
 
   test("the copy button puts the password on the clipboard", async ({ page, context }) => {

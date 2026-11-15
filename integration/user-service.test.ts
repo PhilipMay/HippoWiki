@@ -160,7 +160,7 @@ describe("createUser", () => {
   it("creates a user with a pending password change who can log in with the returned password", async () => {
     const admin = await createAdmin();
 
-    const result = await userService.createUser(admin, { name: "jane-doe" });
+    const result = await userService.createUser(admin, { name: "jane-doe", type: "user" });
 
     if (!result.ok) return expect.fail(`creation failed with ${result.error.code}`);
     const { user, password } = result.value;
@@ -191,11 +191,58 @@ describe("createUser", () => {
     expect(login).toMatchObject({ ok: true, value: { user: { id: stored.id, mustChangePassword: true } } });
   });
 
+  it("creates an admin and a user with their types", async () => {
+    const admin = await createAdmin();
+
+    const maria = await userService.createUser(admin, { name: "maria", type: "admin" });
+    const jane = await userService.createUser(admin, { name: "jane-doe", type: "user" });
+
+    expect(maria).toMatchObject({ ok: true, value: { user: { name: "maria", type: "admin" } } });
+    expect(jane).toMatchObject({ ok: true, value: { user: { name: "jane-doe", type: "user" } } });
+    const stored = await getTestDb().user.findMany({
+      select: { username: true, type: true },
+      orderBy: { username: "asc" },
+    });
+    expect(stored).toEqual([
+      { username: "admin", type: "admin" },
+      { username: "jane-doe", type: "user" },
+      { username: "maria", type: "admin" },
+    ]);
+  });
+
+  it("lets a second admin, created this way, list the users and create a user", async () => {
+    const admin = await createAdmin();
+    const created = await userService.createUser(admin, { name: "maria", type: "admin" });
+    if (!created.ok) return expect.fail(`creation failed with ${created.error.code}`);
+    const maria = created.value.user;
+
+    const list = await userService.listUsers(maria);
+    const result = await userService.createUser(maria, { name: "jane-doe", type: "user" });
+
+    expect(list).toMatchObject({
+      kind: "admin",
+      users: [{ name: "admin" }, { name: "maria", mustChangePassword: true }],
+    });
+    expect(result).toMatchObject({ ok: true, value: { user: { name: "jane-doe", type: "user" } } });
+  });
+
+  it.each([
+    ["no type", undefined],
+    ["an unknown type", "root"],
+  ])("creates no user for %s", async (_case, type) => {
+    const admin = await createAdmin();
+
+    const result = await userService.createUser(admin, { name: "jane-doe", type } as { name: string; type: string });
+
+    expect(result).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+    expect(await getTestDb().user.count()).toBe(1);
+  });
+
   it("gives every user another password", async () => {
     const admin = await createAdmin();
 
-    const first = await userService.createUser(admin, { name: "first-user" });
-    const second = await userService.createUser(admin, { name: "second-user" });
+    const first = await userService.createUser(admin, { name: "first-user", type: "user" });
+    const second = await userService.createUser(admin, { name: "second-user", type: "user" });
 
     if (!first.ok || !second.ok) return expect.fail("creation failed");
     expect(first.value.password).not.toBe(second.value.password);
@@ -210,7 +257,7 @@ describe("createUser", () => {
     await createUser({ name: "alice" });
     const before = await getTestDb().user.findMany({ include: { accounts: true }, orderBy: { username: "asc" } });
 
-    const result = await userService.createUser(admin, { name });
+    const result = await userService.createUser(admin, { name, type: "user" });
 
     expect(result).toEqual({ ok: false, error: { code: "name-taken" } });
     expect(
@@ -222,7 +269,10 @@ describe("createUser", () => {
     await createAdmin();
     const alice = await createUser({ name: "alice" });
 
-    const result = await userService.createUser({ id: alice.id, name: "alice", type: "user" }, { name: "jane-doe" });
+    const result = await userService.createUser(
+      { id: alice.id, name: "alice", type: "user" },
+      { name: "jane-doe", type: "user" },
+    );
 
     expect(result).toEqual({ ok: false, error: { code: "not-allowed" } });
     expect(await getTestDb().user.count()).toBe(2);
@@ -232,7 +282,7 @@ describe("createUser", () => {
   it("answers invalid-input for a name that breaks the rule and stores nothing", async () => {
     const admin = await createAdmin();
 
-    const result = await userService.createUser(admin, { name: "Jane Doe" });
+    const result = await userService.createUser(admin, { name: "Jane Doe", type: "user" });
 
     expect(result).toEqual({
       ok: false,
@@ -244,7 +294,7 @@ describe("createUser", () => {
   it("shows the created user in the list of the admin", async () => {
     const admin = await createAdmin();
 
-    await userService.createUser(admin, { name: "jane-doe" });
+    await userService.createUser(admin, { name: "jane-doe", type: "user" });
 
     const list = await userService.listUsers(admin);
     expect(list.kind).toBe("admin");
@@ -278,7 +328,7 @@ describe("the type of an account", () => {
     const admin = await createUser({ name: "admin", type: "admin", mustChangePassword: false });
     const created = await userService.createUser(
       { id: admin.id, name: admin.username, type: admin.type },
-      { name: "jane-doe" },
+      { name: "jane-doe", type: "user" },
     );
     if (!created.ok) return expect.fail(`user not created: ${created.error.code}`);
 

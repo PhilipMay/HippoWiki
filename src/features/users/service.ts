@@ -103,11 +103,16 @@ function firstPasswordFor(name: string): string {
 }
 
 /**
- * Creates a user of the type `user` with the given name and a generated first password, for an admin. The user has to change the
- * password at the first login. The password is returned this once, for the admin to pass on, and is never logged.
- * It checks the actor first, then the name, then hashes the password and writes.
+ * Creates a user with the given name and type and a generated first password, for an admin. The type has no default
+ * and never changes. The user has to change the password at the first login. The password is returned this once, for
+ * the admin to pass on, and is never logged. It checks the actor first, then the name and the type, then hashes the
+ * password and writes. The log line names the new user, its type and the admin who created it, so that a new admin is
+ * easy to spot.
  */
-export async function createUser(actor: Actor, input: { name: string }): Promise<Result<CreatedUser, CreateUserError>> {
+export async function createUser(
+  actor: Actor,
+  input: { name: string; type: string },
+): Promise<Result<CreatedUser, CreateUserError>> {
   if (!isAdmin(actor)) {
     logger.warn({ actorId: actor.id }, "user not created: the actor is not an admin");
     return { ok: false, error: { code: "not-allowed" } };
@@ -117,7 +122,7 @@ export async function createUser(actor: Actor, input: { name: string }): Promise
   if (!parsed.success) {
     return { ok: false, error: { code: "invalid-input", fieldErrors: z.flattenError(parsed.error).fieldErrors } };
   }
-  const { name } = parsed.data;
+  const { name, type } = parsed.data;
 
   const password = firstPasswordFor(name);
   let passwordHash: string;
@@ -135,7 +140,7 @@ export async function createUser(actor: Actor, input: { name: string }): Promise
   let user: UserSummary;
   try {
     const created = await getDb().user.create({
-      data: newUserData({ name, type: "user", passwordHash, mustChangePassword: true }),
+      data: newUserData({ name, type, passwordHash, mustChangePassword: true }),
       select: { id: true, username: true, type: true, createdAt: true, mustChangePassword: true },
     });
     user = {
@@ -154,7 +159,10 @@ export async function createUser(actor: Actor, input: { name: string }): Promise
     return { ok: false, error: { code: "failed" } };
   }
 
-  logger.info({ userId: user.id, actorId: actor.id }, "user created");
+  logger.info(
+    { userId: user.id, name: user.name, type: user.type, actorId: actor.id, createdBy: actor.name },
+    "user created",
+  );
   return { ok: true, value: { user, password } };
 }
 

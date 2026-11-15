@@ -284,7 +284,7 @@ describe("createUser", () => {
   });
 
   it("creates the user with the hash of a generated password and returns the user with the password", async () => {
-    const result = await createUser(ADMIN, { name: "bob" });
+    const result = await createUser(ADMIN, { name: "bob", type: "user" });
 
     expect(result).toStrictEqual({
       ok: true,
@@ -306,13 +306,47 @@ describe("createUser", () => {
       accounts: { create: { providerId: "credential", accountId: data.id, password: HASH } },
     });
     expect(select).toStrictEqual({ id: true, username: true, type: true, createdAt: true, mustChangePassword: true });
-    expect(mocks.info).toHaveBeenCalledExactlyOnceWith({ userId: ALICE_ID, actorId: ADMIN_ID }, "user created");
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+      { userId: ALICE_ID, name: "bob", type: "user", actorId: ADMIN_ID, createdBy: "admin" },
+      "user created",
+    );
     expect(mocks.warn).not.toHaveBeenCalled();
     expect(mocks.error).not.toHaveBeenCalled();
   });
 
+  it("creates an admin, and logs the type and the admin who created it, never the password", async () => {
+    const maria: Actor = { id: ADMIN_ID, name: "maria", type: "admin" };
+    mocks.userCreate.mockResolvedValue({ ...STORED, username: "carol", type: "admin" });
+
+    const result = await createUser(maria, { name: "carol", type: "admin" });
+
+    expect(result).toMatchObject({ ok: true, value: { user: { name: "carol", type: "admin" } } });
+    const { data } = mocks.userCreate.mock.calls[0]?.[0] as { data: Prisma.UserCreateInput };
+    expect(data).toMatchObject({ username: "carol", type: "admin" });
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+      { userId: ALICE_ID, name: "carol", type: "admin", actorId: ADMIN_ID, createdBy: "maria" },
+      "user created",
+    );
+    expect(JSON.stringify(mocks.info.mock.calls)).not.toContain(GENERATED);
+  });
+
+  it.each([
+    ["no type", undefined],
+    ["an empty type", ""],
+    ["an unknown type", "root"],
+  ])("answers invalid-input for %s, without a hash or a write", async (_case, type) => {
+    const result = await createUser(ADMIN, { name: "bob", type } as { name: string; type: string });
+
+    expect(result).toEqual({
+      ok: false,
+      error: { code: "invalid-input", fieldErrors: { type: ["Choose the type of the account"] } },
+    });
+    expect(mocks.hashPassword).not.toHaveBeenCalled();
+    expect(mocks.userCreate).not.toHaveBeenCalled();
+  });
+
   it("trims the name", async () => {
-    await createUser(ADMIN, { name: "  bob " });
+    await createUser(ADMIN, { name: "  bob ", type: "user" });
 
     const { data } = mocks.userCreate.mock.calls[0]?.[0] as { data: Prisma.UserCreateInput };
     expect(data).toMatchObject({ username: "bob", email: "bob@users.hippowiki.invalid" });
@@ -323,7 +357,7 @@ describe("createUser", () => {
     mocks.generateFirstPassword.mockReturnValueOnce(name).mockReturnValueOnce(GENERATED);
     mocks.userCreate.mockResolvedValue({ ...STORED, username: name });
 
-    const result = await createUser(ADMIN, { name });
+    const result = await createUser(ADMIN, { name, type: "user" });
 
     expect(result).toMatchObject({ ok: true, value: { password: GENERATED } });
     expect(mocks.hashPassword).toHaveBeenCalledExactlyOnceWith(GENERATED);
@@ -336,7 +370,7 @@ describe("createUser", () => {
   ] satisfies [string, Actor][])(
     "answers not-allowed for %s, without a password, a hash or the database",
     async (_case, actor) => {
-      const result = await createUser(actor, { name: "bob" });
+      const result = await createUser(actor, { name: "bob", type: "user" });
 
       expect(result).toEqual({ ok: false, error: { code: "not-allowed" } });
       expect(mocks.generateFirstPassword).not.toHaveBeenCalled();
@@ -351,7 +385,7 @@ describe("createUser", () => {
   );
 
   it("checks the actor before the name", async () => {
-    const result = await createUser(ALICE, { name: "Not A Name!" });
+    const result = await createUser(ALICE, { name: "Not A Name!", type: "user" });
 
     expect(result).toEqual({ ok: false, error: { code: "not-allowed" } });
   });
@@ -363,7 +397,7 @@ describe("createUser", () => {
     ["a name in upper case", "Bob", "Use lowercase letters, digits and single hyphens"],
     ["a name with a double hyphen", "bo--b", "Use lowercase letters, digits and single hyphens"],
   ])("answers invalid-input for %s, without a hash or a write", async (_case, name, error) => {
-    const result = await createUser(ADMIN, { name });
+    const result = await createUser(ADMIN, { name, type: "user" });
 
     expect(result).toEqual({ ok: false, error: { code: "invalid-input", fieldErrors: { name: [error] } } });
     expect(mocks.hashPassword).not.toHaveBeenCalled();
@@ -378,7 +412,7 @@ describe("createUser", () => {
   ])("answers name-taken for a unique violation on %s", async (_case, constraint) => {
     mocks.userCreate.mockRejectedValue(uniqueViolation(constraint));
 
-    const result = await createUser(ADMIN, { name: "bob" });
+    const result = await createUser(ADMIN, { name: "bob", type: "user" });
 
     expect(result).toEqual({ ok: false, error: { code: "name-taken" } });
     expect(mocks.warn).toHaveBeenCalledExactlyOnceWith({ name: "bob" }, "name of new user already in use");
@@ -388,7 +422,7 @@ describe("createUser", () => {
   it("answers busy when no hash slot gets free, and writes nothing", async () => {
     mocks.hashPassword.mockRejectedValue(new PasswordHashBusyError());
 
-    const result = await createUser(ADMIN, { name: "bob" });
+    const result = await createUser(ADMIN, { name: "bob", type: "user" });
 
     expect(result).toEqual({ ok: false, error: { code: "busy" } });
     expect(mocks.userCreate).not.toHaveBeenCalled();
@@ -402,7 +436,7 @@ describe("createUser", () => {
     const err = new Error("hash failed");
     mocks.hashPassword.mockRejectedValue(err);
 
-    const result = await createUser(ADMIN, { name: "bob" });
+    const result = await createUser(ADMIN, { name: "bob", type: "user" });
 
     expect(result).toEqual({ ok: false, error: { code: "failed" } });
     expect(mocks.userCreate).not.toHaveBeenCalled();
@@ -419,7 +453,7 @@ describe("createUser", () => {
   ])("answers failed for %s and logs it", async (_case, err) => {
     mocks.userCreate.mockRejectedValue(err);
 
-    const result = await createUser(ADMIN, { name: "bob" });
+    const result = await createUser(ADMIN, { name: "bob", type: "user" });
 
     expect(result).toEqual({ ok: false, error: { code: "failed" } });
     expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ err, name: "bob" }, "failed to create user");
@@ -442,7 +476,7 @@ describe("createUser", () => {
   it.each(outcomes)("logs neither the password nor its hash when %s", async (_case, arrange, actor) => {
     arrange();
 
-    await createUser(actor, { name: "bob" });
+    await createUser(actor, { name: "bob", type: "user" });
 
     expect(logged()).not.toContain(GENERATED);
     expect(logged()).not.toContain(HASH);

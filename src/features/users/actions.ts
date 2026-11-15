@@ -17,10 +17,10 @@ const BUSY_MESSAGE = "Too many logins at the moment, please try again";
 const CREATE_FAILED_MESSAGE = "The user could not be created. Please try again.";
 
 /**
- * Creates a user from the submitted name, with a generated first password. On success it returns the name and the
+ * Creates a user from the submitted name and type, with a generated first password. On success it returns the name and the
  * password in its form state and does not redirect: the password is shown exactly once and must not be part of an
- * address or of a stored page. Returns the errors to show in the form if the name is invalid or taken or the user
- * cannot be stored.
+ * address or of a stored page. Returns the errors to show in the form if the name or the type is invalid, the name is
+ * taken or the user cannot be stored.
  */
 export async function createUser(_prevState: CreateUserFormState, formData: FormData): Promise<CreateUserFormState> {
   const actor = await requireUser();
@@ -31,7 +31,7 @@ export async function createUser(_prevState: CreateUserFormState, formData: Form
   const result = await userService.createUser(actor, input.data);
   if (!result.ok) {
     switch (result.error.code) {
-      // For everyone but the admin there are no users to manage: like the user list, the action is not found.
+      // Only admins create users: for a user, like the dialog, the action is not found.
       case "not-allowed":
         notFound();
       case "invalid-input":
@@ -47,5 +47,6 @@ export async function createUser(_prevState: CreateUserFormState, formData: Form
 
   // The list behind the dialog shows the new user.
   revalidatePath(usersPath());
-  return { created: { name: result.value.user.name, password: result.value.password } };
+  const { user, password } = result.value;
+  return { created: { name: user.name, type: user.type, password } };
 }
