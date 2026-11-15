@@ -11,9 +11,9 @@ The specification lives in the `spec/` directory. This catalog should always be 
   step plan (starting and resuming, what may change, the rounds of questions, the checks for contradictions and
   feasibility, how requirements are written, the template); the result is one file `spec/<feature>-requirements.md`,
   listed here while it exists
-- `spec/workflow.md`: how features are planned in step files, when a step is done, what to do when it cannot be
-  finished, how a feature is wrapped up, what a feature spec holds, and how a finding of the review report is fixed
-  and deleted
+- `spec/step-plan-workflow.md`: how features are planned in step files, when a step is done, what to do when it
+  cannot be finished, how a feature is wrapped up, what a feature spec holds, and how a finding of the review report is
+  fixed and deleted
 - `spec/architecture.md`: code layout and conventions (layers and services, reads, writes, the adapters of callers
   other than the GUI, login and sessions, the public addresses, security headers, validation, addresses, database, UI)
 - `spec/testing.md`: the check of doc references, and unit, integration and end-to-end test conventions
@@ -64,7 +64,7 @@ npm run test:e2e:production  # the same end-to-end tests against a production bu
 Run `npm run format` to fix formatting issues reported by `format:check`.
 
 For every change, inside a step plan or not, the end-to-end tests run in two stages, as "When a step is done" in
-`spec/workflow.md` describes:
+`spec/step-plan-workflow.md` describes:
 
 - While working, run only the specs the change affects: `npm run test:e2e -- e2e/<name>.spec.ts`, one path per spec.
   Which specs count as affected, and when the complete suite is needed right away, is listed there.
@@ -72,7 +72,7 @@ For every change, inside a step plan or not, the end-to-end tests run in two sta
 
 A change that touches only documentation (the files in `spec/`, `README.md`, `CLAUDE.md`, `AGENTS.md` and the skills in
 `.claude/skills/`) runs only `npm run check`: no integration tests, no end-to-end tests and no build. This also holds
-for the wrap-up step of a step plan; see "Changes to documentation only" in `spec/workflow.md`.
+for the wrap-up step of a step plan; see "Changes to documentation only" in `spec/step-plan-workflow.md`.
 
 ## Next.js Agent Rules
 
@@ -95,12 +95,12 @@ This applies to code reviews and to reviews of documents such as the files in `s
 - For documents, Location is the file and the heading of the section; Evidence is a short quote of the passage.
 - Start the review with a short summary: the overall verdict and how many issues there are at each severity level.
 - When a finding of `spec/review-report.md` is fixed, delete it from the report and update the other documents in the
-  same change, as "Fixing a finding of the review report" in `spec/workflow.md` describes.
+  same change, as "Fixing a finding of the review report" in `spec/step-plan-workflow.md` describes.
 
 ## Git Handling
 
 - Do not look at the Git history, and do not mention how something used to be in an earlier commit.
 - Do not create branches or pull requests.
 - Do not ask whether something should be committed or pushed, and do not offer to do so.
-- After each finished step of a step plan, commit as described in `spec/workflow.md`.
-- After the last step of a step plan, push as described in `spec/workflow.md`.
+- After each finished step of a step plan, commit as described in `spec/step-plan-workflow.md`.
+- After the last step of a step plan, push as described in `spec/step-plan-workflow.md`.

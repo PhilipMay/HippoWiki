@@ -227,8 +227,8 @@ Move the lasting content of this plan into the other spec files and remove the p
 
 ### Build
 
-1. Describe the feature as built in `spec/<feature>.md` (see "Feature specs" in `workflow.md`), or extend an existing
-   feature spec, and move the rules and decisions of the requirements file that still hold into it; update
+1. Describe the feature as built in `spec/<feature>.md` (see "Feature specs" in `step-plan-workflow.md`), or extend an
+   existing feature spec, and move the rules and decisions of the requirements file that still hold into it; update
    `architecture.md`, `testing.md` or `tech.md` where conventions changed.
 2. Remove the feature from `roadmap.md`.
 3. Check that `README.md` has all the commands a developer needs.
@@ -237,7 +237,7 @@ Move the lasting content of this plan into the other spec files and remove the p
 
 ### Test
 
-- The commands in "When a step is done" in `spec/workflow.md` pass.
+- The commands in "When a step is done" in `spec/step-plan-workflow.md` pass.
 ```
 
 ## Machine setup

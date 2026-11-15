@@ -255,7 +255,7 @@ the threat.
 
 This section holds only open findings, and the counts in "Summary" are those of the open findings. A fixed finding is
 deleted, and the rest of this report and the other documents are brought in line in the same change, as "Fixing a
-finding of the review report" in `workflow.md` describes.
+finding of the review report" in `step-plan-workflow.md` describes.
 
 ### Access control and the entry points of requests
 
@@ -1975,7 +1975,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 
 #### issue: no rule for how fast vulnerable dependencies are fixed, and nothing in CI detects them
 
-- Location: `spec/workflow.md`, section "Rules for every step"; `.github/dependabot.yml`; `.github/workflows/`
+- Location: `spec/step-plan-workflow.md`, section "Rules for every step"; `.github/dependabot.yml`; `.github/workflows/`
 - Severity: Minor. It is a gap in the documentation, and the alerts of Dependabot may be switched on in the settings.
 - Category: security
 - Problem: the only rule is that upgrading packages is "a task of its own", with no time frame by severity. No workflow
@@ -2071,7 +2071,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 
 #### issue: changes reach `main` without a second review, and this is not documented as a decision
 
-- Location: `CLAUDE.md`, section "Git Handling"; `spec/workflow.md`, section "Step plans"
+- Location: `CLAUDE.md`, section "Git Handling"; `spec/step-plan-workflow.md`, section "Step plans"
 - Severity: Minor. It describes the process of a single maintainer.
 - Category: docs
 - Problem: the documented process commits to the current branch and pushes it; any review comes afterwards. Whether

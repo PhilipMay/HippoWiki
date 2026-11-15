@@ -278,4 +278,4 @@ How the code is tested. Commands are listed in `README.md`.
 - Dependabot (`.github/dependabot.yml`) checks the `npm` and `github-actions` dependencies and the two `docker` images
   weekly: the PostgreSQL image in `scripts/Containerfile` and the Node.js image in the `Containerfile` of the project
   root, both for minor updates only. All minor and patch npm updates arrive in one pull request, each major npm update
-  in a pull request of its own, all action updates in one. Its pull requests run the same workflows; merging one is an upgrade, a task of its own (see `workflow.md`).
+  in a pull request of its own, all action updates in one. Its pull requests run the same workflows; merging one is an upgrade, a task of its own (see `step-plan-workflow.md`).

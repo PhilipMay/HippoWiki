@@ -12,8 +12,8 @@ that leads the conversation with the user.
   without knowing the code. It contains no contradictions and nothing that cannot be built with the stack of the
   project.
 - The approved file is what the step plan `spec/<feature>-steps.md` is written from (see "Step plans" in
-  `workflow.md`). The wrap-up step of that plan moves what lasts into the feature spec and deletes the requirements
-  file.
+  `step-plan-workflow.md`). The wrap-up step of that plan moves what lasts into the feature spec and deletes the
+  requirements file.
 
 ## Starting and resuming
 
@@ -34,7 +34,7 @@ that leads the conversation with the user.
   when the file is created. Nothing else changes: no code, configuration, tests, fixtures, other spec files,
   `README.md` or skills.
 - No Git action: do not commit and do not push. The requirements file stays in the working tree and is committed with
-  the first step of the step plan (see "Step plans" in `workflow.md`).
+  the first step of the step plan (see "Step plans" in `step-plan-workflow.md`).
 - Reading is free and needed for the checks: the spec files, the code, and the documentation of the installed packages
   in `node_modules/`.
 - If the conversation shows that another spec file is wrong or that an entry of `roadmap.md` should change, name it in
@@ -113,7 +113,7 @@ Run the checks in every round on what changed, and on the whole file before aski
 ## Changes after approval
 
 If writing the step plan or building a step shows that a requirement has to change, follow the rule for scope changes
-in "Step plans" of `workflow.md`: ask the user first, then update the requirements file and the step file.
+in "Step plans" of `step-plan-workflow.md`: ask the user first, then update the requirements file and the step file.
 
 ## Requirements template
 
