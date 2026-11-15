@@ -81,7 +81,7 @@ lets every user see who has an account and who is an admin.
     an admin.
 - R6: An admin must have no API tokens and no connected apps, and must not be able to create them.
   - Acceptance: `/account` of an admin shows the user name and no token list and no "New token"; a request of an admin
-    to create a token is refused; `/mcp` gives an admin nothing to read.
+    to create a token is refused; `/mcp` refuses an admin (see R17).
 - R11: An admin who reaches the OAuth consent page with a valid request must be told that admin accounts cannot connect
   apps, and must be able to return to the app with a refusal.
   - Acceptance: the consent page of an admin shows this message instead of the consent form, with the link "Return to
@@ -97,6 +97,19 @@ lets every user see who has an account and who is an admin.
   `/users` instead.
   - Acceptance: an admin who logs in at `/login?next=/folders/team`, with or without a first password to change, lands
     on `/users`; a user lands on `/folders/team` as today.
+
+### MCP and tokens
+
+- R17: `/mcp` must refuse every request that acts for an admin, whatever token it carries, an API token or the access
+  token of a grant. The refusal must follow from the type of the account, so that it holds even if a token of an admin
+  existed.
+  - Acceptance: a request to `/mcp` with a token whose account is an admin is answered with 401 and
+    `error="invalid_token"`, like an unknown token, and reaches no tool.
+- R18: No task that only admins may do must ever be reachable through MCP or through a token, with any scope: not
+  creating accounts, not seeing whose password change is pending, and no later admin task such as a password reset or
+  deactivating users. Admin tasks are done only in the browser, with a session.
+  - Acceptance: the MCP server offers no tool for accounts; every admin task needs the session of an admin, and no
+    request with a bearer token can do one.
 
 ### What a user can reach
 
@@ -119,7 +132,7 @@ lets every user see who has an account and who is an admin.
   the user list for every account, and the update of existing installations.
 - Not in: changing the type of an account; password reset by the admin and deactivating users (both stay in
   `roadmap.md`); rights per folder; a name for the first admin other than `admin`; a filter of the user list; an MCP
-  tool that lists accounts.
+  tool that lists accounts for users; any admin task through MCP or a token, now or later (see R18).
 
 ## Effect on existing features
 
@@ -130,7 +143,8 @@ lets every user see who has an account and who is an admin.
 - Content structure, pages and page deletion: an admin reaches none of it. Content that an admin edited before keeps
   showing that admin's name as its last editor.
 - API tokens: an admin has none; the tokens and grants of `admin` are removed on the update.
-- MCP and OAuth: `/mcp` serves users only, and the consent page refuses admins with `access_denied`.
+- MCP and OAuth: `/mcp` serves users only and refuses every token of an admin, and the consent page refuses admins
+  with `access_denied`. MCP and tokens stay for content only, for good.
 
 ## Decisions
 
@@ -162,6 +176,11 @@ lets every user see who has an account and who is an admin.
 - A request with no or an unknown type is refused instead of creating a user, so that a broken or crafted request is
   noticed. Rejected: falling back to "User".
 - The log names the type of a new account and its creator, so that a new admin is easy to spot.
-- MCP keeps reading content only. Rejected for now: a tool that lists accounts.
+- Admins never use MCP, and admin tasks are never done through MCP or a token: they are done only in the browser, with
+  the session of an admin. This is a lasting rule, not a limit of this feature, so that a leaked token can never manage
+  accounts. `/mcp` checks the type of the token's account as well, as a second line behind "admins have no tokens".
+  Rejected: admin tools in MCP, and tokens with an admin scope.
+- MCP gets no tool that lists accounts for users in this feature. Such a tool would be a user task, not an admin
+  task, and could come later.
 
 ## Open questions
