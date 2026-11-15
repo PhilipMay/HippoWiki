@@ -7,10 +7,10 @@ rights yet.
 
 Code: `src/features/users/` (the accounts), `src/features/auth/` (login, logout, the session, the login wait and the
 forced password change), `src/lib/auth.ts` (the Better Auth instance), `src/lib/client-address.ts`,
-`src/lib/password-hash.ts`, `src/proxy.ts`, `scripts/admin.ts`, `scripts/common-passwords.ts` and the routes `src/app/login/`,
-`src/app/change-password/` and `src/app/users/`. The models are `User`, `Account`, `Session`, `Verification`,
-`AuthSecret`, `LoginAttempt` and `LoginWindow` in `prisma/schema.prisma`; the first four have the shape that Better
-Auth and its `username` plugin expect. The admin setup in the container image is described in `container-image.md`.
+`src/lib/password-hash.ts`, `src/proxy.ts`, `scripts/admin.ts`, `scripts/common-passwords.ts` and the routes
+`src/app/login/`, `src/app/change-password/` and `src/app/users/`. The models are `User`, `Account`, `Session`,
+`Verification`, `AuthSecret`, `LoginAttempt` and `LoginWindow` in `prisma/schema.prisma`; the first four have the shape
+that Better Auth and its `username` plugin expect. The admin setup in the container image is described in `container-image.md`.
 
 The API tokens of a user and the own account page `/account` are described in `api-tokens.md`.
 

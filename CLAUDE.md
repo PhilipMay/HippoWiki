@@ -22,10 +22,10 @@ The specification lives in the `spec/` directory. This catalog should always be 
   command that only migrates, the admin setup, configuration including the trusted reverse proxies and the public
   URL, health, smoke test, publishing on a release, what the environment has to provide, including the client address
   of a login, decisions, limits)
-- `spec/users-and-login.md`: the users and login feature as built (user names and email, passwords and hashing, admin
-  account and setup, login and logout, sessions, the way back after a login, failed logins with the wait per user name
-  and client address group and the hour window per user name, authenticated access only, forced password change, user
-  list and creating users, routes, decisions, limits)
+- `spec/users-and-login.md`: the users and login feature as built (user names and email, passwords and hashing, the
+  list of common passwords and the context words, admin account and setup, login and logout, sessions, the way back
+  after a login, failed logins with the wait per user name and client address group and the hour window per user
+  name, authenticated access only, forced password change, user list and creating users, routes, decisions, limits)
 - `spec/api-tokens.md`: the API tokens as built (tokens shown once and stored as a hash, grants to OAuth clients,
   scopes and expiry, the limit per user, the own tokens only, the check of a bearer token with its codes and the
   option for OAuth access tokens, the own account page `/account`, decisions, limits)
@@ -35,8 +35,6 @@ The specification lives in the `spec/` directory. This catalog should always be 
   metadata document and by registration with its limit, the safe fetch of metadata documents, the authorization
   request and the consent page, codes, grants, refresh with rotation, the token endpoint, secrets, routes, decisions,
   limits)
-- `spec/password-blocklist-steps.md`: step plan for refusing common passwords and passwords built from context words
-  (the list of common passwords, the rules in the password schema, the fixed finding of the review report)
 - `spec/roadmap.md`: backlog of candidate features, grouped by theme, and things still to check
 - `spec/issue-report.md`: how to report issues found in code and document reviews
 - `spec/review-report.md`: the report of the security and code review (scope and method, standards and target level,

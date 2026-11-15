@@ -74,7 +74,6 @@ listed first; there is no order across themes.
 - Admin without content access: the admin manages users only and sees no content without rights of their own.
 - Several admin accounts: more admins than the one account named `admin`.
 - First password expiry: a generated first password stops working after some time (`users-and-login.md`).
-- Common password list: refuse passwords that are on a list of common passwords.
 - Breached password check: check new passwords against Have I Been Pwned by k-anonymity (only the first five
   characters of the SHA-1 hash leave the server), as an option for deployments that allow outgoing requests
   (`users-and-login.md`).
