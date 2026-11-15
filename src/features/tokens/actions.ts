@@ -32,6 +32,9 @@ export async function createToken(_prevState: CreateTokenFormState, formData: Fo
   const result = await tokenService.createToken(user, input.data);
   if (!result.ok) {
     switch (result.error.code) {
+      // An admin has no tokens: like the address of the dialog, the action is not found.
+      case "not-allowed":
+        notFound();
       case "invalid-input":
         return { fieldErrors: result.error.fieldErrors };
       case "limit-reached":
@@ -60,6 +63,8 @@ export async function revokeToken(id: string): Promise<RevokeTokenFormState> {
   const result = await tokenService.revokeToken(user, tokenId);
   if (!result.ok) {
     switch (result.error.code) {
+      // An admin has no tokens, so no token of an admin is found.
+      case "not-allowed":
       case "token-not-found":
         notFound();
       case "failed":

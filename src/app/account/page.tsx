@@ -18,6 +18,18 @@ export const metadata: Metadata = {
   title: pageTitle("Account"),
 };
 
+/** The heading of the account: the user name. */
+function AccountHeading({ name }: { name: string }) {
+  return (
+    <Stack spacing={1}>
+      <Typography variant="h4" component="h1" sx={{ overflowWrap: "anywhere" }}>
+        {name}
+      </Typography>
+      <Typography color="text.secondary">Your account</Typography>
+    </Stack>
+  );
+}
+
 /** The actions of the account: `create` opens the "New token" dialog, `revoke` the "Revoke token" dialog. */
 const ACTIONS = ["create", "revoke"] as const;
 
@@ -25,7 +37,8 @@ const ACTIONS = ["create", "revoke"] as const;
  * The own account of the logged-in user: the user name and the user's API tokens, with the apps the user connected
  * through OAuth among them. `?action=revoke` needs the parameter
  * `token` with the id of one of the user's tokens; every other address with a token, an unknown action or a view is
- * not found.
+ * not found. An admin has no tokens and no apps: the account of an admin shows the user name only, and every action
+ * is not found.
  */
 export default async function AccountPage({ searchParams }: PageProps<"/account">) {
   // Nothing is shown without a login. First, so that an invalid address also leads to the login page.
@@ -38,6 +51,12 @@ export default async function AccountPage({ searchParams }: PageProps<"/account"
   const action = parseAction(query, ACTIONS);
   // The account has no views.
   if (action === "invalid" || parseView(query) !== null) notFound();
+
+  // `null` for an admin, who has no tokens.
+  if (!tokens) {
+    if (action !== null || query.token !== undefined) notFound();
+    return <AccountHeading name={user.name} />;
+  }
   // Only the user's own tokens can be chosen; a malformed id, an unknown one and another user's token are not found.
   const tokenId = parseChoice(
     query,
@@ -49,12 +68,7 @@ export default async function AccountPage({ searchParams }: PageProps<"/account"
 
   return (
     <Stack spacing={3}>
-      <Stack spacing={1}>
-        <Typography variant="h4" component="h1" sx={{ overflowWrap: "anywhere" }}>
-          {user.name}
-        </Typography>
-        <Typography color="text.secondary">Your account</Typography>
-      </Stack>
+      <AccountHeading name={user.name} />
       <Stack direction="row" spacing={2} sx={{ alignItems: "center", justifyContent: "space-between" }}>
         <Typography variant="h5" component="h2">
           API tokens

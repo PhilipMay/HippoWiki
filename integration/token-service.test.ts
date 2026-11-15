@@ -327,6 +327,28 @@ describe("authenticateToken", () => {
     vi.setSystemTime(start + 60_000);
     await tokenService.authenticateToken(bearer(secret), "read");
     expect(await lastUse()).toEqual(new Date(start + 60_000));
-    expect((await tokenService.listTokens(alice))[0]?.lastUsedAt).toEqual(new Date(start + 60_000));
+    expect((await tokenService.listTokens(alice))?.[0]?.lastUsedAt).toEqual(new Date(start + 60_000));
+  });
+});
+
+describe("an admin", () => {
+  it("has no token list and cannot create or revoke a token", async () => {
+    const maria = await createUser({ name: "maria", type: "admin", mustChangePassword: false });
+    const admin: Actor = { id: maria.id, name: maria.username, type: maria.type };
+    const alice = await createActor();
+    const { token } = await createToken(alice);
+
+    await expect(tokenService.listTokens(admin)).resolves.toBeNull();
+    await expect(tokenService.createToken(admin, INPUT)).resolves.toEqual({
+      ok: false,
+      error: { code: "not-allowed" },
+    });
+    await expect(tokenService.revokeToken(admin, token.id)).resolves.toEqual({
+      ok: false,
+      error: { code: "not-allowed" },
+    });
+
+    expect(await getTestDb().apiToken.count({ where: { userId: maria.id } })).toBe(0);
+    expect(await getTestDb().apiToken.count()).toBe(1);
   });
 });

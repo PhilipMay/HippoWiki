@@ -166,3 +166,31 @@ describe("revokeToken", () => {
     expect(mocks.revokeToken).not.toHaveBeenCalled();
   });
 });
+
+describe("for an admin", () => {
+  // An admin has no tokens: like the addresses of the dialogs, the actions are not found.
+  const ADMIN = { ...ALICE, name: "maria", type: "admin" as const };
+
+  beforeEach(() => {
+    mocks.requireUser.mockResolvedValue(ADMIN);
+  });
+
+  it("createToken shows the not-found page when the service answers not-allowed", async () => {
+    mocks.createToken.mockResolvedValue(failure("not-allowed"));
+
+    await expect(createToken({}, formData(VALID))).rejects.toMatchObject({ target: "not-found" });
+
+    expect(mocks.createToken).toHaveBeenCalledExactlyOnceWith(ADMIN, expect.anything());
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it("revokeToken shows the not-found page when the service answers not-allowed", async () => {
+    mocks.revokeToken.mockResolvedValue(failure("not-allowed"));
+
+    await expect(revokeToken(TOKEN_ID)).rejects.toMatchObject({ target: "not-found" });
+
+    expect(mocks.revokeToken).toHaveBeenCalledExactlyOnceWith(ADMIN, TOKEN_ID);
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+    expect(mocks.redirect).not.toHaveBeenCalled();
+  });
+});

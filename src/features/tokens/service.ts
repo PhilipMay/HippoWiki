@@ -23,7 +23,7 @@ import {
 import { generateToken, hashToken, looksLikeToken } from "@/features/tokens/secret";
 import { parseUserId } from "@/features/users/schema";
 import type { Actor } from "@/features/users/service";
-import type { UserType } from "@/features/users/user-type";
+import { isAdmin, type UserType } from "@/features/users/user-type";
 import { getDb } from "@/lib/db";
 import { API_TOKEN_HASH, isUniqueViolation } from "@/lib/db-errors";
 import { logger } from "@/lib/logger";
@@ -97,8 +97,12 @@ function actorIdOf(actor: Actor): string | null {
   return id;
 }
 
-/** The actor's tokens and grants to OAuth clients, newest first. A malformed actor id has no tokens. */
-export async function listTokens(actor: Actor): Promise<TokenSummary[]> {
+/**
+ * The actor's tokens and grants to OAuth clients, newest first. A malformed actor id has no tokens. `null` for an
+ * admin, who has no tokens and no grants: for an admin the token list does not exist.
+ */
+export async function listTokens(actor: Actor): Promise<TokenSummary[] | null> {
+  if (isAdmin(actor)) return null;
   const userId = parseUserId(actor.id);
   if (!userId) return [];
   const tokens = await getDb().apiToken.findMany({
@@ -121,16 +125,18 @@ type LimitReached = { code: "limit-reached" };
 type TokenNotFound = { code: "token-not-found" };
 /** An unexpected database error, or an actor that is malformed or does not exist; it has been logged. */
 type Failed = { code: "failed" };
+/** The actor is an admin, who has no tokens; it has been logged. */
+type NotAllowed = { code: "not-allowed" };
 
 /** The request has no `Authorization` header with a bearer token, or its value does not look like a token. */
 type MissingToken = { code: "missing-token" };
-/** The token is unknown or expired, or its user still has the first password. */
+/** The token is unknown or expired, or its user still has the first password or is an admin. */
 type BadToken = { code: "invalid-token" };
 /** The token is valid but lacks the scope that was asked for. */
 type InsufficientScope = { code: "insufficient-scope" };
 
-export type CreateTokenError = InvalidToken | LimitReached | Failed;
-export type RevokeTokenError = TokenNotFound | Failed;
+export type CreateTokenError = NotAllowed | InvalidToken | LimitReached | Failed;
+export type RevokeTokenError = NotAllowed | TokenNotFound | Failed;
 export type AuthenticateTokenError = MissingToken | BadToken | InsufficientScope | Failed;
 
 /** Thrown inside the transaction of `createToken` when the actor has no row; rolls it back. */
@@ -138,12 +144,17 @@ class ActorNotFoundError extends Error {}
 
 /**
  * Creates a token for the actor with the given name, scopes and expiry choice, and returns it together with the token
- * itself, which is shown this once. It checks the actor's id, then the input, then the limit, and writes.
+ * itself, which is shown this once. It refuses an admin, who has no tokens, then checks the actor's id, then the
+ * input, then the limit, and writes.
  */
 export async function createToken(
   actor: Actor,
   input: { name: string; scopes: string[]; expiry: string },
 ): Promise<Result<CreatedToken, CreateTokenError>> {
+  if (isAdmin(actor)) {
+    logger.warn({ actorId: actor.id }, "token not created: the actor is an admin");
+    return { ok: false, error: { code: "not-allowed" } };
+  }
   const userId = actorIdOf(actor);
   if (!userId) return { ok: false, error: { code: "failed" } };
 
@@ -201,6 +212,10 @@ export async function createToken(
  * first.
  */
 export async function revokeToken(actor: Actor, id: string): Promise<Result<{ id: string }, RevokeTokenError>> {
+  if (isAdmin(actor)) {
+    logger.warn({ actorId: actor.id }, "token not revoked: the actor is an admin");
+    return { ok: false, error: { code: "not-allowed" } };
+  }
   const userId = actorIdOf(actor);
   if (!userId) return { ok: false, error: { code: "failed" } };
 
@@ -252,8 +267,8 @@ export type AuthenticateTokenOptions = {
  *
  * - `missing-token`: no header, another scheme, or a value that does not look like a token; the database is not asked
  *   and nothing is logged. Without `acceptOAuth`, an OAuth access token does not look like a token.
- * - `invalid-token`: an unknown or expired token, or one whose user still has the first password, who may do nothing
- *   but change it. An OAuth access token is looked up by its hash and refused when it or its grant has expired.
+ * - `invalid-token`: an unknown or expired token, one whose user still has the first password, who may do nothing
+ *   but change it, or one whose user is an admin, who has no tokens. An OAuth access token is looked up by its hash and refused when it or its grant has expired.
  * - `insufficient-scope`: a valid token without the scope; `write` does not include `read`.
  * - `failed`: the database could not be read.
  *
@@ -314,6 +329,12 @@ export async function authenticateToken(
   }
   if (token.user.mustChangePassword) {
     logger.warn({ reason: "first-password", tokenId }, "token refused");
+    return { ok: false, error: { code: "invalid-token" } };
+  }
+  // Admins have no tokens and no grants. The type of the account is checked as well, so that a token of an admin is
+  // refused even if one existed: no admin acts through a token, and no admin task is reachable with one.
+  if (isAdmin(token.user)) {
+    logger.warn({ reason: "admin", tokenId }, "token refused");
     return { ok: false, error: { code: "invalid-token" } };
   }
   if (!token.scopes.includes(scope)) {

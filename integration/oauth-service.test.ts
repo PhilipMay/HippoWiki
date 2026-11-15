@@ -1046,3 +1046,54 @@ describe("the clean-up", () => {
     expect(await getTestDb().oAuthClient.count({ where: { id: client.id } })).toBe(0);
   });
 });
+
+describe("an admin", () => {
+  it("cannot create a code: the request is refused with access_denied, and no code is written", async () => {
+    const admin = await createActor();
+    const maria = await createUser({ name: "maria", type: "admin", mustChangePassword: false });
+    const client = await register();
+
+    const result = await oauthService.createCode(
+      { id: maria.id, name: maria.username, type: maria.type },
+      paramsOf(client),
+      "90d",
+    );
+
+    expect(result).toMatchObject({ ok: false, error: { code: "refused", error: "access_denied", state: "xyz" } });
+    expect(await getTestDb().oAuthCode.count()).toBe(0);
+    // A user still gets a code for the same request.
+    await approve(admin, client);
+    expect(await getTestDb().oAuthCode.count()).toBe(1);
+  });
+
+  it("is refused for a token and a grant inserted for it", async () => {
+    const maria = await createUser({ name: "maria", type: "admin", mustChangePassword: false });
+    const client = await register();
+    const { secret } = await createApiToken({ owner: maria, scopes: ["read", "write"] });
+    const accessToken = `hwa_${"C".repeat(43)}`;
+    await getTestDb().apiToken.create({
+      data: {
+        userId: maria.id,
+        clientId: client.id,
+        name: "Example",
+        scopes: ["read"],
+        accessTokenHash: hashSecret(accessToken),
+        refreshTokenHash: hashSecret("refresh"),
+        accessTokenExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      },
+    });
+
+    for (const scope of ["read", "write"] as const) {
+      await expect(tokenService.authenticateToken(bearer(secret), scope)).resolves.toEqual({
+        ok: false,
+        error: { code: "invalid-token" },
+      });
+    }
+    expect(await works(accessToken)).toBe(false);
+    // No last use is written for a refused token.
+    expect((await getTestDb().apiToken.findMany({ where: { userId: maria.id } })).map((row) => row.lastUsedAt)).toEqual(
+      [null, null],
+    );
+  });
+});

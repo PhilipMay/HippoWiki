@@ -42,6 +42,7 @@ import { expiresAtFor, tokenExpirySchema } from "@/features/tokens/schema";
 import { MAX_TOKENS_PER_USER } from "@/features/tokens/service";
 import { parseUserId } from "@/features/users/schema";
 import type { Actor } from "@/features/users/service";
+import { isAdmin } from "@/features/users/user-type";
 import type { Prisma } from "@/generated/prisma/client";
 import { isClientAddressGroup, SHARED_CLIENT_ADDRESS } from "@/lib/client-address";
 import { getDb } from "@/lib/db";
@@ -289,6 +290,17 @@ type RefusedRequest = {
 
 export type CheckAuthorizationError = UntrustedRequest | RefusedRequest | Failed;
 
+/** Why an admin cannot approve a request; shown on the consent page and sent to the client. */
+export const ADMIN_REFUSAL_DESCRIPTION = "Admin accounts cannot connect apps";
+
+/**
+ * The answer to a valid request of an admin: the client gets `access_denied` at its redirect address, so that it does
+ * not wait for an answer that never comes. Admins have no grants and connect no apps.
+ */
+export function adminRefusal({ redirectUri, state }: AuthorizationRequest): RefusedRequest {
+  return { code: "refused", redirectUri, state, error: "access_denied", description: ADMIN_REFUSAL_DESCRIPTION };
+}
+
 /**
  * Checks an authorization request.
  *
@@ -398,7 +410,8 @@ export type CreatedCode = { code: string; request: AuthorizationRequest };
 /**
  * Creates an authorization code for a request that the actor approved, with the lifetime of the grant that the actor
  * chose (`30d`, `90d` or `365d`). The request is checked again here, because its parameters come back from a form.
- * The code works once and for ten minutes.
+ * The code works once and for ten minutes. An admin, who connects no apps, gets the refusal `access_denied` for an
+ * otherwise valid request (`adminRefusal()`), and no code is written.
  */
 export async function createCode(
   actor: Actor,
@@ -417,6 +430,10 @@ export async function createCode(
   if (!checked.ok) return checked;
   const request = checked.value;
   const clientId = request.client.id;
+  if (isAdmin(actor)) {
+    logger.warn({ userId, clientId }, "authorization code not created: the actor is an admin");
+    return { ok: false, error: adminRefusal(request) };
+  }
 
   const code = generateCode();
   try {

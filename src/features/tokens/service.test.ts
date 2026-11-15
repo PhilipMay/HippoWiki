@@ -158,7 +158,7 @@ describe("listTokens", () => {
     });
     mocks.findMany.mockResolvedValue([grant, storedRow()]);
 
-    const tokens = await listTokens(ALICE);
+    const tokens = (await listTokens(ALICE)) ?? [];
 
     expect(tokens.map(({ name, isGrant }) => [name, isGrant])).toEqual([
       ["Example connector", true],
@@ -384,13 +384,26 @@ describe("revokeToken", () => {
 });
 
 describe("authenticateToken", () => {
-  it("returns the type of the token's user with the actor", async () => {
-    mocks.findUnique.mockResolvedValue(tokenWithUser({ user: { type: "admin" } }));
+  it("refuses the token of an admin as invalid, logs the reason and writes no last use", async () => {
+    mocks.findUnique.mockResolvedValue(tokenWithUser({ user: { name: "maria", username: "maria", type: "admin" } }));
 
-    await expect(authenticateToken(authorization(`Bearer ${SECRET}`), "read")).resolves.toMatchObject({
-      ok: true,
-      value: { type: "admin" },
+    await expect(authenticateToken(authorization(`Bearer ${SECRET}`), "read")).resolves.toEqual({
+      ok: false,
+      error: { code: "invalid-token" },
     });
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith({ reason: "admin", tokenId: TOKEN_ID }, "token refused");
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("refuses a token of an admin for every scope", async () => {
+    mocks.findUnique.mockResolvedValue(tokenWithUser({ scopes: ["read", "write"], user: { type: "admin" } }));
+
+    for (const scope of ["read", "write"] as const) {
+      await expect(authenticateToken(authorization(`Bearer ${SECRET}`), scope)).resolves.toEqual({
+        ok: false,
+        error: { code: "invalid-token" },
+      });
+    }
   });
 
   it("returns the actor of the token's user for a valid token with the scope", async () => {
@@ -537,6 +550,15 @@ describe("authenticateToken", () => {
     function grant(data: Record<string, unknown> = {}) {
       return tokenWithUser({ accessTokenExpiresAt: new Date(NOW.getTime() + HOUR_MS), ...data });
     }
+
+    it("refuses the access token of a grant of an admin as invalid", async () => {
+      mocks.findUnique.mockResolvedValue(grant({ user: { type: "admin" } }));
+
+      await expect(
+        authenticateToken(authorization(`Bearer ${ACCESS_TOKEN}`), "read", { acceptOAuth: true }),
+      ).resolves.toEqual({ ok: false, error: { code: "invalid-token" } });
+      expect(mocks.warn).toHaveBeenCalledExactlyOnceWith({ reason: "admin", tokenId: TOKEN_ID }, "token refused");
+    });
 
     it("does not look like a token unless the caller accepts OAuth: the database is not asked", async () => {
       for (const options of [undefined, {}, { acceptOAuth: false }]) {
@@ -700,5 +722,55 @@ describe("authenticateToken", () => {
       );
       expectNoSecretLogged();
     });
+  });
+});
+
+describe("an admin", () => {
+  /** An admin, who has no tokens and no grants; named like a user, so that only the type decides. */
+  const ADMIN: Actor = { id: ALICE_ID, name: "alice", type: "admin" };
+
+  /** Whether the database was read or written. */
+  function expectDatabaseUntouched(): void {
+    for (const call of [
+      mocks.findMany,
+      mocks.findUnique,
+      mocks.updateMany,
+      mocks.count,
+      mocks.create,
+      mocks.deleteMany,
+      mocks.queryRaw,
+      mocks.transaction,
+    ]) {
+      expect(call).not.toHaveBeenCalled();
+    }
+  }
+
+  it("gets null from listTokens, without asking the database", async () => {
+    await expect(listTokens(ADMIN)).resolves.toBeNull();
+
+    expectDatabaseUntouched();
+    expectNothingLogged();
+  });
+
+  it("gets not-allowed from createToken, logged, before the input is checked and without a write", async () => {
+    await expect(createToken(ADMIN, INPUT)).resolves.toEqual({ ok: false, error: { code: "not-allowed" } });
+    await expect(createToken(ADMIN, { name: "", scopes: [], expiry: "7d" })).resolves.toEqual({
+      ok: false,
+      error: { code: "not-allowed" },
+    });
+
+    expectDatabaseUntouched();
+    expect(mocks.generateToken).not.toHaveBeenCalled();
+    expect(mocks.warn).toHaveBeenCalledWith({ actorId: ALICE_ID }, "token not created: the actor is an admin");
+  });
+
+  it("gets not-allowed from revokeToken, logged, without a write", async () => {
+    await expect(revokeToken(ADMIN, TOKEN_ID)).resolves.toEqual({ ok: false, error: { code: "not-allowed" } });
+
+    expectDatabaseUntouched();
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
+      { actorId: ALICE_ID },
+      "token not revoked: the actor is an admin",
+    );
   });
 });

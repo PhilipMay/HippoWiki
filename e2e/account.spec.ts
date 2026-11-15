@@ -1,9 +1,9 @@
 import type { Page } from "@playwright/test";
 
 import { KNOWN_ADMIN, KNOWN_USER } from "../prisma/known-users";
-import { ADMIN_STORAGE_STATE } from "./support/auth";
+import { ADMIN_STORAGE_STATE, becomeUser, NO_STORAGE_STATE } from "./support/auth";
 import { collectErrors } from "./support/browser";
-import { createApiToken, getTestDb, resetTestDatabase } from "./support/database";
+import { createApiToken, createUser, getTestDb, resetTestDatabase, TEST_PASSWORD } from "./support/database";
 import { connect, listFoldersStatus, refresh, registerClient } from "./support/oauth";
 import { expect, test } from "./support/test";
 
@@ -330,10 +330,11 @@ test("a token that was revoked in the meantime shows the not-found page", async 
 
 test.describe("addresses that are not found", () => {
   test("the token of another user in the revoke address", async ({ page }) => {
-    const { token } = await createApiToken({ owner: KNOWN_ADMIN, name: "admin token" });
+    const bob = await createUser({ name: "bob", mustChangePassword: false });
+    const { token } = await createApiToken({ owner: bob, name: "bob's token" });
 
     await expectNotFound(page, `/account?action=revoke&token=${token.id}`);
-    await expect(page.getByText("admin token")).toHaveCount(0);
+    await expect(page.getByText("bob's token")).toHaveCount(0);
     expect(await getTestDb().apiToken.count()).toBe(1);
   });
 
@@ -440,15 +441,21 @@ test.describe("an app connected through OAuth", () => {
   });
 
   test("the grant of another user is not listed and cannot be revoked", async ({ page, request, browser }) => {
-    // The admin connects an app in a browser of their own.
-    const adminContext = await browser.newContext({ storageState: ADMIN_STORAGE_STATE });
-    const adminPage = await adminContext.newPage();
-    const tokens = await connect(adminPage, adminContext.request, await registerClient(request, "Admin connector"));
-    await adminContext.close();
-    const grant = await getTestDb().apiToken.findFirstOrThrow({ where: { userId: KNOWN_ADMIN.id } });
+    // Another user connects an app in a browser of their own.
+    const bob = await createUser({ name: "bob", mustChangePassword: false });
+    const bobContext = await browser.newContext({ storageState: NO_STORAGE_STATE });
+    const bobPage = await bobContext.newPage();
+    await bobPage.goto("/login");
+    await bobPage.getByLabel("User name").fill("bob");
+    await bobPage.getByLabel("Password").fill(TEST_PASSWORD);
+    await bobPage.getByRole("button", { name: "Log in" }).click();
+    await expect(bobPage).toHaveURL("/folders");
+    const tokens = await connect(bobPage, bobContext.request, await registerClient(request, "Bob's connector"));
+    await bobContext.close();
+    const grant = await getTestDb().apiToken.findFirstOrThrow({ where: { userId: bob.id } });
 
     await page.goto("/account");
-    await expect(page.getByText("Admin connector")).toHaveCount(0);
+    await expect(page.getByText("Bob's connector")).toHaveCount(0);
     const response = await page.goto(`/account?action=revoke&token=${grant.id}`);
 
     expect(response?.status()).toBe(404);
@@ -457,29 +464,57 @@ test.describe("an app connected through OAuth", () => {
 });
 
 test("a user sees only their own tokens", async ({ page }) => {
+  const bob = await createUser({ name: "bob", mustChangePassword: false });
+  const { token } = await createApiToken({ owner: bob, name: "bob's token" });
   await createApiToken({ owner: KNOWN_USER, name: "alice's token" });
-  await createApiToken({ owner: KNOWN_ADMIN, name: "admin's token" });
 
   await page.goto("/account");
 
   await expect(tokenRows(page)).toHaveCount(1);
   await expect(tokenRows(page).nth(0)).toContainText("alice's token");
-  await expect(page.getByText("admin's token")).toHaveCount(0);
+  await expect(page.getByText("bob's token")).toHaveCount(0);
+  await expectNotFound(page, `/account?action=revoke&token=${token.id}`);
 });
 
-test.describe("the admin", () => {
+test("a submission of the New token form with the login of an admin creates no token and is not found", async ({
+  page,
+  context,
+}) => {
+  // The user opens the form; then the browser gets the login of an admin, as if the admin had crafted the request.
+  const dialog = await openNewToken(page, "Admin token");
+  await becomeUser(context, ADMIN_STORAGE_STATE);
+
+  await dialog.getByRole("button", { name: "Create" }).click();
+
+  await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
+  await expect(page.getByText(TOKEN)).toHaveCount(0);
+  expect(await getTestDb().apiToken.count()).toBe(0);
+});
+
+test.describe("an admin", () => {
   test.use({ storageState: ADMIN_STORAGE_STATE });
 
-  test("sees only their own tokens too", async ({ page }) => {
-    const { token } = await createApiToken({ owner: KNOWN_USER, name: "alice's token" });
-    await createApiToken({ owner: KNOWN_ADMIN, name: "admin's token" });
+  test("sees the user name only: no token list and no New token", async ({ page }) => {
+    const errors = collectErrors(page);
 
-    await page.goto("/account");
+    await page.goto("/users");
+    await page.getByRole("banner").getByRole("link", { name: KNOWN_ADMIN.name }).click();
 
+    await expect(page).toHaveURL("/account");
     await expect(page.getByRole("heading", { level: 1, name: KNOWN_ADMIN.name })).toBeVisible();
-    await expect(tokenRows(page)).toHaveCount(1);
-    await expect(tokenRows(page).nth(0)).toContainText("admin's token");
-    await expect(page.getByText("alice's token")).toHaveCount(0);
+    await expect(page.getByRole("heading", { level: 2, name: "API tokens" })).toHaveCount(0);
+    await expect(page.getByRole("list", { name: "API tokens" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "New token" })).toHaveCount(0);
+    await expect(page.getByText(/token/i)).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+
+  test("gets the not-found page for the dialogs of tokens", async ({ page }) => {
+    const { token } = await createApiToken({ owner: KNOWN_USER, name: "alice's token" });
+
+    await expectNotFound(page, "/account?action=create");
     await expectNotFound(page, `/account?action=revoke&token=${token.id}`);
+    await expectNotFound(page, "/account?view=all");
+    await expect(page.getByText("alice's token")).toHaveCount(0);
   });
 });

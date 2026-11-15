@@ -1,7 +1,7 @@
 import type { APIRequestContext } from "@playwright/test";
 
 import { KNOWN_USER } from "../prisma/known-users";
-import { NO_STORAGE_STATE, USER_STORAGE_STATE } from "./support/auth";
+import { ADMIN_STORAGE_STATE, NO_STORAGE_STATE, USER_STORAGE_STATE } from "./support/auth";
 import { collectErrors } from "./support/browser";
 import {
   createApiToken,
@@ -414,6 +414,70 @@ test.describe("the whole flow", () => {
     await expect(page).toHaveURL(authorizeUrl(clientId));
     await expect(page.getByRole("button", { name: "Approve" })).toBeEnabled();
   });
+});
+
+test.describe("the consent page, as an admin", () => {
+  test.use({ storageState: ADMIN_STORAGE_STATE });
+
+  test("a valid request says that admin accounts cannot connect apps and returns to the client with access_denied", async ({
+    page,
+    request,
+  }) => {
+    const errors = collectErrors(page);
+    const clientId = await registerClient(request);
+    const callback = await awaitCallback(page);
+    const requests: string[] = [];
+    page.on("request", (each) => requests.push(new URL(each.url()).host));
+    const address = authorizeUrl(clientId);
+
+    await page.goto(address);
+
+    const main = page.getByRole("main");
+    await expect(main.getByRole("alert")).toHaveText(/Admin accounts cannot connect apps/);
+    await expect(main.getByRole("button", { name: "Approve" })).toHaveCount(0);
+    await expect(main.getByRole("button", { name: "Deny" })).toHaveCount(0);
+    // The browser stays here until the admin clicks.
+    await expect(page).toHaveURL(address);
+    expect(requests.filter((host) => host !== "localhost:3100")).toEqual([]);
+    expect(errors).toEqual([]);
+
+    await main.getByRole("link", { name: "Return to 127.0.0.1:53682" }).click();
+
+    expect(await callback()).toEqual({
+      error: "access_denied",
+      error_description: "Admin accounts cannot connect apps",
+      state: STATE,
+      iss: ISSUER,
+    });
+    expect(await getTestDb().oAuthCode.count()).toBe(0);
+    expect(await getTestDb().apiToken.count()).toBe(0);
+  });
+
+  for (const [what, params, message] of [
+    ["a client that is not registered", { client_id: "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10" }, /not known to the wiki/],
+    [
+      "a redirect address that is not one of the client",
+      { redirect_uri: "https://evil.example/callback" },
+      /not one of its own/,
+    ],
+  ] as const) {
+    test(`a request with ${what} shows the error of every user and sends the browser nowhere`, async ({
+      page,
+      request,
+    }) => {
+      const clientId = await registerClient(request);
+      const requests: string[] = [];
+      page.on("request", (each) => requests.push(new URL(each.url()).host));
+      const address = authorizeUrl(clientId, params);
+
+      await page.goto(address);
+
+      await expect(page.getByRole("main").getByRole("alert")).toHaveText(message);
+      await expect(page.getByRole("main").getByRole("link", { name: /^Return to/ })).toHaveCount(0);
+      await expect(page).toHaveURL(address);
+      expect(requests.filter((host) => host !== "localhost:3100")).toEqual([]);
+    });
+  }
 });
 
 test.describe("the consent page, as a logged-in user", () => {

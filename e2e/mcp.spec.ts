@@ -1,6 +1,6 @@
 import type { APIRequestContext, APIResponse } from "@playwright/test";
 
-import { KNOWN_USER } from "../prisma/known-users";
+import { KNOWN_ADMIN, KNOWN_USER } from "../prisma/known-users";
 import { NO_STORAGE_STATE } from "./support/auth";
 import {
   createApiToken,
@@ -89,6 +89,44 @@ test("with an expired token and with the token of a user with the first password
   }
 });
 
+test("the token of an admin gets 401 with invalid_token for every scope and reaches no tool", async ({ request }) => {
+  await createFolder({ name: "handbook" });
+  // Admins have no tokens; one inserted directly stands for a token that should not exist.
+  const { secret: adminToken } = await createApiToken({ owner: KNOWN_ADMIN, scopes: ["read", "write"] });
+
+  for (const message of [
+    { method: "tools/list" },
+    { method: "tools/call", params: { name: "list_folders", arguments: {} } },
+  ]) {
+    const response = await send(request, message, adminToken);
+
+    expect(response.status()).toBe(401);
+    expect(response.headers()["www-authenticate"]).toMatch(/^Bearer error="invalid_token"/);
+    expect(await response.text()).not.toContain("handbook");
+  }
+  expect((await getTestDb().apiToken.findFirstOrThrow({ where: { userId: KNOWN_ADMIN.id } })).lastUsedAt).toBeNull();
+});
+
+test("a bearer token reaches no task of an admin: creating a user leads to the login page and creates nothing", async ({
+  request,
+}) => {
+  for (const response of [
+    await request.get("/users?action=create", { headers: { authorization: `Bearer ${secret}` }, maxRedirects: 0 }),
+    await request.post("/users?action=create", {
+      headers: { authorization: `Bearer ${secret}` },
+      form: { name: "jane-doe", type: "admin" },
+      maxRedirects: 0,
+    }),
+    await request.get("/users", { headers: { authorization: `Bearer ${secret}` }, maxRedirects: 0 }),
+  ]) {
+    // 307 for a read, 303 for a write (`src/proxy.ts`): the bearer token is no login.
+    expect([303, 307]).toContain(response.status());
+    expect(new URL(response.headers().location ?? "", PUBLIC_URL).pathname).toBe("/login");
+  }
+  expect(await getTestDb().user.findUnique({ where: { username: "jane-doe" } })).toBeNull();
+  expect(await getTestDb().user.count()).toBe(2);
+});
+
 test("with a token without the scope read /mcp answers 403 and names the scope", async ({ request }) => {
   const writeOnly = await createApiToken({ owner: KNOWN_USER, scopes: ["write"] });
 
@@ -175,6 +213,8 @@ test("tools/list offers the three read tools", async ({ request }) => {
     result: { tools: { name: string; description: string; annotations: { readOnlyHint: boolean } }[] };
   };
   expect(result.tools.map((tool) => tool.name)).toEqual(["list_folders", "list_folder", "read_page"]);
+  // Only tools of the content: none for accounts, which are managed only in the browser by an admin.
+  for (const tool of result.tools) expect(`${tool.name} ${tool.description}`).not.toMatch(/\b(users?|accounts?)\b/i);
   for (const tool of result.tools) {
     expect(tool.description).not.toBe("");
     expect(tool.annotations.readOnlyHint).toBe(true);

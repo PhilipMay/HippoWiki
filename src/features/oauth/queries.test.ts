@@ -22,14 +22,20 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("next/server", () => ({ connection: mocks.connection }));
 vi.mock("@/features/auth/session", () => ({ requireUser: mocks.requireUser }));
-vi.mock("@/features/oauth/service", () => ({
-  checkAuthorizationRequest: mocks.checkAuthorizationRequest,
-  isTokenLimitReached: mocks.isTokenLimitReached,
-}));
+vi.mock("@/features/oauth/service", async (importOriginal) => {
+  // The refusal of an admin is a pure function of the service; the real one is used.
+  const { adminRefusal } = await importOriginal<typeof import("@/features/oauth/service")>();
+  return {
+    checkAuthorizationRequest: mocks.checkAuthorizationRequest,
+    isTokenLimitReached: mocks.isTokenLimitReached,
+    adminRefusal,
+  };
+});
 vi.mock("@/lib/env", () => ({ getServerEnv: mocks.getServerEnv }));
 vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, error: mocks.error } }));
 
-const USER = { id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002", name: "alice", mustChangePassword: false };
+const USER = { id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002", name: "alice", type: "user", mustChangePassword: false };
+const ADMIN = { ...USER, name: "maria", type: "admin" };
 const CLIENT_ID = "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10";
 const REDIRECT_URI = "https://client.example/callback";
 const QUERY = {
@@ -171,6 +177,35 @@ describe("loadConsent", () => {
     if (consent.kind !== "refused") return expect.fail(`not refused: ${consent.kind}`);
     expect(new URL(consent.redirectTo).searchParams.has("state")).toBe(false);
   });
+
+  it("tells an admin with a valid request that admin accounts cannot connect apps, with the way back and access_denied", async () => {
+    mocks.requireUser.mockResolvedValue(ADMIN);
+
+    const consent = await loadConsent(QUERY);
+
+    if (consent.kind !== "refused") return expect.fail(`not refused: ${consent.kind}`);
+    expect(consent.target).toBe("client.example");
+    expect(consent.description).toBe("Admin accounts cannot connect apps");
+    const url = new URL(consent.redirectTo);
+    expect(`${url.origin}${url.pathname}`).toBe(REDIRECT_URI);
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      error: "access_denied",
+      error_description: "Admin accounts cannot connect apps",
+      state: "xyz",
+      iss: "https://wiki.example.com",
+    });
+    expect(mocks.isTokenLimitReached).not.toHaveBeenCalled();
+  });
+
+  it.each(["invalid-client", "invalid-redirect-uri"])(
+    "answers an admin with a request whose check finds %s as today, without sending the browser anywhere",
+    async (code) => {
+      mocks.requireUser.mockResolvedValue(ADMIN);
+      mocks.checkAuthorizationRequest.mockResolvedValue({ ok: false, error: { code } });
+
+      await expect(loadConsent(QUERY)).resolves.toEqual({ kind: "untrusted", reason: code });
+    },
+  );
 
   it("does not ask the user when the tokens cannot be counted, and logs it", async () => {
     const err = new Error("connection lost");

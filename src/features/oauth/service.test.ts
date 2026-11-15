@@ -572,6 +572,36 @@ describe("createCode", () => {
     expect(logged()).not.toContain(PARAMS.state);
   });
 
+  it("refuses an admin with access_denied for a valid request and writes no code", async () => {
+    const admin: Actor = { ...ALICE, name: "maria", type: "admin" };
+
+    await expect(createCode(admin, PARAMS, "90d")).resolves.toEqual({
+      ok: false,
+      error: {
+        code: "refused",
+        redirectUri: REDIRECT_URI,
+        state: PARAMS.state,
+        error: "access_denied",
+        description: "Admin accounts cannot connect apps",
+      },
+    });
+    expect(mocks.codeCreate).not.toHaveBeenCalled();
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
+      { userId: ALICE_ID, clientId: CLIENT_ID },
+      "authorization code not created: the actor is an admin",
+    );
+  });
+
+  it("answers an admin with an unknown client as every other user, without a redirect", async () => {
+    const admin: Actor = { ...ALICE, type: "admin" };
+
+    await expect(createCode(admin, { ...PARAMS, client_id: "not-a-uuid" }, "90d")).resolves.toEqual({
+      ok: false,
+      error: { code: "invalid-client" },
+    });
+    expect(mocks.codeCreate).not.toHaveBeenCalled();
+  });
+
   it("refuses a malformed actor id before it asks the database, and logs it", async () => {
     await expect(createCode({ id: "not-a-uuid", name: "alice", type: "user" }, PARAMS, "90d")).resolves.toEqual({
       ok: false,

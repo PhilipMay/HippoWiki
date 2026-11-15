@@ -10,8 +10,8 @@ import * as tokenService from "@/features/tokens/service";
 // page without a logged-in user, and passes that user to the service as the actor: the service returns only the
 // actor's own tokens.
 
-/** The tokens of the logged-in user, newest first. */
-export async function listTokens(): Promise<tokenService.TokenSummary[]> {
+/** The tokens of the logged-in user, newest first; `null` for an admin, who has no tokens. */
+export async function listTokens(): Promise<tokenService.TokenSummary[] | null> {
   await connection();
   const user = await requireUser();
   return tokenService.listTokens(user);

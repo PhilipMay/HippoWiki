@@ -8,6 +8,7 @@ import { authorizeAddress, readAuthorizationParams } from "@/features/oauth/form
 import { issuer } from "@/features/oauth/issuer";
 import { authorizationResponseUrl, redirectTargetOf, type AuthorizationParams } from "@/features/oauth/schema";
 import * as oauthService from "@/features/oauth/service";
+import { isAdmin } from "@/features/users/user-type";
 import type { SearchParams } from "@/lib/addresses";
 import { logger } from "@/lib/logger";
 
@@ -21,8 +22,8 @@ export type Consent =
    */
   | { kind: "untrusted"; reason: "invalid-client" | "invalid-redirect-uri" | "failed" }
   /**
-   * The request is wrong in another way: the reason is shown, and the client is told at its redirect address only when
-   * the user follows the link there.
+   * The request is wrong in another way, or the user is an admin, who connects no apps: the reason is shown, and the
+   * client is told at its redirect address only when the user follows the link there.
    */
   | { kind: "refused"; redirectTo: string; target: string; description: string }
   /** The request is valid: the user is asked. */
@@ -40,9 +41,33 @@ export type Consent =
       params: AuthorizationParams;
     };
 
+/** What the consent page shows for a request that the client is told about at its redirect address. */
+function refused(
+  base: string,
+  {
+    redirectUri,
+    state,
+    error,
+    description,
+  }: Pick<oauthService.AuthorizationRequest, "redirectUri" | "state"> & {
+    error: string;
+    description: string;
+  },
+): Consent {
+  return {
+    kind: "refused",
+    target: redirectTargetOf(redirectUri),
+    // Written by the wiki itself, so it can be shown.
+    description,
+    redirectTo: authorizationResponseUrl(redirectUri, { error, error_description: description, state, iss: base }),
+  };
+}
+
 /**
  * Decides what the consent page shows for the authorization request in the search parameters of its address. Without
  * a session it leads to the login page and back here with the whole query, as `requireUser()` does with a way back.
+ * An admin, who connects no apps, is told so for an otherwise valid request, with the way back to the client and the
+ * error `access_denied`; an unknown client or a foreign redirect address is answered as for every other user.
  */
 export async function loadConsent(searchParams: SearchParams): Promise<Consent> {
   await connection();
@@ -61,20 +86,10 @@ export async function loadConsent(searchParams: SearchParams): Promise<Consent> 
       case "failed":
         return { kind: "untrusted", reason: error.code };
       case "refused":
-        return {
-          kind: "refused",
-          target: redirectTargetOf(error.redirectUri),
-          // Written by the wiki itself, so it can be shown.
-          description: error.description,
-          redirectTo: authorizationResponseUrl(error.redirectUri, {
-            error: error.error,
-            error_description: error.description,
-            state: error.state,
-            iss: base,
-          }),
-        };
+        return refused(base, error);
     }
   }
+  if (isAdmin(user)) return refused(base, oauthService.adminRefusal(checked.value));
 
   const { client, redirectUri } = checked.value;
   let limitReached: boolean;
