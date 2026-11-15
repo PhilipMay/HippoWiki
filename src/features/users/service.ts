@@ -3,7 +3,8 @@
 // request. It writes users with Prisma and the password hashing, not through Better Auth, and never logs a password.
 //
 // What a caller may do is checked here, not in the adapters, which another caller would not pass through: a function
-// that is for the admin only takes the acting user as its first argument and decides itself whether it is the admin.
+// that is for admins only takes the acting user as its first argument and decides itself, by the type, whether it is an
+// admin.
 
 import { z } from "zod";
 
@@ -12,11 +13,11 @@ import { newUserData } from "@/features/users/records";
 import {
   ADMIN_NAME,
   adminPasswordSchema,
-  isAdmin,
   userInputSchema,
   type PasswordFieldErrors,
   type UserFieldErrors,
 } from "@/features/users/schema";
+import { isAdmin, type UserType } from "@/features/users/user-type";
 import { getDb } from "@/lib/db";
 import { isUniqueViolation, USER_NAME } from "@/lib/db-errors";
 import { logger } from "@/lib/logger";
@@ -27,7 +28,7 @@ import type { Result } from "@/lib/result";
  * The user on whose behalf a function is called. The adapters take it from the session of the request; the service
  * decides what it may do.
  */
-export type Actor = { id: string; name: string };
+export type Actor = { id: string; name: string; type: UserType };
 
 /** A user as the user list shows it. */
 export type UserSummary = {
@@ -40,7 +41,7 @@ export type UserSummary = {
 };
 
 /**
- * All users, by name, for the admin. For every other actor it returns `null` and does not ask the database: for them
+ * All users, by name, for an admin. For every other actor it returns `null` and does not ask the database: for them
  * the user list does not exist.
  */
 export async function listUsers(actor: Actor): Promise<UserSummary[] | null> {
@@ -63,7 +64,7 @@ export async function listUsers(actor: Actor): Promise<UserSummary[] | null> {
  */
 export type CreatedUser = { user: UserSummary; password: string };
 
-/** The actor is not the admin. */
+/** The actor is not an admin. */
 type NotAllowed = { code: "not-allowed" };
 type InvalidUser = { code: "invalid-input"; fieldErrors: UserFieldErrors };
 type NameTaken = { code: "name-taken" };
@@ -78,13 +79,13 @@ function firstPasswordFor(name: string): string {
 }
 
 /**
- * Creates a user with the given name and a generated first password, for the admin. The user has to change the
+ * Creates a user of the type `user` with the given name and a generated first password, for an admin. The user has to change the
  * password at the first login. The password is returned this once, for the admin to pass on, and is never logged.
  * It checks the actor first, then the name, then hashes the password and writes.
  */
 export async function createUser(actor: Actor, input: { name: string }): Promise<Result<CreatedUser, CreateUserError>> {
   if (!isAdmin(actor)) {
-    logger.warn({ actorId: actor.id }, "user not created: the actor is not the admin");
+    logger.warn({ actorId: actor.id }, "user not created: the actor is not an admin");
     return { ok: false, error: { code: "not-allowed" } };
   }
 
@@ -110,7 +111,7 @@ export async function createUser(actor: Actor, input: { name: string }): Promise
   let user: UserSummary;
   try {
     const created = await getDb().user.create({
-      data: newUserData({ name, passwordHash, mustChangePassword: true }),
+      data: newUserData({ name, type: "user", passwordHash, mustChangePassword: true }),
       select: { id: true, username: true, createdAt: true, mustChangePassword: true },
     });
     user = {
@@ -146,8 +147,9 @@ type Failed = { code: "failed" };
 export type EnsureAdminError = PasswordMissing | InvalidPassword | Busy | Failed;
 
 /**
- * Makes sure that the admin account exists. If a user named `admin` exists, it does nothing and does not look at the
- * password. Otherwise it creates the admin with the given password, which has to follow the password rules, must not
+ * Makes sure that the first admin account exists. If a user named `admin` exists, it does nothing and does not look at
+ * the password, and leaves the account as it is, its type included. Otherwise it creates `admin` as an admin with the
+ * given password, which has to follow the password rules, must not
  * be a placeholder such as `<first password>`, and must be changed by the admin at the first login.
  */
 export async function ensureAdmin(password: string | undefined): Promise<Result<AdminSetup, EnsureAdminError>> {
@@ -184,7 +186,7 @@ export async function ensureAdmin(password: string | undefined): Promise<Result<
   let admin: { id: string };
   try {
     admin = await getDb().user.create({
-      data: newUserData({ name: ADMIN_NAME, passwordHash, mustChangePassword: true }),
+      data: newUserData({ name: ADMIN_NAME, type: "admin", passwordHash, mustChangePassword: true }),
       select: { id: true },
     });
   } catch (err) {

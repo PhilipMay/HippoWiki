@@ -41,9 +41,11 @@ test("a reset keeps the known users and the sessions of their saved logins", asy
   await resetTestDatabase();
 
   const users = await getTestDb().user.findMany({ orderBy: { username: "asc" } });
-  expect(users.map(({ id, username, mustChangePassword }) => ({ id, username, mustChangePassword }))).toEqual([
-    { id: KNOWN_ADMIN.id, username: "admin", mustChangePassword: false },
-    { id: KNOWN_USER.id, username: "alice", mustChangePassword: false },
+  expect(
+    users.map(({ id, username, type, mustChangePassword }) => ({ id, username, type, mustChangePassword })),
+  ).toEqual([
+    { id: KNOWN_ADMIN.id, username: "admin", type: "admin", mustChangePassword: false },
+    { id: KNOWN_USER.id, username: "alice", type: "user", mustChangePassword: false },
   ]);
   const sessions = await getTestDb().session.findMany({ orderBy: { createdAt: "asc" } });
   expect(sessions.map(({ userId }) => userId)).toEqual([KNOWN_ADMIN.id, KNOWN_USER.id]);

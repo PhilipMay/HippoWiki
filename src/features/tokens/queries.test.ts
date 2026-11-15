@@ -19,7 +19,12 @@ class RedirectError extends Error {
   }
 }
 
-const ALICE = { id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002", name: "alice", mustChangePassword: false };
+const ALICE = {
+  id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002",
+  name: "alice",
+  type: "user" as const,
+  mustChangePassword: false,
+};
 const TOKENS = [
   {
     id: crypto.randomUUID(),

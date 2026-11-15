@@ -65,6 +65,7 @@ const AUTH_USER = {
   name: "alice",
   username: "alice",
   email: "alice@users.hippowiki.invalid",
+  type: "user",
   mustChangePassword: false,
 };
 /** The client address group of the logins of the tests. */
@@ -190,7 +191,10 @@ describe("logIn", () => {
 
     expect(result).toEqual({
       ok: true,
-      value: { user: { id: USER_ID, name: "alice", mustChangePassword: false }, headers: RESPONSE_HEADERS },
+      value: {
+        user: { id: USER_ID, name: "alice", type: "user", mustChangePassword: false },
+        headers: RESPONSE_HEADERS,
+      },
     });
     expect(mocks.signInUsername).toHaveBeenCalledExactlyOnceWith({
       body: { username: "alice", password: PASSWORD },
@@ -211,6 +215,32 @@ describe("logIn", () => {
     const result = await logIn({ name: "alice", password: PASSWORD }, REQUEST_HEADERS, CLIENT_ADDRESS);
 
     expect(result).toMatchObject({ ok: true, value: { user: { mustChangePassword: true } } });
+  });
+
+  it("returns the type of an admin with the user", async () => {
+    mocks.signInUsername.mockResolvedValue({
+      headers: RESPONSE_HEADERS,
+      response: { token: "token", user: { ...AUTH_USER, name: "maria", username: "maria", type: "admin" } },
+    });
+
+    const result = await logIn({ name: "maria", password: PASSWORD }, REQUEST_HEADERS, CLIENT_ADDRESS);
+
+    expect(result).toMatchObject({ ok: true, value: { user: { name: "maria", type: "admin" } } });
+  });
+
+  it("fails for a user without a known type", async () => {
+    mocks.signInUsername.mockResolvedValue({
+      headers: RESPONSE_HEADERS,
+      response: { token: "token", user: { ...AUTH_USER, type: "root" } },
+    });
+
+    const result = await logIn({ name: "alice", password: PASSWORD }, REQUEST_HEADERS, CLIENT_ADDRESS);
+
+    expect(result).toEqual({ ok: false, error: { code: "failed" } });
+    expect(mocks.error).toHaveBeenCalledWith(
+      { userId: USER_ID },
+      "user without a known type, treated as not logged in",
+    );
   });
 
   it("trims the name and passes the password on as it is", async () => {
@@ -1068,6 +1098,7 @@ describe("getSessionUser", () => {
     await expect(getSessionUser(REQUEST_HEADERS)).resolves.toStrictEqual({
       id: USER_ID,
       name: "alice",
+      type: "user",
       mustChangePassword: false,
     });
     expect(mocks.getSession).toHaveBeenCalledExactlyOnceWith({ headers: REQUEST_HEADERS });
@@ -1080,9 +1111,35 @@ describe("getSessionUser", () => {
   });
 
   it("treats a user without the flag as one with a pending password change", async () => {
-    mocks.getSession.mockResolvedValue({ session: {}, user: { id: USER_ID, name: "alice", username: "alice" } });
+    mocks.getSession.mockResolvedValue({
+      session: {},
+      user: { id: USER_ID, name: "alice", username: "alice", type: "user" },
+    });
 
     await expect(getSessionUser(REQUEST_HEADERS)).resolves.toMatchObject({ mustChangePassword: true });
+  });
+
+  it("returns the type of the account", async () => {
+    for (const type of ["admin", "user"]) {
+      mocks.getSession.mockResolvedValue({ session: {}, user: { ...AUTH_USER, type } });
+
+      await expect(getSessionUser(REQUEST_HEADERS)).resolves.toMatchObject({ type });
+    }
+  });
+
+  it.each([
+    ["a missing type", undefined],
+    ["an empty type", null],
+    ["an unknown type", "root"],
+    ["a type in another case", "Admin"],
+  ])("refuses a user with %s like a missing session", async (_case, type) => {
+    mocks.getSession.mockResolvedValue({ session: {}, user: { ...AUTH_USER, type } });
+
+    await expect(getSessionUser(REQUEST_HEADERS)).resolves.toBeNull();
+    expect(mocks.error).toHaveBeenCalledWith(
+      { userId: USER_ID },
+      "user without a known type, treated as not logged in",
+    );
   });
 
   it("returns null without a valid session", async () => {
@@ -1123,7 +1180,10 @@ describe("changeFirstPassword", () => {
 
     expect(result).toEqual({
       ok: true,
-      value: { user: { id: USER_ID, name: "alice", mustChangePassword: false }, headers: NEW_SESSION_HEADERS },
+      value: {
+        user: { id: USER_ID, name: "alice", type: "user", mustChangePassword: false },
+        headers: NEW_SESSION_HEADERS,
+      },
     });
     expect(mocks.changePassword).toHaveBeenCalledExactlyOnceWith({
       body: { currentPassword: FIRST_PASSWORD, newPassword: NEW_PASSWORD, revokeOtherSessions: true },

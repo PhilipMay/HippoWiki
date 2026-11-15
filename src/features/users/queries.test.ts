@@ -19,7 +19,12 @@ class RedirectError extends Error {
   }
 }
 
-const ADMIN = { id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1001", name: "admin", mustChangePassword: false };
+const ADMIN = {
+  id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1001",
+  name: "admin",
+  type: "admin" as const,
+  mustChangePassword: false,
+};
 const USERS = [{ id: ADMIN.id, name: "admin", createdAt: new Date(), mustChangePassword: false }];
 
 beforeEach(() => {

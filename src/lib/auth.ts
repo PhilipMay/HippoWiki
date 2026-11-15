@@ -78,6 +78,9 @@ function createAuth(secret: string) {
       additionalFields: {
         // Read with the user of a session; `input: false` keeps it out of everything a request can set.
         mustChangePassword: { type: "boolean", required: true, defaultValue: true, input: false },
+        // The type of the account (`src/features/users/user-type.ts`), a PostgreSQL enum that Prisma reads as a string.
+        // No default: Better Auth creates no users, and the users service always names it.
+        type: { type: "string", required: true, input: false },
       },
     },
     telemetry: { enabled: false },

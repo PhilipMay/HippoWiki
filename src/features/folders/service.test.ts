@@ -80,8 +80,8 @@ const MALFORMED_ID = "not-a-uuid";
 const ACTOR_ID = "9d4b2f6e-1c3a-4e8b-b7d5-2a6c8e0f1b12";
 
 /** The user who makes the writes, and one whose id is malformed. */
-const ACTOR: Actor = { id: ACTOR_ID, name: "alice" };
-const MALFORMED_ACTOR: Actor = { id: MALFORMED_ID, name: "alice" };
+const ACTOR: Actor = { id: ACTOR_ID, name: "alice", type: "user" };
+const MALFORMED_ACTOR: Actor = { id: MALFORMED_ID, name: "alice", type: "user" };
 
 /** Names that are not valid as written: not lowercase, surrounding whitespace, a double hyphen, empty. */
 const MALFORMED_NAMES = ["Handbook", " handbook", "handbook ", "release--notes", "-handbook", ""];

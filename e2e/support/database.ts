@@ -158,14 +158,14 @@ function savedSessions(): Session[] {
 
 /**
  * Puts the test database into the state every end-to-end test starts from: all tables empty, except the two that are
- * never emptied, then the known users of `prisma/known-users.ts` with their fixed ids and the password change already
+ * never emptied, then the known users of `prisma/known-users.ts` with their fixed ids, their types and the password change already
  * done, and the sessions of their saved logins. So the browser states that the tests start with stay logged in after
  * every reset.
  */
 export async function resetTestDatabase(): Promise<void> {
   await emptyTestDatabase();
-  for (const { id, name, password } of KNOWN_USERS) {
-    await createUser({ id, name, password, mustChangePassword: false });
+  for (const { id, name, type, password } of KNOWN_USERS) {
+    await createUser({ id, name, type, password, mustChangePassword: false });
   }
   const sessions = savedSessions();
   if (sessions.length > 0) await getTestDb().session.createMany({ data: sessions });
@@ -193,18 +193,21 @@ type CreateUserData = Partial<Omit<NewUser, "passwordHash">> & { password?: stri
 
 /**
  * Creates a user with its credential account directly in the test database, in the shape of `records.ts`. The user
- * gets a unique name and the password `TEST_PASSWORD` unless they are given, and has the first password still to
- * change unless `mustChangePassword` is false. Any other field can be overridden, e.g. `createdAt`.
+ * gets a unique name, the type `user` and the password `TEST_PASSWORD` unless they are given, and has the first
+ * password still to change unless `mustChangePassword` is false. Any other field can be overridden, e.g. `createdAt`.
  */
 export async function createUser({
   id,
   name = `test-user-${crypto.randomUUID().slice(0, 13)}`,
+  type = "user",
   password = TEST_PASSWORD,
   mustChangePassword = true,
   ...data
 }: CreateUserData = {}): Promise<User> {
   const passwordHash = await passwordHashOf(password);
-  return getTestDb().user.create({ data: { ...newUserData({ id, name, passwordHash, mustChangePassword }), ...data } });
+  return getTestDb().user.create({
+    data: { ...newUserData({ id, name, type, passwordHash, mustChangePassword }), ...data },
+  });
 }
 
 /** The fields of a folder that `createFolder()` can set, and the user who last edited it. */

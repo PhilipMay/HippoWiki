@@ -9,6 +9,7 @@ import {
   MAX_TOKENS_PER_USER,
   revokeToken,
 } from "@/features/tokens/service";
+import type { Actor } from "@/features/users/service";
 import { Prisma } from "@/generated/prisma/client";
 
 const mocks = vi.hoisted(() => ({
@@ -46,7 +47,7 @@ vi.mock(import("@/features/tokens/secret"), async (importOriginal) => ({
 const SECRET = `hw_${"A".repeat(43)}`;
 const ALICE_ID = "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002";
 const TOKEN_ID = "0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01";
-const ALICE = { id: ALICE_ID, name: "alice" };
+const ALICE: Actor = { id: ALICE_ID, name: "alice", type: "user" };
 const NOW = new Date("2026-03-01T12:00:00.000Z");
 const INPUT = { name: "MCP client", scopes: ["read"], expiry: "90d" };
 
@@ -77,7 +78,7 @@ function tokenWithUser({ user = {}, ...data }: { user?: Record<string, unknown> 
     scopes: ["read"],
     expiresAt: new Date("2026-05-30T12:00:00.000Z"),
     lastUsedAt: null,
-    user: { id: ALICE_ID, username: "alice", mustChangePassword: false, ...user },
+    user: { id: ALICE_ID, username: "alice", type: "user", mustChangePassword: false, ...user },
     ...data,
   };
 }
@@ -177,7 +178,7 @@ describe("listTokens", () => {
   });
 
   it("returns no tokens for a malformed actor id, without asking the database", async () => {
-    await expect(listTokens({ id: "not-a-uuid", name: "alice" })).resolves.toEqual([]);
+    await expect(listTokens({ id: "not-a-uuid", name: "alice", type: "user" })).resolves.toEqual([]);
 
     expect(mocks.findMany).not.toHaveBeenCalled();
   });
@@ -270,7 +271,7 @@ describe("createToken", () => {
   });
 
   it("refuses a malformed actor id before it asks the database, and logs it", async () => {
-    await expect(createToken({ id: "not-a-uuid", name: "alice" }, INPUT)).resolves.toEqual({
+    await expect(createToken({ id: "not-a-uuid", name: "alice", type: "user" }, INPUT)).resolves.toEqual({
       ok: false,
       error: { code: "failed" },
     });
@@ -360,7 +361,7 @@ describe("revokeToken", () => {
   });
 
   it("refuses a malformed actor id before it asks the database, and logs it", async () => {
-    await expect(revokeToken({ id: "not-a-uuid", name: "alice" }, TOKEN_ID)).resolves.toEqual({
+    await expect(revokeToken({ id: "not-a-uuid", name: "alice", type: "user" }, TOKEN_ID)).resolves.toEqual({
       ok: false,
       error: { code: "failed" },
     });
@@ -383,10 +384,19 @@ describe("revokeToken", () => {
 });
 
 describe("authenticateToken", () => {
+  it("returns the type of the token's user with the actor", async () => {
+    mocks.findUnique.mockResolvedValue(tokenWithUser({ user: { type: "admin" } }));
+
+    await expect(authenticateToken(authorization(`Bearer ${SECRET}`), "read")).resolves.toMatchObject({
+      ok: true,
+      value: { type: "admin" },
+    });
+  });
+
   it("returns the actor of the token's user for a valid token with the scope", async () => {
     await expect(authenticateToken(authorization(`Bearer ${SECRET}`), "read")).resolves.toStrictEqual({
       ok: true,
-      value: { id: ALICE_ID, name: "alice" },
+      value: { id: ALICE_ID, name: "alice", type: "user" },
     });
 
     expect(mocks.findUnique).toHaveBeenCalledExactlyOnceWith({
@@ -397,7 +407,7 @@ describe("authenticateToken", () => {
         expiresAt: true,
         accessTokenExpiresAt: true,
         lastUsedAt: true,
-        user: { select: { id: true, username: true, mustChangePassword: true } },
+        user: { select: { id: true, username: true, type: true, mustChangePassword: true } },
       },
     });
     expectNothingLogged();
@@ -545,7 +555,7 @@ describe("authenticateToken", () => {
 
       await expect(
         authenticateToken(authorization(`Bearer ${ACCESS_TOKEN}`), "read", { acceptOAuth: true }),
-      ).resolves.toStrictEqual({ ok: true, value: { id: ALICE_ID, name: "alice" } });
+      ).resolves.toStrictEqual({ ok: true, value: { id: ALICE_ID, name: "alice", type: "user" } });
 
       expect(mocks.findUnique).toHaveBeenCalledOnce();
       expect(mocks.findUnique.mock.calls[0]?.[0]).toMatchObject({
@@ -681,7 +691,7 @@ describe("authenticateToken", () => {
 
       await expect(authenticateToken(authorization(`Bearer ${SECRET}`), "read")).resolves.toStrictEqual({
         ok: true,
-        value: { id: ALICE_ID, name: "alice" },
+        value: { id: ALICE_ID, name: "alice", type: "user" },
       });
 
       expect(mocks.error).toHaveBeenCalledExactlyOnceWith(

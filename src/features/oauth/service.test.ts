@@ -10,6 +10,7 @@ import {
   refreshGrant,
   registerClient,
 } from "@/features/oauth/service";
+import type { Actor } from "@/features/users/service";
 
 const mocks = vi.hoisted(() => ({
   clientCreate: vi.fn(),
@@ -69,7 +70,7 @@ vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, e
 
 const NOW = new Date("2026-03-01T12:00:00.000Z");
 const ALICE_ID = "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002";
-const ALICE = { id: ALICE_ID, name: "alice" };
+const ALICE: Actor = { id: ALICE_ID, name: "alice", type: "user" };
 const CLIENT_ID = "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10";
 const GRANT_ID = "0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01";
 const REDIRECT_URI = "https://client.example/callback";
@@ -529,7 +530,7 @@ describe("a client from a metadata document", () => {
 
 describe("isTokenLimitReached", () => {
   it.each([
-    ["a malformed actor id", { id: "not-a-uuid", name: "alice" }, CLIENT_ID],
+    ["a malformed actor id", { ...ALICE, id: "not-a-uuid" }, CLIENT_ID],
     ["a malformed client id", ALICE, "not-a-uuid"],
   ])("is true for %s, without asking the database", async (_case, actor, clientId) => {
     await expect(isTokenLimitReached(actor, clientId)).resolves.toBe(true);
@@ -572,7 +573,7 @@ describe("createCode", () => {
   });
 
   it("refuses a malformed actor id before it asks the database, and logs it", async () => {
-    await expect(createCode({ id: "not-a-uuid", name: "alice" }, PARAMS, "90d")).resolves.toEqual({
+    await expect(createCode({ id: "not-a-uuid", name: "alice", type: "user" }, PARAMS, "90d")).resolves.toEqual({
       ok: false,
       error: { code: "failed" },
     });

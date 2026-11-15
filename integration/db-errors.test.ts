@@ -41,7 +41,7 @@ function createClientRow(data: { metadataUrl?: string } = {}) {
 /** Creates a user with the given name directly in the test database; other fields of the row can be overridden. */
 function createUserRow(name: string, data: { username?: string; email?: string } = {}) {
   return getTestDb().user.create({
-    data: { ...newUserData({ name, passwordHash: "not-a-hash", mustChangePassword: false }), ...data },
+    data: { ...newUserData({ name, type: "user", passwordHash: "not-a-hash", mustChangePassword: false }), ...data },
   });
 }
 

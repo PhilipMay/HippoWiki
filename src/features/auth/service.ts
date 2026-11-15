@@ -29,6 +29,7 @@ import {
   waitAfterFailures,
   waitForWindow,
 } from "@/features/auth/wait";
+import { isUserType, type UserType } from "@/features/users/user-type";
 import { getAuth } from "@/lib/auth";
 import { isClientAddressGroup, SHARED_CLIENT_ADDRESS } from "@/lib/client-address";
 import { getDb } from "@/lib/db";
@@ -41,6 +42,8 @@ export type SessionUser = {
   id: string;
   /** The user name. */
   name: string;
+  /** The type of the account, which decides what the user may do. */
+  type: UserType;
   /** Whether the user still has to replace the first password by an own one. */
   mustChangePassword: boolean;
 };
@@ -87,11 +90,31 @@ export type ChangeFirstPasswordError =
 const REFUSED_STATUS_CODES: readonly number[] = [400, 401, 422];
 
 /** The fields of a Better Auth user that make up a `SessionUser`. */
-type AuthUser = { id: string; name: string; username?: string | null; mustChangePassword?: boolean | null };
+type AuthUser = {
+  id: string;
+  name: string;
+  username?: string | null;
+  type?: unknown;
+  mustChangePassword?: boolean | null;
+};
 
-function toSessionUser(user: AuthUser): SessionUser {
-  // A user without the flag would be one that Better Auth created; treating it as pending is the safe side.
-  return { id: user.id, name: user.username ?? user.name, mustChangePassword: user.mustChangePassword ?? true };
+/**
+ * The session user of a Better Auth user, or `null` for a user without a known type: such a user may do nothing, so it
+ * is treated like a missing session (the safe side). The database requires the type, so this never happens in
+ * practice.
+ */
+function toSessionUser(user: AuthUser): SessionUser | null {
+  if (!isUserType(user.type)) {
+    logger.error({ userId: user.id }, "user without a known type, treated as not logged in");
+    return null;
+  }
+  return {
+    id: user.id,
+    name: user.username ?? user.name,
+    type: user.type,
+    // A user without the flag would be one that Better Auth created; treating it as pending is the safe side.
+    mustChangePassword: user.mustChangePassword ?? true,
+  };
 }
 
 /** The current time. The one place the service takes it from, so that tests can set the clock. */
@@ -388,7 +411,10 @@ export async function logIn(
       headers,
       returnHeaders: true,
     });
-    loggedIn = { user: toSessionUser(response.user), headers: responseHeaders };
+    const user = toSessionUser(response.user);
+    // The session it started is refused by every check of a session, like the user.
+    if (!user) return { ok: false, error: { code: "failed" } };
+    loggedIn = { user, headers: responseHeaders };
   } catch (err) {
     if (isAPIError(err) && REFUSED_STATUS_CODES.includes(err.statusCode)) {
       logger.warn({ name, clientAddress }, "login refused: unknown name or wrong password");

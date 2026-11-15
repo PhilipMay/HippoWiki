@@ -202,11 +202,12 @@ describe("the options of Better Auth", () => {
     expect(session).toStrictEqual({ expiresIn: 30 * 24 * 60 * 60, disableSessionRefresh: true });
   });
 
-  it("reads mustChangePassword with the user and lets no input set it", async () => {
+  it("reads mustChangePassword and the type with the user and lets no input set them", async () => {
     const { user } = await createdOptions();
 
     expect(user.additionalFields).toStrictEqual({
       mustChangePassword: { type: "boolean", required: true, defaultValue: true, input: false },
+      type: { type: "string", required: true, input: false },
     });
   });
 

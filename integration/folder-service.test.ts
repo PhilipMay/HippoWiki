@@ -14,7 +14,7 @@ beforeEach(async () => {
 });
 
 /** An actor that does not exist: a well-formed id that no user has. */
-const UNKNOWN_ACTOR = { id: "8f7e6d5c-4b3a-4291-8f7e-6d5c4b3a2910", name: "ghost" };
+const UNKNOWN_ACTOR = { id: "8f7e6d5c-4b3a-4291-8f7e-6d5c4b3a2910", name: "ghost", type: "user" as const };
 
 const FAILED = { ok: false, error: { code: "failed" } };
 

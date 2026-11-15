@@ -16,7 +16,7 @@ const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
 
-type Actor = { id: string; name: string };
+type Actor = { id: string; name: string; type: "admin" | "user" };
 type Client = oauthService.OAuthClient;
 
 afterEach(() => {
@@ -31,7 +31,7 @@ function setClock(now: number): void {
 /** A user of the test database as the actor of the service, with the password change done. */
 async function createActor(data: { mustChangePassword?: boolean } = {}): Promise<Actor> {
   const user = await createUser({ mustChangePassword: false, ...data });
-  return { id: user.id, name: user.name };
+  return { id: user.id, name: user.name, type: user.type };
 }
 
 /** Registers a client and fails the test if that does not succeed. */
@@ -415,7 +415,7 @@ describe("createCode", () => {
     const client = await register();
 
     await expect(
-      oauthService.createCode({ id: crypto.randomUUID(), name: "ghost" }, paramsOf(client), "90d"),
+      oauthService.createCode({ id: crypto.randomUUID(), name: "ghost", type: "user" }, paramsOf(client), "90d"),
     ).resolves.toEqual({ ok: false, error: { code: "failed" } });
   });
 });

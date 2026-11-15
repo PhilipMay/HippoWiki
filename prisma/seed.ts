@@ -1,14 +1,13 @@
 // Inserts the known users and a sample folder with sample pages into the database configured by DATABASE_URL. Run it
 // with `npm run db:seed`; the Prisma CLI loads `.env` before starting this script. The folder and its pages are
 // upserted by fixed ids, so running it again changes nothing. The known users are upserted by their names: running it
-// again gives them their known passwords back.
+// again gives them their known passwords back and leaves their types as they are, because a type never changes.
 import { titleFromContent } from "../src/features/pages/derive";
 import { CREDENTIAL_PROVIDER_ID, newUserData } from "../src/features/users/records";
-import { ADMIN_NAME } from "../src/features/users/schema";
 import { getDb } from "../src/lib/db";
 import { logger } from "../src/lib/logger";
 import { hashPassword } from "../src/lib/password-hash";
-import { KNOWN_USERS } from "./known-users";
+import { KNOWN_USER, KNOWN_USERS } from "./known-users";
 
 /** The sample folder that holds the sample pages. */
 const folder = { id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6cf001", name: "getting-started" };
@@ -82,12 +81,12 @@ function greet(name: string): string {
 async function main() {
   const db = getDb();
   try {
-    for (const { id, name, password } of KNOWN_USERS) {
+    for (const { id, name, type, password } of KNOWN_USERS) {
       const passwordHash = await hashPassword(password);
       // By name, not by id: an admin that `npm run admin:setup` created has another id and keeps it.
       await db.user.upsert({
         where: { username: name },
-        create: newUserData({ id, name, passwordHash, mustChangePassword: false }),
+        create: newUserData({ id, name, type, passwordHash, mustChangePassword: false }),
         update: {
           mustChangePassword: false,
           accounts: { updateMany: { where: { providerId: CREDENTIAL_PROVIDER_ID }, data: { password: passwordHash } } },
@@ -96,10 +95,10 @@ async function main() {
     }
     logger.info({ users: KNOWN_USERS.map(({ name }) => name) }, "seeded known users");
 
-    // The known users come first: the admin is the last editor of the sample folder and pages. It is looked up by
-    // name, because one that `npm run admin:setup` created has another id.
-    const admin = await db.user.findUniqueOrThrow({ where: { username: ADMIN_NAME }, select: { id: true } });
-    const lastEditedById = admin.id;
+    // The known users come first: the known user is the last editor of the sample folder and pages, because admins
+    // do not edit content. It is looked up by name, like the upsert above.
+    const user = await db.user.findUniqueOrThrow({ where: { username: KNOWN_USER.name }, select: { id: true } });
+    const lastEditedById = user.id;
     await db.folder.upsert({
       where: { id: folder.id },
       create: { ...folder, lastEditedById },

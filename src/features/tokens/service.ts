@@ -23,6 +23,7 @@ import {
 import { generateToken, hashToken, looksLikeToken } from "@/features/tokens/secret";
 import { parseUserId } from "@/features/users/schema";
 import type { Actor } from "@/features/users/service";
+import type { UserType } from "@/features/users/user-type";
 import { getDb } from "@/lib/db";
 import { API_TOKEN_HASH, isUniqueViolation } from "@/lib/db-errors";
 import { logger } from "@/lib/logger";
@@ -276,7 +277,7 @@ export async function authenticateToken(
     expiresAt: Date;
     accessTokenExpiresAt: Date | null;
     lastUsedAt: Date | null;
-    user: { id: string; username: string; mustChangePassword: boolean };
+    user: { id: string; username: string; type: UserType; mustChangePassword: boolean };
   } | null;
   try {
     token = await getDb().apiToken.findUnique({
@@ -288,7 +289,7 @@ export async function authenticateToken(
         expiresAt: true,
         accessTokenExpiresAt: true,
         lastUsedAt: true,
-        user: { select: { id: true, username: true, mustChangePassword: true } },
+        user: { select: { id: true, username: true, type: true, mustChangePassword: true } },
       },
     });
   } catch (err) {
@@ -333,5 +334,5 @@ export async function authenticateToken(
     }
   }
 
-  return { ok: true, value: { id: token.user.id, name: token.user.username } };
+  return { ok: true, value: { id: token.user.id, name: token.user.username, type: token.user.type } };
 }

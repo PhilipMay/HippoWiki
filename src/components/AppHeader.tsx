@@ -7,7 +7,7 @@ import Typography from "@mui/material/Typography";
 import Link from "@/components/Link";
 import { logOut } from "@/features/auth/actions";
 import { getCurrentUser } from "@/features/auth/session";
-import { isAdmin } from "@/features/users/schema";
+import { isAdmin } from "@/features/users/user-type";
 import { accountPath, foldersPath, usersPath } from "@/lib/addresses";
 import { siteName } from "@/lib/site";
 

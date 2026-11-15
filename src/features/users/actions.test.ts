@@ -22,7 +22,12 @@ vi.mock("@/features/auth/session", () => ({ requireUser: mocks.requireUser }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect, notFound: mocks.notFound }));
 
-const ADMIN = { id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1001", name: "admin", mustChangePassword: false };
+const ADMIN = {
+  id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1001",
+  name: "admin",
+  type: "admin" as const,
+  mustChangePassword: false,
+};
 const PASSWORD = "Gx7pQ2mWk9RtZ4vNc8Hs";
 
 function formData(name: string): FormData {

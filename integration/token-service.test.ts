@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import * as authService from "@/features/auth/service";
 import { hashToken } from "@/features/tokens/secret";
 import * as tokenService from "@/features/tokens/service";
+import type { Actor } from "@/features/users/service";
 
 import { createUser, getTestDb, TEST_PASSWORD } from "../e2e/support/database";
 
@@ -12,11 +13,11 @@ const INPUT = { name: "MCP client", scopes: ["read"], expiry: "90d" };
 /** A user of the test database as the actor of the service. */
 async function createActor() {
   const user = await createUser({ mustChangePassword: false });
-  return { id: user.id, name: user.name };
+  return { id: user.id, name: user.name, type: user.type };
 }
 
 /** Creates a token through the service and fails the test if that does not succeed. */
-async function createToken(actor: { id: string; name: string }, input: Partial<typeof INPUT> = {}) {
+async function createToken(actor: Actor, input: Partial<typeof INPUT> = {}) {
   const result = await tokenService.createToken(actor, { ...INPUT, ...input });
   if (!result.ok) return expect.fail(`token not created: ${result.error.code}`);
   return result.value;
@@ -91,7 +92,7 @@ describe("createToken", () => {
   });
 
   it("reports failed for an actor that does not exist", async () => {
-    const ghost = { id: crypto.randomUUID(), name: "ghost" };
+    const ghost: Actor = { id: crypto.randomUUID(), name: "ghost", type: "user" };
 
     await expect(tokenService.createToken(ghost, INPUT)).resolves.toEqual({ ok: false, error: { code: "failed" } });
     expect(await getTestDb().apiToken.count()).toBe(0);
@@ -248,7 +249,7 @@ describe("authenticateToken", () => {
     for (const scope of ["read", "write"] as const) {
       await expect(tokenService.authenticateToken(bearer(secret), scope)).resolves.toStrictEqual({
         ok: true,
-        value: { id: login.value.user.id, name: login.value.user.name },
+        value: { id: login.value.user.id, name: login.value.user.name, type: login.value.user.type },
       });
     }
   });
@@ -278,7 +279,7 @@ describe("authenticateToken", () => {
 
   it("refuses the token of a user who still has the first password", async () => {
     const user = await createUser({ mustChangePassword: false });
-    const { secret } = await createToken({ id: user.id, name: user.name });
+    const { secret } = await createToken({ id: user.id, name: user.name, type: user.type });
     await getTestDb().user.update({ where: { id: user.id }, data: { mustChangePassword: true } });
 
     await expect(tokenService.authenticateToken(bearer(secret), "read")).resolves.toEqual({

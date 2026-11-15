@@ -3,6 +3,7 @@
 // place that knows the shape. The users service, the seed and the test helpers use it. It also gives the reads of
 // folders, tabs and pages the name of their last editor. No server-only imports.
 
+import type { UserType } from "@/features/users/user-type";
 import type { Prisma } from "@/generated/prisma/client";
 
 /**
@@ -41,6 +42,8 @@ export type NewUser = {
   id?: string;
   /** A valid user name (see `schema.ts`). */
   name: string;
+  /** The type of the account, which never changes. */
+  type: UserType;
   /** The encoded hash of the password, from `hashPassword()`. */
   passwordHash: string;
   /** Whether the password is a first password, which the user has to change at the first login. */
@@ -54,6 +57,7 @@ export type NewUser = {
 export function newUserData({
   id = crypto.randomUUID(),
   name,
+  type,
   passwordHash,
   mustChangePassword,
 }: NewUser): Prisma.UserCreateInput {
@@ -63,6 +67,7 @@ export function newUserData({
     name,
     username: name,
     email: placeholderEmail(name),
+    type,
     mustChangePassword,
     accounts: { create: { providerId: CREDENTIAL_PROVIDER_ID, accountId: id, password: passwordHash } },
   };

@@ -25,6 +25,7 @@ describe("ensureAdmin", () => {
       username: "admin",
       email: "admin@users.hippowiki.invalid",
       emailVerified: false,
+      type: "admin",
       mustChangePassword: true,
     });
     expect(admin?.accounts).toHaveLength(1);
@@ -49,6 +50,15 @@ describe("ensureAdmin", () => {
     expect(result).toEqual({ ok: true, value: { outcome: "exists" } });
     expect(await storedUsers()).toStrictEqual(before);
     expect(await verifyPassword(before[0]?.accounts[0]?.password ?? "", "first-password")).toBe(true);
+  });
+
+  it("leaves an existing account named admin as it is, its type included", async () => {
+    const existing = await createUser({ name: "admin", type: "user", mustChangePassword: false });
+
+    const result = await userService.ensureAdmin("first-password");
+
+    expect(result).toEqual({ ok: true, value: { outcome: "exists" } });
+    expect(await getTestDb().user.findUniqueOrThrow({ where: { id: existing.id } })).toStrictEqual(existing);
   });
 
   it.each([
@@ -103,11 +113,11 @@ describe("listUsers", () => {
   it("lists all users by name for the admin, with exactly the declared fields", async () => {
     const createdAt = new Date("2026-03-01T10:00:00.000Z");
     const zoe = await createUser({ name: "zoe", createdAt });
-    const admin = await createUser({ name: "admin", mustChangePassword: false, createdAt });
+    const admin = await createUser({ name: "admin", type: "admin", mustChangePassword: false, createdAt });
     const bob = await createUser({ name: "bob", mustChangePassword: false, createdAt });
     const alice = await createUser({ name: "alice", createdAt });
 
-    const users = await userService.listUsers({ id: admin.id, name: "admin" });
+    const users = await userService.listUsers({ id: admin.id, name: "admin", type: "admin" });
 
     expect(users).toStrictEqual([
       { id: admin.id, name: "admin", createdAt, mustChangePassword: false },
@@ -118,18 +128,18 @@ describe("listUsers", () => {
   });
 
   it("returns null for a normal user", async () => {
-    await createUser({ name: "admin" });
+    await createUser({ name: "admin", type: "admin" });
     const alice = await createUser({ name: "alice" });
 
-    expect(await userService.listUsers({ id: alice.id, name: "alice" })).toBeNull();
+    expect(await userService.listUsers({ id: alice.id, name: "alice", type: "user" })).toBeNull();
   });
 });
 
 describe("createUser", () => {
   /** The admin as an actor, created in the database like every other user. */
   async function createAdmin() {
-    const admin = await createUser({ name: "admin", mustChangePassword: false });
-    return { id: admin.id, name: admin.username };
+    const admin = await createUser({ name: "admin", type: "admin", mustChangePassword: false });
+    return { id: admin.id, name: admin.username, type: admin.type };
   }
 
   it("creates a user with a pending password change who can log in with the returned password", async () => {
@@ -196,7 +206,7 @@ describe("createUser", () => {
     await createAdmin();
     const alice = await createUser({ name: "alice" });
 
-    const result = await userService.createUser({ id: alice.id, name: "alice" }, { name: "jane-doe" });
+    const result = await userService.createUser({ id: alice.id, name: "alice", type: "user" }, { name: "jane-doe" });
 
     expect(result).toEqual({ ok: false, error: { code: "not-allowed" } });
     expect(await getTestDb().user.count()).toBe(2);
@@ -226,5 +236,51 @@ describe("createUser", () => {
       { name: "admin", mustChangePassword: false },
       { name: "jane-doe", mustChangePassword: true },
     ]);
+  });
+});
+
+describe("the type of an account", () => {
+  it.each([
+    ["an admin", "admin", "user"],
+    ["a user", "user", "admin"],
+  ] as const)(
+    "is never changed for %s: the database refuses the update and changes nothing",
+    async (_case, type, other) => {
+      const user = await createUser({ name: "maria", type });
+
+      await expect(getTestDb().user.update({ where: { id: user.id }, data: { type: other } })).rejects.toThrow(
+        "the type of an account cannot be changed",
+      );
+      await expect(getTestDb().user.updateMany({ data: { type: other } })).rejects.toThrow(
+        "the type of an account cannot be changed",
+      );
+      expect(await getTestDb().user.findUniqueOrThrow({ where: { id: user.id } })).toStrictEqual(user);
+    },
+  );
+
+  it("is never changed for a user that createUser() created", async () => {
+    const admin = await createUser({ name: "admin", type: "admin", mustChangePassword: false });
+    const created = await userService.createUser(
+      { id: admin.id, name: admin.username, type: admin.type },
+      { name: "jane-doe" },
+    );
+    if (!created.ok) return expect.fail(`user not created: ${created.error.code}`);
+
+    await expect(
+      getTestDb().user.update({ where: { id: created.value.user.id }, data: { type: "admin" } }),
+    ).rejects.toThrow("the type of an account cannot be changed");
+    expect((await getTestDb().user.findUniqueOrThrow({ where: { id: created.value.user.id } })).type).toBe("user");
+  });
+
+  it("lets an update of another field pass, also one that names the same type", async () => {
+    const user = await createUser({ name: "maria", type: "admin" });
+
+    await getTestDb().user.update({ where: { id: user.id }, data: { mustChangePassword: false } });
+    await getTestDb().user.update({ where: { id: user.id }, data: { type: "admin", name: "maria" } });
+
+    expect(await getTestDb().user.findUniqueOrThrow({ where: { id: user.id } })).toMatchObject({
+      type: "admin",
+      mustChangePassword: false,
+    });
   });
 });

@@ -47,7 +47,16 @@ describe("logIn", () => {
 
     const { user, headers } = await logInAs("alice");
 
-    expect(user).toStrictEqual({ id: alice.id, name: "alice", mustChangePassword: true });
+    expect(user).toStrictEqual({ id: alice.id, name: "alice", type: "user", mustChangePassword: true });
+    expect(await authService.getSessionUser(headers)).toStrictEqual(user);
+  });
+
+  it("carries the type of an admin with the session user", async () => {
+    await createUser({ name: "maria", type: "admin" });
+
+    const { user, headers } = await logInAs("maria");
+
+    expect(user).toMatchObject({ name: "maria", type: "admin" });
     expect(await authService.getSessionUser(headers)).toStrictEqual(user);
   });
 
@@ -56,7 +65,7 @@ describe("logIn", () => {
 
     const { user, headers } = await logInAs("admin", "first-password");
 
-    expect(user).toMatchObject({ name: "admin", mustChangePassword: true });
+    expect(user).toMatchObject({ name: "admin", type: "admin", mustChangePassword: true });
     expect(await authService.getSessionUser(headers)).toStrictEqual(user);
   });
 
@@ -859,6 +868,7 @@ describe("changeFirstPassword", () => {
     expect((await logInAs("alice", NEW_PASSWORD)).user).toStrictEqual({
       id: alice.id,
       name: "alice",
+      type: "user",
       mustChangePassword: false,
     });
     expect(await authService.logIn({ name: "alice", password: TEST_PASSWORD }, new Headers(), SHARED)).toEqual(
@@ -881,6 +891,7 @@ describe("changeFirstPassword", () => {
     expect(await authService.getSessionUser(newHeaders)).toStrictEqual({
       id: alice.id,
       name: "alice",
+      type: "user",
       mustChangePassword: false,
     });
     expect(await authService.getSessionUser(other.headers)).toBeNull();

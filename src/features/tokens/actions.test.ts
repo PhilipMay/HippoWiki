@@ -27,7 +27,12 @@ vi.mock("@/features/auth/session", () => ({ requireUser: mocks.requireUser }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect, notFound: mocks.notFound }));
 
-const ALICE = { id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002", name: "alice", mustChangePassword: false };
+const ALICE = {
+  id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002",
+  name: "alice",
+  type: "user" as const,
+  mustChangePassword: false,
+};
 const TOKEN_ID = "0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01";
 const SECRET = `hw_${"A".repeat(43)}`;
 

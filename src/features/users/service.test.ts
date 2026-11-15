@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createUser, ensureAdmin, listUsers } from "@/features/users/service";
+import { createUser, ensureAdmin, listUsers, type Actor } from "@/features/users/service";
 import { Prisma } from "@/generated/prisma/client";
 import { PasswordHashBusyError } from "@/lib/password-hash";
 
@@ -33,8 +33,8 @@ const ADMIN_ID = "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1000";
 const ALICE_ID = "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002";
 
 /** The acting users: the admin, and a normal user. */
-const ADMIN = { id: ADMIN_ID, name: "admin" };
-const ALICE = { id: ALICE_ID, name: "alice" };
+const ADMIN: Actor = { id: ADMIN_ID, name: "admin", type: "admin" };
+const ALICE: Actor = { id: ALICE_ID, name: "alice", type: "user" };
 
 function knownError(code: string, meta?: Record<string, unknown>): Prisma.PrismaClientKnownRequestError {
   return new Prisma.PrismaClientKnownRequestError("database error", { code, clientVersion: "test", meta });
@@ -79,6 +79,7 @@ describe("ensureAdmin", () => {
       name: "admin",
       username: "admin",
       email: "admin@users.hippowiki.invalid",
+      type: "admin",
       mustChangePassword: true,
       accounts: { create: { providerId: "credential", accountId: data.id, password: HASH } },
     });
@@ -224,11 +225,10 @@ describe("listUsers", () => {
   });
 
   it.each([
-    ["a normal user", ALICE],
-    ["a user whose name only starts like the admin's", { id: ALICE_ID, name: "admin-2" }],
-    ["a name in another case", { id: ALICE_ID, name: "Admin" }],
-    ["a normal user with the id of the admin", { id: ADMIN_ID, name: "alice" }],
-  ])("returns null for %s and does not ask the database", async (_case, actor) => {
+    ["a user", ALICE],
+    ["a user named admin", { id: ADMIN_ID, name: "admin", type: "user" }],
+    ["a user with the id of an admin", { id: ADMIN_ID, name: "alice", type: "user" }],
+  ] satisfies [string, Actor][])("returns null for %s and does not ask the database", async (_case, actor) => {
     await expect(listUsers(actor)).resolves.toBeNull();
 
     expect(mocks.userFindMany).not.toHaveBeenCalled();
@@ -270,6 +270,7 @@ describe("createUser", () => {
       name: "bob",
       username: "bob",
       email: "bob@users.hippowiki.invalid",
+      type: "user",
       mustChangePassword: true,
       accounts: { create: { providerId: "credential", accountId: data.id, password: HASH } },
     });
@@ -298,22 +299,25 @@ describe("createUser", () => {
   });
 
   it.each([
-    ["a normal user", ALICE],
-    ["a user whose name only starts like the admin's", { id: ALICE_ID, name: "admin-2" }],
-    ["a normal user with the id of the admin", { id: ADMIN_ID, name: "alice" }],
-  ])("answers not-allowed for %s, without a password, a hash or the database", async (_case, actor) => {
-    const result = await createUser(actor, { name: "bob" });
+    ["a user", ALICE],
+    ["a user named admin", { id: ADMIN_ID, name: "admin", type: "user" }],
+    ["a user with the id of an admin", { id: ADMIN_ID, name: "alice", type: "user" }],
+  ] satisfies [string, Actor][])(
+    "answers not-allowed for %s, without a password, a hash or the database",
+    async (_case, actor) => {
+      const result = await createUser(actor, { name: "bob" });
 
-    expect(result).toEqual({ ok: false, error: { code: "not-allowed" } });
-    expect(mocks.generateFirstPassword).not.toHaveBeenCalled();
-    expect(mocks.hashPassword).not.toHaveBeenCalled();
-    expect(mocks.userCreate).not.toHaveBeenCalled();
-    expect(mocks.userFindUnique).not.toHaveBeenCalled();
-    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
-      { actorId: actor.id },
-      "user not created: the actor is not the admin",
-    );
-  });
+      expect(result).toEqual({ ok: false, error: { code: "not-allowed" } });
+      expect(mocks.generateFirstPassword).not.toHaveBeenCalled();
+      expect(mocks.hashPassword).not.toHaveBeenCalled();
+      expect(mocks.userCreate).not.toHaveBeenCalled();
+      expect(mocks.userFindUnique).not.toHaveBeenCalled();
+      expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
+        { actorId: actor.id },
+        "user not created: the actor is not an admin",
+      );
+    },
+  );
 
   it("checks the actor before the name", async () => {
     const result = await createUser(ALICE, { name: "Not A Name!" });
@@ -391,9 +395,9 @@ describe("createUser", () => {
   });
 
   /** What a test sets up before the call, and the actor of the call. */
-  const outcomes: [string, () => void, { id: string; name: string }][] = [
+  const outcomes: [string, () => void, Actor][] = [
     ["the user is created", () => undefined, ADMIN],
-    ["the actor is not the admin", () => undefined, ALICE],
+    ["the actor is not an admin", () => undefined, ALICE],
     [
       "the name is taken",
       () => mocks.userCreate.mockRejectedValue(uniqueViolation({ index: "User_username_key" })),

@@ -157,7 +157,11 @@ describe("an authorization request of a client with a metadata document", () => 
     const alice = await createUser({ mustChangePassword: false });
     const start = Date.now();
     vi.useFakeTimers({ now: start, toFake: ["Date"] });
-    const created = await oauthService.createCode({ id: alice.id, name: alice.name }, params(), "90d");
+    const created = await oauthService.createCode(
+      { id: alice.id, name: alice.name, type: alice.type },
+      params(),
+      "90d",
+    );
     if (!created.ok) return expect.fail(`code not created: ${created.error.code}`);
     const exchanged = await oauthService.exchangeCode({
       code: created.value.code,
@@ -196,7 +200,7 @@ describe("an authorization request of a client with a metadata document", () => 
 
   it("names its grant after the document and replaces the grant on the next connect", async () => {
     const alice = await createUser({ mustChangePassword: false });
-    const actor = { id: alice.id, name: alice.name };
+    const actor = { id: alice.id, name: alice.name, type: alice.type };
     const connect = async () => {
       const created = await oauthService.createCode(actor, params(), "90d");
       if (!created.ok) return expect.fail(`code not created: ${created.error.code}`);

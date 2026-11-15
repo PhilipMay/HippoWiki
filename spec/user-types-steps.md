@@ -21,7 +21,7 @@ step below.
 
 ## Checklist
 
-- [ ] Account types in the database
+- [x] Account types in the database
 - [ ] The user list for every account
 - [ ] Where the login leads
 - [ ] No content for admins

@@ -13,16 +13,11 @@ import {
 } from "@/features/users/limits";
 import { NAME_PATTERN } from "@/lib/names";
 
-/** The name of the one admin account. The admin is the user with this name; there is no role column. */
-export const ADMIN_NAME = "admin";
-
 /**
- * Whether the user is the admin. The one place that decides it: the users service asks it before it lists or creates
- * users, and the header before it shows the menu entry.
+ * The name of the first admin, which the admin setup creates. Only its name: what an account may do is decided by its
+ * type (`user-type.ts`), and later admins may have any valid name.
  */
-export function isAdmin(user: { name: string }): boolean {
-  return user.name === ADMIN_NAME;
-}
+export const ADMIN_NAME = "admin";
 
 /** A user id: a UUID, like the ids of folders, tabs and pages. */
 export const userIdSchema = z.guid();
