@@ -157,15 +157,55 @@ describe("passwordSchema", () => {
 });
 
 describe("passwordSchemaFor", () => {
-  it("rejects a password that is the same as the user name", () => {
-    expect(errorsOf(passwordSchemaFor("alexander"), "alexander")).toEqual([
-      "Password must not be the same as the user name",
-    ]);
+  const CONTEXT_WORD = "Password must not be built only from the user name or the name of the wiki, digits and symbols";
+  const COMMON = "Password is too common, choose another one";
+
+  it("rejects a password built only from the user name, digits and symbols, in any case", () => {
+    for (const password of ["Alexander", "ALEXANDER", "Alexander1", "alexander-2026!"]) {
+      expect(errorsOf(passwordSchemaFor("alexander"), password), password).toContain(CONTEXT_WORD);
+    }
+    // Both are also on the list of common passwords.
+    expect(errorsOf(passwordSchemaFor("alexander"), "alexander")).toEqual([CONTEXT_WORD, COMMON]);
+    expect(errorsOf(passwordSchemaFor("alexander"), "alexander1")).toEqual([CONTEXT_WORD, COMMON]);
+    expect(errorsOf(passwordSchemaFor("alexander"), "alexander-2026!")).toEqual([CONTEXT_WORD]);
   });
 
-  it("accepts a password that only contains or resembles the user name", () => {
-    for (const password of ["alexander1", "Alexander", " alexander"]) {
+  it("rejects a password built only from the context words, digits and symbols, in any case", () => {
+    for (const password of [
+      "hippowiki2026",
+      "HippoWiki2026",
+      "admin-admin!",
+      "wiki-wiki-wiki",
+      "hippo&wiki",
+      "Admin2026",
+    ]) {
+      expect(errorsOf(passwordSchemaFor("alice"), password), password).toEqual([CONTEXT_WORD]);
+    }
+  });
+
+  it("rejects a password that mixes the user name and the context words", () => {
+    expect(errorsOf(passwordSchemaFor("alexander"), "alexander@hippowiki")).toEqual([CONTEXT_WORD]);
+  });
+
+  it("accepts a password that keeps a letter besides the user name and the context words", () => {
+    for (const password of ["admin-password", "wikipedia1", "hippowiki-x", "alexander-the-great", " alexanders"]) {
       expect(errorsOf(passwordSchemaFor("alexander"), password), password).toEqual([]);
+    }
+  });
+
+  it("treats a user name inside a longer word as the user name", () => {
+    expect(errorsOf(passwordSchemaFor("ann"), "annannann")).toEqual([CONTEXT_WORD]);
+    expect(errorsOf(passwordSchemaFor("ann"), "joanna-1234")).toEqual([]);
+  });
+
+  it("leaves a password without the user name or a context word to the list", () => {
+    expect(errorsOf(passwordSchemaFor("alice"), "73920518")).toEqual([]);
+    expect(errorsOf(passwordSchemaFor("alice"), "!!!!????")).toEqual([]);
+  });
+
+  it("rejects a common password, in any case", () => {
+    for (const password of ["password123", "Password123", "qwertyuiop", "12345678"]) {
+      expect(errorsOf(passwordSchemaFor("alice"), password), password).toEqual([COMMON]);
     }
   });
 
@@ -177,8 +217,10 @@ describe("passwordSchemaFor", () => {
   it("reports every rule that a password breaks", () => {
     expect(errorsOf(passwordSchemaFor("alice"), "alice")).toEqual([
       "Password must be at least 8 characters",
-      "Password must not be the same as the user name",
+      CONTEXT_WORD,
     ]);
+    // "admin123" is built from a context word and is on the list.
+    expect(errorsOf(passwordSchemaFor("alice"), "admin123")).toEqual([CONTEXT_WORD, COMMON]);
   });
 });
 
@@ -204,7 +246,14 @@ describe("adminPasswordSchema", () => {
     ]);
     expect(errorsOf(adminPasswordSchema, ADMIN_NAME)).toEqual([
       "Password must be at least 8 characters",
-      "Password must not be the same as the user name",
+      "Password must not be built only from the user name or the name of the wiki, digits and symbols",
     ]);
+  });
+
+  it("rejects a password built from the admin name and a common password", () => {
+    expect(errorsOf(adminPasswordSchema, "admin2026")).toEqual([
+      "Password must not be built only from the user name or the name of the wiki, digits and symbols",
+    ]);
+    expect(errorsOf(adminPasswordSchema, "password123")).toEqual(["Password is too common, choose another one"]);
   });
 });

@@ -13,7 +13,7 @@ import {
   PASSWORD_MIN_LENGTH,
   USER_NAME_MAX_LENGTH,
   USER_NAME_MIN_LENGTH,
-} from "@/features/users/schema";
+} from "@/features/users/limits";
 import { getDb } from "@/lib/db";
 import { getServerEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";

@@ -132,11 +132,25 @@ test.describe("a rule that the new password breaks", () => {
       error: "Password must be at most 128 characters",
     },
     {
-      what: "a new password that is the user name",
+      what: "a new password built from the user name",
       name: "alexander",
-      input: { next: "alexander" },
+      input: { next: "Alexander2026" },
       field: "New password",
-      error: "Password must not be the same as the user name",
+      error: "Password must not be built only from the user name or the name of the wiki, digits and symbols",
+    },
+    {
+      what: "a new password built from the name of the wiki",
+      name: "newcomer",
+      input: { next: "hippowiki2026" },
+      field: "New password",
+      error: "Password must not be built only from the user name or the name of the wiki, digits and symbols",
+    },
+    {
+      what: "a common new password",
+      name: "newcomer",
+      input: { next: "password123" },
+      field: "New password",
+      error: "Password is too common, choose another one",
     },
     {
       what: "a new password that is the current one",

@@ -2,7 +2,8 @@
 
 import { z } from "zod";
 
-import { PASSWORD_MAX_LENGTH, passwordSchemaFor, userNameSchema } from "@/features/users/schema";
+import { PASSWORD_MAX_LENGTH } from "@/features/users/limits";
+import { passwordSchemaFor, userNameSchema } from "@/features/users/schema";
 
 /**
  * What a login needs to be worth a look at the stored password: a name that follows the name rule and a password of

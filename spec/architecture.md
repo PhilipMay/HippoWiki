@@ -14,9 +14,10 @@ How the code is organised and which patterns new code follows. The technology st
   What each module holds is in the module itself. A module that a Client Component imports, such as `names.ts` or
   `addresses.ts`, has no server-only imports.
 - `src/features/<feature>/`: everything about one feature – `schema.ts`, `service.ts`, `forms.ts`, `queries.ts`,
-  `actions.ts`, `components/` and pure helpers such as `derive.ts` and `limits.ts` for pages (no server-only imports,
-  so Client Components can use them). `limits.ts` holds the field length limits, so that `schema.ts` can import
-  `derive.ts` without a cycle.
+  `actions.ts`, `components/` and pure helpers such as `derive.ts` and `limits.ts` (no server-only imports, so Client
+  Components can use them). `limits.ts` holds the field length limits: for pages, so that `schema.ts` can import
+  `derive.ts` without a cycle; for users, so that Client Components show the limits without importing `schema.ts`,
+  which would put the list of common passwords into the bundle for the browser.
   - `schema.ts`: the ids, the Zod schemas and the types of validated input
   - `service.ts`: every read and write of the feature (see "Reads and writes")
   - `forms.ts`: what only a form needs: the `parse*FormData` functions, the form states, the types of the form

@@ -15,7 +15,7 @@ import { useActionState, useEffect, useId, useRef, useState } from "react";
 
 import Link from "@/components/Link";
 import { type CreateUserFormAction } from "@/features/users/forms";
-import { USER_NAME_MAX_LENGTH, USER_NAME_MIN_LENGTH } from "@/features/users/schema";
+import { USER_NAME_MAX_LENGTH, USER_NAME_MIN_LENGTH } from "@/features/users/limits";
 import { focusOnEntered } from "@/lib/focus";
 import { useHydrated } from "@/lib/hydration";
 

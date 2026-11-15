@@ -10,7 +10,7 @@ import path from "node:path";
 
 import { format, resolveConfig } from "prettier";
 
-import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "../src/features/users/schema";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "../src/features/users/limits";
 
 const SOURCE_REPOSITORY = "danielmiessler/SecLists";
 const SOURCE_COMMIT = "51aa7644c96b3fb6db8de9ecf55aa91195209c80";

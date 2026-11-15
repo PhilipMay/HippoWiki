@@ -898,9 +898,33 @@ describe("changeFirstPassword", () => {
       { code: "invalid-input", fieldErrors: { newPassword: ["New password must differ from the current one"] } },
     ],
     [
-      "a new password equal to the user name",
-      changeTo("alexander"),
-      { code: "invalid-input", fieldErrors: { newPassword: ["Password must not be the same as the user name"] } },
+      "a new password built from the user name",
+      changeTo("alexander2026"),
+      {
+        code: "invalid-input",
+        fieldErrors: {
+          newPassword: [
+            "Password must not be built only from the user name or the name of the wiki, digits and symbols",
+          ],
+        },
+      },
+    ],
+    [
+      "a new password built from a context word",
+      changeTo("hippowiki2026"),
+      {
+        code: "invalid-input",
+        fieldErrors: {
+          newPassword: [
+            "Password must not be built only from the user name or the name of the wiki, digits and symbols",
+          ],
+        },
+      },
+    ],
+    [
+      "a common new password",
+      changeTo("password123"),
+      { code: "invalid-input", fieldErrors: { newPassword: ["Password is too common, choose another one"] } },
     ],
     [
       "a new password of 7 characters",

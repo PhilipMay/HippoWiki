@@ -92,9 +92,16 @@ describe("passwordChangeInputSchema", () => {
       { newPassword: ["Password must be at most 128 characters"] },
     ],
     [
-      "a new password that is the user name",
-      { ...VALID, newPassword: "alexander", repeatPassword: "alexander" },
-      { newPassword: ["Password must not be the same as the user name"] },
+      "a new password built from the user name",
+      { ...VALID, newPassword: "alexander2026", repeatPassword: "alexander2026" },
+      {
+        newPassword: ["Password must not be built only from the user name or the name of the wiki, digits and symbols"],
+      },
+    ],
+    [
+      "a common new password",
+      { ...VALID, newPassword: "password123", repeatPassword: "password123" },
+      { newPassword: ["Password is too common, choose another one"] },
     ],
     [
       "a new password that is the current one",
@@ -120,8 +127,8 @@ describe("passwordChangeInputSchema", () => {
     expect(fieldErrorsOf(input)).toEqual(fieldErrors);
   });
 
-  it("accepts 8 and 128 characters, and a new password that only resembles the user name or the current one", () => {
-    for (const newPassword of ["12345678", "p".repeat(128), "Alexander", "alexander1", "first-password "]) {
+  it("accepts 8 and 128 characters, and a new password that only contains the user name or resembles the current one", () => {
+    for (const newPassword of ["73920518", "p".repeat(128), "alexander-the-great", "first-password "]) {
       expect(fieldErrorsOf({ ...VALID, newPassword, repeatPassword: newPassword }), newPassword).toEqual({});
     }
   });
@@ -142,7 +149,7 @@ describe("passwordChangeInputSchema", () => {
   });
 
   it("applies the rule about the user name to the name it was built for", () => {
-    const input = { ...VALID, newPassword: "alexander", repeatPassword: "alexander" };
+    const input = { ...VALID, newPassword: "alexander2026", repeatPassword: "alexander2026" };
 
     expect(passwordChangeInputSchema("someone-else").safeParse(input).success).toBe(true);
   });

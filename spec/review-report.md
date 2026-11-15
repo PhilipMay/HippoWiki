@@ -9,14 +9,12 @@
   tests cover the security rules of the specs well. The weak points are availability (a slow Markdown parse, unbounded
   bodies and batches, a lockout per name in the default configuration), the password policy, the trust that the OAuth
   server gives to clients nobody verified, and documentation that ASVS Level 2 asks for.
-- Findings: 113 in all, 0 Blocker, 3 Major, 69 Minor and 41 Nit (59 `issue:`, 20 `suggestion:`, 29 `nit:` and 5
+- Findings: 112 in all, 0 Blocker, 2 Major, 69 Minor and 41 Nit (58 `issue:`, 20 `suggestion:`, 29 `nit:` and 5
   `question:`). Accepted deviations: 20.
 - To fix first:
   1. Some Markdown takes quadratic time to parse, so one page blocks the whole server (Content; ASVS 15.1.3, 15.2.2;
      CWE-407).
-  2. New passwords are not checked against common or breached passwords (Login; ASVS 6.2.4, 6.2.12; NIST SP 800-63B-4
-     3.1.1.2).
-  3. After the first password change, a user cannot change the password or end sessions, and the admin cannot end
+  2. After the first password change, a user cannot change the password or end sessions, and the admin cannot end
      them either (Login; ASVS 6.2.2, 7.4.3, 7.4.5).
 - Not covered by this review: everything under "Checks on the deployment" (the reverse proxy and its TLS, the host,
   the network, backups, log storage and the settings of the GitHub repository); a scan of the image for
@@ -554,26 +552,6 @@ finding of the review report" in `workflow.md` describes.
 
 ### Login, passwords, sessions and users
 
-#### issue: new passwords are not checked against common or breached passwords or context words
-
-- Location: `src/features/users/schema.ts`, lines 70–88, `passwordSchema` and `passwordSchemaFor()`, used by
-  `passwordChangeInputSchema()` in `src/features/auth/schema.ts` and by `ensureAdmin()` in
-  `src/features/users/service.ts`
-- Severity: Major. It is a Level 1 requirement and a "shall" of NIST; with 20 guesses per name and hour, from
-  distributed addresses, a password such as `password1234` falls within days, and the name `admin` is known.
-- Category: security
-- Problem: the only rules are the length and "not the same as the user name". Neither the forced change nor
-  `HIPPOWIKI_ADMIN_PASSWORD` is checked against a list of common or breached passwords, and there is no documented
-  list of context words such as `hippowiki`, `wiki` or `admin`.
-- Impact: every account with a weak password can be taken over by guessing, the admin above all.
-- Evidence: on the local server, the forced change of a fresh user accepts `password1234`, `qwertyuiop`, `12345678`
-  and `hippowiki2026` (each answered with `x-action-redirect: /folders`); only the user name itself is refused.
-- Suggestion (required): check every new password, the admin setup included, against a bundled list of at least the
-  10,000 most common passwords that meet the minimum length, and against a documented list of context words; name the
-  list in `users-and-login.md`.
-- Reference: OWASP A07:2025 Authentication Failures; ASVS 6.2.4, 6.2.12, 6.1.2, 6.2.11; NIST SP 800-63B-4 3.1.1.2;
-  CWE-521.
-
 #### issue: after the first password change, a user cannot change the password or end sessions, and the admin cannot end them either
 
 - Location: `src/features/auth/service.ts`, lines 444–456, `changeFirstPassword()`; `spec/users-and-login.md`,
@@ -618,13 +596,14 @@ finding of the review report" in `workflow.md` describes.
 
 #### issue: the minimum password length is 8, not the 15 NIST asks for a single factor, without a documented reason
 
-- Location: `src/features/users/schema.ts`, lines 60 and 76–79, `PASSWORD_MIN_LENGTH` and `passwordSchema`;
-  `spec/users-and-login.md`, section "Passwords"
+- Location: `src/features/users/limits.ts`, line 7, `PASSWORD_MIN_LENGTH`; `src/features/users/schema.ts`,
+  `passwordSchema`; `spec/users-and-login.md`, section "Passwords"
 - Severity: Minor. ASVS 6.2.1 is met (8, with 15 recommended); the deviation from NIST is not documented.
 - Category: security
 - Problem: the password is the only factor, and NIST SP 800-63B-4 then asks for at least 15 characters. The length is
   counted in UTF-16 code units, while NIST counts each code point as one character, so four emoji pass the minimum.
-- Impact: shorter passwords than the standard allows, together with the missing blocklist.
+- Impact: shorter passwords than the standard allows; the list of common passwords holds back only the 10,000 most
+  common of them.
 - Evidence: on the local server the forced change refuses 7 characters ("Password must be at least 8 characters") and
   accepts 8, 15, 64 and 128 characters; 129 are refused.
 - Suggestion (required): raise the minimum for new passwords to 15 and count code points for it, or document 8 as a
@@ -835,6 +814,16 @@ finding of the review report" in `workflow.md` describes.
 - The maximum (ASVS 6.2.9): 128 characters are accepted, counted the same way on every path. No composition rules
   (ASVS 6.2.5).
 - Unicode (ASVS 6.2.8): the password is used exactly as typed when set and when checked.
+- Common passwords and context words (ASVS 6.2.4, 6.2.12, 6.1.2, 6.2.11, NIST SP 800-63B-4 3.1.1.2, CWE-521): every
+  new password, from the forced change and from `HIPPOWIKI_ADMIN_PASSWORD`, is refused when it is one of the 10,000
+  most common passwords of 8 to 128 characters, in any case (`src/features/users/common-passwords.ts`, generated from
+  a SecLists list of breach data pinned to one commit, which meets 6.2.12 without an outgoing request), or when it is
+  built only from the user name or a context word (`hippowiki`, `hippo`, `wiki`, `admin`, documented in
+  `users-and-login.md`) plus digits and symbols. Checked by the unit tests of `src/features/users/schema.ts` and
+  `common-passwords.ts`, the integration tests of `ensureAdmin()` and `changeFirstPassword()`, the end-to-end spec
+  `e2e/change-password.spec.ts`, and on the local server, where the forced change of a fresh user refuses
+  `password123`, `qwertyuiop`, `12345678` and `hippowiki2026`. The list stays out of the bundles for the browser
+  (searched in `.next/static` after a build).
 - Paste and autocomplete (ASVS 6.2.7): `type="password"`, `autocomplete` `username`, `current-password` and
   `new-password`, and nothing blocks paste (see the question above for the filling). The change needs the current
   password (ASVS 6.2.3).
@@ -2662,7 +2651,7 @@ The requirements are those of the module texts on bsi.bund.de as fetched on 2026
 
 | Requirement                                                       | Covered in                                                                         |
 | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `CON.10.A1` authentication, limits on failed logins, notification | Login (findings on the blocklist, the notification and the lockout)                |
+| `CON.10.A1` authentication, limits on failed logins, notification | Login (common passwords reviewed; findings on the notification and the lockout)    |
 | `CON.10.A2` access control                                        | Access control                                                                     |
 | `CON.10.A3` session management                                    | Login                                                                              |
 | `CON.10.A4` controlled inclusion of content, redirects            | Access control; OAuth (redirects to the client); Content                           |

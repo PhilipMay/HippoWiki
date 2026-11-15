@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { COMMON_PASSWORDS, isCommonPassword } from "@/features/users/common-passwords";
 import { generateFirstPassword } from "@/features/users/password";
-import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/features/users/schema";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/features/users/limits";
 
 describe("COMMON_PASSWORDS", () => {
   it("has exactly 10,000 entries, all distinct", () => {

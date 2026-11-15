@@ -1,7 +1,16 @@
-// The rules for user names and passwords. No server-only imports, so Client Components can use it.
+// The rules for user names and passwords. No server-only imports, so the server and the tests can use it anywhere;
+// Client Components import the length limits from `limits.ts` instead, so that the list of common passwords stays out
+// of the bundle for the browser.
 
 import { z } from "zod";
 
+import { isCommonPassword } from "@/features/users/common-passwords";
+import {
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  USER_NAME_MAX_LENGTH,
+  USER_NAME_MIN_LENGTH,
+} from "@/features/users/limits";
 import { NAME_PATTERN } from "@/lib/names";
 
 /** The name of the one admin account. The admin is the user with this name; there is no role column. */
@@ -23,9 +32,6 @@ export function parseUserId(id: string): string | null {
   const result = userIdSchema.safeParse(id);
   return result.success ? result.data : null;
 }
-
-export const USER_NAME_MIN_LENGTH = 3;
-export const USER_NAME_MAX_LENGTH = 30;
 
 /**
  * The name of a user: the name rule of folders, tabs and pages, so that it can be part of an address as it is, with
@@ -57,11 +63,16 @@ export type UserInput = z.output<typeof userInputSchema>;
 
 export type UserFieldErrors = { name?: string[] };
 
-export const PASSWORD_MIN_LENGTH = 8;
-/** The upper limit protects the password hashing from very long inputs. */
-export const PASSWORD_MAX_LENGTH = 128;
+/**
+ * The context words: words that an attacker who targets this wiki tries first, together with the user name. A password
+ * built only from them and from digits and symbols is refused (see `isBuiltFromContextWords`).
+ */
+export const PASSWORD_CONTEXT_WORDS = ["hippowiki", "hippo", "wiki", "admin"] as const;
 
-export const PASSWORD_IS_USER_NAME_MESSAGE = "Password must not be the same as the user name";
+export const PASSWORD_IS_CONTEXT_WORD_MESSAGE =
+  "Password must not be built only from the user name or the name of the wiki, digits and symbols";
+
+export const PASSWORD_IS_COMMON_MESSAGE = "Password is too common, choose another one";
 
 /**
  * A password: 8 to 128 characters, counted as Better Auth counts them (the length of the string). Any characters are
@@ -82,9 +93,31 @@ export const passwordSchema = z
     `Password must be at most ${PASSWORD_MAX_LENGTH} characters`,
   );
 
-/** The password rules for the user with the given name: a password, and not the same as the user name. */
+/**
+ * Whether the password is built only from the user name and the context words, plus digits and symbols: in lower case,
+ * with every occurrence of these words removed, longest first, something was removed and no letter is left. So
+ * `hippowiki2026` and `Admin-admin!` are refused, while `admin-password` and `wikipedia1` keep letters and pass. A
+ * password without any of the words, such as one of digits only, is left to the list of common passwords, so that
+ * there is still no composition rule.
+ */
+function isBuiltFromContextWords(password: string, userName: string): boolean {
+  const words = [userName, ...PASSWORD_CONTEXT_WORDS]
+    .map((word) => word.toLowerCase())
+    .filter((word) => word !== "")
+    .sort((a, b) => b.length - a.length);
+  let rest = password.toLowerCase();
+  for (const word of words) rest = rest.replaceAll(word, "");
+  return rest !== password.toLowerCase() && !/\p{L}/u.test(rest);
+}
+
+/**
+ * The password rules for the user with the given name: a password, not built only from the user name or a context
+ * word, and not a common password. All rules report together.
+ */
 export function passwordSchemaFor(userName: string) {
-  return passwordSchema.refine((password) => password !== userName, PASSWORD_IS_USER_NAME_MESSAGE);
+  return passwordSchema
+    .refine((password) => !isBuiltFromContextWords(password, userName), PASSWORD_IS_CONTEXT_WORD_MESSAGE)
+    .refine((password) => !isCommonPassword(password), PASSWORD_IS_COMMON_MESSAGE);
 }
 
 export const PASSWORD_IS_PLACEHOLDER_MESSAGE = "Password must not be a placeholder such as <first password>";

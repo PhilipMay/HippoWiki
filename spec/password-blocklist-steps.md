@@ -20,7 +20,7 @@ checked against common or breached passwords or context words" of `review-report
 ## Checklist
 
 - [x] Common password list
-- [ ] Refuse common passwords and context words
+- [x] Refuse common passwords and context words
 - [ ] Wrap-up
 
 ## Common password list
@@ -73,6 +73,11 @@ the specs and the review report say so.
   - A second refinement refuses a password for which `isCommonPassword()` holds.
   - Both rules report together with the length errors, as the rules do now. `adminPasswordSchema` builds on
     `passwordSchemaFor(ADMIN_NAME)` and so gets both.
+- `src/features/users/limits.ts`: the length limits of user names and passwords, moved out of `schema.ts`, like
+  `src/features/pages/limits.ts`. `ChangePasswordForm.tsx` and `CreateUserDialog.tsx` import them from there, so that
+  no Client Component imports `schema.ts` and with it the list (the first build put the list into a chunk under
+  `.next/static`); `src/lib/auth.ts`, `src/features/auth/schema.ts` and `scripts/common-passwords.ts` import them
+  from there as well. `architecture.md` names the module.
 - After `npm run build`, check that no file under `.next/static` contains a distinctive entry of the list, so that the
   list does not reach the browser. If one does, change the plan before going on (see `workflow.md`).
 - `spec/users-and-login.md`:

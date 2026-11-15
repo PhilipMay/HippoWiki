@@ -64,6 +64,21 @@ describe("ensureAdmin", () => {
       "p".repeat(129),
       { code: "invalid-input", fieldErrors: { password: ["Password must be at most 128 characters"] } },
     ],
+    [
+      "a common password",
+      "password123",
+      { code: "invalid-input", fieldErrors: { password: ["Password is too common, choose another one"] } },
+    ],
+    [
+      "a password built from the admin name",
+      "admin2026",
+      {
+        code: "invalid-input",
+        fieldErrors: {
+          password: ["Password must not be built only from the user name or the name of the wiki, digits and symbols"],
+        },
+      },
+    ],
   ])("leaves the tables empty for %s", async (_case, password, error) => {
     const result = await userService.ensureAdmin(password);
 

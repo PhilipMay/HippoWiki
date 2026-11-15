@@ -1179,10 +1179,16 @@ describe("changeFirstPassword", () => {
       { newPassword: ["Password must be at least 8 characters"] },
     ],
     [
-      "a new password that is the user name",
-      // A user whose name is long enough to be a password.
-      { ...INPUT, newPassword: "alexander", repeatPassword: "alexander" },
-      { newPassword: ["Password must not be the same as the user name"] },
+      "a new password built from the user name",
+      { ...INPUT, newPassword: "alexander2026", repeatPassword: "alexander2026" },
+      {
+        newPassword: ["Password must not be built only from the user name or the name of the wiki, digits and symbols"],
+      },
+    ],
+    [
+      "a common new password",
+      { ...INPUT, newPassword: "password123", repeatPassword: "password123" },
+      { newPassword: ["Password is too common, choose another one"] },
     ],
     [
       "a new password that is the current one",
