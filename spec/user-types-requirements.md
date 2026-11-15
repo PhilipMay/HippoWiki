@@ -35,10 +35,15 @@ lets every user see who has an account and who is an admin.
 
 ### Types
 
-- R1: Every account must have exactly one type, admin or user, and the type must never change after the account is
-  created.
-  - Acceptance: every account in the user list shows one type; no page, form or command offers to change it, and a
-    crafted request that tries it changes nothing.
+- R1: Every account must have exactly one type, admin or user.
+  - Acceptance: every account in the user list shows exactly one type.
+- R19: The type of an account must never be changed after the account is created, by anyone and in any way: not in
+  the browser, not through MCP or a token, not by the admin setup and not by any command. A person who needs the other
+  type gets a second account.
+  - Acceptance: no page, form, dialog, tool or command offers to change a type; a crafted request that tries it is
+    refused and changes nothing; the admin setup leaves the type of an existing account as it is. The update of
+    existing installations (R9) gives each existing account its type once, as its first type, and is no change of a
+    type.
 - R2: There must be any number of admins.
   - Acceptance: an admin creates a second admin, who can then list and create accounts.
 
@@ -153,6 +158,9 @@ lets every user see who has an account and who is an admin.
   folder list without its contents.
 - Admins have no API tokens and no connected apps, because the only thing a token reaches today is the content through
   MCP. Rejected: tokens for admins that every request would refuse.
+- The type of an account is fixed at its creation, so that no account can gain or lose access to the content or to
+  the management of accounts later on; an admin cannot make themselves or another account a user to read the content,
+  and a user can never be raised to an admin. Rejected: changing the type in the user list.
 - The feature covers only the type split. Password reset by the admin and deactivating users stay features of their
   own.
 - The first admin keeps the name `admin`, so that the admin setup still needs only `HIPPOWIKI_ADMIN_PASSWORD`; the type,
