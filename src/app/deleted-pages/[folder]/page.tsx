@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { requireUser } from "@/features/auth/session";
+import { mayDo } from "@/features/folder-roles/roles";
 import FolderBreadcrumbs from "@/features/folders/components/FolderBreadcrumbs";
 import { getFolderByName } from "@/features/folders/queries";
 import DeletedPagesList from "@/features/pages/components/DeletedPagesList";
@@ -20,7 +21,7 @@ function hasQuery(searchParams: SearchParams): boolean {
 
 export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
   const folder = await getFolderByName((await params).folder);
-  if (!folder || hasQuery(await searchParams)) return { title: pageTitle() };
+  if (!folder || !mayDo(folder.role, "deletedPages") || hasQuery(await searchParams)) return { title: pageTitle() };
   return { title: pageTitle(`Deleted pages – ${folder.name}`) };
 }
 
@@ -30,7 +31,8 @@ export default async function DeletedPagesPage({ params, searchParams }: Props) 
   await requireUser();
 
   const folder = await getFolderByName((await params).folder);
-  if (!folder || hasQuery(await searchParams)) notFound();
+  // Only a Manager or an Owner sees the deleted pages; for any other role they do not exist.
+  if (!folder || !mayDo(folder.role, "deletedPages") || hasQuery(await searchParams)) notFound();
 
   return (
     <Stack spacing={3}>

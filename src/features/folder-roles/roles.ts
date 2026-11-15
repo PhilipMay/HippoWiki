@@ -56,3 +56,8 @@ export type FolderFunction = keyof typeof FUNCTION_ROLES;
 export function mayDo(role: Role | null | undefined, fn: FolderFunction): boolean {
   return role != null && includesRole(role, FUNCTION_ROLES[fn]);
 }
+
+/** The roles that may do the function: its lowest role and every role above it. */
+export function rolesFor(fn: FolderFunction): Role[] {
+  return ROLES.filter((role) => mayDo(role, fn));
+}

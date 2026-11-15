@@ -11,7 +11,7 @@ import FolderBreadcrumbs from "@/features/folders/components/FolderBreadcrumbs";
 import FolderContentsList from "@/features/folders/components/FolderContentsList";
 import NameDialog from "@/features/folders/components/NameDialog";
 import { getFolderByName, listTabs } from "@/features/folders/queries";
-import { ROLE_LABELS } from "@/features/folder-roles/roles";
+import { mayDo, ROLE_LABELS, type FolderFunction } from "@/features/folder-roles/roles";
 import { createPage } from "@/features/pages/actions";
 import AllPagesList from "@/features/pages/components/AllPagesList";
 import NewPageForm from "@/features/pages/components/NewPageForm";
@@ -24,6 +24,13 @@ import { pageTitle } from "@/lib/site";
  * preselected place, `rename` the "Rename folder" dialog and `new-tab` the "New tab" dialog.
  */
 const ACTIONS = ["new", "rename", "new-tab"] as const;
+
+/** The function of each action, whose lowest role the user needs; an action beyond the role does not exist. */
+const ACTION_FUNCTIONS: Record<(typeof ACTIONS)[number], FolderFunction> = {
+  new: "editPage",
+  rename: "renameFolder",
+  "new-tab": "editTab",
+};
 
 /** The views of a folder address: `all` lists all pages of the folder, each with its tab. */
 const VIEWS = ["all"] as const;
@@ -57,6 +64,9 @@ export default async function FolderPage({ params, searchParams }: PageProps<"/f
   const query = parseQuery(await searchParams);
   if (query === "invalid") notFound();
   const { action, view } = query;
+  // An action that the role does not include answers like an unknown one, before the content is read.
+  if (action !== null && !mayDo(folder.role, ACTION_FUNCTIONS[action])) notFound();
+  const { role } = folder;
 
   if (action === "new") {
     return (
@@ -105,28 +115,37 @@ export default async function FolderPage({ params, searchParams }: PageProps<"/f
           <Typography variant="h4" component="h1" sx={{ overflowWrap: "anywhere" }}>
             {folder.name}
           </Typography>
-          {folder.role && (
+          {role && (
             <Typography variant="body2" color="text.secondary">
-              Your role: {ROLE_LABELS[folder.role]}
+              Your role: {ROLE_LABELS[role]}
             </Typography>
           )}
         </Stack>
+        {/* Only what the role includes is offered. */}
         <Stack direction="row" useFlexGap sx={{ flexWrap: "wrap", gap: 2 }}>
-          <Button component={Link} href={folderPath(folder.name, "rename")} variant="outlined">
-            Rename
-          </Button>
+          {mayDo(role, "renameFolder") && (
+            <Button component={Link} href={folderPath(folder.name, "rename")} variant="outlined">
+              Rename
+            </Button>
+          )}
           <Button component={Link} href={allPagesPath(folder.name)} variant="outlined">
             All pages
           </Button>
-          <Button component={Link} href={deletedPagesPath(folder.name)} variant="outlined">
-            Deleted pages
-          </Button>
-          <Button component={Link} href={folderPath(folder.name, "new-tab")} variant="outlined">
-            New tab
-          </Button>
-          <Button component={Link} href={folderPath(folder.name, "new")} variant="contained">
-            New page
-          </Button>
+          {mayDo(role, "deletedPages") && (
+            <Button component={Link} href={deletedPagesPath(folder.name)} variant="outlined">
+              Deleted pages
+            </Button>
+          )}
+          {mayDo(role, "editTab") && (
+            <Button component={Link} href={folderPath(folder.name, "new-tab")} variant="outlined">
+              New tab
+            </Button>
+          )}
+          {mayDo(role, "editPage") && (
+            <Button component={Link} href={folderPath(folder.name, "new")} variant="contained">
+              New page
+            </Button>
+          )}
         </Stack>
       </Stack>
       <FolderContentsList folderName={folder.name} pages={pages} tabs={tabs} />

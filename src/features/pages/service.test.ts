@@ -146,9 +146,18 @@ describe("listAllFolderPages", () => {
 describe("getPage", () => {
   it("looks for a page without a tab when no tab is given", async () => {
     const stored = { id: "page-id", name: "overview", folder: { id: FOLDER_ID, name: "handbook" }, tab: null };
-    mocks.findFirst.mockResolvedValue({ ...stored, ...EDITOR_ROW });
+    mocks.findFirst.mockResolvedValue({
+      ...stored,
+      folder: { ...stored.folder, roles: [{ role: "writer" }] },
+      ...EDITOR_ROW,
+    });
 
-    await expect(getPage(ACTOR, "handbook", null, "overview")).resolves.toEqual({ ...stored, ...EDITOR });
+    // The page comes with the role of the actor on its folder, so that the view offers only what the role includes.
+    await expect(getPage(ACTOR, "handbook", null, "overview")).resolves.toEqual({
+      ...stored,
+      ...EDITOR,
+      role: "writer",
+    });
     // `tabId: null` keeps a page of the same name in a tab of the folder from being returned.
     expect(mocks.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -164,9 +173,17 @@ describe("getPage", () => {
       folder: { id: FOLDER_ID, name: "handbook" },
       tab: { id: TAB_ID },
     };
-    mocks.findFirst.mockResolvedValue({ ...stored, ...EDITOR_ROW });
+    mocks.findFirst.mockResolvedValue({
+      ...stored,
+      folder: { ...stored.folder, roles: [{ role: "reader" }] },
+      ...EDITOR_ROW,
+    });
 
-    await expect(getPage(ACTOR, "handbook", "guides", "overview")).resolves.toEqual({ ...stored, ...EDITOR });
+    await expect(getPage(ACTOR, "handbook", "guides", "overview")).resolves.toEqual({
+      ...stored,
+      ...EDITOR,
+      role: "reader",
+    });
     expect(mocks.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -228,7 +245,12 @@ describe("getDeletedPage", () => {
     await expect(getDeletedPage(ACTOR, "handbook", PAGE_ID)).resolves.toEqual({ ...stored, ...EDITOR });
     expect(mocks.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: PAGE_ID, folder: { name: "handbook", ...WITH_ROLE }, deletedAt: { not: null } },
+        // Only a Manager or an Owner reads the deleted pages.
+        where: {
+          id: PAGE_ID,
+          folder: { name: "handbook", roles: { some: { userId: ACTOR_ID, role: { in: ["manager", "owner"] } } } },
+          deletedAt: { not: null },
+        },
       }),
     );
   });
@@ -1027,28 +1049,28 @@ describe("the role of the actor", () => {
       () => updatePageContent(ACTOR, PAGE_ID, { content: CONTENT }),
       { pages: { some: { id: PAGE_ID } } },
       { pageId: PAGE_ID },
-      "page not saved: the actor has no role on the folder of the page",
+      "page not saved: the actor has no role on the folder",
     ],
     [
       "moveOrRenamePage",
       () => moveOrRenamePage(ACTOR, PAGE_ID, { name: "new-name", tabId: TAB_ID }),
       { pages: { some: { id: PAGE_ID } } },
       { pageId: PAGE_ID },
-      "page not moved or renamed: the actor has no role on the folder of the page",
+      "page not moved or renamed: the actor has no role on the folder",
     ],
     [
       "deletePage",
       () => deletePage(ACTOR, PAGE_ID),
       { pages: { some: { id: PAGE_ID } } },
       { pageId: PAGE_ID },
-      "page not deleted: the actor has no role on the folder of the page",
+      "page not deleted: the actor has no role on the folder",
     ],
     [
       "restorePage",
       () => restorePage(ACTOR, PAGE_ID, { name: "new-name", tabId: TAB_ID }),
       { pages: { some: { id: PAGE_ID } } },
       { pageId: PAGE_ID },
-      "page not restored: the actor has no role on the folder of the page",
+      "page not restored: the actor has no role on the folder",
     ],
   ] as const;
 
@@ -1069,4 +1091,91 @@ describe("the role of the actor", () => {
       expect(mocks.info).not.toHaveBeenCalled();
     },
   );
+});
+
+describe("the lowest role of each function", () => {
+  const ROLES = ["reader", "writer", "manager", "owner"] as const;
+  type Role = (typeof ROLES)[number];
+
+  /** Every write, the lowest role that may do it, the id it is checked on and the start of its log line. */
+  const functions = [
+    [
+      "createPage",
+      () => createPage(ACTOR, FOLDER_ID, { name: "my-page", content: CONTENT, tabId: null }),
+      "writer",
+      { folderId: FOLDER_ID },
+      "page not created",
+    ],
+    [
+      "updatePageContent",
+      () => updatePageContent(ACTOR, PAGE_ID, { content: CONTENT }),
+      "writer",
+      { pageId: PAGE_ID },
+      "page not saved",
+    ],
+    [
+      "moveOrRenamePage",
+      () => moveOrRenamePage(ACTOR, PAGE_ID, { name: "new-name", tabId: null }),
+      "writer",
+      { pageId: PAGE_ID },
+      "page not moved or renamed",
+    ],
+    ["deletePage", () => deletePage(ACTOR, PAGE_ID), "manager", { pageId: PAGE_ID }, "page not deleted"],
+    [
+      "restorePage",
+      () => restorePage(ACTOR, PAGE_ID, { name: "new-name", tabId: null }),
+      "manager",
+      { pageId: PAGE_ID },
+      "page not restored",
+    ],
+  ] as const;
+
+  const cases = functions.flatMap(([name, write, lowest, target, what]) =>
+    ROLES.map((role) => [name, role, write, ROLES.indexOf(role) >= ROLES.indexOf(lowest), target, what] as const),
+  );
+
+  it.each(cases)("%s as %s", async (_name, role: Role, write, allowed, target, what) => {
+    mocks.roleFindFirst.mockResolvedValue({ role });
+    // A write that is allowed goes on to the database; these answers end it as a missing page.
+    mocks.create.mockRejectedValue(new Error("stop"));
+    mocks.updateMany.mockResolvedValue({ count: 0 });
+    mocks.findFirst.mockResolvedValue(null);
+
+    const result = await write();
+
+    if (allowed) {
+      expect(result).not.toEqual({ ok: false, error: { code: "not-allowed" } });
+      expect(mocks.warn).not.toHaveBeenCalledWith(
+        expect.anything(),
+        `${what}: the role of the actor does not allow it`,
+      );
+    } else {
+      expect(result).toEqual({ ok: false, error: { code: "not-allowed" } });
+      for (const call of databaseWrites) expect(call).not.toHaveBeenCalled();
+      expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
+        { actorId: ACTOR_ID, ...target, role },
+        `${what}: the role of the actor does not allow it`,
+      );
+    }
+  });
+
+  it.each(ROLES)("listDeletedPages as %s", async (role) => {
+    mocks.roleFindFirst.mockResolvedValue({ role });
+
+    const pages = await listDeletedPages(ACTOR, FOLDER_ID);
+
+    if (role === "manager" || role === "owner") expect(pages).toEqual([]);
+    else {
+      expect(pages).toBeNull();
+      expect(readCount()).toBe(0);
+    }
+  });
+
+  it.each(ROLES)("listFolderPages, listTabPages, listAllFolderPages and getPage as %s", async (role) => {
+    mocks.roleFindFirst.mockResolvedValue({ role });
+
+    await expect(listFolderPages(ACTOR, FOLDER_ID)).resolves.toEqual([]);
+    await expect(listTabPages(ACTOR, TAB_ID)).resolves.toEqual([]);
+    await expect(listAllFolderPages(ACTOR, FOLDER_ID)).resolves.toEqual([]);
+  });
 });

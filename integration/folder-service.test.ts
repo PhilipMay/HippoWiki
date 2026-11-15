@@ -468,3 +468,34 @@ describe("roles", () => {
     expect((await folderService.listTabs(mcp, folder.id))?.map(({ name }) => name)).toEqual(["guides"]);
   });
 });
+
+describe("the lowest role of each function", () => {
+  it("lets a Manager create and rename tabs but not rename the folder", async () => {
+    const folder = await createFolder({ name: "docs", roles: [{ user, role: "manager" }] });
+
+    const created = await folderService.createTab(actor, folder.id, { name: "guides" });
+    if (!created.ok) throw new Error("expected the tab to be created");
+    await expect(folderService.renameTab(actor, created.value.id, { name: "news" })).resolves.toMatchObject({
+      ok: true,
+    });
+    await expect(folderService.renameFolder(actor, folder.id, { name: "mine" })).resolves.toEqual(NOT_ALLOWED);
+    expect((await getTestDb().folder.findUniqueOrThrow({ where: { id: folder.id } })).name).toBe("docs");
+  });
+
+  it("lets a Writer neither create nor rename a tab", async () => {
+    const folder = await createFolder({ name: "docs", roles: [{ user, role: "writer" }] });
+    const tab = await createTab({ folder, name: "guides" });
+
+    await expect(folderService.createTab(actor, folder.id, { name: "news" })).resolves.toEqual(NOT_ALLOWED);
+    await expect(folderService.renameTab(actor, tab.id, { name: "news" })).resolves.toEqual(NOT_ALLOWED);
+    expect((await getTestDb().tab.findMany()).map(({ name }) => name)).toEqual(["guides"]);
+  });
+
+  it("lets an Owner rename the folder", async () => {
+    const folder = await createFolder({ name: "docs", roles: [{ user, role: "owner" }] });
+
+    await expect(folderService.renameFolder(actor, folder.id, { name: "handbook" })).resolves.toMatchObject({
+      ok: true,
+    });
+  });
+});

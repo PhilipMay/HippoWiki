@@ -701,7 +701,7 @@ describe("a user without a role on the folder", () => {
       "renameTab",
       () => renameTab(ACTOR, TAB_ID, TAB_VALID),
       { tabId: TAB_ID },
-      "tab not renamed: the actor has no role on the folder of the tab",
+      "tab not renamed: the actor has no role on the folder",
       { tabs: { some: { id: TAB_ID } } },
     ],
   ] as const)(
@@ -732,5 +732,46 @@ describe("a user without a role on the folder", () => {
     mocks.folderCreate.mockResolvedValue({ id: FOLDER_ID, name: "handbook" });
 
     await expect(createFolder(ACTOR, VALID)).resolves.toMatchObject({ ok: true });
+  });
+});
+
+describe("the lowest role of each function", () => {
+  const ROLES = ["reader", "writer", "manager", "owner"] as const;
+
+  const functions = [
+    [
+      "renameFolder",
+      () => renameFolder(ACTOR, FOLDER_ID, VALID),
+      "owner",
+      { folderId: FOLDER_ID },
+      "folder not renamed",
+    ],
+    ["createTab", () => createTab(ACTOR, FOLDER_ID, TAB_VALID), "manager", { folderId: FOLDER_ID }, "tab not created"],
+    ["renameTab", () => renameTab(ACTOR, TAB_ID, TAB_VALID), "manager", { tabId: TAB_ID }, "tab not renamed"],
+  ] as const;
+
+  const cases = functions.flatMap(([name, write, lowest, target, what]) =>
+    ROLES.map((role) => [name, role, write, ROLES.indexOf(role) >= ROLES.indexOf(lowest), target, what] as const),
+  );
+
+  it.each(cases)("%s as %s", async (_name, role, write, allowed, target, what) => {
+    mocks.folderRoleFindFirst.mockResolvedValue({ role });
+    mocks.folderUpdateMany.mockResolvedValue({ count: 1 });
+    mocks.tabCreate.mockResolvedValue({ id: TAB_ID, name: "guides", folder: { name: "handbook" } });
+    mocks.tabUpdateMany.mockResolvedValue({ count: 1 });
+    mocks.tabFindUnique.mockResolvedValue({ id: TAB_ID, name: "guides", folder: { name: "handbook" } });
+
+    const result = await write();
+
+    if (allowed) {
+      expect(result).toMatchObject({ ok: true });
+    } else {
+      expect(result).toEqual({ ok: false, error: { code: "not-allowed" } });
+      expectNothingWritten();
+      expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
+        { actorId: ACTOR_ID, ...target, role },
+        `${what}: the role of the actor does not allow it`,
+      );
+    }
   });
 });

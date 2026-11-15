@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { requireUser } from "@/features/auth/session";
-import PageView, { PAGE_ACTIONS, pageViewTitle } from "@/features/pages/components/PageView";
+import PageView, { mayDoPageAction, PAGE_ACTIONS, pageViewTitle } from "@/features/pages/components/PageView";
 import { getPage } from "@/features/pages/queries";
 import { parseAction, parsePageSegment, parseView } from "@/lib/addresses";
 import { pageTitle } from "@/lib/site";
@@ -36,7 +36,7 @@ export default async function TabPageView({ params, searchParams }: Props) {
   const query = await searchParams;
   const action = parseAction(query, PAGE_ACTIONS);
   // A page has no views.
-  if (action === "invalid" || parseView(query) !== null) notFound();
+  if (action === "invalid" || parseView(query) !== null || !mayDoPageAction(page.role, action)) notFound();
 
   return <PageView page={page} action={action} />;
 }

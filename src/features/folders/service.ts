@@ -5,18 +5,22 @@
 // Every function takes the acting user as its first argument, together with the channel of the call. An admin sees and
 // changes no content: for an admin every read returns `null` and every write `not-allowed`, before anything else is
 // checked and without asking the database. In the browser a user sees only the folders with a role of the user on
-// them: for any other folder every read returns `null` and every write `not-allowed`, as if it did not exist. Through
-// MCP a user reads every folder, as before folder roles came. A write stores the actor as the last editor of the
+// them: for any other folder every read returns `null` and every write `not-allowed`, as if it did not exist, and a
+// write needs the lowest role of its function (`FUNCTION_ROLES` in `roles.ts`), checked after the admin and before
+// anything else but the actor. Through MCP a user reads every folder, as before folder roles came. A write stores the actor as the last editor of the
 // folder or tab, in the same write that changes `updatedAt`.
 
 import { z } from "zod";
 
-import type { Role } from "@/features/folder-roles/roles";
+import { mayDo, type FolderFunction, type Role } from "@/features/folder-roles/roles";
 import {
   folderRoleOf,
   mayReadFolder,
+  readableFolderWhere,
   readerOf,
+  roleOf,
   roleOnFolderOfTab,
+  roleSelection,
   type BrowserActor,
   type ContentActor,
 } from "@/features/folder-roles/service";
@@ -25,7 +29,6 @@ import { LAST_EDITOR_SELECT, withLastEditor, type LastEditor } from "@/features/
 import { parseUserId } from "@/features/users/schema";
 import type { Actor } from "@/features/users/service";
 import { isAdmin } from "@/features/users/user-type";
-import type { Prisma } from "@/generated/prisma/client";
 import { getDb } from "@/lib/db";
 import { FOLDER_NAME, isForeignKeyViolation, isUniqueViolation, LAST_EDITOR, TAB_NAME } from "@/lib/db-errors";
 import { logger } from "@/lib/logger";
@@ -86,38 +89,32 @@ function invalidName(error: z.ZodError<{ name: string }>): { ok: false; error: I
 }
 
 /**
- * The result of a write by an admin, who changes no content, or by a user without a role on the folder; it is logged
- * with the id of the actor and, for a missing role, the id of the folder or tab.
+ * The result of a write by an admin, who changes no content, or by a user whose role on the folder does not allow it;
+ * it is logged with the id of the actor and, for a role, the id of the folder or tab and the role, if any.
  */
 function notAllowed(
   actor: Actor,
   message: string,
-  target: { folderId: string } | { tabId: string } | Record<string, never> = {},
+  target: Record<string, string> = {},
 ): { ok: false; error: NotAllowed } {
   logger.warn({ actorId: actor.id, ...target }, message);
   return { ok: false, error: { code: "not-allowed" } };
 }
 
-const ROLE_SELECT = { role: true } as const;
-
-/** The condition on a folder for a read, and the selection of the reader's role on it. */
-type FolderAccess = {
-  where: Prisma.FolderWhereInput;
-  roles: { where?: Prisma.FolderRoleWhereInput; take?: number; select: typeof ROLE_SELECT };
-};
-
 /**
- * The condition on a folder for a read and the selection of the reader's role on it: for a read of the browser only
- * the folders with a role of the reader, with that role; for a read of MCP every folder, without a role.
+ * The result of a write whose function the role of the actor does not include, or `null` if it does. Without a role
+ * the folder does not exist for the actor; with a lower role the function is not offered.
  */
-function folderAccess(reader: string | "any"): FolderAccess {
-  if (reader === "any") return { where: {}, roles: { take: 0, select: ROLE_SELECT } };
-  return { where: { roles: { some: { userId: reader } } }, roles: { where: { userId: reader }, select: ROLE_SELECT } };
-}
-
-/** The role of the reader from the selected roles of a folder, `null` for a read of MCP. */
-function roleOf(folder: { roles: { role: Role }[] }): Role | null {
-  return folder.roles[0]?.role ?? null;
+function refusedByRole(
+  actor: Actor,
+  what: string,
+  role: Role | null,
+  fn: FolderFunction,
+  target: { folderId: string } | { tabId: string },
+): { ok: false; error: NotAllowed } | null {
+  if (mayDo(role, fn)) return null;
+  if (role === null) return notAllowed(actor, `${what}: the actor has no role on the folder`, target);
+  return notAllowed(actor, `${what}: the role of the actor does not allow it`, { ...target, role });
 }
 
 /**
@@ -144,10 +141,9 @@ export async function listFolders(actor: ContentActor): Promise<FolderSummary[] 
   if (isAdmin(actor)) return null;
   const reader = readerOf(actor);
   if (!reader) return [];
-  const access = folderAccess(reader);
   const folders = await getDb().folder.findMany({
-    where: access.where,
-    select: { ...SUMMARY_SELECT, roles: access.roles },
+    where: reader === "any" ? {} : { roles: { some: { userId: reader } } },
+    select: { ...SUMMARY_SELECT, roles: roleSelection(reader) },
     orderBy: { name: "asc" },
   });
   return folders.map(({ roles, ...folder }) => ({ ...withLastEditor(folder), role: roleOf({ roles }) }));
@@ -162,10 +158,9 @@ export async function getFolderByName(actor: ContentActor, name: string): Promis
   if (!reader) return null;
   const folderName = parseName(name);
   if (!folderName) return null;
-  const access = folderAccess(reader);
   const folder = await getDb().folder.findFirst({
-    where: { name: folderName, ...access.where },
-    select: { id: true, name: true, roles: access.roles },
+    where: { name: folderName, ...readableFolderWhere(actor) },
+    select: { id: true, name: true, roles: roleSelection(reader) },
   });
   if (!folder) return null;
   return { id: folder.id, name: folder.name, role: roleOf(folder) };
@@ -198,10 +193,9 @@ export async function getTab(actor: ContentActor, folderName: string, tabName: s
   const folder = parseName(folderName);
   const name = parseName(tabName);
   if (!folder || !name) return null;
-  const access = folderAccess(reader);
   const tab = await getDb().tab.findFirst({
-    where: { name, folder: { name: folder, ...access.where } },
-    select: { id: true, name: true, folder: { select: { id: true, name: true, roles: access.roles } } },
+    where: { name, folder: { name: folder, ...readableFolderWhere(actor) } },
+    select: { id: true, name: true, folder: { select: { id: true, name: true, roles: roleSelection(reader) } } },
   });
   if (!tab) return null;
   const { id, name: storedName, folder: stored } = tab;
@@ -258,9 +252,11 @@ export async function renameFolder(
   const folderId = parseFolderId(id);
   if (!folderId) return { ok: false, error: { code: "folder-not-found" } };
 
-  if (!(await folderRoleOf(actor, folderId))) {
-    return notAllowed(actor, "folder not renamed: the actor has no role on the folder", { folderId });
-  }
+  // Only an Owner renames the folder, because a rename changes every address in it.
+  const refused = refusedByRole(actor, "folder not renamed", await folderRoleOf(actor, folderId), "renameFolder", {
+    folderId,
+  });
+  if (refused) return refused;
 
   const parsed = folderInputSchema.safeParse(input);
   if (!parsed.success) return invalidName(parsed.error);
@@ -307,9 +303,10 @@ export async function createTab(
   const parsedFolderId = parseFolderId(folderId);
   if (!parsedFolderId) return { ok: false, error: { code: "folder-not-found" } };
 
-  if (!(await folderRoleOf(actor, parsedFolderId))) {
-    return notAllowed(actor, "tab not created: the actor has no role on the folder", { folderId: parsedFolderId });
-  }
+  const refused = refusedByRole(actor, "tab not created", await folderRoleOf(actor, parsedFolderId), "editTab", {
+    folderId: parsedFolderId,
+  });
+  if (refused) return refused;
 
   const parsed = tabInputSchema.safeParse(input);
   if (!parsed.success) return invalidName(parsed.error);
@@ -353,9 +350,8 @@ export async function renameTab(
   if (!tabId) return { ok: false, error: { code: "tab-not-found" } };
 
   // A tab that does not exist has no role either, so that nothing tells whether a tab of this id exists.
-  if (!(await roleOnFolderOfTab(actor, tabId))) {
-    return notAllowed(actor, "tab not renamed: the actor has no role on the folder of the tab", { tabId });
-  }
+  const refused = refusedByRole(actor, "tab not renamed", await roleOnFolderOfTab(actor, tabId), "editTab", { tabId });
+  if (refused) return refused;
 
   const parsed = tabInputSchema.safeParse(input);
   if (!parsed.success) return invalidName(parsed.error);

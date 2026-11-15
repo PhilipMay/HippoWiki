@@ -155,6 +155,7 @@ describe("the fields of a page", () => {
       lastEditedBy: { name: "alice" },
       folder: { id: folder.id, name: "docs" },
       tab: { id: tab.id, name: "guides" },
+      role: "owner",
     });
   });
 
@@ -171,6 +172,7 @@ describe("the fields of a page", () => {
       lastEditedBy: { name: "alice" },
       folder: { id: folder.id, name: "docs" },
       tab: null,
+      role: "owner",
     });
   });
 
@@ -741,5 +743,57 @@ describe("roles", () => {
 
     expect((await pageService.listAllFolderPages(mcp, folder.id))?.map(({ name }) => name)).toEqual(["intro"]);
     await expect(pageService.getPage(mcp, "hidden", null, "intro")).resolves.toMatchObject({ name: "intro" });
+  });
+});
+
+describe("the lowest role of each function", () => {
+  it("lets a Reader read but change no page", async () => {
+    const folder = await createFolder({ name: "docs", roles: [{ user, role: "reader" }] });
+    const tab = await createTab({ folder });
+    const page = await createPage({ folder, name: "intro" });
+    const deleted = await createPage({ folder, name: "old", deletedAt: new Date() });
+    const before = await getTestDb().page.findMany({ orderBy: { name: "asc" } });
+
+    await expect(pageService.getPage(actor, "docs", null, "intro")).resolves.toMatchObject({ role: "reader" });
+    for (const result of [
+      await pageService.createPage(actor, folder.id, { name: "new", content: "# New", tabId: null }),
+      await pageService.updatePageContent(actor, page.id, { content: "# New" }),
+      await pageService.moveOrRenamePage(actor, page.id, { name: "new", tabId: tab.id }),
+      await pageService.deletePage(actor, page.id),
+      await pageService.restorePage(actor, deleted.id, { name: "old", tabId: null }),
+    ]) {
+      expect(result).toEqual(NOT_ALLOWED);
+    }
+    expect(await getTestDb().page.findMany({ orderBy: { name: "asc" } })).toStrictEqual(before);
+  });
+
+  it("lets a Writer write pages but neither delete nor restore them, nor see the deleted pages", async () => {
+    const folder = await createFolder({ name: "docs", roles: [{ user, role: "writer" }] });
+    const page = await createPage({ folder, name: "intro" });
+    const deleted = await createPage({ folder, name: "old", deletedAt: new Date() });
+
+    await expect(pageService.updatePageContent(actor, page.id, { content: "# New" })).resolves.toMatchObject({
+      ok: true,
+    });
+    await expect(pageService.deletePage(actor, page.id)).resolves.toEqual(NOT_ALLOWED);
+    await expect(pageService.restorePage(actor, deleted.id, { name: "old", tabId: null })).resolves.toEqual(
+      NOT_ALLOWED,
+    );
+    await expect(pageService.listDeletedPages(actor, folder.id)).resolves.toBeNull();
+    await expect(pageService.getDeletedPage(actor, "docs", deleted.id)).resolves.toBeNull();
+    expect((await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } })).deletedAt).toBeNull();
+    expect((await getTestDb().page.findUniqueOrThrow({ where: { id: deleted.id } })).deletedAt).not.toBeNull();
+  });
+
+  it("lets a Manager delete, see and restore pages", async () => {
+    const folder = await createFolder({ name: "docs", roles: [{ user, role: "manager" }] });
+    const page = await createPage({ folder, name: "intro" });
+
+    await expect(pageService.deletePage(actor, page.id)).resolves.toMatchObject({ ok: true });
+    await expect(pageService.listDeletedPages(actor, folder.id)).resolves.toMatchObject([{ id: page.id }]);
+    await expect(pageService.getDeletedPage(actor, "docs", page.id)).resolves.toMatchObject({ id: page.id });
+    await expect(pageService.restorePage(actor, page.id, { name: "intro", tabId: null })).resolves.toMatchObject({
+      ok: true,
+    });
   });
 });

@@ -7,6 +7,7 @@ import {
   mayDo,
   ROLE_LABELS,
   ROLES,
+  rolesFor,
   type FolderFunction,
   type Role,
 } from "@/features/folder-roles/roles";
@@ -80,5 +81,14 @@ describe("mayDo", () => {
       expect(mayDo(null, fn)).toBe(false);
       expect(mayDo(undefined, fn)).toBe(false);
     }
+  });
+});
+
+describe("rolesFor", () => {
+  it("lists the roles that may do the function", () => {
+    expect(rolesFor("read")).toEqual(["reader", "writer", "manager", "owner"]);
+    expect(rolesFor("editPage")).toEqual(["writer", "manager", "owner"]);
+    expect(rolesFor("deletedPages")).toEqual(["manager", "owner"]);
+    expect(rolesFor("manageRoles")).toEqual(["owner"]);
   });
 });

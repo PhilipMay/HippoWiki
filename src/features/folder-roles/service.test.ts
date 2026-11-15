@@ -8,8 +8,10 @@ import {
   mayReadTab,
   readableFolderWhere,
   readerOf,
+  roleOf,
   roleOnFolderOfPage,
   roleOnFolderOfTab,
+  roleSelection,
   type ContentActor,
 } from "@/features/folder-roles/service";
 
@@ -153,5 +155,35 @@ describe("mayReadFolder and mayReadTab", () => {
     await expect(mayReadTab(BROWSER, MALFORMED_ID)).resolves.toBe(true);
 
     expect(mocks.roleFindFirst).not.toHaveBeenCalled();
+  });
+});
+
+describe("a function beyond reading", () => {
+  it("readableFolderWhere needs a role that allows the function", () => {
+    expect(readableFolderWhere(BROWSER, "deletedPages")).toEqual({
+      roles: { some: { userId: ACTOR_ID, role: { in: ["manager", "owner"] } } },
+    });
+    expect(readableFolderWhere(MCP, "deletedPages")).toEqual({});
+  });
+
+  it("mayReadFolder allows the function from its lowest role up", async () => {
+    for (const [role, allowed] of [
+      ["reader", false],
+      ["writer", false],
+      ["manager", true],
+      ["owner", true],
+    ] as const) {
+      mocks.roleFindFirst.mockResolvedValueOnce({ role });
+      await expect(mayReadFolder(BROWSER, FOLDER_ID, "deletedPages"), role).resolves.toBe(allowed);
+    }
+  });
+});
+
+describe("roleSelection and roleOf", () => {
+  it("select the role of the reader in the browser and none through MCP", () => {
+    expect(roleSelection(ACTOR_ID)).toEqual({ where: { userId: ACTOR_ID }, select: { role: true } });
+    expect(roleSelection("any")).toEqual({ take: 0, select: { role: true } });
+    expect(roleOf({ roles: [{ role: "writer" }] })).toBe("writer");
+    expect(roleOf({ roles: [] })).toBeNull();
   });
 });

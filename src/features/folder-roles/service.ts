@@ -4,7 +4,7 @@
 // A role is read from the database on every call and never cached, also not in the session, so that a change of a
 // role takes effect with the next request of the user it concerns.
 
-import type { Role } from "@/features/folder-roles/roles";
+import { mayDo, rolesFor, type FolderFunction, type Role } from "@/features/folder-roles/roles";
 import { parseFolderId, parseTabId } from "@/features/folders/schema";
 import { parsePageId } from "@/features/pages/schema";
 import { parseUserId } from "@/features/users/schema";
@@ -103,24 +103,51 @@ export function readerOf(actor: ContentActor): string | "any" | null {
 }
 
 /**
- * The condition on the folder of a read: for a read of the browser a role of the actor on it, for a read of MCP none;
- * `null` for an actor who may read no content.
+ * The condition on the folder of a read of the given function, by default reading the folder: for a read of the
+ * browser a role of the actor on it that allows the function, for a read of MCP none; `null` for an actor who may read
+ * no content.
  */
-export function readableFolderWhere(actor: ContentActor): Prisma.FolderWhereInput | null {
+export function readableFolderWhere(actor: ContentActor, fn: FolderFunction = "read"): Prisma.FolderWhereInput | null {
   const reader = readerOf(actor);
   if (!reader) return null;
-  return reader === "any" ? {} : { roles: { some: { userId: reader } } };
+  if (reader === "any") return {};
+  // Every role may read, so reading needs only a role; the other functions need one of the roles that allow them.
+  return { roles: { some: { userId: reader, ...(fn === "read" ? {} : { role: { in: rolesFor(fn) } }) } } };
+}
+
+const ROLE_SELECT = { role: true } as const;
+
+/** The selection of the reader's role on a folder, as part of the selection of the folder. */
+export type RoleSelection = { where?: Prisma.FolderRoleWhereInput; take?: number; select: typeof ROLE_SELECT };
+
+/**
+ * The selection of the actor's role on a folder: for a read of the browser the actor's role, for a read of MCP none,
+ * so that `roleOf()` gives `null`. Only for an actor who may read, whom `readerOf()` names.
+ */
+export function roleSelection(reader: string | "any"): RoleSelection {
+  if (reader === "any") return { take: 0, select: ROLE_SELECT };
+  return { where: { userId: reader }, select: ROLE_SELECT };
+}
+
+/** The actor's role from the roles that `roleSelection()` selected of a folder; `null` for a read of MCP. */
+export function roleOf(folder: { roles: { role: Role }[] }): Role | null {
+  return folder.roles[0]?.role ?? null;
 }
 
 /**
- * Whether the actor may read the folder with the given id: never an admin; in the browser only with a role on the
- * folder, so that a folder without one reads like a folder that does not exist; through MCP every folder. A malformed
- * id passes, so that the read itself answers it, without asking the database.
+ * Whether the actor may read the folder with the given id for the given function, by default reading it: never an
+ * admin; in the browser only with a role on the folder that allows the function, so that a folder without one reads
+ * like a folder that does not exist; through MCP every folder. A malformed id passes, so that the read itself answers
+ * it, without asking the database.
  */
-export async function mayReadFolder(actor: ContentActor, folderId: string): Promise<boolean> {
+export async function mayReadFolder(
+  actor: ContentActor,
+  folderId: string,
+  fn: FolderFunction = "read",
+): Promise<boolean> {
   if (isAdmin(actor)) return false;
   if (actor.channel === "mcp" || !parseFolderId(folderId)) return true;
-  return (await folderRoleOf(actor, folderId)) !== null;
+  return mayDo(await folderRoleOf(actor, folderId), fn);
 }
 
 /** Whether the actor may read the tab with the given id: like `mayReadFolder()`, for the folder of the tab. */

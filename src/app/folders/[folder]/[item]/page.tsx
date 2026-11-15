@@ -13,7 +13,8 @@ import { getTab, listTabs } from "@/features/folders/queries";
 import { createPage } from "@/features/pages/actions";
 import NewPageForm from "@/features/pages/components/NewPageForm";
 import PageList from "@/features/pages/components/PageList";
-import PageView, { PAGE_ACTIONS, pageViewTitle } from "@/features/pages/components/PageView";
+import { mayDo, type FolderFunction } from "@/features/folder-roles/roles";
+import PageView, { mayDoPageAction, PAGE_ACTIONS, pageViewTitle } from "@/features/pages/components/PageView";
 import { getPage, listTabPages } from "@/features/pages/queries";
 import { parseAction, parsePageSegment, parseView, tabPath } from "@/lib/addresses";
 import { pageTitle } from "@/lib/site";
@@ -25,6 +26,12 @@ type Props = PageProps<"/folders/[folder]/[item]">;
  * the "Rename tab" dialog.
  */
 const TAB_ACTIONS = ["new", "rename"] as const;
+
+/** The function of each action of a tab, whose lowest role the user needs; one beyond the role does not exist. */
+const TAB_ACTION_FUNCTIONS: Record<(typeof TAB_ACTIONS)[number], FolderFunction> = {
+  new: "editPage",
+  rename: "editTab",
+};
 
 /**
  * What the address names. A last segment that ends in `.md` is a page placed directly in the folder, any other is a
@@ -64,14 +71,15 @@ export default async function FolderItemPage({ params, searchParams }: Props) {
 
   if (item.kind === "page") {
     const action = parseAction(query, PAGE_ACTIONS);
-    if (action === "invalid") notFound();
+    if (action === "invalid" || !mayDoPageAction(item.page.role, action)) notFound();
     return <PageView page={item.page} action={action} />;
   }
 
   const { tab } = item;
-  const { folder } = tab;
+  const { folder, role } = tab;
   const action = parseAction(query, TAB_ACTIONS);
-  if (action === "invalid") notFound();
+  // An action that the role does not include answers like an unknown one, before the content is read.
+  if (action === "invalid" || (action !== null && !mayDo(role, TAB_ACTION_FUNCTIONS[action]))) notFound();
 
   if (action === "new") {
     return (
@@ -104,13 +112,18 @@ export default async function FolderItemPage({ params, searchParams }: Props) {
         <Typography variant="h4" component="h1" sx={{ overflowWrap: "anywhere" }}>
           {tab.name}
         </Typography>
+        {/* Only what the role includes is offered. */}
         <Stack direction="row" useFlexGap sx={{ flexWrap: "wrap", gap: 2 }}>
-          <Button component={Link} href={tabPath(folder.name, tab.name, "rename")} variant="outlined">
-            Rename
-          </Button>
-          <Button component={Link} href={tabPath(folder.name, tab.name, "new")} variant="contained">
-            New page
-          </Button>
+          {mayDo(role, "editTab") && (
+            <Button component={Link} href={tabPath(folder.name, tab.name, "rename")} variant="outlined">
+              Rename
+            </Button>
+          )}
+          {mayDo(role, "editPage") && (
+            <Button component={Link} href={tabPath(folder.name, tab.name, "new")} variant="contained">
+              New page
+            </Button>
+          )}
         </Stack>
       </Stack>
       <PageList pages={pages} folderName={folder.name} tabName={tab.name} />

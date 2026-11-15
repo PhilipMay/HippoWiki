@@ -6,18 +6,23 @@
 // changes no content: for an admin every read returns `null` and every write `not-allowed`, before anything else is
 // checked and without asking the database. In the browser a user sees only the folders with a role of the user on
 // them: for the pages and deleted pages of any other folder every read returns `null` and every write `not-allowed`,
-// before anything that could tell whether a page exists. Through MCP a user reads every folder. A write stores the
+// before anything that could tell whether a page exists. The deleted pages and every write need the lowest role of
+// their function (`FUNCTION_ROLES` in `roles.ts`). Through MCP a user reads every folder. A write stores the
 // actor as the last editor of the page, in the same write that changes `updatedAt`. The folder and the tab of the page
 // keep their `updatedAt` and last editor.
 
 import { z } from "zod";
 
+import { mayDo, type FolderFunction, type Role } from "@/features/folder-roles/roles";
 import {
   folderRoleOf,
   mayReadFolder,
   mayReadTab,
   readableFolderWhere,
+  readerOf,
+  roleOf,
   roleOnFolderOfPage,
+  roleSelection,
   type BrowserActor,
   type ContentActor,
 } from "@/features/folder-roles/service";
@@ -45,7 +50,10 @@ export type PageSummary = { id: string; name: string; title: string; updatedAt: 
 /** What the list of all pages of a folder shows of a page: its summary and its tab, if it has one. */
 export type PageWithTabSummary = PageSummary & { tab: { name: string } | null };
 
-/** A page with its folder and its tab, as the page view shows it. */
+/**
+ * A page with its folder and its tab, as the page view shows it, and the role of the actor on the folder, so that the
+ * view can decide what to offer; `null` for a read of MCP.
+ */
 export type PageWithPlace = {
   id: string;
   name: string;
@@ -55,6 +63,7 @@ export type PageWithPlace = {
   lastEditedBy: LastEditor;
   folder: { id: string; name: string };
   tab: { id: string; name: string } | null;
+  role: Role | null;
 };
 
 /**
@@ -193,8 +202,9 @@ export async function getPage(
   tabName: string | null,
   pageName: string,
 ): Promise<PageWithPlace | null> {
+  const reader = readerOf(actor);
   const readable = readableFolderWhere(actor);
-  if (!readable) return null;
+  if (!reader || !readable) return null;
   const folder = parseName(folderName);
   const tab = tabName === null ? null : parseName(tabName);
   const name = parseName(pageName);
@@ -213,11 +223,13 @@ export async function getPage(
       content: true,
       updatedAt: true,
       ...LAST_EDITOR_SELECT,
-      folder: { select: { id: true, name: true } },
+      folder: { select: { id: true, name: true, roles: roleSelection(reader) } },
       tab: { select: { id: true, name: true } },
     },
   });
-  return page && withLastEditor(page);
+  if (!page) return null;
+  const { folder: stored, ...rest } = page;
+  return withLastEditor({ ...rest, folder: { id: stored.id, name: stored.name }, role: roleOf(stored) });
 }
 
 /**
@@ -231,10 +243,10 @@ function asDeleted<Entry extends { deletedAt: Date | null }>(page: Entry): (Entr
 
 /**
  * The deleted pages of the folder with id, name, title and time of deletion, without their content, newest first.
- * `null` for an admin.
+ * `null` for an admin and, in the browser, for an actor whose role on the folder is not Manager or Owner.
  */
 export async function listDeletedPages(actor: ContentActor, folderId: string): Promise<DeletedPageSummary[] | null> {
-  if (!(await mayReadFolder(actor, folderId))) return null;
+  if (!(await mayReadFolder(actor, folderId, "deletedPages"))) return null;
   const parsedFolderId = parseFolderId(folderId);
   if (!parsedFolderId) return [];
   const pages = await getDb().page.findMany({
@@ -248,10 +260,11 @@ export async function listDeletedPages(actor: ContentActor, folderId: string): P
 
 /**
  * The deleted page with the given id in the folder with the given name, together with its folder. `null` for an
- * admin, if the name or the id is malformed, the page belongs to another folder or is not deleted.
+ * admin, if the name or the id is malformed, the page belongs to another folder or is not deleted, and, in the
+ * browser, if the actor's role on the folder is not Manager or Owner.
  */
 export async function getDeletedPage(actor: ContentActor, folderName: string, id: string): Promise<DeletedPage | null> {
-  const readable = readableFolderWhere(actor);
+  const readable = readableFolderWhere(actor, "deletedPages");
   if (!readable) return null;
   const folder = parseName(folderName);
   const pageId = parsePageId(id);
@@ -279,16 +292,32 @@ function invalidInput<Input>(error: z.ZodError<Input>): {
 }
 
 /**
- * The result of a write by an admin, who changes no content, or by a user without a role on the folder; it is logged
- * with the id of the actor and, for a missing role, the id of the folder or page.
+ * The result of a write by an admin, who changes no content, or by a user whose role on the folder does not allow it;
+ * it is logged with the id of the actor and, for a role, the id of the folder or page and the role, if any.
  */
 function notAllowed(
   actor: Actor,
   message: string,
-  target: { folderId: string } | { pageId: string } | Record<string, never> = {},
+  target: Record<string, string> = {},
 ): { ok: false; error: NotAllowed } {
   logger.warn({ actorId: actor.id, ...target }, message);
   return { ok: false, error: { code: "not-allowed" } };
+}
+
+/**
+ * The result of a write whose function the role of the actor does not include, or `null` if it does. Without a role
+ * the folder does not exist for the actor; with a lower role the function is not offered.
+ */
+function refusedByRole(
+  actor: Actor,
+  what: string,
+  role: Role | null,
+  fn: FolderFunction,
+  target: { folderId: string } | { pageId: string },
+): { ok: false; error: NotAllowed } | null {
+  if (mayDo(role, fn)) return null;
+  if (role === null) return notAllowed(actor, `${what}: the actor has no role on the folder`, target);
+  return notAllowed(actor, `${what}: the role of the actor does not allow it`, { ...target, role });
 }
 
 /**
@@ -341,9 +370,10 @@ export async function createPage(
   const parsedFolderId = parseFolderId(folderId);
   if (!parsedFolderId) return { ok: false, error: { code: "folder-not-found" } };
 
-  if (!(await folderRoleOf(actor, parsedFolderId))) {
-    return notAllowed(actor, "page not created: the actor has no role on the folder", { folderId: parsedFolderId });
-  }
+  const refused = refusedByRole(actor, "page not created", await folderRoleOf(actor, parsedFolderId), "editPage", {
+    folderId: parsedFolderId,
+  });
+  if (refused) return refused;
 
   const tabId = parsePlace(input.tabId);
   if (tabId === undefined) return { ok: false, error: { code: "tab-not-found" } };
@@ -394,9 +424,9 @@ export async function updatePageContent(
   if (!pageId) return { ok: false, error: { code: "page-not-found" } };
 
   // A page that does not exist has no role either, so that nothing tells whether a page of this id exists.
-  if (!(await roleOnFolderOfPage(actor, pageId))) {
-    return notAllowed(actor, "page not saved: the actor has no role on the folder of the page", { pageId });
-  }
+  const role = await roleOnFolderOfPage(actor, pageId);
+  const refused = refusedByRole(actor, "page not saved", role, "editPage", { pageId });
+  if (refused) return refused;
 
   const parsed = pageContentInputSchema.safeParse({ content: input.content });
   if (!parsed.success) return invalidInput(parsed.error);
@@ -444,9 +474,9 @@ export async function moveOrRenamePage(
   if (!pageId) return { ok: false, error: { code: "page-not-found" } };
 
   // A page that does not exist has no role either, so that nothing tells whether a page of this id exists.
-  if (!(await roleOnFolderOfPage(actor, pageId))) {
-    return notAllowed(actor, "page not moved or renamed: the actor has no role on the folder of the page", { pageId });
-  }
+  const role = await roleOnFolderOfPage(actor, pageId);
+  const refused = refusedByRole(actor, "page not moved or renamed", role, "moveOrRenamePage", { pageId });
+  if (refused) return refused;
 
   const tabId = parsePlace(input.tabId);
   if (tabId === undefined) return { ok: false, error: { code: "tab-not-found" } };
@@ -500,9 +530,9 @@ export async function deletePage(actor: BrowserActor, id: string): Promise<Resul
   if (!pageId) return { ok: false, error: { code: "page-not-found" } };
 
   // A page that does not exist has no role either, so that nothing tells whether a page of this id exists.
-  if (!(await roleOnFolderOfPage(actor, pageId))) {
-    return notAllowed(actor, "page not deleted: the actor has no role on the folder of the page", { pageId });
-  }
+  const role = await roleOnFolderOfPage(actor, pageId);
+  const refused = refusedByRole(actor, "page not deleted", role, "deletePage", { pageId });
+  if (refused) return refused;
 
   let place: PagePlace | null;
   try {
@@ -555,9 +585,9 @@ export async function restorePage(
   if (!pageId) return { ok: false, error: { code: "page-not-found" } };
 
   // A page that does not exist has no role either, so that nothing tells whether a page of this id exists.
-  if (!(await roleOnFolderOfPage(actor, pageId))) {
-    return notAllowed(actor, "page not restored: the actor has no role on the folder of the page", { pageId });
-  }
+  const role = await roleOnFolderOfPage(actor, pageId);
+  const refused = refusedByRole(actor, "page not restored", role, "deletedPages", { pageId });
+  if (refused) return refused;
 
   const tabId = parsePlace(input.tabId);
   if (tabId === undefined) return { ok: false, error: { code: "tab-not-found" } };
