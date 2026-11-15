@@ -19,3 +19,10 @@ export async function listFolderRoles(folderId: string): Promise<folderRoleServi
   const user = await requireUser();
   return folderRoleService.listFolderRoles(user, folderId);
 }
+
+/** Every user of the type user without a role on the folder, by name; `null` for anyone but an Owner of the folder. */
+export async function listRoleCandidates(folderId: string): Promise<folderRoleService.RoleCandidate[] | null> {
+  await connection();
+  const user = await requireUser();
+  return folderRoleService.listRoleCandidates(user, folderId);
+}

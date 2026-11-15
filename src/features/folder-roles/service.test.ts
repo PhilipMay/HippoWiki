@@ -1,10 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { Prisma } from "@/generated/prisma/client";
 import {
   folderRoleOf,
+  giveRole,
   inBrowser,
   inMcp,
   listFolderRoles,
+  listRoleCandidates,
   mayReadFolder,
   mayReadTab,
   readableFolderWhere,
@@ -19,13 +22,19 @@ import {
 const mocks = vi.hoisted(() => ({
   roleFindFirst: vi.fn(),
   roleFindMany: vi.fn(),
+  roleCreate: vi.fn(),
+  userFindMany: vi.fn(),
+  userFindFirst: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
-  getDb: () => ({ folderRole: { findFirst: mocks.roleFindFirst, findMany: mocks.roleFindMany } }),
+  getDb: () => ({
+    folderRole: { findFirst: mocks.roleFindFirst, findMany: mocks.roleFindMany, create: mocks.roleCreate },
+    user: { findMany: mocks.userFindMany, findFirst: mocks.userFindFirst },
+  }),
 }));
 vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, error: mocks.error } }));
 
@@ -225,5 +234,177 @@ describe("listFolderRoles", () => {
     await expect(read()).resolves.toBeNull();
     expect(mocks.roleFindFirst).not.toHaveBeenCalled();
     expect(mocks.roleFindMany).not.toHaveBeenCalled();
+  });
+});
+
+const BOB_ID = "5a2c1c0e-3f55-4a55-8a42-5d2f0e6a9b99";
+
+/** A Prisma error as the client reports it with the `pg` adapter. */
+function knownError(code: string, meta: Record<string, unknown>): Prisma.PrismaClientKnownRequestError {
+  return new Prisma.PrismaClientKnownRequestError("database error", { code, clientVersion: "test", meta });
+}
+
+describe("listRoleCandidates", () => {
+  it("lists the users of the type user without a role on the folder, for an Owner", async () => {
+    mocks.roleFindFirst.mockResolvedValue({ role: "owner" });
+    mocks.userFindMany.mockResolvedValue([{ id: BOB_ID, username: "bob" }]);
+
+    await expect(listRoleCandidates(USER, FOLDER_ID)).resolves.toEqual([{ id: BOB_ID, name: "bob" }]);
+    expect(mocks.userFindMany).toHaveBeenCalledExactlyOnceWith({
+      where: { type: "user", folderRoles: { none: { folderId: FOLDER_ID } } },
+      select: { id: true, username: true },
+      orderBy: { username: "asc" },
+    });
+  });
+
+  it.each(["manager", "writer", "reader"])("returns null for a %s without reading the users", async (role) => {
+    mocks.roleFindFirst.mockResolvedValue({ role });
+
+    await expect(listRoleCandidates(USER, FOLDER_ID)).resolves.toBeNull();
+    expect(mocks.userFindMany).not.toHaveBeenCalled();
+  });
+
+  it("returns null for an admin and without a role", async () => {
+    mocks.roleFindFirst.mockResolvedValue(null);
+
+    await expect(listRoleCandidates(ADMIN, FOLDER_ID)).resolves.toBeNull();
+    await expect(listRoleCandidates(USER, FOLDER_ID)).resolves.toBeNull();
+    expect(mocks.userFindMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("giveRole", () => {
+  const STORED = { role: "writer", folder: { name: "handbook" }, user: { id: BOB_ID, username: "bob" } };
+  const NOT_ALLOWED = { ok: false, error: { code: "not-allowed" } };
+
+  beforeEach(() => {
+    mocks.roleFindFirst.mockResolvedValue({ role: "owner" });
+    mocks.userFindFirst.mockResolvedValue({ id: BOB_ID });
+    mocks.roleCreate.mockResolvedValue(STORED);
+  });
+
+  it("gives the role, logs it and returns it as stored", async () => {
+    await expect(giveRole(USER, FOLDER_ID, { user: " bob ", role: "writer" })).resolves.toEqual({
+      ok: true,
+      value: { folder: { name: "handbook" }, user: { id: BOB_ID, name: "bob" }, role: "writer" },
+    });
+
+    expect(mocks.userFindFirst).toHaveBeenCalledExactlyOnceWith({
+      where: { username: "bob", type: "user" },
+      select: { id: true },
+    });
+    expect(mocks.roleCreate).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ data: { folderId: FOLDER_ID, userId: BOB_ID, role: "writer" } }),
+    );
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+      { folderId: FOLDER_ID, userId: BOB_ID, oldRole: null, newRole: "writer", ownerId: ACTOR_ID },
+      "role given",
+    );
+  });
+
+  it("gives the role Owner as well", async () => {
+    mocks.roleCreate.mockResolvedValue({ ...STORED, role: "owner" });
+
+    await expect(giveRole(USER, FOLDER_ID, { user: "bob", role: "owner" })).resolves.toMatchObject({
+      ok: true,
+      value: { role: "owner" },
+    });
+  });
+
+  it("refuses an admin, logged, without asking the database", async () => {
+    await expect(giveRole(ADMIN, FOLDER_ID, { user: "bob", role: "writer" })).resolves.toEqual(NOT_ALLOWED);
+
+    expect(mocks.roleFindFirst).not.toHaveBeenCalled();
+    expect(mocks.roleCreate).not.toHaveBeenCalled();
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith({ actorId: ACTOR_ID }, "role not given: the actor is an admin");
+  });
+
+  it.each(["manager", "writer", "reader"])("refuses a %s, logged, before the input is checked", async (role) => {
+    mocks.roleFindFirst.mockResolvedValue({ role });
+
+    await expect(giveRole(USER, FOLDER_ID, { user: "", role: "nonsense" })).resolves.toEqual(NOT_ALLOWED);
+
+    expect(mocks.roleCreate).not.toHaveBeenCalled();
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
+      { actorId: ACTOR_ID, folderId: FOLDER_ID, role },
+      "role not given: the actor is not an Owner of the folder",
+    );
+  });
+
+  it("refuses a user without a role on the folder", async () => {
+    mocks.roleFindFirst.mockResolvedValue(null);
+
+    await expect(giveRole(USER, FOLDER_ID, { user: "bob", role: "writer" })).resolves.toEqual(NOT_ALLOWED);
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
+      { actorId: ACTOR_ID, folderId: FOLDER_ID },
+      "role not given: the actor is not an Owner of the folder",
+    );
+  });
+
+  it("returns the field errors of an invalid input", async () => {
+    await expect(giveRole(USER, FOLDER_ID, { user: "", role: "admin" })).resolves.toEqual({
+      ok: false,
+      error: { code: "invalid-input", fieldErrors: { user: ["Choose a user"], role: ["Choose a role"] } },
+    });
+    expect(mocks.roleCreate).not.toHaveBeenCalled();
+  });
+
+  it("returns user-not-found for a name of no user of the type user, an admin included, and gives nothing", async () => {
+    mocks.userFindFirst.mockResolvedValue(null);
+
+    await expect(giveRole(USER, FOLDER_ID, { user: "admin", role: "owner" })).resolves.toEqual({
+      ok: false,
+      error: { code: "user-not-found" },
+    });
+    expect(mocks.roleCreate).not.toHaveBeenCalled();
+  });
+
+  it("returns user-not-found for a malformed name without looking it up", async () => {
+    await expect(giveRole(USER, FOLDER_ID, { user: "Not A Name", role: "owner" })).resolves.toEqual({
+      ok: false,
+      error: { code: "user-not-found" },
+    });
+    expect(mocks.userFindFirst).not.toHaveBeenCalled();
+  });
+
+  it("returns role-taken when the user already has a role", async () => {
+    mocks.roleCreate.mockRejectedValue(
+      knownError("P2002", {
+        driverAdapterError: { cause: { constraint: { index: "FolderRole_folderId_userId_key" } } },
+      }),
+    );
+
+    await expect(giveRole(USER, FOLDER_ID, { user: "bob", role: "writer" })).resolves.toEqual({
+      ok: false,
+      error: { code: "role-taken" },
+    });
+    expect(mocks.info).not.toHaveBeenCalled();
+  });
+
+  it("returns user-not-found when the database refuses a role of an admin", async () => {
+    const err = knownError("P2039", {
+      driverAdapterError: { cause: { code: "23514", message: "an admin cannot have a role on a folder" } },
+    });
+    mocks.roleCreate.mockRejectedValue(err);
+
+    await expect(giveRole(USER, FOLDER_ID, { user: "bob", role: "writer" })).resolves.toEqual({
+      ok: false,
+      error: { code: "user-not-found" },
+    });
+    expect(mocks.error).toHaveBeenCalledOnce();
+  });
+
+  it("returns failed for any other error, logged", async () => {
+    const err = new Error("connection lost");
+    mocks.roleCreate.mockRejectedValue(err);
+
+    await expect(giveRole(USER, FOLDER_ID, { user: "bob", role: "writer" })).resolves.toEqual({
+      ok: false,
+      error: { code: "failed" },
+    });
+    expect(mocks.error).toHaveBeenCalledWith(
+      { err, folderId: FOLDER_ID, userId: BOB_ID, ownerId: ACTOR_ID },
+      "failed to give role",
+    );
   });
 });

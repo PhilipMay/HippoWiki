@@ -38,6 +38,7 @@ const PROTECTED_ADDRESSES = [
   ["a deleted page", `/deleted-pages/handbook/${DELETED_PAGE_ID}`],
   ["the folder list with an action", "/folders?action=new"],
   ["a folder with an action", "/folders/handbook?action=rename"],
+  ["the give role dialog of a folder", "/folders/handbook?action=give-role"],
   ["a page with an action", "/folders/handbook/overview.md?action=edit"],
   ["the own account", "/account"],
   ["the own account with an action", "/account?action=create"],

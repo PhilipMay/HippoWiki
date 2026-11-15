@@ -11,8 +11,10 @@ import FolderBreadcrumbs from "@/features/folders/components/FolderBreadcrumbs";
 import FolderContentsList from "@/features/folders/components/FolderContentsList";
 import NameDialog from "@/features/folders/components/NameDialog";
 import { getFolderByName, listTabs } from "@/features/folders/queries";
+import { giveRole } from "@/features/folder-roles/actions";
 import FolderRoleList from "@/features/folder-roles/components/FolderRoleList";
-import { listFolderRoles } from "@/features/folder-roles/queries";
+import GiveRoleDialog from "@/features/folder-roles/components/GiveRoleDialog";
+import { listFolderRoles, listRoleCandidates } from "@/features/folder-roles/queries";
 import { mayDo, ROLE_LABELS, type FolderFunction } from "@/features/folder-roles/roles";
 import { createPage } from "@/features/pages/actions";
 import AllPagesList from "@/features/pages/components/AllPagesList";
@@ -31,15 +33,17 @@ import { pageTitle } from "@/lib/site";
 
 /**
  * The actions of a folder address: `new` opens the editor for a new page, with the folder itself as the
- * preselected place, `rename` the "Rename folder" dialog and `new-tab` the "New tab" dialog.
+ * preselected place, `rename` the "Rename folder" dialog, `new-tab` the "New tab" dialog and `give-role` the "Give
+ * role" dialog.
  */
-const ACTIONS = ["new", "rename", "new-tab"] as const;
+const ACTIONS = ["new", "rename", "new-tab", "give-role"] as const;
 
 /** The function of each action, whose lowest role the user needs; an action beyond the role does not exist. */
 const ACTION_FUNCTIONS: Record<(typeof ACTIONS)[number], FolderFunction> = {
   new: "editPage",
   rename: "renameFolder",
   "new-tab": "editTab",
+  "give-role": "manageRoles",
 };
 
 /**
@@ -121,6 +125,13 @@ export default async function FolderPage({ params, searchParams }: PageProps<"/f
         <Typography variant="h4" component="h1">
           Roles
         </Typography>
+        {mayDo(role, "manageRoles") && (
+          <Stack direction="row" sx={{ justifyContent: "flex-end" }}>
+            <Button component={Link} href={folderPath(folder.name, "give-role")} variant="contained">
+              Give role
+            </Button>
+          </Stack>
+        )}
         <FolderRoleList roles={(await listFolderRoles(folder.id)) ?? notFound()} />
       </Stack>
     );
@@ -189,6 +200,13 @@ export default async function FolderPage({ params, searchParams }: PageProps<"/f
       )}
       {action === "new-tab" && (
         <NameDialog title="New tab" action={createTab.bind(null, folder.id)} closeHref={address} />
+      )}
+      {action === "give-role" && (
+        <GiveRoleDialog
+          action={giveRole.bind(null, folder.id)}
+          candidates={(await listRoleCandidates(folder.id)) ?? notFound()}
+          closeHref={address}
+        />
       )}
     </Stack>
   );

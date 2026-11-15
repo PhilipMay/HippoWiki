@@ -1,8 +1,17 @@
-import type { Page } from "@playwright/test";
+import type { Browser, BrowserContext, Page } from "@playwright/test";
 
 import { KNOWN_USER } from "../prisma/known-users";
+import { NO_STORAGE_STATE } from "./support/auth";
 import { collectErrors } from "./support/browser";
-import { createFolder, createPage, createTab, createUser, getTestDb, resetTestDatabase } from "./support/database";
+import {
+  createFolder,
+  createPage,
+  createTab,
+  createUser,
+  getTestDb,
+  resetTestDatabase,
+  TEST_PASSWORD,
+} from "./support/database";
 import { expect, test } from "./support/test";
 
 test.beforeEach(async () => {
@@ -447,3 +456,149 @@ test.describe("the roles view", () => {
     await expectNotFound(page, "/folders/project-x?view=roles&action=rename");
   });
 });
+
+/** Logs in as the given user in a browser of its own, as another person working at the same time would. */
+async function logInElsewhere(browser: Browser, name: string): Promise<{ context: BrowserContext; page: Page }> {
+  const context = await browser.newContext({ storageState: NO_STORAGE_STATE });
+  const page = await context.newPage();
+  await page.goto("/login");
+  await page.getByLabel("User name").fill(name);
+  await page.getByLabel("Password").fill(TEST_PASSWORD);
+  await page.getByRole("button", { name: "Log in" }).click();
+  await expect(page).toHaveURL("/folders");
+  return { context, page };
+}
+
+/** The "Give role" dialog. */
+function giveRoleDialog(page: Page) {
+  return page.getByRole("dialog", { name: "Give role" });
+}
+
+test.describe("giving a role", () => {
+  test("an Owner gives a Writer role from the roles view, lands on the folder and sees the user in the roles", async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    await createUser({ name: "bob" });
+    await createFolder({ name: "project-x", editor: await aliceUser() });
+
+    await page.goto("/folders/project-x?view=roles");
+    await page.getByRole("main").getByRole("link", { name: "Give role" }).click();
+    await expect(page).toHaveURL("/folders/project-x?action=give-role");
+    const dialog = giveRoleDialog(page);
+    await dialog.getByLabel("User").selectOption("bob");
+    await dialog.getByRole("radio", { name: "Writer" }).check();
+    await dialog.getByRole("button", { name: "Save" }).click();
+
+    await expect(page).toHaveURL("/folders/project-x");
+    await page.goto("/folders/project-x?view=roles");
+    await expect(page.getByRole("list", { name: "Roles" }).getByRole("listitem")).toHaveText([
+      "aliceOwner",
+      "bobWriter",
+    ]);
+    expect(errors).toEqual([]);
+  });
+
+  test("the list of the dialog has no admin and no user who has a role, and Cancel leads to the folder", async ({
+    page,
+  }) => {
+    const [bob] = [await createUser({ name: "bob" }), await createUser({ name: "dave" })];
+    await createUser({ name: "maria", type: "admin" });
+    await createFolder({
+      name: "project-x",
+      editor: await aliceUser(),
+      roles: [
+        { user: ALICE, role: "owner" },
+        { user: bob, role: "reader" },
+      ],
+    });
+
+    await page.goto("/folders/project-x?action=give-role");
+
+    const options = giveRoleDialog(page).getByLabel("User").locator("option");
+    await expect(options).toHaveText(["Choose a user", "dave"]);
+    await giveRoleDialog(page).getByRole("link", { name: "Cancel" }).click();
+    await expect(page).toHaveURL("/folders/project-x");
+  });
+
+  test("an Owner makes another user Owner, who then may give roles too", async ({ page, browser }) => {
+    await createUser({ name: "bob", mustChangePassword: false });
+    await createFolder({ name: "project-x", editor: await aliceUser() });
+
+    await page.goto("/folders/project-x?action=give-role");
+    await giveRoleDialog(page).getByLabel("User").selectOption("bob");
+    await giveRoleDialog(page).getByRole("radio", { name: "Owner" }).check();
+    await giveRoleDialog(page).getByRole("button", { name: "Save" }).click();
+    await expect(page).toHaveURL("/folders/project-x");
+
+    const bob = await logInElsewhere(browser, "bob");
+    await bob.page.goto("/folders/project-x?view=roles");
+    await expect(bob.page.getByRole("main").getByRole("link", { name: "Give role" })).toBeVisible();
+    await bob.context.close();
+  });
+
+  test("with every user holding a role, the dialog says so and offers no Save", async ({ page }) => {
+    const bob = await createUser({ name: "bob" });
+    await createFolder({
+      name: "project-x",
+      editor: await aliceUser(),
+      roles: [
+        { user: ALICE, role: "owner" },
+        { user: bob, role: "writer" },
+      ],
+    });
+
+    await page.goto("/folders/project-x?action=give-role");
+
+    const dialog = giveRoleDialog(page);
+    await expect(dialog.getByText("Every user already has a role on this folder")).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Save" })).toHaveCount(0);
+    await expect(dialog.getByRole("link", { name: "Cancel" })).toBeVisible();
+  });
+
+  for (const role of ["manager", "writer", "reader"] as const) {
+    test(`a ${role} sees no Give role, and its address shows the not-found page`, async ({ page }) => {
+      await createUser({ name: "bob" });
+      await createFolder({ name: "project-x", roles: [{ user: ALICE, role }] });
+
+      await page.goto("/folders/project-x?view=roles");
+      await expect(page.getByRole("heading", { level: 1, name: "Roles" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "Give role" })).toHaveCount(0);
+      await expectNotFound(page, "/folders/project-x?action=give-role");
+    });
+  }
+
+  test("a crafted form with the name of an admin is refused and gives no role", async ({ page }) => {
+    await createUser({ name: "bob" });
+    await createFolder({ name: "project-x", editor: await aliceUser() });
+
+    await page.goto("/folders/project-x?action=give-role");
+    const user = giveRoleDialog(page).getByLabel("User");
+    // The option of bob is changed into the name of the admin, as a crafted request would send it.
+    await user.locator("option", { hasText: "bob" }).evaluate((option: HTMLOptionElement) => (option.value = "admin"));
+    await user.selectOption("admin");
+    await giveRoleDialog(page).getByRole("radio", { name: "Owner" }).check();
+    await giveRoleDialog(page).getByRole("button", { name: "Save" }).click();
+
+    await expect(giveRoleDialog(page).getByText("There is no such user")).toBeVisible();
+    expect(await getTestDb().folderRole.count({ where: { user: { type: "admin" } } })).toBe(0);
+  });
+
+  test("a crafted form of a Manager writes nothing", async ({ page }) => {
+    await createUser({ name: "bob" });
+    const folder = await createFolder({ name: "project-x", editor: await aliceUser() });
+
+    await page.goto("/folders/project-x?action=give-role");
+    await giveRoleDialog(page).getByLabel("User").selectOption("bob");
+    await setOwnRole(folder, "manager");
+    await giveRoleDialog(page).getByRole("button", { name: "Save" }).click();
+
+    await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
+    expect(await getTestDb().folderRole.count()).toBe(1);
+  });
+});
+
+/** The logged-in user as a row of the database, to be the last editor of a folder, so that no other user is created. */
+async function aliceUser() {
+  return getTestDb().user.findUniqueOrThrow({ where: { id: KNOWN_USER.id } });
+}

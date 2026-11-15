@@ -17,3 +17,16 @@ export function parseRole(value: unknown): Role | null {
   const result = roleSchema.safeParse(value);
   return result.success ? result.data : null;
 }
+
+export const USER_REQUIRED_MESSAGE = "Choose a user";
+
+/** Input for giving a role: the name of the user who gets it, and the role. */
+export const giveRoleInputSchema = z.object({
+  user: z.string().trim().min(1, USER_REQUIRED_MESSAGE),
+  role: roleSchema,
+});
+
+/** A validated "Give role" input. */
+export type GiveRoleInput = z.output<typeof giveRoleInputSchema>;
+
+export type GiveRoleFieldErrors = { user?: string[]; role?: string[] };

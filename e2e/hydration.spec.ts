@@ -184,6 +184,23 @@ test("log out in the header needs no JavaScript", async ({ page }) => {
   await expect(page.getByRole("banner").getByRole("button", { name: "Log out" })).toHaveCount(0);
 });
 
+test("the give role dialog is locked until hydration", async ({ page }) => {
+  await createUser({ name: "bob" });
+  await createFolder({ name: "locked-folder" });
+
+  await page.goto("/folders/locked-folder?action=give-role");
+
+  const dialog = page.getByRole("dialog", { name: "Give role" });
+  await expect(dialog.getByLabel("User")).toBeDisabled();
+  for (const role of ["Reader", "Writer", "Manager", "Owner"]) {
+    await expect(dialog.getByRole("radio", { name: role })).toBeDisabled();
+  }
+  // The server-rendered dialog already shows "Reader" as the choice.
+  await expect(dialog.getByRole("radio", { name: "Reader" })).toBeChecked();
+  await expect(dialog.getByRole("button", { name: "Save" })).toBeDisabled();
+  await expect(dialog.getByRole("link", { name: "Cancel" })).toHaveAttribute("href", "/folders/locked-folder");
+});
+
 test("the name dialog is prefilled and locked until hydration", async ({ page }) => {
   await createFolder({ name: "locked-folder" });
 

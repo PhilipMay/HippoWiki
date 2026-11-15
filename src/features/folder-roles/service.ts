@@ -6,15 +6,20 @@
 //
 // Every user with a role on a folder sees who has which role on it; an admin sees the roles of no folder here.
 
+import { z } from "zod";
+
 import { mayDo, rolesFor, type FolderFunction, type Role } from "@/features/folder-roles/roles";
+import { giveRoleInputSchema, type GiveRoleFieldErrors } from "@/features/folder-roles/schema";
 import { parseFolderId, parseTabId } from "@/features/folders/schema";
 import { parsePageId } from "@/features/pages/schema";
-import { parseUserId } from "@/features/users/schema";
+import { parseUserId, parseUserName } from "@/features/users/schema";
 import type { Actor } from "@/features/users/service";
 import { isAdmin } from "@/features/users/user-type";
 import type { Prisma } from "@/generated/prisma/client";
 import { getDb } from "@/lib/db";
+import { FOLDER_ROLE_USER, isAdminRoleViolation, isUniqueViolation } from "@/lib/db-errors";
 import { logger } from "@/lib/logger";
+import type { Result } from "@/lib/result";
 
 /**
  * Where a read or a write of the content comes from. In the browser a user sees and does with a folder only what the
@@ -184,4 +189,137 @@ export async function listFolderRoles(actor: Actor, folderId: string): Promise<F
     orderBy: ROLE_LIST_ORDER,
   });
   return roles.map(({ role, user }) => ({ user: { id: user.id, name: user.username }, role }));
+}
+
+/** A user who can get a role on a folder, as the "Give role" dialog offers them. */
+export type RoleCandidate = { id: string; name: string };
+
+/**
+ * Every account of the type user without a role on the folder with the given id, by name: whom an Owner can give a
+ * role. Never an admin, who never gets a role. `null` for anyone but an Owner of the folder.
+ */
+export async function listRoleCandidates(actor: Actor, folderId: string): Promise<RoleCandidate[] | null> {
+  if (!mayDo(await folderRoleOf(actor, folderId), "manageRoles")) return null;
+  const users = await getDb().user.findMany({
+    where: { type: "user", folderRoles: { none: { folderId } } },
+    select: { id: true, username: true },
+    orderBy: { username: "asc" },
+  });
+  return users.map(({ id, username }) => ({ id, name: username }));
+}
+
+/** The actor is an admin or not an Owner of the folder; it has been logged. */
+type NotAllowed = { code: "not-allowed" };
+/** The input is invalid; `fieldErrors` holds the messages of the schema per field. */
+type InvalidInput = { code: "invalid-input"; fieldErrors: GiveRoleFieldErrors };
+/** No account of the type user has the name: it does not exist or is an admin, who never gets a role. */
+type UserNotFound = { code: "user-not-found" };
+/** The user already has a role on the folder. */
+type RoleTaken = { code: "role-taken" };
+/** An unexpected database error, or an actor that is malformed; it has been logged. */
+type Failed = { code: "failed" };
+
+export type GiveRoleError = NotAllowed | InvalidInput | UserNotFound | RoleTaken | Failed;
+
+/** A role as stored by a write, with the name of its folder: what the address after the write is built from. */
+export type StoredRole = { folder: { name: string }; user: { id: string; name: string }; role: Role };
+
+const STORED_ROLE_SELECT = {
+  role: true,
+  folder: { select: { name: true } },
+  user: { select: { id: true, username: true } },
+} as const;
+
+function storedRole(row: { role: Role; folder: { name: string }; user: { id: string; username: string } }): StoredRole {
+  return { folder: { name: row.folder.name }, user: { id: row.user.id, name: row.user.username }, role: row.role };
+}
+
+/** The result of a write of a role by an admin or by anyone but an Owner of the folder; it is logged. */
+function notAllowed(
+  actor: Actor,
+  message: string,
+  target: Record<string, string> = {},
+): { ok: false; error: NotAllowed } {
+  logger.warn({ actorId: actor.id, ...target }, message);
+  return { ok: false, error: { code: "not-allowed" } };
+}
+
+/**
+ * The id of the actor of a write of a role, if the actor is an Owner of the folder with the given id; otherwise the
+ * refusal, which is logged: an admin, who changes no role, and every other role.
+ */
+async function ownerOf(
+  actor: Actor,
+  folderId: string,
+  what: string,
+): Promise<{ ownerId: string; refused?: never } | { refused: { ok: false; error: NotAllowed | Failed } }> {
+  if (isAdmin(actor)) return { refused: notAllowed(actor, `${what}: the actor is an admin`) };
+  const ownerId = roleHolderId(actor);
+  if (!ownerId) return { refused: { ok: false, error: { code: "failed" } } };
+  const role = await folderRoleOf(actor, folderId);
+  if (!mayDo(role, "manageRoles")) {
+    return {
+      refused: notAllowed(actor, `${what}: the actor is not an Owner of the folder`, {
+        folderId,
+        ...(role ? { role } : {}),
+      }),
+    };
+  }
+  return { ownerId };
+}
+
+/**
+ * Gives the user with the given name the role on the folder with the given id, Owner included, and returns it as
+ * stored. Only an Owner of the folder gives roles. The user must be an account of the type user without a role on the
+ * folder: the name of an admin is answered like an unknown name, so that no form, however crafted, gives an admin a
+ * role; the trigger of the database is only the second line. Every role given is logged.
+ */
+export async function giveRole(
+  actor: Actor,
+  folderId: string,
+  input: { user: string; role: string },
+): Promise<Result<StoredRole, GiveRoleError>> {
+  const owner = await ownerOf(actor, folderId, "role not given");
+  if (owner.refused) return owner.refused;
+  const { ownerId } = owner;
+
+  const parsed = giveRoleInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: { code: "invalid-input", fieldErrors: z.flattenError(parsed.error).fieldErrors } };
+  }
+  const { role } = parsed.data;
+
+  const userName = parseUserName(parsed.data.user);
+  const user = userName
+    ? await getDb().user.findFirst({ where: { username: userName, type: "user" }, select: { id: true } })
+    : null;
+  if (!user) {
+    logger.warn({ folderId, ownerId }, "role not given: no user of the type user has the name");
+    return { ok: false, error: { code: "user-not-found" } };
+  }
+
+  let stored: StoredRole;
+  try {
+    stored = storedRole(
+      await getDb().folderRole.create({ data: { folderId, userId: user.id, role }, select: STORED_ROLE_SELECT }),
+    );
+  } catch (err) {
+    if (isUniqueViolation(err, FOLDER_ROLE_USER)) {
+      logger.warn({ folderId, userId: user.id, ownerId }, "role not given: the user already has a role on the folder");
+      return { ok: false, error: { code: "role-taken" } };
+    }
+    if (isAdminRoleViolation(err)) {
+      // The user was looked up as a user just before, and the type of an account never changes.
+      logger.error(
+        { err, folderId, userId: user.id, ownerId },
+        "role not given: the database refused a role of an admin",
+      );
+      return { ok: false, error: { code: "user-not-found" } };
+    }
+    logger.error({ err, folderId, userId: user.id, ownerId }, "failed to give role");
+    return { ok: false, error: { code: "failed" } };
+  }
+
+  logger.info({ folderId, userId: user.id, oldRole: null, newRole: role, ownerId }, "role given");
+  return { ok: true, value: stored };
 }
