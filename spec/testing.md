@@ -229,9 +229,6 @@ How the code is tested. Commands are listed in `README.md`.
 - The Chromium of the tests does not show the content of a `noscript` element, although its scripts are switched
   off with `javaScriptEnabled: false`. A note for browsers without JavaScript, such as the one of the consent page of
   OAuth, is therefore checked in the HTML of the page.
-- `page.goto()` waits until the page has hydrated. A page that leaves for another site at once, such as the consent
-  page for a request it sends back to the client, is opened with `window.location.assign()` from a page that is
-  already open.
 - `e2e/access.spec.ts` checks that every kind of address leads to the login page without a login, as a redirect that
   sends nothing of the page, and that the redirect carries the address as the way back. A new route adds its address
   there; a new public address is checked there as well, for not being sent to the login page.

@@ -9,16 +9,14 @@
   tests cover the security rules of the specs well. The weak points are availability (a slow Markdown parse, unbounded
   bodies and batches, a lockout per name in the default configuration), the password policy, the trust that the OAuth
   server gives to clients nobody verified, and documentation that ASVS Level 2 asks for.
-- Findings: 114 in all, 0 Blocker, 4 Major, 69 Minor and 41 Nit (60 `issue:`, 20 `suggestion:`, 29 `nit:` and 5
+- Findings: 113 in all, 0 Blocker, 3 Major, 69 Minor and 41 Nit (59 `issue:`, 20 `suggestion:`, 29 `nit:` and 5
   `question:`). Accepted deviations: 20.
 - To fix first:
   1. Some Markdown takes quadratic time to parse, so one page blocks the whole server (Content; ASVS 15.1.3, 15.2.2;
      CWE-407).
-  2. An invalid authorization request sends the browser, without a click, to any address an anonymous party
-     registered (OAuth; ASVS 3.7.2, 10.4.7; CWE-601; `CON.10.A4`).
-  3. New passwords are not checked against common or breached passwords (Login; ASVS 6.2.4, 6.2.12; NIST SP 800-63B-4
+  2. New passwords are not checked against common or breached passwords (Login; ASVS 6.2.4, 6.2.12; NIST SP 800-63B-4
      3.1.1.2).
-  4. After the first password change, a user cannot change the password or end sessions, and the admin cannot end
+  3. After the first password change, a user cannot change the password or end sessions, and the admin cannot end
      them either (Login; ASVS 6.2.2, 7.4.3, 7.4.5).
 - Not covered by this review: everything under "Checks on the deployment" (the reverse proxy and its TLS, the host,
   the network, backups, log storage and the settings of the GitHub repository); a scan of the image for
@@ -1000,32 +998,6 @@ finding of the review report" in `workflow.md` describes.
 
 ### OAuth
 
-#### issue: an invalid authorization request sends the browser, without a click, to any address that an anonymous party registered
-
-- Location: `src/features/oauth/components/ReturnToClient.tsx`, lines 19–34, `ReturnToClient()`;
-  `src/features/oauth/queries.ts`, lines 60–70, `loadConsent()`; `src/app/oauth/authorize/page.tsx`, line 46;
-  `spec/oauth.md`, section "The authorization request and the consent page"
-- Severity: Major. Anyone can register a client with any redirect address, and the redirect happens right after a
-  real login on the wiki, so the wiki becomes an open redirect for phishing; the MCP specification says the
-  authorization server must prevent this.
-- Category: security
-- Problem: `/oauth/register` is open to everyone, and a metadata document can be any public `https` address, so the
-  "registered" redirect address is chosen by whoever sends the link. For a request that fails a check after the client
-  and the redirect address (for example `response_type=token`), `loadConsent()` returns `refused`, and
-  `ReturnToClient` calls `window.location.replace(redirectTo)` on page load. A user without a session first logs in on
-  the real login page and is then sent on.
-- Impact: a mailed link to `https://<wiki>/oauth/authorize?…` shows the real wiki, the user logs in, and lands on the
-  attacker's page, for example a fake "session expired" form.
-- Evidence: on the local server, after registering a client with the redirect address `https://example.org/phish`,
-  `GET /oauth/authorize?client_id=<id>&redirect_uri=https%3A%2F%2Fexample.org%2Fphish&response_type=token` as a
-  logged-in user returns a page that navigates to
-  `https://example.org/phish?error=unsupported_response_type&…&iss=http%3A%2F%2Flocalhost%3A3100`.
-- Suggestion (required): do not navigate by itself for `refused`: show the error and a link "Return to <host>" that
-  the user has to click (RFC 9700 allows informing the user instead). Change the rule in `oauth.md` and give the reason
-  under "Decisions". The "Deny" button is a click and can stay.
-- Reference: OWASP A01:2025 Broken Access Control; ASVS 3.7.2, 10.4.7; CWE-601; `CON.10.A4`; RFC 9700 section 4.11.2;
-  MCP specification 2026-07-28, "Security Considerations", "Open Redirection".
-
 #### issue: custom redirect schemes are filtered with a list of forbidden schemes, so dangerous handlers of the operating system are accepted
 
 - Location: `src/features/oauth/schema.ts`, lines 59–79, `FORBIDDEN_SCHEMES`, and lines 106–123, `parseRedirectUri()`;
@@ -1033,7 +1005,8 @@ finding of the review report" in `workflow.md` describes.
 - Severity: Minor. It needs the user to accept the browser's prompt to open an external application.
 - Category: security
 - Problem: every scheme that is not one of 19 forbidden ones is accepted, among them `search-ms:`, `ms-msdt:` and
-  `intent:`. Together with the redirect above, a link to the wiki starts such a handler; "Deny" navigates there too.
+  `intent:`. A link to the wiki leads to such a handler after a click on "Deny" or on the link back of a refused
+  request.
   The MCP specification says redirect addresses must be `localhost` or HTTPS; the spec allows custom schemes without
   a reason.
 - Impact: users on Windows or Android can be pushed from a trusted origin into a known malware delivery chain.
@@ -1183,7 +1156,7 @@ finding of the review report" in `workflow.md` describes.
 - Category: security
 - Problem: the MCP specification of 2026-07-28 keeps dynamic registration only for backward compatibility, and the
   spec names claude.ai, ChatGPT and Claude Code as clients with metadata documents. Open registration is the source of
-  the open redirect, the custom schemes, the names that cannot be verified and the flood of registrations above.
+  the custom schemes, the names that cannot be verified and the flood of registrations above.
 - Suggestion (optional): name the clients that still need it; otherwise add a switch for the operator, off by default,
   or mark registered clients as not verified on the consent page.
 - Reference: MCP specification 2026-07-28, "Client Registration"; ASVS 10.4.7.
@@ -1281,6 +1254,12 @@ finding of the review report" in `workflow.md` describes.
   address and challenge, deleted conditionally before any check, so of two exchanges only one goes on. On the local
   server the second use gives `invalid_grant` (see the finding on revoking). A wrong redirect address at the exchange
   gives `invalid_grant`.
+- Open redirect (ASVS 3.7.2, 10.4.7, `CON.10.A4`, CWE-601, RFC 9700 section 4.11.2, MCP specification "Open
+  Redirection"): a request that fails a check after the client and the redirect address does not send the browser to
+  the client by itself; the consent page shows the reason and a plain link "Return to <host>" that carries the error,
+  and only a click on it or on "Deny" leaves the wiki. `e2e/oauth.spec.ts` checks for each refused request that the
+  page stays, no request goes to the client until the link is clicked, and the click delivers `error`,
+  `error_description`, `state` and `iss`.
 - Grant and response types (ASVS 10.4.4): only `code`, and only `authorization_code` and `refresh_token`; on the local
   server `response_type=token` gives `unsupported_response_type`.
 - Scopes and resource (RFC 8707, ASVS 10.3.1): the grant is always `read`; on the local server `scope=read write admin`
@@ -2687,7 +2666,7 @@ The requirements are those of the module texts on bsi.bund.de as fetched on 2026
 | `CON.10.A1` authentication, limits on failed logins, notification | Login (findings on the blocklist, the notification and the lockout)                |
 | `CON.10.A2` access control                                        | Access control                                                                     |
 | `CON.10.A3` session management                                    | Login                                                                              |
-| `CON.10.A4` controlled inclusion of content, redirects            | Access control; OAuth (the open redirect); Content                                 |
+| `CON.10.A4` controlled inclusion of content, redirects            | Access control; OAuth (redirects to the client); Content                           |
 | `CON.10.A5` upload functions                                      | not applicable: no uploads                                                         |
 | `CON.10.A6` protection against automated use                      | Login; OAuth; MCP server                                                           |
 | `CON.10.A7` protection of confidential data                       | Browser security; Login; Cross-cutting                                             |
@@ -2735,18 +2714,18 @@ The requirements are those of the module texts on bsi.bund.de as fetched on 2026
 
 ### OWASP Top 10:2025
 
-| Category                                   | Covered in                                                               |
-| ------------------------------------------ | ------------------------------------------------------------------------ |
-| A01 Broken Access Control                  | Access control; OAuth (open redirect, repeated parameters); MCP server   |
-| A02 Security Misconfiguration              | Browser security; Configuration; Login (cookie prefix)                   |
-| A03 Software Supply Chain Failures         | Supply chain; Configuration (base image)                                 |
-| A04 Cryptographic Failures                 | Cross-cutting (inventory); Login (hashing)                               |
-| A05 Injection                              | Content (XSS); Cross-cutting (SQL); MCP server (arguments)               |
-| A06 Insecure Design                        | Content (Markdown); MCP server (prompt injection, batches); Login; OAuth |
-| A07 Authentication Failures                | Login; API tokens; OAuth                                                 |
-| A08 Software or Data Integrity Failures    | Supply chain                                                             |
-| A09 Security Logging and Alerting Failures | Logging; Login; API tokens                                               |
-| A10 Mishandling of Exceptional Conditions  | Logging; Content (stack overflow); Configuration (validation at start)   |
+| Category                                   | Covered in                                                                       |
+| ------------------------------------------ | -------------------------------------------------------------------------------- |
+| A01 Broken Access Control                  | Access control; OAuth (redirects to the client, repeated parameters); MCP server |
+| A02 Security Misconfiguration              | Browser security; Configuration; Login (cookie prefix)                           |
+| A03 Software Supply Chain Failures         | Supply chain; Configuration (base image)                                         |
+| A04 Cryptographic Failures                 | Cross-cutting (inventory); Login (hashing)                                       |
+| A05 Injection                              | Content (XSS); Cross-cutting (SQL); MCP server (arguments)                       |
+| A06 Insecure Design                        | Content (Markdown); MCP server (prompt injection, batches); Login; OAuth         |
+| A07 Authentication Failures                | Login; API tokens; OAuth                                                         |
+| A08 Software or Data Integrity Failures    | Supply chain                                                                     |
+| A09 Security Logging and Alerting Failures | Logging; Login; API tokens                                                       |
+| A10 Mishandling of Exceptional Conditions  | Logging; Content (stack overflow); Configuration (validation at start)           |
 
 The OWASP API Security Top 10 2023 is covered by the same areas: object and function level authorisation (API1,
 API5) in Access control and API tokens, authentication (API2) in API tokens and OAuth, property level authorisation

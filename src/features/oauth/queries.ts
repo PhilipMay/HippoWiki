@@ -20,8 +20,11 @@ export type Consent =
    * sent anywhere, because the address cannot be trusted.
    */
   | { kind: "untrusted"; reason: "invalid-client" | "invalid-redirect-uri" | "failed" }
-  /** The request is wrong in another way: the client is told, at its redirect address. */
-  | { kind: "refused"; redirectTo: string; target: string }
+  /**
+   * The request is wrong in another way: the reason is shown, and the client is told at its redirect address only when
+   * the user follows the link there.
+   */
+  | { kind: "refused"; redirectTo: string; target: string; description: string }
   /** The request is valid: the user is asked. */
   | {
       kind: "consent";
@@ -61,6 +64,8 @@ export async function loadConsent(searchParams: SearchParams): Promise<Consent> 
         return {
           kind: "refused",
           target: redirectTargetOf(error.redirectUri),
+          // Written by the wiki itself, so it can be shown.
+          description: error.description,
           redirectTo: authorizationResponseUrl(error.redirectUri, {
             error: error.error,
             error_description: error.description,

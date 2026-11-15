@@ -490,21 +490,27 @@ test.describe("the consent page, as a logged-in user", () => {
     ["no PKCE challenge", { code_challenge: "" }, "invalid_request"],
     ["a resource that is another server", { resource: "https://other.example/mcp" }, "invalid_target"],
   ] as const) {
-    test(`a request with ${what} is sent back to the client as ${error}, without asking the user`, async ({
+    test(`a request with ${what} shows the reason and returns to the client with ${error} only on a click`, async ({
       page,
       request,
     }) => {
       const clientId = await registerClient(request);
       const callback = await awaitCallback(page);
-      await page.goto("/account");
+      const requests: string[] = [];
+      page.on("request", (each) => requests.push(new URL(each.url()).host));
+      const address = authorizeUrl(clientId, params);
 
-      // Not `page.goto()`, which waits until the page has hydrated: this one leaves for the client at once.
-      await page.evaluate(
-        (address) => {
-          window.location.assign(address);
-        },
-        authorizeUrl(clientId, params),
-      );
+      await page.goto(address);
+
+      const main = page.getByRole("main");
+      await expect(main.getByRole("alert")).toHaveText(/The request of the app cannot be answered: /);
+      await expect(main.getByRole("button", { name: "Approve" })).toHaveCount(0);
+      await expect(main.getByRole("button", { name: "Deny" })).toHaveCount(0);
+      // Anyone can register a redirect address: the browser stays here until the user clicks.
+      await expect(page).toHaveURL(address);
+      expect(requests.filter((host) => host !== "localhost:3100")).toEqual([]);
+
+      await main.getByRole("link", { name: "Return to 127.0.0.1:53682" }).click();
 
       expect(await callback()).toEqual({
         error,

@@ -132,7 +132,7 @@ describe("loadConsent", () => {
     },
   );
 
-  it("sends a request that is refused back to the client with error, description, state and iss", async () => {
+  it("shows why a request is refused and links back to the client with error, description, state and iss", async () => {
     mocks.checkAuthorizationRequest.mockResolvedValue({
       ok: false,
       error: {
@@ -148,6 +148,7 @@ describe("loadConsent", () => {
 
     if (consent.kind !== "refused") return expect.fail(`not refused: ${consent.kind}`);
     expect(consent.target).toBe("client.example");
+    expect(consent.description).toBe("Only the response type code is supported");
     const url = new URL(consent.redirectTo);
     expect(`${url.origin}${url.pathname}`).toBe(REDIRECT_URI);
     expect(Object.fromEntries(url.searchParams)).toEqual({

@@ -78,9 +78,10 @@ The fetch of a metadata document must not be a way to make the server ask an add
 - If the client is unknown or the redirect address is not one of its own, the page says so and sends the browser
   nowhere. A redirect address must be the same text as one of the client's; only for `http` on a loopback address
   the port is ignored, because a native client listens on whatever port is free.
-- Every other error goes back to the client at its redirect address: `response_type` must be `code`, PKCE must be
-  `S256` with a valid challenge, and a `resource` that is sent must be the address of `/mcp` (RFC 8707). Scopes are
-  not checked: unknown ones are ignored, and the grant is always `read`.
+- Every other error is shown on the page with a link "Return to <host>", which carries the error to the redirect
+  address of the client; the browser goes there only when the user clicks the link. These checks are:
+  `response_type` must be `code`, PKCE must be `S256` with a valid challenge, and a `resource` that is sent must be
+  the address of `/mcp` (RFC 8707). Scopes are not checked: unknown ones are ignored, and the grant is always `read`.
 - A valid request shows the host of the redirect address more prominently than the name of the client, the
   logged-in user, what `read` allows, and the lifetime of the grant: 30, 90 or 365 days, with 90 chosen.
 - "Approve" sends the client a code; "Deny" sends it `access_denied`. Both check the request again from the
@@ -88,8 +89,9 @@ The fetch of a metadata document must not be a way to make the server ask an add
 - Every connect asks again; no consent is remembered.
 - A user who already holds 20 tokens, not counting the grants this one would replace, is asked to revoke a token
   first and cannot approve.
-- The page needs JavaScript to send the answer to the client, because the Content Security Policy keeps forms on
-  this site (`form-action 'self'`, see "Security headers" in `architecture.md`). Without JavaScript it says so.
+- "Approve" and "Deny" need JavaScript to send the answer to the client, because the Content Security Policy keeps
+  forms on this site (`form-action 'self'`, see "Security headers" in `architecture.md`). Without JavaScript the page
+  says so. The link back of a refused request is a plain link and works without JavaScript.
 
 ## Codes
 
@@ -162,6 +164,12 @@ The fetch of a metadata document must not be a way to make the server ask an add
   group and the deletion of unused clients keep the table small.
 - The consent page shows where the code goes, the host of the redirect address, more prominently than the name of
   the client: the address is what was checked, the name is whatever the client calls itself.
+- A request that fails a check after the client and the redirect address does not send the browser to the client by
+  itself, but shows the error and a link back: the registration is open and a metadata document can be at any public
+  address, so the redirect address is chosen by whoever sends the link. Going there without a click, right after a
+  real login on the wiki, would make the wiki an open redirect for phishing. RFC 9700 section 4.11.2 allows informing
+  the user instead, and the MCP specification asks the authorization server to prevent open redirects. "Deny" is a
+  click of the user and answers the client at once.
 - The actions of the consent page return the address of the client, and the form opens it, instead of redirecting:
   Next.js passes the address of a redirect to another site in a header that it splits at `;`, which a redirect
   address may contain.

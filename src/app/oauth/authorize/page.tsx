@@ -43,7 +43,9 @@ export default async function AuthorizePage({ searchParams }: PageProps<"/oauth/
         Connect an app
       </Typography>
       {consent.kind === "untrusted" && <Alert severity="error">{UNTRUSTED_MESSAGES[consent.reason]}</Alert>}
-      {consent.kind === "refused" && <ReturnToClient redirectTo={consent.redirectTo} target={consent.target} />}
+      {consent.kind === "refused" && (
+        <ReturnToClient redirectTo={consent.redirectTo} target={consent.target} description={consent.description} />
+      )}
       {consent.kind === "consent" && (
         <>
           {/* Where the access goes is what the user can check; the name is whatever the app calls itself. */}
