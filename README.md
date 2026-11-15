@@ -265,6 +265,14 @@ first, with a token that has the `read:packages` scope.
 | `npm run image:build`         | Build the container image `hippowiki:local` with Podman               |
 | `npm run image:smoke`         | Check the built image against a throwaway database                    |
 
+`src/features/users/common-passwords.ts`, the list of common passwords that new passwords are checked against, is
+generated. To make it again, download the source file that `scripts/common-passwords.ts` names (`SOURCE_URL`, pinned
+to one commit of SecLists) into a directory outside the repository, then run:
+
+```bash
+npx tsx scripts/common-passwords.ts <downloaded file>
+```
+
 ## Licensing
 
 Copyright (c) 2026 [Philip May](https://philipmay.org)

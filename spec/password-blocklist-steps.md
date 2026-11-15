@@ -19,7 +19,7 @@ checked against common or breached passwords or context words" of `review-report
 
 ## Checklist
 
-- [ ] Common password list
+- [x] Common password list
 - [ ] Refuse common passwords and context words
 - [ ] Wrap-up
 
@@ -32,8 +32,9 @@ A pure module with the list of common passwords, reproducible from a pinned sour
 ### Build
 
 - `scripts/common-passwords.ts`: reads a downloaded copy of the SecLists file
-  `Passwords/Common-Credentials/10-million-password-list-top-100000.txt` (MIT licence), pinned to one commit of
-  SecLists that the script names. It keeps the entries whose string length is 8 to 128 (the measure of
+  `Passwords/Common-Credentials/xato-net-10-million-passwords-100000.txt` (MIT licence), pinned to the SecLists commit
+  `51aa7644c96b3fb6db8de9ecf55aa91195209c80` that the script names. The file
+  `10-million-password-list-top-100000.txt` that this plan first named was removed from SecLists as a duplicate of it. It keeps the entries whose string length is 8 to 128 (the measure of
   `passwordSchema`), lowercases them, drops duplicates, keeps the first 10,000 in the order of the source, and writes
   `src/features/users/common-passwords.ts`, each entry written with `JSON.stringify` and the file formatted with
   Prettier. It runs as `npx tsx scripts/common-passwords.ts <downloaded file>`.
@@ -47,8 +48,9 @@ A pure module with the list of common passwords, reproducible from a pinned sour
 ### Test
 
 - Unit `src/features/users/common-passwords.test.ts`: exactly 10,000 entries, all distinct, lowercase and 8 to 128
-  characters long; `password1234`, `qwertyuiop`, `12345678` and `Password1234` are common; a password from
-  `generateFirstPassword()` is not.
+  characters long; `password123`, `qwertyuiop`, `12345678` and `Password123` are common; a password from
+  `generateFirstPassword()` is not. (`password1234`, which this plan first named, is not among the first 10,000 entries
+  of the source.)
 - End-to-end: no spec, because nothing that the app runs imports the module yet.
 
 ## Refuse common passwords and context words
@@ -102,11 +104,11 @@ the specs and the review report say so.
 - Integration `integration/user-service.test.ts`: `ensureAdmin()` with a common password creates nothing and answers
   `invalid-input`. `integration/auth-service.test.ts`: a password change to a common password and to a password built
   from a context word changes nothing.
-- End-to-end `e2e/change-password.spec.ts`: the forced change refuses `password1234` and `hippowiki2026` with their
+- End-to-end `e2e/change-password.spec.ts`: the forced change refuses `password123` and `hippowiki2026` with their
   messages and stays on `/change-password`; the case of the user name gets the new message. The specs this step
   affects: `e2e/change-password.spec.ts`, and `e2e/login.spec.ts`, `e2e/users.spec.ts`, `e2e/hydration.spec.ts` and
   `e2e/oauth.spec.ts`, which go through the forced change.
-- Manual: on the dev server, the forced change of a fresh user refuses `password1234`, `qwertyuiop`, `12345678` and
+- Manual: on the dev server, the forced change of a fresh user refuses `password123`, `qwertyuiop`, `12345678` and
   `hippowiki2026`.
 
 ## Wrap-up
