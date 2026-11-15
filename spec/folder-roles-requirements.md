@@ -215,8 +215,8 @@ account page with its tokens and connected apps, the consent page of OAuth, the 
   and a Writer who deletes while only a Manager restores.
 - MCP stays as it is until its own rules are defined. Accepted: until then a user reads through MCP folders on which
   they have no role, which the browser hides. Rejected: MCP reads only folders with a role, and MCP shows no content.
-- A Manager renames the folder, although a rename changes every address in it. Rejected: renaming the folder for
-  Owners only.
+- Only an Owner renames the folder, because a rename changes every address in it, those of its deleted pages
+  included. Rejected: a Manager who renames the folder.
 - A folder may have several Owners, and all Owners are equal, so that a folder does not depend on one person. The last
   Owner stays, so that no folder is left without anyone who can give roles: no admin can step in, because admins change
   no roles. Rejected: exactly one Owner, Owners who change only the roles of others, and no protection of the last
