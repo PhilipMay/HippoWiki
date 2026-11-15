@@ -121,10 +121,12 @@ the admin setup:
 
 - `npm run admin:setup` creates the admin account with the password from `HIPPOWIKI_ADMIN_PASSWORD` (8 to 128
   characters), which it reads from the environment or from `.env`, and which the admin has to change at the first
-  login. When the admin exists, it does nothing and ignores the variable.
+  login. When the admin exists, it does nothing and ignores the variable. Replace `<first password>` with a password
+  of your own, for example from `openssl rand -base64 24`; the setup refuses the placeholder, and `.env.example`
+  leaves the variable empty.
 
   ```bash
-  HIPPOWIKI_ADMIN_PASSWORD=first-password npm run admin:setup
+  HIPPOWIKI_ADMIN_PASSWORD='<first password>' npm run admin:setup
   ```
 
 ## MCP server
@@ -216,14 +218,15 @@ npm run image:smoke   # check the built image against a throwaway database
   podman run --rm --env DATABASE_URL=postgresql://user:password@host:5432/hippowiki hippowiki:local ./image-migrate.sh
   ```
 
-- To only set up the admin, in a running container or in a one-off container:
+- To only set up the admin, in a running container or in a one-off container. Replace `<first password>` with a
+  password of your own, as in "Users":
 
   ```bash
   podman exec <container> ./image-admin.sh
   ```
 
   ```bash
-  podman run --rm --env DATABASE_URL=postgresql://user:password@host:5432/hippowiki --env HIPPOWIKI_ADMIN_PASSWORD=first-password hippowiki:local ./image-admin.sh
+  podman run --rm --env DATABASE_URL=postgresql://user:password@host:5432/hippowiki --env HIPPOWIKI_ADMIN_PASSWORD='<first password>' hippowiki:local ./image-admin.sh
   ```
 
 ### Publishing

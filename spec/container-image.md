@@ -100,6 +100,9 @@ Code: `Containerfile`, `.containerignore`, `scripts/image.sh`, `scripts/image-mi
 - `HIPPOWIKI_ADMIN_PASSWORD`: the first password of the admin account, 8 to 128 characters, any characters. Only the
   admin setup reads it, and only while the database has no admin; the server never reads it. A container that starts
   against a database with an admin does not need it.
+- The operator chooses this password, for example with `openssl rand -base64 24`, and never uses a value from
+  `.env.example` or the README: those are public. `.env.example` leaves the variable empty, and the README writes
+  `<first password>`; the admin setup refuses any value in angle brackets as a placeholder, like an invalid password.
 - `PORT` is optional (default 3000). `HOSTNAME` has no effect (see above). `NODE_ENV` is `production`, which makes
   the session cookies `Secure`.
 - `HIPPOWIKI_LOG_CLIENT_ADDRESS` is optional, `true` or `false`, default `false`; any other value stops the server with
@@ -215,8 +218,9 @@ These are not built into the image; whoever runs it takes care of them.
 
 - A PostgreSQL database and `DATABASE_URL`, kept out of the image and out of the repository, for example in an
   environment file that only the host can read.
-- `HIPPOWIKI_ADMIN_PASSWORD` for the first start, kept out of the image and out of the repository in the same way. It
-  can be removed once the admin exists.
+- `HIPPOWIKI_ADMIN_PASSWORD` for the first start, kept out of the image and out of the repository in the same way, and
+  chosen by the operator, never a value of `.env.example` or the README (see "Configuration"). It can be removed once
+  the admin exists.
 - TLS in front of the container, for example in a reverse proxy: the container speaks plain HTTP, and the login
   needs HTTPS. The session cookie is `Secure`, so a browser that reaches the wiki over plain HTTP does not send it
   back and nobody can stay logged in. `localhost` is the one exception that browsers make.

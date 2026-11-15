@@ -9,7 +9,7 @@
   tests cover the security rules of the specs well. The weak points are availability (a slow Markdown parse, unbounded
   bodies and batches, a lockout per name in the default configuration), the password policy, the trust that the OAuth
   server gives to clients nobody verified, and documentation that ASVS Level 2 asks for.
-- Findings: 115 in all, 0 Blocker, 5 Major, 69 Minor and 41 Nit (61 `issue:`, 20 `suggestion:`, 29 `nit:` and 5
+- Findings: 114 in all, 0 Blocker, 4 Major, 69 Minor and 41 Nit (60 `issue:`, 20 `suggestion:`, 29 `nit:` and 5
   `question:`). Accepted deviations: 20.
 - To fix first:
   1. Some Markdown takes quadratic time to parse, so one page blocks the whole server (Content; ASVS 15.1.3, 15.2.2;
@@ -18,9 +18,7 @@
      registered (OAuth; ASVS 3.7.2, 10.4.7; CWE-601; `CON.10.A4`).
   3. New passwords are not checked against common or breached passwords (Login; ASVS 6.2.4, 6.2.12; NIST SP 800-63B-4
      3.1.1.2).
-  4. The admin passwords of `.env.example` and `README.md` are public, and the admin setup accepts them
-     (Configuration; ASVS 6.3.2; CWE-1392).
-  5. After the first password change, a user cannot change the password or end sessions, and the admin cannot end
+  4. After the first password change, a user cannot change the password or end sessions, and the admin cannot end
      them either (Login; ASVS 6.2.2, 7.4.3, 7.4.5).
 - Not covered by this review: everything under "Checks on the deployment" (the reverse proxy and its TLS, the host,
   the network, backups, log storage and the settings of the GitHub repository); a scan of the image for
@@ -1837,31 +1835,6 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 
 ### Configuration and container image
 
-#### issue: the admin passwords of `.env.example` and `README.md` are public, and the admin setup accepts them
-
-- Location: `.env.example`, lines 13–16; `README.md`, section "Users" (line 127) and section "Container image" (line
-  226); `src/features/users/service.ts`, lines 165–170, `ensureAdmin()`
-- Severity: Major. It needs an operator who uses `.env.example` as the template of a deployment, or copies the command
-  of the README, but the result is a takeover of the admin account by anyone who has read the repository, so it is at
-  least Major.
-- Category: security
-- Problem: `.env.example` sets `HIPPOWIKI_ADMIN_PASSWORD=change-me-at-first-login`, and the README sets
-  `HIPPOWIKI_ADMIN_PASSWORD=first-password` in the commands that set up the admin, in the image command as a complete
-  `podman run` line that is ready to copy. Both are public values that pass the password rules, so they act as
-  default passwords of the admin. `container-image.md` tells operators to keep the password in an environment file,
-  and `.env.example` is the only template. The first password stays valid until the first login, and the forced
-  change is made by whoever logs in first.
-- Impact: a deployment started with one of the example values and reachable before the real admin logs in can be
-  taken over.
-- Evidence: `passwordSchemaFor("admin").safeParse(...)` gives `success: true` in the project for both
-  `"change-me-at-first-login"` and `"first-password"`.
-- Suggestion (required): leave the line in `.env.example` empty, so that the admin setup fails until a password is
-  chosen, and write the README commands with a placeholder that cannot run as written, such as
-  `HIPPOWIKI_ADMIN_PASSWORD='<first password>'`, with a hint to generate one (`openssl rand -base64 24`); say in
-  `container-image.md` never to use an example value. Optionally, refuse the known example values in `ensureAdmin()`,
-  with a test that reads them from `.env.example` and `README.md`.
-- Reference: OWASP A07:2025 Authentication Failures; ASVS 6.3.2; CWE-1392; CWE-1188.
-
 #### issue: `HIPPOWIKI_ADMIN_PASSWORD` stays in the environment of the running server
 
 - Location: `scripts/image-start.sh`, lines 11–18; `spec/container-image.md`, sections "Configuration" and "What the
@@ -1991,6 +1964,11 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 - `.containerignore` lists `.env*` (except `.env.example`), `.git`, `node_modules`, `.next`, `build`, `coverage`,
   `playwright-report`, `test-results` and the generated client; a second check in the `Containerfile` refuses a `.env`
   in the standalone output.
+- Example admin passwords (ASVS 6.3.2, CWE-1392, CWE-1188): `.env.example` leaves `HIPPOWIKI_ADMIN_PASSWORD` empty,
+  so the admin setup fails until the operator sets one, and the README writes `'<first password>'` with a hint to
+  generate a password with `openssl rand -base64 24`. `adminPasswordSchema` makes `ensureAdmin()` refuse any value in
+  angle brackets as a placeholder. A unit test reads every value of the variable in `.env.example` and `README.md`
+  and checks that each is empty or refused, so no public value can become the password of the admin.
 - The start: the migration runs first and `set -eu` stops the start on failure; the variables are quoted; `exec`
   makes the server PID 1, and Next.js ends gracefully on SIGTERM.
 - Configuration: `DATABASE_URL` must be a `postgres(ql)://` URL, `HIPPOWIKI_PUBLIC_URL` an `https` origin (`http`
@@ -2648,8 +2626,8 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
   sizes, timeouts and rate limits; `/api/health` is ideally routed only to the health checker (Configuration).
 - Port 3000 of the container and the port of the database are reachable from no other host (Configuration).
 - The database role is not a superuser and has a strong password of its own (Configuration).
-- The environment file has mode 0600 or Podman secrets are used; `HIPPOWIKI_ADMIN_PASSWORD` is not a value of
-  `.env.example` or `README.md`, and the admin logs in right after the first start (Configuration).
+- The environment file has mode 0600 or Podman secrets are used; `HIPPOWIKI_ADMIN_PASSWORD` is chosen by the
+  operator, and the admin logs in right after the first start (Configuration).
 - Rootless Podman with `--cap-drop=ALL`, `--security-opt=no-new-privileges`, SELinux confinement, `--read-only` with a
   tmpfs for `.next/cache`, and limits for memory, CPU and processes (Configuration, `SYS.1.6.A15`, `SYS.1.6.A17`,
   `SYS.1.6.A21`, `SYS.1.6.A23`).

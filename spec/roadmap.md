@@ -187,8 +187,8 @@ All from "Current limits" in `container-image.md`:
   - The configuration: `HIPPOWIKI_TRUSTED_PROXIES` set to the real number of proxies, `HIPPOWIKI_PUBLIC_URL` set, no
     `next dev` reachable, no `NODE_TLS_REJECT_UNAUTHORIZED=0`, no proxy for outgoing requests, no `--inspect`,
     `HIPPOWIKI_LOG_CLIENT_ADDRESS=false`, none of the `BETTER_AUTH_*` variables set.
-  - Secrets: an environment file with mode 0600 or Podman secrets; `HIPPOWIKI_ADMIN_PASSWORD` not the value of
-    `.env.example` and removed once the admin exists; the admin logs in right after the first start; the operator
+  - Secrets: an environment file with mode 0600 or Podman secrets; `HIPPOWIKI_ADMIN_PASSWORD` chosen by the
+    operator and removed once the admin exists; the admin logs in right after the first start; the operator
     knows how to replace `AuthSecret`.
   - The network and the database: the ports of the container and of the database reachable from no other host;
     outgoing connections only to DNS and `443/tcp` on the public internet; the database role no superuser, with a

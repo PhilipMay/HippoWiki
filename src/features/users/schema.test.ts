@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import {
   ADMIN_NAME,
+  adminPasswordSchema,
   isAdmin,
   parseUserId,
   parseUserName,
@@ -175,6 +176,33 @@ describe("passwordSchemaFor", () => {
 
   it("reports every rule that a password breaks", () => {
     expect(errorsOf(passwordSchemaFor("alice"), "alice")).toEqual([
+      "Password must be at least 8 characters",
+      "Password must not be the same as the user name",
+    ]);
+  });
+});
+
+describe("adminPasswordSchema", () => {
+  it("rejects a placeholder in angle brackets", () => {
+    for (const password of ["<first password>", "<a-password>", "<line\nbreak>"]) {
+      expect(errorsOf(adminPasswordSchema, password), password).toEqual([
+        "Password must not be a placeholder such as <first password>",
+      ]);
+    }
+  });
+
+  it("accepts a password that only contains angle brackets", () => {
+    for (const password of ["a<b>c-password", "<password", "password>", " <first password>"]) {
+      expect(errorsOf(adminPasswordSchema, password), password).toEqual([]);
+    }
+  });
+
+  it("keeps the password rules of the admin", () => {
+    expect(errorsOf(adminPasswordSchema, "<x>")).toEqual([
+      "Password must be at least 8 characters",
+      "Password must not be a placeholder such as <first password>",
+    ]);
+    expect(errorsOf(adminPasswordSchema, ADMIN_NAME)).toEqual([
       "Password must be at least 8 characters",
       "Password must not be the same as the user name",
     ]);

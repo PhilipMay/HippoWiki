@@ -123,6 +123,7 @@ describe("ensureAdmin", () => {
   it.each([
     ["of 7 characters", "1234567", ["Password must be at least 8 characters"]],
     ["of 129 characters", "p".repeat(129), ["Password must be at most 128 characters"]],
+    ["that is a placeholder", "<first password>", ["Password must not be a placeholder such as <first password>"]],
   ])("reports an invalid password %s with its field error and writes nothing", async (_case, password, errors) => {
     await expect(ensureAdmin(password)).resolves.toEqual({
       ok: false,

@@ -87,4 +87,16 @@ export function passwordSchemaFor(userName: string) {
   return passwordSchema.refine((password) => password !== userName, PASSWORD_IS_USER_NAME_MESSAGE);
 }
 
+export const PASSWORD_IS_PLACEHOLDER_MESSAGE = "Password must not be a placeholder such as <first password>";
+
+/**
+ * The first password of the admin from `HIPPOWIKI_ADMIN_PASSWORD`: the password rules of the admin, and not a
+ * placeholder in angle brackets such as the `<first password>` of the README, which is public and could otherwise be
+ * copied with its quotes into a deployment.
+ */
+export const adminPasswordSchema = passwordSchemaFor(ADMIN_NAME).refine(
+  (password) => !/^<[\s\S]*>$/.test(password),
+  PASSWORD_IS_PLACEHOLDER_MESSAGE,
+);
+
 export type PasswordFieldErrors = { password?: string[] };

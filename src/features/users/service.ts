@@ -11,8 +11,8 @@ import { generateFirstPassword } from "@/features/users/password";
 import { newUserData } from "@/features/users/records";
 import {
   ADMIN_NAME,
+  adminPasswordSchema,
   isAdmin,
-  passwordSchemaFor,
   userInputSchema,
   type PasswordFieldErrors,
   type UserFieldErrors,
@@ -147,8 +147,8 @@ export type EnsureAdminError = PasswordMissing | InvalidPassword | Busy | Failed
 
 /**
  * Makes sure that the admin account exists. If a user named `admin` exists, it does nothing and does not look at the
- * password. Otherwise it creates the admin with the given password, which has to follow the password rules and which
- * the admin must change at the first login.
+ * password. Otherwise it creates the admin with the given password, which has to follow the password rules, must not
+ * be a placeholder such as `<first password>`, and must be changed by the admin at the first login.
  */
 export async function ensureAdmin(password: string | undefined): Promise<Result<AdminSetup, EnsureAdminError>> {
   try {
@@ -163,7 +163,7 @@ export async function ensureAdmin(password: string | undefined): Promise<Result<
   }
 
   if (password === undefined || password === "") return { ok: false, error: { code: "password-missing" } };
-  const parsed = passwordSchemaFor(ADMIN_NAME).safeParse(password);
+  const parsed = adminPasswordSchema.safeParse(password);
   if (!parsed.success) {
     const fieldErrors = { password: z.flattenError(parsed.error).formErrors };
     return { ok: false, error: { code: "invalid-input", fieldErrors } };

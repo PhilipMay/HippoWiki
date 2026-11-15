@@ -53,7 +53,10 @@ Tests: `e2e/login.spec.ts`, `e2e/change-password.spec.ts`, `e2e/users.spec.ts`, 
   password from `HIPPOWIKI_ADMIN_PASSWORD` when there is none, as a first password that must be changed at the first
   login. When the admin exists, it does nothing and does not look at the password; changing the variable later does
   not change the password.
-- A missing or invalid password creates nothing, and the setup fails. Two setups at the same time create one admin.
+- A missing or invalid password creates nothing, and the setup fails. A value in angle brackets, such as the
+  `<first password>` of the README, counts as invalid: it is a placeholder (`adminPasswordSchema` in
+  `src/features/users/schema.ts`). `.env.example` leaves the variable empty, so that no public value can become the
+  password of the admin. Two setups at the same time create one admin.
 - Only the admin setup reads `HIPPOWIKI_ADMIN_PASSWORD`; the server never does.
 - In development it runs as `npm run admin:setup`; in the container image on every start (see `container-image.md`).
 
