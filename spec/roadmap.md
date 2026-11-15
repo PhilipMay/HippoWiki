@@ -71,7 +71,8 @@ listed first; there is no order across themes.
 - Admin password command: reset a lost admin password with a command of `scripts/admin.ts` instead of a change in
   the database (`users-and-login.md`).
 - Deactivating and reactivating users: stop a user from logging in, and let them back in later; deactivating must
-  also stop the user's API tokens (`users-and-login.md`, `api-tokens.md`).
+  also stop the user's API tokens, and decide what happens to a folder whose last Owner is deactivated or deleted
+  (`users-and-login.md`, `api-tokens.md`, `folder-roles.md`).
 - First password expiry: a generated first password stops working after some time (`users-and-login.md`).
 - Breached password check: check new passwords against Have I Been Pwned by k-anonymity (only the first five
   characters of the SHA-1 hash leave the server), as an option for deployments that allow outgoing requests
@@ -81,12 +82,8 @@ listed first; there is no order across themes.
 
 ## Rights
 
-- Folder rights: read, write and manage rights per folder; content without a right never shows, not in lists,
-  search, links or history, and its address answers like a missing one (`users-and-login.md`,
-  `content-structure.md`).
-- Assigning and removing rights: give users rights on a folder and take them away.
-- Own rights list: each user sees the folders they have rights on, and which.
-- Rights overview for all folders: who has which rights on every folder.
+- MCP rules for folder roles: MCP reads only what the folder roles of the user allow; today a token or connected app
+  reads every folder of a user, also one without a role (`folder-roles.md`, `mcp.md`).
 - Public content: pages that can be read without a login, rendered on the server so that search engines see them.
   Needs a time limit and a depth limit on the Markdown parse at save time and a stored or cached render, since
   anonymous visitors can then trigger renders (`pages.md`, `users-and-login.md`).
@@ -95,7 +92,8 @@ listed first; there is no order across themes.
 
 - Ending sessions on password reset and deactivation: end all sessions of a user whose password is reset or who is
   deactivated, as a password change does already.
-- Audit log: record logins, changes of rights and password changes and resets (`users-and-login.md`).
+- Audit log: record logins, changes of folder roles and password changes and resets (`users-and-login.md`,
+  `folder-roles.md`).
 - Unlock command: a command of `scripts/admin.ts` that deletes the rows of `LoginAttempt` and `LoginWindow` of a user
   name and so ends its waits after failed logins; this does not stop a lockout, it only shortens it.
 - Login limit per client address: a limit across all user names per client address group, next to the two limits per

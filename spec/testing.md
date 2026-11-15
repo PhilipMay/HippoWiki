@@ -193,7 +193,13 @@ How the code is tested. Commands are listed in `README.md`.
     hash is stored, and returns the row with the token. It has the scope `read`, a unique name and an expiry 90 days
     ahead unless they are given; any field, e.g. `expiresAt` or `lastUsedAt`, can be set.
   - `createFolder()` inserts a folder directly into the test database with a unique name; any field, e.g. `name` or
-    `updatedAt`, can be set.
+    `updatedAt`, can be set. `roles` gives users roles on it, e.g. `roles: [{ user: bob, role: "reader" }]`, and
+    `roles: []` none. Without `roles` the known user `alice` is its Owner when that user exists, as after
+    `resetTestDatabase()`, so that the end-to-end tests, which run as `alice`, see every folder they create; the
+    integration tests start from empty tables and give roles where a test needs them, or create their actor with the
+    id of `alice` (`KNOWN_USER.id`) to get the same default. `createTab()` and `createPage()` create their folder with
+    the same default.
+  - `createFolderRole()` gives the user given as `user` the role given as `role` on the folder given as `folder`.
   - `createTab()` inserts a tab with a unique name into the folder given as `folder`; without one, it creates a folder
     for the tab.
   - `createPage()` inserts a page with a unique name: into the tab given as `tab`, or directly into the folder given

@@ -2,7 +2,7 @@
 
 The content structure as built: folders, optional tabs inside a folder and Markdown pages, and the addresses they have.
 What a page itself is (its content, derived title, editor and rendering) is described in `pages.md`, deleting and
-restoring pages in `page-deletion.md`.
+restoring pages in `page-deletion.md`, and who sees and does what with a folder in `folder-roles.md`.
 
 Code: `src/features/folders/` (folders and tabs), `src/features/pages/` (pages), `src/lib/names.ts` (the name rule),
 `src/lib/addresses.ts` (building and parsing addresses), the models `Folder`, `Tab` and `Page` in
@@ -18,7 +18,7 @@ editor: the writes of `src/features/folders/service.ts` and `src/features/pages/
 Content has three levels:
 
 - **Folder**: the top level. A folder groups related content, such as one project, team or topic. Folders are also the
-  unit that access rights will later be attached to.
+  unit that roles are given on: a user sees only the folders with a role of their own (see `folder-roles.md`).
 - **Tab**: an optional section inside a folder, such as "guides", "meetings" or "archive".
 - **Page**: a Markdown document. A page lives either directly in a folder or in one tab of that folder, and so always in
   exactly one folder.
@@ -74,6 +74,7 @@ hold pages directly and have tabs at the same time.
   | folder       | `new`            | the editor for a new page, the folder itself preselected |
   | folder       | `rename`         | the "Rename folder" dialog                               |
   | folder       | `new-tab`        | the "New tab" dialog                                     |
+  | folder       | `give-role`      | the "Give role" dialog (see `folder-roles.md`)           |
   | tab          | `new`            | the editor for a new page, the tab preselected           |
   | tab          | `rename`         | the "Rename tab" dialog                                  |
   | page         | `edit`           | the edit form (see `pages.md`)                           |
@@ -81,7 +82,10 @@ hold pages directly and have tabs at the same time.
   | page         | `delete`         | the "Delete page" dialog                                 |
   | deleted page | `restore`        | the "Restore page" dialog                                |
 
-- A folder address also has the view `?view=all`, the list of all its pages.
+- A folder address also has the views `?view=all`, the list of all its pages, and `?view=roles`, who has which role on
+  the folder (see `folder-roles.md`).
+- An action or view is offered only to the roles that may use it; one beyond the user's role shows the not-found page,
+  before the content is read, like an unknown one (see `folder-roles.md`).
 - Each address accepts only its own actions and views. An unknown, empty or repeated action or view, one of another
   address, and a view together with an action show the not-found page.
 - Saving leads to the address of the item as stored, never to one built from submitted values. Cancelling and the
@@ -90,11 +94,15 @@ hold pages directly and have tabs at the same time.
 ## Routes
 
 - `/` redirects to `/folders`; the app bar links to `/folders`.
-- `/folders`: the folders with their last update and a "New folder" button.
-- `/folders/<folder>`: the folder with "Rename", "All pages", "Deleted pages", "New tab" and "New page", and one list
-  of its contents: first the pages placed directly in the folder, then its tabs.
+- `/folders`: the folders with a role of the user, with their last update and the own role, and a "New folder"
+  button; without any folder a hint that the user can create one or ask an Owner of a folder for a role.
+- `/folders/<folder>`: the folder with the own role, the buttons the role includes ("Rename" for an Owner, "All pages"
+  and "Roles" for every role, "Deleted pages" and "New tab" for a Manager, "New page" for a Writer), and one list of
+  its contents: first the pages placed directly in the folder, then its tabs.
 - `/folders/<folder>?view=all`: all pages of the folder, with their tab.
-- `/folders/<folder>/<tab>`: the tab with "Rename" and "New page", and the pages of the tab.
+- `/folders/<folder>?view=roles`: the roles view (see `folder-roles.md`).
+- `/folders/<folder>/<tab>`: the tab with "Rename" for a Manager and "New page" for a Writer, and the pages of the
+  tab.
 - Page addresses are described in `pages.md`, the addresses under `/deleted-pages` in `page-deletion.md`.
 - Every address below a folder has a breadcrumb back to the folder list and the folder.
 
@@ -111,14 +119,17 @@ hold pages directly and have tabs at the same time.
 
 ## Only users see content
 
-- Folders, tabs, pages and deleted pages are for users only (see "Account types" in `users-and-login.md`). An admin
-  reaches none of it, not even the names, through any address, form, action or MCP tool.
+- Folders, tabs, pages and deleted pages are for users only (see "Account types" in `users-and-login.md`), and in the
+  browser only for the users with a role on the folder, as far as the role allows (see `folder-roles.md`). An admin
+  reaches no content through any address, form, action or MCP tool; an admin sees the names of the folders and who has
+  which role on them only on the overview `/folder-roles`.
 - Every address under `/folders` and `/deleted-pages` shows an admin the not-found page, with and without an action
   or a view, also for items that exist, so that it reveals nothing, not even whether an item exists. A form of the
-  content that an admin submits shows the not-found page and writes nothing.
-- The check lives in the folders and pages services: every read and write takes the acting user. For an admin every
-  read returns nothing and every write is refused and logged, before anything else is checked and without asking the
-  database.
+  content that an admin submits shows the not-found page and writes nothing. The same holds for a user and a folder
+  without a role.
+- The check lives in the folders and pages services: every read and write takes the acting user and the channel of the
+  call. For an admin every read returns nothing and every write is refused and logged, before anything else is checked
+  and without asking the database; then the role of a user is checked (see `folder-roles.md`).
 
 ## Last editor
 
@@ -173,8 +184,7 @@ hold pages directly and have tabs at the same time.
 ## Current limits
 
 - Folders and tabs cannot be deleted. Deleted pages cannot be removed for good (see `page-deletion.md`).
-- No rights per folder: every user can read and change all content, and no admin sees any of it (see
-  `users-and-login.md`).
+- MCP reads every folder of a user, also one without a role (see `folder-roles.md`).
 - A page cannot be moved to another folder, a tab cannot be moved to another folder.
 - No redirects from old addresses after a rename or move.
 - No history, no handling of concurrent changes, no links between pages, no search.

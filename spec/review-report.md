@@ -342,7 +342,8 @@ finding of the review report" in `step-plan-workflow.md` describes.
   (`src/features/tokens/service.ts`); the revoke dialog of `/account` accepts only the caller's own token ids;
   `listTokens()` filters by user; codes and grants are bound to the user of the session. On the local server,
   `revokeToken` called as `dave` with the id of `erin`'s token gives `404` with `NEXT_HTTP_ERROR_FALLBACK;404`, and the
-  token stays. Content has no owner on purpose (see "Accepted deviations").
+  token stays. Content is checked by the role of the user on its folder in the browser (`folder-roles.md`); through
+  MCP a user reads every folder (see "Accepted deviations").
 - Mass assignment (ASVS 8.2.3, 15.3.3): every spread of parsed data comes from a `z.object` schema, which strips
   unknown keys; the last editor always comes from `requireUser()`, the scopes from the token schema or the fixed
   scopes of a grant, `mustChangePassword` is only ever set to `true` for a new user, and the field is `input: false` in
@@ -1455,7 +1456,7 @@ scope="read"`.
   (names, descriptions, schemas and instructions are constants), MCP05 and MCP07 (above) hold; MCP04 belongs to the
   area "Supply chain"; MCP06 and MCP08 are findings above; MCP09 (shadow servers) does not apply to the code, since the
   app runs one server behind the token check; MCP10: a new server is built per request and nothing is shared between
-  callers, and a grant reaches every folder, as every user can read all.
+  callers, and a grant reaches every folder of its user, as MCP ignores folder roles (see `folder-roles.md`).
 
 ### Content: pages, folders, tabs, deletion and rendering
 
@@ -2417,9 +2418,10 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
 
 ## Accepted deviations
 
-- ASVS 8.2.2 and 8.4.1 for content (Access control): every user may read and change all folders, tabs and pages, so
-  content has no owner to check. Documented in `users-and-login.md` ("Current limits": no rights per folder) and
-  `mcp.md` (a caller reads everything, like every user).
+- ASVS 8.2.2 and 8.4.1 for content read through MCP (Access control): in the browser a user sees and changes only what
+  the role on a folder allows, but a token or connected app of a user reads every folder, also one without a role of
+  the user. Documented in `folder-roles.md` ("Decisions" and "Current limits") and `mcp.md` ("The tokens it accepts"
+  and "Current limits").
 - NIST SP 800-63B-4 3.2.2, disabling an account after 100 failures in a row (Login): `users-and-login.md`,
   "Decisions": "An account is never disabled after many failures … with no mail and no password reset there would be
   no way back in." The hour window per name caps the guesses at 20 per hour instead.

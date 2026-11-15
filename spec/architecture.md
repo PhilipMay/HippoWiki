@@ -25,7 +25,9 @@ How the code is organised and which patterns new code follows. The technology st
   - `forms.ts`: what only a form needs: the `parse*FormData` functions, the form states, the types of the form
     actions and the names of form fields. It has no server-only imports, so Client Components can use it.
   - `queries.ts` and `actions.ts`: the adapters between the web and the service
-  - The features are `folders` (folders and their tabs), `pages`, `users` (the accounts), `auth` (login, logout,
+  - The features are `folders` (folders and their tabs), `pages`, `folder-roles` (the roles of users on folders, with
+    `roles.ts` for the roles and the lowest role of each function, which services and routes share), `users` (the
+    accounts), `auth` (login, logout,
     the session and the login wait, with `session.ts` for who is calling, see "Login and sessions"), `tokens` (the
     API tokens and the check of a bearer token, with `secret.ts` for the token and its hash), `mcp` (the MCP
     server: `tools.ts` with its tools and `http.ts`, the adapter of the route `/mcp`, see "Reads and writes") and
@@ -91,11 +93,20 @@ How the code is organised and which patterns new code follows. The technology st
     changes for a user, and the token service answers `null` and `not-allowed` for an admin. Who the actor is, the
     adapters find out from the session (see "Login and sessions").
   - Every read and write of content (folders, tabs, pages and deleted pages) takes the acting user as its first
-    argument as well. An admin sees no content: for an admin a read returns `null` and a write `not-allowed`, logged
-    with the actor id, before anything else is checked (see "Only users see content" in `content-structure.md`). A
-    write stores the user as the last editor of the item (see "Last editor" there). It parses the actor's id like
-    every other id; a malformed id and an actor that does not exist give `failed` and are logged as an error, because
-    only a broken caller can cause them. Pure helpers such as `directPagesFirst()` take no actor.
+    argument as well, together with the channel of the call, `browser` or `mcp` (`ContentActor` and `BrowserActor` in
+    `src/features/folder-roles/service.ts`; `inBrowser()` and `inMcp()` build them), which no caller can leave out.
+    The queries and actions pass `browser`, the MCP tools `mcp`; a write takes only `browser`. An admin sees no
+    content: for an admin a read returns `null` and a write `not-allowed`, logged with the actor id, before anything
+    else is checked (see "Only users see content" in `content-structure.md`). Then, for the browser, the role of the
+    actor on the folder is checked with the functions of the folder-roles service and `mayDo()` of `roles.ts`, before
+    any other database work that could tell whether an item exists: a read without the needed role returns `null`, a
+    write `not-allowed`, logged with the folder, tab or page and the role (see `folder-roles.md`). A read for MCP
+    ignores roles. A write stores the user as the last editor of the item (see "Last editor" there). It parses the
+    actor's id like every other id; a malformed id gives `failed` and is logged as an error, because only a broken
+    caller can cause it. Pure helpers such as `directPagesFirst()` take no actor.
+  - A route decides which buttons, actions and views to offer with the role that the folder read returns and
+    `mayDo()` of `roles.ts`, the same function the services use, so that a route and a service never disagree about a
+    role. An action or view beyond the role shows the not-found page before the content is read.
   - The auth service is the only code that uses Better Auth (`getAuth()` from `src/lib/auth.ts`). It takes the
     `Headers` of the request, a web standard, because the session lives in a cookie, and returns the response headers
     that set or clear it. `logIn()` also takes the client address group of the request as a plain string, after the
@@ -210,7 +221,8 @@ The feature is described in `users-and-login.md`. What every new route, query an
 - All content lives under `/folders`, deleted pages under `/deleted-pages`; the addresses are described in
   `content-structure.md`. The login is at `/login`, the forced password change at `/change-password` and the user
   list at `/users` (see `users-and-login.md`), the own account with the API tokens at `/account` (see
-  `api-tokens.md`), the MCP endpoint at `/mcp` (see `mcp.md`) and the endpoints of OAuth under `/oauth/` and
+  `api-tokens.md`), the overview of the folder roles for admins at `/folder-roles` (see `folder-roles.md`), the MCP
+  endpoint at `/mcp` (see `mcp.md`) and the endpoints of OAuth under `/oauth/` and
   `/.well-known/` (see `oauth.md`). Routes, Server Actions and links build them with the helpers in
   `src/lib/addresses.ts` instead of writing paths by hand.
 - What an address opens is given in its query string: an action as `?action=<action>`, a view as `?view=<view>`.
@@ -241,19 +253,21 @@ The feature is described in `users-and-login.md`. What every new route, query an
 - The name of a migration directory must sort after all existing ones, because migrations are applied in the order of
   their names.
 - What Prisma cannot express in the schema, such as the check constraint that keeps `AuthSecret` to a single row, the
-  one that makes a row of `ApiToken` either a token or a grant, or the trigger that refuses every update that changes
-  the type of a `User` (`prisma/migrations/20261115120000_add_user_types/`), is
+  one that makes a row of `ApiToken` either a token or a grant, the trigger that refuses every update that changes
+  the type of a `User` (`prisma/migrations/20261115120000_add_user_types/`), or the trigger that refuses every role
+  of an admin (`prisma/migrations/20261115210306_add_folder_roles/`), is
   added to the SQL of the migration by hand (`npm run db:migrate -- --name <change> --create-only`, edit the file,
   then `npm run db:migrate`).
 - Every model has a UUID id generated by PostgreSQL (`gen_random_uuid()`) and stores its times as `timestamptz(3)`.
-  The foreign keys between folders, tabs and pages restrict deleting (`onDelete: Restrict`), so that no content
-  disappears by a cascade; the sessions, accounts, API tokens and OAuth codes of a user are deleted with the user,
+  The foreign keys between folders, tabs and pages, and those of a role to its folder and user, restrict deleting
+  (`onDelete: Restrict`), so that no content and no role disappears by a cascade; the sessions, accounts, API tokens and OAuth codes of a user are deleted with the user,
   and the codes and grants of an OAuth client with the client (`onDelete: Cascade`).
 - The tables `User`, `Session`, `Account` and `Verification` have the shape Better Auth expects; a change to them
   follows the schema of the installed Better Auth version.
 - Writes that must succeed together run in one interactive transaction of the Prisma client
   (`getDb().$transaction(async (tx) => ...)`), such as the two counts of a login in `reserveAttempt()` of the auth
-  service. A conditional write inside it that finds its row changed throws an error that only the caller knows, which
+  service. A check that must hold until the write, such as that a folder keeps an Owner, reads its rows with
+  `SELECT ... FOR UPDATE` in the same transaction (`changeRole()` and `removeRole()` of the folder-roles service). A conditional write inside it that finds its row changed throws an error that only the caller knows, which
   rolls the transaction back, and the caller reads again.
 - Prisma is used for CRUD. The `fullTextSearchPostgres` preview feature is not enabled; search uses PostgreSQL
   full-text search directly.

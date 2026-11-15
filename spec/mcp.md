@@ -30,7 +30,8 @@ Tests: `e2e/mcp.spec.ts`, `e2e/oauth.spec.ts` for the access tokens of OAuth, an
 - Every request needs a bearer token with the scope `read`: an API token of a user, or, with OAuth on, the access
   token of a grant. The check is `authenticateToken()` of the token service (see `api-tokens.md`).
 - The caller acts as the user of the token: the adapter hands that user to the tools, and the services decide what it
-  may read. Today a user reads everything, because there are no rights per folder yet (see `users-and-login.md`).
+  may read. The tools pass the channel `mcp`, for which the services ignore folder roles: a user reads every folder
+  through MCP, also one that the browser hides because the user has no role on it (see `folder-roles.md`).
 - `/mcp` serves users only. Every token of an admin is refused, an API token or the access token of a grant, because
   the check of a bearer token looks at the type of the account (see "No tokens for admins" in `api-tokens.md`); such
   a request reaches no tool.
@@ -104,5 +105,6 @@ What holds for all of them:
 - no SSE, no sessions, no notifications and no subscriptions
 - no rate limits of MCP requests
 - no CORS: a client that runs in a browser on another origin cannot call `/mcp`
-- a caller reads everything, like every user; when folder rights come, the tools must follow them
+- a caller reads every folder, also one without a role of the user, which the browser hides; MCP gets rules for folder
+  roles of its own later (see "MCP rules for folder roles" in `roadmap.md`)
 - no tool that lists the accounts

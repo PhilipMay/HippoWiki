@@ -3,8 +3,8 @@
 The users and login feature as built: HippoWiki can only be used after logging in with a user name and a password.
 Every account is of one of two types, chosen when it is created and never changed: an admin manages the accounts and
 sees no content, a user works with the folders, tabs and pages and manages no accounts. The first admin is created on
-the first start; admins create all other accounts, and every account sets its own password at the first login. Every
-user can read and change all content; there are no rights per folder.
+the first start; admins create all other accounts, and every account sets its own password at the first login. What a
+user sees and does with a folder depends on the user's role on it (see `folder-roles.md`).
 
 Code: `src/features/users/` (the accounts), `src/features/auth/` (login, logout, the session, the login wait and the
 forced password change), `src/lib/auth.ts` (the Better Auth instance), `src/lib/client-address.ts`,
@@ -62,10 +62,12 @@ and `src/lib/client-address.test.ts`.
   `src/features/users/user-type.ts` is the one place that decides it). The type, not the name, decides what an account
   may do.
 - An admin logs in, changes the own first password, sees the user list and creates accounts of either type. An admin
-  sees no folder, tab, page or deleted page, not even their names, has no API tokens and connects no apps (see
-  `content-structure.md` and `api-tokens.md`).
-- A user logs in, changes the own first password, and reads and changes all folders, tabs, pages and deleted pages,
-  holds API tokens and connected apps and uses the wiki through MCP. A user sees the user list but creates no accounts.
+  sees no tab, page or deleted page, has no API tokens and connects no apps (see `content-structure.md` and
+  `api-tokens.md`). An admin sees the names of the folders and who has which role on them on the overview
+  `/folder-roles`, but never has a role, changes no role and creates no folder (see `folder-roles.md`).
+- A user logs in, changes the own first password, and sees and changes the folders, tabs, pages and deleted pages as
+  far as the role on each folder allows, creates folders, holds API tokens and connected apps and uses the wiki
+  through MCP. A user sees the user list but creates no accounts.
 - The type is chosen when an account is created and never changes, by anyone and in any way: no page, form, dialog,
   tool or command offers to change it, and a trigger of the migration refuses every update of the database that
   changes it. A person who needs both jobs has two accounts.
@@ -98,8 +100,9 @@ and `src/lib/client-address.test.ts`.
 - An unknown user name and a wrong password get the same answer, and both compute one hash, so nobody can find out
   which names exist. A name that breaks the name rule and a password of more than 128 characters cannot belong to a
   user; they are answered like a wrong password, without a hash.
-- The header shows "Folders" for a user, "Users" for every account, the name of the logged-in user, which links to
-  the own account `/account`, and "Log out", a plain form that works without JavaScript. An admin has no "Folders".
+- The header shows "Folders" for a user, "Users" for every account, "Folder roles" for an admin, the name of the
+  logged-in user, which links to the own account `/account`, and "Log out", a plain form that works without
+  JavaScript. An admin has no "Folders".
   Logging out ends the session of the browser and leads to the login page; the other sessions of the user stay.
 - After a login and a logout every route is revalidated, so that the header and cached pages follow the new session.
 - Better Auth is called only on the server. Its route handler is not mounted, so there is no `/api/auth/...` and no
@@ -281,9 +284,10 @@ the authentication guide of Next.js describes:
 - An account is never disabled after many failures, unlike NIST SP 800-63B-4 asks after 100 failures in a row: with
   no mail and no password reset there would be no way back in.
 - Two types of account, so that whoever manages the accounts does not get access to the content on the way. An admin
-  sees no content at all, not even folder names, as the cleanest line between running the wiki and reading it; whether
-  admins see folder names is decided again when rights per folder come. Rejected: an admin who sees the folder list
-  without its contents.
+  sees no content, as the cleanest line between running the wiki and reading it. With folder roles an admin sees the
+  folder names and who has which role on them, on an overview of its own, so that whoever manages the accounts can
+  tell who has access to what, but never gets a role (see `folder-roles.md`). Rejected: an admin who sees the folder
+  list without its contents.
 - The type is fixed at the creation, so that no account can gain or lose access to the content or to the management of
   accounts later on: an admin cannot make an account a user to read the content, and a user can never be raised to an
   admin. The database refuses a change as well, so that no code and no command can make one. Rejected: changing the
@@ -336,7 +340,7 @@ the authentication guide of Next.js describes:
 
 ## Current limits
 
-- no rights per folder: every user can read and change all content, and no admin sees any of it
+- no groups of users for folder roles: every role is given to one user (see `folder-roles.md`)
 - no change of the type of an account; a person who needs the other type gets a second account
 - no public content: nothing can be read without a login (see "Public content" in `roadmap.md`)
 - no way to reset a lost password of an admin; for now the only way is a change directly in the database or a second
@@ -345,9 +349,10 @@ the authentication guide of Next.js describes:
 - no filter of the user list
 - no change of the own password after the forced password change
 - a password change does not end the API tokens of the user; only revoking and expiry do (see `api-tokens.md`)
-- no deactivating or deleting of users; deactivating, when it comes, must also stop the user's API tokens. A user who
-  has edited content cannot be deleted for good at all, because the key from content to its last editor restricts
-  deleting (`onDelete: Restrict`, see `content-structure.md`)
+- no deactivating or deleting of users; deactivating, when it comes, must also stop the user's API tokens and decide
+  what happens to a folder whose last Owner it concerns (see `folder-roles.md`). A user who has edited content or has
+  a role cannot be deleted for good at all, because the keys from content to its last editor and from a role to its
+  user restrict deleting (`onDelete: Restrict`, see `content-structure.md`)
 - no expiry of first passwords
 - no online check of new passwords against breached passwords, only the bundled list (see "Breached password check"
   in `roadmap.md`)

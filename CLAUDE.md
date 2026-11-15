@@ -42,11 +42,10 @@ The specification lives in the `spec/` directory. This catalog should always be 
   metadata document and by registration with its limit, the safe fetch of metadata documents, the authorization
   request and the consent page, codes, grants, refresh with rotation, the token endpoint, secrets, routes, decisions,
   limits)
-- `spec/folder-roles-requirements.md`: the approved requirements of folder roles (the roles Reader, Writer,
-  Manager and Owner per user and folder, what each may do in the browser, creating folders, giving roles, MCP, existing
-  installations)
-- `spec/folder-roles-steps.md`: the step plan of folder roles (roles in the database, folders by role, functions by
-  role, the roles view, giving, changing and removing roles, the admin overview, wrap-up)
+- `spec/folder-roles.md`: folder roles as built (the roles Reader, Writer, Manager and Owner per user and folder and
+  what each may do in the browser, admins never have a role, what a user sees and does, creating folders, the roles
+  view, giving, changing and removing roles with the last Owner kept, the admin overview `/folder-roles`, MCP, existing
+  installations, decisions, limits)
 - `spec/roadmap.md`: backlog of candidate features, grouped by theme, and things still to check
 - `spec/issue-report.md`: how to report issues found in code and document reviews
 - `spec/review-report.md`: the report of the security and code review (scope and method, standards and target level,

@@ -37,7 +37,8 @@ given as `?action=<action>` (see `content-structure.md`).
   client that it has a title, then asks for the name and the place in the "Save page" dialog, which shows the address
   the page will get. Saving shows the new page.
 - The page address: the breadcrumb, the last update with its last editor (see "Last editor" in
-  `content-structure.md`), "Edit", "Move or rename" and "Delete", then the rendered content.
+  `content-structure.md`), "Edit" and "Move or rename" for a Writer and "Delete" for a Manager (see
+  `folder-roles.md`), then the rendered content.
   The content's `#` heading is the page's only level-one heading; the browser tab shows the stored title.
 - `?action=edit`: the content in the editor; no title or name field. Saving shows the page.
 - `?action=move-or-rename`: see `content-structure.md`. `?action=delete`: see `page-deletion.md`.
@@ -64,8 +65,7 @@ given as `?action=<action>` (see `content-structure.md`).
 
 ## Current limits
 
-- no rights per folder: every user can read and change every page, and no admin sees any (see "Only users see
-  content" in `content-structure.md`)
+- every user with a role on a folder reads all its pages; there are no roles per page (see `folder-roles.md`)
 - only the last editor of a page is stored, not who created it
 - a deleted page cannot be removed for good and is restored only into its own folder (see `page-deletion.md`)
 - no search, no `[[wiki links]]`, no history, no attachments

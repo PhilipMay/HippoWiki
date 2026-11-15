@@ -11,9 +11,10 @@ The prototype manages wiki pages written in Markdown, organises them in folders 
 PostgreSQL: create, view, edit, move and rename pages, create and rename folders and tabs, and delete pages and
 restore them from the deleted pages of their folder. Folders and tabs cannot be deleted yet.
 
-The wiki can only be used after a login. Every account is either an admin, who manages the accounts and sees no
-content, or a user, who reads and changes all content and creates API tokens for scripts and tools on the own account
-page; admins create the accounts and choose their type. AI assistants read the wiki
+The wiki can only be used after a login. Every account is either an admin, who manages the accounts, sees no content
+and only an overview of who has which role on which folder, or a user, who creates folders, works with the folders on
+which the user has a role (Reader, Writer, Manager or Owner) and creates API tokens for scripts and tools on the own
+account page; admins create the accounts and choose their type, and the Owners of a folder give the roles on it. AI assistants read the wiki
 through an MCP server, with an API token or, for connectors such as the ones of claude.ai and ChatGPT, through OAuth
 (see "MCP server").
 

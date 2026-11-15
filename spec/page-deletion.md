@@ -11,7 +11,7 @@ the dialogs and lists in `components/`), routes under `src/app/deleted-pages/`. 
 ## Deleting
 
 - A page is deleted from its page address with "Delete" (`?action=delete`), after a confirmation. Deleting leads to
-  the folder or tab the page was in.
+  the folder or tab the page was in. Deleting needs the role Manager or Owner on the folder (see `folder-roles.md`).
 - A deleted page keeps its content and its folder, but forgets its tab: the wiki only knows which folder it belongs to.
 
 ## Deleted pages are invisible
@@ -23,10 +23,12 @@ the dialogs and lists in `components/`), routes under `src/app/deleted-pages/`. 
 - A deleted page cannot be edited, moved or renamed; trying it answers as for a page that does not exist.
 - Like all content, deleted pages are for users only: an admin sees no deleted page and restores none (see "Only users
   see content" in `content-structure.md`).
+- The deleted pages of a folder, reading one and restoring it need the role Manager or Owner on the folder; for every
+  other role their addresses show the not-found page (see `folder-roles.md`).
 
 ## Deleted pages of a folder
 
-- The folder address links to "Deleted pages", `/deleted-pages/<folder>`: the deleted pages of the folder, newest
+- The folder address links a Manager and an Owner to "Deleted pages", `/deleted-pages/<folder>`: the deleted pages of the folder, newest
   first, with name, title, time of deletion and the user who deleted it. The list does not show where in the folder a
   page was.
 - `/deleted-pages/<folder>/<id>` shows a deleted page read-only, with the time of deletion, the user who deleted it
@@ -62,5 +64,6 @@ the dialogs and lists in `components/`), routes under `src/app/deleted-pages/`. 
 ## Current limits
 
 - Folders and tabs cannot be deleted.
+- Only a Manager and an Owner of the folder delete and restore pages; a Writer cannot undo a page created by mistake.
 - A deleted page cannot be removed for good; there is no emptying of all deleted pages and no automatic cleanup.
 - A page is restored only into its own folder.
