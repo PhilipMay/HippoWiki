@@ -570,8 +570,7 @@ finding of the review report" in `workflow.md` describes.
   and `hippowiki2026` (each answered with `x-action-redirect: /folders`); only the user name itself is refused.
 - Suggestion (required): check every new password, the admin setup included, against a bundled list of at least the
   10,000 most common passwords that meet the minimum length, and against a documented list of context words; name the
-  list in `users-and-login.md`. A check against breached passwords by k-anonymity is optional where outgoing requests
-  are allowed.
+  list in `users-and-login.md`.
 - Reference: OWASP A07:2025 Authentication Failures; ASVS 6.2.4, 6.2.12, 6.1.2, 6.2.11; NIST SP 800-63B-4 3.1.1.2;
   CWE-521.
 

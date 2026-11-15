@@ -35,6 +35,8 @@ The specification lives in the `spec/` directory. This catalog should always be 
   metadata document and by registration with its limit, the safe fetch of metadata documents, the authorization
   request and the consent page, codes, grants, refresh with rotation, the token endpoint, secrets, routes, decisions,
   limits)
+- `spec/password-blocklist-steps.md`: step plan for refusing common passwords and passwords built from context words
+  (the list of common passwords, the rules in the password schema, the fixed finding of the review report)
 - `spec/roadmap.md`: backlog of candidate features, grouped by theme, and things still to check
 - `spec/issue-report.md`: how to report issues found in code and document reviews
 - `spec/review-report.md`: the report of the security and code review (scope and method, standards and target level,

@@ -75,7 +75,9 @@ listed first; there is no order across themes.
 - Several admin accounts: more admins than the one account named `admin`.
 - First password expiry: a generated first password stops working after some time (`users-and-login.md`).
 - Common password list: refuse passwords that are on a list of common passwords.
-- Have I Been Pwned check: refuse passwords that are known from data breaches.
+- Breached password check: check new passwords against Have I Been Pwned by k-anonymity (only the first five
+  characters of the SHA-1 hash leave the server), as an option for deployments that allow outgoing requests
+  (`users-and-login.md`).
 - Password reset without the admin: users reset a lost password themselves, which needs a mail provider
   (`tech.md`).
 
