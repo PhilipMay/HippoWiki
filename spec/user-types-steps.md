@@ -22,7 +22,7 @@ step below.
 ## Checklist
 
 - [x] Account types in the database
-- [ ] The user list for every account
+- [x] The user list for every account
 - [ ] Where the login leads
 - [ ] No content for admins
 - [ ] Choosing the type of a new account

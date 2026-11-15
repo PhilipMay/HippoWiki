@@ -30,32 +30,56 @@ import type { Result } from "@/lib/result";
  */
 export type Actor = { id: string; name: string; type: UserType };
 
-/** A user as the user list shows it. */
-export type UserSummary = {
+/** A user as the user list shows it to every account. */
+export type UserListEntry = {
   id: string;
   /** The user name. */
   name: string;
+  /** The type of the account. */
+  type: UserType;
   createdAt: Date;
+};
+
+/** A user as the user list shows it to an admin: with the pending password change. */
+export type UserSummary = UserListEntry & {
   /** Whether the user still has to replace the first password by an own one. */
   mustChangePassword: boolean;
 };
 
 /**
- * All users, by name, for an admin. For every other actor it returns `null` and does not ask the database: for them
- * the user list does not exist.
+ * The user list as an actor sees it: an admin sees whose password change is pending, a user does not. The kind tells
+ * the two apart, so that a caller never has to guess from the entries.
  */
-export async function listUsers(actor: Actor): Promise<UserSummary[] | null> {
-  if (!isAdmin(actor)) return null;
-  const users = await getDb().user.findMany({
-    select: { id: true, username: true, createdAt: true, mustChangePassword: true },
-    orderBy: { username: "asc" },
-  });
-  return users.map(({ id, username, createdAt, mustChangePassword }) => ({
-    id,
-    name: username,
-    createdAt,
-    mustChangePassword,
-  }));
+export type UserList = { kind: "admin"; users: UserSummary[] } | { kind: "user"; users: UserListEntry[] };
+
+/**
+ * All users, by name, for every actor, with their types and creation times. Only for an admin the entries carry whose
+ * password change is pending; for a user it is not even read, so that it never reaches the page of a user.
+ */
+export async function listUsers(actor: Actor): Promise<UserList> {
+  const db = getDb();
+  const orderBy = { username: "asc" } as const;
+  if (isAdmin(actor)) {
+    const users = await db.user.findMany({
+      select: { id: true, username: true, type: true, createdAt: true, mustChangePassword: true },
+      orderBy,
+    });
+    return {
+      kind: "admin",
+      users: users.map(({ id, username, type, createdAt, mustChangePassword }) => ({
+        id,
+        name: username,
+        type,
+        createdAt,
+        mustChangePassword,
+      })),
+    };
+  }
+  const users = await db.user.findMany({ select: { id: true, username: true, type: true, createdAt: true }, orderBy });
+  return {
+    kind: "user",
+    users: users.map(({ id, username, type, createdAt }) => ({ id, name: username, type, createdAt })),
+  };
 }
 
 /**
@@ -112,11 +136,12 @@ export async function createUser(actor: Actor, input: { name: string }): Promise
   try {
     const created = await getDb().user.create({
       data: newUserData({ name, type: "user", passwordHash, mustChangePassword: true }),
-      select: { id: true, username: true, createdAt: true, mustChangePassword: true },
+      select: { id: true, username: true, type: true, createdAt: true, mustChangePassword: true },
     });
     user = {
       id: created.id,
       name: created.username,
+      type: created.type,
       createdAt: created.createdAt,
       mustChangePassword: created.mustChangePassword,
     };

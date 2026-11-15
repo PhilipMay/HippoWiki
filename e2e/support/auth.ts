@@ -1,7 +1,10 @@
 // The logins that the end-to-end tests share. The setup project (e2e/auth.setup.ts) logs in once as each known user
 // and saves the browser state and the rows of the sessions here; the tests start with a saved state instead of
 // logging in again, and `resetTestDatabase()` puts the session rows back after it has emptied the tables.
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+
+import type { BrowserContext } from "@playwright/test";
 
 /** The directory of the saved logins; ignored by Git and removed before every run. */
 export const AUTH_DIRECTORY = fileURLToPath(new URL("../.auth/", import.meta.url));
@@ -17,3 +20,15 @@ export const SESSIONS_FILE = `${AUTH_DIRECTORY}sessions.json`;
 
 /** The browser state of a visitor who is not logged in; a spec that needs no user sets it with `test.use()`. */
 export const NO_STORAGE_STATE = { cookies: [], origins: [] };
+
+/**
+ * Replaces the login of the browser by a saved login, such as `USER_STORAGE_STATE` or `ADMIN_STORAGE_STATE`. A test
+ * opens a form with one login and submits it with the other, as if the other user had crafted the request.
+ */
+export async function becomeUser(context: BrowserContext, storageState: string): Promise<void> {
+  const { cookies } = JSON.parse(readFileSync(storageState, "utf8")) as {
+    cookies: Parameters<BrowserContext["addCookies"]>[0];
+  };
+  await context.clearCookies();
+  await context.addCookies(cookies);
+}

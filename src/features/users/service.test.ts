@@ -212,40 +212,71 @@ describe("ensureAdmin", () => {
 describe("listUsers", () => {
   const CREATED_AT = new Date("2026-11-12T10:00:00.000Z");
 
-  it("returns every user for the admin, with the user name as the name", async () => {
-    mocks.userFindMany.mockResolvedValue([
-      { id: ADMIN_ID, username: "admin", createdAt: CREATED_AT, mustChangePassword: false },
-      { id: ALICE_ID, username: "alice", createdAt: CREATED_AT, mustChangePassword: true },
-    ]);
+  it.each([
+    ["the admin", ADMIN],
+    ["an admin with another name", { id: ALICE_ID, name: "maria", type: "admin" }],
+  ] satisfies [string, Actor][])(
+    "returns every user for %s, with type and the pending password change",
+    async (_case, actor) => {
+      mocks.userFindMany.mockResolvedValue([
+        { id: ADMIN_ID, username: "admin", type: "admin", createdAt: CREATED_AT, mustChangePassword: false },
+        { id: ALICE_ID, username: "alice", type: "user", createdAt: CREATED_AT, mustChangePassword: true },
+      ]);
 
-    await expect(listUsers(ADMIN)).resolves.toStrictEqual([
-      { id: ADMIN_ID, name: "admin", createdAt: CREATED_AT, mustChangePassword: false },
-      { id: ALICE_ID, name: "alice", createdAt: CREATED_AT, mustChangePassword: true },
-    ]);
-  });
+      await expect(listUsers(actor)).resolves.toStrictEqual({
+        kind: "admin",
+        users: [
+          { id: ADMIN_ID, name: "admin", type: "admin", createdAt: CREATED_AT, mustChangePassword: false },
+          { id: ALICE_ID, name: "alice", type: "user", createdAt: CREATED_AT, mustChangePassword: true },
+        ],
+      });
+      expect(mocks.userFindMany).toHaveBeenCalledExactlyOnceWith({
+        select: { id: true, username: true, type: true, createdAt: true, mustChangePassword: true },
+        orderBy: { username: "asc" },
+      });
+    },
+  );
 
   it.each([
     ["a user", ALICE],
     ["a user named admin", { id: ADMIN_ID, name: "admin", type: "user" }],
     ["a user with the id of an admin", { id: ADMIN_ID, name: "alice", type: "user" }],
-  ] satisfies [string, Actor][])("returns null for %s and does not ask the database", async (_case, actor) => {
-    await expect(listUsers(actor)).resolves.toBeNull();
+  ] satisfies [string, Actor][])(
+    "returns every user for %s, with type and without the pending password change",
+    async (_case, actor) => {
+      mocks.userFindMany.mockResolvedValue([
+        { id: ADMIN_ID, username: "admin", type: "admin", createdAt: CREATED_AT },
+        { id: ALICE_ID, username: "alice", type: "user", createdAt: CREATED_AT },
+      ]);
 
-    expect(mocks.userFindMany).not.toHaveBeenCalled();
-    expectNothingLogged();
-  });
+      await expect(listUsers(actor)).resolves.toStrictEqual({
+        kind: "user",
+        users: [
+          { id: ADMIN_ID, name: "admin", type: "admin", createdAt: CREATED_AT },
+          { id: ALICE_ID, name: "alice", type: "user", createdAt: CREATED_AT },
+        ],
+      });
+      // The pending password change is not even read for a user.
+      expect(mocks.userFindMany).toHaveBeenCalledExactlyOnceWith({
+        select: { id: true, username: true, type: true, createdAt: true },
+        orderBy: { username: "asc" },
+      });
+      expectNothingLogged();
+    },
+  );
 
   it("throws a database error", async () => {
     mocks.userFindMany.mockRejectedValue(new Error("connection refused"));
 
     await expect(listUsers(ADMIN)).rejects.toThrow("connection refused");
+    await expect(listUsers(ALICE)).rejects.toThrow("connection refused");
   });
 });
 
 describe("createUser", () => {
   const GENERATED = "Gx7pQ2mWk9RtZ4vNc8Hs";
   const CREATED_AT = new Date("2026-11-12T10:00:00.000Z");
-  const STORED = { id: ALICE_ID, username: "bob", createdAt: CREATED_AT, mustChangePassword: true };
+  const STORED = { id: ALICE_ID, username: "bob", type: "user", createdAt: CREATED_AT, mustChangePassword: true };
 
   beforeEach(() => {
     mocks.generateFirstPassword.mockReturnValue(GENERATED);
@@ -258,7 +289,7 @@ describe("createUser", () => {
     expect(result).toStrictEqual({
       ok: true,
       value: {
-        user: { id: ALICE_ID, name: "bob", createdAt: CREATED_AT, mustChangePassword: true },
+        user: { id: ALICE_ID, name: "bob", type: "user", createdAt: CREATED_AT, mustChangePassword: true },
         password: GENERATED,
       },
     });
@@ -274,7 +305,7 @@ describe("createUser", () => {
       mustChangePassword: true,
       accounts: { create: { providerId: "credential", accountId: data.id, password: HASH } },
     });
-    expect(select).toStrictEqual({ id: true, username: true, createdAt: true, mustChangePassword: true });
+    expect(select).toStrictEqual({ id: true, username: true, type: true, createdAt: true, mustChangePassword: true });
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith({ userId: ALICE_ID, actorId: ADMIN_ID }, "user created");
     expect(mocks.warn).not.toHaveBeenCalled();
     expect(mocks.error).not.toHaveBeenCalled();

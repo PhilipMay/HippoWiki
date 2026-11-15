@@ -20,19 +20,22 @@ export const metadata: Metadata = {
 /** The actions of the user list: `create` opens the "New user" dialog. */
 const ACTIONS = ["create"] as const;
 
-/** The user list. Only the admin sees it; for every other user the address is not found, with and without an action. */
+/**
+ * The user list, for every account. Only an admin gets the button "New user", its dialog and whose password change is
+ * pending; for a user the address of the dialog is not found.
+ */
 export default async function UsersPage({ searchParams }: PageProps<"/users">) {
   // Nothing is shown without a login. First, so that an invalid address also leads to the login page.
   await requireUser();
 
-  // `null` for everyone but the admin: the service decides who may see the list.
-  const users = await listUsers();
-  if (!users) notFound();
+  // The service decides what the user sees: the list of an admin carries the pending password changes.
+  const list = await listUsers();
+  const forAdmin = list.kind === "admin";
 
   const query = await searchParams;
   const action = parseAction(query, ACTIONS);
-  // The user list has no views.
-  if (action === "invalid" || parseView(query) !== null) notFound();
+  // The user list has no views, and only an admin creates users.
+  if (action === "invalid" || parseView(query) !== null || (action === "create" && !forAdmin)) notFound();
 
   return (
     <Stack spacing={3}>
@@ -40,11 +43,13 @@ export default async function UsersPage({ searchParams }: PageProps<"/users">) {
         <Typography variant="h4" component="h1">
           Users
         </Typography>
-        <Button component={Link} href={usersPath("create")} variant="contained">
-          New user
-        </Button>
+        {forAdmin && (
+          <Button component={Link} href={usersPath("create")} variant="contained">
+            New user
+          </Button>
+        )}
       </Stack>
-      <UserList users={users} />
+      <UserList users={list.users} />
       {action === "create" && <CreateUserDialog action={createUser} closeHref={usersPath()} />}
     </Stack>
   );

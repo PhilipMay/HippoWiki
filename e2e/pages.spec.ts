@@ -21,8 +21,9 @@ test("the home page shows the folder list", async ({ page }) => {
   await expect(page).toHaveURL("/folders");
   await expect(page.getByRole("heading", { level: 1, name: "Folders" })).toBeVisible();
   const mainLinks = page.getByRole("banner").getByRole("navigation", { name: "Main" }).getByRole("link");
-  await expect(mainLinks).toHaveText(["Folders"]);
-  await expect(mainLinks).toHaveAttribute("href", "/folders");
+  await expect(mainLinks).toHaveText(["Folders", "Users"]);
+  await expect(mainLinks.nth(0)).toHaveAttribute("href", "/folders");
+  await expect(mainLinks.nth(1)).toHaveAttribute("href", "/users");
 });
 
 test("a folder with neither pages nor tabs shows an empty state and no list", async ({ page }) => {

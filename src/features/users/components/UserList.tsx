@@ -4,14 +4,19 @@ import ListItem from "@mui/material/ListItem";
 import ListItemText from "@mui/material/ListItemText";
 import Paper from "@mui/material/Paper";
 
-import type { UserSummary } from "@/features/users/service";
+import type { UserListEntry, UserSummary } from "@/features/users/service";
+import type { UserType } from "@/features/users/user-type";
 import { formatDateTime } from "@/lib/format";
 
+/** The label of each type of account. */
+const TYPE_LABELS: Record<UserType, string> = { admin: "Admin", user: "User" };
+
 /**
- * The list of all users, by name: each with the time it was created and a mark while the user still has to change the
- * first password. There is always at least the admin, so the list has no empty state.
+ * The list of all users, by name: each with its type and the time it was created. Entries that carry the pending
+ * password change, which only an admin gets, show a mark while the user still has to change the first password. There
+ * is always at least one account, the one looking at the list, so the list has no empty state.
  */
-export default function UserList({ users }: { users: UserSummary[] }) {
+export default function UserList({ users }: { users: UserListEntry[] | UserSummary[] }) {
   return (
     <Paper variant="outlined">
       <List disablePadding aria-label="Users">
@@ -20,6 +25,7 @@ export default function UserList({ users }: { users: UserSummary[] }) {
             key={user.id}
             divider={index < users.length - 1}
             secondaryAction={
+              "mustChangePassword" in user &&
               user.mustChangePassword && <Chip label="Password change pending" size="small" variant="outlined" />
             }
           >
@@ -27,7 +33,8 @@ export default function UserList({ users }: { users: UserSummary[] }) {
               primary={user.name}
               secondary={
                 <>
-                  Created <time dateTime={user.createdAt.toISOString()}>{formatDateTime(user.createdAt)}</time>
+                  {TYPE_LABELS[user.type]} · Created{" "}
+                  <time dateTime={user.createdAt.toISOString()}>{formatDateTime(user.createdAt)}</time>
                 </>
               }
             />

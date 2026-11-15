@@ -74,7 +74,7 @@ export function loginPath(next?: string | string[] | null): string {
   return withNext(LOGIN_PATH, next);
 }
 
-/** The address of the user list, which only the admin sees. */
+/** The address of the user list, which every account sees. */
 const USERS_PATH = "/users";
 
 /** The address of the user list, optionally with an action. */

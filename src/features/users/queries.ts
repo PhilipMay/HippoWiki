@@ -10,8 +10,8 @@ import * as userService from "@/features/users/service";
 // page without a logged-in user, and passes that user to the service as the actor: the service decides what the user
 // may see.
 
-/** All users, by name, or `null` when the logged-in user is not the admin. */
-export async function listUsers(): Promise<userService.UserSummary[] | null> {
+/** All users, by name, as the logged-in user sees them. */
+export async function listUsers(): Promise<userService.UserList> {
   await connection();
   const user = await requireUser();
   return userService.listUsers(user);

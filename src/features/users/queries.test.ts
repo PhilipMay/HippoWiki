@@ -25,7 +25,10 @@ const ADMIN = {
   type: "admin" as const,
   mustChangePassword: false,
 };
-const USERS = [{ id: ADMIN.id, name: "admin", createdAt: new Date(), mustChangePassword: false }];
+const USERS = {
+  kind: "admin",
+  users: [{ id: ADMIN.id, name: "admin", type: "admin", createdAt: new Date(), mustChangePassword: false }],
+};
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -66,12 +69,13 @@ describe("listUsers", () => {
     expect(mocks.listUsers).toHaveBeenCalledExactlyOnceWith(ADMIN);
   });
 
-  it("passes on the null of the service for a user who is not the admin", async () => {
-    const alice = { ...ADMIN, name: "alice" };
+  it("passes a user to the service as the actor and returns the list of a user", async () => {
+    const alice = { ...ADMIN, name: "alice", type: "user" as const };
+    const list = { kind: "user", users: [] };
     mocks.requireUser.mockResolvedValue(alice);
-    mocks.listUsers.mockResolvedValue(null);
+    mocks.listUsers.mockResolvedValue(list);
 
-    await expect(listUsers()).resolves.toBeNull();
+    await expect(listUsers()).resolves.toBe(list);
 
     expect(mocks.listUsers).toHaveBeenCalledExactlyOnceWith(alice);
   });

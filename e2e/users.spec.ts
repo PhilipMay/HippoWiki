@@ -1,9 +1,7 @@
-import { readFileSync } from "node:fs";
-
-import type { BrowserContext, Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
 
 import { KNOWN_ADMIN, KNOWN_USER } from "../prisma/known-users";
-import { ADMIN_STORAGE_STATE, NO_STORAGE_STATE, USER_STORAGE_STATE } from "./support/auth";
+import { ADMIN_STORAGE_STATE, becomeUser, NO_STORAGE_STATE, USER_STORAGE_STATE } from "./support/auth";
 import { collectErrors } from "./support/browser";
 import { createUser, getTestDb, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
@@ -28,26 +26,29 @@ async function expectNotFound(page: Page, address: string) {
 test.describe("the admin", () => {
   test.use({ storageState: ADMIN_STORAGE_STATE });
 
-  test("sees all users by name, with the time of creation and a mark for a pending password change", async ({
+  test("sees all users by name, with type, time of creation and a mark for a pending password change", async ({
     page,
   }) => {
     const errors = collectErrors(page);
     await createUser({ name: "zoe", mustChangePassword: false, createdAt: new Date("2026-03-01T10:00:00Z") });
     await createUser({ name: "bob", createdAt: new Date("2026-02-01T10:00:00Z") });
+    await createUser({ name: "maria", type: "admin", createdAt: new Date("2026-02-02T10:00:00Z") });
 
     await page.goto("/users");
 
     await expect(page).toHaveTitle("Users – HippoWiki");
     await expect(page.getByRole("heading", { level: 1, name: "Users" })).toBeVisible();
     const rows = userRows(page);
-    await expect(rows).toHaveText([/^admin/, /^alice/, /^bob/, /^zoe/]);
+    await expect(rows).toHaveText([/^adminAdmin · /, /^aliceUser · /, /^bobUser · /, /^mariaAdmin · /, /^zoeUser · /]);
     const pending = "Password change pending";
     await expect(rows.nth(0)).not.toContainText(pending);
     await expect(rows.nth(1)).not.toContainText(pending);
     await expect(rows.nth(2)).toContainText(pending);
-    await expect(rows.nth(3)).not.toContainText(pending);
+    await expect(rows.nth(3)).toContainText(pending);
+    await expect(rows.nth(4)).not.toContainText(pending);
     await expect(rows.nth(2).getByRole("time")).toHaveAttribute("datetime", "2026-02-01T10:00:00.000Z");
-    await expect(rows.nth(2)).toContainText("Created Feb 1, 2026");
+    await expect(rows.nth(2)).toContainText("User · Created Feb 1, 2026");
+    await expect(page.getByRole("link", { name: "New user" })).toBeVisible();
     // Neither the hidden email of a user nor anything of the password is shown.
     await expect(page.getByText(/hippowiki\.invalid|argon2/)).toHaveCount(0);
     expect(errors).toEqual([]);
@@ -109,15 +110,6 @@ async function createUserInDialog(page: Page, name: string): Promise<string> {
   const password = await userCreatedDialog(page).getByLabel("First password").inputValue();
   expect(password).toMatch(FIRST_PASSWORD);
   return password;
-}
-
-/** Replaces the login of the browser by the saved login of the known normal user. */
-async function becomeNormalUser(context: BrowserContext) {
-  const { cookies } = JSON.parse(readFileSync(USER_STORAGE_STATE, "utf8")) as {
-    cookies: Parameters<BrowserContext["addCookies"]>[0];
-  };
-  await context.clearCookies();
-  await context.addCookies(cookies);
 }
 
 test.describe("the admin, creating a user", () => {
@@ -309,8 +301,8 @@ test.describe("the admin, creating a user", () => {
     await expect(userPage).toHaveURL("/folders");
     await expect(userPage.getByRole("heading", { level: 1, name: "Folders" })).toBeVisible();
     await expect(userPage.getByRole("banner").getByText("jane-doe", { exact: true })).toBeVisible();
-    // A normal user: no user list.
-    await expect(userPage.getByRole("banner").getByRole("link", { name: "Users" })).toHaveCount(0);
+    // A user: the user list, but without "New user".
+    await expect(userPage.getByRole("banner").getByRole("link", { name: "Users" })).toBeVisible();
     await userContext.close();
     // The admin sees that the first password is replaced.
     await page.goto("/users");
@@ -324,7 +316,7 @@ test.describe("the admin, creating a user", () => {
     await page.goto("/users?action=create");
     const dialog = newUserDialog(page);
     await dialog.getByLabel("User name").fill("jane-doe");
-    await becomeNormalUser(context);
+    await becomeUser(context, USER_STORAGE_STATE);
 
     await dialog.getByRole("button", { name: "Create" }).click();
 
@@ -335,25 +327,52 @@ test.describe("the admin, creating a user", () => {
   });
 });
 
-test.describe("a normal user", () => {
+test.describe("a user", () => {
   test.use({ storageState: USER_STORAGE_STATE });
+
+  test("sees all users by name, admins included, with type and time of creation, but no pending password change", async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    await createUser({ name: "zoe", mustChangePassword: false, createdAt: new Date("2026-03-01T10:00:00Z") });
+    await createUser({ name: "bob", createdAt: new Date("2026-02-01T10:00:00Z") });
+    await createUser({ name: "maria", type: "admin", createdAt: new Date("2026-02-02T10:00:00Z") });
+
+    await page.goto("/users");
+
+    await expect(page).toHaveTitle("Users – HippoWiki");
+    await expect(page.getByRole("heading", { level: 1, name: "Users" })).toBeVisible();
+    const rows = userRows(page);
+    // The same order as for an admin.
+    await expect(rows).toHaveText([/^adminAdmin · /, /^aliceUser · /, /^bobUser · /, /^mariaAdmin · /, /^zoeUser · /]);
+    await expect(rows.nth(2).getByRole("time")).toHaveAttribute("datetime", "2026-02-01T10:00:00.000Z");
+    await expect(rows.nth(2)).toContainText("User · Created Feb 1, 2026");
+    await expect(page.getByText("Password change pending")).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "New user" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "New user" })).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
 
   test("gets the not-found page for the New user dialog", async ({ page }) => {
     await expectNotFound(page, "/users?action=create");
     await expect(page.getByRole("dialog")).toHaveCount(0);
   });
 
-  test("gets the not-found page for the user list", async ({ page }) => {
-    await expectNotFound(page, "/users");
-    await expect(page.getByText(KNOWN_ADMIN.name, { exact: true })).toHaveCount(0);
-  });
+  for (const address of ["/users?action=anything", "/users?view=all"]) {
+    test(`${address} shows the not-found page`, async ({ page }) => {
+      await expectNotFound(page, address);
+    });
+  }
 
-  test("has no menu entry Users", async ({ page }) => {
+  test("has the menu entry Users, which leads to the list", async ({ page }) => {
     await page.goto("/folders");
 
     const banner = page.getByRole("banner");
     await expect(banner.getByRole("link", { name: "Folders" })).toBeVisible();
-    await expect(banner.getByRole("link", { name: "Users" })).toHaveCount(0);
+    await banner.getByRole("link", { name: "Users" }).click();
+
+    await expect(page).toHaveURL("/users");
+    await expect(userRows(page)).toHaveText([new RegExp(`^${KNOWN_ADMIN.name}`), new RegExp(`^${KNOWN_USER.name}`)]);
   });
 });
 

@@ -110,28 +110,43 @@ describe("ensureAdmin", () => {
 });
 
 describe("listUsers", () => {
-  it("lists all users by name for the admin, with exactly the declared fields", async () => {
+  /** Users of both types, created at the same time, and the list as an admin sees it. */
+  async function createUsers() {
     const createdAt = new Date("2026-03-01T10:00:00.000Z");
     const zoe = await createUser({ name: "zoe", createdAt });
     const admin = await createUser({ name: "admin", type: "admin", mustChangePassword: false, createdAt });
     const bob = await createUser({ name: "bob", mustChangePassword: false, createdAt });
-    const alice = await createUser({ name: "alice", createdAt });
+    const maria = await createUser({ name: "maria", type: "admin", createdAt });
+    const alice = await createUser({ name: "alice", mustChangePassword: false, createdAt });
+    const forAdmin = [
+      { id: admin.id, name: "admin", type: "admin", createdAt, mustChangePassword: false },
+      { id: alice.id, name: "alice", type: "user", createdAt, mustChangePassword: false },
+      { id: bob.id, name: "bob", type: "user", createdAt, mustChangePassword: false },
+      { id: maria.id, name: "maria", type: "admin", createdAt, mustChangePassword: true },
+      { id: zoe.id, name: "zoe", type: "user", createdAt, mustChangePassword: true },
+    ];
+    return { admin, maria, alice, forAdmin };
+  }
 
-    const users = await userService.listUsers({ id: admin.id, name: "admin", type: "admin" });
+  it("lists all users by name for an admin, with type and pending password change and nothing else", async () => {
+    const { admin, maria, forAdmin } = await createUsers();
 
-    expect(users).toStrictEqual([
-      { id: admin.id, name: "admin", createdAt, mustChangePassword: false },
-      { id: alice.id, name: "alice", createdAt, mustChangePassword: true },
-      { id: bob.id, name: "bob", createdAt, mustChangePassword: false },
-      { id: zoe.id, name: "zoe", createdAt, mustChangePassword: true },
-    ]);
+    for (const actor of [admin, maria]) {
+      const list = await userService.listUsers({ id: actor.id, name: actor.username, type: actor.type });
+
+      expect(list).toStrictEqual({ kind: "admin", users: forAdmin });
+    }
   });
 
-  it("returns null for a normal user", async () => {
-    await createUser({ name: "admin", type: "admin" });
-    const alice = await createUser({ name: "alice" });
+  it("lists all users by name for a user, admins included, with type and without pending password change", async () => {
+    const { alice, forAdmin } = await createUsers();
 
-    expect(await userService.listUsers({ id: alice.id, name: "alice", type: "user" })).toBeNull();
+    const list = await userService.listUsers({ id: alice.id, name: "alice", type: "user" });
+
+    expect(list).toStrictEqual({
+      kind: "user",
+      users: forAdmin.map(({ id, name, type, createdAt }) => ({ id, name, type, createdAt })),
+    });
   });
 });
 
@@ -157,6 +172,7 @@ describe("createUser", () => {
     expect(user).toStrictEqual({
       id: stored.id,
       name: "jane-doe",
+      type: "user",
       createdAt: stored.createdAt,
       mustChangePassword: true,
     });
@@ -230,11 +246,11 @@ describe("createUser", () => {
 
     await userService.createUser(admin, { name: "jane-doe" });
 
-    expect(
-      (await userService.listUsers(admin))?.map(({ name, mustChangePassword }) => ({ name, mustChangePassword })),
-    ).toEqual([
-      { name: "admin", mustChangePassword: false },
-      { name: "jane-doe", mustChangePassword: true },
+    const list = await userService.listUsers(admin);
+    expect(list.kind).toBe("admin");
+    expect(list.users.map((user) => ({ name: user.name, type: user.type }))).toEqual([
+      { name: "admin", type: "admin" },
+      { name: "jane-doe", type: "user" },
     ]);
   });
 });
