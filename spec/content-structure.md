@@ -8,7 +8,7 @@ Code: `src/features/folders/` (folders and tabs), `src/features/pages/` (pages),
 `src/lib/addresses.ts` (building and parsing addresses), the models `Folder`, `Tab` and `Page` in
 `prisma/schema.prisma`, and the routes under `src/app/folders/` and `src/app/deleted-pages/`. Tests:
 `e2e/folders.spec.ts`, `e2e/tabs.spec.ts`, `e2e/all-pages.spec.ts`, `e2e/create-page.spec.ts`,
-`e2e/move-or-rename-page.spec.ts`, `src/lib/names.test.ts`, `src/lib/addresses.test.ts`,
+`e2e/move-or-rename-page.spec.ts`, `e2e/access.spec.ts`, `src/lib/names.test.ts`, `src/lib/addresses.test.ts`,
 `integration/folder-service.test.ts`, `integration/page-service.test.ts`, `integration/db-errors.test.ts`. The last
 editor: the writes of `src/features/folders/service.ts` and `src/features/pages/service.ts`, the migration
 `prisma/migrations/20261113120000_add_last_editor/`.
@@ -109,6 +109,17 @@ hold pages directly and have tabs at the same time.
 - Moving or renaming does not validate or touch the content.
 - After every write, all addresses under `/folders` and `/deleted-pages` show the new state.
 
+## Only users see content
+
+- Folders, tabs, pages and deleted pages are for users only (see "Account types" in `users-and-login.md`). An admin
+  reaches none of it, not even the names, through any address, form, action or MCP tool.
+- Every address under `/folders` and `/deleted-pages` shows an admin the not-found page, with and without an action
+  or a view, also for items that exist, so that it reveals nothing, not even whether an item exists. A form of the
+  content that an admin submits shows the not-found page and writes nothing.
+- The check lives in the folders and pages services: every read and write takes the acting user. For an admin every
+  read returns nothing and every write is refused and logged, before anything else is checked and without asking the
+  database.
+
 ## Last editor
 
 - Every folder, tab and page records the user who last edited it, and creating it counts as an edit. The writes that
@@ -123,6 +134,7 @@ hold pages directly and have tabs at the same time.
   leaves those of its tabs and pages as they are.
 - The user is the one who is logged in. Every content write takes the acting user; a write by a user that does not
   exist fails and writes nothing.
+- Content that an admin edited before the account types came keeps showing that admin's name as its last editor.
 - The last editor is shown by user name, as plain text, next to the time of the last change (see "Lists and order",
   `pages.md` and `page-deletion.md`).
 - Only the last editor is stored: not who created an item, and no history of editors.
@@ -153,13 +165,16 @@ hold pages directly and have tabs at the same time.
   be an account that nobody owns and that the user list would show. Migrating content without an admin fails and is
   rolled back.
 - The last editor is required, so that every item always has one.
+- A content address shows an admin the not-found page instead of a page that says admins cannot see content, so that
+  it reveals nothing, not even whether an item exists. Rejected: a page that says admins cannot see content.
 - The key from an item to its last editor restricts deleting (`onDelete: Restrict`), like the other keys of the
   content: a user who has edited content cannot be deleted by accident, and no content loses its editor.
 
 ## Current limits
 
 - Folders and tabs cannot be deleted. Deleted pages cannot be removed for good (see `page-deletion.md`).
-- No rights per folder: everyone who is logged in can read and change all content (see `users-and-login.md`).
+- No rights per folder: every user can read and change all content, and no admin sees any of it (see
+  `users-and-login.md`).
 - A page cannot be moved to another folder, a tab cannot be moved to another folder.
 - No redirects from old addresses after a rename or move.
 - No history, no handling of concurrent changes, no links between pages, no search.

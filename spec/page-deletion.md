@@ -21,6 +21,8 @@ the dialogs and lists in `components/`), routes under `src/app/deleted-pages/`. 
 - Its name is free at once: a new page of the same name can be created at the same place. Deleted pages never block a
   name, and two deleted pages of a folder may share one.
 - A deleted page cannot be edited, moved or renamed; trying it answers as for a page that does not exist.
+- Like all content, deleted pages are for users only: an admin sees no deleted page and restores none (see "Only users
+  see content" in `content-structure.md`).
 
 ## Deleted pages of a folder
 
@@ -54,7 +56,8 @@ the dialogs and lists in `components/`), routes under `src/app/deleted-pages/`. 
   deleted page. A later write to deleted pages, such as deleting or restoring folders and tabs or restoring a page into
   another folder, has to keep the last editor of the deleted pages it touches.
 - Pages deleted before the last editor was recorded show the admin as the user who deleted them, like all content
-  stored before (see "Decisions" in `content-structure.md`).
+  stored before (see "Decisions" in `content-structure.md`); a page that an admin deleted before the account types
+  came keeps that admin's name.
 
 ## Current limits
 

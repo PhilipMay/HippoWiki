@@ -157,12 +157,15 @@ How the code is tested. Commands are listed in `README.md`.
   survives that on its own (see `emptyTestDatabase()` below), but the wait keeps a test from depending on it.
 - The tests log in once and reuse the session:
   - The Playwright project `setup` (`e2e/auth.setup.ts`) logs in on the login page as the known admin and the known
-    normal user of `prisma/known-users.ts` and saves one browser state each in `e2e/.auth/` (ignored by Git and by
+    user of `prisma/known-users.ts`, each of its type, and saves one browser state each in `e2e/.auth/` (ignored by Git and by
     `.containerignore`), together with the rows of the two sessions. The global setup removes the files of an earlier
     run first.
-  - The `chromium` project depends on `setup` and starts every test with the browser state of the normal user. A spec
+  - The `chromium` project depends on `setup` and starts every test with the browser state of the known user. A spec
     that needs the admin or no user sets its own with `test.use({ storageState: ... })` and the constants of
     `e2e/support/auth.ts` (`ADMIN_STORAGE_STATE`, `USER_STORAGE_STATE`, `NO_STORAGE_STATE`).
+  - A crafted request of the other type is tested with `becomeUser(context, storageState)` of `e2e/support/auth.ts`:
+    the test opens a form with one saved login, replaces the cookies of the browser by the other saved login, and
+    submits it, e.g. a content form with the login of the admin or the "New user" form with the login of a user.
   - `resetTestDatabase()` puts the known users and the saved session rows back, so the saved cookies stay valid
     after every reset. It never empties `AuthSecret`: the running server keeps the secret that signed them.
   - The Playwright UI does not run the setup project by itself (see `README.md`).
@@ -184,8 +187,8 @@ How the code is tested. Commands are listed in `README.md`.
     the next try succeeds; without the retry such a reset fails its test, and in CI a test that only passes on a retry
     fails the run. A fixed order of the tables would not help, because the order of the login is its own.
   - `createUser()` inserts a user with its credential account, in the shape of `src/features/users/records.ts`, with
-    a unique name and the password `TEST_PASSWORD` unless they are given, and with the first password still to
-    change unless `mustChangePassword` is false. The hash of a password is computed once per process.
+    a unique name, the type `user` and the password `TEST_PASSWORD` unless they are given, and with the first password
+    still to change unless `mustChangePassword` is false. A test that needs another admin passes `type: "admin"`. The hash of a password is computed once per process.
   - `createApiToken()` inserts an API token of the user given as `owner`, with a generated token of which only the
     hash is stored, and returns the row with the token. It has the scope `read`, a unique name and an expiry 90 days
     ahead unless they are given; any field, e.g. `expiresAt` or `lastUsedAt`, can be set.

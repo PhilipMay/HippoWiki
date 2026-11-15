@@ -69,15 +69,20 @@ Code: `Containerfile`, `.containerignore`, `scripts/image.sh`, `scripts/image-mi
 - `image-migrate.sh` alone only applies the migrations and exits with the exit code of Prisma. A container started
   with `./image-migrate.sh` as its command makes the migration a step of its own without a second image.
 - No sample data is inserted; the seed script is not part of the image.
+- The update to the version with account types gives every existing account its type once: the account named `admin`
+  becomes an admin, every other account a user, and the API tokens, grants and authorization codes of `admin` are
+  removed. After it `admin` sees the user list and no content; whoever needs to keep working in the wiki gets a user
+  account from an admin (see "Existing installations" in `users-and-login.md`).
 
 ## Admin setup
 
-- The admin setup makes sure that the admin account, the user named `admin`, exists (see "Admin account and setup" in
+- The admin setup makes sure that the first admin account, an admin named `admin`, exists (see "Admin setup" in
   `users-and-login.md`). In the image it is the bundle `admin.mjs` of `scripts/admin.ts`, started by `image-admin.sh`.
 - `image-start.sh` runs it on every start of a container, after the migration and before the server.
-- If the database has no admin, it creates the admin with the password from `HIPPOWIKI_ADMIN_PASSWORD`, as a first
-  password with a pending password change. If the admin exists, it does nothing and does not read the variable;
-  changing the variable later does not change the password. Two containers that start together create one admin.
+- If the database has no account named `admin`, it creates it as an admin with the password from
+  `HIPPOWIKI_ADMIN_PASSWORD`, as a first password with a pending password change. If the account exists, it does
+  nothing, its type included, and does not read the variable; changing the variable later does not change the
+  password. Two containers that start together create one admin. Other admins are created in the "New user" dialog.
 - When the admin has to be created and `HIPPOWIKI_ADMIN_PASSWORD` is missing, empty or not a valid password, it
   creates nothing and fails, and the container exits without serving. The same holds when the database is not
   reachable or `DATABASE_URL` is missing.

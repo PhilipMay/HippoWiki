@@ -2417,20 +2417,20 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
 
 ## Accepted deviations
 
-- ASVS 8.2.2 and 8.4.1 for content (Access control): every logged-in user may read and change all folders, tabs and
-  pages, so content has no owner to check. Documented in `users-and-login.md` ("Current limits": no rights and roles)
-  and `mcp.md` (a caller reads everything, like every logged-in user).
+- ASVS 8.2.2 and 8.4.1 for content (Access control): every user may read and change all folders, tabs and pages, so
+  content has no owner to check. Documented in `users-and-login.md` ("Current limits": no rights per folder) and
+  `mcp.md` (a caller reads everything, like every user).
 - NIST SP 800-63B-4 3.2.2, disabling an account after 100 failures in a row (Login): `users-and-login.md`,
-  "Decisions": "An account is never disabled after many failures … with one admin and no mail there would be no way
-  back in." The hour window per name caps the guesses at 20 per hour instead.
+  "Decisions": "An account is never disabled after many failures … with no mail and no password reset there would be
+  no way back in." The hour window per name caps the guesses at 20 per hour instead.
 - ASVS 6.1.1 and CWE-645, a name locked by about 10 to 20 cooperating address groups when proxies are trusted (Login):
   `users-and-login.md`, "Current limits", with the "login budget for known clients" in `roadmap.md`. It does not
   cover the default of no trusted proxy (see the finding).
 - ASVS 2.4.1, no limit per client across user names (Login): `users-and-login.md`, "Current limits", and
   `container-image.md`, "What the environment has to provide": a task of the reverse proxy.
 - ASVS 6.3.2 and CWE-1392, the fixed admin name `admin` (Login): `users-and-login.md`, "Decisions": there is no
-  default password, the first password must be changed at the first login, and every logged-in user sees the user
-  names anyway.
+  default password, the first password must be changed at the first login, and every account sees the user list
+  anyway.
 - ASVS 13.3.1, no secrets management solution for the cookie secret (Login): `users-and-login.md`, "Decisions": the
   secret is kept in the database so that a container needs only two variables.
 - ASVS 11.4.2 for API tokens (API tokens): a token of 256 random bits is stored as SHA-256, not with a password hash

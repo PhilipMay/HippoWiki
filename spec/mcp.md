@@ -29,11 +29,14 @@ Tests: `e2e/mcp.spec.ts`, `e2e/oauth.spec.ts` for the access tokens of OAuth, an
 
 - Every request needs a bearer token with the scope `read`: an API token of a user, or, with OAuth on, the access
   token of a grant. The check is `authenticateToken()` of the token service (see `api-tokens.md`).
-- The caller acts as the user of the token. What that user may read, the caller may read; today that is everything,
-  because there are no rights yet (see `users-and-login.md`).
+- The caller acts as the user of the token: the adapter hands that user to the tools, and the services decide what it
+  may read. Today a user reads everything, because there are no rights per folder yet (see `users-and-login.md`).
+- `/mcp` serves users only. Every token of an admin is refused, an API token or the access token of a grant, because
+  the check of a bearer token looks at the type of the account (see "No tokens for admins" in `api-tokens.md`); such
+  a request reaches no tool.
 - What a client gets instead of an answer of the protocol:
   - 401 with `WWW-Authenticate: Bearer` without a token, and with `error="invalid_token"` for a token that is
-    unknown, expired or of a user who still has the first password. With OAuth on, the header also names the metadata
+    unknown, expired, of a user who still has the first password or of an admin. With OAuth on, the header also names the metadata
     of the protected resource (`resource_metadata`) and the scope `read`, so that a connector finds the authorization
     server.
   - 403 with `error="insufficient_scope"` and `scope="read"` for a valid token without the scope.
@@ -54,6 +57,9 @@ All tools only read, and say so to the client (`readOnlyHint`).
 
 What holds for all of them:
 
+- They are tools of the content only. There is no tool for accounts, and no admin task is reachable through MCP, now
+  or later: admin tasks are done only in the browser, with the session of an admin, so that a leaked token can never
+  manage accounts.
 - An address is the path of the folder, tab or page; with `HIPPOWIKI_PUBLIC_URL` it is the full URL, which a person
   can open.
 - A deleted page is never listed and never read; it is answered like a page that does not exist.
@@ -76,7 +82,9 @@ What holds for all of them:
   transport of the SDK that answers in JSON, and hands only the clients of the current protocol to the handler of
   the SDK, which is set to answer in JSON and to accept no subscriptions.
 - The adapter is the place where the caller is found from the token; the tools know nothing about HTTP or tokens
-  and call the services of the folders and pages, as the queries of the GUI do. They import nothing from Next.js or
+  and call the services of the folders and pages with the caller as the actor, as the queries of the GUI do. The
+  handler of the SDK is created once and gets the actor of each request through the authentication information that
+  it passes on to the factory of the server. They import nothing from Next.js or
   React, like a service (`src/features/services.test.ts`).
 - A missing folder or page is a tool error, because the model drives the tools and can recover; a protocol error
   would only reach the program around the model.
@@ -85,6 +93,9 @@ What holds for all of them:
   nothing to send along.
 - `/mcp` is an address of its own and not under `/api/`: MCP clients are configured with the address, and the
   metadata of the protected resource names it.
+- Admins never use MCP, and MCP gets no admin tools and no tokens with an admin scope: this is a lasting rule, not a
+  limit of today. Rejected: admin tools in MCP. A tool that lists accounts for users would be a user task and could
+  come later.
 
 ## Current limits
 
@@ -93,4 +104,5 @@ What holds for all of them:
 - no SSE, no sessions, no notifications and no subscriptions
 - no rate limits of MCP requests
 - no CORS: a client that runs in a browser on another origin cannot call `/mcp`
-- a caller reads everything, like every logged-in user; when folder rights come, the tools must follow them
+- a caller reads everything, like every user; when folder rights come, the tools must follow them
+- no tool that lists the accounts

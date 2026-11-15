@@ -17,7 +17,9 @@ How the code is organised and which patterns new code follows. The technology st
   `actions.ts`, `components/` and pure helpers such as `derive.ts` and `limits.ts` (no server-only imports, so Client
   Components can use them). `limits.ts` holds the field length limits: for pages, so that `schema.ts` can import
   `derive.ts` without a cycle; for users, so that Client Components show the limits without importing `schema.ts`,
-  which would put the list of common passwords into the bundle for the browser.
+  which would put the list of common passwords into the bundle for the browser. For the same reason the type of an
+  account and `isAdmin()` live in `src/features/users/user-type.ts`, which Client Components and
+  `src/lib/addresses.ts` import.
   - `schema.ts`: the ids, the Zod schemas and the types of validated input
   - `service.ts`: every read and write of the feature (see "Reads and writes")
   - `forms.ts`: what only a form needs: the `parse*FormData` functions, the form states, the types of the form
@@ -45,7 +47,8 @@ How the code is organised and which patterns new code follows. The technology st
 - A caller other than the GUI has an adapter of its own in place of `queries.ts` and `actions.ts`. The MCP server is
   the first: the route `src/app/mcp/route.ts` only hands the request to `handleMcpRequest()` in
   `src/features/mcp/http.ts`, which finds the actor from the bearer token instead of the session and passes the
-  request to the MCP SDK; the tools in `src/features/mcp/tools.ts` call the services of the folders and pages. The
+  request to the MCP SDK, with the actor as the authentication information that the SDK passes on to the factory of
+  the server; the tools in `src/features/mcp/tools.ts` call the services of the folders and pages with that actor. The
   tools import nothing from `next` or `react`, like a service. The public endpoints of OAuth work the same way: the
   routes under `src/app/.well-known/` and `src/app/oauth/register` and `src/app/oauth/token` hand the request to a
   function of `src/features/oauth/http.ts`, which calls the OAuth service and answers 404 while
@@ -60,7 +63,8 @@ How the code is organised and which patterns new code follows. The technology st
   - It trusts no caller: it parses ids and names and validates input with the Zod schemas of `schema.ts`, which also
     derive the title of a page (see "Validation and errors").
   - Reads return rows, a list or `null`. A malformed id or name counts as a missing row and never reaches the
-    database: a list is empty, a single item is `null`. Database errors are thrown.
+    database: a list is empty, a single item is `null`. A read that the actor may not do returns `null`, a list
+    included, without asking the database. Database errors are thrown.
   - Writes return a `Result` from `src/lib/result.ts`: `{ ok: true, value }` with the item as stored, or
     `{ ok: false, error }` with a code. The codes of the content are `invalid-input` (with `fieldErrors`),
     `name-taken`, `folder-not-found`, `tab-not-found`, `page-not-found` and `failed`; the users, auth and token
@@ -68,7 +72,7 @@ How the code is organised and which patterns new code follows. The technology st
     `token-not-found` (see `src/features/users/service.ts`, `src/features/auth/service.ts` and
     `src/features/tokens/service.ts`). Each write declares the ones it can return in a type of its own, such as
     `CreatePageError`.
-  - A write checks its ids first, then its input, then writes.
+  - A write checks its actor first, then its ids, then its input, then writes.
   - Rows that may no longer exist are changed with `updateMany` and the returned count is checked, instead of catching
     "not found" errors.
   - It logs the events of its writes: the stored item, a taken name, an item that was not found in the database and
@@ -80,14 +84,18 @@ How the code is organised and which patterns new code follows. The technology st
     query with `select`, never `include`, so that a new column does not reach a caller by accident. Components import
     these types from the service with `import type`.
   - It is the place for checks of who may read or change something. Such checks never go into the adapters, which
-    an MCP server does not pass through. A function that not everyone may call takes the acting user as its first
-    argument (`Actor` in the users service) and decides itself: `listUsers(actor)` returns `null` and
-    `createUser(actor, input)` the code `not-allowed` for everyone but the admin. Who the actor is, the adapters find
-    out from the session (see "Login and sessions").
-  - Every write of content (folders, tabs and pages) takes the acting user as its first argument as well, because it
-    stores that user as the last editor of the item (see "Last editor" in `content-structure.md`). It parses the
-    actor's id like every other id; a malformed id and an actor that does not exist give `failed` and are logged as an
-    error, because only a broken caller can cause them. Its actions pass the user that `requireUser()` returns.
+    an MCP server does not pass through. A function that not every account may call takes the acting user as its
+    first argument (`Actor` in the users service: `id`, `name` and the type of the account) and decides itself with
+    `isAdmin()` from `src/features/users/user-type.ts`, by the type and never by the name. Examples:
+    `createUser(actor, input)` answers `not-allowed` for a user, `listUsers(actor)` leaves out the pending password
+    changes for a user, and the token service answers `null` and `not-allowed` for an admin. Who the actor is, the
+    adapters find out from the session (see "Login and sessions").
+  - Every read and write of content (folders, tabs, pages and deleted pages) takes the acting user as its first
+    argument as well. An admin sees no content: for an admin a read returns `null` and a write `not-allowed`, logged
+    with the actor id, before anything else is checked (see "Only users see content" in `content-structure.md`). A
+    write stores the user as the last editor of the item (see "Last editor" there). It parses the actor's id like
+    every other id; a malformed id and an actor that does not exist give `failed` and are logged as an error, because
+    only a broken caller can cause them. Pure helpers such as `directPagesFirst()` take no actor.
   - The auth service is the only code that uses Better Auth (`getAuth()` from `src/lib/auth.ts`). It takes the
     `Headers` of the request, a web standard, because the session lives in a cookie, and returns the response headers
     that set or clear it. `logIn()` also takes the client address group of the request as a plain string, after the
@@ -96,7 +104,8 @@ How the code is organised and which patterns new code follows. The technology st
     `import * as folderService from "@/features/folders/service"`.
 - Reads happen in Server Components through the feature's `queries.ts`.
   - Every query first awaits `connection()`, so that Next.js does not prerender the route at build time, then
-    `requireUser()` (see "Login and sessions"), and then calls the service read of the same name.
+    `requireUser()` (see "Login and sessions"), and then calls the service read of the same name with that user as
+    the actor. A route shows the not-found page when a read returns `null`.
   - Queries that are used by both `generateMetadata` and the page are wrapped in React `cache()`.
 - Writes happen through Server Actions in the feature's `actions.ts`.
   - An action first calls `requireUser()` (see "Login and sessions"), outside its `try` blocks, because the redirect
@@ -104,6 +113,7 @@ How the code is organised and which patterns new code follows. The technology st
     and maps the result.
   - It maps every error code to a form state `{ fieldErrors?, message? }` in a `switch`; the form shows the state and
     keeps the entered values. The messages live in `actions.ts`, and each action has its own message for `failed`.
+    `not-allowed` is mapped to `notFound()`: what an account may not change does not exist for it.
   - On success it calls `revalidateContent()` from `src/lib/revalidate.ts` and redirects. `revalidateContent()` calls
     `revalidatePath` with `"layout"` for `/folders` and `/deleted-pages` and so covers every address under both:
     renaming a folder changes the addresses of its deleted pages, and creating or renaming a tab changes the places
@@ -134,8 +144,10 @@ The feature is described in `users-and-login.md`. What every new route, query an
 - Every page calls `requireUser()` first, before it reads the query string, so that an invalid address also leads to
   the login page. Every query calls it after `connection()`, every Server Action first. `not-found.tsx`, `error.tsx`
   and `global-error.tsx` show no data and have no check.
-- `requireUser()` returns the user of the session (`id`, `name`, `mustChangePassword`). An adapter passes it to a
-  service function that needs the actor.
+- `requireUser()` returns the user of the session (`SessionUser` of the auth service: `id`, `name`, `type`,
+  `mustChangePassword`). Better Auth reads the type with the session (an additional field of `src/lib/auth.ts`); a
+  user without a known type is treated like a missing session. An adapter passes the user to a service function that
+  needs the actor.
 - `src/proxy.ts` gives a read without a session cookie its own address as the way back (`next`). `requireUser()` and
   `requireSession()` redirect without one, unless the caller passes it: the consent page of OAuth does, so that a
   request with a cookie that is no longer valid still comes back to it after the login.
@@ -145,7 +157,8 @@ The feature is described in `users-and-login.md`. What every new route, query an
   for the session.
 - A caller other than the browser, such as the MCP server, finds its actor with `authenticateToken(headers, scope)`
   of the token service, from the bearer token in the `Authorization` header (see `api-tokens.md`). It returns the
-  same `Actor` as the session of the token's user, or a code for a missing or bad token and for a missing scope. The
+  same `Actor`, type included, as the session of the token's user, or a code for a missing or bad token, a token of an
+  admin included, and for a missing scope. The
   adapter of `/mcp` calls it for every request; `src/proxy.ts` does not look at the header.
 - The login action also reads the client address of the request, with `clientAddressGroup()` from
   `src/lib/client-address.ts` and `HIPPOWIKI_TRUSTED_PROXIES`, because `/login` does not pass `src/proxy.ts`; it
@@ -206,7 +219,8 @@ The feature is described in `users-and-login.md`. What every new route, query an
 - Two kinds of addresses carry other search parameters:
   - The login and the forced password change take `?next=<path>`, the address to go to afterwards. It is accepted
     only as a path on this site, checked with `safeNextPath()` wherever it is read, and `loginPath(next)` and
-    `changePasswordPath(next)` build it.
+    `changePasswordPath(next)` build it. Where a login or a password change leads on, `landingPath(next, user)` turns
+    a way back to `/` or into the content into `/users` for an admin, judged by the path alone.
   - The consent page `/oauth/authorize` takes the parameters of an OAuth authorization request (`client_id`,
     `redirect_uri`, `state` and the others), because OAuth defines them. It has no actions and no views and reads its
     parameters with `readAuthorizationParams()` of `src/features/oauth/forms.ts`; the OAuth service checks them.
@@ -226,8 +240,9 @@ The feature is described in `users-and-login.md`. What every new route, query an
   `npm run db:migrate` then applies it and checks that the database matches the schema.
 - The name of a migration directory must sort after all existing ones, because migrations are applied in the order of
   their names.
-- What Prisma cannot express in the schema, such as the check constraint that keeps `AuthSecret` to a single row or
-  the one that makes a row of `ApiToken` either a token or a grant, is
+- What Prisma cannot express in the schema, such as the check constraint that keeps `AuthSecret` to a single row, the
+  one that makes a row of `ApiToken` either a token or a grant, or the trigger that refuses every update that changes
+  the type of a `User` (`prisma/migrations/20261115120000_add_user_types/`), is
   added to the SQL of the migration by hand (`npm run db:migrate -- --name <change> --create-only`, edit the file,
   then `npm run db:migrate`).
 - Every model has a UUID id generated by PostgreSQL (`gen_random_uuid()`) and stores its times as `timestamptz(3)`.

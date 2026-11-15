@@ -64,7 +64,8 @@ given as `?action=<action>` (see `content-structure.md`).
 
 ## Current limits
 
-- no rights: everyone who is logged in can read and change every page (see `users-and-login.md`)
+- no rights per folder: every user can read and change every page, and no admin sees any (see "Only users see
+  content" in `content-structure.md`)
 - only the last editor of a page is stored, not who created it
 - a deleted page cannot be removed for good and is restored only into its own folder (see `page-deletion.md`)
 - no search, no `[[wiki links]]`, no history, no attachments

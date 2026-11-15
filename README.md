@@ -11,8 +11,9 @@ The prototype manages wiki pages written in Markdown, organises them in folders 
 PostgreSQL: create, view, edit, move and rename pages, create and rename folders and tabs, and delete pages and
 restore them from the deleted pages of their folder. Folders and tabs cannot be deleted yet.
 
-The wiki can only be used after a login, and the admin creates the other users. Everyone who is logged in can read and
-change all content, and creates API tokens for scripts and tools on the own account page. AI assistants read the wiki
+The wiki can only be used after a login. Every account is either an admin, who manages the accounts and sees no
+content, or a user, who reads and changes all content and creates API tokens for scripts and tools on the own account
+page; admins create the accounts and choose their type. AI assistants read the wiki
 through an MCP server, with an API token or, for connectors such as the ones of claude.ai and ChatGPT, through OAuth
 (see "MCP server").
 
@@ -38,8 +39,8 @@ npm run db:seed        # insert a sample folder with two sample pages and the kn
 npm run dev
 ```
 
-The wiki needs a login. After `npm run db:seed`, log in as `alice` with the password `alice-password`, or as the admin
-`admin` with `admin-password`. Without the seed, create the admin with `npm run admin:setup` (see "Users").
+The wiki needs a login. After `npm run db:seed`, log in as the user `alice` with the password `alice-password` to work
+with the content, or as the admin `admin` with `admin-password` to manage the accounts. Without the seed, create the admin with `npm run admin:setup` (see "Users").
 
 `.env` can also set the optional `HIPPOWIKI_PUBLIC_URL`, the public address of the wiki, such as
 `http://localhost:3000` for `npm run dev`. It is explained in `.env.example`; without it the wiki runs as before.
@@ -107,21 +108,21 @@ The application accesses the database with [Prisma](https://www.prisma.io/) 7. T
 
 ## Users
 
-The login, the wait after failed logins, the forced password change of a first password and the user list of the admin
-are described in `spec/users-and-login.md`. There is one admin account, named `admin`; it is created by the seed or by
-the admin setup:
+The account types, the login, the wait after failed logins, the forced password change of a first password and the
+user list are described in `spec/users-and-login.md`. The first admin account, named `admin`, is created by the seed or
+by the admin setup; further accounts of either type are created by an admin in the "New user" dialog of `/users`:
 
 - `npm run db:seed` inserts two known users for development (`prisma/known-users.ts`), with the password change
   already done. Running it again gives them these passwords back.
 
-  | User    | Password         |               |
-  | ------- | ---------------- | ------------- |
-  | `admin` | `admin-password` | the admin     |
-  | `alice` | `alice-password` | a normal user |
+  | User    | Password         |                           |
+  | ------- | ---------------- | ------------------------- |
+  | `admin` | `admin-password` | an admin, sees no content |
+  | `alice` | `alice-password` | a user                    |
 
-- `npm run admin:setup` creates the admin account with the password from `HIPPOWIKI_ADMIN_PASSWORD` (8 to 128
+- `npm run admin:setup` creates the admin account `admin` with the password from `HIPPOWIKI_ADMIN_PASSWORD` (8 to 128
   characters), which it reads from the environment or from `.env`, and which the admin has to change at the first
-  login. When the admin exists, it does nothing and ignores the variable. Replace `<first password>` with a password
+  login. When an account named `admin` exists, it does nothing and ignores the variable. Replace `<first password>` with a password
   of your own, for example from `openssl rand -base64 24`; the setup refuses the placeholder, and `.env.example`
   leaves the variable empty.
 

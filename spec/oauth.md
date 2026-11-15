@@ -3,7 +3,7 @@
 OAuth as built: HippoWiki is an OAuth 2.1 authorization server for the MCP server (see `mcp.md`), so that a connector,
 such as the ones of claude.ai and ChatGPT, gets access to the wiki on behalf of a user without ever seeing a
 password or an API token. The user logs in, approves the connector on a consent page and can revoke it on `/account`
-at any time. All clients are public: none has a secret, and each proves itself with PKCE.
+at any time. Only accounts of the type user connect apps; an admin is refused. All clients are public: none has a secret, and each proves itself with PKCE.
 
 Code: `src/features/oauth/` (`schema.ts` with the rules, `secret.ts` for codes and tokens, `service.ts` with the code
 flow, `issuer.ts`, `public-address.ts` and `metadata-fetch.ts` for the metadata documents of clients, `http.ts` with
@@ -87,6 +87,11 @@ The fetch of a metadata document must not be a way to make the server ask an add
 - "Approve" sends the client a code; "Deny" sends it `access_denied`. Both check the request again from the
   submitted values. Every answer to the client carries its `state` and `iss`, the issuer (RFC 9207).
 - Every connect asks again; no consent is remembered.
+- An admin connects no apps (see "No tokens for admins" in `api-tokens.md`). For an otherwise valid request the page
+  tells an admin that admin accounts cannot connect apps, instead of the consent form, with the link "Return to
+  <host>" that carries `access_denied`, `state` and `iss` to the client, like the other errors of the page. No code
+  and no grant is created: the service refuses a code for an admin as well. An unknown client or a foreign redirect
+  address is answered as for every user, without sending the browser anywhere.
 - A user who already holds 20 tokens, not counting the grants this one would replace, is asked to revoke a token
   first and cannot approve.
 - "Approve" and "Deny" need JavaScript to send the answer to the client, because the Content Security Policy keeps
@@ -176,6 +181,8 @@ The fetch of a metadata document must not be a way to make the server ask an add
 - The metadata fetch is a module of its own (`src/features/oauth/metadata-fetch.ts`), so that the tests of the
   service can replace it and its own tests can stand in for the network.
 - `offline_access` is not among the scopes: every grant can be refreshed until it ends.
+- The consent page tells an admin why no app can be connected and leads back to the app with a refusal, so that the
+  connector does not wait for an answer that never comes. Rejected: the not-found page.
 
 ## Current limits
 
@@ -188,7 +195,7 @@ The fetch of a metadata document must not be a way to make the server ask an add
 - no grace period for a refresh token that is used again
 - no remembered consent: every connect asks again
 - the consent page does not work without JavaScript
-- no admin view of clients and grants, and the admin cannot revoke the grants of other users
+- no admin view of clients and grants, and an admin cannot revoke the grants of users
 - no limit on token requests; the registration is the only endpoint with one
 - a way back after the login is kept only for an address of up to 2048 characters; a longer authorization request
   leads to the folders after the login

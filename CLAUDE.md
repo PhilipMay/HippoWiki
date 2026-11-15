@@ -11,11 +11,6 @@ The specification lives in the `spec/` directory. This catalog should always be 
   step plan (starting and resuming, what may change, the rounds of questions, the checks for contradictions and
   feasibility, how requirements are written, the template); the result is one file `spec/<feature>-requirements.md`,
   listed here while it exists
-- `spec/user-types-requirements.md`: the requirements of the user types in progress (admin and user, the type chosen
-  at creation and never changed, what each type can reach, existing installations)
-- `spec/user-types-steps.md`: the step plan of the user types in progress (types in the database and the update of
-  existing installations, the user list for every account, where the login leads, no content for admins, choosing the
-  type of a new account, no tokens and no apps for admins, wrap-up)
 - `spec/step-plan-workflow.md`: how features are planned in step files, when a step is done, what to do when it
   cannot be finished, how a feature is wrapped up, what a feature spec holds, and how a finding of the review report is
   fixed and deleted
@@ -24,7 +19,8 @@ The specification lives in the `spec/` directory. This catalog should always be 
 - `spec/testing.md`: the check of doc references, and unit, integration and end-to-end test conventions
 - `spec/pages.md`: the page feature as built (content and title, suggested name, routes, rendering, decisions, limits)
 - `spec/content-structure.md`: the content structure as built (folders, tabs and pages under `/folders`: overview,
-  names, addresses, actions and views, routes, changing the structure, the last editor, lists, decisions, limits)
+  names, addresses, actions and views, routes, changing the structure, only users see content, the last editor,
+  lists, decisions, limits)
 - `spec/page-deletion.md`: the soft delete of pages as built (deleting, deleted pages are invisible, the deleted pages
   of a folder under `/deleted-pages` with who deleted them, restoring, decisions, limits)
 - `spec/container-image.md`: the container image as built (image and build stages, start with the migration, the
@@ -32,11 +28,13 @@ The specification lives in the `spec/` directory. This catalog should always be 
   URL, health, smoke test, publishing on a release, what the environment has to provide, including the client address
   of a login, decisions, limits)
 - `spec/users-and-login.md`: the users and login feature as built (user names and email, passwords and hashing, the
-  list of common passwords and the context words, admin account and setup, login and logout, sessions, the way back
-  after a login, failed logins with the wait per user name and client address group and the hour window per user
-  name, authenticated access only, forced password change, user list and creating users, routes, decisions, limits)
+  list of common passwords and the context words, the account types admin and user, the admin setup, login and
+  logout, sessions, the way back after a login and where it leads each type, failed logins with the wait per user
+  name and client address group and the hour window per user name, authenticated access only, forced password change,
+  the user list for every account and creating accounts of either type, routes, decisions, existing installations,
+  limits)
 - `spec/api-tokens.md`: the API tokens as built (tokens shown once and stored as a hash, grants to OAuth clients,
-  scopes and expiry, the limit per user, the own tokens only, the check of a bearer token with its codes and the
+  scopes and expiry, the limit per user, no tokens for admins, the own tokens only, the check of a bearer token with its codes and the
   option for OAuth access tokens, the own account page `/account`, decisions, limits)
 - `spec/mcp.md`: the MCP server as built (the endpoint `/mcp`, stateless with JSON answers, the tokens it accepts,
   the read tools, decisions, limits)

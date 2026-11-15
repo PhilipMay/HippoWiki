@@ -67,18 +67,16 @@ listed first; there is no order across themes.
 
 - Own password change: change the own password at any time, not only the first one, on the own account page
   `/account` (`users-and-login.md`, `api-tokens.md`).
-- Password reset by the admin: a new first password for a user who lost theirs (`users-and-login.md`).
+- Password reset by an admin: a new first password for an account that lost theirs (`users-and-login.md`).
 - Admin password command: reset a lost admin password with a command of `scripts/admin.ts` instead of a change in
   the database (`users-and-login.md`).
 - Deactivating and reactivating users: stop a user from logging in, and let them back in later; deactivating must
   also stop the user's API tokens (`users-and-login.md`, `api-tokens.md`).
-- Admin without content access: the admin manages users only and sees no content without rights of their own.
-- Several admin accounts: more admins than the one account named `admin`.
 - First password expiry: a generated first password stops working after some time (`users-and-login.md`).
 - Breached password check: check new passwords against Have I Been Pwned by k-anonymity (only the first five
   characters of the SHA-1 hash leave the server), as an option for deployments that allow outgoing requests
   (`users-and-login.md`).
-- Password reset without the admin: users reset a lost password themselves, which needs a mail provider
+- Password reset without an admin: users reset a lost password themselves, which needs a mail provider
   (`tech.md`).
 
 ## Rights

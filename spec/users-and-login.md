@@ -1,9 +1,10 @@
 # HippoWiki – Users and Login
 
 The users and login feature as built: HippoWiki can only be used after logging in with a user name and a password.
-One admin account is created on the first start; the admin creates and lists all other accounts, and every account
-sets its own password at the first login. Everyone who is logged in can read and change all content; there are no
-rights yet.
+Every account is of one of two types, chosen when it is created and never changed: an admin manages the accounts and
+sees no content, a user works with the folders, tabs and pages and manages no accounts. The first admin is created on
+the first start; admins create all other accounts, and every account sets its own password at the first login. Every
+user can read and change all content; there are no rights per folder.
 
 Code: `src/features/users/` (the accounts), `src/features/auth/` (login, logout, the session, the login wait and the
 forced password change), `src/lib/auth.ts` (the Better Auth instance), `src/lib/client-address.ts`,
@@ -17,14 +18,14 @@ The API tokens of a user and the own account page `/account` are described in `a
 Tests: `e2e/login.spec.ts`, `e2e/change-password.spec.ts`, `e2e/users.spec.ts`, `e2e/access.spec.ts`,
 `integration/auth-service.test.ts`, `integration/user-service.test.ts`, and the unit tests next to the code, such as
 `src/features/auth/service.test.ts`, `src/features/auth/wait.test.ts`, `src/features/users/schema.test.ts`,
-`src/features/users/common-passwords.test.ts` and `src/lib/client-address.test.ts`.
+`src/features/users/user-type.test.ts`, `src/features/users/common-passwords.test.ts`, `src/lib/addresses.test.ts`
+and `src/lib/client-address.test.ts`.
 
 ## User names and email
 
 - A user name follows the name rule of folders, tabs and pages (`src/lib/names.ts`), so it can be part of an address
   as it is. It is 3 to 30 characters long and unique. Surrounding spaces are removed. The rules are in
   `src/features/users/schema.ts`, the lengths in `src/features/users/limits.ts`.
-- The admin is the user named `admin`. There is no role column. Why the name is fixed is under "Decisions".
 - Each user gets a hidden placeholder email in the reserved domain `.invalid`, because Better Auth needs an email
   address. It is never shown and no mail is sent.
 - Users are written with Prisma, not through the sign-up of Better Auth, which stays disabled.
@@ -55,14 +56,30 @@ Tests: `e2e/login.spec.ts`, `e2e/change-password.spec.ts`, `e2e/users.spec.ts`, 
   after a while. A login, password change or user creation that gives up is answered as busy: a user creation or
   password change writes nothing, and a login is not counted (see "Failed logins").
 
-## Admin account and setup
+## Account types
 
-- There is exactly one admin account, named `admin`. The admin can see and change all content like every other user,
-  and is the only one who lists and creates users.
-- The admin setup (`scripts/admin.ts`, `ensureAdmin()` in `src/features/users/service.ts`) creates the admin with the
-  password from `HIPPOWIKI_ADMIN_PASSWORD` when there is none, as a first password that must be changed at the first
-  login. When the admin exists, it does nothing and does not look at the password; changing the variable later does
-  not change the password.
+- Every account has exactly one type, `admin` or `user` (the column `type` of `User`; `isAdmin()` in
+  `src/features/users/user-type.ts` is the one place that decides it). The type, not the name, decides what an account
+  may do.
+- An admin logs in, changes the own first password, sees the user list and creates accounts of either type. An admin
+  sees no folder, tab, page or deleted page, not even their names, has no API tokens and connects no apps (see
+  `content-structure.md` and `api-tokens.md`).
+- A user logs in, changes the own first password, and reads and changes all folders, tabs, pages and deleted pages,
+  holds API tokens and connected apps and uses the wiki through MCP. A user sees the user list but creates no accounts.
+- The type is chosen when an account is created and never changes, by anyone and in any way: no page, form, dialog,
+  tool or command offers to change it, and a trigger of the migration refuses every update of the database that
+  changes it. A person who needs both jobs has two accounts.
+- There can be any number of admins. Every admin manages the accounts like the first one.
+- Admin tasks are done only in the browser, with the session of an admin: no admin task is reachable through MCP or a
+  token, with any scope, now or later (see `mcp.md`).
+
+## Admin setup
+
+- The admin setup (`scripts/admin.ts`, `ensureAdmin()` in `src/features/users/service.ts`) creates the first admin,
+  named `admin`, with the password from `HIPPOWIKI_ADMIN_PASSWORD` when no account of that name exists, as a first
+  password that must be changed at the first login. When an account named `admin` exists, it does nothing, its type
+  included, and does not look at the password; changing the variable later does not change the password. Later
+  admins may have any valid user name.
 - A missing or invalid password creates nothing, and the setup fails. The password follows the rules of "Passwords",
   with `admin` as the user name, so a common password or one such as `admin2026` is refused. A value in angle
   brackets, such as the `<first password>` of the README, counts as invalid: it is a placeholder (`adminPasswordSchema`
@@ -75,14 +92,15 @@ Tests: `e2e/login.spec.ts`, `e2e/change-password.spec.ts`, `e2e/users.spec.ts`, 
 
 - Users log in at `/login` with a user name and a password. There is no self-sign-up, no "forgot password" link and
   no mail.
-- A login leads to `/folders` or to the address it was asked for (see "The way back after a login"), or to the
-  password change when it is pending. A user who is logged in and opens `/login` is led there as well.
+- A login leads a user to `/folders` or to the address it was asked for (see "The way back after a login"), and an
+  admin to `/users`, or to the password change when it is pending. Who is logged in and opens `/login` is led there
+  as well, and `/` leads a user to `/folders` and an admin to `/users`.
 - An unknown user name and a wrong password get the same answer, and both compute one hash, so nobody can find out
   which names exist. A name that breaks the name rule and a password of more than 128 characters cannot belong to a
   user; they are answered like a wrong password, without a hash.
-- The header shows the name of the logged-in user, which links to the own account `/account`, and "Log out", a plain
-  form that works without JavaScript. Logging out ends the session of the browser and leads to the login page; the
-  other sessions of the user stay.
+- The header shows "Folders" for a user, "Users" for every account, the name of the logged-in user, which links to
+  the own account `/account`, and "Log out", a plain form that works without JavaScript. An admin has no "Folders".
+  Logging out ends the session of the browser and leads to the login page; the other sessions of the user stay.
 - After a login and a logout every route is revalidated, so that the header and cached pages follow the new session.
 - Better Auth is called only on the server. Its route handler is not mounted, so there is no `/api/auth/...` and no
   public endpoint to sign up or to sign in past the login wait.
@@ -109,6 +127,9 @@ Tests: `e2e/login.spec.ts`, `e2e/change-password.spec.ts`, `e2e/users.spec.ts`, 
   control characters and is at most 2048 characters long. Anything else leads to `/folders`, so that a crafted link
   to the login page cannot send a user who just logged in to another site. The rule is `safeNextPath()` in
   `src/lib/addresses.ts`; the login page, the password change and both actions check the value again.
+- An admin sees no content, so for an admin a way back to `/` or to an address under `/folders` or `/deleted-pages`,
+  judged by its path, leads to `/users` instead of the not-found page; every other way back stays. The rule is
+  `landingPath()` in `src/lib/addresses.ts`, used by the login, the password change, both of their pages and `/`.
 - The folder list is where a login leads anyway, so it is left out of the address.
 - `requireUser()` redirects without a way back, unless its caller passes one: only the consent page of OAuth does
   (see `oauth.md`). A request with a session cookie that is no longer valid therefore leads to `/folders` after the
@@ -196,30 +217,35 @@ the authentication guide of Next.js describes:
   browsers of the user are logged out.
 - The pending change is cleared only after the password has changed. If that fails, the user changes the password once
   more.
-- After the change the user lands on `/folders`, or on the address the login was asked for (see "The way back after a
-  login"). A user without a pending change who opens `/change-password` is led there too.
+- After the change a user lands on `/folders` and an admin on `/users`, or on the address the login was asked for (see
+  "The way back after a login"). Who has no pending change and opens `/change-password` is led there too.
 
 ## User list and creating users
 
-- Only the admin sees the user list, at `/users`, with every user, the time it was created and whether its password
-  change is pending. The header shows the menu entry "Users" to the admin only; for every other user `/users` is not
-  found, with and without an action.
-- Only the admin creates users, in the "New user" dialog at `/users?action=create`. The admin enters a user name;
-  HippoWiki generates a first password and shows it exactly once, for the admin to pass on. The new user has to change
-  it at the first login.
+- Every account sees the user list, at `/users`, from the header entry "Users": every account, admins included, by
+  name, with its type and the time it was created. Only an admin also sees whose password change is pending, because
+  that marks the accounts that still use a generated first password; for a user it is not even read.
+- Only an admin creates accounts, in the "New user" dialog at `/users?action=create`, and only an admin sees the
+  button "New user". For a user the address of the dialog is not found, and a crafted request creates nothing.
+- The admin enters a user name and chooses the type, "User" or "Admin", with "User" chosen when the dialog opens; the
+  dialog says that the type cannot be changed later. A request that names no type or an unknown one is refused with
+  an error at the type, and nothing is created; no type is chosen in its place.
+- HippoWiki generates a first password and shows it exactly once, with the name and the type, for the admin to pass
+  on. The new account has to change it at the first login.
+- The log line of a new account names its user name, its type and the admin who created it, never the password.
 - A generated password is 20 characters long, drawn from a cryptographic random source from letters and digits that are
   not easy to confuse.
 - The password is not part of an address or of a stored page, and it is gone after a reload. The dialog closes only
   through its link back to the user list, so that it cannot be lost by a stray click.
-- A form cannot choose the password or skip the password change: only the name is read.
+- A form cannot choose the password or skip the password change: only the name and the type are read.
 - No user name has to be reserved for an address of its own, so `/users/<name>` stays free for every valid name.
 
 ## Routes
 
 - `/login`: the login form. Public. `?next=<path>` is the address the login leads to.
-- `/change-password`: the forced password change. It needs a session; without a pending change it leads to `/folders`.
-  `?next=<path>` is the address the change leads to.
-- `/users`: the user list, with the action `create` for the "New user" dialog. For the admin only.
+- `/change-password`: the forced password change. It needs a session; without a pending change it leads on as a login
+  does. `?next=<path>` is the address the change leads to.
+- `/users`: the user list, for every account, with the action `create` for the "New user" dialog, for admins only.
 - None of the three has views, and only `/users` has an action; any other action or view shows the not-found page.
 
 ## Decisions
@@ -253,19 +279,40 @@ the authentication guide of Next.js describes:
   any other phrase, and would act like a composition rule. A password of digits only contains no word to remove and is
   left to the list, so that there is still no composition rule.
 - An account is never disabled after many failures, unlike NIST SP 800-63B-4 asks after 100 failures in a row: with
-  one admin and no mail there would be no way back in.
-- The admin has the fixed name `admin`, which ASVS 6.3.2 counts as a default account, instead of a name chosen at the
-  setup or a role column. The setup then needs only `HIPPOWIKI_ADMIN_PASSWORD`, and `isAdmin()` compares the name in
-  one place. The name would not stay secret anyway: every logged-in user sees user names as the last editor of content
-  and as who deleted a page. What makes a default account dangerous does not apply: there is no default password, the
-  setup fails without one, and the first password must be changed at the first login. Guesses for `admin` are held
-  back by the waits of "Failed logins" like those for any other name. The risk accepted is that every installation has
-  a known name to guess and to lock out (see "Current limits").
+  no mail and no password reset there would be no way back in.
+- Two types of account, so that whoever manages the accounts does not get access to the content on the way. An admin
+  sees no content at all, not even folder names, as the cleanest line between running the wiki and reading it; whether
+  admins see folder names is decided again when rights per folder come. Rejected: an admin who sees the folder list
+  without its contents.
+- The type is fixed at the creation, so that no account can gain or lose access to the content or to the management of
+  accounts later on: an admin cannot make an account a user to read the content, and a user can never be raised to an
+  admin. The database refuses a change as well, so that no code and no command can make one. Rejected: changing the
+  type in the user list.
+- The first admin keeps the fixed name `admin`, which ASVS 6.3.2 counts as a default account, so that the setup still
+  needs only `HIPPOWIKI_ADMIN_PASSWORD`; the type, not the name, decides what an account may do. The name would not
+  stay secret anyway: every account sees the user list. What makes a default account dangerous does not apply: there
+  is no default password, the setup fails without one, and the first password must be changed at the first login.
+  Guesses for `admin` are held back by the waits of "Failed logins" like those for any other name. The risk accepted
+  is that every installation has a known name to guess and to lock out (see "Current limits"). Rejected: a setting for
+  the name of the first admin.
+- An admin starts on the user list, the only page with work for an admin, also when the login carries a way back to
+  the content, so that the login does not end on the not-found page. Rejected: starting on `/account`, and following
+  the way back to the not-found page.
+- Every account sees the user list with the types, so that users know who works in the wiki and whom to ask for an
+  account; it is the same page for both types, so that there is one list to keep. Users see name, type and creation
+  time, but not whose password change is pending. Accepted: every user sees every login name, admins included; the
+  waits of "Failed logins" hold back guesses for any name. Rejected: a user list for admins only, a separate page for
+  users, and the same columns as admins.
+- The "New user" dialog preselects "User", because most accounts are users and an admin is then created on purpose. A
+  request without a type or with an unknown one is refused instead of creating a user, so that a broken or crafted
+  request is noticed. Rejected: no preselection, and falling back to "User".
+- The log names the type of a new account and the admin who created it, so that a new admin is easy to spot.
 - A container needs `DATABASE_URL` and `HIPPOWIKI_ADMIN_PASSWORD` and nothing else, so the secret of the session
   cookies is stored in the database instead of a variable.
 - Who is calling is found out in the adapters, from the session cookie. What the caller may do is checked in the
-  service: a function of the users service that is for the admin only takes the acting user as its first argument
-  and decides itself whether it is the admin (`isAdmin()` in `src/features/users/schema.ts`).
+  services: every function that depends on the type takes the acting user, with its type, as its first argument and
+  decides itself (`isAdmin()` in `src/features/users/user-type.ts`). A session whose user has no known type is
+  treated like a missing session.
 - The auth service takes the `Headers` of the request as an argument, because the session lives in a cookie. `Headers`
   is a web standard and not part of Next.js, so the service still works outside a request of Next.js. The functions
   that change the session also return the response headers that set or clear the cookie. In a Server Action the
@@ -276,16 +323,26 @@ the authentication guide of Next.js describes:
   for its HTTP handler and for links in mails, and HippoWiki has neither.
 - A logout that fails throws and shows the error page, because the button has no place for a message and a session
   that could not be ended must not look ended.
-- The seed and the tests have a known admin and a known normal user (`prisma/known-users.ts`), both with the password
-  change already done. The seed upserts them by name, because an admin that `npm run admin:setup` created has another
-  id.
+- The seed and the tests have a known admin and a known user (`prisma/known-users.ts`), both with the password change
+  already done. The seed upserts them by name, because an admin that `npm run admin:setup` created has another id, and
+  sets the type only when it creates one. The sample content has the known user as its last editor.
+
+## Existing installations
+
+- The migration that brought the types made the account named `admin` an admin and every other account a user, and
+  removed the API tokens, the grants and the authorization codes of `admin`. After the update `admin` sees the user
+  list and no content, and creates a user account for whoever needs to keep working in the wiki.
+- Content that `admin` edited before keeps showing that name as its last editor.
 
 ## Current limits
 
-- no rights and roles: everyone who is logged in can read and change all content
+- no rights per folder: every user can read and change all content, and no admin sees any of it
+- no change of the type of an account; a person who needs the other type gets a second account
 - no public content: nothing can be read without a login (see "Public content" in `roadmap.md`)
-- no way to reset a lost admin password; for now the only way is a change directly in the database
-- no password reset by the admin for other users, so a lost first password cannot be replaced
+- no way to reset a lost password of an admin; for now the only way is a change directly in the database or a second
+  admin who creates a new account
+- no password reset by an admin for other accounts, so a lost first password cannot be replaced
+- no filter of the user list
 - no change of the own password after the forced password change
 - a password change does not end the API tokens of the user; only revoking and expiry do (see `api-tokens.md`)
 - no deactivating or deleting of users; deactivating, when it comes, must also stop the user's API tokens. A user who

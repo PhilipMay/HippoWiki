@@ -1,7 +1,8 @@
 # HippoWiki – API Tokens
 
-The API tokens as built: every user creates long-lived tokens for scripts and tools, such as an MCP client, sees them
-and revokes them on the own account page `/account`. A token stands for its user, limited to the scopes chosen at
+The API tokens as built: every account of the type user creates long-lived tokens for scripts and tools, such as an
+MCP client, sees them and revokes them on the own account page `/account`. An admin has no tokens and no connected
+apps and cannot get any. A token stands for its user, limited to the scopes chosen at
 creation, until it expires or is revoked. The MCP server at `/mcp` accepts them (see `mcp.md`). The apps that a user
 connected through OAuth are grants in the same list (see `oauth.md`). Users and the login are described in
 `users-and-login.md`.
@@ -9,7 +10,7 @@ connected through OAuth are grants in the same list (see `oauth.md`). Users and 
 Code: `src/features/tokens/` (`schema.ts`, `secret.ts`, `service.ts` with `authenticateToken()`, `forms.ts`,
 `queries.ts`, `actions.ts`, the list and the dialogs in `components/`), the route `src/app/account/` and the link in
 `src/components/AppHeader.tsx`. The model is `ApiToken` in `prisma/schema.prisma`. Tests: `e2e/account.spec.ts`,
-`integration/token-service.test.ts`, and the unit tests next to the code, such as
+`e2e/mcp.spec.ts`, `integration/token-service.test.ts`, and the unit tests next to the code, such as
 `src/features/tokens/service.test.ts`.
 
 ## Tokens
@@ -43,10 +44,21 @@ Code: `src/features/tokens/` (`schema.ts`, `secret.ts`, `service.ts` with `authe
   no tokens that never expire.
 - An expired token stays in the list, marked as expired, until it is revoked, and counts towards the limit.
 
+## No tokens for admins
+
+- An admin has no API tokens and no grants, and cannot create any: the token service answers the list of an admin with
+  nothing and refuses to create or revoke a token for an admin, writes nothing and logs it. The consent page of OAuth
+  refuses an admin as well (see `oauth.md`).
+- The check of a bearer token refuses every token and every access token whose account is an admin, so that `/mcp`
+  refuses an admin even if such a token existed (see "The check of a bearer token").
+- No admin task is reachable with a token, with any scope: tokens are for the content only, through MCP, and admin
+  tasks are done only in the browser with the session of an admin (see "Account types" in `users-and-login.md`).
+- The update that brought the account types removed the tokens and grants of the account named `admin`.
+
 ## The own tokens only
 
-- Every user sees and revokes only their own tokens, the admin included. The service takes the acting user first and
-  only ever touches the actor's own tokens.
+- Every user sees and revokes only their own tokens. The service takes the acting user first and only ever touches
+  the actor's own tokens.
 - Revoking deletes the token after a confirmation; tools that use it stop working at once. It cannot be undone.
 - The list shows each token with its name, scopes, creation time, expiry or "Expired", and its last use or "never".
   The last use is written at most once a minute per token, so it is exact to the minute.
@@ -59,12 +71,12 @@ Code: `src/features/tokens/` (`schema.ts`, `secret.ts`, `service.ts` with `authe
 - With the option `acceptOAuth` it also accepts the access token of a grant, which is refused when it or its grant
   has expired. The option is off unless a caller asks for it, so only `/mcp` accepts such tokens, and only while
   OAuth is on. Without the option an access token does not look like a token.
-- It returns the actor of the token's user, the same `id` and `name` that the session of that user gives, or one of
-  these codes:
+- It returns the actor of the token's user, the same `id`, `name` and type that the session of that user gives, or one
+  of these codes:
   - `missing-token`: no header, another scheme, or a value that does not look like a token. The database is not
     asked and nothing is logged.
-  - `invalid-token`: an unknown or expired token, or one whose user still has the first password, who may do nothing
-    but change it.
+  - `invalid-token`: an unknown or expired token, one whose user still has the first password, who may do nothing
+    but change it, or one whose user is an admin, who has no tokens.
   - `insufficient-scope`: a valid token without the scope that was asked for.
   - `failed`: the database could not be read.
 - A caller answers `missing-token` and `invalid-token` with 401 and `WWW-Authenticate: Bearer`, and
@@ -81,6 +93,8 @@ Code: `src/features/tokens/` (`schema.ts`, `secret.ts`, `service.ts` with `authe
   the user. Any other action, a view, a `token` without `revoke` and a token id that is malformed, unknown or another
   user's show the not-found page.
 - Like every other page, `/account` needs a login.
+- `/account` of an admin shows the user name only, with no token list and no "New token"; every action shows an admin
+  the not-found page, and a submitted token form creates nothing.
 
 ## Decisions
 
@@ -93,6 +107,10 @@ Code: `src/features/tokens/` (`schema.ts`, `secret.ts`, `service.ts` with `authe
 - The limit counts expired tokens too, so that the tokens of a user stay few and the user cleans up the list.
 - The token of a user with the first password is refused, because `requireUser()` lets such a user do nothing but
   change it; a token must not be a way around that.
+- Admins have no tokens, because the only thing a token reaches is the content through MCP, which admins do not see.
+  The check of a bearer token looks at the type of the account as well, as a second line behind "admins have no
+  tokens", so that a leaked token can never act for an admin. Rejected: tokens for admins that every request would
+  refuse, and tokens with an admin scope.
 - The last use is written at most once a minute and with a conditional write, so that a burst of requests does not
   write on every one.
 - The check of a bearer token lives in the token service, not in `src/proxy.ts`, so that the MCP route decides itself
@@ -107,6 +125,6 @@ Code: `src/features/tokens/` (`schema.ts`, `secret.ts`, `service.ts` with `authe
 - deactivating a user does not exist yet; when it comes, it must stop the user's tokens as well (see `roadmap.md`)
 - no renaming of a token, no change of its scopes or its expiry, and no warning before a token expires
 - expired tokens are not deleted by themselves
-- the admin cannot see or revoke the tokens of other users
+- an admin cannot see or revoke the tokens of users
 - no CORS, no rate limits of requests with a token and no audit log
 - no change of the own password on `/account` (see "Own password change" in `roadmap.md`)
