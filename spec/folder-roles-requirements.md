@@ -10,9 +10,9 @@ change it. Whoever creates a folder owns it and decides who else gets which role
 
 ## Users and roles
 
-- Folder roles apply to accounts of the type user only. An admin gets no role and still sees no tabs, pages or deleted
-  pages, but sees the names of the folders and who has which role on them (see "Account types" in
-  `users-and-login.md`).
+- Folder roles apply to accounts of the type user only. As a general rule, an admin never has a role on any folder,
+  now or later, given by anyone and in any way (see R2). An admin still sees no tabs, pages or deleted pages, but sees
+  the names of the folders and who has which role on them (see "Account types" in `users-and-login.md`).
 - Folder roles apply to the browser only. MCP keeps its current behaviour until its own rules are defined.
 - There are four roles: Reader, Writer, Manager and Owner. Each role includes everything the role before it may do.
 - A role is given per user and per folder: a user may be Reader of one folder, Manager of another and have no role on
@@ -31,7 +31,7 @@ What each role may do with a folder in the browser:
 | Delete a page                                                        |        |        |    ✓    |   ✓   |
 | See the deleted pages of the folder, read and restore one            |        |        |    ✓    |   ✓   |
 | Create or rename a tab                                               |        |        |    ✓    |   ✓   |
-| Rename the folder                                                    |        |        |    ✓    |   ✓   |
+| Rename the folder                                                    |        |        |         |   ✓   |
 | Give, change and remove roles on the folder                          |        |        |         |   ✓   |
 
 Not tied to a folder, and so open to every user without a role, as today: creating a folder, the user list, the own
@@ -52,8 +52,13 @@ account page with its tokens and connected apps, the consent page of OAuth, the 
 - R1: Every user must have at most one role per folder: Reader, Writer, Manager or Owner, and each role must include
   everything the roles before it may do.
   - Acceptance: a Manager can do everything a Writer and a Reader can do; a user never holds two roles on one folder.
-- R2: An admin must have no role on any folder and must not be offered as someone to give a role to.
-  - Acceptance: the "Give role" dialog lists no admin; no folder shows an admin in its roles view.
+- R2: An admin must never have a role on any folder, as a general rule that holds now and for every later feature: no
+  page, form, dialog, MCP tool, command or update of an installation gives an admin a role, and every attempt to give
+  one, also one that bypasses the forms, must be refused and change nothing. An admin must not be offered as someone
+  to give a role to, and creating a folder must never make an admin its Owner.
+  - Acceptance: the "Give role" dialog lists no admin; a "Give role" form submitted with an admin's name is refused
+    and gives no role; no folder shows an admin in its roles view; after the update of an existing installation no
+    admin has a role.
 
 ### Seeing and changing content
 
@@ -171,7 +176,8 @@ account page with its tokens and connected apps, the consent page of OAuth, the 
 
 ### Existing installations
 
-- R9: After the update, every existing user must be Owner of every existing folder.
+- R9: After the update, every existing account of the type user must be Owner of every existing folder; admins get no
+  role (R2).
   - Acceptance: after the update every user sees and can do everything they could do before, and can give and take
     roles on every existing folder.
 
@@ -245,6 +251,10 @@ account page with its tokens and connected apps, the consent page of OAuth, the 
   folders, so that an admin can never give themselves access to the content. Rejected: admins who see no folder names
   at all, the folder list and the roles views under `/folders` for admins, the folders and roles of each user on the
   user list, admins who change roles, and admins who create folders with a user as the first Owner.
+- Admins never get a role, as a general rule for this and every later feature, so that the line between running the
+  wiki and reading it holds: an account that manages the accounts can never reach the content through a role. A person
+  who needs both jobs has two accounts, as with the account types. Rejected: roles for admins, given by an Owner or by
+  an admin.
 - The admin overview shows no time of the last change and no last editor. The user left this to what is simpler to
   build: fewer columns, and admins learn less about the activity in the content. Rejected: the time of the last
   change and the last editor next to each folder.
