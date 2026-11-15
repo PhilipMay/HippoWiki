@@ -34,6 +34,8 @@ const serviceWrites = [mocks.createFolder, mocks.renameFolder, mocks.createTab, 
 
 /** The logged-in user that `requireUser()` returns; every action passes it to its service write as the actor. */
 const USER = { id: crypto.randomUUID(), name: "alice", type: "user", mustChangePassword: false };
+/** The actor the actions pass to the services: the logged-in user, in the browser. */
+const BROWSER_USER = { id: USER.id, name: USER.name, type: USER.type, channel: "browser" };
 
 /** Thrown by the mocked `notFound`, like the real one throws, so that code after it never runs. */
 class NotFoundError extends Error {}
@@ -100,7 +102,7 @@ describe("createFolder", () => {
 
     await expect(createFolder({}, formData(VALID))).rejects.toMatchObject({ path: "/folders/stored-name" });
 
-    expect(mocks.createFolder).toHaveBeenCalledWith(USER, { name: "handbook" });
+    expect(mocks.createFolder).toHaveBeenCalledWith(BROWSER_USER, { name: "handbook" });
     expectContentRevalidated();
   });
 
@@ -139,7 +141,7 @@ describe("renameFolder", () => {
 
     await expect(renameFolder(id, {}, formData(VALID))).rejects.toMatchObject({ path: "/folders/stored-name" });
 
-    expect(mocks.renameFolder).toHaveBeenCalledWith(USER, id, { name: "handbook" });
+    expect(mocks.renameFolder).toHaveBeenCalledWith(BROWSER_USER, id, { name: "handbook" });
     expectContentRevalidated();
   });
 
@@ -188,7 +190,7 @@ describe("createTab", () => {
       path: "/folders/stored-folder/stored-tab",
     });
 
-    expect(mocks.createTab).toHaveBeenCalledWith(USER, folderId, { name: "guides" });
+    expect(mocks.createTab).toHaveBeenCalledWith(BROWSER_USER, folderId, { name: "guides" });
     expectContentRevalidated();
   });
 
@@ -234,7 +236,7 @@ describe("renameTab", () => {
       path: "/folders/stored-folder/stored-tab",
     });
 
-    expect(mocks.renameTab).toHaveBeenCalledWith(USER, id, { name: "guides" });
+    expect(mocks.renameTab).toHaveBeenCalledWith(BROWSER_USER, id, { name: "guides" });
     expectContentRevalidated();
   });
 
@@ -286,7 +288,8 @@ describe("without a logged-in user", () => {
 });
 
 describe("for an admin", () => {
-  // The service refuses an admin; for an admin no content exists, so the action shows the not-found page.
+  // The service refuses an admin, and a user without a role on the folder; for them the content does not exist, so the
+  // action shows the not-found page.
   it.each(ACTIONS)("%s shows the not-found page when the service answers not-allowed", async (_name, action, write) => {
     const admin = { ...USER, type: "admin" };
     mocks.requireUser.mockResolvedValue(admin);
@@ -294,7 +297,7 @@ describe("for an admin", () => {
 
     await expect(action()).rejects.toBeInstanceOf(NotFoundError);
 
-    expect(write.mock.calls[0]?.[0]).toBe(admin);
+    expect(write.mock.calls[0]?.[0]).toEqual({ ...BROWSER_USER, type: "admin" });
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
     expect(mocks.redirect).not.toHaveBeenCalled();
   });

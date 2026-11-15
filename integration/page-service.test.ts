@@ -2,19 +2,46 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import * as pageService from "@/features/pages/service";
+import { inBrowser, inMcp, type BrowserActor } from "@/features/folder-roles/service";
 import type { User } from "@/generated/prisma/client";
 
-import { createFolder, createPage, createTab, createUser, getTestDb } from "../e2e/support/database";
+import {
+  createFolder,
+  createPage,
+  createTab,
+  createUser,
+  getTestDb,
+  type FolderRoleData,
+} from "../e2e/support/database";
+import { KNOWN_USER } from "../prisma/known-users";
 
-/** The user who makes the writes, unless a test says otherwise; created anew for every test. */
-let actor: User;
+/**
+ * The user who makes the writes, unless a test says otherwise; created anew for every test. It is the known user
+ * `alice`, whom `createFolder()` makes Owner of every folder a test creates without roles of its own.
+ */
+let user: User;
+/** That user as the actor of the browser. */
+let actor: BrowserActor;
 
 beforeEach(async () => {
-  actor = await createUser({ name: "alice" });
+  user = await createUser({ id: KNOWN_USER.id, name: "alice" });
+  actor = inBrowser(user);
 });
 
+/** Owner roles for the given users, for `createFolder({ roles })`. */
+function owners(...users: { id: string }[]): FolderRoleData[] {
+  return users.map((owner) => ({ user: owner, role: "owner" }));
+}
+
+const NOT_ALLOWED = { ok: false, error: { code: "not-allowed" } };
+
 /** An actor that does not exist: a well-formed id that no user has. */
-const UNKNOWN_ACTOR = { id: "8f7e6d5c-4b3a-4291-8f7e-6d5c4b3a2910", name: "ghost", type: "user" as const };
+const UNKNOWN_ACTOR = {
+  id: "8f7e6d5c-4b3a-4291-8f7e-6d5c4b3a2910",
+  name: "ghost",
+  type: "user" as const,
+  channel: "browser" as const,
+};
 
 /** The id of the last editor of the page with the given id. */
 async function lastEditorOf(pageId: string): Promise<string> {
@@ -117,7 +144,7 @@ describe("the fields of a page", () => {
   it("returns exactly the declared fields of a page in a tab", async () => {
     const folder = await createFolder({ name: "docs" });
     const tab = await createTab({ folder, name: "guides" });
-    const page = await createPage({ tab, name: "intro", content: "# Intro\n\nText", editor: actor });
+    const page = await createPage({ tab, name: "intro", content: "# Intro\n\nText", editor: user });
 
     await expect(pageService.getPage(actor, "docs", "guides", "intro")).resolves.toStrictEqual({
       id: page.id,
@@ -133,7 +160,7 @@ describe("the fields of a page", () => {
 
   it("returns exactly the declared fields of a page placed directly in a folder", async () => {
     const folder = await createFolder({ name: "docs" });
-    const page = await createPage({ folder, name: "intro", editor: actor });
+    const page = await createPage({ folder, name: "intro", editor: user });
 
     await expect(pageService.getPage(actor, "docs", null, "intro")).resolves.toStrictEqual({
       id: page.id,
@@ -150,7 +177,7 @@ describe("the fields of a page", () => {
   it("returns exactly the declared fields of a deleted page", async () => {
     const folder = await createFolder({ name: "docs" });
     const deletedAt = new Date("2026-11-03T10:00:00Z");
-    const page = await createPage({ folder, name: "intro", content: "# Intro", deletedAt, editor: actor });
+    const page = await createPage({ folder, name: "intro", content: "# Intro", deletedAt, editor: user });
 
     await expect(pageService.getDeletedPage(actor, "docs", page.id)).resolves.toStrictEqual({
       id: page.id,
@@ -261,10 +288,11 @@ describe("createPage", () => {
     expect(await getTestDb().page.count()).toBe(0);
   });
 
-  it("returns folder-not-found for a folder that does not exist", async () => {
+  // A folder that does not exist has no role of the actor either, so it answers like a folder the actor cannot see.
+  it("returns not-allowed for a folder that does not exist", async () => {
     await expect(
       pageService.createPage(actor, crypto.randomUUID(), { name: "intro", content: "# Intro", tabId: null }),
-    ).resolves.toEqual({ ok: false, error: { code: "folder-not-found" } });
+    ).resolves.toEqual(NOT_ALLOWED);
   });
 
   it("returns name-taken for a taken name in the same place", async () => {
@@ -317,12 +345,13 @@ describe("updatePageContent", () => {
     });
   });
 
-  it("returns page-not-found for a deleted page and leaves it as it is", async () => {
+  it("returns page-not-found for a deleted page and leaves it as it is, and not-allowed for no page", async () => {
     const page = await createPage({ content: "# Old", deletedAt: new Date() });
 
     await expect(pageService.updatePageContent(actor, page.id, { content: "# New" })).resolves.toEqual(PAGE_NOT_FOUND);
+    // A page that does not exist has no folder with a role of the actor, so nothing tells that it does not exist.
     await expect(pageService.updatePageContent(actor, crypto.randomUUID(), { content: "# New" })).resolves.toEqual(
-      PAGE_NOT_FOUND,
+      NOT_ALLOWED,
     );
     expect((await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } })).content).toBe("# Old");
   });
@@ -416,11 +445,11 @@ describe("deletePage", () => {
     ).resolves.toMatchObject({ ok: true });
   });
 
-  it("returns page-not-found for a page that is already deleted or does not exist", async () => {
+  it("returns page-not-found for a page that is already deleted, and not-allowed for one that does not exist", async () => {
     const page = await createPage({ deletedAt: new Date() });
 
     await expect(pageService.deletePage(actor, page.id)).resolves.toEqual(PAGE_NOT_FOUND);
-    await expect(pageService.deletePage(actor, crypto.randomUUID())).resolves.toEqual(PAGE_NOT_FOUND);
+    await expect(pageService.deletePage(actor, crypto.randomUUID())).resolves.toEqual(NOT_ALLOWED);
   });
 });
 
@@ -479,12 +508,10 @@ describe("restorePage", () => {
   });
 });
 
-const FAILED = { ok: false, error: { code: "failed" } };
-
 describe("the last editor of pages", () => {
   it("is the actor of each write, which replaces the one before", async () => {
     const [bob, carol] = [await createUser({ name: "bob" }), await createUser({ name: "carol" })];
-    const folder = await createFolder();
+    const folder = await createFolder({ roles: owners(user, bob, carol) });
     const tab = await createTab({ folder });
 
     const created = await pageService.createPage(actor, folder.id, { name: "intro", content: "# Intro", tabId: null });
@@ -492,39 +519,39 @@ describe("the last editor of pages", () => {
     const { id } = created.value;
     expect(await lastEditorOf(id)).toBe(actor.id);
 
-    await pageService.updatePageContent(bob, id, { content: "# New" });
+    await pageService.updatePageContent(inBrowser(bob), id, { content: "# New" });
     expect(await lastEditorOf(id)).toBe(bob.id);
 
-    await pageService.moveOrRenamePage(carol, id, { name: "start", tabId: tab.id });
+    await pageService.moveOrRenamePage(inBrowser(carol), id, { name: "start", tabId: tab.id });
     expect(await lastEditorOf(id)).toBe(carol.id);
 
     // For a deleted page, the last editor is the user who deleted it.
     await pageService.deletePage(actor, id);
     expect(await lastEditorOf(id)).toBe(actor.id);
 
-    await pageService.restorePage(bob, id, { name: "start", tabId: null });
+    await pageService.restorePage(inBrowser(bob), id, { name: "start", tabId: null });
     expect(await lastEditorOf(id)).toBe(bob.id);
   });
 
   it("stays as it was when a write fails", async () => {
     const bob = await createUser({ name: "bob" });
-    const folder = await createFolder();
+    const folder = await createFolder({ roles: owners(user, bob) });
     const foreignTab = await createTab();
     await createPage({ folder, name: "taken" });
-    const page = await createPage({ folder, name: "intro", editor: actor });
-    const deleted = await createPage({ folder, name: "old", editor: actor, deletedAt: new Date() });
+    const page = await createPage({ folder, name: "intro", editor: user });
+    const deleted = await createPage({ folder, name: "old", editor: user, deletedAt: new Date() });
 
-    await pageService.updatePageContent(bob, page.id, { content: "No title" });
-    await pageService.moveOrRenamePage(bob, page.id, { name: "taken", tabId: null });
-    await pageService.moveOrRenamePage(bob, page.id, { name: "start", tabId: foreignTab.id });
-    await pageService.moveOrRenamePage(bob, page.id, { name: "Not A Name", tabId: null });
+    await pageService.updatePageContent(inBrowser(bob), page.id, { content: "No title" });
+    await pageService.moveOrRenamePage(inBrowser(bob), page.id, { name: "taken", tabId: null });
+    await pageService.moveOrRenamePage(inBrowser(bob), page.id, { name: "start", tabId: foreignTab.id });
+    await pageService.moveOrRenamePage(inBrowser(bob), page.id, { name: "Not A Name", tabId: null });
     // A deleted page is missing for every write but a restore, and a page that is not deleted for a restore.
-    await pageService.updatePageContent(bob, deleted.id, { content: "# New" });
-    await pageService.moveOrRenamePage(bob, deleted.id, { name: "start", tabId: null });
-    await pageService.deletePage(bob, deleted.id);
-    await pageService.restorePage(bob, page.id, { name: "start", tabId: null });
-    await pageService.restorePage(bob, deleted.id, { name: "taken", tabId: null });
-    await pageService.restorePage(bob, deleted.id, { name: "start", tabId: foreignTab.id });
+    await pageService.updatePageContent(inBrowser(bob), deleted.id, { content: "# New" });
+    await pageService.moveOrRenamePage(inBrowser(bob), deleted.id, { name: "start", tabId: null });
+    await pageService.deletePage(inBrowser(bob), deleted.id);
+    await pageService.restorePage(inBrowser(bob), page.id, { name: "start", tabId: null });
+    await pageService.restorePage(inBrowser(bob), deleted.id, { name: "taken", tabId: null });
+    await pageService.restorePage(inBrowser(bob), deleted.id, { name: "start", tabId: foreignTab.id });
 
     expect(await lastEditorOf(page.id)).toBe(actor.id);
     expect(await lastEditorOf(deleted.id)).toBe(actor.id);
@@ -532,15 +559,19 @@ describe("the last editor of pages", () => {
 
   it("of the folder and the tab is not touched by the writes of their pages", async () => {
     const bob = await createUser({ name: "bob" });
-    const folder = await createFolder({ editor: actor });
-    const tab = await createTab({ folder, editor: actor });
-    const created = await pageService.createPage(bob, folder.id, { name: "intro", content: "# Intro", tabId: tab.id });
+    const folder = await createFolder({ editor: user, roles: owners(bob) });
+    const tab = await createTab({ folder, editor: user });
+    const created = await pageService.createPage(inBrowser(bob), folder.id, {
+      name: "intro",
+      content: "# Intro",
+      tabId: tab.id,
+    });
     if (!created.ok) throw new Error("expected the page to be created");
     const { id } = created.value;
-    await pageService.moveOrRenamePage(bob, id, { name: "intro", tabId: null });
-    await pageService.moveOrRenamePage(bob, id, { name: "intro", tabId: tab.id });
-    await pageService.deletePage(bob, id);
-    await pageService.restorePage(bob, id, { name: "intro", tabId: tab.id });
+    await pageService.moveOrRenamePage(inBrowser(bob), id, { name: "intro", tabId: null });
+    await pageService.moveOrRenamePage(inBrowser(bob), id, { name: "intro", tabId: tab.id });
+    await pageService.deletePage(inBrowser(bob), id);
+    await pageService.restorePage(inBrowser(bob), id, { name: "intro", tabId: tab.id });
 
     const storedFolder = await getTestDb().folder.findUniqueOrThrow({ where: { id: folder.id } });
     const storedTab = await getTestDb().tab.findUniqueOrThrow({ where: { id: tab.id } });
@@ -548,25 +579,28 @@ describe("the last editor of pages", () => {
     expect([storedFolder.updatedAt, storedTab.updatedAt]).toEqual([folder.updatedAt, tab.updatedAt]);
   });
 
-  it("gives failed, not a missing folder, tab or page, for an actor that does not exist, and writes nothing", async () => {
+  // An actor that does not exist has no role on any folder, so the writes are refused before they reach the pages.
+  it("gives not-allowed, not a missing folder, tab or page, for an actor that does not exist, and writes nothing", async () => {
     const folder = await createFolder();
     const tab = await createTab({ folder });
-    const page = await createPage({ folder, name: "intro", editor: actor });
-    const deleted = await createPage({ folder, name: "old", editor: actor, deletedAt: new Date() });
+    const page = await createPage({ folder, name: "intro", editor: user });
+    const deleted = await createPage({ folder, name: "old", editor: user, deletedAt: new Date() });
     const before = await getTestDb().page.findMany({ orderBy: { name: "asc" } });
 
     for (const tabId of [null, tab.id]) {
       await expect(
         pageService.createPage(UNKNOWN_ACTOR, folder.id, { name: "new", content: "# New", tabId }),
-      ).resolves.toEqual(FAILED);
+      ).resolves.toEqual(NOT_ALLOWED);
     }
-    await expect(pageService.updatePageContent(UNKNOWN_ACTOR, page.id, { content: "# New" })).resolves.toEqual(FAILED);
-    await expect(pageService.moveOrRenamePage(UNKNOWN_ACTOR, page.id, { name: "new", tabId: tab.id })).resolves.toEqual(
-      FAILED,
+    await expect(pageService.updatePageContent(UNKNOWN_ACTOR, page.id, { content: "# New" })).resolves.toEqual(
+      NOT_ALLOWED,
     );
-    await expect(pageService.deletePage(UNKNOWN_ACTOR, page.id)).resolves.toEqual(FAILED);
+    await expect(pageService.moveOrRenamePage(UNKNOWN_ACTOR, page.id, { name: "new", tabId: tab.id })).resolves.toEqual(
+      NOT_ALLOWED,
+    );
+    await expect(pageService.deletePage(UNKNOWN_ACTOR, page.id)).resolves.toEqual(NOT_ALLOWED);
     await expect(pageService.restorePage(UNKNOWN_ACTOR, deleted.id, { name: "old", tabId: tab.id })).resolves.toEqual(
-      FAILED,
+      NOT_ALLOWED,
     );
 
     expect(await getTestDb().page.findMany({ orderBy: { name: "asc" } })).toStrictEqual(before);
@@ -578,7 +612,7 @@ describe("the last editor in the page reads", () => {
     const bob = await createUser({ name: "bob" });
     const folder = await createFolder({ name: "docs" });
     const tab = await createTab({ folder, name: "guides" });
-    await createPage({ folder, name: "direct", editor: actor });
+    await createPage({ folder, name: "direct", editor: user });
     await createPage({ tab, name: "in-tab", editor: bob });
 
     const editors = (pages: { name: string; lastEditedBy: { name: string } }[]) =>
@@ -596,10 +630,10 @@ describe("the last editor in the page reads", () => {
 
   it("is the user who changed the page last, after a write through the service", async () => {
     const bob = await createUser({ name: "bob" });
-    const folder = await createFolder({ name: "docs" });
-    const page = await createPage({ folder, name: "intro", editor: actor });
+    const folder = await createFolder({ name: "docs", roles: owners(user, bob) });
+    const page = await createPage({ folder, name: "intro", editor: user });
 
-    await pageService.updatePageContent(bob, page.id, { content: "# New" });
+    await pageService.updatePageContent(inBrowser(bob), page.id, { content: "# New" });
 
     await expect(pageService.getPage(actor, "docs", null, "intro")).resolves.toMatchObject({
       lastEditedBy: { name: "bob" },
@@ -609,10 +643,10 @@ describe("the last editor in the page reads", () => {
 
   it("is the user who deleted the page in the deleted pages and the deleted page view", async () => {
     const bob = await createUser({ name: "bob" });
-    const folder = await createFolder({ name: "docs" });
-    const page = await createPage({ folder, name: "intro", editor: actor });
+    const folder = await createFolder({ name: "docs", roles: owners(user, bob) });
+    const page = await createPage({ folder, name: "intro", editor: user });
 
-    await pageService.deletePage(bob, page.id);
+    await pageService.deletePage(inBrowser(bob), page.id);
 
     await expect(pageService.listDeletedPages(actor, folder.id)).resolves.toMatchObject([
       { lastEditedBy: { name: "bob" } },
@@ -624,7 +658,7 @@ describe("the last editor in the page reads", () => {
 
   it("returns no other field of the user", async () => {
     const folder = await createFolder({ name: "docs" });
-    await createPage({ folder, name: "intro", editor: actor });
+    await createPage({ folder, name: "intro", editor: user });
 
     const [summary] = (await pageService.listFolderPages(actor, folder.id)) ?? [];
 
@@ -635,24 +669,77 @@ describe("the last editor in the page reads", () => {
 describe("an admin", () => {
   it("reads no page, not even one that exists, and changes nothing", async () => {
     const admin = await createUser({ name: "maria", type: "admin" });
-    const folder = await createFolder({ name: "docs", editor: actor });
-    const page = await createPage({ folder, name: "intro", editor: actor });
-    const deleted = await createPage({ folder, name: "old", editor: actor, deletedAt: new Date() });
+    const folder = await createFolder({ name: "docs", editor: user });
+    const page = await createPage({ folder, name: "intro", editor: user });
+    const deleted = await createPage({ folder, name: "old", editor: user, deletedAt: new Date() });
     const before = await getTestDb().page.findMany({ orderBy: { name: "asc" } });
 
-    await expect(pageService.listFolderPages(admin, folder.id)).resolves.toBeNull();
-    await expect(pageService.listAllFolderPages(admin, folder.id)).resolves.toBeNull();
-    await expect(pageService.getPage(admin, "docs", null, "intro")).resolves.toBeNull();
-    await expect(pageService.listDeletedPages(admin, folder.id)).resolves.toBeNull();
-    await expect(pageService.getDeletedPage(admin, "docs", deleted.id)).resolves.toBeNull();
+    await expect(pageService.listFolderPages(inBrowser(admin), folder.id)).resolves.toBeNull();
+    await expect(pageService.listAllFolderPages(inBrowser(admin), folder.id)).resolves.toBeNull();
+    await expect(pageService.getPage(inBrowser(admin), "docs", null, "intro")).resolves.toBeNull();
+    await expect(pageService.listDeletedPages(inBrowser(admin), folder.id)).resolves.toBeNull();
+    await expect(pageService.getDeletedPage(inBrowser(admin), "docs", deleted.id)).resolves.toBeNull();
     const notAllowed = { ok: false, error: { code: "not-allowed" } };
     await expect(
-      pageService.createPage(admin, folder.id, { name: "new", content: "# New", tabId: null }),
+      pageService.createPage(inBrowser(admin), folder.id, { name: "new", content: "# New", tabId: null }),
     ).resolves.toEqual(notAllowed);
-    await expect(pageService.updatePageContent(admin, page.id, { content: "# Changed" })).resolves.toEqual(notAllowed);
-    await expect(pageService.deletePage(admin, page.id)).resolves.toEqual(notAllowed);
-    await expect(pageService.restorePage(admin, deleted.id, { name: "old", tabId: null })).resolves.toEqual(notAllowed);
+    await expect(pageService.updatePageContent(inBrowser(admin), page.id, { content: "# Changed" })).resolves.toEqual(
+      notAllowed,
+    );
+    await expect(pageService.deletePage(inBrowser(admin), page.id)).resolves.toEqual(notAllowed);
+    await expect(pageService.restorePage(inBrowser(admin), deleted.id, { name: "old", tabId: null })).resolves.toEqual(
+      notAllowed,
+    );
 
     expect(await getTestDb().page.findMany({ orderBy: { name: "asc" } })).toStrictEqual(before);
+  });
+});
+
+describe("roles", () => {
+  it("reads no page, page list or deleted page of a folder without a role of the actor", async () => {
+    const bob = await createUser({ name: "bob" });
+    const folder = await createFolder({ name: "hidden", roles: owners(bob) });
+    const tab = await createTab({ folder, name: "guides" });
+    await createPage({ folder, name: "intro" });
+    await createPage({ tab, name: "in-tab" });
+    const deleted = await createPage({ folder, name: "old", deletedAt: new Date() });
+
+    await expect(pageService.listFolderPages(actor, folder.id)).resolves.toBeNull();
+    await expect(pageService.listTabPages(actor, tab.id)).resolves.toBeNull();
+    await expect(pageService.listAllFolderPages(actor, folder.id)).resolves.toBeNull();
+    await expect(pageService.getPage(actor, "hidden", null, "intro")).resolves.toBeNull();
+    await expect(pageService.getPage(actor, "hidden", "guides", "in-tab")).resolves.toBeNull();
+    await expect(pageService.listDeletedPages(actor, folder.id)).resolves.toBeNull();
+    await expect(pageService.getDeletedPage(actor, "hidden", deleted.id)).resolves.toBeNull();
+  });
+
+  it("changes no page of a folder without a role of the actor", async () => {
+    const bob = await createUser({ name: "bob" });
+    const folder = await createFolder({ name: "hidden", roles: owners(bob) });
+    const tab = await createTab({ folder });
+    const page = await createPage({ folder, name: "intro" });
+    const deleted = await createPage({ folder, name: "old", deletedAt: new Date() });
+    const before = await getTestDb().page.findMany({ orderBy: { name: "asc" } });
+
+    for (const result of [
+      await pageService.createPage(actor, folder.id, { name: "new", content: "# New", tabId: null }),
+      await pageService.updatePageContent(actor, page.id, { content: "# New" }),
+      await pageService.moveOrRenamePage(actor, page.id, { name: "new", tabId: tab.id }),
+      await pageService.deletePage(actor, page.id),
+      await pageService.restorePage(actor, deleted.id, { name: "old", tabId: null }),
+    ]) {
+      expect(result).toEqual(NOT_ALLOWED);
+    }
+    expect(await getTestDb().page.findMany({ orderBy: { name: "asc" } })).toStrictEqual(before);
+  });
+
+  it("reads every page through MCP, whatever the roles", async () => {
+    const bob = await createUser({ name: "bob" });
+    const folder = await createFolder({ name: "hidden", roles: owners(bob) });
+    await createPage({ folder, name: "intro" });
+    const mcp = inMcp(user);
+
+    expect((await pageService.listAllFolderPages(mcp, folder.id))?.map(({ name }) => name)).toEqual(["intro"]);
+    await expect(pageService.getPage(mcp, "hidden", null, "intro")).resolves.toMatchObject({ name: "intro" });
   });
 });

@@ -279,6 +279,22 @@ test("list_folder lists the tabs and the pages of a folder, pages placed directl
   });
 });
 
+test("a token lists and reads a folder on which its user has no role, unlike the browser", async ({ request }) => {
+  const bob = await createUser({ name: "bob" });
+  const hidden = await createFolder({ name: "hidden", roles: [{ user: bob, role: "owner" }] });
+  await createPage({ folder: hidden, name: "secret", content: "# Secret\n\nOnly for bob." });
+
+  const folders = await callTool(request, "list_folders");
+  const listed = await callTool(request, "list_folder", { folder: "hidden" });
+  const read = await callTool(request, "read_page", { folder: "hidden", page: "secret" });
+
+  expect(folders.structuredContent).toMatchObject({ folders: [{ name: "hidden" }] });
+  expect(listed.structuredContent).toMatchObject({ folder: { name: "hidden" }, pages: [{ name: "secret" }] });
+  expect(read.isError).toBeUndefined();
+  expect(read.structuredContent).toMatchObject({ content: "# Secret\n\nOnly for bob." });
+  expect(await getTestDb().folderRole.count({ where: { userId: KNOWN_USER.id } })).toBe(0);
+});
+
 test("list_folder reports a folder that does not exist as a tool error, not as a protocol error", async ({
   request,
 }) => {

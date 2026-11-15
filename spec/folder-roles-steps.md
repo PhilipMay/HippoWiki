@@ -19,7 +19,7 @@ approved requirements in `spec/folder-roles-requirements.md`; the IDs in bracket
 ## Checklist
 
 - [x] Roles in the database
-- [ ] Folders by role
+- [x] Folders by role
 - [ ] Functions by role
 - [ ] Roles view
 - [ ] Give role

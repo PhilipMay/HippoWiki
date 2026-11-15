@@ -3,7 +3,15 @@ import type { Page } from "@playwright/test";
 import { KNOWN_USER } from "../prisma/known-users";
 import { ADMIN_STORAGE_STATE, NO_STORAGE_STATE, USER_STORAGE_STATE } from "./support/auth";
 import { collectErrors } from "./support/browser";
-import { createFolder, createPage, createUser, getTestDb, resetTestDatabase, TEST_PASSWORD } from "./support/database";
+import {
+  createFolder,
+  createFolderRole,
+  createPage,
+  createUser,
+  getTestDb,
+  resetTestDatabase,
+  TEST_PASSWORD,
+} from "./support/database";
 import { expect, test } from "./support/test";
 
 // The users of these tests log in themselves, with a first password.
@@ -11,9 +19,12 @@ test.use({ storageState: NO_STORAGE_STATE });
 
 const NEW_PASSWORD = "my-own-password";
 
+/** The folder whose page the tests open; the new user of a test gets a role on it to read it. */
+let handbook: Awaited<ReturnType<typeof createFolder>>;
+
 test.beforeEach(async () => {
   await resetTestDatabase();
-  const handbook = await createFolder({ name: "handbook" });
+  handbook = await createFolder({ name: "handbook" });
   await createPage({ folder: handbook, name: "overview", content: "# Secret overview\n\nSecret text" });
 });
 
@@ -230,6 +241,7 @@ test("after the change the user lands on the folder list, and the next login nee
 }) => {
   const errors = collectErrors(page);
   const user = await logInWithFirstPassword(page);
+  await createFolderRole({ folder: handbook, user, role: "reader" });
 
   await submitChange(page, {});
 
@@ -305,7 +317,8 @@ test("a user with a first password reaches the address that asked for the login 
   page,
 }) => {
   const errors = collectErrors(page);
-  await createUser({ name: "newcomer" });
+  const newcomer = await createUser({ name: "newcomer" });
+  await createFolderRole({ folder: handbook, user: newcomer, role: "writer" });
 
   await page.goto("/folders/handbook/overview.md?action=edit");
   await expect(page).toHaveURL("/login?next=%2Ffolders%2Fhandbook%2Foverview.md%3Faction%3Dedit");

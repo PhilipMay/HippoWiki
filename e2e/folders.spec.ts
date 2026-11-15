@@ -25,9 +25,12 @@ async function expectNotFound(page: Page, address: string) {
 /** The logged-in user of the tests, who makes every change through the GUI. */
 const USER = KNOWN_USER.name;
 
-/** Text that ends with "by <user>", as the lists and views show the last editor. */
+/**
+ * Text that ends with "by <user>" and the role of the logged-in user, as the folder list shows the last editor of a
+ * folder next to the own role, Owner for the folders of these tests.
+ */
 function by(user: string): RegExp {
-  return new RegExp(`by ${user}$`);
+  return new RegExp(`by ${user}Owner$`);
 }
 
 test("the folder list shows an empty state without folders", async ({ page }) => {

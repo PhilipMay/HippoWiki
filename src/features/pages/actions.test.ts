@@ -42,6 +42,8 @@ const serviceWrites = [
 
 /** The logged-in user that `requireUser()` returns; every action passes it to its service write as the actor. */
 const USER = { id: crypto.randomUUID(), name: "alice", type: "user", mustChangePassword: false };
+/** The actor the actions pass to the services: the logged-in user, in the browser. */
+const BROWSER_USER = { id: USER.id, name: USER.name, type: USER.type, channel: "browser" };
 
 /** Thrown by the mocked `notFound`, like the real one throws, so that code after it never runs. */
 class NotFoundError extends Error {}
@@ -151,7 +153,11 @@ describe("createPage", () => {
       path: "/folders/stored-folder/stored-name.md",
     });
 
-    expect(mocks.createPage).toHaveBeenCalledWith(USER, folderId, { name: "my-page", content: CONTENT, tabId: null });
+    expect(mocks.createPage).toHaveBeenCalledWith(BROWSER_USER, folderId, {
+      name: "my-page",
+      content: CONTENT,
+      tabId: null,
+    });
     expectContentRevalidated();
   });
 
@@ -160,7 +166,7 @@ describe("createPage", () => {
 
     await expect(createPage(folderId, {}, formData({ ...VALID, place: "" }))).rejects.toBeInstanceOf(RedirectError);
 
-    expect(mocks.createPage).toHaveBeenCalledWith(USER, folderId, expect.objectContaining({ tabId: null }));
+    expect(mocks.createPage).toHaveBeenCalledWith(BROWSER_USER, folderId, expect.objectContaining({ tabId: null }));
   });
 
   it("passes the chosen tab to the service and redirects to the stored address in the tab", async () => {
@@ -170,7 +176,7 @@ describe("createPage", () => {
       path: "/folders/stored-folder/stored-tab/stored-name.md",
     });
 
-    expect(mocks.createPage).toHaveBeenCalledWith(USER, folderId, { name: "my-page", content: CONTENT, tabId });
+    expect(mocks.createPage).toHaveBeenCalledWith(BROWSER_USER, folderId, { name: "my-page", content: CONTENT, tabId });
     expectContentRevalidated();
   });
 
@@ -216,7 +222,7 @@ describe("updatePageContent", () => {
       path: "/folders/stored-folder/stored-name.md",
     });
 
-    expect(mocks.updatePageContent).toHaveBeenCalledWith(USER, id, { content: CONTENT });
+    expect(mocks.updatePageContent).toHaveBeenCalledWith(BROWSER_USER, id, { content: CONTENT });
     expectContentRevalidated();
   });
 
@@ -269,7 +275,7 @@ describe("moveOrRenamePage", () => {
       path: "/folders/stored-folder/stored-tab/stored-name.md",
     });
 
-    expect(mocks.moveOrRenamePage).toHaveBeenCalledWith(USER, id, { name: "new-name", tabId });
+    expect(mocks.moveOrRenamePage).toHaveBeenCalledWith(BROWSER_USER, id, { name: "new-name", tabId });
     expectContentRevalidated();
   });
 
@@ -283,7 +289,7 @@ describe("moveOrRenamePage", () => {
       path: "/folders/stored-folder/stored-name.md",
     });
 
-    expect(mocks.moveOrRenamePage).toHaveBeenCalledWith(USER, id, { name: "new-name", tabId: null });
+    expect(mocks.moveOrRenamePage).toHaveBeenCalledWith(BROWSER_USER, id, { name: "new-name", tabId: null });
   });
 
   it.each([
@@ -318,7 +324,7 @@ describe("deletePage", () => {
 
     await expect(deletePage(id)).rejects.toMatchObject({ path: "/folders/stored-folder/stored-tab" });
 
-    expect(mocks.deletePage).toHaveBeenCalledWith(USER, id);
+    expect(mocks.deletePage).toHaveBeenCalledWith(BROWSER_USER, id);
     expectContentRevalidated();
   });
 
@@ -377,7 +383,7 @@ describe("restorePage", () => {
       path: "/folders/stored-folder/stored-tab/stored-name.md",
     });
 
-    expect(mocks.restorePage).toHaveBeenCalledWith(USER, id, { name: "new-name", tabId });
+    expect(mocks.restorePage).toHaveBeenCalledWith(BROWSER_USER, id, { name: "new-name", tabId });
     expectContentRevalidated();
   });
 
@@ -388,7 +394,7 @@ describe("restorePage", () => {
       path: "/folders/stored-folder/stored-name.md",
     });
 
-    expect(mocks.restorePage).toHaveBeenCalledWith(USER, id, { name: "new-name", tabId: null });
+    expect(mocks.restorePage).toHaveBeenCalledWith(BROWSER_USER, id, { name: "new-name", tabId: null });
   });
 
   it.each([
@@ -457,7 +463,8 @@ describe("without a logged-in user", () => {
 });
 
 describe("for an admin", () => {
-  // The service refuses an admin; for an admin no content exists, so the action shows the not-found page.
+  // The service refuses an admin, and a user without a role on the folder; for them the content does not exist, so the
+  // action shows the not-found page.
   it.each(ACTIONS)("%s shows the not-found page when the service answers not-allowed", async (_name, action, write) => {
     const admin = { ...USER, type: "admin" };
     mocks.requireUser.mockResolvedValue(admin);
@@ -465,7 +472,7 @@ describe("for an admin", () => {
 
     await expect(action()).rejects.toBeInstanceOf(NotFoundError);
 
-    expect(write.mock.calls[0]?.[0]).toBe(admin);
+    expect(write.mock.calls[0]?.[0]).toEqual({ ...BROWSER_USER, type: "admin" });
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
     expect(mocks.redirect).not.toHaveBeenCalled();
   });

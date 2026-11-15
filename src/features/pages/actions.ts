@@ -3,11 +3,12 @@
 // The writes of pages for forms: thin adapters that translate between a form and the service. Every action calls
 // `requireUser()` first, which redirects to the login page without a logged-in user: a Server Action is a public
 // endpoint, whatever page shows its form. The call stands outside every `try` block, because the redirect throws. The
-// user it returns is passed to the service write as the actor, who becomes the last editor.
+// user it returns is passed to the service write as the actor of the browser, who becomes the last editor.
 
 import { notFound, redirect } from "next/navigation";
 
 import { requireUser } from "@/features/auth/session";
+import { inBrowser } from "@/features/folder-roles/service";
 import { parseFolderId } from "@/features/folders/schema";
 import {
   parseNewPageFormData,
@@ -66,10 +67,10 @@ export async function createPage(
   }
   const { name, content, tabId } = input.data;
 
-  const result = await pageService.createPage(user, parsedFolderId, { name, content, tabId });
+  const result = await pageService.createPage(inBrowser(user), parsedFolderId, { name, content, tabId });
   if (!result.ok) {
     switch (result.error.code) {
-      // An admin changes no content, and for an admin no content exists.
+      // An admin changes no content, and for an admin no content exists; nor does a folder without a role of the user.
       case "not-allowed":
         notFound();
       case "folder-not-found":
@@ -108,10 +109,10 @@ export async function updatePageContent(
   const input = parsePageContentFormData(formData);
   if (!input.success) return { fieldErrors: input.fieldErrors };
 
-  const result = await pageService.updatePageContent(user, pageId, { content: input.data.content });
+  const result = await pageService.updatePageContent(inBrowser(user), pageId, { content: input.data.content });
   if (!result.ok) {
     switch (result.error.code) {
-      // An admin changes no content, and for an admin no content exists.
+      // An admin changes no content, and for an admin no content exists; nor does a folder without a role of the user.
       case "not-allowed":
         notFound();
       case "page-not-found":
@@ -152,10 +153,10 @@ export async function moveOrRenamePage(
     };
   }
 
-  const result = await pageService.moveOrRenamePage(user, pageId, input.data);
+  const result = await pageService.moveOrRenamePage(inBrowser(user), pageId, input.data);
   if (!result.ok) {
     switch (result.error.code) {
-      // An admin changes no content, and for an admin no content exists.
+      // An admin changes no content, and for an admin no content exists; nor does a folder without a role of the user.
       case "not-allowed":
         notFound();
       case "page-not-found":
@@ -187,10 +188,10 @@ export async function deletePage(id: string): Promise<PageDeleteFormState> {
   const pageId = parsePageId(id);
   if (!pageId) return { message: PAGE_GONE_MESSAGE };
 
-  const result = await pageService.deletePage(user, pageId);
+  const result = await pageService.deletePage(inBrowser(user), pageId);
   if (!result.ok) {
     switch (result.error.code) {
-      // An admin changes no content, and for an admin no content exists.
+      // An admin changes no content, and for an admin no content exists; nor does a folder without a role of the user.
       case "not-allowed":
         notFound();
       case "page-not-found":
@@ -231,10 +232,10 @@ export async function restorePage(
     };
   }
 
-  const result = await pageService.restorePage(user, pageId, input.data);
+  const result = await pageService.restorePage(inBrowser(user), pageId, input.data);
   if (!result.ok) {
     switch (result.error.code) {
-      // An admin changes no content, and for an admin no content exists.
+      // An admin changes no content, and for an admin no content exists; nor does a folder without a role of the user.
       case "not-allowed":
         notFound();
       case "page-not-found":

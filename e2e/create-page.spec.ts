@@ -267,16 +267,15 @@ test("cancel on the form returns to the folder and creates nothing", async ({ pa
   expect(await getTestDb().page.count()).toBe(0);
 });
 
-test("saving into a folder that no longer exists shows an error and keeps the values", async ({ page }) => {
+// A folder that does not exist has no role of the user either, so it answers like a folder the user cannot see.
+test("saving into a folder that no longer exists shows the not-found page and creates nothing", async ({ page }) => {
   const dialog = await openSaveDialog(page, "# Orphan\n\nContent that must not get lost");
   // The roles of a folder keep it from being deleted, so they go first.
   await getTestDb().folderRole.deleteMany({ where: { folderId: handbook.id } });
   await getTestDb().folder.delete({ where: { id: handbook.id } });
   await dialog.getByRole("button", { name: "Save" }).click();
 
-  await expect(dialog.getByRole("alert")).toHaveText("This folder no longer exists.");
-  await expect(dialog.getByLabel("Name")).toHaveValue("orphan");
-  await expect(page.getByLabel("Content")).toHaveValue("# Orphan\n\nContent that must not get lost");
+  await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
   expect(await getTestDb().page.count()).toBe(0);
 });
 

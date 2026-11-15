@@ -10,12 +10,13 @@ import {
   renameFolder,
   renameTab,
 } from "@/features/folders/service";
-import type { Actor } from "@/features/users/service";
+import type { BrowserActor, ContentActor } from "@/features/folder-roles/service";
 import { Prisma } from "@/generated/prisma/client";
 
 const mocks = vi.hoisted(() => ({
   folderFindMany: vi.fn(),
   folderFindUnique: vi.fn(),
+  folderFindFirst: vi.fn(),
   folderCreate: vi.fn(),
   folderUpdateMany: vi.fn(),
   tabFindMany: vi.fn(),
@@ -23,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   tabFindUnique: vi.fn(),
   tabCreate: vi.fn(),
   tabUpdateMany: vi.fn(),
+  folderRoleFindFirst: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
@@ -33,6 +35,7 @@ vi.mock("@/lib/db", () => ({
     folder: {
       findMany: mocks.folderFindMany,
       findUnique: mocks.folderFindUnique,
+      findFirst: mocks.folderFindFirst,
       create: mocks.folderCreate,
       updateMany: mocks.folderUpdateMany,
     },
@@ -43,6 +46,7 @@ vi.mock("@/lib/db", () => ({
       create: mocks.tabCreate,
       updateMany: mocks.tabUpdateMany,
     },
+    folderRole: { findFirst: mocks.folderRoleFindFirst },
   }),
 }));
 vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, error: mocks.error } }));
@@ -50,6 +54,7 @@ vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, e
 const databaseCalls = [
   mocks.folderFindMany,
   mocks.folderFindUnique,
+  mocks.folderFindFirst,
   mocks.folderCreate,
   mocks.folderUpdateMany,
   mocks.tabFindMany,
@@ -57,7 +62,15 @@ const databaseCalls = [
   mocks.tabFindUnique,
   mocks.tabCreate,
   mocks.tabUpdateMany,
+  mocks.folderRoleFindFirst,
 ];
+
+/** The calls that write to the database. */
+const writeCalls = [mocks.folderCreate, mocks.folderUpdateMany, mocks.tabCreate, mocks.tabUpdateMany];
+
+function expectNothingWritten(): void {
+  for (const call of writeCalls) expect(call).not.toHaveBeenCalled();
+}
 
 /** How often the database has been read or written. */
 function databaseCallCount(): number {
@@ -72,6 +85,8 @@ function expectNothingLogged(): void {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  // The actor is Owner of every folder, unless a test says otherwise.
+  mocks.folderRoleFindFirst.mockResolvedValue({ role: "owner" });
 });
 
 const FOLDER_ID = "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10";
@@ -79,9 +94,16 @@ const TAB_ID = "5a2c1c0e-3f55-4a55-8a42-5d2f0e6a9b11";
 const MALFORMED_ID = "not-a-uuid";
 const ACTOR_ID = "9d4b2f6e-1c3a-4e8b-b7d5-2a6c8e0f1b12";
 
-/** The user who makes the writes, and one whose id is malformed. */
-const ACTOR: Actor = { id: ACTOR_ID, name: "alice", type: "user" };
-const MALFORMED_ACTOR: Actor = { id: MALFORMED_ID, name: "alice", type: "user" };
+/** The user who makes the writes in the browser, one whose id is malformed, and the same user through MCP. */
+const ACTOR: BrowserActor = { id: ACTOR_ID, name: "alice", type: "user", channel: "browser" };
+const MALFORMED_ACTOR: BrowserActor = { id: MALFORMED_ID, name: "alice", type: "user", channel: "browser" };
+const MCP_ACTOR: ContentActor = { ...ACTOR, channel: "mcp" };
+
+/** The condition and the selection of the actor's role on a folder, as a read of the browser asks for it. */
+const ROLE_WHERE = { roles: { some: { userId: ACTOR_ID } } };
+const ROLE_SELECT = { roles: { where: { userId: ACTOR_ID }, select: { role: true } } };
+/** The selection of a read of MCP, which reads no role. */
+const NO_ROLE_SELECT = { roles: { take: 0, select: { role: true } } };
 
 /** Names that are not valid as written: not lowercase, surrounding whitespace, a double hyphen, empty. */
 const MALFORMED_NAMES = ["Handbook", " handbook", "handbook ", "release--notes", "-handbook", ""];
@@ -124,25 +146,67 @@ const otherErrors = [
 ] as const;
 
 describe("listFolders", () => {
-  it("returns the folders of the database", async () => {
+  it("returns the folders with a role of the actor, each with the role", async () => {
     const folder = { id: FOLDER_ID, name: "handbook", updatedAt: new Date() };
-    mocks.folderFindMany.mockResolvedValue([{ ...folder, lastEditedBy: { username: "alice" } }]);
+    mocks.folderFindMany.mockResolvedValue([
+      { ...folder, lastEditedBy: { username: "alice" }, roles: [{ role: "writer" }] },
+    ]);
 
-    await expect(listFolders(ACTOR)).resolves.toEqual([{ ...folder, lastEditedBy: { name: "alice" } }]);
+    await expect(listFolders(ACTOR)).resolves.toEqual([{ ...folder, lastEditedBy: { name: "alice" }, role: "writer" }]);
+    expect(mocks.folderFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: ROLE_WHERE, select: expect.objectContaining(ROLE_SELECT) }),
+    );
+  });
+
+  it("returns every folder through MCP, without a role", async () => {
+    const folder = { id: FOLDER_ID, name: "handbook", updatedAt: new Date() };
+    mocks.folderFindMany.mockResolvedValue([{ ...folder, lastEditedBy: { username: "alice" }, roles: [] }]);
+
+    await expect(listFolders(MCP_ACTOR)).resolves.toEqual([{ ...folder, lastEditedBy: { name: "alice" }, role: null }]);
+    expect(mocks.folderFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: {}, select: expect.objectContaining(NO_ROLE_SELECT) }),
+    );
+  });
+
+  it("returns no folder for a malformed actor id in the browser, logged, without reading the database", async () => {
+    await expect(listFolders(MALFORMED_ACTOR)).resolves.toEqual([]);
+
+    expect(databaseCallCount()).toBe(0);
+    expect(mocks.error).toHaveBeenCalledWith({ actorId: MALFORMED_ID }, "malformed actor id");
   });
 });
 
 describe("getFolderByName", () => {
-  it("returns the folder with the name", async () => {
-    const folder = { id: FOLDER_ID, name: "handbook" };
-    mocks.folderFindUnique.mockResolvedValue(folder);
+  it("returns the folder with the name and the role of the actor on it", async () => {
+    mocks.folderFindFirst.mockResolvedValue({ id: FOLDER_ID, name: "handbook", roles: [{ role: "manager" }] });
 
-    await expect(getFolderByName(ACTOR, "handbook")).resolves.toBe(folder);
-    expect(mocks.folderFindUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { name: "handbook" } }));
+    await expect(getFolderByName(ACTOR, "handbook")).resolves.toEqual({
+      id: FOLDER_ID,
+      name: "handbook",
+      role: "manager",
+    });
+    expect(mocks.folderFindFirst).toHaveBeenCalledWith({
+      where: { name: "handbook", ...ROLE_WHERE },
+      select: { id: true, name: true, ...ROLE_SELECT },
+    });
   });
 
-  it("returns null when no folder has the name", async () => {
-    mocks.folderFindUnique.mockResolvedValue(null);
+  it("returns the folder through MCP without a role, whatever the roles", async () => {
+    mocks.folderFindFirst.mockResolvedValue({ id: FOLDER_ID, name: "handbook", roles: [] });
+
+    await expect(getFolderByName(MCP_ACTOR, "handbook")).resolves.toEqual({
+      id: FOLDER_ID,
+      name: "handbook",
+      role: null,
+    });
+    expect(mocks.folderFindFirst).toHaveBeenCalledWith({
+      where: { name: "handbook" },
+      select: { id: true, name: true, ...NO_ROLE_SELECT },
+    });
+  });
+
+  it("returns null when no folder has the name or the actor has no role on it", async () => {
+    mocks.folderFindFirst.mockResolvedValue(null);
 
     await expect(getFolderByName(ACTOR, "handbook")).resolves.toBeNull();
   });
@@ -160,6 +224,24 @@ describe("listTabs", () => {
 
     await expect(listTabs(ACTOR, FOLDER_ID)).resolves.toEqual([{ ...tab, lastEditedBy: { name: "alice" } }]);
     expect(mocks.tabFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { folderId: FOLDER_ID } }));
+    expect(mocks.folderRoleFindFirst).toHaveBeenCalledWith({
+      where: { userId: ACTOR_ID, folder: { id: FOLDER_ID } },
+      select: { role: true },
+    });
+  });
+
+  it("returns null without a role of the actor on the folder, without reading the tabs", async () => {
+    mocks.folderRoleFindFirst.mockResolvedValue(null);
+
+    await expect(listTabs(ACTOR, FOLDER_ID)).resolves.toBeNull();
+    expect(mocks.tabFindMany).not.toHaveBeenCalled();
+  });
+
+  it("returns the tabs through MCP without asking for a role", async () => {
+    mocks.tabFindMany.mockResolvedValue([]);
+
+    await expect(listTabs(MCP_ACTOR, FOLDER_ID)).resolves.toEqual([]);
+    expect(mocks.folderRoleFindFirst).not.toHaveBeenCalled();
   });
 
   it("returns no tabs for a malformed folder id without reading the database", async () => {
@@ -169,11 +251,22 @@ describe("listTabs", () => {
 });
 
 describe("getTab", () => {
-  it("returns the tab with the name in the folder with the name", async () => {
+  it("returns the tab with the name in the folder with the name, with the role of the actor", async () => {
     const tab = { id: TAB_ID, name: "guides", folder: { id: FOLDER_ID, name: "handbook" } };
-    mocks.tabFindFirst.mockResolvedValue(tab);
+    mocks.tabFindFirst.mockResolvedValue({ ...tab, folder: { ...tab.folder, roles: [{ role: "reader" }] } });
 
-    await expect(getTab(ACTOR, "handbook", "guides")).resolves.toBe(tab);
+    await expect(getTab(ACTOR, "handbook", "guides")).resolves.toEqual({ ...tab, role: "reader" });
+    expect(mocks.tabFindFirst).toHaveBeenCalledWith({
+      where: { name: "guides", folder: { name: "handbook", ...ROLE_WHERE } },
+      select: { id: true, name: true, folder: { select: { id: true, name: true, ...ROLE_SELECT } } },
+    });
+  });
+
+  it("returns the tab through MCP without a role, whatever the roles", async () => {
+    const tab = { id: TAB_ID, name: "guides", folder: { id: FOLDER_ID, name: "handbook" } };
+    mocks.tabFindFirst.mockResolvedValue({ ...tab, folder: { ...tab.folder, roles: [] } });
+
+    await expect(getTab(MCP_ACTOR, "handbook", "guides")).resolves.toEqual({ ...tab, role: null });
     expect(mocks.tabFindFirst).toHaveBeenCalledWith(
       expect.objectContaining({ where: { name: "guides", folder: { name: "handbook" } } }),
     );
@@ -206,16 +299,18 @@ describe("createFolder", () => {
     expectNothingLogged();
   });
 
-  it("stores the folder with the trimmed name and returns it as stored", async () => {
+  it("stores the folder with the trimmed name and its creator as Owner, and returns it as stored", async () => {
     const stored = { id: FOLDER_ID, name: "stored-name" };
     mocks.folderCreate.mockResolvedValue(stored);
 
     await expect(createFolder(ACTOR, VALID)).resolves.toEqual({ ok: true, value: stored });
 
     expect(mocks.folderCreate).toHaveBeenCalledWith({
-      data: { name: "handbook", lastEditedById: ACTOR_ID },
+      data: { name: "handbook", lastEditedById: ACTOR_ID, roles: { create: { userId: ACTOR_ID, role: "owner" } } },
       select: { id: true, name: true },
     });
+    // A new folder needs no role of its creator.
+    expect(mocks.folderRoleFindFirst).not.toHaveBeenCalled();
     expect(mocks.info).toHaveBeenCalledWith({ folderId: FOLDER_ID }, "folder created");
   });
 
@@ -230,7 +325,9 @@ describe("createFolder", () => {
     } as { name: string });
 
     expect(mocks.folderCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { name: "handbook", lastEditedById: ACTOR_ID } }),
+      expect.objectContaining({
+        data: { name: "handbook", lastEditedById: ACTOR_ID, roles: { create: { userId: ACTOR_ID, role: "owner" } } },
+      }),
     );
   });
 
@@ -266,7 +363,7 @@ describe("renameFolder", () => {
 
   it("returns the field errors of an invalid name without writing anything", async () => {
     await expect(renameFolder(ACTOR, FOLDER_ID, INVALID)).resolves.toEqual(NAME_REQUIRED);
-    expect(databaseCallCount()).toBe(0);
+    expectNothingWritten();
     expectNothingLogged();
   });
 
@@ -342,7 +439,7 @@ describe("createTab", () => {
 
   it("returns the field errors of an invalid name without writing anything", async () => {
     await expect(createTab(ACTOR, FOLDER_ID, INVALID)).resolves.toEqual(NAME_REQUIRED);
-    expect(databaseCallCount()).toBe(0);
+    expectNothingWritten();
     expectNothingLogged();
   });
 
@@ -403,7 +500,7 @@ describe("renameTab", () => {
 
   it("returns the field errors of an invalid name without writing anything", async () => {
     await expect(renameTab(ACTOR, TAB_ID, INVALID)).resolves.toEqual(NAME_REQUIRED);
-    expect(databaseCallCount()).toBe(0);
+    expectNothingWritten();
     expectNothingLogged();
   });
 
@@ -463,15 +560,30 @@ describe("renameTab", () => {
 
 /** Every write, called by the given actor with valid input, the database call it writes with, and its editor key. */
 const writes = [
-  ["createFolder", (actor: Actor) => createFolder(actor, VALID), mocks.folderCreate, "Folder_lastEditedById_fkey"],
+  [
+    "createFolder",
+    (actor: BrowserActor) => createFolder(actor, VALID),
+    mocks.folderCreate,
+    "Folder_lastEditedById_fkey",
+  ],
   [
     "renameFolder",
-    (actor: Actor) => renameFolder(actor, FOLDER_ID, VALID),
+    (actor: BrowserActor) => renameFolder(actor, FOLDER_ID, VALID),
     mocks.folderUpdateMany,
     "Folder_lastEditedById_fkey",
   ],
-  ["createTab", (actor: Actor) => createTab(actor, FOLDER_ID, TAB_VALID), mocks.tabCreate, "Tab_lastEditedById_fkey"],
-  ["renameTab", (actor: Actor) => renameTab(actor, TAB_ID, TAB_VALID), mocks.tabUpdateMany, "Tab_lastEditedById_fkey"],
+  [
+    "createTab",
+    (actor: BrowserActor) => createTab(actor, FOLDER_ID, TAB_VALID),
+    mocks.tabCreate,
+    "Tab_lastEditedById_fkey",
+  ],
+  [
+    "renameTab",
+    (actor: BrowserActor) => renameTab(actor, TAB_ID, TAB_VALID),
+    mocks.tabUpdateMany,
+    "Tab_lastEditedById_fkey",
+  ],
 ] as const;
 
 describe("the actor of a write", () => {
@@ -502,13 +614,18 @@ describe("the actor of a write", () => {
 
 describe("an admin", () => {
   /** An admin, who sees and changes no content; named like a user, so that only the type decides. */
-  const ADMIN: Actor = { id: ACTOR_ID, name: "alice", type: "admin" };
+  const ADMIN: BrowserActor = { id: ACTOR_ID, name: "alice", type: "admin", channel: "browser" };
+  const MCP_ADMIN: ContentActor = { ...ADMIN, channel: "mcp" };
 
   it.each([
     ["listFolders", () => listFolders(ADMIN)],
     ["getFolderByName", () => getFolderByName(ADMIN, "handbook")],
     ["listTabs", () => listTabs(ADMIN, FOLDER_ID)],
     ["getTab", () => getTab(ADMIN, "handbook", "guides")],
+    ["listFolders through MCP", () => listFolders(MCP_ADMIN)],
+    ["getFolderByName through MCP", () => getFolderByName(MCP_ADMIN, "handbook")],
+    ["listTabs through MCP", () => listTabs(MCP_ADMIN, FOLDER_ID)],
+    ["getTab through MCP", () => getTab(MCP_ADMIN, "handbook", "guides")],
   ])("gets null from %s, without asking the database", async (_name, read) => {
     await expect(read()).resolves.toBeNull();
 
@@ -547,15 +664,73 @@ describe("an admin", () => {
   });
 
   it.each([
-    ["listFolders", () => listFolders(ACTOR), mocks.folderFindMany],
-    ["getFolderByName", () => getFolderByName(ACTOR, "handbook"), mocks.folderFindUnique],
-    ["listTabs", () => listTabs(ACTOR, FOLDER_ID), mocks.tabFindMany],
-    ["getTab", () => getTab(ACTOR, "handbook", "guides"), mocks.tabFindFirst],
-  ])("does not change %s for a user", async (_name, read, call) => {
-    call.mockResolvedValue([]);
+    ["listFolders", () => listFolders(ACTOR), mocks.folderFindMany, []],
+    ["getFolderByName", () => getFolderByName(ACTOR, "handbook"), mocks.folderFindFirst, null],
+    ["listTabs", () => listTabs(ACTOR, FOLDER_ID), mocks.tabFindMany, []],
+    ["getTab", () => getTab(ACTOR, "handbook", "guides"), mocks.tabFindFirst, null],
+  ])("does not change %s for a user", async (_name, read, call, value) => {
+    call.mockResolvedValue(value);
 
     await read();
 
     expect(call).toHaveBeenCalledOnce();
+  });
+});
+
+describe("a user without a role on the folder", () => {
+  beforeEach(() => {
+    mocks.folderRoleFindFirst.mockResolvedValue(null);
+  });
+
+  it.each([
+    [
+      "renameFolder",
+      () => renameFolder(ACTOR, FOLDER_ID, VALID),
+      { folderId: FOLDER_ID },
+      "folder not renamed: the actor has no role on the folder",
+      { id: FOLDER_ID },
+    ],
+    [
+      "createTab",
+      () => createTab(ACTOR, FOLDER_ID, TAB_VALID),
+      { folderId: FOLDER_ID },
+      "tab not created: the actor has no role on the folder",
+      { id: FOLDER_ID },
+    ],
+    [
+      "renameTab",
+      () => renameTab(ACTOR, TAB_ID, TAB_VALID),
+      { tabId: TAB_ID },
+      "tab not renamed: the actor has no role on the folder of the tab",
+      { tabs: { some: { id: TAB_ID } } },
+    ],
+  ] as const)(
+    "gets not-allowed from %s, logged, and nothing is written",
+    async (_name, write, target, message, folder) => {
+      await expect(write()).resolves.toEqual({ ok: false, error: { code: "not-allowed" } });
+
+      expect(mocks.folderRoleFindFirst).toHaveBeenCalledExactlyOnceWith({
+        where: { userId: ACTOR_ID, folder },
+        select: { role: true },
+      });
+      expectNothingWritten();
+      expect(mocks.warn).toHaveBeenCalledExactlyOnceWith({ actorId: ACTOR_ID, ...target }, message);
+      expect(mocks.info).not.toHaveBeenCalled();
+    },
+  );
+
+  it("is refused before the input is checked", async () => {
+    await expect(renameFolder(ACTOR, FOLDER_ID, INVALID)).resolves.toEqual({
+      ok: false,
+      error: { code: "not-allowed" },
+    });
+    await expect(createTab(ACTOR, FOLDER_ID, INVALID)).resolves.toEqual({ ok: false, error: { code: "not-allowed" } });
+    await expect(renameTab(ACTOR, TAB_ID, INVALID)).resolves.toEqual({ ok: false, error: { code: "not-allowed" } });
+  });
+
+  it("still creates a folder, which needs no role", async () => {
+    mocks.folderCreate.mockResolvedValue({ id: FOLDER_ID, name: "handbook" });
+
+    await expect(createFolder(ACTOR, VALID)).resolves.toMatchObject({ ok: true });
   });
 });

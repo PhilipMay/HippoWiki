@@ -14,7 +14,7 @@ import {
   restorePage,
   updatePageContent,
 } from "@/features/pages/service";
-import type { Actor } from "@/features/users/service";
+import type { BrowserActor, ContentActor } from "@/features/folder-roles/service";
 import { Prisma } from "@/generated/prisma/client";
 
 const mocks = vi.hoisted(() => ({
@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   updateMany: vi.fn(),
   transaction: vi.fn(),
+  roleFindFirst: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
@@ -38,12 +39,13 @@ vi.mock("@/lib/db", () => ({
       create: mocks.create,
       updateMany: mocks.updateMany,
     },
+    folderRole: { findFirst: mocks.roleFindFirst },
     $transaction: mocks.transaction,
   }),
 }));
 vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, error: mocks.error } }));
 
-/** How often the database has been read. */
+/** How often the pages have been read; the role of the actor is not counted. */
 function readCount(): number {
   return mocks.findMany.mock.calls.length + mocks.findFirst.mock.calls.length;
 }
@@ -62,6 +64,8 @@ function expectDatabaseUntouched(): void {
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.findMany.mockResolvedValue([]);
+  // The actor is Owner of every folder, unless a test says otherwise.
+  mocks.roleFindFirst.mockResolvedValue({ role: "owner" });
   // An interactive transaction runs its callback with a client of its own.
   mocks.transaction.mockImplementation((run: (tx: unknown) => Promise<unknown>) =>
     run({ page: { findFirst: mocks.findFirst, updateMany: mocks.updateMany } }),
@@ -74,9 +78,13 @@ const PAGE_ID = "9c4d2b7e-1a3f-4c5d-8e6f-7a8b9c0d1e22";
 const MALFORMED_ID = "not-a-uuid";
 const ACTOR_ID = "9d4b2f6e-1c3a-4e8b-b7d5-2a6c8e0f1b12";
 
-/** The user who makes the writes, and one whose id is malformed. */
-const ACTOR: Actor = { id: ACTOR_ID, name: "alice", type: "user" };
-const MALFORMED_ACTOR: Actor = { id: MALFORMED_ID, name: "alice", type: "user" };
+/** The user who makes the writes in the browser, one whose id is malformed, and the same user through MCP. */
+const ACTOR: BrowserActor = { id: ACTOR_ID, name: "alice", type: "user", channel: "browser" };
+const MALFORMED_ACTOR: BrowserActor = { id: MALFORMED_ID, name: "alice", type: "user", channel: "browser" };
+const MCP_ACTOR: ContentActor = { ...ACTOR, channel: "mcp" };
+
+/** The condition on the folder of a read of the browser: a role of the actor on it. */
+const WITH_ROLE = { roles: { some: { userId: ACTOR_ID } } };
 
 /** Names that are not valid as written: not lowercase, surrounding whitespace, a double hyphen, empty. */
 const MALFORMED_NAMES = ["Overview", " overview", "overview ", "release--notes", "-overview", ""];
@@ -144,7 +152,7 @@ describe("getPage", () => {
     // `tabId: null` keeps a page of the same name in a tab of the folder from being returned.
     expect(mocks.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { name: "overview", folder: { name: "handbook" }, deletedAt: null, tabId: null },
+        where: { name: "overview", folder: { name: "handbook", ...WITH_ROLE }, deletedAt: null, tabId: null },
       }),
     );
   });
@@ -161,7 +169,12 @@ describe("getPage", () => {
     await expect(getPage(ACTOR, "handbook", "guides", "overview")).resolves.toEqual({ ...stored, ...EDITOR });
     expect(mocks.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { name: "overview", folder: { name: "handbook" }, deletedAt: null, tab: { name: "guides" } },
+        where: {
+          name: "overview",
+          folder: { name: "handbook", ...WITH_ROLE },
+          deletedAt: null,
+          tab: { name: "guides" },
+        },
       }),
     );
   });
@@ -214,7 +227,9 @@ describe("getDeletedPage", () => {
 
     await expect(getDeletedPage(ACTOR, "handbook", PAGE_ID)).resolves.toEqual({ ...stored, ...EDITOR });
     expect(mocks.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: PAGE_ID, folder: { name: "handbook" }, deletedAt: { not: null } } }),
+      expect.objectContaining({
+        where: { id: PAGE_ID, folder: { name: "handbook", ...WITH_ROLE }, deletedAt: { not: null } },
+      }),
     );
   });
 
@@ -837,17 +852,25 @@ describe("restorePage", () => {
 const writes = [
   [
     "createPage",
-    (actor: Actor) => createPage(actor, FOLDER_ID, { name: "my-page", content: CONTENT, tabId: TAB_ID }),
+    (actor: BrowserActor) => createPage(actor, FOLDER_ID, { name: "my-page", content: CONTENT, tabId: TAB_ID }),
     mocks.create,
   ],
-  ["updatePageContent", (actor: Actor) => updatePageContent(actor, PAGE_ID, { content: CONTENT }), mocks.updateMany],
   [
-    "moveOrRenamePage",
-    (actor: Actor) => moveOrRenamePage(actor, PAGE_ID, { name: "new-name", tabId: TAB_ID }),
+    "updatePageContent",
+    (actor: BrowserActor) => updatePageContent(actor, PAGE_ID, { content: CONTENT }),
     mocks.updateMany,
   ],
-  ["deletePage", (actor: Actor) => deletePage(actor, PAGE_ID), mocks.updateMany],
-  ["restorePage", (actor: Actor) => restorePage(actor, PAGE_ID, { name: "new-name", tabId: TAB_ID }), mocks.updateMany],
+  [
+    "moveOrRenamePage",
+    (actor: BrowserActor) => moveOrRenamePage(actor, PAGE_ID, { name: "new-name", tabId: TAB_ID }),
+    mocks.updateMany,
+  ],
+  ["deletePage", (actor: BrowserActor) => deletePage(actor, PAGE_ID), mocks.updateMany],
+  [
+    "restorePage",
+    (actor: BrowserActor) => restorePage(actor, PAGE_ID, { name: "new-name", tabId: TAB_ID }),
+    mocks.updateMany,
+  ],
 ] as const;
 
 describe("the actor of a write", () => {
@@ -882,7 +905,8 @@ describe("the actor of a write", () => {
 
 describe("an admin", () => {
   /** An admin, who sees and changes no content; named like a user, so that only the type decides. */
-  const ADMIN: Actor = { id: ACTOR_ID, name: "alice", type: "admin" };
+  const ADMIN: BrowserActor = { id: ACTOR_ID, name: "alice", type: "admin", channel: "browser" };
+  const MCP_ADMIN: ContentActor = { ...ADMIN, channel: "mcp" };
 
   it.each([
     ["listFolderPages", () => listFolderPages(ADMIN, FOLDER_ID)],
@@ -891,10 +915,14 @@ describe("an admin", () => {
     ["getPage", () => getPage(ADMIN, "handbook", null, "overview")],
     ["listDeletedPages", () => listDeletedPages(ADMIN, FOLDER_ID)],
     ["getDeletedPage", () => getDeletedPage(ADMIN, "handbook", PAGE_ID)],
+    ["listFolderPages through MCP", () => listFolderPages(MCP_ADMIN, FOLDER_ID)],
+    ["listTabPages through MCP", () => listTabPages(MCP_ADMIN, TAB_ID)],
+    ["getPage through MCP", () => getPage(MCP_ADMIN, "handbook", null, "overview")],
   ])("gets null from %s, without asking the database", async (_name, read) => {
     await expect(read()).resolves.toBeNull();
 
     expectDatabaseUntouched();
+    expect(mocks.roleFindFirst).not.toHaveBeenCalled();
   });
 
   const MESSAGES = {
@@ -910,6 +938,7 @@ describe("an admin", () => {
 
     for (const call of databaseWrites) expect(call).not.toHaveBeenCalled();
     expect(readCount()).toBe(0);
+    expect(mocks.roleFindFirst).not.toHaveBeenCalled();
     expect(mocks.warn).toHaveBeenCalledExactlyOnceWith({ actorId: ACTOR_ID }, MESSAGES[name]);
     expect(mocks.info).not.toHaveBeenCalled();
     expect(mocks.error).not.toHaveBeenCalled();
@@ -930,4 +959,114 @@ describe("an admin", () => {
     expect(readCount()).toBe(0);
     expect(mocks.error).not.toHaveBeenCalled();
   });
+});
+
+describe("the role of the actor", () => {
+  it.each([
+    ["listFolderPages", () => listFolderPages(ACTOR, FOLDER_ID), { id: FOLDER_ID }],
+    ["listTabPages", () => listTabPages(ACTOR, TAB_ID), { tabs: { some: { id: TAB_ID } } }],
+    ["listAllFolderPages", () => listAllFolderPages(ACTOR, FOLDER_ID), { id: FOLDER_ID }],
+    ["listDeletedPages", () => listDeletedPages(ACTOR, FOLDER_ID), { id: FOLDER_ID }],
+  ] as const)("%s returns null without a role, without reading the pages", async (_name, read, folder) => {
+    mocks.roleFindFirst.mockResolvedValue(null);
+
+    await expect(read()).resolves.toBeNull();
+
+    expect(mocks.roleFindFirst).toHaveBeenCalledExactlyOnceWith({
+      where: { userId: ACTOR_ID, folder },
+      select: { role: true },
+    });
+    expect(readCount()).toBe(0);
+  });
+
+  it.each([
+    ["listFolderPages", () => listFolderPages(MCP_ACTOR, FOLDER_ID)],
+    ["listTabPages", () => listTabPages(MCP_ACTOR, TAB_ID)],
+    ["listAllFolderPages", () => listAllFolderPages(MCP_ACTOR, FOLDER_ID)],
+    ["listDeletedPages", () => listDeletedPages(MCP_ACTOR, FOLDER_ID)],
+  ])("%s through MCP reads the pages without asking for a role", async (_name, read) => {
+    await expect(read()).resolves.toEqual([]);
+
+    expect(mocks.roleFindFirst).not.toHaveBeenCalled();
+    expect(mocks.findMany).toHaveBeenCalledOnce();
+  });
+
+  it("getPage and getDeletedPage through MCP read the folder whatever the roles", async () => {
+    mocks.findFirst.mockResolvedValue(null);
+
+    await getPage(MCP_ACTOR, "handbook", null, "overview");
+    await getDeletedPage(MCP_ACTOR, "handbook", PAGE_ID);
+
+    expect(mocks.findFirst).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ where: expect.objectContaining({ folder: { name: "handbook" } }) }),
+    );
+    expect(mocks.findFirst).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ where: expect.objectContaining({ folder: { name: "handbook" } }) }),
+    );
+  });
+
+  it("getPage returns null for a malformed actor id in the browser, logged, without reading the database", async () => {
+    await expect(getPage(MALFORMED_ACTOR, "handbook", null, "overview")).resolves.toBeNull();
+
+    expect(readCount()).toBe(0);
+    expect(mocks.error).toHaveBeenCalledWith({ actorId: MALFORMED_ID }, "malformed actor id");
+  });
+
+  const refusals = [
+    [
+      "createPage",
+      () => createPage(ACTOR, FOLDER_ID, { name: "my-page", content: CONTENT, tabId: TAB_ID }),
+      { id: FOLDER_ID },
+      { folderId: FOLDER_ID },
+      "page not created: the actor has no role on the folder",
+    ],
+    [
+      "updatePageContent",
+      () => updatePageContent(ACTOR, PAGE_ID, { content: CONTENT }),
+      { pages: { some: { id: PAGE_ID } } },
+      { pageId: PAGE_ID },
+      "page not saved: the actor has no role on the folder of the page",
+    ],
+    [
+      "moveOrRenamePage",
+      () => moveOrRenamePage(ACTOR, PAGE_ID, { name: "new-name", tabId: TAB_ID }),
+      { pages: { some: { id: PAGE_ID } } },
+      { pageId: PAGE_ID },
+      "page not moved or renamed: the actor has no role on the folder of the page",
+    ],
+    [
+      "deletePage",
+      () => deletePage(ACTOR, PAGE_ID),
+      { pages: { some: { id: PAGE_ID } } },
+      { pageId: PAGE_ID },
+      "page not deleted: the actor has no role on the folder of the page",
+    ],
+    [
+      "restorePage",
+      () => restorePage(ACTOR, PAGE_ID, { name: "new-name", tabId: TAB_ID }),
+      { pages: { some: { id: PAGE_ID } } },
+      { pageId: PAGE_ID },
+      "page not restored: the actor has no role on the folder of the page",
+    ],
+  ] as const;
+
+  it.each(refusals)(
+    "%s without a role gets not-allowed, logged, and touches no page",
+    async (_name, write, folder, target, message) => {
+      mocks.roleFindFirst.mockResolvedValue(null);
+
+      await expect(write()).resolves.toEqual({ ok: false, error: { code: "not-allowed" } });
+
+      expect(mocks.roleFindFirst).toHaveBeenCalledExactlyOnceWith({
+        where: { userId: ACTOR_ID, folder },
+        select: { role: true },
+      });
+      for (const call of databaseWrites) expect(call).not.toHaveBeenCalled();
+      expect(readCount()).toBe(0);
+      expect(mocks.warn).toHaveBeenCalledExactlyOnceWith({ actorId: ACTOR_ID, ...target }, message);
+      expect(mocks.info).not.toHaveBeenCalled();
+    },
+  );
 });

@@ -3,11 +3,12 @@
 // The writes of folders and tabs for forms: thin adapters that translate between a form and the service. Every action
 // calls `requireUser()` first, which redirects to the login page without a logged-in user: a Server Action is a
 // public endpoint, whatever page shows its form. The call stands outside every `try` block, because the redirect
-// throws. The user it returns is passed to the service write as the actor, who becomes the last editor.
+// throws. The user it returns is passed to the service write as the actor of the browser, who becomes the last editor.
 
 import { notFound, redirect } from "next/navigation";
 
 import { requireUser } from "@/features/auth/session";
+import { inBrowser } from "@/features/folder-roles/service";
 import { parseFolderFormData, parseTabFormData } from "@/features/folders/forms";
 import { parseFolderId, parseTabId } from "@/features/folders/schema";
 import * as folderService from "@/features/folders/service";
@@ -33,10 +34,10 @@ export async function createFolder(_prevState: NameFormState, formData: FormData
   const input = parseFolderFormData(formData);
   if (!input.success) return { fieldErrors: input.fieldErrors };
 
-  const result = await folderService.createFolder(user, input.data);
+  const result = await folderService.createFolder(inBrowser(user), input.data);
   if (!result.ok) {
     switch (result.error.code) {
-      // An admin changes no content, and for an admin no content exists.
+      // An admin changes no content, and for an admin no content exists; nor does a folder without a role of the user.
       case "not-allowed":
         notFound();
       case "invalid-input":
@@ -67,10 +68,10 @@ export async function renameFolder(id: string, _prevState: NameFormState, formDa
   const input = parseFolderFormData(formData);
   if (!input.success) return { fieldErrors: input.fieldErrors };
 
-  const result = await folderService.renameFolder(user, folderId, input.data);
+  const result = await folderService.renameFolder(inBrowser(user), folderId, input.data);
   if (!result.ok) {
     switch (result.error.code) {
-      // An admin changes no content, and for an admin no content exists.
+      // An admin changes no content, and for an admin no content exists; nor does a folder without a role of the user.
       case "not-allowed":
         notFound();
       case "folder-not-found":
@@ -106,10 +107,10 @@ export async function createTab(
   const input = parseTabFormData(formData);
   if (!input.success) return { fieldErrors: input.fieldErrors };
 
-  const result = await folderService.createTab(user, parsedFolderId, input.data);
+  const result = await folderService.createTab(inBrowser(user), parsedFolderId, input.data);
   if (!result.ok) {
     switch (result.error.code) {
-      // An admin changes no content, and for an admin no content exists.
+      // An admin changes no content, and for an admin no content exists; nor does a folder without a role of the user.
       case "not-allowed":
         notFound();
       case "folder-not-found":
@@ -141,10 +142,10 @@ export async function renameTab(id: string, _prevState: NameFormState, formData:
   const input = parseTabFormData(formData);
   if (!input.success) return { fieldErrors: input.fieldErrors };
 
-  const result = await folderService.renameTab(user, tabId, input.data);
+  const result = await folderService.renameTab(inBrowser(user), tabId, input.data);
   if (!result.ok) {
     switch (result.error.code) {
-      // An admin changes no content, and for an admin no content exists.
+      // An admin changes no content, and for an admin no content exists; nor does a folder without a role of the user.
       case "not-allowed":
         notFound();
       case "tab-not-found":

@@ -11,6 +11,7 @@ import FolderBreadcrumbs from "@/features/folders/components/FolderBreadcrumbs";
 import FolderContentsList from "@/features/folders/components/FolderContentsList";
 import NameDialog from "@/features/folders/components/NameDialog";
 import { getFolderByName, listTabs } from "@/features/folders/queries";
+import { ROLE_LABELS } from "@/features/folder-roles/roles";
 import { createPage } from "@/features/pages/actions";
 import AllPagesList from "@/features/pages/components/AllPagesList";
 import NewPageForm from "@/features/pages/components/NewPageForm";
@@ -100,9 +101,16 @@ export default async function FolderPage({ params, searchParams }: PageProps<"/f
         useFlexGap
         sx={{ alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 2 }}
       >
-        <Typography variant="h4" component="h1" sx={{ overflowWrap: "anywhere" }}>
-          {folder.name}
-        </Typography>
+        <Stack spacing={0.5} sx={{ minWidth: 0 }}>
+          <Typography variant="h4" component="h1" sx={{ overflowWrap: "anywhere" }}>
+            {folder.name}
+          </Typography>
+          {folder.role && (
+            <Typography variant="body2" color="text.secondary">
+              Your role: {ROLE_LABELS[folder.role]}
+            </Typography>
+          )}
+        </Stack>
         <Stack direction="row" useFlexGap sx={{ flexWrap: "wrap", gap: 2 }}>
           <Button component={Link} href={folderPath(folder.name, "rename")} variant="outlined">
             Rename

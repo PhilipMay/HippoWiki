@@ -231,11 +231,12 @@ test("cancelling an edit returns to the page view and changes nothing", async ({
   expect(await getTestDb().page.findUniqueOrThrow({ where: { id: created.id } })).toEqual(created);
 });
 
-test("saving a page that no longer exists shows an error and keeps the content", async ({ page }) => {
+test("saving a page that was deleted in the meantime shows an error and keeps the content", async ({ page }) => {
   const created = await createPage({ folder: handbook, name: "soon-gone", title: "Soon gone" });
 
   await page.goto("/folders/handbook/soon-gone.md?action=edit");
-  await getTestDb().page.delete({ where: { id: created.id } });
+  // Deleted by another user while the form is open.
+  await getTestDb().page.update({ where: { id: created.id }, data: { deletedAt: new Date() } });
   await page.getByLabel("Content").fill("# Soon gone\n\nTyped after the page was removed");
   await page.getByRole("button", { name: "Save" }).click();
 
@@ -243,7 +244,7 @@ test("saving a page that no longer exists shows an error and keeps the content",
   await expect(page.getByLabel("Content")).not.toBeFocused();
   await expect(page).toHaveURL("/folders/handbook/soon-gone.md?action=edit");
   await expect(page.getByLabel("Content")).toHaveValue("# Soon gone\n\nTyped after the page was removed");
-  expect(await getTestDb().page.count()).toBe(0);
+  expect((await getTestDb().page.findUniqueOrThrow({ where: { id: created.id } })).content).toBe(created.content);
 });
 
 test("editing an unknown page or a page address without .md shows the not-found page", async ({ page }) => {

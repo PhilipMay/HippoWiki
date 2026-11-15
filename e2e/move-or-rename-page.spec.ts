@@ -393,18 +393,19 @@ test("a crafted move into a tab of another folder is refused", async ({ page }) 
   await expectNotFound(page, "/folders/other/foreign/kept.md");
 });
 
-test("saving a page that no longer exists shows an error in the dialog", async ({ page }) => {
+test("saving a page that was deleted in the meantime shows an error in the dialog", async ({ page }) => {
   const created = await createPage({ folder: handbook, name: "soon-gone", title: "Soon gone" });
 
   await page.goto("/folders/handbook/soon-gone.md?action=move-or-rename");
-  await getTestDb().page.delete({ where: { id: created.id } });
+  // Deleted by another user while the dialog is open.
+  await getTestDb().page.update({ where: { id: created.id }, data: { deletedAt: new Date() } });
   const dialog = dialogOf(page);
   await dialog.getByLabel("Name").fill("new-name");
   await dialog.getByRole("button", { name: "Save" }).click();
 
   await expect(dialog.getByRole("alert")).toHaveText("This page no longer exists.");
   await expect(dialog.getByLabel("Name")).toHaveValue("new-name");
-  expect(await getTestDb().page.count()).toBe(0);
+  expect((await getTestDb().page.findUniqueOrThrow({ where: { id: created.id } })).name).toBe("soon-gone");
 });
 
 test("a folder without tabs offers only the folder itself", async ({ page }) => {

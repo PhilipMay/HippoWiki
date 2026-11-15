@@ -245,8 +245,8 @@ describe("a client of the protocol of 2025", () => {
       id: 3,
       result: { structuredContent: { folders: [{ name: "handbook", address: "/folders/handbook" }] } },
     });
-    // The tools read as the user of the token.
-    expect(mocks.listFolders).toHaveBeenCalledExactlyOnceWith(ACTOR);
+    // The tools read as the user of the token, through MCP.
+    expect(mocks.listFolders).toHaveBeenCalledExactlyOnceWith({ ...ACTOR, channel: "mcp" });
   });
 
   it("gets full addresses with a public URL", async () => {
@@ -304,7 +304,7 @@ describe("a client of the current protocol", () => {
     expect(call.headers.get("content-type")).toBe("application/json");
     await expect(call.json()).resolves.toMatchObject({ id: 3, result: { structuredContent: { folders: [] } } });
     // The tools read as the user of the token, also when the handler of the SDK builds the server.
-    expect(mocks.listFolders).toHaveBeenCalledExactlyOnceWith(ACTOR);
+    expect(mocks.listFolders).toHaveBeenCalledExactlyOnceWith({ ...ACTOR, channel: "mcp" });
   });
 
   it("gives the tools of each request the user of its own token", async () => {
@@ -327,7 +327,7 @@ describe("a client of the current protocol", () => {
     mocks.authenticateToken.mockResolvedValue({ ok: true, value: other });
     await call();
 
-    expect(mocks.listFolders.mock.calls).toEqual([[ACTOR], [other]]);
+    expect(mocks.listFolders.mock.calls).toEqual([[{ ...ACTOR, channel: "mcp" }], [{ ...other, channel: "mcp" }]]);
   });
 
   it("is refused a subscription with a JSON answer instead of a stream", async () => {

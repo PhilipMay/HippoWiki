@@ -6,11 +6,15 @@ import Paper from "@mui/material/Paper";
 import Typography from "@mui/material/Typography";
 
 import Link from "@/components/Link";
+import { ROLE_LABELS } from "@/features/folder-roles/roles";
 import type { FolderSummary } from "@/features/folders/service";
 import { folderPath } from "@/lib/addresses";
 import { formatDateTime } from "@/lib/format";
 
-/** The list of folders, each linking to its folder, or an empty state when there are none. */
+/**
+ * The list of the folders the user has a role on, each linking to its folder and naming the user's role on it, or a
+ * hint when the user has no role on any folder.
+ */
 export default function FolderList({ folders }: { folders: FolderSummary[] }) {
   if (folders.length === 0) {
     return (
@@ -19,7 +23,7 @@ export default function FolderList({ folders }: { folders: FolderSummary[] }) {
           No folders yet
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Folders you create will be listed here. Start with “New folder”.
+          Create a folder with “New folder”, or ask an Owner of a folder to give you a role on it.
         </Typography>
       </Paper>
     );
@@ -40,6 +44,11 @@ export default function FolderList({ folders }: { folders: FolderSummary[] }) {
                   </>
                 }
               />
+              {folder.role && (
+                <Typography variant="body2" color="text.secondary" sx={{ ml: 2, flexShrink: 0 }}>
+                  {ROLE_LABELS[folder.role]}
+                </Typography>
+              )}
             </ListItemButton>
           </ListItem>
         ))}

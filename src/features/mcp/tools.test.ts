@@ -31,6 +31,8 @@ const CHANGED = new Date("2026-03-01T12:00:00.000Z");
 const EDITOR = { name: "alice" };
 /** The user of the token of the requests. */
 const ACTOR = { id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002", name: "alice", type: "user" as const };
+/** The actor the tools pass to the services: the user of the token, through MCP, which ignores folder roles. */
+const MCP_ACTOR = { ...ACTOR, channel: "mcp" };
 
 /** A JSON-RPC answer of the server. */
 type Answer = { result?: Record<string, unknown>; error?: { code: number; message: string } };
@@ -160,7 +162,7 @@ describe("list_folders", () => {
     mocks.listFolders.mockResolvedValue([]);
 
     expect((await callTool("list_folders")).structuredContent).toEqual({ folders: [] });
-    expect(mocks.listFolders).toHaveBeenCalledExactlyOnceWith(ACTOR);
+    expect(mocks.listFolders).toHaveBeenCalledExactlyOnceWith(MCP_ACTOR);
   });
 
   it("returns an empty list when the service reads nothing for the actor", async () => {
@@ -225,9 +227,9 @@ describe("list_folder", () => {
 
     const result = await callTool("list_folder", { folder: "handbook" });
 
-    expect(mocks.getFolderByName).toHaveBeenCalledExactlyOnceWith(ACTOR, "handbook");
-    expect(mocks.listTabs).toHaveBeenCalledExactlyOnceWith(ACTOR, FOLDER_ID);
-    expect(mocks.listAllFolderPages).toHaveBeenCalledExactlyOnceWith(ACTOR, FOLDER_ID);
+    expect(mocks.getFolderByName).toHaveBeenCalledExactlyOnceWith(MCP_ACTOR, "handbook");
+    expect(mocks.listTabs).toHaveBeenCalledExactlyOnceWith(MCP_ACTOR, FOLDER_ID);
+    expect(mocks.listAllFolderPages).toHaveBeenCalledExactlyOnceWith(MCP_ACTOR, FOLDER_ID);
     expect(result.isError).toBeUndefined();
     expect(result.structuredContent).toEqual({
       folder: { name: "handbook", address: "https://wiki.example.com/folders/handbook" },
@@ -323,8 +325,8 @@ describe("read_page", () => {
 
     const result = await callTool("read_page", { folder: "handbook", tab: "guides", page: "setup" });
 
-    expect(mocks.getFolderByName).toHaveBeenCalledExactlyOnceWith(ACTOR, "handbook");
-    expect(mocks.getPage).toHaveBeenCalledExactlyOnceWith(ACTOR, "handbook", "guides", "setup");
+    expect(mocks.getFolderByName).toHaveBeenCalledExactlyOnceWith(MCP_ACTOR, "handbook");
+    expect(mocks.getPage).toHaveBeenCalledExactlyOnceWith(MCP_ACTOR, "handbook", "guides", "setup");
     expect(result.isError).toBeUndefined();
     expect(result.structuredContent).toEqual({
       name: "setup",
@@ -347,7 +349,7 @@ describe("read_page", () => {
 
     const result = await callTool("read_page", args);
 
-    expect(mocks.getPage).toHaveBeenCalledExactlyOnceWith(ACTOR, "handbook", null, "overview");
+    expect(mocks.getPage).toHaveBeenCalledExactlyOnceWith(MCP_ACTOR, "handbook", null, "overview");
     expect(result.structuredContent).toMatchObject({
       tab: null,
       address: "https://wiki.example.com/folders/handbook/overview.md",
