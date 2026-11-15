@@ -31,3 +31,26 @@ export function parseGiveRoleFormData(formData: FormData): ParseGiveRoleResult {
   if (result.success) return { success: true, data: result.data };
   return { success: false, fieldErrors: z.flattenError(result.error).fieldErrors };
 }
+
+/** State of the controls of the roles view between submissions: the error of the last change, if any. */
+export type RoleChangeFormState = { message?: string };
+
+/** The Server Action behind the controls of the roles view; it returns the error to show, or redirects on success. */
+export type RoleChangeFormAction = (prevState: RoleChangeFormState, formData: FormData) => Promise<RoleChangeFormState>;
+
+/** What a submission of the roles view asks for: a new role of a user, or the removal of the user's role. */
+export type RoleChangeInput = { user: string } & ({ intent: "change"; role: string } | { intent: "remove" });
+
+/**
+ * Reads a submission of the roles view: the id of the user, and the new role or the removal. `null` for a submission
+ * that asks for neither; the role itself is checked by the service.
+ */
+export function parseRoleChangeFormData(formData: FormData): RoleChangeInput | null {
+  const user = formData.get("user");
+  const intent = formData.get("intent");
+  const role = formData.get("role");
+  if (typeof user !== "string") return null;
+  if (intent === "remove") return { user, intent };
+  if (intent === "change" && typeof role === "string") return { user, intent, role };
+  return null;
+}

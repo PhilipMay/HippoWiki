@@ -201,6 +201,27 @@ test("the give role dialog is locked until hydration", async ({ page }) => {
   await expect(dialog.getByRole("link", { name: "Cancel" })).toHaveAttribute("href", "/folders/locked-folder");
 });
 
+test("the controls of the roles view are locked until hydration", async ({ page }) => {
+  const bob = await createUser({ name: "bob" });
+  await createFolder({
+    name: "locked-folder",
+    roles: [
+      { user: KNOWN_USER, role: "owner" },
+      { user: bob, role: "writer" },
+    ],
+  });
+
+  await page.goto("/folders/locked-folder?view=roles");
+
+  const main = page.getByRole("main");
+  for (const name of ["alice", "bob"]) {
+    await expect(main.getByLabel(`Role of ${name}`, { exact: true })).toBeDisabled();
+    await expect(main.getByRole("button", { name: `Remove the role of ${name}` })).toBeDisabled();
+  }
+  // The confirmation of a change of the own role opens only from these controls, so it cannot open either.
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
 test("the name dialog is prefilled and locked until hydration", async ({ page }) => {
   await createFolder({ name: "locked-folder" });
 

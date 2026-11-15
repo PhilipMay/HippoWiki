@@ -9,7 +9,7 @@
 import { z } from "zod";
 
 import { mayDo, rolesFor, type FolderFunction, type Role } from "@/features/folder-roles/roles";
-import { giveRoleInputSchema, type GiveRoleFieldErrors } from "@/features/folder-roles/schema";
+import { giveRoleInputSchema, parseRole, type GiveRoleFieldErrors } from "@/features/folder-roles/schema";
 import { parseFolderId, parseTabId } from "@/features/folders/schema";
 import { parsePageId } from "@/features/pages/schema";
 import { parseUserId, parseUserName } from "@/features/users/schema";
@@ -322,4 +322,143 @@ export async function giveRole(
 
   logger.info({ folderId, userId: user.id, oldRole: null, newRole: role, ownerId }, "role given");
   return { ok: true, value: stored };
+}
+
+/** The user has no role on the folder (any more), or the id is malformed. */
+type RoleNotFound = { code: "role-not-found" };
+/** The change would leave the folder without an Owner; it has been logged. */
+type LastOwner = { code: "last-owner" };
+/** The new role is no role. */
+type InvalidRole = { code: "invalid-input" };
+
+export type RemoveRoleError = NotAllowed | RoleNotFound | LastOwner | Failed;
+export type ChangeRoleError = RemoveRoleError | InvalidRole;
+
+/**
+ * What a change or removal of a role leads to: the name of the folder, for its address, and the role the actor has on
+ * it afterwards, which is `null` when Owners removed their own role.
+ */
+export type RoleChange = { folder: { name: string }; actorRole: Role | null };
+
+/** The outcome of the transaction of a change or removal, before it is logged and returned. */
+type ChangeOutcome =
+  | { kind: "not-allowed"; actorRole: Role | null }
+  | { kind: "role-not-found" }
+  | { kind: "last-owner"; oldRole: Role }
+  | { kind: "done"; oldRole: Role; folderName: string };
+
+/**
+ * Changes the role of the user on the folder to the given role or, with `null`, removes it, as an Owner. The check that
+ * the actor is an Owner and the check of the last Owner read the roles of the folder in the same transaction as the
+ * write, with the rows locked, so that two Owners who lower each other at the same time cannot leave the folder
+ * without one.
+ */
+async function writeRole(
+  actor: Actor,
+  folderId: string,
+  userId: string,
+  newRole: Role | null,
+): Promise<Result<RoleChange, RemoveRoleError>> {
+  const what = newRole === null ? "role not removed" : "role not changed";
+  if (isAdmin(actor)) return notAllowed(actor, `${what}: the actor is an admin`);
+  const ownerId = roleHolderId(actor);
+  if (!ownerId) return { ok: false, error: { code: "failed" } };
+  const folder = parseFolderId(folderId);
+  if (!folder) return notAllowed(actor, `${what}: the actor is not an Owner of the folder`, { folderId });
+  const target = parseUserId(userId);
+
+  let outcome: ChangeOutcome;
+  try {
+    outcome = await getDb().$transaction(async (tx) => {
+      // Locks every role of the folder until the end of the transaction: a second change waits here and then reads
+      // the roles as this one left them.
+      const roles = await tx.$queryRaw<{ userId: string; role: Role }[]>`
+        SELECT "userId", "role" FROM "FolderRole" WHERE "folderId" = ${folder}::uuid FOR UPDATE`;
+      const actorRole = roles.find((row) => row.userId === ownerId)?.role ?? null;
+      if (!mayDo(actorRole, "manageRoles")) return { kind: "not-allowed", actorRole };
+      const current = target ? roles.find((row) => row.userId === target) : undefined;
+      if (!target || !current) return { kind: "role-not-found" };
+      const owners = roles.filter((row) => row.role === "owner").length;
+      if (current.role === "owner" && newRole !== "owner" && owners <= 1) {
+        return { kind: "last-owner", oldRole: current.role };
+      }
+      const where = { folderId_userId: { folderId: folder, userId: target } };
+      if (newRole === null) await tx.folderRole.delete({ where });
+      else await tx.folderRole.update({ where, data: { role: newRole } });
+      const { name } = await tx.folder.findUniqueOrThrow({ where: { id: folder }, select: { name: true } });
+      return { kind: "done", oldRole: current.role, folderName: name };
+    });
+  } catch (err) {
+    logger.error({ err, folderId: folder, userId: target, ownerId }, "failed to change role");
+    return { ok: false, error: { code: "failed" } };
+  }
+
+  switch (outcome.kind) {
+    case "not-allowed":
+      return notAllowed(actor, `${what}: the actor is not an Owner of the folder`, {
+        folderId: folder,
+        ...(outcome.actorRole ? { role: outcome.actorRole } : {}),
+      });
+    case "role-not-found":
+      logger.warn({ folderId: folder, userId, ownerId }, `${what}: the user has no role on the folder`);
+      return { ok: false, error: { code: "role-not-found" } };
+    case "last-owner":
+      logger.warn(
+        { folderId: folder, userId: target, oldRole: outcome.oldRole, newRole, ownerId },
+        `${what}: the folder would be left without an Owner`,
+      );
+      return { ok: false, error: { code: "last-owner" } };
+    case "done":
+      logger.info(
+        { folderId: folder, userId: target, oldRole: outcome.oldRole, newRole, ownerId },
+        newRole === null ? "role removed" : "role changed",
+      );
+      return {
+        ok: true,
+        value: { folder: { name: outcome.folderName }, actorRole: target === ownerId ? newRole : "owner" },
+      };
+  }
+}
+
+/**
+ * Changes the role of the user with the given id on the folder with the given id, as an Owner of the folder; the own
+ * role and those of other Owners included. Refused with `last-owner` when it would leave the folder without an Owner.
+ * Every change, and every refused change of the last Owner, is logged.
+ */
+export async function changeRole(
+  actor: Actor,
+  folderId: string,
+  userId: string,
+  role: string,
+): Promise<Result<RoleChange, ChangeRoleError>> {
+  const newRole = parseRole(role);
+  if (!newRole) {
+    // Checked after the Owner, so that the answer to anyone else does not depend on the input.
+    const refused = await refuseNonOwner(actor, folderId, "role not changed");
+    return refused ?? { ok: false, error: { code: "invalid-input" } };
+  }
+  return writeRole(actor, folderId, userId, newRole);
+}
+
+/**
+ * Removes the role of the user with the given id on the folder with the given id, as an Owner of the folder; the own
+ * role and those of other Owners included. Refused with `last-owner` when it would leave the folder without an Owner.
+ * Every removal, and every refused removal of the last Owner, is logged.
+ */
+export async function removeRole(
+  actor: Actor,
+  folderId: string,
+  userId: string,
+): Promise<Result<RoleChange, RemoveRoleError>> {
+  return writeRole(actor, folderId, userId, null);
+}
+
+/** The refusal of anyone but an Owner of the folder, logged, or `null` for an Owner. */
+async function refuseNonOwner(
+  actor: Actor,
+  folderId: string,
+  what: string,
+): Promise<{ ok: false; error: NotAllowed | Failed } | null> {
+  const owner = await ownerOf(actor, folderId, what);
+  return owner.refused ?? null;
 }

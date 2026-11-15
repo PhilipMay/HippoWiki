@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseGiveRoleFormData } from "@/features/folder-roles/forms";
+import { parseGiveRoleFormData, parseRoleChangeFormData } from "@/features/folder-roles/forms";
 
 function formData(fields: Record<string, string | Blob>): FormData {
   const data = new FormData();
@@ -32,5 +32,26 @@ describe("parseGiveRoleFormData", () => {
       success: false,
       fieldErrors: { user: ["Choose a user"], role: ["Choose a role"] },
     });
+  });
+});
+
+describe("parseRoleChangeFormData", () => {
+  it("reads a change and a removal", () => {
+    expect(parseRoleChangeFormData(formData({ user: "id", intent: "change", role: "writer" }))).toEqual({
+      user: "id",
+      intent: "change",
+      role: "writer",
+    });
+    expect(parseRoleChangeFormData(formData({ user: "id", intent: "remove", role: "writer" }))).toEqual({
+      user: "id",
+      intent: "remove",
+    });
+  });
+
+  it("returns null for anything else", () => {
+    expect(parseRoleChangeFormData(formData({ user: "id", intent: "change" }))).toBeNull();
+    expect(parseRoleChangeFormData(formData({ user: "id", intent: "other" }))).toBeNull();
+    expect(parseRoleChangeFormData(formData({ intent: "remove" }))).toBeNull();
+    expect(parseRoleChangeFormData(formData({ user: new Blob(["id"]), intent: "remove" }))).toBeNull();
   });
 });

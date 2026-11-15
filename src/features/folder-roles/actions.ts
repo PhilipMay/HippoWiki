@@ -8,15 +8,24 @@
 import { notFound, redirect } from "next/navigation";
 
 import { requireUser } from "@/features/auth/session";
-import { parseGiveRoleFormData, type GiveRoleFormState } from "@/features/folder-roles/forms";
+import {
+  parseGiveRoleFormData,
+  parseRoleChangeFormData,
+  type GiveRoleFormState,
+  type RoleChangeFormState,
+} from "@/features/folder-roles/forms";
 import * as folderRoleService from "@/features/folder-roles/service";
 import { parseFolderId } from "@/features/folders/schema";
-import { folderPath } from "@/lib/addresses";
+import { folderPath, folderRolesPath, foldersPath } from "@/lib/addresses";
 import { revalidateContent } from "@/lib/revalidate";
 
 const GIVE_FAILED_MESSAGE = "The role could not be given. Please try again.";
 const USER_NOT_FOUND_MESSAGE = "There is no such user";
 const ROLE_TAKEN_MESSAGE = "This user already has a role on the folder";
+const CHANGE_FAILED_MESSAGE = "The role could not be changed. Please try again.";
+const ROLE_GONE_MESSAGE = "This user no longer has a role on the folder.";
+const LAST_OWNER_MESSAGE = "A folder needs at least one Owner, so the role of its last Owner stays.";
+const INVALID_ROLE_MESSAGE = "Choose a role.";
 
 /**
  * Gives the chosen user the chosen role on the folder with the given id and redirects to the folder, like every dialog.
@@ -58,4 +67,51 @@ export async function giveRole(
   revalidateContent();
   // The address is built from the stored folder, never from submitted values.
   redirect(folderPath(result.value.folder.name));
+}
+
+/**
+ * Changes or removes the role of a user on the folder with the given id, as the roles view submits it, without a
+ * confirmation; the view asks for one only before a change of the own role. Redirects to the roles view, where the
+ * change shows, or to the folder list when the Owner removed the own role and so no longer sees the folder. Returns the
+ * error to show if the change would leave the folder without an Owner, the user no longer has a role, or the role
+ * cannot be changed. Bind the id with `changeRole.bind(null, folderId)`.
+ */
+export async function changeRole(
+  folderId: string,
+  _prevState: RoleChangeFormState,
+  formData: FormData,
+): Promise<RoleChangeFormState> {
+  const user = await requireUser();
+
+  const parsedFolderId = parseFolderId(folderId);
+  if (!parsedFolderId) notFound();
+
+  const input = parseRoleChangeFormData(formData);
+  // Only a crafted request asks for neither a change nor a removal.
+  if (!input) return { message: INVALID_ROLE_MESSAGE };
+
+  const result =
+    input.intent === "remove"
+      ? await folderRoleService.removeRole(user, parsedFolderId, input.user)
+      : await folderRoleService.changeRole(user, parsedFolderId, input.user, input.role);
+  if (!result.ok) {
+    switch (result.error.code) {
+      // Only an Owner changes roles: for anyone else the controls do not exist.
+      case "not-allowed":
+        notFound();
+      case "invalid-input":
+        return { message: INVALID_ROLE_MESSAGE };
+      case "role-not-found":
+        return { message: ROLE_GONE_MESSAGE };
+      case "last-owner":
+        return { message: LAST_OWNER_MESSAGE };
+      case "failed":
+        return { message: CHANGE_FAILED_MESSAGE };
+    }
+  }
+
+  revalidateContent();
+  const { folder, actorRole } = result.value;
+  // An Owner without a role no longer sees the folder; anyone else stays in the roles view and sees the change there.
+  redirect(actorRole ? folderRolesPath(folder.name) : foldersPath());
 }

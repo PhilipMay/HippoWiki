@@ -23,7 +23,7 @@ approved requirements in `spec/folder-roles-requirements.md`; the IDs in bracket
 - [x] Functions by role
 - [x] Roles view
 - [x] Give role
-- [ ] Change and remove roles
+- [x] Change and remove roles
 - [ ] Admin overview
 - [ ] Wrap-up
 

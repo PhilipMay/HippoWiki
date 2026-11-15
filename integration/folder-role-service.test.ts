@@ -141,3 +141,102 @@ describe("listRoleCandidates", () => {
     await expect(folderRoleService.listRoleCandidates(bob, folder.id)).resolves.toBeNull();
   });
 });
+
+describe("changeRole and removeRole", () => {
+  async function rolesOf(folderId: string) {
+    return (
+      await getTestDb().folderRole.findMany({
+        where: { folderId },
+        select: { user: { select: { username: true } }, role: true },
+        orderBy: { user: { username: "asc" } },
+      })
+    ).map(({ user, role }) => [user.username, role]);
+  }
+
+  it("stores a change and a removal", async () => {
+    const [bob, dave] = [await createUser({ name: "bob" }), await createUser({ name: "dave" })];
+    const folder = await createFolder({
+      roles: [
+        { user: actor, role: "owner" },
+        { user: bob, role: "writer" },
+        { user: dave, role: "reader" },
+      ],
+    });
+
+    await expect(folderRoleService.changeRole(actor, folder.id, bob.id, "manager")).resolves.toMatchObject({
+      ok: true,
+    });
+    await expect(folderRoleService.removeRole(actor, folder.id, dave.id)).resolves.toMatchObject({ ok: true });
+
+    expect(await rolesOf(folder.id)).toEqual([
+      ["bob", "manager"],
+      ["carla", "owner"],
+    ]);
+  });
+
+  it("refuses the last Owner, who stays Owner", async () => {
+    const bob = await createUser({ name: "bob" });
+    const folder = await createFolder({
+      roles: [
+        { user: actor, role: "owner" },
+        { user: bob, role: "manager" },
+      ],
+    });
+
+    await expect(folderRoleService.changeRole(actor, folder.id, actor.id, "writer")).resolves.toEqual({
+      ok: false,
+      error: { code: "last-owner" },
+    });
+    await expect(folderRoleService.removeRole(actor, folder.id, actor.id)).resolves.toEqual({
+      ok: false,
+      error: { code: "last-owner" },
+    });
+    expect(await rolesOf(folder.id)).toEqual([
+      ["bob", "manager"],
+      ["carla", "owner"],
+    ]);
+  });
+
+  it("leaves exactly one Owner when two Owners lower each other at the same time", async () => {
+    for (let round = 0; round < 5; round++) {
+      const bob = await createUser({ name: `bob-${round}` });
+      const folder = await createFolder({
+        roles: [
+          { user: actor, role: "owner" },
+          { user: bob, role: "owner" },
+        ],
+      });
+
+      const results = await Promise.all([
+        folderRoleService.changeRole(actor, folder.id, bob.id, "writer"),
+        folderRoleService.changeRole(bob, folder.id, actor.id, "writer"),
+      ]);
+
+      expect(results.filter((result) => result.ok)).toHaveLength(1);
+      expect(await getTestDb().folderRole.count({ where: { folderId: folder.id, role: "owner" } })).toBe(1);
+    }
+  });
+
+  it("lets a Manager change and remove nothing", async () => {
+    const bob = await createUser({ name: "bob" });
+    const folder = await createFolder({
+      roles: [
+        { user: actor, role: "manager" },
+        { user: bob, role: "reader" },
+      ],
+    });
+
+    await expect(folderRoleService.changeRole(actor, folder.id, bob.id, "owner")).resolves.toEqual({
+      ok: false,
+      error: { code: "not-allowed" },
+    });
+    await expect(folderRoleService.removeRole(actor, folder.id, bob.id)).resolves.toEqual({
+      ok: false,
+      error: { code: "not-allowed" },
+    });
+    expect(await rolesOf(folder.id)).toEqual([
+      ["bob", "reader"],
+      ["carla", "manager"],
+    ]);
+  });
+});

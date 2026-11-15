@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Prisma } from "@/generated/prisma/client";
 import {
+  changeRole,
   folderRoleOf,
   giveRole,
   inBrowser,
@@ -12,6 +13,7 @@ import {
   mayReadTab,
   readableFolderWhere,
   readerOf,
+  removeRole,
   roleOf,
   roleOnFolderOfPage,
   roleOnFolderOfTab,
@@ -25,6 +27,11 @@ const mocks = vi.hoisted(() => ({
   roleCreate: vi.fn(),
   userFindMany: vi.fn(),
   userFindFirst: vi.fn(),
+  transaction: vi.fn(),
+  queryRaw: vi.fn(),
+  roleUpdate: vi.fn(),
+  roleDelete: vi.fn(),
+  folderFindUniqueOrThrow: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
@@ -34,6 +41,7 @@ vi.mock("@/lib/db", () => ({
   getDb: () => ({
     folderRole: { findFirst: mocks.roleFindFirst, findMany: mocks.roleFindMany, create: mocks.roleCreate },
     user: { findMany: mocks.userFindMany, findFirst: mocks.userFindFirst },
+    $transaction: mocks.transaction,
   }),
 }));
 vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, error: mocks.error } }));
@@ -405,6 +413,175 @@ describe("giveRole", () => {
     expect(mocks.error).toHaveBeenCalledWith(
       { err, folderId: FOLDER_ID, userId: BOB_ID, ownerId: ACTOR_ID },
       "failed to give role",
+    );
+  });
+});
+
+describe("changeRole and removeRole", () => {
+  const NOT_ALLOWED = { ok: false, error: { code: "not-allowed" } };
+
+  /** The roles of the folder as the locked read in the transaction returns them. */
+  function folderRoles(rows: { userId: string; role: string }[]) {
+    mocks.queryRaw.mockResolvedValue(rows);
+  }
+
+  beforeEach(() => {
+    // An interactive transaction runs its callback with a client of its own.
+    mocks.transaction.mockImplementation((run: (tx: unknown) => Promise<unknown>) =>
+      run({
+        $queryRaw: mocks.queryRaw,
+        folderRole: { update: mocks.roleUpdate, delete: mocks.roleDelete },
+        folder: { findUniqueOrThrow: mocks.folderFindUniqueOrThrow },
+      }),
+    );
+    mocks.folderFindUniqueOrThrow.mockResolvedValue({ name: "handbook" });
+    mocks.roleFindFirst.mockResolvedValue({ role: "owner" });
+  });
+
+  const WHERE = { folderId_userId: { folderId: FOLDER_ID, userId: BOB_ID } };
+
+  it("changes another user's role, logs it and leaves the Owner in the roles view", async () => {
+    folderRoles([
+      { userId: ACTOR_ID, role: "owner" },
+      { userId: BOB_ID, role: "writer" },
+    ]);
+
+    await expect(changeRole(USER, FOLDER_ID, BOB_ID, "manager")).resolves.toEqual({
+      ok: true,
+      value: { folder: { name: "handbook" }, actorRole: "owner" },
+    });
+
+    expect(mocks.roleUpdate).toHaveBeenCalledExactlyOnceWith({ where: WHERE, data: { role: "manager" } });
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+      { folderId: FOLDER_ID, userId: BOB_ID, oldRole: "writer", newRole: "manager", ownerId: ACTOR_ID },
+      "role changed",
+    );
+  });
+
+  it("removes another user's role and logs it", async () => {
+    folderRoles([
+      { userId: ACTOR_ID, role: "owner" },
+      { userId: BOB_ID, role: "reader" },
+    ]);
+
+    await expect(removeRole(USER, FOLDER_ID, BOB_ID)).resolves.toEqual({
+      ok: true,
+      value: { folder: { name: "handbook" }, actorRole: "owner" },
+    });
+
+    expect(mocks.roleDelete).toHaveBeenCalledExactlyOnceWith({ where: WHERE });
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+      { folderId: FOLDER_ID, userId: BOB_ID, oldRole: "reader", newRole: null, ownerId: ACTOR_ID },
+      "role removed",
+    );
+  });
+
+  it("lowers another Owner and the own role, and returns the role the actor has afterwards", async () => {
+    folderRoles([
+      { userId: ACTOR_ID, role: "owner" },
+      { userId: BOB_ID, role: "owner" },
+    ]);
+
+    await expect(changeRole(USER, FOLDER_ID, BOB_ID, "writer")).resolves.toMatchObject({
+      value: { actorRole: "owner" },
+    });
+    await expect(changeRole(USER, FOLDER_ID, ACTOR_ID, "reader")).resolves.toMatchObject({
+      value: { actorRole: "reader" },
+    });
+    await expect(removeRole(USER, FOLDER_ID, ACTOR_ID)).resolves.toMatchObject({ value: { actorRole: null } });
+  });
+
+  it.each([
+    ["lowering", () => changeRole(USER, FOLDER_ID, ACTOR_ID, "manager"), "manager", "role not changed"],
+    ["removing", () => removeRole(USER, FOLDER_ID, ACTOR_ID), null, "role not removed"],
+  ] as const)("refuses %s the last Owner, logged, and writes nothing", async (_name, write, newRole, what) => {
+    folderRoles([
+      { userId: ACTOR_ID, role: "owner" },
+      { userId: BOB_ID, role: "manager" },
+    ]);
+
+    await expect(write()).resolves.toEqual({ ok: false, error: { code: "last-owner" } });
+
+    expect(mocks.roleUpdate).not.toHaveBeenCalled();
+    expect(mocks.roleDelete).not.toHaveBeenCalled();
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
+      { folderId: FOLDER_ID, userId: ACTOR_ID, oldRole: "owner", newRole, ownerId: ACTOR_ID },
+      `${what}: the folder would be left without an Owner`,
+    );
+  });
+
+  it("lets the last Owner stay Owner", async () => {
+    folderRoles([{ userId: ACTOR_ID, role: "owner" }]);
+
+    await expect(changeRole(USER, FOLDER_ID, ACTOR_ID, "owner")).resolves.toMatchObject({ ok: true });
+  });
+
+  it.each(["manager", "writer", "reader"])(
+    "refuses a %s, read in the locked roles, and writes nothing",
+    async (role) => {
+      folderRoles([
+        { userId: ACTOR_ID, role },
+        { userId: BOB_ID, role: "owner" },
+      ]);
+
+      await expect(changeRole(USER, FOLDER_ID, BOB_ID, "reader")).resolves.toEqual(NOT_ALLOWED);
+      await expect(removeRole(USER, FOLDER_ID, BOB_ID)).resolves.toEqual(NOT_ALLOWED);
+
+      expect(mocks.roleUpdate).not.toHaveBeenCalled();
+      expect(mocks.roleDelete).not.toHaveBeenCalled();
+      expect(mocks.warn).toHaveBeenCalledWith(
+        { actorId: ACTOR_ID, folderId: FOLDER_ID, role },
+        "role not changed: the actor is not an Owner of the folder",
+      );
+    },
+  );
+
+  it("refuses a user without a role and an admin, the admin without asking the database", async () => {
+    folderRoles([{ userId: BOB_ID, role: "owner" }]);
+
+    await expect(removeRole(USER, FOLDER_ID, BOB_ID)).resolves.toEqual(NOT_ALLOWED);
+    await expect(removeRole(ADMIN, FOLDER_ID, BOB_ID)).resolves.toEqual(NOT_ALLOWED);
+    expect(mocks.transaction).toHaveBeenCalledOnce();
+    expect(mocks.warn).toHaveBeenCalledWith({ actorId: ACTOR_ID }, "role not removed: the actor is an admin");
+  });
+
+  it("refuses a malformed folder id without asking the database", async () => {
+    await expect(removeRole(USER, MALFORMED_ID, BOB_ID)).resolves.toEqual(NOT_ALLOWED);
+    expect(mocks.transaction).not.toHaveBeenCalled();
+  });
+
+  it("returns role-not-found for a user without a role and for a malformed user id", async () => {
+    folderRoles([{ userId: ACTOR_ID, role: "owner" }]);
+
+    await expect(changeRole(USER, FOLDER_ID, BOB_ID, "reader")).resolves.toEqual({
+      ok: false,
+      error: { code: "role-not-found" },
+    });
+    await expect(removeRole(USER, FOLDER_ID, MALFORMED_ID)).resolves.toEqual({
+      ok: false,
+      error: { code: "role-not-found" },
+    });
+    expect(mocks.roleDelete).not.toHaveBeenCalled();
+  });
+
+  it("returns invalid-input for an unknown role to an Owner, and not-allowed to anyone else", async () => {
+    await expect(changeRole(USER, FOLDER_ID, BOB_ID, "admin")).resolves.toEqual({
+      ok: false,
+      error: { code: "invalid-input" },
+    });
+    mocks.roleFindFirst.mockResolvedValue({ role: "manager" });
+    await expect(changeRole(USER, FOLDER_ID, BOB_ID, "admin")).resolves.toEqual(NOT_ALLOWED);
+    expect(mocks.transaction).not.toHaveBeenCalled();
+  });
+
+  it("returns failed for an error of the database, logged", async () => {
+    const err = new Error("connection lost");
+    mocks.queryRaw.mockRejectedValue(err);
+
+    await expect(removeRole(USER, FOLDER_ID, BOB_ID)).resolves.toEqual({ ok: false, error: { code: "failed" } });
+    expect(mocks.error).toHaveBeenCalledWith(
+      { err, folderId: FOLDER_ID, userId: BOB_ID, ownerId: ACTOR_ID },
+      "failed to change role",
     );
   });
 });

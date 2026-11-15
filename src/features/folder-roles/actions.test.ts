@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { giveRole } from "@/features/folder-roles/actions";
+import { changeRole, giveRole } from "@/features/folder-roles/actions";
 
 /** Thrown by the mocked `redirect`, like the real one throws, so that code after it never runs. */
 class RedirectError extends Error {
@@ -14,13 +14,19 @@ class NotFoundError extends Error {}
 
 const mocks = vi.hoisted(() => ({
   giveRole: vi.fn(),
+  changeRole: vi.fn(),
+  removeRole: vi.fn(),
   revalidatePath: vi.fn(),
   redirect: vi.fn(),
   notFound: vi.fn(),
   requireUser: vi.fn(),
 }));
 
-vi.mock("@/features/folder-roles/service", () => ({ giveRole: mocks.giveRole }));
+vi.mock("@/features/folder-roles/service", () => ({
+  giveRole: mocks.giveRole,
+  changeRole: mocks.changeRole,
+  removeRole: mocks.removeRole,
+}));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect, notFound: mocks.notFound }));
 vi.mock("@/features/auth/session", () => ({ requireUser: mocks.requireUser }));
@@ -111,5 +117,78 @@ describe("giveRole", () => {
 
     await expect(giveRole(FOLDER_ID, {}, formData("bob", "writer"))).rejects.toMatchObject({ path: "/login" });
     expect(mocks.giveRole).not.toHaveBeenCalled();
+  });
+});
+
+describe("changeRole", () => {
+  const BOB_ID = "5a2c1c0e-3f55-4a55-8a42-5d2f0e6a9b99";
+
+  function change(fields: Record<string, string>): FormData {
+    const data = new FormData();
+    for (const [name, value] of Object.entries(fields)) data.set(name, value);
+    return data;
+  }
+
+  it("changes a role and stays in the roles view", async () => {
+    mocks.changeRole.mockResolvedValue({ ok: true, value: { folder: { name: "stored" }, actorRole: "owner" } });
+
+    await expect(
+      changeRole(FOLDER_ID, {}, change({ user: BOB_ID, intent: "change", role: "manager" })),
+    ).rejects.toMatchObject({ path: "/folders/stored?view=roles" });
+
+    expect(mocks.changeRole).toHaveBeenCalledExactlyOnceWith(USER, FOLDER_ID, BOB_ID, "manager");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/folders", "layout");
+  });
+
+  it("removes a role and stays in the roles view while the Owner keeps a role", async () => {
+    mocks.removeRole.mockResolvedValue({ ok: true, value: { folder: { name: "stored" }, actorRole: "writer" } });
+
+    await expect(changeRole(FOLDER_ID, {}, change({ user: BOB_ID, intent: "remove" }))).rejects.toMatchObject({
+      path: "/folders/stored?view=roles",
+    });
+    expect(mocks.removeRole).toHaveBeenCalledExactlyOnceWith(USER, FOLDER_ID, BOB_ID);
+  });
+
+  it("leads an Owner without a role to the folder list", async () => {
+    mocks.removeRole.mockResolvedValue({ ok: true, value: { folder: { name: "stored" }, actorRole: null } });
+
+    await expect(changeRole(FOLDER_ID, {}, change({ user: USER.id, intent: "remove" }))).rejects.toMatchObject({
+      path: "/folders",
+    });
+  });
+
+  it.each([
+    ["last-owner", "A folder needs at least one Owner, so the role of its last Owner stays."],
+    ["role-not-found", "This user no longer has a role on the folder."],
+    ["invalid-input", "Choose a role."],
+    ["failed", "The role could not be changed. Please try again."],
+  ])("returns the message for %s", async (code, message) => {
+    mocks.changeRole.mockResolvedValue({ ok: false, error: { code } });
+
+    await expect(
+      changeRole(FOLDER_ID, {}, change({ user: BOB_ID, intent: "change", role: "reader" })),
+    ).resolves.toEqual({ message });
+    expectNotRevalidatedOrRedirected();
+  });
+
+  it("shows the not-found page when the service answers not-allowed, and for a malformed folder id", async () => {
+    mocks.removeRole.mockResolvedValue({ ok: false, error: { code: "not-allowed" } });
+
+    await expect(changeRole(FOLDER_ID, {}, change({ user: BOB_ID, intent: "remove" }))).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
+    await expect(changeRole("not-a-uuid", {}, change({ user: BOB_ID, intent: "remove" }))).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
+    expect(mocks.removeRole).toHaveBeenCalledOnce();
+    expectNotRevalidatedOrRedirected();
+  });
+
+  it("asks for a role when the submission is neither a change nor a removal", async () => {
+    await expect(changeRole(FOLDER_ID, {}, change({ user: BOB_ID, intent: "other" }))).resolves.toEqual({
+      message: "Choose a role.",
+    });
+    expect(mocks.changeRole).not.toHaveBeenCalled();
+    expect(mocks.removeRole).not.toHaveBeenCalled();
   });
 });

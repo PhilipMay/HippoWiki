@@ -11,7 +11,7 @@ import FolderBreadcrumbs from "@/features/folders/components/FolderBreadcrumbs";
 import FolderContentsList from "@/features/folders/components/FolderContentsList";
 import NameDialog from "@/features/folders/components/NameDialog";
 import { getFolderByName, listTabs } from "@/features/folders/queries";
-import { giveRole } from "@/features/folder-roles/actions";
+import { changeRole, giveRole } from "@/features/folder-roles/actions";
 import FolderRoleList from "@/features/folder-roles/components/FolderRoleList";
 import GiveRoleDialog from "@/features/folder-roles/components/GiveRoleDialog";
 import { listFolderRoles, listRoleCandidates } from "@/features/folder-roles/queries";
@@ -75,7 +75,7 @@ export async function generateMetadata({ params, searchParams }: PageProps<"/fol
 
 export default async function FolderPage({ params, searchParams }: PageProps<"/folders/[folder]">) {
   // Nothing is shown without a login. First, so that an invalid address also leads to the login page.
-  await requireUser();
+  const user = await requireUser();
 
   const folder = await getFolderByName((await params).folder);
   if (!folder) notFound();
@@ -132,7 +132,10 @@ export default async function FolderPage({ params, searchParams }: PageProps<"/f
             </Button>
           </Stack>
         )}
-        <FolderRoleList roles={(await listFolderRoles(folder.id)) ?? notFound()} />
+        <FolderRoleList
+          roles={(await listFolderRoles(folder.id)) ?? notFound()}
+          manage={mayDo(role, "manageRoles") ? { action: changeRole.bind(null, folder.id), ownId: user.id } : undefined}
+        />
       </Stack>
     );
   }
