@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { KNOWN_USER } from "../prisma/known-users";
+import { ADMIN_STORAGE_STATE, becomeUser } from "./support/auth";
 import { collectErrors } from "./support/browser";
 import { createFolder, createUser, getTestDb, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
@@ -310,4 +311,20 @@ test("the folder list shows who changed each folder last; creating and renaming 
   await expect(listLinks(page)).toHaveText([/^handbook/, /^old-stuff/]);
   await expect(items).toHaveText([by(USER), by(USER)]);
   expect(errors).toEqual([]);
+});
+
+test("a submission of the new folder form with the login of an admin creates nothing and is not found", async ({
+  page,
+  context,
+}) => {
+  // The user opens the form; then the browser gets the login of an admin, as if the admin had crafted the request.
+  await page.goto("/folders?action=new");
+  const dialog = page.getByRole("dialog", { name: "New folder" });
+  await dialog.getByLabel("Name").fill("handbook");
+  await becomeUser(context, ADMIN_STORAGE_STATE);
+
+  await dialog.getByRole("button", { name: "Save" }).click();
+
+  await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
+  expect(await getTestDb().folder.count()).toBe(0);
 });

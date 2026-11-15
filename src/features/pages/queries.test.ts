@@ -45,8 +45,12 @@ function readCount(): number {
   return serviceReads.reduce((count, read) => count + read.mock.calls.length, 0);
 }
 
+/** The logged-in user that the mocked `requireUser()` returns: the actor of every service read. */
+const USER = { id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002", name: "alice", type: "user", mustChangePassword: false };
+
 beforeEach(() => {
   vi.resetAllMocks();
+  mocks.requireUser.mockResolvedValue(USER);
 });
 
 const FOLDER_ID = "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10";
@@ -91,7 +95,8 @@ describe("every query", () => {
       release();
       await expect(result).resolves.toBe(found);
       expect(readCount()).toBe(1);
-      expect(read).toHaveBeenCalledWith(...args);
+      // The logged-in user is the actor: the service decides what the user may read.
+      expect(read).toHaveBeenCalledExactlyOnceWith(USER, ...args);
     },
   );
 
@@ -99,8 +104,8 @@ describe("every query", () => {
   it.each(QUERIES)(
     "%s waits for requireUser() after connection() and before it calls the service read",
     async (_name, query, read) => {
-      let release = () => {};
-      mocks.requireUser.mockReturnValue(new Promise<void>((resolve) => (release = resolve)));
+      let release: (user: typeof USER) => void = () => {};
+      mocks.requireUser.mockReturnValue(new Promise<typeof USER>((resolve) => (release = resolve)));
       const found = { id: FOLDER_ID };
       read.mockResolvedValue(found);
 
@@ -114,11 +119,21 @@ describe("every query", () => {
       );
       expect(readCount()).toBe(0);
 
-      release();
+      release(USER);
       await expect(result).resolves.toBe(found);
       expect(readCount()).toBe(1);
     },
   );
+
+  it.each(QUERIES)("%s passes on the null of the service for an admin", async (_name, query, read, args) => {
+    const admin = { ...USER, name: "maria", type: "admin" };
+    mocks.requireUser.mockResolvedValue(admin);
+    read.mockResolvedValue(null);
+
+    await expect(query()).resolves.toBeNull();
+
+    expect(read).toHaveBeenCalledExactlyOnceWith(admin, ...args);
+  });
 
   it.each(QUERIES)(
     "%s does not reach the service when requireUser() redirects to the login page",

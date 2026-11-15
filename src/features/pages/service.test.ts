@@ -97,9 +97,9 @@ function places(pages: ReturnType<typeof page>[]): string[] {
 describe("the page lists", () => {
   // A deleted page keeps its folder, so only `deletedAt: null` keeps it out of the folder's lists.
   it.each([
-    ["listFolderPages", () => listFolderPages(FOLDER_ID), { folderId: FOLDER_ID, tabId: null, deletedAt: null }],
-    ["listTabPages", () => listTabPages(TAB_ID), { tabId: TAB_ID, deletedAt: null }],
-    ["listAllFolderPages", () => listAllFolderPages(FOLDER_ID), { folderId: FOLDER_ID, deletedAt: null }],
+    ["listFolderPages", () => listFolderPages(ACTOR, FOLDER_ID), { folderId: FOLDER_ID, tabId: null, deletedAt: null }],
+    ["listTabPages", () => listTabPages(ACTOR, TAB_ID), { tabId: TAB_ID, deletedAt: null }],
+    ["listAllFolderPages", () => listAllFolderPages(ACTOR, FOLDER_ID), { folderId: FOLDER_ID, deletedAt: null }],
   ])("%s leaves out deleted pages", async (_name, query, where) => {
     await query();
     expect(mocks.findMany).toHaveBeenCalledWith(expect.objectContaining({ where }));
@@ -108,10 +108,10 @@ describe("the page lists", () => {
 
 describe("the lists of a folder or tab", () => {
   it.each([
-    ["listFolderPages", () => listFolderPages(MALFORMED_ID)],
-    ["listTabPages", () => listTabPages(MALFORMED_ID)],
-    ["listAllFolderPages", () => listAllFolderPages(MALFORMED_ID)],
-    ["listDeletedPages", () => listDeletedPages(MALFORMED_ID)],
+    ["listFolderPages", () => listFolderPages(ACTOR, MALFORMED_ID)],
+    ["listTabPages", () => listTabPages(ACTOR, MALFORMED_ID)],
+    ["listAllFolderPages", () => listAllFolderPages(ACTOR, MALFORMED_ID)],
+    ["listDeletedPages", () => listDeletedPages(ACTOR, MALFORMED_ID)],
   ])("%s returns no pages for a malformed id without reading the database", async (_name, read) => {
     await expect(read()).resolves.toEqual([]);
     expect(readCount()).toBe(0);
@@ -128,7 +128,7 @@ describe("listAllFolderPages", () => {
       })),
     );
 
-    const pages = await listAllFolderPages(FOLDER_ID);
+    const pages = (await listAllFolderPages(ACTOR, FOLDER_ID)) ?? [];
 
     expect(places(pages)).toEqual(["overview", "guides/overview", "meetings/overview"]);
     for (const entry of pages) expect(entry.lastEditedBy).toEqual(EDITOR.lastEditedBy);
@@ -140,7 +140,7 @@ describe("getPage", () => {
     const stored = { id: "page-id", name: "overview", folder: { id: FOLDER_ID, name: "handbook" }, tab: null };
     mocks.findFirst.mockResolvedValue({ ...stored, ...EDITOR_ROW });
 
-    await expect(getPage("handbook", null, "overview")).resolves.toEqual({ ...stored, ...EDITOR });
+    await expect(getPage(ACTOR, "handbook", null, "overview")).resolves.toEqual({ ...stored, ...EDITOR });
     // `tabId: null` keeps a page of the same name in a tab of the folder from being returned.
     expect(mocks.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -158,7 +158,7 @@ describe("getPage", () => {
     };
     mocks.findFirst.mockResolvedValue({ ...stored, ...EDITOR_ROW });
 
-    await expect(getPage("handbook", "guides", "overview")).resolves.toEqual({ ...stored, ...EDITOR });
+    await expect(getPage(ACTOR, "handbook", "guides", "overview")).resolves.toEqual({ ...stored, ...EDITOR });
     expect(mocks.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { name: "overview", folder: { name: "handbook" }, deletedAt: null, tab: { name: "guides" } },
@@ -169,26 +169,26 @@ describe("getPage", () => {
   it("returns null when there is no such page", async () => {
     mocks.findFirst.mockResolvedValue(null);
 
-    await expect(getPage("handbook", "guides", "overview")).resolves.toBeNull();
+    await expect(getPage(ACTOR, "handbook", "guides", "overview")).resolves.toBeNull();
   });
 
   it.each(MALFORMED_NAMES)(
     "returns null for the malformed folder name %j without reading the database",
     async (name) => {
-      await expect(getPage(name, null, "overview")).resolves.toBeNull();
+      await expect(getPage(ACTOR, name, null, "overview")).resolves.toBeNull();
       expect(readCount()).toBe(0);
     },
   );
 
   it.each(MALFORMED_NAMES)("returns null for the malformed page name %j without reading the database", async (name) => {
-    await expect(getPage("handbook", "guides", name)).resolves.toBeNull();
+    await expect(getPage(ACTOR, "handbook", "guides", name)).resolves.toBeNull();
     expect(readCount()).toBe(0);
   });
 
   // A malformed tab name must not be treated like no tab: the address would then show the page placed directly in the
   // folder.
   it.each(MALFORMED_NAMES)("returns null for the malformed tab name %j without reading the database", async (name) => {
-    await expect(getPage("handbook", name, "overview")).resolves.toBeNull();
+    await expect(getPage(ACTOR, "handbook", name, "overview")).resolves.toBeNull();
     expect(readCount()).toBe(0);
   });
 });
@@ -198,7 +198,7 @@ describe("listDeletedPages", () => {
     const deletedAt = new Date("2026-11-12T10:00:00Z");
     mocks.findMany.mockResolvedValue([{ id: PAGE_ID, name: "overview", title: "Overview", deletedAt, ...EDITOR_ROW }]);
 
-    await expect(listDeletedPages(FOLDER_ID)).resolves.toEqual([
+    await expect(listDeletedPages(ACTOR, FOLDER_ID)).resolves.toEqual([
       { id: PAGE_ID, name: "overview", title: "Overview", deletedAt, ...EDITOR },
     ]);
     expect(mocks.findMany).toHaveBeenCalledWith(
@@ -212,7 +212,7 @@ describe("getDeletedPage", () => {
     const stored = { id: PAGE_ID, deletedAt: new Date(), folder: { id: FOLDER_ID, name: "handbook" } };
     mocks.findFirst.mockResolvedValue({ ...stored, ...EDITOR_ROW });
 
-    await expect(getDeletedPage("handbook", PAGE_ID)).resolves.toEqual({ ...stored, ...EDITOR });
+    await expect(getDeletedPage(ACTOR, "handbook", PAGE_ID)).resolves.toEqual({ ...stored, ...EDITOR });
     expect(mocks.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: PAGE_ID, folder: { name: "handbook" }, deletedAt: { not: null } } }),
     );
@@ -221,13 +221,13 @@ describe("getDeletedPage", () => {
   it("returns null when there is no such deleted page", async () => {
     mocks.findFirst.mockResolvedValue(null);
 
-    await expect(getDeletedPage("handbook", PAGE_ID)).resolves.toBeNull();
+    await expect(getDeletedPage(ACTOR, "handbook", PAGE_ID)).resolves.toBeNull();
   });
 
   it.each(MALFORMED_NAMES)(
     "returns null for the malformed folder name %j without reading the database",
     async (name) => {
-      await expect(getDeletedPage(name, PAGE_ID)).resolves.toBeNull();
+      await expect(getDeletedPage(ACTOR, name, PAGE_ID)).resolves.toBeNull();
       expect(readCount()).toBe(0);
     },
   );
@@ -235,7 +235,7 @@ describe("getDeletedPage", () => {
   it.each(["not-a-uuid", "", `${PAGE_ID}0`, PAGE_ID.replaceAll("-", ""), "overview"])(
     "returns null for the malformed id %j without reading the database",
     async (id) => {
-      await expect(getDeletedPage("handbook", id)).resolves.toBeNull();
+      await expect(getDeletedPage(ACTOR, "handbook", id)).resolves.toBeNull();
       expect(readCount()).toBe(0);
     },
   );
@@ -877,5 +877,57 @@ describe("the actor of a write", () => {
     expect(mocks.error).toHaveBeenCalledWith({ err, actorId: ACTOR_ID }, "actor of write not found");
     expect(mocks.warn).not.toHaveBeenCalled();
     expect(mocks.info).not.toHaveBeenCalled();
+  });
+});
+
+describe("an admin", () => {
+  /** An admin, who sees and changes no content; named like a user, so that only the type decides. */
+  const ADMIN: Actor = { id: ACTOR_ID, name: "alice", type: "admin" };
+
+  it.each([
+    ["listFolderPages", () => listFolderPages(ADMIN, FOLDER_ID)],
+    ["listTabPages", () => listTabPages(ADMIN, TAB_ID)],
+    ["listAllFolderPages", () => listAllFolderPages(ADMIN, FOLDER_ID)],
+    ["getPage", () => getPage(ADMIN, "handbook", null, "overview")],
+    ["listDeletedPages", () => listDeletedPages(ADMIN, FOLDER_ID)],
+    ["getDeletedPage", () => getDeletedPage(ADMIN, "handbook", PAGE_ID)],
+  ])("gets null from %s, without asking the database", async (_name, read) => {
+    await expect(read()).resolves.toBeNull();
+
+    expectDatabaseUntouched();
+  });
+
+  const MESSAGES = {
+    createPage: "page not created: the actor is an admin",
+    updatePageContent: "page not saved: the actor is an admin",
+    moveOrRenamePage: "page not moved or renamed: the actor is an admin",
+    deletePage: "page not deleted: the actor is an admin",
+    restorePage: "page not restored: the actor is an admin",
+  };
+
+  it.each(writes)("gets not-allowed from %s, logged, without touching the database", async (name, write) => {
+    await expect(write(ADMIN)).resolves.toEqual({ ok: false, error: { code: "not-allowed" } });
+
+    for (const call of databaseWrites) expect(call).not.toHaveBeenCalled();
+    expect(readCount()).toBe(0);
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith({ actorId: ACTOR_ID }, MESSAGES[name]);
+    expect(mocks.info).not.toHaveBeenCalled();
+    expect(mocks.error).not.toHaveBeenCalled();
+  });
+
+  it("is refused before the ids and the input are checked", async () => {
+    const results = [
+      await createPage(ADMIN, MALFORMED_ID, { name: "", content: "", tabId: MALFORMED_ID }),
+      await updatePageContent(ADMIN, MALFORMED_ID, { content: "" }),
+      await moveOrRenamePage(ADMIN, MALFORMED_ID, { name: "", tabId: MALFORMED_ID }),
+      await deletePage(ADMIN, MALFORMED_ID),
+      await restorePage(ADMIN, MALFORMED_ID, { name: "", tabId: MALFORMED_ID }),
+      await deletePage({ ...ADMIN, id: MALFORMED_ID }, PAGE_ID),
+    ];
+
+    for (const result of results) expect(result).toEqual({ ok: false, error: { code: "not-allowed" } });
+    for (const call of databaseWrites) expect(call).not.toHaveBeenCalled();
+    expect(readCount()).toBe(0);
+    expect(mocks.error).not.toHaveBeenCalled();
   });
 });

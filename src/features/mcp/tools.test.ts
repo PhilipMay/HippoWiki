@@ -29,6 +29,8 @@ const PUBLIC_URL = "https://wiki.example.com";
 const FOLDER_ID = "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10";
 const CHANGED = new Date("2026-03-01T12:00:00.000Z");
 const EDITOR = { name: "alice" };
+/** The user of the token of the requests. */
+const ACTOR = { id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002", name: "alice", type: "user" as const };
 
 /** A JSON-RPC answer of the server. */
 type Answer = { result?: Record<string, unknown>; error?: { code: number; message: string } };
@@ -38,7 +40,7 @@ let publicUrl: string | undefined;
 
 /** Sends one message to a new server with the tools, as a client of the older protocol does, and returns the answer. */
 async function send(message: Record<string, unknown>): Promise<Answer> {
-  const server = createWikiServer({ publicUrl });
+  const server = createWikiServer({ publicUrl, actor: ACTOR });
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,
@@ -158,6 +160,13 @@ describe("list_folders", () => {
     mocks.listFolders.mockResolvedValue([]);
 
     expect((await callTool("list_folders")).structuredContent).toEqual({ folders: [] });
+    expect(mocks.listFolders).toHaveBeenCalledExactlyOnceWith(ACTOR);
+  });
+
+  it("returns an empty list when the service reads nothing for the actor", async () => {
+    mocks.listFolders.mockResolvedValue(null);
+
+    expect((await callTool("list_folders")).structuredContent).toEqual({ folders: [] });
   });
 
   it("answers a failing database with a tool error that does not pass on the error, and logs it", async () => {
@@ -216,9 +225,9 @@ describe("list_folder", () => {
 
     const result = await callTool("list_folder", { folder: "handbook" });
 
-    expect(mocks.getFolderByName).toHaveBeenCalledExactlyOnceWith("handbook");
-    expect(mocks.listTabs).toHaveBeenCalledExactlyOnceWith(FOLDER_ID);
-    expect(mocks.listAllFolderPages).toHaveBeenCalledExactlyOnceWith(FOLDER_ID);
+    expect(mocks.getFolderByName).toHaveBeenCalledExactlyOnceWith(ACTOR, "handbook");
+    expect(mocks.listTabs).toHaveBeenCalledExactlyOnceWith(ACTOR, FOLDER_ID);
+    expect(mocks.listAllFolderPages).toHaveBeenCalledExactlyOnceWith(ACTOR, FOLDER_ID);
     expect(result.isError).toBeUndefined();
     expect(result.structuredContent).toEqual({
       folder: { name: "handbook", address: "https://wiki.example.com/folders/handbook" },
@@ -261,6 +270,23 @@ describe("list_folder", () => {
   });
 
   it.each([
+    ["tabs", () => mocks.listTabs.mockResolvedValue(null)],
+    ["pages", () => mocks.listAllFolderPages.mockResolvedValue(null)],
+  ])(
+    "answers a folder whose %s the service reads not for the actor like a folder that does not exist",
+    async (_case, arrange) => {
+      mocks.getFolderByName.mockResolvedValue({ id: FOLDER_ID, name: "handbook" });
+      mocks.listTabs.mockResolvedValue([]);
+      mocks.listAllFolderPages.mockResolvedValue([]);
+      arrange();
+
+      const message = errorOf(await callTool("list_folder", { folder: "handbook" }));
+
+      expect(message).toBe('There is no folder named "handbook". Use list_folders to see the folders that exist.');
+    },
+  );
+
+  it.each([
     ["no folder", {}],
     ["an empty name", { folder: "" }],
     ["upper case", { folder: "Handbook" }],
@@ -297,7 +323,8 @@ describe("read_page", () => {
 
     const result = await callTool("read_page", { folder: "handbook", tab: "guides", page: "setup" });
 
-    expect(mocks.getPage).toHaveBeenCalledExactlyOnceWith("handbook", "guides", "setup");
+    expect(mocks.getFolderByName).toHaveBeenCalledExactlyOnceWith(ACTOR, "handbook");
+    expect(mocks.getPage).toHaveBeenCalledExactlyOnceWith(ACTOR, "handbook", "guides", "setup");
     expect(result.isError).toBeUndefined();
     expect(result.structuredContent).toEqual({
       name: "setup",
@@ -320,7 +347,7 @@ describe("read_page", () => {
 
     const result = await callTool("read_page", args);
 
-    expect(mocks.getPage).toHaveBeenCalledExactlyOnceWith("handbook", null, "overview");
+    expect(mocks.getPage).toHaveBeenCalledExactlyOnceWith(ACTOR, "handbook", null, "overview");
     expect(result.structuredContent).toMatchObject({
       tab: null,
       address: "https://wiki.example.com/folders/handbook/overview.md",

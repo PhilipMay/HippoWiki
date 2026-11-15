@@ -128,7 +128,7 @@ describe("listFolders", () => {
     const folder = { id: FOLDER_ID, name: "handbook", updatedAt: new Date() };
     mocks.folderFindMany.mockResolvedValue([{ ...folder, lastEditedBy: { username: "alice" } }]);
 
-    await expect(listFolders()).resolves.toEqual([{ ...folder, lastEditedBy: { name: "alice" } }]);
+    await expect(listFolders(ACTOR)).resolves.toEqual([{ ...folder, lastEditedBy: { name: "alice" } }]);
   });
 });
 
@@ -137,18 +137,18 @@ describe("getFolderByName", () => {
     const folder = { id: FOLDER_ID, name: "handbook" };
     mocks.folderFindUnique.mockResolvedValue(folder);
 
-    await expect(getFolderByName("handbook")).resolves.toBe(folder);
+    await expect(getFolderByName(ACTOR, "handbook")).resolves.toBe(folder);
     expect(mocks.folderFindUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { name: "handbook" } }));
   });
 
   it("returns null when no folder has the name", async () => {
     mocks.folderFindUnique.mockResolvedValue(null);
 
-    await expect(getFolderByName("handbook")).resolves.toBeNull();
+    await expect(getFolderByName(ACTOR, "handbook")).resolves.toBeNull();
   });
 
   it.each(MALFORMED_NAMES)("returns null for the malformed name %j without reading the database", async (name) => {
-    await expect(getFolderByName(name)).resolves.toBeNull();
+    await expect(getFolderByName(ACTOR, name)).resolves.toBeNull();
     expect(databaseCallCount()).toBe(0);
   });
 });
@@ -158,12 +158,12 @@ describe("listTabs", () => {
     const tab = { id: TAB_ID, name: "guides", updatedAt: new Date() };
     mocks.tabFindMany.mockResolvedValue([{ ...tab, lastEditedBy: { username: "alice" } }]);
 
-    await expect(listTabs(FOLDER_ID)).resolves.toEqual([{ ...tab, lastEditedBy: { name: "alice" } }]);
+    await expect(listTabs(ACTOR, FOLDER_ID)).resolves.toEqual([{ ...tab, lastEditedBy: { name: "alice" } }]);
     expect(mocks.tabFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { folderId: FOLDER_ID } }));
   });
 
   it("returns no tabs for a malformed folder id without reading the database", async () => {
-    await expect(listTabs(MALFORMED_ID)).resolves.toEqual([]);
+    await expect(listTabs(ACTOR, MALFORMED_ID)).resolves.toEqual([]);
     expect(databaseCallCount()).toBe(0);
   });
 });
@@ -173,7 +173,7 @@ describe("getTab", () => {
     const tab = { id: TAB_ID, name: "guides", folder: { id: FOLDER_ID, name: "handbook" } };
     mocks.tabFindFirst.mockResolvedValue(tab);
 
-    await expect(getTab("handbook", "guides")).resolves.toBe(tab);
+    await expect(getTab(ACTOR, "handbook", "guides")).resolves.toBe(tab);
     expect(mocks.tabFindFirst).toHaveBeenCalledWith(
       expect.objectContaining({ where: { name: "guides", folder: { name: "handbook" } } }),
     );
@@ -182,19 +182,19 @@ describe("getTab", () => {
   it("returns null when the folder has no tab with the name", async () => {
     mocks.tabFindFirst.mockResolvedValue(null);
 
-    await expect(getTab("handbook", "guides")).resolves.toBeNull();
+    await expect(getTab(ACTOR, "handbook", "guides")).resolves.toBeNull();
   });
 
   it.each(MALFORMED_NAMES)(
     "returns null for the malformed folder name %j without reading the database",
     async (name) => {
-      await expect(getTab(name, "guides")).resolves.toBeNull();
+      await expect(getTab(ACTOR, name, "guides")).resolves.toBeNull();
       expect(databaseCallCount()).toBe(0);
     },
   );
 
   it.each(MALFORMED_NAMES)("returns null for the malformed tab name %j without reading the database", async (name) => {
-    await expect(getTab("handbook", name)).resolves.toBeNull();
+    await expect(getTab(ACTOR, "handbook", name)).resolves.toBeNull();
     expect(databaseCallCount()).toBe(0);
   });
 });
@@ -497,5 +497,65 @@ describe("the actor of a write", () => {
     expect(mocks.error).toHaveBeenCalledWith({ err, actorId: ACTOR_ID }, "actor of write not found");
     expect(mocks.warn).not.toHaveBeenCalled();
     expect(mocks.info).not.toHaveBeenCalled();
+  });
+});
+
+describe("an admin", () => {
+  /** An admin, who sees and changes no content; named like a user, so that only the type decides. */
+  const ADMIN: Actor = { id: ACTOR_ID, name: "alice", type: "admin" };
+
+  it.each([
+    ["listFolders", () => listFolders(ADMIN)],
+    ["getFolderByName", () => getFolderByName(ADMIN, "handbook")],
+    ["listTabs", () => listTabs(ADMIN, FOLDER_ID)],
+    ["getTab", () => getTab(ADMIN, "handbook", "guides")],
+  ])("gets null from %s, without asking the database", async (_name, read) => {
+    await expect(read()).resolves.toBeNull();
+
+    expect(databaseCallCount()).toBe(0);
+    expectNothingLogged();
+  });
+
+  const MESSAGES = {
+    createFolder: "folder not created: the actor is an admin",
+    renameFolder: "folder not renamed: the actor is an admin",
+    createTab: "tab not created: the actor is an admin",
+    renameTab: "tab not renamed: the actor is an admin",
+  };
+
+  it.each(writes)("gets not-allowed from %s, logged, without touching the database", async (name, write) => {
+    await expect(write(ADMIN)).resolves.toEqual({ ok: false, error: { code: "not-allowed" } });
+
+    expect(databaseCallCount()).toBe(0);
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith({ actorId: ACTOR_ID }, MESSAGES[name]);
+    expect(mocks.info).not.toHaveBeenCalled();
+    expect(mocks.error).not.toHaveBeenCalled();
+  });
+
+  it("is refused before the ids and the input are checked", async () => {
+    const results = [
+      await createFolder(ADMIN, INVALID),
+      await renameFolder(ADMIN, MALFORMED_ID, INVALID),
+      await createTab(ADMIN, MALFORMED_ID, INVALID),
+      await renameTab(ADMIN, MALFORMED_ID, INVALID),
+      await createFolder({ ...ADMIN, id: MALFORMED_ID }, VALID),
+    ];
+
+    for (const result of results) expect(result).toEqual({ ok: false, error: { code: "not-allowed" } });
+    expect(databaseCallCount()).toBe(0);
+    expect(mocks.error).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["listFolders", () => listFolders(ACTOR), mocks.folderFindMany],
+    ["getFolderByName", () => getFolderByName(ACTOR, "handbook"), mocks.folderFindUnique],
+    ["listTabs", () => listTabs(ACTOR, FOLDER_ID), mocks.tabFindMany],
+    ["getTab", () => getTab(ACTOR, "handbook", "guides"), mocks.tabFindFirst],
+  ])("does not change %s for a user", async (_name, read, call) => {
+    call.mockResolvedValue([]);
+
+    await read();
+
+    expect(call).toHaveBeenCalledOnce();
   });
 });

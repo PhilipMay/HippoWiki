@@ -28,7 +28,7 @@ describe("page reads", () => {
     await createPage({ folder, name: "alpha" });
     await createPage({ tab: await createTab({ folder }), name: "in-tab" });
 
-    expect((await pageService.listFolderPages(folder.id)).map(({ name }) => name)).toEqual(["alpha", "zeta"]);
+    expect((await pageService.listFolderPages(actor, folder.id))?.map(({ name }) => name)).toEqual(["alpha", "zeta"]);
   });
 
   it("lists the pages of a tab by name, without the other pages of its folder", async () => {
@@ -39,7 +39,7 @@ describe("page reads", () => {
     await createPage({ folder, name: "direct" });
     await createPage({ tab: await createTab({ folder }), name: "other-tab" });
 
-    expect((await pageService.listTabPages(tab.id)).map(({ name }) => name)).toEqual(["alpha", "zeta"]);
+    expect((await pageService.listTabPages(actor, tab.id))?.map(({ name }) => name)).toEqual(["alpha", "zeta"]);
   });
 
   it("lists all pages of a folder by name and tab, the page placed directly in the folder first", async () => {
@@ -51,7 +51,7 @@ describe("page reads", () => {
     await createPage({ folder, name: "about" });
     await createPage({ name: "other-folder" });
 
-    const pages = await pageService.listAllFolderPages(folder.id);
+    const pages = (await pageService.listAllFolderPages(actor, folder.id)) ?? [];
 
     expect(pages.map(({ name, tab }) => [name, tab?.name ?? null])).toEqual([
       ["about", null],
@@ -68,16 +68,19 @@ describe("page reads", () => {
     await createPage({ tab, name: "in-tab" });
     await createPage({ folder, name: "deleted", deletedAt: new Date() });
 
-    expect((await pageService.listFolderPages(folder.id)).map(({ name }) => name)).toEqual(["direct"]);
-    expect((await pageService.listTabPages(tab.id)).map(({ name }) => name)).toEqual(["in-tab"]);
-    expect((await pageService.listAllFolderPages(folder.id)).map(({ name }) => name)).toEqual(["direct", "in-tab"]);
+    expect((await pageService.listFolderPages(actor, folder.id))?.map(({ name }) => name)).toEqual(["direct"]);
+    expect((await pageService.listTabPages(actor, tab.id))?.map(({ name }) => name)).toEqual(["in-tab"]);
+    expect((await pageService.listAllFolderPages(actor, folder.id))?.map(({ name }) => name)).toEqual([
+      "direct",
+      "in-tab",
+    ]);
   });
 
   it("returns null for the old name of a deleted page", async () => {
     const folder = await createFolder({ name: "docs" });
     await createPage({ folder, name: "intro", deletedAt: new Date() });
 
-    await expect(pageService.getPage("docs", null, "intro")).resolves.toBeNull();
+    await expect(pageService.getPage(actor, "docs", null, "intro")).resolves.toBeNull();
   });
 
   it("finds a page by its place: directly in the folder or in a tab", async () => {
@@ -86,8 +89,11 @@ describe("page reads", () => {
     const direct = await createPage({ folder, name: "intro" });
     const inTab = await createPage({ tab, name: "intro" });
 
-    await expect(pageService.getPage("docs", null, "intro")).resolves.toMatchObject({ id: direct.id, tab: null });
-    await expect(pageService.getPage("docs", "guides", "intro")).resolves.toMatchObject({
+    await expect(pageService.getPage(actor, "docs", null, "intro")).resolves.toMatchObject({
+      id: direct.id,
+      tab: null,
+    });
+    await expect(pageService.getPage(actor, "docs", "guides", "intro")).resolves.toMatchObject({
       id: inTab.id,
       tab: { name: "guides" },
     });
@@ -99,10 +105,10 @@ describe("page reads", () => {
     await createPage({ tab: await createTab({ folder, name: "news" }), name: "only-in-news" });
     await createPage({ folder, name: "direct" });
 
-    await expect(pageService.getPage("docs", null, "only-in-news")).resolves.toBeNull();
-    await expect(pageService.getPage("docs", "guides", "only-in-news")).resolves.toBeNull();
-    await expect(pageService.getPage("docs", "guides", "direct")).resolves.toBeNull();
-    await expect(pageService.getPage("docs", null, "Not A Name")).resolves.toBeNull();
+    await expect(pageService.getPage(actor, "docs", null, "only-in-news")).resolves.toBeNull();
+    await expect(pageService.getPage(actor, "docs", "guides", "only-in-news")).resolves.toBeNull();
+    await expect(pageService.getPage(actor, "docs", "guides", "direct")).resolves.toBeNull();
+    await expect(pageService.getPage(actor, "docs", null, "Not A Name")).resolves.toBeNull();
   });
 });
 
@@ -113,7 +119,7 @@ describe("the fields of a page", () => {
     const tab = await createTab({ folder, name: "guides" });
     const page = await createPage({ tab, name: "intro", content: "# Intro\n\nText", editor: actor });
 
-    await expect(pageService.getPage("docs", "guides", "intro")).resolves.toStrictEqual({
+    await expect(pageService.getPage(actor, "docs", "guides", "intro")).resolves.toStrictEqual({
       id: page.id,
       name: "intro",
       title: "Intro",
@@ -129,7 +135,7 @@ describe("the fields of a page", () => {
     const folder = await createFolder({ name: "docs" });
     const page = await createPage({ folder, name: "intro", editor: actor });
 
-    await expect(pageService.getPage("docs", null, "intro")).resolves.toStrictEqual({
+    await expect(pageService.getPage(actor, "docs", null, "intro")).resolves.toStrictEqual({
       id: page.id,
       name: "intro",
       title: page.title,
@@ -146,7 +152,7 @@ describe("the fields of a page", () => {
     const deletedAt = new Date("2026-11-03T10:00:00Z");
     const page = await createPage({ folder, name: "intro", content: "# Intro", deletedAt, editor: actor });
 
-    await expect(pageService.getDeletedPage("docs", page.id)).resolves.toStrictEqual({
+    await expect(pageService.getDeletedPage(actor, "docs", page.id)).resolves.toStrictEqual({
       id: page.id,
       name: "intro",
       title: "Intro",
@@ -163,10 +169,10 @@ describe("the lists for a malformed id", () => {
     await createPage({ tab: await createTab() });
     await createPage({ deletedAt: new Date() });
 
-    await expect(pageService.listFolderPages("not-a-uuid")).resolves.toEqual([]);
-    await expect(pageService.listTabPages("not-a-uuid")).resolves.toEqual([]);
-    await expect(pageService.listAllFolderPages("not-a-uuid")).resolves.toEqual([]);
-    await expect(pageService.listDeletedPages("not-a-uuid")).resolves.toEqual([]);
+    await expect(pageService.listFolderPages(actor, "not-a-uuid")).resolves.toEqual([]);
+    await expect(pageService.listTabPages(actor, "not-a-uuid")).resolves.toEqual([]);
+    await expect(pageService.listAllFolderPages(actor, "not-a-uuid")).resolves.toEqual([]);
+    await expect(pageService.listDeletedPages(actor, "not-a-uuid")).resolves.toEqual([]);
   });
 });
 
@@ -179,7 +185,7 @@ describe("deleted page reads", () => {
     await createPage({ folder, name: "not-deleted" });
     await createPage({ name: "other-folder", deletedAt: new Date("2026-11-04T10:00:00Z") });
 
-    expect((await pageService.listDeletedPages(folder.id)).map(({ name }) => name)).toEqual([
+    expect((await pageService.listDeletedPages(actor, folder.id))?.map(({ name }) => name)).toEqual([
       "newest",
       "middle",
       "older",
@@ -190,7 +196,7 @@ describe("deleted page reads", () => {
     const folder = await createFolder({ name: "docs" });
     const page = await createPage({ folder, name: "intro", deletedAt: new Date() });
 
-    await expect(pageService.getDeletedPage("docs", page.id)).resolves.toMatchObject({
+    await expect(pageService.getDeletedPage(actor, "docs", page.id)).resolves.toMatchObject({
       id: page.id,
       name: "intro",
       folder: { id: folder.id, name: "docs" },
@@ -202,8 +208,8 @@ describe("deleted page reads", () => {
     const kept = await createPage({ folder });
     const elsewhere = await createPage({ folder: await createFolder({ name: "other" }), deletedAt: new Date() });
 
-    await expect(pageService.getDeletedPage("docs", kept.id)).resolves.toBeNull();
-    await expect(pageService.getDeletedPage("docs", elsewhere.id)).resolves.toBeNull();
+    await expect(pageService.getDeletedPage(actor, "docs", kept.id)).resolves.toBeNull();
+    await expect(pageService.getDeletedPage(actor, "docs", elsewhere.id)).resolves.toBeNull();
   });
 });
 
@@ -577,13 +583,13 @@ describe("the last editor in the page reads", () => {
 
     const editors = (pages: { name: string; lastEditedBy: { name: string } }[]) =>
       pages.map(({ name, lastEditedBy }) => [name, lastEditedBy.name]);
-    expect(editors(await pageService.listFolderPages(folder.id))).toEqual([["direct", "alice"]]);
-    expect(editors(await pageService.listTabPages(tab.id))).toEqual([["in-tab", "bob"]]);
-    expect(editors(await pageService.listAllFolderPages(folder.id))).toEqual([
+    expect(editors((await pageService.listFolderPages(actor, folder.id)) ?? [])).toEqual([["direct", "alice"]]);
+    expect(editors((await pageService.listTabPages(actor, tab.id)) ?? [])).toEqual([["in-tab", "bob"]]);
+    expect(editors((await pageService.listAllFolderPages(actor, folder.id)) ?? [])).toEqual([
       ["direct", "alice"],
       ["in-tab", "bob"],
     ]);
-    await expect(pageService.getPage("docs", "guides", "in-tab")).resolves.toMatchObject({
+    await expect(pageService.getPage(actor, "docs", "guides", "in-tab")).resolves.toMatchObject({
       lastEditedBy: { name: "bob" },
     });
   });
@@ -595,8 +601,10 @@ describe("the last editor in the page reads", () => {
 
     await pageService.updatePageContent(bob, page.id, { content: "# New" });
 
-    await expect(pageService.getPage("docs", null, "intro")).resolves.toMatchObject({ lastEditedBy: { name: "bob" } });
-    expect((await pageService.listFolderPages(folder.id))[0]?.lastEditedBy).toEqual({ name: "bob" });
+    await expect(pageService.getPage(actor, "docs", null, "intro")).resolves.toMatchObject({
+      lastEditedBy: { name: "bob" },
+    });
+    expect((await pageService.listFolderPages(actor, folder.id))?.[0]?.lastEditedBy).toEqual({ name: "bob" });
   });
 
   it("is the user who deleted the page in the deleted pages and the deleted page view", async () => {
@@ -606,16 +614,45 @@ describe("the last editor in the page reads", () => {
 
     await pageService.deletePage(bob, page.id);
 
-    await expect(pageService.listDeletedPages(folder.id)).resolves.toMatchObject([{ lastEditedBy: { name: "bob" } }]);
-    await expect(pageService.getDeletedPage("docs", page.id)).resolves.toMatchObject({ lastEditedBy: { name: "bob" } });
+    await expect(pageService.listDeletedPages(actor, folder.id)).resolves.toMatchObject([
+      { lastEditedBy: { name: "bob" } },
+    ]);
+    await expect(pageService.getDeletedPage(actor, "docs", page.id)).resolves.toMatchObject({
+      lastEditedBy: { name: "bob" },
+    });
   });
 
   it("returns no other field of the user", async () => {
     const folder = await createFolder({ name: "docs" });
     await createPage({ folder, name: "intro", editor: actor });
 
-    const [summary] = await pageService.listFolderPages(folder.id);
+    const [summary] = (await pageService.listFolderPages(actor, folder.id)) ?? [];
 
     expect(summary?.lastEditedBy).toStrictEqual({ name: "alice" });
+  });
+});
+
+describe("an admin", () => {
+  it("reads no page, not even one that exists, and changes nothing", async () => {
+    const admin = await createUser({ name: "maria", type: "admin" });
+    const folder = await createFolder({ name: "docs", editor: actor });
+    const page = await createPage({ folder, name: "intro", editor: actor });
+    const deleted = await createPage({ folder, name: "old", editor: actor, deletedAt: new Date() });
+    const before = await getTestDb().page.findMany({ orderBy: { name: "asc" } });
+
+    await expect(pageService.listFolderPages(admin, folder.id)).resolves.toBeNull();
+    await expect(pageService.listAllFolderPages(admin, folder.id)).resolves.toBeNull();
+    await expect(pageService.getPage(admin, "docs", null, "intro")).resolves.toBeNull();
+    await expect(pageService.listDeletedPages(admin, folder.id)).resolves.toBeNull();
+    await expect(pageService.getDeletedPage(admin, "docs", deleted.id)).resolves.toBeNull();
+    const notAllowed = { ok: false, error: { code: "not-allowed" } };
+    await expect(
+      pageService.createPage(admin, folder.id, { name: "new", content: "# New", tabId: null }),
+    ).resolves.toEqual(notAllowed);
+    await expect(pageService.updatePageContent(admin, page.id, { content: "# Changed" })).resolves.toEqual(notAllowed);
+    await expect(pageService.deletePage(admin, page.id)).resolves.toEqual(notAllowed);
+    await expect(pageService.restorePage(admin, deleted.id, { name: "old", tabId: null })).resolves.toEqual(notAllowed);
+
+    expect(await getTestDb().page.findMany({ orderBy: { name: "asc" } })).toStrictEqual(before);
   });
 });

@@ -34,22 +34,22 @@ describe("folder reads", () => {
     await createFolder({ name: "zeta" });
     await createFolder({ name: "alpha" });
 
-    expect((await folderService.listFolders()).map(({ name }) => name)).toEqual(["alpha", "zeta"]);
+    expect((await folderService.listFolders(actor))?.map(({ name }) => name)).toEqual(["alpha", "zeta"]);
   });
 
   it("finds a folder by name, and null for an unknown or malformed name", async () => {
     const folder = await createFolder({ name: "docs" });
 
-    await expect(folderService.getFolderByName("docs")).resolves.toMatchObject({ id: folder.id });
-    await expect(folderService.getFolderByName("other")).resolves.toBeNull();
-    await expect(folderService.getFolderByName("Not A Name")).resolves.toBeNull();
+    await expect(folderService.getFolderByName(actor, "docs")).resolves.toMatchObject({ id: folder.id });
+    await expect(folderService.getFolderByName(actor, "other")).resolves.toBeNull();
+    await expect(folderService.getFolderByName(actor, "Not A Name")).resolves.toBeNull();
   });
 
   it("returns exactly the declared fields of a folder", async () => {
     const folder = await createFolder({ name: "docs" });
 
     // `toStrictEqual` fails on any further column, such as `createdAt`.
-    await expect(folderService.getFolderByName("docs")).resolves.toStrictEqual({ id: folder.id, name: "docs" });
+    await expect(folderService.getFolderByName(actor, "docs")).resolves.toStrictEqual({ id: folder.id, name: "docs" });
   });
 });
 
@@ -60,13 +60,13 @@ describe("tab reads", () => {
     await createTab({ folder, name: "alpha" });
     await createTab({ name: "other" });
 
-    expect((await folderService.listTabs(folder.id)).map(({ name }) => name)).toEqual(["alpha", "zeta"]);
+    expect((await folderService.listTabs(actor, folder.id))?.map(({ name }) => name)).toEqual(["alpha", "zeta"]);
   });
 
   it("lists no tabs for a malformed folder id", async () => {
     await createTab();
 
-    await expect(folderService.listTabs("not-a-uuid")).resolves.toEqual([]);
+    await expect(folderService.listTabs(actor, "not-a-uuid")).resolves.toEqual([]);
   });
 
   it("finds a tab by folder and tab name, and null for a tab of another folder", async () => {
@@ -74,18 +74,18 @@ describe("tab reads", () => {
     const tab = await createTab({ folder, name: "guides" });
     await createTab({ folder: await createFolder({ name: "other" }), name: "news" });
 
-    await expect(folderService.getTab("docs", "guides")).resolves.toMatchObject({
+    await expect(folderService.getTab(actor, "docs", "guides")).resolves.toMatchObject({
       id: tab.id,
       folder: { name: "docs" },
     });
-    await expect(folderService.getTab("docs", "news")).resolves.toBeNull();
+    await expect(folderService.getTab(actor, "docs", "news")).resolves.toBeNull();
   });
 
   it("returns exactly the declared fields of a tab", async () => {
     const folder = await createFolder({ name: "docs" });
     const tab = await createTab({ folder, name: "guides" });
 
-    await expect(folderService.getTab("docs", "guides")).resolves.toStrictEqual({
+    await expect(folderService.getTab(actor, "docs", "guides")).resolves.toStrictEqual({
       id: tab.id,
       name: "guides",
       folder: { id: folder.id, name: "docs" },
@@ -307,11 +307,13 @@ describe("the last editor in the folder and tab reads", () => {
     await createTab({ folder, name: "guides", editor: bob });
 
     // `toStrictEqual` fails on any further field of the user.
-    expect((await folderService.listFolders()).map(({ name, lastEditedBy }) => [name, lastEditedBy])).toStrictEqual([
+    expect(
+      (await folderService.listFolders(actor))?.map(({ name, lastEditedBy }) => [name, lastEditedBy]),
+    ).toStrictEqual([
       ["docs", { name: "alice" }],
       ["news", { name: "bob" }],
     ]);
-    expect((await folderService.listTabs(folder.id)).map(({ lastEditedBy }) => lastEditedBy)).toStrictEqual([
+    expect((await folderService.listTabs(actor, folder.id))?.map(({ lastEditedBy }) => lastEditedBy)).toStrictEqual([
       { name: "bob" },
     ]);
   });
@@ -324,7 +326,27 @@ describe("the last editor in the folder and tab reads", () => {
     await folderService.renameFolder(bob, folder.id, { name: "handbook" });
     await folderService.renameTab(bob, tab.id, { name: "news" });
 
-    expect((await folderService.listFolders())[0]?.lastEditedBy).toEqual({ name: "bob" });
-    expect((await folderService.listTabs(folder.id))[0]?.lastEditedBy).toEqual({ name: "bob" });
+    expect((await folderService.listFolders(actor))?.[0]?.lastEditedBy).toEqual({ name: "bob" });
+    expect((await folderService.listTabs(actor, folder.id))?.[0]?.lastEditedBy).toEqual({ name: "bob" });
+  });
+});
+
+describe("an admin", () => {
+  it("reads no folder, not even one that exists, and changes nothing", async () => {
+    const admin = await createUser({ name: "maria", type: "admin" });
+    const folder = await createFolder({ name: "handbook", editor: actor });
+    await createTab({ folder, name: "guides", editor: actor });
+    const before = await getTestDb().folder.findMany({ include: { tabs: true } });
+
+    await expect(folderService.listFolders(admin)).resolves.toBeNull();
+    await expect(folderService.getFolderByName(admin, "handbook")).resolves.toBeNull();
+    await expect(folderService.listTabs(admin, folder.id)).resolves.toBeNull();
+    await expect(folderService.getTab(admin, "handbook", "guides")).resolves.toBeNull();
+    const notAllowed = { ok: false, error: { code: "not-allowed" } };
+    await expect(folderService.createFolder(admin, { name: "other" })).resolves.toEqual(notAllowed);
+    await expect(folderService.renameFolder(admin, folder.id, { name: "other" })).resolves.toEqual(notAllowed);
+    await expect(folderService.createTab(admin, folder.id, { name: "news" })).resolves.toEqual(notAllowed);
+
+    expect(await getTestDb().folder.findMany({ include: { tabs: true } })).toStrictEqual(before);
   });
 });

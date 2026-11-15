@@ -8,13 +8,15 @@ import * as folderService from "@/features/folders/service";
 
 // Every query starts with `connection()`: without a request-time API, Next.js would prerender the calling route at
 // build time and serve a stale snapshot of the database. Then it calls `requireUser()`, which redirects to the login
-// page without a logged-in user: nothing is read without a login, whoever calls the query.
+// page without a logged-in user: nothing is read without a login, whoever calls the query. That user is the actor of
+// the service, which decides what the user may see: an admin sees no content, so every read returns `null` for an
+// admin, and the routes show the not-found page.
 
-/** All folders, by name. */
-export async function listFolders(): Promise<folderService.FolderSummary[]> {
+/** All folders, by name; `null` for an admin. */
+export async function listFolders(): Promise<folderService.FolderSummary[] | null> {
   await connection();
-  await requireUser();
-  return folderService.listFolders();
+  const user = await requireUser();
+  return folderService.listFolders(user);
 }
 
 /**
@@ -23,15 +25,15 @@ export async function listFolders(): Promise<folderService.FolderSummary[]> {
  */
 export const getFolderByName = cache(async (name: string): Promise<folderService.Folder | null> => {
   await connection();
-  await requireUser();
-  return folderService.getFolderByName(name);
+  const user = await requireUser();
+  return folderService.getFolderByName(user, name);
 });
 
-/** The tabs of the folder, by name. */
-export async function listTabs(folderId: string): Promise<folderService.TabSummary[]> {
+/** The tabs of the folder, by name; `null` for an admin. */
+export async function listTabs(folderId: string): Promise<folderService.TabSummary[] | null> {
   await connection();
-  await requireUser();
-  return folderService.listTabs(folderId);
+  const user = await requireUser();
+  return folderService.listTabs(user, folderId);
 }
 
 /**
@@ -42,7 +44,7 @@ export async function listTabs(folderId: string): Promise<folderService.TabSumma
 export const getTab = cache(
   async (folderName: string, tabName: string): Promise<folderService.TabWithFolder | null> => {
     await connection();
-    await requireUser();
-    return folderService.getTab(folderName, tabName);
+    const user = await requireUser();
+    return folderService.getTab(user, folderName, tabName);
   },
 );

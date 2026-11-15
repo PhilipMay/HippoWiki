@@ -286,10 +286,30 @@ test.describe("with the saved login of the admin", () => {
     await expect(page.getByRole("heading", { level: 1, name: "Users" })).toBeVisible();
   });
 
-  test("the content opens", async ({ page }) => {
-    await page.goto("/folders");
+  // An admin sees no content: every address of it is not found, also for items that exist, so that nothing tells
+  // whether an item exists.
+  const CONTENT_ADDRESSES = [
+    ...PROTECTED_ADDRESSES.filter(([, address]) => /^\/(folders|deleted-pages)(\/|\?|$)/.test(address)),
+    ["the folder list with the dialog of a new folder", "/folders?action=new"],
+    ["a folder with the form of a new page", "/folders/handbook?action=new"],
+    ["a folder with the dialog of a new tab", "/folders/handbook?action=new-tab"],
+    ["a tab with an action", "/folders/handbook/guides?action=rename"],
+    ["a tab with the form of a new page", "/folders/handbook/guides?action=new"],
+    ["a page with the dialog to move or rename it", "/folders/handbook/overview.md?action=move-or-rename"],
+    ["a page with the dialog to delete it", "/folders/handbook/overview.md?action=delete"],
+    ["a page in a tab with an action", "/folders/handbook/guides/setup.md?action=edit"],
+    ["the deleted pages of a folder that does not exist", "/deleted-pages/nowhere"],
+  ] as const;
 
-    await expect(page.getByRole("heading", { level: 1, name: "Folders" })).toBeVisible();
-    await expect(page.getByRole("banner").getByText(KNOWN_ADMIN.name, { exact: true })).toBeVisible();
-  });
+  for (const [what, address] of CONTENT_ADDRESSES) {
+    test(`${what} (${address}) shows the not-found page`, async ({ page }) => {
+      const response = await page.goto(address);
+
+      expect(response?.status()).toBe(404);
+      await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
+      // Neither the content nor the names of folders, tabs and pages.
+      await expect(page.getByText(/Secret|handbook|guides|overview|setup|removed/)).toHaveCount(0);
+      await expect(page.getByRole("banner").getByText(KNOWN_ADMIN.name, { exact: true })).toBeVisible();
+    });
+  }
 });

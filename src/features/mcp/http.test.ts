@@ -17,7 +17,7 @@ vi.mock("@/features/pages/service", () => ({}));
 vi.mock("@/lib/env", () => ({ getServerEnv: mocks.getServerEnv }));
 vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, error: mocks.error } }));
 
-const ACTOR = { id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002", name: "alice" };
+const ACTOR = { id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002", name: "alice", type: "user" };
 const TOKEN = `hw_${"A".repeat(43)}`;
 const URL_OF_MCP = "http://localhost:3000/mcp";
 
@@ -245,6 +245,8 @@ describe("a client of the protocol of 2025", () => {
       id: 3,
       result: { structuredContent: { folders: [{ name: "handbook", address: "/folders/handbook" }] } },
     });
+    // The tools read as the user of the token.
+    expect(mocks.listFolders).toHaveBeenCalledExactlyOnceWith(ACTOR);
   });
 
   it("gets full addresses with a public URL", async () => {
@@ -301,6 +303,31 @@ describe("a client of the current protocol", () => {
     expect(call.status).toBe(200);
     expect(call.headers.get("content-type")).toBe("application/json");
     await expect(call.json()).resolves.toMatchObject({ id: 3, result: { structuredContent: { folders: [] } } });
+    // The tools read as the user of the token, also when the handler of the SDK builds the server.
+    expect(mocks.listFolders).toHaveBeenCalledExactlyOnceWith(ACTOR);
+  });
+
+  it("gives the tools of each request the user of its own token", async () => {
+    const other = { id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1003", name: "bob", type: "user" };
+    mocks.listFolders.mockResolvedValue([]);
+    const call = () =>
+      handleMcpRequest(
+        post(
+          {
+            jsonrpc: "2.0",
+            id: 3,
+            method: "tools/call",
+            params: { name: "list_folders", arguments: {}, _meta: MODERN_META },
+          },
+          modernHeaders("tools/call", "list_folders"),
+        ),
+      );
+
+    await call();
+    mocks.authenticateToken.mockResolvedValue({ ok: true, value: other });
+    await call();
+
+    expect(mocks.listFolders.mock.calls).toEqual([[ACTOR], [other]]);
   });
 
   it("is refused a subscription with a JSON answer instead of a stream", async () => {

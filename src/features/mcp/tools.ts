@@ -1,6 +1,7 @@
 // The tools of the MCP server: what an AI assistant can do with the wiki. All of them only read. They call the services
-// of the folders and pages, as `queries.ts` does for the GUI, and know nothing about HTTP, tokens or Next.js: the
-// adapter in `http.ts` finds out who is calling before a tool runs. No import of `next` or `react`, so the tools load
+// of the folders and pages with the actor, as `queries.ts` does for the GUI, and know nothing about HTTP, tokens or
+// Next.js: the adapter in `http.ts` finds out who is calling before a tool runs, and the services decide what the
+// actor may read. No import of `next` or `react`, so the tools load
 // wherever the services load.
 
 import { McpServer, type CallToolResult } from "@modelcontextprotocol/server";
@@ -8,6 +9,7 @@ import { z } from "zod";
 
 import * as folderService from "@/features/folders/service";
 import * as pageService from "@/features/pages/service";
+import type { Actor } from "@/features/users/service";
 import { folderPath, pagePath, tabPath } from "@/lib/addresses";
 import { logger } from "@/lib/logger";
 import { nameSchema } from "@/lib/names";
@@ -20,6 +22,8 @@ export type WikiToolsOptions = {
    * full URLs that a person can open; without it only the paths.
    */
   publicUrl: string | undefined;
+  /** The user of the token of the request: the services decide what the user may read. */
+  actor: Actor;
 };
 
 /** How the server introduces itself to a client. */
@@ -134,7 +138,8 @@ function folderNotFound(folder: string): CallToolResult {
 /** The tool `list_folders`: all folders, by name. */
 export async function listFolders(options: WikiToolsOptions): Promise<CallToolResult> {
   return run("list_folders", async () => {
-    const folders = await folderService.listFolders();
+    // `null` for an actor who may read no content: such an actor sees no folder.
+    const folders = (await folderService.listFolders(options.actor)) ?? [];
     return result({
       folders: folders.map((folder) => ({
         name: folder.name,
@@ -166,11 +171,14 @@ export async function listFolder(
   input: z.infer<typeof listFolderInput>,
 ): Promise<CallToolResult> {
   return run("list_folder", async () => {
-    const folder = await folderService.getFolderByName(input.folder);
+    const folder = await folderService.getFolderByName(options.actor, input.folder);
     if (!folder) return folderNotFound(input.folder);
-    const tabs = await folderService.listTabs(folder.id);
+    const tabs = await folderService.listTabs(options.actor, folder.id);
     // The service leaves deleted pages out and returns the others by name.
-    const pages = placedDirectlyFirst(await pageService.listAllFolderPages(folder.id));
+    const allPages = await pageService.listAllFolderPages(options.actor, folder.id);
+    // `null` for an actor who may read no content: for such an actor the folder does not exist.
+    if (!tabs || !allPages) return folderNotFound(input.folder);
+    const pages = placedDirectlyFirst(allPages);
     return result({
       folder: { name: folder.name, address: addressOf(options, folderPath(folder.name)) },
       tabs: tabs.map((tab) => ({
@@ -197,9 +205,9 @@ export async function readPage(
   return run("read_page", async () => {
     const tab = input.tab ?? null;
     // The folder first, so that a missing folder and a missing page get messages of their own.
-    const folder = await folderService.getFolderByName(input.folder);
+    const folder = await folderService.getFolderByName(options.actor, input.folder);
     if (!folder) return folderNotFound(input.folder);
-    const page = await pageService.getPage(folder.name, tab, input.page);
+    const page = await pageService.getPage(options.actor, folder.name, tab, input.page);
     if (!page) {
       const place =
         tab === null ? `directly in the folder "${folder.name}"` : `in the tab "${tab}" of the folder "${folder.name}"`;

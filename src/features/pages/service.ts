@@ -2,8 +2,10 @@
 // `queries.ts` and `actions.ts`) and any other caller can use it, also outside a request. It trusts no caller: ids,
 // names and input are parsed here again.
 //
-// Every write takes the acting user as its first argument and stores it as the last editor of the page, in the same
-// write that changes `updatedAt`. The folder and the tab of the page keep their `updatedAt` and last editor.
+// Every function takes the acting user as its first argument. An admin sees and changes no content: for an admin every
+// read returns `null` and every write `not-allowed`, before anything else is checked and without asking the database.
+// A write stores the actor as the last editor of the page, in the same write that changes `updatedAt`. The folder and
+// the tab of the page keep their `updatedAt` and last editor.
 
 import { z } from "zod";
 
@@ -18,6 +20,7 @@ import {
 import { LAST_EDITOR_SELECT, withLastEditor, type LastEditor } from "@/features/users/records";
 import { parseUserId } from "@/features/users/schema";
 import type { Actor } from "@/features/users/service";
+import { isAdmin } from "@/features/users/user-type";
 import { getDb } from "@/lib/db";
 import { isForeignKeyViolation, isUniqueViolation, LAST_EDITOR, PAGE_NAME } from "@/lib/db-errors";
 import { logger } from "@/lib/logger";
@@ -85,12 +88,17 @@ type TabNotFound = { code: "tab-not-found" };
 type PageNotFound = { code: "page-not-found" };
 /** An unexpected database error, or an actor that is malformed or does not exist; it has been logged. */
 type Failed = { code: "failed" };
+/** The actor is an admin, who changes no content; it has been logged. */
+type NotAllowed = { code: "not-allowed" };
 
-export type CreatePageError = FolderNotFound | TabNotFound | InvalidInput<PageFieldErrors> | NameTaken | Failed;
-export type UpdatePageContentError = PageNotFound | InvalidInput<PageFieldErrors> | Failed;
-export type MoveOrRenamePageError = PageNotFound | TabNotFound | InvalidInput<NameFieldErrors> | NameTaken | Failed;
-export type DeletePageError = PageNotFound | Failed;
-export type RestorePageError = PageNotFound | TabNotFound | InvalidInput<NameFieldErrors> | NameTaken | Failed;
+export type CreatePageError =
+  NotAllowed | FolderNotFound | TabNotFound | InvalidInput<PageFieldErrors> | NameTaken | Failed;
+export type UpdatePageContentError = NotAllowed | PageNotFound | InvalidInput<PageFieldErrors> | Failed;
+export type MoveOrRenamePageError =
+  NotAllowed | PageNotFound | TabNotFound | InvalidInput<NameFieldErrors> | NameTaken | Failed;
+export type DeletePageError = NotAllowed | PageNotFound | Failed;
+export type RestorePageError =
+  NotAllowed | PageNotFound | TabNotFound | InvalidInput<NameFieldErrors> | NameTaken | Failed;
 
 const SUMMARY_SELECT = { id: true, name: true, title: true, updatedAt: true, ...LAST_EDITOR_SELECT } as const;
 
@@ -101,8 +109,12 @@ const STORED_PAGE_SELECT = {
   tab: { select: { name: true } },
 } as const;
 
-/** The pages placed directly in the folder, without their content, by name; deleted pages are left out. */
-export async function listFolderPages(folderId: string): Promise<PageSummary[]> {
+/**
+ * The pages placed directly in the folder, without their content, by name; deleted pages are left out. `null` for an
+ * admin.
+ */
+export async function listFolderPages(actor: Actor, folderId: string): Promise<PageSummary[] | null> {
+  if (isAdmin(actor)) return null;
   const parsedFolderId = parseFolderId(folderId);
   if (!parsedFolderId) return [];
   const pages = await getDb().page.findMany({
@@ -113,8 +125,9 @@ export async function listFolderPages(folderId: string): Promise<PageSummary[]> 
   return pages.map(withLastEditor);
 }
 
-/** The pages of the tab, without their content, by name; deleted pages are left out. */
-export async function listTabPages(tabId: string): Promise<PageSummary[]> {
+/** The pages of the tab, without their content, by name; deleted pages are left out. `null` for an admin. */
+export async function listTabPages(actor: Actor, tabId: string): Promise<PageSummary[] | null> {
+  if (isAdmin(actor)) return null;
   const parsedTabId = parseTabId(tabId);
   if (!parsedTabId) return [];
   const pages = await getDb().page.findMany({
@@ -127,9 +140,10 @@ export async function listTabPages(tabId: string): Promise<PageSummary[]> {
 
 /**
  * All pages of the folder, without their content, each with its tab: by name and then by tab, pages placed directly
- * in the folder first. Deleted pages are left out.
+ * in the folder first. Deleted pages are left out. `null` for an admin.
  */
-export async function listAllFolderPages(folderId: string): Promise<PageWithTabSummary[]> {
+export async function listAllFolderPages(actor: Actor, folderId: string): Promise<PageWithTabSummary[] | null> {
+  if (isAdmin(actor)) return null;
   const parsedFolderId = parseFolderId(folderId);
   if (!parsedFolderId) return [];
   const pages = await getDb().page.findMany({
@@ -158,14 +172,16 @@ export function directPagesFirst<Entry extends { name: string; tab: unknown }>(p
 
 /**
  * The page with the given name in the given tab of the folder or, with `tabName` `null`, placed directly in the
- * folder, together with its folder and tab. `null` if a name is malformed or no such page exists there; a deleted page
- * has no address, so it is never found.
+ * folder, together with its folder and tab. `null` for an admin, if a name is malformed or no such page exists there;
+ * a deleted page has no address, so it is never found.
  */
 export async function getPage(
+  actor: Actor,
   folderName: string,
   tabName: string | null,
   pageName: string,
 ): Promise<PageWithPlace | null> {
+  if (isAdmin(actor)) return null;
   const folder = parseName(folderName);
   const tab = tabName === null ? null : parseName(tabName);
   const name = parseName(pageName);
@@ -200,8 +216,12 @@ function asDeleted<Entry extends { deletedAt: Date | null }>(page: Entry): (Entr
   return deletedAt ? { ...page, deletedAt } : null;
 }
 
-/** The deleted pages of the folder with id, name, title and time of deletion, without their content, newest first. */
-export async function listDeletedPages(folderId: string): Promise<DeletedPageSummary[]> {
+/**
+ * The deleted pages of the folder with id, name, title and time of deletion, without their content, newest first.
+ * `null` for an admin.
+ */
+export async function listDeletedPages(actor: Actor, folderId: string): Promise<DeletedPageSummary[] | null> {
+  if (isAdmin(actor)) return null;
   const parsedFolderId = parseFolderId(folderId);
   if (!parsedFolderId) return [];
   const pages = await getDb().page.findMany({
@@ -214,10 +234,11 @@ export async function listDeletedPages(folderId: string): Promise<DeletedPageSum
 }
 
 /**
- * The deleted page with the given id in the folder with the given name, together with its folder. `null` if the name
- * or the id is malformed, the page belongs to another folder or is not deleted.
+ * The deleted page with the given id in the folder with the given name, together with its folder. `null` for an
+ * admin, if the name or the id is malformed, the page belongs to another folder or is not deleted.
  */
-export async function getDeletedPage(folderName: string, id: string): Promise<DeletedPage | null> {
+export async function getDeletedPage(actor: Actor, folderName: string, id: string): Promise<DeletedPage | null> {
+  if (isAdmin(actor)) return null;
   const folder = parseName(folderName);
   const pageId = parsePageId(id);
   if (!folder || !pageId) return null;
@@ -241,6 +262,12 @@ function invalidInput<Input>(error: z.ZodError<Input>): {
   error: InvalidInput<z.core.$ZodFlattenedError<Input>["fieldErrors"]>;
 } {
   return { ok: false, error: { code: "invalid-input", fieldErrors: z.flattenError(error).fieldErrors } };
+}
+
+/** The result of a write by an admin, who changes no content; it is logged with the id of the actor. */
+function notAllowed(actor: Actor, message: string): { ok: false; error: NotAllowed } {
+  logger.warn({ actorId: actor.id }, message);
+  return { ok: false, error: { code: "not-allowed" } };
 }
 
 /**
@@ -286,6 +313,7 @@ export async function createPage(
   folderId: string,
   input: { name: string; content: string; tabId: string | null },
 ): Promise<Result<StoredPage, CreatePageError>> {
+  if (isAdmin(actor)) return notAllowed(actor, "page not created: the actor is an admin");
   const lastEditedById = editorIdOf(actor);
   if (!lastEditedById) return { ok: false, error: { code: "failed" } };
 
@@ -333,6 +361,7 @@ export async function updatePageContent(
   id: string,
   input: { content: string },
 ): Promise<Result<StoredPage, UpdatePageContentError>> {
+  if (isAdmin(actor)) return notAllowed(actor, "page not saved: the actor is an admin");
   const lastEditedById = editorIdOf(actor);
   if (!lastEditedById) return { ok: false, error: { code: "failed" } };
 
@@ -377,6 +406,7 @@ export async function moveOrRenamePage(
   id: string,
   input: { name: string; tabId: string | null },
 ): Promise<Result<StoredPage, MoveOrRenamePageError>> {
+  if (isAdmin(actor)) return notAllowed(actor, "page not moved or renamed: the actor is an admin");
   const lastEditedById = editorIdOf(actor);
   if (!lastEditedById) return { ok: false, error: { code: "failed" } };
 
@@ -427,6 +457,7 @@ export async function moveOrRenamePage(
  * counts as missing.
  */
 export async function deletePage(actor: Actor, id: string): Promise<Result<PagePlace, DeletePageError>> {
+  if (isAdmin(actor)) return notAllowed(actor, "page not deleted: the actor is an admin");
   const lastEditedById = editorIdOf(actor);
   if (!lastEditedById) return { ok: false, error: { code: "failed" } };
 
@@ -476,6 +507,7 @@ export async function restorePage(
   id: string,
   input: { name: string; tabId: string | null },
 ): Promise<Result<StoredPage, RestorePageError>> {
+  if (isAdmin(actor)) return notAllowed(actor, "page not restored: the actor is an admin");
   const lastEditedById = editorIdOf(actor);
   if (!lastEditedById) return { ok: false, error: { code: "failed" } };
 

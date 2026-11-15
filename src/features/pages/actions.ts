@@ -5,7 +5,7 @@
 // endpoint, whatever page shows its form. The call stands outside every `try` block, because the redirect throws. The
 // user it returns is passed to the service write as the actor, who becomes the last editor.
 
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import { requireUser } from "@/features/auth/session";
 import { parseFolderId } from "@/features/folders/schema";
@@ -69,6 +69,9 @@ export async function createPage(
   const result = await pageService.createPage(user, parsedFolderId, { name, content, tabId });
   if (!result.ok) {
     switch (result.error.code) {
+      // An admin changes no content, and for an admin no content exists.
+      case "not-allowed":
+        notFound();
       case "folder-not-found":
         return { message: FOLDER_GONE_MESSAGE };
       case "tab-not-found":
@@ -108,6 +111,9 @@ export async function updatePageContent(
   const result = await pageService.updatePageContent(user, pageId, { content: input.data.content });
   if (!result.ok) {
     switch (result.error.code) {
+      // An admin changes no content, and for an admin no content exists.
+      case "not-allowed":
+        notFound();
       case "page-not-found":
         return { message: PAGE_GONE_MESSAGE };
       case "invalid-input":
@@ -149,6 +155,9 @@ export async function moveOrRenamePage(
   const result = await pageService.moveOrRenamePage(user, pageId, input.data);
   if (!result.ok) {
     switch (result.error.code) {
+      // An admin changes no content, and for an admin no content exists.
+      case "not-allowed":
+        notFound();
       case "page-not-found":
         return { message: PAGE_GONE_MESSAGE };
       case "tab-not-found":
@@ -181,6 +190,9 @@ export async function deletePage(id: string): Promise<PageDeleteFormState> {
   const result = await pageService.deletePage(user, pageId);
   if (!result.ok) {
     switch (result.error.code) {
+      // An admin changes no content, and for an admin no content exists.
+      case "not-allowed":
+        notFound();
       case "page-not-found":
         return { message: PAGE_GONE_MESSAGE };
       case "failed":
@@ -222,6 +234,9 @@ export async function restorePage(
   const result = await pageService.restorePage(user, pageId, input.data);
   if (!result.ok) {
     switch (result.error.code) {
+      // An admin changes no content, and for an admin no content exists.
+      case "not-allowed":
+        notFound();
       case "page-not-found":
         return { message: PAGE_GONE_MESSAGE };
       case "tab-not-found":

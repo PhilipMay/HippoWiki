@@ -5,7 +5,7 @@
 // public endpoint, whatever page shows its form. The call stands outside every `try` block, because the redirect
 // throws. The user it returns is passed to the service write as the actor, who becomes the last editor.
 
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import { requireUser } from "@/features/auth/session";
 import { parseFolderFormData, parseTabFormData } from "@/features/folders/forms";
@@ -36,6 +36,9 @@ export async function createFolder(_prevState: NameFormState, formData: FormData
   const result = await folderService.createFolder(user, input.data);
   if (!result.ok) {
     switch (result.error.code) {
+      // An admin changes no content, and for an admin no content exists.
+      case "not-allowed":
+        notFound();
       case "invalid-input":
         return { fieldErrors: result.error.fieldErrors };
       case "name-taken":
@@ -67,6 +70,9 @@ export async function renameFolder(id: string, _prevState: NameFormState, formDa
   const result = await folderService.renameFolder(user, folderId, input.data);
   if (!result.ok) {
     switch (result.error.code) {
+      // An admin changes no content, and for an admin no content exists.
+      case "not-allowed":
+        notFound();
       case "folder-not-found":
         return { message: FOLDER_GONE_MESSAGE };
       case "invalid-input":
@@ -103,6 +109,9 @@ export async function createTab(
   const result = await folderService.createTab(user, parsedFolderId, input.data);
   if (!result.ok) {
     switch (result.error.code) {
+      // An admin changes no content, and for an admin no content exists.
+      case "not-allowed":
+        notFound();
       case "folder-not-found":
         return { message: FOLDER_GONE_MESSAGE };
       case "invalid-input":
@@ -135,6 +144,9 @@ export async function renameTab(id: string, _prevState: NameFormState, formData:
   const result = await folderService.renameTab(user, tabId, input.data);
   if (!result.ok) {
     switch (result.error.code) {
+      // An admin changes no content, and for an admin no content exists.
+      case "not-allowed":
+        notFound();
       case "tab-not-found":
         return { message: TAB_GONE_MESSAGE };
       case "invalid-input":

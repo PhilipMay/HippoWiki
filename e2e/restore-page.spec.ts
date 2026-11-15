@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { KNOWN_USER } from "../prisma/known-users";
+import { ADMIN_STORAGE_STATE, becomeUser } from "./support/auth";
 import { collectErrors } from "./support/browser";
 import { createFolder, createPage, createTab, createUser, getTestDb, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
@@ -229,4 +230,21 @@ test("the restored page shows the logged-in user who restored it", async ({ page
   await page.goto("/folders/handbook");
   await expect(page.getByRole("list", { name: "Contents" }).getByRole("listitem")).toHaveText([by(USER)]);
   expect(errors).toEqual([]);
+});
+
+test("a submission of the restore dialog with the login of an admin changes nothing and is not found", async ({
+  page,
+  context,
+}) => {
+  const removed = await createDeletedPage();
+  // The user opens the dialog; then the browser gets the login of an admin, as if the admin had crafted the request.
+  const dialog = await openRestoreDialog(page, removed.id);
+  await dialog.getByRole("radio", { name: "Directly in the folder" }).check();
+  await becomeUser(context, ADMIN_STORAGE_STATE);
+
+  await dialog.getByRole("button", { name: "Save" }).click();
+
+  await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
+  const stored = await getTestDb().page.findUniqueOrThrow({ where: { id: removed.id } });
+  expect(stored).toStrictEqual(removed);
 });

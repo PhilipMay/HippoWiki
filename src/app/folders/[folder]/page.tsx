@@ -66,7 +66,7 @@ export default async function FolderPage({ params, searchParams }: PageProps<"/f
         <NewPageForm
           action={createPage.bind(null, folder.id)}
           folderName={folder.name}
-          tabs={await listTabs(folder.id)}
+          tabs={(await listTabs(folder.id)) ?? notFound()}
           tabName={null}
           initialTabId={null}
         />
@@ -83,12 +83,14 @@ export default async function FolderPage({ params, searchParams }: PageProps<"/f
         <Typography variant="h4" component="h1">
           All pages
         </Typography>
-        <AllPagesList pages={await listAllFolderPages(folder.id)} folderName={folder.name} />
+        <AllPagesList pages={(await listAllFolderPages(folder.id)) ?? notFound()} folderName={folder.name} />
       </Stack>
     );
   }
 
   const [pages, tabs] = await Promise.all([listFolderPages(folder.id), listTabs(folder.id)]);
+  // `null` only for an admin, for whom the folder was not found already.
+  if (!pages || !tabs) notFound();
 
   return (
     <Stack spacing={3}>

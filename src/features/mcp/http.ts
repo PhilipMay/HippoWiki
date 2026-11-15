@@ -9,12 +9,15 @@ import {
   createMcpHandler,
   isLegacyRequest,
   WebStandardStreamableHTTPServerTransport,
+  type AuthInfo,
   type McpHttpHandler,
+  type McpRequestContext,
 } from "@modelcontextprotocol/server";
 
 import { createWikiServer } from "@/features/mcp/tools";
 import { protectedResourceMetadataUrl } from "@/features/oauth/issuer";
 import * as tokenService from "@/features/tokens/service";
+import type { Actor } from "@/features/users/service";
 import { getServerEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";
 
@@ -50,6 +53,22 @@ function hasForeignOrigin(request: Request, publicUrl: string | undefined): bool
   return host === "" || host !== request.headers.get("host");
 }
 
+/**
+ * The actor of a request as the authentication information that the handler of the SDK passes on, unread, to the
+ * factory of the server: the handler is created once, and this is how each request hands it its actor. The token
+ * itself is not passed on, so it stays out of everything the SDK keeps.
+ */
+function authInfoOf(actor: Actor): AuthInfo {
+  return { token: "", clientId: actor.id, scopes: [MCP_SCOPE], extra: { actor } };
+}
+
+/** The actor that `authInfoOf()` handed to the factory. Without one the request was not checked, which never happens. */
+function actorOf({ authInfo }: McpRequestContext): Actor {
+  const actor = authInfo?.extra?.actor;
+  if (!actor) throw new Error("mcp request without an actor");
+  return actor as Actor;
+}
+
 let modernHandler: McpHttpHandler | undefined;
 
 /**
@@ -59,12 +78,15 @@ let modernHandler: McpHttpHandler | undefined;
  * `serveLegacy()` instead.
  */
 function getModernHandler(): McpHttpHandler {
-  modernHandler ??= createMcpHandler(() => createWikiServer({ publicUrl: getServerEnv().HIPPOWIKI_PUBLIC_URL }), {
-    responseMode: "json",
-    legacy: "reject",
-    maxSubscriptions: 0,
-    onerror: (err) => logger.warn({ err }, "mcp request refused"),
-  });
+  modernHandler ??= createMcpHandler(
+    (context) => createWikiServer({ publicUrl: getServerEnv().HIPPOWIKI_PUBLIC_URL, actor: actorOf(context) }),
+    {
+      responseMode: "json",
+      legacy: "reject",
+      maxSubscriptions: 0,
+      onerror: (err) => logger.warn({ err }, "mcp request refused"),
+    },
+  );
   return modernHandler;
 }
 
@@ -73,8 +95,8 @@ function getModernHandler(): McpHttpHandler {
  * transport of their own for this one request, without a session, with a JSON answer. The handler of the SDK would
  * answer these clients as a stream.
  */
-async function serveLegacy(request: Request): Promise<Response> {
-  const server = createWikiServer({ publicUrl: getServerEnv().HIPPOWIKI_PUBLIC_URL });
+async function serveLegacy(request: Request, actor: Actor): Promise<Response> {
+  const server = createWikiServer({ publicUrl: getServerEnv().HIPPOWIKI_PUBLIC_URL, actor });
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,
@@ -107,8 +129,8 @@ export async function handleMcpRequest(request: Request): Promise<Response> {
     return refusal(403, "forbidden_origin");
   }
 
-  // The reads of the folders and pages take no actor: everyone who is logged in may read everything. The token only
-  // has to be valid and to have the scope.
+  // The token has to be valid and to have the scope; its user is the actor of the tools, and the services decide what
+  // the actor may read.
   const resourceMetadata = protectedResourceMetadataUrl();
   const oauth = resourceMetadata !== null;
   const actor = await tokenService.authenticateToken(request.headers, MCP_SCOPE, { acceptOAuth: oauth });
@@ -132,7 +154,9 @@ export async function handleMcpRequest(request: Request): Promise<Response> {
   }
 
   try {
-    return (await isLegacyRequest(request)) ? await serveLegacy(request) : await getModernHandler().fetch(request);
+    return (await isLegacyRequest(request))
+      ? await serveLegacy(request, actor.value)
+      : await getModernHandler().fetch(request, { authInfo: authInfoOf(actor.value) });
   } catch (err) {
     logger.error({ err, userId: actor.value.id }, "mcp request failed");
     return refusal(500, "server_error");

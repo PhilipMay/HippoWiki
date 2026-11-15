@@ -2,8 +2,9 @@
 // GUI (through `queries.ts` and `actions.ts`) and any other caller can use it, also outside a request. It trusts no
 // caller: ids, names and input are parsed here again.
 //
-// Every write takes the acting user as its first argument and stores it as the last editor of the folder or tab, in
-// the same write that changes `updatedAt`.
+// Every function takes the acting user as its first argument. An admin sees and changes no content: for an admin every
+// read returns `null` and every write `not-allowed`, before anything else is checked and without asking the database.
+// A write stores the actor as the last editor of the folder or tab, in the same write that changes `updatedAt`.
 
 import { z } from "zod";
 
@@ -11,6 +12,7 @@ import { folderInputSchema, parseFolderId, parseTabId, tabInputSchema } from "@/
 import { LAST_EDITOR_SELECT, withLastEditor, type LastEditor } from "@/features/users/records";
 import { parseUserId } from "@/features/users/schema";
 import type { Actor } from "@/features/users/service";
+import { isAdmin } from "@/features/users/user-type";
 import { getDb } from "@/lib/db";
 import { FOLDER_NAME, isForeignKeyViolation, isUniqueViolation, LAST_EDITOR, TAB_NAME } from "@/lib/db-errors";
 import { logger } from "@/lib/logger";
@@ -40,17 +42,25 @@ type FolderNotFound = { code: "folder-not-found" };
 type TabNotFound = { code: "tab-not-found" };
 /** An unexpected database error, or an actor that is malformed or does not exist; it has been logged. */
 type Failed = { code: "failed" };
+/** The actor is an admin, who changes no content; it has been logged. */
+type NotAllowed = { code: "not-allowed" };
 
-export type CreateFolderError = InvalidName | NameTaken | Failed;
-export type RenameFolderError = FolderNotFound | InvalidName | NameTaken | Failed;
-export type CreateTabError = FolderNotFound | InvalidName | NameTaken | Failed;
-export type RenameTabError = TabNotFound | InvalidName | NameTaken | Failed;
+export type CreateFolderError = NotAllowed | InvalidName | NameTaken | Failed;
+export type RenameFolderError = NotAllowed | FolderNotFound | InvalidName | NameTaken | Failed;
+export type CreateTabError = NotAllowed | FolderNotFound | InvalidName | NameTaken | Failed;
+export type RenameTabError = NotAllowed | TabNotFound | InvalidName | NameTaken | Failed;
 
 const SUMMARY_SELECT = { id: true, name: true, updatedAt: true, ...LAST_EDITOR_SELECT } as const;
 const STORED_TAB_SELECT = { id: true, name: true, folder: { select: { name: true } } } as const;
 
 function invalidName(error: z.ZodError<{ name: string }>): { ok: false; error: InvalidName } {
   return { ok: false, error: { code: "invalid-input", fieldErrors: z.flattenError(error).fieldErrors } };
+}
+
+/** The result of a write by an admin, who changes no content; it is logged with the id of the actor. */
+function notAllowed(actor: Actor, message: string): { ok: false; error: NotAllowed } {
+  logger.warn({ actorId: actor.id }, message);
+  return { ok: false, error: { code: "not-allowed" } };
 }
 
 /**
@@ -69,21 +79,24 @@ function unknownActor(err: unknown, actor: Actor): { ok: false; error: Failed } 
   return { ok: false, error: { code: "failed" } };
 }
 
-/** All folders, by name. */
-export async function listFolders(): Promise<FolderSummary[]> {
+/** All folders, by name; `null` for an admin. */
+export async function listFolders(actor: Actor): Promise<FolderSummary[] | null> {
+  if (isAdmin(actor)) return null;
   const folders = await getDb().folder.findMany({ select: SUMMARY_SELECT, orderBy: { name: "asc" } });
   return folders.map(withLastEditor);
 }
 
-/** The folder with the given name, or `null` if the name is malformed or no such folder exists. */
-export async function getFolderByName(name: string): Promise<Folder | null> {
+/** The folder with the given name, or `null` for an admin, if the name is malformed or no such folder exists. */
+export async function getFolderByName(actor: Actor, name: string): Promise<Folder | null> {
+  if (isAdmin(actor)) return null;
   const folderName = parseName(name);
   if (!folderName) return null;
   return getDb().folder.findUnique({ where: { name: folderName }, select: { id: true, name: true } });
 }
 
-/** The tabs of the folder, by name; none for a malformed folder id. */
-export async function listTabs(folderId: string): Promise<TabSummary[]> {
+/** The tabs of the folder, by name; none for a malformed folder id, and `null` for an admin. */
+export async function listTabs(actor: Actor, folderId: string): Promise<TabSummary[] | null> {
+  if (isAdmin(actor)) return null;
   const parsedFolderId = parseFolderId(folderId);
   if (!parsedFolderId) return [];
   const tabs = await getDb().tab.findMany({
@@ -95,10 +108,11 @@ export async function listTabs(folderId: string): Promise<TabSummary[]> {
 }
 
 /**
- * The tab with the given name in the folder with the given name, together with its folder, or `null` if a name is
- * malformed or no such tab exists.
+ * The tab with the given name in the folder with the given name, together with its folder, or `null` for an admin, if
+ * a name is malformed or no such tab exists.
  */
-export async function getTab(folderName: string, tabName: string): Promise<TabWithFolder | null> {
+export async function getTab(actor: Actor, folderName: string, tabName: string): Promise<TabWithFolder | null> {
+  if (isAdmin(actor)) return null;
   const folder = parseName(folderName);
   const name = parseName(tabName);
   if (!folder || !name) return null;
@@ -110,6 +124,7 @@ export async function getTab(folderName: string, tabName: string): Promise<TabWi
 
 /** Creates a folder with the given name, with the actor as its last editor, and returns it as stored. */
 export async function createFolder(actor: Actor, input: { name: string }): Promise<Result<Folder, CreateFolderError>> {
+  if (isAdmin(actor)) return notAllowed(actor, "folder not created: the actor is an admin");
   const lastEditedById = editorIdOf(actor);
   if (!lastEditedById) return { ok: false, error: { code: "failed" } };
 
@@ -142,6 +157,7 @@ export async function renameFolder(
   id: string,
   input: { name: string },
 ): Promise<Result<Folder, RenameFolderError>> {
+  if (isAdmin(actor)) return notAllowed(actor, "folder not renamed: the actor is an admin");
   const lastEditedById = editorIdOf(actor);
   if (!lastEditedById) return { ok: false, error: { code: "failed" } };
 
@@ -186,6 +202,7 @@ export async function createTab(
   folderId: string,
   input: { name: string },
 ): Promise<Result<StoredTab, CreateTabError>> {
+  if (isAdmin(actor)) return notAllowed(actor, "tab not created: the actor is an admin");
   const lastEditedById = editorIdOf(actor);
   if (!lastEditedById) return { ok: false, error: { code: "failed" } };
 
@@ -226,6 +243,7 @@ export async function renameTab(
   id: string,
   input: { name: string },
 ): Promise<Result<StoredTab, RenameTabError>> {
+  if (isAdmin(actor)) return notAllowed(actor, "tab not renamed: the actor is an admin");
   const lastEditedById = editorIdOf(actor);
   if (!lastEditedById) return { ok: false, error: { code: "failed" } };
 

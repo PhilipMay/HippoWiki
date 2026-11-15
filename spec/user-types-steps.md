@@ -24,7 +24,7 @@ step below.
 - [x] Account types in the database
 - [x] The user list for every account
 - [x] Where the login leads
-- [ ] No content for admins
+- [x] No content for admins
 - [ ] Choosing the type of a new account
 - [ ] No tokens and no apps for admins
 - [ ] Wrap-up

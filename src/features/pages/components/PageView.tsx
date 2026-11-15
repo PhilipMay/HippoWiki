@@ -3,6 +3,7 @@ import Divider from "@mui/material/Divider";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
+import { notFound } from "next/navigation";
 
 import Link from "@/components/Link";
 import FolderBreadcrumbs from "@/features/folders/components/FolderBreadcrumbs";
@@ -57,7 +58,7 @@ export default async function PageView({ page, action }: PageViewProps) {
   }
 
   // Only the "Move or rename page" dialog needs the tabs of the folder.
-  const tabs = action === "move-or-rename" ? await listTabs(page.folder.id) : [];
+  const tabs = action === "move-or-rename" ? ((await listTabs(page.folder.id)) ?? notFound()) : [];
 
   return (
     <Stack spacing={2}>

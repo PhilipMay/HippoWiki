@@ -8,30 +8,32 @@ import * as pageService from "@/features/pages/service";
 
 // Every query starts with `connection()`: without a request-time API, Next.js would prerender the calling route at
 // build time and serve a stale snapshot of the database. Then it calls `requireUser()`, which redirects to the login
-// page without a logged-in user: nothing is read without a login, whoever calls the query.
+// page without a logged-in user: nothing is read without a login, whoever calls the query. That user is the actor of
+// the service, which decides what the user may see: an admin sees no content, so every read returns `null` for an
+// admin, and the routes show the not-found page.
 
 /** The pages placed directly in the folder, without their content, by name; deleted pages are left out. */
-export async function listFolderPages(folderId: string): Promise<pageService.PageSummary[]> {
+export async function listFolderPages(folderId: string): Promise<pageService.PageSummary[] | null> {
   await connection();
-  await requireUser();
-  return pageService.listFolderPages(folderId);
+  const user = await requireUser();
+  return pageService.listFolderPages(user, folderId);
 }
 
 /** The pages of the tab, without their content, by name; deleted pages are left out. */
-export async function listTabPages(tabId: string): Promise<pageService.PageSummary[]> {
+export async function listTabPages(tabId: string): Promise<pageService.PageSummary[] | null> {
   await connection();
-  await requireUser();
-  return pageService.listTabPages(tabId);
+  const user = await requireUser();
+  return pageService.listTabPages(user, tabId);
 }
 
 /**
  * All pages of the folder, without their content, each with its tab: by name and then by tab, pages placed directly
  * in the folder first. Deleted pages are left out.
  */
-export async function listAllFolderPages(folderId: string): Promise<pageService.PageWithTabSummary[]> {
+export async function listAllFolderPages(folderId: string): Promise<pageService.PageWithTabSummary[] | null> {
   await connection();
-  await requireUser();
-  return pageService.listAllFolderPages(folderId);
+  const user = await requireUser();
+  return pageService.listAllFolderPages(user, folderId);
 }
 
 /**
@@ -43,16 +45,16 @@ export async function listAllFolderPages(folderId: string): Promise<pageService.
 export const getPage = cache(
   async (folderName: string, tabName: string | null, pageName: string): Promise<pageService.PageWithPlace | null> => {
     await connection();
-    await requireUser();
-    return pageService.getPage(folderName, tabName, pageName);
+    const user = await requireUser();
+    return pageService.getPage(user, folderName, tabName, pageName);
   },
 );
 
 /** The deleted pages of the folder with id, name, title and time of deletion, without their content, newest first. */
-export async function listDeletedPages(folderId: string): Promise<pageService.DeletedPageSummary[]> {
+export async function listDeletedPages(folderId: string): Promise<pageService.DeletedPageSummary[] | null> {
   await connection();
-  await requireUser();
-  return pageService.listDeletedPages(folderId);
+  const user = await requireUser();
+  return pageService.listDeletedPages(user, folderId);
 }
 
 /**
@@ -62,6 +64,6 @@ export async function listDeletedPages(folderId: string): Promise<pageService.De
  */
 export const getDeletedPage = cache(async (folderName: string, id: string): Promise<pageService.DeletedPage | null> => {
   await connection();
-  await requireUser();
-  return pageService.getDeletedPage(folderName, id);
+  const user = await requireUser();
+  return pageService.getDeletedPage(user, folderName, id);
 });

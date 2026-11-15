@@ -3,6 +3,7 @@ import type { Page as BrowserPage } from "@playwright/test";
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 
 import { KNOWN_USER } from "../prisma/known-users";
+import { ADMIN_STORAGE_STATE, becomeUser } from "./support/auth";
 import { collectErrors } from "./support/browser";
 import { createFolder, createPage, createUser, getTestDb, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
@@ -312,4 +313,21 @@ test("editing a page makes the logged-in user its last editor in the page view a
   await page.goto("/folders/handbook");
   await expect(page.getByRole("list", { name: "Contents" }).getByRole("listitem")).toHaveText([by(USER)]);
   expect(errors).toEqual([]);
+});
+
+test("a submission of the edit form with the login of an admin changes nothing and is not found", async ({
+  page,
+  context,
+}) => {
+  const edited = await createPage({ folder: handbook, name: "overview", content: "# Overview\n\nOld text" });
+  // The user opens the form; then the browser gets the login of an admin, as if the admin had crafted the request.
+  await page.goto("/folders/handbook/overview.md?action=edit");
+  await page.getByLabel("Content").fill("# Changed\n\nNew text");
+  await becomeUser(context, ADMIN_STORAGE_STATE);
+
+  await page.getByRole("button", { name: "Save" }).click();
+
+  await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
+  const stored = await getTestDb().page.findUniqueOrThrow({ where: { id: edited.id } });
+  expect(stored).toStrictEqual(edited);
 });

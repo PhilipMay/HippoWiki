@@ -82,7 +82,7 @@ export default async function FolderItemPage({ params, searchParams }: Props) {
         <NewPageForm
           action={createPage.bind(null, folder.id)}
           folderName={folder.name}
-          tabs={await listTabs(folder.id)}
+          tabs={(await listTabs(folder.id)) ?? notFound()}
           tabName={tab.name}
           initialTabId={tab.id}
         />
@@ -90,7 +90,7 @@ export default async function FolderItemPage({ params, searchParams }: Props) {
     );
   }
 
-  const pages = await listTabPages(tab.id);
+  const pages = (await listTabPages(tab.id)) ?? notFound();
 
   return (
     <Stack spacing={3}>

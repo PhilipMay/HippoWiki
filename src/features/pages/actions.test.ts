@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   restorePage: vi.fn(),
   revalidatePath: vi.fn(),
   redirect: vi.fn(),
+  notFound: vi.fn(),
   requireUser: vi.fn(),
 }));
 
@@ -28,7 +29,7 @@ vi.mock("@/features/pages/service", () => ({
   restorePage: mocks.restorePage,
 }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
-vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
+vi.mock("next/navigation", () => ({ redirect: mocks.redirect, notFound: mocks.notFound }));
 vi.mock("@/features/auth/session", () => ({ requireUser: mocks.requireUser }));
 
 const serviceWrites = [
@@ -40,12 +41,18 @@ const serviceWrites = [
 ];
 
 /** The logged-in user that `requireUser()` returns; every action passes it to its service write as the actor. */
-const USER = { id: crypto.randomUUID(), name: "alice", mustChangePassword: false };
+const USER = { id: crypto.randomUUID(), name: "alice", type: "user", mustChangePassword: false };
+
+/** Thrown by the mocked `notFound`, like the real one throws, so that code after it never runs. */
+class NotFoundError extends Error {}
 
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.redirect.mockImplementation((path: string) => {
     throw new RedirectError(path);
+  });
+  mocks.notFound.mockImplementation(() => {
+    throw new NotFoundError();
   });
   // A logged-in user, unless a test says otherwise.
   mocks.requireUser.mockResolvedValue(USER);
@@ -447,4 +454,19 @@ describe("without a logged-in user", () => {
       expect(write).toHaveBeenCalledOnce();
     },
   );
+});
+
+describe("for an admin", () => {
+  // The service refuses an admin; for an admin no content exists, so the action shows the not-found page.
+  it.each(ACTIONS)("%s shows the not-found page when the service answers not-allowed", async (_name, action, write) => {
+    const admin = { ...USER, type: "admin" };
+    mocks.requireUser.mockResolvedValue(admin);
+    write.mockResolvedValue({ ok: false, error: { code: "not-allowed" } });
+
+    await expect(action()).rejects.toBeInstanceOf(NotFoundError);
+
+    expect(write.mock.calls[0]?.[0]).toBe(admin);
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+    expect(mocks.redirect).not.toHaveBeenCalled();
+  });
 });

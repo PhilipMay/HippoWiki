@@ -38,7 +38,7 @@ export default async function DeletedPagesPage({ params, searchParams }: Props) 
       <Typography variant="h4" component="h1">
         Deleted pages
       </Typography>
-      <DeletedPagesList pages={await listDeletedPages(folder.id)} folderName={folder.name} />
+      <DeletedPagesList pages={(await listDeletedPages(folder.id)) ?? notFound()} folderName={folder.name} />
     </Stack>
   );
 }
