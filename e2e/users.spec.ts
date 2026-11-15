@@ -54,11 +54,14 @@ test.describe("the admin", () => {
     expect(errors).toEqual([]);
   });
 
-  test("has the menu entries Users, the name and Log out, but no Folders", async ({ page }) => {
+  test("has the menu entries Users and Folder roles, the name and Log out, but no Folders", async ({ page }) => {
     await page.goto("/account");
 
     const banner = page.getByRole("banner");
-    await expect(banner.getByRole("navigation", { name: "Main" }).getByRole("link")).toHaveText(["Users"]);
+    await expect(banner.getByRole("navigation", { name: "Main" }).getByRole("link")).toHaveText([
+      "Users",
+      "Folder roles",
+    ]);
     await expect(banner.getByRole("link", { name: KNOWN_ADMIN.name })).toBeVisible();
     await expect(banner.getByRole("button", { name: "Log out" })).toBeVisible();
     await banner.getByRole("link", { name: "Users" }).click();

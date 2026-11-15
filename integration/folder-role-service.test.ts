@@ -240,3 +240,51 @@ describe("changeRole and removeRole", () => {
     ]);
   });
 });
+
+describe("listAllFolderRoles", () => {
+  it("lists every folder with its roles in the order of the roles view, also one without roles, for an admin", async () => {
+    const admin = await createUser({ name: "maria", type: "admin" });
+    const [bob, anna] = [await createUser({ name: "bob" }), await createUser({ name: "anna" })];
+    await createFolder({
+      name: "zeta",
+      editor: actor,
+      roles: [
+        { user: bob, role: "reader" },
+        { user: actor, role: "owner" },
+        { user: anna, role: "reader" },
+      ],
+    });
+    await createFolder({ name: "alpha", editor: actor, roles: [] });
+
+    // `toStrictEqual` fails on any further field, such as the time of the last change or the last editor.
+    await expect(folderRoleService.listAllFolderRoles(admin)).resolves.toStrictEqual([
+      { id: expect.any(String), name: "alpha", roles: [] },
+      {
+        id: expect.any(String),
+        name: "zeta",
+        roles: [
+          { user: { id: actor.id, name: "carla" }, role: "owner" },
+          { user: { id: anna.id, name: "anna" }, role: "reader" },
+          { user: { id: bob.id, name: "bob" }, role: "reader" },
+        ],
+      },
+    ]);
+    await expect(folderRoleService.listAllFolderRoles(actor)).resolves.toBeNull();
+  });
+
+  it("gives an admin no way to change a role or create a folder", async () => {
+    const admin = await createUser({ name: "maria", type: "admin" });
+    const bob = await createUser({ name: "bob" });
+    const folder = await createFolder({ editor: actor, roles: [{ user: bob, role: "owner" }] });
+    const notAllowed = { ok: false, error: { code: "not-allowed" } };
+
+    await expect(folderRoleService.giveRole(admin, folder.id, { user: "carla", role: "owner" })).resolves.toEqual(
+      notAllowed,
+    );
+    await expect(folderRoleService.changeRole(admin, folder.id, bob.id, "reader")).resolves.toEqual(notAllowed);
+    await expect(folderRoleService.removeRole(admin, folder.id, bob.id)).resolves.toEqual(notAllowed);
+    expect(await getTestDb().folderRole.findMany({ select: { userId: true, role: true } })).toEqual([
+      { userId: bob.id, role: "owner" },
+    ]);
+  });
+});

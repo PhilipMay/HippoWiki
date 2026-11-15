@@ -7,6 +7,7 @@ import {
   giveRole,
   inBrowser,
   inMcp,
+  listAllFolderRoles,
   listFolderRoles,
   listRoleCandidates,
   mayReadFolder,
@@ -32,6 +33,7 @@ const mocks = vi.hoisted(() => ({
   roleUpdate: vi.fn(),
   roleDelete: vi.fn(),
   folderFindUniqueOrThrow: vi.fn(),
+  folderFindMany: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
@@ -41,6 +43,7 @@ vi.mock("@/lib/db", () => ({
   getDb: () => ({
     folderRole: { findFirst: mocks.roleFindFirst, findMany: mocks.roleFindMany, create: mocks.roleCreate },
     user: { findMany: mocks.userFindMany, findFirst: mocks.userFindFirst },
+    folder: { findMany: mocks.folderFindMany },
     $transaction: mocks.transaction,
   }),
 }));
@@ -583,5 +586,35 @@ describe("changeRole and removeRole", () => {
       { err, folderId: FOLDER_ID, userId: BOB_ID, ownerId: ACTOR_ID },
       "failed to change role",
     );
+  });
+});
+
+describe("listAllFolderRoles", () => {
+  it("lists every folder by name with its roles in the order of the roles view, for an admin", async () => {
+    mocks.folderFindMany.mockResolvedValue([
+      { id: FOLDER_ID, name: "handbook", roles: [{ role: "owner", user: { id: BOB_ID, username: "bob" } }] },
+      { id: TAB_ID, name: "nobody", roles: [] },
+    ]);
+
+    await expect(listAllFolderRoles(ADMIN)).resolves.toEqual([
+      { id: FOLDER_ID, name: "handbook", roles: [{ user: { id: BOB_ID, name: "bob" }, role: "owner" }] },
+      { id: TAB_ID, name: "nobody", roles: [] },
+    ]);
+    expect(mocks.folderFindMany).toHaveBeenCalledExactlyOnceWith({
+      select: {
+        id: true,
+        name: true,
+        roles: {
+          select: { role: true, user: { select: { id: true, username: true } } },
+          orderBy: [{ role: "desc" }, { user: { username: "asc" } }],
+        },
+      },
+      orderBy: { name: "asc" },
+    });
+  });
+
+  it("returns null for a user without asking the database", async () => {
+    await expect(listAllFolderRoles(USER)).resolves.toBeNull();
+    expect(mocks.folderFindMany).not.toHaveBeenCalled();
   });
 });

@@ -1,14 +1,20 @@
 import { beforeEach, expect, it, vi } from "vitest";
 
-import { listFolderRoles } from "@/features/folder-roles/queries";
+import { listAllFolderRoles, listFolderRoles, listRoleCandidates } from "@/features/folder-roles/queries";
 
 const mocks = vi.hoisted(() => ({
   connection: vi.fn(),
   requireUser: vi.fn(),
   listFolderRoles: vi.fn(),
+  listRoleCandidates: vi.fn(),
+  listAllFolderRoles: vi.fn(),
 }));
 
-vi.mock("@/features/folder-roles/service", () => ({ listFolderRoles: mocks.listFolderRoles }));
+vi.mock("@/features/folder-roles/service", () => ({
+  listFolderRoles: mocks.listFolderRoles,
+  listRoleCandidates: mocks.listRoleCandidates,
+  listAllFolderRoles: mocks.listAllFolderRoles,
+}));
 vi.mock("next/server", () => ({ connection: mocks.connection }));
 vi.mock("@/features/auth/session", () => ({ requireUser: mocks.requireUser }));
 
@@ -51,4 +57,25 @@ it("passes on the null of the service", async () => {
   mocks.listFolderRoles.mockResolvedValue(null);
 
   await expect(listFolderRoles(FOLDER_ID)).resolves.toBeNull();
+});
+
+it("reads the candidates and the overview as the logged-in user, after connection()", async () => {
+  mocks.listRoleCandidates.mockResolvedValue([]);
+  mocks.listAllFolderRoles.mockResolvedValue(null);
+
+  await expect(listRoleCandidates(FOLDER_ID)).resolves.toEqual([]);
+  await expect(listAllFolderRoles()).resolves.toBeNull();
+
+  expect(mocks.connection).toHaveBeenCalledTimes(2);
+  expect(mocks.listRoleCandidates).toHaveBeenCalledExactlyOnceWith(USER, FOLDER_ID);
+  expect(mocks.listAllFolderRoles).toHaveBeenCalledExactlyOnceWith(USER);
+});
+
+it("reads neither the candidates nor the overview without a login", async () => {
+  mocks.requireUser.mockRejectedValue(new RedirectError("/login"));
+
+  await expect(listRoleCandidates(FOLDER_ID)).rejects.toBeInstanceOf(RedirectError);
+  await expect(listAllFolderRoles()).rejects.toBeInstanceOf(RedirectError);
+  expect(mocks.listRoleCandidates).not.toHaveBeenCalled();
+  expect(mocks.listAllFolderRoles).not.toHaveBeenCalled();
 });

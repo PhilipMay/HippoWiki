@@ -462,3 +462,29 @@ async function refuseNonOwner(
   const owner = await ownerOf(actor, folderId, what);
   return owner.refused ?? null;
 }
+
+/** A folder as the overview of the roles shows it to an admin: its name and who has which role on it. */
+export type FolderRolesOverview = { id: string; name: string; roles: FolderRoleEntry[] };
+
+/**
+ * Every folder by name, each with every user who has a role on it and the role, in the order of the roles view; also a
+ * folder on which nobody has a role. Only for an admin, who manages the accounts and so sees who has access to what,
+ * but nothing else of the content: no tab, page, time of the last change or last editor. `null` for a user, who sees
+ * the roles only of the folders with a role of their own.
+ */
+export async function listAllFolderRoles(actor: Actor): Promise<FolderRolesOverview[] | null> {
+  if (!isAdmin(actor)) return null;
+  const folders = await getDb().folder.findMany({
+    select: {
+      id: true,
+      name: true,
+      roles: { select: { role: true, user: { select: { id: true, username: true } } }, orderBy: ROLE_LIST_ORDER },
+    },
+    orderBy: { name: "asc" },
+  });
+  return folders.map(({ id, name, roles }) => ({
+    id,
+    name,
+    roles: roles.map(({ role, user }) => ({ user: { id: user.id, name: user.username }, role })),
+  }));
+}

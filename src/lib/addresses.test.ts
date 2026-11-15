@@ -8,6 +8,7 @@ import {
   deletedPagePath,
   deletedPagesPath,
   folderPath,
+  folderRolesOverviewPath,
   folderRolesPath,
   foldersPath,
   landingPath,
@@ -40,6 +41,10 @@ describe("paths", () => {
 
   it("builds the address of the list of all pages of a folder", () => {
     expect(allPagesPath("handbook")).toBe("/folders/handbook?view=all");
+  });
+
+  it("builds the address of the overview of the folder roles", () => {
+    expect(folderRolesOverviewPath()).toBe("/folder-roles");
   });
 
   it("builds the address of the roles of a folder", () => {

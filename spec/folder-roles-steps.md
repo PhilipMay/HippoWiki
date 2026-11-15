@@ -24,7 +24,7 @@ approved requirements in `spec/folder-roles-requirements.md`; the IDs in bracket
 - [x] Roles view
 - [x] Give role
 - [x] Change and remove roles
-- [ ] Admin overview
+- [x] Admin overview
 - [ ] Wrap-up
 
 ## Roles in the database

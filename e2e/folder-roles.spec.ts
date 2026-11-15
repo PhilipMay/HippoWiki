@@ -1,7 +1,7 @@
 import type { Browser, BrowserContext, Page } from "@playwright/test";
 
 import { KNOWN_USER } from "../prisma/known-users";
-import { NO_STORAGE_STATE } from "./support/auth";
+import { ADMIN_STORAGE_STATE, becomeUser, NO_STORAGE_STATE, USER_STORAGE_STATE } from "./support/auth";
 import { collectErrors } from "./support/browser";
 import {
   createFolder,
@@ -809,5 +809,119 @@ test.describe("changing and removing roles", () => {
     await other.page.getByRole("main").getByRole("link", { name: /intro/ }).click();
     await expect(other.page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
     await other.context.close();
+  });
+});
+
+test.describe("the admin overview", () => {
+  test.describe("with the login of the admin", () => {
+    test.use({ storageState: ADMIN_STORAGE_STATE });
+
+    test("Folder roles in the header leads to every folder with its users and roles", async ({ page }) => {
+      const errors = collectErrors(page);
+      const [zoe, anna, ben] = [
+        await createUser({ name: "zoe" }),
+        await createUser({ name: "anna" }),
+        await createUser({ name: "ben" }),
+      ];
+      const editor = await aliceUser();
+      await createFolder({
+        name: "project-x",
+        editor,
+        roles: [
+          { user: ben, role: "reader" },
+          { user: zoe, role: "owner" },
+          { user: ALICE, role: "writer" },
+          { user: anna, role: "owner" },
+        ],
+      });
+      await createFolder({ name: "handbook", editor, roles: [{ user: ALICE, role: "manager" }] });
+      await createFolder({ name: "orphan", editor, roles: [] });
+
+      await page.goto("/users");
+      await page.getByRole("banner").getByRole("link", { name: "Folder roles" }).click();
+
+      await expect(page).toHaveURL("/folder-roles");
+      await expect(page).toHaveTitle("Folder roles – HippoWiki");
+      const rows = page.getByRole("table", { name: "Folder roles" }).getByRole("row");
+      await expect(rows).toHaveText([
+        "FolderRoles",
+        "handbookalice (Manager)",
+        "orphanNobody",
+        "project-xanna (Owner), zoe (Owner), alice (Writer), ben (Reader)",
+      ]);
+      // Nothing else of the content, and no controls.
+      await expect(page.getByRole("main").getByRole("link")).toHaveCount(0);
+      await expect(page.getByRole("main").getByRole("button")).toHaveCount(0);
+      await expect(page.getByRole("main").getByRole("combobox")).toHaveCount(0);
+      await expect(page.getByRole("banner").getByRole("link", { name: "Folders" })).toHaveCount(0);
+      expect(errors).toEqual([]);
+
+      for (const address of [
+        "/folders",
+        "/folders/project-x",
+        "/folders/project-x?view=roles",
+        "/deleted-pages/handbook",
+      ]) {
+        await expectNotFound(page, address);
+      }
+      await expectNotFound(page, "/folder-roles?action=give-role");
+    });
+  });
+
+  test("a user has no Folder roles in the header, and its address shows the not-found page", async ({ page }) => {
+    await createFolder({ name: "project-x" });
+
+    await page.goto("/folders");
+    await expect(page.getByRole("banner").getByRole("link", { name: "Folder roles" })).toHaveCount(0);
+    await expectNotFound(page, "/folder-roles");
+  });
+
+  test("forms submitted with the login of the admin give, change and remove no role and create no folder", async ({
+    page,
+    context,
+  }) => {
+    const bob = await createUser({ name: "bob" });
+    const dave = await createUser({ name: "dave" });
+    await createFolder({
+      name: "project-x",
+      editor: await aliceUser(),
+      roles: [
+        { user: ALICE, role: "owner" },
+        { user: bob, role: "writer" },
+      ],
+    });
+    const before = await getTestDb().folderRole.findMany({ orderBy: { id: "asc" } });
+    const notFound = page.getByRole("heading", { level: 1, name: "Page not found" });
+
+    // Each form is opened by the Owner; then the browser gets the login of the admin, as if the admin had crafted it.
+    await page.goto("/folders/project-x?action=give-role");
+    await giveRoleDialog(page).getByLabel("User").selectOption("dave");
+    await becomeUser(context, ADMIN_STORAGE_STATE);
+    await giveRoleDialog(page).getByRole("button", { name: "Save" }).click();
+    await expect(notFound).toBeVisible();
+
+    for (const submit of [
+      () => roleOf(page, "bob").selectOption("owner"),
+      () => page.getByRole("button", { name: "Remove the role of bob" }).click(),
+    ]) {
+      await becomeUser(context, USER_STORAGE_STATE);
+      await page.goto("/folders/project-x?view=roles");
+      await becomeUser(context, ADMIN_STORAGE_STATE);
+      await submit();
+      await expect(notFound).toBeVisible();
+    }
+
+    await becomeUser(context, USER_STORAGE_STATE);
+    await page.goto("/folders?action=new");
+    await page.getByRole("dialog", { name: "New folder" }).getByLabel("Name").fill("admins-folder");
+    await becomeUser(context, ADMIN_STORAGE_STATE);
+    await page.getByRole("dialog", { name: "New folder" }).getByRole("button", { name: "Save" }).click();
+    await expect(notFound).toBeVisible();
+
+    expect(await getTestDb().folderRole.findMany({ orderBy: { id: "asc" } })).toStrictEqual(before);
+    expect(await getTestDb().folder.count()).toBe(1);
+    // No folder ever shows an admin in its roles.
+    expect(await getTestDb().folderRole.count({ where: { user: { type: "admin" } } })).toBe(0);
+    expect(dave.type).toBe("user");
   });
 });

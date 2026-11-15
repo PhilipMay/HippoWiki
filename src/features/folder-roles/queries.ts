@@ -26,3 +26,10 @@ export async function listRoleCandidates(folderId: string): Promise<folderRoleSe
   const user = await requireUser();
   return folderRoleService.listRoleCandidates(user, folderId);
 }
+
+/** Every folder by name with its users and their roles; `null` for a user, for whom the overview does not exist. */
+export async function listAllFolderRoles(): Promise<folderRoleService.FolderRolesOverview[] | null> {
+  await connection();
+  const user = await requireUser();
+  return folderRoleService.listAllFolderRoles(user);
+}

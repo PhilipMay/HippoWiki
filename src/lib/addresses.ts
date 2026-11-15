@@ -100,6 +100,14 @@ export function usersPath(action?: string): string {
   return withAction(USERS_PATH, action);
 }
 
+/** The address of the overview of the folders and their roles, which only admins see. */
+const FOLDER_ROLES_PATH = "/folder-roles";
+
+/** The address of the overview of the folders and their roles. */
+export function folderRolesOverviewPath(): string {
+  return FOLDER_ROLES_PATH;
+}
+
 /** The address of the own account of the logged-in user, with the API tokens. */
 const ACCOUNT_PATH = "/account";
 

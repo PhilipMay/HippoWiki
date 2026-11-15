@@ -8,13 +8,14 @@ import Link from "@/components/Link";
 import { logOut } from "@/features/auth/actions";
 import { getCurrentUser } from "@/features/auth/session";
 import { isAdmin } from "@/features/users/user-type";
-import { accountPath, foldersPath, usersPath } from "@/lib/addresses";
+import { accountPath, folderRolesOverviewPath, foldersPath, usersPath } from "@/lib/addresses";
 import { siteName } from "@/lib/site";
 
 /**
  * The app bar of every page. For a logged-in user it has the menu, the user name, which links to the own account, and
  * "Log out"; while the user still has to change the first password, only the name as plain text and "Log out". Every
- * account has the menu entry "Users"; only a user has "Folders", because an admin sees no content.
+ * account has the menu entry "Users"; only a user has "Folders", because an admin sees no content, and only an admin has
+ * "Folder roles", the overview of who has which role on which folder.
  */
 export default async function AppHeader() {
   const user = await getCurrentUser();
@@ -42,6 +43,12 @@ export default async function AppHeader() {
             <Button component={Link} href={usersPath()} color="inherit">
               Users
             </Button>
+            {/* Only an admin sees which users have which role on which folder. */}
+            {isAdmin(user) && (
+              <Button component={Link} href={folderRolesOverviewPath()} color="inherit">
+                Folder roles
+              </Button>
+            )}
           </nav>
         )}
         {user && (
