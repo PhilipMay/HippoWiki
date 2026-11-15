@@ -3,6 +3,8 @@
 //
 // A role is read from the database on every call and never cached, also not in the session, so that a change of a
 // role takes effect with the next request of the user it concerns.
+//
+// Every user with a role on a folder sees who has which role on it; an admin sees the roles of no folder here.
 
 import { mayDo, rolesFor, type FolderFunction, type Role } from "@/features/folder-roles/roles";
 import { parseFolderId, parseTabId } from "@/features/folders/schema";
@@ -155,4 +157,31 @@ export async function mayReadTab(actor: ContentActor, tabId: string): Promise<bo
   if (isAdmin(actor)) return false;
   if (actor.channel === "mcp" || !parseTabId(tabId)) return true;
   return (await roleOnFolderOfTab(actor, tabId)) !== null;
+}
+
+/** A user with a role on a folder, as the roles view shows it. */
+export type FolderRoleEntry = { user: { id: string; name: string }; role: Role };
+
+/**
+ * The order of the roles view: Owners first, then Managers, Writers and Readers, each group by user name. The database
+ * sorts an enum in the order of its values, from Reader to Owner, so the roles are sorted descending.
+ */
+const ROLE_LIST_ORDER = [
+  { role: "desc" },
+  { user: { username: "asc" } },
+] satisfies Prisma.FolderRoleOrderByWithRelationInput[];
+
+/**
+ * Every user with a role on the folder with the given id and the role, Owners first, then Managers, Writers and
+ * Readers, each group by user name. `null` for an admin, a malformed id and a folder without a role of the actor, for
+ * whom the folder does not exist.
+ */
+export async function listFolderRoles(actor: Actor, folderId: string): Promise<FolderRoleEntry[] | null> {
+  if (!(await folderRoleOf(actor, folderId))) return null;
+  const roles = await getDb().folderRole.findMany({
+    where: { folderId },
+    select: { role: true, user: { select: { id: true, username: true } } },
+    orderBy: ROLE_LIST_ORDER,
+  });
+  return roles.map(({ role, user }) => ({ user: { id: user.id, name: user.username }, role }));
 }

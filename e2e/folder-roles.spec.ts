@@ -396,3 +396,54 @@ test.describe("what each role may do", () => {
     await expect(page).toHaveURL("/folders/guide");
   });
 });
+
+test.describe("the roles view", () => {
+  test("a Reader opens Roles from the folder and sees every user with a role, Owners first, without controls", async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    const [zoe, anna, ben, dave] = [
+      await createUser({ name: "zoe" }),
+      await createUser({ name: "anna" }),
+      await createUser({ name: "ben" }),
+      await createUser({ name: "dave" }),
+    ];
+    await createFolder({
+      name: "project-x",
+      roles: [
+        { user: ALICE, role: "reader" },
+        { user: zoe, role: "owner" },
+        { user: ben, role: "writer" },
+        { user: anna, role: "owner" },
+        { user: dave, role: "reader" },
+      ],
+    });
+
+    await page.goto("/folders/project-x");
+    await page.getByRole("main").getByRole("link", { name: "Roles" }).click();
+
+    await expect(page).toHaveURL("/folders/project-x?view=roles");
+    await expect(page).toHaveTitle("Roles – project-x – HippoWiki");
+    await expect(page.getByRole("heading", { level: 1, name: "Roles" })).toBeVisible();
+    await expect(page.getByRole("list", { name: "Roles" }).getByRole("listitem")).toHaveText([
+      "annaOwner",
+      "zoeOwner",
+      "benWriter",
+      "aliceReader",
+      "daveReader",
+    ]);
+    await expect(page.getByRole("main").getByRole("button")).toHaveCount(0);
+    await expect(page.getByRole("main").getByRole("combobox")).toHaveCount(0);
+    await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("link", { name: "project-x" }).click();
+    await expect(page).toHaveURL("/folders/project-x");
+    expect(errors).toEqual([]);
+  });
+
+  test("a user without a role sees the not-found page at the roles view", async ({ page }) => {
+    const bob = await createUser({ name: "bob" });
+    await createFolder({ name: "project-x", roles: [{ user: bob, role: "owner" }] });
+
+    await expectNotFound(page, "/folders/project-x?view=roles");
+    await expectNotFound(page, "/folders/project-x?view=roles&action=rename");
+  });
+});

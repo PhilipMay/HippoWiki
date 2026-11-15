@@ -30,6 +30,7 @@ const PROTECTED_ADDRESSES = [
   ["the folder list", "/folders"],
   ["a folder", "/folders/handbook"],
   ["all pages of a folder", "/folders/handbook?view=all"],
+  ["the roles of a folder", "/folders/handbook?view=roles"],
   ["a tab", "/folders/handbook/guides"],
   ["a page", "/folders/handbook/overview.md"],
   ["a page in a tab", "/folders/handbook/guides/setup.md"],

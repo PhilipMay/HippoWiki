@@ -11,12 +11,22 @@ import FolderBreadcrumbs from "@/features/folders/components/FolderBreadcrumbs";
 import FolderContentsList from "@/features/folders/components/FolderContentsList";
 import NameDialog from "@/features/folders/components/NameDialog";
 import { getFolderByName, listTabs } from "@/features/folders/queries";
+import FolderRoleList from "@/features/folder-roles/components/FolderRoleList";
+import { listFolderRoles } from "@/features/folder-roles/queries";
 import { mayDo, ROLE_LABELS, type FolderFunction } from "@/features/folder-roles/roles";
 import { createPage } from "@/features/pages/actions";
 import AllPagesList from "@/features/pages/components/AllPagesList";
 import NewPageForm from "@/features/pages/components/NewPageForm";
 import { listAllFolderPages, listFolderPages } from "@/features/pages/queries";
-import { allPagesPath, deletedPagesPath, folderPath, parseAction, parseView, type SearchParams } from "@/lib/addresses";
+import {
+  allPagesPath,
+  deletedPagesPath,
+  folderPath,
+  folderRolesPath,
+  parseAction,
+  parseView,
+  type SearchParams,
+} from "@/lib/addresses";
 import { pageTitle } from "@/lib/site";
 
 /**
@@ -32,8 +42,11 @@ const ACTION_FUNCTIONS: Record<(typeof ACTIONS)[number], FolderFunction> = {
   "new-tab": "editTab",
 };
 
-/** The views of a folder address: `all` lists all pages of the folder, each with its tab. */
-const VIEWS = ["all"] as const;
+/**
+ * The views of a folder address: `all` lists all pages of the folder, each with its tab, `roles` who has which role on
+ * the folder. Every role may see both.
+ */
+const VIEWS = ["all", "roles"] as const;
 
 /**
  * The action and the view of the address, or `"invalid"` if either is not one of this address. A view has no actions,
@@ -51,7 +64,9 @@ export async function generateMetadata({ params, searchParams }: PageProps<"/fol
   const query = parseQuery(await searchParams);
   if (!folder || query === "invalid") return { title: pageTitle() };
   if (query.action === "new") return { title: pageTitle("New page") };
-  return { title: pageTitle(query.view === "all" ? `All pages – ${folder.name}` : folder.name) };
+  if (query.view === "all") return { title: pageTitle(`All pages – ${folder.name}`) };
+  if (query.view === "roles") return { title: pageTitle(`Roles – ${folder.name}`) };
+  return { title: pageTitle(folder.name) };
 }
 
 export default async function FolderPage({ params, searchParams }: PageProps<"/folders/[folder]">) {
@@ -99,6 +114,18 @@ export default async function FolderPage({ params, searchParams }: PageProps<"/f
     );
   }
 
+  if (view === "roles") {
+    return (
+      <Stack spacing={3}>
+        <FolderBreadcrumbs folderName={folder.name} current="Roles" />
+        <Typography variant="h4" component="h1">
+          Roles
+        </Typography>
+        <FolderRoleList roles={(await listFolderRoles(folder.id)) ?? notFound()} />
+      </Stack>
+    );
+  }
+
   const [pages, tabs] = await Promise.all([listFolderPages(folder.id), listTabs(folder.id)]);
   // `null` only for an admin, for whom the folder was not found already.
   if (!pages || !tabs) notFound();
@@ -130,6 +157,9 @@ export default async function FolderPage({ params, searchParams }: PageProps<"/f
           )}
           <Button component={Link} href={allPagesPath(folder.name)} variant="outlined">
             All pages
+          </Button>
+          <Button component={Link} href={folderRolesPath(folder.name)} variant="outlined">
+            Roles
           </Button>
           {mayDo(role, "deletedPages") && (
             <Button component={Link} href={deletedPagesPath(folder.name)} variant="outlined">

@@ -4,6 +4,7 @@ import {
   folderRoleOf,
   inBrowser,
   inMcp,
+  listFolderRoles,
   mayReadFolder,
   mayReadTab,
   readableFolderWhere,
@@ -17,12 +18,15 @@ import {
 
 const mocks = vi.hoisted(() => ({
   roleFindFirst: vi.fn(),
+  roleFindMany: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
 }));
 
-vi.mock("@/lib/db", () => ({ getDb: () => ({ folderRole: { findFirst: mocks.roleFindFirst } }) }));
+vi.mock("@/lib/db", () => ({
+  getDb: () => ({ folderRole: { findFirst: mocks.roleFindFirst, findMany: mocks.roleFindMany } }),
+}));
 vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, error: mocks.error } }));
 
 beforeEach(() => {
@@ -185,5 +189,41 @@ describe("roleSelection and roleOf", () => {
     expect(roleSelection("any")).toEqual({ take: 0, select: { role: true } });
     expect(roleOf({ roles: [{ role: "writer" }] })).toBe("writer");
     expect(roleOf({ roles: [] })).toBeNull();
+  });
+});
+
+describe("listFolderRoles", () => {
+  it("lists every user with a role on the folder, Owners first and by name, for a user with a role", async () => {
+    mocks.roleFindFirst.mockResolvedValue({ role: "reader" });
+    mocks.roleFindMany.mockResolvedValue([
+      { role: "owner", user: { id: ACTOR_ID, username: "alice" } },
+      { role: "reader", user: { id: FOLDER_ID, username: "bob" } },
+    ]);
+
+    await expect(listFolderRoles(USER, FOLDER_ID)).resolves.toEqual([
+      { user: { id: ACTOR_ID, name: "alice" }, role: "owner" },
+      { user: { id: FOLDER_ID, name: "bob" }, role: "reader" },
+    ]);
+    expect(mocks.roleFindMany).toHaveBeenCalledExactlyOnceWith({
+      where: { folderId: FOLDER_ID },
+      select: { role: true, user: { select: { id: true, username: true } } },
+      orderBy: [{ role: "desc" }, { user: { username: "asc" } }],
+    });
+  });
+
+  it("returns null for a user without a role on the folder, without reading the roles", async () => {
+    mocks.roleFindFirst.mockResolvedValue(null);
+
+    await expect(listFolderRoles(USER, FOLDER_ID)).resolves.toBeNull();
+    expect(mocks.roleFindMany).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["an admin", () => listFolderRoles(ADMIN, FOLDER_ID)],
+    ["a malformed folder id", () => listFolderRoles(USER, MALFORMED_ID)],
+  ])("returns null for %s without asking the database", async (_name, read) => {
+    await expect(read()).resolves.toBeNull();
+    expect(mocks.roleFindFirst).not.toHaveBeenCalled();
+    expect(mocks.roleFindMany).not.toHaveBeenCalled();
   });
 });

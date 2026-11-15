@@ -179,6 +179,11 @@ export function allPagesPath(folder: string): string {
   return `${FOLDERS_PATH}/${folder}?view=all`;
 }
 
+/** The address of the roles of a folder: the folder address with the view `roles`. */
+export function folderRolesPath(folder: string): string {
+  return `${FOLDERS_PATH}/${folder}?view=roles`;
+}
+
 /** The address of a tab of a folder, optionally with an action. */
 export function tabPath(folder: string, tab: string, action?: string): string {
   return withAction(`${FOLDERS_PATH}/${folder}/${tab}`, action);
