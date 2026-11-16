@@ -66,7 +66,7 @@ These choices hold for all steps; the wrap-up moves the ones that last into the 
 
 ## Checklist
 
-- [ ] Page versions
+- [x] Page versions
 - [ ] Refuse outdated content saves
 - [ ] Refuse outdated moves and renames
 - [ ] Refuse outdated deletes

@@ -153,6 +153,7 @@ describe("the fields of a page", () => {
       content: "# Intro\n\nText",
       updatedAt: page.updatedAt,
       lastEditedBy: { name: "alice" },
+      version: 1,
       folder: { id: folder.id, name: "docs" },
       tab: { id: tab.id, name: "guides" },
       role: "owner",
@@ -170,6 +171,7 @@ describe("the fields of a page", () => {
       content: page.content,
       updatedAt: page.updatedAt,
       lastEditedBy: { name: "alice" },
+      version: 1,
       folder: { id: folder.id, name: "docs" },
       tab: null,
       role: "owner",
@@ -606,6 +608,55 @@ describe("the last editor of pages", () => {
     );
 
     expect(await getTestDb().page.findMany({ orderBy: { name: "asc" } })).toStrictEqual(before);
+  });
+});
+
+/** The version of the page with the given id. */
+async function versionOf(pageId: string): Promise<number> {
+  return (await getTestDb().page.findUniqueOrThrow({ where: { id: pageId } })).version;
+}
+
+describe("the version of pages", () => {
+  it("is 1 for a new page and counted up by one by each write", async () => {
+    const folder = await createFolder({ roles: owners(user) });
+    const tab = await createTab({ folder });
+
+    const created = await pageService.createPage(actor, folder.id, { name: "intro", content: "# Intro", tabId: null });
+    if (!created.ok) throw new Error("expected the page to be created");
+    const { id } = created.value;
+    expect(await versionOf(id)).toBe(1);
+
+    await pageService.updatePageContent(actor, id, { content: "# New" });
+    expect(await versionOf(id)).toBe(2);
+
+    await pageService.moveOrRenamePage(actor, id, { name: "start", tabId: tab.id });
+    expect(await versionOf(id)).toBe(3);
+
+    await pageService.deletePage(actor, id);
+    expect(await versionOf(id)).toBe(4);
+
+    await pageService.restorePage(actor, id, { name: "start", tabId: null });
+    expect(await versionOf(id)).toBe(5);
+  });
+
+  it("stays as it was when a write fails", async () => {
+    const folder = await createFolder({ roles: owners(user) });
+    const foreignTab = await createTab();
+    await createPage({ folder, name: "taken" });
+    const page = await createPage({ folder, name: "intro", editor: user, version: 7 });
+    const deleted = await createPage({ folder, name: "old", editor: user, deletedAt: new Date(), version: 7 });
+
+    await pageService.updatePageContent(actor, page.id, { content: "No title" });
+    await pageService.moveOrRenamePage(actor, page.id, { name: "taken", tabId: null });
+    await pageService.moveOrRenamePage(actor, page.id, { name: "start", tabId: foreignTab.id });
+    await pageService.updatePageContent(actor, deleted.id, { content: "# New" });
+    await pageService.deletePage(actor, deleted.id);
+    await pageService.restorePage(actor, page.id, { name: "start", tabId: null });
+    await pageService.restorePage(actor, deleted.id, { name: "taken", tabId: null });
+    await pageService.restorePage(actor, deleted.id, { name: "start", tabId: foreignTab.id });
+
+    expect(await versionOf(page.id)).toBe(7);
+    expect(await versionOf(deleted.id)).toBe(7);
   });
 });
 

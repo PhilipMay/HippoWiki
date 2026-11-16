@@ -8,8 +8,8 @@
 // them: for the pages and deleted pages of any other folder every read returns `null` and every write `not-allowed`,
 // before anything that could tell whether a page exists. The deleted pages and every write need the lowest role of
 // their function (`FUNCTION_ROLES` in `roles.ts`). Through MCP a user reads every folder. A write stores the
-// actor as the last editor of the page, in the same write that changes `updatedAt`. The folder and the tab of the page
-// keep their `updatedAt` and last editor.
+// actor as the last editor of the page and counts its version up, in the same write that changes `updatedAt`; a new
+// page starts with version 1. The folder and the tab of the page keep their `updatedAt` and last editor.
 
 import { z } from "zod";
 
@@ -61,6 +61,8 @@ export type PageWithPlace = {
   content: string;
   updatedAt: Date;
   lastEditedBy: LastEditor;
+  /** The state of the page: 1 when it is created, counted up by every write. */
+  version: number;
   folder: { id: string; name: string };
   tab: { id: string; name: string } | null;
   role: Role | null;
@@ -223,6 +225,7 @@ export async function getPage(
       content: true,
       updatedAt: true,
       ...LAST_EDITOR_SELECT,
+      version: true,
       folder: { select: { id: true, name: true, roles: roleSelection(reader) } },
       tab: { select: { id: true, name: true } },
     },
@@ -437,7 +440,7 @@ export async function updatePageContent(
     // page counts as missing.
     const { count } = await getDb().page.updateMany({
       where: { id: pageId, deletedAt: null },
-      data: { ...parsed.data, lastEditedById },
+      data: { ...parsed.data, lastEditedById, version: { increment: 1 } },
     });
     page = count === 0 ? null : await findStoredPage(pageId);
   } catch (err) {
@@ -489,7 +492,7 @@ export async function moveOrRenamePage(
   try {
     const { count } = await getDb().page.updateMany({
       where: { id: pageId, deletedAt: null },
-      data: { name, tabId, lastEditedById },
+      data: { name, tabId, lastEditedById, version: { increment: 1 } },
     });
     page = count === 0 ? null : await findStoredPage(pageId);
   } catch (err) {
@@ -546,7 +549,7 @@ export async function deletePage(actor: BrowserActor, id: string): Promise<Resul
       // `updateMany` reports a page deleted in the meantime as a count of 0; it sets `updatedAt` as well.
       const { count } = await tx.page.updateMany({
         where: { id: pageId, deletedAt: null },
-        data: { deletedAt: new Date(), tabId: null, lastEditedById },
+        data: { deletedAt: new Date(), tabId: null, lastEditedById, version: { increment: 1 } },
       });
       return count === 0 ? null : page;
     });
@@ -601,7 +604,7 @@ export async function restorePage(
     // Only a deleted page can be restored; `updateMany` reports any other as a count of 0. It sets `updatedAt` as well.
     const { count } = await getDb().page.updateMany({
       where: { id: pageId, deletedAt: { not: null } },
-      data: { deletedAt: null, name, tabId, lastEditedById },
+      data: { deletedAt: null, name, tabId, lastEditedById, version: { increment: 1 } },
     });
     page = count === 0 ? null : await findStoredPage(pageId);
   } catch (err) {

@@ -145,7 +145,13 @@ describe("listAllFolderPages", () => {
 
 describe("getPage", () => {
   it("looks for a page without a tab when no tab is given", async () => {
-    const stored = { id: "page-id", name: "overview", folder: { id: FOLDER_ID, name: "handbook" }, tab: null };
+    const stored = {
+      id: "page-id",
+      name: "overview",
+      version: 3,
+      folder: { id: FOLDER_ID, name: "handbook" },
+      tab: null,
+    };
     mocks.findFirst.mockResolvedValue({
       ...stored,
       folder: { ...stored.folder, roles: [{ role: "writer" }] },
@@ -163,6 +169,10 @@ describe("getPage", () => {
       expect.objectContaining({
         where: { name: "overview", folder: { name: "handbook", ...WITH_ROLE }, deletedAt: null, tabId: null },
       }),
+    );
+    // The version is read, so that a change of the page can state the version it is based on.
+    expect(mocks.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ select: expect.objectContaining({ version: true }) }),
     );
   });
 
@@ -411,6 +421,7 @@ describe("createPage", () => {
     const input = { ...VALID, title: "Given title" };
     await expect(createPage(ACTOR, FOLDER_ID, input)).resolves.toEqual({ ok: true, value: stored });
 
+    // No version: a new page gets the default of the database, 1.
     expect(mocks.create).toHaveBeenCalledWith({
       data: {
         title: "My page",
@@ -538,7 +549,7 @@ describe("updatePageContent", () => {
 
     expect(mocks.updateMany).toHaveBeenCalledWith({
       where: { id: PAGE_ID, deletedAt: null },
-      data: { title: "My page", content: CONTENT, lastEditedById: ACTOR_ID },
+      data: { title: "My page", content: CONTENT, lastEditedById: ACTOR_ID, version: { increment: 1 } },
     });
     expect(mocks.findUnique).toHaveBeenCalledWith({
       where: { id: PAGE_ID, deletedAt: null },
@@ -626,7 +637,7 @@ describe("moveOrRenamePage", () => {
     expect(mocks.updateMany).toHaveBeenCalledTimes(1);
     expect(mocks.updateMany).toHaveBeenCalledWith({
       where: { id: PAGE_ID, deletedAt: null },
-      data: { name: "new-name", tabId: TAB_ID, lastEditedById: ACTOR_ID },
+      data: { name: "new-name", tabId: TAB_ID, lastEditedById: ACTOR_ID, version: { increment: 1 } },
     });
     expect(mocks.findUnique).toHaveBeenCalledWith({
       where: { id: PAGE_ID, deletedAt: null },
@@ -643,7 +654,7 @@ describe("moveOrRenamePage", () => {
 
     expect(mocks.updateMany).toHaveBeenCalledWith({
       where: { id: PAGE_ID, deletedAt: null },
-      data: { name: "new-name", tabId: null, lastEditedById: ACTOR_ID },
+      data: { name: "new-name", tabId: null, lastEditedById: ACTOR_ID, version: { increment: 1 } },
     });
   });
 
@@ -718,7 +729,7 @@ describe("deletePage", () => {
     expect(mocks.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: PAGE_ID, deletedAt: null } }));
     expect(mocks.updateMany).toHaveBeenCalledWith({
       where: { id: PAGE_ID, deletedAt: null },
-      data: { deletedAt: expect.any(Date), tabId: null, lastEditedById: ACTOR_ID },
+      data: { deletedAt: expect.any(Date), tabId: null, lastEditedById: ACTOR_ID, version: { increment: 1 } },
     });
     expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID }, "page deleted");
   });
@@ -796,7 +807,7 @@ describe("restorePage", () => {
 
     expect(mocks.updateMany).toHaveBeenCalledWith({
       where: { id: PAGE_ID, deletedAt: { not: null } },
-      data: { deletedAt: null, name: "new-name", tabId: TAB_ID, lastEditedById: ACTOR_ID },
+      data: { deletedAt: null, name: "new-name", tabId: TAB_ID, lastEditedById: ACTOR_ID, version: { increment: 1 } },
     });
     expect(mocks.findUnique).toHaveBeenCalledWith({
       where: { id: PAGE_ID, deletedAt: null },
@@ -812,7 +823,9 @@ describe("restorePage", () => {
     await restorePage(ACTOR, PAGE_ID, { name: "new-name", tabId: null });
 
     expect(mocks.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { deletedAt: null, name: "new-name", tabId: null, lastEditedById: ACTOR_ID } }),
+      expect.objectContaining({
+        data: { deletedAt: null, name: "new-name", tabId: null, lastEditedById: ACTOR_ID, version: { increment: 1 } },
+      }),
     );
   });
 

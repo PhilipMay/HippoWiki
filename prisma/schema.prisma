@@ -97,11 +97,15 @@ model Page {
   /// When the page was deleted, or `null` for a page that is not deleted. A deleted page keeps its folder but has no
   /// tab, because its place inside the folder is forgotten; it is missing from every list and every page address.
   deletedAt      DateTime? @db.Timestamptz(3)
-  /// The user who last edited the page: changes on the same writes as `updatedAt`, so that both describe the same
-  /// change. Creating, editing, moving or renaming, deleting and restoring the page count as edits; for a deleted page
-  /// it is the user who deleted it.
+  /// The user who last edited the page: changes on the same writes as `updatedAt` and `version`, so that all three
+  /// describe the same change. Creating, editing, moving or renaming, deleting and restoring the page count as edits;
+  /// for a deleted page it is the user who deleted it.
   lastEditedById String    @db.Uuid
   lastEditedBy   User      @relation("PageLastEditedBy", fields: [lastEditedById], references: [id], onDelete: Restrict)
+  /// The state of the page: 1 when it is created, counted up by every later write of the page, in the same write that
+  /// changes `updatedAt` and the last editor. A content save, move, rename or delete states the version it is based on
+  /// and is refused if that is not the stored one.
+  version        Int       @default(1)
 
   // Pages in a tab: unique within the tab. Deleted pages have no tab, so they are not covered.
   @@unique([tabId, name])
