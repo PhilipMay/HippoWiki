@@ -11,6 +11,8 @@ The specification lives in the `spec/` directory. This catalog should always be 
   step plan (starting and resuming, what may change, the rounds of questions, the checks for contradictions and
   feasibility, how requirements are written, the template); the result is one file `spec/<feature>-requirements.md`,
   listed here while it exists
+- `spec/mcp-folder-roles-requirements.md`: the requirements of MCP per folder and role (approved): MCP addresses
+  `/mcp/<folder-uuid>/<role>` for Reader and Writer, connections bound to one address, the write tools, no scopes
 - `spec/step-plan-workflow.md`: how features are planned in step files, when a step is done, what to do when it
   cannot be finished, how a feature is wrapped up, what a feature spec holds, and how a finding of the review report is
   fixed and deleted

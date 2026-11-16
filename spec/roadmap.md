@@ -118,6 +118,11 @@ listed first; there is no order across themes.
   Revisions"), with the scope `write` for OAuth grants; they state the version of every page they change
   (`mcp.md`, `oauth.md`, `optimistic-locking.md`).
 - MCP search tool: search the wiki from AI assistants, after full-text search (see "Search") (`mcp.md`).
+- Manager role for MCP: an MCP address `/mcp/<folder-uuid>/manager` for Owners and Managers, with the tools of a
+  Manager, such as deleting and restoring pages and creating and renaming tabs, after MCP per folder and role
+  (`mcp.md`, `folder-roles.md`).
+- Exact search-and-replace for MCP: a write tool that replaces an exact piece of the content of a page instead of the
+  whole content, after MCP per folder and role (`mcp.md`).
 - CORS for other origins: let web applications on other origins call the API.
 - Rate limits and quotas: limits on requests, writes and stored content per user.
 
