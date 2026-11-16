@@ -3,7 +3,7 @@
 HippoWiki is a knowledge management system, built with Next.js (App Router) and Material UI.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/PhilipMay/HippoWiki/refs/heads/main/img/HippoWiki-logo.svg" alt="HippoWiki logo" width="200">
+  <img src="https://raw.githubusercontent.com/PhilipMay/HippoWiki/refs/heads/main/img/HippoWiki-logo.svg" alt="HippoWiki logo" width="400">
 </p>
 
 > [!NOTE]
