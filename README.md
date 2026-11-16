@@ -72,11 +72,12 @@ To start from scratch with an empty database (this deletes all data of the devel
 ```bash
 npm run db:reset    # remove container and volume, start an empty database
 npm run db:deploy   # create the tables
+npm run db:seed     # insert the sample folder with two sample pages and the known users
 npm run dev
 ```
 
-`npm run db:seed` adds the sample folder `getting-started` with two sample pages to try this out, and the known users
-(see "Users"). `GET /api/health` returns `{ "status": "ok" }` while the database is reachable and status 503
+An empty database has no account to log in with. For a wiki without the samples, run `npm run admin:setup` instead of
+`npm run db:seed`; it creates only the admin (see "Users"). `GET /api/health` returns `{ "status": "ok" }` while the database is reachable and status 503
 otherwise.
 
 ## Database
