@@ -60,6 +60,16 @@ describe("parsePageContentFormData", () => {
     });
   });
 
+  it("counts the content length after normalizing line breaks", () => {
+    // The editor counts a line break as one character; the browser submits it as CRLF.
+    const lines = Array.from({ length: (CONTENT_MAX_LENGTH - 8) / 2 }, () => "a").join("\r\n");
+    const content = `# Long\r\n\r\n${lines}\r\n`;
+    expect(content.length).toBeGreaterThan(CONTENT_MAX_LENGTH);
+    const result = parsePageContentFormData(formData({ content }));
+    expect(result).toMatchObject({ success: true, data: { title: "Long" } });
+    if (result.success) expect(result.data.content).toHaveLength(CONTENT_MAX_LENGTH);
+  });
+
   it("normalizes line breaks in the content", () => {
     expect(parsePageContentFormData(formData({ content: "# Lines\r\none\rtwo\nthree" }))).toEqual({
       success: true,

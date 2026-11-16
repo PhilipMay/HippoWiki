@@ -37,12 +37,23 @@ export function parsePageVersion(value: unknown): number | null {
 /** Shown at the content field when the content has no title (see `titleFromContent`). */
 export const TITLE_HEADING_MISSING_MESSAGE = "Content must start with a title heading: # Title";
 
-/** The Markdown source of a page, as entered in the content field. */
+/** Shown at the content field when the content contains U+0000, which PostgreSQL cannot store in `text`. */
+export const CONTENT_NUL_MESSAGE = "Content must not contain NUL characters";
+
+/**
+ * The Markdown source of a page, as entered in the content field. Line breaks are normalised before anything is
+ * checked: browsers submit textarea line breaks as CRLF, while the `maxLength` of the editor counts each as one
+ * character, and the Markdown is stored with plain LF. A NUL character is refused before the length is checked.
+ */
 const contentSchema = z
   .string()
-  .max(CONTENT_MAX_LENGTH, `Content must be at most ${CONTENT_MAX_LENGTH.toLocaleString("en-US")} characters`)
-  // Browsers submit textarea line breaks as CRLF; store the Markdown with plain LF.
-  .transform((content) => content.replace(/\r\n?/g, "\n"));
+  .transform((content) => content.replace(/\r\n?/g, "\n"))
+  .pipe(
+    z
+      .string()
+      .refine((content) => !content.includes("\u0000"), { message: CONTENT_NUL_MESSAGE, abort: true })
+      .max(CONTENT_MAX_LENGTH, `Content must be at most ${CONTENT_MAX_LENGTH.toLocaleString("en-US")} characters`),
+  );
 
 /**
  * Adds the title derived from the content to validated input, or reports the missing title heading at the content

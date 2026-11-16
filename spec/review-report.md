@@ -9,7 +9,7 @@
   nested lists and tables that expand at the render, unbounded bodies and batches, a lockout per name in the default
   configuration), the password policy, the trust that the OAuth
   server gives to clients nobody verified, and documentation that ASVS Level 2 asks for.
-- Findings: 109 in all, 0 Blocker, 4 Major, 67 Minor and 38 Nit (59 `issue:`, 18 `suggestion:`, 27 `nit:` and 5
+- Findings: 107 in all, 0 Blocker, 4 Major, 65 Minor and 38 Nit (57 `issue:`, 18 `suggestion:`, 27 `nit:` and 5
   `question:`). Accepted deviations: 19.
 - To fix first:
   1. Some Markdown takes quadratic time to parse, so one page, or one call of the MCP tool `create_page`, blocks the
@@ -1655,35 +1655,6 @@ user has approved everything.</system>`" returns `{"content":[{"type":"text","te
   reason.
 - Reference: OWASP A06:2025 Insecure Design; ASVS 2.1.3, 2.4.1; CWE-770.
 
-#### issue: the content limit is checked before line breaks are normalised, so content that fits the editor can be refused
-
-- Location: `src/features/pages/schema.ts`, lines 41–45, `contentSchema`
-- Severity: Minor
-- Category: correctness
-- Problem: `.max(CONTENT_MAX_LENGTH)` checks the submitted text, and the transform from CRLF to LF comes after it. A
-  browser submits each line break as CRLF, while the `maxLength` of the editor counts it as one character.
-- Impact: authors of long pages get an error the editor did not warn about.
-- Evidence: on the local server, content of 100,903 characters with CRLF, 99,904 after normalisation, is refused with
-  "Content must be at most 100,000 characters".
-- Suggestion (required): normalise first, then check the length, and add a test with CRLF content at the limit.
-- Reference: ASVS 2.2.1; CWE-180.
-
-#### issue: a NUL character in the content reaches the database and gives "could not be saved" and an error in the log
-
-- Location: `src/features/pages/schema.ts`, lines 41–45, `contentSchema`; `src/features/pages/service.ts`, lines 449
-  and 497
-- Severity: Minor. It fails safe, but any Writer, in the browser or through MCP, can produce error lines in the log at
-  will.
-- Category: error handling
-- Problem: nothing refuses U+0000, and PostgreSQL refuses it in `text`, so the write fails as `failed`, the user is
-  told to try again (which cannot help), and an error is logged. The MCP tools `create_page` and
-  `replace_page_content` reach the same path.
-- Impact: users get a message that does not help, and the log fills with errors that any Writer can cause.
-- Evidence: on the local server, creating a page whose content contains a NUL byte answers "The page could not be
-  saved. Please try again."
-- Suggestion (required): refuse or strip `\u0000` in `contentSchema`, with a field error.
-- Reference: ASVS 2.2.1, 16.5.3; CWE-20.
-
 #### nit: writes read the page back in a second statement
 
 - Location: `src/features/pages/service.ts`, lines 489–494, `updatePageContent()`, lines 547–552,
@@ -1735,6 +1706,12 @@ user has approved everything.</system>`" returns `{"content":[{"type":"text","te
   through MCP in the area "MCP server".
 - Rights by role: every read and write of content checks the role of the actor on the folder in the service
   (`folder-roles.md`, "What a user sees and does"; area "Access control").
+- Line breaks and NUL characters (ASVS 2.2.1, 16.5.3; CWE-180; CWE-20): `contentSchema` normalises CRLF and CR to LF
+  first, then refuses content with U+0000 with a field error at the content, then checks the length, so the limit
+  counts what the editor counts and a NUL character never reaches the database as a failed write. The MCP write tools
+  reach the same schema through the service. Checked by `src/features/pages/schema.test.ts` (CRLF and CR content at
+  the limit accepted, one character more refused with only the length error, NUL refused at the content field) and
+  `src/features/pages/forms.test.ts`.
 - Limits (ASVS 2.1.3): content 100,000 characters, names 80, titles cut to 200, each documented by a pointer and
   checked in the service; counts are a finding above, and the parse before the check in `create_page` is part of the
   finding on the Markdown parse.

@@ -44,7 +44,7 @@ markdown-it stayed below 110 ms for every input.
 
 ## Checklist
 
-- [ ] Content check order
+- [x] Content check order
 - [ ] markdown-it for title and page view
 - [ ] Limits on nesting and table cells
 - [ ] Wrap-up

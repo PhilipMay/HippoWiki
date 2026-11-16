@@ -17,6 +17,9 @@ Code: `src/features/pages/` (the model is `Page` in `prisma/schema.prisma`, the 
   `##` heading, and not a heading after any other block. The exact rule is in `titleFromContent()`.
 - The title is the text of that heading, as plain text. It is never entered directly and is derived again on every
   save, so changing the heading changes the title. Titles need not be unique.
+- The content is stored with plain line breaks: CRLF and CR become LF before it is checked. Its length limit counts
+  the content with plain line breaks, as the editor counts it, so content that fits the editor is never refused for
+  its length. Content with a NUL character is refused with a field error, because the database cannot store it.
 - The content of a page is validated when it is created or edited. Moving or renaming neither validates nor touches
   it, so a limit lowered later never blocks them.
 - The forms send only what they change; a submitted title is ignored. The service validates again before it writes.
