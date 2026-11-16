@@ -1,6 +1,6 @@
 ---
 name: step-plan
-description: Start or continue the step plan of a feature, as spec/step-plan-workflow.md describes. If the session is in plan mode, switch it to auto mode first so the steps can be built and committed. Started only with /step-plan <feature>.
+description: Start or continue the step plan of a feature, as spec/step-plan-workflow.md describes. In plan mode it explores read-only and switches to auto mode only right before it writes or builds anything. Started only with /step-plan <feature>.
 disable-model-invocation: true
 argument-hint: <feature>
 ---
@@ -9,16 +9,28 @@ argument-hint: <feature>
 
 The feature: $ARGUMENTS
 
-## Leave plan mode
+## Plan mode
 
-If plan mode is active (a system message says so), switch to auto mode first. The workflow writes files and commits
-every step, which plan mode would block, and plan mode would demand a plan file and an approval step instead.
+Plan mode is welcome while reading: the spec, the requirements and the code can be explored in it. It has to be left
+before anything is written, because the workflow writes the step plan into `spec/`, adds it to `CLAUDE.md` and commits
+every step, which plan mode blocks. Plan mode would also demand its own plan file and an approval step, which the
+workflow does not use: the step plan in `spec/` is the plan, and the user reviews it there.
+
+If plan mode is active (a system message says so):
+
+- When the step plan has to be written, do all the reading for it in plan mode first. Switch to auto mode right before
+  the first file is written.
+- When an existing step plan is continued, switch to auto mode first, since building the next step starts with
+  writing.
+- Never write a plan-mode plan file and never call ExitPlanMode.
+
+To switch:
 
 - Call `mcp__ccd_session_mgmt__set_session_permission_mode` with `session_id: "self"` and `mode: "auto"`. If it is
   only listed as a deferred tool, load it first with ToolSearch
   (`select:mcp__ccd_session_mgmt__set_session_permission_mode`). The user confirms the switch on a card.
 - If the tool is not available (for example in the terminal CLI) or the switch is refused, tell the user in one line
-  that Shift+Tab switches the mode, and wait for them. Do not write a plan file and do not call ExitPlanMode.
+  that Shift+Tab switches the mode, and wait for them.
 
 If plan mode is not active, skip this section.
 
