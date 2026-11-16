@@ -1,95 +1,26 @@
 import Box from "@mui/material/Box";
-import MuiLink from "@mui/material/Link";
-import Paper from "@mui/material/Paper";
-import Table from "@mui/material/Table";
-import TableBody from "@mui/material/TableBody";
-import TableCell from "@mui/material/TableCell";
-import TableContainer from "@mui/material/TableContainer";
-import TableHead from "@mui/material/TableHead";
-import TableRow from "@mui/material/TableRow";
-import Typography, { type TypographyProps } from "@mui/material/Typography";
-import Markdown, { type Components } from "react-markdown";
-import remarkGfm from "remark-gfm";
+import type { ReactNode } from "react";
 
-type HeadingTag = "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
-
-// Markdown headings keep their level, but are drawn two Typography sizes smaller than their tag: the content's title
-// heading (`# Title`) is the visual top heading of the page view and takes the `h3` size that page titles have.
-const headingVariants: Record<HeadingTag, TypographyProps["variant"]> = {
-  h1: "h3",
-  h2: "h4",
-  h3: "h5",
-  h4: "h6",
-  h5: "subtitle1",
-  h6: "subtitle1",
-};
-
-function heading(tag: HeadingTag): Components[HeadingTag] {
-  return function MarkdownHeading({ children, id }) {
-    return (
-      <Typography
-        variant={headingVariants[tag]}
-        component={tag}
-        id={id}
-        sx={{ mt: 3, mb: 1.5, fontWeight: 500, overflowWrap: "anywhere" }}
-      >
-        {children}
-      </Typography>
-    );
-  };
-}
-
-const components: Components = {
-  h1: heading("h1"),
-  h2: heading("h2"),
-  h3: heading("h3"),
-  h4: heading("h4"),
-  h5: heading("h5"),
-  h6: heading("h6"),
-  p: ({ children }) => (
-    <Typography variant="body1" sx={{ mb: 2 }}>
-      {children}
-    </Typography>
-  ),
-  a: ({ children, href, title }) => (
-    <MuiLink href={href} title={title}>
-      {children}
-    </MuiLink>
-  ),
-  blockquote: ({ children }) => (
-    <Box
-      component="blockquote"
-      sx={{ mx: 0, my: 2, pl: 2, borderLeft: 4, borderColor: "divider", color: "text.secondary" }}
-    >
-      {children}
-    </Box>
-  ),
-  table: ({ children }) => (
-    <TableContainer component={Paper} variant="outlined" sx={{ mb: 2 }}>
-      <Table size="small">{children}</Table>
-    </TableContainer>
-  ),
-  thead: ({ children }) => <TableHead>{children}</TableHead>,
-  tbody: ({ children }) => <TableBody>{children}</TableBody>,
-  tr: ({ children }) => <TableRow>{children}</TableRow>,
-  // GFM column alignment arrives as an inline `text-align` style.
-  th: ({ children, style }) => (
-    <TableCell style={style} sx={{ fontWeight: 500 }}>
-      {children}
-    </TableCell>
-  ),
-  td: ({ children, style }) => <TableCell style={style}>{children}</TableCell>,
-  // react-markdown empties the address of an image whose protocol is not a safe one, such as a `data:` URL. An
-  // `<img>` without an address shows a broken image and can make the browser ask for the page itself again, so such
-  // an image is left out. An image with an address is rendered as it is; one of another host is blocked by the
-  // browser through the Content Security Policy (see "Security headers" in `architecture.md`). `Box` renders the
-  // `img` element, because the lint rules of Next.js report a plain `<img>`.
-  img: ({ src, alt, title }) => (src ? <Box component="img" src={src} alt={alt} title={title} /> : null),
-};
+import { markdownToReact } from "@/features/pages/components/markdownToReact";
+import { logger } from "@/lib/logger";
 
 /**
- * Renders Markdown (with GitHub Flavored Markdown) as Material UI typography. Raw HTML inside the Markdown is not
- * rendered but shown as text, and unsafe link URLs such as `javascript:` are removed by react-markdown's defaults.
+ * The page view of the content, or its source as text if parsing or converting it fails, so that the page and its
+ * actions stay usable. The error is logged without the content.
+ */
+function renderContent(content: string): ReactNode {
+  try {
+    return markdownToReact(content);
+  } catch (err) {
+    logger.error({ err }, "markdown could not be rendered");
+    return <pre>{content}</pre>;
+  }
+}
+
+/**
+ * Renders Markdown, parsed by markdown-it with the features of GitHub Flavored Markdown that `markdown.ts` sets up, as
+ * Material UI typography. Raw HTML inside the Markdown is shown as text, and a link or image with an unsafe address,
+ * such as `javascript:`, stays its Markdown text.
  */
 export default function MarkdownContent({ children }: { children: string }) {
   return (
@@ -125,9 +56,7 @@ export default function MarkdownContent({ children }: { children: string }) {
         "& img": { maxWidth: "100%" },
       }}
     >
-      <Markdown remarkPlugins={[remarkGfm]} components={components}>
-        {children}
-      </Markdown>
+      {renderContent(children)}
     </Box>
   );
 }

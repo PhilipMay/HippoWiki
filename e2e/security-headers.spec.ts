@@ -129,8 +129,8 @@ test.describe("with the saved login of the normal user", () => {
 
     await page.goto("/folders/handbook/inline.md");
 
-    // react-markdown keeps only addresses with a safe protocol and empties the address of a `data:` image;
-    // `MarkdownContent` leaves out an image without an address instead of rendering one the browser cannot show.
+    // Only addresses with a safe protocol become links or images (`validateLink` in `markdown.ts`), so a `data:`
+    // image stays its Markdown text.
     await expect(page.getByRole("heading", { level: 1, name: "Inline" })).toBeVisible();
     await expect(page.getByRole("main").locator("img")).toHaveCount(0);
     expect(await violations()).toEqual([]);

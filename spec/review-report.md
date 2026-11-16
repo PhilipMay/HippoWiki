@@ -1674,15 +1674,19 @@ user has approved everything.</system>`" returns `{"content":[{"type":"text","te
   `src/lib/names.ts`, `addresses.ts`, `db-errors.ts`, `revalidate.ts`, the routes under `src/app/folders/` and
   `src/app/deleted-pages/`, the content models and migrations, `pages.md`, `content-structure.md`,
   `page-deletion.md`, `optimistic-locking.md` and `folder-roles.md`, the write tools in `src/features/mcp/tools.ts`;
-  react-markdown's handling of raw HTML and its default URL transform.
-- Rendering and XSS (ASVS 1.2.2, 1.3.5, `CON.10.A8`, CWE-79): react-markdown runs with `remark-gfm` only, without a
-  raw HTML plugin and with its default URL transform (http, https, irc, ircs, mailto, xmpp or relative); there is no
-  `dangerouslySetInnerHTML` in `src/`. On the local server a page with `<script>`, `<img onerror>`, links to
-  `javascript:`, `JaVaScRiPt:`, `&#106;avascript:`, `vbscript:` and `data:`, a reference to `javascript:`, an autolink
-  `<javascript:…>` and a `data:` image renders the HTML as text, every such link with `href=""`, and no `data:`
-  image; `https:`, relative and `mailto:` links stay. An image of another host keeps its `src`, which the CSP
-  `img-src 'self' data:` blocks, as `pages.md` says.
-- DOM clobbering: the only ids are footnote ids with the prefix `user-content-`; no heading ids, no `name` attributes.
+  `markdown.ts` and `markdownToReact.tsx`, which replaced react-markdown after the review.
+- Rendering and XSS (ASVS 1.2.2, 1.3.5, `CON.10.A8`, CWE-79): the content is parsed by markdown-it with `html: false`,
+  so raw HTML stays text, and `validateLink` (`isSafeAddress()` in `src/features/pages/markdown.ts`) lets only
+  relative addresses and `http`, `https`, `mailto`, `irc`, `ircs` and `xmpp` become a link or an image; any other
+  address stays its Markdown text. `src/features/pages/components/markdownToReact.tsx` turns the tokens into React
+  elements with text only as children; there is no `dangerouslySetInnerHTML` in `src/`. A page with `<script>`,
+  `<img onerror>`, links to `javascript:`, `JaVaScRiPt:`, `&#106;avascript:`, `vbscript:` and `data:`, a reference to
+  `javascript:`, an autolink `<javascript:…>` and a `data:` image renders the HTML and every such link as text and no
+  `data:` image; `https:`, relative and `mailto:` links stay. Checked by `src/features/pages/markdown.test.ts` and by
+  `e2e/pages.spec.ts` in the browser, with no dialog and no unsafe address on the page. An image of another host keeps
+  its `src`, which the CSP `img-src 'self' data:` blocks, as `pages.md` says.
+- DOM clobbering: the only ids of the page view are those of footnotes, with the prefix `user-content-`; no heading
+  ids, no `name` attributes. Checked by `src/features/pages/markdown.test.ts`.
 - Regular expressions (ASVS 1.3.12, CWE-1333): `NAME_PATTERN` and the other patterns are linear; the slow part is the
   Markdown parser and renderer (findings above).
 - Names and addresses: names are ASCII `[a-z0-9-]` only, checked in the service on create, rename, move and restore,
@@ -2358,7 +2362,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 - Category: docs
 - Problem: `architecture.md` describes the layers, the two login layers and the headers, but not where each mechanism
   lives (authentication, authorisation in the services, CSRF by the origin check of Server Actions and
-  `SameSite=Lax`, XSS by React, react-markdown and the CSP, limits, the SSRF guard, logging). No spec lists the
+  `SameSite=Lax`, XSS by React, the link check of the Markdown parser and the CSP, limits, the SSRF guard, logging). No spec lists the
   outgoing connections (PostgreSQL, and DNS and `https` to any public host for metadata documents while
   `HIPPOWIKI_PUBLIC_URL` is set) or classifies the sensitive data. That the CSRF check needs the proxy to pass `Host`
   unchanged stands only in this report.
@@ -2391,21 +2395,18 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 
 #### issue: the protections that come from Next.js, the MCP SDK and Better Auth have no regression test
 
-- Location: `e2e/security-headers.spec.ts`, `e2e/access.spec.ts`, `e2e/pages.spec.ts`, `src/features/mcp/http.test.ts`
+- Location: `e2e/security-headers.spec.ts`, `e2e/access.spec.ts`, `src/features/mcp/http.test.ts`
 - Severity: Minor
 - Category: tests
 - Problem: the rules of the features are tested thoroughly, but these were checked only by hand in this review: a
   Server Action with a foreign `Origin` is refused; pages, RSC payloads and action answers carry `no-store`; no answer
-  carries `Access-Control-*`; an MCP address refuses a body over 4 MiB; there is no `/api/auth/*`; and the Markdown test
-  covers only lower-case `javascript:`.
+  carries `Access-Control-*`; an MCP address refuses a body over 4 MiB; and there is no `/api/auth/*`.
 - Impact: an upgrade of Next.js or the SDK, a setting such as `serverActions.allowedOrigins`, a `use cache` or a new
-  route under `api/auth` could weaken CSRF, caching or XSS protection unnoticed.
+  route under `api/auth` could weaken CSRF or caching protection unnoticed.
 - Evidence: no test file under `e2e/` or `src/` sends a Server Action with a foreign `Origin`, asserts
-  `Cache-Control` on a page, or calls `/api/auth/`; `e2e/pages.spec.ts` tests only `javascript:` in lower case.
-- Suggestion (required): end-to-end tests for each of these (the CSRF test can rewrite the `Origin` with `page.route`),
-  and the URL variants of the area "Content" in the Markdown test.
-- Reference: OWASP A01:2025 Broken Access Control; OWASP A05:2025 Injection; ASVS 3.5.1, 3.4.2, 14.3.2, 1.3.5;
-  CWE-352; `CON.10.A15`.
+  `Cache-Control` on a page, or calls `/api/auth/`.
+- Suggestion (required): end-to-end tests for each of these (the CSRF test can rewrite the `Origin` with `page.route`).
+- Reference: OWASP A01:2025 Broken Access Control; ASVS 3.5.1, 3.4.2, 14.3.2; CWE-352; `CON.10.A15`.
 
 #### issue: Better Auth takes `BETTER_AUTH_SECRETS` from the environment, which replaces the cookie secret of `AuthSecret`
 
@@ -2653,8 +2654,9 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
 - MCP server: the actor of MCP carries its connection, so that `readableFolderWhere()` in
   `src/features/folder-roles/service.ts` confines every read to the folder of the address and the services take the
   lower of the user's current role and the role of the connection for every write.
-- Content: `MarkdownContent.tsx` keeps the safe defaults of react-markdown and drops an image whose address was
-  emptied instead of rendering `src=""`.
+- Content: the page view is converted from the tokens of markdown-it by code of its own, with text only as React
+  children and no `dangerouslySetInnerHTML`, and a link or image with an unsafe address is never made a link or image
+  at all, so no element with an emptied address is rendered.
 - Content: the composite foreign key of a page and its tab keeps a page's tab in its folder, and the partial unique
   index frees the name of a deleted page at once.
 - Content: the services parse ids and names again, write with a condition on the state (`deletedAt`), check the key of

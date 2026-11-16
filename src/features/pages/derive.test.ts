@@ -68,6 +68,12 @@ describe("titleFromContent", () => {
     expect(titleFromContent("<div>html</div>\n\n# Title")).toBeNull();
   });
 
+  it("returns null when a definition comes before the heading", () => {
+    expect(titleFromContent("[guide]: https://example.com\n\n# Title")).toBeNull();
+    expect(titleFromContent("[^note]: A footnote\n\n# Title[^note]")).toBeNull();
+    expect(titleFromContent("\n[guide]: https://example.com\n# Title")).toBeNull();
+  });
+
   it("returns null for headings that are not a level-one ATX heading", () => {
     expect(titleFromContent("## Section\n\n# Title")).toBeNull();
     expect(titleFromContent("Title\n=====")).toBeNull();

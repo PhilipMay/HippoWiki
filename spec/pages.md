@@ -5,8 +5,10 @@ live (folders, tabs, names and addresses) is described in `content-structure.md`
 `page-deletion.md`, how changes of the same page at the same time are told apart in `optimistic-locking.md`.
 
 Code: `src/features/pages/` (the model is `Page` in `prisma/schema.prisma`, the length limits are in
-`src/features/pages/limits.ts`, the title and the suggested name in `src/features/pages/derive.ts`), routes under
-`src/app/folders/`. Tests: `src/features/pages/derive.test.ts`, `src/features/pages/schema.test.ts`,
+`src/features/pages/limits.ts`, the title and the suggested name in `src/features/pages/derive.ts`, the Markdown
+parser in `src/features/pages/markdown.ts` and the page view in `src/features/pages/components/markdownToReact.tsx`),
+routes under `src/app/folders/`. Tests: `src/features/pages/derive.test.ts`, `src/features/pages/markdown.test.ts`,
+`src/features/pages/schema.test.ts`,
 `src/features/pages/forms.test.ts`, `src/features/pages/actions.test.ts`, `e2e/create-page.spec.ts`,
 `e2e/edit-page.spec.ts`, `e2e/pages.spec.ts`, `integration/page-service.test.ts`.
 
@@ -51,11 +53,23 @@ given as `?action=<action>` (see `content-structure.md`).
 
 ## Rendering
 
-- The content is rendered as GitHub Flavored Markdown. Raw HTML is shown as text, and unsafe link addresses are
-  removed.
+- The content is parsed by markdown-it, the only Markdown parser of the wiki: the title, the page view and the name
+  the save dialog suggests all come from the same parse rules (`markdown.ts`).
+- It supports CommonMark and these features of GitHub Flavored Markdown: tables with alignment, strikethrough, task
+  lists, footnotes and links from bare addresses. What differs from GitHub: strikethrough only with `~~`, not with a
+  single `~`; links from bare addresses as linkify-it finds them, which also links a bare domain with a known
+  top-level domain such as `example.com`; no inline footnotes (`^[text]`), as on GitHub.
+- Raw HTML is shown as text and never rendered.
+- A link or image becomes one only with a relative address or an address of `http`, `https`, `mailto`, `irc`, `ircs`
+  or `xmpp`; with any other address, such as `javascript:`, `vbscript:` or `data:` in any spelling, it stays its
+  Markdown text.
 - Markdown images are shown only from the wiki itself: the Content Security Policy (`img-src 'self' data:`, see
-  "Security headers" in `architecture.md`) makes the browser block an image of another host, and an image whose
-  address react-markdown does not keep, such as a `data:` address, is left out of the page.
+  "Security headers" in `architecture.md`) makes the browser block an image of another host, and a `data:` image stays
+  its Markdown text.
+- The page view puts text into the page only as text, never as HTML. Footnotes are listed at the end of the page, and
+  their ids start with `user-content-`, so that no id of the content can clobber a global of the browser.
+- If the content cannot be rendered, the page view shows its source as text and logs the error without the content;
+  the page and its actions stay usable.
 
 ## Decisions
 
@@ -67,6 +81,14 @@ given as `?action=<action>` (see `content-structure.md`).
   - Rendering in the browser on every view would put the page text only behind JavaScript, slow down the first
     display, and keep public pages out of search engines. The server parses the content anyway (the title, and later
     links and search).
+
+- markdown-it parses in time linear in the length of the content: in a benchmark of the inputs that are slow for other
+  parsers, it took at most about 0.1 s at the content limit, where micromark took up to 15 s and more than 60 s for
+  nested lists. Its own footnote rule copies all tokens once per footnote; `markdown.ts` replaces it with a rule that
+  makes the same tokens in one pass.
+- The page view is converted from the tokens by code of its own instead of the HTML that markdown-it renders: no
+  `dangerouslySetInnerHTML`, and the elements are the Material UI components of the rest of the app.
+- Task lists are a rule of its own in `markdown.ts`, because the common plugins for them are no longer maintained.
 
 ## Current limits
 
@@ -80,4 +102,5 @@ given as `?action=<action>` (see `content-structure.md`).
 - a page stored before titles were derived keeps its stored title until its next save
 - no redirects from the previous address after a page is renamed or moved
 - Markdown images only from the wiki itself: the browser blocks images of other hosts without a message in the page,
-  and a `data:` image is left out of it
+  and a `data:` image is shown as its Markdown text
+- no math, heading ids, `[[wiki links]]` or syntax highlighting in the page view

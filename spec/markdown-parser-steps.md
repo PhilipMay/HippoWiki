@@ -45,7 +45,7 @@ markdown-it stayed below 110 ms for every input.
 ## Checklist
 
 - [x] Content check order
-- [ ] markdown-it for title and page view
+- [x] markdown-it for title and page view
 - [ ] Limits on nesting and table cells
 - [ ] Wrap-up
 
@@ -102,7 +102,11 @@ input takes seconds; the page view looks as before and stays free of script.
   - `validateLink` with the protocols the page view allows today: `http`, `https`, `mailto`, `irc`, `ircs`, `xmpp` and
     relative addresses. A link or image with another address, `data:` and `javascript:` included, in any spelling,
     is not parsed as a link or image and stays its Markdown text;
-  - a function that parses content into tokens, used by both the title and the page view.
+  - a function that parses content into tokens, used by both the title and the page view;
+  - the rule `footnote_tail` of `markdown-it-footnote` replaced by one of its own that makes the same tokens in one
+    pass, because the rule of the plugin copies all tokens once per footnote (about 0.3 s at the content limit with
+    many footnotes and many other tokens); inline footnotes (`^[text]`) are switched off, as on GitHub;
+  - `fuzzyLink` of linkify-it switched on, because linkify-it no longer links `www.` addresses by default.
 - `titleFromContent()` in `src/features/pages/derive.ts` works on the tokens: the first token must be a level-1
   heading written with `#` (`markup`), and it must start on the first line that is not blank (`map`), so that a link
   reference or footnote definition before it, which leaves no token in front of it, still counts as a block before the

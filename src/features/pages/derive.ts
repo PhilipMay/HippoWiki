@@ -1,50 +1,16 @@
 // Pure helpers that derive the title and suggest a name for a page. Used by Client Components, so no server-only
 // imports.
 
-import { fromMarkdown } from "mdast-util-from-markdown";
-import { gfmFromMarkdown } from "mdast-util-gfm";
-import { toString as mdastToString } from "mdast-util-to-string";
-import { gfm } from "micromark-extension-gfm";
-
-import { TITLE_MAX_LENGTH } from "@/features/pages/limits";
+import { parseMarkdown, titleFromTokens } from "@/features/pages/markdown";
 import { NAME_MAX_LENGTH } from "@/lib/names";
 
 /**
- * Returns the page title of the Markdown content, or `null` if it has none. The content must start, after optional
- * blank lines, with a level-one ATX heading (`# Title`): `#`, a space or tab, then the text; up to three leading
- * spaces and a closing `#` sequence are allowed, as in CommonMark. A setext heading (`Title` underlined with `===`), a
- * `##` heading, and a heading after any other block, such as text, a list, a quote, a code block, HTML or a link
- * reference definition, do not count.
- * The content is parsed as GitHub Flavored Markdown, like the page view renders it, and the heading is reduced to
- * plain text: inline Markdown keeps only its text, images their alt text, and raw HTML stays as typed. Whitespace runs
- * become a single space, and the text is trimmed and cut to `TITLE_MAX_LENGTH`. A heading whose text has no letter
- * or digit, such as `#`, `# **` or `# ...`, gives `null`. There is no fallback title: content without a title is
- * refused by the schemas.
+ * Returns the page title of the Markdown content, or `null` if it has none: the text of a leading level-one ATX
+ * heading (`# Title`), parsed as the page view parses it. The exact rule is `titleFromTokens()` in `markdown.ts`.
+ * There is no fallback title: content without a title is refused by the schemas.
  */
 export function titleFromContent(content: string): string | null {
-  const tree = fromMarkdown(content, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] });
-  const first = tree.children[0];
-  if (first?.type !== "heading" || first.depth !== 1) return null;
-
-  // An ATX heading's source starts with `#` (its position starts after up to three leading spaces); a setext
-  // heading's source starts with its text.
-  const start = first.position?.start.offset;
-  if (start === undefined || content[start] !== "#") return null;
-
-  const title = truncate(mdastToString(first).replace(/\s+/g, " ").trim(), TITLE_MAX_LENGTH);
-  return TITLE_CHARACTER.test(title) ? title : null;
-}
-
-/** A letter or digit in any script; a title needs at least one. */
-const TITLE_CHARACTER = /[\p{L}\p{N}]/u;
-
-/** Cuts the text to at most `maxLength` UTF-16 code units without splitting a surrogate pair. */
-function truncate(text: string, maxLength: number): string {
-  if (text.length <= maxLength) return text;
-  let cut = text.slice(0, maxLength);
-  const last = cut.charCodeAt(cut.length - 1);
-  if (last >= 0xd800 && last <= 0xdbff) cut = cut.slice(0, -1);
-  return cut.trimEnd();
+  return titleFromTokens(content, parseMarkdown(content));
 }
 
 const GERMAN_LETTERS: Record<string, string> = {

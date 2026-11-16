@@ -147,7 +147,21 @@ test("raw HTML and unsafe links in the Markdown are not executed", async ({ page
     folder,
     name: "unsafe",
     title: "Unsafe page",
-    content: "Before\n\n<script>alert(1)</script>\n\n<img src=x onerror=alert(2)>\n\n[Click me](javascript:alert(3))",
+    content: [
+      "Before",
+      "<script>alert(1)</script>",
+      "<img src=x onerror=alert(2)>",
+      "[Click me](javascript:alert(3))",
+      "[Mixed case](JaVaScRiPt:alert(4))",
+      "[Entity](&#106;avascript:alert(5))",
+      "[Visual Basic](vbscript:msgbox(6))",
+      "[Data](data:text/html;base64,PHNjcmlwdD5hbGVydCg3KTwvc2NyaXB0Pg==)",
+      "[Reference][unsafe]",
+      "<javascript:alert(8)>",
+      "![Data image](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==)",
+      "[Safe](https://example.com/) [Relative](/folders/handbook) [Mail](mailto:team@example.com)",
+      "[unsafe]: javascript:alert(9)",
+    ].join("\n\n"),
   });
 
   await page.goto("/folders/handbook/unsafe.md");
@@ -156,9 +170,28 @@ test("raw HTML and unsafe links in the Markdown are not executed", async ({ page
   await expect(article.getByText("<script>alert(1)</script>")).toBeVisible();
   await expect(article.locator("script")).toHaveCount(0);
   await expect(article.locator("img")).toHaveCount(0);
-  const link = article.getByText("Click me");
-  await expect(link).not.toHaveAttribute("href", /javascript:/);
-  await link.click();
+  // Each unsafe link stays its Markdown text; only the safe links are links.
+  for (const text of [
+    "[Click me](javascript:alert(3))",
+    "[Mixed case](JaVaScRiPt:alert(4))",
+    "[Visual Basic](vbscript:msgbox(6))",
+    "<javascript:alert(8)>",
+  ]) {
+    await expect(article.getByText(text, { exact: true })).toBeVisible();
+  }
+  await expect(
+    article.getByRole("link", { name: /Click me|Mixed case|Entity|Visual Basic|Data|Reference|javascript/ }),
+  ).toHaveCount(0);
+  await expect(article.getByRole("link", { name: "Safe" })).toHaveAttribute("href", "https://example.com/");
+  await expect(article.getByRole("link", { name: "Relative" })).toHaveAttribute("href", "/folders/handbook");
+  await expect(article.getByRole("link", { name: "Mail" })).toHaveAttribute("href", "mailto:team@example.com");
+  await article.getByText("[Click me](javascript:alert(3))").click();
+  const addresses = await page
+    .locator("[href], [src]")
+    .evaluateAll((elements) =>
+      elements.map((element) => element.getAttribute("href") ?? element.getAttribute("src") ?? ""),
+    );
+  expect(addresses.filter((address) => /^\s*(javascript|vbscript|data):/i.test(address))).toEqual([]);
   expect(dialogs).toEqual([]);
 });
 
