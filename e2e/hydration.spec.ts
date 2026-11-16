@@ -75,6 +75,16 @@ test.describe("as a normal user", () => {
     );
   });
 
+  test("the copy buttons of the view AI apps stay disabled until hydration", async ({ page }) => {
+    await createFolder({ name: "projects" });
+
+    await page.goto("/folders/projects?view=mcp");
+
+    await expect(page.getByRole("textbox", { name: "Writer address" })).toHaveValue(/\/mcp\/.+\/writer$/);
+    await expect(page.getByRole("button", { name: "Copy reader address" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Copy writer address" })).toBeDisabled();
+  });
+
   test("the revoke dialog of a connected app is locked until hydration", async ({ page }) => {
     const { grant } = await createGrant({ owner: KNOWN_USER, name: "Example connector" });
 

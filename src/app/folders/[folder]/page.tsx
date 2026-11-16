@@ -15,7 +15,9 @@ import { changeRole, giveRole } from "@/features/folder-roles/actions";
 import FolderRoleList from "@/features/folder-roles/components/FolderRoleList";
 import GiveRoleDialog from "@/features/folder-roles/components/GiveRoleDialog";
 import { listFolderRoles, listRoleCandidates } from "@/features/folder-roles/queries";
-import { mayDo, ROLE_LABELS, type FolderFunction } from "@/features/folder-roles/roles";
+import { mayDo, MCP_ROLE_ABILITIES, ROLE_LABELS, type FolderFunction } from "@/features/folder-roles/roles";
+import McpAddress from "@/features/mcp/components/McpAddress";
+import { listMcpAddresses } from "@/features/mcp/queries";
 import { createPage } from "@/features/pages/actions";
 import AllPagesList from "@/features/pages/components/AllPagesList";
 import NewPageForm from "@/features/pages/components/NewPageForm";
@@ -23,6 +25,7 @@ import { listAllFolderPages, listFolderPages } from "@/features/pages/queries";
 import {
   allPagesPath,
   deletedPagesPath,
+  folderMcpPath,
   folderPath,
   folderRolesPath,
   parseAction,
@@ -48,9 +51,10 @@ const ACTION_FUNCTIONS: Record<(typeof ACTIONS)[number], FolderFunction> = {
 
 /**
  * The views of a folder address: `all` lists all pages of the folder, each with its tab, `roles` who has which role on
- * the folder. Every role may see both.
+ * the folder, and `mcp` the MCP addresses of the folder that the user may connect an AI app to. Every role may see all
+ * three; `mcp` exists only with `HIPPOWIKI_PUBLIC_URL`.
  */
-const VIEWS = ["all", "roles"] as const;
+const VIEWS = ["all", "roles", "mcp"] as const;
 
 /**
  * The action and the view of the address, or `"invalid"` if either is not one of this address. A view has no actions,
@@ -70,6 +74,10 @@ export async function generateMetadata({ params, searchParams }: PageProps<"/fol
   if (query.action === "new") return { title: pageTitle("New page") };
   if (query.view === "all") return { title: pageTitle(`All pages – ${folder.name}`) };
   if (query.view === "roles") return { title: pageTitle(`Roles – ${folder.name}`) };
+  // Without a public URL the view does not exist, and its not-found page gets the plain title.
+  if (query.view === "mcp") {
+    return { title: pageTitle(listMcpAddresses(folder, folder.role) ? `AI apps – ${folder.name}` : undefined) };
+  }
   return { title: pageTitle(folder.name) };
 }
 
@@ -140,6 +148,34 @@ export default async function FolderPage({ params, searchParams }: PageProps<"/f
     );
   }
 
+  // `null` without a public URL, when there is no MCP server: no view and no button.
+  const mcpAddresses = listMcpAddresses(folder, role);
+
+  if (view === "mcp") {
+    if (!mcpAddresses) notFound();
+    return (
+      <Stack spacing={3}>
+        <FolderBreadcrumbs folderName={folder.name} current="AI apps" />
+        <Typography variant="h4" component="h1">
+          AI apps
+        </Typography>
+        <Typography>
+          Copy an address into an AI app to connect it to this folder through MCP. The app asks you to approve the
+          connection. It works only on this folder and never with more than your own role on it.
+        </Typography>
+        {mcpAddresses.map(({ role: mcpRole, address: mcpAddress }) => (
+          <Stack key={mcpRole} component="section" spacing={1} aria-labelledby={`mcp-${mcpRole}`}>
+            <Typography id={`mcp-${mcpRole}`} variant="h6" component="h2">
+              {ROLE_LABELS[mcpRole]}
+            </Typography>
+            <Typography color="text.secondary">{MCP_ROLE_ABILITIES[mcpRole]}</Typography>
+            <McpAddress address={mcpAddress} label={`${ROLE_LABELS[mcpRole]} address`} />
+          </Stack>
+        ))}
+      </Stack>
+    );
+  }
+
   const [pages, tabs] = await Promise.all([listFolderPages(folder.id), listTabs(folder.id)]);
   // `null` only for an admin, for whom the folder was not found already.
   if (!pages || !tabs) notFound();
@@ -175,6 +211,11 @@ export default async function FolderPage({ params, searchParams }: PageProps<"/f
           <Button component={Link} href={folderRolesPath(folder.name)} variant="outlined">
             Roles
           </Button>
+          {mcpAddresses && (
+            <Button component={Link} href={folderMcpPath(folder.name)} variant="outlined">
+              AI apps
+            </Button>
+          )}
           {mayDo(role, "deletedPages") && (
             <Button component={Link} href={deletedPagesPath(folder.name)} variant="outlined">
               Deleted pages

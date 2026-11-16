@@ -39,6 +39,7 @@ const PROTECTED_ADDRESSES = [
   ["the folder list with an action", "/folders?action=new"],
   ["a folder with an action", "/folders/handbook?action=rename"],
   ["the give role dialog of a folder", "/folders/handbook?action=give-role"],
+  ["the view AI apps of a folder", "/folders/handbook?view=mcp"],
   ["the overview of the folder roles", "/folder-roles"],
   ["a page with an action", "/folders/handbook/overview.md?action=edit"],
   ["the own account", "/account"],

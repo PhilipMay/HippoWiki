@@ -35,7 +35,7 @@ The requirements are in `spec/mcp-folder-roles-requirements.md` (approved); ever
 - [x] MCP at the folder addresses
 - [x] Read tools on the folder of the connection
 - [x] Write tools
-- [ ] The view "AI apps"
+- [x] The view "AI apps"
 - [ ] Wrap-up
 
 ## Grants for a folder address

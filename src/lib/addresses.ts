@@ -197,6 +197,11 @@ export function folderRolesPath(folder: string): string {
   return `${FOLDERS_PATH}/${folder}?view=roles`;
 }
 
+/** The address of the MCP addresses of a folder for AI apps: the folder address with the view `mcp`. */
+export function folderMcpPath(folder: string): string {
+  return `${FOLDERS_PATH}/${folder}?view=mcp`;
+}
+
 /** The address of a tab of a folder, optionally with an action. */
 export function tabPath(folder: string, tab: string, action?: string): string {
   return withAction(`${FOLDERS_PATH}/${folder}/${tab}`, action);

@@ -8,6 +8,7 @@ import {
   changePasswordPath,
   deletedPagePath,
   deletedPagesPath,
+  folderMcpPath,
   folderPath,
   folderRolesOverviewPath,
   folderRolesPath,
@@ -89,6 +90,10 @@ describe("paths", () => {
     const id = "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10";
     expect(deletedPagePath("handbook", id)).toBe(`/deleted-pages/handbook/${id}`);
     expect(deletedPagePath("handbook", id, "restore")).toBe(`/deleted-pages/handbook/${id}?action=restore`);
+  });
+
+  it("builds the address of the view AI apps of a folder", () => {
+    expect(folderMcpPath("handbook")).toBe("/folders/handbook?view=mcp");
   });
 
   it("builds the MCP address of a folder for a role", () => {
