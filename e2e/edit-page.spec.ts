@@ -1,7 +1,7 @@
 import type { Page as BrowserPage } from "@playwright/test";
 
 import { VERSION_FIELD } from "@/features/pages/forms";
-import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
+import { CONTENT_MAX_LENGTH, CONTENT_MAX_TABLE_CELLS } from "@/features/pages/limits";
 
 import { KNOWN_USER } from "../prisma/known-users";
 import { ADMIN_STORAGE_STATE, becomeUser, logInElsewhere } from "./support/auth";
@@ -183,6 +183,29 @@ test("content above the limit shows an error at the content field and stores not
   await expect(content).toHaveAttribute("aria-invalid", "true");
   await expect(content).toHaveAccessibleDescription("Content must be at most 100,000 characters");
   await expect(content).toBeFocused();
+  expect(await getTestDb().page.findUniqueOrThrow({ where: { id: created.id } })).toEqual(created);
+  expect(errors).toEqual([]);
+});
+
+test("a table with too many cells shows an error at the content field and keeps the content", async ({ page }) => {
+  const errors = collectErrors(page);
+  const created = await createPage({ folder: handbook, name: "table", title: "Table page" });
+  // A header of 100 columns and 100 rows of one cell, filled up to 100 cells each: 100 cells more than the limit.
+  const table = `|${" h |".repeat(100)}\n|${" - |".repeat(100)}\n${"| a |\n".repeat(100)}`;
+  const value = `# Table page\n\n${table}`;
+
+  await page.goto("/folders/handbook/table.md?action=edit");
+  const content = page.getByLabel("Content");
+  await content.fill(value);
+  await page.getByRole("button", { name: "Save" }).click();
+
+  await expect(content).toHaveAttribute("aria-invalid", "true");
+  await expect(content).toHaveAccessibleDescription(
+    `Tables must have at most ${CONTENT_MAX_TABLE_CELLS.toLocaleString("en-US")} cells in all, counting the empty ` +
+      "cells that fill a row up to the columns of its header",
+  );
+  await expect(page).toHaveURL("/folders/handbook/table.md?action=edit");
+  await expect(content).toHaveValue(value);
   expect(await getTestDb().page.findUniqueOrThrow({ where: { id: created.id } })).toEqual(created);
   expect(errors).toEqual([]);
 });

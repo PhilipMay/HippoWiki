@@ -46,7 +46,7 @@ markdown-it stayed below 110 ms for every input.
 
 - [x] Content check order
 - [x] markdown-it for title and page view
-- [ ] Limits on nesting and table cells
+- [x] Limits on nesting and table cells
 - [ ] Wrap-up
 
 ## Content check order

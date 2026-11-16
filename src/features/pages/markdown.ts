@@ -124,8 +124,9 @@ function footnoteTail(state: StateCore): void {
  *
  * `maxNesting` bounds the nesting of tokens: past it markdown-it stops nesting blocks and drops the rest of the
  * deepest block, and inline markup past it stays text. Each list takes two levels (the list and its item) and each
- * quote one, so 100 keeps lists and quotes nested well past the depth limit of the content visible in the tokens,
- * and the parse and the page view stay flat enough for the stack.
+ * quote one, so 100 keeps lists nested up to about 50 deep and quotes up to about 100 deep in the tokens: well past
+ * `CONTENT_MAX_DEPTH` of `limits.ts`, so that content one level deeper than the limit still shows that depth, and flat enough for
+ * the stack of the parse and of the page view.
  */
 const markdown = new MarkdownIt({ html: false, linkify: true, typographer: false, maxNesting: 100 })
   .use(footnote)
@@ -211,4 +212,46 @@ function truncate(text: string, maxLength: number): string {
   const last = cut.charCodeAt(cut.length - 1);
   if (last >= 0xd800 && last <= 0xdbff) cut = cut.slice(0, -1);
   return cut.trimEnd();
+}
+
+/** What the checks of the content need to know about it, from one parse. */
+export type MarkdownAnalysis = {
+  /** The title (`titleFromTokens`), or `null` if the content has none. */
+  title: string | null;
+  /** The deepest nesting of lists and quotes: 0 without any, 1 for a list or quote that is not inside another. */
+  depth: number;
+  /** The number of table cells of all tables, the cells that rows are filled up with included. */
+  cells: number;
+};
+
+/**
+ * Parses the content once and returns its title, the deepest nesting of lists and quotes and the number of table
+ * cells. markdown-it fills every row of a table up to the columns of its header, so the cells count what the page
+ * view would show.
+ */
+export function analyseMarkdown(content: string): MarkdownAnalysis {
+  const tokens = parseMarkdown(content);
+  let depth = 0;
+  let open = 0;
+  let cells = 0;
+  for (const token of tokens) {
+    switch (token.type) {
+      case "bullet_list_open":
+      case "ordered_list_open":
+      case "blockquote_open":
+        open++;
+        if (open > depth) depth = open;
+        break;
+      case "bullet_list_close":
+      case "ordered_list_close":
+      case "blockquote_close":
+        open--;
+        break;
+      case "th_open":
+      case "td_open":
+        cells++;
+        break;
+    }
+  }
+  return { title: titleFromTokens(content, tokens), depth, cells };
 }

@@ -608,6 +608,24 @@ test.describe("the write tools", () => {
     ]);
   });
 
+  test("replace_page_content with lists nested too deep is refused and the page keeps its content and version", async ({
+    request,
+  }) => {
+    await createPage({ folder: projects, name: "plan", content: "# Plan\n\nOld." });
+    const before = await storedPages();
+
+    const refused = await write(request, "replace_page_content", {
+      page: "plan",
+      version: 1,
+      content: `# Plan\n\n${"- ".repeat(21)}too deep`,
+    });
+
+    expect(refused.isError).toBe(true);
+    expect(refused.content[0]?.text).toContain("Lists and quotes must be nested at most 20 levels deep");
+    expect(await storedPages()).toEqual(before);
+    expect(before).toMatchObject([{ name: "plan", version: 1 }]);
+  });
+
   test("move_or_rename_page puts the page at its new place; a taken name and a missing tab change nothing", async ({
     request,
   }) => {

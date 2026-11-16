@@ -81,8 +81,9 @@ listed first; there is no order across themes.
 ## Rights
 
 - Public content: pages that can be read without a login, rendered on the server so that search engines see them.
-  Needs a time limit and a depth limit on the Markdown parse at save time and a stored or cached render, since
-  anonymous visitors can then trigger renders (`pages.md`, `users-and-login.md`).
+  The Markdown parse is linear and its depth and table cells are limited at save; what is left is a stored or cached
+  render, since anonymous visitors can then trigger renders (`pages.md`, "The cost of the Markdown parse";
+  `users-and-login.md`).
 
 ## Login and Sessions
 

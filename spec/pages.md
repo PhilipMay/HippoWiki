@@ -22,6 +22,13 @@ routes under `src/app/folders/`. Tests: `src/features/pages/derive.test.ts`, `sr
 - The content is stored with plain line breaks: CRLF and CR become LF before it is checked. Its length limit counts
   the content with plain line breaks, as the editor counts it, so content that fits the editor is never refused for
   its length. Content with a NUL character is refused with a field error, because the database cannot store it.
+- The Markdown of the content has two limits besides its length, both in `src/features/pages/limits.ts` and checked
+  at every save, in the browser and through MCP, with a field error at the content:
+  - lists and quotes nested at most 20 deep, a list or quote inside another counting one level more: far more than a
+    page needs, and it keeps the parse and the page view flat;
+  - at most 10,000 table cells in all, counting the empty cells that fill a row up to the columns of its header: a
+    small table with a header of many columns and many short rows would otherwise make a page view of millions of
+    cells.
 - The content of a page is validated when it is created or edited. Moving or renaming neither validates nor touches
   it, so a limit lowered later never blocks them.
 - The forms send only what they change; a submitted title is ignored. The service validates again before it writes.
@@ -71,6 +78,22 @@ given as `?action=<action>` (see `content-structure.md`).
 - If the content cannot be rendered, the page view shows its source as text and logs the error without the content;
   the page and its actions stay usable.
 
+## The cost of the Markdown parse
+
+The Markdown parse runs on the server at every save (twice in the browser, see "Decisions"), at every view of a page,
+deleted pages and the delete dialog included, and in the browser when the save dialog suggests a name. It is the
+costliest function of a page, and its guards are:
+
+- The parse is linear in the length of the content: at the content limit its worst case, measured with the inputs
+  that are slow for other parsers, takes about 0.1 s for the parse and well below 1 s with the page view.
+  `src/features/pages/markdown.test.ts` keeps these inputs below 2 s each.
+- The length of the content is checked before any parse, also in the MCP tool `create_page`, which checks the content
+  before it derives a name from it.
+- The depth of lists and quotes and the number of table cells are checked at every save (see "Content and title"),
+  so that no page can be saved whose view is deep or large.
+- markdown-it nests blocks only to `maxNesting` (`markdown.ts`), and the page view is built without recursion over the
+  blocks, so no content can overflow the stack. If the page view fails anyway, it shows the source as text.
+
 ## Decisions
 
 - The title is derived from the content's heading instead of being entered in a field of its own. It is still stored
@@ -89,6 +112,11 @@ given as `?action=<action>` (see `content-structure.md`).
 - The page view is converted from the tokens by code of its own instead of the HTML that markdown-it renders: no
   `dangerouslySetInnerHTML`, and the elements are the Material UI components of the rest of the app.
 - Task lists are a rule of its own in `markdown.ts`, because the common plugins for them are no longer maintained.
+- A save in the browser validates the content in the form and again in the service, as `architecture.md` asks, and
+  each validation parses it once. With a linear parse of at most about 0.1 s at the content limit, the second parse
+  costs less than giving up the second validation.
+- The depth and the cells are limited at save instead of parsing in a worker thread with a time limit: the parse is
+  linear on every input measured, and a limit at save tells the author what to change.
 
 ## Current limits
 
@@ -104,3 +132,7 @@ given as `?action=<action>` (see `content-structure.md`).
 - Markdown images only from the wiki itself: the browser blocks images of other hosts without a message in the page,
   and a `data:` image is shown as its Markdown text
 - no math, heading ids, `[[wiki links]]` or syntax highlighting in the page view
+- a page stored before the limits on depth and table cells that goes past them can be viewed, moved and deleted, but
+  saved only once it is within them; its view drops the levels past what markdown-it nests and fills table rows only
+  up to about 65,000 empty cells
+- inline Markdown nested past `maxNesting` of `markdown.ts` shows as text

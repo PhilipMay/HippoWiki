@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { McpActor } from "@/features/folder-roles/service";
 import { createWikiServer, instructionsFor } from "@/features/mcp/tools";
+import { CONTENT_MAX_DEPTH, CONTENT_MAX_LENGTH } from "@/features/pages/limits";
+import { analyseMarkdown } from "@/features/pages/markdown";
 import { TITLE_HEADING_MISSING_MESSAGE as TITLE_MISSING } from "@/features/pages/schema";
 
 const mocks = vi.hoisted(() => ({
@@ -27,6 +29,11 @@ vi.mock("@/features/pages/service", () => ({
   moveOrRenamePage: mocks.moveOrRenamePage,
 }));
 vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, error: mocks.error } }));
+// The real parse, watched, to see whether the content was parsed.
+vi.mock("@/features/pages/markdown", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/features/pages/markdown")>();
+  return { ...actual, analyseMarkdown: vi.fn(actual.analyseMarkdown) };
+});
 
 const PUBLIC_URL = "https://wiki.example.com";
 const FOLDER_ID = "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10";
@@ -494,6 +501,26 @@ describe("the write tools", () => {
       ["a title in another script", { content: "# 日本語" }, "The title suggests no name"],
     ])("answers %s without a name with a tool error and creates nothing", async (_case, args, message) => {
       expect(errorOf(await callTool("create_page", args))).toContain(message);
+      expect(mocks.createPage).not.toHaveBeenCalled();
+    });
+
+    it("answers content over the length limit without a name with the length error and never parses it", async () => {
+      const content = `# Long\n\n${"a".repeat(CONTENT_MAX_LENGTH)}`;
+
+      expect(errorOf(await callTool("create_page", { content }))).toContain(
+        "The content is not valid: Content must be at most 100,000 characters",
+      );
+      expect(analyseMarkdown).not.toHaveBeenCalled();
+      expect(mocks.createPage).not.toHaveBeenCalled();
+    });
+
+    it("answers content nested too deep without a name with the depth error and creates nothing", async () => {
+      const content = `# Deep\n\n${"- ".repeat(CONTENT_MAX_DEPTH + 1)}a`;
+
+      expect(errorOf(await callTool("create_page", { content }))).toContain(
+        `The content is not valid: Lists and quotes must be nested at most ${CONTENT_MAX_DEPTH} levels deep`,
+      );
+      expect(analyseMarkdown).toHaveBeenCalledOnce();
       expect(mocks.createPage).not.toHaveBeenCalled();
     });
 

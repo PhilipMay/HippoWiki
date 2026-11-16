@@ -13,8 +13,8 @@ import { z } from "zod";
 import { ROLE_LABELS, type McpRole } from "@/features/folder-roles/roles";
 import type { McpActor } from "@/features/folder-roles/service";
 import * as folderService from "@/features/folders/service";
-import { deriveName, titleFromContent } from "@/features/pages/derive";
-import { TITLE_HEADING_MISSING_MESSAGE } from "@/features/pages/schema";
+import { deriveName } from "@/features/pages/derive";
+import { pageContentInputSchema, TITLE_HEADING_MISSING_MESSAGE } from "@/features/pages/schema";
 import * as pageService from "@/features/pages/service";
 import { folderPath, pagePath, tabPath } from "@/lib/addresses";
 import { logger } from "@/lib/logger";
@@ -400,9 +400,11 @@ export async function createPage(
       const { folder } = options;
       let name = input.name;
       if (name === undefined) {
-        const title = titleFromContent(input.content);
-        if (title === null) return invalidInput({ content: [TITLE_HEADING_MISSING_MESSAGE] });
-        name = deriveName(title);
+        // The content is checked as the service checks it before a name is derived from its title, so that content
+        // over the length limit is never parsed here.
+        const checked = pageContentInputSchema.safeParse({ content: input.content });
+        if (!checked.success) return invalidInput(z.flattenError(checked.error).fieldErrors);
+        name = deriveName(checked.data.title);
         if (name === "") {
           return toolError(
             "The title suggests no name for the page, so nothing was changed. Give a name of lowercase letters, " +

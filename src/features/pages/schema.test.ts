@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
+import { CONTENT_MAX_DEPTH, CONTENT_MAX_LENGTH, CONTENT_MAX_TABLE_CELLS } from "@/features/pages/limits";
 import {
+  CONTENT_DEPTH_MESSAGE,
   CONTENT_NUL_MESSAGE,
+  CONTENT_TABLE_CELLS_MESSAGE,
   newPageInputSchema,
   pageContentInputSchema,
   parsePageId,
@@ -102,5 +104,58 @@ describe("parsePageVersion", () => {
     for (const version of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 2_147_483_648, "3", "", null, undefined]) {
       expect(parsePageVersion(version)).toBeNull();
     }
+  });
+});
+
+/** Content with a title and lists nested `depth` deep. */
+function nestedLists(depth: number): string {
+  return `# Deep\n\n${"- ".repeat(depth)}item`;
+}
+
+/** Content with a title and a table of `columns` columns in its header and `rows` rows of one cell. */
+function tableWithCells(columns: number, rows: number): string {
+  return `# Table\n\n|${" h |".repeat(columns)}\n|${" - |".repeat(columns)}\n${"| a |\n".repeat(rows)}`;
+}
+
+describe("the limits of the Markdown of a page", () => {
+  it("accepts lists and quotes nested to the limit", () => {
+    expect(pageContentInputSchema.safeParse({ content: nestedLists(CONTENT_MAX_DEPTH) }).success).toBe(true);
+    const quotes = `# Deep\n\n${">".repeat(CONTENT_MAX_DEPTH)} quote`;
+    expect(newPageInputSchema.safeParse({ name: "deep", content: quotes }).success).toBe(true);
+  });
+
+  it("refuses lists or quotes nested one level deeper at the content field", () => {
+    expect(fieldErrorsOf(pageContentInputSchema.safeParse({ content: nestedLists(CONTENT_MAX_DEPTH + 1) }))).toEqual({
+      content: [CONTENT_DEPTH_MESSAGE],
+    });
+    const quotes = `# Deep\n\n${">".repeat(CONTENT_MAX_DEPTH + 1)} quote`;
+    expect(fieldErrorsOf(newPageInputSchema.safeParse({ name: "deep", content: quotes }))).toEqual({
+      content: [CONTENT_DEPTH_MESSAGE],
+    });
+  });
+
+  it("accepts tables with cells up to the limit", () => {
+    // 100 columns in the header and 99 rows filled up to 100 cells each.
+    expect(pageContentInputSchema.safeParse({ content: tableWithCells(100, 99) }).success).toBe(true);
+  });
+
+  it("refuses one table cell more at the content field", () => {
+    const content = `${tableWithCells(100, 99)}\n| one |\n| --- |`;
+    expect(fieldErrorsOf(pageContentInputSchema.safeParse({ content }))).toEqual({
+      content: [CONTENT_TABLE_CELLS_MESSAGE],
+    });
+    expect(CONTENT_TABLE_CELLS_MESSAGE).toContain(CONTENT_MAX_TABLE_CELLS.toLocaleString("en-US"));
+  });
+
+  it("reports every limit and the missing title together", () => {
+    const content = `${"- ".repeat(CONTENT_MAX_DEPTH + 1)}item\n\n${tableWithCells(101, 99).replace("# Table\n\n", "")}`;
+    expect(fieldErrorsOf(pageContentInputSchema.safeParse({ content }))).toEqual({
+      content: [TITLE_HEADING_MISSING_MESSAGE, CONTENT_DEPTH_MESSAGE, CONTENT_TABLE_CELLS_MESSAGE],
+    });
+  });
+
+  it("reports only the length error for too long content nested too deep", () => {
+    const content = `${nestedLists(CONTENT_MAX_DEPTH + 1)}\n\n${"a".repeat(CONTENT_MAX_LENGTH)}`;
+    expect(fieldErrorsOf(pageContentInputSchema.safeParse({ content }))).toEqual({ content: [LENGTH_MESSAGE] });
   });
 });

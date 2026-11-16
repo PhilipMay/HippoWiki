@@ -1,7 +1,7 @@
 import { z } from "zod";
 
-import { titleFromContent } from "@/features/pages/derive";
-import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
+import { CONTENT_MAX_DEPTH, CONTENT_MAX_LENGTH, CONTENT_MAX_TABLE_CELLS } from "@/features/pages/limits";
+import { analyseMarkdown } from "@/features/pages/markdown";
 import { nameSchema } from "@/lib/names";
 
 /** A page id: a UUID in its canonical 8-4-4-4-12 hex form, as PostgreSQL generates it. */
@@ -34,7 +34,7 @@ export function parsePageVersion(value: unknown): number | null {
   return result.success ? result.data : null;
 }
 
-/** Shown at the content field when the content has no title (see `titleFromContent`). */
+/** Shown at the content field when the content has no title (see `titleFromTokens` in `markdown.ts`). */
 export const TITLE_HEADING_MISSING_MESSAGE = "Content must start with a title heading: # Title";
 
 /** Shown at the content field when the content contains U+0000, which PostgreSQL cannot store in `text`. */
@@ -55,16 +55,27 @@ const contentSchema = z
       .max(CONTENT_MAX_LENGTH, `Content must be at most ${CONTENT_MAX_LENGTH.toLocaleString("en-US")} characters`),
   );
 
+/** Shown at the content field when lists and quotes are nested deeper than `CONTENT_MAX_DEPTH`. */
+export const CONTENT_DEPTH_MESSAGE = `Lists and quotes must be nested at most ${CONTENT_MAX_DEPTH} levels deep`;
+
+/** Shown at the content field when the tables have more than `CONTENT_MAX_TABLE_CELLS` cells. */
+export const CONTENT_TABLE_CELLS_MESSAGE =
+  `Tables must have at most ${CONTENT_MAX_TABLE_CELLS.toLocaleString("en-US")} cells in all, counting the empty ` +
+  "cells that fill a row up to the columns of its header";
+
 /**
- * Adds the title derived from the content to validated input, or reports the missing title heading at the content
- * field. A submitted title is never part of the input; the content is the only source of the title.
+ * Adds the title derived from the content to validated input, or reports at the content field what is wrong with it:
+ * a missing title heading, lists and quotes nested too deep, too many table cells. Title, depth and cells come from
+ * one parse. A submitted title is never part of the input; the content is the only source of the title.
  */
 function withDerivedTitle<Input extends { content: string }>(input: Input, ctx: z.RefinementCtx) {
-  const title = titleFromContent(input.content);
-  if (title === null) {
-    ctx.addIssue({ code: "custom", message: TITLE_HEADING_MISSING_MESSAGE, path: ["content"] });
-    return z.NEVER;
-  }
+  const { title, depth, cells } = analyseMarkdown(input.content);
+  const messages: string[] = [];
+  if (title === null) messages.push(TITLE_HEADING_MISSING_MESSAGE);
+  if (depth > CONTENT_MAX_DEPTH) messages.push(CONTENT_DEPTH_MESSAGE);
+  if (cells > CONTENT_MAX_TABLE_CELLS) messages.push(CONTENT_TABLE_CELLS_MESSAGE);
+  for (const message of messages) ctx.addIssue({ code: "custom", message, path: ["content"] });
+  if (title === null || messages.length > 0) return z.NEVER;
   return { ...input, title };
 }
 

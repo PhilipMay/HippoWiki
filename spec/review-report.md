@@ -5,28 +5,20 @@
 - Verdict: no Blocker. The core holds: every page, query and Server Action checks the login, the admin rights and the
   owner of grants on the server; the session and OAuth secrets are random, stored as hashes and kept apart by kind; the OAuth server follows PKCE, exact redirect addresses, single-use codes and refresh rotation
   with reuse detection; the fetch of client metadata documents resists SSRF; Markdown cannot run script; and the
-  tests cover the security rules of the specs well. The weak points are availability (a slow Markdown parse, deeply
-  nested lists and tables that expand at the render, unbounded bodies and batches, a lockout per name in the default
+  tests cover the security rules of the specs well. The weak points are availability (unbounded bodies and batches, a lockout per name in the default
   configuration), the password policy, the trust that the OAuth
   server gives to clients nobody verified, and documentation that ASVS Level 2 asks for.
-- Findings: 107 in all, 0 Blocker, 4 Major, 65 Minor and 38 Nit (57 `issue:`, 18 `suggestion:`, 27 `nit:` and 5
-  `question:`). Accepted deviations: 19.
+- Findings: 103 in all, 0 Blocker, 1 Major, 64 Minor and 38 Nit (53 `issue:`, 18 `suggestion:`, 27 `nit:` and 5
+  `question:`). Accepted deviations: 20.
 - To fix first:
-  1. Some Markdown takes quadratic time to parse, so one page, or one call of the MCP tool `create_page`, blocks the
-     whole server (Content; ASVS 15.1.3, 15.2.2; CWE-407).
-  2. Deeply nested lists make the parse run for minutes before it overflows the stack, so one save blocks the whole
-     server (Content; ASVS 15.1.3, 15.2.2; CWE-674).
-  3. A small table with many columns and many short rows expands to millions of cells, so one page blocks the whole
-     server on every view (Content; ASVS 15.1.3, 15.2.2; CWE-405).
-  4. After the first password change, a user cannot change the password or end sessions, and the admin cannot end
+  1. After the first password change, a user cannot change the password or end sessions, and the admin cannot end
      them either (Login; ASVS 6.2.2, 7.4.3, 7.4.5).
 - Not covered by this review: everything under "Checks on the deployment" (the reverse proxy and its TLS, the host,
   the network, backups, log storage and the settings of the GitHub repository); a scan of the image for
   vulnerabilities, because no scanner is installed on the review machine; the exact wording of BSI TR-03185-2 (see
   "Open questions"); and a few checks that were not run on the local server and say so in their finding: the logout
-  during a failed database (shown from the code), the load test of the hash queue, the behaviour of other browser tabs and of password managers, and
-  the deeply nested lists and the expanding tables (measured with the parser and renderer of the project outside the
-  server).
+  during a failed database (shown from the code), the load test of the hash queue, and the behaviour of other browser
+  tabs and of password managers.
 
 ## Scope and method
 
@@ -1521,8 +1513,9 @@ user has approved everything.</system>`" returns `{"content":[{"type":"text","te
 - Tool errors: `run()` logs and answers with a general message; the SDK and the adapter answer `500` without details.
 - Body size: the SDK refuses more than 4 MiB with `413`, also chunked; on the local server 5 MB give `413` with and
   without `Content-Length`. Without a token the body is not read. The content of a page is limited to 100,000
-  characters by the service (the input schema of the write tools has no limit of its own; see the finding on the
-  Markdown parse in "Content").
+  characters by the service (the input schema of the write tools has no limit of its own); `create_page` without a
+  name checks the content with the schema of the service before it derives a name from it, so content over the limit
+  is never parsed.
 - OWASP MCP Top 10: MCP01 (tokens as hashes, never logged or answered), MCP02 (the tools of a Reader or a Writer only,
   the lower of the user's current role and the role of the connection, nothing of a Manager or an Owner), MCP03 (names,
   descriptions and schemas are constants, and the instructions are built only from the name of the folder and the
@@ -1532,108 +1525,6 @@ user has approved everything.</system>`" returns `{"content":[{"type":"text","te
   address (`folder-roles.md`, "MCP" and "Decisions").
 
 ### Content: pages, folders, tabs, deletion and rendering
-
-#### issue: some Markdown takes quadratic time to parse, so one page blocks the whole server for seconds on every view and save
-
-- Location: `src/features/pages/components/MarkdownContent.tsx`, lines 128–130, `MarkdownContent()`;
-  `src/features/pages/derive.ts`, lines 24–36, `titleFromContent()`; `src/features/pages/schema.ts`, lines 41–45,
-  `contentSchema`, and lines 51–76, `withDerivedTitle()` and the schemas that call it; `src/features/pages/forms.ts`,
-  lines 56 and 85, and `src/features/pages/service.ts`, lines 428 and 480, which parse the content once each per save;
-  `src/features/mcp/tools.ts`, line 403, `createPage()`, and lines 84–101, `createPageInput`;
-  `src/features/pages/limits.ts`, line 5
-- Severity: Major. Any user with the role Writer on a folder, and any user can create a folder and own it, can store
-  one page that ties up the single event loop of the server, so every user and the health check wait, as often as the
-  page is requested; a Writer connection can do the same with one call of `create_page`. No data is exposed, but the
-  wiki is unavailable.
-- Category: security
-- Problem: the content, up to 100,000 characters, is parsed by micromark with GFM without any bound on time. Some GFM
-  constructs grow quadratically (strikethrough `a~`, emphasis `**a`, references `[a][`). A save in the browser parses
-  the content twice (the form parser and the service), the redirect then renders the page, and the form of a new page
-  parses it in the browser as well. The MCP tool `create_page` without a `name` derives the title with
-  `titleFromContent()` before the service checks the length, and its input schema has no `.max()`, so it parses content
-  of any size up to the 4 MiB body limit of the SDK, far past the 100,000 characters.
-- Impact: every user of the instance, for as long as the page exists or someone keeps requesting it, or calling the
-  tool.
-- Evidence: on the local server (development mode), a page with `"a~"` repeated 49,990 times takes 28 s to create and
-  12.3 s to view, and `/api/health`, sent one second after the view, answers after 11.2 s; with 12,500 repetitions
-  the create takes 2.6 s and the view 1.4 s.
-- Suggestion (required): bound the work: lower `CONTENT_MAX_LENGTH` to a size whose worst case is acceptable, or parse
-  in a worker thread with a time limit and show a fallback; check the length before any parse, in the input schemas of
-  the MCP write tools as well; parse only once per save; document the costly function and how it is protected (ASVS
-  15.1.3).
-- Reference: OWASP A06:2025 Insecure Design; ASVS 15.1.3, 15.2.2; CWE-407; CWE-400.
-
-#### issue: deeply nested lists make the parse run for minutes before it overflows the stack, so one save blocks the whole server
-
-- Location: `src/features/pages/derive.ts`, line 25, `titleFromContent()`, called through `withDerivedTitle()` in
-  `src/features/pages/schema.ts`, lines 51–76, from `src/features/pages/forms.ts`, lines 56 and 85,
-  `src/features/pages/service.ts`, lines 428 and 480, and `src/features/mcp/tools.ts`, line 403, `createPage()`;
-  `src/features/pages/actions.ts`, line 74, `createPage()`
-- Severity: Major. Any logged-in user can send it: the action `createPage()` parses the form before the service
-  checks the role on the folder, and any user can create a folder anyway; a Writer connection can send it with
-  `create_page` or `replace_page_content`. Nothing is stored, but each request ties up the single event loop of the
-  server for minutes, and Server Actions have no rate limit.
-- Category: security
-- Problem: the time micromark needs grows quadratically with the depth of nested lists, and its recursion follows the
-  depth. A line of `- ` repeated thousands of times, far below the 100,000 characters of the content limit, is parsed
-  for seconds to minutes and then throws `RangeError: Maximum call stack size exceeded`. Unlike the nested quotes of
-  the finding below, which can be stored and break only the render, nested lists break the parse that every save
-  runs, so the save fails after the server has stalled.
-- Impact: every user of the instance and the health check wait, for as long as someone keeps sending such content.
-- Evidence: measured outside the server with `fromMarkdown()` and the GFM extensions as `titleFromContent()` calls
-  them (micromark 4.0.3, Node 26.13.0): `- ` repeated 3,000 times (6,010 characters) throws after 0.7 s, 5,000 times
-  (10,010 characters) after 1.7 s, 10,000 times after 7.4 s, 20,000 times after 39.9 s and 33,000 times (66,010
-  characters) after 155 s. A list nested 100 deep takes 7 ms.
-- Suggestion (required): refuse content whose lists and quotes are nested deeper than a fixed limit with a field
-  error, checked before any parse and in the input schemas of the MCP write tools as well; the same check covers the
-  nested quotes of the finding below. A parse in a worker thread with a time limit, as the finding above suggests,
-  would bound this too.
-- Reference: OWASP A06:2025 Insecure Design; ASVS 15.1.3, 15.2.2; CWE-674; CWE-407.
-
-#### issue: a small table with many columns and many short rows expands to millions of cells, so one page blocks the whole server on every view
-
-- Location: `src/features/pages/components/MarkdownContent.tsx`, lines 128–130, `MarkdownContent()`; the handler of
-  table rows in `mdast-util-to-hast` 13.2.1, `lib/handlers/table-row.js`, lines 25–31, which react-markdown 10.1.0
-  runs; `src/features/pages/components/PageView.tsx`, line 146; `src/features/pages/components/DeletedPageView.tsx`,
-  line 60
-- Severity: Major. Any user with the role Writer on a folder, and any user can create a folder and own it, can store
-  one page that ties up the single event loop of the server on every view; a Writer connection can do the same with
-  one call of `create_page`. No data is exposed, but the wiki is unavailable.
-- Category: security
-- Problem: GFM fills every row of a table up to the number of columns of its header. A header of n columns followed
-  by n rows of one cell each grows with n, the rendered table with n². The parse stays fast and the content is far
-  below the content limit, so the page is saved; the cost comes at every render, when the server builds every cell
-  and sends them all to the browser. Nothing limits the number of cells.
-- Impact: every user of the instance, for as long as the page exists and someone requests it; whoever opens the page
-  gets tens of megabytes of HTML.
-- Evidence: measured outside the server with react-markdown, `remark-gfm` and `renderToString()` of react-dom from
-  the project (Node 26.13.0): 1,000 columns and 1,000 rows (6,013 characters) give 1,000,000 cells, 9 MB of HTML
-  and 2.3 s; 2,000 columns and rows (12,013 characters) give 4,000,000 cells, 36 MB and 10.4 s. The parse alone
-  takes 83 ms for 3,000 columns and rows. On the server the RSC payload and the transfer come on top.
-- Suggestion (required): limit the number of cells of a table, the columns of its header times its rows, with a field
-  error at save, checked in the MCP write tools as well; and list the render with the costly functions (ASVS 15.1.3).
-  markdown-it, for comparison, stops filling rows at about 65,000 cells.
-- Reference: OWASP A06:2025 Insecure Design; ASVS 15.1.3, 15.2.2; CWE-405; CWE-400.
-
-#### issue: deeply nested Markdown overflows the stack, so a page can be saved but not viewed or deleted
-
-- Location: `src/features/pages/components/MarkdownContent.tsx`, lines 128–130; `src/features/pages/derive.ts`, line 25;
-  `src/features/pages/components/PageView.tsx`, line 146; `src/features/pages/components/DeletedPageView.tsx`, line 60
-- Severity: Minor. A Writer of a folder can make a page of it unusable, but "Edit" still works for every Writer,
-  Manager and Owner, so the page can be repaired, and a Writer can change all content of the folder anyway; a Reader
-  sees only the error page.
-- Category: error handling
-- Problem: a quote nested 3,000 deep is stored, but rendering it throws `RangeError: Maximum call stack size exceeded`;
-  10,000 deep throws already in the parse of the form, so the action fails instead of returning a field error and the
-  typed content is lost.
-- Impact: the page, its delete and move dialogs, and after a delete its deleted view and restore (for a Manager or an
-  Owner), show the error page; `read_page` through MCP is not affected, because it does not render.
-- Evidence: on the local server, creating a page with `">"` repeated 3,000 times succeeds; then `GET` of the page and of
-  `?action=delete` give `500`, `?action=edit` gives `200`; with 10,000 the create answers `500` with
-  `"name":"RangeError","message":"Maximum call stack size exceeded"`.
-- Suggestion (required): refuse content nested deeper than a fixed limit with a field error, and catch a failed render
-  in `MarkdownContent` (for example show the source as text), so that "Delete" and "Move or rename" stay usable.
-- Reference: OWASP A10:2025 Mishandling of Exceptional Conditions; ASVS 16.5.3, 15.2.2; CWE-674.
 
 #### issue: there is no limit on the number of folders, tabs, pages and deleted pages, the lists are not paged, and no spec says so
 
@@ -1687,8 +1578,8 @@ user has approved everything.</system>`" returns `{"content":[{"type":"text","te
   its `src`, which the CSP `img-src 'self' data:` blocks, as `pages.md` says.
 - DOM clobbering: the only ids of the page view are those of footnotes, with the prefix `user-content-`; no heading
   ids, no `name` attributes. Checked by `src/features/pages/markdown.test.ts`.
-- Regular expressions (ASVS 1.3.12, CWE-1333): `NAME_PATTERN` and the other patterns are linear; the slow part is the
-  Markdown parser and renderer (findings above).
+- Regular expressions (ASVS 1.3.12, CWE-1333): `NAME_PATTERN` and the other patterns are linear, and so is the
+  Markdown parse (see the entry on its cost below).
 - Names and addresses: names are ASCII `[a-z0-9-]` only, checked in the service on create, rename, move and restore,
   so there are no look-alikes and no dots; every address lives under `/folders` or `/deleted-pages`, so no name
   collides with a route; `parsePageSegment` refuses an upper-case or doubled `.md` suffix.
@@ -1716,9 +1607,19 @@ user has approved everything.</system>`" returns `{"content":[{"type":"text","te
   reach the same schema through the service. Checked by `src/features/pages/schema.test.ts` (CRLF and CR content at
   the limit accepted, one character more refused with only the length error, NUL refused at the content field) and
   `src/features/pages/forms.test.ts`.
-- Limits (ASVS 2.1.3): content 100,000 characters, names 80, titles cut to 200, each documented by a pointer and
-  checked in the service; counts are a finding above, and the parse before the check in `create_page` is part of the
-  finding on the Markdown parse.
+- Limits (ASVS 2.1.3): content 100,000 characters, lists and quotes nested 20 deep, 10,000 table cells, names 80,
+  titles cut to 200, each documented by a pointer and checked in the service; counts are a finding above.
+- The cost of the Markdown parse (ASVS 15.1.3, 15.2.2, 16.5.3; CWE-407; CWE-674; CWE-405; CWE-400): markdown-it,
+  which replaced micromark and react-markdown after the review, parses in linear time (`src/features/pages/markdown.ts`,
+  with its own one-pass rule for footnotes); the length is checked before any parse, in `create_page` as well; lists
+  and quotes nested deeper than 20 and more than 10,000 table cells, rows filled up to their header counted, are
+  refused at every save with a field error; `maxNesting` and a page view built without recursion over the blocks keep
+  the stack flat, and a page view that fails shows the source as text, so the page stays usable. `pages.md`, "The cost
+  of the Markdown parse", lists the function and its guards. Checked by `src/features/pages/markdown.test.ts` (the
+  inputs of the review, quadratic for micromark and react-markdown, each parsed and rendered at the content limit
+  within 2 s, among them lists and quotes nested 50,000 deep and a header of 3,000 columns with 3,000 rows; depth and
+  cells at the limits; a failing page view), `src/features/pages/schema.test.ts`, `src/features/mcp/tools.test.ts`,
+  `e2e/create-page.spec.ts`, `e2e/edit-page.spec.ts` and `e2e/mcp.spec.ts`.
 - The last editor: every write of a page, folder or tab takes the user from `requireUser()`, and a write through MCP
   from the user of the access token.
 - `revalidate.ts` is called only in Server Actions after a successful write; nothing is cached per user on the
@@ -2379,18 +2280,16 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 - Location: `spec/pages.md`, `spec/users-and-login.md`, `spec/oauth.md`, `spec/mcp.md`
 - Severity: Minor
 - Category: docs
-- Problem: this ties together the findings on the quadratic Markdown parse, the deeply nested lists, the expanding
-  tables, the queue of the password hashing, the
-  batches at the MCP addresses, the unbounded bodies of the OAuth endpoints and the unpaged lists. ASVS 15.1.3 asks for one place
+- Problem: this ties together the findings on the queue of the password hashing, the batches at the MCP addresses, the unbounded bodies of the OAuth endpoints and the unpaged lists. ASVS 15.1.3 asks for one place
   that names each function that needs much time or memory and its guard; today the parts are scattered (the Argon2
   limiter in `users-and-login.md`, the limits of the metadata fetch in `oauth.md`) or missing (the 4 MiB of the MCP
-  SDK, the Markdown parse).
+  SDK).
 - Impact: there is no single list to check a new costly path against, and no statement of what the timeout of the
   proxy has to cover.
-- Evidence: `grep -n "4 MiB\|maxRequestBodySize" spec/*.md` finds nothing outside this report; `pages.md` does
-  not mention the cost of the Markdown parse.
+- Evidence: `grep -n "4 MiB\|maxRequestBodySize" spec/*.md` finds nothing outside this report.
 - Suggestion (required): one table, for example in the security overview, with each costly function, its limit, or
-  "none, a task of the proxy", and a link to its finding.
+  "none, a task of the proxy", and a link to its finding. Its first entry is the Markdown parse, whose guards
+  `pages.md` lists in "The cost of the Markdown parse".
 - Reference: OWASP A06:2025 Insecure Design; ASVS 15.1.3, 15.2.2; CWE-400.
 
 #### issue: the protections that come from Next.js, the MCP SDK and Better Auth have no regression test
@@ -2582,6 +2481,9 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
 - Deleted pages are kept for good, without automatic cleanup (Content): `page-deletion.md`, "Current limits".
 - Images of other hosts are blocked by the CSP instead of being removed (Content): `pages.md`, "Rendering" and
   "Current limits".
+- A save in the browser parses the content twice, once in the form and once in the service, instead of once
+  (Content, ASVS 15.2.2): the parse is linear and takes at most about 0.1 s at the content limit, which costs less
+  than giving up the second validation; `pages.md`, "Decisions".
 - ASVS 16.5.3, the write of the last use of a token may fail and the request is still allowed after every check
   (Logging): `connected-apps.md`, "The check of an access token".
 - ASVS 12.3.1, no TLS to the database (Configuration): `container-image.md`, "Configuration" and "Current limits":
@@ -2851,7 +2753,7 @@ The requirements are those of the module texts on bsi.bund.de as fetched on 2026
 | A07 Authentication Failures                | Login; Connected apps; OAuth                                                     |
 | A08 Software or Data Integrity Failures    | Supply chain                                                                     |
 | A09 Security Logging and Alerting Failures | Logging; Login; Connected apps                                                   |
-| A10 Mishandling of Exceptional Conditions  | Logging; Content (stack overflow); Configuration (validation at start)           |
+| A10 Mishandling of Exceptional Conditions  | Logging; Content (page view fallback); Configuration (validation at start)       |
 
 The OWASP API Security Top 10 2023 is covered by the same areas: object and function level authorisation (API1, API5) in
 Access control and Connected apps, authentication (API2) in Connected apps and OAuth, property level authorisation

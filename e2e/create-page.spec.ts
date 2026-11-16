@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { PLACE_FIELD } from "@/features/pages/forms";
+import { CONTENT_MAX_DEPTH } from "@/features/pages/limits";
 
 import { KNOWN_USER } from "../prisma/known-users";
 import { collectErrors } from "./support/browser";
@@ -305,6 +306,30 @@ test("a crafted request whose place is a tab of another folder shows an error an
 
   await dialog.getByRole("button", { name: "Cancel" }).click();
   await expect(page.getByLabel("Content")).toHaveValue("# Crafted\n\nContent that must not get lost");
+  expect(errors).toEqual([]);
+});
+
+test("lists nested one level too deep are refused with the error and the typed content stays in the editor", async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  const content = [
+    "# Deep lists",
+    "",
+    ...Array.from({ length: CONTENT_MAX_DEPTH + 1 }, (_, level) => `${"  ".repeat(level)}- level ${level + 1}`),
+  ].join("\n");
+
+  const dialog = await openSaveDialog(page, content);
+  await dialog.getByRole("button", { name: "Save" }).click();
+
+  await expect(dialog.getByRole("alert")).toHaveText(
+    `Lists and quotes must be nested at most ${CONTENT_MAX_DEPTH} levels deep`,
+  );
+  await expect(page).toHaveURL(NEW_PAGE);
+  expect(await getTestDb().page.count()).toBe(0);
+
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByLabel("Content")).toHaveValue(content);
   expect(errors).toEqual([]);
 });
 

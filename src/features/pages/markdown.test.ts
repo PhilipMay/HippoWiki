@@ -3,8 +3,8 @@ import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import MarkdownContent from "@/features/pages/components/MarkdownContent";
-import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
-import { isSafeAddress, parseMarkdown } from "@/features/pages/markdown";
+import { CONTENT_MAX_DEPTH, CONTENT_MAX_LENGTH, CONTENT_MAX_TABLE_CELLS } from "@/features/pages/limits";
+import { analyseMarkdown, isSafeAddress, parseMarkdown } from "@/features/pages/markdown";
 
 /** The page view of the content as HTML, as the server renders it. */
 function render(content: string): string {
@@ -213,5 +213,66 @@ describe("a page view that cannot be rendered", () => {
     expect(error).toHaveBeenCalledTimes(1);
     expect(error.mock.calls[0]?.[0]).toEqual({ err: expect.any(RangeError) });
     expect(JSON.stringify(error.mock.calls)).not.toContain("secret");
+  });
+});
+
+/** Lists nested `depth` deep, one level per line, as an author writes them. */
+function nestedLists(depth: number): string {
+  return Array.from({ length: depth }, (_, level) => `${"  ".repeat(level)}- item ${level + 1}`).join("\n");
+}
+
+/** A table with a header of `columns` columns and `rows` rows of one cell, which are filled up to the header. */
+function table(columns: number, rows: number): string {
+  return `|${" h |".repeat(columns)}\n|${" - |".repeat(columns)}\n${"| a |\n".repeat(rows)}`;
+}
+
+describe("analyseMarkdown", () => {
+  it("finds the title, no depth and no cells in flat content", () => {
+    expect(analyseMarkdown("# Title\n\nText with *emphasis*.\n\n---\n\n    code")).toEqual({
+      title: "Title",
+      depth: 0,
+      cells: 0,
+    });
+    expect(analyseMarkdown("No title")).toEqual({ title: null, depth: 0, cells: 0 });
+  });
+
+  it("counts one level for a list or quote that is not inside another", () => {
+    expect(analyseMarkdown("# T\n\n- a\n- b\n\n1. c\n\n> d").depth).toBe(1);
+  });
+
+  it("counts lists nested to the limit and one deeper", () => {
+    expect(analyseMarkdown(nestedLists(CONTENT_MAX_DEPTH)).depth).toBe(CONTENT_MAX_DEPTH);
+    expect(analyseMarkdown(nestedLists(CONTENT_MAX_DEPTH + 1)).depth).toBe(CONTENT_MAX_DEPTH + 1);
+    expect(analyseMarkdown(`${"1. ".repeat(CONTENT_MAX_DEPTH + 1)}a`).depth).toBe(CONTENT_MAX_DEPTH + 1);
+  });
+
+  it("counts quotes nested to the limit and one deeper", () => {
+    expect(analyseMarkdown(`${">".repeat(CONTENT_MAX_DEPTH)} a`).depth).toBe(CONTENT_MAX_DEPTH);
+    expect(analyseMarkdown(`${">".repeat(CONTENT_MAX_DEPTH + 1)} a`).depth).toBe(CONTENT_MAX_DEPTH + 1);
+  });
+
+  it("counts lists and quotes together", () => {
+    expect(analyseMarkdown(`${"> - ".repeat(CONTENT_MAX_DEPTH / 2)}a`).depth).toBe(CONTENT_MAX_DEPTH);
+    expect(analyseMarkdown(`${"- > ".repeat(CONTENT_MAX_DEPTH / 2)}- a`).depth).toBe(CONTENT_MAX_DEPTH + 1);
+  });
+
+  it("still counts past the limit for content nested 50,000 deep", () => {
+    expect(analyseMarkdown(`${"- ".repeat(49_999)}a`).depth).toBeGreaterThan(CONTENT_MAX_DEPTH);
+    expect(analyseMarkdown(`${">".repeat(50_000)} a`).depth).toBeGreaterThan(CONTENT_MAX_DEPTH);
+    expect(analyseMarkdown(repeated("- * ")).depth).toBeGreaterThan(CONTENT_MAX_DEPTH);
+  });
+
+  it("counts the cells of all tables, header and filled-up rows included", () => {
+    expect(analyseMarkdown("| a | b |\n| - | - |\n| c | d |\n| e |").cells).toBe(6);
+    expect(analyseMarkdown(`${table(2, 1)}\n${table(3, 2)}`).cells).toBe(2 * 2 + 3 * 3);
+    // At the limit: 100 columns in the header and 99 rows filled up to 100 cells.
+    expect(analyseMarkdown(table(100, 99)).cells).toBe(CONTENT_MAX_TABLE_CELLS);
+    expect(analyseMarkdown(`${table(100, 99)}\n${table(1, 0)}`).cells).toBe(CONTENT_MAX_TABLE_CELLS + 1);
+  });
+
+  it("counts past the limit for a table header of 3,000 columns with 3,000 rows of one cell", () => {
+    expect(
+      analyseMarkdown(SLOW_INPUTS["a table header of 3,000 columns with 3,000 rows of one cell"] ?? "").cells,
+    ).toBeGreaterThan(CONTENT_MAX_TABLE_CELLS);
   });
 });
