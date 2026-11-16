@@ -68,7 +68,7 @@ These choices hold for all steps; the wrap-up moves the ones that last into the 
 
 - [x] Page versions
 - [x] Refuse outdated content saves
-- [ ] Refuse outdated moves and renames
+- [x] Refuse outdated moves and renames
 - [ ] Refuse outdated deletes
 - [ ] Wrap-up
 

@@ -109,20 +109,21 @@ export type PageMoveOrRenameFormAction = (
 ) => Promise<PageMoveOrRenameFormState>;
 
 /**
- * Validates the name and reads the place of a submitted "Move or rename page" form. A missing name counts as empty;
- * an empty or missing place is the folder itself, a malformed tab id or a file is no place. Other fields, the content
- * in particular, are ignored, so no content rule can block a save. On failure, returns the errors of the name field
- * and whether the place is invalid; both are reported together.
+ * Validates the name and reads the place and the version of the page of a submitted "Move or rename page" form. A
+ * missing name counts as empty; an empty or missing place is the folder itself, a malformed tab id or a file is no
+ * place; a missing or malformed version is `null`, which is no error of the form. Other fields, the content in
+ * particular, are ignored, so no content rule can block a save. On failure, returns the errors of the name field and
+ * whether the place is invalid; both are reported together.
  */
 export function parsePageMoveOrRenameFormData(
   formData: FormData,
 ):
-  | { success: true; data: PageMoveOrRenameInput }
+  | { success: true; data: PageMoveOrRenameInput & { version: number | null } }
   | { success: false; fieldErrors: NameFieldErrors; placeInvalid: boolean } {
   const name = pageNameInputSchema.safeParse({ name: formData.get("name") ?? "" });
   const place = parsePlace(formData);
   if (name.success && place.success) {
-    return { success: true, data: { name: name.data.name, tabId: place.tabId } };
+    return { success: true, data: { name: name.data.name, tabId: place.tabId, version: parseVersion(formData) } };
   }
   return {
     success: false,

@@ -124,7 +124,7 @@ export type CreatePageError =
   NotAllowed | FolderNotFound | TabNotFound | InvalidInput<PageFieldErrors> | NameTaken | Failed;
 export type UpdatePageContentError = NotAllowed | PageNotFound | PageChanged | InvalidInput<PageFieldErrors> | Failed;
 export type MoveOrRenamePageError =
-  NotAllowed | PageNotFound | TabNotFound | InvalidInput<NameFieldErrors> | NameTaken | Failed;
+  NotAllowed | PageNotFound | PageChanged | TabNotFound | InvalidInput<NameFieldErrors> | NameTaken | Failed;
 export type DeletePageError = NotAllowed | PageNotFound | Failed;
 export type RestorePageError =
   NotAllowed | PageNotFound | TabNotFound | InvalidInput<NameFieldErrors> | NameTaken | Failed;
@@ -492,12 +492,14 @@ export async function updatePageContent(
  * returns the page as stored. The
  * page is placed in the tab with the id `tabId` of its folder or, with `null`, directly in the folder. The content is
  * neither validated nor touched, so the content limit never blocks a move. A tab of another folder is refused by the
- * composite foreign key and counts as missing, like a deleted page.
+ * composite foreign key and counts as missing, like a deleted page. The write is based on the given version of the
+ * page: if the page has another one, or no valid version is given, nothing is stored and the result is
+ * `page-changed`, also when the name is taken at the target.
  */
 export async function moveOrRenamePage(
   actor: BrowserActor,
   id: string,
-  input: { name: string; tabId: string | null },
+  input: { name: string; tabId: string | null; version: number | null },
 ): Promise<Result<StoredPage, MoveOrRenamePageError>> {
   if (isAdmin(actor)) return notAllowed(actor, "page not moved or renamed: the actor is an admin");
   const lastEditedById = editorIdOf(actor);
@@ -517,14 +519,18 @@ export async function moveOrRenamePage(
   const parsed = pageNameInputSchema.safeParse({ name: input.name });
   if (!parsed.success) return invalidInput(parsed.error);
   const { name } = parsed.data;
+  const version = parsePageVersion(input.version);
 
   let page: StoredPage | null;
   try {
+    if (version === null) return await refusedWrite(pageId, input.version, "page to move or rename");
+    // A deleted page, and one with another version than the given one, match no row; then no name is checked either.
     const { count } = await getDb().page.updateMany({
-      where: { id: pageId, deletedAt: null },
+      where: { id: pageId, deletedAt: null, version },
       data: { name, tabId, lastEditedById, version: { increment: 1 } },
     });
-    page = count === 0 ? null : await findStoredPage(pageId);
+    if (count === 0) return await refusedWrite(pageId, version, "page to move or rename");
+    page = await findStoredPage(pageId);
   } catch (err) {
     // Before the tab key: a missing actor must not be reported as a missing tab.
     if (isForeignKeyViolation(err, LAST_EDITOR)) return unknownActor(err, actor);

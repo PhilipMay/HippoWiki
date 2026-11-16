@@ -1,9 +1,10 @@
 import type { Page } from "@playwright/test";
 
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
-import { PLACE_FIELD } from "@/features/pages/forms";
+import { PLACE_FIELD, VERSION_FIELD } from "@/features/pages/forms";
 
 import { KNOWN_USER } from "../prisma/known-users";
+import { logInElsewhere } from "./support/auth";
 import { collectErrors } from "./support/browser";
 import { createFolder, createPage, createTab, createUser, getTestDb, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
@@ -393,6 +394,7 @@ test("a crafted move into a tab of another folder is refused", async ({ page }) 
   await expectNotFound(page, "/folders/other/foreign/kept.md");
 });
 
+// R11: a page deleted after the dialog was opened is refused as before, whatever its version.
 test("saving a page that was deleted in the meantime shows an error in the dialog", async ({ page }) => {
   const created = await createPage({ folder: handbook, name: "soon-gone", title: "Soon gone" });
 
@@ -460,4 +462,110 @@ test("moving or renaming a page makes the logged-in user its last editor in the 
   await expect(items).toHaveText([/^Kept page/, /^Moved page/]);
   await expect(items).toHaveText([by("bob"), by(USER)]);
   expect(errors).toEqual([]);
+});
+
+test.describe("a page changed after the dialog was opened", () => {
+  /** The folder of these tests, with the logged-in user and bob as Writers, and its tab. */
+  let team: Awaited<ReturnType<typeof createFolder>>;
+  let bob: Awaited<ReturnType<typeof createUser>>;
+
+  test.beforeEach(async () => {
+    bob = await createUser({ name: "bob", mustChangePassword: false });
+    team = await createFolder({
+      name: "team",
+      roles: [
+        { user: { id: KNOWN_USER.id }, role: "writer" },
+        { user: bob, role: "writer" },
+      ],
+    });
+    await createTab({ folder: team, name: "guides" });
+  });
+
+  test("refuses the move after a content save and shows the stored name and place with who changed it and when", async ({
+    page,
+    browser,
+  }) => {
+    const errors = collectErrors(page);
+    const plan = await createPage({ folder: team, name: "plan", content: "# Plan\n\nFirst draft" });
+    const other = await logInElsewhere(browser, "bob");
+
+    // R2: the dialog is open while bob saves the content.
+    await page.goto("/folders/team/plan.md?action=move-or-rename");
+    await other.page.goto("/folders/team/plan.md?action=edit");
+    await other.page.getByLabel("Content").fill("# Plan\n\nBob's version");
+    await other.page.getByRole("button", { name: "Save" }).click();
+    await expect(other.page).toHaveURL("/folders/team/plan.md");
+    const time = (await other.page.getByRole("article").locator("time").textContent()) ?? "";
+
+    const dialog = dialogOf(page);
+    await dialog.getByLabel("Name").fill("new-plan");
+    await dialog.getByRole("radio", { name: "Tab guides" }).check();
+    await dialog.getByRole("button", { name: "Save" }).click();
+
+    // R8, R9: the dialog stays open with the name and place as stored and the message.
+    await expect(page).toHaveURL("/folders/team/plan.md?action=move-or-rename&notice=changed");
+    await expect(dialog.getByRole("alert")).toHaveText(`This page was changed by bob at ${time} after you opened it.`);
+    await expect(dialog.getByLabel("Name")).toHaveValue("plan");
+    await expect(dialog.getByRole("radio", { name: "Directly in the folder" })).toBeChecked();
+    expect(await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).toMatchObject({
+      name: "plan",
+      tabId: null,
+    });
+
+    // Saving the dialog again moves the page.
+    await dialog.getByLabel("Name").fill("new-plan");
+    await dialog.getByRole("radio", { name: "Tab guides" }).check();
+    await dialog.getByRole("button", { name: "Save" }).click();
+    await expect(page).toHaveURL("/folders/team/guides/new-plan.md");
+    expect(errors).toEqual([]);
+    await other.context.close();
+  });
+
+  // R12: the dialog is shown again at the page's new address, with the new name.
+  test("refuses the rename after a rename by another user and shows the dialog at the new address", async ({
+    page,
+    browser,
+  }) => {
+    const plan = await createPage({ folder: team, name: "plan" });
+    const other = await logInElsewhere(browser, "bob");
+
+    await page.goto("/folders/team/plan.md?action=move-or-rename");
+    await other.page.goto("/folders/team/plan.md?action=move-or-rename");
+    await dialogOf(other.page).getByLabel("Name").fill("release-plan");
+    await dialogOf(other.page).getByRole("button", { name: "Save" }).click();
+    await expect(other.page).toHaveURL("/folders/team/release-plan.md");
+
+    const dialog = dialogOf(page);
+    await dialog.getByLabel("Name").fill("my-plan");
+    await dialog.getByRole("button", { name: "Save" }).click();
+
+    await expect(page).toHaveURL("/folders/team/release-plan.md?action=move-or-rename&notice=changed");
+    await expect(dialog.getByLabel("Name")).toHaveValue("release-plan");
+    await expect(dialog.getByRole("alert")).toHaveText(/^This page was changed by bob at .+ after you opened it\.$/);
+    expect((await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).name).toBe("release-plan");
+    await other.context.close();
+  });
+
+  // R14: a dialog opened before the feature submits no version; its save is refused once.
+  test("refuses a save without a version and shows the stored name and place with the message", async ({ page }) => {
+    const plan = await createPage({ folder: team, name: "plan", editor: bob });
+
+    await page.goto("/folders/team/plan.md?action=move-or-rename");
+    const dialog = dialogOf(page);
+    await dialog.getByLabel("Name").fill("new-plan");
+    await dialog.getByRole("radio", { name: "Tab guides" }).check();
+    const save = dialog.getByRole("button", { name: "Save" });
+    await save.evaluate(
+      (button: HTMLButtonElement, field) =>
+        button.form?.addEventListener("formdata", (event) => event.formData.delete(field)),
+      VERSION_FIELD,
+    );
+    await save.click();
+
+    await expect(page).toHaveURL("/folders/team/plan.md?action=move-or-rename&notice=changed");
+    await expect(dialog.getByLabel("Name")).toHaveValue("plan");
+    await expect(dialog.getByRole("radio", { name: "Directly in the folder" })).toBeChecked();
+    await expect(dialog.getByRole("alert")).toHaveText(/^This page was changed by bob at .+ after you opened it\.$/);
+    expect(await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).toStrictEqual(plan);
+  });
 });

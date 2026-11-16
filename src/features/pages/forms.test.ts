@@ -243,25 +243,47 @@ describe("parsePageMoveOrRenameFormData", () => {
   it("returns the name and the tab id of the place", () => {
     expect(parsePageMoveOrRenameFormData(formData({ name: "release-notes", place: tabId }))).toEqual({
       success: true,
-      data: { name: "release-notes", tabId },
+      data: { name: "release-notes", tabId, version: null },
     });
   });
 
   it("returns no tab for the folder itself: an empty or missing place", () => {
     expect(parsePageMoveOrRenameFormData(formData({ name: "release-notes", place: "" }))).toEqual({
       success: true,
-      data: { name: "release-notes", tabId: null },
+      data: { name: "release-notes", tabId: null, version: null },
     });
     expect(parsePageMoveOrRenameFormData(formData({ name: "release-notes" }))).toEqual({
       success: true,
-      data: { name: "release-notes", tabId: null },
+      data: { name: "release-notes", tabId: null, version: null },
     });
+  });
+
+  it("reads the version of the page", () => {
+    const fields = { name: "release-notes", place: tabId, [VERSION_FIELD]: "5" };
+    expect(parsePageMoveOrRenameFormData(formData(fields))).toEqual({
+      success: true,
+      data: { name: "release-notes", tabId, version: 5 },
+    });
+  });
+
+  // No version is no error of the form: the service refuses the move, so that the stored page is shown (R14).
+  it.each(["", "0", "1.5", "abc"])("gives no version and no field error for the version %j", (version) => {
+    const fields = { name: "release-notes", place: tabId, [VERSION_FIELD]: version };
+    expect(parsePageMoveOrRenameFormData(formData(fields))).toEqual({
+      success: true,
+      data: { name: "release-notes", tabId, version: null },
+    });
+  });
+
+  it("gives no version for a file", () => {
+    const fields = { name: "release-notes", place: tabId, [VERSION_FIELD]: new Blob(["5"]) };
+    expect(parsePageMoveOrRenameFormData(formData(fields))).toMatchObject({ success: true, data: { version: null } });
   });
 
   it("trims the name", () => {
     expect(parsePageMoveOrRenameFormData(formData({ name: " release-notes ", place: tabId }))).toEqual({
       success: true,
-      data: { name: "release-notes", tabId },
+      data: { name: "release-notes", tabId, version: null },
     });
   });
 
@@ -321,7 +343,7 @@ describe("parsePageMoveOrRenameFormData", () => {
     };
     expect(parsePageMoveOrRenameFormData(formData(fields))).toEqual({
       success: true,
-      data: { name: "release-notes", tabId },
+      data: { name: "release-notes", tabId, version: null },
     });
   });
 });

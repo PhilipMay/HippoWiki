@@ -663,12 +663,14 @@ describe("updatePageContent", () => {
 });
 
 describe("moveOrRenamePage", () => {
-  const VALID = { name: " new-name ", tabId: TAB_ID };
+  const VERSION = 4;
+  const VALID = { name: " new-name ", tabId: TAB_ID, version: VERSION };
+  const STORED = { id: PAGE_ID, name: "stored-name", folder: { name: "stored-folder" }, tab: null };
 
   it.each([
     ["valid input", VALID],
-    ["the folder as place", { name: "new-name", tabId: null }],
-    ["invalid input", { name: "", tabId: MALFORMED_ID }],
+    ["the folder as place", { name: "new-name", tabId: null, version: VERSION }],
+    ["invalid input", { name: "", tabId: MALFORMED_ID, version: VERSION }],
   ])("returns page-not-found for a malformed page id, with %s", async (_name, input) => {
     await expect(moveOrRenamePage(ACTOR, MALFORMED_ID, input)).resolves.toEqual(PAGE_NOT_FOUND);
     expectDatabaseUntouched();
@@ -677,14 +679,20 @@ describe("moveOrRenamePage", () => {
   it.each([MALFORMED_ID, "guides", " ", ""])(
     "returns tab-not-found for the malformed tab id %j without writing anything",
     async (tabId) => {
-      await expect(moveOrRenamePage(ACTOR, PAGE_ID, { name: "new-name", tabId })).resolves.toEqual(TAB_NOT_FOUND);
-      await expect(moveOrRenamePage(ACTOR, PAGE_ID, { name: "", tabId })).resolves.toEqual(TAB_NOT_FOUND);
+      await expect(moveOrRenamePage(ACTOR, PAGE_ID, { name: "new-name", tabId, version: VERSION })).resolves.toEqual(
+        TAB_NOT_FOUND,
+      );
+      await expect(moveOrRenamePage(ACTOR, PAGE_ID, { name: "", tabId, version: VERSION })).resolves.toEqual(
+        TAB_NOT_FOUND,
+      );
       expectDatabaseUntouched();
     },
   );
 
   it("returns the field errors of an invalid name without writing anything", async () => {
-    await expect(moveOrRenamePage(ACTOR, PAGE_ID, { name: "", tabId: TAB_ID })).resolves.toEqual(NAME_REQUIRED);
+    await expect(moveOrRenamePage(ACTOR, PAGE_ID, { name: "", tabId: TAB_ID, version: VERSION })).resolves.toEqual(
+      NAME_REQUIRED,
+    );
     expectDatabaseUntouched();
   });
 
@@ -699,7 +707,7 @@ describe("moveOrRenamePage", () => {
 
     expect(mocks.updateMany).toHaveBeenCalledTimes(1);
     expect(mocks.updateMany).toHaveBeenCalledWith({
-      where: { id: PAGE_ID, deletedAt: null },
+      where: { id: PAGE_ID, deletedAt: null, version: VERSION },
       data: { name: "new-name", tabId: TAB_ID, lastEditedById: ACTOR_ID, version: { increment: 1 } },
     });
     expect(mocks.findUnique).toHaveBeenCalledWith({
@@ -713,10 +721,10 @@ describe("moveOrRenamePage", () => {
     mocks.updateMany.mockResolvedValue({ count: 1 });
     mocks.findUnique.mockResolvedValue({ id: PAGE_ID, name: "n", folder: { name: "f" }, tab: null });
 
-    await moveOrRenamePage(ACTOR, PAGE_ID, { name: "new-name", tabId: null });
+    await moveOrRenamePage(ACTOR, PAGE_ID, { name: "new-name", tabId: null, version: VERSION });
 
     expect(mocks.updateMany).toHaveBeenCalledWith({
-      where: { id: PAGE_ID, deletedAt: null },
+      where: { id: PAGE_ID, deletedAt: null, version: VERSION },
       data: { name: "new-name", tabId: null, lastEditedById: ACTOR_ID, version: { increment: 1 } },
     });
   });
@@ -745,14 +753,49 @@ describe("moveOrRenamePage", () => {
     expect(mocks.error).not.toHaveBeenCalled();
   });
 
-  // The update only matches a page that is not deleted, so a deleted page counts as missing as well.
+  // The update matches neither a deleted page nor one with another version; the page as stored tells them apart.
   it("returns page-not-found for a page that no longer exists or is deleted", async () => {
     mocks.updateMany.mockResolvedValue({ count: 0 });
+    mocks.findUnique.mockResolvedValue(null);
 
     await expect(moveOrRenamePage(ACTOR, PAGE_ID, VALID)).resolves.toEqual(PAGE_NOT_FOUND);
 
-    expect(mocks.findUnique).not.toHaveBeenCalled();
     expect(mocks.warn).toHaveBeenCalledWith({ pageId: PAGE_ID }, "page to move or rename not found");
+  });
+
+  // A stale version matches no row, so a name taken at the target is never checked: the result is page-changed.
+  it("returns page-changed with the page as stored when the update matches no page but the page is stored", async () => {
+    mocks.updateMany.mockResolvedValue({ count: 0 });
+    mocks.findUnique.mockResolvedValue(STORED);
+
+    await expect(moveOrRenamePage(ACTOR, PAGE_ID, VALID)).resolves.toEqual({
+      ok: false,
+      error: { code: "page-changed", page: STORED },
+    });
+
+    expect(mocks.warn).toHaveBeenCalledWith(
+      { pageId: PAGE_ID, version: VERSION },
+      "page to move or rename changed after the version the write is based on",
+    );
+    expect(mocks.info).not.toHaveBeenCalled();
+  });
+
+  it.each([null, 0, -1, 1.5])("writes nothing and returns page-changed for the version %j", async (version) => {
+    mocks.findUnique.mockResolvedValue(STORED);
+
+    await expect(moveOrRenamePage(ACTOR, PAGE_ID, { ...VALID, version })).resolves.toEqual({
+      ok: false,
+      error: { code: "page-changed", page: STORED },
+    });
+
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("returns page-not-found for a missing version of a page that no longer exists", async () => {
+    mocks.findUnique.mockResolvedValue(null);
+
+    await expect(moveOrRenamePage(ACTOR, PAGE_ID, { ...VALID, version: null })).resolves.toEqual(PAGE_NOT_FOUND);
+    expect(mocks.updateMany).not.toHaveBeenCalled();
   });
 
   it("returns page-not-found for a page that disappears right after the update", async () => {
@@ -960,7 +1003,7 @@ const writes = [
   ],
   [
     "moveOrRenamePage",
-    (actor: BrowserActor) => moveOrRenamePage(actor, PAGE_ID, { name: "new-name", tabId: TAB_ID }),
+    (actor: BrowserActor) => moveOrRenamePage(actor, PAGE_ID, { name: "new-name", tabId: TAB_ID, version: 1 }),
     mocks.updateMany,
   ],
   ["deletePage", (actor: BrowserActor) => deletePage(actor, PAGE_ID), mocks.updateMany],
@@ -1046,7 +1089,7 @@ describe("an admin", () => {
     const results = [
       await createPage(ADMIN, MALFORMED_ID, { name: "", content: "", tabId: MALFORMED_ID }),
       await updatePageContent(ADMIN, MALFORMED_ID, { content: "", version: null }),
-      await moveOrRenamePage(ADMIN, MALFORMED_ID, { name: "", tabId: MALFORMED_ID }),
+      await moveOrRenamePage(ADMIN, MALFORMED_ID, { name: "", tabId: MALFORMED_ID, version: null }),
       await deletePage(ADMIN, MALFORMED_ID),
       await restorePage(ADMIN, MALFORMED_ID, { name: "", tabId: MALFORMED_ID }),
       await deletePage({ ...ADMIN, id: MALFORMED_ID }, PAGE_ID),
@@ -1129,7 +1172,7 @@ describe("the role of the actor", () => {
     ],
     [
       "moveOrRenamePage",
-      () => moveOrRenamePage(ACTOR, PAGE_ID, { name: "new-name", tabId: TAB_ID }),
+      () => moveOrRenamePage(ACTOR, PAGE_ID, { name: "new-name", tabId: TAB_ID, version: 1 }),
       { pages: { some: { id: PAGE_ID } } },
       { pageId: PAGE_ID },
       "page not moved or renamed: the actor has no role on the folder",
@@ -1191,7 +1234,7 @@ describe("the lowest role of each function", () => {
     ],
     [
       "moveOrRenamePage",
-      () => moveOrRenamePage(ACTOR, PAGE_ID, { name: "new-name", tabId: null }),
+      () => moveOrRenamePage(ACTOR, PAGE_ID, { name: "new-name", tabId: null, version: 1 }),
       "writer",
       { pageId: PAGE_ID },
       "page not moved or renamed",

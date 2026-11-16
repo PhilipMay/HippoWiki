@@ -13,7 +13,7 @@ import { startTransition, useActionState, useEffect, useId, useRef, useState, ty
 
 import Link from "@/components/Link";
 import PageNameAndPlaceFields, { FOLDER_TARGET } from "@/features/pages/components/PageNameAndPlaceFields";
-import type { PageMoveOrRenameFormAction } from "@/features/pages/forms";
+import { VERSION_FIELD, type PageMoveOrRenameFormAction } from "@/features/pages/forms";
 import { focusOnEntered } from "@/lib/focus";
 import { useHydrated } from "@/lib/hydration";
 
@@ -28,6 +28,10 @@ type MoveOrRenamePageDialogProps = {
   currentTabId: string | null;
   /** The current name of the page, which the name field starts with. */
   initialName: string;
+  /** The version of the page the dialog was rendered with, which the save is based on. */
+  version: number;
+  /** The message that the page was changed after the dialog was opened, after a refused save. */
+  changedMessage?: string;
   /** The page address without the action, where closing the dialog leads. */
   closeHref: string;
 };
@@ -43,6 +47,8 @@ export default function MoveOrRenamePageDialog({
   tabs,
   currentTabId,
   initialName,
+  version,
+  changedMessage,
   closeHref,
 }: MoveOrRenamePageDialogProps) {
   const [state, formAction, pending] = useActionState(action, {});
@@ -95,7 +101,9 @@ export default function MoveOrRenamePageDialog({
       <DialogContent>
         {/* `noValidate`: the server validates, and its errors are shown at the field. */}
         <Box component="form" id={formId} onSubmit={submit} noValidate>
+          <input type="hidden" name={VERSION_FIELD} value={version} />
           <Stack spacing={3} sx={{ pt: 1 }}>
+            {changedMessage && <Alert severity="warning">{changedMessage}</Alert>}
             {state.message && <Alert severity="error">{state.message}</Alert>}
             <PageNameAndPlaceFields
               folderName={folderName}

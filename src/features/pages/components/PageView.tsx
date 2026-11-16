@@ -147,11 +147,14 @@ export default async function PageView({ page, action, notice }: PageViewProps) 
       </Paper>
       {action === "move-or-rename" && (
         <MoveOrRenamePageDialog
+          key={formKey}
           action={moveOrRenamePage.bind(null, page.id)}
           folderName={folderName}
           tabs={tabs}
           currentTabId={page.tab?.id ?? null}
           initialName={page.name}
+          version={page.version}
+          changedMessage={message}
           closeHref={address}
         />
       )}

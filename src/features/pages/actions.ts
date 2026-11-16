@@ -150,7 +150,8 @@ export async function updatePageContent(
  * placed in the chosen tab of its folder or, without one, directly in the folder. The content is neither validated nor
  * touched, so the content limit never blocks a save. Returns the errors to show in the form if the name is invalid or
  * taken at the target, the tab does not exist or belongs to another folder, the page no longer exists or is deleted,
- * or it cannot be stored. Bind the id with `moveOrRenamePage.bind(null, id)`.
+ * or it cannot be stored. If the page was changed after the submitted version, or the form submits none, the dialog is
+ * shown again with the page as stored and the notice. Bind the id with `moveOrRenamePage.bind(null, id)`.
  */
 export async function moveOrRenamePage(
   id: string,
@@ -178,6 +179,8 @@ export async function moveOrRenamePage(
         notFound();
       case "page-not-found":
         return { message: PAGE_GONE_MESSAGE };
+      case "page-changed":
+        showChanged(result.error.page, "move-or-rename");
       case "tab-not-found":
         return { message: TAB_GONE_MESSAGE };
       case "invalid-input":

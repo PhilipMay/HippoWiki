@@ -405,7 +405,7 @@ describe("updatePageContent", () => {
     const page = await createPage({ folder, name: "intro", content: "# Old" });
 
     await expect(
-      pageService.moveOrRenamePage(inBrowser(bob), page.id, { name: "start", tabId: null }),
+      pageService.moveOrRenamePage(inBrowser(bob), page.id, { name: "start", tabId: null, version: 1 }),
     ).resolves.toMatchObject({ ok: true });
     await expect(
       pageService.updatePageContent(actor, page.id, { content: "# New", version: 1 }),
@@ -434,18 +434,20 @@ describe("moveOrRenamePage", () => {
     const tab = await createTab({ folder, name: "guides" });
     const page = await createPage({ folder, name: "intro", content: "# Intro" });
 
-    await expect(pageService.moveOrRenamePage(actor, page.id, { name: "intro", tabId: tab.id })).resolves.toStrictEqual(
-      {
-        ok: true,
-        value: { id: page.id, name: "intro", folder: { name: "docs" }, tab: { name: "guides" } },
-      },
-    );
+    await expect(
+      pageService.moveOrRenamePage(actor, page.id, { name: "intro", tabId: tab.id, version: 1 }),
+    ).resolves.toStrictEqual({
+      ok: true,
+      value: { id: page.id, name: "intro", folder: { name: "docs" }, tab: { name: "guides" } },
+    });
     expect(await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } })).toMatchObject({
       name: "intro",
       tabId: tab.id,
     });
 
-    await expect(pageService.moveOrRenamePage(actor, page.id, { name: "start", tabId: null })).resolves.toStrictEqual({
+    await expect(
+      pageService.moveOrRenamePage(actor, page.id, { name: "start", tabId: null, version: 2 }),
+    ).resolves.toStrictEqual({
       ok: true,
       value: { id: page.id, name: "start", folder: { name: "docs" }, tab: null },
     });
@@ -465,11 +467,11 @@ describe("moveOrRenamePage", () => {
     const page = await createPage({ folder, name: "intro" });
     const foreignTab = await createTab();
 
-    await expect(pageService.moveOrRenamePage(actor, page.id, { name: "intro", tabId: tab.id })).resolves.toEqual(
-      NAME_TAKEN,
-    );
     await expect(
-      pageService.moveOrRenamePage(actor, page.id, { name: "intro", tabId: foreignTab.id }),
+      pageService.moveOrRenamePage(actor, page.id, { name: "intro", tabId: tab.id, version: 1 }),
+    ).resolves.toEqual(NAME_TAKEN);
+    await expect(
+      pageService.moveOrRenamePage(actor, page.id, { name: "intro", tabId: foreignTab.id, version: 1 }),
     ).resolves.toEqual(TAB_NOT_FOUND);
     expect((await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } })).tabId).toBeNull();
   });
@@ -477,9 +479,78 @@ describe("moveOrRenamePage", () => {
   it("returns page-not-found for a deleted page", async () => {
     const page = await createPage({ deletedAt: new Date() });
 
-    await expect(pageService.moveOrRenamePage(actor, page.id, { name: "intro", tabId: null })).resolves.toEqual(
-      PAGE_NOT_FOUND,
-    );
+    await expect(
+      pageService.moveOrRenamePage(actor, page.id, { name: "intro", tabId: null, version: 1 }),
+    ).resolves.toEqual(PAGE_NOT_FOUND);
+  });
+
+  it("moves the page only if it has the version given", async () => {
+    const folder = await createFolder({ name: "docs" });
+    const page = await createPage({ folder, name: "intro", version: 3 });
+
+    await expect(
+      pageService.moveOrRenamePage(actor, page.id, { name: "start", tabId: null, version: 3 }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } })).toMatchObject({
+      name: "start",
+      version: 4,
+    });
+  });
+
+  // R2, R6, R14: a move based on an older version, or on none, changes nothing.
+  it.each([
+    ["an older version", 2],
+    ["no version", null],
+    ["a malformed version", -3],
+  ])("refuses a move with %s as page-changed and changes nothing", async (_name, version) => {
+    const folder = await createFolder({ name: "docs" });
+    const tab = await createTab({ folder, name: "guides" });
+    const page = await createPage({ folder, name: "intro", version: 3 });
+
+    await expect(
+      pageService.moveOrRenamePage(actor, page.id, { name: "start", tabId: tab.id, version }),
+    ).resolves.toStrictEqual({
+      ok: false,
+      error: { code: "page-changed", page: { id: page.id, name: "intro", folder: { name: "docs" }, tab: null } },
+    });
+    expect(await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } })).toStrictEqual(page);
+  });
+
+  // R7: a content save counts as a change.
+  it("refuses a move based on the version from before a content save", async () => {
+    const bob = await createUser({ name: "bob" });
+    const folder = await createFolder({ name: "docs", roles: owners(user, bob) });
+    const page = await createPage({ folder, name: "intro" });
+
+    await expect(
+      pageService.updatePageContent(inBrowser(bob), page.id, { content: "# New", version: 1 }),
+    ).resolves.toMatchObject({ ok: true });
+    await expect(
+      pageService.moveOrRenamePage(actor, page.id, { name: "start", tabId: null, version: 1 }),
+    ).resolves.toMatchObject({ ok: false, error: { code: "page-changed", page: { name: "intro" } } });
+    expect((await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } })).name).toBe("intro");
+  });
+
+  it("gives page-not-found for a page deleted after the version given", async () => {
+    const folder = await createFolder({ name: "docs" });
+    const page = await createPage({ folder, name: "intro" });
+    await pageService.deletePage(actor, page.id);
+
+    await expect(
+      pageService.moveOrRenamePage(actor, page.id, { name: "start", tabId: null, version: 1 }),
+    ).resolves.toEqual(PAGE_NOT_FOUND);
+  });
+
+  // The older version matches no row, so the taken name is never checked.
+  it("gives page-changed, not name-taken, for an older version and a taken name", async () => {
+    const folder = await createFolder({ name: "docs" });
+    await createPage({ folder, name: "taken" });
+    const page = await createPage({ folder, name: "intro", version: 3 });
+
+    await expect(
+      pageService.moveOrRenamePage(actor, page.id, { name: "taken", tabId: null, version: 2 }),
+    ).resolves.toMatchObject({ ok: false, error: { code: "page-changed" } });
+    expect(await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } })).toStrictEqual(page);
   });
 });
 
@@ -593,7 +664,7 @@ describe("the last editor of pages", () => {
     await pageService.updatePageContent(inBrowser(bob), id, { content: "# New", version: 1 });
     expect(await lastEditorOf(id)).toBe(bob.id);
 
-    await pageService.moveOrRenamePage(inBrowser(carol), id, { name: "start", tabId: tab.id });
+    await pageService.moveOrRenamePage(inBrowser(carol), id, { name: "start", tabId: tab.id, version: 2 });
     expect(await lastEditorOf(id)).toBe(carol.id);
 
     // For a deleted page, the last editor is the user who deleted it.
@@ -613,12 +684,12 @@ describe("the last editor of pages", () => {
     const deleted = await createPage({ folder, name: "old", editor: user, deletedAt: new Date() });
 
     await pageService.updatePageContent(inBrowser(bob), page.id, { content: "No title", version: 1 });
-    await pageService.moveOrRenamePage(inBrowser(bob), page.id, { name: "taken", tabId: null });
-    await pageService.moveOrRenamePage(inBrowser(bob), page.id, { name: "start", tabId: foreignTab.id });
-    await pageService.moveOrRenamePage(inBrowser(bob), page.id, { name: "Not A Name", tabId: null });
+    await pageService.moveOrRenamePage(inBrowser(bob), page.id, { name: "taken", tabId: null, version: 1 });
+    await pageService.moveOrRenamePage(inBrowser(bob), page.id, { name: "start", tabId: foreignTab.id, version: 1 });
+    await pageService.moveOrRenamePage(inBrowser(bob), page.id, { name: "Not A Name", tabId: null, version: 1 });
     // A deleted page is missing for every write but a restore, and a page that is not deleted for a restore.
     await pageService.updatePageContent(inBrowser(bob), deleted.id, { content: "# New", version: 1 });
-    await pageService.moveOrRenamePage(inBrowser(bob), deleted.id, { name: "start", tabId: null });
+    await pageService.moveOrRenamePage(inBrowser(bob), deleted.id, { name: "start", tabId: null, version: 1 });
     await pageService.deletePage(inBrowser(bob), deleted.id);
     await pageService.restorePage(inBrowser(bob), page.id, { name: "start", tabId: null });
     await pageService.restorePage(inBrowser(bob), deleted.id, { name: "taken", tabId: null });
@@ -639,8 +710,8 @@ describe("the last editor of pages", () => {
     });
     if (!created.ok) throw new Error("expected the page to be created");
     const { id } = created.value;
-    await pageService.moveOrRenamePage(inBrowser(bob), id, { name: "intro", tabId: null });
-    await pageService.moveOrRenamePage(inBrowser(bob), id, { name: "intro", tabId: tab.id });
+    await pageService.moveOrRenamePage(inBrowser(bob), id, { name: "intro", tabId: null, version: 1 });
+    await pageService.moveOrRenamePage(inBrowser(bob), id, { name: "intro", tabId: tab.id, version: 2 });
     await pageService.deletePage(inBrowser(bob), id);
     await pageService.restorePage(inBrowser(bob), id, { name: "intro", tabId: tab.id });
 
@@ -666,9 +737,9 @@ describe("the last editor of pages", () => {
     await expect(
       pageService.updatePageContent(UNKNOWN_ACTOR, page.id, { content: "# New", version: 1 }),
     ).resolves.toEqual(NOT_ALLOWED);
-    await expect(pageService.moveOrRenamePage(UNKNOWN_ACTOR, page.id, { name: "new", tabId: tab.id })).resolves.toEqual(
-      NOT_ALLOWED,
-    );
+    await expect(
+      pageService.moveOrRenamePage(UNKNOWN_ACTOR, page.id, { name: "new", tabId: tab.id, version: 1 }),
+    ).resolves.toEqual(NOT_ALLOWED);
     await expect(pageService.deletePage(UNKNOWN_ACTOR, page.id)).resolves.toEqual(NOT_ALLOWED);
     await expect(pageService.restorePage(UNKNOWN_ACTOR, deleted.id, { name: "old", tabId: tab.id })).resolves.toEqual(
       NOT_ALLOWED,
@@ -696,7 +767,7 @@ describe("the version of pages", () => {
     await pageService.updatePageContent(actor, id, { content: "# New", version: 1 });
     expect(await versionOf(id)).toBe(2);
 
-    await pageService.moveOrRenamePage(actor, id, { name: "start", tabId: tab.id });
+    await pageService.moveOrRenamePage(actor, id, { name: "start", tabId: tab.id, version: 2 });
     expect(await versionOf(id)).toBe(3);
 
     await pageService.deletePage(actor, id);
@@ -714,8 +785,8 @@ describe("the version of pages", () => {
     const deleted = await createPage({ folder, name: "old", editor: user, deletedAt: new Date(), version: 7 });
 
     await pageService.updatePageContent(actor, page.id, { content: "No title", version: 7 });
-    await pageService.moveOrRenamePage(actor, page.id, { name: "taken", tabId: null });
-    await pageService.moveOrRenamePage(actor, page.id, { name: "start", tabId: foreignTab.id });
+    await pageService.moveOrRenamePage(actor, page.id, { name: "taken", tabId: null, version: 7 });
+    await pageService.moveOrRenamePage(actor, page.id, { name: "start", tabId: foreignTab.id, version: 7 });
     await pageService.updatePageContent(actor, deleted.id, { content: "# New", version: 7 });
     await pageService.deletePage(actor, deleted.id);
     await pageService.restorePage(actor, page.id, { name: "start", tabId: null });
@@ -844,7 +915,7 @@ describe("roles", () => {
     for (const result of [
       await pageService.createPage(actor, folder.id, { name: "new", content: "# New", tabId: null }),
       await pageService.updatePageContent(actor, page.id, { content: "# New", version: 1 }),
-      await pageService.moveOrRenamePage(actor, page.id, { name: "new", tabId: tab.id }),
+      await pageService.moveOrRenamePage(actor, page.id, { name: "new", tabId: tab.id, version: 1 }),
       await pageService.deletePage(actor, page.id),
       await pageService.restorePage(actor, deleted.id, { name: "old", tabId: null }),
     ]) {
@@ -876,7 +947,7 @@ describe("the lowest role of each function", () => {
     for (const result of [
       await pageService.createPage(actor, folder.id, { name: "new", content: "# New", tabId: null }),
       await pageService.updatePageContent(actor, page.id, { content: "# New", version: 1 }),
-      await pageService.moveOrRenamePage(actor, page.id, { name: "new", tabId: tab.id }),
+      await pageService.moveOrRenamePage(actor, page.id, { name: "new", tabId: tab.id, version: 1 }),
       await pageService.deletePage(actor, page.id),
       await pageService.restorePage(actor, deleted.id, { name: "old", tabId: null }),
     ]) {

@@ -262,7 +262,7 @@ describe("updatePageContent", () => {
 describe("moveOrRenamePage", () => {
   const id = crypto.randomUUID();
   const tabId = crypto.randomUUID();
-  const VALID = { name: " new-name ", place: tabId };
+  const VALID = { name: " new-name ", place: tabId, version: "2" };
 
   it.each([
     ["valid input", VALID],
@@ -287,7 +287,7 @@ describe("moveOrRenamePage", () => {
     expectNotRevalidatedOrRedirected();
   });
 
-  it("passes name and tab only to the service and redirects to the stored address in the tab", async () => {
+  it("passes name, tab and version only to the service and redirects to the stored address in the tab", async () => {
     mocks.moveOrRenamePage.mockResolvedValue({ ok: true, value: STORED_IN_TAB });
 
     // Submitted content and other fields are ignored: no content rule can block a save.
@@ -296,7 +296,7 @@ describe("moveOrRenamePage", () => {
       path: "/folders/stored-folder/stored-tab/stored-name.md",
     });
 
-    expect(mocks.moveOrRenamePage).toHaveBeenCalledWith(BROWSER_USER, id, { name: "new-name", tabId });
+    expect(mocks.moveOrRenamePage).toHaveBeenCalledWith(BROWSER_USER, id, { name: "new-name", tabId, version: 2 });
     expectContentRevalidated();
   });
 
@@ -310,7 +310,20 @@ describe("moveOrRenamePage", () => {
       path: "/folders/stored-folder/stored-name.md",
     });
 
-    expect(mocks.moveOrRenamePage).toHaveBeenCalledWith(BROWSER_USER, id, { name: "new-name", tabId: null });
+    expect(mocks.moveOrRenamePage).toHaveBeenCalledWith(BROWSER_USER, id, {
+      name: "new-name",
+      tabId: null,
+      version: null,
+    });
+  });
+
+  it("shows the dialog again at the stored address with the notice when the page was changed", async () => {
+    mocks.moveOrRenamePage.mockResolvedValue({ ok: false, error: { code: "page-changed", page: STORED_DIRECT } });
+
+    await expect(moveOrRenamePage(id, {}, formData(VALID))).rejects.toMatchObject({
+      path: "/folders/stored-folder/stored-name.md?action=move-or-rename&notice=changed",
+    });
+    expectContentRevalidated();
   });
 
   it.each([
