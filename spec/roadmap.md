@@ -80,8 +80,6 @@ listed first; there is no order across themes.
 
 ## Rights
 
-- MCP rules for folder roles: MCP reads only what the folder roles of the user allow; today a token or connected app
-  reads every folder of a user, also one without a role (`folder-roles.md`, `mcp.md`).
 - Public content: pages that can be read without a login, rendered on the server so that search engines see them.
   Needs a time limit and a depth limit on the Markdown parse at save time and a stored or cached render, since
   anonymous visitors can then trigger renders (`pages.md`, `users-and-login.md`).
@@ -114,9 +112,9 @@ listed first; there is no order across themes.
   (`users-and-login.md`).
 - Access for clients without OAuth: scripts, CI jobs and MCP clients that cannot do OAuth with a browser get access
   again, for example through the OAuth device flow or client credentials (`connected-apps.md`, `oauth.md`).
-- MCP write tools: create and change folders, tabs and pages from AI assistants, after page history (see "History and
-  Revisions"), with the scope `write` for OAuth grants; they state the version of every page they change
-  (`mcp.md`, `oauth.md`, `optimistic-locking.md`).
+- MCP write tools for tabs and folders: create and rename tabs from AI assistants, which belongs to "Manager role for
+  MCP", and the writes of folders later; renaming a folder and its roles stay in the browser, because the Owner is
+  never a role of MCP (`mcp.md`, `folder-roles.md`).
 - MCP search tool: search the wiki from AI assistants, after full-text search (see "Search") (`mcp.md`).
 - Manager role for MCP: an MCP address `/mcp/<folder-uuid>/manager` for Owners and Managers, with the tools of a
   Manager, such as deleting and restoring pages and creating and renaming tabs, after MCP per folder and role
@@ -173,10 +171,13 @@ All from "Current limits" in `container-image.md`:
   (`container-image.md`, `oauth.md`):
   - Add the wiki as a custom connector in claude.ai and in ChatGPT, approve it on the consent page, list and read
     pages, and revoke it on `/account`.
-  - Claude Code with OAuth (`claude mcp add --transport http` without a header) lists and reads pages, and the MCP
-    Inspector, connected through OAuth, shows the tools (`mcp.md`).
-  - A tool that still sends a former API token gets 401 at `/mcp`, and its user connects it again through OAuth
-    (`connected-apps.md`).
+  - Claude Code with OAuth (`claude mcp add --transport http` with an address from "AI apps" and without a header)
+    lists and reads pages, and the MCP Inspector, connected through OAuth, shows the tools of a Reader and of a Writer
+    address (`mcp.md`).
+  - A tool that is still configured with the plain `/mcp` gets 404 there, and its user connects it again through
+    OAuth with an address from "AI apps" (`connected-apps.md`).
+  - The connectors of claude.ai and ChatGPT send the folder address as `resource` and connect to several addresses
+    of the same wiki side by side (`oauth.md`).
   - The limit on the registration of OAuth clients counts per client address behind Traefik: a registration from a
     known address is logged with that address as `clientAddress`.
   - Which redirect addresses and which way of identifying themselves (metadata document or registration) the
@@ -186,7 +187,8 @@ All from "Current limits" in `container-image.md`:
   section "Checks on the deployment" of `review-report.md`:
   - The reverse proxy: TLS by BSI TR-02102-2 and a redirect to HTTPS with HSTS passed on; `Host` passed unchanged and
     unknown hosts refused; `X-Forwarded-For`, `X-Forwarded-Host` and `X-Forwarded-Proto` of clients replaced; body
-    limits, timeouts and rate limits for `/login`, `/oauth/register`, `/oauth/token` and `/mcp`; no CORS headers, no
+    limits, timeouts and rate limits for `/login`, `/oauth/register`, `/oauth/token` and the MCP addresses under
+    `/mcp/`; no CORS headers, no
     change of the CSP, no shared cache; no `Authorization` header in its access logs; `/api/health` only for the
     health checker.
   - The configuration: `HIPPOWIKI_TRUSTED_PROXIES` set to the real number of proxies, `HIPPOWIKI_PUBLIC_URL` set, no

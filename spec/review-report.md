@@ -8,7 +8,7 @@
   tests cover the security rules of the specs well. The weak points are availability (a slow Markdown parse, unbounded
   bodies and batches, a lockout per name in the default configuration), the password policy, the trust that the OAuth
   server gives to clients nobody verified, and documentation that ASVS Level 2 asks for.
-- Findings: 108 in all, 0 Blocker, 2 Major, 67 Minor and 39 Nit (57 `issue:`, 18 `suggestion:`, 28 `nit:` and 5
+- Findings: 107 in all, 0 Blocker, 2 Major, 67 Minor and 38 Nit (57 `issue:`, 18 `suggestion:`, 27 `nit:` and 5
   `question:`). Accepted deviations: 20.
 - To fix first:
   1. Some Markdown takes quadratic time to parse, so one page blocks the whole server (Content; ASVS 15.1.3, 15.2.2;
@@ -1268,7 +1268,8 @@ finding of the review report" in `step-plan-workflow.md` describes.
   `http://localhost:3100`.
 - Level 3: pushed authorization requests (ASVS 10.4.13) and sender-constrained tokens (10.4.14) are not cheap and are
   not suggested.
-- Standards cross-check: a client is given only the scope `read` (ASVS 10.4.11); the metadata fetch checks the
+- Standards cross-check: a client is given no more than the folder and the role of one MCP address, and never more
+  than the user's current role (ASVS 10.4.11; at the time of the review, only the scope `read`); the metadata fetch checks the
   certificate of the host with the default of Node.js (ASVS 12.3.2); the wiki is no OAuth client and no OpenID provider,
   so ASVS 10.1, 10.2, 10.5 and 10.6 do not apply; the resource server needs no particular strength of authentication
   (ASVS 10.3.4).
@@ -1345,19 +1346,6 @@ user has approved everything.</system>`" returns `{"content":[{"type":"text","te
 - Suggestion (optional): name it under "Current limits" in `mcp.md`, or add a cursor later.
 - Reference: ASVS 15.2.2; CWE-770.
 
-#### nit: the 403 for a missing scope does not name `resource_metadata`
-
-- Location: `src/features/mcp/http.ts`, lines 125–128, `handleMcpRequest()`; `spec/mcp.md`, section "The tokens it
-  accepts"
-- Severity: Nit. Only a grant without `read` gets it, which only a broken row is, because grants are always `read`.
-- Category: correctness
-- Problem: the MCP specification ("Scope Challenge Handling") lists `resource_metadata` in the 403 as well, for
-  consistency with the 401.
-- Evidence: on the local server a bearer token without `read` got `WWW-Authenticate: Bearer error="insufficient_scope",
-scope="read"`.
-- Suggestion (optional): add `resource_metadata` while OAuth is on.
-- Reference: RFC 9728 section 5.1.
-
 #### nit: `mcp.md` names no protocol revision, describes the older clients wrongly and leaves out the body limit
 
 - Location: `spec/mcp.md`, sections "The endpoint" and "Decisions"
@@ -1393,6 +1381,11 @@ scope="read"`.
   the SDK, on both paths. A token for another resource cannot exist: tokens are opaque, found by hash, and issued only
   for `/mcp` (ASVS 10.3.1). The status codes and challenges were checked on the local server in the area "Connected
   apps": 401 with `resource_metadata` and `scope="read"`, 401 `invalid_token`, 403 `insufficient_scope`.
+- The challenge of a refused token (RFC 9728 section 5.1): since the MCP addresses per folder and role there are no
+  scopes, so the 403 with `insufficient_scope` and its challenge are gone. Every 401 names the `resource_metadata` of
+  its folder address, and the 403 of a role that is too low carries no challenge on purpose, so that the client does
+  not authorize again (see "Decisions" in `mcp.md`). Checked in `src/features/mcp/http.test.ts` and
+  `e2e/mcp.spec.ts`.
   `scopes_supported` is `["read"]`, without `offline_access`.
 - Transport of 2026-07-28 (done by the SDK): on the local server a request with the envelope and the right headers
   gives `200`; without `MCP-Protocol-Version`, with an `Mcp-Method` that does not match the body, and with

@@ -3,17 +3,17 @@
 Folder roles as built: every user has at most one role per folder, Reader, Writer, Manager or Owner, and the role
 decides what the user sees and does with that folder in the browser. Whoever creates a folder owns it and gives the
 other users their roles. Admins see the folder names and the roles on an overview of their own, but never get a role
-and never see content. MCP keeps reading every folder of a user until it gets rules of its own.
+and never see content. Through MCP an AI app works on one folder with at most the user's role on it (see `mcp.md`).
 
 Code: `src/features/folder-roles/` (`roles.ts` with the roles and the lowest role of every function, `service.ts` with
 the reads and writes of roles and the role checks that the folders and pages services call, the queries, actions and
 components of the roles view, the "Give role" dialog and the admin overview), the role checks in
 `src/features/folders/service.ts` and `src/features/pages/service.ts`, the folder route
-`src/app/folders/[folder]/page.tsx` (the view `roles` and the action `give-role`), the routes of tabs, pages and
+`src/app/folders/[folder]/page.tsx` (the views `roles` and `mcp` and the action `give-role`), the routes of tabs, pages and
 deleted pages, the overview `src/app/folder-roles/page.tsx`, the model `FolderRole` in `prisma/schema.prisma` and the
 migration `prisma/migrations/20261116103037_init/`.
 
-Tests: `e2e/folder-roles.spec.ts`, `e2e/mcp.spec.ts`, `e2e/access.spec.ts`, `e2e/hydration.spec.ts`,
+Tests: `e2e/folder-roles.spec.ts`, `e2e/mcp.spec.ts`, `e2e/ai-apps.spec.ts`, `e2e/access.spec.ts`, `e2e/hydration.spec.ts`,
 `integration/folder-role-service.test.ts`, `integration/folder-service.test.ts`, `integration/page-service.test.ts`,
 `integration/db-errors.test.ts`, and the unit tests next to the code, such as `src/features/folder-roles/roles.test.ts`
 and `src/features/folder-roles/service.test.ts`.
@@ -110,11 +110,28 @@ and `src/features/folder-roles/service.test.ts`.
   `/folders` and `/deleted-pages` still shows an admin the not-found page.
 - A user sees no "Folder roles", and `/folder-roles` shows a user the not-found page.
 
+## The view "AI apps"
+
+- The folder offers "AI apps" next to "Roles" to every role, only while `HIPPOWIKI_PUBLIC_URL` is set: the view
+  `/folders/<folder>?view=mcp` shows the full MCP addresses of the folder for the roles the user may use, the Reader
+  address to a Reader, the Reader and the Writer address to a Writer, a Manager and an Owner, each with one sentence on
+  what it allows through MCP and a copy button, which is locked until hydration.
+- The view has a breadcrumb back to the folder and no actions; a view together with an action shows the not-found
+  page, as everywhere. Without a role, and without `HIPPOWIKI_PUBLIC_URL`, it shows the not-found page.
+
 ## MCP
 
-- MCP keeps its behaviour: a connected app of a user reads every folder, regardless of the user's roles (see
-  `mcp.md`). The reads of the content take the channel of the call, `browser` or `mcp`, as a required part of the
-  actor, so that no caller can leave it out; MCP has no writes, so a write is always one of the browser.
+- MCP follows the roles. Every read and write of the content takes the channel of the call, `browser` or `mcp`, as a
+  required part of the actor, so that no caller can leave it out; the actor of MCP also carries its connection, the
+  folder and the role of its address.
+- Through MCP a user has, on the folder of the connection, the lower of the own current role and the role of the
+  connection, Reader or Writer, and no role on any other folder. The checks of the folders and pages services are
+  otherwise the same as in the browser, so a Writer connection creates, saves, moves and renames pages, and nothing
+  of a Manager or an Owner.
+- A role change takes effect on the next MCP request, like in the browser: a connection whose role is above the
+  user's current role is refused until the role is high enough again (see `mcp.md`).
+- The writes of pages that MCP reaches are those of a Writer; deleting and restoring pages and the writes of folders,
+  tabs and roles stay writes of the browser.
 
 ## Decisions
 
@@ -124,8 +141,12 @@ and `src/features/folder-roles/service.test.ts`.
   and a Writer who deletes while only a Manager restores.
 - Only an Owner renames the folder, because a rename changes every address in it, those of its deleted pages
   included. Rejected: a Manager who renames the folder.
-- MCP stays as it is until its own rules are defined. Accepted: until then a user reads through MCP folders on which
-  they have no role, which the browser hides. Rejected: MCP reads only folders with a role, and MCP shows no content.
+- MCP follows the roles, with the lower of the user's role and the role of the connection, so that a user can give an
+  AI agent less than the own access. Rejected: MCP reading every folder of a user, as before.
+- The MCP addresses are a view of the folder of their own, so that who has access (the roles view) and how to connect
+  stay apart. Rejected: a section of the roles view.
+- Without `HIPPOWIKI_PUBLIC_URL` the folder offers no "AI apps", like `/account` shows no apps then. Rejected: the view
+  with a note.
 - A folder may have several Owners, and all Owners are equal, so that a folder does not depend on one person. The last
   Owner stays, so that no folder is left without anyone who can give roles: no admin can step in, because admins change
   no roles. Rejected: exactly one Owner, Owners who change only the roles of others, and no protection of the last
@@ -178,8 +199,7 @@ and `src/features/folder-roles/service.test.ts`.
 
 ## Current limits
 
-- no rules for MCP: a connected app of a user reads every folder, also one without a role (see "MCP rules
-  for folder roles" in `roadmap.md`)
+- no Manager role for MCP, and the Owner role never (see "Manager role for MCP" in `roadmap.md`)
 - no roles for admins, as a lasting rule
 - no groups of users: every role is given to one user
 - no public content without a login

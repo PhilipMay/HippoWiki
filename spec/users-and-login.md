@@ -73,7 +73,7 @@ and `src/lib/client-address.test.ts`.
   changes it. A person who needs both jobs has two accounts.
 - There can be any number of admins. Every admin manages the accounts like the first one.
 - Admin tasks are done only in the browser, with the session of an admin: no admin task is reachable through MCP or a
-  token, with any scope, now or later (see `mcp.md`).
+  token, at any MCP address, now or later (see `mcp.md`).
 
 ## Admin setup
 
@@ -193,12 +193,12 @@ The client address group (`clientAddressGroup()` in `src/lib/client-address.ts`)
 ## Authenticated access only
 
 Nothing can be read or changed without a login. Only the login page and `/api/health` are public for a browser. The
-MCP endpoint `/mcp` asks for a bearer token instead of a session (see `mcp.md`), and the endpoints that an OAuth
+MCP addresses of the folders under `/mcp/` ask for a bearer token instead of a session (see `mcp.md`), and the endpoints that an OAuth
 client calls before it has a token show nothing of the wiki (see `oauth.md`). The login is checked in two layers, as
 the authentication guide of Next.js describes:
 
 - `src/proxy.ts` sends every request without a session cookie to the login page, without asking the database. Only the
-  login page, `/api/health`, `/mcp`, the public endpoints of OAuth and the static files of Next.js (`/_next/static/`)
+  login page, `/api/health`, `/mcp` and the addresses below it, the public endpoints of OAuth and the static files of Next.js (`/_next/static/`)
   pass it; the image optimizer of Next.js is behind the login like every other address. A Server Action called
   without the cookie leads to the login page as well, with a full page load instead of the error page.
 - `requireUser()` in `src/features/auth/session.ts` checks the session in the database. Every page, every query and

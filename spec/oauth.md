@@ -1,9 +1,9 @@
 # HippoWiki – OAuth for MCP Clients
 
 OAuth as built: HippoWiki is an OAuth 2.1 authorization server for the MCP server (see `mcp.md`), so that a connector,
-such as the ones of claude.ai and ChatGPT, gets access to the wiki on behalf of a user without ever seeing a
-password. The user logs in, approves the connector on a consent page and can revoke it on `/account`
-at any time. Only accounts of the type user connect apps; an admin is refused. All clients are public: none has a secret, and each proves itself with PKCE.
+such as the ones of claude.ai and ChatGPT, gets access to one MCP address of a folder on behalf of a user without ever
+seeing a password. The user logs in, approves the connector for the folder and the role of that address on a consent
+page and can revoke it on `/account` at any time. There are no scopes: the address says what a connection may do. Only accounts of the type user connect apps; an admin is refused. All clients are public: none has a secret, and each proves itself with PKCE.
 
 Code: `src/features/oauth/` (`schema.ts` with the rules, `secret.ts` for codes and tokens, `service.ts` with the code
 flow, `issuer.ts`, `public-address.ts` and `metadata-fetch.ts` for the metadata documents of clients, `http.ts` with
@@ -20,19 +20,21 @@ tests are in `e2e/support/oauth.ts`.
 
 - OAuth is on when `HIPPOWIKI_PUBLIC_URL` is set, the public address of the wiki (see "Configuration" in
   `container-image.md`). The issuer of the authorization server is exactly that address.
-- Without the variable every endpoint of OAuth answers 404, the consent page is not found, and `/mcp` answers 404 as
-  well: there is no MCP server without OAuth (see `mcp.md`).
+- Without the variable every endpoint of OAuth answers 404, the consent page is not found, and every address below
+  `/mcp` answers 404 as well: there is no MCP server without OAuth (see `mcp.md`).
 
 ## Discovery
 
-- A connector starts at the 401 of `/mcp`, whose `WWW-Authenticate` header names the metadata of the protected
-  resource.
-- `/.well-known/oauth-protected-resource` and the same address followed by `/mcp` (RFC 9728) name the address of
-  `/mcp` as the resource and the wiki as its only authorization server.
+- A connector starts at the 401 of a folder address, whose `WWW-Authenticate` header names the metadata of the
+  protected resource at that address.
+- `/.well-known/oauth-protected-resource/mcp/<folder-uuid>/<reader|writer>` (RFC 9728) names the full folder address
+  as the resource and the wiki as its only authorization server, for every folder address, whether a folder of that id
+  exists or not. `/.well-known/oauth-protected-resource` alone, the one followed by `/mcp` and every other path answer
+  404, because there is no resource at `/mcp`.
 - `/.well-known/oauth-authorization-server` (RFC 8414) names the issuer, the endpoints under `/oauth/`, the response
   type `code`, the grant types `authorization_code` and `refresh_token`, PKCE with `S256`, public clients only
-  (`none`), the scope `read`, and that client id metadata documents and the `iss` parameter are supported.
-- Both are public and need no token.
+  (`none`), and that client id metadata documents and the `iss` parameter are supported.
+- Neither lists scopes. Both are public and need no token.
 
 ## Clients
 
@@ -78,11 +80,18 @@ The fetch of a metadata document must not be a way to make the server ask an add
   nowhere. A redirect address must be the same text as one of the client's; only for `http` on a loopback address
   the port is ignored, because a native client listens on whatever port is free.
 - Every other error is shown on the page with a link "Return to <host>", which carries the error to the redirect
-  address of the client; the browser goes there only when the user clicks the link. These checks are:
-  `response_type` must be `code`, PKCE must be `S256` with a valid challenge, and a `resource` that is sent must be
-  the address of `/mcp` (RFC 8707). Scopes are not checked: unknown ones are ignored, and the grant is always `read`.
+  address of the client; the browser goes there only when the user clicks the link. These checks are, in this order:
+  `response_type` must be `code`; PKCE must be `S256` with a valid challenge; `resource` (RFC 8707) must be exactly
+  the full MCP address of a folder, `<HIPPOWIKI_PUBLIC_URL>/mcp/<folder-uuid>/<reader|writer>`, otherwise
+  `invalid_target` (a missing `resource`, the plain `/mcp`, the roles Owner and Manager and anything else); then the
+  admin refusal (below); then the folder must exist and the user's current role on it must include the role of the
+  address. A missing folder, a folder without a role of the user and a role too low are refused alike, with
+  `access_denied` and one message that no app can be connected to this address, so that the page tells nothing about
+  which folders exist.
+- A `scope` that a client sends is ignored and not carried by the consent form.
 - A valid request shows the host of the redirect address more prominently than the name of the client, the
-  logged-in user, what `read` allows, and the lifetime of the grant: 30, 90 or 365 days, with 90 chosen.
+  logged-in user, the name of the folder and the role of the address, what that role allows through MCP, and the
+  lifetime of the grant: 30, 90 or 365 days, with 90 chosen.
 - "Approve" sends the client a code; "Deny" sends it `access_denied`. Both check the request again from the
   submitted values. Every answer to the client carries its `state` and `iss`, the issuer (RFC 9207).
 - Every connect asks again; no consent is remembered.
@@ -91,7 +100,7 @@ The fetch of a metadata document must not be a way to make the server ask an add
   <host>" that carries `access_denied`, `state` and `iss` to the client, like the other errors of the page. No code
   and no grant is created: the service refuses a code for an admin as well. An unknown client or a foreign redirect
   address is answered as for every user, without sending the browser anywhere.
-- A user who already holds 20 tokens, not counting the grants this one would replace, is asked to revoke a token
+- A user who already holds 50 connected apps, not counting the grants this one would replace, is asked to revoke an app
   first and cannot approve.
 - "Approve" and "Deny" need JavaScript to send the answer to the client, because the Content Security Policy keeps
   forms on this site (`form-action 'self'`, see "Security headers" in `architecture.md`). Without JavaScript the page
@@ -101,21 +110,24 @@ The fetch of a metadata document must not be a way to make the server ask an add
 
 - A code works once and for 10 minutes. It is deleted as it is read, so it also works only once when two exchanges
   arrive at the same time, and an exchange that fails a check uses it up.
+- A code keeps the folder and the role of the address of its request.
 - The exchange at `/oauth/token` must name the client and the redirect address of the authorization request and
-  show the PKCE verifier of its challenge.
+  show the PKCE verifier of its challenge. A `resource` that is sent must be the address of the code; another one is
+  `invalid_target`.
 - A user who still has the first password gets no grant.
 
 ## Grants
 
-- A grant is what a code is exchanged for: a row of `OAuthGrant`, named after the client, with the scope `read` and
-  the lifetime the user chose. It is listed on `/account` as a connected app, counted in the limit of 20 connected
-  apps per user and revoked there (see `connected-apps.md`).
-- A new grant replaces the user's older grants to the same client: the same client row, or for a registered client
-  the same name and the same redirect addresses, because some connectors register again on every connect. The
-  limit counts the new grant without the replaced ones.
+- A grant is what a code is exchanged for: a row of `OAuthGrant`, named after the client, with the folder and the role
+  of the address of the code and the lifetime the user chose. It is listed on `/account` as a connected app, counted
+  in the limit of 50 connected apps per user and revoked there (see `connected-apps.md`).
+- A new grant replaces only the user's older grants to the same client at the same address: the same client row, or
+  for a registered client the same name and the same redirect addresses, because some connectors register again on
+  every connect. The grants of that client at other addresses stay. The limit counts the new grant without the
+  replaced ones.
 - The client holds an access token that works for 1 hour, and never longer than its grant, and a refresh token.
-  Only `/mcp` accepts the access token.
-- Revoking the grant, deleting its user or deleting its client ends both tokens at once.
+  Only the MCP address of the grant accepts the access token.
+- Revoking the grant, deleting its user, its client or its folder ends both tokens at once.
 - A grant past its lifetime cannot be refreshed; it stays in the list, marked as expired, until it is revoked.
 
 ## Refresh
@@ -126,7 +138,9 @@ The fetch of a metadata document must not be a way to make the server ask an add
   nobody can tell which. The user connects again. The revocation is logged as a warning with the id of the grant.
 - Of two refreshes at the same time only one succeeds. The other is refused, and the grant stays.
 - A refresh by another client, of a grant past its lifetime and of a user who still has the first password is
-  refused without revoking the grant.
+  refused without revoking the grant, and so is one whose `resource` is not the address of the grant
+  (`invalid_target`).
+- A refresh does not check the user's role on the folder; the MCP server checks it on every request (see `mcp.md`).
 
 ## The token endpoint
 
@@ -177,13 +191,22 @@ The fetch of a metadata document must not be a way to make the server ask an add
   address may contain.
 - The metadata fetch is a module of its own (`src/features/oauth/metadata-fetch.ts`), so that the tests of the
   service can replace it and its own tests can stand in for the network.
-- `offline_access` is not among the scopes: every grant can be refreshed until it ends.
+- There are no scopes: the address of the grant says what a connection may do, and every grant can be refreshed until
+  it ends. Rejected: scopes next to the address, which could say something else than the address.
+- An authorization request without `resource` is refused, so that every grant knows its address; the MCP
+  specification asks clients to send it. Rejected: picking a folder and a role on the consent page.
+- A new grant replaces only the older grants of the same app at the same address, so that reconnecting does not pile
+  up entries while connections to other addresses stay. Rejected: never replacing.
+- The limit of connected apps is 50, because a user holds one connection per folder, role and app. Rejected: 20.
+- The grants and codes that named the plain `/mcp` before the folder addresses were removed by the migration that
+  brought the folder addresses, because none of them names a folder; their users connect again. Rejected: keeping them
+  on `/account`, marked as no longer usable.
+- Deleting a folder deletes its grants and codes, like those of a user and of a client: a grant is no content.
 - The consent page tells an admin why no app can be connected and leads back to the app with a refusal, so that the
   connector does not wait for an answer that never comes. Rejected: the not-found page.
 
 ## Current limits
 
-- only the scope `read`; no `write` for grants, which waits for the write tools of the MCP server (see `roadmap.md`)
 - public clients only: no client secrets, no `private_key_jwt`, no client credentials grant
 - no OpenID Connect: no ID tokens, no `userinfo`, no `/.well-known/openid-configuration`
 - no JWT access tokens and no JWKS

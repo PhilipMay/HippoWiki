@@ -11,10 +11,6 @@ The specification lives in the `spec/` directory. This catalog should always be 
   step plan (starting and resuming, what may change, the rounds of questions, the checks for contradictions and
   feasibility, how requirements are written, the template); the result is one file `spec/<feature>-requirements.md`,
   listed here while it exists
-- `spec/mcp-folder-roles-requirements.md`: the requirements of MCP per folder and role (approved): MCP addresses
-  `/mcp/<folder-uuid>/<role>` for Reader and Writer, connections bound to one address, the write tools, no scopes
-- `spec/mcp-folder-roles-steps.md`: the step plan of MCP per folder and role (grants for a folder address, MCP at the
-  folder addresses, read tools on the folder of the connection, write tools, the view "AI apps", wrap-up)
 - `spec/step-plan-workflow.md`: how features are planned in step files, when a step is done, what to do when it
   cannot be finished, how a feature is wrapped up, what a feature spec holds, and how a finding of the review report is
   fixed and deleted
@@ -23,7 +19,7 @@ The specification lives in the `spec/` directory. This catalog should always be 
 - `spec/testing.md`: the check of doc references, and unit, integration and end-to-end test conventions
 - `spec/pages.md`: the page feature as built (content and title, suggested name, routes, rendering, decisions, limits)
 - `spec/content-structure.md`: the content structure as built (folders, tabs and pages under `/folders`: overview,
-  names, addresses, actions and views, routes, changing the structure, only users see content, the last editor,
+  names, addresses, actions and views with the view "AI apps", routes, changing the structure, only users see content, the last editor,
   lists, decisions, limits)
 - `spec/page-deletion.md`: the soft delete of pages as built (deleting, deleted pages are invisible, the deleted pages
   of a folder under `/deleted-pages` with who deleted them, restoring, decisions, limits)
@@ -36,22 +32,26 @@ The specification lives in the `spec/` directory. This catalog should always be 
   logout, sessions, the way back after a login and where it leads each type, failed logins with the wait per user
   name and client address group and the hour window per user name, authenticated access only, forced password change,
   the user list for every account and creating accounts of either type, routes, decisions, limits)
-- `spec/connected-apps.md`: the connected apps as built (the grants of users to OAuth clients, the limit of 20 per
-  user, the own apps only, no apps for admins, the account page without a public URL, the check of an access token
-  with its codes, the own account page `/account`, decisions, limits)
-- `spec/mcp.md`: the MCP server as built (the endpoint `/mcp`, off without the public URL, stateless with JSON answers,
-  the access tokens it accepts, the read tools, decisions, limits)
-- `spec/oauth.md`: OAuth for MCP clients as built (switching it on with the public URL, discovery, clients by
-  metadata document and by registration with its limit, the safe fetch of metadata documents, the authorization
-  request and the consent page, codes, grants, refresh with rotation, the token endpoint, secrets, routes, decisions,
-  limits)
+- `spec/connected-apps.md`: the connected apps as built (the grants of users to OAuth clients at an MCP address of a
+  folder, with folder and role, the limit of 50 per user, the own apps only, no apps for admins, the account page
+  without a public URL, the check of an access token by address and current role with its codes, the own account page
+  `/account`, decisions, limits)
+- `spec/mcp.md`: the MCP server as built (the addresses `/mcp/<folder-uuid>/<reader|writer>` per folder and role, off
+  without the public URL, stateless with JSON answers, connections bound to one address and checked against the
+  current role with the answers 404, 401 and 403, the actor of MCP, the read tools and the write tools of a Writer,
+  the version, the instructions per connection, decisions, limits)
+- `spec/oauth.md`: OAuth for MCP clients as built (switching it on with the public URL, discovery with the metadata per
+  folder address, clients by metadata document and by registration with its limit, the safe fetch of metadata
+  documents, the authorization request with the folder address as `resource` and the consent page with folder and
+  role, no scopes, codes, grants and their replacement per address, refresh with rotation, the token endpoint,
+  secrets, routes, decisions, limits)
 - `spec/optimistic-locking.md`: optimistic locking for pages as built (the version of a page and what counts it up,
   which content saves, moves, renames and deletes are refused, what the browser shows then, the rule for callers
-  other than the browser, restoring unchecked, editors and dialogs open over a deployment, decisions, limits)
+  other than the browser and the MCP write tools, restoring unchecked, editors and dialogs open over a deployment, decisions, limits)
 - `spec/folder-roles.md`: folder roles as built (the roles Reader, Writer, Manager and Owner per user and folder and
   what each may do in the browser, admins never have a role, what a user sees and does, creating folders, the roles
-  view, giving, changing and removing roles with the last Owner kept, the admin overview `/folder-roles`, MCP, decisions,
-  limits)
+  view, giving, changing and removing roles with the last Owner kept, the admin overview `/folder-roles`, the view "AI
+  apps", MCP with the lower of the user's role and the role of the connection, decisions, limits)
 - `spec/roadmap.md`: backlog of candidate features, grouped by theme, and things still to check
 - `spec/issue-report.md`: how to report issues found in code and document reviews
 - `spec/review-report.md`: the report of the security and code review (scope and method, standards and target level,

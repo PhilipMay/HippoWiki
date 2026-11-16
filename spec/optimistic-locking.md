@@ -57,8 +57,10 @@ in `src/features/pages/components/`. Tests: `integration/page-service.test.ts`, 
 - The rule does not depend on the browser. Every caller of the page service states, with every content save, move,
   rename and delete, the version of the page its change is based on, and is refused in the same cases; a change
   without a version is refused and changes nothing.
-- No caller other than the browser changes pages yet. The later MCP write tools follow the rule unchanged (see
-  `mcp.md`).
+- The MCP write tools follow the rule unchanged (see `mcp.md`): `read_page` gives the version of a page, and
+  `replace_page_content` and `move_or_rename_page` state it. A change based on an older version, or on none, is
+  refused with a tool error that names who changed the page last and when and tells the agent to read the page again;
+  nothing is changed.
 
 ## Restoring
 
@@ -73,7 +75,7 @@ in `src/features/pages/components/`. Tests: `integration/page-service.test.ts`, 
 
 ## Decisions
 
-- The feature protects the browser now and sets the rule for the later MCP write tools, so that those need no rule of
+- The feature protected the browser first and set the rule for the MCP write tools, which then needed no rule of
   their own. Rejected: protecting only the browser and leaving the rule for MCP to its own feature.
 - Every change of a page is checked, delete included, not only content saves: a move, rename or delete should not
   happen to a page whose latest change the user has not seen. Rejected: checking only content saves, or content saves
@@ -115,5 +117,3 @@ in `src/features/pages/components/`. Tests: `integration/page-service.test.ts`, 
 - No merging of two changes: a refused change has to be made again on the current page.
 - No history of a page, so the change that overtook the user's cannot be compared with it.
 - No display of who else is editing a page right now.
-- The MCP read tools do not show the version of a page yet; the MCP write tools, which will need it, do not exist
-  yet.

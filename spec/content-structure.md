@@ -83,8 +83,9 @@ hold pages directly and have tabs at the same time.
   | page         | `delete`         | the "Delete page" dialog                                 |
   | deleted page | `restore`        | the "Restore page" dialog                                |
 
-- A folder address also has the views `?view=all`, the list of all its pages, and `?view=roles`, who has which role on
-  the folder (see `folder-roles.md`).
+- A folder address also has the views `?view=all`, the list of all its pages, `?view=roles`, who has which role on
+  the folder (see `folder-roles.md`), and `?view=mcp`, the MCP addresses of the folder for AI apps, which exists only
+  while `HIPPOWIKI_PUBLIC_URL` is set (see "The view "AI apps"" in `folder-roles.md` and `mcp.md`).
 - A page address with an action may also carry the notice `?action=<action>&notice=changed`: the editor or dialog of
   the action is shown again after a change was refused, because the page was changed after it was opened (see
   `optimistic-locking.md`). A notice without an action, and an unknown, empty or repeated notice, show the not-found
@@ -102,10 +103,12 @@ hold pages directly and have tabs at the same time.
 - `/folders`: the folders with a role of the user, with their last update and the own role, and a "New folder"
   button; without any folder a hint that the user can create one or ask an Owner of a folder for a role.
 - `/folders/<folder>`: the folder with the own role, the buttons the role includes ("Rename" for an Owner, "All pages"
-  and "Roles" for every role, "Deleted pages" and "New tab" for a Manager, "New page" for a Writer), and one list of
+  and "Roles" for every role, "AI apps" for every role while `HIPPOWIKI_PUBLIC_URL` is set, "Deleted pages" and
+  "New tab" for a Manager, "New page" for a Writer), and one list of
   its contents: first the pages placed directly in the folder, then its tabs.
 - `/folders/<folder>?view=all`: all pages of the folder, with their tab.
 - `/folders/<folder>?view=roles`: the roles view (see `folder-roles.md`).
+- `/folders/<folder>?view=mcp`: the view "AI apps" with the MCP addresses of the folder that the user may use.
 - `/folders/<folder>/<tab>`: the tab with "Rename" for a Manager and "New page" for a Writer, and the pages of the
   tab.
 - Page addresses are described in `pages.md`, the addresses under `/deleted-pages` in `page-deletion.md`.
@@ -127,8 +130,9 @@ hold pages directly and have tabs at the same time.
 
 ## Only users see content
 
-- Folders, tabs, pages and deleted pages are for users only (see "Account types" in `users-and-login.md`), and in the
-  browser only for the users with a role on the folder, as far as the role allows (see `folder-roles.md`). An admin
+- Folders, tabs, pages and deleted pages are for users only (see "Account types" in `users-and-login.md`), and only
+  for the users with a role on the folder, as far as the role allows, through MCP also as far as the role of the
+  connection allows (see `folder-roles.md`). An admin
   reaches no content through any address, form, action or MCP tool; an admin sees the names of the folders and who has
   which role on them only on the overview `/folder-roles`.
 - Every address under `/folders` and `/deleted-pages` shows an admin the not-found page, with and without an action
@@ -193,7 +197,6 @@ hold pages directly and have tabs at the same time.
 ## Current limits
 
 - Folders and tabs cannot be deleted. Deleted pages cannot be removed for good (see `page-deletion.md`).
-- MCP reads every folder of a user, also one without a role (see `folder-roles.md`).
 - A page cannot be moved to another folder, a tab cannot be moved to another folder.
 - No redirects from old addresses after a rename or move.
 - No history, no links between pages, no search.

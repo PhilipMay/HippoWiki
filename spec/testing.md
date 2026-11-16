@@ -43,11 +43,13 @@ How the code is tested. Commands are listed in `README.md`.
   the hashing itself with real hashes.
 - Route handlers get unit tests for their failure branches; they mock `@/lib/db` and `@/lib/logger`.
 - The adapters of callers other than the GUI get unit tests like actions and queries, with the service mocked: the
-  adapter of `/mcp` (`src/features/mcp/http.test.ts`) for the status and the headers of every outcome of the token
-  check, the `Origin` check and 405, and the adapters of the OAuth endpoints (`src/features/oauth/http.test.ts`) for
+  adapter of the MCP addresses (`src/features/mcp/http.test.ts`) for the 404 of every address that is no folder
+  address, the status and the headers of every outcome of the token check, the 403 of a role that is too low, the
+  `Origin` check and 405, and the adapters of the OAuth endpoints (`src/features/oauth/http.test.ts`) for
   404 without the public URL, the metadata fields, the status codes, the error shape, `no-store` and the answer of
-  the registration limit. The tests of `/mcp` and of its tools (`src/features/mcp/tools.test.ts`) run the real MCP
-  SDK against mocked services, so a change of the SDK shows there.
+  the registration limit. The tests of the MCP adapter and of its tools (`src/features/mcp/tools.test.ts`, which
+  builds the server for a Reader and for a Writer connection) run the real MCP SDK against mocked services, so a
+  change of the SDK shows there.
 - The fetch of the metadata documents of OAuth clients (`src/features/oauth/metadata-fetch.ts`) never reaches the
   network in a test. Its own unit test mocks `node:dns/promises` and `node:https` and stands in for the server; the
   tests of the OAuth service replace the whole module with `vi.mock`.
@@ -89,7 +91,7 @@ How the code is tested. Commands are listed in `README.md`.
   `getTestDb()`, and empties the tables before every test with `emptyTestDatabase()`, which leaves only the
   migration history and `AuthSecret`. The known users of the end-to-end tests are not created here. It also mocks
   `getServerEnv()`, because `getAuth()` reads `NODE_ENV` through it and CI has no `.env`; the mocked environment has
-  a `HIPPOWIKI_PUBLIC_URL`, which the OAuth service needs for the address of the MCP endpoint. Nothing of Next.js is
+  a `HIPPOWIKI_PUBLIC_URL`, which the OAuth service needs for the MCP addresses of the folders. Nothing of Next.js is
   mocked: the tests call the services, which work outside a request. The test files run one after another
   (`fileParallelism: false`).
 - Rows are created with the helpers of `e2e/support/database.ts` (`createFolder()`, `createTab()`, `createPage()`,
@@ -191,11 +193,12 @@ How the code is tested. Commands are listed in `README.md`.
   - `createUser()` inserts a user with its credential account, in the shape of `src/features/users/records.ts`, with
     a unique name, the type `user` and the password `TEST_PASSWORD` unless they are given, and with the first password
     still to change unless `mustChangePassword` is false. A test that needs another admin passes `type: "admin"`. The hash of a password is computed once per process.
-  - `createGrant()` inserts an OAuth client and the grant of the user given as `owner` to it, a connected app, with a
-    generated access token of which only the hash is stored, and returns the grant, the client and the access token.
-    The grant is named after the client, has the scope `read`, expires 90 days ahead and its access token works for
-    an hour unless they are given; any field, e.g. `expiresAt`, `accessTokenExpiresAt` or `lastUsedAt`, can be set,
-    and `client` gives an existing client.
+  - `createGrant()` inserts an OAuth client and the grant of the user given as `owner` to it at an MCP address, a
+    connected app, with a generated access token of which only the hash is stored, and returns the grant, its folder,
+    the client and the access token. `folder` and `role` give the address; without a folder it creates one on which
+    the owner is Owner (no role for an admin), and without a role the address is the one of Reader. The grant is named
+    after the client, expires 90 days ahead and its access token works for an hour unless they are given; any field,
+    e.g. `expiresAt`, `accessTokenExpiresAt` or `lastUsedAt`, can be set, and `client` gives an existing client.
   - `createFolder()` inserts a folder directly into the test database with a unique name; any field, e.g. `name` or
     `updatedAt`, can be set. `roles` gives users roles on it, e.g. `roles: [{ user: bob, role: "reader" }]`, and
     `roles: []` none. Without `roles` the known user `alice` is its Owner when that user exists, as after
@@ -246,9 +249,11 @@ How the code is tested. Commands are listed in `README.md`.
 - `e2e/access.spec.ts` checks that every kind of address leads to the login page without a login, as a redirect that
   sends nothing of the page, and that the redirect carries the address as the way back. A new route adds its address
   there; a new public address is checked there as well, for not being sent to the login page.
-- `e2e/mcp.spec.ts` calls `/mcp` with `request` and the access token of a grant from `createGrant()`;
-  `e2e/oauth.spec.ts` covers the discovery, the registration, the token endpoint and the whole flow from the login over
-  the consent page to a tool call, a refresh and a refresh token that is used again.
+- `e2e/mcp.spec.ts` calls the MCP addresses of folders with `request` and the access token of a grant from
+  `createGrant()`, for Reader and Writer connections; `e2e/oauth.spec.ts` covers the discovery, the registration, the
+  token endpoint and the whole flow from the login over the consent page to a tool call, a refresh and a refresh token
+  that is used again. The helpers of `e2e/support/oauth.ts` send a folder address as `resource` (`mcpAddress()`).
+- `e2e/ai-apps.spec.ts` covers the folder view "AI apps" with its addresses per role and the copy button.
 - `e2e/security-headers.spec.ts` checks the security headers of `next.config.ts` (see "Security headers" in
   `architecture.md`) with their exact values, and that no `X-Powered-By` is sent: on the login page, the redirect to
   it, `/api/health`, a page with a login and a `/_next/static/` file. It also checks that an image of another host in

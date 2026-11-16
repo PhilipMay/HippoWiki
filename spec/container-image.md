@@ -137,10 +137,10 @@ Code: `Containerfile`, `.containerignore`, `scripts/image.sh`, `scripts/image-mi
   - It is an `https` URL, or `http` only for `localhost`, `127.0.0.1` and `[::1]`, without user name, password,
     path, query or fragment; any other value stops the server with an error like a wrong `DATABASE_URL`. It is kept
     as the origin, without a trailing slash.
-  - Without it the wiki works in the browser as before, but there is no OAuth and no MCP server: `/mcp` answers 404
-    (see `mcp.md`).
-  - With it OAuth is on (see `oauth.md`): the address is the issuer of the authorization server, `/mcp` accepts the
-    access tokens of grants, and the MCP server gives out full URLs.
+  - Without it the wiki works in the browser as before, but there is no OAuth and no MCP server: every address below
+    `/mcp` answers 404 (see `mcp.md`).
+  - With it OAuth is on (see `oauth.md`): the address is the issuer of the authorization server, the MCP addresses of
+    the folders accept the access tokens of their grants, and the MCP server gives out full URLs.
   - Set it only on a deployment that is reachable over HTTPS from the internet, because the connectors of claude.ai
     and ChatGPT call the wiki from their own servers, and only after the open checks of the deployment in "Things to
     Check" of `roadmap.md`: with OAuth on, the registration of clients and the token endpoint answer without a login.
@@ -228,7 +228,7 @@ These are not built into the image; whoever runs it takes care of them.
 - No security headers: the server sets them itself (see "Security headers" in `architecture.md`), so a reverse proxy
   does not have to.
 - The login is the protection from the public: nothing can be read or changed without it, and only the login page and
-  `/api/health` answer a browser without one. `/mcp` answers only with a valid bearer token (see `mcp.md`), and the
+  `/api/health` answer a browser without one. The MCP addresses under `/mcp/` answer only with a valid bearer token (see `mcp.md`), and the
   public endpoints of OAuth show nothing of the wiki and are not found without `HIPPOWIKI_PUBLIC_URL` (see
   `oauth.md`). The server limits the logins per user name and client address and per user name
   (see "Failed logins" in `users-and-login.md`), but not the logins per client address across all user names; a

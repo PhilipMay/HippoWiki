@@ -29,8 +29,8 @@ How the code is organised and which patterns new code follows. The technology st
     `roles.ts` for the roles and the lowest role of each function, which services and routes share), `users` (the
     accounts), `auth` (login, logout, the session and the login wait, with `session.ts` for who is calling, see "Login
     and sessions"), `grants` (the connected apps, the grants of users to OAuth clients, and the check of an access
-    token), `mcp` (the MCP server: `tools.ts` with its tools and `http.ts`, the adapter of the route `/mcp`, see "Reads
-    and writes") and `oauth` (the OAuth authorization server for MCP clients: `service.ts` with the rules of the code
+    token), `mcp` (the MCP server: `tools.ts` with its tools, `http.ts`, the adapter of the route of the MCP addresses,
+    see "Reads and writes", and `queries.ts` and `components/` for the folder view "AI apps") and `oauth` (the OAuth authorization server for MCP clients: `service.ts` with the rules of the code
     flow, `http.ts` with the adapters of its public endpoints, `secret.ts` for codes and tokens and their hashes,
     `metadata-fetch.ts` for the metadata documents of clients). Their specs are listed in `CLAUDE.md`.
 - `src/generated/prisma/`: the generated Prisma client (`npm run db:generate`), not checked in
@@ -46,10 +46,12 @@ How the code is organised and which patterns new code follows. The technology st
   calls `getDb()`. Routes and components import a service only for its types. The health route
   (`src/app/api/health/route.ts`) is the one exception: it checks the database connection itself.
 - A caller other than the GUI has an adapter of its own in place of `queries.ts` and `actions.ts`. The MCP server is
-  the first: the route `src/app/mcp/[[...path]]/route.ts` only hands the request to `handleMcpRequest()` in
-  `src/features/mcp/http.ts`, which finds the actor from the bearer token instead of the session and passes the
-  request to the MCP SDK, with the actor as the authentication information that the SDK passes on to the factory of
-  the server; the tools in `src/features/mcp/tools.ts` call the services of the folders and pages with that actor. The
+  the first: the route `src/app/mcp/[[...path]]/route.ts` only hands the request and the segments of its path to
+  `handleMcpRequest()` in `src/features/mcp/http.ts`, which answers every path that is no folder address
+  (`/mcp/<folder-uuid>/<reader|writer>`) with 404, finds the actor and the connection from the bearer token instead of
+  the session, reads the folder of the connection and passes the request to the MCP SDK, with the actor of MCP and the
+  folder as the authentication information that the SDK passes on to the factory of the server; the tools in
+  `src/features/mcp/tools.ts` call the services of the folders and pages with that actor. The
   tools import nothing from `next` or `react`, like a service. The public endpoints of OAuth work the same way: the
   routes under `src/app/.well-known/` and `src/app/oauth/register` and `src/app/oauth/token` hand the request to a
   function of `src/features/oauth/http.ts`, which calls the OAuth service and answers 404 while
@@ -97,15 +99,20 @@ How the code is organised and which patterns new code follows. The technology st
     changes for a user, and the token service answers `null` and `not-allowed` for an admin. Who the actor is, the
     adapters find out from the session (see "Login and sessions").
   - Every read and write of content (folders, tabs, pages and deleted pages) takes the acting user as its first
-    argument as well, together with the channel of the call, `browser` or `mcp` (`ContentActor` and `BrowserActor` in
-    `src/features/folder-roles/service.ts`; `inBrowser()` and `inMcp()` build them), which no caller can leave out.
-    The queries and actions pass `browser`, the MCP tools `mcp`; a write takes only `browser`. An admin sees no
+    argument as well, together with the channel of the call, `browser` or `mcp` (`ContentActor`, `BrowserActor` and
+    `McpActor` in `src/features/folder-roles/service.ts`; `inBrowser()` and `inMcp()` build them), which no caller can
+    leave out. The actor of MCP also carries its connection: the grant, the folder and the role of its address. The
+    queries and actions pass the actor of the browser, the MCP tools the actor of MCP. Creating a page, saving its
+    content and moving or renaming it take either; deleting and restoring pages and the writes of folders, tabs and
+    roles take only the actor of the browser. An admin sees no
     content: for an admin a read returns `null` and a write `not-allowed`, logged with the actor id, before anything
-    else is checked (see "Only users see content" in `content-structure.md`). Then, for the browser, the role of the
-    actor on the folder is checked with the functions of the folder-roles service and `mayDo()` of `roles.ts`, before
-    any other database work that could tell whether an item exists: a read without the needed role returns `null`, a
-    write `not-allowed`, logged with the folder, tab or page and the role (see `folder-roles.md`). A read for MCP
-    ignores roles. A write stores the user as the last editor of the item (see "Last editor" there). It parses the
+    else is checked (see "Only users see content" in `content-structure.md`). Then the role of the actor on the folder
+    is checked with the functions of the folder-roles service and `mayDo()` of `roles.ts`, before any other database
+    work that could tell whether an item exists: a read without the needed role returns `null`, a write `not-allowed`,
+    logged with the folder, tab or page and the role (see `folder-roles.md`). For the actor of MCP these functions give
+    the lower of the user's role and the role of the connection on the folder of the connection, and no role on every
+    other folder, so the services need no rule of their own for MCP. A write stores the user as the last editor of the
+    item (see "Last editor" there), and its log line names the channel and, for MCP, the grant. It parses the
     actor's id like every other id; a malformed id gives `failed` and is logged as an error, because only a broken
     caller can cause it. Pure helpers such as `directPagesFirst()` take no actor.
   - A route decides which buttons, actions and views to offer with the role that the folder read returns and
@@ -144,14 +151,15 @@ The feature is described in `users-and-login.md`. What every new route, query an
 
 - Nothing is read or changed without a login. The login is checked in two layers:
   - `src/proxy.ts` sends every request without a session cookie to the login page. It only looks whether the cookie
-    is there. Its matcher leaves out the login page, `/api/health`, the MCP endpoint `/mcp`, the public endpoints of
-    OAuth and the static files of Next.js (`_next/static/`), but not the image optimizer (`_next/image`), which the
+    is there. Its matcher leaves out the login page, `/api/health`, `/mcp` and every address below it, the public
+    endpoints of OAuth and the static files of Next.js (`_next/static/`), but not the image optimizer (`_next/image`), which the
     app does not use; a new public address has to be added there.
-    - `/mcp` is public to the proxy only: its callers have no session cookie, and its adapter refuses every request
-      without a valid bearer token.
+    - `/mcp` and the addresses below it are public to the proxy only: the callers of the MCP addresses have no
+      session cookie, and their adapter answers every address that is no folder address with 404 and refuses every
+      request without a valid bearer token.
     - The public endpoints of OAuth are what a client calls before it has a token: the metadata of the authorization
-      server (`/.well-known/oauth-authorization-server`) and of the protected resource
-      (`/.well-known/oauth-protected-resource` and what follows it), the registration `/oauth/register` and the token
+      server (`/.well-known/oauth-authorization-server`) and of the protected resources
+      (`/.well-known/oauth-protected-resource` and what follows it, of which only the folder addresses answer), the registration `/oauth/register` and the token
       endpoint `/oauth/token`. The consent page `/oauth/authorize` is not public.
   - `requireUser()` from `src/features/auth/session.ts` checks the session in the database. It is the layer that
     protects the data: it redirects to the login page without a session, and to the password change while the user
@@ -171,11 +179,12 @@ The feature is described in `users-and-login.md`. What every new route, query an
 - These three functions and the actions of the auth feature are the only code that reads the headers of the request
   for the session.
 - A caller other than the browser, such as the MCP server, finds its actor with
-  `authenticateAccessToken(headers, scope)` of the grant service, from the access token of a grant in the
+  `authenticateAccessToken(headers, address)` of the grant service, from the access token of a grant in the
   `Authorization` header (see `connected-apps.md`). It returns the same `Actor`, type included, as the session of the
-  grant's user, or a code for a missing or bad token, an access token of an admin included, and for a missing scope.
-  The adapter of `/mcp` calls it for every `POST` from an allowed origin while OAuth is on; `src/proxy.ts` does not
-  look at the header.
+  grant's user, with the connection of the grant, or a code for a missing or bad token, an access token of an admin or
+  of another address included, and for a role on the folder that is too low for the address. The adapter of the MCP
+  addresses calls it for every `POST` from an allowed origin while OAuth is on; `src/proxy.ts` does not look at the
+  header.
 - The login action also reads the client address of the request, with `clientAddressGroup()` from
   `src/lib/client-address.ts` and `HIPPOWIKI_TRUSTED_PROXIES`, because `/login` does not pass `src/proxy.ts`; it
   passes the group to the auth service. The adapter of `/oauth/register` (`handleRegister()` in
@@ -227,7 +236,7 @@ The feature is described in `users-and-login.md`. What every new route, query an
   `content-structure.md`. The login is at `/login`, the forced password change at `/change-password` and the user list
   at `/users` (see `users-and-login.md`), the own account with the connected apps at `/account` (see
   `connected-apps.md`), the overview of the folder roles for admins at `/folder-roles` (see `folder-roles.md`), the MCP
-  endpoint at `/mcp` (see `mcp.md`) and the endpoints of OAuth under `/oauth/` and `/.well-known/` (see `oauth.md`).
+  addresses of the folders at `/mcp/<folder-uuid>/<reader|writer>` (see `mcp.md`) and the endpoints of OAuth under `/oauth/` and `/.well-known/` (see `oauth.md`).
   Routes, Server Actions and links build them with the helpers in `src/lib/addresses.ts` instead of writing paths by
   hand.
 - What an address opens is given in its query string: an action as `?action=<action>`, a view as `?view=<view>`.
@@ -272,8 +281,8 @@ The feature is described in `users-and-login.md`. What every new route, query an
 - Every model has a UUID id generated by PostgreSQL (`gen_random_uuid()`) and stores its times as `timestamptz(3)`. The
   foreign keys between folders, tabs and pages, and those of a role to its folder and user, restrict deleting
   (`onDelete: Restrict`), so that no content and no role disappears by a cascade; the sessions, accounts, grants and
-  OAuth codes of a user are deleted with the user, and the codes and grants of an OAuth client with the client
-  (`onDelete: Cascade`).
+  OAuth codes of a user are deleted with the user, and the codes and grants of an OAuth client and of a folder with the
+  client and the folder (`onDelete: Cascade`): a grant is no content.
 - The tables `User`, `Session`, `Account` and `Verification` have the shape Better Auth expects; a change to them
   follows the schema of the installed Better Auth version.
 - Writes that must succeed together run in one interactive transaction of the Prisma client
