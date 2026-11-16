@@ -52,6 +52,8 @@ The specification lives in the `spec/` directory. This catalog should always be 
 - `spec/remove-api-tokens-requirements.md`: the approved requirements of removing API tokens (MCP only through
   OAuth, existing tokens deleted on the update, `/mcp` off without the public URL, `/account` as a list of connected
   apps)
+- `spec/remove-api-tokens-steps.md`: the step plan of removing API tokens (MCP only through OAuth, the account page of
+  connected apps, removing the tokens from the data and the code with the model renamed to `OAuthGrant`, wrap-up)
 - `spec/roadmap.md`: backlog of candidate features, grouped by theme, and things still to check
 - `spec/issue-report.md`: how to report issues found in code and document reviews
 - `spec/review-report.md`: the report of the security and code review (scope and method, standards and target level,
