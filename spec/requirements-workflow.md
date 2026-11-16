@@ -94,7 +94,7 @@ Run the checks in every round on what changed, and on the whole file before aski
   - Invalid input, errors, and what the user sees then.
   - The numbers a user relies on, such as limits, lengths and waits.
   - Security and privacy: who can reach what, and what is kept about whom.
-  - The effect on existing features, such as pages, folders and tabs, deleted pages, login, API tokens, MCP and OAuth.
+  - The effect on existing features, such as pages, folders and tabs, deleted pages, login, connected apps, MCP and OAuth.
   - What is out of scope.
   - Every requirement has acceptance criteria that a test or a person can check.
 

@@ -29,13 +29,13 @@ Tests: `e2e/mcp.spec.ts`, `e2e/oauth.spec.ts` for the access tokens of OAuth, an
 ## The tokens it accepts
 
 - Every request needs a bearer token with the scope `read`: the access token of a grant. Any other value, a former API
-  token included, counts as no token. The check is `authenticateToken()` of the token service (see `api-tokens.md`).
+  token included, counts as no token. The check is `authenticateAccessToken()` of the grant service (see
+  `connected-apps.md`).
 - The caller acts as the user of the token: the adapter hands that user to the tools, and the services decide what it
   may read. The tools pass the channel `mcp`, for which the services ignore folder roles: a user reads every folder
   through MCP, also one that the browser hides because the user has no role on it (see `folder-roles.md`).
-- `/mcp` serves users only. Every access token of an admin is refused, because
-  the check of a bearer token looks at the type of the account (see "No tokens for admins" in `api-tokens.md`); such
-  a request reaches no tool.
+- `/mcp` serves users only. Every access token of an admin is refused, because the check of an access token looks at
+  the type of the account (see "No apps for admins" in `connected-apps.md`); such a request reaches no tool.
 - What a client gets instead of an answer of the protocol:
   - 401 with `WWW-Authenticate: Bearer` without a token, and with `error="invalid_token"` for a token that is
     unknown, expired, of a user who still has the first password or of an admin. The header also names the metadata
@@ -43,7 +43,7 @@ Tests: `e2e/mcp.spec.ts`, `e2e/oauth.spec.ts` for the access tokens of OAuth, an
     server.
   - 403 with `error="insufficient_scope"` and `scope="read"` for a valid token without the scope.
   - 500 when the token could not be checked.
-- A use through `/mcp` shows as the last use of the token on `/account`.
+- A use through `/mcp` shows as the last use of the connected app on `/account`.
 - A token is never logged and never part of an answer.
 
 ## Tools

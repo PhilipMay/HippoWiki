@@ -64,13 +64,13 @@ listed first; there is no order across themes.
 ## Users and Accounts
 
 - Own password change: change the own password at any time, not only the first one, on the own account page
-  `/account` (`users-and-login.md`, `api-tokens.md`).
+  `/account` (`users-and-login.md`, `connected-apps.md`).
 - Password reset by an admin: a new first password for an account that lost theirs (`users-and-login.md`).
 - Admin password command: reset a lost admin password with a command of `scripts/admin.ts` instead of a change in
   the database (`users-and-login.md`).
 - Deactivating and reactivating users: stop a user from logging in, and let them back in later; deactivating must
-  also stop the user's API tokens, and decide what happens to a folder whose last Owner is deactivated or deleted
-  (`users-and-login.md`, `api-tokens.md`, `folder-roles.md`).
+  also stop the user's connected apps, and decide what happens to a folder whose last Owner is deactivated or deleted
+  (`users-and-login.md`, `connected-apps.md`, `folder-roles.md`).
 - First password expiry: a generated first password stops working after some time (`users-and-login.md`).
 - Breached password check: check new passwords against Have I Been Pwned by k-anonymity (only the first five
   characters of the SHA-1 hash leave the server), as an option for deployments that allow outgoing requests
@@ -112,6 +112,8 @@ listed first; there is no order across themes.
 
 - Bearer token sessions: sessions for clients other than a browser, sent in the `Authorization` header
   (`users-and-login.md`).
+- Access for clients without OAuth: scripts, CI jobs and MCP clients that cannot do OAuth with a browser get access
+  again, for example through the OAuth device flow or client credentials (`connected-apps.md`, `oauth.md`).
 - MCP write tools: create and change folders, tabs and pages from AI assistants, after page history (see "History and
   Revisions"), with the scope `write` for OAuth grants; they state the version of every page they change
   (`mcp.md`, `oauth.md`, `optimistic-locking.md`).
@@ -166,9 +168,10 @@ All from "Current limits" in `container-image.md`:
   (`container-image.md`, `oauth.md`):
   - Add the wiki as a custom connector in claude.ai and in ChatGPT, approve it on the consent page, list and read
     pages, and revoke it on `/account`.
-  - Claude Code with OAuth: `claude mcp add --transport http` without a header.
-  - Claude Code with an API token (`claude mcp add --transport http` with an `Authorization: Bearer hw_…` header)
-    lists and reads pages, and the MCP Inspector shows the tools (`mcp.md`).
+  - Claude Code with OAuth (`claude mcp add --transport http` without a header) lists and reads pages, and the MCP
+    Inspector, connected through OAuth, shows the tools (`mcp.md`).
+  - A tool that still sends a former API token gets 401 at `/mcp`, and its user connects it again through OAuth
+    (`connected-apps.md`).
   - The limit on the registration of OAuth clients counts per client address behind Traefik: a registration from a
     known address is logged with that address as `clientAddress`.
   - Which redirect addresses and which way of identifying themselves (metadata document or registration) the

@@ -13,7 +13,7 @@ forced password change), `src/lib/auth.ts` (the Better Auth instance), `src/lib/
 `Verification`, `AuthSecret`, `LoginAttempt` and `LoginWindow` in `prisma/schema.prisma`; the first four have the shape
 that Better Auth and its `username` plugin expect. The admin setup in the container image is described in `container-image.md`.
 
-The API tokens of a user and the own account page `/account` are described in `api-tokens.md`.
+The connected apps of a user and the own account page `/account` are described in `connected-apps.md`.
 
 Tests: `e2e/login.spec.ts`, `e2e/change-password.spec.ts`, `e2e/users.spec.ts`, `e2e/access.spec.ts`,
 `integration/auth-service.test.ts`, `integration/user-service.test.ts`, and the unit tests next to the code, such as
@@ -62,12 +62,12 @@ and `src/lib/client-address.test.ts`.
   `src/features/users/user-type.ts` is the one place that decides it). The type, not the name, decides what an account
   may do.
 - An admin logs in, changes the own first password, sees the user list and creates accounts of either type. An admin
-  sees no tab, page or deleted page, has no API tokens and connects no apps (see `content-structure.md` and
-  `api-tokens.md`). An admin sees the names of the folders and who has which role on them on the overview
-  `/folder-roles`, but never has a role, changes no role and creates no folder (see `folder-roles.md`).
-- A user logs in, changes the own first password, and sees and changes the folders, tabs, pages and deleted pages as
-  far as the role on each folder allows, creates folders, holds API tokens and connected apps and uses the wiki
-  through MCP. A user sees the user list but creates no accounts.
+  sees no tab, page or deleted page, and connects no apps (see `content-structure.md` and `connected-apps.md`). An admin
+  sees the names of the folders and who has which role on them on the overview `/folder-roles`, but never has a role,
+  changes no role and creates no folder (see `folder-roles.md`).
+- A user logs in, changes the own first password, and sees and changes the folders, tabs, pages and deleted pages as far
+  as the role on each folder allows, creates folders, holds connected apps and uses the wiki through MCP. A user sees
+  the user list but creates no accounts.
 - The type is chosen when an account is created and never changes, by anyone and in any way: no page, form, dialog,
   tool or command offers to change it, and a trigger of the migration refuses every update of the database that
   changes it. A person who needs both jobs has two accounts.
@@ -334,7 +334,7 @@ the authentication guide of Next.js describes:
 ## Existing installations
 
 - The migration that brought the types made the account named `admin` an admin and every other account a user, and
-  removed the API tokens, the grants and the authorization codes of `admin`. After the update `admin` sees the user
+  removed the tokens, the grants and the authorization codes of `admin`. After the update `admin` sees the user
   list and no content, and creates a user account for whoever needs to keep working in the wiki.
 - Content that `admin` edited before keeps showing that name as its last editor.
 
@@ -348,8 +348,9 @@ the authentication guide of Next.js describes:
 - no password reset by an admin for other accounts, so a lost first password cannot be replaced
 - no filter of the user list
 - no change of the own password after the forced password change
-- a password change does not end the API tokens of the user; only revoking and expiry do (see `api-tokens.md`)
-- no deactivating or deleting of users; deactivating, when it comes, must also stop the user's API tokens and decide
+- a password change does not end the connected apps of the user; only revoking and expiry do (see
+  `connected-apps.md`)
+- no deactivating or deleting of users; deactivating, when it comes, must also stop the user's connected apps and decide
   what happens to a folder whose last Owner it concerns (see `folder-roles.md`). A user who has edited content or has
   a role cannot be deleted for good at all, because the keys from content to its last editor and from a role to its
   user restrict deleting (`onDelete: Restrict`, see `content-structure.md`)

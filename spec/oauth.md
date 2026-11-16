@@ -2,7 +2,7 @@
 
 OAuth as built: HippoWiki is an OAuth 2.1 authorization server for the MCP server (see `mcp.md`), so that a connector,
 such as the ones of claude.ai and ChatGPT, gets access to the wiki on behalf of a user without ever seeing a
-password or an API token. The user logs in, approves the connector on a consent page and can revoke it on `/account`
+password. The user logs in, approves the connector on a consent page and can revoke it on `/account`
 at any time. Only accounts of the type user connect apps; an admin is refused. All clients are public: none has a secret, and each proves itself with PKCE.
 
 Code: `src/features/oauth/` (`schema.ts` with the rules, `secret.ts` for codes and tokens, `service.ts` with the code
@@ -86,7 +86,7 @@ The fetch of a metadata document must not be a way to make the server ask an add
 - "Approve" sends the client a code; "Deny" sends it `access_denied`. Both check the request again from the
   submitted values. Every answer to the client carries its `state` and `iss`, the issuer (RFC 9207).
 - Every connect asks again; no consent is remembered.
-- An admin connects no apps (see "No tokens for admins" in `api-tokens.md`). For an otherwise valid request the page
+- An admin connects no apps (see "No apps for admins" in `connected-apps.md`). For an otherwise valid request the page
   tells an admin that admin accounts cannot connect apps, instead of the consent form, with the link "Return to
   <host>" that carries `access_denied`, `state` and `iss` to the client, like the other errors of the page. No code
   and no grant is created: the service refuses a code for an admin as well. An unknown client or a foreign redirect
@@ -109,7 +109,7 @@ The fetch of a metadata document must not be a way to make the server ask an add
 
 - A grant is what a code is exchanged for: a row of `OAuthGrant`, named after the client, with the scope `read` and
   the lifetime the user chose. It is listed on `/account` as a connected app, counted in the limit of 20 connected
-  apps per user and revoked there (see `api-tokens.md`).
+  apps per user and revoked there (see `connected-apps.md`).
 - A new grant replaces the user's older grants to the same client: the same client row, or for a registered client
   the same name and the same redirect addresses, because some connectors register again on every connect. The
   limit counts the new grant without the replaced ones.
@@ -138,7 +138,7 @@ The fetch of a metadata document must not be a way to make the server ask an add
 ## Secrets
 
 - A code, an access token and a refresh token are 256 random bits behind a prefix of their own (`hwc_`, `hwa_`,
-  `hwr_`), so that none is taken for another or for an API token (`hw_`). A refresh token also names its grant.
+  `hwr_`), so that none is taken for another. A refresh token also names its grant.
 - Only their SHA-256 hashes are stored. A code, a token and their hashes are never logged.
 
 ## Routes

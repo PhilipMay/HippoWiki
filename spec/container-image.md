@@ -70,7 +70,7 @@ Code: `Containerfile`, `.containerignore`, `scripts/image.sh`, `scripts/image-mi
   with `./image-migrate.sh` as its command makes the migration a step of its own without a second image.
 - No sample data is inserted; the seed script is not part of the image.
 - The update to the version with account types gives every existing account its type once: the account named `admin`
-  becomes an admin, every other account a user, and the API tokens, grants and authorization codes of `admin` are
+  becomes an admin, every other account a user, and the tokens, grants and authorization codes of `admin` are
   removed. After it `admin` sees the user list and no content; whoever needs to keep working in the wiki gets a user
   account from an admin (see "Existing installations" in `users-and-login.md`).
 

@@ -38,7 +38,7 @@ and `src/features/folder-roles/service.test.ts`.
   | Give, change and remove roles on the folder                                   |        |        |         |   ✓   |
 
 - Not tied to a folder, and so open to every user without a role: creating a folder, the user list, the own account
-  page with its tokens and connected apps, the consent page of OAuth, the password change and logging out.
+  page with its connected apps, the consent page of OAuth, the password change and logging out.
 - A role is read from the database on every request and never kept in the session, so that a change takes effect with
   the next request of the user it concerns, without a new login.
 
@@ -112,7 +112,7 @@ and `src/features/folder-roles/service.test.ts`.
 
 ## MCP
 
-- MCP keeps its behaviour: a token or connected app of a user reads every folder, regardless of the user's roles (see
+- MCP keeps its behaviour: a connected app of a user reads every folder, regardless of the user's roles (see
   `mcp.md`). The reads of the content take the channel of the call, `browser` or `mcp`, as a required part of the
   actor, so that no caller can leave it out; MCP has no writes, so a write is always one of the browser.
 
@@ -186,7 +186,7 @@ and `src/features/folder-roles/service.test.ts`.
 
 ## Current limits
 
-- no rules for MCP: a token or connected app of a user reads every folder, also one without a role (see "MCP rules
+- no rules for MCP: a connected app of a user reads every folder, also one without a role (see "MCP rules
   for folder roles" in `roadmap.md`)
 - no roles for admins, as a lasting rule
 - no groups of users: every role is given to one user

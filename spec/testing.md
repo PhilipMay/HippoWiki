@@ -96,8 +96,8 @@ How the code is tested. Commands are listed in `README.md`.
   `createUser()`).
 - They cover what the unit tests can only mock:
   - `db-errors.ts` against the errors that Prisma and its `pg` adapter really report: every unique constraint of the
-    schema is recognised by its constant (`FOLDER_NAME`, `TAB_NAME`, `PAGE_NAME`, `API_TOKEN_HASH`,
-    `API_TOKEN_ACCESS_HASH`, `OAUTH_CLIENT_METADATA_URL`, `OAUTH_CODE_HASH`) and by no other,
+    schema is recognised by its constant (`FOLDER_NAME`, `TAB_NAME`, `PAGE_NAME`,
+    `GRANT_ACCESS_TOKEN_HASH`, `OAUTH_CLIENT_METADATA_URL`, `OAUTH_CODE_HASH`) and by no other,
     every foreign key violation by `isForeignKeyViolation()`. The services use the same constants, so a Prisma
     upgrade that changes the error shape or the index names fails here. `USER_NAME` stands for the two unique indexes
     of `User`, on the user name and on the email.
@@ -111,13 +111,13 @@ How the code is tested. Commands are listed in `README.md`.
     no slot gets free.
   - The grant service (`integration/grant-service.test.ts`): listing and revoking only the own grants, and the check
     of an access token, with the clock set past the expiry and to the minute of the last use.
-  - The OAuth service (`integration/oauth-service.test.ts`): the registration and its limit per client address group
-    and hour, the checks of an authorization request, codes that work once, also for exchanges at the same time
-    (sent with `Promise.all`), the expiry of codes, access tokens and grants with the clock set, the refresh, a
-    refresh token that is used again, two refreshes at the same time, the grants that a new grant replaces, the limit
-    of tokens, what is deleted with a client and a user, and the clean-up. `integration/oauth-metadata.test.ts` does
-    the same for clients with a metadata document, with the fetch replaced: the first fetch, the kept row, the fetch
-    after the cache time, a document that is not valid and a fetch that fails.
+  - The OAuth service (`integration/oauth-service.test.ts`): the registration and its limit per client address group and
+    hour, the checks of an authorization request, codes that work once, also for exchanges at the same time (sent with
+    `Promise.all`), the expiry of codes, access tokens and grants with the clock set, the refresh, a refresh token that
+    is used again, two refreshes at the same time, the grants that a new grant replaces, the limit of connected apps,
+    what is deleted with a client and a user, and the clean-up. `integration/oauth-metadata.test.ts` does the same for
+    clients with a metadata document, with the fetch replaced: the first fetch, the kept row, the fetch after the cache
+    time, a document that is not valid and a fetch that fails.
   - The services of the content on real data, one file per service (`integration/folder-service.test.ts`,
     `integration/page-service.test.ts`):
     - the reads: their conditions (e.g. pages placed directly in a folder versus pages in a tab) and their order, and
@@ -246,9 +246,9 @@ How the code is tested. Commands are listed in `README.md`.
 - `e2e/access.spec.ts` checks that every kind of address leads to the login page without a login, as a redirect that
   sends nothing of the page, and that the redirect carries the address as the way back. A new route adds its address
   there; a new public address is checked there as well, for not being sent to the login page.
-- `e2e/mcp.spec.ts` calls `/mcp` with `request` and the access token of a grant from `createGrant()`; `e2e/oauth.spec.ts` covers the
-  discovery, the registration, the token endpoint and the whole flow from the login over the consent page to a tool
-  call, a refresh and a refresh token that is used again.
+- `e2e/mcp.spec.ts` calls `/mcp` with `request` and the access token of a grant from `createGrant()`;
+  `e2e/oauth.spec.ts` covers the discovery, the registration, the token endpoint and the whole flow from the login over
+  the consent page to a tool call, a refresh and a refresh token that is used again.
 - `e2e/security-headers.spec.ts` checks the security headers of `next.config.ts` (see "Security headers" in
   `architecture.md`) with their exact values, and that no `X-Powered-By` is sent: on the login page, the redirect to
   it, `/api/health`, a page with a login and a `/_next/static/` file. It also checks that an image of another host in

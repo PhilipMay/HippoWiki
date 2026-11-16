@@ -18,7 +18,7 @@ page; admins create the accounts and choose their type, and the Owners of a fold
 through an MCP server, connected through OAuth (see "MCP server").
 
 What is built is described in `spec/`: `spec/content-structure.md`, `spec/pages.md`, `spec/page-deletion.md`,
-`spec/users-and-login.md`, `spec/api-tokens.md`, `spec/mcp.md`, `spec/oauth.md` and `spec/container-image.md`.
+`spec/users-and-login.md`, `spec/connected-apps.md`, `spec/mcp.md`, `spec/oauth.md` and `spec/container-image.md`.
 `CLAUDE.md` lists all spec files.
 
 ## Prerequisites

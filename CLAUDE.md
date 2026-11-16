@@ -33,11 +33,11 @@ The specification lives in the `spec/` directory. This catalog should always be 
   name and client address group and the hour window per user name, authenticated access only, forced password change,
   the user list for every account and creating accounts of either type, routes, decisions, existing installations,
   limits)
-- `spec/api-tokens.md`: the API tokens as built (tokens shown once and stored as a hash, grants to OAuth clients,
-  scopes and expiry, the limit per user, no tokens for admins, the own tokens only, the check of a bearer token with its codes and the
-  option for OAuth access tokens, the own account page `/account`, decisions, limits)
-- `spec/mcp.md`: the MCP server as built (the endpoint `/mcp`, stateless with JSON answers, the tokens it accepts,
-  the read tools, decisions, limits)
+- `spec/connected-apps.md`: the connected apps as built (the grants of users to OAuth clients, the limit of 20 per
+  user, the own apps only, no apps for admins, the account page without a public URL, the check of an access token
+  with its codes, the own account page `/account`, the update that removed the API tokens, decisions, limits)
+- `spec/mcp.md`: the MCP server as built (the endpoint `/mcp`, off without the public URL, stateless with JSON answers,
+  the access tokens it accepts, the read tools, decisions, limits)
 - `spec/oauth.md`: OAuth for MCP clients as built (switching it on with the public URL, discovery, clients by
   metadata document and by registration with its limit, the safe fetch of metadata documents, the authorization
   request and the consent page, codes, grants, refresh with rotation, the token endpoint, secrets, routes, decisions,
@@ -49,11 +49,6 @@ The specification lives in the `spec/` directory. This catalog should always be 
   what each may do in the browser, admins never have a role, what a user sees and does, creating folders, the roles
   view, giving, changing and removing roles with the last Owner kept, the admin overview `/folder-roles`, MCP, existing
   installations, decisions, limits)
-- `spec/remove-api-tokens-requirements.md`: the approved requirements of removing API tokens (MCP only through
-  OAuth, existing tokens deleted on the update, `/mcp` off without the public URL, `/account` as a list of connected
-  apps)
-- `spec/remove-api-tokens-steps.md`: the step plan of removing API tokens (MCP only through OAuth, the account page of
-  connected apps, removing the tokens from the data and the code with the model renamed to `OAuthGrant`, wrap-up)
 - `spec/roadmap.md`: backlog of candidate features, grouped by theme, and things still to check
 - `spec/issue-report.md`: how to report issues found in code and document reviews
 - `spec/review-report.md`: the report of the security and code review (scope and method, standards and target level,

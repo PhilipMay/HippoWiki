@@ -27,13 +27,12 @@ How the code is organised and which patterns new code follows. The technology st
   - `queries.ts` and `actions.ts`: the adapters between the web and the service
   - The features are `folders` (folders and their tabs), `pages`, `folder-roles` (the roles of users on folders, with
     `roles.ts` for the roles and the lowest role of each function, which services and routes share), `users` (the
-    accounts), `auth` (login, logout,
-    the session and the login wait, with `session.ts` for who is calling, see "Login and sessions"), `tokens` (the
-    API tokens and the check of a bearer token, with `secret.ts` for the token and its hash), `mcp` (the MCP
-    server: `tools.ts` with its tools and `http.ts`, the adapter of the route `/mcp`, see "Reads and writes") and
-    `oauth` (the OAuth authorization server for MCP clients: `service.ts` with the rules of the code flow, `http.ts`
-    with the adapters of its public endpoints, `secret.ts` for codes and tokens, `metadata-fetch.ts` for the metadata
-    documents of clients). Their specs are listed in `CLAUDE.md`.
+    accounts), `auth` (login, logout, the session and the login wait, with `session.ts` for who is calling, see "Login
+    and sessions"), `grants` (the connected apps, the grants of users to OAuth clients, and the check of an access
+    token), `mcp` (the MCP server: `tools.ts` with its tools and `http.ts`, the adapter of the route `/mcp`, see "Reads
+    and writes") and `oauth` (the OAuth authorization server for MCP clients: `service.ts` with the rules of the code
+    flow, `http.ts` with the adapters of its public endpoints, `secret.ts` for codes and tokens and their hashes,
+    `metadata-fetch.ts` for the metadata documents of clients). Their specs are listed in `CLAUDE.md`.
 - `src/generated/prisma/`: the generated Prisma client (`npm run db:generate`), not checked in
 - `prisma/`: schema, migrations, seed, and `known-users.ts`, the known users of the seed and the tests
 - `scripts/`: development scripts (`db.sh`), the admin setup (`admin.ts`) and the scripts of the container image
@@ -171,11 +170,12 @@ The feature is described in `users-and-login.md`. What every new route, query an
   returns the user or `null` without redirecting, for the header and the login page; it is wrapped in React `cache()`.
 - These three functions and the actions of the auth feature are the only code that reads the headers of the request
   for the session.
-- A caller other than the browser, such as the MCP server, finds its actor with `authenticateToken(headers, scope)`
-  of the token service, from the bearer token in the `Authorization` header (see `api-tokens.md`). It returns the
-  same `Actor`, type included, as the session of the token's user, or a code for a missing or bad token, a token of an
-  admin included, and for a missing scope. The
-  adapter of `/mcp` calls it for every request; `src/proxy.ts` does not look at the header.
+- A caller other than the browser, such as the MCP server, finds its actor with
+  `authenticateAccessToken(headers, scope)` of the grant service, from the access token of a grant in the
+  `Authorization` header (see `connected-apps.md`). It returns the same `Actor`, type included, as the session of the
+  grant's user, or a code for a missing or bad token, an access token of an admin included, and for a missing scope.
+  The adapter of `/mcp` calls it for every `POST` from an allowed origin while OAuth is on; `src/proxy.ts` does not
+  look at the header.
 - The login action also reads the client address of the request, with `clientAddressGroup()` from
   `src/lib/client-address.ts` and `HIPPOWIKI_TRUSTED_PROXIES`, because `/login` does not pass `src/proxy.ts`; it
   passes the group to the auth service. The adapter of `/oauth/register` (`handleRegister()` in
@@ -224,12 +224,12 @@ The feature is described in `users-and-login.md`. What every new route, query an
 ## Addresses and actions
 
 - All content lives under `/folders`, deleted pages under `/deleted-pages`; the addresses are described in
-  `content-structure.md`. The login is at `/login`, the forced password change at `/change-password` and the user
-  list at `/users` (see `users-and-login.md`), the own account with the API tokens at `/account` (see
-  `api-tokens.md`), the overview of the folder roles for admins at `/folder-roles` (see `folder-roles.md`), the MCP
-  endpoint at `/mcp` (see `mcp.md`) and the endpoints of OAuth under `/oauth/` and
-  `/.well-known/` (see `oauth.md`). Routes, Server Actions and links build them with the helpers in
-  `src/lib/addresses.ts` instead of writing paths by hand.
+  `content-structure.md`. The login is at `/login`, the forced password change at `/change-password` and the user list
+  at `/users` (see `users-and-login.md`), the own account with the connected apps at `/account` (see
+  `connected-apps.md`), the overview of the folder roles for admins at `/folder-roles` (see `folder-roles.md`), the MCP
+  endpoint at `/mcp` (see `mcp.md`) and the endpoints of OAuth under `/oauth/` and `/.well-known/` (see `oauth.md`).
+  Routes, Server Actions and links build them with the helpers in `src/lib/addresses.ts` instead of writing paths by
+  hand.
 - What an address opens is given in its query string: an action as `?action=<action>`, a view as `?view=<view>`.
   A route reads them with `parseAction` and `parseView`, passing only the actions and views it has, and calls
   `notFound()` for `"invalid"`. A route without views calls `parseView` without allowed views.
@@ -266,10 +266,11 @@ The feature is described in `users-and-login.md`. What every new route, query an
   of an admin (`prisma/migrations/20261115210306_add_folder_roles/`), is
   added to the SQL of the migration by hand (`npm run db:migrate -- --name <change> --create-only`, edit the file,
   then `npm run db:migrate`).
-- Every model has a UUID id generated by PostgreSQL (`gen_random_uuid()`) and stores its times as `timestamptz(3)`.
-  The foreign keys between folders, tabs and pages, and those of a role to its folder and user, restrict deleting
-  (`onDelete: Restrict`), so that no content and no role disappears by a cascade; the sessions, accounts, API tokens and OAuth codes of a user are deleted with the user,
-  and the codes and grants of an OAuth client with the client (`onDelete: Cascade`).
+- Every model has a UUID id generated by PostgreSQL (`gen_random_uuid()`) and stores its times as `timestamptz(3)`. The
+  foreign keys between folders, tabs and pages, and those of a role to its folder and user, restrict deleting
+  (`onDelete: Restrict`), so that no content and no role disappears by a cascade; the sessions, accounts, grants and
+  OAuth codes of a user are deleted with the user, and the codes and grants of an OAuth client with the client
+  (`onDelete: Cascade`).
 - The tables `User`, `Session`, `Account` and `Verification` have the shape Better Auth expects; a change to them
   follows the schema of the installed Better Auth version.
 - Writes that must succeed together run in one interactive transaction of the Prisma client
