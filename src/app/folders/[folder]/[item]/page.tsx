@@ -14,7 +14,12 @@ import { createPage } from "@/features/pages/actions";
 import NewPageForm from "@/features/pages/components/NewPageForm";
 import PageList from "@/features/pages/components/PageList";
 import { mayDo, type FolderFunction } from "@/features/folder-roles/roles";
-import PageView, { mayDoPageAction, PAGE_ACTIONS, pageViewTitle } from "@/features/pages/components/PageView";
+import PageView, {
+  mayDoPageAction,
+  PAGE_ACTIONS,
+  pageViewTitle,
+  parsePageNotice,
+} from "@/features/pages/components/PageView";
 import { getPage, listTabPages } from "@/features/pages/queries";
 import { parseAction, parsePageSegment, parseView, tabPath } from "@/lib/addresses";
 import { pageTitle } from "@/lib/site";
@@ -71,8 +76,9 @@ export default async function FolderItemPage({ params, searchParams }: Props) {
 
   if (item.kind === "page") {
     const action = parseAction(query, PAGE_ACTIONS);
-    if (action === "invalid" || !mayDoPageAction(item.page.role, action)) notFound();
-    return <PageView page={item.page} action={action} />;
+    const notice = parsePageNotice(query, action);
+    if (action === "invalid" || notice === "invalid" || !mayDoPageAction(item.page.role, action)) notFound();
+    return <PageView page={item.page} action={action} notice={notice} />;
   }
 
   const { tab } = item;

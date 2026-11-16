@@ -197,10 +197,31 @@ export function tabPath(folder: string, tab: string, action?: string): string {
   return withAction(`${FOLDERS_PATH}/${folder}/${tab}`, action);
 }
 
-/** The address of a page in a tab or, with `tab` `null`, placed directly in the folder; optionally with an action. */
-export function pagePath(folder: string, tab: string | null, page: string, action?: string): string {
+/**
+ * The notice of a page address whose editor or dialog is shown again because a change of the page was refused: the
+ * page was changed after the editor or dialog was opened.
+ */
+export const CHANGED_NOTICE = "changed";
+
+/** The notices of a page address, in its query string `?action=<action>&notice=<notice>`. */
+export const PAGE_NOTICES = [CHANGED_NOTICE] as const;
+
+export type PageNotice = (typeof PAGE_NOTICES)[number];
+
+/**
+ * The address of a page in a tab or, with `tab` `null`, placed directly in the folder; optionally with an action and,
+ * after it, a notice. A page address shows a notice only together with an action.
+ */
+export function pagePath(
+  folder: string,
+  tab: string | null,
+  page: string,
+  action?: string,
+  notice?: PageNotice,
+): string {
   const place = tab === null ? `${FOLDERS_PATH}/${folder}` : `${FOLDERS_PATH}/${folder}/${tab}`;
-  return withAction(`${place}/${page}${PAGE_SUFFIX}`, action);
+  const path = withAction(`${place}/${page}${PAGE_SUFFIX}`, action);
+  return notice ? `${path}${action ? "&" : "?"}notice=${notice}` : path;
 }
 
 /** The address of the list of the deleted pages of a folder. */

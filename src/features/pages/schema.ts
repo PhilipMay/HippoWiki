@@ -16,6 +16,24 @@ export function parsePageId(id: string): string | null {
   return result.success ? result.data : null;
 }
 
+/** The largest version a page can have: the largest value of the column, a PostgreSQL `integer`. */
+const PAGE_VERSION_MAX = 2_147_483_647;
+
+/**
+ * The version of a page that a change is based on: an integer of at least 1, as the page had it when its editor or
+ * dialog was opened.
+ */
+export const pageVersionSchema = z.number().int().min(1).max(PAGE_VERSION_MAX);
+
+/**
+ * Returns the value if it is a version of a page, otherwise `null`. A change with `null` is based on no known state of
+ * the page and is refused like one based on an older state.
+ */
+export function parsePageVersion(value: unknown): number | null {
+  const result = pageVersionSchema.safeParse(value);
+  return result.success ? result.data : null;
+}
+
 /** Shown at the content field when the content has no title (see `titleFromContent`). */
 export const TITLE_HEADING_MISSING_MESSAGE = "Content must start with a title heading: # Title";
 

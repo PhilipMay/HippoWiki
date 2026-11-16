@@ -22,7 +22,7 @@ import {
 } from "@/features/pages/forms";
 import { parsePageId } from "@/features/pages/schema";
 import * as pageService from "@/features/pages/service";
-import { folderPath, pagePath, tabPath } from "@/lib/addresses";
+import { CHANGED_NOTICE, folderPath, pagePath, tabPath, type PageNotice } from "@/lib/addresses";
 import { NAME_TAKEN_MESSAGE } from "@/lib/names";
 import { revalidateContent } from "@/lib/revalidate";
 
@@ -36,9 +36,22 @@ const TAB_GONE_MESSAGE = "This tab no longer exists.";
 /** The form state that shows "Name is already in use" at the name field. */
 const nameTakenState = { fieldErrors: { name: [NAME_TAKEN_MESSAGE] } };
 
-/** The address of a page as stored. Actions redirect to it, never to an address built from submitted values. */
-function addressOf({ name, folder, tab }: pageService.StoredPage): string {
-  return pagePath(folder.name, tab?.name ?? null, name);
+/**
+ * The address of a page as stored, optionally with an action and a notice. Actions redirect to it, never to an address
+ * built from submitted values.
+ */
+function addressOf({ name, folder, tab }: pageService.StoredPage, action?: string, notice?: PageNotice): string {
+  return pagePath(folder.name, tab?.name ?? null, name, action, notice);
+}
+
+/**
+ * Shows the editor or dialog of the action again for a change that was refused because the page was changed after it
+ * was opened: at the page's address as stored, which can be a new one, with the notice that says so. The content is
+ * revalidated first, so that the address shows the page as stored.
+ */
+function showChanged(page: pageService.StoredPage, action: string): never {
+  revalidateContent();
+  redirect(addressOf(page, action, CHANGED_NOTICE));
 }
 
 /**
@@ -94,7 +107,8 @@ export async function createPage(
 /**
  * Stores the submitted content of the page with the given id, with the title derived from it, and redirects to the
  * page. Returns the errors to show in the form if the content is invalid, the page no longer exists or is deleted, or
- * it cannot be stored. Bind the id with `updatePageContent.bind(null, id)`.
+ * it cannot be stored. If the page was changed after the submitted version, or the form submits none, the editor is
+ * shown again with the page as stored and the notice. Bind the id with `updatePageContent.bind(null, id)`.
  */
 export async function updatePageContent(
   id: string,
@@ -109,7 +123,8 @@ export async function updatePageContent(
   const input = parsePageContentFormData(formData);
   if (!input.success) return { fieldErrors: input.fieldErrors };
 
-  const result = await pageService.updatePageContent(inBrowser(user), pageId, { content: input.data.content });
+  const { content, version } = input.data;
+  const result = await pageService.updatePageContent(inBrowser(user), pageId, { content, version });
   if (!result.ok) {
     switch (result.error.code) {
       // An admin changes no content, and for an admin no content exists; nor does a folder without a role of the user.
@@ -117,6 +132,8 @@ export async function updatePageContent(
         notFound();
       case "page-not-found":
         return { message: PAGE_GONE_MESSAGE };
+      case "page-changed":
+        showChanged(result.error.page, "edit");
       case "invalid-input":
         return { fieldErrors: result.error.fieldErrors };
       case "failed":

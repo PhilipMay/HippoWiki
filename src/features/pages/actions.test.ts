@@ -196,8 +196,8 @@ describe("createPage", () => {
 
 describe("updatePageContent", () => {
   const id = crypto.randomUUID();
-  const VALID = { content: CONTENT };
-  const INVALID = { content: "No heading" };
+  const VALID = { content: CONTENT, version: "3" };
+  const INVALID = { content: "No heading", version: "3" };
 
   it.each([
     ["valid", VALID],
@@ -214,7 +214,7 @@ describe("updatePageContent", () => {
     expectNotRevalidatedOrRedirected();
   });
 
-  it("passes the content only to the service and redirects to the stored address", async () => {
+  it("passes the content and the version only to the service and redirects to the stored address", async () => {
     mocks.updatePageContent.mockResolvedValue({ ok: true, value: STORED_DIRECT });
 
     const fields = { ...VALID, title: "Submitted title", name: "submitted-name" };
@@ -222,7 +222,28 @@ describe("updatePageContent", () => {
       path: "/folders/stored-folder/stored-name.md",
     });
 
-    expect(mocks.updatePageContent).toHaveBeenCalledWith(BROWSER_USER, id, { content: CONTENT });
+    expect(mocks.updatePageContent).toHaveBeenCalledWith(BROWSER_USER, id, { content: CONTENT, version: 3 });
+    expectContentRevalidated();
+  });
+
+  // The service refuses a save without a version, so that the editor shows the current page (R14).
+  it.each([
+    ["missing", { content: CONTENT }],
+    ["malformed", { content: CONTENT, version: "x" }],
+  ])("passes a %s version on as null", async (_name, fields) => {
+    mocks.updatePageContent.mockResolvedValue({ ok: false, error: { code: "failed" } });
+
+    await updatePageContent(id, {}, formData(fields));
+
+    expect(mocks.updatePageContent).toHaveBeenCalledWith(BROWSER_USER, id, { content: CONTENT, version: null });
+  });
+
+  it("shows the editor again at the stored address with the notice when the page was changed", async () => {
+    mocks.updatePageContent.mockResolvedValue({ ok: false, error: { code: "page-changed", page: STORED_IN_TAB } });
+
+    await expect(updatePageContent(id, {}, formData(VALID))).rejects.toMatchObject({
+      path: "/folders/stored-folder/stored-tab/stored-name.md?action=edit&notice=changed",
+    });
     expectContentRevalidated();
   });
 

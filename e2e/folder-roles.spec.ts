@@ -1,17 +1,9 @@
-import type { Browser, BrowserContext, Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
 
 import { KNOWN_USER } from "../prisma/known-users";
-import { ADMIN_STORAGE_STATE, becomeUser, NO_STORAGE_STATE, USER_STORAGE_STATE } from "./support/auth";
+import { ADMIN_STORAGE_STATE, becomeUser, logInElsewhere, USER_STORAGE_STATE } from "./support/auth";
 import { collectErrors } from "./support/browser";
-import {
-  createFolder,
-  createPage,
-  createTab,
-  createUser,
-  getTestDb,
-  resetTestDatabase,
-  TEST_PASSWORD,
-} from "./support/database";
+import { createFolder, createPage, createTab, createUser, getTestDb, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
 
 test.beforeEach(async () => {
@@ -456,18 +448,6 @@ test.describe("the roles view", () => {
     await expectNotFound(page, "/folders/project-x?view=roles&action=rename");
   });
 });
-
-/** Logs in as the given user in a browser of its own, as another person working at the same time would. */
-async function logInElsewhere(browser: Browser, name: string): Promise<{ context: BrowserContext; page: Page }> {
-  const context = await browser.newContext({ storageState: NO_STORAGE_STATE });
-  const page = await context.newPage();
-  await page.goto("/login");
-  await page.getByLabel("User name").fill(name);
-  await page.getByLabel("Password").fill(TEST_PASSWORD);
-  await page.getByRole("button", { name: "Log in" }).click();
-  await expect(page).toHaveURL("/folders");
-  return { context, page };
-}
 
 /** The "Give role" dialog. */
 function giveRoleDialog(page: Page) {

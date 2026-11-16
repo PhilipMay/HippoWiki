@@ -32,6 +32,7 @@ import {
   pageContentInputSchema,
   pageNameInputSchema,
   parsePageId,
+  parsePageVersion,
   type PageFieldErrors,
 } from "@/features/pages/schema";
 import { LAST_EDITOR_SELECT, withLastEditor, type LastEditor } from "@/features/users/records";
@@ -109,6 +110,11 @@ type FolderNotFound = { code: "folder-not-found" };
 type TabNotFound = { code: "tab-not-found" };
 /** The page does not exist or is not in the state the write needs: deleted for a restore, not deleted otherwise. */
 type PageNotFound = { code: "page-not-found" };
+/**
+ * The page was changed after the version the write is based on, or the write stated no valid version; `page` is the
+ * page as stored now, so that the caller can show it at its current address.
+ */
+type PageChanged = { code: "page-changed"; page: StoredPage };
 /** An unexpected database error, or an actor that is malformed or does not exist; it has been logged. */
 type Failed = { code: "failed" };
 /** The actor is an admin, who changes no content, or has no role on the folder; it has been logged. */
@@ -116,7 +122,7 @@ type NotAllowed = { code: "not-allowed" };
 
 export type CreatePageError =
   NotAllowed | FolderNotFound | TabNotFound | InvalidInput<PageFieldErrors> | NameTaken | Failed;
-export type UpdatePageContentError = NotAllowed | PageNotFound | InvalidInput<PageFieldErrors> | Failed;
+export type UpdatePageContentError = NotAllowed | PageNotFound | PageChanged | InvalidInput<PageFieldErrors> | Failed;
 export type MoveOrRenamePageError =
   NotAllowed | PageNotFound | TabNotFound | InvalidInput<NameFieldErrors> | NameTaken | Failed;
 export type DeletePageError = NotAllowed | PageNotFound | Failed;
@@ -357,6 +363,25 @@ async function findStoredPage(pageId: string): Promise<StoredPage | null> {
 }
 
 /**
+ * The result of a write of a page that matched no row, or that was not made because it stated no valid version:
+ * `page-not-found` if the page does not exist or is deleted, otherwise `page-changed` with the page as stored, because
+ * the write is based on an older state of the page. Both are logged as `<what> not found` and `<what> changed`.
+ */
+async function refusedWrite(
+  pageId: string,
+  version: unknown,
+  what: string,
+): Promise<{ ok: false; error: PageNotFound | PageChanged }> {
+  const page = await findStoredPage(pageId);
+  if (!page) {
+    logger.warn({ pageId }, `${what} not found`);
+    return { ok: false, error: { code: "page-not-found" } };
+  }
+  logger.warn({ pageId, version }, `${what} changed after the version the write is based on`);
+  return { ok: false, error: { code: "page-changed", page } };
+}
+
+/**
  * Creates a page with the given name and content, with the title derived from the content, and returns it as stored.
  * The page is placed in the tab with the id `tabId` or, with `null`, directly in the folder with the given id; the tab
  * must be one of that folder. The actor is the page's last editor.
@@ -412,12 +437,14 @@ export async function createPage(
 
 /**
  * Stores the given content of the page with the given id, with the title derived from it, and returns the page as
- * stored, with the actor as its last editor. Name and place are not touched. A deleted page counts as missing.
+ * stored, with the actor as its last editor. Name and place are not touched. A deleted page counts as missing. The
+ * write is based on the given version of the page: if the page has another one, or no valid version is given, nothing
+ * is stored and the result is `page-changed`.
  */
 export async function updatePageContent(
   actor: BrowserActor,
   id: string,
-  input: { content: string },
+  input: { content: string; version: number | null },
 ): Promise<Result<StoredPage, UpdatePageContentError>> {
   if (isAdmin(actor)) return notAllowed(actor, "page not saved: the actor is an admin");
   const lastEditedById = editorIdOf(actor);
@@ -433,16 +460,19 @@ export async function updatePageContent(
 
   const parsed = pageContentInputSchema.safeParse({ content: input.content });
   if (!parsed.success) return invalidInput(parsed.error);
+  const version = parsePageVersion(input.version);
 
   let page: StoredPage | null;
   try {
+    if (version === null) return await refusedWrite(pageId, input.version, "page to update");
     // `updateMany` reports a missing page as a count of 0 instead of throwing; it sets `updatedAt` as well. A deleted
-    // page counts as missing.
+    // page, and one with another version than the given one, match no row.
     const { count } = await getDb().page.updateMany({
-      where: { id: pageId, deletedAt: null },
+      where: { id: pageId, deletedAt: null, version },
       data: { ...parsed.data, lastEditedById, version: { increment: 1 } },
     });
-    page = count === 0 ? null : await findStoredPage(pageId);
+    if (count === 0) return await refusedWrite(pageId, version, "page to update");
+    page = await findStoredPage(pageId);
   } catch (err) {
     if (isForeignKeyViolation(err, LAST_EDITOR)) return unknownActor(err, actor);
     logger.error({ err, pageId }, "failed to update page");

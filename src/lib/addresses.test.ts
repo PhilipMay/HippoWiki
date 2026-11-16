@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CHANGED_NOTICE,
   accountPath,
   allPagesPath,
   authorizationServerMetadataPath,
@@ -17,6 +18,7 @@ import {
   oauthAuthorizePath,
   oauthRegisterPath,
   oauthTokenPath,
+  PAGE_NOTICES,
   pagePath,
   parseAction,
   parseChoice,
@@ -64,6 +66,19 @@ describe("paths", () => {
   it("builds the address of a page in a tab", () => {
     expect(pagePath("handbook", "guides", "overview")).toBe("/folders/handbook/guides/overview.md");
     expect(pagePath("handbook", "guides", "overview", "move")).toBe("/folders/handbook/guides/overview.md?action=move");
+  });
+
+  it("builds the address of a page with an action and a notice", () => {
+    expect(pagePath("handbook", null, "overview", "edit", CHANGED_NOTICE)).toBe(
+      "/folders/handbook/overview.md?action=edit&notice=changed",
+    );
+    expect(pagePath("handbook", "guides", "overview", "delete", "changed")).toBe(
+      "/folders/handbook/guides/overview.md?action=delete&notice=changed",
+    );
+    expect(pagePath("handbook", null, "overview", undefined, "changed")).toBe(
+      "/folders/handbook/overview.md?notice=changed",
+    );
+    expect(PAGE_NOTICES).toEqual(["changed"]);
   });
 
   it("builds the address of the deleted pages of a folder", () => {

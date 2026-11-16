@@ -523,8 +523,10 @@ describe("createPage", () => {
 });
 
 describe("updatePageContent", () => {
-  const VALID = { content: CONTENT };
-  const INVALID = { content: "No heading" };
+  const VERSION = 4;
+  const VALID = { content: CONTENT, version: VERSION };
+  const INVALID = { content: "No heading", version: VERSION };
+  const STORED = { id: PAGE_ID, name: "stored-name", folder: { name: "stored-folder" }, tab: null };
 
   it.each([
     ["valid", VALID],
@@ -539,16 +541,21 @@ describe("updatePageContent", () => {
     expectDatabaseUntouched();
   });
 
-  it("stores content and derived title only and returns the page as stored", async () => {
-    const stored = { id: PAGE_ID, name: "stored-name", folder: { name: "stored-folder" }, tab: null };
+  // Invalid content is reported before the version, so that a stale editor shows the error of its content first.
+  it("reports invalid content before a missing version", async () => {
+    await expect(updatePageContent(ACTOR, PAGE_ID, { ...INVALID, version: null })).resolves.toEqual(TITLE_MISSING);
+    expectDatabaseUntouched();
+  });
+
+  it("stores content and derived title only, if the page has the given version, and returns the page as stored", async () => {
     mocks.updateMany.mockResolvedValue({ count: 1 });
-    mocks.findUnique.mockResolvedValue(stored);
+    mocks.findUnique.mockResolvedValue(STORED);
 
     const input = { ...VALID, title: "Given title", name: "given-name" };
-    await expect(updatePageContent(ACTOR, PAGE_ID, input)).resolves.toEqual({ ok: true, value: stored });
+    await expect(updatePageContent(ACTOR, PAGE_ID, input)).resolves.toEqual({ ok: true, value: STORED });
 
     expect(mocks.updateMany).toHaveBeenCalledWith({
-      where: { id: PAGE_ID, deletedAt: null },
+      where: { id: PAGE_ID, deletedAt: null, version: VERSION },
       data: { title: "My page", content: CONTENT, lastEditedById: ACTOR_ID, version: { increment: 1 } },
     });
     expect(mocks.findUnique).toHaveBeenCalledWith({
@@ -558,15 +565,61 @@ describe("updatePageContent", () => {
     expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID }, "page updated");
   });
 
-  // The update only matches a page that is not deleted, so a deleted page counts as missing as well.
+  // The update matches neither a deleted page nor one with another version; the page as stored tells them apart.
+  it("returns page-changed with the page as stored when the update matches no page but the page is stored", async () => {
+    mocks.updateMany.mockResolvedValue({ count: 0 });
+    mocks.findUnique.mockResolvedValue(STORED);
+
+    await expect(updatePageContent(ACTOR, PAGE_ID, VALID)).resolves.toEqual({
+      ok: false,
+      error: { code: "page-changed", page: STORED },
+    });
+
+    expect(mocks.findUnique).toHaveBeenCalledWith({
+      where: { id: PAGE_ID, deletedAt: null },
+      select: STORED_PAGE_SELECT,
+    });
+    expect(mocks.warn).toHaveBeenCalledWith(
+      { pageId: PAGE_ID, version: VERSION },
+      "page to update changed after the version the write is based on",
+    );
+    expect(mocks.info).not.toHaveBeenCalled();
+  });
+
   it("returns page-not-found for a page that no longer exists or is deleted", async () => {
     mocks.updateMany.mockResolvedValue({ count: 0 });
+    mocks.findUnique.mockResolvedValue(null);
 
     await expect(updatePageContent(ACTOR, PAGE_ID, VALID)).resolves.toEqual(PAGE_NOT_FOUND);
 
-    expect(mocks.findUnique).not.toHaveBeenCalled();
     expect(mocks.warn).toHaveBeenCalledWith({ pageId: PAGE_ID }, "page to update not found");
     expect(mocks.info).not.toHaveBeenCalled();
+  });
+
+  // A change that states no version, or a malformed one, is based on no known state of the page (R6, R14).
+  it.each([null, 0, -1, 1.5, Number.NaN, 2_147_483_648])(
+    "writes nothing and returns page-changed for the version %j",
+    async (version) => {
+      mocks.findUnique.mockResolvedValue(STORED);
+
+      await expect(updatePageContent(ACTOR, PAGE_ID, { ...VALID, version })).resolves.toEqual({
+        ok: false,
+        error: { code: "page-changed", page: STORED },
+      });
+
+      expect(mocks.updateMany).not.toHaveBeenCalled();
+      expect(mocks.warn).toHaveBeenCalledWith(
+        { pageId: PAGE_ID, version },
+        "page to update changed after the version the write is based on",
+      );
+    },
+  );
+
+  it("returns page-not-found for a missing version of a page that no longer exists", async () => {
+    mocks.findUnique.mockResolvedValue(null);
+
+    await expect(updatePageContent(ACTOR, PAGE_ID, { ...VALID, version: null })).resolves.toEqual(PAGE_NOT_FOUND);
+    expect(mocks.updateMany).not.toHaveBeenCalled();
   });
 
   it("returns page-not-found for a page that disappears right after the update", async () => {
@@ -591,6 +644,16 @@ describe("updatePageContent", () => {
   it("returns failed when the stored page cannot be read", async () => {
     const err = new Error("connection lost");
     mocks.updateMany.mockResolvedValue({ count: 1 });
+    mocks.findUnique.mockRejectedValue(err);
+
+    await expect(updatePageContent(ACTOR, PAGE_ID, VALID)).resolves.toEqual(FAILED);
+
+    expect(mocks.error).toHaveBeenCalledWith({ err, pageId: PAGE_ID }, "failed to update page");
+  });
+
+  it("returns failed when the page of a refused update cannot be read", async () => {
+    const err = new Error("connection lost");
+    mocks.updateMany.mockResolvedValue({ count: 0 });
     mocks.findUnique.mockRejectedValue(err);
 
     await expect(updatePageContent(ACTOR, PAGE_ID, VALID)).resolves.toEqual(FAILED);
@@ -892,7 +955,7 @@ const writes = [
   ],
   [
     "updatePageContent",
-    (actor: BrowserActor) => updatePageContent(actor, PAGE_ID, { content: CONTENT }),
+    (actor: BrowserActor) => updatePageContent(actor, PAGE_ID, { content: CONTENT, version: 1 }),
     mocks.updateMany,
   ],
   [
@@ -982,7 +1045,7 @@ describe("an admin", () => {
   it("is refused before the ids and the input are checked", async () => {
     const results = [
       await createPage(ADMIN, MALFORMED_ID, { name: "", content: "", tabId: MALFORMED_ID }),
-      await updatePageContent(ADMIN, MALFORMED_ID, { content: "" }),
+      await updatePageContent(ADMIN, MALFORMED_ID, { content: "", version: null }),
       await moveOrRenamePage(ADMIN, MALFORMED_ID, { name: "", tabId: MALFORMED_ID }),
       await deletePage(ADMIN, MALFORMED_ID),
       await restorePage(ADMIN, MALFORMED_ID, { name: "", tabId: MALFORMED_ID }),
@@ -1059,7 +1122,7 @@ describe("the role of the actor", () => {
     ],
     [
       "updatePageContent",
-      () => updatePageContent(ACTOR, PAGE_ID, { content: CONTENT }),
+      () => updatePageContent(ACTOR, PAGE_ID, { content: CONTENT, version: 1 }),
       { pages: { some: { id: PAGE_ID } } },
       { pageId: PAGE_ID },
       "page not saved: the actor has no role on the folder",
@@ -1121,7 +1184,7 @@ describe("the lowest role of each function", () => {
     ],
     [
       "updatePageContent",
-      () => updatePageContent(ACTOR, PAGE_ID, { content: CONTENT }),
+      () => updatePageContent(ACTOR, PAGE_ID, { content: CONTENT, version: 1 }),
       "writer",
       { pageId: PAGE_ID },
       "page not saved",

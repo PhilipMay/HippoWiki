@@ -8,6 +8,7 @@ import {
   newPageInputSchema,
   pageContentInputSchema,
   pageNameInputSchema,
+  parsePageVersion,
   type NewPageInput,
   type PageContentInput,
   type PageFieldErrors,
@@ -29,12 +30,31 @@ export type PageFormAction = (prevState: PageFormState, formData: FormData) => P
 type ParseResult<Data, FieldErrors> = { success: true; data: Data } | { success: false; fieldErrors: FieldErrors };
 
 /**
- * Validates the content of a submitted page form and derives the title from it. A missing field counts as empty;
- * submitted `title` and `name` fields are ignored.
+ * Name of the hidden form field that holds the version of the page that the editor or dialog was opened with: the
+ * state of the page the change is based on.
  */
-export function parsePageContentFormData(formData: FormData): ParseResult<PageContentInput, PageFieldErrors> {
+export const VERSION_FIELD = "version";
+
+/**
+ * Reads the version of the page from the submitted form, or `null` if it is missing or malformed, such as a file, an
+ * empty value or anything but the digits of a version. That is no error of the form: the service refuses a change
+ * without a version as one based on an older state, so that the current page is shown.
+ */
+function parseVersion(formData: FormData): number | null {
+  const version = formData.get(VERSION_FIELD);
+  if (typeof version !== "string" || !/^[0-9]+$/.test(version)) return null;
+  return parsePageVersion(Number(version));
+}
+
+/**
+ * Validates the content of a submitted page form, derives the title from it and reads the version of the page. A
+ * missing content field counts as empty; submitted `title` and `name` fields are ignored.
+ */
+export function parsePageContentFormData(
+  formData: FormData,
+): ParseResult<PageContentInput & { version: number | null }, PageFieldErrors> {
   const result = pageContentInputSchema.safeParse({ content: formData.get("content") ?? "" });
-  if (result.success) return { success: true, data: result.data };
+  if (result.success) return { success: true, data: { ...result.data, version: parseVersion(formData) } };
   return { success: false, fieldErrors: z.flattenError(result.error).fieldErrors };
 }
 

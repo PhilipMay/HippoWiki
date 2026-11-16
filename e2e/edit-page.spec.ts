@@ -1,11 +1,12 @@
 import type { Page as BrowserPage } from "@playwright/test";
 
+import { VERSION_FIELD } from "@/features/pages/forms";
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 
 import { KNOWN_USER } from "../prisma/known-users";
-import { ADMIN_STORAGE_STATE, becomeUser } from "./support/auth";
+import { ADMIN_STORAGE_STATE, becomeUser, logInElsewhere } from "./support/auth";
 import { collectErrors } from "./support/browser";
-import { createFolder, createPage, createUser, getTestDb, resetTestDatabase } from "./support/database";
+import { createFolder, createPage, createTab, createUser, getTestDb, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
 
 let handbook: Awaited<ReturnType<typeof createFolder>>;
@@ -231,6 +232,7 @@ test("cancelling an edit returns to the page view and changes nothing", async ({
   expect(await getTestDb().page.findUniqueOrThrow({ where: { id: created.id } })).toEqual(created);
 });
 
+// R11: a page deleted after the editor was opened is refused as before, whatever its version.
 test("saving a page that was deleted in the meantime shows an error and keeps the content", async ({ page }) => {
   const created = await createPage({ folder: handbook, name: "soon-gone", title: "Soon gone" });
 
@@ -331,4 +333,149 @@ test("a submission of the edit form with the login of an admin changes nothing a
   await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
   const stored = await getTestDb().page.findUniqueOrThrow({ where: { id: edited.id } });
   expect(stored).toStrictEqual(edited);
+});
+
+test.describe("a page changed after the editor was opened", () => {
+  /** The folder of these tests, with the logged-in user and bob as Writers. */
+  let team: Awaited<ReturnType<typeof createFolder>>;
+  let bob: Awaited<ReturnType<typeof createUser>>;
+
+  test.beforeEach(async () => {
+    bob = await createUser({ name: "bob", mustChangePassword: false });
+    team = await createFolder({
+      name: "team",
+      roles: [
+        { user: { id: KNOWN_USER.id }, role: "writer" },
+        { user: bob, role: "writer" },
+      ],
+    });
+  });
+
+  /** The message of a refused change, as the editor shows it above the content. */
+  function changedMessage(page: BrowserPage) {
+    return page.getByRole("main").getByRole("alert");
+  }
+
+  /** The time of the last change, as the page view shows it after "Last updated". */
+  async function shownTime(page: BrowserPage, address: string): Promise<string> {
+    await page.goto(address);
+    return (await page.getByRole("article").locator("time").textContent()) ?? "";
+  }
+
+  test("refuses the save of the second editor and shows the content of the first with who changed it and when", async ({
+    page,
+    browser,
+  }) => {
+    const errors = collectErrors(page);
+    const plan = await createPage({ folder: team, name: "plan", content: "# Plan\n\nFirst draft" });
+    const other = await logInElsewhere(browser, "bob");
+
+    // R1: both open the editor; bob saves first.
+    await page.goto("/folders/team/plan.md?action=edit");
+    await other.page.goto("/folders/team/plan.md?action=edit");
+    await other.page.getByLabel("Content").fill("# Plan\n\nBob's version");
+    await other.page.getByRole("button", { name: "Save" }).click();
+    await expect(other.page).toHaveURL("/folders/team/plan.md");
+
+    await page.getByLabel("Content").fill("# Plan\n\nAlice's version");
+    await page.getByRole("button", { name: "Save" }).click();
+
+    // R5, R9: the editor again, with the content as stored and the message that names bob and the time.
+    await expect(page).toHaveURL("/folders/team/plan.md?action=edit&notice=changed");
+    await expect(page.getByLabel("Content")).toHaveValue("# Plan\n\nBob's version");
+    const time = await shownTime(other.page, "/folders/team/plan.md");
+    await expect(changedMessage(page)).toHaveText(`This page was changed by bob at ${time} after you opened it.`);
+    expect((await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).content).toBe(
+      "# Plan\n\nBob's version",
+    );
+
+    // Saving the current content again is no longer refused.
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page).toHaveURL("/folders/team/plan.md");
+    await expect(page.getByText(/^Last updated /)).toHaveText(by(USER));
+    expect(errors).toEqual([]);
+    await other.context.close();
+  });
+
+  // R10: the user's own save in another tab counts like the save of another user.
+  test("refuses the save in a second tab after a save in the first", async ({ page, context }) => {
+    await createPage({ folder: team, name: "plan", content: "# Plan\n\nFirst draft" });
+    const second = await context.newPage();
+
+    await page.goto("/folders/team/plan.md?action=edit");
+    await second.goto("/folders/team/plan.md?action=edit");
+    await page.getByLabel("Content").fill("# Plan\n\nFrom the first tab");
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page).toHaveURL("/folders/team/plan.md");
+
+    await second.getByLabel("Content").fill("# Plan\n\nFrom the second tab");
+    await second.getByRole("button", { name: "Save" }).click();
+
+    await expect(second).toHaveURL("/folders/team/plan.md?action=edit&notice=changed");
+    await expect(second.getByLabel("Content")).toHaveValue("# Plan\n\nFrom the first tab");
+    await expect(changedMessage(second)).toHaveText(
+      new RegExp(`^This page was changed by ${USER} at .+ after you opened it\\.$`),
+    );
+  });
+
+  // R7, R12: a rename counts as a change, and the editor is shown at the new address.
+  test("refuses the save after a rename and shows the editor at the new address", async ({ page, browser }) => {
+    const plan = await createPage({ folder: team, name: "plan", content: "# Plan\n\nFirst draft" });
+    const other = await logInElsewhere(browser, "bob");
+
+    await page.goto("/folders/team/plan.md?action=edit");
+    await other.page.goto("/folders/team/plan.md?action=move-or-rename");
+    const dialog = other.page.getByRole("dialog", { name: "Move or rename page" });
+    await dialog.getByLabel("Name").fill("release-plan");
+    await dialog.getByRole("button", { name: "Save" }).click();
+    await expect(other.page).toHaveURL("/folders/team/release-plan.md");
+
+    await page.getByLabel("Content").fill("# Plan\n\nAlice's version");
+    await page.getByRole("button", { name: "Save" }).click();
+
+    await expect(page).toHaveURL("/folders/team/release-plan.md?action=edit&notice=changed");
+    await expect(page.getByLabel("Content")).toHaveValue("# Plan\n\nFirst draft");
+    await expect(changedMessage(page)).toHaveText(/^This page was changed by bob at .+ after you opened it\.$/);
+    expect((await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).content).toBe(
+      "# Plan\n\nFirst draft",
+    );
+    await other.context.close();
+  });
+
+  // R14: an editor opened before the feature submits no version; its save is refused once.
+  test("refuses a save without a version and shows the current page with the message", async ({ page }) => {
+    const plan = await createPage({ folder: team, name: "plan", content: "# Plan\n\nStored", editor: bob });
+
+    await page.goto("/folders/team/plan.md?action=edit");
+    await page.getByLabel("Content").fill("# Plan\n\nTyped");
+    const save = page.getByRole("button", { name: "Save" });
+    await save.evaluate(
+      (button: HTMLButtonElement, field) =>
+        button.form?.addEventListener("formdata", (event) => event.formData.delete(field)),
+      VERSION_FIELD,
+    );
+    await save.click();
+
+    await expect(page).toHaveURL("/folders/team/plan.md?action=edit&notice=changed");
+    await expect(page.getByLabel("Content")).toHaveValue("# Plan\n\nStored");
+    await expect(changedMessage(page)).toHaveText(/^This page was changed by bob at .+ after you opened it\.$/);
+    expect(await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).toStrictEqual(plan);
+  });
+
+  test("a notice without an action, an unknown or a repeated notice shows the not-found page", async ({ page }) => {
+    await createPage({ folder: team, name: "plan" });
+    const tab = await createTab({ folder: team, name: "guides" });
+    await createPage({ tab, name: "plan" });
+
+    for (const address of [
+      "/folders/team/plan.md?notice=changed",
+      "/folders/team/plan.md?action=edit&notice=other",
+      "/folders/team/plan.md?action=edit&notice=",
+      "/folders/team/plan.md?action=edit&notice=changed&notice=changed",
+      "/folders/team/guides/plan.md?notice=changed",
+      "/folders/team/guides/plan.md?action=edit&notice=other",
+    ]) {
+      await expectNotFound(page, address);
+    }
+  });
 });

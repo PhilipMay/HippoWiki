@@ -6,6 +6,7 @@ import {
   parsePageMoveOrRenameFormData,
   parsePageRestoreFormData,
   PLACE_FIELD,
+  VERSION_FIELD,
 } from "@/features/pages/forms";
 import { CONTENT_MAX_LENGTH, TITLE_MAX_LENGTH } from "@/features/pages/limits";
 import { TITLE_HEADING_MISSING_MESSAGE } from "@/features/pages/schema";
@@ -21,7 +22,7 @@ describe("parsePageContentFormData", () => {
   it("derives the title from the content's first heading", () => {
     expect(parsePageContentFormData(formData({ content: "# Hello *world*\n\n- item" }))).toEqual({
       success: true,
-      data: { title: "Hello world", content: "# Hello *world*\n\n- item" },
+      data: { title: "Hello world", content: "# Hello *world*\n\n- item", version: null },
     });
   });
 
@@ -29,7 +30,7 @@ describe("parsePageContentFormData", () => {
     const fields = { title: "Typed title", name: "typed-name", content: "# From content" };
     expect(parsePageContentFormData(formData(fields))).toEqual({
       success: true,
-      data: { title: "From content", content: "# From content" },
+      data: { title: "From content", content: "# From content", version: null },
     });
   });
 
@@ -61,7 +62,7 @@ describe("parsePageContentFormData", () => {
   it("normalizes line breaks in the content", () => {
     expect(parsePageContentFormData(formData({ content: "# Lines\r\none\rtwo\nthree" }))).toEqual({
       success: true,
-      data: { title: "Lines", content: "# Lines\none\ntwo\nthree" },
+      data: { title: "Lines", content: "# Lines\none\ntwo\nthree", version: null },
     });
   });
 
@@ -70,6 +71,31 @@ describe("parsePageContentFormData", () => {
       success: false,
       fieldErrors: { content: [TITLE_HEADING_MISSING_MESSAGE] },
     });
+  });
+
+  it("reads the version of the page", () => {
+    expect(parsePageContentFormData(formData({ content: "# Title", [VERSION_FIELD]: "12" }))).toEqual({
+      success: true,
+      data: { title: "Title", content: "# Title", version: 12 },
+    });
+    expect(VERSION_FIELD).toBe("version");
+  });
+
+  // No version is no error of the form: the service refuses the save, so that the current page is shown (R14).
+  it.each(["", "0", "-1", "1.5", "1e3", " 3", "0x10", "abc", "2147483648", "99999999999999999999"])(
+    "gives no version and no field error for the version %j",
+    (version) => {
+      expect(parsePageContentFormData(formData({ content: "# Title", [VERSION_FIELD]: version }))).toEqual({
+        success: true,
+        data: { title: "Title", content: "# Title", version: null },
+      });
+    },
+  );
+
+  it("gives no version for a missing version field or a file", () => {
+    expect(parsePageContentFormData(formData({ content: "# Title" }))).toMatchObject({ data: { version: null } });
+    const file = formData({ content: "# Title", [VERSION_FIELD]: new Blob(["3"]) });
+    expect(parsePageContentFormData(file)).toMatchObject({ success: true, data: { version: null } });
   });
 
   it("rejects a file instead of text", () => {

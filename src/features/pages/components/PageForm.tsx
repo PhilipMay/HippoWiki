@@ -8,7 +8,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 
 import Link from "@/components/Link";
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
-import { type PageFormAction } from "@/features/pages/forms";
+import { VERSION_FIELD, type PageFormAction } from "@/features/pages/forms";
 import { useHydrated } from "@/lib/hydration";
 
 type PageFormProps = {
@@ -16,6 +16,10 @@ type PageFormProps = {
   action: PageFormAction;
   /** The content the form starts with: the current content of the page. */
   initialContent: string;
+  /** The version of the page the form was rendered with, which the save is based on. */
+  version: number;
+  /** The message that the page was changed after the form was opened, after a refused save. */
+  changedMessage?: string;
   /** Where "Cancel" leads. */
   cancelHref: string;
 };
@@ -25,7 +29,7 @@ type PageFormProps = {
  * page is saved. The name is not part of the form; a page is moved or renamed in its own dialog. New pages use
  * `NewPageForm`.
  */
-export default function PageForm({ action, initialContent, cancelHref }: PageFormProps) {
+export default function PageForm({ action, initialContent, version, changedMessage, cancelHref }: PageFormProps) {
   const [state, formAction, pending] = useActionState(action, {});
   // A controlled field keeps the entered content when the action returns errors; React resets only uncontrolled
   // fields after a submission.
@@ -47,6 +51,8 @@ export default function PageForm({ action, initialContent, cancelHref }: PageFor
   return (
     // `noValidate`: the server validates, and its errors are shown at the field instead of browser bubbles.
     <Stack component="form" action={formAction} noValidate spacing={3}>
+      <input type="hidden" name={VERSION_FIELD} value={version} />
+      {changedMessage && <Alert severity="warning">{changedMessage}</Alert>}
       {state.message && <Alert severity="error">{state.message}</Alert>}
       <TextField
         name="content"

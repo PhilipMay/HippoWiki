@@ -15,7 +15,7 @@ import MarkdownContent from "@/features/pages/components/MarkdownContent";
 import MoveOrRenamePageDialog from "@/features/pages/components/MoveOrRenamePageDialog";
 import PageForm from "@/features/pages/components/PageForm";
 import type { PageWithPlace } from "@/features/pages/service";
-import { pagePath } from "@/lib/addresses";
+import { PAGE_NOTICES, pagePath, parseChoice, type PageNotice, type SearchParams } from "@/lib/addresses";
 import { formatDateTime } from "@/lib/format";
 
 /**
@@ -41,6 +41,27 @@ export function mayDoPageAction(role: Role | null, action: PageAction | null): b
   return action === null || mayDo(role, PAGE_ACTION_FUNCTIONS[action]);
 }
 
+/**
+ * Reads the notice of a page address from its query string `?notice=<notice>`: `null` without a notice, the notice if
+ * it is known and the address has an action as well, and `"invalid"` for anything else, a notice without an action
+ * included. Routes show the not-found page for `"invalid"`.
+ */
+export function parsePageNotice(
+  searchParams: SearchParams,
+  action: PageAction | null | "invalid",
+): PageNotice | null | "invalid" {
+  const notice = parseChoice(searchParams, "notice", PAGE_NOTICES);
+  return notice !== null && action === null ? "invalid" : notice;
+}
+
+/**
+ * The message of the notice `changed`: who changed the page last and when, as the page view shows them. The editor or
+ * dialog shows it after a change was refused, because the page was changed after it was opened.
+ */
+function changedMessage(page: PageWithPlace): string {
+  return `This page was changed by ${page.lastEditedBy.name} at ${formatDateTime(page.updatedAt)} after you opened it.`;
+}
+
 /** The browser title of a page address with the given action. */
 export function pageViewTitle(page: PageWithPlace, action: PageAction | null | "invalid"): string {
   return action === "edit" ? `Edit ${page.title}` : page.title;
@@ -50,6 +71,8 @@ type PageViewProps = {
   page: PageWithPlace;
   /** The action of the address, already checked. */
   action: PageAction | null;
+  /** The notice of the address, already checked; only with an action. */
+  notice: PageNotice | null;
 };
 
 /**
@@ -57,10 +80,14 @@ type PageViewProps = {
  * breadcrumb, with the "Move or rename page" dialog on top for `move-or-rename` and the "Delete page" dialog for
  * `delete`, or the edit form for `edit`.
  */
-export default async function PageView({ page, action }: PageViewProps) {
+export default async function PageView({ page, action, notice }: PageViewProps) {
   const folderName = page.folder.name;
   const tabName = page.tab?.name ?? null;
   const address = pagePath(folderName, tabName, page.name);
+  const message = notice === "changed" ? changedMessage(page) : undefined;
+  // A new key after a refused change starts the editor or dialog anew with the page as stored, instead of keeping the
+  // input of the user: the version changes with every change of the page, the notice when no version was submitted.
+  const formKey = `${page.version}-${notice ?? ""}`;
 
   if (action === "edit") {
     return (
@@ -68,7 +95,14 @@ export default async function PageView({ page, action }: PageViewProps) {
         <Typography variant="h4" component="h1">
           Edit page
         </Typography>
-        <PageForm action={updatePageContent.bind(null, page.id)} initialContent={page.content} cancelHref={address} />
+        <PageForm
+          key={formKey}
+          action={updatePageContent.bind(null, page.id)}
+          initialContent={page.content}
+          version={page.version}
+          changedMessage={message}
+          cancelHref={address}
+        />
       </Stack>
     );
   }

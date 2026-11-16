@@ -4,7 +4,10 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import type { BrowserContext } from "@playwright/test";
+import type { Browser, BrowserContext, Page } from "@playwright/test";
+
+import { TEST_PASSWORD } from "./database";
+import { expect } from "./test";
 
 /** The directory of the saved logins; ignored by Git and removed before every run. */
 export const AUTH_DIRECTORY = fileURLToPath(new URL("../.auth/", import.meta.url));
@@ -31,4 +34,20 @@ export async function becomeUser(context: BrowserContext, storageState: string):
   };
   await context.clearCookies();
   await context.addCookies(cookies);
+}
+
+/**
+ * Logs in as the given user in a browser context of its own, as another person working at the same time would. The
+ * user is one of `createUser()`, with `TEST_PASSWORD` and `mustChangePassword: false`. The test closes the context
+ * when it is done.
+ */
+export async function logInElsewhere(browser: Browser, name: string): Promise<{ context: BrowserContext; page: Page }> {
+  const context = await browser.newContext({ storageState: NO_STORAGE_STATE });
+  const page = await context.newPage();
+  await page.goto("/login");
+  await page.getByLabel("User name").fill(name);
+  await page.getByLabel("Password").fill(TEST_PASSWORD);
+  await page.getByRole("button", { name: "Log in" }).click();
+  await expect(page).toHaveURL("/folders");
+  return { context, page };
 }

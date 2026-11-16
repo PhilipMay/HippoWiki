@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parsePageId } from "@/features/pages/schema";
+import { parsePageId, parsePageVersion } from "@/features/pages/schema";
 
 describe("parsePageId", () => {
   it("accepts well-formed UUIDs", () => {
@@ -19,6 +19,18 @@ describe("parsePageId", () => {
       "7c0b6a2e3f5d4c1a9e2b1a4f8d6c0001",
     ]) {
       expect(parsePageId(id)).toBeNull();
+    }
+  });
+});
+
+describe("parsePageVersion", () => {
+  it("accepts integers from 1 up to the largest value of the column", () => {
+    for (const version of [1, 2, 42, 2_147_483_647]) expect(parsePageVersion(version)).toBe(version);
+  });
+
+  it("refuses everything else", () => {
+    for (const version of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 2_147_483_648, "3", "", null, undefined]) {
+      expect(parsePageVersion(version)).toBeNull();
     }
   });
 });
