@@ -140,7 +140,7 @@ test.describe("without a login", () => {
     // What they do with a token is tested in mcp.spec.ts.
     for (const role of ["reader", "writer"]) {
       const response = await request.post(`/mcp/${crypto.randomUUID()}/${role}`, {
-        data: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "list_folders" } },
+        data: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "list_folder" } },
         maxRedirects: 0,
       });
 

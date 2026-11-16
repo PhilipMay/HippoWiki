@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createFolder,
   createTab,
+  getFolderById,
   getFolderByName,
   getTab,
   listFolders,
@@ -97,13 +98,18 @@ const ACTOR_ID = "9d4b2f6e-1c3a-4e8b-b7d5-2a6c8e0f1b12";
 /** The user who makes the writes in the browser, one whose id is malformed, and the same user through MCP. */
 const ACTOR: BrowserActor = { id: ACTOR_ID, name: "alice", type: "user", channel: "browser" };
 const MALFORMED_ACTOR: BrowserActor = { id: MALFORMED_ID, name: "alice", type: "user", channel: "browser" };
-const MCP_ACTOR: ContentActor = { ...ACTOR, channel: "mcp" };
+/** The same user through MCP, with a Writer connection to the folder `FOLDER_ID`. */
+const MCP_ACTOR: ContentActor = {
+  ...ACTOR,
+  channel: "mcp",
+  connection: { grantId: "0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01", folderId: FOLDER_ID, role: "writer" },
+};
 
 /** The condition and the selection of the actor's role on a folder, as a read of the browser asks for it. */
 const ROLE_WHERE = { roles: { some: { userId: ACTOR_ID } } };
 const ROLE_SELECT = { roles: { where: { userId: ACTOR_ID }, select: { role: true } } };
-/** The selection of a read of MCP, which reads no role. */
-const NO_ROLE_SELECT = { roles: { take: 0, select: { role: true } } };
+/** The condition of a read of MCP: the folder of the connection, with a role of the actor on it. */
+const MCP_WHERE = { id: FOLDER_ID, ...ROLE_WHERE };
 
 /** Names that are not valid as written: not lowercase, surrounding whitespace, a double hyphen, empty. */
 const MALFORMED_NAMES = ["Handbook", " handbook", "handbook ", "release--notes", "-handbook", ""];
@@ -158,13 +164,17 @@ describe("listFolders", () => {
     );
   });
 
-  it("returns every folder through MCP, without a role", async () => {
+  it("returns only the folder of the connection through MCP, with the lower of the two roles", async () => {
     const folder = { id: FOLDER_ID, name: "handbook", updatedAt: new Date() };
-    mocks.folderFindMany.mockResolvedValue([{ ...folder, lastEditedBy: { username: "alice" }, roles: [] }]);
+    mocks.folderFindMany.mockResolvedValue([
+      { ...folder, lastEditedBy: { username: "alice" }, roles: [{ role: "owner" }] },
+    ]);
 
-    await expect(listFolders(MCP_ACTOR)).resolves.toEqual([{ ...folder, lastEditedBy: { name: "alice" }, role: null }]);
+    await expect(listFolders(MCP_ACTOR)).resolves.toEqual([
+      { ...folder, lastEditedBy: { name: "alice" }, role: "writer" },
+    ]);
     expect(mocks.folderFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: {}, select: expect.objectContaining(NO_ROLE_SELECT) }),
+      expect.objectContaining({ where: MCP_WHERE, select: expect.objectContaining(ROLE_SELECT) }),
     );
   });
 
@@ -191,17 +201,17 @@ describe("getFolderByName", () => {
     });
   });
 
-  it("returns the folder through MCP without a role, whatever the roles", async () => {
-    mocks.folderFindFirst.mockResolvedValue({ id: FOLDER_ID, name: "handbook", roles: [] });
+  it("reads through MCP only the folder of the connection, with the lower of the two roles", async () => {
+    mocks.folderFindFirst.mockResolvedValue({ id: FOLDER_ID, name: "handbook", roles: [{ role: "manager" }] });
 
     await expect(getFolderByName(MCP_ACTOR, "handbook")).resolves.toEqual({
       id: FOLDER_ID,
       name: "handbook",
-      role: null,
+      role: "writer",
     });
     expect(mocks.folderFindFirst).toHaveBeenCalledWith({
-      where: { name: "handbook" },
-      select: { id: true, name: true, ...NO_ROLE_SELECT },
+      where: { name: "handbook", ...MCP_WHERE },
+      select: { id: true, name: true, ...ROLE_SELECT },
     });
   });
 
@@ -213,6 +223,42 @@ describe("getFolderByName", () => {
 
   it.each(MALFORMED_NAMES)("returns null for the malformed name %j without reading the database", async (name) => {
     await expect(getFolderByName(ACTOR, name)).resolves.toBeNull();
+    expect(databaseCallCount()).toBe(0);
+  });
+});
+
+describe("getFolderById", () => {
+  it("returns the folder with the id and the role of the actor on it", async () => {
+    mocks.folderFindFirst.mockResolvedValue({ id: FOLDER_ID, name: "handbook", roles: [{ role: "reader" }] });
+
+    await expect(getFolderById(ACTOR, FOLDER_ID)).resolves.toEqual({ id: FOLDER_ID, name: "handbook", role: "reader" });
+    expect(mocks.folderFindFirst).toHaveBeenCalledWith({
+      where: { AND: [{ id: FOLDER_ID }, ROLE_WHERE] },
+      select: { id: true, name: true, ...ROLE_SELECT },
+    });
+  });
+
+  it("reads through MCP only the folder of the connection, with the lower of the two roles", async () => {
+    mocks.folderFindFirst.mockResolvedValue({ id: FOLDER_ID, name: "handbook", roles: [{ role: "owner" }] });
+
+    await expect(getFolderById(MCP_ACTOR, FOLDER_ID)).resolves.toEqual({
+      id: FOLDER_ID,
+      name: "handbook",
+      role: "writer",
+    });
+    expect(mocks.folderFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { AND: [{ id: FOLDER_ID }, MCP_WHERE] } }),
+    );
+  });
+
+  it("returns null when no folder has the id or the actor has no role on it", async () => {
+    mocks.folderFindFirst.mockResolvedValue(null);
+
+    await expect(getFolderById(ACTOR, FOLDER_ID)).resolves.toBeNull();
+  });
+
+  it("returns null for a malformed id without reading the database", async () => {
+    await expect(getFolderById(ACTOR, MALFORMED_ID)).resolves.toBeNull();
     expect(databaseCallCount()).toBe(0);
   });
 });
@@ -237,11 +283,17 @@ describe("listTabs", () => {
     expect(mocks.tabFindMany).not.toHaveBeenCalled();
   });
 
-  it("returns the tabs through MCP without asking for a role", async () => {
+  it("returns the tabs through MCP only of the folder of the connection, with a role on it", async () => {
     mocks.tabFindMany.mockResolvedValue([]);
 
     await expect(listTabs(MCP_ACTOR, FOLDER_ID)).resolves.toEqual([]);
-    expect(mocks.folderRoleFindFirst).not.toHaveBeenCalled();
+    expect(mocks.folderRoleFindFirst).toHaveBeenCalledExactlyOnceWith({
+      where: { userId: ACTOR_ID, folder: { id: FOLDER_ID } },
+      select: { role: true },
+    });
+
+    await expect(listTabs(MCP_ACTOR, "1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e55")).resolves.toBeNull();
+    expect(mocks.folderRoleFindFirst).toHaveBeenCalledOnce();
   });
 
   it("returns no tabs for a malformed folder id without reading the database", async () => {
@@ -262,13 +314,13 @@ describe("getTab", () => {
     });
   });
 
-  it("returns the tab through MCP without a role, whatever the roles", async () => {
+  it("reads the tab through MCP only in the folder of the connection, with the lower of the two roles", async () => {
     const tab = { id: TAB_ID, name: "guides", folder: { id: FOLDER_ID, name: "handbook" } };
-    mocks.tabFindFirst.mockResolvedValue({ ...tab, folder: { ...tab.folder, roles: [] } });
+    mocks.tabFindFirst.mockResolvedValue({ ...tab, folder: { ...tab.folder, roles: [{ role: "owner" }] } });
 
-    await expect(getTab(MCP_ACTOR, "handbook", "guides")).resolves.toEqual({ ...tab, role: null });
+    await expect(getTab(MCP_ACTOR, "handbook", "guides")).resolves.toEqual({ ...tab, role: "writer" });
     expect(mocks.tabFindFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { name: "guides", folder: { name: "handbook" } } }),
+      expect.objectContaining({ where: { name: "guides", folder: { name: "handbook", ...MCP_WHERE } } }),
     );
   });
 
@@ -615,7 +667,7 @@ describe("the actor of a write", () => {
 describe("an admin", () => {
   /** An admin, who sees and changes no content; named like a user, so that only the type decides. */
   const ADMIN: BrowserActor = { id: ACTOR_ID, name: "alice", type: "admin", channel: "browser" };
-  const MCP_ADMIN: ContentActor = { ...ADMIN, channel: "mcp" };
+  const MCP_ADMIN: ContentActor = { ...MCP_ACTOR, type: "admin" };
 
   it.each([
     ["listFolders", () => listFolders(ADMIN)],
@@ -624,6 +676,8 @@ describe("an admin", () => {
     ["getTab", () => getTab(ADMIN, "handbook", "guides")],
     ["listFolders through MCP", () => listFolders(MCP_ADMIN)],
     ["getFolderByName through MCP", () => getFolderByName(MCP_ADMIN, "handbook")],
+    ["getFolderById", () => getFolderById(ADMIN, FOLDER_ID)],
+    ["getFolderById through MCP", () => getFolderById(MCP_ADMIN, FOLDER_ID)],
     ["listTabs through MCP", () => listTabs(MCP_ADMIN, FOLDER_ID)],
     ["getTab through MCP", () => getTab(MCP_ADMIN, "handbook", "guides")],
   ])("gets null from %s, without asking the database", async (_name, read) => {

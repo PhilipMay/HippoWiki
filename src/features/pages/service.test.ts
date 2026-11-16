@@ -81,7 +81,12 @@ const ACTOR_ID = "9d4b2f6e-1c3a-4e8b-b7d5-2a6c8e0f1b12";
 /** The user who makes the writes in the browser, one whose id is malformed, and the same user through MCP. */
 const ACTOR: BrowserActor = { id: ACTOR_ID, name: "alice", type: "user", channel: "browser" };
 const MALFORMED_ACTOR: BrowserActor = { id: MALFORMED_ID, name: "alice", type: "user", channel: "browser" };
-const MCP_ACTOR: ContentActor = { ...ACTOR, channel: "mcp" };
+/** The same user through MCP, with a Writer connection to the folder `FOLDER_ID`. */
+const MCP_ACTOR: ContentActor = {
+  ...ACTOR,
+  channel: "mcp",
+  connection: { grantId: "0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01", folderId: FOLDER_ID, role: "writer" },
+};
 
 /** The condition on the folder of a read of the browser: a role of the actor on it. */
 const WITH_ROLE = { roles: { some: { userId: ACTOR_ID } } };
@@ -1104,7 +1109,7 @@ describe("the actor of a write", () => {
 describe("an admin", () => {
   /** An admin, who sees and changes no content; named like a user, so that only the type decides. */
   const ADMIN: BrowserActor = { id: ACTOR_ID, name: "alice", type: "admin", channel: "browser" };
-  const MCP_ADMIN: ContentActor = { ...ADMIN, channel: "mcp" };
+  const MCP_ADMIN: ContentActor = { ...MCP_ACTOR, type: "admin" };
 
   it.each([
     ["listFolderPages", () => listFolderPages(ADMIN, FOLDER_ID)],
@@ -1181,15 +1186,34 @@ describe("the role of the actor", () => {
     ["listFolderPages", () => listFolderPages(MCP_ACTOR, FOLDER_ID)],
     ["listTabPages", () => listTabPages(MCP_ACTOR, TAB_ID)],
     ["listAllFolderPages", () => listAllFolderPages(MCP_ACTOR, FOLDER_ID)],
-    ["listDeletedPages", () => listDeletedPages(MCP_ACTOR, FOLDER_ID)],
-  ])("%s through MCP reads the pages without asking for a role", async (_name, read) => {
-    await expect(read()).resolves.toEqual([]);
+  ])(
+    "%s through MCP reads the pages with a role on the folder of the connection, and nothing without one",
+    async (_name, read) => {
+      mocks.roleFindFirst.mockResolvedValueOnce({ role: "owner" }).mockResolvedValueOnce(null);
 
-    expect(mocks.roleFindFirst).not.toHaveBeenCalled();
-    expect(mocks.findMany).toHaveBeenCalledOnce();
+      await expect(read()).resolves.toEqual([]);
+      await expect(read()).resolves.toBeNull();
+
+      expect(mocks.roleFindFirst).toHaveBeenCalledTimes(2);
+      expect(mocks.findMany).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("listDeletedPages through MCP reads nothing, because the role of a connection is at most Writer", async () => {
+    mocks.roleFindFirst.mockResolvedValue({ role: "owner" });
+
+    await expect(listDeletedPages(MCP_ACTOR, FOLDER_ID)).resolves.toBeNull();
+    expect(mocks.findMany).not.toHaveBeenCalled();
   });
 
-  it("getPage and getDeletedPage through MCP read the folder whatever the roles", async () => {
+  it("listFolderPages through MCP reads every other folder as one without a role, without asking the database", async () => {
+    await expect(listFolderPages(MCP_ACTOR, "1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e55")).resolves.toBeNull();
+
+    expect(mocks.roleFindFirst).not.toHaveBeenCalled();
+    expect(mocks.findMany).not.toHaveBeenCalled();
+  });
+
+  it("getPage and getDeletedPage through MCP read only the folder of the connection, with a role on it", async () => {
     mocks.findFirst.mockResolvedValue(null);
 
     await getPage(MCP_ACTOR, "handbook", null, "overview");
@@ -1197,11 +1221,14 @@ describe("the role of the actor", () => {
 
     expect(mocks.findFirst).toHaveBeenNthCalledWith(
       1,
-      expect.objectContaining({ where: expect.objectContaining({ folder: { name: "handbook" } }) }),
+      expect.objectContaining({
+        where: expect.objectContaining({ folder: { name: "handbook", id: FOLDER_ID, ...WITH_ROLE } }),
+      }),
     );
+    // Deleted pages are a function of a Manager, which no connection has.
     expect(mocks.findFirst).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({ where: expect.objectContaining({ folder: { name: "handbook" } }) }),
+      expect.objectContaining({ where: expect.objectContaining({ folder: { name: "handbook", id: { in: [] } } }) }),
     );
   });
 

@@ -974,14 +974,43 @@ describe("roles", () => {
     expect(await getTestDb().page.findMany({ orderBy: { name: "asc" } })).toStrictEqual(before);
   });
 
-  it("reads every page through MCP, whatever the roles", async () => {
+  it("reads through MCP the pages of the folder of the connection, with the lower of the two roles", async () => {
+    const projects = await createFolder({ name: "projects", roles: [{ user, role: "owner" }] });
+    await createPage({ folder: projects, name: "intro" });
+    const notes = await createFolder({ name: "notes", roles: [{ user, role: "owner" }] });
+    await createPage({ folder: notes, name: "draft" });
+    const mcp = inMcp(user, { grantId: crypto.randomUUID(), folderId: projects.id, role: "reader" });
+
+    expect((await pageService.listAllFolderPages(mcp, projects.id))?.map(({ name }) => name)).toEqual(["intro"]);
+    await expect(pageService.getPage(mcp, "projects", null, "intro")).resolves.toMatchObject({
+      name: "intro",
+      role: "reader",
+      version: 1,
+    });
+
+    // Another folder on which the user has a role reads like one that does not exist.
+    await expect(pageService.listAllFolderPages(mcp, notes.id)).resolves.toBeNull();
+    await expect(pageService.listFolderPages(mcp, notes.id)).resolves.toBeNull();
+    await expect(pageService.getPage(mcp, "notes", null, "draft")).resolves.toBeNull();
+  });
+
+  it("reads nothing through MCP for a user without a role on the folder of the connection", async () => {
     const bob = await createUser({ name: "bob" });
     const folder = await createFolder({ name: "hidden", roles: owners(bob) });
     await createPage({ folder, name: "intro" });
-    const mcp = inMcp(user);
+    const mcp = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "reader" });
 
-    expect((await pageService.listAllFolderPages(mcp, folder.id))?.map(({ name }) => name)).toEqual(["intro"]);
-    await expect(pageService.getPage(mcp, "hidden", null, "intro")).resolves.toMatchObject({ name: "intro" });
+    await expect(pageService.listAllFolderPages(mcp, folder.id)).resolves.toBeNull();
+    await expect(pageService.getPage(mcp, "hidden", null, "intro")).resolves.toBeNull();
+  });
+
+  it("gives an MCP connection no deleted pages, not even one of an Owner", async () => {
+    const folder = await createFolder({ name: "projects", roles: [{ user, role: "owner" }] });
+    const deleted = await createPage({ folder, name: "old", deletedAt: new Date() });
+    const mcp = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "writer" });
+
+    await expect(pageService.listDeletedPages(mcp, folder.id)).resolves.toBeNull();
+    await expect(pageService.getDeletedPage(mcp, "projects", deleted.id)).resolves.toBeNull();
   });
 });
 

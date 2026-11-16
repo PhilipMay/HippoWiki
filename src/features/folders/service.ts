@@ -7,8 +7,9 @@
 // checked and without asking the database. In the browser a user sees only the folders with a role of the user on
 // them: for any other folder every read returns `null` and every write `not-allowed`, as if it did not exist, and a
 // write needs the lowest role of its function (`FUNCTION_ROLES` in `roles.ts`), checked after the admin and before
-// anything else but the actor. Through MCP a user reads every folder, as before folder roles came. A write stores the actor as the last editor of the
-// folder or tab, in the same write that changes `updatedAt`.
+// anything else but the actor. Through MCP a user reads only the folder of the connection, with the lower of the
+// user's role and the role of the connection; every other folder reads like one that does not exist. A write stores
+// the actor as the last editor of the folder or tab, in the same write that changes `updatedAt`.
 
 import { z } from "zod";
 
@@ -37,7 +38,7 @@ import type { Result } from "@/lib/result";
 
 /**
  * What the list of folders shows of a folder: when and by whom it was last changed, and the role of the actor on it;
- * the role is `null` for a read of MCP, which ignores roles.
+ * for a read of MCP the lower of the user's role and the role of the connection.
  */
 export type FolderSummary = {
   id: string;
@@ -50,16 +51,13 @@ export type FolderSummary = {
 /** A folder: its id and its name, which is all an address or a write needs. */
 export type Folder = { id: string; name: string };
 
-/** A folder with the role of the actor on it, so that a route can decide what to offer; `null` for a read of MCP. */
+/** A folder with the role of the actor on it, so that a route can decide what to offer. */
 export type FolderWithRole = Folder & { role: Role | null };
 
 /** What the list of tabs shows of a tab: when and by whom it was last changed. */
 export type TabSummary = { id: string; name: string; updatedAt: Date; lastEditedBy: LastEditor };
 
-/**
- * A tab together with its folder and the role of the actor on the folder, as a tab address shows it; the role is
- * `null` for a read of MCP.
- */
+/** A tab together with its folder and the role of the actor on the folder, as a tab address shows it. */
 export type TabWithFolder = { id: string; name: string; folder: { id: string; name: string }; role: Role | null };
 
 /** A tab as stored by a write, with the name of its folder: what its address is built from. */
@@ -134,24 +132,47 @@ function unknownActor(err: unknown, actor: Actor): { ok: false; error: Failed } 
 }
 
 /**
- * The folders the actor sees, by name, each with the role of the actor on it: in the browser the folders with a role
- * of the actor, through MCP all folders. `null` for an admin.
+ * The folders the actor sees, by name, each with the role of the actor on it: the folders with a role of the actor,
+ * through MCP only the folder of the connection. `null` for an admin.
  */
 export async function listFolders(actor: ContentActor): Promise<FolderSummary[] | null> {
   if (isAdmin(actor)) return null;
   const reader = readerOf(actor);
-  if (!reader) return [];
+  const readable = readableFolderWhere(actor);
+  if (!reader || !readable) return [];
   const folders = await getDb().folder.findMany({
-    where: reader === "any" ? {} : { roles: { some: { userId: reader } } },
+    where: readable,
     select: { ...SUMMARY_SELECT, roles: roleSelection(reader) },
     orderBy: { name: "asc" },
   });
-  return folders.map(({ roles, ...folder }) => ({ ...withLastEditor(folder), role: roleOf({ roles }) }));
+  return folders.map(({ roles, ...folder }) => ({
+    ...withLastEditor(folder),
+    role: roleOf({ id: folder.id, roles }, actor),
+  }));
+}
+
+/**
+ * The folder with the given id, with the role of the actor on it, or `null` for an admin, if the id is malformed, no
+ * such folder exists or the actor has no role on it; through MCP every folder but the one of the connection reads as
+ * missing.
+ */
+export async function getFolderById(actor: ContentActor, id: string): Promise<FolderWithRole | null> {
+  const reader = readerOf(actor);
+  const readable = readableFolderWhere(actor);
+  const folderId = parseFolderId(id);
+  if (!reader || !readable || !folderId) return null;
+  const folder = await getDb().folder.findFirst({
+    where: { AND: [{ id: folderId }, readable] },
+    select: { id: true, name: true, roles: roleSelection(reader) },
+  });
+  if (!folder) return null;
+  return { id: folder.id, name: folder.name, role: roleOf(folder, actor) };
 }
 
 /**
  * The folder with the given name, with the role of the actor on it, or `null` for an admin, if the name is malformed,
- * no such folder exists or, in the browser, the actor has no role on it.
+ * no such folder exists or the actor has no role on it; through MCP every folder but the one of the connection reads
+ * as missing.
  */
 export async function getFolderByName(actor: ContentActor, name: string): Promise<FolderWithRole | null> {
   const reader = readerOf(actor);
@@ -163,12 +184,12 @@ export async function getFolderByName(actor: ContentActor, name: string): Promis
     select: { id: true, name: true, roles: roleSelection(reader) },
   });
   if (!folder) return null;
-  return { id: folder.id, name: folder.name, role: roleOf(folder) };
+  return { id: folder.id, name: folder.name, role: roleOf(folder, actor) };
 }
 
 /**
- * The tabs of the folder, by name; none for a malformed folder id, and `null` for an admin and, in the browser, for a
- * folder without a role of the actor.
+ * The tabs of the folder, by name; none for a malformed folder id, and `null` for an admin and for a folder without a
+ * role of the actor, through MCP for every folder but the one of the connection.
  */
 export async function listTabs(actor: ContentActor, folderId: string): Promise<TabSummary[] | null> {
   if (!(await mayReadFolder(actor, folderId))) return null;
@@ -184,8 +205,8 @@ export async function listTabs(actor: ContentActor, folderId: string): Promise<T
 
 /**
  * The tab with the given name in the folder with the given name, together with its folder and the role of the actor on
- * the folder, or `null` for an admin, if a name is malformed, no such tab exists or, in the browser, the actor has no
- * role on the folder.
+ * the folder, or `null` for an admin, if a name is malformed, no such tab exists or the actor has no role on the
+ * folder; through MCP every folder but the one of the connection reads as missing.
  */
 export async function getTab(actor: ContentActor, folderName: string, tabName: string): Promise<TabWithFolder | null> {
   const reader = readerOf(actor);
@@ -199,7 +220,7 @@ export async function getTab(actor: ContentActor, folderName: string, tabName: s
   });
   if (!tab) return null;
   const { id, name: storedName, folder: stored } = tab;
-  return { id, name: storedName, folder: { id: stored.id, name: stored.name }, role: roleOf(stored) };
+  return { id, name: storedName, folder: { id: stored.id, name: stored.name }, role: roleOf(stored, actor) };
 }
 
 /**

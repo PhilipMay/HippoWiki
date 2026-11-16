@@ -288,3 +288,37 @@ describe("listAllFolderRoles", () => {
     ]);
   });
 });
+
+describe("the role of an actor of MCP", () => {
+  it("is the lower of the user's role and the role of the connection, and only on the folder of the connection", async () => {
+    const projects = await createFolder({ roles: [{ user: actor, role: "owner" }] });
+    const notes = await createFolder({ roles: [{ user: actor, role: "owner" }] });
+    const reading = await createFolder({ roles: [{ user: actor, role: "reader" }] });
+    const connection = (folderId: string, role: "reader" | "writer") => ({
+      grantId: crypto.randomUUID(),
+      folderId,
+      role,
+    });
+
+    await expect(
+      folderRoleService.folderRoleOf(folderRoleService.inMcp(actor, connection(projects.id, "writer")), projects.id),
+    ).resolves.toBe("writer");
+    await expect(
+      folderRoleService.folderRoleOf(folderRoleService.inMcp(actor, connection(projects.id, "writer")), notes.id),
+    ).resolves.toBeNull();
+    await expect(
+      folderRoleService.folderRoleOf(folderRoleService.inMcp(actor, connection(reading.id, "writer")), reading.id),
+    ).resolves.toBe("reader");
+    // The user's own role, without a connection.
+    await expect(folderRoleService.folderRoleOf(actor, notes.id)).resolves.toBe("owner");
+  });
+
+  it("is none on the folder of the connection once the user's role is removed", async () => {
+    const folder = await createFolder({ roles: [{ user: actor, role: "writer" }] });
+    const mcp = folderRoleService.inMcp(actor, { grantId: crypto.randomUUID(), folderId: folder.id, role: "writer" });
+    await getTestDb().folderRole.deleteMany({ where: { userId: actor.id } });
+
+    await expect(folderRoleService.folderRoleOf(mcp, folder.id)).resolves.toBeNull();
+    await expect(folderRoleService.mayReadFolder(mcp, folder.id)).resolves.toBe(false);
+  });
+});

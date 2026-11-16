@@ -15,12 +15,12 @@ import {
   type McpRequestContext,
 } from "@modelcontextprotocol/server";
 
-import { createWikiServer } from "@/features/mcp/tools";
-import type { McpConnection } from "@/features/folder-roles/roles";
+import { createWikiServer, type WikiToolsOptions } from "@/features/mcp/tools";
+import { inMcp } from "@/features/folder-roles/service";
+import * as folderService from "@/features/folders/service";
 import { protectedResourceMetadataUrl } from "@/features/oauth/issuer";
 import { parseMcpPath } from "@/features/oauth/schema";
 import * as grantService from "@/features/grants/service";
-import type { Actor } from "@/features/users/service";
 import { getServerEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";
 
@@ -48,20 +48,23 @@ function hasForeignOrigin(request: Request, publicUrl: string): boolean {
   return origin !== null && origin !== publicUrl;
 }
 
+/** What the tools of a request are built with, apart from the public URL: the actor of MCP and its folder. */
+type Connected = Pick<WikiToolsOptions, "actor" | "folder">;
+
 /**
- * The caller of a request, its actor and its connection, as the authentication information that the handler of the
- * SDK passes on, unread, to the factory of the server: the handler is created once, and this is how each request
- * hands it its caller. The token itself is not passed on, so it stays out of everything the SDK keeps.
+ * The actor and the folder of a request as the authentication information that the handler of the SDK passes on,
+ * unread, to the factory of the server: the handler is created once, and this is how each request hands it its
+ * connection. The token itself is not passed on, so it stays out of everything the SDK keeps.
  */
-function authInfoOf(caller: grantService.McpCaller): AuthInfo {
-  return { token: "", clientId: caller.connection.grantId, scopes: [], extra: { caller } };
+function authInfoOf(connected: Connected): AuthInfo {
+  return { token: "", clientId: connected.actor.connection.grantId, scopes: [], extra: { connected } };
 }
 
-/** The caller that `authInfoOf()` handed to the factory. Without one the request was not checked, which never happens. */
-function callerOf({ authInfo }: McpRequestContext): { actor: Actor; connection: McpConnection } {
-  const caller = authInfo?.extra?.caller;
-  if (!caller) throw new Error("mcp request without a caller");
-  return caller as grantService.McpCaller;
+/** What `authInfoOf()` handed to the factory. Without it the request was not checked, which never happens. */
+function connectedOf({ authInfo }: McpRequestContext): Connected {
+  const connected = authInfo?.extra?.connected;
+  if (!connected) throw new Error("mcp request without a connection");
+  return connected as Connected;
 }
 
 let modernHandler: McpHttpHandler | undefined;
@@ -74,7 +77,7 @@ let modernHandler: McpHttpHandler | undefined;
  */
 function getModernHandler(): McpHttpHandler {
   modernHandler ??= createMcpHandler(
-    (context) => createWikiServer({ publicUrl: getServerEnv().HIPPOWIKI_PUBLIC_URL, actor: callerOf(context).actor }),
+    (context) => createWikiServer({ publicUrl: getServerEnv().HIPPOWIKI_PUBLIC_URL, ...connectedOf(context) }),
     {
       responseMode: "json",
       legacy: "reject",
@@ -90,8 +93,8 @@ function getModernHandler(): McpHttpHandler {
  * transport of their own for this one request, without a session, with a JSON answer. The handler of the SDK would
  * answer these clients as a stream.
  */
-async function serveLegacy(request: Request, actor: Actor): Promise<Response> {
-  const server = createWikiServer({ publicUrl: getServerEnv().HIPPOWIKI_PUBLIC_URL, actor });
+async function serveLegacy(request: Request, connected: Connected): Promise<Response> {
+  const server = createWikiServer({ publicUrl: getServerEnv().HIPPOWIKI_PUBLIC_URL, ...connected });
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,
@@ -120,9 +123,11 @@ async function serveLegacy(request: Request, actor: Actor): Promise<Response> {
  *    not; with `error="invalid_token"` where a token was sent, the token of another address included. 500 when the
  *    token could not be checked. There are no scopes.
  * 5. A valid token whose user's role on the folder no longer allows the address answers 403 with a short message,
- *    without a challenge, so that the client does not authorize again; no tool runs.
+ *    without a challenge, so that the client does not authorize again; no tool runs. So does a folder that can no
+ *    longer be read with the actor of MCP, e.g. one deleted in the meantime.
  *
- * Everything else goes to the MCP server.
+ * Everything else goes to the MCP server, with the actor of MCP and the folder of the connection, read for this
+ * request so that its name is the current one.
  */
 export async function handleMcpRequest(request: Request, path: readonly string[] | undefined): Promise<Response> {
   const { HIPPOWIKI_PUBLIC_URL: publicUrl } = getServerEnv();
@@ -159,12 +164,18 @@ export async function handleMcpRequest(request: Request, path: readonly string[]
     }
   }
 
+  const actor = inMcp(caller.value.actor, caller.value.connection);
   try {
+    const folder = await folderService.getFolderById(actor, actor.connection.folderId);
+    if (!folder) {
+      return Response.json({ error: "role_too_low", error_description: ROLE_TOO_LOW_MESSAGE }, { status: 403 });
+    }
+    const connected: Connected = { actor, folder: { id: folder.id, name: folder.name } };
     return (await isLegacyRequest(request))
-      ? await serveLegacy(request, caller.value.actor)
-      : await getModernHandler().fetch(request, { authInfo: authInfoOf(caller.value) });
+      ? await serveLegacy(request, connected)
+      : await getModernHandler().fetch(request, { authInfo: authInfoOf(connected) });
   } catch (err) {
-    logger.error({ err, userId: caller.value.actor.id }, "mcp request failed");
+    logger.error({ err, userId: actor.id }, "mcp request failed");
     return refusal(500, "server_error");
   }
 }

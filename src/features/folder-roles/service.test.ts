@@ -61,15 +61,79 @@ const MALFORMED_ID = "not-a-uuid";
 
 const USER = { id: ACTOR_ID, name: "alice", type: "user" as const };
 const ADMIN = { id: ACTOR_ID, name: "alice", type: "admin" as const };
+const OTHER_FOLDER_ID = "1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e55";
+const GRANT_ID = "0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01";
 const BROWSER: ContentActor = { ...USER, channel: "browser" };
-const MCP: ContentActor = { ...USER, channel: "mcp" };
+/** An actor of MCP with a Writer connection to the folder `FOLDER_ID`. */
+const MCP: ContentActor = {
+  ...USER,
+  channel: "mcp",
+  connection: { grantId: GRANT_ID, folderId: FOLDER_ID, role: "writer" },
+};
+/** An actor of MCP with a Reader connection to the folder `FOLDER_ID`. */
+const MCP_READER: ContentActor = { ...MCP, connection: { grantId: GRANT_ID, folderId: FOLDER_ID, role: "reader" } };
 
 describe("inBrowser and inMcp", () => {
-  it("give the user the channel, and nothing else of the session", () => {
+  it("give the user the channel and, through MCP, the connection, and nothing else of the session", () => {
     const sessionUser = { ...USER, mustChangePassword: false, email: "alice@users.hippowiki.invalid" };
+    const connection = { grantId: GRANT_ID, folderId: FOLDER_ID, role: "writer" as const };
 
     expect(inBrowser(sessionUser)).toStrictEqual({ ...USER, channel: "browser" });
-    expect(inMcp(sessionUser)).toStrictEqual({ ...USER, channel: "mcp" });
+    expect(inMcp(sessionUser, { ...connection, extra: "x" } as typeof connection)).toStrictEqual({
+      ...USER,
+      channel: "mcp",
+      connection,
+    });
+  });
+});
+
+describe("the role of an actor of MCP", () => {
+  it.each([
+    ["the user's role is higher", "owner", "writer"],
+    ["the user's role is the same", "writer", "writer"],
+    ["the user's role is lower", "reader", "reader"],
+  ] as const)("is the lower of the two roles on the folder of the connection when %s", async (_case, role, lower) => {
+    mocks.roleFindFirst.mockResolvedValue({ role });
+
+    await expect(folderRoleOf(MCP, FOLDER_ID)).resolves.toBe(lower);
+    await expect(roleOnFolderOfTab(MCP, TAB_ID)).resolves.toBe(lower);
+    await expect(roleOnFolderOfPage(MCP, PAGE_ID)).resolves.toBe(lower);
+  });
+
+  it("is Reader for a Reader connection of an Owner", async () => {
+    mocks.roleFindFirst.mockResolvedValue({ role: "owner" });
+
+    await expect(folderRoleOf(MCP_READER, FOLDER_ID)).resolves.toBe("reader");
+  });
+
+  it("reads the tab and the page only in the folder of the connection", async () => {
+    mocks.roleFindFirst.mockResolvedValue(null);
+
+    await expect(roleOnFolderOfTab(MCP, TAB_ID)).resolves.toBeNull();
+    await expect(roleOnFolderOfPage(MCP, PAGE_ID)).resolves.toBeNull();
+
+    expect(mocks.roleFindFirst.mock.calls.map(([query]) => query.where)).toEqual([
+      { userId: ACTOR_ID, folder: { tabs: { some: { id: TAB_ID } }, id: FOLDER_ID } },
+      { userId: ACTOR_ID, folder: { pages: { some: { id: PAGE_ID } }, id: FOLDER_ID } },
+    ]);
+  });
+
+  it("is null on every other folder, without asking the database", async () => {
+    await expect(folderRoleOf(MCP, OTHER_FOLDER_ID)).resolves.toBeNull();
+
+    expect(mocks.roleFindFirst).not.toHaveBeenCalled();
+  });
+
+  it("is null without a role of the user on the folder of the connection", async () => {
+    mocks.roleFindFirst.mockResolvedValue(null);
+
+    await expect(folderRoleOf(MCP, FOLDER_ID)).resolves.toBeNull();
+  });
+
+  it("is the user's own role for a plain actor, without a channel", async () => {
+    mocks.roleFindFirst.mockResolvedValue({ role: "owner" });
+
+    await expect(folderRoleOf(USER, OTHER_FOLDER_ID)).resolves.toBe("owner");
   });
 });
 
@@ -134,15 +198,18 @@ describe("readerOf and readableFolderWhere", () => {
     expect(readableFolderWhere(BROWSER)).toEqual({ roles: { some: { userId: ACTOR_ID } } });
   });
 
-  it("through MCP ignore the roles", () => {
-    expect(readerOf(MCP)).toBe("any");
-    expect(readableFolderWhere(MCP)).toEqual({});
+  it("through MCP need a role of the actor on the folder, and that it is the folder of the connection", () => {
+    expect(readerOf(MCP)).toBe(ACTOR_ID);
+    expect(readableFolderWhere(MCP)).toEqual({ id: FOLDER_ID, roles: { some: { userId: ACTOR_ID } } });
   });
 
   it("give an admin nothing, in either channel", () => {
-    for (const channel of ["browser", "mcp"] as const) {
-      expect(readerOf({ ...ADMIN, channel })).toBeNull();
-      expect(readableFolderWhere({ ...ADMIN, channel })).toBeNull();
+    for (const actor of [
+      { ...ADMIN, channel: "browser" },
+      { ...MCP, ...ADMIN },
+    ] as const) {
+      expect(readerOf(actor)).toBeNull();
+      expect(readableFolderWhere(actor)).toBeNull();
     }
   });
 
@@ -166,10 +233,19 @@ describe("mayReadFolder and mayReadTab", () => {
   it.each([
     ["mayReadFolder", (actor: ContentActor) => mayReadFolder(actor, FOLDER_ID)],
     ["mayReadTab", (actor: ContentActor) => mayReadTab(actor, TAB_ID)],
-  ])("%s allows MCP without asking for a role, and never an admin", async (_name, check) => {
+  ])("%s allows MCP exactly with a role on the folder of the connection, and never an admin", async (_name, check) => {
+    mocks.roleFindFirst.mockResolvedValueOnce({ role: "reader" }).mockResolvedValueOnce(null);
+
     await expect(check(MCP)).resolves.toBe(true);
+    await expect(check(MCP)).resolves.toBe(false);
     await expect(check({ ...ADMIN, channel: "browser" })).resolves.toBe(false);
-    await expect(check({ ...ADMIN, channel: "mcp" })).resolves.toBe(false);
+    await expect(check({ ...MCP, ...ADMIN })).resolves.toBe(false);
+
+    expect(mocks.roleFindFirst).toHaveBeenCalledTimes(2);
+  });
+
+  it("mayReadFolder reads every other folder through MCP as not readable, without asking the database", async () => {
+    await expect(mayReadFolder(MCP, OTHER_FOLDER_ID)).resolves.toBe(false);
 
     expect(mocks.roleFindFirst).not.toHaveBeenCalled();
   });
@@ -187,7 +263,17 @@ describe("a function beyond reading", () => {
     expect(readableFolderWhere(BROWSER, "deletedPages")).toEqual({
       roles: { some: { userId: ACTOR_ID, role: { in: ["manager", "owner"] } } },
     });
-    expect(readableFolderWhere(MCP, "deletedPages")).toEqual({});
+    // The role of a connection is at most Writer: no function of a Manager.
+    expect(readableFolderWhere(MCP, "deletedPages")).toEqual({ id: { in: [] } });
+    expect(readableFolderWhere(MCP_READER, "editPage")).toEqual({ id: { in: [] } });
+  });
+
+  it("mayReadFolder allows a function through MCP only when both roles allow it", async () => {
+    mocks.roleFindFirst.mockResolvedValue({ role: "owner" });
+
+    await expect(mayReadFolder(MCP, FOLDER_ID, "editPage")).resolves.toBe(true);
+    await expect(mayReadFolder(MCP, FOLDER_ID, "deletedPages")).resolves.toBe(false);
+    await expect(mayReadFolder(MCP_READER, FOLDER_ID, "editPage")).resolves.toBe(false);
   });
 
   it("mayReadFolder allows the function from its lowest role up", async () => {
@@ -204,11 +290,13 @@ describe("a function beyond reading", () => {
 });
 
 describe("roleSelection and roleOf", () => {
-  it("select the role of the reader in the browser and none through MCP", () => {
+  it("select the role of the reader, and give through MCP the lower of the two roles on the folder of the connection", () => {
     expect(roleSelection(ACTOR_ID)).toEqual({ where: { userId: ACTOR_ID }, select: { role: true } });
-    expect(roleSelection("any")).toEqual({ take: 0, select: { role: true } });
-    expect(roleOf({ roles: [{ role: "writer" }] })).toBe("writer");
-    expect(roleOf({ roles: [] })).toBeNull();
+    expect(roleOf({ id: FOLDER_ID, roles: [{ role: "owner" }] }, BROWSER)).toBe("owner");
+    expect(roleOf({ id: FOLDER_ID, roles: [] }, BROWSER)).toBeNull();
+    expect(roleOf({ id: FOLDER_ID, roles: [{ role: "owner" }] }, MCP)).toBe("writer");
+    expect(roleOf({ id: FOLDER_ID, roles: [{ role: "reader" }] }, MCP)).toBe("reader");
+    expect(roleOf({ id: OTHER_FOLDER_ID, roles: [{ role: "owner" }] }, MCP)).toBeNull();
   });
 });
 

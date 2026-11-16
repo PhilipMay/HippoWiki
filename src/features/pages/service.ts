@@ -7,8 +7,9 @@
 // checked and without asking the database. In the browser a user sees only the folders with a role of the user on
 // them: for the pages and deleted pages of any other folder every read returns `null` and every write `not-allowed`,
 // before anything that could tell whether a page exists. The deleted pages and every write need the lowest role of
-// their function (`FUNCTION_ROLES` in `roles.ts`). Through MCP a user reads every folder. A write stores the
-// actor as the last editor of the page and counts its version up, in the same write that changes `updatedAt`; a new
+// their function (`FUNCTION_ROLES` in `roles.ts`). Through MCP a user works only on the folder of the connection, with
+// the lower of the user's role and the role of the connection; every other folder reads like one without a role. A
+// write stores the actor as the last editor of the page and counts its version up, in the same write that changes `updatedAt`; a new
 // page starts with version 1. The folder and the tab of the page keep their `updatedAt` and last editor.
 
 import { z } from "zod";
@@ -53,7 +54,7 @@ export type PageWithTabSummary = PageSummary & { tab: { name: string } | null };
 
 /**
  * A page with its folder and its tab, as the page view shows it, and the role of the actor on the folder, so that the
- * view can decide what to offer; `null` for a read of MCP.
+ * view can decide what to offer.
  */
 export type PageWithPlace = {
   id: string;
@@ -238,7 +239,7 @@ export async function getPage(
   });
   if (!page) return null;
   const { folder: stored, ...rest } = page;
-  return withLastEditor({ ...rest, folder: { id: stored.id, name: stored.name }, role: roleOf(stored) });
+  return withLastEditor({ ...rest, folder: { id: stored.id, name: stored.name }, role: roleOf(stored, actor) });
 }
 
 /**

@@ -18,7 +18,7 @@ import {
   connect,
   exchange,
   ISSUER,
-  listFoldersStatus,
+  listFolderStatus,
   mcpAddress,
   REDIRECT_URI,
   refresh,
@@ -369,10 +369,13 @@ test.describe("the whole flow", () => {
     // The access token reads the wiki through the folder address.
     const call = await request.post(new URL(reader).pathname, {
       headers: { authorization: `Bearer ${tokens.access_token}`, accept: "application/json, text/event-stream" },
-      data: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "list_folders", arguments: {} } },
+      data: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "list_folder", arguments: {} } },
     });
     expect(call.status()).toBe(200);
-    expect(JSON.stringify(await call.json())).toContain(`${ISSUER}/folders/handbook`);
+    // It reads the folder of the connection, and no other folder.
+    const listed = JSON.stringify(await call.json());
+    expect(listed).toContain(`${ISSUER}/folders/projects`);
+    expect(listed).not.toContain("handbook");
 
     // A refresh gives new tokens, and the previous access token stops working.
     const refreshed = await refresh(request, clientId, tokens.refresh_token);
@@ -380,15 +383,15 @@ test.describe("the whole flow", () => {
     const newer = (await refreshed.json()) as Tokens;
     expect(newer.access_token).not.toBe(tokens.access_token);
     expect(newer.refresh_token).not.toBe(tokens.refresh_token);
-    expect(await listFoldersStatus(request, tokens.access_token, reader)).toBe(401);
-    expect(await listFoldersStatus(request, newer.access_token, reader)).toBe(200);
+    expect(await listFolderStatus(request, tokens.access_token, reader)).toBe(401);
+    expect(await listFolderStatus(request, newer.access_token, reader)).toBe(200);
 
     // The old refresh token is used again: the grant is revoked, with the newer tokens.
     const reused = await refresh(request, clientId, tokens.refresh_token);
     expect(reused.status()).toBe(400);
     expect(await reused.json()).toMatchObject({ error: "invalid_grant" });
     expect(await getTestDb().oAuthGrant.count()).toBe(0);
-    expect(await listFoldersStatus(request, newer.access_token, reader)).toBe(401);
+    expect(await listFolderStatus(request, newer.access_token, reader)).toBe(401);
     expect((await refresh(request, clientId, newer.refresh_token)).status()).toBe(400);
   });
 
@@ -740,8 +743,8 @@ test.describe("the consent page, as a logged-in user", () => {
 
     expect(await getTestDb().oAuthGrant.count()).toBe(50);
     expect(await getTestDb().oAuthGrant.count({ where: { clientId: { notIn: others } } })).toBe(1);
-    expect(await listFoldersStatus(request, first.access_token, reader)).toBe(401);
-    expect(await listFoldersStatus(request, second.access_token, reader)).toBe(200);
+    expect(await listFolderStatus(request, first.access_token, reader)).toBe(401);
+    expect(await listFolderStatus(request, second.access_token, reader)).toBe(200);
   });
 
   test("a second client gets a grant of its own", async ({ page, request }) => {
@@ -752,8 +755,8 @@ test.describe("the consent page, as a logged-in user", () => {
       "First connector",
       "Second connector",
     ]);
-    expect(await listFoldersStatus(request, first.access_token, reader)).toBe(200);
-    expect(await listFoldersStatus(request, second.access_token, reader)).toBe(200);
+    expect(await listFolderStatus(request, first.access_token, reader)).toBe(200);
+    expect(await listFolderStatus(request, second.access_token, reader)).toBe(200);
   });
 
   test("a redirect address that a crafted request puts into the form is not followed", async ({ page, request }) => {

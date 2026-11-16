@@ -5,15 +5,17 @@ import { handleMcpRequest } from "@/features/mcp/http";
 const mocks = vi.hoisted(() => ({
   authenticateAccessToken: vi.fn(),
   getServerEnv: vi.fn(),
-  listFolders: vi.fn(),
+  getFolderById: vi.fn(),
+  listTabs: vi.fn(),
+  listAllFolderPages: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
 }));
 
 vi.mock("@/features/grants/service", () => ({ authenticateAccessToken: mocks.authenticateAccessToken }));
-vi.mock("@/features/folders/service", () => ({ listFolders: mocks.listFolders }));
-vi.mock("@/features/pages/service", () => ({}));
+vi.mock("@/features/folders/service", () => ({ getFolderById: mocks.getFolderById, listTabs: mocks.listTabs }));
+vi.mock("@/features/pages/service", () => ({ listAllFolderPages: mocks.listAllFolderPages }));
 vi.mock("@/lib/env", () => ({ getServerEnv: mocks.getServerEnv }));
 vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, error: mocks.error } }));
 
@@ -23,6 +25,8 @@ const FOLDER_ID = "3a5c7e90-1b2d-4f6a-8c0e-2d4f6a8c0e11";
 const PATH = [FOLDER_ID, "reader"];
 const CONNECTION = { grantId: "0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01", folderId: FOLDER_ID, role: "reader" };
 const CALLER = { actor: ACTOR, connection: CONNECTION };
+/** The actor of MCP that the tools pass to the services: the user of the token with the connection of its grant. */
+const MCP_ACTOR = { ...ACTOR, channel: "mcp", connection: CONNECTION };
 const TOKEN = `hwa_${"A".repeat(43)}`;
 const PUBLIC_URL = "https://wiki.example.com";
 const RESOURCE_METADATA = `resource_metadata="${PUBLIC_URL}/.well-known/oauth-protected-resource/mcp/${FOLDER_ID}/reader"`;
@@ -70,6 +74,9 @@ beforeEach(() => {
   vi.resetAllMocks();
   setPublicUrl(PUBLIC_URL);
   mocks.authenticateAccessToken.mockResolvedValue({ ok: true, value: CALLER });
+  mocks.getFolderById.mockResolvedValue({ id: FOLDER_ID, name: "handbook", role: "reader" });
+  mocks.listTabs.mockResolvedValue([]);
+  mocks.listAllFolderPages.mockResolvedValue([]);
 });
 
 describe("without a public URL", () => {
@@ -98,7 +105,7 @@ describe("without a public URL", () => {
     expect(response.headers.get("www-authenticate")).toBeNull();
     await expect(response.json()).resolves.toEqual({ error: "not_found" });
     expect(mocks.authenticateAccessToken).not.toHaveBeenCalled();
-    expect(mocks.listFolders).not.toHaveBeenCalled();
+    expect(mocks.listTabs).not.toHaveBeenCalled();
   });
 });
 
@@ -135,6 +142,42 @@ describe("the address", () => {
     expect(response.headers.get("www-authenticate")).toBe(
       `Bearer resource_metadata="${PUBLIC_URL}/.well-known/oauth-protected-resource/mcp/${FOLDER_ID}/writer"`,
     );
+  });
+});
+
+describe("the folder of the connection", () => {
+  it("answers a folder that can no longer be read with the actor like a role that is too low, and runs no tool", async () => {
+    mocks.getFolderById.mockResolvedValue(null);
+
+    const response = await handleMcpRequest(
+      post({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "list_folder", arguments: {} } }),
+      PATH,
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "role_too_low",
+      error_description: "Your role on the folder does not allow this address.",
+    });
+    expect(mocks.listTabs).not.toHaveBeenCalled();
+  });
+
+  it("names the folder by its current name in the instructions", async () => {
+    mocks.getFolderById.mockResolvedValue({ id: FOLDER_ID, name: "renamed", role: "reader" });
+
+    const response = await handleMcpRequest(post(INITIALIZE), PATH);
+
+    const { result } = (await response.json()) as { result: { instructions: string } };
+    expect(result.instructions).toContain('the folder "renamed" with the role Reader');
+  });
+
+  it("answers 500 when the folder cannot be read, and logs it", async () => {
+    mocks.getFolderById.mockRejectedValue(new Error("connection lost"));
+
+    const response = await handleMcpRequest(post(TOOLS_LIST), PATH);
+
+    expect(response.status).toBe(500);
+    expect(mocks.error).toHaveBeenCalledOnce();
   });
 });
 
@@ -199,7 +242,7 @@ describe("the token", () => {
     mocks.authenticateAccessToken.mockResolvedValue({ ok: false, error: { code: "role-too-low" } });
 
     const response = await handleMcpRequest(
-      post({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "list_folders" } }),
+      post({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "list_folder" } }),
       PATH,
     );
 
@@ -211,7 +254,7 @@ describe("the token", () => {
       error_description: "Your role on the folder does not allow this address.",
     });
     expect(JSON.stringify(body)).not.toContain("insufficient_scope");
-    expect(mocks.listFolders).not.toHaveBeenCalled();
+    expect(mocks.listTabs).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -223,14 +266,14 @@ describe("the token", () => {
       mocks.authenticateAccessToken.mockResolvedValue({ ok: false, error: { code } });
 
       const response = await handleMcpRequest(
-        post({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "list_folders" } }),
+        post({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "list_folder" } }),
         PATH,
       );
 
       expect(response.status).toBe(status);
       expect(response.headers.get("www-authenticate")).toBe(challenge);
       await expect(response.json()).resolves.toEqual({ error });
-      expect(mocks.listFolders).not.toHaveBeenCalled();
+      expect(mocks.listTabs).not.toHaveBeenCalled();
     },
   );
 
@@ -269,31 +312,23 @@ describe("a client of the protocol of 2025", () => {
   });
 
   it("gets the tools and the result of a tool as JSON", async () => {
-    mocks.listFolders.mockResolvedValue([
-      {
-        id: "id-1",
-        name: "handbook",
-        updatedAt: new Date("2026-03-01T12:00:00.000Z"),
-        lastEditedBy: { name: "alice" },
-      },
-    ]);
-
     const list = await handleMcpRequest(post(TOOLS_LIST, { "mcp-protocol-version": "2025-06-18" }), PATH);
     const call = await handleMcpRequest(
-      post({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "list_folders", arguments: {} } }),
+      post({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "list_folder", arguments: {} } }),
       PATH,
     );
 
     expect(list.headers.get("content-type")).toBe("application/json");
     const tools = ((await list.json()) as { result: { tools: { name: string }[] } }).result.tools;
-    expect(tools.map((tool) => tool.name)).toEqual(["list_folders", "list_folder", "read_page"]);
+    expect(tools.map((tool) => tool.name)).toEqual(["list_folder", "read_page"]);
     expect(call.headers.get("content-type")).toBe("application/json");
     await expect(call.json()).resolves.toMatchObject({
       id: 3,
-      result: { structuredContent: { folders: [{ name: "handbook", address: `${PUBLIC_URL}/folders/handbook` }] } },
+      result: { structuredContent: { folder: { name: "handbook", address: `${PUBLIC_URL}/folders/handbook` } } },
     });
-    // The tools read as the user of the token, through MCP.
-    expect(mocks.listFolders).toHaveBeenCalledExactlyOnceWith({ ...ACTOR, channel: "mcp" });
+    // The adapter reads the folder of the connection, and the tools read as the user of the token, through MCP.
+    expect(mocks.getFolderById).toHaveBeenCalledWith(MCP_ACTOR, FOLDER_ID);
+    expect(mocks.listTabs).toHaveBeenCalledExactlyOnceWith(MCP_ACTOR, FOLDER_ID);
   });
 
   it("gets 202 without a body for a notification", async () => {
@@ -306,8 +341,6 @@ describe("a client of the protocol of 2025", () => {
 
 describe("a client of the current protocol", () => {
   it("gets the tools and the result of a tool as JSON", async () => {
-    mocks.listFolders.mockResolvedValue([]);
-
     const list = await handleMcpRequest(
       post({ ...TOOLS_LIST, params: { _meta: MODERN_META } }, modernHeaders("tools/list")),
       PATH,
@@ -318,9 +351,9 @@ describe("a client of the current protocol", () => {
           jsonrpc: "2.0",
           id: 3,
           method: "tools/call",
-          params: { name: "list_folders", arguments: {}, _meta: MODERN_META },
+          params: { name: "list_folder", arguments: {}, _meta: MODERN_META },
         },
-        modernHeaders("tools/call", "list_folders"),
+        modernHeaders("tools/call", "list_folder"),
       ),
       PATH,
     );
@@ -328,17 +361,19 @@ describe("a client of the current protocol", () => {
     expect(list.status).toBe(200);
     expect(list.headers.get("content-type")).toBe("application/json");
     const tools = ((await list.json()) as { result: { tools: { name: string }[] } }).result.tools;
-    expect(tools.map((tool) => tool.name)).toEqual(["list_folders", "list_folder", "read_page"]);
+    expect(tools.map((tool) => tool.name)).toEqual(["list_folder", "read_page"]);
     expect(call.status).toBe(200);
     expect(call.headers.get("content-type")).toBe("application/json");
-    await expect(call.json()).resolves.toMatchObject({ id: 3, result: { structuredContent: { folders: [] } } });
+    await expect(call.json()).resolves.toMatchObject({
+      id: 3,
+      result: { structuredContent: { folder: { name: "handbook" }, tabs: [], pages: [] } },
+    });
     // The tools read as the user of the token, also when the handler of the SDK builds the server.
-    expect(mocks.listFolders).toHaveBeenCalledExactlyOnceWith({ ...ACTOR, channel: "mcp" });
+    expect(mocks.listTabs).toHaveBeenCalledExactlyOnceWith(MCP_ACTOR, FOLDER_ID);
   });
 
   it("gives the tools of each request the user of its own token", async () => {
     const other = { id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1003", name: "bob", type: "user" };
-    mocks.listFolders.mockResolvedValue([]);
     const call = () =>
       handleMcpRequest(
         post(
@@ -346,9 +381,9 @@ describe("a client of the current protocol", () => {
             jsonrpc: "2.0",
             id: 3,
             method: "tools/call",
-            params: { name: "list_folders", arguments: {}, _meta: MODERN_META },
+            params: { name: "list_folder", arguments: {}, _meta: MODERN_META },
           },
-          modernHeaders("tools/call", "list_folders"),
+          modernHeaders("tools/call", "list_folder"),
         ),
         PATH,
       );
@@ -357,7 +392,10 @@ describe("a client of the current protocol", () => {
     mocks.authenticateAccessToken.mockResolvedValue({ ok: true, value: { actor: other, connection: CONNECTION } });
     await call();
 
-    expect(mocks.listFolders.mock.calls).toEqual([[{ ...ACTOR, channel: "mcp" }], [{ ...other, channel: "mcp" }]]);
+    expect(mocks.listTabs.mock.calls).toEqual([
+      [MCP_ACTOR, FOLDER_ID],
+      [{ ...other, channel: "mcp", connection: CONNECTION }, FOLDER_ID],
+    ]);
   });
 
   it("is refused a subscription with a JSON answer instead of a stream", async () => {

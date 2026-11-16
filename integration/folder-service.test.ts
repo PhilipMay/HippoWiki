@@ -448,24 +448,50 @@ describe("roles", () => {
     expect(await getTestDb().tab.findMany({ orderBy: { name: "asc" } })).toStrictEqual(tabsBefore);
   });
 
-  it("reads every folder through MCP, whatever the roles, without a role", async () => {
-    const bob = await createUser({ name: "bob" });
-    const folder = await createFolder({ name: "hidden", roles: [{ user: bob, role: "owner" }] });
-    await createTab({ folder, name: "guides" });
-    await createFolder({ name: "mine" });
-    const mcp = inMcp(user);
+  it("reads through MCP only the folder of the connection, with the lower of the two roles", async () => {
+    const projects = await createFolder({ name: "projects", roles: [{ user, role: "owner" }] });
+    await createTab({ folder: projects, name: "guides" });
+    const notes = await createFolder({ name: "notes", roles: [{ user, role: "owner" }] });
+    await createTab({ folder: notes, name: "drafts" });
+    const mcp = inMcp(user, { grantId: crypto.randomUUID(), folderId: projects.id, role: "writer" });
 
     expect((await folderService.listFolders(mcp))?.map(({ name, role }) => [name, role])).toEqual([
-      ["hidden", null],
-      ["mine", null],
+      ["projects", "writer"],
     ]);
-    await expect(folderService.getFolderByName(mcp, "hidden")).resolves.toEqual({
-      id: folder.id,
-      name: "hidden",
-      role: null,
+    await expect(folderService.getFolderByName(mcp, "projects")).resolves.toEqual({
+      id: projects.id,
+      name: "projects",
+      role: "writer",
     });
-    await expect(folderService.getTab(mcp, "hidden", "guides")).resolves.toMatchObject({ role: null });
-    expect((await folderService.listTabs(mcp, folder.id))?.map(({ name }) => name)).toEqual(["guides"]);
+    await expect(folderService.getFolderById(mcp, projects.id)).resolves.toMatchObject({ role: "writer" });
+    await expect(folderService.getTab(mcp, "projects", "guides")).resolves.toMatchObject({ role: "writer" });
+    expect((await folderService.listTabs(mcp, projects.id))?.map(({ name }) => name)).toEqual(["guides"]);
+
+    // Another folder on which the user has a role reads like one that does not exist.
+    await expect(folderService.getFolderByName(mcp, "notes")).resolves.toBeNull();
+    await expect(folderService.getFolderById(mcp, notes.id)).resolves.toBeNull();
+    await expect(folderService.getTab(mcp, "notes", "drafts")).resolves.toBeNull();
+    await expect(folderService.listTabs(mcp, notes.id)).resolves.toBeNull();
+  });
+
+  it("gives a Reader connection of an Owner the role Reader", async () => {
+    const projects = await createFolder({ name: "projects", roles: [{ user, role: "owner" }] });
+    const mcp = inMcp(user, { grantId: crypto.randomUUID(), folderId: projects.id, role: "reader" });
+
+    await expect(folderService.getFolderById(mcp, projects.id)).resolves.toMatchObject({ role: "reader" });
+  });
+
+  it("reads nothing through MCP for a user without a role on the folder of the connection", async () => {
+    const bob = await createUser({ name: "bob" });
+    const hidden = await createFolder({ name: "hidden", roles: [{ user: bob, role: "owner" }] });
+    await createTab({ folder: hidden, name: "guides" });
+    const mcp = inMcp(user, { grantId: crypto.randomUUID(), folderId: hidden.id, role: "reader" });
+
+    await expect(folderService.listFolders(mcp)).resolves.toEqual([]);
+    await expect(folderService.getFolderByName(mcp, "hidden")).resolves.toBeNull();
+    await expect(folderService.getFolderById(mcp, hidden.id)).resolves.toBeNull();
+    await expect(folderService.getTab(mcp, "hidden", "guides")).resolves.toBeNull();
+    await expect(folderService.listTabs(mcp, hidden.id)).resolves.toBeNull();
   });
 });
 

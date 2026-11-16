@@ -70,7 +70,7 @@ async function callTool(request: APIRequestContext, name: string, args: Record<s
 test("without a token /mcp answers 401 with a Bearer challenge and nothing of the wiki", async ({ request }) => {
   await createFolder({ name: "handbook" });
 
-  const response = await send(request, { method: "tools/call", params: { name: "list_folders" } }, null);
+  const response = await send(request, { method: "tools/call", params: { name: "list_folder" } }, null);
 
   expect(response.status()).toBe(401);
   expect(response.headers()["www-authenticate"]).toMatch(/^Bearer\b/);
@@ -82,7 +82,7 @@ test("a former API token gets 401 with a Bearer challenge and nothing of the wik
   // The update deleted every API token; a tool that still sends one sends a value of the former shape.
   const former = `hw_${"A".repeat(43)}`;
 
-  const response = await send(request, { method: "tools/call", params: { name: "list_folders" } }, former);
+  const response = await send(request, { method: "tools/call", params: { name: "list_folder" } }, former);
 
   expect(response.status()).toBe(401);
   expect(response.headers()["www-authenticate"]).toMatch(/^Bearer\b/);
@@ -131,7 +131,7 @@ test("the access token of an admin gets 401 with invalid_token and reaches no to
 
   for (const message of [
     { method: "tools/list" },
-    { method: "tools/call", params: { name: "list_folders", arguments: {} } },
+    { method: "tools/call", params: { name: "list_folder", arguments: {} } },
   ]) {
     const response = await send(request, message, adminToken);
 
@@ -243,7 +243,7 @@ test("after an Owner lowers a Writer to Reader the Writer connection answers 403
   const writer = await createGrant({ owner: bob, folder: projects, role: "writer" });
   const reader = await createGrant({ owner: bob, folder: projects, role: "reader" });
   const where = { folderId_userId: { folderId: projects.id, userId: bob.id } };
-  const call = { method: "tools/call", params: { name: "list_folders", arguments: {} } };
+  const call = { method: "tools/call", params: { name: "list_folder", arguments: {} } };
 
   await getTestDb().folderRole.update({ where, data: { role: "reader" } });
 
@@ -265,10 +265,18 @@ test("after an Owner lowers a Writer to Reader the Writer connection answers 403
   expect(await getTestDb().oAuthGrant.count({ where: { userId: bob.id } })).toBe(2);
 });
 
-test("after the folder is renamed the connection still works", async ({ request }) => {
+test("after the folder is renamed the connection lists and reads its pages under the new name", async ({ request }) => {
+  await createPage({ folder: projects, name: "plan", content: "# Plan" });
   await getTestDb().folder.update({ where: { id: projects.id }, data: { name: "renamed" } });
 
-  expect((await send(request, { method: "tools/list" })).status()).toBe(200);
+  const listed = await callTool(request, "list_folder");
+  const read = await callTool(request, "read_page", { page: "plan" });
+
+  expect(listed.structuredContent).toMatchObject({
+    folder: { name: "renamed", address: `${PUBLIC_URL}/folders/renamed` },
+    pages: [{ name: "plan", address: `${PUBLIC_URL}/folders/renamed/plan.md` }],
+  });
+  expect(read.structuredContent).toMatchObject({ folder: "renamed", title: "Plan" });
 });
 
 test("initialize answers as JSON with the instructions and without a session", async ({ request }) => {
@@ -285,7 +293,9 @@ test("initialize answers as JSON with the instructions and without a session", a
   };
   expect(result.protocolVersion).toBe("2025-06-18");
   expect(result.serverInfo.name).toBe("hippowiki");
-  expect(result.instructions).toContain("folders");
+  // A Reader connection to "projects" is told that it reads that folder and cannot change it.
+  expect(result.instructions).toContain('the folder "projects" with the role Reader');
+  expect(result.instructions).toContain("It reads the folder and cannot change it.");
   expect(result.capabilities).toHaveProperty("tools");
 });
 
@@ -314,10 +324,10 @@ test("a request of the current protocol is answered as JSON as well", async ({ r
   expect(response.status()).toBe(200);
   expect(response.headers()["content-type"]).toBe("application/json");
   const { result } = (await response.json()) as { result: { tools: { name: string }[] } };
-  expect(result.tools.map((tool) => tool.name)).toEqual(["list_folders", "list_folder", "read_page"]);
+  expect(result.tools.map((tool) => tool.name)).toEqual(["list_folder", "read_page"]);
 });
 
-test("tools/list offers the three read tools", async ({ request }) => {
+test("a Reader connection offers only the two read tools, list_folder and read_page", async ({ request }) => {
   const response = await send(request, { method: "tools/list" });
 
   expect(response.status()).toBe(200);
@@ -325,7 +335,7 @@ test("tools/list offers the three read tools", async ({ request }) => {
   const { result } = (await response.json()) as {
     result: { tools: { name: string; description: string; annotations: { readOnlyHint: boolean } }[] };
   };
-  expect(result.tools.map((tool) => tool.name)).toEqual(["list_folders", "list_folder", "read_page"]);
+  expect(result.tools.map((tool) => tool.name)).toEqual(["list_folder", "read_page"]);
   // Only tools of the content: none for accounts, which are managed only in the browser by an admin.
   for (const tool of result.tools) expect(`${tool.name} ${tool.description}`).not.toMatch(/\b(users?|accounts?)\b/i);
   for (const tool of result.tools) {
@@ -334,143 +344,134 @@ test("tools/list offers the three read tools", async ({ request }) => {
   }
 });
 
-test("list_folders lists the folders by name with their addresses and last changes", async ({ request }) => {
-  await createFolder({ name: "notes", updatedAt: new Date("2026-02-01T10:00:00.000Z") });
-  await createFolder({ name: "handbook", updatedAt: new Date("2026-03-01T12:00:00.000Z") });
+test("there is no tool that lists folders", async ({ request }) => {
+  await createFolder({ name: "notes" });
 
-  const result = await callTool(request, "list_folders");
+  const response = await send(request, { method: "tools/call", params: { name: "list_folders", arguments: {} } });
 
-  expect(result.isError).toBeUndefined();
-  expect(result.structuredContent).toEqual({
-    folders: [
-      { name: "handbook", address: `${PUBLIC_URL}/folders/handbook`, lastChanged: "2026-03-01T12:00:00.000Z" },
-      { name: "notes", address: `${PUBLIC_URL}/folders/notes`, lastChanged: "2026-02-01T10:00:00.000Z" },
-      {
-        name: "projects",
-        address: `${PUBLIC_URL}/folders/projects`,
-        lastChanged: expect.any(String) as unknown as string,
-      },
-    ],
-  });
-  expect(JSON.parse(result.content[0]?.text ?? "")).toEqual(result.structuredContent);
+  expect(await response.text()).not.toContain("notes");
 });
 
-test("list_folder lists the tabs and the pages of a folder, pages placed directly in it first, and no deleted page", async ({
+test("list_folder lists the tabs and pages of the folder of the connection, pages placed directly in it first, no deleted page and nothing of another folder", async ({
   request,
 }) => {
-  const handbook = await createFolder({ name: "handbook" });
-  const guides = await createTab({ folder: handbook, name: "guides", updatedAt: new Date("2026-03-02T09:00:00.000Z") });
+  const guides = await createTab({ folder: projects, name: "guides", updatedAt: new Date("2026-03-02T09:00:00.000Z") });
   await createPage({ tab: guides, name: "install", title: "Install", updatedAt: new Date("2026-03-03T09:00:00.000Z") });
   await createPage({
-    folder: handbook,
+    folder: projects,
     name: "overview",
     title: "Overview",
     updatedAt: new Date("2026-03-04T09:00:00.000Z"),
   });
-  await createPage({ folder: handbook, name: "removed", title: "Removed", deletedAt: new Date() });
-  await createPage({ folder: await createFolder({ name: "notes" }), name: "elsewhere" });
+  await createPage({ folder: projects, name: "removed", title: "Removed", deletedAt: new Date() });
+  const notes = await createFolder({ name: "notes" });
+  await createTab({ folder: notes, name: "drafts" });
+  await createPage({ folder: notes, name: "elsewhere" });
 
-  const result = await callTool(request, "list_folder", { folder: "handbook" });
+  const result = await callTool(request, "list_folder");
+  // A folder argument is no argument of the tool: the folder is the one of the connection.
+  const named = await callTool(request, "list_folder", { folder: "notes" });
 
   expect(result.isError).toBeUndefined();
   expect(result.structuredContent).toEqual({
-    folder: { name: "handbook", address: `${PUBLIC_URL}/folders/handbook` },
+    folder: { name: "projects", address: `${PUBLIC_URL}/folders/projects` },
     tabs: [
-      { name: "guides", address: `${PUBLIC_URL}/folders/handbook/guides`, lastChanged: "2026-03-02T09:00:00.000Z" },
+      { name: "guides", address: `${PUBLIC_URL}/folders/projects/guides`, lastChanged: "2026-03-02T09:00:00.000Z" },
     ],
     pages: [
       {
         name: "overview",
         title: "Overview",
         tab: null,
-        address: `${PUBLIC_URL}/folders/handbook/overview.md`,
+        address: `${PUBLIC_URL}/folders/projects/overview.md`,
         lastChanged: "2026-03-04T09:00:00.000Z",
       },
       {
         name: "install",
         title: "Install",
         tab: "guides",
-        address: `${PUBLIC_URL}/folders/handbook/guides/install.md`,
+        address: `${PUBLIC_URL}/folders/projects/guides/install.md`,
         lastChanged: "2026-03-03T09:00:00.000Z",
       },
     ],
   });
+  expect(JSON.stringify(named)).not.toMatch(/notes|drafts|elsewhere/);
 });
 
-test("a grant lists and reads a folder on which its user has no role, unlike the browser", async ({ request }) => {
+test("a grant cannot read a folder on which its user has no role", async ({ request }) => {
   const bob = await createUser({ name: "bob" });
   const hidden = await createFolder({ name: "hidden", roles: [{ user: bob, role: "owner" }] });
   await createPage({ folder: hidden, name: "secret", content: "# Secret\n\nOnly for bob." });
+  const { accessToken } = await createGrant({ owner: KNOWN_USER, folder: hidden });
 
-  const folders = await callTool(request, "list_folders");
-  const listed = await callTool(request, "list_folder", { folder: "hidden" });
-  const read = await callTool(request, "read_page", { folder: "hidden", page: "secret" });
+  for (const message of [
+    { method: "tools/list" },
+    { method: "tools/call", params: { name: "list_folder", arguments: {} } },
+    { method: "tools/call", params: { name: "read_page", arguments: { page: "secret" } } },
+  ]) {
+    const response = await send(request, message, accessToken, `/mcp/${hidden.id}/reader`);
 
-  expect(folders.structuredContent).toMatchObject({ folders: [{ name: "hidden" }, { name: "projects" }] });
-  expect(listed.structuredContent).toMatchObject({ folder: { name: "hidden" }, pages: [{ name: "secret" }] });
-  expect(read.isError).toBeUndefined();
-  expect(read.structuredContent).toMatchObject({ content: "# Secret\n\nOnly for bob." });
-  expect(await getTestDb().folderRole.count({ where: { userId: KNOWN_USER.id, folderId: hidden.id } })).toBe(0);
+    expect(response.status()).toBe(403);
+    expect(await response.text()).not.toContain("Secret");
+  }
 });
 
-test("list_folder reports a folder that does not exist as a tool error, not as a protocol error", async ({
+test("read_page reads a page placed directly in the folder and a page in a tab, with its version", async ({
   request,
 }) => {
-  const result = await callTool(request, "list_folder", { folder: "nowhere" });
-
-  expect(result.isError).toBe(true);
-  expect(result.content[0]?.text).toContain('There is no folder named "nowhere"');
-});
-
-test("read_page reads a page placed directly in a folder and a page in a tab", async ({ request }) => {
   const editor = await getTestDb().user.findUniqueOrThrow({ where: { id: KNOWN_USER.id } });
-  const handbook = await createFolder({ name: "handbook" });
-  const guides = await createTab({ folder: handbook, name: "guides" });
+  const guides = await createTab({ folder: projects, name: "guides" });
   await createPage({
-    folder: handbook,
+    folder: projects,
     name: "overview",
-    content: "# Overview\n\nWelcome to the **handbook**.",
+    content: "# Overview\n\nWelcome to the **projects**.",
     updatedAt: new Date("2026-03-04T09:00:00.000Z"),
+    version: 3,
     editor,
   });
   await createPage({ tab: guides, name: "install", content: "# Install\n\n1. Download\n2. Run" });
 
-  const direct = await callTool(request, "read_page", { folder: "handbook", page: "overview" });
-  const inTab = await callTool(request, "read_page", { folder: "handbook", tab: "guides", page: "install" });
+  const direct = await callTool(request, "read_page", { page: "overview" });
+  const inTab = await callTool(request, "read_page", { tab: "guides", page: "install" });
 
   expect(direct.isError).toBeUndefined();
   expect(direct.structuredContent).toEqual({
     name: "overview",
     title: "Overview",
-    folder: "handbook",
+    folder: "projects",
     tab: null,
-    content: "# Overview\n\nWelcome to the **handbook**.",
-    address: `${PUBLIC_URL}/folders/handbook/overview.md`,
+    content: "# Overview\n\nWelcome to the **projects**.",
+    address: `${PUBLIC_URL}/folders/projects/overview.md`,
     lastChanged: "2026-03-04T09:00:00.000Z",
     lastEditedBy: KNOWN_USER.name,
+    version: 3,
   });
   expect(inTab.structuredContent).toMatchObject({
     name: "install",
     title: "Install",
     tab: "guides",
     content: "# Install\n\n1. Download\n2. Run",
-    address: `${PUBLIC_URL}/folders/handbook/guides/install.md`,
+    address: `${PUBLIC_URL}/folders/projects/guides/install.md`,
+    version: 1,
   });
 });
 
-test("read_page does not find a deleted page, a page of another tab or a malformed name", async ({ request }) => {
-  const handbook = await createFolder({ name: "handbook" });
-  const guides = await createTab({ folder: handbook, name: "guides" });
-  await createPage({ folder: handbook, name: "removed", content: "# Removed\n\nSecret text", deletedAt: new Date() });
+test("read_page does not find a deleted page, a page of another tab, a page of another folder or a malformed name", async ({
+  request,
+}) => {
+  const guides = await createTab({ folder: projects, name: "guides" });
+  await createPage({ folder: projects, name: "removed", content: "# Removed\n\nSecret text", deletedAt: new Date() });
   await createPage({ tab: guides, name: "install", content: "# Install\n\nSecret text" });
+  await createPage({ folder: await createFolder({ name: "notes" }), name: "other", content: "# Other\n\nSecret text" });
 
   for (const args of [
-    { folder: "handbook", page: "removed" },
+    { page: "removed" },
     // The page is in the tab, not directly in the folder.
-    { folder: "handbook", page: "install" },
-    { folder: "handbook", tab: "nowhere", page: "install" },
-    { folder: "nowhere", page: "install" },
-    { folder: "handbook", page: "Install.md" },
+    { page: "install" },
+    { tab: "nowhere", page: "install" },
+    { folder: "notes", page: "other" },
+    { page: "other" },
+    { page: "Install.md" },
   ]) {
     const result = await callTool(request, "read_page", args);
 
