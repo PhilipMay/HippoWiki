@@ -3,12 +3,26 @@ import type { Page } from "@playwright/test";
 import { KNOWN_ADMIN, KNOWN_USER } from "../prisma/known-users";
 import { ADMIN_STORAGE_STATE, NO_STORAGE_STATE } from "./support/auth";
 import { collectErrors } from "./support/browser";
-import { createGrant, createUser, getTestDb, resetTestDatabase, TEST_PASSWORD } from "./support/database";
-import { connect, listFoldersStatus, refresh, registerClient } from "./support/oauth";
+import {
+  createFolder,
+  createFolderRole,
+  createGrant,
+  createUser,
+  getTestDb,
+  resetTestDatabase,
+  TEST_PASSWORD,
+} from "./support/database";
+import { connect, listFoldersStatus, mcpAddress, refresh, registerClient } from "./support/oauth";
 import { expect, test } from "./support/test";
+
+/** The folder "projects", of which the known user is Owner, and its MCP address for Reader. */
+let projects: { id: string };
+let reader: string;
 
 test.beforeEach(async () => {
   await resetTestDatabase();
+  projects = await createFolder({ name: "projects" });
+  reader = mcpAddress(projects);
 });
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -96,7 +110,7 @@ test("an app connected through OAuth is listed, and a use through /mcp shows as 
   request,
 }) => {
   const errors = collectErrors(page);
-  const tokens = await connect(page, request, await registerClient(request, "Example connector"));
+  const tokens = await connect(page, request, await registerClient(request, "Example connector"), reader);
 
   await page.goto("/account");
 
@@ -115,13 +129,36 @@ test("an app connected through OAuth is listed, and a use through /mcp shows as 
   expect(errors).toEqual([]);
 });
 
+test("two connections of the same app to different addresses are two entries, each with its folder and role", async ({
+  page,
+  request,
+}) => {
+  const errors = collectErrors(page);
+  const notes = await createFolder({ name: "notes" });
+  const clientId = await registerClient(request, "Example connector");
+  await connect(page, request, clientId, mcpAddress(projects, "writer"));
+  await connect(page, request, clientId, mcpAddress(notes, "reader"));
+
+  await page.goto("/account");
+
+  const rows = appRows(page);
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toContainText("Example connector");
+  await expect(rows.nth(0)).toContainText("Folder notes · Role Reader");
+  await expect(rows.nth(1)).toContainText("Example connector");
+  await expect(rows.nth(1)).toContainText("Folder projects · Role Writer");
+  await expect(page.getByRole("link", { name: "Revoke Example connector on projects as Writer" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Revoke Example connector on notes as Reader" })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test("revoking asks first, then removes the app and ends its access token and its refresh token at once", async ({
   page,
   request,
 }) => {
   const errors = collectErrors(page);
   const clientId = await registerClient(request, "Example connector");
-  const tokens = await connect(page, request, clientId);
+  const tokens = await connect(page, request, clientId, reader);
   const { grant: other } = await createGrant({ owner: KNOWN_USER, createdAt: new Date(Date.now() - DAY_MS) });
   const grant = await getTestDb().oAuthGrant.findFirstOrThrow({ where: { clientId: { not: other.clientId } } });
   expect(await listFoldersStatus(request, tokens.access_token)).toBe(200);
@@ -149,7 +186,7 @@ test("revoking asks first, then removes the app and ends its access token and it
   expect(refreshed.status()).toBe(400);
   expect(await refreshed.json()).toMatchObject({ error: "invalid_grant" });
   // The app can be connected again.
-  const again = await connect(page, request, clientId);
+  const again = await connect(page, request, clientId, reader);
   expect(await listFoldersStatus(request, again.access_token)).toBe(200);
   expect(errors).toEqual([]);
 });
@@ -218,6 +255,7 @@ test.describe("addresses that are not found", () => {
 test("a user sees only their own apps, also when another user connects one", async ({ page, request, browser }) => {
   // Another user connects an app in a browser of their own.
   const bob = await createUser({ name: "bob", mustChangePassword: false });
+  await createFolderRole({ folder: projects, user: bob, role: "reader" });
   const bobContext = await browser.newContext({ storageState: NO_STORAGE_STATE });
   const bobPage = await bobContext.newPage();
   await bobPage.goto("/login");
@@ -225,7 +263,7 @@ test("a user sees only their own apps, also when another user connects one", asy
   await bobPage.getByLabel("Password").fill(TEST_PASSWORD);
   await bobPage.getByRole("button", { name: "Log in" }).click();
   await expect(bobPage).toHaveURL("/folders");
-  const tokens = await connect(bobPage, bobContext.request, await registerClient(request, "Bob's connector"));
+  const tokens = await connect(bobPage, bobContext.request, await registerClient(request, "Bob's connector"), reader);
   await bobContext.close();
   const bobsGrant = await getTestDb().oAuthGrant.findFirstOrThrow({ where: { userId: bob.id } });
   await createGrant({ owner: KNOWN_USER, name: "Alice's connector" });

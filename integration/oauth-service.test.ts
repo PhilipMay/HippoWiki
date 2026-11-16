@@ -6,10 +6,10 @@ import { challengeOf, hashSecret } from "@/features/oauth/secret";
 import * as oauthService from "@/features/oauth/service";
 import * as grantService from "@/features/grants/service";
 
-import { createGrant, createUser, getTestDb } from "../e2e/support/database";
+import { createFolder, createFolderRole, createGrant, createUser, getTestDb } from "../e2e/support/database";
 
-/** The address of the MCP endpoint of the wiki of these tests (`HIPPOWIKI_PUBLIC_URL` in `setup.ts`). */
-const MCP = "https://wiki.example.com/mcp";
+/** The public address of the wiki of these tests (`HIPPOWIKI_PUBLIC_URL` in `setup.ts`). */
+const PUBLIC_URL = "https://wiki.example.com";
 const REDIRECT_URI = "https://client.example/callback";
 const VERIFIER = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
 const MINUTE_MS = 60 * 1000;
@@ -17,7 +17,17 @@ const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
 
 type Actor = { id: string; name: string; type: "admin" | "user" };
+/** An actor with the folder whose MCP address the helpers connect to unless a test names another. */
+type TestActor = Actor & { folder: { id: string } };
 type Client = oauthService.OAuthClient;
+
+/** The Reader address of the actor's folder, as `isGrantLimitReached()` takes it. */
+const ADDRESS = (actor: TestActor) => ({ folderId: actor.folder.id, role: "reader" as const });
+
+/** The full MCP address of the folder for the role. */
+function addressOf(folder: { id: string }, role = "reader"): string {
+  return `${PUBLIC_URL}/mcp/${folder.id}/${role}`;
+}
 
 afterEach(() => {
   vi.useRealTimers();
@@ -28,10 +38,14 @@ function setClock(now: number): void {
   vi.useFakeTimers({ now, toFake: ["Date"] });
 }
 
-/** A user of the test database as the actor of the service, with the password change done. */
-async function createActor(data: { mustChangePassword?: boolean } = {}): Promise<Actor> {
+/**
+ * A user of the test database as the actor of the service, with the password change done, and a folder of its own on
+ * which the user is Owner.
+ */
+async function createActor(data: { mustChangePassword?: boolean } = {}): Promise<TestActor> {
   const user = await createUser({ mustChangePassword: false, ...data });
-  return { id: user.id, name: user.name, type: user.type };
+  const folder = await createFolder({ roles: [{ user, role: "owner" }] });
+  return { id: user.id, name: user.name, type: user.type, folder: { id: folder.id } };
 }
 
 /** Registers a client and fails the test if that does not succeed. */
@@ -48,8 +62,8 @@ async function register(metadata: Record<string, unknown> = {}): Promise<Client>
   return result.value;
 }
 
-/** The parameters of a valid authorization request of the client. */
-function paramsOf(client: Client, params: Record<string, string | undefined> = {}) {
+/** The parameters of a valid authorization request of the client to the Reader address of the actor's folder. */
+function paramsOf(actor: TestActor, client: Client, params: Record<string, string | undefined> = {}) {
   return {
     client_id: client.clientId,
     redirect_uri: client.redirectUris[0],
@@ -57,13 +71,21 @@ function paramsOf(client: Client, params: Record<string, string | undefined> = {
     code_challenge: challengeOf(VERIFIER),
     code_challenge_method: "S256",
     state: "xyz",
+    resource: addressOf(actor.folder),
     ...params,
   };
 }
 
-/** Creates a code for the actor and the client, as the consent page does after "Approve". */
-async function approve(actor: Actor, client: Client, lifetime = "90d"): Promise<string> {
-  const result = await oauthService.createCode(actor, paramsOf(client), lifetime);
+/**
+ * Creates a code for the actor and the client, as the consent page does after "Approve", for the given MCP address or
+ * the Reader address of the actor's folder.
+ */
+async function approve(actor: TestActor, client: Client, lifetime = "90d", resource?: string): Promise<string> {
+  const result = await oauthService.createCode(
+    actor,
+    paramsOf(actor, client, resource === undefined ? {} : { resource }),
+    lifetime,
+  );
   if (!result.ok) return expect.fail(`code not created: ${result.error.code}`);
   return result.value.code;
 }
@@ -74,8 +96,13 @@ function exchangeOf(client: Client, code: string, input: Record<string, string |
 }
 
 /** Approves the client and exchanges the code: a grant with its first tokens. */
-async function grant(actor: Actor, client: Client, lifetime = "90d"): Promise<oauthService.TokenSet> {
-  const result = await oauthService.exchangeCode(exchangeOf(client, await approve(actor, client, lifetime)));
+async function grant(
+  actor: TestActor,
+  client: Client,
+  lifetime = "90d",
+  resource?: string,
+): Promise<oauthService.TokenSet> {
+  const result = await oauthService.exchangeCode(exchangeOf(client, await approve(actor, client, lifetime, resource)));
   if (!result.ok) return expect.fail(`code not exchanged: ${result.error.code}`);
   return result.value;
 }
@@ -85,9 +112,9 @@ function bearer(token: string): Headers {
   return new Headers({ authorization: `Bearer ${token}` });
 }
 
-/** Whether `/mcp` would accept the access token: `authenticateAccessToken()` with the scope `read`. */
+/** Whether MCP would accept the access token: `authenticateAccessToken()`. */
 async function works(accessToken: string): Promise<boolean> {
-  return (await grantService.authenticateAccessToken(bearer(accessToken), "read")).ok;
+  return (await grantService.authenticateAccessToken(bearer(accessToken))).ok;
 }
 
 function grantsOf(actor: Actor) {
@@ -263,43 +290,145 @@ describe("the limit of registrations per client address group and hour", () => {
 });
 
 describe("checkAuthorizationRequest", () => {
-  it("accepts a valid request and returns what the consent page shows", async () => {
-    const client = await register();
+  it("accepts a valid request and returns what the consent page shows, with the folder and the role", async () => {
+    const [alice, client] = [await createActor(), await register()];
+    const folder = await getTestDb().folder.findUniqueOrThrow({ where: { id: alice.folder.id } });
 
-    const result = await oauthService.checkAuthorizationRequest(paramsOf(client, { scope: "read", resource: MCP }));
+    const result = await oauthService.checkAuthorizationRequest(
+      alice,
+      paramsOf(alice, client, { resource: addressOf(folder, "writer") }),
+    );
 
     expect(result).toStrictEqual({
       ok: true,
-      value: { client, redirectUri: REDIRECT_URI, codeChallenge: challengeOf(VERIFIER), state: "xyz" },
+      value: {
+        client,
+        address: { folder: { id: folder.id, name: folder.name }, role: "writer" },
+        redirectUri: REDIRECT_URI,
+        codeChallenge: challengeOf(VERIFIER),
+        state: "xyz",
+      },
     });
   });
 
-  it("accepts a request without a state, a scope and a resource", async () => {
-    const client = await register();
+  it("accepts a request without a state", async () => {
+    const [alice, client] = [await createActor(), await register()];
 
-    const result = await oauthService.checkAuthorizationRequest(paramsOf(client, { state: undefined }));
+    const result = await oauthService.checkAuthorizationRequest(alice, paramsOf(alice, client, { state: undefined }));
 
     expect(result).toMatchObject({ ok: true, value: { state: null } });
   });
 
-  it("ignores scopes it does not know: the grant is read whatever was asked for", async () => {
+  it("handles a request with any scope like one without", async () => {
     const [alice, client] = [await createActor(), await register()];
 
     const check = await oauthService.checkAuthorizationRequest(
-      paramsOf(client, { scope: "write admin offline_access openid" }),
+      alice,
+      paramsOf(alice, client, { scope: "write admin offline_access openid" }),
     );
-    await grant(alice, client);
+    const code = await oauthService.createCode(
+      alice,
+      paramsOf(alice, client, { scope: "write admin offline_access openid" }),
+      "90d",
+    );
+    if (!code.ok) return expect.fail(`code not created: ${code.error.code}`);
+    await oauthService.exchangeCode(exchangeOf(client, code.value.code));
 
     expect(check.ok).toBe(true);
-    expect((await grantsOf(alice))[0]?.scopes).toEqual(["read"]);
+    const rows = await grantsOf(alice);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ folderId: alice.folder.id, role: "reader" });
+    expect(rows[0]).not.toHaveProperty("scopes");
+  });
+
+  it.each([
+    ["no resource", undefined],
+    ["the plain /mcp", `${PUBLIC_URL}/mcp`],
+    ["the address of the role Owner", "owner"],
+    ["the address of the role Manager", "manager"],
+    ["a resource that is no folder address", `${PUBLIC_URL}/mcp/abc/reader`],
+    ["a resource that is the wiki", PUBLIC_URL],
+  ])("refuses a request with %s as invalid_target, and makes no code and no grant", async (_case, resource) => {
+    const [alice, client] = [await createActor(), await register()];
+    const value = resource === "owner" || resource === "manager" ? addressOf(alice.folder, resource) : resource;
+    const params = paramsOf(alice, client, { resource: value });
+
+    await expect(oauthService.checkAuthorizationRequest(alice, params)).resolves.toMatchObject({
+      ok: false,
+      error: { code: "refused", error: "invalid_target" },
+    });
+    await expect(oauthService.createCode(alice, params, "90d")).resolves.toMatchObject({
+      ok: false,
+      error: { code: "refused", error: "invalid_target" },
+    });
+    expect(await getTestDb().oAuthCode.count()).toBe(0);
+    expect(await getTestDb().oAuthGrant.count()).toBe(0);
+  });
+
+  it("refuses a missing folder, a folder without a role and a Reader at the Writer address alike with access_denied", async () => {
+    const [alice, client] = [await createActor(), await register()];
+    const foreign = await createFolder({ roles: [] });
+    const reading = await createFolder({ roles: [{ user: alice, role: "reader" }] });
+    const answers = [];
+
+    for (const resource of [addressOf({ id: crypto.randomUUID() }), addressOf(foreign), addressOf(reading, "writer")]) {
+      answers.push(await oauthService.checkAuthorizationRequest(alice, paramsOf(alice, client, { resource })));
+      await expect(oauthService.createCode(alice, paramsOf(alice, client, { resource }), "90d")).resolves.toEqual(
+        answers.at(-1),
+      );
+    }
+
+    for (const answer of answers) {
+      expect(answer).toEqual({
+        ok: false,
+        error: {
+          code: "refused",
+          redirectUri: REDIRECT_URI,
+          state: "xyz",
+          error: "access_denied",
+          description: "No app can be connected to this address",
+        },
+      });
+    }
+    expect(await getTestDb().oAuthCode.count()).toBe(0);
+    expect(await getTestDb().oAuthGrant.count()).toBe(0);
+  });
+
+  it.each(["writer", "manager", "owner"] as const)(
+    "gives a %s codes for both addresses, and grants with the folder and the role",
+    async (role) => {
+      const [alice, client] = [await createActor(), await register()];
+      const folder = await createFolder({ roles: [{ user: alice, role }] });
+
+      for (const mcpRole of ["reader", "writer"]) {
+        await grant(alice, client, "90d", addressOf(folder, mcpRole));
+      }
+
+      const rows = await getTestDb().oAuthGrant.findMany({ orderBy: { role: "asc" } });
+      expect(rows.map((row) => [row.folderId, row.role])).toEqual([
+        [folder.id, "reader"],
+        [folder.id, "writer"],
+      ]);
+    },
+  );
+
+  it("gives a Reader a code for the Reader address", async () => {
+    const [alice, client] = [await createActor(), await register()];
+    const folder = await createFolder({ roles: [{ user: alice, role: "reader" }] });
+
+    await expect(
+      oauthService.createCode(alice, paramsOf(alice, client, { resource: addressOf(folder) }), "90d"),
+    ).resolves.toMatchObject({ ok: true });
   });
 
   it("does not redirect for a client that does not exist", async () => {
-    const client = await register();
+    const [alice, client] = [await createActor(), await register()];
     await getTestDb().oAuthClient.deleteMany();
 
     for (const client_id of [client.clientId, crypto.randomUUID(), "not-a-uuid", undefined]) {
-      await expect(oauthService.checkAuthorizationRequest(paramsOf(client, { client_id }))).resolves.toEqual({
+      await expect(
+        oauthService.checkAuthorizationRequest(alice, paramsOf(alice, client, { client_id })),
+      ).resolves.toEqual({
         ok: false,
         error: { code: "invalid-client" },
       });
@@ -314,23 +443,30 @@ describe("checkAuthorizationRequest", () => {
     ["another port", "https://client.example:8443/callback"],
     ["the address of another client", "https://other.example/callback"],
   ])("does not redirect for %s", async (_case, redirect_uri) => {
-    const client = await register();
+    const [alice, client] = [await createActor(), await register()];
     await register({ redirect_uris: ["https://other.example/callback"] });
 
-    await expect(oauthService.checkAuthorizationRequest(paramsOf(client, { redirect_uri }))).resolves.toEqual({
+    await expect(
+      oauthService.checkAuthorizationRequest(alice, paramsOf(alice, client, { redirect_uri })),
+    ).resolves.toEqual({
       ok: false,
       error: { code: "invalid-redirect-uri" },
     });
   });
 
   it("ignores the port of http on a loopback address, and nothing else of it", async () => {
-    const client = await register({ redirect_uris: ["http://127.0.0.1/callback"] });
+    const [alice, client] = [await createActor(), await register({ redirect_uris: ["http://127.0.0.1/callback"] })];
 
     await expect(
-      oauthService.checkAuthorizationRequest(paramsOf(client, { redirect_uri: "http://127.0.0.1:51234/callback" })),
+      oauthService.checkAuthorizationRequest(
+        alice,
+        paramsOf(alice, client, { redirect_uri: "http://127.0.0.1:51234/callback" }),
+      ),
     ).resolves.toMatchObject({ ok: true, value: { redirectUri: "http://127.0.0.1:51234/callback" } });
     for (const redirect_uri of ["http://127.0.0.1:51234/other", "http://localhost:51234/callback"]) {
-      await expect(oauthService.checkAuthorizationRequest(paramsOf(client, { redirect_uri }))).resolves.toEqual({
+      await expect(
+        oauthService.checkAuthorizationRequest(alice, paramsOf(alice, client, { redirect_uri })),
+      ).resolves.toEqual({
         ok: false,
         error: { code: "invalid-redirect-uri" },
       });
@@ -344,13 +480,16 @@ describe("checkAuthorizationRequest", () => {
     ["the PKCE method plain", { code_challenge_method: "plain" }, "invalid_request"],
     ["no challenge", { code_challenge: undefined }, "invalid_request"],
     ["a challenge that is no SHA-256", { code_challenge: "too-short" }, "invalid_request"],
-    ["a resource that is another server", { resource: "https://other.example/mcp" }, "invalid_target"],
-    ["a resource that is the wiki, not its MCP endpoint", { resource: "https://wiki.example.com" }, "invalid_target"],
+    [
+      "a resource that is another server",
+      { resource: `https://other.example/mcp/${crypto.randomUUID()}/reader` },
+      "invalid_target",
+    ],
     ["a state of more than 2048 characters", { state: "s".repeat(2049) }, "invalid_request"],
   ])("sends %s back to the client as %s, with its state", async (_case, params, error) => {
-    const client = await register();
+    const [alice, client] = [await createActor(), await register()];
 
-    const result = await oauthService.checkAuthorizationRequest(paramsOf(client, params));
+    const result = await oauthService.checkAuthorizationRequest(alice, paramsOf(alice, client, params));
 
     expect(result).toMatchObject({
       ok: false,
@@ -381,7 +520,8 @@ describe("createCode", () => {
       userId: alice.id,
       redirectUri: REDIRECT_URI,
       codeChallenge: challengeOf(VERIFIER),
-      scopes: ["read"],
+      folderId: alice.folder.id,
+      role: "reader",
       lifetime: "365d",
       expiresAt: new Date(start + 10 * MINUTE_MS),
     });
@@ -398,12 +538,12 @@ describe("createCode", () => {
       [{ client_id: crypto.randomUUID() }, "invalid-client"],
       [{ code_challenge_method: "plain" }, "refused"],
     ] as const) {
-      await expect(oauthService.createCode(alice, paramsOf(client, params), "90d")).resolves.toMatchObject({
+      await expect(oauthService.createCode(alice, paramsOf(alice, client, params), "90d")).resolves.toMatchObject({
         ok: false,
         error: { code },
       });
     }
-    await expect(oauthService.createCode(alice, paramsOf(client), "7d")).resolves.toEqual({
+    await expect(oauthService.createCode(alice, paramsOf(alice, client), "7d")).resolves.toEqual({
       ok: false,
       error: { code: "invalid-lifetime" },
     });
@@ -412,35 +552,39 @@ describe("createCode", () => {
   });
 
   it("reports failed for an actor that does not exist", async () => {
-    const client = await register();
+    const [alice, client] = [await createActor(), await register()];
+    const ghost = { id: crypto.randomUUID(), name: "ghost", type: "user" as const, folder: alice.folder };
 
-    await expect(
-      oauthService.createCode({ id: crypto.randomUUID(), name: "ghost", type: "user" }, paramsOf(client), "90d"),
-    ).resolves.toEqual({ ok: false, error: { code: "failed" } });
+    // A user that does not exist has no role: no app can be connected for it.
+    await expect(oauthService.createCode(ghost, paramsOf(ghost, client), "90d")).resolves.toMatchObject({
+      ok: false,
+      error: { code: "refused", error: "access_denied" },
+    });
   });
 });
 
 describe("exchangeCode", () => {
-  it("creates a grant named after the client, with the scope read and the chosen lifetime, and returns its tokens", async () => {
+  it("creates a grant named after the client, with the folder and the role of the code and the chosen lifetime, and returns its tokens", async () => {
     const [alice, client] = [await createActor(), await register({ client_name: "Claude" })];
     const start = Date.now();
     setClock(start);
     const code = await approve(alice, client, "30d");
 
-    const result = await oauthService.exchangeCode(exchangeOf(client, code, { resource: MCP }));
+    const result = await oauthService.exchangeCode(exchangeOf(client, code, { resource: addressOf(alice.folder) }));
 
     if (!result.ok) return expect.fail(`code not exchanged: ${result.error.code}`);
-    const { accessToken, refreshToken, expiresIn, scopes } = result.value;
+    const { accessToken, refreshToken, expiresIn } = result.value;
     expect(accessToken).toMatch(/^hwa_[A-Za-z0-9_-]{43}$/);
     expect(expiresIn).toBe(3600);
-    expect(scopes).toEqual(["read"]);
+    expect(result.value).not.toHaveProperty("scopes");
     const rows = await grantsOf(alice);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       userId: alice.id,
       clientId: client.id,
       name: "Claude",
-      scopes: ["read"],
+      folderId: alice.folder.id,
+      role: "reader",
       accessTokenHash: hashSecret(accessToken),
       refreshTokenHash: hashSecret(refreshToken),
       accessTokenExpiresAt: new Date(start + HOUR_MS),
@@ -484,7 +628,7 @@ describe("exchangeCode", () => {
     ["another redirect address", { redirectUri: `${REDIRECT_URI}/` }],
     ["no redirect address", { redirectUri: undefined }],
     ["no client", { clientId: undefined }],
-    ["a resource that is another server", { resource: "https://other.example/mcp" }],
+    ["a resource that is another server", { resource: `https://other.example/mcp/${crypto.randomUUID()}/reader` }],
   ])("refuses %s, and the failed check uses the code up", async (_case, input) => {
     const [alice, client] = [await createActor(), await register()];
     const code = await approve(alice, client);
@@ -495,6 +639,21 @@ describe("exchangeCode", () => {
 
     expect(await getTestDb().oAuthGrant.count()).toBe(0);
     expect(await getTestDb().oAuthCode.count()).toBe(0);
+  });
+
+  it.each([
+    ["the Writer address of the same folder", "writer"],
+    ["the address of another folder", "other"],
+  ])("refuses an exchange with the resource of %s as invalid_target", async (_case, which) => {
+    const [alice, client] = [await createActor(), await register()];
+    const code = await approve(alice, client);
+    const resource = which === "writer" ? addressOf(alice.folder, "writer") : addressOf({ id: crypto.randomUUID() });
+
+    await expect(oauthService.exchangeCode(exchangeOf(client, code, { resource }))).resolves.toMatchObject({
+      ok: false,
+      error: { code: "invalid-target" },
+    });
+    expect(await getTestDb().oAuthGrant.count()).toBe(0);
   });
 
   it("refuses a code that another client presents", async () => {
@@ -599,6 +758,21 @@ describe("the grants that a new grant replaces", () => {
     expect(await works(bobs.accessToken)).toBe(true);
     expect(await works(other.accessToken)).toBe(true);
   });
+
+  it("replaces only the older grant of the client at the same address, and keeps those at other addresses", async () => {
+    const [alice, client] = [await createActor(), await register()];
+    const [a, b] = [alice.folder, (await createActor()).folder];
+    await createFolderRole({ folder: b, user: alice, role: "writer" });
+    const aWriter = await grant(alice, client, "90d", addressOf(a, "writer"));
+    const aReader = await grant(alice, client, "90d", addressOf(a, "reader"));
+    const bWriter = await grant(alice, client, "90d", addressOf(b, "writer"));
+
+    const again = await grant(alice, client, "90d", addressOf(a, "writer"));
+
+    expect(await grantsOf(alice)).toHaveLength(3);
+    expect(await works(aWriter.accessToken)).toBe(false);
+    for (const tokens of [aReader, bWriter, again]) expect(await works(tokens.accessToken)).toBe(true);
+  });
 });
 
 describe("the limit of connected apps per user", () => {
@@ -606,26 +780,34 @@ describe("the limit of connected apps per user", () => {
    * Fills the connected apps of the user up to the given number, with grants to clients of their own. The first one
    * has expired, which counts like any other.
    */
-  async function fill(owner: Actor, count: number): Promise<void> {
+  async function fill(owner: TestActor, count: number): Promise<void> {
     for (let index = 0; index < count; index += 1) {
-      await createGrant({ owner, ...(index === 0 && { expiresAt: new Date(Date.now() - 1000) }) });
+      await createGrant({
+        owner,
+        folder: owner.folder,
+        ...(index === 0 && { expiresAt: new Date(Date.now() - 1000) }),
+      });
     }
   }
 
-  it("refuses the 21st connected app, expired ones included, at the consent and at the exchange", async () => {
+  it("is 50", () => {
+    expect(grantService.MAX_GRANTS_PER_USER).toBe(50);
+  });
+
+  it("refuses the 51st connected app, expired ones included, at the consent and at the exchange", async () => {
     const [alice, client] = [await createActor(), await register()];
     await fill(alice, grantService.MAX_GRANTS_PER_USER - 1);
     const code = await approve(alice, client);
     // A second code, created while there was still room.
     const late = await approve(alice, await register({ client_name: "Late" }));
-    await expect(oauthService.isGrantLimitReached(alice, client.id)).resolves.toBe(false);
+    await expect(oauthService.isGrantLimitReached(alice, client.id, ADDRESS(alice))).resolves.toBe(false);
 
     await expect(oauthService.exchangeCode(exchangeOf(client, code))).resolves.toMatchObject({ ok: true });
 
-    expect(await getTestDb().oAuthGrant.count({ where: { userId: alice.id } })).toBe(20);
+    expect(await getTestDb().oAuthGrant.count({ where: { userId: alice.id } })).toBe(grantService.MAX_GRANTS_PER_USER);
     const other = await register({ client_name: "Other" });
-    await expect(oauthService.isGrantLimitReached(alice, other.id)).resolves.toBe(true);
-    await expect(oauthService.createCode(alice, paramsOf(other), "90d")).resolves.toEqual({
+    await expect(oauthService.isGrantLimitReached(alice, other.id, ADDRESS(alice))).resolves.toBe(true);
+    await expect(oauthService.createCode(alice, paramsOf(alice, other), "90d")).resolves.toEqual({
       ok: false,
       error: { code: "limit-reached" },
     });
@@ -639,19 +821,19 @@ describe("the limit of connected apps per user", () => {
         codeVerifier: VERIFIER,
       }),
     ).resolves.toMatchObject(INVALID_GRANT);
-    expect(await getTestDb().oAuthGrant.count({ where: { userId: alice.id } })).toBe(20);
+    expect(await getTestDb().oAuthGrant.count({ where: { userId: alice.id } })).toBe(grantService.MAX_GRANTS_PER_USER);
   });
 
   it("does not count the grants that the new one replaces", async () => {
     const [alice, client] = [await createActor(), await register()];
     await fill(alice, grantService.MAX_GRANTS_PER_USER - 1);
     const first = await grant(alice, client);
-    expect(await getTestDb().oAuthGrant.count({ where: { userId: alice.id } })).toBe(20);
+    expect(await getTestDb().oAuthGrant.count({ where: { userId: alice.id } })).toBe(grantService.MAX_GRANTS_PER_USER);
 
-    await expect(oauthService.isGrantLimitReached(alice, client.id)).resolves.toBe(false);
+    await expect(oauthService.isGrantLimitReached(alice, client.id, ADDRESS(alice))).resolves.toBe(false);
     const second = await grant(alice, client);
 
-    expect(await getTestDb().oAuthGrant.count({ where: { userId: alice.id } })).toBe(20);
+    expect(await getTestDb().oAuthGrant.count({ where: { userId: alice.id } })).toBe(grantService.MAX_GRANTS_PER_USER);
     expect(await works(first.accessToken)).toBe(false);
     expect(await works(second.accessToken)).toBe(true);
   });
@@ -668,7 +850,7 @@ describe("the limit of connected apps per user", () => {
     ).resolves.toMatchObject(INVALID_GRANT);
 
     expect(await works(first.accessToken)).toBe(true);
-    expect(await getTestDb().oAuthGrant.count({ where: { userId: alice.id } })).toBe(20);
+    expect(await getTestDb().oAuthGrant.count({ where: { userId: alice.id } })).toBe(grantService.MAX_GRANTS_PER_USER);
   });
 
   it("cannot be passed by exchanges at the same time", async () => {
@@ -683,11 +865,24 @@ describe("the limit of connected apps per user", () => {
     const results = await Promise.all(exchanges.map((exchange) => oauthService.exchangeCode(exchange)));
 
     expect(results.filter((result) => result.ok)).toHaveLength(2);
-    expect(await getTestDb().oAuthGrant.count({ where: { userId: alice.id } })).toBe(20);
+    expect(await getTestDb().oAuthGrant.count({ where: { userId: alice.id } })).toBe(grantService.MAX_GRANTS_PER_USER);
   });
 });
 
 describe("refreshGrant", () => {
+  it("refuses a refresh with the resource of another address as invalid_target, and keeps the grant", async () => {
+    const [alice, client] = [await createActor(), await register()];
+    const tokens = await grant(alice, client);
+
+    for (const resource of [addressOf(alice.folder, "writer"), addressOf({ id: crypto.randomUUID() })]) {
+      await expect(
+        oauthService.refreshGrant({ refreshToken: tokens.refreshToken, clientId: client.clientId, resource }),
+      ).resolves.toMatchObject({ ok: false, error: { code: "invalid-target" } });
+    }
+    expect(await grantsOf(alice)).toHaveLength(1);
+    expect(await works(tokens.accessToken)).toBe(true);
+  });
+
   it("gives a new access token and a new refresh token, and the previous ones stop working", async () => {
     const [alice, client] = [await createActor(), await register()];
     const start = Date.now();
@@ -698,7 +893,7 @@ describe("refreshGrant", () => {
     const result = await oauthService.refreshGrant({
       refreshToken: first.refreshToken,
       clientId: client.clientId,
-      resource: MCP,
+      resource: addressOf(alice.folder),
     });
 
     if (!result.ok) return expect.fail(`not refreshed: ${result.error.code}`);
@@ -862,14 +1057,14 @@ describe("authenticateAccessToken", () => {
     const [alice, client] = [await createActor(), await register()];
     const { accessToken } = await grant(alice, client);
 
-    await expect(grantService.authenticateAccessToken(bearer(accessToken), "read")).resolves.toStrictEqual({
+    await expect(grantService.authenticateAccessToken(bearer(accessToken))).resolves.toStrictEqual({
       ok: true,
-      value: alice,
+      value: { id: alice.id, name: alice.name, type: alice.type },
     });
   });
 
   it("refuses a former API token as missing", async () => {
-    await expect(grantService.authenticateAccessToken(bearer(`hw_${"A".repeat(43)}`), "read")).resolves.toEqual({
+    await expect(grantService.authenticateAccessToken(bearer(`hw_${"A".repeat(43)}`))).resolves.toEqual({
       ok: false,
       error: { code: "missing-token" },
     });
@@ -881,7 +1076,7 @@ describe("authenticateAccessToken", () => {
     const { refreshToken } = await grant(alice, client);
 
     for (const secret of [refreshToken, code]) {
-      await expect(grantService.authenticateAccessToken(bearer(secret), "read")).resolves.toEqual({
+      await expect(grantService.authenticateAccessToken(bearer(secret))).resolves.toEqual({
         ok: false,
         error: { code: "missing-token" },
       });
@@ -931,6 +1126,8 @@ describe("deleting", () => {
     const alices = await grant(alice, client);
     const bobs = await grant(bob, client);
     await approve(alice, client);
+    // A role keeps a user from being deleted.
+    await getTestDb().folderRole.deleteMany({ where: { userId: alice.id } });
 
     await getTestDb().user.delete({ where: { id: alice.id } });
 
@@ -1010,7 +1207,7 @@ describe("an admin", () => {
 
     const result = await oauthService.createCode(
       { id: maria.id, name: maria.username, type: maria.type },
-      paramsOf(client),
+      paramsOf(admin, client),
       "90d",
     );
 
@@ -1030,7 +1227,8 @@ describe("an admin", () => {
         userId: maria.id,
         clientId: client.id,
         name: "Example",
-        scopes: ["read"],
+        folderId: (await createFolder({ roles: [] })).id,
+        role: "reader",
         accessTokenHash: hashSecret(accessToken),
         refreshTokenHash: hashSecret("refresh"),
         accessTokenExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
@@ -1038,7 +1236,7 @@ describe("an admin", () => {
       },
     });
 
-    await expect(grantService.authenticateAccessToken(bearer(accessToken), "read")).resolves.toEqual({
+    await expect(grantService.authenticateAccessToken(bearer(accessToken))).resolves.toEqual({
       ok: false,
       error: { code: "invalid-token" },
     });

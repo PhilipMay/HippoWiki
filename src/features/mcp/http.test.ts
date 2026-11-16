@@ -141,18 +141,17 @@ describe("the origin", () => {
 });
 
 describe("the token", () => {
-  it("checks the headers of the request for an access token with the scope read", async () => {
+  it("checks the headers of the request for an access token, without a scope", async () => {
     const request = post(TOOLS_LIST);
 
     await handleMcpRequest(request);
 
-    expect(mocks.authenticateAccessToken).toHaveBeenCalledExactlyOnceWith(request.headers, "read");
+    expect(mocks.authenticateAccessToken).toHaveBeenCalledExactlyOnceWith(request.headers);
   });
 
   it.each([
-    ["missing-token", 401, `Bearer ${RESOURCE_METADATA}, scope="read"`, "unauthorized"],
-    ["invalid-token", 401, `Bearer error="invalid_token", ${RESOURCE_METADATA}, scope="read"`, "invalid_token"],
-    ["insufficient-scope", 403, 'Bearer error="insufficient_scope", scope="read"', "insufficient_scope"],
+    ["missing-token", 401, `Bearer ${RESOURCE_METADATA}`, "unauthorized"],
+    ["invalid-token", 401, `Bearer error="invalid_token", ${RESOURCE_METADATA}`, "invalid_token"],
   ])(
     "answers %s with %i and says where the authorization server is found, without reaching the tools",
     async (code, status, challenge, error) => {

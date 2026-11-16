@@ -27,6 +27,9 @@ model Folder {
   pages          Page[]
   /// The roles of the users on the folder.
   roles          FolderRole[]
+  /// The grants to OAuth clients at the MCP addresses of the folder, and the codes that stand for them.
+  oauthGrants    OAuthGrant[]
+  oauthCodes     OAuthCode[]
 }
 
 /// The role of a user on a folder (`src/features/folder-roles/roles.ts`): what the user may see and do with the folder
@@ -200,32 +203,38 @@ model Account {
 /// revoked; revoking deletes the row. The client holds a short-lived access token and a refresh token that changes
 /// with every use, and the row holds the hashes of the current ones; a token is never stored.
 model OAuthGrant {
-  id                   String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId               String      @db.Uuid
-  user                 User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                   String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId               String         @db.Uuid
+  user                 User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// The name of the client when the grant was made, shown on the account page.
   name                 String
-  /// What the access token may do: always `read` (`GRANT_SCOPES` in `src/features/oauth/schema.ts`).
-  scopes               String[]
+  /// The folder of the MCP address the grant connects to (`/mcp/<folder-uuid>/<role>`). Deleting the folder deletes
+  /// its grants: a grant is no content.
+  folderId             String         @db.Uuid
+  folder               Folder         @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  /// The role of the MCP address: the most the app may do, never more than the user's current role on the folder.
+  /// Only `reader` or `writer`, which a check constraint in the migration keeps.
+  role                 FolderRoleType
   /// When the grant ends: it can no longer be refreshed, and its access token stops working.
-  expiresAt            DateTime    @db.Timestamptz(3)
+  expiresAt            DateTime       @db.Timestamptz(3)
   /// When the access token was last used, at most once a minute; `null` for a grant that was never used.
-  lastUsedAt           DateTime?   @db.Timestamptz(3)
-  createdAt            DateTime    @default(now()) @db.Timestamptz(3)
+  lastUsedAt           DateTime?      @db.Timestamptz(3)
+  createdAt            DateTime       @default(now()) @db.Timestamptz(3)
   /// The OAuth client the grant is given to. Deleting the client deletes its grants.
-  clientId             String      @db.Uuid
-  client               OAuthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId             String         @db.Uuid
+  client               OAuthClient    @relation(fields: [clientId], references: [id], onDelete: Cascade)
   /// The SHA-256 hash of the current refresh token, in hex (`src/features/oauth/secret.ts`). A refresh replaces it; a
   /// refresh token with another hash is an old one and revokes the grant.
   refreshTokenHash     String?
   /// The SHA-256 hash of the current access token, in hex. A request with an access token is looked up by it. A
   /// refresh replaces it, so the previous access token stops working.
-  accessTokenHash      String?     @unique
+  accessTokenHash      String?        @unique
   /// When the current access token stops working.
-  accessTokenExpiresAt DateTime?   @db.Timestamptz(3)
+  accessTokenExpiresAt DateTime?      @db.Timestamptz(3)
 
   @@index([userId])
   @@index([clientId])
+  @@index([folderId])
 }
 
 /// An OAuth client: an application, such as the connector of an AI assistant, that asks a user for access to the wiki
@@ -261,28 +270,31 @@ model OAuthClient {
 /// grant. The code itself is never stored, only its hash. The row is deleted when the code is exchanged, also when
 /// the exchange fails; a code that was never exchanged is deleted after it has expired.
 model OAuthCode {
-  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   /// The SHA-256 hash of the code, in hex (`src/features/oauth/secret.ts`).
-  codeHash      String      @unique
-  clientId      String      @db.Uuid
-  client        OAuthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  codeHash      String         @unique
+  clientId      String         @db.Uuid
+  client        OAuthClient    @relation(fields: [clientId], references: [id], onDelete: Cascade)
   /// The user who approved the client.
-  userId        String      @db.Uuid
-  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String         @db.Uuid
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// The redirect address of the authorization request; the exchange must name the same one.
   redirectUri   String
   /// The PKCE challenge of the authorization request (`S256`); the exchange must show its verifier.
   codeChallenge String
-  /// The scopes of the grant the code stands for: always `read`.
-  scopes        String[]
+  /// The folder and the role of the MCP address of the grant the code stands for, as in `OAuthGrant`.
+  folderId      String         @db.Uuid
+  folder        Folder         @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  role          FolderRoleType
   /// How long the grant lasts, as the user chose it on the consent page: `30d`, `90d` or `365d`.
   lifetime      String
   /// When the code stops working, ten minutes after it was created.
-  expiresAt     DateTime    @db.Timestamptz(3)
-  createdAt     DateTime    @default(now()) @db.Timestamptz(3)
+  expiresAt     DateTime       @db.Timestamptz(3)
+  createdAt     DateTime       @default(now()) @db.Timestamptz(3)
 
   @@index([clientId])
   @@index([userId])
+  @@index([folderId])
   // For deleting the codes that have expired.
   @@index([expiresAt])
 }

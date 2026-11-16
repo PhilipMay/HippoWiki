@@ -8,6 +8,7 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 
 import Link from "@/components/Link";
+import { ROLE_LABELS } from "@/features/folder-roles/roles";
 import type { GrantSummary } from "@/features/grants/service";
 import { revokeAppPath } from "@/lib/addresses";
 import { formatDateTime } from "@/lib/format";
@@ -25,8 +26,9 @@ type ConnectedAppListProps = {
 };
 
 /**
- * The connected apps of the logged-in user, newest first: each with its name, when it was connected, when it expires
- * or that it has expired, and when it was last used, with a link that opens the "Revoke app" dialog. Without apps it
+ * The connected apps of the logged-in user, newest first: each with its name, the folder and the role of the MCP
+ * address it is connected to, when it was connected, when it expires or that it has expired, and when it was last
+ * used, with a link that opens the "Revoke app" dialog. One app connected to two addresses is two entries. Without apps it
  * says so in one short sentence; how to connect one is in the README.
  */
 export default function ConnectedAppList({ apps, now }: ConnectedAppListProps) {
@@ -43,12 +45,18 @@ export default function ConnectedAppList({ apps, now }: ConnectedAppListProps) {
       <List disablePadding aria-label="Connected apps">
         {apps.map((app, index) => {
           const expired = app.expiresAt.getTime() <= now.getTime();
+          const role = ROLE_LABELS[app.role];
           return (
             <ListItem
               key={app.id}
               divider={index < apps.length - 1}
               secondaryAction={
-                <Button component={Link} href={revokeAppPath(app.id)} color="error" aria-label={`Revoke ${app.name}`}>
+                <Button
+                  component={Link}
+                  href={revokeAppPath(app.id)}
+                  color="error"
+                  aria-label={`Revoke ${app.name} on ${app.folderName} as ${role}`}
+                >
                   Revoke
                 </Button>
               }
@@ -63,21 +71,28 @@ export default function ConnectedAppList({ apps, now }: ConnectedAppListProps) {
                   </Stack>
                 }
                 secondary={
-                  <Typography variant="body2" color="text.secondary">
-                    Connected <Time date={app.createdAt} />
-                    {" · "}
-                    {expired ? (
-                      <>
-                        Expired <Time date={app.expiresAt} />
-                      </>
-                    ) : (
-                      <>
-                        Expires <Time date={app.expiresAt} />
-                      </>
-                    )}
-                    {" · "}
-                    Last used {app.lastUsedAt ? <Time date={app.lastUsedAt} /> : "never"}
-                  </Typography>
+                  <Stack spacing={0.5}>
+                    <Typography variant="body2" sx={{ overflowWrap: "anywhere" }}>
+                      Folder <strong>{app.folderName}</strong>
+                      {" · "}
+                      Role <strong>{role}</strong>
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Connected <Time date={app.createdAt} />
+                      {" · "}
+                      {expired ? (
+                        <>
+                          Expired <Time date={app.expiresAt} />
+                        </>
+                      ) : (
+                        <>
+                          Expires <Time date={app.expiresAt} />
+                        </>
+                      )}
+                      {" · "}
+                      Last used {app.lastUsedAt ? <Time date={app.lastUsedAt} /> : "never"}
+                    </Typography>
+                  </Stack>
                 }
               />
             </ListItem>

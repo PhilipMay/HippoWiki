@@ -21,9 +21,6 @@ import type { Actor } from "@/features/users/service";
 import { getServerEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";
 
-/** The scope an access token needs for `/mcp`: all tools only read. */
-const MCP_SCOPE = "read";
-
 /** An answer that is not one of the protocol: a status, a short reason as JSON and headers. */
 function refusal(status: number, error: string, headers: Record<string, string> = {}): Response {
   return Response.json({ error }, { status, headers });
@@ -51,7 +48,7 @@ function hasForeignOrigin(request: Request, publicUrl: string): boolean {
  * itself is not passed on, so it stays out of everything the SDK keeps.
  */
 function authInfoOf(actor: Actor): AuthInfo {
-  return { token: "", clientId: actor.id, scopes: [MCP_SCOPE], extra: { actor } };
+  return { token: "", clientId: actor.id, scopes: [], extra: { actor } };
 }
 
 /** The actor that `authInfoOf()` handed to the factory. Without one the request was not checked, which never happens. */
@@ -109,9 +106,8 @@ async function serveLegacy(request: Request, actor: Actor): Promise<Response> {
  *   looked at: without OAuth there is no MCP server.
  * - Anything but `POST` answers 405: there are no sessions to end and no stream to open.
  * - An `Origin` that is not the public URL answers 403.
- * - Without a valid access token it answers 401 with `WWW-Authenticate: Bearer`, the metadata of the protected
- *   resource (`resource_metadata`, RFC 9728) and the scope to ask for; for a token without the scope `read` 403 with
- *   `error="insufficient_scope"`, and 500 when the token could not be checked.
+ * - Without a valid access token it answers 401 with `WWW-Authenticate: Bearer` and the metadata of the protected
+ *   resource (`resource_metadata`, RFC 9728), and 500 when the token could not be checked. There are no scopes.
  * - Everything else goes to the MCP server.
  */
 export async function handleMcpRequest(request: Request): Promise<Response> {
@@ -126,22 +122,18 @@ export async function handleMcpRequest(request: Request): Promise<Response> {
     return refusal(403, "forbidden_origin");
   }
 
-  // The access token has to be valid and to have the scope; its user is the actor of the tools, and the services
-  // decide what the actor may read.
-  const actor = await grantService.authenticateAccessToken(request.headers, MCP_SCOPE);
+  // The access token has to be valid; its user is the actor of the tools, and the services decide what the actor may
+  // read.
+  const actor = await grantService.authenticateAccessToken(request.headers);
   if (!actor.ok) {
     // What a client needs to start the OAuth flow, after the error if there is one.
-    const discovery = [`resource_metadata="${resourceMetadata}"`, `scope="${MCP_SCOPE}"`];
+    const discovery = [`resource_metadata="${resourceMetadata}"`];
     switch (actor.error.code) {
       case "missing-token":
         return refusal(401, "unauthorized", { "WWW-Authenticate": bearerChallenge(...discovery) });
       case "invalid-token":
         return refusal(401, "invalid_token", {
           "WWW-Authenticate": bearerChallenge('error="invalid_token"', ...discovery),
-        });
-      case "insufficient-scope":
-        return refusal(403, "insufficient_scope", {
-          "WWW-Authenticate": bearerChallenge('error="insufficient_scope"', `scope="${MCP_SCOPE}"`),
         });
       case "failed":
         return refusal(500, "server_error");

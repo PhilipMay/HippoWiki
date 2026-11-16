@@ -21,7 +21,7 @@ vi.mock("@/features/oauth/service", () => ({
   createCode: mocks.createCode,
   checkAuthorizationRequest: mocks.checkAuthorizationRequest,
 }));
-vi.mock("@/features/grants/service", () => ({ MAX_GRANTS_PER_USER: 20 }));
+vi.mock("@/features/grants/service", () => ({ MAX_GRANTS_PER_USER: 50 }));
 vi.mock("@/lib/env", () => ({ getServerEnv: mocks.getServerEnv }));
 
 const USER = { id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002", name: "alice", mustChangePassword: false };
@@ -35,9 +35,11 @@ const PARAMS = {
   code_challenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
   code_challenge_method: "S256",
   state: "state of the client",
+  resource: "https://wiki.example.com/mcp/3a5c7e90-1b2d-4f6a-8c0e-2d4f6a8c0e11/reader",
 };
 const REQUEST = {
   client: { id: CLIENT_ID, clientId: CLIENT_ID, name: "Example", redirectUris: [REDIRECT_URI], createdAt: new Date() },
+  address: { folder: { id: "3a5c7e90-1b2d-4f6a-8c0e-2d4f6a8c0e11", name: "projects" }, role: "reader" },
   redirectUri: REDIRECT_URI,
   codeChallenge: PARAMS.code_challenge,
   state: "state of the client",
@@ -117,13 +119,28 @@ describe("approve", () => {
     ["invalid-lifetime", "Choose how long the app keeps its access."],
     [
       "limit-reached",
-      "You already have 20 connected apps, the most allowed. Revoke an app on your account page first.",
+      "You already have 50 connected apps, the most allowed. Revoke an app on your account page first.",
     ],
     ["failed", "The app could not be connected. Please try again."],
   ])("shows the message of the code %s and sends the browser nowhere", async (code, message) => {
     mocks.createCode.mockResolvedValue({ ok: false, error: { code } });
 
     await expect(approve(formData({ ...PARAMS, lifetime: "90d" }))).resolves.toEqual({ message });
+  });
+
+  it("sends the refusal of an address that no app can be connected to back to the client with access_denied", async () => {
+    mocks.createCode.mockResolvedValue({
+      ok: false,
+      error: { ...REFUSED, error: "access_denied", description: "No app can be connected to this address" },
+    });
+
+    expect(answerOf(await approve(formData({ ...PARAMS, lifetime: "90d" })))).toEqual({
+      tenant: "a",
+      error: "access_denied",
+      error_description: "No app can be connected to this address",
+      state: "state of the client",
+      iss: "https://wiki.example.com",
+    });
   });
 
   it("sends a request that the service refuses back to the client with its error, and without a code", async () => {
@@ -155,7 +172,7 @@ describe("deny", () => {
   it("checks the submitted request again and returns the address of the client with access_denied, state and iss", async () => {
     const state = await deny(formData({ ...PARAMS, lifetime: "90d" }));
 
-    expect(mocks.checkAuthorizationRequest).toHaveBeenCalledExactlyOnceWith(PARAMS);
+    expect(mocks.checkAuthorizationRequest).toHaveBeenCalledExactlyOnceWith(USER, PARAMS);
     expect(answerOf(state)).toEqual({
       tenant: "a",
       error: "access_denied",

@@ -2,6 +2,7 @@
 // account, the login and the password change, the actions in their query string and the way back after a login. Pure
 // functions used by routes, Server Actions and links; no server-only imports.
 
+import type { McpRole } from "@/features/folder-roles/roles";
 import { isAdmin, type UserType } from "@/features/users/user-type";
 import { parseName } from "@/lib/names";
 
@@ -127,6 +128,15 @@ const MCP_PATH = "/mcp";
 /** The address of the MCP endpoint. */
 export function mcpPath(): string {
   return MCP_PATH;
+}
+
+/**
+ * The MCP address of a folder for a role, `/mcp/<folder-uuid>/<role>`: an AI app connected there works only on that
+ * folder and may do at most what the role allows. The folder is named by its id, so that the address stays the same
+ * when the folder is renamed.
+ */
+export function mcpFolderPath(folderId: string, role: McpRole): string {
+  return `${MCP_PATH}/${folderId}/${role}`;
 }
 
 /** The address of the consent page of OAuth, where a logged-in user approves or denies a client. */

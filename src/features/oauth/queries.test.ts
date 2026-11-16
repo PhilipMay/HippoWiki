@@ -22,21 +22,17 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("next/server", () => ({ connection: mocks.connection }));
 vi.mock("@/features/auth/session", () => ({ requireUser: mocks.requireUser }));
-vi.mock("@/features/oauth/service", async (importOriginal) => {
-  // The refusal of an admin is a pure function of the service; the real one is used.
-  const { adminRefusal } = await importOriginal<typeof import("@/features/oauth/service")>();
-  return {
-    checkAuthorizationRequest: mocks.checkAuthorizationRequest,
-    isGrantLimitReached: mocks.isGrantLimitReached,
-    adminRefusal,
-  };
-});
+vi.mock("@/features/oauth/service", () => ({
+  checkAuthorizationRequest: mocks.checkAuthorizationRequest,
+  isGrantLimitReached: mocks.isGrantLimitReached,
+}));
 vi.mock("@/lib/env", () => ({ getServerEnv: mocks.getServerEnv }));
 vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, error: mocks.error } }));
 
 const USER = { id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002", name: "alice", type: "user", mustChangePassword: false };
 const ADMIN = { ...USER, name: "maria", type: "admin" };
 const CLIENT_ID = "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10";
+const FOLDER_ID = "3a5c7e90-1b2d-4f6a-8c0e-2d4f6a8c0e11";
 const REDIRECT_URI = "https://client.example/callback";
 const QUERY = {
   client_id: CLIENT_ID,
@@ -45,9 +41,11 @@ const QUERY = {
   code_challenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
   code_challenge_method: "S256",
   state: "xyz",
+  resource: `https://wiki.example.com/mcp/${FOLDER_ID}/writer`,
 };
 const REQUEST = {
   client: { id: CLIENT_ID, clientId: CLIENT_ID, name: "Example", redirectUris: [REDIRECT_URI], createdAt: new Date() },
+  address: { folder: { id: FOLDER_ID, name: "projects" }, role: "writer" },
   redirectUri: REDIRECT_URI,
   codeChallenge: QUERY.code_challenge,
   state: "xyz",
@@ -66,7 +64,7 @@ describe("loadConsent", () => {
     await loadConsent(QUERY);
 
     expect(mocks.requireUser).toHaveBeenCalledExactlyOnceWith(
-      `/oauth/authorize?client_id=${CLIENT_ID}&redirect_uri=https%3A%2F%2Fclient.example%2Fcallback&response_type=code&code_challenge=${QUERY.code_challenge}&code_challenge_method=S256&state=xyz`,
+      `/oauth/authorize?client_id=${CLIENT_ID}&redirect_uri=https%3A%2F%2Fclient.example%2Fcallback&response_type=code&code_challenge=${QUERY.code_challenge}&code_challenge_method=S256&state=xyz&resource=${encodeURIComponent(QUERY.resource)}`,
     );
     const order = [mocks.connection, mocks.requireUser, mocks.checkAuthorizationRequest].map(
       (mock) => mock.mock.invocationCallOrder[0] ?? 0,
@@ -92,19 +90,24 @@ describe("loadConsent", () => {
     expect(mocks.checkAuthorizationRequest).not.toHaveBeenCalled();
   });
 
-  it("asks the user for a valid request, with the name of the client, the host of its redirect address and the user", async () => {
-    await expect(loadConsent({ ...QUERY, utm_source: "mail" })).resolves.toEqual({
+  it("asks the user for a valid request, with the client, the host of its redirect address, the user, the folder and the role", async () => {
+    await expect(loadConsent({ ...QUERY, utm_source: "mail", scope: "read" })).resolves.toEqual({
       kind: "consent",
       clientName: "Example",
       target: "client.example",
       userName: "alice",
+      folderName: "projects",
+      role: "writer",
       limitReached: false,
-      // Only the parameters of OAuth go into the form.
+      // Only the parameters of OAuth go into the form, and no scope.
       params: QUERY,
     });
 
-    expect(mocks.checkAuthorizationRequest).toHaveBeenCalledExactlyOnceWith(QUERY);
-    expect(mocks.isGrantLimitReached).toHaveBeenCalledExactlyOnceWith(USER, CLIENT_ID);
+    expect(mocks.checkAuthorizationRequest).toHaveBeenCalledExactlyOnceWith(USER, QUERY);
+    expect(mocks.isGrantLimitReached).toHaveBeenCalledExactlyOnceWith(USER, CLIENT_ID, {
+      folderId: FOLDER_ID,
+      role: "writer",
+    });
   });
 
   it("shows the scheme of a native app as the target, and the redirect address of the request, not of the client", async () => {
@@ -178,23 +181,40 @@ describe("loadConsent", () => {
     expect(new URL(consent.redirectTo).searchParams.has("state")).toBe(false);
   });
 
-  it("tells an admin with a valid request that admin accounts cannot connect apps, with the way back and access_denied", async () => {
+  it.each([
+    ["an admin", "Admin accounts cannot connect apps"],
+    ["an address that no app of the user can be connected to", "No app can be connected to this address"],
+  ])(
+    "shows the refusal of %s with the way back and access_denied, as the service gave it",
+    async (_case, description) => {
+      mocks.checkAuthorizationRequest.mockResolvedValue({
+        ok: false,
+        error: { code: "refused", redirectUri: REDIRECT_URI, state: "xyz", error: "access_denied", description },
+      });
+
+      const consent = await loadConsent(QUERY);
+
+      if (consent.kind !== "refused") return expect.fail(`not refused: ${consent.kind}`);
+      expect(consent.target).toBe("client.example");
+      expect(consent.description).toBe(description);
+      const url = new URL(consent.redirectTo);
+      expect(`${url.origin}${url.pathname}`).toBe(REDIRECT_URI);
+      expect(Object.fromEntries(url.searchParams)).toEqual({
+        error: "access_denied",
+        error_description: description,
+        state: "xyz",
+        iss: "https://wiki.example.com",
+      });
+      expect(mocks.isGrantLimitReached).not.toHaveBeenCalled();
+    },
+  );
+
+  it("passes an admin to the service, which decides", async () => {
     mocks.requireUser.mockResolvedValue(ADMIN);
 
-    const consent = await loadConsent(QUERY);
+    await loadConsent(QUERY);
 
-    if (consent.kind !== "refused") return expect.fail(`not refused: ${consent.kind}`);
-    expect(consent.target).toBe("client.example");
-    expect(consent.description).toBe("Admin accounts cannot connect apps");
-    const url = new URL(consent.redirectTo);
-    expect(`${url.origin}${url.pathname}`).toBe(REDIRECT_URI);
-    expect(Object.fromEntries(url.searchParams)).toEqual({
-      error: "access_denied",
-      error_description: "Admin accounts cannot connect apps",
-      state: "xyz",
-      iss: "https://wiki.example.com",
-    });
-    expect(mocks.isGrantLimitReached).not.toHaveBeenCalled();
+    expect(mocks.checkAuthorizationRequest).toHaveBeenCalledExactlyOnceWith(ADMIN, QUERY);
   });
 
   it.each(["invalid-client", "invalid-redirect-uri"])(

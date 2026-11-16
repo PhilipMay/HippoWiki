@@ -14,6 +14,7 @@ import {
   foldersPath,
   landingPath,
   loginPath,
+  mcpFolderPath,
   mcpPath,
   oauthAuthorizePath,
   oauthRegisterPath,
@@ -93,6 +94,12 @@ describe("paths", () => {
 
   it("builds the address of the MCP endpoint", () => {
     expect(mcpPath()).toBe("/mcp");
+  });
+
+  it("builds the MCP address of a folder for a role", () => {
+    const id = "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10";
+    expect(mcpFolderPath(id, "reader")).toBe(`/mcp/${id}/reader`);
+    expect(mcpFolderPath(id, "writer")).toBe(`/mcp/${id}/writer`);
   });
 
   it("builds the addresses of OAuth", () => {

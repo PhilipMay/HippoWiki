@@ -40,7 +40,6 @@ const TOKENS = {
   accessToken: `hwa_${"A".repeat(43)}`,
   expiresIn: 3600,
   refreshToken: `hwr_${CLIENT_ID}.${"R".repeat(43)}`,
-  scopes: ["read"],
 };
 
 /** Sets the public URL and the number of trusted proxies that the adapters read from the server environment. */
@@ -118,7 +117,6 @@ describe("authorizationServerMetadata", () => {
       grant_types_supported: ["authorization_code", "refresh_token"],
       code_challenge_methods_supported: ["S256"],
       token_endpoint_auth_methods_supported: ["none"],
-      scopes_supported: ["read"],
       client_id_metadata_document_supported: true,
       authorization_response_iss_parameter_supported: true,
     });
@@ -137,7 +135,6 @@ describe("protectedResourceMetadata", () => {
     await expect(response.json()).resolves.toStrictEqual({
       resource: "https://wiki.example.com/mcp",
       authorization_servers: ["https://wiki.example.com"],
-      scopes_supported: ["read"],
       bearer_methods_supported: ["header"],
     });
   });
@@ -294,7 +291,6 @@ describe("handleToken", () => {
       token_type: "Bearer",
       expires_in: 3600,
       refresh_token: TOKENS.refreshToken,
-      scope: "read",
     });
     expect(mocks.refreshGrant).not.toHaveBeenCalled();
   });

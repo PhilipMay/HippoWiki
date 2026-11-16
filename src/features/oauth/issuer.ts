@@ -1,8 +1,9 @@
-// What the OAuth authorization server is called from outside: its issuer and the protected resource it gives access
-// to. Both come from `HIPPOWIKI_PUBLIC_URL`; without it there is no OAuth. No import of `next`, so the service and the
-// adapters share it.
+// What the OAuth authorization server is called from outside: its issuer and the protected resources it gives access
+// to, the MCP addresses of the folders. All come from `HIPPOWIKI_PUBLIC_URL`; without it there is no OAuth. No import
+// of `next`, so the service and the adapters share it.
 
-import { mcpPath, protectedResourceMetadataPath } from "@/lib/addresses";
+import { parseMcpResource, type McpAddress } from "@/features/oauth/schema";
+import { mcpFolderPath, protectedResourceMetadataPath } from "@/lib/addresses";
 import { getServerEnv } from "@/lib/env";
 
 /**
@@ -14,12 +15,22 @@ export function issuer(): string | null {
 }
 
 /**
- * The protected resource that a grant gives access to: the address of the MCP endpoint. It is what a client sends as
- * the `resource` parameter (RFC 8707). `null` while OAuth is off.
+ * The protected resource that a grant to the given MCP address gives access to: the full address
+ * `<HIPPOWIKI_PUBLIC_URL>/mcp/<folder-uuid>/<role>`. It is what a client sends as the `resource` parameter
+ * (RFC 8707). `null` while OAuth is off.
  */
-export function mcpResource(): string | null {
+export function mcpResourceOf({ folderId, role }: McpAddress): string | null {
   const publicUrl = issuer();
-  return publicUrl === null ? null : `${publicUrl}${mcpPath()}`;
+  return publicUrl === null ? null : `${publicUrl}${mcpFolderPath(folderId, role)}`;
+}
+
+/**
+ * The MCP address that a `resource` names, if it is exactly a full MCP address of a folder of this wiki as
+ * `mcpResourceOf()` writes it; `null` for anything else and while OAuth is off (`parseMcpResource()`).
+ */
+export function mcpAddressOf(resource: string | undefined): McpAddress | null {
+  const publicUrl = issuer();
+  return publicUrl === null ? null : parseMcpResource(resource, publicUrl);
 }
 
 /**

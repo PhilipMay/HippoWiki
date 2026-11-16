@@ -320,27 +320,36 @@ export async function createPage({ folder, tab, editor, ...data }: CreatePageDat
   });
 }
 
-/** The fields of a grant that `createGrant()` can set, the user it belongs to and, if given, its client. */
+/**
+ * The fields of a grant that `createGrant()` can set, the user it belongs to, the folder and the role of its MCP
+ * address and, if given, its client.
+ */
 type CreateGrantData = Partial<
-  Omit<Prisma.OAuthGrantUncheckedCreateInput, "userId" | "clientId" | "accessTokenHash">
+  Omit<Prisma.OAuthGrantUncheckedCreateInput, "userId" | "clientId" | "accessTokenHash" | "folderId" | "role">
 > & {
   owner: { id: string };
   client?: OAuthClient;
+  folder?: { id: string };
+  role?: "reader" | "writer";
 };
 
 /**
  * Creates the grant of the given owner to an OAuth client directly in the test database, as a connected app that the
- * owner approved, with a generated access token of which only the hash is stored, and returns the grant, its client
- * and the access token. Without a client it creates one with a unique name. Without other fields the grant is named
- * after its client, has the scope `read`, expires 90 days from now and its access token works for an hour; any field
- * can be set, e.g. `expiresAt` for an expired grant, `accessTokenExpiresAt` for an expired access token, `lastUsedAt`
- * or `scopes`.
+ * owner approved at the MCP address of the given folder and role, with a generated access token of which only the
+ * hash is stored, and returns the grant, its folder, its client and the access token. Without a client it creates one
+ * with a unique name. Without a folder it creates one on which the owner is Owner, unless the owner is an admin, who
+ * never has a role. Without a role the address is the one of Reader. Without other fields the grant is named after
+ * its client, expires 90 days from now and its access token works for an hour; any field can be set, e.g. `expiresAt`
+ * for an expired grant, `accessTokenExpiresAt` for an expired access token or `lastUsedAt`.
  */
 export async function createGrant({
   owner,
   client: givenClient,
+  folder: givenFolder,
+  role = "reader",
   ...data
-}: CreateGrantData): Promise<{ grant: OAuthGrant; client: OAuthClient; accessToken: string }> {
+}: CreateGrantData): Promise<{ grant: OAuthGrant; folder: { id: string }; client: OAuthClient; accessToken: string }> {
+  const folder = givenFolder ?? (await createFolderOf(owner));
   const client =
     givenClient ??
     (await getTestDb().oAuthClient.create({
@@ -353,14 +362,21 @@ export async function createGrant({
   const grant = await getTestDb().oAuthGrant.create({
     data: {
       name: client.name,
-      scopes: ["read"],
       expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
       accessTokenExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
       ...data,
       userId: owner.id,
       clientId: client.id,
+      folderId: folder.id,
+      role,
       accessTokenHash: hashSecret(accessToken),
     },
   });
-  return { grant, client, accessToken };
+  return { grant, folder, client, accessToken };
+}
+
+/** A new folder on which the given user is Owner; without a role for an admin, who never has one. */
+async function createFolderOf(user: { id: string }): Promise<Folder> {
+  const stored = await getTestDb().user.findUnique({ where: { id: user.id }, select: { type: true } });
+  return createFolder({ roles: stored?.type === "user" ? [{ user, role: "owner" }] : [] });
 }

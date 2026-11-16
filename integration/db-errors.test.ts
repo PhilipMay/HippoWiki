@@ -158,7 +158,8 @@ describe("unique violations", () => {
     const [alice, bob, client] = [await createUser(), await createUser(), await createClientRow()];
     const grant = {
       name: "Example",
-      scopes: ["read"],
+      folderId: (await createFolder()).id,
+      role: "reader" as const,
       clientId: client.id,
       accessTokenHash: "b".repeat(64),
       expiresAt: new Date(),
@@ -173,7 +174,14 @@ describe("unique violations", () => {
 
   it("allows many grants without an access token hash", async () => {
     const [alice, client] = [await createUser(), await createClientRow()];
-    const grant = { name: "Example", scopes: ["read"], clientId: client.id, expiresAt: new Date(), userId: alice.id };
+    const grant = {
+      name: "Example",
+      folderId: (await createFolder()).id,
+      role: "reader" as const,
+      clientId: client.id,
+      expiresAt: new Date(),
+      userId: alice.id,
+    };
 
     await getTestDb().oAuthGrant.create({ data: grant });
     await getTestDb().oAuthGrant.create({ data: grant });
@@ -205,13 +213,67 @@ describe("unique violations", () => {
       userId: alice.id,
       redirectUri: "https://client.example/callback",
       codeChallenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
-      scopes: ["read"],
+      folderId: (await createFolder()).id,
+      role: "reader" as const,
       lifetime: "90d",
       expiresAt: new Date(),
     };
     await getTestDb().oAuthCode.create({ data: code });
 
     expectUniqueViolationOf(await errorOf(getTestDb().oAuthCode.create({ data: code })), OAUTH_CODE_HASH);
+  });
+});
+
+describe("the role of an MCP address", () => {
+  it.each(["manager", "owner"] as const)("is never %s, for a grant and for a code", async (role) => {
+    const [alice, client, folder] = [await createUser(), await createClientRow(), await createFolder()];
+
+    await expect(
+      getTestDb().oAuthGrant.create({
+        data: {
+          name: "Example",
+          folderId: folder.id,
+          role,
+          clientId: client.id,
+          expiresAt: new Date(),
+          userId: alice.id,
+        },
+      }),
+    ).rejects.toThrow(/OAuthGrant_mcp_role/);
+    await expect(
+      getTestDb().oAuthCode.create({
+        data: {
+          codeHash: "d".repeat(64),
+          clientId: client.id,
+          userId: alice.id,
+          redirectUri: "https://client.example/callback",
+          codeChallenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+          folderId: folder.id,
+          role,
+          lifetime: "90d",
+          expiresAt: new Date(),
+        },
+      }),
+    ).rejects.toThrow(/OAuthCode_mcp_role/);
+  });
+
+  it("goes with its folder: deleting the folder deletes its grants and codes", async () => {
+    const [alice, client, folder] = [await createUser(), await createClientRow(), await createFolder()];
+    await getTestDb().oAuthGrant.create({
+      data: {
+        name: "Example",
+        folderId: folder.id,
+        role: "writer",
+        clientId: client.id,
+        expiresAt: new Date(),
+        userId: alice.id,
+      },
+    });
+    await getTestDb().folderRole.deleteMany({ where: { folderId: folder.id } });
+
+    await getTestDb().folder.delete({ where: { id: folder.id } });
+
+    expect(await getTestDb().oAuthGrant.count()).toBe(0);
   });
 });
 

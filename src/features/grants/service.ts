@@ -9,9 +9,9 @@
 //
 // The OAuth service creates, refreshes and replaces the grants (`src/features/oauth/service.ts`).
 
+import { isMcpRole, type McpRole } from "@/features/folder-roles/roles";
 import { parseGrantId } from "@/features/grants/schema";
 import { issuer } from "@/features/oauth/issuer";
-import type { GrantScope } from "@/features/oauth/schema";
 import { hashSecret, looksLikeAccessToken } from "@/features/oauth/secret";
 import { parseUserId } from "@/features/users/schema";
 import type { Actor } from "@/features/users/service";
@@ -20,14 +20,21 @@ import { getDb } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import type { Result } from "@/lib/result";
 
-/** How many grants a user may hold, expired ones included. */
-export const MAX_GRANTS_PER_USER = 20;
+/**
+ * How many grants a user may hold, expired ones included. A user holds one grant per app and MCP address, so per
+ * folder and role.
+ */
+export const MAX_GRANTS_PER_USER = 50;
 
 /** A connected app as the account page lists it; never a token, a hash or the client. */
 export type GrantSummary = {
   id: string;
   /** The name of the app, as its client calls itself. */
   name: string;
+  /** The current name of the folder of the MCP address the app is connected to. */
+  folderName: string;
+  /** The role of the MCP address: the most the app may do on the folder. */
+  role: McpRole;
   /** When the user approved the app. */
   createdAt: Date;
   /** When the grant ends: it can no longer be refreshed and its access token stops working. */
@@ -40,6 +47,8 @@ export type GrantSummary = {
 const GRANT_SUMMARY_SELECT = {
   id: true,
   name: true,
+  folder: { select: { name: true } },
+  role: true,
   createdAt: true,
   expiresAt: true,
   lastUsedAt: true,
@@ -74,10 +83,18 @@ export async function listGrants(actor: Actor): Promise<GrantSummary[] | null> {
   if (isAdmin(actor) || !isOAuthOn()) return null;
   const userId = parseUserId(actor.id);
   if (!userId) return [];
-  return getDb().oAuthGrant.findMany({
+  const grants = await getDb().oAuthGrant.findMany({
     where: { userId },
     select: GRANT_SUMMARY_SELECT,
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+  });
+  return grants.flatMap(({ folder, role, ...grant }) => {
+    // The check constraint of the table keeps the role to Reader and Writer.
+    if (!isMcpRole(role)) {
+      logger.error({ grantId: grant.id }, "grant with a role that is no role of MCP");
+      return [];
+    }
+    return [{ ...grant, folderName: folder.name, role }];
   });
 }
 
@@ -91,11 +108,9 @@ type NotAllowed = { code: "not-allowed" };
 type MissingToken = { code: "missing-token" };
 /** The access token is unknown or expired, or its user still has the first password or is an admin. */
 type BadToken = { code: "invalid-token" };
-/** The access token is valid but its grant lacks the scope that was asked for. */
-type InsufficientScope = { code: "insufficient-scope" };
 
 export type RevokeGrantError = NotAllowed | GrantNotFound | Failed;
-export type AuthenticateAccessTokenError = MissingToken | BadToken | InsufficientScope | Failed;
+export type AuthenticateAccessTokenError = MissingToken | BadToken | Failed;
 
 /**
  * Revokes the actor's connected app with the given id: deletes its grant, which ends its access token and its refresh
@@ -149,30 +164,24 @@ function bearerTokenOf(headers: Headers): string | null {
 
 /**
  * Who a request acts for, from the bearer token in its `Authorization` header: the actor of the user of the grant
- * whose access token it is, if the token is valid and its grant has the given scope. It is for callers other than the
- * browser, such as the MCP server; the browser uses the session (`src/features/auth/session.ts`).
+ * whose access token it is, if the token is valid. It is for callers other than the browser, such as the MCP server;
+ * the browser uses the session (`src/features/auth/session.ts`). There are no scopes.
  *
  * - `missing-token`: no header, another scheme, or a value that does not look like an access token, a former API
  *   token included; the database is not asked and nothing is logged.
  * - `invalid-token`: an unknown access token, one whose grant or which itself has expired, one whose user still has
  *   the first password, who may do nothing but change it, or one whose user is an admin, who has no grants.
- * - `insufficient-scope`: a valid access token whose grant lacks the scope.
  * - `failed`: the database could not be read.
  *
- * The MCP route answers `missing-token` and `invalid-token` with 401 and `WWW-Authenticate: Bearer`, and
- * `insufficient-scope` with 403. A valid access token gets the last use of its grant written, at most once a minute;
+ * The MCP route answers `missing-token` and `invalid-token` with 401 and `WWW-Authenticate: Bearer`. A valid access token gets the last use of its grant written, at most once a minute;
  * a failure of that write is logged and does not refuse the request. The token is never logged.
  */
-export async function authenticateAccessToken(
-  headers: Headers,
-  scope: GrantScope,
-): Promise<Result<Actor, AuthenticateAccessTokenError>> {
+export async function authenticateAccessToken(headers: Headers): Promise<Result<Actor, AuthenticateAccessTokenError>> {
   const secret = bearerTokenOf(headers);
   if (secret === null || !looksLikeAccessToken(secret)) return { ok: false, error: { code: "missing-token" } };
 
   let grant: {
     id: string;
-    scopes: string[];
     expiresAt: Date;
     accessTokenExpiresAt: Date | null;
     lastUsedAt: Date | null;
@@ -183,7 +192,6 @@ export async function authenticateAccessToken(
       where: { accessTokenHash: hashSecret(secret) },
       select: {
         id: true,
-        scopes: true,
         expiresAt: true,
         accessTokenExpiresAt: true,
         lastUsedAt: true,
@@ -219,10 +227,6 @@ export async function authenticateAccessToken(
   if (isAdmin(grant.user)) {
     logger.warn({ reason: "admin", grantId }, "access token refused");
     return { ok: false, error: { code: "invalid-token" } };
-  }
-  if (!grant.scopes.includes(scope)) {
-    logger.warn({ reason: "insufficient-scope", grantId, scope }, "access token refused");
-    return { ok: false, error: { code: "insufficient-scope" } };
   }
 
   const usedBefore = new Date(now.getTime() - LAST_USE_INTERVAL_MS);

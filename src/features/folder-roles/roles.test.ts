@@ -3,8 +3,12 @@ import { describe, expect, it } from "vitest";
 import {
   FUNCTION_ROLES,
   includesRole,
+  isMcpRole,
   isRole,
   mayDo,
+  MCP_ROLE_ABILITIES,
+  MCP_ROLES,
+  mcpRolesFor,
   ROLE_LABELS,
   ROLES,
   rolesFor,
@@ -90,5 +94,42 @@ describe("rolesFor", () => {
     expect(rolesFor("editPage")).toEqual(["writer", "manager", "owner"]);
     expect(rolesFor("deletedPages")).toEqual(["manager", "owner"]);
     expect(rolesFor("manageRoles")).toEqual(["owner"]);
+  });
+});
+
+describe("MCP_ROLES", () => {
+  it("are Reader and Writer, never Manager or Owner", () => {
+    expect(MCP_ROLES).toEqual(["reader", "writer"]);
+  });
+
+  it("each say in one sentence what they allow", () => {
+    for (const role of MCP_ROLES) expect(MCP_ROLE_ABILITIES[role]).toMatch(/^[A-Z].+\.$/);
+  });
+});
+
+describe("isMcpRole", () => {
+  it("is true for Reader and Writer", () => {
+    expect(isMcpRole("reader")).toBe(true);
+    expect(isMcpRole("writer")).toBe(true);
+  });
+
+  it("is false for Manager, Owner and anything else", () => {
+    for (const value of ["manager", "owner", "", "Reader", "WRITER", null, undefined, 1]) {
+      expect(isMcpRole(value), String(value)).toBe(false);
+    }
+  });
+});
+
+describe("mcpRolesFor", () => {
+  it("gives the MCP roles at most the own role", () => {
+    expect(mcpRolesFor("reader")).toEqual(["reader"]);
+    expect(mcpRolesFor("writer")).toEqual(["reader", "writer"]);
+    expect(mcpRolesFor("manager")).toEqual(["reader", "writer"]);
+    expect(mcpRolesFor("owner")).toEqual(["reader", "writer"]);
+  });
+
+  it("gives none without a role", () => {
+    expect(mcpRolesFor(null)).toEqual([]);
+    expect(mcpRolesFor(undefined)).toEqual([]);
   });
 });

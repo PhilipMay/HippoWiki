@@ -19,12 +19,17 @@ test.use({ storageState: NO_STORAGE_STATE });
 /** The public URL of the test server (`HIPPOWIKI_PUBLIC_URL` in `playwright.config.ts`): the addresses are full URLs. */
 const PUBLIC_URL = "http://localhost:3100";
 
-/** The access token of a grant of the known user, the bearer token of every request unless a test gives another. */
+/**
+ * The access token of a grant of the known user, the bearer token of every request unless a test gives another. Its
+ * folder "projects" has no role of the user.
+ */
 let secret: string;
 
 test.beforeEach(async () => {
   await resetTestDatabase();
-  ({ accessToken: secret } = await createGrant({ owner: KNOWN_USER }));
+  const editor = await getTestDb().user.findUniqueOrThrow({ where: { id: KNOWN_USER.id } });
+  const projects = await createFolder({ name: "projects", roles: [], editor });
+  ({ accessToken: secret } = await createGrant({ owner: KNOWN_USER, folder: projects }));
 });
 
 /** Sends a JSON-RPC message to `/mcp` with the given bearer token, as a client of the protocol of 2025 does. */
@@ -142,16 +147,6 @@ test("a bearer token reaches no task of an admin: creating a user leads to the l
   expect(await getTestDb().user.count()).toBe(2);
 });
 
-test("with a grant without the scope read /mcp answers 403 and names the scope", async ({ request }) => {
-  const writeOnly = await createGrant({ owner: KNOWN_USER, scopes: ["write"] });
-
-  const response = await send(request, { method: "tools/list" }, writeOnly.accessToken);
-
-  expect(response.status()).toBe(403);
-  expect(response.headers()["www-authenticate"]).toContain('error="insufficient_scope"');
-  expect(response.headers()["www-authenticate"]).toContain('scope="read"');
-});
-
 for (const method of ["get", "delete"] as const) {
   test(`${method.toUpperCase()} /mcp answers 405, with and without a token`, async ({ request }) => {
     const headerSets: Record<string, string>[] = [{}, { authorization: `Bearer ${secret}` }];
@@ -247,6 +242,11 @@ test("list_folders lists the folders by name with their addresses and last chang
     folders: [
       { name: "handbook", address: `${PUBLIC_URL}/folders/handbook`, lastChanged: "2026-03-01T12:00:00.000Z" },
       { name: "notes", address: `${PUBLIC_URL}/folders/notes`, lastChanged: "2026-02-01T10:00:00.000Z" },
+      {
+        name: "projects",
+        address: `${PUBLIC_URL}/folders/projects`,
+        lastChanged: expect.any(String) as unknown as string,
+      },
     ],
   });
   expect(JSON.parse(result.content[0]?.text ?? "")).toEqual(result.structuredContent);
@@ -303,7 +303,7 @@ test("a grant lists and reads a folder on which its user has no role, unlike the
   const listed = await callTool(request, "list_folder", { folder: "hidden" });
   const read = await callTool(request, "read_page", { folder: "hidden", page: "secret" });
 
-  expect(folders.structuredContent).toMatchObject({ folders: [{ name: "hidden" }] });
+  expect(folders.structuredContent).toMatchObject({ folders: [{ name: "hidden" }, { name: "projects" }] });
   expect(listed.structuredContent).toMatchObject({ folder: { name: "hidden" }, pages: [{ name: "secret" }] });
   expect(read.isError).toBeUndefined();
   expect(read.structuredContent).toMatchObject({ content: "# Secret\n\nOnly for bob." });

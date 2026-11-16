@@ -13,11 +13,12 @@
 
 import { randomUUID } from "node:crypto";
 
-import { mcpResource } from "@/features/oauth/issuer";
+import { folderRoleOf } from "@/features/folder-roles/service";
+import { includesRole, isMcpRole, type McpRole } from "@/features/folder-roles/roles";
+import { mcpAddressOf, mcpResourceOf } from "@/features/oauth/issuer";
 import { fetchMetadataDocument } from "@/features/oauth/metadata-fetch";
 import {
   clientRegistrationSchema,
-  GRANT_SCOPES,
   grantExpiresAt,
   grantLifetimeSchema,
   isCodeChallenge,
@@ -29,6 +30,7 @@ import {
   parseMetadataUrl,
   URL_MAX_LENGTH,
   type AuthorizationParams,
+  type McpAddress,
   type OAuthError,
 } from "@/features/oauth/schema";
 import {
@@ -265,9 +267,14 @@ async function findMetadataClient(metadataUrl: string): Promise<ClientRow | null
   }
 }
 
+/** The MCP address of an authorization request that passed every check, with the name of its folder. */
+export type RequestedAddress = { folder: { id: string; name: string }; role: McpRole };
+
 /** An authorization request that passed every check: what the consent page shows and a code is created for. */
 export type AuthorizationRequest = {
   client: OAuthClient;
+  /** The MCP address the app connects to: a folder on which the actor's role includes the role of the address. */
+  address: RequestedAddress;
   /** The redirect address as the client sent it; the code is sent there. */
   redirectUri: string;
   codeChallenge: string;
@@ -296,24 +303,30 @@ export type CheckAuthorizationError = UntrustedRequest | RefusedRequest | Failed
 export const ADMIN_REFUSAL_DESCRIPTION = "Admin accounts cannot connect apps";
 
 /**
- * The answer to a valid request of an admin: the client gets `access_denied` at its redirect address, so that it does
- * not wait for an answer that never comes. Admins have no grants and connect no apps.
+ * Why no app can be connected to the address of a request: the folder does not exist, the actor has no role on it,
+ * or the role of the address is above the actor's role. One description for all three, so that it tells nothing about
+ * which folders exist.
  */
-export function adminRefusal({ redirectUri, state }: AuthorizationRequest): RefusedRequest {
-  return { code: "refused", redirectUri, state, error: "access_denied", description: ADMIN_REFUSAL_DESCRIPTION };
-}
+export const ADDRESS_REFUSAL_DESCRIPTION = "No app can be connected to this address";
+
+/** Why a request names no MCP address of this wiki. */
+const NOT_MCP_ADDRESS = "resource must be the MCP address of a folder of this wiki, /mcp/<folder-uuid>/<reader|writer>";
 
 /**
- * Checks an authorization request.
+ * Checks an authorization request for the actor who is asked to approve it.
  *
  * - The client must exist and the redirect address must be one of its own: the same text, except that the port is
  *   ignored for `http` on a loopback address. If either is wrong, the answer must not redirect (`invalid-client`,
  *   `invalid-redirect-uri`).
- * - Everything else goes back to the client as an error (`refused`): `response_type` must be `code`, PKCE must be
- *   `S256` with a valid challenge, and a `resource` that is sent must be the address of the MCP endpoint.
- * - Scopes are not checked: unknown ones are ignored, and the grant is always `read`.
+ * - Everything else goes back to the client as an error (`refused`), in this order: `response_type` must be `code`,
+ *   PKCE must be `S256` with a valid challenge, and `resource` must be the full MCP address of a folder
+ *   (`invalid_target`), whether that folder exists or not. Then an admin, who connects no apps, gets `access_denied`.
+ *   Then the folder must exist and the actor's current role on it must include the role of the address; a missing
+ *   folder, a folder without a role of the actor and a role too low all get the same `access_denied`.
+ * - There are no scopes: a `scope` that a client sends is not even read.
  */
 export async function checkAuthorizationRequest(
+  actor: Actor,
   params: AuthorizationParams,
 ): Promise<Result<AuthorizationRequest, CheckAuthorizationError>> {
   const clientId = params.client_id;
@@ -358,34 +371,58 @@ export async function checkAuthorizationRequest(
   if (codeChallenge === undefined || !isCodeChallenge(codeChallenge)) {
     return refuse("invalid_request", "code_challenge is missing or not a challenge of the method S256");
   }
-  if (params.resource !== undefined && params.resource !== mcpResource()) {
-    return refuse("invalid_target", "resource is not the MCP endpoint of this wiki");
+  const target = mcpAddressOf(params.resource);
+  if (!target) return refuse("invalid_target", NOT_MCP_ADDRESS);
+  if (isAdmin(actor)) return refuse("access_denied", ADMIN_REFUSAL_DESCRIPTION);
+
+  let folder: { id: string; name: string } | null;
+  try {
+    const role = await folderRoleOf(actor, target.folderId);
+    folder =
+      role && includesRole(role, target.role)
+        ? await getDb().folder.findUnique({ where: { id: target.folderId }, select: { id: true, name: true } })
+        : null;
+  } catch (err) {
+    logger.error({ err, clientId: client.id }, "failed to read the folder of an authorization request");
+    return { ok: false, error: { code: "failed" } };
+  }
+  if (!folder) {
+    logger.warn(
+      { reason: "address-not-allowed", clientId: client.id, folderId: target.folderId, role: target.role },
+      "authorization request refused",
+    );
+    return {
+      ok: false,
+      error: { code: "refused", redirectUri, state, error: "access_denied", description: ADDRESS_REFUSAL_DESCRIPTION },
+    };
   }
 
-  return { ok: true, value: { client, redirectUri, codeChallenge, state } };
+  return { ok: true, value: { client, address: { folder, role: target.role }, redirectUri, codeChallenge, state } };
 }
 
 /**
- * Which of the user's grants a new grant to the client replaces: the grants to the same client row and, for a
- * registered client, the grants to registered clients with the same name and the same redirect addresses. A connector
- * that registers itself again on every connect would otherwise leave a grant behind each time.
+ * Which of the user's grants a new grant to the client at the given MCP address replaces: the grants at the same
+ * address to the same client row and, for a registered client, to registered clients with the same name and the same
+ * redirect addresses. A connector that registers itself again on every connect would otherwise leave a grant behind
+ * each time. The grants of the client at other addresses stay.
  */
-function replacedGrants(userId: string, client: ClientRow): Prisma.OAuthGrantWhereInput {
+function replacedGrants(userId: string, client: ClientRow, address: McpAddress): Prisma.OAuthGrantWhereInput {
   const sameClient: Prisma.OAuthGrantWhereInput[] = [{ clientId: client.id }];
   if (client.metadataUrl === null) {
     sameClient.push({
       client: { metadataUrl: null, name: client.name, redirectUris: { equals: client.redirectUris } },
     });
   }
-  return { userId, OR: sameClient };
+  return { userId, folderId: address.folderId, role: address.role, OR: sameClient };
 }
 
 /**
  * Whether the actor already holds the most connected apps a user may hold, not counting the grants that a new grant
- * to the client would replace. The consent page asks before it offers to approve; the exchange of the code decides.
- * `true` for a malformed id and for a client that does not exist: there is nothing to approve then.
+ * to the client at the given MCP address would replace. The consent page asks before it offers to approve; the
+ * exchange of the code decides. `true` for a malformed id and for a client that does not exist: there is nothing to
+ * approve then.
  */
-export async function isGrantLimitReached(actor: Actor, clientRowId: string): Promise<boolean> {
+export async function isGrantLimitReached(actor: Actor, clientRowId: string, address: McpAddress): Promise<boolean> {
   const userId = parseUserId(actor.id);
   const clientId = parseClientRowId(clientRowId);
   if (!userId || !clientId) return true;
@@ -395,7 +432,7 @@ export async function isGrantLimitReached(actor: Actor, clientRowId: string): Pr
   // Two counts instead of one with `NOT`, so that the replaced grants are counted by the same condition that the
   // exchange deletes them with.
   const all = await db.oAuthGrant.count({ where: { userId } });
-  const replaced = await db.oAuthGrant.count({ where: replacedGrants(userId, client) });
+  const replaced = await db.oAuthGrant.count({ where: replacedGrants(userId, client, address) });
   return all - replaced >= MAX_GRANTS_PER_USER;
 }
 
@@ -411,9 +448,10 @@ export type CreatedCode = { code: string; request: AuthorizationRequest };
 
 /**
  * Creates an authorization code for a request that the actor approved, with the lifetime of the grant that the actor
- * chose (`30d`, `90d` or `365d`). The request is checked again here, because its parameters come back from a form.
- * The code works once and for ten minutes. An admin, who connects no apps, gets the refusal `access_denied` for an
- * otherwise valid request (`adminRefusal()`), and no code is written.
+ * chose (`30d`, `90d` or `365d`) and the MCP address of the request. The request is checked again here, with the
+ * actor's current role, because its parameters come back from a form. The code works once and for ten minutes. An
+ * admin, who connects no apps, gets the refusal `access_denied` for an otherwise valid request, and no code is
+ * written.
  */
 export async function createCode(
   actor: Actor,
@@ -428,18 +466,15 @@ export async function createCode(
   const parsedLifetime = grantLifetimeSchema.safeParse(lifetime);
   if (!parsedLifetime.success) return { ok: false, error: { code: "invalid-lifetime" } };
 
-  const checked = await checkAuthorizationRequest(params);
+  const checked = await checkAuthorizationRequest(actor, params);
   if (!checked.ok) return checked;
   const request = checked.value;
   const clientId = request.client.id;
-  if (isAdmin(actor)) {
-    logger.warn({ userId, clientId }, "authorization code not created: the actor is an admin");
-    return { ok: false, error: adminRefusal(request) };
-  }
+  const address = { folderId: request.address.folder.id, role: request.address.role };
 
   const code = generateCode();
   try {
-    if (await isGrantLimitReached(actor, clientId)) {
+    if (await isGrantLimitReached(actor, clientId, address)) {
       logger.warn({ userId, clientId }, "authorization code not created: the user holds the most grants allowed");
       return { ok: false, error: { code: "limit-reached" } };
     }
@@ -450,7 +485,8 @@ export async function createCode(
         userId,
         redirectUri: request.redirectUri,
         codeChallenge: request.codeChallenge,
-        scopes: [...GRANT_SCOPES],
+        folderId: address.folderId,
+        role: address.role,
         lifetime: parsedLifetime.data,
         expiresAt: new Date(currentTime().getTime() + CODE_LIFETIME_MS),
       },
@@ -462,7 +498,7 @@ export async function createCode(
     return { ok: false, error: { code: "failed" } };
   }
 
-  logger.info({ userId, clientId }, "authorization code created");
+  logger.info({ userId, clientId, ...address }, "authorization code created");
   await deleteStaleRows();
   return { ok: true, value: { code, request } };
 }
@@ -473,14 +509,13 @@ export type TokenSet = {
   /** How many seconds the access token works. */
   expiresIn: number;
   refreshToken: string;
-  scopes: readonly string[];
 };
 
 /** A parameter is missing. */
 type InvalidRequest = { code: "invalid-request"; description: string };
 /** The code or the refresh token is unknown, used, expired or not the client's, or the user may not get a grant. */
 type InvalidGrant = { code: "invalid-grant"; description: string };
-/** The `resource` is not the MCP endpoint. */
+/** The `resource` is not the MCP address of the code or the grant. */
 type InvalidTarget = { code: "invalid-target"; description: string };
 /** The request does not say which client it comes from. */
 type MissingClient = { code: "invalid-client"; description: string };
@@ -493,7 +528,7 @@ function invalidGrant(description: string): { ok: false; error: InvalidGrant } {
 
 const INVALID_CODE = "The authorization code is not valid";
 const INVALID_REFRESH_TOKEN = "The refresh token is not valid";
-const NOT_MCP_RESOURCE = "resource is not the MCP endpoint of this wiki";
+const OTHER_MCP_ADDRESS = "resource is not the MCP address the app was connected to";
 const MISSING_CLIENT: MissingClient = { code: "invalid-client", description: "client_id is missing" };
 
 /** Thrown inside the transaction of `exchangeCode()` to roll it back: the user is gone or still has the first password. */
@@ -511,7 +546,6 @@ function newTokens(grantId: string, grantExpiresAt: Date, now: Date) {
     accessToken,
     expiresIn: Math.max(0, Math.floor((accessTokenExpiresAt.getTime() - now.getTime()) / 1000)),
     refreshToken,
-    scopes: GRANT_SCOPES,
   };
   const stored = {
     accessTokenHash: hashSecret(accessToken),
@@ -527,10 +561,11 @@ function newTokens(grantId: string, grantExpiresAt: Date, now: Date) {
  * - The code is deleted as it is read, so it works once, also when two exchanges arrive at the same time, and a
  *   failed check uses it up.
  * - The client, the redirect address and the PKCE verifier must be the ones of the authorization request, and a
- *   `resource` that is sent must be the MCP endpoint. A request that names no client is refused (`invalid-client`).
- *   A user with the first password gets no grant.
- * - In one transaction the grant is created and the user's older grants to the same client are deleted
- *   (`replacedGrants()`). The limit of grants per user counts the new grant without the replaced ones.
+ *   `resource` that is sent must be the MCP address of the code. A request that names no client is refused
+ *   (`invalid-client`). A user with the first password gets no grant.
+ * - In one transaction the grant is created with the folder and the role of the code, and the user's older grants to
+ *   the same client at the same address are deleted (`replacedGrants()`). The limit of grants per user counts the new
+ *   grant without the replaced ones.
  */
 export async function exchangeCode(input: {
   code?: string;
@@ -550,6 +585,8 @@ export async function exchangeCode(input: {
     userId: string;
     redirectUri: string;
     codeChallenge: string;
+    folderId: string;
+    role: string;
     lifetime: string;
     expiresAt: Date;
     client: ClientRow;
@@ -562,6 +599,8 @@ export async function exchangeCode(input: {
         userId: true,
         redirectUri: true,
         codeChallenge: true,
+        folderId: true,
+        role: true,
         lifetime: true,
         expiresAt: true,
         client: { select: CLIENT_SELECT },
@@ -600,8 +639,15 @@ export async function exchangeCode(input: {
   ) {
     return refuse("wrong-verifier", invalidGrant("code_verifier does not belong to the code_challenge").error);
   }
-  if (input.resource !== undefined && input.resource !== mcpResource()) {
-    return refuse("other-resource", { code: "invalid-target", description: NOT_MCP_RESOURCE });
+  const codeRole = code.role;
+  if (!isMcpRole(codeRole)) {
+    // The check constraint of the table keeps the role to Reader and Writer.
+    logger.error({ userId, clientId: client.id }, "authorization code with a role that is no role of MCP");
+    return { ok: false, error: { code: "failed" } };
+  }
+  const address: McpAddress = { folderId: code.folderId, role: codeRole };
+  if (input.resource !== undefined && input.resource !== mcpResourceOf(address)) {
+    return refuse("other-resource", { code: "invalid-target", description: OTHER_MCP_ADDRESS });
   }
   const lifetime = grantLifetimeSchema.safeParse(code.lifetime);
   if (!lifetime.success) {
@@ -619,7 +665,7 @@ export async function exchangeCode(input: {
       const users = await tx.$queryRaw<{ mustChangePassword: boolean }[]>`
         SELECT "mustChangePassword" FROM "User" WHERE "id" = ${userId}::uuid FOR UPDATE`;
       if (users[0]?.mustChangePassword !== false) throw new UserMayNotGrantError();
-      const { count } = await tx.oAuthGrant.deleteMany({ where: replacedGrants(userId, client) });
+      const { count } = await tx.oAuthGrant.deleteMany({ where: replacedGrants(userId, client, address) });
       if ((await tx.oAuthGrant.count({ where: { userId } })) >= MAX_GRANTS_PER_USER) throw new GrantLimitError();
       await tx.oAuthGrant.create({
         data: {
@@ -627,7 +673,8 @@ export async function exchangeCode(input: {
           userId,
           clientId: client.id,
           name: client.name,
-          scopes: [...GRANT_SCOPES],
+          folderId: address.folderId,
+          role: address.role,
           expiresAt,
           ...stored,
         },
@@ -646,7 +693,7 @@ export async function exchangeCode(input: {
     return { ok: false, error: { code: "failed" } };
   }
 
-  logger.info({ userId, clientId: client.id, grantId, replaced }, "grant created");
+  logger.info({ userId, clientId: client.id, grantId, ...address, replaced }, "grant created");
   return { ok: true, value: tokens };
 }
 
@@ -659,7 +706,8 @@ export async function exchangeCode(input: {
  * - The swap of the hashes is conditional, so that of two refreshes at the same time only one succeeds; the other is
  *   refused, and the grant stays.
  * - A grant past its expiry, a grant of a user with the first password and a refresh by another client are refused,
- *   and so is a request that names no client (`invalid-client`).
+ *   and so is a request that names no client (`invalid-client`) and one whose `resource` is not the MCP address of
+ *   the grant (`invalid-target`).
  */
 export async function refreshGrant(input: {
   refreshToken?: string;
@@ -675,6 +723,8 @@ export async function refreshGrant(input: {
   const db = getDb();
   let grant: {
     userId: string;
+    folderId: string;
+    role: string;
     expiresAt: Date;
     refreshTokenHash: string | null;
     client: ClientRow;
@@ -685,6 +735,8 @@ export async function refreshGrant(input: {
       where: { id: grantId },
       select: {
         userId: true,
+        folderId: true,
+        role: true,
         expiresAt: true,
         refreshTokenHash: true,
         client: { select: CLIENT_SELECT },
@@ -721,8 +773,11 @@ export async function refreshGrant(input: {
   if (input.clientId !== toClient(client).clientId) {
     return refuse("other-client", invalidGrant("The refresh token was given to another client").error);
   }
-  if (input.resource !== undefined && input.resource !== mcpResource()) {
-    return refuse("other-resource", { code: "invalid-target", description: NOT_MCP_RESOURCE });
+  if (
+    input.resource !== undefined &&
+    (!isMcpRole(grant.role) || input.resource !== mcpResourceOf({ folderId: grant.folderId, role: grant.role }))
+  ) {
+    return refuse("other-resource", { code: "invalid-target", description: OTHER_MCP_ADDRESS });
   }
   const now = currentTime();
   if (grant.expiresAt.getTime() <= now.getTime()) {

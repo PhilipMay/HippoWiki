@@ -14,8 +14,7 @@ const PARAMS = {
   code_challenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
   code_challenge_method: "S256",
   state: "a b&c=d",
-  scope: "read",
-  resource: "https://wiki.example.com/mcp",
+  resource: "https://wiki.example.com/mcp/0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10/reader",
 };
 
 function formData(fields: Record<string, string | File | string[]>): FormData {
@@ -32,7 +31,7 @@ describe("readAuthorizationParams", () => {
   });
 
   it("leaves out what is missing and what is no parameter of OAuth", () => {
-    expect(readAuthorizationParams({ client_id: "abc", action: "create", next: "/account" })).toEqual({
+    expect(readAuthorizationParams({ client_id: "abc", action: "create", next: "/account", scope: "read" })).toEqual({
       client_id: "abc",
     });
     expect(readAuthorizationParams({})).toEqual({});

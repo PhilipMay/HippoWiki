@@ -8,7 +8,7 @@ import { authorizeAddress, readAuthorizationParams } from "@/features/oauth/form
 import { issuer } from "@/features/oauth/issuer";
 import { authorizationResponseUrl, redirectTargetOf, type AuthorizationParams } from "@/features/oauth/schema";
 import * as oauthService from "@/features/oauth/service";
-import { isAdmin } from "@/features/users/user-type";
+import type { McpRole } from "@/features/folder-roles/roles";
 import type { SearchParams } from "@/lib/addresses";
 import { logger } from "@/lib/logger";
 
@@ -22,8 +22,9 @@ export type Consent =
    */
   | { kind: "untrusted"; reason: "invalid-client" | "invalid-redirect-uri" | "failed" }
   /**
-   * The request is wrong in another way, or the user is an admin, who connects no apps: the reason is shown, and the
-   * client is told at its redirect address only when the user follows the link there.
+   * The request is wrong in another way, the user is an admin, who connects no apps, or no app can be connected to
+   * its MCP address: the reason is shown, and the client is told at its redirect address only when the user follows
+   * the link there.
    */
   | { kind: "refused"; redirectTo: string; target: string; description: string }
   /** The request is valid: the user is asked. */
@@ -35,6 +36,10 @@ export type Consent =
       target: string;
       /** The logged-in user who is asked. */
       userName: string;
+      /** The name of the folder of the MCP address the app connects to. */
+      folderName: string;
+      /** The role of the MCP address: the most the app may do on the folder. */
+      role: McpRole;
       /** Whether the user holds the most connected apps allowed, the grants this one would replace not counted. */
       limitReached: boolean;
       /** The parameters of the request, which the form submits again. */
@@ -66,8 +71,9 @@ function refused(
 /**
  * Decides what the consent page shows for the authorization request in the search parameters of its address. Without
  * a session it leads to the login page and back here with the whole query, as `requireUser()` does with a way back.
- * An admin, who connects no apps, is told so for an otherwise valid request, with the way back to the client and the
- * error `access_denied`; an unknown client or a foreign redirect address is answered as for every other user.
+ * The service checks the request for the user: an admin, who connects no apps, and a user who may not connect to its
+ * MCP address are told so, with the way back to the client and the error `access_denied`; an unknown client or a
+ * foreign redirect address is answered as for every other user.
  */
 export async function loadConsent(searchParams: SearchParams): Promise<Consent> {
   await connection();
@@ -77,7 +83,7 @@ export async function loadConsent(searchParams: SearchParams): Promise<Consent> 
   if (base === null) return { kind: "not-found" };
 
   const params = readAuthorizationParams(searchParams);
-  const checked = await oauthService.checkAuthorizationRequest(params);
+  const checked = await oauthService.checkAuthorizationRequest(user, params);
   if (!checked.ok) {
     const { error } = checked;
     switch (error.code) {
@@ -89,12 +95,14 @@ export async function loadConsent(searchParams: SearchParams): Promise<Consent> 
         return refused(base, error);
     }
   }
-  if (isAdmin(user)) return refused(base, oauthService.adminRefusal(checked.value));
 
-  const { client, redirectUri } = checked.value;
+  const { client, redirectUri, address } = checked.value;
   let limitReached: boolean;
   try {
-    limitReached = await oauthService.isGrantLimitReached(user, client.id);
+    limitReached = await oauthService.isGrantLimitReached(user, client.id, {
+      folderId: address.folder.id,
+      role: address.role,
+    });
   } catch (err) {
     logger.error({ err, userId: user.id, clientId: client.id }, "failed to count the grants for the consent page");
     return { kind: "untrusted", reason: "failed" };
@@ -104,6 +112,8 @@ export async function loadConsent(searchParams: SearchParams): Promise<Consent> 
     clientName: client.name,
     target: redirectTargetOf(redirectUri),
     userName: user.name,
+    folderName: address.folder.name,
+    role: address.role,
     limitReached,
     params,
   };

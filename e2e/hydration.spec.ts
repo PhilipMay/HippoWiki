@@ -45,6 +45,7 @@ test.describe("as a normal user", () => {
       data: { redirect_uris: ["http://127.0.0.1:53682/callback"], client_name: "Example connector" },
     });
     const { client_id: clientId } = (await registered.json()) as { client_id: string };
+    const projects = await createFolder({ name: "projects" });
     const query = new URLSearchParams({
       client_id: clientId,
       redirect_uri: "http://127.0.0.1:53682/callback",
@@ -52,6 +53,7 @@ test.describe("as a normal user", () => {
       code_challenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
       code_challenge_method: "S256",
       state: "xyz",
+      resource: `http://localhost:3100/mcp/${projects.id}/reader`,
     });
 
     const address = `/oauth/authorize?${query.toString()}`;

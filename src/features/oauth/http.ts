@@ -3,8 +3,8 @@
 // while `HIPPOWIKI_PUBLIC_URL` is not set: without a public address there is no OAuth. The consent page, the one
 // endpoint behind the login, has its adapters in `queries.ts` and `actions.ts`.
 
-import { issuer, mcpResource } from "@/features/oauth/issuer";
-import { GRANT_SCOPES, type OAuthError } from "@/features/oauth/schema";
+import { issuer } from "@/features/oauth/issuer";
+import type { OAuthError } from "@/features/oauth/schema";
 import * as oauthService from "@/features/oauth/service";
 import { mcpPath, oauthAuthorizePath, oauthRegisterPath, oauthTokenPath } from "@/lib/addresses";
 import { clientAddressGroup } from "@/lib/client-address";
@@ -34,7 +34,7 @@ function oauthError(
 
 /**
  * The metadata of the authorization server (RFC 8414), at `/.well-known/oauth-authorization-server`. The issuer is
- * exactly `HIPPOWIKI_PUBLIC_URL`. `offline_access` is not among the scopes: every grant can be refreshed.
+ * exactly `HIPPOWIKI_PUBLIC_URL`. It lists no scopes: there are none, the MCP address says what a connection may do.
  */
 export function authorizationServerMetadata(): Response {
   const base = issuer();
@@ -48,7 +48,6 @@ export function authorizationServerMetadata(): Response {
     grant_types_supported: ["authorization_code", "refresh_token"],
     code_challenge_methods_supported: ["S256"],
     token_endpoint_auth_methods_supported: ["none"],
-    scopes_supported: [...GRANT_SCOPES],
     client_id_metadata_document_supported: true,
     authorization_response_iss_parameter_supported: true,
   });
@@ -61,14 +60,12 @@ export function authorizationServerMetadata(): Response {
  */
 export function protectedResourceMetadata(path: readonly string[] | undefined): Response {
   const base = issuer();
-  const resource = mcpResource();
-  if (base === null || resource === null) return notFound();
+  if (base === null) return notFound();
   const suffix = `/${(path ?? []).join("/")}`;
   if (suffix !== "/" && suffix !== mcpPath()) return notFound();
   return Response.json({
-    resource,
+    resource: `${base}${mcpPath()}`,
     authorization_servers: [base],
-    scopes_supported: [...GRANT_SCOPES],
     bearer_methods_supported: ["header"],
   });
 }
@@ -255,7 +252,6 @@ export async function handleToken(request: Request): Promise<Response> {
       token_type: "Bearer",
       expires_in: tokens.expiresIn,
       refresh_token: tokens.refreshToken,
-      scope: tokens.scopes.join(" "),
     },
     { headers: NO_STORE },
   );

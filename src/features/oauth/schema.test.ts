@@ -7,8 +7,8 @@ import {
   clientRegistrationSchema,
   DEFAULT_GRANT_LIFETIME,
   GRANT_LIFETIME_DAYS,
+  AUTHORIZATION_PARAMS,
   GRANT_LIFETIMES,
-  GRANT_SCOPES,
   grantExpiresAt,
   grantLifetimeSchema,
   isCodeChallenge,
@@ -18,6 +18,7 @@ import {
   OAUTH_ERRORS,
   parseClientRowId,
   parseMetadataDocument,
+  parseMcpResource,
   parseMetadataUrl,
   parseRedirectUri,
   redirectTargetOf,
@@ -274,7 +275,48 @@ describe("PKCE", () => {
   });
 });
 
-describe("the ids, scopes and error codes", () => {
+describe("parseMcpResource", () => {
+  const BASE = "https://wiki.example.com";
+  const ID = "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10";
+
+  it("gives the folder id and the role of a full MCP address of a folder", () => {
+    expect(parseMcpResource(`${BASE}/mcp/${ID}/reader`, BASE)).toEqual({ folderId: ID, role: "reader" });
+    expect(parseMcpResource(`${BASE}/mcp/${ID}/writer`, BASE)).toEqual({ folderId: ID, role: "writer" });
+  });
+
+  it.each([
+    ["nothing", undefined],
+    ["an empty text", ""],
+    ["the plain /mcp", `${BASE}/mcp`],
+    ["the plain /mcp with a slash", `${BASE}/mcp/`],
+    ["a folder without a role", `${BASE}/mcp/${ID}`],
+    ["the role Owner", `${BASE}/mcp/${ID}/owner`],
+    ["the role Manager", `${BASE}/mcp/${ID}/manager`],
+    ["a role in upper case", `${BASE}/mcp/${ID}/Reader`],
+    ["a part that is no UUID", `${BASE}/mcp/abc/reader`],
+    ["a UUID in upper case", `${BASE}/mcp/${ID.toUpperCase()}/reader`],
+    ["another host", `https://other.example/mcp/${ID}/reader`],
+    ["another scheme", `http://wiki.example.com/mcp/${ID}/reader`],
+    ["a path without the host", `/mcp/${ID}/reader`],
+    ["a trailing slash", `${BASE}/mcp/${ID}/reader/`],
+    ["a further part", `${BASE}/mcp/${ID}/reader/more`],
+    ["a query", `${BASE}/mcp/${ID}/reader?x=1`],
+    ["a fragment", `${BASE}/mcp/${ID}/reader#x`],
+    ["an encoded slash", `${BASE}/mcp/${ID}%2Freader`],
+    ["a dot segment", `${BASE}/mcp/./${ID}/reader`],
+  ])("refuses %s", (_case, value) => {
+    expect(parseMcpResource(value, BASE)).toBeNull();
+  });
+});
+
+describe("the parameters of an authorization request", () => {
+  it("do not include scope, which is ignored", () => {
+    expect(AUTHORIZATION_PARAMS).not.toContain("scope");
+    expect(AUTHORIZATION_PARAMS).toContain("resource");
+  });
+});
+
+describe("the ids and error codes", () => {
   it("parses the id of a client row and refuses everything else", () => {
     const id = "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10";
 
@@ -282,10 +324,6 @@ describe("the ids, scopes and error codes", () => {
     for (const value of ["", "not-a-uuid", `${id}x`, "https://client.example/meta.json"]) {
       expect(parseClientRowId(value)).toBeNull();
     }
-  });
-
-  it("gives a grant only the scope read", () => {
-    expect(GRANT_SCOPES).toEqual(["read"]);
   });
 
   it("knows the error codes of RFC 6749, RFC 7591 and RFC 8707 that it answers with", () => {

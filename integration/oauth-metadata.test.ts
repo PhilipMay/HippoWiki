@@ -7,7 +7,7 @@ import { challengeOf } from "@/features/oauth/secret";
 import * as oauthService from "@/features/oauth/service";
 import * as grantService from "@/features/grants/service";
 
-import { createUser, getTestDb } from "../e2e/support/database";
+import { createFolder, createUser, getTestDb } from "../e2e/support/database";
 
 vi.mock("@/features/oauth/metadata-fetch", () => ({ fetchMetadataDocument: vi.fn() }));
 
@@ -26,6 +26,10 @@ function serve(document: unknown, cacheControl: string | null = null): void {
   fetchMock.mockResolvedValue({ ok: true, document, cacheControl });
 }
 
+/** The user who is asked to approve the client, and the MCP address of a folder of which the user is Owner. */
+let actor: { id: string; name: string; type: "admin" | "user" };
+let resource: string;
+
 /** The parameters of an authorization request of the client of the metadata document. */
 function params(overrides: Record<string, string | undefined> = {}) {
   return {
@@ -35,15 +39,20 @@ function params(overrides: Record<string, string | undefined> = {}) {
     code_challenge: challengeOf(VERIFIER),
     code_challenge_method: "S256",
     state: "xyz",
+    resource,
     ...overrides,
   };
 }
 
 const INVALID_CLIENT = { ok: false, error: { code: "invalid-client" } };
 
-beforeEach(() => {
+beforeEach(async () => {
   fetchMock.mockReset();
   serve(DOCUMENT);
+  const user = await createUser({ mustChangePassword: false });
+  actor = { id: user.id, name: user.name, type: user.type };
+  const folder = await createFolder({ roles: [{ user, role: "owner" }] });
+  resource = `https://wiki.example.com/mcp/${folder.id}/reader`;
 });
 
 afterEach(() => {
@@ -55,7 +64,7 @@ describe("an authorization request of a client with a metadata document", () => 
     const start = Date.now();
     vi.useFakeTimers({ now: start, toFake: ["Date"] });
 
-    const result = await oauthService.checkAuthorizationRequest(params());
+    const result = await oauthService.checkAuthorizationRequest(actor, params());
 
     expect(fetchMock).toHaveBeenCalledExactlyOnceWith(METADATA_URL);
     const rows = await getTestDb().oAuthClient.findMany();
@@ -82,13 +91,13 @@ describe("an authorization request of a client with a metadata document", () => 
     const start = Date.now();
     vi.useFakeTimers({ now: start, toFake: ["Date"] });
     serve(DOCUMENT, "max-age=1800");
-    await oauthService.checkAuthorizationRequest(params());
+    await oauthService.checkAuthorizationRequest(actor, params());
     const id = (await getTestDb().oAuthClient.findFirstOrThrow()).id;
 
     // The document changes, but the row is still fresh.
     serve({ ...DOCUMENT, client_name: "Renamed", redirect_uris: [REDIRECT_URI, "https://client.example/other"] });
     vi.setSystemTime(start + 30 * MINUTE_MS - 1);
-    await expect(oauthService.checkAuthorizationRequest(params())).resolves.toMatchObject({
+    await expect(oauthService.checkAuthorizationRequest(actor, params())).resolves.toMatchObject({
       ok: true,
       value: { client: { name: "Example" } },
     });
@@ -96,7 +105,7 @@ describe("an authorization request of a client with a metadata document", () => 
 
     vi.setSystemTime(start + 30 * MINUTE_MS);
     await expect(
-      oauthService.checkAuthorizationRequest(params({ redirect_uri: "https://client.example/other" })),
+      oauthService.checkAuthorizationRequest(actor, params({ redirect_uri: "https://client.example/other" })),
     ).resolves.toMatchObject({ ok: true, value: { client: { id, name: "Renamed" } } });
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -120,14 +129,14 @@ describe("an authorization request of a client with a metadata document", () => 
     vi.useFakeTimers({ now: start, toFake: ["Date"] });
     serve(DOCUMENT, cacheControl);
 
-    await oauthService.checkAuthorizationRequest(params());
+    await oauthService.checkAuthorizationRequest(actor, params());
 
     expect((await getTestDb().oAuthClient.findFirstOrThrow()).freshUntil).toEqual(new Date(start + cacheMs));
   });
 
   it("checks the redirect address against the addresses of the document", async () => {
     await expect(
-      oauthService.checkAuthorizationRequest(params({ redirect_uri: "https://evil.example/callback" })),
+      oauthService.checkAuthorizationRequest(actor, params({ redirect_uri: "https://evil.example/callback" })),
     ).resolves.toEqual({ ok: false, error: { code: "invalid-redirect-uri" } });
   });
 
@@ -140,7 +149,7 @@ describe("an authorization request of a client with a metadata document", () => 
   ])("refuses the request without a redirect for a document with %s, and stores nothing", async (_case, document) => {
     serve(document);
 
-    await expect(oauthService.checkAuthorizationRequest(params())).resolves.toEqual(INVALID_CLIENT);
+    await expect(oauthService.checkAuthorizationRequest(actor, params())).resolves.toEqual(INVALID_CLIENT);
 
     expect(await getTestDb().oAuthClient.count()).toBe(0);
   });
@@ -148,20 +157,15 @@ describe("an authorization request of a client with a metadata document", () => 
   it("refuses the request without a redirect when the fetch fails, and stores nothing", async () => {
     fetchMock.mockResolvedValue({ ok: false, reason: "address-not-public" });
 
-    await expect(oauthService.checkAuthorizationRequest(params())).resolves.toEqual(INVALID_CLIENT);
+    await expect(oauthService.checkAuthorizationRequest(actor, params())).resolves.toEqual(INVALID_CLIENT);
 
     expect(await getTestDb().oAuthClient.count()).toBe(0);
   });
 
   it("refuses a request once the kept row is stale and the fetch fails, and keeps the row and its grant", async () => {
-    const alice = await createUser({ mustChangePassword: false });
     const start = Date.now();
     vi.useFakeTimers({ now: start, toFake: ["Date"] });
-    const created = await oauthService.createCode(
-      { id: alice.id, name: alice.name, type: alice.type },
-      params(),
-      "90d",
-    );
+    const created = await oauthService.createCode(actor, params(), "90d");
     if (!created.ok) return expect.fail(`code not created: ${created.error.code}`);
     const exchanged = await oauthService.exchangeCode({
       code: created.value.code,
@@ -173,7 +177,7 @@ describe("an authorization request of a client with a metadata document", () => 
 
     vi.setSystemTime(start + HOUR_MS);
     fetchMock.mockResolvedValue({ ok: false, reason: "timeout" });
-    await expect(oauthService.checkAuthorizationRequest(params())).resolves.toEqual(INVALID_CLIENT);
+    await expect(oauthService.checkAuthorizationRequest(actor, params())).resolves.toEqual(INVALID_CLIENT);
 
     // The grant does not depend on the document being reachable: it is refreshed and used as before.
     expect(await getTestDb().oAuthClient.count()).toBe(1);
@@ -183,16 +187,13 @@ describe("an authorization request of a client with a metadata document", () => 
     });
     if (!refreshed.ok) return expect.fail(`not refreshed: ${refreshed.error.code}`);
     await expect(
-      grantService.authenticateAccessToken(
-        new Headers({ authorization: `Bearer ${refreshed.value.accessToken}` }),
-        "read",
-      ),
+      grantService.authenticateAccessToken(new Headers({ authorization: `Bearer ${refreshed.value.accessToken}` })),
     ).resolves.toMatchObject({ ok: true });
   });
 
   it("stores one client when many first requests arrive at the same time", async () => {
     const results = await Promise.all(
-      Array.from({ length: 6 }, () => oauthService.checkAuthorizationRequest(params())),
+      Array.from({ length: 6 }, () => oauthService.checkAuthorizationRequest(actor, params())),
     );
 
     expect(results.every((result) => result.ok)).toBe(true);
@@ -200,8 +201,6 @@ describe("an authorization request of a client with a metadata document", () => 
   });
 
   it("names its grant after the document and replaces the grant on the next connect", async () => {
-    const alice = await createUser({ mustChangePassword: false });
-    const actor = { id: alice.id, name: alice.name, type: alice.type };
     const connect = async () => {
       const created = await oauthService.createCode(actor, params(), "90d");
       if (!created.ok) return expect.fail(`code not created: ${created.error.code}`);
@@ -218,16 +217,16 @@ describe("an authorization request of a client with a metadata document", () => 
     await connect();
     await connect();
 
-    const grants = await getTestDb().oAuthGrant.findMany({ where: { userId: alice.id } });
+    const grants = await getTestDb().oAuthGrant.findMany({ where: { userId: actor.id } });
     expect(grants).toHaveLength(1);
     expect(grants[0]?.name).toBe("Example");
   });
 
   it("is known only by its URL: the id of its kept row is no client id", async () => {
-    await oauthService.checkAuthorizationRequest(params());
+    await oauthService.checkAuthorizationRequest(actor, params());
     const row = await getTestDb().oAuthClient.findFirstOrThrow();
 
-    await expect(oauthService.checkAuthorizationRequest(params({ client_id: row.id }))).resolves.toEqual(
+    await expect(oauthService.checkAuthorizationRequest(actor, params({ client_id: row.id }))).resolves.toEqual(
       INVALID_CLIENT,
     );
   });

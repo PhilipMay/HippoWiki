@@ -9,6 +9,7 @@ import { approve, deny } from "@/features/oauth/actions";
 import ConsentForm from "@/features/oauth/components/ConsentForm";
 import ReturnToClient from "@/features/oauth/components/ReturnToClient";
 import { authorizeAddress } from "@/features/oauth/forms";
+import { MCP_ROLE_ABILITIES, ROLE_LABELS } from "@/features/folder-roles/roles";
 import { loadConsent } from "@/features/oauth/queries";
 import { pageTitle } from "@/lib/site";
 
@@ -56,10 +57,14 @@ export default async function AuthorizePage({ searchParams }: PageProps<"/oauth/
             It calls itself “{consent.clientName}”. The app chose this name itself; only approve if you started this
             from an app you trust and the address above is the one you expect.
           </Typography>
+          <Typography sx={{ overflowWrap: "anywhere" }}>
+            It asks to connect to the folder <strong>{consent.folderName}</strong> with the role{" "}
+            <strong>{ROLE_LABELS[consent.role]}</strong>.
+          </Typography>
           <Typography>
-            If you approve, the app acts as <strong>{consent.userName}</strong> and can read the wiki: list the folders,
-            tabs and pages and read every page you can read. It cannot change anything. You can revoke the access on
-            your account page at any time.
+            If you approve, the app acts as <strong>{consent.userName}</strong> on this folder only, and never with more
+            than your own role on it. {MCP_ROLE_ABILITIES[consent.role]} You can revoke the access on your account page
+            at any time.
           </Typography>
           <ConsentForm
             params={consent.params}

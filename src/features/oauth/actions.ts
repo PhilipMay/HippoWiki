@@ -71,11 +71,11 @@ export async function approve(formData: FormData): Promise<ConsentFormState> {
  * and `iss`. Nothing is written. Returns the error to show if the request is no longer valid.
  */
 export async function deny(formData: FormData): Promise<ConsentFormState> {
-  await requireUser();
+  const user = await requireUser();
   const base = issuer();
   if (base === null) return { message: OFF_MESSAGE };
 
-  const result = await oauthService.checkAuthorizationRequest(readAuthorizationFormData(formData));
+  const result = await oauthService.checkAuthorizationRequest(user, readAuthorizationFormData(formData));
   if (!result.ok) {
     const { error } = result;
     switch (error.code) {

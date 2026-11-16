@@ -19,6 +19,11 @@ export const CHALLENGE = createHash("sha256").update(VERIFIER).digest("base64url
 /** The `state` of the client of the tests, with characters that have to be encoded. */
 export const STATE = "state/of the client&more";
 
+/** The full MCP address of the folder for the role, as a client sends it as `resource`. */
+export function mcpAddress(folder: { id: string }, role: "reader" | "writer" | (string & {}) = "reader"): string {
+  return `${ISSUER}/mcp/${folder.id}/${role}`;
+}
+
 /** Registers a client as a connector does, and returns the answer. */
 export function register(request: APIRequestContext, metadata: unknown, headers: Record<string, string> = {}) {
   return request.post("/oauth/register", { data: metadata, headers, maxRedirects: 0 });
@@ -31,19 +36,23 @@ export async function registerClient(request: APIRequestContext, name = "Example
   return ((await response.json()) as { client_id: string }).client_id;
 }
 
-/** The address of the consent page for an authorization request of the client. */
-export function authorizeUrl(clientId: string, params: Record<string, string> = {}): string {
-  const query = new URLSearchParams({
+/**
+ * The address of the consent page for an authorization request of the client to the MCP address `resource`, without
+ * a scope. A parameter in `params` replaces the one of the request; one that is `null` is left out.
+ */
+export function authorizeUrl(clientId: string, resource: string, params: Record<string, string | null> = {}): string {
+  const all: Record<string, string | null> = {
     client_id: clientId,
     redirect_uri: REDIRECT_URI,
     response_type: "code",
     code_challenge: CHALLENGE,
     code_challenge_method: "S256",
     state: STATE,
-    scope: "read",
-    resource: `${ISSUER}/mcp`,
+    resource,
     ...params,
-  });
+  };
+  const query = new URLSearchParams();
+  for (const [name, value] of Object.entries(all)) if (value !== null) query.set(name, value);
   return `/oauth/authorize?${query.toString()}`;
 }
 
@@ -63,8 +72,8 @@ export async function awaitCallback(page: Page): Promise<() => Promise<Record<st
   };
 }
 
-/** Exchanges a code for tokens, as the client does. */
-export function exchange(request: APIRequestContext, clientId: string, code: string) {
+/** Exchanges a code for tokens, as the client does, naming the MCP address of the request as `resource`. */
+export function exchange(request: APIRequestContext, clientId: string, code: string, resource: string) {
   return request.post("/oauth/token", {
     form: {
       grant_type: "authorization_code",
@@ -72,7 +81,7 @@ export function exchange(request: APIRequestContext, clientId: string, code: str
       client_id: clientId,
       redirect_uri: REDIRECT_URI,
       code_verifier: VERIFIER,
-      resource: `${ISSUER}/mcp`,
+      resource,
     },
   });
 }
@@ -90,7 +99,6 @@ export type Tokens = {
   refresh_token: string;
   expires_in: number;
   token_type: string;
-  scope: string;
 };
 
 /** Calls the tool `list_folders` of `/mcp` with the access token and returns the status. */
@@ -102,13 +110,21 @@ export async function listFoldersStatus(request: APIRequestContext, accessToken:
   return response.status();
 }
 
-/** Approves the client on its consent page as the logged-in user and returns the tokens of the new grant. */
-export async function connect(page: Page, request: APIRequestContext, clientId: string): Promise<Tokens> {
+/**
+ * Approves the client on its consent page for the MCP address `resource` as the logged-in user and returns the tokens
+ * of the new grant.
+ */
+export async function connect(
+  page: Page,
+  request: APIRequestContext,
+  clientId: string,
+  resource: string,
+): Promise<Tokens> {
   const callback = await awaitCallback(page);
-  await page.goto(authorizeUrl(clientId));
+  await page.goto(authorizeUrl(clientId, resource));
   await page.getByRole("button", { name: "Approve" }).click();
   const { code } = await callback();
-  const response = await exchange(request, clientId, code ?? "");
+  const response = await exchange(request, clientId, code ?? "", resource);
   expect(response.status()).toBe(200);
   return (await response.json()) as Tokens;
 }

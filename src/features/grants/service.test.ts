@@ -43,6 +43,8 @@ function storedRow(data: Record<string, unknown> = {}) {
   return {
     id: GRANT_ID,
     name: "Example connector",
+    folder: { name: "projects" },
+    role: "writer",
     createdAt: NOW,
     expiresAt: new Date("2026-05-30T12:00:00.000Z"),
     lastUsedAt: null,
@@ -51,13 +53,12 @@ function storedRow(data: Record<string, unknown> = {}) {
 }
 
 /**
- * A grant with its user as `authenticateAccessToken` reads it: valid, with the scope `read`, never used, and with an access
- * token that works for another hour.
+ * A grant with its user as `authenticateAccessToken` reads it: valid, never used, and with an access token that works
+ * for another hour.
  */
 function tokenWithUser({ user = {}, ...data }: { user?: Record<string, unknown> } & Record<string, unknown> = {}) {
   return {
     id: GRANT_ID,
-    scopes: ["read"],
     expiresAt: new Date("2026-05-30T12:00:00.000Z"),
     accessTokenExpiresAt: new Date(NOW.getTime() + HOUR_MS),
     lastUsedAt: null,
@@ -113,11 +114,29 @@ describe("listGrants", () => {
     const row = storedRow({ lastUsedAt: NOW });
     mocks.findMany.mockResolvedValue([row]);
 
-    await expect(listGrants(ALICE)).resolves.toStrictEqual([row]);
+    await expect(listGrants(ALICE)).resolves.toStrictEqual([
+      {
+        id: GRANT_ID,
+        name: "Example connector",
+        folderName: "projects",
+        role: "writer",
+        createdAt: NOW,
+        expiresAt: row.expiresAt,
+        lastUsedAt: NOW,
+      },
+    ]);
 
     expect(mocks.findMany).toHaveBeenCalledExactlyOnceWith({
       where: { userId: ALICE_ID },
-      select: { id: true, name: true, createdAt: true, expiresAt: true, lastUsedAt: true },
+      select: {
+        id: true,
+        name: true,
+        folder: { select: { name: true } },
+        role: true,
+        createdAt: true,
+        expiresAt: true,
+        lastUsedAt: true,
+      },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     });
   });
@@ -214,7 +233,7 @@ describe("authenticateAccessToken", () => {
   it("refuses the access token of a grant of an admin as invalid, logs the reason and writes no last use", async () => {
     mocks.findUnique.mockResolvedValue(tokenWithUser({ user: { name: "maria", username: "maria", type: "admin" } }));
 
-    await expect(authenticateAccessToken(BEARER(), "read")).resolves.toEqual({
+    await expect(authenticateAccessToken(BEARER())).resolves.toEqual({
       ok: false,
       error: { code: "invalid-token" },
     });
@@ -222,17 +241,8 @@ describe("authenticateAccessToken", () => {
     expect(mocks.updateMany).not.toHaveBeenCalled();
   });
 
-  it("refuses the access token of an admin also when its grant has more scopes", async () => {
-    mocks.findUnique.mockResolvedValue(tokenWithUser({ scopes: ["read", "write"], user: { type: "admin" } }));
-
-    await expect(authenticateAccessToken(BEARER(), "read")).resolves.toEqual({
-      ok: false,
-      error: { code: "invalid-token" },
-    });
-  });
-
   it("returns the actor of the grant's user for a valid access token, looked up by its hash", async () => {
-    await expect(authenticateAccessToken(BEARER(), "read")).resolves.toStrictEqual({
+    await expect(authenticateAccessToken(BEARER())).resolves.toStrictEqual({
       ok: true,
       value: { id: ALICE_ID, name: "alice", type: "user" },
     });
@@ -241,7 +251,6 @@ describe("authenticateAccessToken", () => {
       where: { accessTokenHash: hashSecret(ACCESS_TOKEN) },
       select: {
         id: true,
-        scopes: true,
         expiresAt: true,
         accessTokenExpiresAt: true,
         lastUsedAt: true,
@@ -257,7 +266,7 @@ describe("authenticateAccessToken", () => {
     ["more than one space after the scheme", `Bearer    ${ACCESS_TOKEN}`],
     ["spaces around the value", `  Bearer ${ACCESS_TOKEN}  `],
   ])("reads an access token with %s", async (_case, value) => {
-    await expect(authenticateAccessToken(authorization(value), "read")).resolves.toMatchObject({ ok: true });
+    await expect(authenticateAccessToken(authorization(value))).resolves.toMatchObject({ ok: true });
   });
 
   it.each([
@@ -274,7 +283,7 @@ describe("authenticateAccessToken", () => {
     ["a refresh token", authorization(`Bearer hwr_0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01.${"C".repeat(43)}`)],
     ["an authorization code", authorization(`Bearer hwc_${"C".repeat(43)}`)],
   ])("reports %s as a missing token, without asking the database or logging", async (_case, headers) => {
-    await expect(authenticateAccessToken(headers, "read")).resolves.toEqual({
+    await expect(authenticateAccessToken(headers)).resolves.toEqual({
       ok: false,
       error: { code: "missing-token" },
     });
@@ -286,7 +295,7 @@ describe("authenticateAccessToken", () => {
   it("reports an unknown access token as invalid, and logs the reason without the token", async () => {
     mocks.findUnique.mockResolvedValue(null);
 
-    await expect(authenticateAccessToken(BEARER(), "read")).resolves.toEqual({
+    await expect(authenticateAccessToken(BEARER())).resolves.toEqual({
       ok: false,
       error: { code: "invalid-token" },
     });
@@ -299,7 +308,7 @@ describe("authenticateAccessToken", () => {
     for (const expiresAt of [new Date(NOW.getTime() - 1), NOW]) {
       mocks.findUnique.mockResolvedValue(tokenWithUser({ expiresAt }));
 
-      await expect(authenticateAccessToken(BEARER(), "read")).resolves.toEqual({
+      await expect(authenticateAccessToken(BEARER())).resolves.toEqual({
         ok: false,
         error: { code: "invalid-token" },
       });
@@ -313,7 +322,7 @@ describe("authenticateAccessToken", () => {
   it("accepts a grant a millisecond before it expires", async () => {
     mocks.findUnique.mockResolvedValue(tokenWithUser({ expiresAt: new Date(NOW.getTime() + 1) }));
 
-    await expect(authenticateAccessToken(BEARER(), "read")).resolves.toMatchObject({ ok: true });
+    await expect(authenticateAccessToken(BEARER())).resolves.toMatchObject({ ok: true });
   });
 
   it.each([
@@ -322,7 +331,7 @@ describe("authenticateAccessToken", () => {
   ])("refuses an access token %s, although its grant lasts on, and logs the grant id", async (_case, offset) => {
     mocks.findUnique.mockResolvedValue(tokenWithUser({ accessTokenExpiresAt: new Date(NOW.getTime() + offset) }));
 
-    await expect(authenticateAccessToken(BEARER(), "read")).resolves.toEqual({
+    await expect(authenticateAccessToken(BEARER())).resolves.toEqual({
       ok: false,
       error: { code: "invalid-token" },
     });
@@ -338,7 +347,7 @@ describe("authenticateAccessToken", () => {
   it("refuses an access token without an end of its own, which only a broken row has", async () => {
     mocks.findUnique.mockResolvedValue(tokenWithUser({ accessTokenExpiresAt: null }));
 
-    await expect(authenticateAccessToken(BEARER(), "read")).resolves.toEqual({
+    await expect(authenticateAccessToken(BEARER())).resolves.toEqual({
       ok: false,
       error: { code: "invalid-token" },
     });
@@ -347,7 +356,7 @@ describe("authenticateAccessToken", () => {
   it("reports the access token of a user with the first password as invalid", async () => {
     mocks.findUnique.mockResolvedValue(tokenWithUser({ user: { mustChangePassword: true } }));
 
-    await expect(authenticateAccessToken(BEARER(), "read")).resolves.toEqual({
+    await expect(authenticateAccessToken(BEARER())).resolves.toEqual({
       ok: false,
       error: { code: "invalid-token" },
     });
@@ -359,31 +368,11 @@ describe("authenticateAccessToken", () => {
     expect(mocks.updateMany).not.toHaveBeenCalled();
   });
 
-  it.each([
-    ["only another scope", ["write"]],
-    ["no scope", []],
-  ])("reports a grant with %s as insufficient for read", async (_case, scopes) => {
-    const scope = "read";
-    mocks.findUnique.mockResolvedValue(tokenWithUser({ scopes }));
-
-    await expect(authenticateAccessToken(BEARER(), scope)).resolves.toEqual({
-      ok: false,
-      error: { code: "insufficient-scope" },
-    });
-
-    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
-      { reason: "insufficient-scope", grantId: GRANT_ID, scope },
-      "access token refused",
-    );
-    expect(mocks.updateMany).not.toHaveBeenCalled();
-    expectNoSecretLogged();
-  });
-
   it("reports failed when the database cannot be read, and logs it without the token", async () => {
     const err = new Error("connection lost");
     mocks.findUnique.mockRejectedValue(err);
 
-    await expect(authenticateAccessToken(BEARER(), "read")).resolves.toEqual({
+    await expect(authenticateAccessToken(BEARER())).resolves.toEqual({
       ok: false,
       error: { code: "failed" },
     });
@@ -396,7 +385,7 @@ describe("authenticateAccessToken", () => {
     it("is written for a grant that was never used", async () => {
       expect(LAST_USE_INTERVAL_MS).toBe(60_000);
 
-      await authenticateAccessToken(BEARER(), "read");
+      await authenticateAccessToken(BEARER());
 
       const usedBefore = new Date(NOW.getTime() - 60_000);
       expect(mocks.updateMany).toHaveBeenCalledExactlyOnceWith({
@@ -408,18 +397,18 @@ describe("authenticateAccessToken", () => {
     it("is not written again within a minute", async () => {
       mocks.findUnique.mockResolvedValue(tokenWithUser({ lastUsedAt: new Date(NOW.getTime() - 59_999) }));
 
-      await expect(authenticateAccessToken(BEARER(), "read")).resolves.toMatchObject({ ok: true });
+      await expect(authenticateAccessToken(BEARER())).resolves.toMatchObject({ ok: true });
 
       expect(mocks.updateMany).not.toHaveBeenCalled();
     });
 
     it("is written again once a minute has passed", async () => {
       mocks.findUnique.mockResolvedValue(tokenWithUser({ lastUsedAt: NOW }));
-      await authenticateAccessToken(BEARER(), "read");
+      await authenticateAccessToken(BEARER());
       expect(mocks.updateMany).not.toHaveBeenCalled();
 
       vi.setSystemTime(NOW.getTime() + 60_000);
-      await authenticateAccessToken(BEARER(), "read");
+      await authenticateAccessToken(BEARER());
 
       expect(mocks.updateMany).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({ data: { lastUsedAt: new Date(NOW.getTime() + 60_000) } }),
@@ -430,7 +419,7 @@ describe("authenticateAccessToken", () => {
       const err = new Error("connection lost");
       mocks.updateMany.mockRejectedValue(err);
 
-      await expect(authenticateAccessToken(BEARER(), "read")).resolves.toStrictEqual({
+      await expect(authenticateAccessToken(BEARER())).resolves.toStrictEqual({
         ok: true,
         value: { id: ALICE_ID, name: "alice", type: "user" },
       });

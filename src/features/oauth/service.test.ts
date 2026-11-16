@@ -33,6 +33,8 @@ const mocks = vi.hoisted(() => ({
   tokenCreate: vi.fn(),
   queryRaw: vi.fn(),
   transaction: vi.fn(),
+  folderFindUnique: vi.fn(),
+  folderRoleOf: vi.fn(),
   getServerEnv: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
@@ -61,9 +63,11 @@ vi.mock("@/lib/db", () => ({
       deleteMany: mocks.tokenDeleteMany,
       updateMany: mocks.tokenUpdateMany,
     },
+    folder: { findUnique: mocks.folderFindUnique },
     $transaction: mocks.transaction,
   }),
 }));
+vi.mock("@/features/folder-roles/service", () => ({ folderRoleOf: mocks.folderRoleOf }));
 vi.mock("@/lib/env", () => ({ getServerEnv: mocks.getServerEnv }));
 vi.mock("@/features/oauth/metadata-fetch", () => ({ fetchMetadataDocument: mocks.fetchMetadataDocument }));
 vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, error: mocks.error } }));
@@ -77,7 +81,9 @@ const REDIRECT_URI = "https://client.example/callback";
 const VERIFIER = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
 const CODE = `hwc_${"C".repeat(43)}`;
 const REFRESH_TOKEN = `hwr_${GRANT_ID}.${"R".repeat(43)}`;
-const MCP = "https://wiki.example.com/mcp";
+const FOLDER_ID = "3a5c7e90-1b2d-4f6a-8c0e-2d4f6a8c0e11";
+const MCP = `https://wiki.example.com/mcp/${FOLDER_ID}/reader`;
+const ADDRESS = { folderId: FOLDER_ID, role: "reader" } as const;
 
 const CLIENT_ROW = {
   id: CLIENT_ID,
@@ -94,6 +100,7 @@ const PARAMS = {
   code_challenge: challengeOf(VERIFIER),
   code_challenge_method: "S256",
   state: "state-of-the-client",
+  resource: MCP,
 };
 
 /** The row of a code as the exchange reads it. */
@@ -103,6 +110,8 @@ function codeRow(data: Record<string, unknown> = {}) {
     userId: ALICE_ID,
     redirectUri: REDIRECT_URI,
     codeChallenge: challengeOf(VERIFIER),
+    folderId: FOLDER_ID,
+    role: "reader",
     lifetime: "90d",
     expiresAt: new Date(NOW.getTime() + 60_000),
     client: CLIENT_ROW,
@@ -114,6 +123,8 @@ function codeRow(data: Record<string, unknown> = {}) {
 function grantRow(data: Record<string, unknown> = {}) {
   return {
     userId: ALICE_ID,
+    folderId: FOLDER_ID,
+    role: "reader",
     expiresAt: new Date(NOW.getTime() + 24 * 60 * 60 * 1000),
     refreshTokenHash: hashSecret(REFRESH_TOKEN),
     client: CLIENT_ROW,
@@ -171,6 +182,9 @@ beforeEach(() => {
   mocks.tokenUpdateMany.mockResolvedValue({ count: 1 });
   mocks.tokenCreate.mockResolvedValue({ id: GRANT_ID });
   mocks.queryRaw.mockResolvedValue([{ mustChangePassword: false }]);
+  // Alice is Owner of the folder of the address.
+  mocks.folderRoleOf.mockResolvedValue("owner");
+  mocks.folderFindUnique.mockResolvedValue({ id: FOLDER_ID, name: "projects" });
   // The transaction client of `exchangeCode`: the reads and writes it makes inside the transaction.
   const tx = {
     $queryRaw: mocks.queryRaw,
@@ -353,7 +367,10 @@ describe("checkAuthorizationRequest", () => {
     ["a client id that is no id", { ...PARAMS, client_id: "not-a-uuid" }],
     ["a client id of more than 2048 characters", { ...PARAMS, client_id: "a".repeat(2049) }],
   ])("reports %s as an invalid client without asking the database", async (_case, params) => {
-    await expect(checkAuthorizationRequest(params)).resolves.toEqual({ ok: false, error: { code: "invalid-client" } });
+    await expect(checkAuthorizationRequest(ALICE, params)).resolves.toEqual({
+      ok: false,
+      error: { code: "invalid-client" },
+    });
 
     expect(mocks.clientFindFirst).not.toHaveBeenCalled();
     expect(mocks.clientFindUnique).not.toHaveBeenCalled();
@@ -362,11 +379,77 @@ describe("checkAuthorizationRequest", () => {
   it("reports failed when the client cannot be read", async () => {
     mocks.clientFindFirst.mockRejectedValue(new Error("connection lost"));
 
-    await expect(checkAuthorizationRequest(PARAMS)).resolves.toEqual({ ok: false, error: { code: "failed" } });
+    await expect(checkAuthorizationRequest(ALICE, PARAMS)).resolves.toEqual({ ok: false, error: { code: "failed" } });
+  });
+
+  it("gives the address of a valid request with the name of its folder", async () => {
+    await expect(checkAuthorizationRequest(ALICE, PARAMS)).resolves.toMatchObject({
+      ok: true,
+      value: { address: { folder: { id: FOLDER_ID, name: "projects" }, role: "reader" } },
+    });
+
+    expect(mocks.folderRoleOf).toHaveBeenCalledExactlyOnceWith(ALICE, FOLDER_ID);
+  });
+
+  it.each([
+    ["no resource", undefined],
+    ["the plain /mcp", "https://wiki.example.com/mcp"],
+    ["the role Owner", `https://wiki.example.com/mcp/${FOLDER_ID}/owner`],
+    ["another host", `https://other.example/mcp/${FOLDER_ID}/reader`],
+  ])("refuses a request with %s as invalid_target, without reading a role", async (_case, resource) => {
+    const result = await checkAuthorizationRequest(ALICE, { ...PARAMS, resource });
+
+    expect(result).toMatchObject({ ok: false, error: { code: "refused", error: "invalid_target" } });
+    expect(mocks.folderRoleOf).not.toHaveBeenCalled();
+  });
+
+  it("refuses an admin with access_denied before it reads a role", async () => {
+    const admin: Actor = { ...ALICE, type: "admin" };
+
+    await expect(checkAuthorizationRequest(admin, PARAMS)).resolves.toMatchObject({
+      ok: false,
+      error: { code: "refused", error: "access_denied", description: "Admin accounts cannot connect apps" },
+    });
+    expect(mocks.folderRoleOf).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a folder without a role of the actor, or one that does not exist", null, "reader"],
+    ["a Reader asking for the Writer address", "reader", "writer"],
+  ] as const)("refuses %s with the same access_denied", async (_case, role, addressRole) => {
+    mocks.folderRoleOf.mockResolvedValue(role);
+    const resource = `https://wiki.example.com/mcp/${FOLDER_ID}/${addressRole}`;
+
+    await expect(checkAuthorizationRequest(ALICE, { ...PARAMS, resource })).resolves.toEqual({
+      ok: false,
+      error: {
+        code: "refused",
+        redirectUri: REDIRECT_URI,
+        state: PARAMS.state,
+        error: "access_denied",
+        description: "No app can be connected to this address",
+      },
+    });
+    expect(mocks.folderFindUnique).not.toHaveBeenCalled();
+  });
+
+  it("refuses a folder that is deleted after its role was read like one without a role", async () => {
+    mocks.folderFindUnique.mockResolvedValue(null);
+
+    await expect(checkAuthorizationRequest(ALICE, PARAMS)).resolves.toMatchObject({
+      ok: false,
+      error: { code: "refused", error: "access_denied", description: "No app can be connected to this address" },
+    });
+  });
+
+  it("reports failed when the role cannot be read", async () => {
+    mocks.folderRoleOf.mockRejectedValue(new Error("connection lost"));
+
+    await expect(checkAuthorizationRequest(ALICE, PARAMS)).resolves.toEqual({ ok: false, error: { code: "failed" } });
   });
 
   it("does not log the state or the challenge of a request it refuses", async () => {
-    await checkAuthorizationRequest({ ...PARAMS, response_type: "token", state: "secret-state-of-the-client" });
+    await checkAuthorizationRequest(ALICE, { ...PARAMS, response_type: "token", state: "secret-state-of-the-client" });
 
     expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
       { reason: "unsupported_response_type", clientId: CLIENT_ID },
@@ -390,7 +473,7 @@ describe("a client from a metadata document", () => {
   });
 
   it("is fetched, stored with the time until which it is fresh, and known by its URL", async () => {
-    const result = await checkAuthorizationRequest(METADATA_PARAMS);
+    const result = await checkAuthorizationRequest(ALICE, METADATA_PARAMS);
 
     expect(result).toMatchObject({ ok: true, value: { client: { id: CLIENT_ID, clientId: METADATA_URL } } });
     expect(mocks.fetchMetadataDocument).toHaveBeenCalledExactlyOnceWith(METADATA_URL);
@@ -414,7 +497,7 @@ describe("a client from a metadata document", () => {
   ])("with %s, is fetched again: %s", async (_case, freshUntil, fetchedAgain) => {
     mocks.clientFindUnique.mockResolvedValue({ ...METADATA_ROW, freshUntil });
 
-    await expect(checkAuthorizationRequest(METADATA_PARAMS)).resolves.toMatchObject({ ok: true });
+    await expect(checkAuthorizationRequest(ALICE, METADATA_PARAMS)).resolves.toMatchObject({ ok: true });
 
     expect(mocks.fetchMetadataDocument).toHaveBeenCalledTimes(fetchedAgain ? 1 : 0);
     expect(mocks.clientUpsert).toHaveBeenCalledTimes(fetchedAgain ? 1 : 0);
@@ -423,7 +506,7 @@ describe("a client from a metadata document", () => {
   it("refuses the request without a redirect when the fetch fails, and logs the reason with the URL", async () => {
     mocks.fetchMetadataDocument.mockResolvedValue({ ok: false, reason: "address-not-public" });
 
-    await expect(checkAuthorizationRequest(METADATA_PARAMS)).resolves.toEqual({
+    await expect(checkAuthorizationRequest(ALICE, METADATA_PARAMS)).resolves.toEqual({
       ok: false,
       error: { code: "invalid-client" },
     });
@@ -442,7 +525,7 @@ describe("a client from a metadata document", () => {
       cacheControl: null,
     });
 
-    await expect(checkAuthorizationRequest(METADATA_PARAMS)).resolves.toEqual({
+    await expect(checkAuthorizationRequest(ALICE, METADATA_PARAMS)).resolves.toEqual({
       ok: false,
       error: { code: "invalid-client" },
     });
@@ -458,7 +541,7 @@ describe("a client from a metadata document", () => {
     mocks.clientFindUnique.mockResolvedValue({ ...METADATA_ROW, freshUntil: new Date(NOW.getTime() - 1) });
     mocks.fetchMetadataDocument.mockResolvedValue({ ok: false, reason: "timeout" });
 
-    await expect(checkAuthorizationRequest(METADATA_PARAMS)).resolves.toEqual({
+    await expect(checkAuthorizationRequest(ALICE, METADATA_PARAMS)).resolves.toEqual({
       ok: false,
       error: { code: "invalid-client" },
     });
@@ -474,7 +557,7 @@ describe("a client from a metadata document", () => {
     );
     mocks.clientFindUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(METADATA_ROW);
 
-    await expect(checkAuthorizationRequest(METADATA_PARAMS)).resolves.toMatchObject({
+    await expect(checkAuthorizationRequest(ALICE, METADATA_PARAMS)).resolves.toMatchObject({
       ok: true,
       value: { client: { clientId: METADATA_URL } },
     });
@@ -483,7 +566,10 @@ describe("a client from a metadata document", () => {
   it("reports failed when the document cannot be stored", async () => {
     mocks.clientUpsert.mockRejectedValue(new Error("connection lost"));
 
-    await expect(checkAuthorizationRequest(METADATA_PARAMS)).resolves.toEqual({ ok: false, error: { code: "failed" } });
+    await expect(checkAuthorizationRequest(ALICE, METADATA_PARAMS)).resolves.toEqual({
+      ok: false,
+      error: { code: "failed" },
+    });
   });
 
   it.each([
@@ -492,7 +578,7 @@ describe("a client from a metadata document", () => {
     ["a port", "https://client.example:8443/metadata.json"],
     ["credentials", "https://user:secret@client.example/metadata.json"],
   ])("is not fetched for a URL with %s", async (_case, client_id) => {
-    await expect(checkAuthorizationRequest({ ...PARAMS, client_id })).resolves.toEqual({
+    await expect(checkAuthorizationRequest(ALICE, { ...PARAMS, client_id })).resolves.toEqual({
       ok: false,
       error: { code: "invalid-client" },
     });
@@ -503,8 +589,8 @@ describe("a client from a metadata document", () => {
   });
 
   it("is looked up by its URL, a registered client by its id among the clients without a URL", async () => {
-    await checkAuthorizationRequest(METADATA_PARAMS);
-    await checkAuthorizationRequest(PARAMS);
+    await checkAuthorizationRequest(ALICE, METADATA_PARAMS);
+    await checkAuthorizationRequest(ALICE, PARAMS);
 
     expect(mocks.clientFindUnique.mock.calls[0]?.[0].where).toEqual({ metadataUrl: METADATA_URL });
     expect(mocks.clientFindFirst.mock.calls[0]?.[0].where).toEqual({ id: CLIENT_ID, metadataUrl: null });
@@ -533,7 +619,7 @@ describe("isGrantLimitReached", () => {
     ["a malformed actor id", { ...ALICE, id: "not-a-uuid" }, CLIENT_ID],
     ["a malformed client id", ALICE, "not-a-uuid"],
   ])("is true for %s, without asking the database", async (_case, actor, clientId) => {
-    await expect(isGrantLimitReached(actor, clientId)).resolves.toBe(true);
+    await expect(isGrantLimitReached(actor, clientId, ADDRESS)).resolves.toBe(true);
 
     expect(mocks.clientFindUnique).not.toHaveBeenCalled();
     expect(mocks.tokenCount).not.toHaveBeenCalled();
@@ -542,7 +628,7 @@ describe("isGrantLimitReached", () => {
   it("is true for a client that does not exist", async () => {
     mocks.clientFindUnique.mockResolvedValue(null);
 
-    await expect(isGrantLimitReached(ALICE, CLIENT_ID)).resolves.toBe(true);
+    await expect(isGrantLimitReached(ALICE, CLIENT_ID, ADDRESS)).resolves.toBe(true);
   });
 });
 
@@ -559,13 +645,14 @@ describe("createCode", () => {
       userId: ALICE_ID,
       redirectUri: REDIRECT_URI,
       codeChallenge: PARAMS.code_challenge,
-      scopes: ["read"],
+      folderId: FOLDER_ID,
+      role: "reader",
       lifetime: "90d",
       expiresAt: new Date(NOW.getTime() + 10 * 60 * 1000),
     });
     expect(written()).not.toContain(code);
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
-      { userId: ALICE_ID, clientId: CLIENT_ID },
+      { userId: ALICE_ID, clientId: CLIENT_ID, ...ADDRESS },
       "authorization code created",
     );
     expectNotLogged(code);
@@ -586,9 +673,10 @@ describe("createCode", () => {
       },
     });
     expect(mocks.codeCreate).not.toHaveBeenCalled();
+    expect(mocks.folderRoleOf).not.toHaveBeenCalled();
     expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
-      { userId: ALICE_ID, clientId: CLIENT_ID },
-      "authorization code not created: the actor is an admin",
+      { reason: "access_denied", clientId: CLIENT_ID },
+      "authorization request refused",
     );
   });
 
@@ -646,7 +734,8 @@ describe("exchangeCode", () => {
       userId: ALICE_ID,
       clientId: CLIENT_ID,
       name: "Example",
-      scopes: ["read"],
+      folderId: FOLDER_ID,
+      role: "reader",
       accessTokenHash: hashSecret(accessToken),
       refreshTokenHash: hashSecret(refreshToken),
       accessTokenExpiresAt: new Date(NOW.getTime() + 60 * 60 * 1000),
@@ -658,7 +747,7 @@ describe("exchangeCode", () => {
     expect(written()).not.toContain(accessToken);
     expect(written()).not.toContain(refreshToken);
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
-      { userId: ALICE_ID, clientId: CLIENT_ID, grantId: stored.id, replaced: 0 },
+      { userId: ALICE_ID, clientId: CLIENT_ID, grantId: stored.id, ...ADDRESS, replaced: 0 },
       "grant created",
     );
     expectNotLogged(CODE, accessToken, refreshToken, VERIFIER);
@@ -733,8 +822,10 @@ describe("exchangeCode", () => {
     );
   });
 
-  it("refuses a resource that is not the MCP endpoint, and accepts the MCP endpoint", async () => {
-    await expect(exchangeCode({ ...EXCHANGE, resource: "https://other.example/mcp" })).resolves.toMatchObject({
+  it("refuses a resource that is not the MCP address of the code, and accepts that address", async () => {
+    await expect(
+      exchangeCode({ ...EXCHANGE, resource: `https://wiki.example.com/mcp/${FOLDER_ID}/writer` }),
+    ).resolves.toMatchObject({
       ok: false,
       error: { code: "invalid-target" },
     });
@@ -882,8 +973,10 @@ describe("refreshGrant", () => {
     expect(mocks.tokenUpdateMany).not.toHaveBeenCalled();
   });
 
-  it("refuses a resource that is not the MCP endpoint without revoking the grant", async () => {
-    await expect(refreshGrant({ ...REFRESH, resource: "https://other.example/mcp" })).resolves.toMatchObject({
+  it("refuses a resource that is not the MCP address of the grant without revoking the grant", async () => {
+    await expect(
+      refreshGrant({ ...REFRESH, resource: `https://wiki.example.com/mcp/${FOLDER_ID}/writer` }),
+    ).resolves.toMatchObject({
       ok: false,
       error: { code: "invalid-target" },
     });

@@ -61,3 +61,33 @@ export function mayDo(role: Role | null | undefined, fn: FolderFunction): boolea
 export function rolesFor(fn: FolderFunction): Role[] {
   return ROLES.filter((role) => mayDo(role, fn));
 }
+
+/**
+ * The roles of the MCP addresses of a folder (`/mcp/<folder-uuid>/<role>`): the most an AI app connected there may
+ * do. Manager and Owner are no roles of MCP.
+ */
+export const MCP_ROLES = ["reader", "writer"] as const satisfies readonly Role[];
+
+/** The role of an MCP address. */
+export type McpRole = (typeof MCP_ROLES)[number];
+
+/** Whether the text is the role of an MCP address. */
+export function isMcpRole(value: unknown): value is McpRole {
+  return typeof value === "string" && (MCP_ROLES as readonly string[]).includes(value);
+}
+
+/**
+ * The roles of the MCP addresses that a user with the given role on a folder may connect to: those at most the own
+ * role, so Reader for a Reader, and Reader and Writer for a Writer, a Manager and an Owner. None without a role.
+ */
+export function mcpRolesFor(role: Role | null | undefined): McpRole[] {
+  return role == null ? [] : MCP_ROLES.filter((mcpRole) => includesRole(role, mcpRole));
+}
+
+/** What a connection with each MCP role may do through MCP, in one sentence, as the consent page and "AI apps" say. */
+export const MCP_ROLE_ABILITIES: Readonly<Record<McpRole, string>> = {
+  reader: "List the tabs and pages of the folder and read its pages, without changing anything.",
+  writer:
+    "List the tabs and pages of the folder, read its pages, create pages, replace their content, and move or rename " +
+    "them within the folder.",
+};

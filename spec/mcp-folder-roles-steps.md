@@ -31,7 +31,7 @@ The requirements are in `spec/mcp-folder-roles-requirements.md` (approved); ever
 
 ## Checklist
 
-- [ ] Grants for a folder address
+- [x] Grants for a folder address
 - [ ] MCP at the folder addresses
 - [ ] Read tools on the folder of the connection
 - [ ] Write tools

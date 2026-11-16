@@ -4,6 +4,10 @@
 
 import { z } from "zod";
 
+import { isMcpRole, type McpRole } from "@/features/folder-roles/roles";
+import { parseFolderId } from "@/features/folders/schema";
+import { mcpFolderPath } from "@/lib/addresses";
+
 /** The error codes of OAuth that HippoWiki answers with (RFC 6749, RFC 7591 and RFC 8707). */
 export const OAUTH_ERRORS = [
   "invalid_request",
@@ -25,11 +29,28 @@ export const OAUTH_ERRORS = [
 
 export type OAuthError = (typeof OAUTH_ERRORS)[number];
 
-/** The only scope a grant has: reading. Scopes that a client asks for and that are not known are ignored. */
-export const GRANT_SCOPES = ["read"] as const;
+/**
+ * The MCP address that a grant or an authorization request names: a folder by its id and the role of the address.
+ * There are no scopes: the address says what a connection may do.
+ */
+export type McpAddress = { folderId: string; role: McpRole };
 
-/** A scope of a grant, as the check of an access token asks for it. */
-export type GrantScope = (typeof GRANT_SCOPES)[number];
+/**
+ * The MCP address of a `resource` (RFC 8707), if it is exactly `<publicUrl>/mcp/<folder-uuid>/<reader|writer>` as
+ * `mcpFolderPath()` writes it, with the id in lower case; otherwise `null`: the plain `/mcp`, the roles Owner and
+ * Manager, a part that is no UUID, another host, a trailing slash, a query and a fragment. Whether the folder exists
+ * is not checked here.
+ */
+export function parseMcpResource(value: string | undefined, publicUrl: string): McpAddress | null {
+  const prefix = `${publicUrl}/mcp/`;
+  if (value === undefined || !value.startsWith(prefix)) return null;
+  const parts = value.slice(prefix.length).split("/");
+  if (parts.length !== 2) return null;
+  const [id = "", role] = parts;
+  const folderId = parseFolderId(id);
+  if (!folderId || folderId !== id.toLowerCase() || !isMcpRole(role)) return null;
+  return `${publicUrl}${mcpFolderPath(folderId, role)}` === value ? { folderId, role } : null;
+}
 
 /** How long a grant lasts: the choices of the consent page, there are no other dates and no grants that never end. */
 export const GRANT_LIFETIMES = ["30d", "90d", "365d"] as const;
@@ -247,11 +268,13 @@ export type AuthorizationParams = {
   code_challenge?: string;
   code_challenge_method?: string;
   state?: string;
-  scope?: string;
   resource?: string;
 };
 
-/** The names of the parameters of an authorization request, for reading them from a query string or a form. */
+/**
+ * The names of the parameters of an authorization request, for reading them from a query string or a form. `scope` is
+ * not one of them: a scope that a client sends is ignored, because there are no scopes.
+ */
 export const AUTHORIZATION_PARAMS = [
   "client_id",
   "redirect_uri",
@@ -259,7 +282,6 @@ export const AUTHORIZATION_PARAMS = [
   "code_challenge",
   "code_challenge_method",
   "state",
-  "scope",
   "resource",
 ] as const satisfies readonly (keyof AuthorizationParams)[];
 
