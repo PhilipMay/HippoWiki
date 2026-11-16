@@ -4,7 +4,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { challengeOf, hashSecret } from "@/features/oauth/secret";
 import * as oauthService from "@/features/oauth/service";
+import { isMcpRole } from "@/features/folder-roles/roles";
 import * as grantService from "@/features/grants/service";
+import type { McpAddress } from "@/features/oauth/schema";
 
 import { createFolder, createFolderRole, createGrant, createUser, getTestDb } from "../e2e/support/database";
 
@@ -107,14 +109,25 @@ async function grant(
   return result.value;
 }
 
-/** Request headers that carry the token as a bearer token. */
-function bearer(token: string): Headers {
-  return new Headers({ authorization: `Bearer ${token}` });
+/** The MCP address of the grant whose access token the value is, or another one if no grant has it. */
+async function addressOfToken(secret: string): Promise<McpAddress> {
+  const grant = await getTestDb().oAuthGrant.findUnique({ where: { accessTokenHash: hashSecret(secret) } });
+  return grant && isMcpRole(grant.role)
+    ? { folderId: grant.folderId, role: grant.role }
+    : { folderId: crypto.randomUUID(), role: "reader" };
 }
 
-/** Whether MCP would accept the access token: `authenticateAccessToken()`. */
+/** Checks the access token as MCP does at the given address, by default the address of its own grant. */
+async function authenticate(secret: string, address?: McpAddress) {
+  return grantService.authenticateAccessToken(
+    new Headers({ authorization: `Bearer ${secret}` }),
+    address ?? (await addressOfToken(secret)),
+  );
+}
+
+/** Whether MCP would accept the access token at the address of its grant: `authenticateAccessToken()`. */
 async function works(accessToken: string): Promise<boolean> {
-  return (await grantService.authenticateAccessToken(bearer(accessToken))).ok;
+  return (await authenticate(accessToken)).ok;
 }
 
 function grantsOf(actor: Actor) {
@@ -1057,14 +1070,17 @@ describe("authenticateAccessToken", () => {
     const [alice, client] = [await createActor(), await register()];
     const { accessToken } = await grant(alice, client);
 
-    await expect(grantService.authenticateAccessToken(bearer(accessToken))).resolves.toStrictEqual({
+    await expect(authenticate(accessToken)).resolves.toMatchObject({
       ok: true,
-      value: { id: alice.id, name: alice.name, type: alice.type },
+      value: {
+        actor: { id: alice.id, name: alice.name, type: alice.type },
+        connection: { folderId: alice.folder.id, role: "reader" },
+      },
     });
   });
 
   it("refuses a former API token as missing", async () => {
-    await expect(grantService.authenticateAccessToken(bearer(`hw_${"A".repeat(43)}`))).resolves.toEqual({
+    await expect(authenticate(`hw_${"A".repeat(43)}`)).resolves.toEqual({
       ok: false,
       error: { code: "missing-token" },
     });
@@ -1076,7 +1092,7 @@ describe("authenticateAccessToken", () => {
     const { refreshToken } = await grant(alice, client);
 
     for (const secret of [refreshToken, code]) {
-      await expect(grantService.authenticateAccessToken(bearer(secret))).resolves.toEqual({
+      await expect(authenticate(secret)).resolves.toEqual({
         ok: false,
         error: { code: "missing-token" },
       });
@@ -1236,7 +1252,7 @@ describe("an admin", () => {
       },
     });
 
-    await expect(grantService.authenticateAccessToken(bearer(accessToken))).resolves.toEqual({
+    await expect(authenticate(accessToken)).resolves.toEqual({
       ok: false,
       error: { code: "invalid-token" },
     });

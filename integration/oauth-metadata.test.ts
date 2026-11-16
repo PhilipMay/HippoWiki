@@ -29,6 +29,7 @@ function serve(document: unknown, cacheControl: string | null = null): void {
 /** The user who is asked to approve the client, and the MCP address of a folder of which the user is Owner. */
 let actor: { id: string; name: string; type: "admin" | "user" };
 let resource: string;
+let folderId: string;
 
 /** The parameters of an authorization request of the client of the metadata document. */
 function params(overrides: Record<string, string | undefined> = {}) {
@@ -52,6 +53,7 @@ beforeEach(async () => {
   const user = await createUser({ mustChangePassword: false });
   actor = { id: user.id, name: user.name, type: user.type };
   const folder = await createFolder({ roles: [{ user, role: "owner" }] });
+  folderId = folder.id;
   resource = `https://wiki.example.com/mcp/${folder.id}/reader`;
 });
 
@@ -187,7 +189,10 @@ describe("an authorization request of a client with a metadata document", () => 
     });
     if (!refreshed.ok) return expect.fail(`not refreshed: ${refreshed.error.code}`);
     await expect(
-      grantService.authenticateAccessToken(new Headers({ authorization: `Bearer ${refreshed.value.accessToken}` })),
+      grantService.authenticateAccessToken(new Headers({ authorization: `Bearer ${refreshed.value.accessToken}` }), {
+        folderId: folderId,
+        role: "reader",
+      }),
     ).resolves.toMatchObject({ ok: true });
   });
 

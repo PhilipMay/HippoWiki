@@ -3,10 +3,10 @@
 // while `HIPPOWIKI_PUBLIC_URL` is not set: without a public address there is no OAuth. The consent page, the one
 // endpoint behind the login, has its adapters in `queries.ts` and `actions.ts`.
 
-import { issuer } from "@/features/oauth/issuer";
-import type { OAuthError } from "@/features/oauth/schema";
+import { issuer, mcpResourceOf } from "@/features/oauth/issuer";
+import { parseMcpPath, type OAuthError } from "@/features/oauth/schema";
 import * as oauthService from "@/features/oauth/service";
-import { mcpPath, oauthAuthorizePath, oauthRegisterPath, oauthTokenPath } from "@/lib/addresses";
+import { oauthAuthorizePath, oauthRegisterPath, oauthTokenPath } from "@/lib/addresses";
 import { clientAddressGroup } from "@/lib/client-address";
 import { getServerEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";
@@ -54,17 +54,19 @@ export function authorizationServerMetadata(): Response {
 }
 
 /**
- * The metadata of the protected resource (RFC 9728), at `/.well-known/oauth-protected-resource` and at the same
- * address followed by `/mcp`. `path` is what follows the well-known prefix; any other path is not found. The resource
- * is the MCP endpoint in both cases, and the wiki is its only authorization server.
+ * The metadata of the protected resource at an MCP address of a folder (RFC 9728), at
+ * `/.well-known/oauth-protected-resource/mcp/<folder-uuid>/<reader|writer>`, whether a folder of that id exists or not,
+ * so that it tells nothing about which folders exist. `path` is what follows the well-known prefix; any other path,
+ * the well-known prefix alone and the one followed by `/mcp` included, is not found, because there is no resource at
+ * `/mcp`. The wiki is the only authorization server.
  */
 export function protectedResourceMetadata(path: readonly string[] | undefined): Response {
   const base = issuer();
   if (base === null) return notFound();
-  const suffix = `/${(path ?? []).join("/")}`;
-  if (suffix !== "/" && suffix !== mcpPath()) return notFound();
+  const address = path?.[0] === "mcp" ? parseMcpPath(path.slice(1)) : null;
+  if (!address) return notFound();
   return Response.json({
-    resource: `${base}${mcpPath()}`,
+    resource: mcpResourceOf(address),
     authorization_servers: [base],
     bearer_methods_supported: ["header"],
   });

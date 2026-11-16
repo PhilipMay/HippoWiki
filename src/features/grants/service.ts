@@ -9,9 +9,11 @@
 //
 // The OAuth service creates, refreshes and replaces the grants (`src/features/oauth/service.ts`).
 
-import { isMcpRole, type McpRole } from "@/features/folder-roles/roles";
+import { includesRole, isMcpRole, type McpConnection, type McpRole } from "@/features/folder-roles/roles";
+import { folderRoleOf } from "@/features/folder-roles/service";
 import { parseGrantId } from "@/features/grants/schema";
 import { issuer } from "@/features/oauth/issuer";
+import type { McpAddress } from "@/features/oauth/schema";
 import { hashSecret, looksLikeAccessToken } from "@/features/oauth/secret";
 import { parseUserId } from "@/features/users/schema";
 import type { Actor } from "@/features/users/service";
@@ -106,11 +108,22 @@ type NotAllowed = { code: "not-allowed" };
 
 /** The request has no `Authorization` header with a bearer token, or its value does not look like an access token. */
 type MissingToken = { code: "missing-token" };
-/** The access token is unknown or expired, or its user still has the first password or is an admin. */
+/**
+ * The access token is unknown or expired, belongs to a grant of another MCP address, or its user still has the first
+ * password or is an admin.
+ */
 type BadToken = { code: "invalid-token" };
+/**
+ * The access token is valid for the address, but its user has no role on the folder any more or a role below the
+ * role of the address; the grant stays and works again once the role is high enough again.
+ */
+type RoleTooLow = { code: "role-too-low" };
 
 export type RevokeGrantError = NotAllowed | GrantNotFound | Failed;
-export type AuthenticateAccessTokenError = MissingToken | BadToken | Failed;
+export type AuthenticateAccessTokenError = MissingToken | BadToken | RoleTooLow | Failed;
+
+/** Who a request through MCP acts for: the user of the grant, and the connection of the grant. */
+export type McpCaller = { actor: Actor; connection: McpConnection };
 
 /**
  * Revokes the actor's connected app with the given id: deletes its grant, which ends its access token and its refresh
@@ -163,25 +176,35 @@ function bearerTokenOf(headers: Headers): string | null {
 }
 
 /**
- * Who a request acts for, from the bearer token in its `Authorization` header: the actor of the user of the grant
- * whose access token it is, if the token is valid. It is for callers other than the browser, such as the MCP server;
+ * Who a request to the given MCP address acts for, from the bearer token in its `Authorization` header: the actor of
+ * the user of the grant whose access token it is, and the connection of the grant, if the token is valid for exactly
+ * this address and the user's current role on the folder includes the role of the address. It is for the MCP server;
  * the browser uses the session (`src/features/auth/session.ts`). There are no scopes.
  *
  * - `missing-token`: no header, another scheme, or a value that does not look like an access token, a former API
  *   token included; the database is not asked and nothing is logged.
  * - `invalid-token`: an unknown access token, one whose grant or which itself has expired, one whose user still has
- *   the first password, who may do nothing but change it, or one whose user is an admin, who has no grants.
+ *   the first password, who may do nothing but change it, one whose user is an admin, who has no grants, and one of a
+ *   grant to another address, another folder or another role (logged as `other-address`).
+ * - `role-too-low`: a valid access token for the address whose user has no role on the folder any more, or a role
+ *   below the role of the address. It is logged; the grant stays.
  * - `failed`: the database could not be read.
  *
- * The MCP route answers `missing-token` and `invalid-token` with 401 and `WWW-Authenticate: Bearer`. A valid access token gets the last use of its grant written, at most once a minute;
- * a failure of that write is logged and does not refuse the request. The token is never logged.
+ * The MCP route answers `missing-token` and `invalid-token` with 401 and `WWW-Authenticate: Bearer`, and
+ * `role-too-low` with 403. An accepted access token gets the last use of its grant written, at most once a minute; a
+ * failure of that write is logged and does not refuse the request. The token is never logged.
  */
-export async function authenticateAccessToken(headers: Headers): Promise<Result<Actor, AuthenticateAccessTokenError>> {
+export async function authenticateAccessToken(
+  headers: Headers,
+  address: McpAddress,
+): Promise<Result<McpCaller, AuthenticateAccessTokenError>> {
   const secret = bearerTokenOf(headers);
   if (secret === null || !looksLikeAccessToken(secret)) return { ok: false, error: { code: "missing-token" } };
 
   let grant: {
     id: string;
+    folderId: string;
+    role: string;
     expiresAt: Date;
     accessTokenExpiresAt: Date | null;
     lastUsedAt: Date | null;
@@ -192,6 +215,8 @@ export async function authenticateAccessToken(headers: Headers): Promise<Result<
       where: { accessTokenHash: hashSecret(secret) },
       select: {
         id: true,
+        folderId: true,
+        role: true,
         expiresAt: true,
         accessTokenExpiresAt: true,
         lastUsedAt: true,
@@ -228,6 +253,28 @@ export async function authenticateAccessToken(headers: Headers): Promise<Result<
     logger.warn({ reason: "admin", grantId }, "access token refused");
     return { ok: false, error: { code: "invalid-token" } };
   }
+  // A connection is bound to the one address it was approved for: its token is no token anywhere else.
+  const grantRole = grant.role;
+  if (grant.folderId !== address.folderId || grantRole !== address.role || !isMcpRole(grantRole)) {
+    logger.warn({ reason: "other-address", grantId }, "access token refused");
+    return { ok: false, error: { code: "invalid-token" } };
+  }
+  const actor: Actor = { id: grant.user.id, name: grant.user.username, type: grant.user.type };
+  let userRole: Awaited<ReturnType<typeof folderRoleOf>>;
+  try {
+    // The current role, read on every request, so that a lowered or removed role takes effect at once.
+    userRole = await folderRoleOf(actor, grant.folderId);
+  } catch (err) {
+    logger.error({ err, grantId }, "failed to read the role of the user of an access token");
+    return { ok: false, error: { code: "failed" } };
+  }
+  if (!userRole || !includesRole(userRole, grantRole)) {
+    logger.warn(
+      { reason: "role-too-low", grantId, folderId: grant.folderId, grantRole, userRole },
+      "access token refused",
+    );
+    return { ok: false, error: { code: "role-too-low" } };
+  }
 
   const usedBefore = new Date(now.getTime() - LAST_USE_INTERVAL_MS);
   if (grant.lastUsedAt === null || grant.lastUsedAt.getTime() <= usedBefore.getTime()) {
@@ -242,5 +289,5 @@ export async function authenticateAccessToken(headers: Headers): Promise<Result<
     }
   }
 
-  return { ok: true, value: { id: grant.user.id, name: grant.user.username, type: grant.user.type } };
+  return { ok: true, value: { actor, connection: { grantId, folderId: grant.folderId, role: grantRole } } };
 }

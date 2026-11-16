@@ -122,13 +122,8 @@ export function revokeAppPath(id: string): string {
   return `${accountPath("revoke")}&app=${id}`;
 }
 
-/** The address of the MCP endpoint, where AI assistants read the wiki with the access token of a grant. */
+/** The prefix of the MCP addresses of the folders, where AI apps work with the access token of a grant. */
 const MCP_PATH = "/mcp";
-
-/** The address of the MCP endpoint. */
-export function mcpPath(): string {
-  return MCP_PATH;
-}
 
 /**
  * The MCP address of a folder for a role, `/mcp/<folder-uuid>/<role>`: an AI app connected there works only on that
@@ -163,11 +158,11 @@ export function authorizationServerMetadataPath(): string {
 }
 
 /**
- * The address of the metadata of the protected resource `/mcp` (RFC 9728): the well-known prefix followed by the path
- * of the resource.
+ * The address of the metadata of the protected resource at the MCP address of a folder for a role (RFC 9728): the
+ * well-known prefix followed by the path of the resource.
  */
-export function protectedResourceMetadataPath(): string {
-  return `/.well-known/oauth-protected-resource${MCP_PATH}`;
+export function protectedResourceMetadataPath(folderId: string, role: McpRole): string {
+  return `/.well-known/oauth-protected-resource${mcpFolderPath(folderId, role)}`;
 }
 
 /** The address where a user who logged in with a first password sets a password of their own. */

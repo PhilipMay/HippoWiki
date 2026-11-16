@@ -91,3 +91,9 @@ export const MCP_ROLE_ABILITIES: Readonly<Record<McpRole, string>> = {
     "List the tabs and pages of the folder, read its pages, create pages, replace their content, and move or rename " +
     "them within the folder.",
 };
+
+/**
+ * The connection of an AI app through MCP: the grant whose access token the request carries, and the folder and the
+ * role of the MCP address the grant was approved for.
+ */
+export type McpConnection = { grantId: string; folderId: string; role: McpRole };

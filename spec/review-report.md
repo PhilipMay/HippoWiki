@@ -116,7 +116,7 @@
   - grants: `revokeGrant()`;
   - users: `createUser()`;
   - oauth: `approve()`, `deny()`.
-- Route handlers: `src/app/api/health/route.ts`, `src/app/mcp/route.ts`, `src/app/oauth/register/route.ts`,
+- Route handlers: `src/app/api/health/route.ts`, `src/app/mcp/[[...path]]/route.ts`, `src/app/oauth/register/route.ts`,
   `src/app/oauth/token/route.ts`, `src/app/.well-known/oauth-authorization-server/route.ts`,
   `src/app/.well-known/oauth-protected-resource/[[...path]]/route.ts`.
 - Outgoing requests: the fetch of client ID metadata documents in `src/features/oauth/metadata-fetch.ts`.
@@ -277,7 +277,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
 
 #### suggestion: `OPTIONS /mcp` lists `GET` and `DELETE` as allowed, though both answer 405
 
-- Location: `src/app/mcp/route.ts`, lines 6–19 (the exports `POST`, `GET`, `DELETE`); `src/features/mcp/http.ts`,
+- Location: `src/app/mcp/[[...path]]/route.ts`, lines 6–19 (the exports `POST`, `GET`, `DELETE`); `src/features/mcp/http.ts`,
   lines 94–102, `handleMcpRequest()`
 - Severity: Nit. Nothing is exposed; the requirement is Level 3.
 - Category: correctness
@@ -287,7 +287,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
 - Impact: a client or scanner gets two different lists of methods for the same endpoint.
 - Evidence: `curl -si -X OPTIONS http://localhost:3100/mcp` gives `204 No Content` with
   `allow: DELETE, GET, HEAD, OPTIONS, POST`; `curl -si http://localhost:3100/mcp` gives `405` with `allow: POST`.
-- Suggestion (optional): export `OPTIONS` from `src/app/mcp/route.ts` and hand it to `handleMcpRequest()`, so that it
+- Suggestion (optional): export `OPTIONS` from `src/app/mcp/[[...path]]/route.ts` and hand it to `handleMcpRequest()`, so that it
   answers 405 with `Allow: POST` like `GET` and `DELETE`.
 - Reference: ASVS 4.1.4 (Level 3); RFC 9110 section 10.2.1.
 
@@ -930,7 +930,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
 #### Reviewed
 
 - Files read: `src/features/grants/` (`service.ts`, `schema.ts`, `forms.ts`, `actions.ts`, `queries.ts` and the
-  components), `src/app/account/page.tsx`, `src/features/mcp/http.ts`, `src/app/mcp/route.ts`,
+  components), `src/app/account/page.tsx`, `src/features/mcp/http.ts`, `src/app/mcp/[[...path]]/route.ts`,
   `src/features/oauth/secret.ts`, the access token parts of `src/features/oauth/service.ts`, the model `OAuthGrant` and
   its migrations, `e2e/mcp.spec.ts`, `integration/grant-service.test.ts`.
 - Randomness and storage (ASVS 11.5.1): `randomBytes(32)` gives 256 bits; only the SHA-256 hash of an access token is
@@ -1384,7 +1384,7 @@ scope="read"`.
 
 #### Reviewed
 
-- Files read: `src/features/mcp/http.ts`, `tools.ts`, `http.test.ts`, `src/app/mcp/route.ts`, `spec/mcp.md`, the token
+- Files read: `src/features/mcp/http.ts`, `tools.ts`, `http.test.ts`, `src/app/mcp/[[...path]]/route.ts`, `spec/mcp.md`, the token
   check, the reads of pages and folders, `src/lib/names.ts`, `src/features/pages/limits.ts`, `e2e/mcp.spec.ts`; the
   SDK `@modelcontextprotocol/server` 2.4.0 (handler, transport, validation); the MCP specification 2026-07-28
   (transports, authorization, tools, security best practices) and the OWASP MCP Top 10.

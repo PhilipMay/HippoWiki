@@ -46,7 +46,7 @@ How the code is organised and which patterns new code follows. The technology st
   calls `getDb()`. Routes and components import a service only for its types. The health route
   (`src/app/api/health/route.ts`) is the one exception: it checks the database connection itself.
 - A caller other than the GUI has an adapter of its own in place of `queries.ts` and `actions.ts`. The MCP server is
-  the first: the route `src/app/mcp/route.ts` only hands the request to `handleMcpRequest()` in
+  the first: the route `src/app/mcp/[[...path]]/route.ts` only hands the request to `handleMcpRequest()` in
   `src/features/mcp/http.ts`, which finds the actor from the bearer token instead of the session and passes the
   request to the MCP SDK, with the actor as the authentication information that the SDK passes on to the factory of
   the server; the tools in `src/features/mcp/tools.ts` call the services of the folders and pages with that actor. The

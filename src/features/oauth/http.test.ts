@@ -124,27 +124,37 @@ describe("authorizationServerMetadata", () => {
 });
 
 describe("protectedResourceMetadata", () => {
-  it.each([
-    ["the well-known address alone", undefined],
-    ["the well-known address alone, as an empty path", []],
-    ["the well-known address followed by /mcp", ["mcp"]],
-  ])("describes the MCP endpoint at %s", async (_case, path) => {
-    const response = protectedResourceMetadata(path);
+  const FOLDER_ID = "3a5c7e90-1b2d-4f6a-8c0e-2d4f6a8c0e11";
 
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toStrictEqual({
-      resource: "https://wiki.example.com/mcp",
-      authorization_servers: ["https://wiki.example.com"],
-      bearer_methods_supported: ["header"],
-    });
-  });
+  it.each(["reader", "writer"])(
+    "describes the %s address of a folder, whether the folder exists or not",
+    async (role) => {
+      const response = protectedResourceMetadata(["mcp", FOLDER_ID, role]);
 
-  it.each([[["folders"]], [["mcp", "more"]], [["MCP"]], [["oauth", "token"]]])(
-    "answers 404 for the path %j",
-    (path) => {
-      expect(protectedResourceMetadata(path).status).toBe(404);
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toStrictEqual({
+        resource: `https://wiki.example.com/mcp/${FOLDER_ID}/${role}`,
+        authorization_servers: ["https://wiki.example.com"],
+        bearer_methods_supported: ["header"],
+      });
     },
   );
+
+  it.each([
+    [undefined],
+    [[]],
+    [["mcp"]],
+    [["folders"]],
+    [["mcp", "more"]],
+    [["MCP", FOLDER_ID, "reader"]],
+    [["mcp", FOLDER_ID, "owner"]],
+    [["mcp", FOLDER_ID, "manager"]],
+    [["mcp", "abc", "reader"]],
+    [["mcp", FOLDER_ID, "reader", "more"]],
+    [["oauth", "token"]],
+  ])("answers 404 for the path %j", (path) => {
+    expect(protectedResourceMetadata(path).status).toBe(404);
+  });
 });
 
 describe("handleRegister", () => {

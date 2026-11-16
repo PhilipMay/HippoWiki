@@ -34,11 +34,11 @@ export function mcpAddressOf(resource: string | undefined): McpAddress | null {
 }
 
 /**
- * Where the metadata of the protected resource `/mcp` is (RFC 9728), for the `resource_metadata` of its
- * `WWW-Authenticate` header: a client that gets a 401 finds the authorization server from there. `null` while OAuth
- * is off.
+ * Where the metadata of the protected resource at the given MCP address is (RFC 9728), for the `resource_metadata` of
+ * its `WWW-Authenticate` header: a client that gets a 401 finds the authorization server from there. `null` while
+ * OAuth is off.
  */
-export function protectedResourceMetadataUrl(): string | null {
+export function protectedResourceMetadataUrl({ folderId, role }: McpAddress): string | null {
   const publicUrl = issuer();
-  return publicUrl === null ? null : `${publicUrl}${protectedResourceMetadataPath()}`;
+  return publicUrl === null ? null : `${publicUrl}${protectedResourceMetadataPath(folderId, role)}`;
 }

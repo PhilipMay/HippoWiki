@@ -101,9 +101,13 @@ export type Tokens = {
   token_type: string;
 };
 
-/** Calls the tool `list_folders` of `/mcp` with the access token and returns the status. */
-export async function listFoldersStatus(request: APIRequestContext, accessToken: string): Promise<number> {
-  const response = await request.post("/mcp", {
+/** Calls the tool `list_folders` at the MCP address `resource` with the access token and returns the status. */
+export async function listFoldersStatus(
+  request: APIRequestContext,
+  accessToken: string,
+  resource: string,
+): Promise<number> {
+  const response = await request.post(new URL(resource).pathname, {
     headers: { authorization: `Bearer ${accessToken}`, accept: "application/json, text/event-stream" },
     data: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "list_folders", arguments: {} } },
   });

@@ -2,7 +2,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import * as authService from "@/features/auth/service";
+import { isMcpRole } from "@/features/folder-roles/roles";
 import * as grantService from "@/features/grants/service";
+import { hashSecret } from "@/features/oauth/secret";
+import type { McpAddress } from "@/features/oauth/schema";
 import type { Actor } from "@/features/users/service";
 
 import { createFolder, createGrant, createUser, getTestDb, TEST_PASSWORD } from "../e2e/support/database";
@@ -28,6 +31,22 @@ function summaryOf({
   lastUsedAt: Date | null;
 }) {
   return { id, name, createdAt, expiresAt, lastUsedAt };
+}
+
+/** The MCP address of the grant whose access token the value is, or another one if no grant has it. */
+async function addressOfToken(secret: string): Promise<McpAddress> {
+  const grant = await getTestDb().oAuthGrant.findUnique({ where: { accessTokenHash: hashSecret(secret) } });
+  return grant && isMcpRole(grant.role)
+    ? { folderId: grant.folderId, role: grant.role }
+    : { folderId: crypto.randomUUID(), role: "reader" };
+}
+
+/** Checks the access token as MCP does at the given address, by default the address of its own grant. */
+async function authenticate(secret: string, address?: McpAddress) {
+  return grantService.authenticateAccessToken(
+    new Headers({ authorization: `Bearer ${secret}` }),
+    address ?? (await addressOfToken(secret)),
+  );
 }
 
 describe("listGrants", () => {
@@ -109,10 +128,47 @@ describe("authenticateAccessToken", () => {
     vi.useRealTimers();
   });
 
-  /** Request headers that carry the value as a bearer token. */
-  function bearer(secret: string): Headers {
-    return new Headers({ authorization: `Bearer ${secret}` });
-  }
+  it("refuses the access token of a connection at another folder and at another role", async () => {
+    const alice = await createActor();
+    const [a, b] = [
+      await createFolder({ roles: [{ user: alice, role: "owner" }] }),
+      await createFolder({ roles: [{ user: alice, role: "owner" }] }),
+    ];
+    const { grant, accessToken } = await createGrant({ owner: alice, folder: a, role: "reader" });
+
+    for (const address of [
+      { folderId: a.id, role: "writer" },
+      { folderId: b.id, role: "reader" },
+    ] as const) {
+      await expect(authenticate(accessToken, address)).resolves.toEqual({
+        ok: false,
+        error: { code: "invalid-token" },
+      });
+    }
+    await expect(authenticate(accessToken, { folderId: a.id, role: "reader" })).resolves.toMatchObject({
+      ok: true,
+      value: { connection: { grantId: grant.id, folderId: a.id, role: "reader" } },
+    });
+  });
+
+  it("refuses a connection above the current role while that lasts, keeps the grant and writes no last use", async () => {
+    const alice = await createActor();
+    const folder = await createFolder({ roles: [{ user: alice, role: "writer" }] });
+    const { grant, accessToken } = await createGrant({ owner: alice, folder, role: "writer" });
+    const where = { folderId_userId: { folderId: folder.id, userId: alice.id } };
+
+    await getTestDb().folderRole.update({ where, data: { role: "reader" } });
+    await expect(authenticate(accessToken)).resolves.toEqual({ ok: false, error: { code: "role-too-low" } });
+    await getTestDb().folderRole.delete({ where });
+    await expect(authenticate(accessToken)).resolves.toEqual({ ok: false, error: { code: "role-too-low" } });
+
+    const stored = await getTestDb().oAuthGrant.findUniqueOrThrow({ where: { id: grant.id } });
+    expect(stored.lastUsedAt).toBeNull();
+
+    await getTestDb().folderRole.create({ data: { folderId: folder.id, userId: alice.id, role: "manager" } });
+    await expect(authenticate(accessToken)).resolves.toMatchObject({ ok: true });
+    expect((await getTestDb().oAuthGrant.findUniqueOrThrow({ where: { id: grant.id } })).lastUsedAt).not.toBeNull();
+  });
 
   it("returns the same actor as the session of the grant's user", async () => {
     const alice = await createActor();
@@ -120,16 +176,16 @@ describe("authenticateAccessToken", () => {
     const login = await authService.logIn({ name: alice.name, password: TEST_PASSWORD }, new Headers(), "shared");
     if (!login.ok) return expect.fail(`login failed: ${login.error.code}`);
 
-    await expect(grantService.authenticateAccessToken(bearer(accessToken))).resolves.toStrictEqual({
+    await expect(authenticate(accessToken)).resolves.toMatchObject({
       ok: true,
-      value: { id: login.value.user.id, name: login.value.user.name, type: login.value.user.type },
+      value: { actor: { id: login.value.user.id, name: login.value.user.name, type: login.value.user.type } },
     });
   });
 
   it("refuses a former API token as missing", async () => {
     await createGrant({ owner: await createActor() });
 
-    await expect(grantService.authenticateAccessToken(bearer(`hw_${"A".repeat(43)}`))).resolves.toEqual({
+    await expect(authenticate(`hw_${"A".repeat(43)}`)).resolves.toEqual({
       ok: false,
       error: { code: "missing-token" },
     });
@@ -140,7 +196,7 @@ describe("authenticateAccessToken", () => {
     const { grant, accessToken } = await createGrant({ owner: alice });
     await grantService.revokeGrant(alice, grant.id);
 
-    await expect(grantService.authenticateAccessToken(bearer(accessToken))).resolves.toEqual({
+    await expect(authenticate(accessToken)).resolves.toEqual({
       ok: false,
       error: { code: "invalid-token" },
     });
@@ -148,13 +204,13 @@ describe("authenticateAccessToken", () => {
 
   it("refuses an access token once the clock is past its end", async () => {
     const { grant, accessToken } = await createGrant({ owner: await createActor() });
-    await expect(grantService.authenticateAccessToken(bearer(accessToken))).resolves.toMatchObject({
+    await expect(authenticate(accessToken)).resolves.toMatchObject({
       ok: true,
     });
 
     vi.useFakeTimers({ now: (grant.accessTokenExpiresAt?.getTime() ?? 0) + 1, toFake: ["Date"] });
 
-    await expect(grantService.authenticateAccessToken(bearer(accessToken))).resolves.toEqual({
+    await expect(authenticate(accessToken)).resolves.toEqual({
       ok: false,
       error: { code: "invalid-token" },
     });
@@ -163,7 +219,7 @@ describe("authenticateAccessToken", () => {
   it("refuses an access token whose grant has expired", async () => {
     const { accessToken } = await createGrant({ owner: await createActor(), expiresAt: new Date(Date.now() - 1000) });
 
-    await expect(grantService.authenticateAccessToken(bearer(accessToken))).resolves.toEqual({
+    await expect(authenticate(accessToken)).resolves.toEqual({
       ok: false,
       error: { code: "invalid-token" },
     });
@@ -174,7 +230,7 @@ describe("authenticateAccessToken", () => {
     const { accessToken } = await createGrant({ owner: user });
     await getTestDb().user.update({ where: { id: user.id }, data: { mustChangePassword: true } });
 
-    await expect(grantService.authenticateAccessToken(bearer(accessToken))).resolves.toEqual({
+    await expect(authenticate(accessToken)).resolves.toEqual({
       ok: false,
       error: { code: "invalid-token" },
     });
@@ -184,7 +240,7 @@ describe("authenticateAccessToken", () => {
     const maria = await createUser({ name: "maria", type: "admin", mustChangePassword: false });
     const { accessToken } = await createGrant({ owner: maria });
 
-    await expect(grantService.authenticateAccessToken(bearer(accessToken))).resolves.toEqual({
+    await expect(authenticate(accessToken)).resolves.toEqual({
       ok: false,
       error: { code: "invalid-token" },
     });
@@ -193,11 +249,11 @@ describe("authenticateAccessToken", () => {
   it("refuses an access token that is not stored, and a value that is no access token", async () => {
     await createGrant({ owner: await createActor() });
 
-    await expect(grantService.authenticateAccessToken(bearer(`hwa_${"x".repeat(43)}`))).resolves.toEqual({
+    await expect(authenticate(`hwa_${"x".repeat(43)}`)).resolves.toEqual({
       ok: false,
       error: { code: "invalid-token" },
     });
-    await expect(grantService.authenticateAccessToken(bearer("x".repeat(46)))).resolves.toEqual({
+    await expect(authenticate("x".repeat(46))).resolves.toEqual({
       ok: false,
       error: { code: "missing-token" },
     });
@@ -211,15 +267,15 @@ describe("authenticateAccessToken", () => {
     const start = Date.now();
     vi.useFakeTimers({ now: start, toFake: ["Date"] });
 
-    await grantService.authenticateAccessToken(bearer(accessToken));
+    await authenticate(accessToken);
     expect(await lastUse()).toEqual(new Date(start));
 
     vi.setSystemTime(start + 59_000);
-    await grantService.authenticateAccessToken(bearer(accessToken));
+    await authenticate(accessToken);
     expect(await lastUse()).toEqual(new Date(start));
 
     vi.setSystemTime(start + 60_000);
-    await grantService.authenticateAccessToken(bearer(accessToken));
+    await authenticate(accessToken);
     expect(await lastUse()).toEqual(new Date(start + 60_000));
     expect((await grantService.listGrants(alice))?.[0]?.lastUsedAt).toEqual(new Date(start + 60_000));
   });

@@ -64,42 +64,53 @@ test.describe("discovery", () => {
     });
   });
 
-  for (const address of ["/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"]) {
-    test(`the metadata of the protected resource at ${address} names /mcp and the wiki as its authorization server`, async ({
-      request,
-    }) => {
-      const response = await request.get(address, { maxRedirects: 0 });
+  test("the metadata of the protected resource at a folder address names that address and the wiki as its authorization server", async ({
+    request,
+  }) => {
+    for (const role of ["reader", "writer"]) {
+      const response = await request.get(`/.well-known/oauth-protected-resource/mcp/${projects.id}/${role}`, {
+        maxRedirects: 0,
+      });
 
       expect(response.status()).toBe(200);
       expect(await response.json()).toEqual({
-        resource: `${ISSUER}/mcp`,
+        resource: mcpAddress(projects, role),
         authorization_servers: [ISSUER],
         bearer_methods_supported: ["header"],
       });
-    });
-  }
-
-  test("the metadata of a resource that is not /mcp is not found", async ({ request }) => {
-    for (const address of [
-      "/.well-known/oauth-protected-resource/folders",
-      "/.well-known/oauth-protected-resource/mcp/x",
-    ]) {
-      expect((await request.get(address, { maxRedirects: 0 })).status()).toBe(404);
     }
   });
 
-  test("a connector finds the authorization server from the 401 of /mcp", async ({ request }) => {
-    const unauthorized = await request.post("/mcp", {
+  test("the metadata of a resource that is not a folder address is not found, /mcp included", async ({ request }) => {
+    for (const address of [
+      "/.well-known/oauth-protected-resource",
+      "/.well-known/oauth-protected-resource/mcp",
+      "/.well-known/oauth-protected-resource/folders",
+      "/.well-known/oauth-protected-resource/mcp/x",
+      `/.well-known/oauth-protected-resource/mcp/${projects.id}/owner`,
+    ]) {
+      expect((await request.get(address, { maxRedirects: 0 })).status(), address).toBe(404);
+    }
+  });
+
+  test("a connector finds the authorization server from the 401 of a folder address", async ({ request }) => {
+    const unauthorized = await request.post(new URL(reader).pathname, {
       data: { jsonrpc: "2.0", id: 1, method: "tools/list" },
       maxRedirects: 0,
     });
 
     expect(unauthorized.status()).toBe(401);
     const challenge = unauthorized.headers()["www-authenticate"] ?? "";
-    expect(challenge).toBe(`Bearer resource_metadata="${ISSUER}/.well-known/oauth-protected-resource/mcp"`);
+    expect(challenge).toBe(
+      `Bearer resource_metadata="${ISSUER}/.well-known/oauth-protected-resource/mcp/${projects.id}/reader"`,
+    );
     // The chain a connector follows: the 401, the protected resource, its authorization server.
     const resourceMetadata = /resource_metadata="([^"]+)"/.exec(challenge)?.[1] ?? "";
-    const resource = (await (await request.get(resourceMetadata)).json()) as { authorization_servers: string[] };
+    const resource = (await (await request.get(resourceMetadata)).json()) as {
+      resource: string;
+      authorization_servers: string[];
+    };
+    expect(resource.resource).toBe(reader);
     const server = (await (
       await request.get(`${resource.authorization_servers[0]}/.well-known/oauth-authorization-server`)
     ).json()) as { issuer: string; token_endpoint: string };
@@ -108,15 +119,24 @@ test.describe("discovery", () => {
   });
 
   test("a token that is not valid gets the same hint with the error", async ({ request }) => {
-    const response = await request.post("/mcp", {
+    const response = await request.post(new URL(reader).pathname, {
       headers: { authorization: `Bearer hwa_${"A".repeat(43)}` },
       data: { jsonrpc: "2.0", id: 1, method: "tools/list" },
     });
 
     expect(response.status()).toBe(401);
     expect(response.headers()["www-authenticate"]).toBe(
-      `Bearer error="invalid_token", resource_metadata="${ISSUER}/.well-known/oauth-protected-resource/mcp"`,
+      `Bearer error="invalid_token", resource_metadata="${ISSUER}/.well-known/oauth-protected-resource/mcp/${projects.id}/reader"`,
     );
+  });
+
+  test("the metadata documents list no scopes", async ({ request }) => {
+    for (const address of [
+      "/.well-known/oauth-authorization-server",
+      `/.well-known/oauth-protected-resource/mcp/${projects.id}/writer`,
+    ]) {
+      expect(await (await request.get(address)).json()).not.toHaveProperty("scopes_supported");
+    }
   });
 });
 
@@ -346,8 +366,8 @@ test.describe("the whole flow", () => {
     expect(grant.expiresAt.getTime() - Date.now()).toBeGreaterThan(90 * DAY_MS - 60_000);
     expect(grant.expiresAt.getTime() - Date.now()).toBeLessThanOrEqual(90 * DAY_MS);
 
-    // The access token reads the wiki through /mcp.
-    const call = await request.post("/mcp", {
+    // The access token reads the wiki through the folder address.
+    const call = await request.post(new URL(reader).pathname, {
       headers: { authorization: `Bearer ${tokens.access_token}`, accept: "application/json, text/event-stream" },
       data: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "list_folders", arguments: {} } },
     });
@@ -360,15 +380,15 @@ test.describe("the whole flow", () => {
     const newer = (await refreshed.json()) as Tokens;
     expect(newer.access_token).not.toBe(tokens.access_token);
     expect(newer.refresh_token).not.toBe(tokens.refresh_token);
-    expect(await listFoldersStatus(request, tokens.access_token)).toBe(401);
-    expect(await listFoldersStatus(request, newer.access_token)).toBe(200);
+    expect(await listFoldersStatus(request, tokens.access_token, reader)).toBe(401);
+    expect(await listFoldersStatus(request, newer.access_token, reader)).toBe(200);
 
     // The old refresh token is used again: the grant is revoked, with the newer tokens.
     const reused = await refresh(request, clientId, tokens.refresh_token);
     expect(reused.status()).toBe(400);
     expect(await reused.json()).toMatchObject({ error: "invalid_grant" });
     expect(await getTestDb().oAuthGrant.count()).toBe(0);
-    expect(await listFoldersStatus(request, newer.access_token)).toBe(401);
+    expect(await listFoldersStatus(request, newer.access_token, reader)).toBe(401);
     expect((await refresh(request, clientId, newer.refresh_token)).status()).toBe(400);
   });
 
@@ -720,8 +740,8 @@ test.describe("the consent page, as a logged-in user", () => {
 
     expect(await getTestDb().oAuthGrant.count()).toBe(50);
     expect(await getTestDb().oAuthGrant.count({ where: { clientId: { notIn: others } } })).toBe(1);
-    expect(await listFoldersStatus(request, first.access_token)).toBe(401);
-    expect(await listFoldersStatus(request, second.access_token)).toBe(200);
+    expect(await listFoldersStatus(request, first.access_token, reader)).toBe(401);
+    expect(await listFoldersStatus(request, second.access_token, reader)).toBe(200);
   });
 
   test("a second client gets a grant of its own", async ({ page, request }) => {
@@ -732,8 +752,8 @@ test.describe("the consent page, as a logged-in user", () => {
       "First connector",
       "Second connector",
     ]);
-    expect(await listFoldersStatus(request, first.access_token)).toBe(200);
-    expect(await listFoldersStatus(request, second.access_token)).toBe(200);
+    expect(await listFoldersStatus(request, first.access_token, reader)).toBe(200);
+    expect(await listFoldersStatus(request, second.access_token, reader)).toBe(200);
   });
 
   test("a redirect address that a crafted request puts into the form is not followed", async ({ page, request }) => {

@@ -51,7 +51,6 @@ const PROTECTED_ADDRESSES = [
   ["an address that starts like the login page", "/login/more"],
   ["an address that starts like the health check", "/api/health/more"],
   ["an API address that does not exist", "/api/nowhere"],
-  ["an address that starts like the MCP endpoint", "/mcp/more"],
   ["the consent page of OAuth", "/oauth/authorize?client_id=abc&state=x"],
   ["an OAuth address that does not exist", "/oauth/nowhere"],
   ["an address that starts like the token endpoint", "/oauth/token/more"],
@@ -135,23 +134,51 @@ test.describe("without a login", () => {
     expect(await response.json()).toEqual({ status: "ok" });
   });
 
-  test("the MCP endpoint is not sent to the login page: it asks for a token itself", async ({ request }) => {
-    // What it does with a token is tested in mcp.spec.ts.
-    const response = await request.post("/mcp", {
-      data: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "list_folders" } },
-      maxRedirects: 0,
-    });
+  test("the folder addresses of MCP are not sent to the login page: they ask for a token themselves", async ({
+    request,
+  }) => {
+    // What they do with a token is tested in mcp.spec.ts.
+    for (const role of ["reader", "writer"]) {
+      const response = await request.post(`/mcp/${crypto.randomUUID()}/${role}`, {
+        data: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "list_folders" } },
+        maxRedirects: 0,
+      });
 
-    expect(response.status()).toBe(401);
-    expect(response.headers()["www-authenticate"]).toMatch(/^Bearer\b/);
-    expect(await response.text()).not.toContain("handbook");
+      expect(response.status()).toBe(401);
+      expect(response.headers()["www-authenticate"]).toMatch(/^Bearer\b/);
+      expect(await response.text()).not.toContain("handbook");
+    }
+  });
+
+  test("/mcp and the other addresses below it are not sent to the login page: they answer 404 themselves", async ({
+    request,
+  }) => {
+    for (const address of ["/mcp", "/mcp/more", `/mcp/${crypto.randomUUID()}/owner`]) {
+      for (const response of [
+        await request.post(address, { data: {}, maxRedirects: 0 }),
+        await request.get(address, { maxRedirects: 0 }),
+      ]) {
+        expect(response.status(), address).toBe(404);
+        expect(response.headers().location).toBeUndefined();
+      }
+    }
   });
 
   // What they answer is tested in oauth.spec.ts.
   for (const [what, method, address, status] of [
     ["the metadata of the authorization server", "get", "/.well-known/oauth-authorization-server", 200],
-    ["the metadata of the protected resource", "get", "/.well-known/oauth-protected-resource", 200],
-    ["the metadata of the protected resource /mcp", "get", "/.well-known/oauth-protected-resource/mcp", 200],
+    [
+      "the metadata of the protected resource at a folder address",
+      "get",
+      "/.well-known/oauth-protected-resource/mcp/0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10/reader",
+      200,
+    ],
+    [
+      "the metadata of the protected resource /mcp, which does not exist",
+      "get",
+      "/.well-known/oauth-protected-resource/mcp",
+      404,
+    ],
     ["the registration of an OAuth client", "post", "/oauth/register", 400],
     ["the token endpoint", "post", "/oauth/token", 400],
   ] as const) {

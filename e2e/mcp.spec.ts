@@ -4,6 +4,7 @@ import { KNOWN_ADMIN, KNOWN_USER } from "../prisma/known-users";
 import { NO_STORAGE_STATE } from "./support/auth";
 import {
   createFolder,
+  createFolderRole,
   createGrant,
   createPage,
   createTab,
@@ -20,25 +21,32 @@ test.use({ storageState: NO_STORAGE_STATE });
 const PUBLIC_URL = "http://localhost:3100";
 
 /**
- * The access token of a grant of the known user, the bearer token of every request unless a test gives another. Its
- * folder "projects" has no role of the user.
+ * The folder "projects", of which the known user is Owner, the path of its Reader address, and the access token of a
+ * grant of the known user there: the address and the bearer token of every request unless a test gives others.
  */
+let projects: Awaited<ReturnType<typeof createFolder>>;
+let address: string;
 let secret: string;
 
 test.beforeEach(async () => {
   await resetTestDatabase();
   const editor = await getTestDb().user.findUniqueOrThrow({ where: { id: KNOWN_USER.id } });
-  const projects = await createFolder({ name: "projects", roles: [], editor });
+  projects = await createFolder({ name: "projects", editor });
+  address = `/mcp/${projects.id}/reader`;
   ({ accessToken: secret } = await createGrant({ owner: KNOWN_USER, folder: projects }));
 });
 
-/** Sends a JSON-RPC message to `/mcp` with the given bearer token, as a client of the protocol of 2025 does. */
+/**
+ * Sends a JSON-RPC message to an MCP address, by default the Reader address of "projects", with the given bearer
+ * token, as a client of the protocol of 2025 does.
+ */
 function send(
   request: APIRequestContext,
   message: Record<string, unknown>,
   token: string | null = secret,
+  to: string = address,
 ): Promise<APIResponse> {
-  return request.post("/mcp", {
+  return request.post(to, {
     headers: {
       accept: "application/json, text/event-stream",
       ...(token === null ? {} : { authorization: `Bearer ${token}` }),
@@ -94,12 +102,19 @@ for (const [what, token] of [
   });
 }
 
-test("with an expired grant, an expired access token and that of a user with the first password /mcp answers 401", async ({
+test("with an expired grant, an expired access token and that of a user with the first password a folder address answers 401", async ({
   request,
 }) => {
-  const expired = await createGrant({ owner: KNOWN_USER, expiresAt: new Date(Date.now() - 1000) });
-  const expiredAccess = await createGrant({ owner: KNOWN_USER, accessTokenExpiresAt: new Date(Date.now() - 1000) });
-  const newcomer = await createGrant({ owner: await createUser({ name: "newcomer" }) });
+  const folder = projects;
+  const expired = await createGrant({ owner: KNOWN_USER, folder, expiresAt: new Date(Date.now() - 1000) });
+  const expiredAccess = await createGrant({
+    owner: KNOWN_USER,
+    folder,
+    accessTokenExpiresAt: new Date(Date.now() - 1000),
+  });
+  const newcomerUser = await createUser({ name: "newcomer" });
+  await createFolderRole({ folder, user: newcomerUser, role: "reader" });
+  const newcomer = await createGrant({ owner: newcomerUser, folder });
 
   for (const token of [expired.accessToken, expiredAccess.accessToken, newcomer.accessToken]) {
     const response = await send(request, { method: "tools/list" }, token);
@@ -112,7 +127,7 @@ test("with an expired grant, an expired access token and that of a user with the
 test("the access token of an admin gets 401 with invalid_token and reaches no tool", async ({ request }) => {
   await createFolder({ name: "handbook" });
   // Admins have no grants; one inserted directly stands for a grant that should not exist.
-  const { accessToken: adminToken } = await createGrant({ owner: KNOWN_ADMIN });
+  const { accessToken: adminToken } = await createGrant({ owner: KNOWN_ADMIN, folder: projects });
 
   for (const message of [
     { method: "tools/list" },
@@ -148,10 +163,10 @@ test("a bearer token reaches no task of an admin: creating a user leads to the l
 });
 
 for (const method of ["get", "delete"] as const) {
-  test(`${method.toUpperCase()} /mcp answers 405, with and without a token`, async ({ request }) => {
+  test(`${method.toUpperCase()} at a folder address answers 405, with and without a token`, async ({ request }) => {
     const headerSets: Record<string, string>[] = [{}, { authorization: `Bearer ${secret}` }];
     for (const headers of headerSets) {
-      const response = await request[method]("/mcp", { headers, maxRedirects: 0 });
+      const response = await request[method](address, { headers, maxRedirects: 0 });
 
       expect(response.status()).toBe(405);
       expect(response.headers().allow).toBe("POST");
@@ -160,12 +175,100 @@ for (const method of ["get", "delete"] as const) {
 }
 
 test("a request from a page of another site is refused with 403", async ({ request }) => {
-  const response = await request.post("/mcp", {
+  const response = await request.post(address, {
     headers: { authorization: `Bearer ${secret}`, origin: "https://evil.example" },
     data: { jsonrpc: "2.0", id: 1, method: "tools/list" },
   });
 
   expect(response.status()).toBe(403);
+});
+
+test("/mcp answers 404, also with a valid token; a connected app works at its folder address", async ({ request }) => {
+  const plain = await send(request, { method: "tools/list" }, secret, "/mcp");
+
+  expect(plain.status()).toBe(404);
+  expect((await send(request, { method: "tools/list" })).status()).toBe(200);
+});
+
+test("addresses that are no folder addresses answer 404; a folder address without a token answers 401, whether the folder exists or not", async ({
+  request,
+}) => {
+  for (const to of [`/mcp/${projects.id}/owner`, `/mcp/${projects.id}/manager`, "/mcp/abc/reader"]) {
+    expect((await send(request, { method: "tools/list" }, secret, to)).status(), to).toBe(404);
+  }
+
+  const missing = await send(request, { method: "tools/list" }, null, `/mcp/${crypto.randomUUID()}/reader`);
+  const existing = await send(request, { method: "tools/list" }, null);
+  for (const response of [missing, existing]) {
+    expect(response.status()).toBe(401);
+    expect(response.headers()["www-authenticate"]).toMatch(/^Bearer resource_metadata="[^"]+\/reader"$/);
+    expect(await response.json()).toEqual({ error: "unauthorized" });
+  }
+});
+
+test("the access token of a connection to /mcp/<A>/reader is refused at /mcp/<A>/writer and at /mcp/<B>/reader", async ({
+  request,
+}) => {
+  const notes = await createFolder({ name: "notes" });
+
+  for (const to of [`/mcp/${projects.id}/writer`, `/mcp/${notes.id}/reader`]) {
+    const response = await send(request, { method: "tools/list" }, secret, to);
+
+    expect(response.status(), to).toBe(401);
+    expect(response.headers()["www-authenticate"]).toMatch(/^Bearer error="invalid_token"/);
+  }
+});
+
+test("connections to /mcp/<A>/writer, /mcp/<A>/reader and /mcp/<B>/writer work side by side", async ({ request }) => {
+  const notes = await createFolder({ name: "notes" });
+  const { client, accessToken: aWriter } = await createGrant({ owner: KNOWN_USER, folder: projects, role: "writer" });
+  const { accessToken: aReader } = await createGrant({ owner: KNOWN_USER, folder: projects, client });
+  const { accessToken: bWriter } = await createGrant({ owner: KNOWN_USER, folder: notes, role: "writer", client });
+
+  for (const [to, token] of [
+    [`/mcp/${projects.id}/writer`, aWriter],
+    [`/mcp/${projects.id}/reader`, aReader],
+    [`/mcp/${notes.id}/writer`, bWriter],
+  ] as const) {
+    expect((await send(request, { method: "tools/list" }, token, to)).status(), to).toBe(200);
+  }
+});
+
+test("after an Owner lowers a Writer to Reader the Writer connection answers 403 and runs no tool, the Reader connection works, and raising the role again restores it", async ({
+  request,
+}) => {
+  const bob = await createUser({ name: "bob", mustChangePassword: false });
+  await createFolderRole({ folder: projects, user: bob, role: "writer" });
+  await createPage({ folder: projects, name: "plan", content: "# Plan\n\nSecret text" });
+  const writer = await createGrant({ owner: bob, folder: projects, role: "writer" });
+  const reader = await createGrant({ owner: bob, folder: projects, role: "reader" });
+  const where = { folderId_userId: { folderId: projects.id, userId: bob.id } };
+  const call = { method: "tools/call", params: { name: "list_folders", arguments: {} } };
+
+  await getTestDb().folderRole.update({ where, data: { role: "reader" } });
+
+  const refused = await send(request, call, writer.accessToken, `/mcp/${projects.id}/writer`);
+  expect(refused.status()).toBe(403);
+  expect(refused.headers()["www-authenticate"]).toBeUndefined();
+  const body = await refused.text();
+  expect(body).not.toContain("insufficient_scope");
+  expect(body).not.toContain("projects");
+  expect(JSON.parse(body)).toEqual({
+    error: "role_too_low",
+    error_description: "Your role on the folder does not allow this address.",
+  });
+  expect((await send(request, call, reader.accessToken, `/mcp/${projects.id}/reader`)).status()).toBe(200);
+
+  await getTestDb().folderRole.update({ where, data: { role: "writer" } });
+
+  expect((await send(request, call, writer.accessToken, `/mcp/${projects.id}/writer`)).status()).toBe(200);
+  expect(await getTestDb().oAuthGrant.count({ where: { userId: bob.id } })).toBe(2);
+});
+
+test("after the folder is renamed the connection still works", async ({ request }) => {
+  await getTestDb().folder.update({ where: { id: projects.id }, data: { name: "renamed" } });
+
+  expect((await send(request, { method: "tools/list" })).status()).toBe(200);
 });
 
 test("initialize answers as JSON with the instructions and without a session", async ({ request }) => {
@@ -187,7 +290,7 @@ test("initialize answers as JSON with the instructions and without a session", a
 });
 
 test("a request of the current protocol is answered as JSON as well", async ({ request }) => {
-  const response = await request.post("/mcp", {
+  const response = await request.post(address, {
     headers: {
       accept: "application/json, text/event-stream",
       authorization: `Bearer ${secret}`,
@@ -307,7 +410,7 @@ test("a grant lists and reads a folder on which its user has no role, unlike the
   expect(listed.structuredContent).toMatchObject({ folder: { name: "hidden" }, pages: [{ name: "secret" }] });
   expect(read.isError).toBeUndefined();
   expect(read.structuredContent).toMatchObject({ content: "# Secret\n\nOnly for bob." });
-  expect(await getTestDb().folderRole.count({ where: { userId: KNOWN_USER.id } })).toBe(0);
+  expect(await getTestDb().folderRole.count({ where: { userId: KNOWN_USER.id, folderId: hidden.id } })).toBe(0);
 });
 
 test("list_folder reports a folder that does not exist as a tool error, not as a protocol error", async ({
@@ -377,7 +480,7 @@ test("read_page does not find a deleted page, a page of another tab or a malform
 });
 
 test("a tool call marks the grant as used", async ({ request }) => {
-  const { grant, accessToken: fresh } = await createGrant({ owner: KNOWN_USER });
+  const { grant, accessToken: fresh } = await createGrant({ owner: KNOWN_USER, folder: projects });
 
   expect((await getTestDb().oAuthGrant.findUniqueOrThrow({ where: { id: grant.id } })).lastUsedAt).toBeNull();
   const response = await send(request, { method: "tools/list" }, fresh);
@@ -387,7 +490,7 @@ test("a tool call marks the grant as used", async ({ request }) => {
 });
 
 test("the access token of a revoked grant stops working at once", async ({ request }) => {
-  const { grant, accessToken: revoked } = await createGrant({ owner: KNOWN_USER });
+  const { grant, accessToken: revoked } = await createGrant({ owner: KNOWN_USER, folder: projects });
   expect((await send(request, { method: "tools/list" }, revoked)).status()).toBe(200);
 
   await getTestDb().oAuthGrant.delete({ where: { id: grant.id } });

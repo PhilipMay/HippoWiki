@@ -18,6 +18,7 @@ import {
   OAUTH_ERRORS,
   parseClientRowId,
   parseMetadataDocument,
+  parseMcpPath,
   parseMcpResource,
   parseMetadataUrl,
   parseRedirectUri,
@@ -272,6 +273,29 @@ describe("PKCE", () => {
     ["an empty text", ""],
   ])("refuses %s as a verifier", (_case, value) => {
     expect(isCodeVerifier(value)).toBe(false);
+  });
+});
+
+describe("parseMcpPath", () => {
+  const ID = "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10";
+
+  it("gives the folder id and the role of the segments of a folder address", () => {
+    expect(parseMcpPath([ID, "reader"])).toEqual({ folderId: ID, role: "reader" });
+    expect(parseMcpPath([ID, "writer"])).toEqual({ folderId: ID, role: "writer" });
+  });
+
+  it.each([
+    ["no segments", undefined],
+    ["an empty list", []],
+    ["a folder alone", [ID]],
+    ["the role Owner", [ID, "owner"]],
+    ["the role Manager", [ID, "manager"]],
+    ["a part that is no UUID", ["abc", "reader"]],
+    ["a UUID in upper case", [ID.toUpperCase(), "reader"]],
+    ["a further segment", [ID, "reader", "more"]],
+    ["an empty role", [ID, ""]],
+  ])("refuses %s", (_case, segments) => {
+    expect(parseMcpPath(segments)).toBeNull();
   });
 });
 

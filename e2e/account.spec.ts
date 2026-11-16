@@ -123,7 +123,7 @@ test("an app connected through OAuth is listed, and a use through /mcp shows as 
   expect(html).not.toContain(tokens.refresh_token);
   expect(html).not.toContain("hwr_");
 
-  expect(await listFoldersStatus(request, tokens.access_token)).toBe(200);
+  expect(await listFoldersStatus(request, tokens.access_token, reader)).toBe(200);
   await page.reload();
   await expect(appRows(page).nth(0)).not.toContainText("Last used never");
   expect(errors).toEqual([]);
@@ -161,7 +161,7 @@ test("revoking asks first, then removes the app and ends its access token and it
   const tokens = await connect(page, request, clientId, reader);
   const { grant: other } = await createGrant({ owner: KNOWN_USER, createdAt: new Date(Date.now() - DAY_MS) });
   const grant = await getTestDb().oAuthGrant.findFirstOrThrow({ where: { clientId: { not: other.clientId } } });
-  expect(await listFoldersStatus(request, tokens.access_token)).toBe(200);
+  expect(await listFoldersStatus(request, tokens.access_token, reader)).toBe(200);
   await page.goto("/account");
 
   await page.getByRole("link", { name: "Revoke Example connector" }).click();
@@ -172,7 +172,7 @@ test("revoking asks first, then removes the app and ends its access token and it
   await expect(dialog).toContainText("has to be connected again");
   await expect(dialog.getByText(/token/i)).toHaveCount(0);
   // Nothing happens before the user confirms.
-  expect(await listFoldersStatus(request, tokens.access_token)).toBe(200);
+  expect(await listFoldersStatus(request, tokens.access_token, reader)).toBe(200);
 
   await dialog.getByRole("button", { name: "Revoke" }).click();
 
@@ -181,13 +181,13 @@ test("revoking asks first, then removes the app and ends its access token and it
   await expect(appRows(page)).toHaveCount(1);
   await expect(page.getByText("Example connector")).toHaveCount(0);
   expect(await getTestDb().oAuthGrant.findMany({ select: { id: true } })).toEqual([{ id: other.id }]);
-  expect(await listFoldersStatus(request, tokens.access_token)).toBe(401);
+  expect(await listFoldersStatus(request, tokens.access_token, reader)).toBe(401);
   const refreshed = await refresh(request, clientId, tokens.refresh_token);
   expect(refreshed.status()).toBe(400);
   expect(await refreshed.json()).toMatchObject({ error: "invalid_grant" });
   // The app can be connected again.
   const again = await connect(page, request, clientId, reader);
-  expect(await listFoldersStatus(request, again.access_token)).toBe(200);
+  expect(await listFoldersStatus(request, again.access_token, reader)).toBe(200);
   expect(errors).toEqual([]);
 });
 
@@ -274,7 +274,7 @@ test("a user sees only their own apps, also when another user connects one", asy
   await expect(appRows(page).nth(0)).toContainText("Alice's connector");
   await expect(page.getByText("Bob's connector")).toHaveCount(0);
   await expectNotFound(page, `/account?action=revoke&app=${bobsGrant.id}`);
-  expect(await listFoldersStatus(request, tokens.access_token)).toBe(200);
+  expect(await listFoldersStatus(request, tokens.access_token, reader)).toBe(200);
 });
 
 test.describe("an admin", () => {

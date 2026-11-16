@@ -15,7 +15,6 @@ import {
   landingPath,
   loginPath,
   mcpFolderPath,
-  mcpPath,
   oauthAuthorizePath,
   oauthRegisterPath,
   oauthTokenPath,
@@ -92,10 +91,6 @@ describe("paths", () => {
     expect(deletedPagePath("handbook", id, "restore")).toBe(`/deleted-pages/handbook/${id}?action=restore`);
   });
 
-  it("builds the address of the MCP endpoint", () => {
-    expect(mcpPath()).toBe("/mcp");
-  });
-
   it("builds the MCP address of a folder for a role", () => {
     const id = "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10";
     expect(mcpFolderPath(id, "reader")).toBe(`/mcp/${id}/reader`);
@@ -107,7 +102,8 @@ describe("paths", () => {
     expect(oauthTokenPath()).toBe("/oauth/token");
     expect(oauthRegisterPath()).toBe("/oauth/register");
     expect(authorizationServerMetadataPath()).toBe("/.well-known/oauth-authorization-server");
-    expect(protectedResourceMetadataPath()).toBe("/.well-known/oauth-protected-resource/mcp");
+    const id = "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10";
+    expect(protectedResourceMetadataPath(id, "writer")).toBe(`/.well-known/oauth-protected-resource/mcp/${id}/writer`);
   });
 
   it("builds the address of the own account", () => {

@@ -5,7 +5,7 @@ user. A client, such as Claude Code or the connectors of claude.ai and ChatGPT, 
 `oauth.md`) and sends the access token of its grant. The server only reads.
 
 Code: `src/features/mcp/` (`tools.ts` with the tools, `http.ts` with the adapter of the route), the route
-`src/app/mcp/route.ts` and the exception for it in `src/proxy.ts`. The protocol is spoken by the MCP SDK
+`src/app/mcp/[[...path]]/route.ts` and the exception for it in `src/proxy.ts`. The protocol is spoken by the MCP SDK
 (`@modelcontextprotocol/server`, see `tech.md`).
 
 Tests: `e2e/mcp.spec.ts`, `e2e/oauth.spec.ts` for the access tokens of OAuth, and the unit tests next to the code,

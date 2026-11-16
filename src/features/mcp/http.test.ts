@@ -18,10 +18,15 @@ vi.mock("@/lib/env", () => ({ getServerEnv: mocks.getServerEnv }));
 vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, error: mocks.error } }));
 
 const ACTOR = { id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002", name: "alice", type: "user" };
+const FOLDER_ID = "3a5c7e90-1b2d-4f6a-8c0e-2d4f6a8c0e11";
+/** The segments of the path of the MCP address of the tests after `/mcp`: the Reader address of a folder. */
+const PATH = [FOLDER_ID, "reader"];
+const CONNECTION = { grantId: "0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01", folderId: FOLDER_ID, role: "reader" };
+const CALLER = { actor: ACTOR, connection: CONNECTION };
 const TOKEN = `hwa_${"A".repeat(43)}`;
 const PUBLIC_URL = "https://wiki.example.com";
-const RESOURCE_METADATA = `resource_metadata="${PUBLIC_URL}/.well-known/oauth-protected-resource/mcp"`;
-const URL_OF_MCP = "http://localhost:3000/mcp";
+const RESOURCE_METADATA = `resource_metadata="${PUBLIC_URL}/.well-known/oauth-protected-resource/mcp/${FOLDER_ID}/reader"`;
+const URL_OF_MCP = `http://localhost:3000/mcp/${FOLDER_ID}/reader`;
 
 /** Sets the public URL that the adapter reads from the server environment. */
 function setPublicUrl(publicUrl: string | undefined): void {
@@ -64,7 +69,7 @@ function modernHeaders(method: string, name?: string): Record<string, string> {
 beforeEach(() => {
   vi.resetAllMocks();
   setPublicUrl(PUBLIC_URL);
-  mocks.authenticateAccessToken.mockResolvedValue({ ok: true, value: ACTOR });
+  mocks.authenticateAccessToken.mockResolvedValue({ ok: true, value: CALLER });
 });
 
 describe("without a public URL", () => {
@@ -85,6 +90,7 @@ describe("without a public URL", () => {
         headers,
         ...(method === "POST" ? { body: JSON.stringify(TOOLS_LIST) } : {}),
       }),
+      PATH,
     );
 
     expect(response.status).toBe(404);
@@ -96,10 +102,47 @@ describe("without a public URL", () => {
   });
 });
 
+describe("the address", () => {
+  it.each([
+    ["/mcp", undefined],
+    ["/mcp with an empty path", []],
+    ["the role Owner", [FOLDER_ID, "owner"]],
+    ["the role Manager", [FOLDER_ID, "manager"]],
+    ["a part that is no UUID", ["abc", "reader"]],
+    ["a UUID in upper case", [FOLDER_ID.toUpperCase(), "reader"]],
+    ["a folder without a role", [FOLDER_ID]],
+    ["a further segment", [FOLDER_ID, "reader", "more"]],
+  ])("answers %s with 404, before the method, the origin and the token", async (_case, path) => {
+    for (const request of [
+      post(TOOLS_LIST),
+      new Request(URL_OF_MCP, { method: "GET" }),
+      post(TOOLS_LIST, { origin: "https://evil.example" }),
+    ]) {
+      const response = await handleMcpRequest(request, path);
+
+      expect(response.status).toBe(404);
+      await expect(response.json()).resolves.toEqual({ error: "not_found" });
+    }
+    expect(mocks.authenticateAccessToken).not.toHaveBeenCalled();
+  });
+
+  it("answers the Writer address like the Reader address, and names it in the 401", async () => {
+    mocks.authenticateAccessToken.mockResolvedValue({ ok: false, error: { code: "missing-token" } });
+
+    const response = await handleMcpRequest(post(TOOLS_LIST), [FOLDER_ID, "writer"]);
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("www-authenticate")).toBe(
+      `Bearer resource_metadata="${PUBLIC_URL}/.well-known/oauth-protected-resource/mcp/${FOLDER_ID}/writer"`,
+    );
+  });
+});
+
 describe("the method", () => {
   it.each(["GET", "DELETE", "PUT", "HEAD"])("answers %s with 405 and does not look at the token", async (method) => {
     const response = await handleMcpRequest(
       new Request(URL_OF_MCP, { method, headers: { authorization: `Bearer ${TOKEN}`, accept: "text/event-stream" } }),
+      PATH,
     );
 
     expect(response.status).toBe(405);
@@ -111,13 +154,13 @@ describe("the method", () => {
 
 describe("the origin", () => {
   it("lets a request without an Origin header pass, as MCP clients send it", async () => {
-    const response = await handleMcpRequest(post(TOOLS_LIST));
+    const response = await handleMcpRequest(post(TOOLS_LIST), PATH);
 
     expect(response.status).toBe(200);
   });
 
   it("lets a request from exactly the public URL pass", async () => {
-    const response = await handleMcpRequest(post(TOOLS_LIST, { origin: PUBLIC_URL }));
+    const response = await handleMcpRequest(post(TOOLS_LIST, { origin: PUBLIC_URL }), PATH);
 
     expect(response.status).toBe(200);
   });
@@ -131,7 +174,7 @@ describe("the origin", () => {
     ["an opaque origin", "null"],
     ["something that is not an origin", "not an origin"],
   ])("refuses a request from %s with 403 before the token is checked", async (_case, origin) => {
-    const response = await handleMcpRequest(post(TOOLS_LIST, { origin }));
+    const response = await handleMcpRequest(post(TOOLS_LIST, { origin }), PATH);
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({ error: "forbidden_origin" });
@@ -141,12 +184,34 @@ describe("the origin", () => {
 });
 
 describe("the token", () => {
-  it("checks the headers of the request for an access token, without a scope", async () => {
+  it("checks the headers of the request for an access token for the address, without a scope", async () => {
     const request = post(TOOLS_LIST);
 
-    await handleMcpRequest(request);
+    await handleMcpRequest(request, PATH);
 
-    expect(mocks.authenticateAccessToken).toHaveBeenCalledExactlyOnceWith(request.headers);
+    expect(mocks.authenticateAccessToken).toHaveBeenCalledExactlyOnceWith(request.headers, {
+      folderId: FOLDER_ID,
+      role: "reader",
+    });
+  });
+
+  it("answers role-too-low with 403 and a message, without insufficient_scope or a challenge, and runs no tool", async () => {
+    mocks.authenticateAccessToken.mockResolvedValue({ ok: false, error: { code: "role-too-low" } });
+
+    const response = await handleMcpRequest(
+      post({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "list_folders" } }),
+      PATH,
+    );
+
+    expect(response.status).toBe(403);
+    expect(response.headers.get("www-authenticate")).toBeNull();
+    const body = await response.json();
+    expect(body).toEqual({
+      error: "role_too_low",
+      error_description: "Your role on the folder does not allow this address.",
+    });
+    expect(JSON.stringify(body)).not.toContain("insufficient_scope");
+    expect(mocks.listFolders).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -159,6 +224,7 @@ describe("the token", () => {
 
       const response = await handleMcpRequest(
         post({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "list_folders" } }),
+        PATH,
       );
 
       expect(response.status).toBe(status);
@@ -171,7 +237,7 @@ describe("the token", () => {
   it("answers a token that could not be checked with 500 and no challenge", async () => {
     mocks.authenticateAccessToken.mockResolvedValue({ ok: false, error: { code: "failed" } });
 
-    const response = await handleMcpRequest(post(TOOLS_LIST));
+    const response = await handleMcpRequest(post(TOOLS_LIST), PATH);
 
     expect(response.status).toBe(500);
     expect(response.headers.get("www-authenticate")).toBeNull();
@@ -181,7 +247,7 @@ describe("the token", () => {
   it("never logs or returns the token", async () => {
     mocks.authenticateAccessToken.mockResolvedValue({ ok: false, error: { code: "invalid-token" } });
 
-    const response = await handleMcpRequest(post(TOOLS_LIST));
+    const response = await handleMcpRequest(post(TOOLS_LIST), PATH);
 
     const logged = JSON.stringify([mocks.info.mock.calls, mocks.warn.mock.calls, mocks.error.mock.calls]);
     expect(logged).not.toContain(TOKEN);
@@ -191,7 +257,7 @@ describe("the token", () => {
 
 describe("a client of the protocol of 2025", () => {
   it("gets the answer to initialize as JSON, without a session", async () => {
-    const response = await handleMcpRequest(post(INITIALIZE));
+    const response = await handleMcpRequest(post(INITIALIZE), PATH);
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("application/json");
@@ -212,9 +278,10 @@ describe("a client of the protocol of 2025", () => {
       },
     ]);
 
-    const list = await handleMcpRequest(post(TOOLS_LIST, { "mcp-protocol-version": "2025-06-18" }));
+    const list = await handleMcpRequest(post(TOOLS_LIST, { "mcp-protocol-version": "2025-06-18" }), PATH);
     const call = await handleMcpRequest(
       post({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "list_folders", arguments: {} } }),
+      PATH,
     );
 
     expect(list.headers.get("content-type")).toBe("application/json");
@@ -230,7 +297,7 @@ describe("a client of the protocol of 2025", () => {
   });
 
   it("gets 202 without a body for a notification", async () => {
-    const response = await handleMcpRequest(post({ jsonrpc: "2.0", method: "notifications/initialized" }));
+    const response = await handleMcpRequest(post({ jsonrpc: "2.0", method: "notifications/initialized" }), PATH);
 
     expect(response.status).toBe(202);
     expect(await response.text()).toBe("");
@@ -243,6 +310,7 @@ describe("a client of the current protocol", () => {
 
     const list = await handleMcpRequest(
       post({ ...TOOLS_LIST, params: { _meta: MODERN_META } }, modernHeaders("tools/list")),
+      PATH,
     );
     const call = await handleMcpRequest(
       post(
@@ -254,6 +322,7 @@ describe("a client of the current protocol", () => {
         },
         modernHeaders("tools/call", "list_folders"),
       ),
+      PATH,
     );
 
     expect(list.status).toBe(200);
@@ -281,10 +350,11 @@ describe("a client of the current protocol", () => {
           },
           modernHeaders("tools/call", "list_folders"),
         ),
+        PATH,
       );
 
     await call();
-    mocks.authenticateAccessToken.mockResolvedValue({ ok: true, value: other });
+    mocks.authenticateAccessToken.mockResolvedValue({ ok: true, value: { actor: other, connection: CONNECTION } });
     await call();
 
     expect(mocks.listFolders.mock.calls).toEqual([[{ ...ACTOR, channel: "mcp" }], [{ ...other, channel: "mcp" }]]);
@@ -296,6 +366,7 @@ describe("a client of the current protocol", () => {
         { jsonrpc: "2.0", id: 4, method: "subscriptions/listen", params: { _meta: MODERN_META, notifications: {} } },
         modernHeaders("subscriptions/listen"),
       ),
+      PATH,
     );
 
     expect(response.headers.get("content-type")).toBe("application/json");
@@ -305,7 +376,7 @@ describe("a client of the current protocol", () => {
 
 describe("a body that is not a message", () => {
   it("is answered with 400 as JSON", async () => {
-    const response = await handleMcpRequest(post("{not json"));
+    const response = await handleMcpRequest(post("{not json"), PATH);
 
     expect(response.status).toBe(400);
     expect(response.headers.get("content-type")).toContain("application/json");
