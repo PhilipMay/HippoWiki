@@ -159,7 +159,14 @@ export default async function PageView({ page, action, notice }: PageViewProps) 
         />
       )}
       {action === "delete" && (
-        <DeletePageDialog action={deletePage.bind(null, page.id)} pageLabel={`${page.name}.md`} closeHref={address} />
+        <DeletePageDialog
+          key={formKey}
+          action={deletePage.bind(null, page.id)}
+          pageLabel={`${page.name}.md`}
+          version={page.version}
+          changedMessage={message}
+          closeHref={address}
+        />
       )}
     </Stack>
   );

@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { KNOWN_USER } from "../prisma/known-users";
-import { ADMIN_STORAGE_STATE, becomeUser } from "./support/auth";
+import { ADMIN_STORAGE_STATE, becomeUser, logInElsewhere } from "./support/auth";
 import { collectErrors } from "./support/browser";
 import { createFolder, createPage, createTab, createUser, getTestDb, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
@@ -208,6 +208,38 @@ test("restoring a page that was restored in the meantime shows an error in the d
 
   await expect(dialog.getByRole("alert")).toHaveText("This page no longer exists.");
   await expect(dialog.getByLabel("Name")).toHaveValue("removed");
+});
+
+// R13: restoring is not checked against a change in the meantime; of two restores at once, the second finds the page
+// restored, as before.
+test("the second of two Managers who restore the same page at once gets an error in the dialog", async ({
+  page,
+  browser,
+}) => {
+  const bob = await createUser({ name: "bob", mustChangePassword: false });
+  const team = await createFolder({
+    name: "team",
+    roles: [
+      { user: { id: KNOWN_USER.id }, role: "manager" },
+      { user: bob, role: "manager" },
+    ],
+  });
+  const removed = await createPage({ folder: team, name: "removed", deletedAt: new Date("2026-11-01T10:00:00Z") });
+  const other = await logInElsewhere(browser, "bob");
+
+  await page.goto(`/deleted-pages/team/${removed.id}?action=restore`);
+  await other.page.goto(`/deleted-pages/team/${removed.id}?action=restore`);
+  const otherDialog = restoreDialog(other.page);
+  await otherDialog.getByRole("radio", { name: "Directly in the folder" }).check();
+  await otherDialog.getByRole("button", { name: "Save" }).click();
+  await expect(other.page).toHaveURL("/folders/team/removed.md");
+
+  const dialog = restoreDialog(page);
+  await dialog.getByRole("radio", { name: "Directly in the folder" }).check();
+  await dialog.getByRole("button", { name: "Save" }).click();
+
+  await expect(dialog.getByRole("alert")).toHaveText("This page no longer exists.");
+  await other.context.close();
 });
 
 test("the restored page shows the logged-in user who restored it", async ({ page }) => {

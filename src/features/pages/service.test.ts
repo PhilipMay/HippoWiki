@@ -819,22 +819,28 @@ describe("moveOrRenamePage", () => {
 });
 
 describe("deletePage", () => {
+  const VERSION = 4;
+  const VALID = { version: VERSION };
+  const STORED = { id: PAGE_ID, name: "stored-name", folder: { name: "stored-folder" }, tab: null };
+
   it("returns page-not-found for a malformed id", async () => {
-    await expect(deletePage(ACTOR, MALFORMED_ID)).resolves.toEqual(PAGE_NOT_FOUND);
+    await expect(deletePage(ACTOR, MALFORMED_ID, VALID)).resolves.toEqual(PAGE_NOT_FOUND);
     expectDatabaseUntouched();
   });
 
-  it("marks the page as deleted, forgets its tab and returns the place it was in", async () => {
+  it("marks the page as deleted, if it has the given version, forgets its tab and returns the place it was in", async () => {
     const place = { folder: { name: "stored-folder" }, tab: { name: "stored-tab" } };
     mocks.findFirst.mockResolvedValue(place);
     mocks.updateMany.mockResolvedValue({ count: 1 });
 
-    await expect(deletePage(ACTOR, PAGE_ID)).resolves.toEqual({ ok: true, value: place });
+    await expect(deletePage(ACTOR, PAGE_ID, VALID)).resolves.toEqual({ ok: true, value: place });
 
     expect(mocks.transaction).toHaveBeenCalledOnce();
-    expect(mocks.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: PAGE_ID, deletedAt: null } }));
+    expect(mocks.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: PAGE_ID, deletedAt: null, version: VERSION } }),
+    );
     expect(mocks.updateMany).toHaveBeenCalledWith({
-      where: { id: PAGE_ID, deletedAt: null },
+      where: { id: PAGE_ID, deletedAt: null, version: VERSION },
       data: { deletedAt: expect.any(Date), tabId: null, lastEditedById: ACTOR_ID, version: { increment: 1 } },
     });
     expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID }, "page deleted");
@@ -845,13 +851,14 @@ describe("deletePage", () => {
     mocks.findFirst.mockResolvedValue(place);
     mocks.updateMany.mockResolvedValue({ count: 1 });
 
-    await expect(deletePage(ACTOR, PAGE_ID)).resolves.toEqual({ ok: true, value: place });
+    await expect(deletePage(ACTOR, PAGE_ID, VALID)).resolves.toEqual({ ok: true, value: place });
   });
 
   it("returns page-not-found for a page that no longer exists or is already deleted", async () => {
     mocks.findFirst.mockResolvedValue(null);
+    mocks.findUnique.mockResolvedValue(null);
 
-    await expect(deletePage(ACTOR, PAGE_ID)).resolves.toEqual(PAGE_NOT_FOUND);
+    await expect(deletePage(ACTOR, PAGE_ID, VALID)).resolves.toEqual(PAGE_NOT_FOUND);
 
     expect(mocks.updateMany).not.toHaveBeenCalled();
     expect(mocks.warn).toHaveBeenCalledWith({ pageId: PAGE_ID }, "page to delete not found");
@@ -861,17 +868,67 @@ describe("deletePage", () => {
   it("returns page-not-found for a page that was deleted between reading and updating it", async () => {
     mocks.findFirst.mockResolvedValue({ folder: { name: "stored-folder" }, tab: null });
     mocks.updateMany.mockResolvedValue({ count: 0 });
+    mocks.findUnique.mockResolvedValue(null);
 
-    await expect(deletePage(ACTOR, PAGE_ID)).resolves.toEqual(PAGE_NOT_FOUND);
+    await expect(deletePage(ACTOR, PAGE_ID, VALID)).resolves.toEqual(PAGE_NOT_FOUND);
 
     expect(mocks.warn).toHaveBeenCalledWith({ pageId: PAGE_ID }, "page to delete not found");
     expect(mocks.info).not.toHaveBeenCalled();
   });
 
+  // The read and the update match neither a deleted page nor one with another version; the page as stored tells them
+  // apart.
+  it.each([
+    ["matches no page", () => mocks.findFirst.mockResolvedValue(null)],
+    [
+      "was changed between reading and updating it",
+      () => {
+        mocks.findFirst.mockResolvedValue({ folder: { name: "stored-folder" }, tab: null });
+        mocks.updateMany.mockResolvedValue({ count: 0 });
+      },
+    ],
+  ])(
+    "returns page-changed with the page as stored when the delete %s but the page is stored",
+    async (_name, arrange) => {
+      arrange();
+      mocks.findUnique.mockResolvedValue(STORED);
+
+      await expect(deletePage(ACTOR, PAGE_ID, VALID)).resolves.toEqual({
+        ok: false,
+        error: { code: "page-changed", page: STORED },
+      });
+
+      expect(mocks.warn).toHaveBeenCalledWith(
+        { pageId: PAGE_ID, version: VERSION },
+        "page to delete changed after the version the write is based on",
+      );
+      expect(mocks.info).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([null, 0, -1, 1.5])("deletes nothing and returns page-changed for the version %j", async (version) => {
+    mocks.findUnique.mockResolvedValue(STORED);
+
+    await expect(deletePage(ACTOR, PAGE_ID, { version })).resolves.toEqual({
+      ok: false,
+      error: { code: "page-changed", page: STORED },
+    });
+
+    expect(mocks.transaction).not.toHaveBeenCalled();
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("returns page-not-found for a missing version of a page that no longer exists", async () => {
+    mocks.findUnique.mockResolvedValue(null);
+
+    await expect(deletePage(ACTOR, PAGE_ID, { version: null })).resolves.toEqual(PAGE_NOT_FOUND);
+    expect(mocks.transaction).not.toHaveBeenCalled();
+  });
+
   it.each(otherErrors)("returns failed for %s", async (_name, err) => {
     mocks.transaction.mockRejectedValue(err);
 
-    await expect(deletePage(ACTOR, PAGE_ID)).resolves.toEqual(FAILED);
+    await expect(deletePage(ACTOR, PAGE_ID, VALID)).resolves.toEqual(FAILED);
 
     expect(mocks.error).toHaveBeenCalledWith({ err, pageId: PAGE_ID }, "failed to delete page");
     expect(mocks.info).not.toHaveBeenCalled();
@@ -1006,7 +1063,7 @@ const writes = [
     (actor: BrowserActor) => moveOrRenamePage(actor, PAGE_ID, { name: "new-name", tabId: TAB_ID, version: 1 }),
     mocks.updateMany,
   ],
-  ["deletePage", (actor: BrowserActor) => deletePage(actor, PAGE_ID), mocks.updateMany],
+  ["deletePage", (actor: BrowserActor) => deletePage(actor, PAGE_ID, { version: 1 }), mocks.updateMany],
   [
     "restorePage",
     (actor: BrowserActor) => restorePage(actor, PAGE_ID, { name: "new-name", tabId: TAB_ID }),
@@ -1090,9 +1147,9 @@ describe("an admin", () => {
       await createPage(ADMIN, MALFORMED_ID, { name: "", content: "", tabId: MALFORMED_ID }),
       await updatePageContent(ADMIN, MALFORMED_ID, { content: "", version: null }),
       await moveOrRenamePage(ADMIN, MALFORMED_ID, { name: "", tabId: MALFORMED_ID, version: null }),
-      await deletePage(ADMIN, MALFORMED_ID),
+      await deletePage(ADMIN, MALFORMED_ID, { version: 1 }),
       await restorePage(ADMIN, MALFORMED_ID, { name: "", tabId: MALFORMED_ID }),
-      await deletePage({ ...ADMIN, id: MALFORMED_ID }, PAGE_ID),
+      await deletePage({ ...ADMIN, id: MALFORMED_ID }, PAGE_ID, { version: 1 }),
     ];
 
     for (const result of results) expect(result).toEqual({ ok: false, error: { code: "not-allowed" } });
@@ -1179,7 +1236,7 @@ describe("the role of the actor", () => {
     ],
     [
       "deletePage",
-      () => deletePage(ACTOR, PAGE_ID),
+      () => deletePage(ACTOR, PAGE_ID, { version: 1 }),
       { pages: { some: { id: PAGE_ID } } },
       { pageId: PAGE_ID },
       "page not deleted: the actor has no role on the folder",
@@ -1239,7 +1296,13 @@ describe("the lowest role of each function", () => {
       { pageId: PAGE_ID },
       "page not moved or renamed",
     ],
-    ["deletePage", () => deletePage(ACTOR, PAGE_ID), "manager", { pageId: PAGE_ID }, "page not deleted"],
+    [
+      "deletePage",
+      () => deletePage(ACTOR, PAGE_ID, { version: 1 }),
+      "manager",
+      { pageId: PAGE_ID },
+      "page not deleted",
+    ],
     [
       "restorePage",
       () => restorePage(ACTOR, PAGE_ID, { name: "new-name", tabId: null }),

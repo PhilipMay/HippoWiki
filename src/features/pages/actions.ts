@@ -13,6 +13,7 @@ import { parseFolderId } from "@/features/folders/schema";
 import {
   parseNewPageFormData,
   parsePageContentFormData,
+  parsePageDeleteFormData,
   parsePageMoveOrRenameFormData,
   parsePageRestoreFormData,
   type PageDeleteFormState,
@@ -199,16 +200,22 @@ export async function moveOrRenamePage(
 /**
  * Deletes the page with the given id and redirects to the folder or tab it was in. The page can be restored from the
  * deleted pages of its folder. Returns the error to show in the dialog if the page no longer exists or is already
- * deleted, or it cannot be deleted. The form submits nothing; its previous state and data are ignored. Bind the id with
- * `deletePage.bind(null, id)`.
+ * deleted, or it cannot be deleted. If the page was changed after the submitted version, or the form submits none, the
+ * dialog is shown again at the page's address as stored, with the notice. The form submits only the version; its
+ * previous state is ignored. Bind the id with `deletePage.bind(null, id)`.
  */
-export async function deletePage(id: string): Promise<PageDeleteFormState> {
+export async function deletePage(
+  id: string,
+  _prevState: PageDeleteFormState,
+  formData: FormData,
+): Promise<PageDeleteFormState> {
   const user = await requireUser();
 
   const pageId = parsePageId(id);
   if (!pageId) return { message: PAGE_GONE_MESSAGE };
 
-  const result = await pageService.deletePage(inBrowser(user), pageId);
+  const { version } = parsePageDeleteFormData(formData);
+  const result = await pageService.deletePage(inBrowser(user), pageId, { version });
   if (!result.ok) {
     switch (result.error.code) {
       // An admin changes no content, and for an admin no content exists; nor does a folder without a role of the user.
@@ -216,6 +223,8 @@ export async function deletePage(id: string): Promise<PageDeleteFormState> {
         notFound();
       case "page-not-found":
         return { message: PAGE_GONE_MESSAGE };
+      case "page-changed":
+        showChanged(result.error.page, "delete");
       case "failed":
         return { message: DELETE_FAILED_MESSAGE };
     }

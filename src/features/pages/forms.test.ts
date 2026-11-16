@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   parseNewPageFormData,
   parsePageContentFormData,
+  parsePageDeleteFormData,
   parsePageMoveOrRenameFormData,
   parsePageRestoreFormData,
   PLACE_FIELD,
@@ -345,6 +346,24 @@ describe("parsePageMoveOrRenameFormData", () => {
       success: true,
       data: { name: "release-notes", tabId, version: null },
     });
+  });
+});
+
+describe("parsePageDeleteFormData", () => {
+  it("reads the version of the page and nothing else", () => {
+    expect(parsePageDeleteFormData(formData({ [VERSION_FIELD]: "9", name: "other", place: "" }))).toEqual({
+      version: 9,
+    });
+  });
+
+  // No version is no error of the form: the service refuses the delete, so that the dialog is shown again (R14).
+  it.each(["", "0", "-2", "1.5", "nine"])("gives no version for the version %j", (version) => {
+    expect(parsePageDeleteFormData(formData({ [VERSION_FIELD]: version }))).toEqual({ version: null });
+  });
+
+  it("gives no version for a missing version field or a file", () => {
+    expect(parsePageDeleteFormData(new FormData())).toEqual({ version: null });
+    expect(parsePageDeleteFormData(formData({ [VERSION_FIELD]: new Blob(["9"]) }))).toEqual({ version: null });
   });
 });
 

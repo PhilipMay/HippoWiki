@@ -343,29 +343,53 @@ describe("moveOrRenamePage", () => {
 describe("deletePage", () => {
   const id = crypto.randomUUID();
   const DELETE_FAILED = { message: "The page could not be deleted. Please try again." };
+  const VALID = { version: "6" };
 
   it("reports a malformed id as a missing page without calling the service", async () => {
-    await expect(deletePage(MALFORMED_ID)).resolves.toEqual(PAGE_GONE);
+    await expect(deletePage(MALFORMED_ID, {}, formData(VALID))).resolves.toEqual(PAGE_GONE);
     expectServiceNotCalled();
     expectNotRevalidatedOrRedirected();
   });
 
-  it("redirects to the tab the deleted page was in", async () => {
+  it("passes the version to the service and redirects to the tab the deleted page was in", async () => {
     mocks.deletePage.mockResolvedValue({
       ok: true,
       value: { folder: { name: "stored-folder" }, tab: { name: "stored-tab" } },
     });
 
-    await expect(deletePage(id)).rejects.toMatchObject({ path: "/folders/stored-folder/stored-tab" });
+    await expect(deletePage(id, {}, formData({ ...VALID, name: "other" }))).rejects.toMatchObject({
+      path: "/folders/stored-folder/stored-tab",
+    });
 
-    expect(mocks.deletePage).toHaveBeenCalledWith(BROWSER_USER, id);
+    expect(mocks.deletePage).toHaveBeenCalledWith(BROWSER_USER, id, { version: 6 });
     expectContentRevalidated();
   });
 
   it("redirects to the folder for a page placed directly in it", async () => {
     mocks.deletePage.mockResolvedValue({ ok: true, value: { folder: { name: "stored-folder" }, tab: null } });
 
-    await expect(deletePage(id)).rejects.toMatchObject({ path: "/folders/stored-folder" });
+    await expect(deletePage(id, {}, formData(VALID))).rejects.toMatchObject({ path: "/folders/stored-folder" });
+    expectContentRevalidated();
+  });
+
+  // The service refuses a delete without a version, so that the dialog shows the current page (R14).
+  it.each([
+    ["missing", {}],
+    ["malformed", { version: "six" }],
+  ])("passes a %s version on as null", async (_name, fields) => {
+    mocks.deletePage.mockResolvedValue({ ok: false, error: { code: "failed" } });
+
+    await deletePage(id, {}, formData(fields));
+
+    expect(mocks.deletePage).toHaveBeenCalledWith(BROWSER_USER, id, { version: null });
+  });
+
+  it("shows the dialog again at the stored address with the notice when the page was changed", async () => {
+    mocks.deletePage.mockResolvedValue({ ok: false, error: { code: "page-changed", page: STORED_IN_TAB } });
+
+    await expect(deletePage(id, {}, formData(VALID))).rejects.toMatchObject({
+      path: "/folders/stored-folder/stored-tab/stored-name.md?action=delete&notice=changed",
+    });
     expectContentRevalidated();
   });
 
@@ -375,7 +399,7 @@ describe("deletePage", () => {
   ])("shows the form state of %s", async (_code, result, state) => {
     mocks.deletePage.mockResolvedValue(result);
 
-    await expect(deletePage(id)).resolves.toEqual(state);
+    await expect(deletePage(id, {}, formData(VALID))).resolves.toEqual(state);
     expectNotRevalidatedOrRedirected();
   });
 });
@@ -462,7 +486,7 @@ const ACTIONS: [string, () => Promise<unknown>, Mock][] = [
     () => moveOrRenamePage(crypto.randomUUID(), {}, formData({ name: "new-name", place: "" })),
     mocks.moveOrRenamePage,
   ],
-  ["deletePage", () => deletePage(crypto.randomUUID()), mocks.deletePage],
+  ["deletePage", () => deletePage(crypto.randomUUID(), {}, formData({ version: "1" })), mocks.deletePage],
   [
     "restorePage",
     () => restorePage(crypto.randomUUID(), {}, formData({ name: "new-name", place: "" })),

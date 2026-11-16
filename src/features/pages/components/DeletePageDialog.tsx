@@ -13,7 +13,7 @@ import { useRouter } from "next/navigation";
 import { useActionState, useId } from "react";
 
 import Link from "@/components/Link";
-import type { PageDeleteFormAction } from "@/features/pages/forms";
+import { VERSION_FIELD, type PageDeleteFormAction } from "@/features/pages/forms";
 import { useHydrated } from "@/lib/hydration";
 
 type DeletePageDialogProps = {
@@ -21,6 +21,10 @@ type DeletePageDialogProps = {
   action: PageDeleteFormAction;
   /** The name of the page, as its address shows it (with `.md`). */
   pageLabel: string;
+  /** The version of the page the dialog was rendered with, which the delete is based on. */
+  version: number;
+  /** The message that the page was changed after the dialog was opened, after a refused delete. */
+  changedMessage?: string;
   /** The page address without the action, where closing the dialog leads. */
   closeHref: string;
 };
@@ -29,7 +33,13 @@ type DeletePageDialogProps = {
  * Dialog "Delete page" that names the page and says that it can be restored later from the folder's deleted pages. The
  * route renders it for `?action=delete`, so it is open from the start; closing it leads to the page address.
  */
-export default function DeletePageDialog({ action, pageLabel, closeHref }: DeletePageDialogProps) {
+export default function DeletePageDialog({
+  action,
+  pageLabel,
+  version,
+  changedMessage,
+  closeHref,
+}: DeletePageDialogProps) {
   const [state, formAction, pending] = useActionState(action, {});
   const router = useRouter();
   const titleId = useId();
@@ -57,7 +67,9 @@ export default function DeletePageDialog({ action, pageLabel, closeHref }: Delet
       <DialogTitle id={titleId}>Delete page</DialogTitle>
       <DialogContent>
         <Box component="form" id={formId} action={formAction}>
+          <input type="hidden" name={VERSION_FIELD} value={version} />
           <Stack spacing={3}>
+            {changedMessage && <Alert severity="warning">{changedMessage}</Alert>}
             {state.message && <Alert severity="error">{state.message}</Alert>}
             <DialogContentText id={descriptionId} sx={{ overflowWrap: "anywhere" }}>
               Delete the page {pageLabel}? You can restore it later from the deleted pages of its folder.

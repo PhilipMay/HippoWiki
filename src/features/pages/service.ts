@@ -125,7 +125,7 @@ export type CreatePageError =
 export type UpdatePageContentError = NotAllowed | PageNotFound | PageChanged | InvalidInput<PageFieldErrors> | Failed;
 export type MoveOrRenamePageError =
   NotAllowed | PageNotFound | PageChanged | TabNotFound | InvalidInput<NameFieldErrors> | NameTaken | Failed;
-export type DeletePageError = NotAllowed | PageNotFound | Failed;
+export type DeletePageError = NotAllowed | PageNotFound | PageChanged | Failed;
 export type RestorePageError =
   NotAllowed | PageNotFound | TabNotFound | InvalidInput<NameFieldErrors> | NameTaken | Failed;
 
@@ -558,9 +558,14 @@ export async function moveOrRenamePage(
  * Deletes the page with the given id and returns the place it was in. The page keeps its row and its folder, so it
  * can be restored; it gets the time of deletion and loses its tab, because its place inside the folder is forgotten.
  * The actor becomes its last editor: for a deleted page, the user who deleted it. A page that is already deleted
- * counts as missing.
+ * counts as missing. The delete is based on the given version of the page: if the page has another one, or no valid
+ * version is given, nothing is deleted and the result is `page-changed`.
  */
-export async function deletePage(actor: BrowserActor, id: string): Promise<Result<PagePlace, DeletePageError>> {
+export async function deletePage(
+  actor: BrowserActor,
+  id: string,
+  input: { version: number | null },
+): Promise<Result<PagePlace, DeletePageError>> {
   if (isAdmin(actor)) return notAllowed(actor, "page not deleted: the actor is an admin");
   const lastEditedById = editorIdOf(actor);
   if (!lastEditedById) return { ok: false, error: { code: "failed" } };
@@ -572,31 +577,33 @@ export async function deletePage(actor: BrowserActor, id: string): Promise<Resul
   const role = await roleOnFolderOfPage(actor, pageId);
   const refused = refusedByRole(actor, "page not deleted", role, "deletePage", { pageId });
   if (refused) return refused;
+  const version = parsePageVersion(input.version);
 
-  let place: PagePlace | null;
+  let place: PagePlace;
   try {
+    if (version === null) return await refusedWrite(pageId, input.version, "page to delete");
     // One transaction, so that the place read is the one the page had when it was deleted.
-    place = await getDb().$transaction(async (tx) => {
+    const deleted = await getDb().$transaction(async (tx) => {
+      // A deleted page, and one with another version than the given one, match neither the read nor the update.
+      const where = { id: pageId, deletedAt: null, version };
       const page = await tx.page.findFirst({
-        where: { id: pageId, deletedAt: null },
+        where,
         select: { folder: { select: { name: true } }, tab: { select: { name: true } } },
       });
       if (!page) return null;
-      // `updateMany` reports a page deleted in the meantime as a count of 0; it sets `updatedAt` as well.
+      // `updateMany` reports a page changed or deleted in the meantime as a count of 0; it sets `updatedAt` as well.
       const { count } = await tx.page.updateMany({
-        where: { id: pageId, deletedAt: null },
+        where,
         data: { deletedAt: new Date(), tabId: null, lastEditedById, version: { increment: 1 } },
       });
       return count === 0 ? null : page;
     });
+    if (deleted === null) return await refusedWrite(pageId, version, "page to delete");
+    place = deleted;
   } catch (err) {
     if (isForeignKeyViolation(err, LAST_EDITOR)) return unknownActor(err, actor);
     logger.error({ err, pageId }, "failed to delete page");
     return { ok: false, error: { code: "failed" } };
-  }
-  if (place === null) {
-    logger.warn({ pageId }, "page to delete not found");
-    return { ok: false, error: { code: "page-not-found" } };
   }
 
   logger.info({ pageId }, "page deleted");

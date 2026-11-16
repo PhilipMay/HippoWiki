@@ -141,6 +141,14 @@ export type PageDeleteFormState = {
 /** A Server Action behind the "Delete page" form; it returns the error to show, or redirects on success. */
 export type PageDeleteFormAction = (prevState: PageDeleteFormState, formData: FormData) => Promise<PageDeleteFormState>;
 
+/**
+ * Reads the version of the page from a submitted "Delete page" form, the only field it has: `null` if it is missing
+ * or malformed, which the service refuses like a delete based on an older state.
+ */
+export function parsePageDeleteFormData(formData: FormData): { version: number | null } {
+  return { version: parseVersion(formData) };
+}
+
 /** Shown at the place field of the "Restore page" form when no place is chosen. */
 export const CHOOSE_PLACE_MESSAGE = "Choose a place";
 
