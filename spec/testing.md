@@ -31,6 +31,11 @@ How the code is tested. Commands are listed in `README.md`.
   awaits `requireUser()` after `connection()` and before the service, and that it does not reach the service when
   `requireUser()` redirects. They mock the service of the feature, `next/server` and `@/features/auth/session`.
 - The form parsers get unit tests in `forms.test.ts`, the ids in `schema.test.ts`.
+- The Markdown parser gets unit tests in `src/features/pages/markdown.test.ts`, which also renders the page view
+  (`MarkdownContent`) with `renderToString()` of `react-dom/server`. Its inputs that are slow for other parsers, each
+  at the content limit, guard the cost of the parse and the page view: each must be parsed and rendered within 2 s, so
+  that an update of markdown-it or a change of the renderer cannot bring a slow parse back unnoticed. A new input that
+  turns out to be slow is added there.
 - `src/features/services.test.ts` checks that the services load without Next.js and React: it mocks `next/cache`,
   `next/headers`, `next/navigation`, `next/server` and `react` with factories that throw, then imports the services.
   An import of one of them, also an indirect one through `schema.ts` or `src/lib/`, fails the test. A new service is

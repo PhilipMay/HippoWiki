@@ -17,7 +17,8 @@ The specification lives in the `spec/` directory. This catalog should always be 
 - `spec/architecture.md`: code layout and conventions (layers and services, reads, writes, the adapters of callers
   other than the GUI, login and sessions, the public addresses, security headers, validation, addresses, database, UI)
 - `spec/testing.md`: the check of doc references, and unit, integration and end-to-end test conventions
-- `spec/pages.md`: the page feature as built (content and title, suggested name, routes, rendering, decisions, limits)
+- `spec/pages.md`: the page feature as built (content and title with the limits of length, nesting and table cells,
+  suggested name, routes, rendering with markdown-it, the cost of the Markdown parse, decisions, limits)
 - `spec/content-structure.md`: the content structure as built (folders, tabs and pages under `/folders`: overview,
   names, addresses, actions and views with the view "AI apps", routes, changing the structure, only users see content, the last editor,
   lists, decisions, limits)
@@ -52,9 +53,6 @@ The specification lives in the `spec/` directory. This catalog should always be 
   what each may do in the browser, admins never have a role, what a user sees and does, creating folders, the roles
   view, giving, changing and removing roles with the last Owner kept, the admin overview `/folder-roles`, the view "AI
   apps", MCP with the lower of the user's role and the role of the connection, decisions, limits)
-- `spec/markdown-parser-steps.md`: the step plan that moves the Markdown parse and the page view to markdown-it, with
-  limits on nesting and table cells at save, and fixes the findings on Markdown and on the content check in
-  `spec/review-report.md`; listed here while it exists
 - `spec/roadmap.md`: backlog of candidate features, grouped by theme, and things still to check
 - `spec/issue-report.md`: how to report issues found in code and document reviews
 - `spec/review-report.md`: the report of the security and code review (scope and method, standards and target level,
