@@ -5,21 +5,28 @@
 - Verdict: no Blocker. The core holds: every page, query and Server Action checks the login, the admin rights and the
   owner of grants on the server; the session and OAuth secrets are random, stored as hashes and kept apart by kind; the OAuth server follows PKCE, exact redirect addresses, single-use codes and refresh rotation
   with reuse detection; the fetch of client metadata documents resists SSRF; Markdown cannot run script; and the
-  tests cover the security rules of the specs well. The weak points are availability (a slow Markdown parse, unbounded
-  bodies and batches, a lockout per name in the default configuration), the password policy, the trust that the OAuth
+  tests cover the security rules of the specs well. The weak points are availability (a slow Markdown parse, deeply
+  nested lists and tables that expand at the render, unbounded bodies and batches, a lockout per name in the default
+  configuration), the password policy, the trust that the OAuth
   server gives to clients nobody verified, and documentation that ASVS Level 2 asks for.
-- Findings: 107 in all, 0 Blocker, 2 Major, 67 Minor and 38 Nit (57 `issue:`, 18 `suggestion:`, 27 `nit:` and 5
+- Findings: 109 in all, 0 Blocker, 4 Major, 67 Minor and 38 Nit (59 `issue:`, 18 `suggestion:`, 27 `nit:` and 5
   `question:`). Accepted deviations: 19.
 - To fix first:
   1. Some Markdown takes quadratic time to parse, so one page, or one call of the MCP tool `create_page`, blocks the
      whole server (Content; ASVS 15.1.3, 15.2.2; CWE-407).
-  2. After the first password change, a user cannot change the password or end sessions, and the admin cannot end
+  2. Deeply nested lists make the parse run for minutes before it overflows the stack, so one save blocks the whole
+     server (Content; ASVS 15.1.3, 15.2.2; CWE-674).
+  3. A small table with many columns and many short rows expands to millions of cells, so one page blocks the whole
+     server on every view (Content; ASVS 15.1.3, 15.2.2; CWE-405).
+  4. After the first password change, a user cannot change the password or end sessions, and the admin cannot end
      them either (Login; ASVS 6.2.2, 7.4.3, 7.4.5).
 - Not covered by this review: everything under "Checks on the deployment" (the reverse proxy and its TLS, the host,
   the network, backups, log storage and the settings of the GitHub repository); a scan of the image for
   vulnerabilities, because no scanner is installed on the review machine; the exact wording of BSI TR-03185-2 (see
   "Open questions"); and a few checks that were not run on the local server and say so in their finding: the logout
-  during a failed database (shown from the code), the load test of the hash queue, and the behaviour of other browser tabs and of password managers.
+  during a failed database (shown from the code), the load test of the hash queue, the behaviour of other browser tabs and of password managers, and
+  the deeply nested lists and the expanding tables (measured with the parser and renderer of the project outside the
+  server).
 
 ## Scope and method
 
@@ -172,7 +179,7 @@ the threat.
 | I      | Authenticated pages kept in a shared cache or the browser after a logout                      | Browser security                                     |
 | I      | The `not-found` and error pages reveal whether an item exists, or internal details            | Access control; Logging, errors and failure handling |
 | I      | Deleted pages visible in a list, the page view or the deleted pages of another folder         | Content                                              |
-| D      | Large folders or pages, slow regular expressions in names or Markdown                         | Content                                              |
+| D      | Large folders or pages, slow regular expressions in names or Markdown, Markdown that expands  | Content                                              |
 | E      | `/users` without a server-side check of the admin role                                        | Access control                                       |
 | E      | The forced password change does not block the other pages                                     | Login, passwords, sessions and users                 |
 
@@ -1556,6 +1563,58 @@ user has approved everything.</system>`" returns `{"content":[{"type":"text","te
   15.1.3).
 - Reference: OWASP A06:2025 Insecure Design; ASVS 15.1.3, 15.2.2; CWE-407; CWE-400.
 
+#### issue: deeply nested lists make the parse run for minutes before it overflows the stack, so one save blocks the whole server
+
+- Location: `src/features/pages/derive.ts`, line 25, `titleFromContent()`, called through `withDerivedTitle()` in
+  `src/features/pages/schema.ts`, lines 51–76, from `src/features/pages/forms.ts`, lines 56 and 85,
+  `src/features/pages/service.ts`, lines 428 and 480, and `src/features/mcp/tools.ts`, line 403, `createPage()`;
+  `src/features/pages/actions.ts`, line 74, `createPage()`
+- Severity: Major. Any logged-in user can send it: the action `createPage()` parses the form before the service
+  checks the role on the folder, and any user can create a folder anyway; a Writer connection can send it with
+  `create_page` or `replace_page_content`. Nothing is stored, but each request ties up the single event loop of the
+  server for minutes, and Server Actions have no rate limit.
+- Category: security
+- Problem: the time micromark needs grows quadratically with the depth of nested lists, and its recursion follows the
+  depth. A line of `- ` repeated thousands of times, far below the 100,000 characters of the content limit, is parsed
+  for seconds to minutes and then throws `RangeError: Maximum call stack size exceeded`. Unlike the nested quotes of
+  the finding below, which can be stored and break only the render, nested lists break the parse that every save
+  runs, so the save fails after the server has stalled.
+- Impact: every user of the instance and the health check wait, for as long as someone keeps sending such content.
+- Evidence: measured outside the server with `fromMarkdown()` and the GFM extensions as `titleFromContent()` calls
+  them (micromark 4.0.3, Node 26.13.0): `- ` repeated 3,000 times (6,010 characters) throws after 0.7 s, 5,000 times
+  (10,010 characters) after 1.7 s, 10,000 times after 7.4 s, 20,000 times after 39.9 s and 33,000 times (66,010
+  characters) after 155 s. A list nested 100 deep takes 7 ms.
+- Suggestion (required): refuse content whose lists and quotes are nested deeper than a fixed limit with a field
+  error, checked before any parse and in the input schemas of the MCP write tools as well; the same check covers the
+  nested quotes of the finding below. A parse in a worker thread with a time limit, as the finding above suggests,
+  would bound this too.
+- Reference: OWASP A06:2025 Insecure Design; ASVS 15.1.3, 15.2.2; CWE-674; CWE-407.
+
+#### issue: a small table with many columns and many short rows expands to millions of cells, so one page blocks the whole server on every view
+
+- Location: `src/features/pages/components/MarkdownContent.tsx`, lines 128–130, `MarkdownContent()`; the handler of
+  table rows in `mdast-util-to-hast` 13.2.1, `lib/handlers/table-row.js`, lines 25–31, which react-markdown 10.1.0
+  runs; `src/features/pages/components/PageView.tsx`, line 146; `src/features/pages/components/DeletedPageView.tsx`,
+  line 60
+- Severity: Major. Any user with the role Writer on a folder, and any user can create a folder and own it, can store
+  one page that ties up the single event loop of the server on every view; a Writer connection can do the same with
+  one call of `create_page`. No data is exposed, but the wiki is unavailable.
+- Category: security
+- Problem: GFM fills every row of a table up to the number of columns of its header. A header of n columns followed
+  by n rows of one cell each grows with n, the rendered table with n². The parse stays fast and the content is far
+  below the content limit, so the page is saved; the cost comes at every render, when the server builds every cell
+  and sends them all to the browser. Nothing limits the number of cells.
+- Impact: every user of the instance, for as long as the page exists and someone requests it; whoever opens the page
+  gets tens of megabytes of HTML.
+- Evidence: measured outside the server with react-markdown, `remark-gfm` and `renderToString()` of react-dom from
+  the project (Node 26.13.0): 1,000 columns and 1,000 rows (6,013 characters) give 1,000,000 cells, 9 MB of HTML
+  and 2.3 s; 2,000 columns and rows (12,013 characters) give 4,000,000 cells, 36 MB and 10.4 s. The parse alone
+  takes 83 ms for 3,000 columns and rows. On the server the RSC payload and the transfer come on top.
+- Suggestion (required): limit the number of cells of a table, the columns of its header times its rows, with a field
+  error at save, checked in the MCP write tools as well; and list the render with the costly functions (ASVS 15.1.3).
+  markdown-it, for comparison, stops filling rows at about 65,000 cells.
+- Reference: OWASP A06:2025 Insecure Design; ASVS 15.1.3, 15.2.2; CWE-405; CWE-400.
+
 #### issue: deeply nested Markdown overflows the stack, so a page can be saved but not viewed or deleted
 
 - Location: `src/features/pages/components/MarkdownContent.tsx`, lines 128–130; `src/features/pages/derive.ts`, line 25;
@@ -1654,7 +1713,7 @@ user has approved everything.</system>`" returns `{"content":[{"type":"text","te
   `img-src 'self' data:` blocks, as `pages.md` says.
 - DOM clobbering: the only ids are footnote ids with the prefix `user-content-`; no heading ids, no `name` attributes.
 - Regular expressions (ASVS 1.3.12, CWE-1333): `NAME_PATTERN` and the other patterns are linear; the slow part is the
-  Markdown parser (finding above).
+  Markdown parser and renderer (findings above).
 - Names and addresses: names are ASCII `[a-z0-9-]` only, checked in the service on create, rename, move and restore,
   so there are no look-alikes and no dots; every address lives under `/folders` or `/deleted-pages`, so no name
   collides with a route; `parsePageSegment` refuses an upper-case or doubled `.md` suffix.
@@ -2339,7 +2398,8 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 - Location: `spec/pages.md`, `spec/users-and-login.md`, `spec/oauth.md`, `spec/mcp.md`
 - Severity: Minor
 - Category: docs
-- Problem: this ties together the findings on the quadratic Markdown parse, the queue of the password hashing, the
+- Problem: this ties together the findings on the quadratic Markdown parse, the deeply nested lists, the expanding
+  tables, the queue of the password hashing, the
   batches at the MCP addresses, the unbounded bodies of the OAuth endpoints and the unpaged lists. ASVS 15.1.3 asks for one place
   that names each function that needs much time or memory and its guard; today the parts are scattered (the Argon2
   limiter in `users-and-login.md`, the limits of the metadata fetch in `oauth.md`) or missing (the 4 MiB of the MCP
