@@ -33,7 +33,9 @@ These choices hold for all steps; the wrap-up moves the ones that last into the 
 
 - The state of a page is an integer column `version` of `Page`, starting at 1 and counted up by every write of the
   page, in the same write that changes `updatedAt` and the last editor. Existing pages get 1. `updatedAt` is not used
-  as the state: two writes in the same millisecond would have the same one, and a version says what it is.
+  as the state: Prisma sets it from the clock of the app, which can jump back or differ between instances, and an
+  exact time is more fragile to send back through a form field or an MCP call and compare than an integer. Rejected
+  for the same reason: comparing `updatedAt`, which would have saved the migration.
 - The service writes `updatePageContent`, `moveOrRenamePage` and `deletePage` take the version the change is based on
   as part of their input, always. The service parses it itself (a schema `pageVersionSchema` in
   `src/features/pages/schema.ts`: an integer of at least 1); a missing or malformed version (the input type allows
