@@ -69,7 +69,8 @@ How the code is organised and which patterns new code follows. The technology st
     included, without asking the database. Database errors are thrown.
   - Writes return a `Result` from `src/lib/result.ts`: `{ ok: true, value }` with the item as stored, or
     `{ ok: false, error }` with a code. The codes of the content are `invalid-input` (with `fieldErrors`),
-    `name-taken`, `folder-not-found`, `tab-not-found`, `page-not-found` and `failed`; the users, auth and token
+    `name-taken`, `folder-not-found`, `tab-not-found`, `page-not-found`, `page-changed` (with the page as stored) and
+    `failed`; the users, auth and token
     services add codes such as `not-allowed`, `busy`, `invalid-credentials`, `wait`, `limit-reached` and
     `token-not-found` (see `src/features/users/service.ts`, `src/features/auth/service.ts` and
     `src/features/tokens/service.ts`). Each write declares the ones it can return in a type of its own, such as
@@ -77,6 +78,10 @@ How the code is organised and which patterns new code follows. The technology st
   - A write checks its actor first, then its ids, then its input, then writes.
   - Rows that may no longer exist are changed with `updateMany` and the returned count is checked, instead of catching
     "not found" errors.
+  - A write that is based on a version of its row, such as a content save, move, rename or delete of a page (see
+    `optimistic-locking.md`), puts the version into the condition of its `updateMany` and counts it up in the same
+    write. A count of 0 is told apart by reading the row again: missing gives `page-not-found`, otherwise
+    `page-changed`. A version that does not parse writes nothing and counts as an older one.
   - It logs the events of its writes: the stored item, a taken name, an item that was not found in the database and
     an unexpected error. A malformed id and invalid input are not logged.
   - It returns no addresses and no messages, except the field errors of the schemas in `invalid-input`. The stored
@@ -228,7 +233,10 @@ The feature is described in `users-and-login.md`. What every new route, query an
 - What an address opens is given in its query string: an action as `?action=<action>`, a view as `?view=<view>`.
   A route reads them with `parseAction` and `parseView`, passing only the actions and views it has, and calls
   `notFound()` for `"invalid"`. A route without views calls `parseView` without allowed views.
-- Two kinds of addresses carry other search parameters:
+- Three kinds of addresses carry other search parameters:
+  - A page address with an action may carry `?notice=changed` after it, which an action sets when it redirects after
+    a change refused as `page-changed` (see `optimistic-locking.md`). The page routes read it with
+    `parsePageNotice()` of `src/features/pages/components/PageView.tsx`, and `pagePath()` builds it.
   - The login and the forced password change take `?next=<path>`, the address to go to afterwards. It is accepted
     only as a path on this site, checked with `safeNextPath()` wherever it is read, and `loginPath(next)` and
     `changePasswordPath(next)` build it. Where a login or a password change leads on, `landingPath(next, user)` turns

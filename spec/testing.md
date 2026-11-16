@@ -171,6 +171,9 @@ How the code is tested. Commands are listed in `README.md`.
   - The Playwright UI does not run the setup project by itself (see `README.md`).
   - A test that needs a user with a first password creates one with `createUser()` and logs in through the login
     page, in a spec or a browser context without a saved state.
+  - A test in which a second user works at the same time logs that user in with `logInElsewhere(browser, name)` of
+    `e2e/support/auth.ts`, in a browser context of its own; the user is created with `createUser()` and
+    `mustChangePassword: false`, and the test closes the context.
 - Helpers in `e2e/support/`:
   - `test.ts` exports the `test` and `expect` that all specs use; a lint rule forbids importing them from
     `@playwright/test`. After `page.goto()` and `page.reload()` its `page` waits until the page has hydrated, i.e. until
@@ -203,7 +206,8 @@ How the code is tested. Commands are listed in `README.md`.
   - `createTab()` inserts a tab with a unique name into the folder given as `folder`; without one, it creates a folder
     for the tab.
   - `createPage()` inserts a page with a unique name: into the tab given as `tab`, or directly into the folder given
-    as `folder`; without either, it creates a folder for the page. Any field, e.g. `name` or `updatedAt`, can be set.
+    as `folder`; without either, it creates a folder for the page. Any field, e.g. `name`, `updatedAt` or `version`,
+    can be set.
     Like the forms, it derives the title from the content; the content defaults to `# <title>`, so
     `createPage({ title: "Older page" })` works. A title given together with content is stored as is, to set up a page
     that was stored before titles were derived. With `deletedAt` it creates a deleted page, which has no tab, so it

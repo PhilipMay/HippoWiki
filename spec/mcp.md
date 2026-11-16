@@ -100,7 +100,9 @@ What holds for all of them:
 
 ## Current limits
 
-- read only: no tools that create or change folders, tabs and pages, and no search tool (see `roadmap.md`)
+- read only: no tools that create or change folders, tabs and pages, and no search tool (see `roadmap.md`); the later
+  write tools state the version of every page they change, as the page service requires of every caller (see
+  `optimistic-locking.md`), and `read_page` does not show the version yet
 - no resources and no prompts of the protocol, only tools
 - no SSE, no sessions, no notifications and no subscriptions
 - no rate limits of MCP requests

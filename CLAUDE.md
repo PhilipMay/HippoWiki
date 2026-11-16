@@ -14,12 +14,6 @@ The specification lives in the `spec/` directory. This catalog should always be 
 - `spec/step-plan-workflow.md`: how features are planned in step files, when a step is done, what to do when it
   cannot be finished, how a feature is wrapped up, what a feature spec holds, and how a finding of the review report is
   fixed and deleted
-- `spec/optimistic-locking-requirements.md`: the approved requirements of optimistic locking for pages (refusing
-  a content save, move, rename or delete based on an older state of the page, what the user sees then, the rule for
-  callers other than the browser)
-- `spec/optimistic-locking-steps.md`: the step plan of optimistic locking for pages (the version of a page, refusing
-  outdated content saves, moves, renames and deletes in the page service, the editor and dialogs shown again with the
-  notice, wrap-up)
 - `spec/architecture.md`: code layout and conventions (layers and services, reads, writes, the adapters of callers
   other than the GUI, login and sessions, the public addresses, security headers, validation, addresses, database, UI)
 - `spec/testing.md`: the check of doc references, and unit, integration and end-to-end test conventions
@@ -48,6 +42,9 @@ The specification lives in the `spec/` directory. This catalog should always be 
   metadata document and by registration with its limit, the safe fetch of metadata documents, the authorization
   request and the consent page, codes, grants, refresh with rotation, the token endpoint, secrets, routes, decisions,
   limits)
+- `spec/optimistic-locking.md`: optimistic locking for pages as built (the version of a page and what counts it up,
+  which content saves, moves, renames and deletes are refused, what the browser shows then, the rule for callers
+  other than the browser, restoring unchecked, editors and dialogs open over a deployment, decisions, limits)
 - `spec/folder-roles.md`: folder roles as built (the roles Reader, Writer, Manager and Owner per user and folder and
   what each may do in the browser, admins never have a role, what a user sees and does, creating folders, the roles
   view, giving, changing and removing roles with the last Owner kept, the admin overview `/folder-roles`, MCP, existing

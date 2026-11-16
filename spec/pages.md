@@ -2,7 +2,7 @@
 
 The wiki page feature as built: a page is a Markdown document whose title comes from its first heading. Where pages
 live (folders, tabs, names and addresses) is described in `content-structure.md`, deleting and restoring pages in
-`page-deletion.md`.
+`page-deletion.md`, how changes of the same page at the same time are told apart in `optimistic-locking.md`.
 
 Code: `src/features/pages/` (the model is `Page` in `prisma/schema.prisma`, the length limits are in
 `src/features/pages/limits.ts`, the title and the suggested name in `src/features/pages/derive.ts`), routes under
@@ -40,7 +40,9 @@ given as `?action=<action>` (see `content-structure.md`).
   `content-structure.md`), "Edit" and "Move or rename" for a Writer and "Delete" for a Manager (see
   `folder-roles.md`), then the rendered content.
   The content's `#` heading is the page's only level-one heading; the browser tab shows the stored title.
-- `?action=edit`: the content in the editor; no title or name field. Saving shows the page.
+- `?action=edit`: the content in the editor; no title or name field. Saving shows the page. A save is refused when
+  the page was changed after the editor was opened; the editor then shows the page as stored (see
+  `optimistic-locking.md`).
 - `?action=move-or-rename`: see `content-structure.md`. `?action=delete`: see `page-deletion.md`.
 - `GET /api/health`: `{ "status": "ok" }` while the database is reachable, status 503 and a logged error otherwise.
 

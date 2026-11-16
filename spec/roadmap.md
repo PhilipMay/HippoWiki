@@ -43,8 +43,6 @@ listed first; there is no order across themes.
 ## History and Revisions
 
 - Page history: a revision with a full snapshot of the page on every save, listed per page (`pages.md`).
-- Optimistic locking with versions: refuse a save that is based on an older version of the page instead of
-  overwriting the newer change (`content-structure.md`).
 - Page revert: set a page back to an earlier revision.
 - Folder history: the changes in a folder (items created, renamed, moved, deleted and restored), each entry with
   the items it changed.
@@ -114,8 +112,9 @@ listed first; there is no order across themes.
 
 - Bearer token sessions: sessions for clients other than a browser, sent in the `Authorization` header
   (`users-and-login.md`).
-- MCP write tools: create and change folders, tabs and pages from AI assistants, after page history and optimistic
-  locking (see "History and Revisions"), with the scope `write` for OAuth grants (`mcp.md`, `oauth.md`).
+- MCP write tools: create and change folders, tabs and pages from AI assistants, after page history (see "History and
+  Revisions"), with the scope `write` for OAuth grants; they state the version of every page they change
+  (`mcp.md`, `oauth.md`, `optimistic-locking.md`).
 - MCP search tool: search the wiki from AI assistants, after full-text search (see "Search") (`mcp.md`).
 - CORS for other origins: let web applications on other origins call the API.
 - Rate limits and quotas: limits on requests, writes and stored content per user.

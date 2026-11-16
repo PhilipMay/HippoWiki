@@ -13,6 +13,8 @@ the dialogs and lists in `components/`), routes under `src/app/deleted-pages/`. 
 - A page is deleted from its page address with "Delete" (`?action=delete`), after a confirmation. Deleting leads to
   the folder or tab the page was in. Deleting needs the role Manager or Owner on the folder (see `folder-roles.md`).
 - A deleted page keeps its content and its folder, but forgets its tab: the wiki only knows which folder it belongs to.
+- A delete is refused when the page was changed after the dialog was opened; the dialog then stays open with a message,
+  and confirming again deletes the page (see `optimistic-locking.md`).
 
 ## Deleted pages are invisible
 
@@ -44,6 +46,7 @@ the dialogs and lists in `components/`), routes under `src/app/deleted-pages/`. 
 - No place is preselected: the page's old place is not known, and the user has to choose one.
 - Restoring checks the name like moving a page (`content-structure.md`); the content is neither validated nor
   touched. It leads to the page's new address.
+- Restoring is not checked against a change in the meantime (see `optimistic-locking.md`).
 - Deleting and restoring a page each make the logged-in user its last editor (see "Last editor" in
   `content-structure.md`): a restored page shows the user who restored it.
 

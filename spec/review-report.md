@@ -9,7 +9,7 @@
   tests cover the security rules of the specs well. The weak points are availability (a slow Markdown parse, unbounded
   bodies and batches, a lockout per name in the default configuration), the password policy, the trust that the OAuth
   server gives to clients nobody verified, and documentation that ASVS Level 2 asks for.
-- Findings: 112 in all, 0 Blocker, 2 Major, 69 Minor and 41 Nit (58 `issue:`, 20 `suggestion:`, 29 `nit:` and 5
+- Findings: 111 in all, 0 Blocker, 2 Major, 68 Minor and 41 Nit (58 `issue:`, 19 `suggestion:`, 29 `nit:` and 5
   `question:`). Accepted deviations: 20.
 - To fix first:
   1. Some Markdown takes quadratic time to parse, so one page blocks the whole server (Content; ASVS 15.1.3, 15.2.2;
@@ -1512,8 +1512,8 @@ scope="read"`.
   Server Actions; every list reads all rows without `take`; deleted pages are kept forever. The specs document the
   sizes, but not that counts are unlimited and lists not paged.
 - Impact: one user can fill the database and make folder views slow.
-- Evidence: "Current limits" of `content-structure.md` names "No history, no handling of concurrent changes, no links
-  between pages, no search", nothing about counts.
+- Evidence: "Current limits" of `content-structure.md` names "No history, no links between pages, no search", nothing
+  about counts.
 - Suggestion (required): add limits and paging, or record in the specs that there are none, as a decision with its
   reason.
 - Reference: OWASP A06:2025 Insecure Design; ASVS 2.1.3, 2.4.1; CWE-770.
@@ -1545,29 +1545,15 @@ scope="read"`.
 - Suggestion (required): refuse or strip `\u0000` in `contentSchema`, with a field error.
 - Reference: ASVS 2.2.1, 16.5.3; CWE-20.
 
-#### suggestion: when two users edit the same page at once, the last save wins without a warning
+#### nit: writes read the page back in a second statement
 
-- Location: `src/features/pages/service.ts`, lines 349–352, `updatePageContent()`; `spec/content-structure.md`,
-  section "Current limits"
-- Severity: Minor
-- Category: correctness
-- Problem: a save writes by id without checking whether the page changed since the editor opened; the spec lists "no
-  handling of concurrent changes" without a reason, and there is no history to recover a lost edit.
-- Suggestion (optional): send the loaded `updatedAt` along and write only when it is unchanged, with a message about
-  the other editor; otherwise record the behaviour as a decision.
-- Reference: CWE-362; ASVS 15.4.2 (Level 3).
-
-#### nit: writes read the page back in a second statement, and the comment of `deletePage()` claims more than its transaction gives
-
-- Location: `src/features/pages/service.ts`, `updatePageContent()`, `moveOrRenamePage()`, `restorePage()` and
-  `deletePage()`; `src/features/folders/service.ts`, `renameTab()`
+- Location: `src/features/pages/service.ts`, `updatePageContent()`, `moveOrRenamePage()` and `restorePage()`;
+  `src/features/folders/service.ts`, `renameTab()`
 - Severity: Nit
 - Category: correctness
 - Problem: `updateMany` and the following read are two statements, so a page deleted in between is saved but reported
-  as gone. In `deletePage()` the transaction runs at Read Committed, so a move between the read and the update still
-  succeeds and the returned place is the old one, unlike the comment says.
-- Suggestion (optional): use one `update` with the state condition and `select`, and lock the row in `deletePage()` or
-  correct the comment.
+  as gone.
+- Suggestion (optional): use one `update` with the state condition and `select`.
 
 #### Reviewed
 
@@ -1589,6 +1575,12 @@ scope="read"`.
 - Names and addresses: names are ASCII `[a-z0-9-]` only, checked in the service on create, rename, move and restore,
   so there are no look-alikes and no dots; every address lives under `/folders` or `/deleted-pages`, so no name
   collides with a route; `parsePageSegment` refuses an upper-case or doubled `.md` suffix.
+- Concurrent changes of a page (ASVS 15.4.2, CWE-362): every page has a version that every write counts up, and a
+  content save, move, rename or delete is written only when the page still has the version it is based on, in the
+  condition of the write itself; otherwise it is refused as `page-changed` and the editor or dialog is shown again
+  with the page as stored and who changed it when (`optimistic-locking.md`). Checked by
+  `integration/page-service.test.ts` and by two users and two tabs in `e2e/edit-page.spec.ts`,
+  `e2e/move-or-rename-page.spec.ts` and `e2e/delete-page.spec.ts`.
 - Concurrent writes (ASVS 2.3.3): the unique indexes (with a partial one for pages directly in a folder that are not
   deleted) and the composite foreign key of a page and its tab decide, every write is one statement, and a taken name
   is shown as "Name is already in use".

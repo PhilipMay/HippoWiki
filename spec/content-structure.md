@@ -84,6 +84,10 @@ hold pages directly and have tabs at the same time.
 
 - A folder address also has the views `?view=all`, the list of all its pages, and `?view=roles`, who has which role on
   the folder (see `folder-roles.md`).
+- A page address with an action may also carry the notice `?action=<action>&notice=changed`: the editor or dialog of
+  the action is shown again after a change was refused, because the page was changed after it was opened (see
+  `optimistic-locking.md`). A notice without an action, and an unknown, empty or repeated notice, show the not-found
+  page.
 - An action or view is offered only to the roles that may use it; one beyond the user's role shows the not-found page,
   before the content is read, like an unknown one (see `folder-roles.md`).
 - Each address accepts only its own actions and views. An unknown, empty or repeated action or view, one of another
@@ -115,6 +119,9 @@ hold pages directly and have tabs at the same time.
 - A page is moved and renamed in one dialog, which stores name and place together: a page can be renamed, moved within
   its folder (into a tab, back to the folder, to another tab), or both. The current place is preselected.
 - Moving or renaming does not validate or touch the content.
+- Moving or renaming a page is refused when the page was changed after the dialog was opened; the dialog then shows
+  the name and place as stored (see `optimistic-locking.md`). Renaming a folder or a tab is not checked: the last save
+  wins.
 - After every write, all addresses under `/folders` and `/deleted-pages` show the new state.
 
 ## Only users see content
@@ -139,7 +146,8 @@ hold pages directly and have tabs at the same time.
   - tab: created, renamed
   - page: created, content edited, moved or renamed, deleted, restored
 - Each of these writes stores its user in the same write that changes the item's time of the last change, so that
-  time and name always describe the same change. A write that fails changes neither.
+  time and name always describe the same change. A write that fails changes neither. The same write counts the
+  version of a page up, which the page's later changes are checked against (see `optimistic-locking.md`).
 - A change inside a folder or tab is no edit of it: creating, moving, deleting or restoring a page and creating a tab
   leave the time of the last change and the last editor of the folder and the tab as they are. Renaming a folder
   leaves those of its tabs and pages as they are.
@@ -187,4 +195,6 @@ hold pages directly and have tabs at the same time.
 - MCP reads every folder of a user, also one without a role (see `folder-roles.md`).
 - A page cannot be moved to another folder, a tab cannot be moved to another folder.
 - No redirects from old addresses after a rename or move.
-- No history, no handling of concurrent changes, no links between pages, no search.
+- No history, no links between pages, no search.
+- Changes of the same folder or tab at the same time are not told apart: the last save wins. Pages are protected (see
+  `optimistic-locking.md`).
