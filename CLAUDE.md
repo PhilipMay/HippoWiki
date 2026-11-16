@@ -17,6 +17,9 @@ The specification lives in the `spec/` directory. This catalog should always be 
 - `spec/optimistic-locking-requirements.md`: the approved requirements of optimistic locking for pages (refusing
   a content save, move, rename or delete based on an older state of the page, what the user sees then, the rule for
   callers other than the browser)
+- `spec/optimistic-locking-steps.md`: the step plan of optimistic locking for pages (the version of a page, refusing
+  outdated content saves, moves, renames and deletes in the page service, the editor and dialogs shown again with the
+  notice, wrap-up)
 - `spec/architecture.md`: code layout and conventions (layers and services, reads, writes, the adapters of callers
   other than the GUI, login and sessions, the public addresses, security headers, validation, addresses, database, UI)
 - `spec/testing.md`: the check of doc references, and unit, integration and end-to-end test conventions
