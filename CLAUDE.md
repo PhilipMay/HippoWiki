@@ -13,6 +13,8 @@ The specification lives in the `spec/` directory. This catalog should always be 
   listed here while it exists
 - `spec/mcp-folder-roles-requirements.md`: the requirements of MCP per folder and role (approved): MCP addresses
   `/mcp/<folder-uuid>/<role>` for Reader and Writer, connections bound to one address, the write tools, no scopes
+- `spec/mcp-folder-roles-steps.md`: the step plan of MCP per folder and role (grants for a folder address, MCP at the
+  folder addresses, read tools on the folder of the connection, write tools, the view "AI apps", wrap-up)
 - `spec/step-plan-workflow.md`: how features are planned in step files, when a step is done, what to do when it
   cannot be finished, how a feature is wrapped up, what a feature spec holds, and how a finding of the review report is
   fixed and deleted
