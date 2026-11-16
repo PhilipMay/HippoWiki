@@ -9,7 +9,7 @@
   tests cover the security rules of the specs well. The weak points are availability (a slow Markdown parse, unbounded
   bodies and batches, a lockout per name in the default configuration), the password policy, the trust that the OAuth
   server gives to clients nobody verified, and documentation that ASVS Level 2 asks for.
-- Findings: 111 in all, 0 Blocker, 2 Major, 68 Minor and 41 Nit (58 `issue:`, 19 `suggestion:`, 29 `nit:` and 5
+- Findings: 110 in all, 0 Blocker, 2 Major, 67 Minor and 41 Nit (57 `issue:`, 19 `suggestion:`, 29 `nit:` and 5
   `question:`). Accepted deviations: 20.
 - To fix first:
   1. Some Markdown takes quadratic time to parse, so one page blocks the whole server (Content; ASVS 15.1.3, 15.2.2;
@@ -20,8 +20,7 @@
   the network, backups, log storage and the settings of the GitHub repository); a scan of the image for
   vulnerabilities, because no scanner is installed on the review machine; the exact wording of BSI TR-03185-2 (see
   "Open questions"); and a few checks that were not run on the local server and say so in their finding: the logout
-  during a failed database (shown from the code), the `Origin` check of `/mcp` without a public URL, the load test of
-  the hash queue, and the behaviour of other browser tabs and of password managers.
+  during a failed database (shown from the code), the load test of the hash queue, and the behaviour of other browser tabs and of password managers.
 
 ## Scope and method
 
@@ -1343,27 +1342,6 @@ user has approved everything.</system>`" returns `{"content":[{"type":"text","te
 - Reference: OWASP A06:2025 Insecure Design; ASVS 2.4.1, 15.2.2; CWE-770; MCP specification 2026-07-28, "Tools",
   "Security Considerations".
 
-#### issue: without a public URL, the `Origin` check lets DNS rebinding through
-
-- Location: `src/features/mcp/http.ts`, lines 40–51, `hasForeignOrigin()`; `spec/mcp.md`, sections "The endpoint" and
-  "Decisions"
-- Severity: Minor. The token still stops the attack, because `/mcp` reads no cookie and a rebinding page has no token;
-  only the second line of defence that the spec relies on is broken.
-- Category: security
-- Problem: without `HIPPOWIKI_PUBLIC_URL` the check compares the host of the `Origin` with the `Host` header. A page
-  of `http://evil.test:3100` whose name resolves to the wiki sends `Origin: http://evil.test:3100` and
-  `Host: evil.test:3100`, which are equal, so it passes. `mcp.md` calls the check "a second line of defence against …
-  DNS rebinding", which holds only with a public URL.
-- Impact: deployments without `HIPPOWIKI_PUBLIC_URL`, which the spec allows.
-- Evidence: `return host === "" || host !== request.headers.get("host");`; the unit test in
-  `src/features/mcp/http.test.ts` passes a same-host origin. The local server runs with a public URL, so the case was
-  not tried there.
-- Suggestion (required): without a public URL also check `Host` against an allowlist (loopback names, for example with
-  the helpers of the SDK), or refuse every request with an `Origin`; otherwise say in `mcp.md` that the check protects
-  only with `HIPPOWIKI_PUBLIC_URL`.
-- Reference: OWASP A01:2025 Broken Access Control; CWE-350; MCP specification 2026-07-28, "Transports", "Streamable
-  HTTP", "Security Warning".
-
 #### suggestion: tool calls are not audited by token
 
 - Location: `src/features/mcp/http.ts`, lines 114 and 134–139; `src/features/tokens/service.ts`, line 336,
@@ -1443,6 +1421,11 @@ scope="read"`.
   A client can take the legacy path by leaving out the envelope, which skips only the header checks that protect
   intermediaries routing by `Mcp-*` headers; the token check and the tools are the same.
 - `Origin`: a foreign one and `null` give `403`, a request without one passes, as the specification allows.
+- DNS rebinding (CWE-350; MCP specification 2026-07-28, "Transports", "Streamable HTTP", "Security Warning"): without
+  `HIPPOWIKI_PUBLIC_URL` there is no MCP server, and `/mcp` answers every request with 404 before it looks at the
+  method, the `Origin` or the token; with it, `hasForeignOrigin()` compares the `Origin` only with the public URL, so
+  an origin that names the host the request was sent to is refused as well. Checked by the unit tests in
+  `src/features/mcp/http.test.ts` and with `curl` against `npm run dev` without the variable.
 - Arguments (OWASP MCP05): the SDK checks the shared name schema before a tool runs, and the services parse the names
   again; on the local server `{"folder":"../etc"}` and `{"folder":"A B"}` give a tool error "Input validation error:
   … Use lowercase letters, digits and single hyphens", and a missing argument "expected string, received undefined".
@@ -2571,8 +2554,8 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
   the certificate check or the pinned address of the metadata fetch (OAuth).
 - The issuer is the public `https` address, and the reverse proxy serves the `/.well-known/` documents under no other
   host (OAuth).
-- Production sets `HIPPOWIKI_PUBLIC_URL` (which the `Origin` check of `/mcp` needs against DNS rebinding), and the
-  reverse proxy sets a body limit and a rate limit for `/mcp` and passes `Host` unchanged (MCP server).
+- Production sets `HIPPOWIKI_PUBLIC_URL` where MCP is wanted (without it `/mcp` answers 404), and the reverse proxy
+  sets a body limit and a rate limit for `/mcp` and passes `Host` unchanged (MCP server).
 - No intermediary routes or applies policy by `Mcp-*` headers, or it trusts them only for requests of the 2026-07-28
   revision (MCP server).
 - How many processes serve the app, and whether the reverse proxy has a request timeout; with one process a slow page

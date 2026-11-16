@@ -45,6 +45,9 @@ vi.mock(import("@/features/tokens/secret"), async (importOriginal) => ({
 }));
 
 const SECRET = `hw_${"A".repeat(43)}`;
+/** The access token of a grant, the only bearer token that `authenticateToken` looks up. */
+const ACCESS_TOKEN = `hwa_${"B".repeat(43)}`;
+const HOUR_MS = 60 * 60 * 1000;
 const ALICE_ID = "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002";
 const TOKEN_ID = "0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01";
 const ALICE: Actor = { id: ALICE_ID, name: "alice", type: "user" };
@@ -71,12 +74,16 @@ function summaryOf({ clientId, ...row }: ReturnType<typeof storedRow>) {
   return { ...row, isGrant: clientId !== null };
 }
 
-/** A token with its user as `authenticateToken` reads it: valid, with the scope `read` and never used. */
+/**
+ * A grant with its user as `authenticateToken` reads it: valid, with the scope `read`, never used, and with an access
+ * token that works for another hour.
+ */
 function tokenWithUser({ user = {}, ...data }: { user?: Record<string, unknown> } & Record<string, unknown> = {}) {
   return {
     id: TOKEN_ID,
     scopes: ["read"],
     expiresAt: new Date("2026-05-30T12:00:00.000Z"),
+    accessTokenExpiresAt: new Date(NOW.getTime() + HOUR_MS),
     lastUsedAt: null,
     user: { id: ALICE_ID, username: "alice", type: "user", mustChangePassword: false, ...user },
     ...data,
@@ -104,8 +111,10 @@ function expectNothingLogged(): void {
 }
 
 function expectNoSecretLogged(): void {
-  expect(logged()).not.toContain(SECRET);
-  expect(logged()).not.toContain(hashToken(SECRET));
+  for (const secret of [SECRET, ACCESS_TOKEN]) {
+    expect(logged()).not.toContain(secret);
+    expect(logged()).not.toContain(hashToken(secret));
+  }
 }
 
 beforeEach(() => {
@@ -384,10 +393,13 @@ describe("revokeToken", () => {
 });
 
 describe("authenticateToken", () => {
-  it("refuses the token of an admin as invalid, logs the reason and writes no last use", async () => {
+  /** Request headers with the access token as the bearer token. */
+  const BEARER = () => authorization(`Bearer ${ACCESS_TOKEN}`);
+
+  it("refuses the access token of a grant of an admin as invalid, logs the reason and writes no last use", async () => {
     mocks.findUnique.mockResolvedValue(tokenWithUser({ user: { name: "maria", username: "maria", type: "admin" } }));
 
-    await expect(authenticateToken(authorization(`Bearer ${SECRET}`), "read")).resolves.toEqual({
+    await expect(authenticateToken(BEARER(), "read")).resolves.toEqual({
       ok: false,
       error: { code: "invalid-token" },
     });
@@ -395,25 +407,25 @@ describe("authenticateToken", () => {
     expect(mocks.updateMany).not.toHaveBeenCalled();
   });
 
-  it("refuses a token of an admin for every scope", async () => {
+  it("refuses the access token of an admin for every scope", async () => {
     mocks.findUnique.mockResolvedValue(tokenWithUser({ scopes: ["read", "write"], user: { type: "admin" } }));
 
     for (const scope of ["read", "write"] as const) {
-      await expect(authenticateToken(authorization(`Bearer ${SECRET}`), scope)).resolves.toEqual({
+      await expect(authenticateToken(BEARER(), scope)).resolves.toEqual({
         ok: false,
         error: { code: "invalid-token" },
       });
     }
   });
 
-  it("returns the actor of the token's user for a valid token with the scope", async () => {
-    await expect(authenticateToken(authorization(`Bearer ${SECRET}`), "read")).resolves.toStrictEqual({
+  it("returns the actor of the grant's user for a valid access token, looked up by its hash", async () => {
+    await expect(authenticateToken(BEARER(), "read")).resolves.toStrictEqual({
       ok: true,
       value: { id: ALICE_ID, name: "alice", type: "user" },
     });
 
     expect(mocks.findUnique).toHaveBeenCalledExactlyOnceWith({
-      where: { tokenHash: hashToken(SECRET) },
+      where: { accessTokenHash: hashToken(ACCESS_TOKEN) },
       select: {
         id: true,
         scopes: true,
@@ -427,24 +439,27 @@ describe("authenticateToken", () => {
   });
 
   it.each([
-    ["the lowercase scheme", `bearer ${SECRET}`],
-    ["the uppercase scheme", `BEARER ${SECRET}`],
-    ["more than one space after the scheme", `Bearer    ${SECRET}`],
-    ["spaces around the value", `  Bearer ${SECRET}  `],
-  ])("reads a token with %s", async (_case, value) => {
+    ["the lowercase scheme", `bearer ${ACCESS_TOKEN}`],
+    ["the uppercase scheme", `BEARER ${ACCESS_TOKEN}`],
+    ["more than one space after the scheme", `Bearer    ${ACCESS_TOKEN}`],
+    ["spaces around the value", `  Bearer ${ACCESS_TOKEN}  `],
+  ])("reads an access token with %s", async (_case, value) => {
     await expect(authenticateToken(authorization(value), "read")).resolves.toMatchObject({ ok: true });
   });
 
   it.each([
     ["no header", new Headers()],
     ["an empty header", authorization("")],
-    ["another scheme", authorization(`Basic ${SECRET}`)],
+    ["another scheme", authorization(`Basic ${ACCESS_TOKEN}`)],
     ["the scheme alone", authorization("Bearer")],
-    ["no space after the scheme", authorization(`Bearer${SECRET}`)],
-    ["a value without the prefix", authorization(`Bearer ${SECRET.slice(3)}`)],
-    ["a value that is too short", authorization(`Bearer ${SECRET.slice(0, -1)}`)],
-    ["a value with other characters", authorization(`Bearer ${SECRET.slice(0, -1)}=`)],
-    ["two values", authorization(`Bearer ${SECRET} ${SECRET}`)],
+    ["no space after the scheme", authorization(`Bearer${ACCESS_TOKEN}`)],
+    ["a value without the prefix", authorization(`Bearer ${ACCESS_TOKEN.slice(4)}`)],
+    ["a value that is too short", authorization(`Bearer ${ACCESS_TOKEN.slice(0, -1)}`)],
+    ["a value with other characters", authorization(`Bearer ${ACCESS_TOKEN.slice(0, -1)}=`)],
+    ["two values", authorization(`Bearer ${ACCESS_TOKEN} ${ACCESS_TOKEN}`)],
+    ["a former API token", authorization(`Bearer ${SECRET}`)],
+    ["a refresh token", authorization(`Bearer hwr_0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01.${"C".repeat(43)}`)],
+    ["an authorization code", authorization(`Bearer hwc_${"C".repeat(43)}`)],
   ])("reports %s as a missing token, without asking the database or logging", async (_case, headers) => {
     await expect(authenticateToken(headers, "read")).resolves.toEqual({
       ok: false,
@@ -455,10 +470,10 @@ describe("authenticateToken", () => {
     expectNothingLogged();
   });
 
-  it("reports an unknown token as invalid, and logs the reason without the token", async () => {
+  it("reports an unknown access token as invalid, and logs the reason without the token", async () => {
     mocks.findUnique.mockResolvedValue(null);
 
-    await expect(authenticateToken(authorization(`Bearer ${SECRET}`), "read")).resolves.toEqual({
+    await expect(authenticateToken(BEARER(), "read")).resolves.toEqual({
       ok: false,
       error: { code: "invalid-token" },
     });
@@ -467,11 +482,11 @@ describe("authenticateToken", () => {
     expectNoSecretLogged();
   });
 
-  it("reports an expired token as invalid, also at the moment it expires, and logs the token id", async () => {
+  it("reports an expired grant as invalid, also at the moment it expires, and logs the grant id", async () => {
     for (const expiresAt of [new Date(NOW.getTime() - 1), NOW]) {
       mocks.findUnique.mockResolvedValue(tokenWithUser({ expiresAt }));
 
-      await expect(authenticateToken(authorization(`Bearer ${SECRET}`), "read")).resolves.toEqual({
+      await expect(authenticateToken(BEARER(), "read")).resolves.toEqual({
         ok: false,
         error: { code: "invalid-token" },
       });
@@ -482,16 +497,44 @@ describe("authenticateToken", () => {
     expectNoSecretLogged();
   });
 
-  it("accepts a token a millisecond before it expires", async () => {
+  it("accepts a grant a millisecond before it expires", async () => {
     mocks.findUnique.mockResolvedValue(tokenWithUser({ expiresAt: new Date(NOW.getTime() + 1) }));
 
-    await expect(authenticateToken(authorization(`Bearer ${SECRET}`), "read")).resolves.toMatchObject({ ok: true });
+    await expect(authenticateToken(BEARER(), "read")).resolves.toMatchObject({ ok: true });
   });
 
-  it("reports the token of a user with the first password as invalid", async () => {
+  it.each([
+    ["a millisecond after its end", -1],
+    ["at the moment it ends", 0],
+  ])("refuses an access token %s, although its grant lasts on, and logs the grant id", async (_case, offset) => {
+    mocks.findUnique.mockResolvedValue(tokenWithUser({ accessTokenExpiresAt: new Date(NOW.getTime() + offset) }));
+
+    await expect(authenticateToken(BEARER(), "read")).resolves.toEqual({
+      ok: false,
+      error: { code: "invalid-token" },
+    });
+
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
+      { reason: "access-token-expired", tokenId: TOKEN_ID },
+      "token refused",
+    );
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+    expectNoSecretLogged();
+  });
+
+  it("refuses an access token without an end of its own, which only a broken row has", async () => {
+    mocks.findUnique.mockResolvedValue(tokenWithUser({ accessTokenExpiresAt: null }));
+
+    await expect(authenticateToken(BEARER(), "read")).resolves.toEqual({
+      ok: false,
+      error: { code: "invalid-token" },
+    });
+  });
+
+  it("reports the access token of a user with the first password as invalid", async () => {
     mocks.findUnique.mockResolvedValue(tokenWithUser({ user: { mustChangePassword: true } }));
 
-    await expect(authenticateToken(authorization(`Bearer ${SECRET}`), "read")).resolves.toEqual({
+    await expect(authenticateToken(BEARER(), "read")).resolves.toEqual({
       ok: false,
       error: { code: "invalid-token" },
     });
@@ -506,10 +549,10 @@ describe("authenticateToken", () => {
   it.each([
     ["read", ["write"]],
     ["write", ["read"]],
-  ] as const)("reports a token without the scope %s as insufficient", async (scope, scopes) => {
+  ] as const)("reports a grant without the scope %s as insufficient", async (scope, scopes) => {
     mocks.findUnique.mockResolvedValue(tokenWithUser({ scopes }));
 
-    await expect(authenticateToken(authorization(`Bearer ${SECRET}`), scope)).resolves.toEqual({
+    await expect(authenticateToken(BEARER(), scope)).resolves.toEqual({
       ok: false,
       error: { code: "insufficient-scope" },
     });
@@ -522,18 +565,11 @@ describe("authenticateToken", () => {
     expectNoSecretLogged();
   });
 
-  it("accepts each scope of a token with both", async () => {
-    mocks.findUnique.mockResolvedValue(tokenWithUser({ scopes: ["read", "write"] }));
-
-    await expect(authenticateToken(authorization(`Bearer ${SECRET}`), "read")).resolves.toMatchObject({ ok: true });
-    await expect(authenticateToken(authorization(`Bearer ${SECRET}`), "write")).resolves.toMatchObject({ ok: true });
-  });
-
   it("reports failed when the database cannot be read, and logs it without the token", async () => {
     const err = new Error("connection lost");
     mocks.findUnique.mockRejectedValue(err);
 
-    await expect(authenticateToken(authorization(`Bearer ${SECRET}`), "read")).resolves.toEqual({
+    await expect(authenticateToken(BEARER(), "read")).resolves.toEqual({
       ok: false,
       error: { code: "failed" },
     });
@@ -542,142 +578,11 @@ describe("authenticateToken", () => {
     expectNoSecretLogged();
   });
 
-  describe("the access token of a grant to an OAuth client", () => {
-    const ACCESS_TOKEN = `hwa_${"B".repeat(43)}`;
-    const HOUR_MS = 60 * 60 * 1000;
-
-    /** The row of a grant whose access token works for another hour. */
-    function grant(data: Record<string, unknown> = {}) {
-      return tokenWithUser({ accessTokenExpiresAt: new Date(NOW.getTime() + HOUR_MS), ...data });
-    }
-
-    it("refuses the access token of a grant of an admin as invalid", async () => {
-      mocks.findUnique.mockResolvedValue(grant({ user: { type: "admin" } }));
-
-      await expect(
-        authenticateToken(authorization(`Bearer ${ACCESS_TOKEN}`), "read", { acceptOAuth: true }),
-      ).resolves.toEqual({ ok: false, error: { code: "invalid-token" } });
-      expect(mocks.warn).toHaveBeenCalledExactlyOnceWith({ reason: "admin", tokenId: TOKEN_ID }, "token refused");
-    });
-
-    it("does not look like a token unless the caller accepts OAuth: the database is not asked", async () => {
-      for (const options of [undefined, {}, { acceptOAuth: false }]) {
-        await expect(authenticateToken(authorization(`Bearer ${ACCESS_TOKEN}`), "read", options)).resolves.toEqual({
-          ok: false,
-          error: { code: "missing-token" },
-        });
-      }
-
-      expect(mocks.findUnique).not.toHaveBeenCalled();
-      expectNothingLogged();
-    });
-
-    it("is looked up by the hash of the access token, never by the hash of a token, when OAuth is accepted", async () => {
-      mocks.findUnique.mockResolvedValue(grant());
-
-      await expect(
-        authenticateToken(authorization(`Bearer ${ACCESS_TOKEN}`), "read", { acceptOAuth: true }),
-      ).resolves.toStrictEqual({ ok: true, value: { id: ALICE_ID, name: "alice", type: "user" } });
-
-      expect(mocks.findUnique).toHaveBeenCalledOnce();
-      expect(mocks.findUnique.mock.calls[0]?.[0]).toMatchObject({
-        where: { accessTokenHash: hashToken(ACCESS_TOKEN) },
-      });
-      expect(mocks.findUnique.mock.calls[0]?.[0].where).not.toHaveProperty("tokenHash");
-    });
-
-    it("leaves a token of the account page looked up by its own hash when OAuth is accepted", async () => {
-      mocks.findUnique.mockResolvedValue(tokenWithUser({ accessTokenExpiresAt: null }));
-
-      await expect(
-        authenticateToken(authorization(`Bearer ${SECRET}`), "read", { acceptOAuth: true }),
-      ).resolves.toMatchObject({ ok: true });
-
-      expect(mocks.findUnique.mock.calls[0]?.[0]).toMatchObject({ where: { tokenHash: hashToken(SECRET) } });
-    });
-
-    it.each([
-      ["a millisecond after its end", -1],
-      ["at the moment it ends", 0],
-    ])("is refused %s, although its grant lasts on, and the grant id is logged", async (_case, offset) => {
-      mocks.findUnique.mockResolvedValue(grant({ accessTokenExpiresAt: new Date(NOW.getTime() + offset) }));
-
-      await expect(
-        authenticateToken(authorization(`Bearer ${ACCESS_TOKEN}`), "read", { acceptOAuth: true }),
-      ).resolves.toEqual({ ok: false, error: { code: "invalid-token" } });
-
-      expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
-        { reason: "access-token-expired", tokenId: TOKEN_ID },
-        "token refused",
-      );
-      expect(mocks.updateMany).not.toHaveBeenCalled();
-      expect(logged()).not.toContain(ACCESS_TOKEN);
-      expect(logged()).not.toContain(hashToken(ACCESS_TOKEN));
-    });
-
-    it("is refused without an end of its own, which only a broken row has", async () => {
-      mocks.findUnique.mockResolvedValue(grant({ accessTokenExpiresAt: null }));
-
-      await expect(
-        authenticateToken(authorization(`Bearer ${ACCESS_TOKEN}`), "read", { acceptOAuth: true }),
-      ).resolves.toEqual({ ok: false, error: { code: "invalid-token" } });
-    });
-
-    it.each([
-      ["its grant has expired", { expiresAt: NOW }, "expired"],
-      ["its user still has the first password", { user: { mustChangePassword: true } }, "first-password"],
-    ])("is refused when %s", async (_case, data, reason) => {
-      mocks.findUnique.mockResolvedValue(grant(data));
-
-      await expect(
-        authenticateToken(authorization(`Bearer ${ACCESS_TOKEN}`), "read", { acceptOAuth: true }),
-      ).resolves.toEqual({ ok: false, error: { code: "invalid-token" } });
-
-      expect(mocks.warn).toHaveBeenCalledExactlyOnceWith({ reason, tokenId: TOKEN_ID }, "token refused");
-    });
-
-    it("lacks the scope write, which no grant has", async () => {
-      mocks.findUnique.mockResolvedValue(grant());
-
-      await expect(
-        authenticateToken(authorization(`Bearer ${ACCESS_TOKEN}`), "write", { acceptOAuth: true }),
-      ).resolves.toEqual({ ok: false, error: { code: "insufficient-scope" } });
-    });
-
-    it("an unknown one is invalid", async () => {
-      mocks.findUnique.mockResolvedValue(null);
-
-      await expect(
-        authenticateToken(authorization(`Bearer ${ACCESS_TOKEN}`), "read", { acceptOAuth: true }),
-      ).resolves.toEqual({ ok: false, error: { code: "invalid-token" } });
-    });
-
-    it.each([
-      ["a refresh token", `hwr_0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01.${"C".repeat(43)}`],
-      ["an authorization code", `hwc_${"C".repeat(43)}`],
-    ])("%s is no bearer token, also when OAuth is accepted", async (_case, value) => {
-      await expect(authenticateToken(authorization(`Bearer ${value}`), "read", { acceptOAuth: true })).resolves.toEqual(
-        { ok: false, error: { code: "missing-token" } },
-      );
-
-      expect(mocks.findUnique).not.toHaveBeenCalled();
-    });
-
-    it("gets its last use written like a token", async () => {
-      mocks.findUnique.mockResolvedValue(grant());
-
-      await authenticateToken(authorization(`Bearer ${ACCESS_TOKEN}`), "read", { acceptOAuth: true });
-
-      expect(mocks.updateMany).toHaveBeenCalledOnce();
-      expect(mocks.updateMany.mock.calls[0]?.[0]).toMatchObject({ where: { id: TOKEN_ID }, data: { lastUsedAt: NOW } });
-    });
-  });
-
   describe("the last use", () => {
-    it("is written for a token that was never used", async () => {
+    it("is written for a grant that was never used", async () => {
       expect(LAST_USE_INTERVAL_MS).toBe(60_000);
 
-      await authenticateToken(authorization(`Bearer ${SECRET}`), "read");
+      await authenticateToken(BEARER(), "read");
 
       const usedBefore = new Date(NOW.getTime() - 60_000);
       expect(mocks.updateMany).toHaveBeenCalledExactlyOnceWith({
@@ -689,18 +594,18 @@ describe("authenticateToken", () => {
     it("is not written again within a minute", async () => {
       mocks.findUnique.mockResolvedValue(tokenWithUser({ lastUsedAt: new Date(NOW.getTime() - 59_999) }));
 
-      await expect(authenticateToken(authorization(`Bearer ${SECRET}`), "read")).resolves.toMatchObject({ ok: true });
+      await expect(authenticateToken(BEARER(), "read")).resolves.toMatchObject({ ok: true });
 
       expect(mocks.updateMany).not.toHaveBeenCalled();
     });
 
     it("is written again once a minute has passed", async () => {
       mocks.findUnique.mockResolvedValue(tokenWithUser({ lastUsedAt: NOW }));
-      await authenticateToken(authorization(`Bearer ${SECRET}`), "read");
+      await authenticateToken(BEARER(), "read");
       expect(mocks.updateMany).not.toHaveBeenCalled();
 
       vi.setSystemTime(NOW.getTime() + 60_000);
-      await authenticateToken(authorization(`Bearer ${SECRET}`), "read");
+      await authenticateToken(BEARER(), "read");
 
       expect(mocks.updateMany).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({ data: { lastUsedAt: new Date(NOW.getTime() + 60_000) } }),
@@ -711,7 +616,7 @@ describe("authenticateToken", () => {
       const err = new Error("connection lost");
       mocks.updateMany.mockRejectedValue(err);
 
-      await expect(authenticateToken(authorization(`Bearer ${SECRET}`), "read")).resolves.toStrictEqual({
+      await expect(authenticateToken(BEARER(), "read")).resolves.toStrictEqual({
         ok: true,
         value: { id: ALICE_ID, name: "alice", type: "user" },
       });

@@ -6,7 +6,7 @@ import { hashToken } from "@/features/tokens/secret";
 import * as tokenService from "@/features/tokens/service";
 import type { Actor } from "@/features/users/service";
 
-import { createUser, getTestDb, TEST_PASSWORD } from "../e2e/support/database";
+import { createApiToken, createGrant, createUser, getTestDb, TEST_PASSWORD } from "../e2e/support/database";
 
 const INPUT = { name: "MCP client", scopes: ["read"], expiry: "90d" };
 
@@ -235,72 +235,101 @@ describe("authenticateToken", () => {
     vi.useRealTimers();
   });
 
-  /** Request headers that carry the token as a bearer token. */
+  /** Request headers that carry the value as a bearer token. */
   function bearer(secret: string): Headers {
     return new Headers({ authorization: `Bearer ${secret}` });
   }
 
-  it("returns the same actor as the session of the token's user", async () => {
+  it("returns the same actor as the session of the grant's user", async () => {
     const alice = await createActor();
-    const { secret } = await createToken(alice, { scopes: ["read", "write"] });
+    const { accessToken } = await createGrant({ owner: alice });
     const login = await authService.logIn({ name: alice.name, password: TEST_PASSWORD }, new Headers(), "shared");
     if (!login.ok) return expect.fail(`login failed: ${login.error.code}`);
 
+    await expect(tokenService.authenticateToken(bearer(accessToken), "read")).resolves.toStrictEqual({
+      ok: true,
+      value: { id: login.value.user.id, name: login.value.user.name, type: login.value.user.type },
+    });
+  });
+
+  it("refuses a stored API token as missing, without looking at it", async () => {
+    const alice = await createActor();
+    const { secret } = await createApiToken({ owner: alice, scopes: ["read", "write"] });
+
     for (const scope of ["read", "write"] as const) {
-      await expect(tokenService.authenticateToken(bearer(secret), scope)).resolves.toStrictEqual({
-        ok: true,
-        value: { id: login.value.user.id, name: login.value.user.name, type: login.value.user.type },
+      await expect(tokenService.authenticateToken(bearer(secret), scope)).resolves.toEqual({
+        ok: false,
+        error: { code: "missing-token" },
       });
     }
   });
 
-  it("refuses a token that was revoked", async () => {
+  it("refuses the access token of a grant that was revoked", async () => {
     const alice = await createActor();
-    const { token, secret } = await createToken(alice);
-    await tokenService.revokeToken(alice, token.id);
+    const { grant, accessToken } = await createGrant({ owner: alice });
+    await tokenService.revokeToken(alice, grant.id);
 
-    await expect(tokenService.authenticateToken(bearer(secret), "read")).resolves.toEqual({
+    await expect(tokenService.authenticateToken(bearer(accessToken), "read")).resolves.toEqual({
       ok: false,
       error: { code: "invalid-token" },
     });
   });
 
-  it("refuses a token once the clock is past its expiry", async () => {
-    const { token, secret } = await createToken(await createActor(), { expiry: "30d" });
-    await expect(tokenService.authenticateToken(bearer(secret), "read")).resolves.toMatchObject({ ok: true });
+  it("refuses an access token once the clock is past its end", async () => {
+    const { grant, accessToken } = await createGrant({ owner: await createActor() });
+    await expect(tokenService.authenticateToken(bearer(accessToken), "read")).resolves.toMatchObject({ ok: true });
 
-    vi.useFakeTimers({ now: token.expiresAt.getTime() + 1, toFake: ["Date"] });
+    vi.useFakeTimers({ now: (grant.accessTokenExpiresAt?.getTime() ?? 0) + 1, toFake: ["Date"] });
 
-    await expect(tokenService.authenticateToken(bearer(secret), "read")).resolves.toEqual({
+    await expect(tokenService.authenticateToken(bearer(accessToken), "read")).resolves.toEqual({
       ok: false,
       error: { code: "invalid-token" },
     });
   });
 
-  it("refuses the token of a user who still has the first password", async () => {
+  it("refuses an access token whose grant has expired", async () => {
+    const { accessToken } = await createGrant({ owner: await createActor(), expiresAt: new Date(Date.now() - 1000) });
+
+    await expect(tokenService.authenticateToken(bearer(accessToken), "read")).resolves.toEqual({
+      ok: false,
+      error: { code: "invalid-token" },
+    });
+  });
+
+  it("refuses the access token of a user who still has the first password", async () => {
     const user = await createUser({ mustChangePassword: false });
-    const { secret } = await createToken({ id: user.id, name: user.name, type: user.type });
+    const { accessToken } = await createGrant({ owner: user });
     await getTestDb().user.update({ where: { id: user.id }, data: { mustChangePassword: true } });
 
-    await expect(tokenService.authenticateToken(bearer(secret), "read")).resolves.toEqual({
+    await expect(tokenService.authenticateToken(bearer(accessToken), "read")).resolves.toEqual({
       ok: false,
       error: { code: "invalid-token" },
     });
   });
 
-  it("refuses a scope the token lacks", async () => {
-    const { secret } = await createToken(await createActor(), { scopes: ["write"] });
+  it("refuses the access token of a grant of an admin", async () => {
+    const maria = await createUser({ name: "maria", type: "admin", mustChangePassword: false });
+    const { accessToken } = await createGrant({ owner: maria });
 
-    await expect(tokenService.authenticateToken(bearer(secret), "read")).resolves.toEqual({
+    await expect(tokenService.authenticateToken(bearer(accessToken), "read")).resolves.toEqual({
+      ok: false,
+      error: { code: "invalid-token" },
+    });
+  });
+
+  it("refuses a scope the grant lacks", async () => {
+    const { accessToken } = await createGrant({ owner: await createActor(), scopes: ["write"] });
+
+    await expect(tokenService.authenticateToken(bearer(accessToken), "read")).resolves.toEqual({
       ok: false,
       error: { code: "insufficient-scope" },
     });
   });
 
-  it("refuses a token that is not stored, and a value that is no token", async () => {
-    await createToken(await createActor());
+  it("refuses an access token that is not stored, and a value that is no access token", async () => {
+    await createGrant({ owner: await createActor() });
 
-    await expect(tokenService.authenticateToken(bearer(`hw_${"x".repeat(43)}`), "read")).resolves.toEqual({
+    await expect(tokenService.authenticateToken(bearer(`hwa_${"x".repeat(43)}`), "read")).resolves.toEqual({
       ok: false,
       error: { code: "invalid-token" },
     });
@@ -312,20 +341,20 @@ describe("authenticateToken", () => {
 
   it("sets the last use on the first use and not again within the minute", async () => {
     const alice = await createActor();
-    const { token, secret } = await createToken(alice);
-    const lastUse = async () => (await getTestDb().apiToken.findUniqueOrThrow({ where: { id: token.id } })).lastUsedAt;
+    const { grant, accessToken } = await createGrant({ owner: alice });
+    const lastUse = async () => (await getTestDb().apiToken.findUniqueOrThrow({ where: { id: grant.id } })).lastUsedAt;
     const start = Date.now();
     vi.useFakeTimers({ now: start, toFake: ["Date"] });
 
-    await tokenService.authenticateToken(bearer(secret), "read");
+    await tokenService.authenticateToken(bearer(accessToken), "read");
     expect(await lastUse()).toEqual(new Date(start));
 
     vi.setSystemTime(start + 59_000);
-    await tokenService.authenticateToken(bearer(secret), "read");
+    await tokenService.authenticateToken(bearer(accessToken), "read");
     expect(await lastUse()).toEqual(new Date(start));
 
     vi.setSystemTime(start + 60_000);
-    await tokenService.authenticateToken(bearer(secret), "read");
+    await tokenService.authenticateToken(bearer(accessToken), "read");
     expect(await lastUse()).toEqual(new Date(start + 60_000));
     expect((await tokenService.listTokens(alice))?.[0]?.lastUsedAt).toEqual(new Date(start + 60_000));
   });

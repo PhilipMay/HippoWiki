@@ -1,9 +1,9 @@
 // The adapter between the route `/mcp` and the MCP server: it is to an MCP client what `queries.ts` is to the GUI. It is
 // the place where the actor of a request comes from the bearer token instead of the session: every request is
 // checked with `authenticateToken()` before the SDK sees it. The SDK then speaks the protocol (Streamable HTTP,
-// stateless, with JSON answers and no SSE) and calls the tools of `tools.ts`. With `HIPPOWIKI_PUBLIC_URL` set, OAuth
-// is on: the access token of a grant is accepted next to an API token, and the 401 says where a client finds the
-// authorization server.
+// stateless, with JSON answers and no SSE) and calls the tools of `tools.ts`. The bearer token is the access token of
+// a grant to an OAuth client, and the 401 says where a client finds the authorization server. Without
+// `HIPPOWIKI_PUBLIC_URL` there is no OAuth and therefore no MCP server: every request answers 404.
 
 import {
   createMcpHandler,
@@ -21,7 +21,7 @@ import type { Actor } from "@/features/users/service";
 import { getServerEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";
 
-/** The scope a token needs for `/mcp`: all tools only read. */
+/** The scope an access token needs for `/mcp`: all tools only read. */
 const MCP_SCOPE = "read";
 
 /** An answer that is not one of the protocol: a status, a short reason as JSON and headers. */
@@ -36,21 +36,13 @@ function bearerChallenge(...parameters: string[]): string {
 
 /**
  * Whether the request may come from where it says it comes from. Only browsers send `Origin`, and an MCP client is
- * not a page of another site: a request with an `Origin` that is not the wiki's own is refused, so that a page which
- * makes its host name resolve to the address of the wiki (DNS rebinding) cannot talk to `/mcp`. With a public URL
- * the origin must be exactly that; without one, its host must be the host the request was sent to.
+ * not a page of another site: a request with an `Origin` that is not exactly the public URL of the wiki is refused, so
+ * that a page which makes its host name resolve to the address of the wiki (DNS rebinding) cannot talk to `/mcp`. The
+ * host the request was sent to is not enough, because such a page sends its own host name.
  */
-function hasForeignOrigin(request: Request, publicUrl: string | undefined): boolean {
+function hasForeignOrigin(request: Request, publicUrl: string): boolean {
   const origin = request.headers.get("origin");
-  if (origin === null) return false;
-  if (publicUrl !== undefined) return origin !== publicUrl;
-  let host: string;
-  try {
-    host = new URL(origin).host;
-  } catch {
-    return true;
-  }
-  return host === "" || host !== request.headers.get("host");
+  return origin !== null && origin !== publicUrl;
 }
 
 /**
@@ -113,30 +105,33 @@ async function serveLegacy(request: Request, actor: Actor): Promise<Response> {
 /**
  * Answers a request to `/mcp`.
  *
+ * - Without `HIPPOWIKI_PUBLIC_URL` every request answers 404, like the endpoints of OAuth, before anything else is
+ *   looked at: without OAuth there is no MCP server.
  * - Anything but `POST` answers 405: there are no sessions to end and no stream to open.
- * - An `Origin` that is not the wiki's own answers 403.
- * - Without a valid token it answers 401 with `WWW-Authenticate: Bearer`, for a token without the scope `read` 403
- *   with `error="insufficient_scope"`, and 500 when the token could not be checked. With OAuth on, the 401 also
- *   names the metadata of the protected resource (`resource_metadata`, RFC 9728) and the scope to ask for.
+ * - An `Origin` that is not the public URL answers 403.
+ * - Without a valid access token it answers 401 with `WWW-Authenticate: Bearer`, the metadata of the protected
+ *   resource (`resource_metadata`, RFC 9728) and the scope to ask for; for a token without the scope `read` 403 with
+ *   `error="insufficient_scope"`, and 500 when the token could not be checked.
  * - Everything else goes to the MCP server.
  */
 export async function handleMcpRequest(request: Request): Promise<Response> {
+  const { HIPPOWIKI_PUBLIC_URL: publicUrl } = getServerEnv();
+  const resourceMetadata = protectedResourceMetadataUrl();
+  if (publicUrl === undefined || resourceMetadata === null) return refusal(404, "not_found");
+
   if (request.method !== "POST") return refusal(405, "method_not_allowed", { Allow: "POST" });
 
-  const { HIPPOWIKI_PUBLIC_URL: publicUrl } = getServerEnv();
   if (hasForeignOrigin(request, publicUrl)) {
     logger.warn("mcp request with a foreign origin refused");
     return refusal(403, "forbidden_origin");
   }
 
-  // The token has to be valid and to have the scope; its user is the actor of the tools, and the services decide what
-  // the actor may read.
-  const resourceMetadata = protectedResourceMetadataUrl();
-  const oauth = resourceMetadata !== null;
-  const actor = await tokenService.authenticateToken(request.headers, MCP_SCOPE, { acceptOAuth: oauth });
+  // The access token has to be valid and to have the scope; its user is the actor of the tools, and the services
+  // decide what the actor may read.
+  const actor = await tokenService.authenticateToken(request.headers, MCP_SCOPE);
   if (!actor.ok) {
     // What a client needs to start the OAuth flow, after the error if there is one.
-    const discovery = oauth ? [`resource_metadata="${resourceMetadata}"`, `scope="${MCP_SCOPE}"`] : [];
+    const discovery = [`resource_metadata="${resourceMetadata}"`, `scope="${MCP_SCOPE}"`];
     switch (actor.error.code) {
       case "missing-token":
         return refusal(401, "unauthorized", { "WWW-Authenticate": bearerChallenge(...discovery) });

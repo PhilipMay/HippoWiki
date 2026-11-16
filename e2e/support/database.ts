@@ -6,6 +6,7 @@ import { setTimeout } from "node:timers/promises";
 
 import { PrismaPg } from "@prisma/adapter-pg";
 
+import { generateAccessToken, hashSecret } from "@/features/oauth/secret";
 import { titleFromContent } from "@/features/pages/derive";
 import { generateToken, hashToken } from "@/features/tokens/secret";
 import { newUserData, type NewUser } from "@/features/users/records";
@@ -15,6 +16,7 @@ import {
   type Folder,
   type FolderRole,
   type FolderRoleType,
+  type OAuthClient,
   type Page,
   type Prisma,
   type Session,
@@ -345,4 +347,49 @@ export async function createApiToken({
     },
   });
   return { token, secret };
+}
+
+/** The fields of a grant that `createGrant()` can set, the user it belongs to and, if given, its client. */
+type CreateGrantData = Partial<
+  Omit<Prisma.ApiTokenUncheckedCreateInput, "userId" | "clientId" | "tokenHash" | "accessTokenHash">
+> & {
+  owner: { id: string };
+  client?: OAuthClient;
+};
+
+/**
+ * Creates the grant of the given owner to an OAuth client directly in the test database, as a connected app that the
+ * owner approved, with a generated access token of which only the hash is stored, and returns the grant, its client
+ * and the access token. Without a client it creates one with a unique name. Without other fields the grant is named
+ * after its client, has the scope `read`, expires 90 days from now and its access token works for an hour; any field
+ * can be set, e.g. `expiresAt` for an expired grant, `accessTokenExpiresAt` for an expired access token, `lastUsedAt`
+ * or `scopes`.
+ */
+export async function createGrant({
+  owner,
+  client: givenClient,
+  ...data
+}: CreateGrantData): Promise<{ grant: ApiToken; client: OAuthClient; accessToken: string }> {
+  const client =
+    givenClient ??
+    (await getTestDb().oAuthClient.create({
+      data: {
+        name: `Test app ${crypto.randomUUID().slice(0, 8)}`,
+        redirectUris: ["https://client.example/callback"],
+      },
+    }));
+  const accessToken = generateAccessToken();
+  const grant = await getTestDb().apiToken.create({
+    data: {
+      name: client.name,
+      scopes: ["read"],
+      expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+      accessTokenExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      ...data,
+      userId: owner.id,
+      clientId: client.id,
+      accessTokenHash: hashSecret(accessToken),
+    },
+  });
+  return { grant, client, accessToken };
 }

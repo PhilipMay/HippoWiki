@@ -183,9 +183,7 @@ describe("an authorization request of a client with a metadata document", () => 
     });
     if (!refreshed.ok) return expect.fail(`not refreshed: ${refreshed.error.code}`);
     await expect(
-      tokenService.authenticateToken(new Headers({ authorization: `Bearer ${refreshed.value.accessToken}` }), "read", {
-        acceptOAuth: true,
-      }),
+      tokenService.authenticateToken(new Headers({ authorization: `Bearer ${refreshed.value.accessToken}` }), "read"),
     ).resolves.toMatchObject({ ok: true });
   });
 

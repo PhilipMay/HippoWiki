@@ -3,7 +3,7 @@
 //
 // Every function that lists or changes tokens takes the acting user first and only ever touches the actor's own
 // tokens: nobody, the admin included, sees or revokes the tokens of another user. `authenticateToken()` is the other
-// way round: it finds the actor of a request from its bearer token. A token leaves the service only once, when it is
+// way round: it finds the actor of a request from the access token of a grant, the only bearer token it accepts. A token leaves the service only once, when it is
 // created; only its hash is stored, and neither is ever logged.
 //
 // A row of `ApiToken` is either a token created here or the grant of the user to an OAuth client, which the OAuth
@@ -20,7 +20,7 @@ import {
   type TokenFieldErrors,
   type TokenScope,
 } from "@/features/tokens/schema";
-import { generateToken, hashToken, looksLikeToken } from "@/features/tokens/secret";
+import { generateToken, hashToken } from "@/features/tokens/secret";
 import { parseUserId } from "@/features/users/schema";
 import type { Actor } from "@/features/users/service";
 import { isAdmin, type UserType } from "@/features/users/user-type";
@@ -128,7 +128,7 @@ type Failed = { code: "failed" };
 /** The actor is an admin, who has no tokens; it has been logged. */
 type NotAllowed = { code: "not-allowed" };
 
-/** The request has no `Authorization` header with a bearer token, or its value does not look like a token. */
+/** The request has no `Authorization` header with a bearer token, or its value does not look like an access token. */
 type MissingToken = { code: "missing-token" };
 /** The token is unknown or expired, or its user still has the first password or is an admin. */
 type BadToken = { code: "invalid-token" };
@@ -251,40 +251,28 @@ function bearerTokenOf(headers: Headers): string | null {
   return match?.[1] ?? null;
 }
 
-/** What `authenticateToken()` accepts besides API tokens. */
-export type AuthenticateTokenOptions = {
-  /**
-   * Whether the access token of a grant to an OAuth client is accepted as well. Off unless a caller asks for it, so
-   * that only the MCP endpoint accepts such tokens.
-   */
-  acceptOAuth?: boolean;
-};
-
 /**
- * Who a request acts for, from the bearer token in its `Authorization` header: the actor of the token's user, if the
- * token is valid and has the given scope. It is for callers other than the browser, such as the MCP server; the
- * browser uses the session (`src/features/auth/session.ts`).
+ * Who a request acts for, from the bearer token in its `Authorization` header: the actor of the user of the grant
+ * whose access token it is, if the token is valid and its grant has the given scope. It is for callers other than the
+ * browser, such as the MCP server; the browser uses the session (`src/features/auth/session.ts`).
  *
- * - `missing-token`: no header, another scheme, or a value that does not look like a token; the database is not asked
- *   and nothing is logged. Without `acceptOAuth`, an OAuth access token does not look like a token.
- * - `invalid-token`: an unknown or expired token, one whose user still has the first password, who may do nothing
- *   but change it, or one whose user is an admin, who has no tokens. An OAuth access token is looked up by its hash and refused when it or its grant has expired.
- * - `insufficient-scope`: a valid token without the scope; `write` does not include `read`.
+ * - `missing-token`: no header, another scheme, or a value that does not look like an access token, a former API
+ *   token included; the database is not asked and nothing is logged.
+ * - `invalid-token`: an unknown access token, one whose grant or which itself has expired, one whose user still has
+ *   the first password, who may do nothing but change it, or one whose user is an admin, who has no grants.
+ * - `insufficient-scope`: a valid access token whose grant lacks the scope.
  * - `failed`: the database could not be read.
  *
  * The MCP route answers `missing-token` and `invalid-token` with 401 and `WWW-Authenticate: Bearer`, and
- * `insufficient-scope` with 403. A valid token gets its last use written, at most once a minute; a failure of that
- * write is logged and does not refuse the request. The token is never logged.
+ * `insufficient-scope` with 403. A valid access token gets the last use of its grant written, at most once a minute;
+ * a failure of that write is logged and does not refuse the request. The token is never logged.
  */
 export async function authenticateToken(
   headers: Headers,
   scope: TokenScope,
-  { acceptOAuth = false }: AuthenticateTokenOptions = {},
 ): Promise<Result<Actor, AuthenticateTokenError>> {
   const secret = bearerTokenOf(headers);
-  if (secret === null) return { ok: false, error: { code: "missing-token" } };
-  const kind = looksLikeToken(secret) ? "token" : acceptOAuth && looksLikeAccessToken(secret) ? "access-token" : null;
-  if (kind === null) return { ok: false, error: { code: "missing-token" } };
+  if (secret === null || !looksLikeAccessToken(secret)) return { ok: false, error: { code: "missing-token" } };
 
   let token: {
     id: string;
@@ -296,8 +284,7 @@ export async function authenticateToken(
   } | null;
   try {
     token = await getDb().apiToken.findUnique({
-      // The two hashes are columns of their own, so a token is never taken for an access token or the other way round.
-      where: kind === "token" ? { tokenHash: hashToken(secret) } : { accessTokenHash: hashToken(secret) },
+      where: { accessTokenHash: hashToken(secret) },
       select: {
         id: true,
         scopes: true,
@@ -323,7 +310,7 @@ export async function authenticateToken(
     return { ok: false, error: { code: "invalid-token" } };
   }
   // The access token of a grant ends long before its grant; the client then asks for a new one.
-  if (kind === "access-token" && (token.accessTokenExpiresAt?.getTime() ?? 0) <= now.getTime()) {
+  if ((token.accessTokenExpiresAt?.getTime() ?? 0) <= now.getTime()) {
     logger.warn({ reason: "access-token-expired", tokenId }, "token refused");
     return { ok: false, error: { code: "invalid-token" } };
   }

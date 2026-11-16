@@ -5,6 +5,7 @@ import { NO_STORAGE_STATE } from "./support/auth";
 import {
   createApiToken,
   createFolder,
+  createGrant,
   createPage,
   createTab,
   createUser,
@@ -13,17 +14,18 @@ import {
 } from "./support/database";
 import { expect, test } from "./support/test";
 
-// An MCP client has no session cookie: it only has its token.
+// An MCP client has no session cookie: it only has the access token of its grant.
 test.use({ storageState: NO_STORAGE_STATE });
 
 /** The public URL of the test server (`HIPPOWIKI_PUBLIC_URL` in `playwright.config.ts`): the addresses are full URLs. */
 const PUBLIC_URL = "http://localhost:3100";
 
+/** The access token of a grant of the known user, the bearer token of every request unless a test gives another. */
 let secret: string;
 
 test.beforeEach(async () => {
   await resetTestDatabase();
-  ({ secret } = await createApiToken({ owner: KNOWN_USER }));
+  ({ accessToken: secret } = await createGrant({ owner: KNOWN_USER }));
 });
 
 /** Sends a JSON-RPC message to `/mcp` with the given bearer token, as a client of the protocol of 2025 does. */
@@ -63,8 +65,20 @@ test("without a token /mcp answers 401 with a Bearer challenge and nothing of th
   expect(await response.text()).not.toContain("handbook");
 });
 
+test("a former API token gets 401 with a Bearer challenge and nothing of the wiki", async ({ request }) => {
+  await createFolder({ name: "handbook" });
+  const { secret: former } = await createApiToken({ owner: KNOWN_USER, scopes: ["read", "write"] });
+
+  const response = await send(request, { method: "tools/call", params: { name: "list_folders" } }, former);
+
+  expect(response.status()).toBe(401);
+  expect(response.headers()["www-authenticate"]).toMatch(/^Bearer\b/);
+  expect(response.headers()["www-authenticate"]).toContain("resource_metadata=");
+  expect(await response.text()).not.toContain("handbook");
+});
+
 for (const [what, token] of [
-  ["a token that the server does not know", `hw_${"A".repeat(43)}`],
+  ["an access token that the server does not know", `hwa_${"A".repeat(43)}`],
   ["a value that is no token", "not-a-token"],
 ] as const) {
   test(`with ${what} /mcp answers 401`, async ({ request }) => {
@@ -75,13 +89,14 @@ for (const [what, token] of [
   });
 }
 
-test("with an expired token and with the token of a user with the first password /mcp answers 401", async ({
+test("with an expired grant, an expired access token and that of a user with the first password /mcp answers 401", async ({
   request,
 }) => {
-  const expired = await createApiToken({ owner: KNOWN_USER, expiresAt: new Date(Date.now() - 1000) });
-  const newcomer = await createApiToken({ owner: await createUser({ name: "newcomer" }) });
+  const expired = await createGrant({ owner: KNOWN_USER, expiresAt: new Date(Date.now() - 1000) });
+  const expiredAccess = await createGrant({ owner: KNOWN_USER, accessTokenExpiresAt: new Date(Date.now() - 1000) });
+  const newcomer = await createGrant({ owner: await createUser({ name: "newcomer" }) });
 
-  for (const token of [expired.secret, newcomer.secret]) {
+  for (const token of [expired.accessToken, expiredAccess.accessToken, newcomer.accessToken]) {
     const response = await send(request, { method: "tools/list" }, token);
 
     expect(response.status()).toBe(401);
@@ -89,10 +104,10 @@ test("with an expired token and with the token of a user with the first password
   }
 });
 
-test("the token of an admin gets 401 with invalid_token for every scope and reaches no tool", async ({ request }) => {
+test("the access token of an admin gets 401 with invalid_token and reaches no tool", async ({ request }) => {
   await createFolder({ name: "handbook" });
-  // Admins have no tokens; one inserted directly stands for a token that should not exist.
-  const { secret: adminToken } = await createApiToken({ owner: KNOWN_ADMIN, scopes: ["read", "write"] });
+  // Admins have no grants; one inserted directly stands for a grant that should not exist.
+  const { accessToken: adminToken } = await createGrant({ owner: KNOWN_ADMIN });
 
   for (const message of [
     { method: "tools/list" },
@@ -127,10 +142,10 @@ test("a bearer token reaches no task of an admin: creating a user leads to the l
   expect(await getTestDb().user.count()).toBe(2);
 });
 
-test("with a token without the scope read /mcp answers 403 and names the scope", async ({ request }) => {
-  const writeOnly = await createApiToken({ owner: KNOWN_USER, scopes: ["write"] });
+test("with a grant without the scope read /mcp answers 403 and names the scope", async ({ request }) => {
+  const writeOnly = await createGrant({ owner: KNOWN_USER, scopes: ["write"] });
 
-  const response = await send(request, { method: "tools/list" }, writeOnly.secret);
+  const response = await send(request, { method: "tools/list" }, writeOnly.accessToken);
 
   expect(response.status()).toBe(403);
   expect(response.headers()["www-authenticate"]).toContain('error="insufficient_scope"');
@@ -279,7 +294,7 @@ test("list_folder lists the tabs and the pages of a folder, pages placed directl
   });
 });
 
-test("a token lists and reads a folder on which its user has no role, unlike the browser", async ({ request }) => {
+test("a grant lists and reads a folder on which its user has no role, unlike the browser", async ({ request }) => {
   const bob = await createUser({ name: "bob" });
   const hidden = await createFolder({ name: "hidden", roles: [{ user: bob, role: "owner" }] });
   await createPage({ folder: hidden, name: "secret", content: "# Secret\n\nOnly for bob." });
@@ -361,21 +376,21 @@ test("read_page does not find a deleted page, a page of another tab or a malform
   }
 });
 
-test("a tool call marks the token as used", async ({ request }) => {
-  const { token, secret: fresh } = await createApiToken({ owner: KNOWN_USER });
+test("a tool call marks the grant as used", async ({ request }) => {
+  const { grant, accessToken: fresh } = await createGrant({ owner: KNOWN_USER });
 
-  expect((await getTestDb().apiToken.findUniqueOrThrow({ where: { id: token.id } })).lastUsedAt).toBeNull();
+  expect((await getTestDb().apiToken.findUniqueOrThrow({ where: { id: grant.id } })).lastUsedAt).toBeNull();
   const response = await send(request, { method: "tools/list" }, fresh);
 
   expect(response.status()).toBe(200);
-  expect((await getTestDb().apiToken.findUniqueOrThrow({ where: { id: token.id } })).lastUsedAt).not.toBeNull();
+  expect((await getTestDb().apiToken.findUniqueOrThrow({ where: { id: grant.id } })).lastUsedAt).not.toBeNull();
 });
 
-test("a revoked token stops working at once", async ({ request }) => {
-  const { token, secret: revoked } = await createApiToken({ owner: KNOWN_USER });
+test("the access token of a revoked grant stops working at once", async ({ request }) => {
+  const { grant, accessToken: revoked } = await createGrant({ owner: KNOWN_USER });
   expect((await send(request, { method: "tools/list" }, revoked)).status()).toBe(200);
 
-  await getTestDb().apiToken.delete({ where: { id: token.id } });
+  await getTestDb().apiToken.delete({ where: { id: grant.id } });
 
   expect((await send(request, { method: "tools/list" }, revoked)).status()).toBe(401);
 });

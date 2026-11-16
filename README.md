@@ -15,8 +15,7 @@ The wiki can only be used after a login. Every account is either an admin, who m
 and only an overview of who has which role on which folder, or a user, who creates folders, works with the folders on
 which the user has a role (Reader, Writer, Manager or Owner) and creates API tokens for scripts and tools on the own
 account page; admins create the accounts and choose their type, and the Owners of a folder give the roles on it. AI assistants read the wiki
-through an MCP server, with an API token or, for connectors such as the ones of claude.ai and ChatGPT, through OAuth
-(see "MCP server").
+through an MCP server, connected through OAuth (see "MCP server").
 
 What is built is described in `spec/`: `spec/content-structure.md`, `spec/pages.md`, `spec/page-deletion.md`,
 `spec/users-and-login.md`, `spec/api-tokens.md`, `spec/mcp.md`, `spec/oauth.md` and `spec/container-image.md`.
@@ -133,24 +132,19 @@ by the admin setup; further accounts of either type are created by an admin in t
 
 ## MCP server
 
-AI assistants read the wiki through the Model Context Protocol at `/mcp`, acting as a user. A client sends an API token
-with the scope `read`, which the user creates on the own account page `/account`, as a bearer token. With Claude Code
-and `npm run dev`:
-
-```bash
-claude mcp add --transport http hippowiki http://localhost:3000/mcp --header "Authorization: Bearer hw_…"
-```
-
-The tools list the folders, list the tabs and pages of a folder and read a page (`spec/mcp.md`).
-
-With `HIPPOWIKI_PUBLIC_URL` set, the wiki is also an OAuth authorization server for MCP clients, such as the connectors
-of claude.ai and ChatGPT: the user logs in, approves the connector on a consent page and revokes it on `/account`
-(`spec/oauth.md`). With `HIPPOWIKI_PUBLIC_URL=http://localhost:3000` in `.env` and `npm run dev`, Claude Code connects
-without a token:
+AI assistants read the wiki through the Model Context Protocol at `/mcp`, acting as a user. A client connects through
+OAuth: the user logs in, approves it on a consent page and revokes it on the own account page `/account`
+(`spec/oauth.md`). MCP needs `HIPPOWIKI_PUBLIC_URL`, which switches OAuth on; without it `/mcp` answers 404 and the
+wiki works only in the browser. With `HIPPOWIKI_PUBLIC_URL=http://localhost:3000` in `.env` and `npm run dev`, Claude
+Code connects with:
 
 ```bash
 claude mcp add --transport http hippowiki http://localhost:3000/mcp
 ```
+
+The connectors of claude.ai and ChatGPT connect the same way, with the address of `/mcp` under the public URL. A
+client that cannot connect through OAuth cannot use the MCP server. The tools list the folders, list the tabs and pages
+of a folder and read a page (`spec/mcp.md`).
 
 ## End-to-end tests
 

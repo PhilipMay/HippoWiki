@@ -18,7 +18,9 @@ vi.mock("@/lib/env", () => ({ getServerEnv: mocks.getServerEnv }));
 vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, error: mocks.error } }));
 
 const ACTOR = { id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002", name: "alice", type: "user" };
-const TOKEN = `hw_${"A".repeat(43)}`;
+const TOKEN = `hwa_${"A".repeat(43)}`;
+const PUBLIC_URL = "https://wiki.example.com";
+const RESOURCE_METADATA = `resource_metadata="${PUBLIC_URL}/.well-known/oauth-protected-resource/mcp"`;
 const URL_OF_MCP = "http://localhost:3000/mcp";
 
 /** Sets the public URL that the adapter reads from the server environment. */
@@ -61,8 +63,37 @@ function modernHeaders(method: string, name?: string): Record<string, string> {
 
 beforeEach(() => {
   vi.resetAllMocks();
-  setPublicUrl(undefined);
+  setPublicUrl(PUBLIC_URL);
   mocks.authenticateToken.mockResolvedValue({ ok: true, value: ACTOR });
+});
+
+describe("without a public URL", () => {
+  it.each([
+    ["POST with a valid token", "POST", { authorization: `Bearer ${TOKEN}` }],
+    ["POST without a token", "POST", {}],
+    ["POST from a foreign origin", "POST", { authorization: `Bearer ${TOKEN}`, origin: "https://evil.example" }],
+    ["GET with a valid token", "GET", { authorization: `Bearer ${TOKEN}` }],
+    ["GET without a token", "GET", {}],
+    ["DELETE with a valid token", "DELETE", { authorization: `Bearer ${TOKEN}` }],
+    ["DELETE from a foreign origin", "DELETE", { origin: "https://evil.example" }],
+  ])("answers %s with 404 and does not look at the token", async (_case, method, headers) => {
+    setPublicUrl(undefined);
+
+    const response = await handleMcpRequest(
+      new Request(URL_OF_MCP, {
+        method,
+        headers,
+        ...(method === "POST" ? { body: JSON.stringify(TOOLS_LIST) } : {}),
+      }),
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    expect(response.headers.get("www-authenticate")).toBeNull();
+    await expect(response.json()).resolves.toEqual({ error: "not_found" });
+    expect(mocks.authenticateToken).not.toHaveBeenCalled();
+    expect(mocks.listFolders).not.toHaveBeenCalled();
+  });
 });
 
 describe("the method", () => {
@@ -85,21 +116,21 @@ describe("the origin", () => {
     expect(response.status).toBe(200);
   });
 
-  it.each([
-    ["the host the request was sent to", "http://localhost:3000"],
-    ["the same host with another scheme", "https://localhost:3000"],
-  ])("without a public URL, lets a request from %s pass", async (_case, origin) => {
-    const response = await handleMcpRequest(post(TOOLS_LIST, { origin }));
+  it("lets a request from exactly the public URL pass", async () => {
+    const response = await handleMcpRequest(post(TOOLS_LIST, { origin: PUBLIC_URL }));
 
     expect(response.status).toBe(200);
   });
 
   it.each([
+    ["another scheme", "http://wiki.example.com"],
+    ["another port", "https://wiki.example.com:8443"],
     ["another site", "https://evil.example"],
-    ["another port of the same host", "http://localhost:6274"],
+    // The host the request was sent to is not enough: a page with a rebound host name would send it as well.
+    ["the host the request was sent to", "http://localhost:3000"],
     ["an opaque origin", "null"],
     ["something that is not an origin", "not an origin"],
-  ])("without a public URL, refuses a request from %s with 403 before the token is checked", async (_case, origin) => {
+  ])("refuses a request from %s with 403 before the token is checked", async (_case, origin) => {
     const response = await handleMcpRequest(post(TOOLS_LIST, { origin }));
 
     expect(response.status).toBe(403);
@@ -107,73 +138,23 @@ describe("the origin", () => {
     expect(mocks.authenticateToken).not.toHaveBeenCalled();
     expect(mocks.warn).toHaveBeenCalledOnce();
   });
-
-  it("with a public URL, lets only a request from exactly that origin pass", async () => {
-    setPublicUrl("https://wiki.example.com");
-
-    expect((await handleMcpRequest(post(TOOLS_LIST, { origin: "https://wiki.example.com" }))).status).toBe(200);
-    for (const origin of [
-      "http://wiki.example.com",
-      "https://wiki.example.com:8443",
-      "https://evil.example",
-      // The host the request was sent to is not enough: a page with a rebound host name would send it as well.
-      "http://localhost:3000",
-      "null",
-    ]) {
-      expect((await handleMcpRequest(post(TOOLS_LIST, { origin }))).status).toBe(403);
-    }
-  });
 });
 
 describe("the token", () => {
-  it("checks the headers of the request for a token with the scope read", async () => {
+  it("checks the headers of the request for an access token with the scope read", async () => {
     const request = post(TOOLS_LIST);
 
     await handleMcpRequest(request);
 
-    expect(mocks.authenticateToken).toHaveBeenCalledExactlyOnceWith(request.headers, "read", { acceptOAuth: false });
-  });
-
-  it("accepts the access tokens of OAuth as well once the wiki has a public URL", async () => {
-    setPublicUrl("https://wiki.example.com");
-    const request = post(TOOLS_LIST);
-
-    await handleMcpRequest(request);
-
-    expect(mocks.authenticateToken).toHaveBeenCalledExactlyOnceWith(request.headers, "read", { acceptOAuth: true });
+    expect(mocks.authenticateToken).toHaveBeenCalledExactlyOnceWith(request.headers, "read");
   });
 
   it.each([
-    [
-      "missing-token",
-      401,
-      'Bearer resource_metadata="https://wiki.example.com/.well-known/oauth-protected-resource/mcp", scope="read"',
-    ],
-    [
-      "invalid-token",
-      401,
-      'Bearer error="invalid_token", resource_metadata="https://wiki.example.com/.well-known/oauth-protected-resource/mcp", scope="read"',
-    ],
-    ["insufficient-scope", 403, 'Bearer error="insufficient_scope", scope="read"'],
-  ])(
-    "with a public URL, answers %s with %i and says where the authorization server is found",
-    async (code, status, challenge) => {
-      setPublicUrl("https://wiki.example.com");
-      mocks.authenticateToken.mockResolvedValue({ ok: false, error: { code } });
-
-      const response = await handleMcpRequest(post(TOOLS_LIST));
-
-      expect(response.status).toBe(status);
-      expect(response.headers.get("www-authenticate")).toBe(challenge);
-    },
-  );
-
-  it.each([
-    ["missing-token", 401, "Bearer", "unauthorized"],
-    ["invalid-token", 401, 'Bearer error="invalid_token"', "invalid_token"],
+    ["missing-token", 401, `Bearer ${RESOURCE_METADATA}, scope="read"`, "unauthorized"],
+    ["invalid-token", 401, `Bearer error="invalid_token", ${RESOURCE_METADATA}, scope="read"`, "invalid_token"],
     ["insufficient-scope", 403, 'Bearer error="insufficient_scope", scope="read"', "insufficient_scope"],
   ])(
-    "answers %s with %i and WWW-Authenticate: %s, without reaching the tools",
+    "answers %s with %i and says where the authorization server is found, without reaching the tools",
     async (code, status, challenge, error) => {
       mocks.authenticateToken.mockResolvedValue({ ok: false, error: { code } });
 
@@ -243,30 +224,10 @@ describe("a client of the protocol of 2025", () => {
     expect(call.headers.get("content-type")).toBe("application/json");
     await expect(call.json()).resolves.toMatchObject({
       id: 3,
-      result: { structuredContent: { folders: [{ name: "handbook", address: "/folders/handbook" }] } },
+      result: { structuredContent: { folders: [{ name: "handbook", address: `${PUBLIC_URL}/folders/handbook` }] } },
     });
     // The tools read as the user of the token, through MCP.
     expect(mocks.listFolders).toHaveBeenCalledExactlyOnceWith({ ...ACTOR, channel: "mcp" });
-  });
-
-  it("gets full addresses with a public URL", async () => {
-    setPublicUrl("https://wiki.example.com");
-    mocks.listFolders.mockResolvedValue([
-      {
-        id: "id-1",
-        name: "handbook",
-        updatedAt: new Date("2026-03-01T12:00:00.000Z"),
-        lastEditedBy: { name: "alice" },
-      },
-    ]);
-
-    const call = await handleMcpRequest(
-      post({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "list_folders", arguments: {} } }),
-    );
-
-    await expect(call.json()).resolves.toMatchObject({
-      result: { structuredContent: { folders: [{ address: "https://wiki.example.com/folders/handbook" }] } },
-    });
   });
 
   it("gets 202 without a body for a notification", async () => {

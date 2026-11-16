@@ -1,8 +1,8 @@
 # HippoWiki – MCP Server
 
 The MCP server as built: AI assistants read the wiki through the Model Context Protocol (MCP) at `/mcp`, acting as a
-user. A tool that can send a header, such as Claude Code, Cursor or VS Code, uses an API token (see `api-tokens.md`);
-the connectors of claude.ai and ChatGPT connect through OAuth (see `oauth.md`). The server only reads.
+user. A client, such as Claude Code or the connectors of claude.ai and ChatGPT, connects through OAuth (see
+`oauth.md`) and sends the access token of its grant. The server only reads.
 
 Code: `src/features/mcp/` (`tools.ts` with the tools, `http.ts` with the adapter of the route), the route
 `src/app/mcp/route.ts` and the exception for it in `src/proxy.ts`. The protocol is spoken by the MCP SDK
@@ -17,28 +17,29 @@ Tests: `e2e/mcp.spec.ts`, `e2e/oauth.spec.ts` for the access tokens of OAuth, an
   SSE stream, no session id and no subscription.
 - Every MCP message is a `POST`. `GET` and `DELETE`, with which a client would open a stream or end a session, answer 405.
 - Clients of the current protocol and clients of the protocol of 2025, which open with `initialize`, are both served.
-- The endpoint works without `HIPPOWIKI_PUBLIC_URL`. The variable only adds OAuth and turns the addresses that the
-  tools give out into full URLs.
-- A request with an `Origin` header that is not the wiki's own is refused with 403, before the token is looked at.
-  With `HIPPOWIKI_PUBLIC_URL` the origin must be exactly that address; without it, its host must be the host the
-  request was sent to. Only browsers send the header, so an MCP client is not affected.
+- Without `HIPPOWIKI_PUBLIC_URL` there is no OAuth and therefore no MCP server: every request to `/mcp` answers 404,
+  like the endpoints of OAuth, before its method, its headers or its token are looked at. With the variable the
+  addresses that the tools give out are full URLs.
+- A request with an `Origin` header that is not exactly `HIPPOWIKI_PUBLIC_URL` is refused with 403, before the token
+  is looked at; the host the request was sent to is not enough. Only browsers send the header, so an MCP client is
+  not affected.
 - `src/proxy.ts` lets `/mcp` pass without a session cookie, because its callers have none. That makes it public to
   the proxy only: the adapter refuses every request without a valid token.
 
 ## The tokens it accepts
 
-- Every request needs a bearer token with the scope `read`: an API token of a user, or, with OAuth on, the access
-  token of a grant. The check is `authenticateToken()` of the token service (see `api-tokens.md`).
+- Every request needs a bearer token with the scope `read`: the access token of a grant. Any other value, a former API
+  token included, counts as no token. The check is `authenticateToken()` of the token service (see `api-tokens.md`).
 - The caller acts as the user of the token: the adapter hands that user to the tools, and the services decide what it
   may read. The tools pass the channel `mcp`, for which the services ignore folder roles: a user reads every folder
   through MCP, also one that the browser hides because the user has no role on it (see `folder-roles.md`).
-- `/mcp` serves users only. Every token of an admin is refused, an API token or the access token of a grant, because
+- `/mcp` serves users only. Every access token of an admin is refused, because
   the check of a bearer token looks at the type of the account (see "No tokens for admins" in `api-tokens.md`); such
   a request reaches no tool.
 - What a client gets instead of an answer of the protocol:
   - 401 with `WWW-Authenticate: Bearer` without a token, and with `error="invalid_token"` for a token that is
-    unknown, expired, of a user who still has the first password or of an admin. With OAuth on, the header also names the metadata
-    of the protected resource (`resource_metadata`) and the scope `read`, so that a connector finds the authorization
+    unknown, expired, of a user who still has the first password or of an admin. The header also names the metadata
+    of the protected resource (`resource_metadata`) and the scope `read`, so that a client finds the authorization
     server.
   - 403 with `error="insufficient_scope"` and `scope="read"` for a valid token without the scope.
   - 500 when the token could not be checked.
@@ -91,7 +92,12 @@ What holds for all of them:
   would only reach the program around the model.
 - The `Origin` check is a second line of defence against a page that makes its host name resolve to the address of
   the wiki (DNS rebinding). The first line is the token: `/mcp` reads no cookie, so a page of another site has
-  nothing to send along.
+  nothing to send along. The check compares with the public URL only: such a page sends its own host name as `Host`
+  and `Origin`, so comparing the two would let it through.
+- `/mcp` is off without `HIPPOWIKI_PUBLIC_URL`, rather than the variable being required: the wiki keeps running for
+  browsers on installations without it, and the variable switches MCP and OAuth on together. Rejected: refusing to
+  start without it, which would break installations on update; a `/mcp` that refuses every request, which a client
+  cannot resolve.
 - `/mcp` is an address of its own and not under `/api/`: MCP clients are configured with the address, and the
   metadata of the protected resource names it.
 - Admins never use MCP, and MCP gets no admin tools and no tokens with an admin scope: this is a lasting rule, not a

@@ -21,8 +21,8 @@ tests are in `e2e/support/oauth.ts`.
 
 - OAuth is on when `HIPPOWIKI_PUBLIC_URL` is set, the public address of the wiki (see "Configuration" in
   `container-image.md`). The issuer of the authorization server is exactly that address.
-- Without the variable every endpoint of OAuth answers 404, the consent page is not found, and `/mcp` accepts only
-  API tokens.
+- Without the variable every endpoint of OAuth answers 404, the consent page is not found, and `/mcp` answers 404 as
+  well: there is no MCP server without OAuth (see `mcp.md`).
 
 ## Discovery
 

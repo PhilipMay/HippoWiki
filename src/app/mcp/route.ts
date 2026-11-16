@@ -1,5 +1,6 @@
-// The MCP endpoint: AI assistants read the wiki here, with an API token as a bearer token. The route only hands the
-// request to the adapter, which checks the token itself; `src/proxy.ts` lets `/mcp` pass without a session cookie.
+// The MCP endpoint: AI assistants read the wiki here, with the access token of a grant to an OAuth client as a bearer
+// token. The route only hands the request to the adapter, which checks the token itself and answers 404 while
+// `HIPPOWIKI_PUBLIC_URL` is not set; `src/proxy.ts` lets `/mcp` pass without a session cookie.
 
 import { handleMcpRequest } from "@/features/mcp/http";
 
@@ -8,12 +9,12 @@ export function POST(request: Request): Promise<Response> {
   return handleMcpRequest(request);
 }
 
-/** There is no stream to open: the adapter answers 405. */
+/** There is no stream to open: the adapter answers 405, or 404 without a public URL. */
 export function GET(request: Request): Promise<Response> {
   return handleMcpRequest(request);
 }
 
-/** There is no session to end: the adapter answers 405. */
+/** There is no session to end: the adapter answers 405, or 404 without a public URL. */
 export function DELETE(request: Request): Promise<Response> {
   return handleMcpRequest(request);
 }

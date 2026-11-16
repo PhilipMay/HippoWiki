@@ -85,9 +85,9 @@ function bearer(token: string): Headers {
   return new Headers({ authorization: `Bearer ${token}` });
 }
 
-/** Whether `/mcp` would accept the access token: `authenticateToken()` with OAuth accepted. */
+/** Whether `/mcp` would accept the access token: `authenticateToken()` with the scope `read`. */
 async function works(accessToken: string): Promise<boolean> {
-  return (await tokenService.authenticateToken(bearer(accessToken), "read", { acceptOAuth: true })).ok;
+  return (await tokenService.authenticateToken(bearer(accessToken), "read")).ok;
 }
 
 function grantsOf(actor: Actor) {
@@ -591,14 +591,14 @@ describe("the grants that a new grant replaces", () => {
     const [alice, bob, client] = [await createActor(), await createActor(), await register()];
     const bobs = await grant(bob, client);
     await grant(alice, client);
-    const { secret } = await createApiToken({ owner: alice, name: "Example" });
+    const { token } = await createApiToken({ owner: alice, name: "Example" });
 
     await grant(alice, client);
 
     expect(await grantsOf(alice)).toHaveLength(2);
     expect(await grantsOf(bob)).toHaveLength(1);
     expect(await works(bobs.accessToken)).toBe(true);
-    await expect(tokenService.authenticateToken(bearer(secret), "read")).resolves.toMatchObject({ ok: true });
+    expect(await getTestDb().apiToken.count({ where: { id: token.id } })).toBe(1);
   });
 });
 
@@ -874,33 +874,24 @@ describe("expiry", () => {
 });
 
 describe("authenticateToken", () => {
-  it("accepts an access token only when the caller accepts OAuth", async () => {
+  it("accepts the access token of a grant", async () => {
     const [alice, client] = [await createActor(), await register()];
     const { accessToken } = await grant(alice, client);
 
-    await expect(tokenService.authenticateToken(bearer(accessToken), "read")).resolves.toEqual({
-      ok: false,
-      error: { code: "missing-token" },
+    await expect(tokenService.authenticateToken(bearer(accessToken), "read")).resolves.toStrictEqual({
+      ok: true,
+      value: alice,
     });
-    await expect(tokenService.authenticateToken(bearer(accessToken), "read", { acceptOAuth: false })).resolves.toEqual({
-      ok: false,
-      error: { code: "missing-token" },
-    });
-    await expect(
-      tokenService.authenticateToken(bearer(accessToken), "read", { acceptOAuth: true }),
-    ).resolves.toStrictEqual({ ok: true, value: alice });
   });
 
-  it("accepts a token of the account page with and without the option", async () => {
+  it("refuses a token of the account page as missing", async () => {
     const alice = await createActor();
     const { secret } = await createApiToken({ owner: alice });
 
-    for (const options of [undefined, { acceptOAuth: true }]) {
-      await expect(tokenService.authenticateToken(bearer(secret), "read", options)).resolves.toStrictEqual({
-        ok: true,
-        value: alice,
-      });
-    }
+    await expect(tokenService.authenticateToken(bearer(secret), "read")).resolves.toEqual({
+      ok: false,
+      error: { code: "missing-token" },
+    });
   });
 
   it("does not accept a refresh token, a code or the access token for the scope write", async () => {
@@ -909,12 +900,12 @@ describe("authenticateToken", () => {
     const { accessToken, refreshToken } = await grant(alice, client);
 
     for (const secret of [refreshToken, code]) {
-      await expect(tokenService.authenticateToken(bearer(secret), "read", { acceptOAuth: true })).resolves.toEqual({
+      await expect(tokenService.authenticateToken(bearer(secret), "read")).resolves.toEqual({
         ok: false,
         error: { code: "missing-token" },
       });
     }
-    await expect(tokenService.authenticateToken(bearer(accessToken), "write", { acceptOAuth: true })).resolves.toEqual({
+    await expect(tokenService.authenticateToken(bearer(accessToken), "write")).resolves.toEqual({
       ok: false,
       error: { code: "insufficient-scope" },
     });
@@ -1087,10 +1078,13 @@ describe("an admin", () => {
     for (const scope of ["read", "write"] as const) {
       await expect(tokenService.authenticateToken(bearer(secret), scope)).resolves.toEqual({
         ok: false,
-        error: { code: "invalid-token" },
+        error: { code: "missing-token" },
       });
     }
-    expect(await works(accessToken)).toBe(false);
+    await expect(tokenService.authenticateToken(bearer(accessToken), "read")).resolves.toEqual({
+      ok: false,
+      error: { code: "invalid-token" },
+    });
     // No last use is written for a refused token.
     expect((await getTestDb().apiToken.findMany({ where: { userId: maria.id } })).map((row) => row.lastUsedAt)).toEqual(
       [null, null],

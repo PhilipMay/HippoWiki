@@ -68,13 +68,12 @@ Code: `src/features/tokens/` (`schema.ts`, `secret.ts`, `service.ts` with `authe
 - `authenticateToken(headers, scope)` in `src/features/tokens/service.ts` is the way for a caller other than the
   browser to find out which user a request acts for. It reads `Authorization: Bearer <token>`; the scheme is matched
   without regard to case, as RFC 6750 allows. The adapter of `/mcp` calls it for every request.
-- With the option `acceptOAuth` it also accepts the access token of a grant, which is refused when it or its grant
-  has expired. The option is off unless a caller asks for it, so only `/mcp` accepts such tokens, and only while
-  OAuth is on. Without the option an access token does not look like a token.
+- It accepts only the access token of a grant, which is refused when it or its grant has expired. An API token is no
+  longer accepted: it does not look like an access token. `/mcp` calls it only while OAuth is on (see `mcp.md`).
 - It returns the actor of the token's user, the same `id`, `name` and type that the session of that user gives, or one
   of these codes:
-  - `missing-token`: no header, another scheme, or a value that does not look like a token. The database is not
-    asked and nothing is logged.
+  - `missing-token`: no header, another scheme, or a value that does not look like an access token, an API token
+    included. The database is not asked and nothing is logged.
   - `invalid-token`: an unknown or expired token, one whose user still has the first password, who may do nothing
     but change it, or one whose user is an admin, who has no tokens.
   - `insufficient-scope`: a valid token without the scope that was asked for.

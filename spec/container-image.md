@@ -141,10 +141,10 @@ Code: `Containerfile`, `.containerignore`, `scripts/image.sh`, `scripts/image-mi
   - It is an `https` URL, or `http` only for `localhost`, `127.0.0.1` and `[::1]`, without user name, password,
     path, query or fragment; any other value stops the server with an error like a wrong `DATABASE_URL`. It is kept
     as the origin, without a trailing slash.
-  - Without it the wiki runs as before: the MCP server at `/mcp` works with API tokens and gives out paths as
-    addresses (see `mcp.md`), and there is no OAuth.
-  - With it OAuth is on (see `oauth.md`): the address is the issuer of the authorization server, `/mcp` also accepts
-    the access tokens of grants, and the MCP server gives out full URLs.
+  - Without it the wiki works in the browser as before, but there is no OAuth and no MCP server: `/mcp` answers 404
+    (see `mcp.md`).
+  - With it OAuth is on (see `oauth.md`): the address is the issuer of the authorization server, `/mcp` accepts the
+    access tokens of grants, and the MCP server gives out full URLs.
   - Set it only on a deployment that is reachable over HTTPS from the internet, because the connectors of claude.ai
     and ChatGPT call the wiki from their own servers, and only after the open checks of the deployment in "Things to
     Check" of `roadmap.md`: with OAuth on, the registration of clients and the token endpoint answer without a login.
