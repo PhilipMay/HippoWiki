@@ -254,6 +254,11 @@ The feature is described in `users-and-login.md`. What every new route, query an
   `pg` driver adapter and survives hot reloads in development.
 - Schema changes are made in `prisma/schema.prisma` and always come with a migration
   (`npm run db:migrate -- --name <change>`). Migrations are stored under `prisma/migrations/`.
+- The history of migrations starts with the one migration `prisma/migrations/20261116103037_init/`, which creates the
+  whole schema of an empty database and holds the hand-written parts of the schema at its end. It replaced the
+  migrations that led there, with the steps that moved the data of older states forward, because there was no
+  installation whose database had to be kept. A database with the older history is not brought forward but
+  recreated. Later schema changes get migrations of their own; they are not folded into `init`.
 - A migration that Prisma cannot create by itself, such as one that moves data or one that `prisma migrate dev`
   refuses to create without a prompt, is written by hand: the SQL of the schema change comes from
   `npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --script`, and
