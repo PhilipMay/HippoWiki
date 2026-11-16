@@ -49,6 +49,8 @@ The specification lives in the `spec/` directory. This catalog should always be 
   what each may do in the browser, admins never have a role, what a user sees and does, creating folders, the roles
   view, giving, changing and removing roles with the last Owner kept, the admin overview `/folder-roles`, MCP, existing
   installations, decisions, limits)
+- `spec/squash-migrations-steps.md`: step plan that replaces the migrations with a single `init` migration and
+  removes the documents of updates of existing installations
 - `spec/roadmap.md`: backlog of candidate features, grouped by theme, and things still to check
 - `spec/issue-report.md`: how to report issues found in code and document reviews
 - `spec/review-report.md`: the report of the security and code review (scope and method, standards and target level,
