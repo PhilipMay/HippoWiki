@@ -636,10 +636,6 @@ describe("the limit of tokens per user", () => {
       }),
     ).resolves.toMatchObject(INVALID_GRANT);
     expect(await getTestDb().apiToken.count({ where: { userId: alice.id } })).toBe(20);
-    // The token service counts the grant as well.
-    await expect(
-      tokenService.createToken(alice, { name: "one too many", scopes: ["read"], expiry: "90d" }),
-    ).resolves.toEqual({ ok: false, error: { code: "limit-reached" } });
   });
 
   it("does not count the grants that the new one replaces", async () => {
@@ -671,7 +667,7 @@ describe("the limit of tokens per user", () => {
     expect(await getTestDb().apiToken.count({ where: { userId: alice.id } })).toBe(20);
   });
 
-  it("cannot be passed by exchanges and new tokens at the same time", async () => {
+  it("cannot be passed by exchanges at the same time", async () => {
     const alice = await createActor();
     await fill(alice, tokenService.MAX_TOKENS_PER_USER - 2);
     const exchanges = [];
@@ -680,11 +676,7 @@ describe("the limit of tokens per user", () => {
       exchanges.push(exchangeOf(client, await approve(alice, client)));
     }
 
-    const results = await Promise.all([
-      ...exchanges.map((exchange) => oauthService.exchangeCode(exchange)),
-      tokenService.createToken(alice, { name: "script", scopes: ["read"], expiry: "90d" }),
-      tokenService.createToken(alice, { name: "script", scopes: ["read"], expiry: "90d" }),
-    ]);
+    const results = await Promise.all(exchanges.map((exchange) => oauthService.exchangeCode(exchange)));
 
     expect(results.filter((result) => result.ok)).toHaveLength(2);
     expect(await getTestDb().apiToken.count({ where: { userId: alice.id } })).toBe(20);

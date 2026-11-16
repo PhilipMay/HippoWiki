@@ -108,7 +108,7 @@ export function folderRolesOverviewPath(): string {
   return FOLDER_ROLES_PATH;
 }
 
-/** The address of the own account of the logged-in user, with the API tokens. */
+/** The address of the own account of the logged-in user, with the connected apps. */
 const ACCOUNT_PATH = "/account";
 
 /** The address of the own account, optionally with an action. */
@@ -116,12 +116,12 @@ export function accountPath(action?: string): string {
   return withAction(ACCOUNT_PATH, action);
 }
 
-/** The address of the dialog that revokes the token with the given id. */
-export function revokeTokenPath(id: string): string {
-  return `${accountPath("revoke")}&token=${id}`;
+/** The address of the dialog that revokes the connected app with the given id. */
+export function revokeAppPath(id: string): string {
+  return `${accountPath("revoke")}&app=${id}`;
 }
 
-/** The address of the MCP endpoint, where AI assistants read the wiki with a bearer token. */
+/** The address of the MCP endpoint, where AI assistants read the wiki with the access token of a grant. */
 const MCP_PATH = "/mcp";
 
 /** The address of the MCP endpoint. */

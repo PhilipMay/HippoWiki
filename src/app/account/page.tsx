@@ -1,13 +1,10 @@
-import Button from "@mui/material/Button";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
-import Link from "@/components/Link";
 import { requireUser } from "@/features/auth/session";
-import { createToken, revokeToken } from "@/features/tokens/actions";
-import CreateTokenDialog from "@/features/tokens/components/CreateTokenDialog";
+import { revokeToken } from "@/features/tokens/actions";
 import RevokeTokenDialog from "@/features/tokens/components/RevokeTokenDialog";
 import TokenList from "@/features/tokens/components/TokenList";
 import { listTokens } from "@/features/tokens/queries";
@@ -30,64 +27,53 @@ function AccountHeading({ name }: { name: string }) {
   );
 }
 
-/** The actions of the account: `create` opens the "New token" dialog, `revoke` the "Revoke token" dialog. */
-const ACTIONS = ["create", "revoke"] as const;
+/** The actions of the account: `revoke` opens the "Revoke app" dialog. */
+const ACTIONS = ["revoke"] as const;
 
 /**
- * The own account of the logged-in user: the user name and the user's API tokens, with the apps the user connected
- * through OAuth among them. `?action=revoke` needs the parameter
- * `token` with the id of one of the user's tokens; every other address with a token, an unknown action or a view is
- * not found. An admin has no tokens and no apps: the account of an admin shows the user name only, and every action
- * is not found.
+ * The own account of the logged-in user: the user name and the apps the user connected through OAuth.
+ * `?action=revoke` needs the parameter `app` with the id of one of the user's apps; every other address with an app,
+ * the parameter `token`, an unknown action or a view is not found. An admin has no apps, and while
+ * `HIPPOWIKI_PUBLIC_URL` is not set no app can connect or be used: then the account shows the user name only, and
+ * every action is not found.
  */
 export default async function AccountPage({ searchParams }: PageProps<"/account">) {
   // Nothing is shown without a login. First, so that an invalid address also leads to the login page.
   const user = await requireUser();
-  const tokens = await listTokens();
-  // The time of the request, to mark expired tokens. The page is rendered on demand, so it is the time of the request.
+  const apps = await listTokens();
+  // The time of the request, to mark expired apps. The page is rendered on demand, so it is the time of the request.
   const now = new Date();
 
   const query = await searchParams;
   const action = parseAction(query, ACTIONS);
-  // The account has no views.
-  if (action === "invalid" || parseView(query) !== null) notFound();
+  // The account has no views, and the parameter of the revoke dialog is `app`.
+  if (action === "invalid" || parseView(query) !== null || query.token !== undefined) notFound();
 
-  // `null` for an admin, who has no tokens.
-  if (!tokens) {
-    if (action !== null || query.token !== undefined) notFound();
+  // `null` for an admin and while OAuth is off.
+  if (!apps) {
+    if (action !== null || query.app !== undefined) notFound();
     return <AccountHeading name={user.name} />;
   }
-  // Only the user's own tokens can be chosen; a malformed id, an unknown one and another user's token are not found.
-  const tokenId = parseChoice(
+  // Only the user's own apps can be chosen; a malformed id, an unknown one and another user's app are not found.
+  const appId = parseChoice(
     query,
-    "token",
-    tokens.map((token) => token.id),
+    "app",
+    apps.map((app) => app.id),
   );
-  if (tokenId === "invalid" || (tokenId === null) !== (action !== "revoke")) notFound();
-  const tokenToRevoke = tokens.find((token) => token.id === tokenId);
+  if (appId === "invalid" || (appId === null) !== (action !== "revoke")) notFound();
+  const appToRevoke = apps.find((app) => app.id === appId);
 
   return (
     <Stack spacing={3}>
       <AccountHeading name={user.name} />
-      <Stack direction="row" spacing={2} sx={{ alignItems: "center", justifyContent: "space-between" }}>
-        <Typography variant="h5" component="h2">
-          API tokens
-        </Typography>
-        <Button component={Link} href={accountPath("create")} variant="contained">
-          New token
-        </Button>
-      </Stack>
-      <Typography color="text.secondary">
-        A token lets a script or a tool, such as an MCP client, act as you, limited to its scopes, until it expires or
-        you revoke it. Apps that you connected, such as the connector of an AI assistant, are listed here as well.
+      <Typography variant="h5" component="h2">
+        Connected apps
       </Typography>
-      <TokenList tokens={tokens} now={now} />
-      {action === "create" && <CreateTokenDialog action={createToken} closeHref={accountPath()} />}
-      {tokenToRevoke && (
+      <TokenList apps={apps} now={now} />
+      {appToRevoke && (
         <RevokeTokenDialog
-          action={revokeToken.bind(null, tokenToRevoke.id)}
-          tokenName={tokenToRevoke.name}
-          isGrant={tokenToRevoke.isGrant}
+          action={revokeToken.bind(null, appToRevoke.id)}
+          appName={appToRevoke.name}
           closeHref={accountPath()}
         />
       )}

@@ -1,9 +1,9 @@
 import type { Page } from "@playwright/test";
 
 import { KNOWN_ADMIN, KNOWN_USER } from "../prisma/known-users";
-import { ADMIN_STORAGE_STATE, becomeUser, NO_STORAGE_STATE } from "./support/auth";
+import { ADMIN_STORAGE_STATE, NO_STORAGE_STATE } from "./support/auth";
 import { collectErrors } from "./support/browser";
-import { createApiToken, createUser, getTestDb, resetTestDatabase, TEST_PASSWORD } from "./support/database";
+import { createGrant, createUser, getTestDb, resetTestDatabase, TEST_PASSWORD } from "./support/database";
 import { connect, listFoldersStatus, refresh, registerClient } from "./support/oauth";
 import { expect, test } from "./support/test";
 
@@ -13,35 +13,13 @@ test.beforeEach(async () => {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** A token as the dialog shows it: the prefix and 43 characters of base64url. */
-const TOKEN = /^hw_[A-Za-z0-9_-]{43}$/;
-
-/** The rows of the token list, in display order. */
-function tokenRows(page: Page) {
-  return page.getByRole("list", { name: "API tokens" }).getByRole("listitem");
+/** The rows of the list of connected apps, in display order. */
+function appRows(page: Page) {
+  return page.getByRole("list", { name: "Connected apps" }).getByRole("listitem");
 }
 
-/** The rows of the token list behind an open dialog, which hides the rest of the page from assistive technology. */
-function tokenRowsBehindDialog(page: Page) {
-  return page
-    .getByRole("list", { name: "API tokens", includeHidden: true })
-    .getByRole("listitem", { includeHidden: true });
-}
-
-function newTokenDialog(page: Page) {
-  return page.getByRole("dialog", { name: "New token" });
-}
-
-function tokenCreatedDialog(page: Page) {
-  return page.getByRole("dialog", { name: "Token created" });
-}
-
-/** Opens the "New token" dialog, fills in the name and returns the dialog. */
-async function openNewToken(page: Page, name: string) {
-  await page.goto("/account?action=create");
-  const dialog = newTokenDialog(page);
-  await dialog.getByLabel("Name").fill(name);
-  return dialog;
+function revokeDialog(page: Page) {
+  return page.getByRole("dialog", { name: "Revoke app" });
 }
 
 async function expectNotFound(page: Page, address: string) {
@@ -52,7 +30,9 @@ async function expectNotFound(page: Page, address: string) {
   await expect(page.getByRole("dialog")).toHaveCount(0);
 }
 
-test("the page shows the user name and an empty token list; the name in the header leads there", async ({ page }) => {
+test("a user without apps sees the user name and that no app is connected; the name in the header leads there", async ({
+  page,
+}) => {
   const errors = collectErrors(page);
   await page.goto("/folders");
 
@@ -61,440 +41,208 @@ test("the page shows the user name and an empty token list; the name in the head
   await expect(page).toHaveURL("/account");
   await expect(page).toHaveTitle("Account – HippoWiki");
   await expect(page.getByRole("heading", { level: 1, name: KNOWN_USER.name })).toBeVisible();
-  await expect(page.getByRole("heading", { level: 2, name: "API tokens" })).toBeVisible();
-  await expect(page.getByText("You have no API tokens and no connected apps yet.")).toBeVisible();
-  await expect(page.getByRole("list", { name: "API tokens" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { level: 2, name: "Connected apps" })).toBeVisible();
+  await expect(page.getByText("No app is connected yet.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Connected apps" })).toHaveCount(0);
+  // Nothing else: no address, no instructions, nothing about tokens or scopes, and no way to create a token.
+  await expect(page.getByText(/\/mcp|connect an app|token|scope/i)).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "New token" })).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
-test("creating a token with the defaults shows it once and lists it with read, 90 days and never used", async ({
-  page,
-}) => {
-  const errors = collectErrors(page);
-  await page.goto("/account");
-
-  await page.getByRole("link", { name: "New token" }).click();
-  await expect(page).toHaveURL("/account?action=create");
-  const dialog = newTokenDialog(page);
-  await expect(dialog.getByLabel("Name")).toBeFocused();
-  await expect(dialog.getByLabel(/^read/)).toBeChecked();
-  await expect(dialog.getByLabel(/^write/)).not.toBeChecked();
-  await expect(dialog.getByLabel("90 days")).toBeChecked();
-  await dialog.getByLabel("Name").fill("Claude Desktop");
-  const before = Date.now();
-  await dialog.getByRole("button", { name: "Create" }).click();
-
-  const created = tokenCreatedDialog(page);
-  await expect(created.getByText("Claude Desktop", { exact: true })).toBeVisible();
-  const field = created.getByLabel("Token");
-  await expect(field).toHaveValue(TOKEN);
-  await expect(field).not.toBeEditable();
-  await expect(created.getByText(/shown only this once/)).toBeVisible();
-  const secret = await field.inputValue();
-  // No redirect: the token is neither part of the address nor of a page that the browser stores.
-  await expect(page).toHaveURL("/account?action=create");
-  await expect(tokenRowsBehindDialog(page)).toHaveCount(1);
-
-  // The database holds only the hash of the token.
-  const stored = await getTestDb().apiToken.findMany();
-  expect(stored).toHaveLength(1);
-  expect(stored[0]).toMatchObject({
-    userId: KNOWN_USER.id,
-    name: "Claude Desktop",
-    scopes: ["read"],
-    lastUsedAt: null,
-  });
-  expect(stored[0]?.tokenHash).toMatch(/^[0-9a-f]{64}$/);
-  expect(JSON.stringify(stored)).not.toContain(secret);
-  const expiresIn = (stored[0]?.expiresAt.getTime() ?? 0) - before;
-  expect(expiresIn).toBeGreaterThanOrEqual(90 * DAY_MS - 1000);
-  expect(expiresIn).toBeLessThan(90 * DAY_MS + 60 * 1000);
-
-  await created.getByRole("link", { name: "Back to the account" }).click();
-  await expect(page).toHaveURL("/account");
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  const rows = tokenRows(page);
-  await expect(rows).toHaveCount(1);
-  await expect(rows.nth(0)).toContainText("Claude Desktop");
-  await expect(rows.nth(0)).toContainText("read");
-  await expect(rows.nth(0)).not.toContainText("write");
-  await expect(rows.nth(0)).toContainText("Last used never");
-  await expect(rows.nth(0)).not.toContainText("Expired");
-  await expect(rows.nth(0).getByRole("time").nth(1)).toHaveAttribute(
-    "datetime",
-    stored[0]?.expiresAt.toISOString() ?? "",
-  );
-  expect(await page.content()).not.toContain(secret);
-  await page.goBack();
-  await expect(newTokenDialog(page)).toBeVisible();
-  expect(await page.content()).not.toContain(secret);
-  expect(errors).toEqual([]);
-});
-
-test("a token with both scopes and 365 days", async ({ page }) => {
-  const dialog = await openNewToken(page, "deploy script");
-  await dialog.getByLabel(/^write/).check();
-  await dialog.getByLabel("365 days").check();
-  const before = Date.now();
-
-  await dialog.getByRole("button", { name: "Create" }).click();
-
-  await expect(tokenCreatedDialog(page).getByLabel("Token")).toHaveValue(TOKEN);
-  const stored = await getTestDb().apiToken.findFirstOrThrow();
-  expect(stored.scopes).toEqual(["read", "write"]);
-  expect(stored.expiresAt.getTime() - before).toBeGreaterThanOrEqual(365 * DAY_MS - 1000);
-  await expect(tokenRowsBehindDialog(page).nth(0)).toContainText("write");
-});
-
-test("the copy button puts the token on the clipboard", async ({ page, context }) => {
-  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-  const dialog = await openNewToken(page, "laptop");
-  await dialog.getByRole("button", { name: "Create" }).click();
-  const created = tokenCreatedDialog(page);
-  const secret = await created.getByLabel("Token").inputValue();
-
-  await created.getByRole("button", { name: "Copy token" }).click();
-
-  await expect(created.getByRole("button", { name: "Copied" })).toBeVisible();
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(secret);
-});
-
-test("the Escape key does not close the dialog that shows the token, and a reload loses it", async ({ page }) => {
-  const dialog = await openNewToken(page, "laptop");
-  await dialog.getByRole("button", { name: "Create" }).click();
-  const created = tokenCreatedDialog(page);
-  await expect(created.getByLabel("Token")).toHaveValue(TOKEN);
-  const secret = await created.getByLabel("Token").inputValue();
-
-  await page.keyboard.press("Escape");
-  await expect(created.getByLabel("Token")).toHaveValue(secret);
-
-  await page.reload();
-  await expect(newTokenDialog(page).getByLabel("Name")).toHaveValue("");
-  await expect(tokenCreatedDialog(page)).toHaveCount(0);
-  expect(await page.content()).not.toContain(secret);
-});
-
-test("Cancel leads back to the account without creating a token", async ({ page }) => {
-  const dialog = await openNewToken(page, "laptop");
-
-  await dialog.getByRole("link", { name: "Cancel" }).click();
-
-  await expect(page).toHaveURL("/account");
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+test("creating a token is not found", async ({ page }) => {
+  await expectNotFound(page, "/account?action=create");
   expect(await getTestDb().apiToken.count()).toBe(0);
 });
 
-test.describe("field errors", () => {
-  test("an empty name shows its error and keeps the entered values", async ({ page }) => {
-    const errors = collectErrors(page);
-    const dialog = await openNewToken(page, "   ");
-    await dialog.getByLabel(/^write/).check();
-    await dialog.getByLabel("30 days").check();
-
-    await dialog.getByRole("button", { name: "Create" }).click();
-
-    await expect(dialog.getByText("Name is required", { exact: true })).toBeVisible();
-    await expect(dialog.getByLabel("Name")).toBeFocused();
-    await expect(dialog.getByLabel("Name")).toHaveValue("   ");
-    await expect(dialog.getByLabel(/^read/)).toBeChecked();
-    await expect(dialog.getByLabel(/^write/)).toBeChecked();
-    await expect(dialog.getByLabel("30 days")).toBeChecked();
-    await expect(page).toHaveURL("/account?action=create");
-    expect(await getTestDb().apiToken.count()).toBe(0);
-    expect(errors).toEqual([]);
-  });
-
-  test("a name of more than 50 characters shows its error", async ({ page }) => {
-    const dialog = await openNewToken(page, "x".repeat(50));
-    // The field takes at most 50 characters; a crafted request sends more.
-    await dialog.locator("form").evaluate((form: HTMLFormElement) => {
-      form.addEventListener("formdata", (event) => {
-        event.formData.set("name", "x".repeat(51));
-      });
-    });
-
-    await dialog.getByRole("button", { name: "Create" }).click();
-
-    await expect(dialog.getByText("Name must be at most 50 characters", { exact: true })).toBeVisible();
-    await expect(dialog.getByLabel("Name")).toHaveValue("x".repeat(50));
-    expect(await getTestDb().apiToken.count()).toBe(0);
-  });
-
-  test("no scope shows its error and keeps the entered values", async ({ page }) => {
-    const dialog = await openNewToken(page, "laptop");
-    await dialog.getByLabel(/^read/).uncheck();
-
-    await dialog.getByRole("button", { name: "Create" }).click();
-
-    await expect(dialog.getByText("Choose at least one scope", { exact: true })).toBeVisible();
-    await expect(dialog.getByLabel(/^read/)).toBeFocused();
-    await expect(dialog.getByLabel(/^read/)).not.toBeChecked();
-    await expect(dialog.getByLabel(/^write/)).not.toBeChecked();
-    await expect(dialog.getByLabel("Name")).toHaveValue("laptop");
-    await expect(dialog.getByLabel("90 days")).toBeChecked();
-    expect(await getTestDb().apiToken.count()).toBe(0);
-  });
-
-  test("a corrected input creates the token after an error", async ({ page }) => {
-    const dialog = await openNewToken(page, "");
-    await dialog.getByRole("button", { name: "Create" }).click();
-    await expect(dialog.getByText("Name is required")).toBeVisible();
-
-    await dialog.getByLabel("Name").fill("laptop");
-    await dialog.getByRole("button", { name: "Create" }).click();
-
-    await expect(tokenCreatedDialog(page).getByLabel("Token")).toHaveValue(TOKEN);
-  });
-});
-
-test("the 21st token is refused with a message", async ({ page }) => {
-  for (let index = 0; index < 20; index += 1) await createApiToken({ owner: KNOWN_USER });
-  const dialog = await openNewToken(page, "one too many");
-
-  await dialog.getByRole("button", { name: "Create" }).click();
-
-  await expect(dialog.getByText(/You already have 20 tokens, the most allowed/)).toBeVisible();
-  await expect(dialog.getByLabel("Name")).toHaveValue("one too many");
-  expect(await getTestDb().apiToken.count()).toBe(20);
-});
-
-test("tokens are listed newest first; an expired token is listed as expired, a used one with its last use", async ({
+test("apps are listed newest first with their name, connection time, expiry or Expired, and last use or never", async ({
   page,
 }) => {
+  const errors = collectErrors(page);
   const lastUsedAt = new Date("2026-02-03T10:00:00.000Z");
-  await createApiToken({
+  const old = await createGrant({
     owner: KNOWN_USER,
-    name: "old script",
+    name: "Old connector",
     createdAt: new Date("2026-01-01T10:00:00.000Z"),
     expiresAt: new Date("2026-02-01T10:00:00.000Z"),
   });
-  await createApiToken({ owner: KNOWN_USER, name: "laptop", scopes: ["read", "write"], lastUsedAt });
+  const recent = await createGrant({ owner: KNOWN_USER, name: "Example connector", lastUsedAt });
 
   await page.goto("/account");
 
-  const rows = tokenRows(page);
+  const rows = appRows(page);
   await expect(rows).toHaveCount(2);
-  await expect(rows.nth(0)).toContainText("laptop");
+  await expect(rows.nth(0)).toContainText("Example connector");
+  await expect(rows.nth(0)).toContainText("Connected ");
+  await expect(rows.nth(0).getByRole("time").nth(0)).toHaveAttribute("datetime", recent.grant.createdAt.toISOString());
+  await expect(rows.nth(0)).toContainText("Expires ");
   await expect(rows.nth(0)).not.toContainText("Expired");
-  await expect(rows.nth(0)).toContainText("Last used");
   await expect(rows.nth(0).getByRole("time").nth(2)).toHaveAttribute("datetime", lastUsedAt.toISOString());
-  await expect(rows.nth(1)).toContainText("old script");
-  await expect(rows.nth(1)).toContainText("Expired");
+  await expect(rows.nth(0).getByRole("link", { name: "Revoke Example connector" })).toBeVisible();
+  await expect(rows.nth(1)).toContainText("Old connector");
+  await expect(rows.nth(1).getByText("Expired", { exact: true })).toBeVisible();
+  await expect(rows.nth(1).getByRole("time").nth(1)).toHaveAttribute("datetime", old.grant.expiresAt.toISOString());
   await expect(rows.nth(1)).toContainText("Last used never");
+  // No scopes and no secrets of the grants.
+  await expect(page.getByText(/token|scope|\bread\b/i)).toHaveCount(0);
+  const html = await page.content();
+  expect(html).not.toContain(recent.accessToken);
+  expect(html).not.toContain("hwa_");
+  expect(errors).toEqual([]);
 });
 
-test("revoking asks first; after confirming, the token is gone from the list and the database", async ({ page }) => {
+test("an app connected through OAuth is listed, and a use through /mcp shows as its last use", async ({
+  page,
+  request,
+}) => {
   const errors = collectErrors(page);
-  const { token } = await createApiToken({ owner: KNOWN_USER, name: "laptop" });
-  const { token: other } = await createApiToken({ owner: KNOWN_USER, name: "desktop" });
+  const tokens = await connect(page, request, await registerClient(request, "Example connector"));
+
   await page.goto("/account");
 
-  await page.getByRole("link", { name: "Revoke laptop" }).click();
+  const rows = appRows(page);
+  await expect(rows).toHaveCount(1);
+  await expect(rows.nth(0)).toContainText("Example connector");
+  await expect(rows.nth(0)).toContainText("Last used never");
+  const html = await page.content();
+  expect(html).not.toContain(tokens.access_token);
+  expect(html).not.toContain(tokens.refresh_token);
+  expect(html).not.toContain("hwr_");
 
-  await expect(page).toHaveURL(`/account?action=revoke&token=${token.id}`);
-  const dialog = page.getByRole("dialog", { name: "Revoke token" });
-  await expect(dialog).toContainText("laptop");
-  await expect(dialog).toContainText("stop working at once");
-  expect(await getTestDb().apiToken.count()).toBe(2);
+  expect(await listFoldersStatus(request, tokens.access_token)).toBe(200);
+  await page.reload();
+  await expect(appRows(page).nth(0)).not.toContainText("Last used never");
+  expect(errors).toEqual([]);
+});
+
+test("revoking asks first, then removes the app and ends its access token and its refresh token at once", async ({
+  page,
+  request,
+}) => {
+  const errors = collectErrors(page);
+  const clientId = await registerClient(request, "Example connector");
+  const tokens = await connect(page, request, clientId);
+  const { grant: other } = await createGrant({ owner: KNOWN_USER, createdAt: new Date(Date.now() - DAY_MS) });
+  const grant = await getTestDb().apiToken.findFirstOrThrow({ where: { clientId: { not: other.clientId } } });
+  expect(await listFoldersStatus(request, tokens.access_token)).toBe(200);
+  await page.goto("/account");
+
+  await page.getByRole("link", { name: "Revoke Example connector" }).click();
+
+  await expect(page).toHaveURL(`/account?action=revoke&app=${grant.id}`);
+  const dialog = revokeDialog(page);
+  await expect(dialog).toContainText("Revoke the access of the connected app Example connector?");
+  await expect(dialog).toContainText("has to be connected again");
+  await expect(dialog.getByText(/token/i)).toHaveCount(0);
+  // Nothing happens before the user confirms.
+  expect(await listFoldersStatus(request, tokens.access_token)).toBe(200);
 
   await dialog.getByRole("button", { name: "Revoke" }).click();
 
   await expect(page).toHaveURL("/account");
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(tokenRows(page)).toHaveCount(1);
-  await expect(tokenRows(page).nth(0)).toContainText("desktop");
+  await expect(appRows(page)).toHaveCount(1);
+  await expect(page.getByText("Example connector")).toHaveCount(0);
   expect(await getTestDb().apiToken.findMany({ select: { id: true } })).toEqual([{ id: other.id }]);
+  expect(await listFoldersStatus(request, tokens.access_token)).toBe(401);
+  const refreshed = await refresh(request, clientId, tokens.refresh_token);
+  expect(refreshed.status()).toBe(400);
+  expect(await refreshed.json()).toMatchObject({ error: "invalid_grant" });
+  // The app can be connected again.
+  const again = await connect(page, request, clientId);
+  expect(await listFoldersStatus(request, again.access_token)).toBe(200);
   expect(errors).toEqual([]);
 });
 
-test("Cancel in the revoke dialog keeps the token", async ({ page }) => {
-  const { token } = await createApiToken({ owner: KNOWN_USER, name: "laptop" });
-  await page.goto(`/account?action=revoke&token=${token.id}`);
+test("Cancel in the revoke dialog keeps the app", async ({ page }) => {
+  const { grant } = await createGrant({ owner: KNOWN_USER, name: "Example connector" });
+  await page.goto(`/account?action=revoke&app=${grant.id}`);
 
-  await page.getByRole("dialog", { name: "Revoke token" }).getByRole("link", { name: "Cancel" }).click();
+  await revokeDialog(page).getByRole("link", { name: "Cancel" }).click();
 
   await expect(page).toHaveURL("/account");
+  await expect(appRows(page)).toHaveCount(1);
   expect(await getTestDb().apiToken.count()).toBe(1);
 });
 
-test("a token that was revoked in the meantime shows the not-found page", async ({ page }) => {
-  const { token } = await createApiToken({ owner: KNOWN_USER, name: "laptop" });
-  await page.goto(`/account?action=revoke&token=${token.id}`);
-  await getTestDb().apiToken.delete({ where: { id: token.id } });
+test("an app that was revoked in the meantime shows the not-found page", async ({ page }) => {
+  const { grant } = await createGrant({ owner: KNOWN_USER, name: "Example connector" });
+  await page.goto(`/account?action=revoke&app=${grant.id}`);
+  await getTestDb().apiToken.delete({ where: { id: grant.id } });
 
-  await page.getByRole("dialog", { name: "Revoke token" }).getByRole("button", { name: "Revoke" }).click();
+  await revokeDialog(page).getByRole("button", { name: "Revoke" }).click();
 
   await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
 });
 
 test.describe("addresses that are not found", () => {
-  test("the token of another user in the revoke address", async ({ page }) => {
-    const bob = await createUser({ name: "bob", mustChangePassword: false });
-    const { token } = await createApiToken({ owner: bob, name: "bob's token" });
+  test("the former address with token= of an own app", async ({ page }) => {
+    const { grant } = await createGrant({ owner: KNOWN_USER });
 
-    await expectNotFound(page, `/account?action=revoke&token=${token.id}`);
-    await expect(page.getByText("bob's token")).toHaveCount(0);
+    await expectNotFound(page, `/account?action=revoke&token=${grant.id}`);
+    await expectNotFound(page, `/account?token=${grant.id}`);
     expect(await getTestDb().apiToken.count()).toBe(1);
   });
 
+  test("the app of another user in the revoke address", async ({ page }) => {
+    const bob = await createUser({ name: "bob", mustChangePassword: false });
+    const { grant } = await createGrant({ owner: bob, name: "Bob's connector" });
+
+    await expectNotFound(page, `/account?action=revoke&app=${grant.id}`);
+    await expect(page.getByText("Bob's connector")).toHaveCount(0);
+    expect(await getTestDb().apiToken.count()).toBe(1);
+  });
+
+  test("an app without the action revoke", async ({ page }) => {
+    const { grant } = await createGrant({ owner: KNOWN_USER });
+
+    await expectNotFound(page, `/account?app=${grant.id}`);
+    await expectNotFound(page, `/account?action=create&app=${grant.id}`);
+  });
+
   for (const address of [
-    "/account?action=revoke&token=not-a-uuid",
-    // A well-formed id that no token has.
-    "/account?action=revoke&token=6f0c1a2b-3d4e-4f50-8a1b-2c3d4e5f6a7b",
+    "/account?action=revoke&app=not-a-uuid",
+    // A well-formed id that no app has.
+    "/account?action=revoke&app=6f0c1a2b-3d4e-4f50-8a1b-2c3d4e5f6a7b",
     "/account?action=revoke",
     "/account?action=anything",
     "/account?view=all",
-    "/account?action=create&action=create",
-    "/account?token=0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01",
+    "/account?action=revoke&action=revoke",
   ]) {
     test(address, async ({ page }) => {
       await expectNotFound(page, address);
     });
   }
-
-  test("a token parameter with another action", async ({ page }) => {
-    const { token } = await createApiToken({ owner: KNOWN_USER });
-
-    await expectNotFound(page, `/account?action=create&token=${token.id}`);
-    await expectNotFound(page, `/account?token=${token.id}`);
-  });
 });
 
-test.describe("an app connected through OAuth", () => {
-  test("is listed among the tokens as a connected app, with the name of the app, its scope, expiry and last use", async ({
-    page,
-    request,
-  }) => {
-    const errors = collectErrors(page);
-    await createApiToken({ owner: KNOWN_USER, name: "laptop", createdAt: new Date(Date.now() - DAY_MS) });
-    const tokens = await connect(page, request, await registerClient(request, "Example connector"));
-
-    await page.goto("/account");
-
-    const rows = tokenRows(page);
-    await expect(rows).toHaveCount(2);
-    // The grant is the newer one.
-    const grant = rows.nth(0);
-    await expect(grant).toContainText("Example connector");
-    await expect(grant.getByText("Connected app", { exact: true })).toBeVisible();
-    await expect(grant.getByText("read", { exact: true })).toBeVisible();
-    await expect(grant).toContainText("Connected ");
-    await expect(grant).toContainText("Expires");
-    await expect(grant).toContainText("Last used never");
-    await expect(grant.getByRole("link", { name: "Revoke Example connector" })).toBeVisible();
-    // A token of the account page is not marked.
-    await expect(rows.nth(1)).toContainText("laptop");
-    await expect(rows.nth(1).getByText("Connected app")).toHaveCount(0);
-    await expect(rows.nth(1)).toContainText("Created ");
-    // Neither token of the grant is on the page.
-    const html = await page.content();
-    expect(html).not.toContain(tokens.access_token);
-    expect(html).not.toContain(tokens.refresh_token);
-    expect(html).not.toContain("hwa_");
-    expect(html).not.toContain("hwr_");
-
-    // A use through /mcp shows as the last use.
-    expect(await listFoldersStatus(request, tokens.access_token)).toBe(200);
-    await page.reload();
-    await expect(tokenRows(page).nth(0)).not.toContainText("Last used never");
-    expect(errors).toEqual([]);
-  });
-
-  test("revoking it asks first and then ends its access token and its refresh token at once", async ({
-    page,
-    request,
-  }) => {
-    const clientId = await registerClient(request, "Example connector");
-    const tokens = await connect(page, request, clientId);
-    expect(await listFoldersStatus(request, tokens.access_token)).toBe(200);
-    await page.goto("/account");
-
-    await page.getByRole("link", { name: "Revoke Example connector" }).click();
-    const dialog = page.getByRole("dialog", { name: "Revoke token" });
-    await expect(dialog).toContainText("Revoke the access of the connected app Example connector?");
-    await expect(dialog).toContainText("has to be connected again");
-    // Nothing happens before the user confirms.
-    expect(await listFoldersStatus(request, tokens.access_token)).toBe(200);
-    await dialog.getByRole("button", { name: "Revoke" }).click();
-
-    await expect(page).toHaveURL("/account");
-    await expect(page.getByText("You have no API tokens and no connected apps yet.")).toBeVisible();
-    expect(await getTestDb().apiToken.count()).toBe(0);
-    expect(await listFoldersStatus(request, tokens.access_token)).toBe(401);
-    const refreshed = await refresh(request, clientId, tokens.refresh_token);
-    expect(refreshed.status()).toBe(400);
-    expect(await refreshed.json()).toMatchObject({ error: "invalid_grant" });
-    // The app can be connected again.
-    const again = await connect(page, request, clientId);
-    expect(await listFoldersStatus(request, again.access_token)).toBe(200);
-  });
-
-  test("an expired grant is listed as expired, like a token", async ({ page, request }) => {
-    await connect(page, request, await registerClient(request, "Example connector"));
-    await getTestDb().apiToken.updateMany({ data: { expiresAt: new Date(Date.now() - 1000) } });
-
-    await page.goto("/account");
-
-    await expect(tokenRows(page).nth(0)).toContainText("Example connector");
-    await expect(tokenRows(page).nth(0).getByText("Expired", { exact: true })).toBeVisible();
-  });
-
-  test("the grant of another user is not listed and cannot be revoked", async ({ page, request, browser }) => {
-    // Another user connects an app in a browser of their own.
-    const bob = await createUser({ name: "bob", mustChangePassword: false });
-    const bobContext = await browser.newContext({ storageState: NO_STORAGE_STATE });
-    const bobPage = await bobContext.newPage();
-    await bobPage.goto("/login");
-    await bobPage.getByLabel("User name").fill("bob");
-    await bobPage.getByLabel("Password").fill(TEST_PASSWORD);
-    await bobPage.getByRole("button", { name: "Log in" }).click();
-    await expect(bobPage).toHaveURL("/folders");
-    const tokens = await connect(bobPage, bobContext.request, await registerClient(request, "Bob's connector"));
-    await bobContext.close();
-    const grant = await getTestDb().apiToken.findFirstOrThrow({ where: { userId: bob.id } });
-
-    await page.goto("/account");
-    await expect(page.getByText("Bob's connector")).toHaveCount(0);
-    const response = await page.goto(`/account?action=revoke&token=${grant.id}`);
-
-    expect(response?.status()).toBe(404);
-    expect(await listFoldersStatus(request, tokens.access_token)).toBe(200);
-  });
-});
-
-test("a user sees only their own tokens", async ({ page }) => {
+test("a user sees only their own apps, also when another user connects one", async ({ page, request, browser }) => {
+  // Another user connects an app in a browser of their own.
   const bob = await createUser({ name: "bob", mustChangePassword: false });
-  const { token } = await createApiToken({ owner: bob, name: "bob's token" });
-  await createApiToken({ owner: KNOWN_USER, name: "alice's token" });
+  const bobContext = await browser.newContext({ storageState: NO_STORAGE_STATE });
+  const bobPage = await bobContext.newPage();
+  await bobPage.goto("/login");
+  await bobPage.getByLabel("User name").fill("bob");
+  await bobPage.getByLabel("Password").fill(TEST_PASSWORD);
+  await bobPage.getByRole("button", { name: "Log in" }).click();
+  await expect(bobPage).toHaveURL("/folders");
+  const tokens = await connect(bobPage, bobContext.request, await registerClient(request, "Bob's connector"));
+  await bobContext.close();
+  const bobsGrant = await getTestDb().apiToken.findFirstOrThrow({ where: { userId: bob.id } });
+  await createGrant({ owner: KNOWN_USER, name: "Alice's connector" });
 
   await page.goto("/account");
 
-  await expect(tokenRows(page)).toHaveCount(1);
-  await expect(tokenRows(page).nth(0)).toContainText("alice's token");
-  await expect(page.getByText("bob's token")).toHaveCount(0);
-  await expectNotFound(page, `/account?action=revoke&token=${token.id}`);
-});
-
-test("a submission of the New token form with the login of an admin creates no token and is not found", async ({
-  page,
-  context,
-}) => {
-  // The user opens the form; then the browser gets the login of an admin, as if the admin had crafted the request.
-  const dialog = await openNewToken(page, "Admin token");
-  await becomeUser(context, ADMIN_STORAGE_STATE);
-
-  await dialog.getByRole("button", { name: "Create" }).click();
-
-  await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
-  await expect(page.getByText(TOKEN)).toHaveCount(0);
-  expect(await getTestDb().apiToken.count()).toBe(0);
+  await expect(appRows(page)).toHaveCount(1);
+  await expect(appRows(page).nth(0)).toContainText("Alice's connector");
+  await expect(page.getByText("Bob's connector")).toHaveCount(0);
+  await expectNotFound(page, `/account?action=revoke&app=${bobsGrant.id}`);
+  expect(await listFoldersStatus(request, tokens.access_token)).toBe(200);
 });
 
 test.describe("an admin", () => {
   test.use({ storageState: ADMIN_STORAGE_STATE });
 
-  test("sees the user name only: no token list and no New token", async ({ page }) => {
+  test("sees the user name only: no list of apps", async ({ page }) => {
     const errors = collectErrors(page);
 
     await page.goto("/users");
@@ -502,19 +250,29 @@ test.describe("an admin", () => {
 
     await expect(page).toHaveURL("/account");
     await expect(page.getByRole("heading", { level: 1, name: KNOWN_ADMIN.name })).toBeVisible();
-    await expect(page.getByRole("heading", { level: 2, name: "API tokens" })).toHaveCount(0);
-    await expect(page.getByRole("list", { name: "API tokens" })).toHaveCount(0);
-    await expect(page.getByRole("link", { name: "New token" })).toHaveCount(0);
-    await expect(page.getByText(/token/i)).toHaveCount(0);
+    await expect(page.getByRole("heading", { level: 2, name: "Connected apps" })).toHaveCount(0);
+    await expect(page.getByRole("list", { name: "Connected apps" })).toHaveCount(0);
+    await expect(page.getByText(/token|connected/i)).toHaveCount(0);
     expect(errors).toEqual([]);
   });
 
-  test("gets the not-found page for the dialogs of tokens", async ({ page }) => {
-    const { token } = await createApiToken({ owner: KNOWN_USER, name: "alice's token" });
+  test("gets the not-found page for create, for revoke and for an app", async ({ page }) => {
+    // Admins have no grants; one inserted directly stands for a grant that should not exist.
+    const { grant: own } = await createGrant({ owner: KNOWN_ADMIN, name: "Admin connector" });
+    const { grant: users } = await createGrant({ owner: KNOWN_USER, name: "Alice's connector" });
 
-    await expectNotFound(page, "/account?action=create");
-    await expectNotFound(page, `/account?action=revoke&token=${token.id}`);
-    await expectNotFound(page, "/account?view=all");
-    await expect(page.getByText("alice's token")).toHaveCount(0);
+    for (const address of [
+      "/account?action=create",
+      "/account?action=revoke",
+      `/account?action=revoke&app=${own.id}`,
+      `/account?action=revoke&app=${users.id}`,
+      `/account?app=${own.id}`,
+      `/account?action=revoke&token=${own.id}`,
+      "/account?view=all",
+    ]) {
+      await expectNotFound(page, address);
+    }
+    await expect(page.getByText("Alice's connector")).toHaveCount(0);
+    expect(await getTestDb().apiToken.count()).toBe(2);
   });
 });

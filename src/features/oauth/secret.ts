@@ -1,6 +1,6 @@
 // The secrets of OAuth: authorization codes, access tokens and refresh tokens, and their hashes. They are made with
-// the generator of the API tokens (`src/features/tokens/secret.ts`), behind prefixes of their own, so that each kind
-// is recognised by its start and never taken for another. Only SHA-256 hashes are stored. Uses `node:crypto`, so only
+// the shared generator (`src/features/tokens/secret.ts`), behind prefixes of their own, so that each kind is
+// recognised by its start and never taken for another. Only SHA-256 hashes are stored. Uses `node:crypto`, so only
 // the server imports it.
 
 import { createHash, timingSafeEqual } from "node:crypto";
@@ -57,8 +57,8 @@ export function grantIdOfRefreshToken(value: string): string | null {
 }
 
 /**
- * The hash of a code or a token as stored: the SHA-256 in hex, as for an API token. Each has 256 random bits, so a
- * fast hash is enough.
+ * The hash of a code or a token as stored: the SHA-256 in hex. Each has 256 random bits, so a fast hash is
+ * enough.
  */
 export function hashSecret(secret: string): string {
   return hashToken(secret);

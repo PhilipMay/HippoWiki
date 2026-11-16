@@ -25,7 +25,7 @@ update deletes the API tokens of existing installations. The plan is written fro
 ## Checklist
 
 - [x] MCP only through OAuth
-- [ ] Account page of connected apps
+- [x] Account page of connected apps
 - [ ] Remove API tokens from the data and the code
 - [ ] Wrap-up
 

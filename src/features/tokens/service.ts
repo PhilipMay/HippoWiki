@@ -1,86 +1,53 @@
-// The reads and writes of API tokens. The service knows nothing about Next.js, forms or addresses, so that the GUI
+// The reads and writes of the grants of users to OAuth clients, the connected apps of the account page, and the check
+// of the access token of a grant. The service knows nothing about Next.js, forms or addresses, so that the GUI
 // (through `queries.ts` and `actions.ts`) and any other caller can use it, also outside a request.
 //
-// Every function that lists or changes tokens takes the acting user first and only ever touches the actor's own
-// tokens: nobody, the admin included, sees or revokes the tokens of another user. `authenticateToken()` is the other
-// way round: it finds the actor of a request from the access token of a grant, the only bearer token it accepts. A token leaves the service only once, when it is
-// created; only its hash is stored, and neither is ever logged.
+// Every function that lists or revokes grants takes the acting user first and only ever touches the actor's own
+// grants: nobody, the admin included, sees or revokes the grants of another user. `authenticateToken()` is the other
+// way round: it finds the actor of a request from the access token of a grant, the only bearer token it accepts.
+// Only hashes of the tokens are stored, and neither a token nor its hash is ever logged.
 //
-// A row of `ApiToken` is either a token created here or the grant of the user to an OAuth client, which the OAuth
-// service creates (`src/features/oauth/service.ts`). A grant is listed, counted in the limit and revoked like a token.
+// A grant is a row of `ApiToken` with a client, which the OAuth service creates (`src/features/oauth/service.ts`).
+// Rows without a client are API tokens of an earlier version: they are never listed, revoked or accepted.
 
-import { z } from "zod";
-
+import { issuer } from "@/features/oauth/issuer";
 import { looksLikeAccessToken } from "@/features/oauth/secret";
-import {
-  expiresAtFor,
-  isTokenScope,
-  parseTokenId,
-  tokenInputSchema,
-  type TokenFieldErrors,
-  type TokenScope,
-} from "@/features/tokens/schema";
-import { generateToken, hashToken } from "@/features/tokens/secret";
+import { parseTokenId, type TokenScope } from "@/features/tokens/schema";
+import { hashToken } from "@/features/tokens/secret";
 import { parseUserId } from "@/features/users/schema";
 import type { Actor } from "@/features/users/service";
 import { isAdmin, type UserType } from "@/features/users/user-type";
 import { getDb } from "@/lib/db";
-import { API_TOKEN_HASH, isUniqueViolation } from "@/lib/db-errors";
 import { logger } from "@/lib/logger";
 import type { Result } from "@/lib/result";
 
-/** How many tokens a user may hold, expired ones included. */
+/** How many grants a user may hold, expired ones included. */
 export const MAX_TOKENS_PER_USER = 20;
 
-/** A token as the token list shows it; never the token or its hash. */
+/** A connected app as the account page lists it; never a token, a hash or the client. */
 export type TokenSummary = {
   id: string;
-  /** The name the user gave the token; for a grant, the name of the app it was given to. */
+  /** The name of the app, as its client calls itself. */
   name: string;
-  scopes: TokenScope[];
+  /** When the user approved the app. */
   createdAt: Date;
+  /** When the grant ends: it can no longer be refreshed and its access token stops working. */
   expiresAt: Date;
-  /** When the token was last used, to the minute; `null` if it was never used. */
+  /** When the app last used its access token, to the minute; `null` if it never did. */
   lastUsedAt: Date | null;
-  /**
-   * Whether the row is a grant to an OAuth client, a connected app, instead of a token created on the account page.
-   * A grant has no token to show: the app holds its tokens itself.
-   */
-  isGrant: boolean;
 };
 
-/** The columns of a token that make up a `TokenSummary`. */
+/** The columns of a grant that make up a `TokenSummary`. */
 const TOKEN_SUMMARY_SELECT = {
   id: true,
   name: true,
-  scopes: true,
   createdAt: true,
   expiresAt: true,
   lastUsedAt: true,
-  clientId: true,
 } as const;
 
-type TokenSummaryRow = Omit<TokenSummary, "scopes" | "isGrant"> & { scopes: string[]; clientId: string | null };
-
-function toTokenSummary({
-  id,
-  name,
-  scopes,
-  createdAt,
-  expiresAt,
-  lastUsedAt,
-  clientId,
-}: TokenSummaryRow): TokenSummary {
-  return {
-    id,
-    name,
-    scopes: scopes.filter(isTokenScope),
-    createdAt,
-    expiresAt,
-    lastUsedAt,
-    isGrant: clientId !== null,
-  };
-}
+/** The rows that are grants: those with a client. A row without one is an API token of an earlier version. */
+const IS_GRANT = { clientId: { not: null } } as const;
 
 /** The current time. The one place the service takes it from, so that tests can set the clock. */
 function currentTime(): Date {
@@ -97,123 +64,56 @@ function actorIdOf(actor: Actor): string | null {
   return id;
 }
 
-/**
- * The actor's tokens and grants to OAuth clients, newest first. A malformed actor id has no tokens. `null` for an
- * admin, who has no tokens and no grants: for an admin the token list does not exist.
- */
-export async function listTokens(actor: Actor): Promise<TokenSummary[] | null> {
-  if (isAdmin(actor)) return null;
-  const userId = parseUserId(actor.id);
-  if (!userId) return [];
-  const tokens = await getDb().apiToken.findMany({
-    where: { userId },
-    select: TOKEN_SUMMARY_SELECT,
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-  });
-  return tokens.map(toTokenSummary);
+/** Whether OAuth is on: without `HIPPOWIKI_PUBLIC_URL` no app can connect and no grant can be used. */
+function isOAuthOn(): boolean {
+  return issuer() !== null;
 }
 
 /**
- * A token that was just created, with the token itself. The token leaves the service this once and is stored nowhere:
- * only its hash is in the database.
+ * The actor's connected apps, newest first. A malformed actor id has none. `null` for an admin, who has no grants, and
+ * while OAuth is off, when no grant can be used: then the list does not exist. The grants stay stored and are listed
+ * again once OAuth is on.
  */
-export type CreatedToken = { token: TokenSummary; secret: string };
+export async function listTokens(actor: Actor): Promise<TokenSummary[] | null> {
+  if (isAdmin(actor) || !isOAuthOn()) return null;
+  const userId = parseUserId(actor.id);
+  if (!userId) return [];
+  return getDb().apiToken.findMany({
+    where: { userId, ...IS_GRANT },
+    select: TOKEN_SUMMARY_SELECT,
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+  });
+}
 
-type InvalidToken = { code: "invalid-input"; fieldErrors: TokenFieldErrors };
-/** The actor already holds the most tokens a user may hold; nothing was written. */
-type LimitReached = { code: "limit-reached" };
 type TokenNotFound = { code: "token-not-found" };
-/** An unexpected database error, or an actor that is malformed or does not exist; it has been logged. */
+/** An unexpected database error, or an actor that is malformed; it has been logged. */
 type Failed = { code: "failed" };
-/** The actor is an admin, who has no tokens; it has been logged. */
+/** The actor is an admin, who has no grants, or OAuth is off; it has been logged. */
 type NotAllowed = { code: "not-allowed" };
 
 /** The request has no `Authorization` header with a bearer token, or its value does not look like an access token. */
 type MissingToken = { code: "missing-token" };
-/** The token is unknown or expired, or its user still has the first password or is an admin. */
+/** The access token is unknown or expired, or its user still has the first password or is an admin. */
 type BadToken = { code: "invalid-token" };
-/** The token is valid but lacks the scope that was asked for. */
+/** The access token is valid but its grant lacks the scope that was asked for. */
 type InsufficientScope = { code: "insufficient-scope" };
 
-export type CreateTokenError = NotAllowed | InvalidToken | LimitReached | Failed;
 export type RevokeTokenError = NotAllowed | TokenNotFound | Failed;
 export type AuthenticateTokenError = MissingToken | BadToken | InsufficientScope | Failed;
 
-/** Thrown inside the transaction of `createToken` when the actor has no row; rolls it back. */
-class ActorNotFoundError extends Error {}
-
 /**
- * Creates a token for the actor with the given name, scopes and expiry choice, and returns it together with the token
- * itself, which is shown this once. It refuses an admin, who has no tokens, then checks the actor's id, then the
- * input, then the limit, and writes.
- */
-export async function createToken(
-  actor: Actor,
-  input: { name: string; scopes: string[]; expiry: string },
-): Promise<Result<CreatedToken, CreateTokenError>> {
-  if (isAdmin(actor)) {
-    logger.warn({ actorId: actor.id }, "token not created: the actor is an admin");
-    return { ok: false, error: { code: "not-allowed" } };
-  }
-  const userId = actorIdOf(actor);
-  if (!userId) return { ok: false, error: { code: "failed" } };
-
-  const parsed = tokenInputSchema.safeParse(input);
-  if (!parsed.success) {
-    return { ok: false, error: { code: "invalid-input", fieldErrors: z.flattenError(parsed.error).fieldErrors } };
-  }
-  const { name, scopes, expiry } = parsed.data;
-
-  const secret = generateToken();
-  const expiresAt = expiresAtFor(expiry, currentTime());
-
-  let token: TokenSummary | null;
-  try {
-    token = await getDb().$transaction(async (tx) => {
-      // Locks the actor's row, so that two tokens created at the same time cannot both pass the limit. It also tells a
-      // missing actor from a missing token.
-      const users = await tx.$queryRaw<{ id: string }[]>`
-        SELECT "id" FROM "User" WHERE "id" = ${userId}::uuid FOR UPDATE`;
-      if (users.length === 0) throw new ActorNotFoundError();
-      if ((await tx.apiToken.count({ where: { userId } })) >= MAX_TOKENS_PER_USER) return null;
-      const created = await tx.apiToken.create({
-        data: { userId, name, scopes, tokenHash: hashToken(secret), expiresAt },
-        select: TOKEN_SUMMARY_SELECT,
-      });
-      return toTokenSummary(created);
-    });
-  } catch (err) {
-    if (err instanceof ActorNotFoundError) {
-      logger.error({ userId }, "actor of new token not found");
-      return { ok: false, error: { code: "failed" } };
-    }
-    if (isUniqueViolation(err, API_TOKEN_HASH)) {
-      // 256 random bits do not repeat; the generator is broken.
-      logger.error({ userId }, "hash of new token already in use");
-      return { ok: false, error: { code: "failed" } };
-    }
-    logger.error({ err, userId }, "failed to create token");
-    return { ok: false, error: { code: "failed" } };
-  }
-
-  if (!token) {
-    logger.warn({ userId }, "token not created: the user holds the most tokens allowed");
-    return { ok: false, error: { code: "limit-reached" } };
-  }
-
-  logger.info({ userId, tokenId: token.id }, "token created");
-  return { ok: true, value: { token, secret } };
-}
-
-/**
- * Revokes the actor's token with the given id: deletes it, so that it stops working at once. A grant to an OAuth
- * client is revoked the same way, which ends its access token and its refresh token together. A malformed id, an
- * unknown one and the token of another user all give `token-not-found`; only the log tells the last two from the
- * first.
+ * Revokes the actor's connected app with the given id: deletes its grant, which ends its access token and its refresh
+ * token at once. It refuses an admin and refuses while OAuth is off, when the account page lists no apps. A malformed
+ * id, an unknown one, the grant of another user and a row that is no grant all give `token-not-found`; only the log
+ * tells the others from the first.
  */
 export async function revokeToken(actor: Actor, id: string): Promise<Result<{ id: string }, RevokeTokenError>> {
   if (isAdmin(actor)) {
-    logger.warn({ actorId: actor.id }, "token not revoked: the actor is an admin");
+    logger.warn({ actorId: actor.id }, "grant not revoked: the actor is an admin");
+    return { ok: false, error: { code: "not-allowed" } };
+  }
+  if (!isOAuthOn()) {
+    logger.warn({ actorId: actor.id }, "grant not revoked: OAuth is off");
     return { ok: false, error: { code: "not-allowed" } };
   }
   const userId = actorIdOf(actor);
@@ -224,18 +124,18 @@ export async function revokeToken(actor: Actor, id: string): Promise<Result<{ id
 
   let count: number;
   try {
-    ({ count } = await getDb().apiToken.deleteMany({ where: { id: tokenId, userId } }));
+    ({ count } = await getDb().apiToken.deleteMany({ where: { id: tokenId, userId, ...IS_GRANT } }));
   } catch (err) {
-    logger.error({ err, userId, tokenId }, "failed to revoke token");
+    logger.error({ err, userId, tokenId }, "failed to revoke grant");
     return { ok: false, error: { code: "failed" } };
   }
 
   if (count === 0) {
-    logger.warn({ userId, tokenId }, "token to revoke not found");
+    logger.warn({ userId, tokenId }, "grant to revoke not found");
     return { ok: false, error: { code: "token-not-found" } };
   }
 
-  logger.info({ userId, tokenId }, "token revoked");
+  logger.info({ userId, tokenId }, "grant revoked");
   return { ok: true, value: { id: tokenId } };
 }
 

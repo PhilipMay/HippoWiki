@@ -1,14 +1,11 @@
-// Runs the token service against the test database, to check its reads and writes on real data.
+// Runs the token service against the test database, to check its reads and writes of grants on real data.
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import * as authService from "@/features/auth/service";
-import { hashToken } from "@/features/tokens/secret";
 import * as tokenService from "@/features/tokens/service";
 import type { Actor } from "@/features/users/service";
 
 import { createApiToken, createGrant, createUser, getTestDb, TEST_PASSWORD } from "../e2e/support/database";
-
-const INPUT = { name: "MCP client", scopes: ["read"], expiry: "90d" };
 
 /** A user of the test database as the actor of the service. */
 async function createActor() {
@@ -16,217 +13,87 @@ async function createActor() {
   return { id: user.id, name: user.name, type: user.type };
 }
 
-/** Creates a token through the service and fails the test if that does not succeed. */
-async function createToken(actor: Actor, input: Partial<typeof INPUT> = {}) {
-  const result = await tokenService.createToken(actor, { ...INPUT, ...input });
-  if (!result.ok) return expect.fail(`token not created: ${result.error.code}`);
-  return result.value;
-}
-
-describe("createToken", () => {
-  it("stores the token's hash, never the token, and returns the token as stored", async () => {
-    const alice = await createActor();
-
-    const { token, secret } = await createToken(alice, { name: "  Laptop  ", scopes: ["read", "write"] });
-
-    const rows = await getTestDb().apiToken.findMany();
-    expect(rows).toHaveLength(1);
-    const row = rows[0];
-    expect(row).toMatchObject({
-      id: token.id,
-      userId: alice.id,
-      name: "Laptop",
-      scopes: ["read", "write"],
-      tokenHash: hashToken(secret),
-      lastUsedAt: null,
-    });
-    expect(JSON.stringify(row)).not.toContain(secret);
-    expect(token).toStrictEqual({
-      id: row?.id,
-      name: "Laptop",
-      scopes: ["read", "write"],
-      createdAt: row?.createdAt,
-      expiresAt: row?.expiresAt,
-      lastUsedAt: null,
-      isGrant: false,
-    });
-  });
-
-  it("lets the token expire after the chosen days", async () => {
-    const alice = await createActor();
-    const before = Date.now();
-
-    const { token } = await createToken(alice, { expiry: "30d" });
-
-    const days = (token.expiresAt.getTime() - before) / (24 * 60 * 60 * 1000);
-    expect(days).toBeGreaterThanOrEqual(30);
-    expect(days).toBeLessThan(30 + 1 / 24);
-  });
-
-  it(`refuses the ${tokenService.MAX_TOKENS_PER_USER + 1}st token of a user, expired ones included`, async () => {
-    const [alice, bob] = [await createActor(), await createActor()];
-    await getTestDb().apiToken.create({
-      data: { userId: alice.id, name: "old", scopes: ["read"], tokenHash: "e".repeat(64), expiresAt: new Date(0) },
-    });
-    for (let index = 1; index < tokenService.MAX_TOKENS_PER_USER; index += 1) await createToken(alice);
-
-    await expect(tokenService.createToken(alice, INPUT)).resolves.toEqual({
-      ok: false,
-      error: { code: "limit-reached" },
-    });
-    expect(await getTestDb().apiToken.count({ where: { userId: alice.id } })).toBe(20);
-    // The limit is per user.
-    await createToken(bob);
-  });
-
-  it("refuses 21 tokens created at the same time beyond the limit", async () => {
-    const alice = await createActor();
-
-    const results = await Promise.all(
-      Array.from({ length: tokenService.MAX_TOKENS_PER_USER + 3 }, () => tokenService.createToken(alice, INPUT)),
-    );
-
-    expect(results.filter((result) => result.ok)).toHaveLength(20);
-    expect(results.filter((result) => !result.ok && result.error.code === "limit-reached")).toHaveLength(3);
-    expect(await getTestDb().apiToken.count({ where: { userId: alice.id } })).toBe(20);
-  });
-
-  it("reports failed for an actor that does not exist", async () => {
-    const ghost: Actor = { id: crypto.randomUUID(), name: "ghost", type: "user" };
-
-    await expect(tokenService.createToken(ghost, INPUT)).resolves.toEqual({ ok: false, error: { code: "failed" } });
-    expect(await getTestDb().apiToken.count()).toBe(0);
-  });
-});
-
 describe("listTokens", () => {
-  it("lists the actor's own tokens only, newest first, with exactly the declared fields", async () => {
+  it("lists only the actor's grants, newest first, with the fields of the list and nothing else", async () => {
     const [alice, bob] = [await createActor(), await createActor()];
-    const first = await createToken(alice, { name: "first" });
-    const second = await createToken(alice, { name: "second" });
-    await createToken(bob, { name: "bob's" });
-    await getTestDb().apiToken.update({ where: { id: first.token.id }, data: { lastUsedAt: new Date() } });
-    const stored = await getTestDb().apiToken.findUniqueOrThrow({ where: { id: first.token.id } });
+    const older = await createGrant({ owner: alice, createdAt: new Date(Date.now() - 1000) });
+    const newer = await createGrant({ owner: alice, lastUsedAt: new Date() });
+    await createGrant({ owner: bob });
+    // An API token of an earlier version is never listed.
+    await createApiToken({ owner: alice });
 
-    const tokens = await tokenService.listTokens(alice);
+    const apps = await tokenService.listTokens(alice);
 
-    expect(tokens).toStrictEqual([
-      second.token,
-      {
-        id: stored.id,
-        name: "first",
-        scopes: ["read"],
-        createdAt: stored.createdAt,
-        expiresAt: stored.expiresAt,
-        lastUsedAt: stored.lastUsedAt,
-        isGrant: false,
-      },
-    ]);
-    expect(await tokenService.listTokens(bob)).toMatchObject([{ name: "bob's" }]);
+    expect(apps).toStrictEqual(
+      [newer.grant, older.grant].map(({ id, name, createdAt, expiresAt, lastUsedAt }) => ({
+        id,
+        name,
+        createdAt,
+        expiresAt,
+        lastUsedAt,
+      })),
+    );
+    // No hash and no client leaves the service.
+    expect(JSON.stringify(apps)).not.toContain(newer.grant.accessTokenHash);
+    expect(JSON.stringify(apps)).not.toContain(newer.client.id);
   });
 
-  it("lists a grant to an OAuth client among the tokens, marked as a grant and named after the client", async () => {
-    const alice = await createActor();
-    const { token } = await createToken(alice, { name: "script" });
-    const client = await getTestDb().oAuthClient.create({
-      data: { name: "Example connector", redirectUris: ["https://client.example/callback"] },
-    });
-    const grant = await getTestDb().apiToken.create({
-      data: {
-        userId: alice.id,
-        clientId: client.id,
-        name: client.name,
-        scopes: ["read"],
-        accessTokenHash: "a".repeat(64),
-        refreshTokenHash: "b".repeat(64),
-        accessTokenExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
-        expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
-        createdAt: new Date(Date.now() + 1000),
-      },
-    });
-
-    const tokens = await tokenService.listTokens(alice);
-
-    expect(tokens).toStrictEqual([
-      {
-        id: grant.id,
-        name: "Example connector",
-        scopes: ["read"],
-        createdAt: grant.createdAt,
-        expiresAt: grant.expiresAt,
-        lastUsedAt: null,
-        isGrant: true,
-      },
-      token,
-    ]);
-    // Neither hash and no client leaves the service.
-    expect(JSON.stringify(tokens)).not.toContain("a".repeat(64));
-    expect(JSON.stringify(tokens)).not.toContain(client.id);
-  });
-
-  it("revokes a grant like a token, and only the actor's own", async () => {
-    const [alice, bob] = [await createActor(), await createActor()];
-    const client = await getTestDb().oAuthClient.create({
-      data: { name: "Example connector", redirectUris: ["https://client.example/callback"] },
-    });
-    const grant = await getTestDb().apiToken.create({
-      data: { userId: alice.id, clientId: client.id, name: client.name, scopes: ["read"], expiresAt: new Date() },
-    });
-
-    await expect(tokenService.revokeToken(bob, grant.id)).resolves.toEqual({
-      ok: false,
-      error: { code: "token-not-found" },
-    });
-    await expect(tokenService.revokeToken(alice, grant.id)).resolves.toEqual({ ok: true, value: { id: grant.id } });
-
-    expect(await getTestDb().apiToken.count()).toBe(0);
-    // The client stays: another user may have a grant to it.
-    expect(await getTestDb().oAuthClient.count()).toBe(1);
-  });
-
-  it("lists no tokens for a user without tokens", async () => {
-    await createToken(await createActor());
+  it("lists no apps for a user without grants", async () => {
+    await createGrant({ owner: await createActor() });
 
     await expect(tokenService.listTokens(await createActor())).resolves.toEqual([]);
   });
 });
 
 describe("revokeToken", () => {
-  it("deletes the actor's token", async () => {
+  it("deletes the actor's grant and keeps the client", async () => {
     const alice = await createActor();
-    const { token } = await createToken(alice);
-    const other = await createToken(alice, { name: "other" });
+    const { grant } = await createGrant({ owner: alice });
+    const other = await createGrant({ owner: alice });
 
-    await expect(tokenService.revokeToken(alice, token.id)).resolves.toEqual({ ok: true, value: { id: token.id } });
+    await expect(tokenService.revokeToken(alice, grant.id)).resolves.toEqual({ ok: true, value: { id: grant.id } });
 
-    expect(await tokenService.listTokens(alice)).toStrictEqual([other.token]);
-    await expect(tokenService.revokeToken(alice, token.id)).resolves.toEqual({
+    expect(await getTestDb().apiToken.findMany({ select: { id: true } })).toEqual([{ id: other.grant.id }]);
+    // The client stays: another user may have a grant to it.
+    expect(await getTestDb().oAuthClient.count()).toBe(2);
+    await expect(tokenService.revokeToken(alice, grant.id)).resolves.toEqual({
       ok: false,
       error: { code: "token-not-found" },
     });
   });
 
-  it("does not revoke the token of another user", async () => {
+  it("does not revoke the grant of another user", async () => {
     const [alice, bob] = [await createActor(), await createActor()];
-    const { token } = await createToken(bob);
+    const { grant } = await createGrant({ owner: bob });
+
+    await expect(tokenService.revokeToken(alice, grant.id)).resolves.toEqual({
+      ok: false,
+      error: { code: "token-not-found" },
+    });
+    expect(await getTestDb().apiToken.count()).toBe(1);
+  });
+
+  it("deletes no API token of an earlier version", async () => {
+    const alice = await createActor();
+    const { token } = await createApiToken({ owner: alice });
 
     await expect(tokenService.revokeToken(alice, token.id)).resolves.toEqual({
       ok: false,
       error: { code: "token-not-found" },
     });
-    expect(await tokenService.listTokens(bob)).toStrictEqual([token]);
+    expect(await getTestDb().apiToken.count()).toBe(1);
   });
 });
 
 describe("deleting a user", () => {
-  it("deletes the user's tokens and no others", async () => {
+  it("deletes the user's grants and no others", async () => {
     const [alice, bob] = [await createActor(), await createActor()];
-    await createToken(alice);
-    const bobsToken = await createToken(bob);
+    await createGrant({ owner: alice });
+    const bobs = await createGrant({ owner: bob });
 
     await getTestDb().user.delete({ where: { id: alice.id } });
 
-    expect(await getTestDb().apiToken.findMany({ select: { id: true } })).toEqual([{ id: bobsToken.token.id }]);
+    expect(await getTestDb().apiToken.findMany({ select: { id: true } })).toEqual([{ id: bobs.grant.id }]);
   });
 });
 
@@ -361,23 +228,18 @@ describe("authenticateToken", () => {
 });
 
 describe("an admin", () => {
-  it("has no token list and cannot create or revoke a token", async () => {
+  it("has no list of apps and cannot revoke a grant", async () => {
     const maria = await createUser({ name: "maria", type: "admin", mustChangePassword: false });
     const admin: Actor = { id: maria.id, name: maria.username, type: maria.type };
-    const alice = await createActor();
-    const { token } = await createToken(alice);
+    // Admins have no grants; one inserted directly stands for a grant that should not exist.
+    const { grant } = await createGrant({ owner: maria });
 
     await expect(tokenService.listTokens(admin)).resolves.toBeNull();
-    await expect(tokenService.createToken(admin, INPUT)).resolves.toEqual({
-      ok: false,
-      error: { code: "not-allowed" },
-    });
-    await expect(tokenService.revokeToken(admin, token.id)).resolves.toEqual({
+    await expect(tokenService.revokeToken(admin, grant.id)).resolves.toEqual({
       ok: false,
       error: { code: "not-allowed" },
     });
 
-    expect(await getTestDb().apiToken.count({ where: { userId: maria.id } })).toBe(0);
-    expect(await getTestDb().apiToken.count()).toBe(1);
+    expect(await getTestDb().apiToken.count({ where: { userId: maria.id } })).toBe(1);
   });
 });

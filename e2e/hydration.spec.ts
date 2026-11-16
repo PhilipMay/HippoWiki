@@ -1,8 +1,8 @@
 import { KNOWN_USER } from "../prisma/known-users";
 import { ADMIN_STORAGE_STATE, NO_STORAGE_STATE } from "./support/auth";
 import {
-  createApiToken,
   createFolder,
+  createGrant,
   createPage,
   createTab,
   createUser,
@@ -73,24 +73,12 @@ test.describe("as a normal user", () => {
     );
   });
 
-  test("the new token dialog is locked until hydration", async ({ page }) => {
-    await page.goto("/account?action=create");
+  test("the revoke dialog of a connected app is locked until hydration", async ({ page }) => {
+    const { grant } = await createGrant({ owner: KNOWN_USER, name: "Example connector" });
 
-    const dialog = page.getByRole("dialog", { name: "New token" });
-    await expect(dialog.getByLabel("Name")).not.toBeEditable();
-    for (const label of [/^read/, /^write/, "30 days", "90 days", "365 days"]) {
-      await expect(dialog.getByLabel(label)).toBeDisabled();
-    }
-    await expect(dialog.getByRole("button", { name: "Create" })).toBeDisabled();
-    await expect(dialog.getByRole("link", { name: "Cancel" })).toHaveAttribute("href", "/account");
-  });
+    await page.goto(`/account?action=revoke&app=${grant.id}`);
 
-  test("the revoke token dialog is locked until hydration", async ({ page }) => {
-    const { token } = await createApiToken({ owner: KNOWN_USER, name: "laptop" });
-
-    await page.goto(`/account?action=revoke&token=${token.id}`);
-
-    const dialog = page.getByRole("dialog", { name: "Revoke token" });
+    const dialog = page.getByRole("dialog", { name: "Revoke app" });
     await expect(dialog.getByRole("button", { name: "Revoke" })).toBeDisabled();
     await expect(dialog.getByRole("link", { name: "Cancel" })).toHaveAttribute("href", "/account");
   });

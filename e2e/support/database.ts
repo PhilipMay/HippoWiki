@@ -8,7 +8,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 
 import { generateAccessToken, hashSecret } from "@/features/oauth/secret";
 import { titleFromContent } from "@/features/pages/derive";
-import { generateToken, hashToken } from "@/features/tokens/secret";
+import { generateSecret, hashToken } from "@/features/tokens/secret";
 import { newUserData, type NewUser } from "@/features/users/records";
 import {
   PrismaClient,
@@ -327,15 +327,16 @@ type CreateApiTokenData = Partial<Omit<Prisma.ApiTokenUncheckedCreateInput, "use
 };
 
 /**
- * Creates an API token of the given owner directly in the test database, with a generated token of which only the
- * hash is stored, and returns the row together with the token. Without other fields it has the scope `read`, a unique
- * name and an expiry 90 days from now; any field can be set, e.g. `expiresAt` for an expired token.
+ * Creates an API token of an earlier version of the given owner directly in the test database, a row without a
+ * client, with a generated token of the former shape `hw_…` of which only the hash is stored, and returns the row
+ * together with the token. It stands for the tokens that no longer work. Without other fields it has the scope
+ * `read`, a unique name and an expiry 90 days from now; any field can be set.
  */
 export async function createApiToken({
   owner,
   ...data
 }: CreateApiTokenData): Promise<{ token: ApiToken; secret: string }> {
-  const secret = generateToken();
+  const secret = generateSecret("hw_");
   const token = await getTestDb().apiToken.create({
     data: {
       name: `test-token-${crypto.randomUUID().slice(0, 8)}`,

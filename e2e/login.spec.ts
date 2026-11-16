@@ -452,13 +452,13 @@ test("a user can be logged in in two browsers, and a logout ends only one of the
 test("an address opened without a login leads back to it after the login", async ({ page }) => {
   const errors = collectErrors(page);
 
-  await page.goto("/account?action=create");
-  await expect(page).toHaveURL("/login?next=%2Faccount%3Faction%3Dcreate");
+  await page.goto("/folders?action=new");
+  await expect(page).toHaveURL("/login?next=%2Ffolders%3Faction%3Dnew");
   await expect(page.getByRole("heading", { level: 1, name: "Log in" })).toBeVisible();
   await submitLogin(page, KNOWN_USER.name, KNOWN_USER.password);
 
-  await expect(page).toHaveURL("/account?action=create");
-  await expect(page.getByRole("dialog", { name: "New token" })).toBeVisible();
+  await expect(page).toHaveURL("/folders?action=new");
+  await expect(page.getByRole("dialog", { name: "New folder" })).toBeVisible();
   expect(errors).toEqual([]);
 });
 

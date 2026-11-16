@@ -14,7 +14,7 @@ import {
   sameHash,
   verifiesChallenge,
 } from "@/features/oauth/secret";
-import { generateToken, hashToken, looksLikeToken } from "@/features/tokens/secret";
+import { hashToken } from "@/features/tokens/secret";
 
 const GRANT_ID = "0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01";
 
@@ -36,12 +36,12 @@ describe("the secrets", () => {
     expect(generateRefreshToken(GRANT_ID)).not.toBe(generateRefreshToken(GRANT_ID));
   });
 
-  it("are never taken for one another, or for an API token", () => {
+  it("are never taken for one another, or for a former API token", () => {
     const secrets = {
       code: generateCode(),
       accessToken: generateAccessToken(),
       refreshToken: generateRefreshToken(GRANT_ID),
-      token: generateToken(),
+      formerApiToken: `hw_${"A".repeat(43)}`,
     };
 
     expect(Object.values(secrets).map(looksLikeCode)).toEqual([true, false, false, false]);
@@ -52,7 +52,6 @@ describe("the secrets", () => {
       true,
       false,
     ]);
-    expect(Object.values(secrets).map(looksLikeToken)).toEqual([false, false, false, true]);
   });
 
   it.each([
@@ -87,7 +86,7 @@ describe("grantIdOfRefreshToken", () => {
 });
 
 describe("hashSecret and sameHash", () => {
-  it("hashes with SHA-256 in hex, like an API token", () => {
+  it("hashes with SHA-256 in hex", () => {
     const code = generateCode();
 
     expect(hashSecret(code)).toBe(createHash("sha256").update(code).digest("hex"));

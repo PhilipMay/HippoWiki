@@ -28,8 +28,7 @@ const ALICE = {
 const TOKENS = [
   {
     id: crypto.randomUUID(),
-    name: "MCP client",
-    scopes: ["read"],
+    name: "Example connector",
     createdAt: new Date(),
     expiresAt: new Date(),
     lastUsedAt: null,
@@ -81,5 +80,12 @@ describe("listTokens", () => {
     await expect(listTokens()).rejects.toMatchObject({ path: "/login" });
 
     expect(mocks.listTokens).not.toHaveBeenCalled();
+  });
+
+  it("passes on null, which the service answers for an admin and without a public URL", async () => {
+    mocks.requireUser.mockResolvedValue(ALICE);
+    mocks.listTokens.mockResolvedValue(null);
+
+    await expect(listTokens()).resolves.toBeNull();
   });
 });

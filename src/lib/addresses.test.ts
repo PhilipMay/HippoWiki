@@ -25,7 +25,7 @@ import {
   parsePageSegment,
   parseView,
   protectedResourceMetadataPath,
-  revokeTokenPath,
+  revokeAppPath,
   safeNextPath,
   tabPath,
 } from "@/lib/addresses";
@@ -105,12 +105,12 @@ describe("paths", () => {
 
   it("builds the address of the own account", () => {
     expect(accountPath()).toBe("/account");
-    expect(accountPath("create")).toBe("/account?action=create");
+    expect(accountPath("revoke")).toBe("/account?action=revoke");
   });
 
-  it("builds the address of the dialog that revokes a token", () => {
+  it("builds the address of the dialog that revokes a connected app", () => {
     const id = "0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01";
-    expect(revokeTokenPath(id)).toBe(`/account?action=revoke&token=${id}`);
+    expect(revokeAppPath(id)).toBe(`/account?action=revoke&app=${id}`);
   });
 });
 

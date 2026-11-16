@@ -1,27 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { hashToken } from "@/features/tokens/secret";
-import {
-  authenticateToken,
-  createToken,
-  LAST_USE_INTERVAL_MS,
-  listTokens,
-  MAX_TOKENS_PER_USER,
-  revokeToken,
-} from "@/features/tokens/service";
+import { authenticateToken, LAST_USE_INTERVAL_MS, listTokens, revokeToken } from "@/features/tokens/service";
 import type { Actor } from "@/features/users/service";
-import { Prisma } from "@/generated/prisma/client";
 
 const mocks = vi.hoisted(() => ({
   findMany: vi.fn(),
   findUnique: vi.fn(),
   updateMany: vi.fn(),
-  count: vi.fn(),
-  create: vi.fn(),
   deleteMany: vi.fn(),
-  queryRaw: vi.fn(),
-  transaction: vi.fn(),
-  generateToken: vi.fn(),
+  issuer: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
@@ -35,16 +23,13 @@ vi.mock("@/lib/db", () => ({
       updateMany: mocks.updateMany,
       deleteMany: mocks.deleteMany,
     },
-    $transaction: mocks.transaction,
   }),
 }));
 vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, error: mocks.error } }));
-vi.mock(import("@/features/tokens/secret"), async (importOriginal) => ({
-  ...(await importOriginal()),
-  generateToken: mocks.generateToken,
-}));
+vi.mock("@/features/oauth/issuer", () => ({ issuer: mocks.issuer }));
 
-const SECRET = `hw_${"A".repeat(43)}`;
+/** A value of the shape of a former API token, which is never looked up. */
+const FORMER_API_TOKEN = `hw_${"A".repeat(43)}`;
 /** The access token of a grant, the only bearer token that `authenticateToken` looks up. */
 const ACCESS_TOKEN = `hwa_${"B".repeat(43)}`;
 const HOUR_MS = 60 * 60 * 1000;
@@ -52,26 +37,17 @@ const ALICE_ID = "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002";
 const TOKEN_ID = "0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01";
 const ALICE: Actor = { id: ALICE_ID, name: "alice", type: "user" };
 const NOW = new Date("2026-03-01T12:00:00.000Z");
-const INPUT = { name: "MCP client", scopes: ["read"], expiry: "90d" };
 
-/** A token row as the database returns it for the declared columns. */
+/** A grant as the database returns it for the columns of the list. */
 function storedRow(data: Record<string, unknown> = {}) {
   return {
     id: TOKEN_ID,
-    name: "MCP client",
-    scopes: ["read"],
+    name: "Example connector",
     createdAt: NOW,
     expiresAt: new Date("2026-05-30T12:00:00.000Z"),
     lastUsedAt: null,
-    // A token of the account page has no client.
-    clientId: null,
     ...data,
   };
-}
-
-/** The summary that the service makes of a stored row: the client is told as whether the row is a grant. */
-function summaryOf({ clientId, ...row }: ReturnType<typeof storedRow>) {
-  return { ...row, isGrant: clientId !== null };
 }
 
 /**
@@ -95,10 +71,6 @@ function authorization(value: string): Headers {
   return new Headers({ authorization: value });
 }
 
-function knownError(code: string, meta?: Record<string, unknown>): Prisma.PrismaClientKnownRequestError {
-  return new Prisma.PrismaClientKnownRequestError("database error", { code, clientVersion: "test", meta });
-}
-
 /** Everything that was passed to the logger, as one string. */
 function logged(): string {
   return JSON.stringify([mocks.info.mock.calls, mocks.warn.mock.calls, mocks.error.mock.calls]);
@@ -111,22 +83,14 @@ function expectNothingLogged(): void {
 }
 
 function expectNoSecretLogged(): void {
-  for (const secret of [SECRET, ACCESS_TOKEN]) {
-    expect(logged()).not.toContain(secret);
-    expect(logged()).not.toContain(hashToken(secret));
-  }
+  expect(logged()).not.toContain(ACCESS_TOKEN);
+  expect(logged()).not.toContain(hashToken(ACCESS_TOKEN));
 }
 
 beforeEach(() => {
   vi.resetAllMocks();
   vi.useFakeTimers({ now: NOW, toFake: ["Date"] });
-  mocks.generateToken.mockReturnValue(SECRET);
-  // The transaction client of `createToken`: the reads and writes it makes inside the transaction.
-  const tx = { $queryRaw: mocks.queryRaw, apiToken: { count: mocks.count, create: mocks.create } };
-  mocks.transaction.mockImplementation((write: (client: typeof tx) => Promise<unknown>) => write(tx));
-  mocks.queryRaw.mockResolvedValue([{ id: ALICE_ID }]);
-  mocks.count.mockResolvedValue(0);
-  mocks.create.mockResolvedValue(storedRow());
+  mocks.issuer.mockReturnValue("https://wiki.example.com");
   mocks.findMany.mockResolvedValue([]);
   mocks.deleteMany.mockResolvedValue({ count: 1 });
   mocks.findUnique.mockResolvedValue(tokenWithUser());
@@ -137,56 +101,38 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+/** Whether the database was read or written. */
+function expectDatabaseUntouched(): void {
+  for (const call of [mocks.findMany, mocks.findUnique, mocks.updateMany, mocks.deleteMany]) {
+    expect(call).not.toHaveBeenCalled();
+  }
+}
+
 describe("listTokens", () => {
-  it("reads the actor's tokens, newest first, with the fields of the list only", async () => {
+  it("reads only the actor's grants, newest first, with the fields of the list only", async () => {
     const row = storedRow({ lastUsedAt: NOW });
     mocks.findMany.mockResolvedValue([row]);
 
-    await expect(listTokens(ALICE)).resolves.toStrictEqual([summaryOf(row)]);
+    await expect(listTokens(ALICE)).resolves.toStrictEqual([row]);
 
     expect(mocks.findMany).toHaveBeenCalledExactlyOnceWith({
-      where: { userId: ALICE_ID },
-      select: {
-        id: true,
-        name: true,
-        scopes: true,
-        createdAt: true,
-        expiresAt: true,
-        lastUsedAt: true,
-        clientId: true,
-      },
+      // A row without a client is an API token of an earlier version and is never listed.
+      where: { userId: ALICE_ID, clientId: { not: null } },
+      select: { id: true, name: true, createdAt: true, expiresAt: true, lastUsedAt: true },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     });
   });
 
-  it("says which rows are grants to OAuth clients, and never passes on the client or a hash", async () => {
-    const grant = storedRow({
-      id: "1d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a02",
-      name: "Example connector",
-      clientId: "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10",
-    });
-    mocks.findMany.mockResolvedValue([grant, storedRow()]);
+  it("returns null without a public URL, without asking the database", async () => {
+    mocks.issuer.mockReturnValue(null);
 
-    const tokens = (await listTokens(ALICE)) ?? [];
+    await expect(listTokens(ALICE)).resolves.toBeNull();
 
-    expect(tokens.map(({ name, isGrant }) => [name, isGrant])).toEqual([
-      ["Example connector", true],
-      ["MCP client", false],
-    ]);
-    expect(Object.keys(tokens[0] ?? {}).sort()).toEqual(
-      ["createdAt", "expiresAt", "id", "isGrant", "lastUsedAt", "name", "scopes"].sort(),
-    );
-    // The grant is read like every other token: one read, for the user's rows.
-    expect(mocks.findMany.mock.calls[0]?.[0].where).toEqual({ userId: ALICE_ID });
+    expectDatabaseUntouched();
+    expectNothingLogged();
   });
 
-  it("leaves out scopes it does not know", async () => {
-    mocks.findMany.mockResolvedValue([storedRow({ scopes: ["read", "admin", "write"] })]);
-
-    await expect(listTokens(ALICE)).resolves.toMatchObject([{ scopes: ["read", "write"] }]);
-  });
-
-  it("returns no tokens for a malformed actor id, without asking the database", async () => {
+  it("returns no apps for a malformed actor id, without asking the database", async () => {
     await expect(listTokens({ id: "not-a-uuid", name: "alice", type: "user" })).resolves.toEqual([]);
 
     expect(mocks.findMany).not.toHaveBeenCalled();
@@ -199,165 +145,35 @@ describe("listTokens", () => {
   });
 });
 
-describe("createToken", () => {
-  it("stores the hash of a new token and returns the token as stored together with the token itself", async () => {
-    const result = await createToken(ALICE, { ...INPUT, name: "  MCP client  " });
-
-    expect(result).toStrictEqual({ ok: true, value: { token: summaryOf(storedRow()), secret: SECRET } });
-    expect(mocks.create).toHaveBeenCalledExactlyOnceWith({
-      data: {
-        userId: ALICE_ID,
-        name: "MCP client",
-        scopes: ["read"],
-        tokenHash: hashToken(SECRET),
-        expiresAt: new Date("2026-05-30T12:00:00.000Z"),
-      },
-      select: {
-        id: true,
-        name: true,
-        scopes: true,
-        createdAt: true,
-        expiresAt: true,
-        lastUsedAt: true,
-        clientId: true,
-      },
-    });
-    expect(JSON.stringify(mocks.create.mock.calls)).not.toContain(SECRET);
-    expect(mocks.info).toHaveBeenCalledExactlyOnceWith({ userId: ALICE_ID, tokenId: TOKEN_ID }, "token created");
-    expect(mocks.warn).not.toHaveBeenCalled();
-    expect(mocks.error).not.toHaveBeenCalled();
-    expectNoSecretLogged();
-  });
-
-  it.each([
-    ["30d", "2026-03-31T12:00:00.000Z"],
-    ["90d", "2026-05-30T12:00:00.000Z"],
-    ["365d", "2027-03-01T12:00:00.000Z"],
-  ])("lets a token of %s expire at %s", async (expiry, expiresAt) => {
-    await createToken(ALICE, { ...INPUT, expiry });
-
-    expect(mocks.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ expiresAt: new Date(expiresAt) }) as unknown }),
-    );
-  });
-
-  it("stores both scopes", async () => {
-    await createToken(ALICE, { ...INPUT, scopes: ["write", "read"] });
-
-    expect(mocks.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ scopes: ["write", "read"] }) as unknown }),
-    );
-  });
-
-  it("locks the actor's row and counts the actor's tokens in the same transaction as the write", async () => {
-    await createToken(ALICE, INPUT);
-
-    expect(mocks.transaction).toHaveBeenCalledOnce();
-    expect(mocks.queryRaw).toHaveBeenCalledOnce();
-    const [sql, id] = mocks.queryRaw.mock.calls[0] as [TemplateStringsArray, string];
-    expect(sql.join("?")).toContain("FOR UPDATE");
-    expect(id).toBe(ALICE_ID);
-    expect(mocks.count).toHaveBeenCalledExactlyOnceWith({ where: { userId: ALICE_ID } });
-  });
-
-  it("reports invalid input with its field errors, and writes and logs nothing", async () => {
-    const result = await createToken(ALICE, { name: "", scopes: [], expiry: "7d" });
-
-    expect(result).toEqual({
-      ok: false,
-      error: {
-        code: "invalid-input",
-        fieldErrors: {
-          name: ["Name is required"],
-          scopes: ["Choose at least one scope"],
-          expiry: ["Choose when the token expires"],
-        },
-      },
-    });
-    expect(mocks.transaction).not.toHaveBeenCalled();
-    expect(mocks.create).not.toHaveBeenCalled();
-    expectNothingLogged();
-  });
-
-  it("refuses a malformed actor id before it asks the database, and logs it", async () => {
-    await expect(createToken({ id: "not-a-uuid", name: "alice", type: "user" }, INPUT)).resolves.toEqual({
-      ok: false,
-      error: { code: "failed" },
-    });
-
-    expect(mocks.transaction).not.toHaveBeenCalled();
-    expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ actorId: "not-a-uuid" }, "malformed actor id");
-  });
-
-  it(`refuses a token when the actor holds ${MAX_TOKENS_PER_USER} tokens, and writes nothing`, async () => {
-    expect(MAX_TOKENS_PER_USER).toBe(20);
-    mocks.count.mockResolvedValue(20);
-
-    await expect(createToken(ALICE, INPUT)).resolves.toEqual({ ok: false, error: { code: "limit-reached" } });
-
-    expect(mocks.create).not.toHaveBeenCalled();
-    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
-      { userId: ALICE_ID },
-      "token not created: the user holds the most tokens allowed",
-    );
-    expect(mocks.info).not.toHaveBeenCalled();
-  });
-
-  it("creates the 20th token", async () => {
-    mocks.count.mockResolvedValue(19);
-
-    await expect(createToken(ALICE, INPUT)).resolves.toMatchObject({ ok: true });
-  });
-
-  it("reports failed for an actor that does not exist, and writes nothing", async () => {
-    mocks.queryRaw.mockResolvedValue([]);
-
-    await expect(createToken(ALICE, INPUT)).resolves.toEqual({ ok: false, error: { code: "failed" } });
-
-    expect(mocks.create).not.toHaveBeenCalled();
-    expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ userId: ALICE_ID }, "actor of new token not found");
-  });
-
-  it("reports failed for a hash that is already stored, without logging the error with its values", async () => {
-    mocks.create.mockRejectedValue(
-      knownError("P2002", { driverAdapterError: { cause: { constraint: { index: "ApiToken_tokenHash_key" } } } }),
-    );
-
-    await expect(createToken(ALICE, INPUT)).resolves.toEqual({ ok: false, error: { code: "failed" } });
-
-    expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ userId: ALICE_ID }, "hash of new token already in use");
-    expectNoSecretLogged();
-  });
-
-  it("reports failed for any other database error, and logs it", async () => {
-    const err = new Error("connection lost");
-    mocks.create.mockRejectedValue(err);
-
-    await expect(createToken(ALICE, INPUT)).resolves.toEqual({ ok: false, error: { code: "failed" } });
-
-    expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ err, userId: ALICE_ID }, "failed to create token");
-    expectNoSecretLogged();
-  });
-});
-
 describe("revokeToken", () => {
-  it("deletes the token only if it belongs to the actor", async () => {
+  it("deletes the grant only if it belongs to the actor and is a grant", async () => {
     await expect(revokeToken(ALICE, TOKEN_ID)).resolves.toEqual({ ok: true, value: { id: TOKEN_ID } });
 
-    expect(mocks.deleteMany).toHaveBeenCalledExactlyOnceWith({ where: { id: TOKEN_ID, userId: ALICE_ID } });
-    expect(mocks.info).toHaveBeenCalledExactlyOnceWith({ userId: ALICE_ID, tokenId: TOKEN_ID }, "token revoked");
+    expect(mocks.deleteMany).toHaveBeenCalledExactlyOnceWith({
+      where: { id: TOKEN_ID, userId: ALICE_ID, clientId: { not: null } },
+    });
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith({ userId: ALICE_ID, tokenId: TOKEN_ID }, "grant revoked");
   });
 
-  it("reports a token that is not the actor's or does not exist as not found, and logs it", async () => {
+  it("reports a grant that is not the actor's or does not exist as not found, and logs it", async () => {
     mocks.deleteMany.mockResolvedValue({ count: 0 });
 
     await expect(revokeToken(ALICE, TOKEN_ID)).resolves.toEqual({ ok: false, error: { code: "token-not-found" } });
 
     expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
       { userId: ALICE_ID, tokenId: TOKEN_ID },
-      "token to revoke not found",
+      "grant to revoke not found",
     );
     expect(mocks.info).not.toHaveBeenCalled();
+  });
+
+  it("refuses without a public URL, logged, without a write", async () => {
+    mocks.issuer.mockReturnValue(null);
+
+    await expect(revokeToken(ALICE, TOKEN_ID)).resolves.toEqual({ ok: false, error: { code: "not-allowed" } });
+
+    expectDatabaseUntouched();
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith({ actorId: ALICE_ID }, "grant not revoked: OAuth is off");
   });
 
   it("reports a malformed id as not found without asking the database or logging", async () => {
@@ -387,7 +203,7 @@ describe("revokeToken", () => {
 
     expect(mocks.error).toHaveBeenCalledExactlyOnceWith(
       { err, userId: ALICE_ID, tokenId: TOKEN_ID },
-      "failed to revoke token",
+      "failed to revoke grant",
     );
   });
 });
@@ -457,7 +273,7 @@ describe("authenticateToken", () => {
     ["a value that is too short", authorization(`Bearer ${ACCESS_TOKEN.slice(0, -1)}`)],
     ["a value with other characters", authorization(`Bearer ${ACCESS_TOKEN.slice(0, -1)}=`)],
     ["two values", authorization(`Bearer ${ACCESS_TOKEN} ${ACCESS_TOKEN}`)],
-    ["a former API token", authorization(`Bearer ${SECRET}`)],
+    ["a former API token", authorization(`Bearer ${FORMER_API_TOKEN}`)],
     ["a refresh token", authorization(`Bearer hwr_0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01.${"C".repeat(43)}`)],
     ["an authorization code", authorization(`Bearer hwc_${"C".repeat(43)}`)],
   ])("reports %s as a missing token, without asking the database or logging", async (_case, headers) => {
@@ -631,24 +447,8 @@ describe("authenticateToken", () => {
 });
 
 describe("an admin", () => {
-  /** An admin, who has no tokens and no grants; named like a user, so that only the type decides. */
+  /** An admin, who has no grants; named like a user, so that only the type decides. */
   const ADMIN: Actor = { id: ALICE_ID, name: "alice", type: "admin" };
-
-  /** Whether the database was read or written. */
-  function expectDatabaseUntouched(): void {
-    for (const call of [
-      mocks.findMany,
-      mocks.findUnique,
-      mocks.updateMany,
-      mocks.count,
-      mocks.create,
-      mocks.deleteMany,
-      mocks.queryRaw,
-      mocks.transaction,
-    ]) {
-      expect(call).not.toHaveBeenCalled();
-    }
-  }
 
   it("gets null from listTokens, without asking the database", async () => {
     await expect(listTokens(ADMIN)).resolves.toBeNull();
@@ -657,25 +457,13 @@ describe("an admin", () => {
     expectNothingLogged();
   });
 
-  it("gets not-allowed from createToken, logged, before the input is checked and without a write", async () => {
-    await expect(createToken(ADMIN, INPUT)).resolves.toEqual({ ok: false, error: { code: "not-allowed" } });
-    await expect(createToken(ADMIN, { name: "", scopes: [], expiry: "7d" })).resolves.toEqual({
-      ok: false,
-      error: { code: "not-allowed" },
-    });
-
-    expectDatabaseUntouched();
-    expect(mocks.generateToken).not.toHaveBeenCalled();
-    expect(mocks.warn).toHaveBeenCalledWith({ actorId: ALICE_ID }, "token not created: the actor is an admin");
-  });
-
   it("gets not-allowed from revokeToken, logged, without a write", async () => {
     await expect(revokeToken(ADMIN, TOKEN_ID)).resolves.toEqual({ ok: false, error: { code: "not-allowed" } });
 
     expectDatabaseUntouched();
     expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
       { actorId: ALICE_ID },
-      "token not revoked: the actor is an admin",
+      "grant not revoked: the actor is an admin",
     );
   });
 });

@@ -13,8 +13,8 @@ restore them from the deleted pages of their folder. Folders and tabs cannot be 
 
 The wiki can only be used after a login. Every account is either an admin, who manages the accounts, sees no content
 and only an overview of who has which role on which folder, or a user, who creates folders, works with the folders on
-which the user has a role (Reader, Writer, Manager or Owner) and creates API tokens for scripts and tools on the own
-account page; admins create the accounts and choose their type, and the Owners of a folder give the roles on it. AI assistants read the wiki
+which the user has a role (Reader, Writer, Manager or Owner) and sees and revokes the connected apps on the own account
+page; admins create the accounts and choose their type, and the Owners of a folder give the roles on it. AI assistants read the wiki
 through an MCP server, connected through OAuth (see "MCP server").
 
 What is built is described in `spec/`: `spec/content-structure.md`, `spec/pages.md`, `spec/page-deletion.md`,
@@ -142,9 +142,16 @@ Code connects with:
 claude mcp add --transport http hippowiki http://localhost:3000/mcp
 ```
 
-The connectors of claude.ai and ChatGPT connect the same way, with the address of `/mcp` under the public URL. A
-client that cannot connect through OAuth cannot use the MCP server. The tools list the folders, list the tabs and pages
-of a folder and read a page (`spec/mcp.md`).
+To connect an app, such as Claude Code or the connector of claude.ai or ChatGPT:
+
+1. Add the wiki to the app as an MCP server or connector with the address of `/mcp` under the public URL, such as
+   `https://wiki.example.com/mcp`.
+2. The app opens the wiki in the browser: log in, if needed, and approve the app on the consent page, choosing how
+   long it may connect.
+3. The app now reads the wiki as you. It is listed under "Connected apps" on `/account`, where you can revoke it.
+
+A client that cannot connect through OAuth cannot use the MCP server. The tools list the folders, list the tabs and
+pages of a folder and read a page (`spec/mcp.md`).
 
 ## End-to-end tests
 

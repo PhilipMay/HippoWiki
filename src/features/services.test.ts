@@ -35,7 +35,7 @@ it("the services load without Next.js and React", async () => {
   expect(pageService.listFolderPages).toBeTypeOf("function");
   expect(folderRoleService.folderRoleOf).toBeTypeOf("function");
   expect(userService.ensureAdmin).toBeTypeOf("function");
-  expect(tokenService.createToken).toBeTypeOf("function");
+  expect(tokenService.listTokens).toBeTypeOf("function");
   expect(authService.logIn).toBeTypeOf("function");
   expect(oauthService.exchangeCode).toBeTypeOf("function");
   expect(mcpTools.createWikiServer).toBeTypeOf("function");

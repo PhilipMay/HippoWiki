@@ -9,7 +9,7 @@ import Typography from "@mui/material/Typography";
 
 import Link from "@/components/Link";
 import type { TokenSummary } from "@/features/tokens/service";
-import { revokeTokenPath } from "@/lib/addresses";
+import { revokeAppPath } from "@/lib/addresses";
 import { formatDateTime } from "@/lib/format";
 
 /** A point in time as a `<time>` element. */
@@ -18,45 +18,37 @@ function Time({ date }: { date: Date }) {
 }
 
 type TokenListProps = {
-  /** The tokens of the logged-in user, newest first. */
-  tokens: TokenSummary[];
-  /** The time of the request, to tell expired tokens from the others. */
+  /** The connected apps of the logged-in user, newest first. */
+  apps: TokenSummary[];
+  /** The time of the request, to tell expired apps from the others. */
   now: Date;
 };
 
 /**
- * The API tokens of the logged-in user, newest first: each with its scopes, when it was created, when it expires or
- * that it has expired, and when it was last used, with a link that opens the "Revoke token" dialog. A grant to an
- * OAuth client is in the same list, marked as a connected app and named after the app. Without tokens it says so.
+ * The connected apps of the logged-in user, newest first: each with its name, when it was connected, when it expires
+ * or that it has expired, and when it was last used, with a link that opens the "Revoke app" dialog. Without apps it
+ * says so in one short sentence; how to connect one is in the README.
  */
-export default function TokenList({ tokens, now }: TokenListProps) {
-  if (tokens.length === 0) {
+export default function TokenList({ apps, now }: TokenListProps) {
+  if (apps.length === 0) {
     return (
       <Paper variant="outlined" sx={{ p: 3 }}>
-        <Typography color="text.secondary">
-          You have no API tokens and no connected apps yet. Create a token for a script or a tool, such as an MCP
-          client.
-        </Typography>
+        <Typography color="text.secondary">No app is connected yet.</Typography>
       </Paper>
     );
   }
 
   return (
     <Paper variant="outlined">
-      <List disablePadding aria-label="API tokens">
-        {tokens.map((token, index) => {
-          const expired = token.expiresAt.getTime() <= now.getTime();
+      <List disablePadding aria-label="Connected apps">
+        {apps.map((app, index) => {
+          const expired = app.expiresAt.getTime() <= now.getTime();
           return (
             <ListItem
-              key={token.id}
-              divider={index < tokens.length - 1}
+              key={app.id}
+              divider={index < apps.length - 1}
               secondaryAction={
-                <Button
-                  component={Link}
-                  href={revokeTokenPath(token.id)}
-                  color="error"
-                  aria-label={`Revoke ${token.name}`}
-                >
+                <Button component={Link} href={revokeAppPath(app.id)} color="error" aria-label={`Revoke ${app.name}`}>
                   Revoke
                 </Button>
               }
@@ -66,29 +58,25 @@ export default function TokenList({ tokens, now }: TokenListProps) {
                 disableTypography
                 primary={
                   <Stack direction="row" spacing={1} sx={{ alignItems: "center", flexWrap: "wrap" }}>
-                    <Typography sx={{ overflowWrap: "anywhere" }}>{token.name}</Typography>
-                    {token.isGrant && <Chip label="Connected app" size="small" color="primary" variant="outlined" />}
-                    {token.scopes.map((scope) => (
-                      <Chip key={scope} label={scope} size="small" variant="outlined" />
-                    ))}
+                    <Typography sx={{ overflowWrap: "anywhere" }}>{app.name}</Typography>
                     {expired && <Chip label="Expired" size="small" color="warning" />}
                   </Stack>
                 }
                 secondary={
                   <Typography variant="body2" color="text.secondary">
-                    {token.isGrant ? "Connected" : "Created"} <Time date={token.createdAt} />
+                    Connected <Time date={app.createdAt} />
                     {" · "}
                     {expired ? (
                       <>
-                        Expired <Time date={token.expiresAt} />
+                        Expired <Time date={app.expiresAt} />
                       </>
                     ) : (
                       <>
-                        Expires <Time date={token.expiresAt} />
+                        Expires <Time date={app.expiresAt} />
                       </>
                     )}
                     {" · "}
-                    Last used {token.lastUsedAt ? <Time date={token.lastUsedAt} /> : "never"}
+                    Last used {app.lastUsedAt ? <Time date={app.lastUsedAt} /> : "never"}
                   </Typography>
                 }
               />
