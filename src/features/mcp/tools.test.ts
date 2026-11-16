@@ -3,20 +3,28 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { McpActor } from "@/features/folder-roles/service";
 import { createWikiServer, instructionsFor } from "@/features/mcp/tools";
+import { TITLE_HEADING_MISSING_MESSAGE as TITLE_MISSING } from "@/features/pages/schema";
 
 const mocks = vi.hoisted(() => ({
   listTabs: vi.fn(),
+  getTab: vi.fn(),
   listAllFolderPages: vi.fn(),
   getPage: vi.fn(),
+  createPage: vi.fn(),
+  updatePageContent: vi.fn(),
+  moveOrRenamePage: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
 }));
 
-vi.mock("@/features/folders/service", () => ({ listTabs: mocks.listTabs }));
+vi.mock("@/features/folders/service", () => ({ listTabs: mocks.listTabs, getTab: mocks.getTab }));
 vi.mock("@/features/pages/service", () => ({
   listAllFolderPages: mocks.listAllFolderPages,
   getPage: mocks.getPage,
+  createPage: mocks.createPage,
+  updatePageContent: mocks.updatePageContent,
+  moveOrRenamePage: mocks.moveOrRenamePage,
 }));
 vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, error: mocks.error } }));
 
@@ -367,5 +375,277 @@ describe("an unknown tool", () => {
 
     expect(JSON.stringify(answer)).toContain("delete_page");
     expect(mocks.getPage).not.toHaveBeenCalled();
+  });
+});
+
+describe("the write tools", () => {
+  const STORED = { id: "p1", name: "setup", version: 5, folder: { name: "handbook" }, tab: null };
+  const PAGE = {
+    id: "p1",
+    name: "setup",
+    title: "Setup",
+    content: "# Setup",
+    updatedAt: CHANGED,
+    lastEditedBy: { name: "bob" },
+    version: 4,
+    folder: { id: FOLDER_ID, name: "handbook" },
+    tab: null,
+    role: "writer",
+  };
+  const NOT_ALLOWED = "Your role on the folder does not allow this change, so nothing was changed.";
+
+  beforeEach(() => {
+    actor = WRITER;
+    mocks.getPage.mockResolvedValue(PAGE);
+    mocks.getTab.mockResolvedValue({ id: "tab-1", name: "guides", folder: FOLDER, role: "writer" });
+  });
+
+  it("are registered for a Writer connection, with their inputs and the hints of a tool that writes", async () => {
+    const answer = await send({ method: "tools/list" });
+
+    const tools = answer.result?.tools as {
+      name: string;
+      description: string;
+      inputSchema: { properties?: Record<string, { description?: string }>; required?: string[] };
+      annotations: Record<string, boolean>;
+    }[];
+    expect(tools.map((tool) => tool.name)).toEqual([
+      "list_folder",
+      "read_page",
+      "create_page",
+      "replace_page_content",
+      "move_or_rename_page",
+    ]);
+    const [create, replace, move] = tools.slice(2);
+    expect(Object.keys(create?.inputSchema.properties ?? {})).toEqual(["content", "tab", "name"]);
+    expect(create?.inputSchema.required).toEqual(["content"]);
+    expect(Object.keys(replace?.inputSchema.properties ?? {})).toEqual(["tab", "page", "version", "content"]);
+    expect(replace?.inputSchema.required).toEqual(["page", "content"]);
+    expect(Object.keys(move?.inputSchema.properties ?? {})).toEqual(["tab", "page", "version", "newTab", "newName"]);
+    expect(move?.inputSchema.required).toEqual(["page", "newTab", "newName"]);
+    for (const tool of tools.slice(2)) {
+      expect(tool.description.length).toBeGreaterThan(40);
+      expect(tool.annotations).toMatchObject({ readOnlyHint: false, openWorldHint: false });
+      for (const argument of Object.values(tool.inputSchema.properties ?? {}))
+        expect(argument.description).toBeTruthy();
+    }
+    expect(replace?.annotations.destructiveHint).toBe(true);
+  });
+
+  it("are not registered for a Reader connection, and a call of one reaches no service", async () => {
+    actor = READER;
+
+    const list = await send({ method: "tools/list" });
+    const call = await send({
+      method: "tools/call",
+      params: { name: "create_page", arguments: { content: "# New" } },
+    });
+
+    expect((list.result?.tools as { name: string }[]).map((tool) => tool.name)).toEqual(["list_folder", "read_page"]);
+    expect(JSON.stringify(call)).toContain("create_page");
+    expect(mocks.createPage).not.toHaveBeenCalled();
+  });
+
+  it("tell a Writer connection in the instructions about the write tools and the version", () => {
+    const instructions = instructionsFor("handbook", "writer");
+
+    for (const word of ["create_page", "replace_page_content", "move_or_rename_page", "version"]) {
+      expect(instructions).toContain(word);
+    }
+  });
+
+  describe("create_page", () => {
+    it("creates a page with the name derived from its title in the folder, and returns it as stored", async () => {
+      mocks.createPage.mockResolvedValue({ ok: true, value: { ...STORED, name: "release-notes", version: 1 } });
+      mocks.getPage.mockResolvedValue({ ...PAGE, name: "release-notes", title: "Release Notes" });
+
+      const result = await callTool("create_page", { content: "# Release Notes\n\nText" });
+
+      expect(mocks.createPage).toHaveBeenCalledExactlyOnceWith(WRITER, FOLDER_ID, {
+        name: "release-notes",
+        content: "# Release Notes\n\nText",
+        tabId: null,
+      });
+      expect(result.structuredContent).toEqual({
+        name: "release-notes",
+        title: "Release Notes",
+        tab: null,
+        address: "https://wiki.example.com/folders/handbook/release-notes.md",
+        version: 1,
+      });
+    });
+
+    it("creates a page with a given name in a tab found by its name", async () => {
+      mocks.createPage.mockResolvedValue({ ok: true, value: { ...STORED, tab: { name: "guides" }, version: 1 } });
+
+      await callTool("create_page", { content: "# Setup", tab: "guides", name: "setup" });
+
+      expect(mocks.getTab).toHaveBeenCalledExactlyOnceWith(WRITER, "handbook", "guides");
+      expect(mocks.createPage).toHaveBeenCalledExactlyOnceWith(WRITER, FOLDER_ID, {
+        name: "setup",
+        content: "# Setup",
+        tabId: "tab-1",
+      });
+    });
+
+    it.each([
+      ["content without a title heading", { content: "Just text" }, "must start with a title heading"],
+      ["a title heading without a letter or digit", { content: "# ...!" }, "must start with a title heading"],
+      ["a title in another script", { content: "# 日本語" }, "The title suggests no name"],
+    ])("answers %s without a name with a tool error and creates nothing", async (_case, args, message) => {
+      expect(errorOf(await callTool("create_page", args))).toContain(message);
+      expect(mocks.createPage).not.toHaveBeenCalled();
+    });
+
+    it("answers a tab that does not exist with a tool error and creates nothing", async () => {
+      mocks.getTab.mockResolvedValue(null);
+
+      expect(errorOf(await callTool("create_page", { content: "# New", tab: "nowhere" }))).toBe(
+        'There is no tab named "nowhere" in the folder "handbook", so nothing was changed. Use list_folder to see ' +
+          "the tabs of the folder; tabs are created in the browser.",
+      );
+      expect(mocks.createPage).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [{ code: "not-allowed" }, NOT_ALLOWED],
+      [{ code: "name-taken" }, 'A page named "new" already exists directly in the folder "handbook"'],
+      [{ code: "invalid-input", fieldErrors: { name: ["Name is not valid"] } }, "The name is not valid"],
+      [{ code: "invalid-input", fieldErrors: { content: ["Content must be at most 10"] } }, "The content is not valid"],
+      [{ code: "tab-not-found" }, "There is no tab named"],
+      [{ code: "folder-not-found" }, "The folder of this connection cannot be read any more"],
+      [{ code: "failed" }, "The change could not be stored. Please try again later."],
+    ])("maps the error %j to a tool error", async (error, message) => {
+      mocks.createPage.mockResolvedValue({ ok: false, error });
+
+      expect(errorOf(await callTool("create_page", { content: "# New", name: "new" }))).toContain(message);
+    });
+  });
+
+  describe("replace_page_content", () => {
+    it("replaces the content of the page found by its tab and name, based on the given version", async () => {
+      mocks.updatePageContent.mockResolvedValue({ ok: true, value: STORED });
+
+      const result = await callTool("replace_page_content", { page: "setup", version: 4, content: "# Setup 2" });
+
+      expect(mocks.getPage).toHaveBeenCalledWith(WRITER, "handbook", null, "setup");
+      expect(mocks.updatePageContent).toHaveBeenCalledExactlyOnceWith(WRITER, "p1", {
+        content: "# Setup 2",
+        version: 4,
+      });
+      expect(result.structuredContent).toMatchObject({ name: "setup", version: 5 });
+    });
+
+    it("passes no version on as null, which the service refuses as changed", async () => {
+      mocks.updatePageContent.mockResolvedValue({ ok: false, error: { code: "page-changed", page: STORED } });
+
+      const message = errorOf(await callTool("replace_page_content", { page: "setup", content: "# Setup 2" }));
+
+      expect(mocks.updatePageContent).toHaveBeenCalledWith(WRITER, "p1", { content: "# Setup 2", version: null });
+      expect(message).toBe(
+        "The page was changed by bob at 2026-03-01T12:00:00.000Z, after the version this change is based on, or the " +
+          "change states no valid version. Nothing was changed. Read the page again with read_page and base the " +
+          "change on its current content and version.",
+      );
+    });
+
+    it("answers a page that does not exist with a tool error and changes nothing", async () => {
+      mocks.getPage.mockResolvedValue(null);
+
+      expect(errorOf(await callTool("replace_page_content", { page: "gone", version: 1, content: "# X" }))).toContain(
+        'There is no page named "gone"',
+      );
+      expect(mocks.updatePageContent).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [{ code: "not-allowed" }, NOT_ALLOWED],
+      [{ code: "page-not-found" }, "There is no page named"],
+      [{ code: "invalid-input", fieldErrors: { content: [TITLE_MISSING] } }, "must start with a title heading"],
+      [{ code: "failed" }, "The change could not be stored."],
+    ])("maps the error %j to a tool error", async (error, message) => {
+      mocks.updatePageContent.mockResolvedValue({ ok: false, error });
+
+      expect(errorOf(await callTool("replace_page_content", { page: "setup", version: 4, content: "x" }))).toContain(
+        message,
+      );
+    });
+  });
+
+  describe("move_or_rename_page", () => {
+    it("moves the page into a tab of the folder with a new name, based on the given version", async () => {
+      mocks.moveOrRenamePage.mockResolvedValue({
+        ok: true,
+        value: { ...STORED, name: "install", tab: { name: "guides" } },
+      });
+
+      const result = await callTool("move_or_rename_page", {
+        page: "setup",
+        version: 4,
+        newTab: "guides",
+        newName: "install",
+      });
+
+      expect(mocks.moveOrRenamePage).toHaveBeenCalledExactlyOnceWith(WRITER, "p1", {
+        name: "install",
+        tabId: "tab-1",
+        version: 4,
+      });
+      expect(result.structuredContent).toMatchObject({
+        name: "install",
+        tab: "guides",
+        address: "https://wiki.example.com/folders/handbook/guides/install.md",
+      });
+    });
+
+    it("moves the page directly into the folder for a new tab of null", async () => {
+      mocks.moveOrRenamePage.mockResolvedValue({ ok: true, value: STORED });
+
+      await callTool("move_or_rename_page", {
+        tab: "guides",
+        page: "setup",
+        version: 4,
+        newTab: null,
+        newName: "setup",
+      });
+
+      expect(mocks.getTab).not.toHaveBeenCalled();
+      expect(mocks.moveOrRenamePage).toHaveBeenCalledWith(WRITER, "p1", { name: "setup", tabId: null, version: 4 });
+    });
+
+    it("answers a target tab that does not exist with a tool error and changes nothing", async () => {
+      mocks.getTab.mockResolvedValue(null);
+
+      expect(
+        errorOf(await callTool("move_or_rename_page", { page: "setup", version: 4, newTab: "x", newName: "setup" })),
+      ).toContain('There is no tab named "x"');
+      expect(mocks.moveOrRenamePage).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [{ code: "not-allowed" }, NOT_ALLOWED],
+      [{ code: "page-not-found" }, "There is no page named"],
+      [{ code: "page-changed", page: STORED }, "The page was changed by bob"],
+      [{ code: "tab-not-found" }, "There is no tab named"],
+      [{ code: "name-taken" }, 'A page named "taken" already exists directly in the folder "handbook"'],
+      [{ code: "invalid-input", fieldErrors: { name: ["Name is not valid"] } }, "The name is not valid"],
+      [{ code: "failed" }, "The change could not be stored."],
+    ])("maps the error %j to a tool error", async (error, message) => {
+      mocks.moveOrRenamePage.mockResolvedValue({ ok: false, error });
+
+      expect(
+        errorOf(await callTool("move_or_rename_page", { page: "setup", version: 4, newTab: null, newName: "taken" })),
+      ).toContain(message);
+    });
+
+    it("answers a failing database with a tool error that does not pass on the error, and logs it", async () => {
+      const err = new Error("connection lost");
+      mocks.moveOrRenamePage.mockRejectedValue(err);
+
+      expect(
+        errorOf(await callTool("move_or_rename_page", { page: "setup", version: 4, newTab: null, newName: "x" })),
+      ).toBe("The change could not be stored. Please try again later.");
+      expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ err, tool: "move_or_rename_page" }, "mcp tool failed");
+    });
   });
 });

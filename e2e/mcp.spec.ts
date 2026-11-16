@@ -1,7 +1,7 @@
 import type { APIRequestContext, APIResponse } from "@playwright/test";
 
 import { KNOWN_ADMIN, KNOWN_USER } from "../prisma/known-users";
-import { NO_STORAGE_STATE } from "./support/auth";
+import { NO_STORAGE_STATE, USER_STORAGE_STATE } from "./support/auth";
 import {
   createFolder,
   createFolderRole,
@@ -59,9 +59,15 @@ function send(
 /** The result of a tool call. */
 type ToolResult = { content: { type: string; text: string }[]; structuredContent?: unknown; isError?: boolean };
 
-/** Calls a tool and returns its result. */
-async function callTool(request: APIRequestContext, name: string, args: Record<string, unknown> = {}) {
-  const response = await send(request, { method: "tools/call", params: { name, arguments: args } });
+/** Calls a tool, by default at the Reader address of "projects", and returns its result. */
+async function callTool(
+  request: APIRequestContext,
+  name: string,
+  args: Record<string, unknown> = {},
+  token: string = secret,
+  to: string = address,
+) {
+  const response = await send(request, { method: "tools/call", params: { name, arguments: args } }, token, to);
   expect(response.status()).toBe(200);
   expect(response.headers()["content-type"]).toBe("application/json");
   return ((await response.json()) as { result: ToolResult }).result;
@@ -497,4 +503,212 @@ test("the access token of a revoked grant stops working at once", async ({ reque
   await getTestDb().oAuthGrant.delete({ where: { id: grant.id } });
 
   expect((await send(request, { method: "tools/list" }, revoked)).status()).toBe(401);
+});
+
+test.describe("the write tools", () => {
+  /** The access token of a Writer connection of the known user to "projects", and its address. */
+  let writer: string;
+  let writerAddress: string;
+
+  test.beforeEach(async () => {
+    ({ accessToken: writer } = await createGrant({ owner: KNOWN_USER, folder: projects, role: "writer" }));
+    writerAddress = `/mcp/${projects.id}/writer`;
+  });
+
+  /** Calls a tool at the Writer address. */
+  function write(request: APIRequestContext, name: string, args: Record<string, unknown>) {
+    return callTool(request, name, args, writer, writerAddress);
+  }
+
+  /** The pages of "projects" as stored, by name, with what a write changes. */
+  async function storedPages() {
+    return getTestDb().page.findMany({
+      where: { folderId: projects.id },
+      orderBy: { name: "asc" },
+      select: { name: true, title: true, content: true, tabId: true, version: true },
+    });
+  }
+
+  test("are listed for a Writer connection and not for a Reader connection; a call at the Reader address changes nothing", async ({
+    request,
+  }) => {
+    const writeTools = ["create_page", "replace_page_content", "move_or_rename_page"];
+    const listed = async (token: string, to: string) =>
+      (
+        (await (await send(request, { method: "tools/list" }, token, to)).json()) as {
+          result: { tools: { name: string }[] };
+        }
+      ).result.tools.map((tool) => tool.name);
+
+    expect(await listed(writer, writerAddress)).toEqual(["list_folder", "read_page", ...writeTools]);
+    expect(await listed(secret, address)).toEqual(["list_folder", "read_page"]);
+
+    const answer = await send(request, {
+      method: "tools/call",
+      params: { name: "create_page", arguments: { content: "# Sneaky" } },
+    });
+    expect(JSON.stringify(await answer.json())).toContain("create_page");
+    expect(await storedPages()).toEqual([]);
+  });
+
+  test("create_page without a name gives the page the suggested name; bad input is a tool error and creates nothing", async ({
+    request,
+  }) => {
+    await createTab({ folder: projects, name: "guides" });
+
+    const created = await write(request, "create_page", { content: "# Release Notes\n\nFirst." });
+    const inTab = await write(request, "create_page", { content: "# Setup", tab: "guides", name: "install" });
+
+    expect(created.isError).toBeUndefined();
+    expect(created.structuredContent).toEqual({
+      name: "release-notes",
+      title: "Release Notes",
+      tab: null,
+      address: `${PUBLIC_URL}/folders/projects/release-notes.md`,
+      version: 1,
+    });
+    expect(inTab.structuredContent).toMatchObject({ name: "install", tab: "guides", version: 1 });
+    const before = await storedPages();
+
+    for (const [args, message] of [
+      [{ content: "No title" }, "must start with a title heading"],
+      [{ content: "# 日本語" }, "The title suggests no name"],
+      [{ content: "# Other", name: "release-notes" }, 'A page named "release-notes" already exists'],
+      [{ content: "# Other", name: "Not A Name" }, "The name is not valid"],
+      [{ content: "# Other", tab: "nowhere" }, 'There is no tab named "nowhere"'],
+    ] as const) {
+      const result = await write(request, "create_page", args);
+
+      expect(result.isError, JSON.stringify(args)).toBe(true);
+      expect(result.content[0]?.text).toContain(message);
+    }
+    expect(await storedPages()).toEqual(before);
+  });
+
+  test("replace_page_content gives the page the new content and the title of its new heading; content without a title heading changes nothing", async ({
+    request,
+  }) => {
+    await createPage({ folder: projects, name: "plan", content: "# Plan\n\nOld." });
+    const { version } = (await callTool(request, "read_page", { page: "plan" })).structuredContent as {
+      version: number;
+    };
+
+    const replaced = await write(request, "replace_page_content", {
+      page: "plan",
+      version,
+      content: "# Roadmap\n\nNew.",
+    });
+    const refused = await write(request, "replace_page_content", { page: "plan", version: 2, content: "No title" });
+
+    expect(replaced.structuredContent).toMatchObject({ name: "plan", title: "Roadmap", version: 2 });
+    expect(refused.isError).toBe(true);
+    expect(refused.content[0]?.text).toContain("must start with a title heading");
+    expect(await storedPages()).toEqual([
+      { name: "plan", title: "Roadmap", content: "# Roadmap\n\nNew.", tabId: null, version: 2 },
+    ]);
+  });
+
+  test("move_or_rename_page puts the page at its new place; a taken name and a missing tab change nothing", async ({
+    request,
+  }) => {
+    const guides = await createTab({ folder: projects, name: "guides" });
+    await createPage({ folder: projects, name: "plan", content: "# Plan" });
+    await createPage({ tab: guides, name: "taken", content: "# Taken" });
+
+    const moved = await write(request, "move_or_rename_page", {
+      page: "plan",
+      version: 1,
+      newTab: "guides",
+      newName: "roadmap",
+    });
+    expect(moved.structuredContent).toEqual({
+      name: "roadmap",
+      title: "Plan",
+      tab: "guides",
+      address: `${PUBLIC_URL}/folders/projects/guides/roadmap.md`,
+      version: 2,
+    });
+    const before = await storedPages();
+
+    for (const [args, message] of [
+      [{ newTab: "guides", newName: "taken" }, 'A page named "taken" already exists'],
+      [{ newTab: "nowhere", newName: "roadmap" }, 'There is no tab named "nowhere"'],
+    ] as const) {
+      const result = await write(request, "move_or_rename_page", {
+        tab: "guides",
+        page: "roadmap",
+        version: 2,
+        ...args,
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0]?.text).toContain(message);
+    }
+    expect(await storedPages()).toEqual(before);
+  });
+
+  test("of two changes based on the same version the first is stored and the second is refused with who changed the page and when", async ({
+    request,
+  }) => {
+    await createPage({ folder: projects, name: "plan", content: "# Plan" });
+    const { version } = (await callTool(request, "read_page", { page: "plan" })).structuredContent as {
+      version: number;
+    };
+
+    const first = await write(request, "replace_page_content", { page: "plan", version, content: "# First" });
+    const second = await write(request, "replace_page_content", { page: "plan", version, content: "# Second" });
+    const none = await write(request, "replace_page_content", { page: "plan", content: "# None" });
+
+    expect(first.isError).toBeUndefined();
+    for (const refused of [second, none]) {
+      expect(refused.isError).toBe(true);
+      expect(refused.content[0]?.text).toMatch(
+        new RegExp(
+          `^The page was changed by ${KNOWN_USER.name} at \\d{4}-\\d{2}-\\d{2}T.*Read the page again with read_page`,
+        ),
+      );
+    }
+    expect(await storedPages()).toMatchObject([{ content: "# First", version: 2 }]);
+  });
+
+  test("after the user is lowered to Reader a write through the Writer connection is refused and the page stays as it was", async ({
+    request,
+  }) => {
+    const bob = await createUser({ name: "bob", mustChangePassword: false });
+    await createFolderRole({ folder: projects, user: bob, role: "writer" });
+    await createPage({ folder: projects, name: "plan", content: "# Plan" });
+    const { accessToken } = await createGrant({ owner: bob, folder: projects, role: "writer" });
+    await getTestDb().folderRole.update({
+      where: { folderId_userId: { folderId: projects.id, userId: bob.id } },
+      data: { role: "reader" },
+    });
+
+    const response = await send(
+      request,
+      {
+        method: "tools/call",
+        params: { name: "replace_page_content", arguments: { page: "plan", version: 1, content: "# Changed" } },
+      },
+      accessToken,
+      writerAddress,
+    );
+
+    expect(response.status()).toBe(403);
+    expect(await storedPages()).toMatchObject([{ content: "# Plan", version: 1 }]);
+  });
+
+  test.describe("in the browser", () => {
+    test.use({ storageState: USER_STORAGE_STATE });
+
+    test("a page changed through MCP names the user as its last editor and nothing else", async ({ page, request }) => {
+      const bob = await createUser({ name: "bob" });
+      await createPage({ folder: projects, name: "plan", content: "# Plan", editor: bob });
+
+      await write(request, "replace_page_content", { page: "plan", version: 1, content: "# Plan\n\nBy an agent." });
+      await page.goto("/folders/projects/plan.md");
+
+      await expect(page.getByText(/^Last updated /)).toHaveText(new RegExp(`by ${KNOWN_USER.name}$`));
+      await expect(page.getByRole("main")).not.toContainText(/MCP|agent app|connected app|via/i);
+    });
+  });
 });

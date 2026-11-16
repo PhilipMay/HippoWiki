@@ -96,8 +96,17 @@ export type DeletedPage = {
   folder: { id: string; name: string };
 };
 
-/** A page as stored by a write, with the names of its folder and tab: what its address is built from. */
-export type StoredPage = { id: string; name: string; folder: { name: string }; tab: { name: string } | null };
+/**
+ * A page as stored by a write, with the names of its folder and tab, what its address is built from, and its version
+ * after the write.
+ */
+export type StoredPage = {
+  id: string;
+  name: string;
+  version: number;
+  folder: { name: string };
+  tab: { name: string } | null;
+};
 
 /** The place a page was in when it was deleted: its folder and its tab, if it had one. */
 export type PagePlace = { folder: { name: string }; tab: { name: string } | null };
@@ -135,6 +144,7 @@ const SUMMARY_SELECT = { id: true, name: true, title: true, updatedAt: true, ...
 const STORED_PAGE_SELECT = {
   id: true,
   name: true,
+  version: true,
   folder: { select: { name: true } },
   tab: { select: { name: true } },
 } as const;
@@ -347,6 +357,14 @@ function unknownActor(err: unknown, actor: Actor): { ok: false; error: Failed } 
 }
 
 /**
+ * Where a write comes from, for its log line: the channel and, for MCP, the grant of the connection. The page itself
+ * does not show it; its last editor is the user in both channels.
+ */
+function channelOf(actor: ContentActor): { channel: "browser" } | { channel: "mcp"; grantId: string } {
+  return actor.channel === "mcp" ? { channel: "mcp", grantId: actor.connection.grantId } : { channel: "browser" };
+}
+
+/**
  * The tab of a place: the id of a tab, `null` for the folder itself, or `undefined` if the id is malformed, so that
  * it never reaches the database.
  */
@@ -385,10 +403,10 @@ async function refusedWrite(
 /**
  * Creates a page with the given name and content, with the title derived from the content, and returns it as stored.
  * The page is placed in the tab with the id `tabId` or, with `null`, directly in the folder with the given id; the tab
- * must be one of that folder. The actor is the page's last editor.
+ * must be one of that folder. The actor is the page's last editor, in the browser and through MCP.
  */
 export async function createPage(
-  actor: BrowserActor,
+  actor: ContentActor,
   folderId: string,
   input: { name: string; content: string; tabId: string | null },
 ): Promise<Result<StoredPage, CreatePageError>> {
@@ -432,7 +450,7 @@ export async function createPage(
     return { ok: false, error: { code: "failed" } };
   }
 
-  logger.info({ pageId: page.id }, "page created");
+  logger.info({ pageId: page.id, ...channelOf(actor) }, "page created");
   return { ok: true, value: page };
 }
 
@@ -440,10 +458,10 @@ export async function createPage(
  * Stores the given content of the page with the given id, with the title derived from it, and returns the page as
  * stored, with the actor as its last editor. Name and place are not touched. A deleted page counts as missing. The
  * write is based on the given version of the page: if the page has another one, or no valid version is given, nothing
- * is stored and the result is `page-changed`.
+ * is stored and the result is `page-changed`. It is a write of the browser or of MCP.
  */
 export async function updatePageContent(
-  actor: BrowserActor,
+  actor: ContentActor,
   id: string,
   input: { content: string; version: number | null },
 ): Promise<Result<StoredPage, UpdatePageContentError>> {
@@ -484,7 +502,7 @@ export async function updatePageContent(
     return { ok: false, error: { code: "page-not-found" } };
   }
 
-  logger.info({ pageId }, "page updated");
+  logger.info({ pageId, ...channelOf(actor) }, "page updated");
   return { ok: true, value: page };
 }
 
@@ -495,10 +513,10 @@ export async function updatePageContent(
  * neither validated nor touched, so the content limit never blocks a move. A tab of another folder is refused by the
  * composite foreign key and counts as missing, like a deleted page. The write is based on the given version of the
  * page: if the page has another one, or no valid version is given, nothing is stored and the result is
- * `page-changed`, also when the name is taken at the target.
+ * `page-changed`, also when the name is taken at the target. It is a write of the browser or of MCP.
  */
 export async function moveOrRenamePage(
-  actor: BrowserActor,
+  actor: ContentActor,
   id: string,
   input: { name: string; tabId: string | null; version: number | null },
 ): Promise<Result<StoredPage, MoveOrRenamePageError>> {
@@ -551,7 +569,7 @@ export async function moveOrRenamePage(
     return { ok: false, error: { code: "page-not-found" } };
   }
 
-  logger.info({ pageId, tabId }, "page moved or renamed");
+  logger.info({ pageId, tabId, ...channelOf(actor) }, "page moved or renamed");
   return { ok: true, value: page };
 }
 
@@ -607,7 +625,7 @@ export async function deletePage(
     return { ok: false, error: { code: "failed" } };
   }
 
-  logger.info({ pageId }, "page deleted");
+  logger.info({ pageId, ...channelOf(actor) }, "page deleted");
   return { ok: true, value: place };
 }
 
@@ -670,6 +688,6 @@ export async function restorePage(
     return { ok: false, error: { code: "page-not-found" } };
   }
 
-  logger.info({ pageId, tabId }, "page restored");
+  logger.info({ pageId, tabId, ...channelOf(actor) }, "page restored");
   return { ok: true, value: page };
 }

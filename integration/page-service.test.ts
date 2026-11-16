@@ -262,7 +262,7 @@ describe("createPage", () => {
     expect(stored).toMatchObject({ name: "intro", title: "Intro", content: "# Intro\n\nText", tabId: null });
     expect(result).toStrictEqual({
       ok: true,
-      value: { id: stored.id, name: "intro", folder: { name: "docs" }, tab: null },
+      value: { id: stored.id, name: "intro", version: 1, folder: { name: "docs" }, tab: null },
     });
   });
 
@@ -275,7 +275,7 @@ describe("createPage", () => {
     const stored = await getTestDb().page.findFirstOrThrow({ where: { tabId: tab.id } });
     expect(result).toStrictEqual({
       ok: true,
-      value: { id: stored.id, name: "intro", folder: { name: "docs" }, tab: { name: "guides" } },
+      value: { id: stored.id, name: "intro", version: 1, folder: { name: "docs" }, tab: { name: "guides" } },
     });
   });
 
@@ -338,7 +338,7 @@ describe("updatePageContent", () => {
       pageService.updatePageContent(actor, page.id, { content: "# New title\n\nText", version: 1 }),
     ).resolves.toStrictEqual({
       ok: true,
-      value: { id: page.id, name: "intro", folder: { name: "docs" }, tab: { name: "guides" } },
+      value: { id: page.id, name: "intro", version: 2, folder: { name: "docs" }, tab: { name: "guides" } },
     });
 
     expect(await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } })).toMatchObject({
@@ -392,7 +392,7 @@ describe("updatePageContent", () => {
       ok: false,
       error: {
         code: "page-changed",
-        page: { id: page.id, name: "intro", folder: { name: "docs" }, tab: { name: "guides" } },
+        page: { id: page.id, name: "intro", version: 3, folder: { name: "docs" }, tab: { name: "guides" } },
       },
     });
     expect(await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } })).toStrictEqual(page);
@@ -411,7 +411,10 @@ describe("updatePageContent", () => {
       pageService.updatePageContent(actor, page.id, { content: "# New", version: 1 }),
     ).resolves.toStrictEqual({
       ok: false,
-      error: { code: "page-changed", page: { id: page.id, name: "start", folder: { name: "docs" }, tab: null } },
+      error: {
+        code: "page-changed",
+        page: { id: page.id, name: "start", version: 2, folder: { name: "docs" }, tab: null },
+      },
     });
     expect((await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } })).content).toBe("# Old");
   });
@@ -438,7 +441,7 @@ describe("moveOrRenamePage", () => {
       pageService.moveOrRenamePage(actor, page.id, { name: "intro", tabId: tab.id, version: 1 }),
     ).resolves.toStrictEqual({
       ok: true,
-      value: { id: page.id, name: "intro", folder: { name: "docs" }, tab: { name: "guides" } },
+      value: { id: page.id, name: "intro", version: 2, folder: { name: "docs" }, tab: { name: "guides" } },
     });
     expect(await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } })).toMatchObject({
       name: "intro",
@@ -449,7 +452,7 @@ describe("moveOrRenamePage", () => {
       pageService.moveOrRenamePage(actor, page.id, { name: "start", tabId: null, version: 2 }),
     ).resolves.toStrictEqual({
       ok: true,
-      value: { id: page.id, name: "start", folder: { name: "docs" }, tab: null },
+      value: { id: page.id, name: "start", version: 3, folder: { name: "docs" }, tab: null },
     });
     // The content is not touched by a move or rename.
     expect(await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } })).toMatchObject({
@@ -511,7 +514,10 @@ describe("moveOrRenamePage", () => {
       pageService.moveOrRenamePage(actor, page.id, { name: "start", tabId: tab.id, version }),
     ).resolves.toStrictEqual({
       ok: false,
-      error: { code: "page-changed", page: { id: page.id, name: "intro", folder: { name: "docs" }, tab: null } },
+      error: {
+        code: "page-changed",
+        page: { id: page.id, name: "intro", version: 3, folder: { name: "docs" }, tab: null },
+      },
     });
     expect(await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } })).toStrictEqual(page);
   });
@@ -618,7 +624,7 @@ describe("deletePage", () => {
       ok: false,
       error: {
         code: "page-changed",
-        page: { id: page.id, name: "intro", folder: { name: "docs" }, tab: { name: "guides" } },
+        page: { id: page.id, name: "intro", version: 3, folder: { name: "docs" }, tab: { name: "guides" } },
       },
     });
     expect(await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } })).toStrictEqual(page);
@@ -643,11 +649,11 @@ describe("restorePage", () => {
 
     await expect(pageService.restorePage(actor, direct.id, { name: "first", tabId: null })).resolves.toStrictEqual({
       ok: true,
-      value: { id: direct.id, name: "first", folder: { name: "docs" }, tab: null },
+      value: { id: direct.id, name: "first", version: 2, folder: { name: "docs" }, tab: null },
     });
     await expect(pageService.restorePage(actor, inTab.id, { name: "renamed", tabId: tab.id })).resolves.toStrictEqual({
       ok: true,
-      value: { id: inTab.id, name: "renamed", folder: { name: "docs" }, tab: { name: "guides" } },
+      value: { id: inTab.id, name: "renamed", version: 2, folder: { name: "docs" }, tab: { name: "guides" } },
     });
 
     expect(await getTestDb().page.findUniqueOrThrow({ where: { id: direct.id } })).toMatchObject({
@@ -1065,5 +1071,59 @@ describe("the lowest role of each function", () => {
     await expect(pageService.restorePage(actor, page.id, { name: "intro", tabId: null })).resolves.toMatchObject({
       ok: true,
     });
+  });
+});
+
+describe("writes through MCP", () => {
+  it("create, save and move pages in the folder of the connection, with the user as the last editor", async () => {
+    const folder = await createFolder({ name: "projects", roles: [{ user, role: "writer" }] });
+    const tab = await createTab({ folder, name: "guides" });
+    const mcp = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "writer" });
+
+    const created = await pageService.createPage(mcp, folder.id, { name: "plan", content: "# Plan", tabId: null });
+    if (!created.ok) throw new Error(`not created: ${created.error.code}`);
+    expect(created.value).toMatchObject({ name: "plan", version: 1 });
+    const saved = await pageService.updatePageContent(mcp, created.value.id, { content: "# Plan 2", version: 1 });
+    expect(saved).toMatchObject({ ok: true, value: { version: 2 } });
+    const moved = await pageService.moveOrRenamePage(mcp, created.value.id, {
+      name: "roadmap",
+      tabId: tab.id,
+      version: 2,
+    });
+    expect(moved).toMatchObject({ ok: true, value: { name: "roadmap", tab: { name: "guides" }, version: 3 } });
+
+    const stored = await getTestDb().page.findUniqueOrThrow({ where: { id: created.value.id } });
+    expect(stored).toMatchObject({ title: "Plan 2", content: "# Plan 2", lastEditedById: user.id, version: 3 });
+  });
+
+  it("give not-allowed and change nothing for a Reader connection, another folder and a lowered role", async () => {
+    const folder = await createFolder({ name: "projects", roles: [{ user, role: "owner" }] });
+    const other = await createFolder({ name: "notes", roles: [{ user, role: "owner" }] });
+    const page = await createPage({ folder, name: "plan" });
+    const otherPage = await createPage({ folder: other, name: "draft" });
+    const reader = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "reader" });
+    const writer = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "writer" });
+    const before = await getTestDb().page.findMany({ orderBy: { name: "asc" } });
+
+    for (const result of [
+      await pageService.createPage(reader, folder.id, { name: "new", content: "# New", tabId: null }),
+      await pageService.updatePageContent(reader, page.id, { content: "# New", version: 1 }),
+      await pageService.moveOrRenamePage(reader, page.id, { name: "new", tabId: null, version: 1 }),
+      await pageService.createPage(writer, other.id, { name: "new", content: "# New", tabId: null }),
+      await pageService.updatePageContent(writer, otherPage.id, { content: "# New", version: 1 }),
+      await pageService.moveOrRenamePage(writer, otherPage.id, { name: "new", tabId: null, version: 1 }),
+    ]) {
+      expect(result).toEqual(NOT_ALLOWED);
+    }
+
+    await getTestDb().folderRole.update({
+      where: { folderId_userId: { folderId: folder.id, userId: user.id } },
+      data: { role: "reader" },
+    });
+    await expect(pageService.updatePageContent(writer, page.id, { content: "# New", version: 1 })).resolves.toEqual(
+      NOT_ALLOWED,
+    );
+
+    expect(await getTestDb().page.findMany({ orderBy: { name: "asc" } })).toStrictEqual(before);
   });
 });

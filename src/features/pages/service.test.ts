@@ -329,10 +329,11 @@ describe("directPagesFirst", () => {
 });
 
 const CONTENT = "# My page\n\nText";
-/** What a write reads back of a page: what its address is built from. */
+/** What a write reads back of a page: what its address is built from, and its version. */
 const STORED_PAGE_SELECT = {
   id: true,
   name: true,
+  version: true,
   folder: { select: { name: true } },
   tab: { select: { name: true } },
 };
@@ -387,6 +388,59 @@ const otherErrors = [
   ["any other error", new Error("connection lost")],
 ] as const;
 
+describe("a write through MCP", () => {
+  const STORED = { id: PAGE_ID, name: "plan", version: 2, folder: { name: "projects" }, tab: null };
+
+  it("logs the channel mcp and the grant of the connection, and stores the user as the last editor", async () => {
+    mocks.create.mockResolvedValue({ ...STORED, version: 1 });
+    mocks.updateMany.mockResolvedValue({ count: 1 });
+    mocks.findUnique.mockResolvedValue(STORED);
+    const grantId = "0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01";
+
+    await expect(
+      createPage(MCP_ACTOR, FOLDER_ID, { name: "plan", content: CONTENT, tabId: null }),
+    ).resolves.toMatchObject({ ok: true });
+    await expect(updatePageContent(MCP_ACTOR, PAGE_ID, { content: CONTENT, version: 1 })).resolves.toMatchObject({
+      ok: true,
+    });
+    await expect(
+      moveOrRenamePage(MCP_ACTOR, PAGE_ID, { name: "plan", tabId: null, version: 2 }),
+    ).resolves.toMatchObject({ ok: true });
+
+    expect(mocks.info.mock.calls).toEqual([
+      [{ pageId: PAGE_ID, channel: "mcp", grantId }, "page created"],
+      [{ pageId: PAGE_ID, channel: "mcp", grantId }, "page updated"],
+      [{ pageId: PAGE_ID, tabId: null, channel: "mcp", grantId }, "page moved or renamed"],
+    ]);
+    expect(mocks.create.mock.calls[0]?.[0].data).toMatchObject({ lastEditedById: ACTOR_ID });
+    expect(mocks.updateMany.mock.calls[0]?.[0].data).toMatchObject({ lastEditedById: ACTOR_ID });
+  });
+
+  it("is not allowed for a Reader connection, for another folder and without a role, and writes nothing", async () => {
+    const reader: ContentActor = {
+      ...MCP_ACTOR,
+      connection: { ...MCP_ACTOR.connection, role: "reader" },
+    } as ContentActor;
+
+    mocks.roleFindFirst.mockResolvedValue({ role: "owner" });
+    await expect(createPage(reader, FOLDER_ID, { name: "plan", content: CONTENT, tabId: null })).resolves.toEqual({
+      ok: false,
+      error: { code: "not-allowed" },
+    });
+    await expect(
+      createPage(MCP_ACTOR, "1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e55", { name: "plan", content: CONTENT, tabId: null }),
+    ).resolves.toEqual({ ok: false, error: { code: "not-allowed" } });
+    mocks.roleFindFirst.mockResolvedValue({ role: "reader" });
+    await expect(updatePageContent(MCP_ACTOR, PAGE_ID, { content: CONTENT, version: 1 })).resolves.toEqual({
+      ok: false,
+      error: { code: "not-allowed" },
+    });
+
+    expect(mocks.create).not.toHaveBeenCalled();
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+});
+
 describe("createPage", () => {
   const VALID = { name: " my-page ", content: CONTENT, tabId: null };
   const IN_TAB = { ...VALID, tabId: TAB_ID };
@@ -438,7 +492,7 @@ describe("createPage", () => {
       },
       select: STORED_PAGE_SELECT,
     });
-    expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID }, "page created");
+    expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID, channel: "browser" }, "page created");
   });
 
   it("stores the content with plain line feeds", async () => {
@@ -567,7 +621,7 @@ describe("updatePageContent", () => {
       where: { id: PAGE_ID, deletedAt: null },
       select: STORED_PAGE_SELECT,
     });
-    expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID }, "page updated");
+    expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID, channel: "browser" }, "page updated");
   });
 
   // The update matches neither a deleted page nor one with another version; the page as stored tells them apart.
@@ -719,7 +773,10 @@ describe("moveOrRenamePage", () => {
       where: { id: PAGE_ID, deletedAt: null },
       select: STORED_PAGE_SELECT,
     });
-    expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID, tabId: TAB_ID }, "page moved or renamed");
+    expect(mocks.info).toHaveBeenCalledWith(
+      { pageId: PAGE_ID, tabId: TAB_ID, channel: "browser" },
+      "page moved or renamed",
+    );
   });
 
   it("places the page directly in its folder without a tab", async () => {
@@ -848,7 +905,7 @@ describe("deletePage", () => {
       where: { id: PAGE_ID, deletedAt: null, version: VERSION },
       data: { deletedAt: expect.any(Date), tabId: null, lastEditedById: ACTOR_ID, version: { increment: 1 } },
     });
-    expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID }, "page deleted");
+    expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID, channel: "browser" }, "page deleted");
   });
 
   it("returns the folder as the place of a page placed directly in it", async () => {
@@ -981,7 +1038,7 @@ describe("restorePage", () => {
       where: { id: PAGE_ID, deletedAt: null },
       select: STORED_PAGE_SELECT,
     });
-    expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID, tabId: TAB_ID }, "page restored");
+    expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID, tabId: TAB_ID, channel: "browser" }, "page restored");
   });
 
   it("restores the page directly into its folder without a tab", async () => {
