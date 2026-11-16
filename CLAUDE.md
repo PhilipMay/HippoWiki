@@ -14,6 +14,9 @@ The specification lives in the `spec/` directory. This catalog should always be 
 - `spec/step-plan-workflow.md`: how features are planned in step files, when a step is done, what to do when it
   cannot be finished, how a feature is wrapped up, what a feature spec holds, and how a finding of the review report is
   fixed and deleted
+- `spec/optimistic-locking-requirements.md`: the approved requirements of optimistic locking for pages (refusing
+  a content save, move, rename or delete based on an older state of the page, what the user sees then, the rule for
+  callers other than the browser)
 - `spec/architecture.md`: code layout and conventions (layers and services, reads, writes, the adapters of callers
   other than the GUI, login and sessions, the public addresses, security headers, validation, addresses, database, UI)
 - `spec/testing.md`: the check of doc references, and unit, integration and end-to-end test conventions
