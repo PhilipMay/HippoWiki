@@ -13,15 +13,20 @@ import { useId, useRef, useState, useTransition } from "react";
 
 import Link from "@/components/Link";
 import { LIFETIME_FIELD, type ConsentFormAction, type ConsentFormState } from "@/features/oauth/forms";
-import { AUTHORIZATION_PARAMS, type AuthorizationParams } from "@/features/oauth/schema";
-import { DEFAULT_TOKEN_EXPIRY, TOKEN_EXPIRIES, TOKEN_EXPIRY_DAYS } from "@/features/tokens/schema";
+import {
+  AUTHORIZATION_PARAMS,
+  DEFAULT_GRANT_LIFETIME,
+  GRANT_LIFETIME_DAYS,
+  GRANT_LIFETIMES,
+  type AuthorizationParams,
+} from "@/features/oauth/schema";
 import { accountPath } from "@/lib/addresses";
 import { useHydrated } from "@/lib/hydration";
 
 type ConsentFormProps = {
   /** The parameters of the authorization request; the form submits them again, and the actions check them again. */
   params: AuthorizationParams;
-  /** Whether the user holds the most tokens allowed: then there is nothing to approve. */
+  /** Whether the user holds the most connected apps allowed: then there is nothing to approve. */
   limitReached: boolean;
   /** Server Action behind "Approve"; it returns the address of the app with the code, or the error to show. */
   approveAction: ConsentFormAction;
@@ -36,7 +41,7 @@ type ConsentFormProps = {
  */
 export default function ConsentForm({ params, limitReached, approveAction, denyAction }: ConsentFormProps) {
   const [state, setState] = useState<ConsentFormState>({});
-  const [lifetime, setLifetime] = useState<string>(DEFAULT_TOKEN_EXPIRY);
+  const [lifetime, setLifetime] = useState<string>(DEFAULT_GRANT_LIFETIME);
   const [pending, startTransition] = useTransition();
   const formRef = useRef<HTMLFormElement>(null);
   const lifetimeLabelId = useId();
@@ -73,7 +78,7 @@ export default function ConsentForm({ params, limitReached, approveAction, denyA
       {leaving && <Alert severity="info">Returning to the app…</Alert>}
       {limitReached ? (
         <Alert severity="warning">
-          You already have the most tokens allowed, so no further app can be connected. Revoke a token on your{" "}
+          You already have the most connected apps allowed, so no further app can be connected. Revoke an app on your{" "}
           <MuiLink component={Link} href={accountPath()} color="inherit">
             account page
           </MuiLink>{" "}
@@ -89,12 +94,12 @@ export default function ConsentForm({ params, limitReached, approveAction, denyA
             onChange={(event) => setLifetime(event.target.value)}
             row
           >
-            {TOKEN_EXPIRIES.map((expiry) => (
+            {GRANT_LIFETIMES.map((expiry) => (
               <FormControlLabel
                 key={expiry}
                 value={expiry}
                 control={<Radio />}
-                label={`${TOKEN_EXPIRY_DAYS[expiry]} days`}
+                label={`${GRANT_LIFETIME_DAYS[expiry]} days`}
                 disabled={locked}
               />
             ))}

@@ -70,10 +70,10 @@ How the code is organised and which patterns new code follows. The technology st
   - Writes return a `Result` from `src/lib/result.ts`: `{ ok: true, value }` with the item as stored, or
     `{ ok: false, error }` with a code. The codes of the content are `invalid-input` (with `fieldErrors`),
     `name-taken`, `folder-not-found`, `tab-not-found`, `page-not-found`, `page-changed` (with the page as stored) and
-    `failed`; the users, auth and token
+    `failed`; the users, auth and grant
     services add codes such as `not-allowed`, `busy`, `invalid-credentials`, `wait`, `limit-reached` and
-    `token-not-found` (see `src/features/users/service.ts`, `src/features/auth/service.ts` and
-    `src/features/tokens/service.ts`). Each write declares the ones it can return in a type of its own, such as
+    `grant-not-found` (see `src/features/users/service.ts`, `src/features/auth/service.ts` and
+    `src/features/grants/service.ts`). Each write declares the ones it can return in a type of its own, such as
     `CreatePageError`.
   - A write checks its actor first, then its ids, then its input, then writes.
   - Rows that may no longer exist are changed with `updateMany` and the returned count is checked, instead of catching
@@ -261,7 +261,7 @@ The feature is described in `users-and-login.md`. What every new route, query an
 - The name of a migration directory must sort after all existing ones, because migrations are applied in the order of
   their names.
 - What Prisma cannot express in the schema, such as the check constraint that keeps `AuthSecret` to a single row, the
-  one that makes a row of `ApiToken` either a token or a grant, the trigger that refuses every update that changes
+  trigger that refuses every update that changes
   the type of a `User` (`prisma/migrations/20261115120000_add_user_types/`), or the trigger that refuses every role
   of an admin (`prisma/migrations/20261115210306_add_folder_roles/`), is
   added to the SQL of the migration by hand (`npm run db:migrate -- --name <change> --create-only`, edit the file,

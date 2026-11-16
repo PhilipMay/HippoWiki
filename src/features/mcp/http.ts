@@ -1,6 +1,6 @@
 // The adapter between the route `/mcp` and the MCP server: it is to an MCP client what `queries.ts` is to the GUI. It is
 // the place where the actor of a request comes from the bearer token instead of the session: every request is
-// checked with `authenticateToken()` before the SDK sees it. The SDK then speaks the protocol (Streamable HTTP,
+// checked with `authenticateAccessToken()` before the SDK sees it. The SDK then speaks the protocol (Streamable HTTP,
 // stateless, with JSON answers and no SSE) and calls the tools of `tools.ts`. The bearer token is the access token of
 // a grant to an OAuth client, and the 401 says where a client finds the authorization server. Without
 // `HIPPOWIKI_PUBLIC_URL` there is no OAuth and therefore no MCP server: every request answers 404.
@@ -16,7 +16,7 @@ import {
 
 import { createWikiServer } from "@/features/mcp/tools";
 import { protectedResourceMetadataUrl } from "@/features/oauth/issuer";
-import * as tokenService from "@/features/tokens/service";
+import * as grantService from "@/features/grants/service";
 import type { Actor } from "@/features/users/service";
 import { getServerEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";
@@ -128,7 +128,7 @@ export async function handleMcpRequest(request: Request): Promise<Response> {
 
   // The access token has to be valid and to have the scope; its user is the actor of the tools, and the services
   // decide what the actor may read.
-  const actor = await tokenService.authenticateToken(request.headers, MCP_SCOPE);
+  const actor = await grantService.authenticateAccessToken(request.headers, MCP_SCOPE);
   if (!actor.ok) {
     // What a client needs to start the OAuth flow, after the error if there is one.
     const discovery = [`resource_metadata="${resourceMetadata}"`, `scope="${MCP_SCOPE}"`];

@@ -13,12 +13,12 @@ import { useRouter } from "next/navigation";
 import { useActionState, useId } from "react";
 
 import Link from "@/components/Link";
-import type { RevokeTokenFormAction } from "@/features/tokens/forms";
+import type { RevokeAppFormAction } from "@/features/grants/forms";
 import { useHydrated } from "@/lib/hydration";
 
-type RevokeTokenDialogProps = {
+type RevokeAppDialogProps = {
   /** Server Action that revokes the app; it returns the error to show, or redirects on success. */
-  action: RevokeTokenFormAction;
+  action: RevokeAppFormAction;
   /** The name of the connected app. */
   appName: string;
   /** The account address without the action, where closing the dialog leads. */
@@ -29,7 +29,7 @@ type RevokeTokenDialogProps = {
  * Dialog "Revoke app" that names the connected app and says that it loses its access at once. The account page renders
  * it for `?action=revoke`, so it is open from the start; closing it leads to the account.
  */
-export default function RevokeTokenDialog({ action, appName, closeHref }: RevokeTokenDialogProps) {
+export default function RevokeAppDialog({ action, appName, closeHref }: RevokeAppDialogProps) {
   const [state, formAction, pending] = useActionState(action, {});
   const router = useRouter();
   const titleId = useId();

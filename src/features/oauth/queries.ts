@@ -35,7 +35,7 @@ export type Consent =
       target: string;
       /** The logged-in user who is asked. */
       userName: string;
-      /** Whether the user holds the most tokens allowed, the grants this one would replace not counted. */
+      /** Whether the user holds the most connected apps allowed, the grants this one would replace not counted. */
       limitReached: boolean;
       /** The parameters of the request, which the form submits again. */
       params: AuthorizationParams;
@@ -94,9 +94,9 @@ export async function loadConsent(searchParams: SearchParams): Promise<Consent> 
   const { client, redirectUri } = checked.value;
   let limitReached: boolean;
   try {
-    limitReached = await oauthService.isTokenLimitReached(user, client.id);
+    limitReached = await oauthService.isGrantLimitReached(user, client.id);
   } catch (err) {
-    logger.error({ err, userId: user.id, clientId: client.id }, "failed to count the tokens for the consent page");
+    logger.error({ err, userId: user.id, clientId: client.id }, "failed to count the grants for the consent page");
     return { kind: "untrusted", reason: "failed" };
   }
   return {

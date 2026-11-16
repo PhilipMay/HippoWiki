@@ -5,9 +5,10 @@
 // - A client is public: it has no secret and proves itself with PKCE (`S256`). It either registered itself
 //   (`registerClient()`) or names the URL of its metadata document as its `client_id`, which is then fetched and kept.
 // - A code is what a client gets when a user approves it. It works once and for ten minutes.
-// - A grant is what a code is exchanged for: a row of `ApiToken` with a client, listed and revoked like every other
-//   token of the user and counted in the same limit. The client holds an access token that works for an hour and a
-//   refresh token that changes with every use; the row holds only the hashes of the current ones.
+// - A grant is what a code is exchanged for: a row of `OAuthGrant`, a connected app that the user sees and revokes on
+//   the account page (`src/features/grants/service.ts`), and counted in the limit of grants per user. The client holds
+//   an access token that works for an hour and a refresh token that changes with every use; the row holds only the
+//   hashes of the current ones.
 // - A code, a token and their hashes are never logged.
 
 import { randomUUID } from "node:crypto";
@@ -17,6 +18,8 @@ import { fetchMetadataDocument } from "@/features/oauth/metadata-fetch";
 import {
   clientRegistrationSchema,
   GRANT_SCOPES,
+  grantExpiresAt,
+  grantLifetimeSchema,
   isCodeChallenge,
   isCodeVerifier,
   isRedirectUriOf,
@@ -38,8 +41,7 @@ import {
   sameHash,
   verifiesChallenge,
 } from "@/features/oauth/secret";
-import { expiresAtFor, tokenExpirySchema } from "@/features/tokens/schema";
-import { MAX_TOKENS_PER_USER } from "@/features/tokens/service";
+import { MAX_GRANTS_PER_USER } from "@/features/grants/service";
 import { parseUserId } from "@/features/users/schema";
 import type { Actor } from "@/features/users/service";
 import { isAdmin } from "@/features/users/user-type";
@@ -364,12 +366,12 @@ export async function checkAuthorizationRequest(
 }
 
 /**
- * Which of the user's tokens a new grant to the client replaces: the grants to the same client row and, for a
+ * Which of the user's grants a new grant to the client replaces: the grants to the same client row and, for a
  * registered client, the grants to registered clients with the same name and the same redirect addresses. A connector
  * that registers itself again on every connect would otherwise leave a grant behind each time.
  */
-function replacedGrants(userId: string, client: ClientRow): Prisma.ApiTokenWhereInput {
-  const sameClient: Prisma.ApiTokenWhereInput[] = [{ clientId: client.id }];
+function replacedGrants(userId: string, client: ClientRow): Prisma.OAuthGrantWhereInput {
+  const sameClient: Prisma.OAuthGrantWhereInput[] = [{ clientId: client.id }];
   if (client.metadataUrl === null) {
     sameClient.push({
       client: { metadataUrl: null, name: client.name, redirectUris: { equals: client.redirectUris } },
@@ -379,27 +381,27 @@ function replacedGrants(userId: string, client: ClientRow): Prisma.ApiTokenWhere
 }
 
 /**
- * Whether the actor already holds the most tokens a user may hold, not counting the grants that a new grant to the
- * client would replace. The consent page asks before it offers to approve; the exchange of the code decides.
+ * Whether the actor already holds the most connected apps a user may hold, not counting the grants that a new grant
+ * to the client would replace. The consent page asks before it offers to approve; the exchange of the code decides.
  * `true` for a malformed id and for a client that does not exist: there is nothing to approve then.
  */
-export async function isTokenLimitReached(actor: Actor, clientRowId: string): Promise<boolean> {
+export async function isGrantLimitReached(actor: Actor, clientRowId: string): Promise<boolean> {
   const userId = parseUserId(actor.id);
   const clientId = parseClientRowId(clientRowId);
   if (!userId || !clientId) return true;
   const db = getDb();
   const client = await db.oAuthClient.findUnique({ where: { id: clientId }, select: CLIENT_SELECT });
   if (!client) return true;
-  // Two counts instead of one with `NOT`: a token of the account page has no client, and in SQL a condition on a
-  // missing value is neither true nor false, so `NOT` would leave such tokens out.
-  const all = await db.apiToken.count({ where: { userId } });
-  const replaced = await db.apiToken.count({ where: replacedGrants(userId, client) });
-  return all - replaced >= MAX_TOKENS_PER_USER;
+  // Two counts instead of one with `NOT`, so that the replaced grants are counted by the same condition that the
+  // exchange deletes them with.
+  const all = await db.oAuthGrant.count({ where: { userId } });
+  const replaced = await db.oAuthGrant.count({ where: replacedGrants(userId, client) });
+  return all - replaced >= MAX_GRANTS_PER_USER;
 }
 
 /** The chosen lifetime is not one of the choices. */
 type InvalidLifetime = { code: "invalid-lifetime" };
-/** The actor holds the most tokens a user may hold, the grants this one would replace not counted. */
+/** The actor holds the most connected apps a user may hold, the grants this one would replace not counted. */
 type LimitReached = { code: "limit-reached" };
 
 export type CreateCodeError = CheckAuthorizationError | InvalidLifetime | LimitReached;
@@ -423,7 +425,7 @@ export async function createCode(
     logger.error({ actorId: actor.id }, "malformed actor id");
     return { ok: false, error: { code: "failed" } };
   }
-  const parsedLifetime = tokenExpirySchema.safeParse(lifetime);
+  const parsedLifetime = grantLifetimeSchema.safeParse(lifetime);
   if (!parsedLifetime.success) return { ok: false, error: { code: "invalid-lifetime" } };
 
   const checked = await checkAuthorizationRequest(params);
@@ -437,8 +439,8 @@ export async function createCode(
 
   const code = generateCode();
   try {
-    if (await isTokenLimitReached(actor, clientId)) {
-      logger.warn({ userId, clientId }, "authorization code not created: the user holds the most tokens allowed");
+    if (await isGrantLimitReached(actor, clientId)) {
+      logger.warn({ userId, clientId }, "authorization code not created: the user holds the most grants allowed");
       return { ok: false, error: { code: "limit-reached" } };
     }
     await getDb().oAuthCode.create({
@@ -496,8 +498,8 @@ const MISSING_CLIENT: MissingClient = { code: "invalid-client", description: "cl
 
 /** Thrown inside the transaction of `exchangeCode()` to roll it back: the user is gone or still has the first password. */
 class UserMayNotGrantError extends Error {}
-/** Thrown inside the transaction of `exchangeCode()` to roll it back: the user holds the most tokens allowed. */
-class TokenLimitError extends Error {}
+/** Thrown inside the transaction of `exchangeCode()` to roll it back: the user holds the most grants allowed. */
+class GrantLimitError extends Error {}
 
 /** The tokens of a grant with the given id and end, and what is stored of them. */
 function newTokens(grantId: string, grantExpiresAt: Date, now: Date) {
@@ -528,7 +530,7 @@ function newTokens(grantId: string, grantExpiresAt: Date, now: Date) {
  *   `resource` that is sent must be the MCP endpoint. A request that names no client is refused (`invalid-client`).
  *   A user with the first password gets no grant.
  * - In one transaction the grant is created and the user's older grants to the same client are deleted
- *   (`replacedGrants()`). The limit of tokens per user counts the new grant without the replaced ones.
+ *   (`replacedGrants()`). The limit of grants per user counts the new grant without the replaced ones.
  */
 export async function exchangeCode(input: {
   code?: string;
@@ -601,26 +603,25 @@ export async function exchangeCode(input: {
   if (input.resource !== undefined && input.resource !== mcpResource()) {
     return refuse("other-resource", { code: "invalid-target", description: NOT_MCP_RESOURCE });
   }
-  const lifetime = tokenExpirySchema.safeParse(code.lifetime);
+  const lifetime = grantLifetimeSchema.safeParse(code.lifetime);
   if (!lifetime.success) {
     logger.error({ userId, clientId: client.id }, "authorization code with an unknown lifetime");
     return { ok: false, error: { code: "failed" } };
   }
 
   const grantId = randomUUID();
-  const expiresAt = expiresAtFor(lifetime.data, now);
+  const expiresAt = grantExpiresAt(lifetime.data, now);
   const { tokens, stored } = newTokens(grantId, expiresAt, now);
   let replaced: number;
   try {
     replaced = await db.$transaction(async (tx) => {
-      // Locks the user's row, as `createToken()` of the token service does, so that grants and tokens created at the
-      // same time cannot pass the limit together.
+      // Locks the user's row, so that grants created at the same time cannot pass the limit together.
       const users = await tx.$queryRaw<{ mustChangePassword: boolean }[]>`
         SELECT "mustChangePassword" FROM "User" WHERE "id" = ${userId}::uuid FOR UPDATE`;
       if (users[0]?.mustChangePassword !== false) throw new UserMayNotGrantError();
-      const { count } = await tx.apiToken.deleteMany({ where: replacedGrants(userId, client) });
-      if ((await tx.apiToken.count({ where: { userId } })) >= MAX_TOKENS_PER_USER) throw new TokenLimitError();
-      await tx.apiToken.create({
+      const { count } = await tx.oAuthGrant.deleteMany({ where: replacedGrants(userId, client) });
+      if ((await tx.oAuthGrant.count({ where: { userId } })) >= MAX_GRANTS_PER_USER) throw new GrantLimitError();
+      await tx.oAuthGrant.create({
         data: {
           id: grantId,
           userId,
@@ -638,8 +639,8 @@ export async function exchangeCode(input: {
     if (err instanceof UserMayNotGrantError) {
       return refuse("first-password", invalidGrant("The user has to change the first password first").error);
     }
-    if (err instanceof TokenLimitError) {
-      return refuse("limit-reached", invalidGrant("The user holds the most tokens allowed").error);
+    if (err instanceof GrantLimitError) {
+      return refuse("limit-reached", invalidGrant("The user already has the most connected apps allowed").error);
     }
     logger.error({ err, userId, clientId: client.id }, "failed to create grant");
     return { ok: false, error: { code: "failed" } };
@@ -676,11 +677,11 @@ export async function refreshGrant(input: {
     userId: string;
     expiresAt: Date;
     refreshTokenHash: string | null;
-    client: ClientRow | null;
+    client: ClientRow;
     user: { mustChangePassword: boolean };
   } | null;
   try {
-    grant = await db.apiToken.findUnique({
+    grant = await db.oAuthGrant.findUnique({
       where: { id: grantId },
       select: {
         userId: true,
@@ -694,8 +695,8 @@ export async function refreshGrant(input: {
     logger.error({ err, grantId }, "failed to read grant");
     return { ok: false, error: { code: "failed" } };
   }
-  // A token created on `/account` has no client and no refresh token.
-  if (!grant?.client || grant.refreshTokenHash === null) {
+  // A grant without a refresh token can only be a broken row.
+  if (!grant || grant.refreshTokenHash === null) {
     logger.warn({ reason: "unknown-grant" }, "refresh refused");
     return invalidGrant(INVALID_REFRESH_TOKEN);
   }
@@ -703,7 +704,7 @@ export async function refreshGrant(input: {
 
   if (!sameHash(hashSecret(input.refreshToken), refreshTokenHash)) {
     try {
-      await db.apiToken.deleteMany({ where: { id: grantId } });
+      await db.oAuthGrant.deleteMany({ where: { id: grantId } });
     } catch (err) {
       logger.error({ err, grantId }, "failed to revoke grant after its refresh token was used again");
       return { ok: false, error: { code: "failed" } };
@@ -735,7 +736,7 @@ export async function refreshGrant(input: {
   let count: number;
   try {
     // Conditional on the hash that was read, so that two refreshes with the same token cannot both succeed.
-    ({ count } = await db.apiToken.updateMany({ where: { id: grantId, refreshTokenHash }, data: stored }));
+    ({ count } = await db.oAuthGrant.updateMany({ where: { id: grantId, refreshTokenHash }, data: stored }));
   } catch (err) {
     logger.error({ err, grantId }, "failed to refresh grant");
     return { ok: false, error: { code: "failed" } };

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchMetadataDocument } from "@/features/oauth/metadata-fetch";
 import { challengeOf } from "@/features/oauth/secret";
 import * as oauthService from "@/features/oauth/service";
-import * as tokenService from "@/features/tokens/service";
+import * as grantService from "@/features/grants/service";
 
 import { createUser, getTestDb } from "../e2e/support/database";
 
@@ -183,7 +183,10 @@ describe("an authorization request of a client with a metadata document", () => 
     });
     if (!refreshed.ok) return expect.fail(`not refreshed: ${refreshed.error.code}`);
     await expect(
-      tokenService.authenticateToken(new Headers({ authorization: `Bearer ${refreshed.value.accessToken}` }), "read"),
+      grantService.authenticateAccessToken(
+        new Headers({ authorization: `Bearer ${refreshed.value.accessToken}` }),
+        "read",
+      ),
     ).resolves.toMatchObject({ ok: true });
   });
 
@@ -215,7 +218,7 @@ describe("an authorization request of a client with a metadata document", () => 
     await connect();
     await connect();
 
-    const grants = await getTestDb().apiToken.findMany({ where: { userId: alice.id } });
+    const grants = await getTestDb().oAuthGrant.findMany({ where: { userId: alice.id } });
     expect(grants).toHaveLength(1);
     expect(grants[0]?.name).toBe("Example");
   });

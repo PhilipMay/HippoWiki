@@ -8,7 +8,7 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 
 import Link from "@/components/Link";
-import type { TokenSummary } from "@/features/tokens/service";
+import type { GrantSummary } from "@/features/grants/service";
 import { revokeAppPath } from "@/lib/addresses";
 import { formatDateTime } from "@/lib/format";
 
@@ -17,9 +17,9 @@ function Time({ date }: { date: Date }) {
   return <time dateTime={date.toISOString()}>{formatDateTime(date)}</time>;
 }
 
-type TokenListProps = {
+type ConnectedAppListProps = {
   /** The connected apps of the logged-in user, newest first. */
-  apps: TokenSummary[];
+  apps: GrantSummary[];
   /** The time of the request, to tell expired apps from the others. */
   now: Date;
 };
@@ -29,7 +29,7 @@ type TokenListProps = {
  * or that it has expired, and when it was last used, with a link that opens the "Revoke app" dialog. Without apps it
  * says so in one short sentence; how to connect one is in the README.
  */
-export default function TokenList({ apps, now }: TokenListProps) {
+export default function ConnectedAppList({ apps, now }: ConnectedAppListProps) {
   if (apps.length === 0) {
     return (
       <Paper variant="outlined" sx={{ p: 3 }}>

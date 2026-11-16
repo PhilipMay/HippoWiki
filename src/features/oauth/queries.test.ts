@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => ({
   connection: vi.fn(),
   requireUser: vi.fn(),
   checkAuthorizationRequest: vi.fn(),
-  isTokenLimitReached: vi.fn(),
+  isGrantLimitReached: vi.fn(),
   getServerEnv: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
@@ -27,7 +27,7 @@ vi.mock("@/features/oauth/service", async (importOriginal) => {
   const { adminRefusal } = await importOriginal<typeof import("@/features/oauth/service")>();
   return {
     checkAuthorizationRequest: mocks.checkAuthorizationRequest,
-    isTokenLimitReached: mocks.isTokenLimitReached,
+    isGrantLimitReached: mocks.isGrantLimitReached,
     adminRefusal,
   };
 });
@@ -58,7 +58,7 @@ beforeEach(() => {
   mocks.getServerEnv.mockReturnValue({ HIPPOWIKI_PUBLIC_URL: "https://wiki.example.com" });
   mocks.requireUser.mockResolvedValue(USER);
   mocks.checkAuthorizationRequest.mockResolvedValue({ ok: true, value: REQUEST });
-  mocks.isTokenLimitReached.mockResolvedValue(false);
+  mocks.isGrantLimitReached.mockResolvedValue(false);
 });
 
 describe("loadConsent", () => {
@@ -104,7 +104,7 @@ describe("loadConsent", () => {
     });
 
     expect(mocks.checkAuthorizationRequest).toHaveBeenCalledExactlyOnceWith(QUERY);
-    expect(mocks.isTokenLimitReached).toHaveBeenCalledExactlyOnceWith(USER, CLIENT_ID);
+    expect(mocks.isGrantLimitReached).toHaveBeenCalledExactlyOnceWith(USER, CLIENT_ID);
   });
 
   it("shows the scheme of a native app as the target, and the redirect address of the request, not of the client", async () => {
@@ -121,8 +121,8 @@ describe("loadConsent", () => {
     await expect(loadConsent(QUERY)).resolves.toMatchObject({ target: "127.0.0.1:53124" });
   });
 
-  it("says when the user holds the most tokens allowed", async () => {
-    mocks.isTokenLimitReached.mockResolvedValue(true);
+  it("says when the user holds the most connected apps allowed", async () => {
+    mocks.isGrantLimitReached.mockResolvedValue(true);
 
     await expect(loadConsent(QUERY)).resolves.toMatchObject({ kind: "consent", limitReached: true });
   });
@@ -134,7 +134,7 @@ describe("loadConsent", () => {
 
       await expect(loadConsent(QUERY)).resolves.toEqual({ kind: "untrusted", reason: code });
 
-      expect(mocks.isTokenLimitReached).not.toHaveBeenCalled();
+      expect(mocks.isGrantLimitReached).not.toHaveBeenCalled();
     },
   );
 
@@ -163,7 +163,7 @@ describe("loadConsent", () => {
       state: "xyz",
       iss: "https://wiki.example.com",
     });
-    expect(mocks.isTokenLimitReached).not.toHaveBeenCalled();
+    expect(mocks.isGrantLimitReached).not.toHaveBeenCalled();
   });
 
   it("leaves out the state of a refused request that had none", async () => {
@@ -194,7 +194,7 @@ describe("loadConsent", () => {
       state: "xyz",
       iss: "https://wiki.example.com",
     });
-    expect(mocks.isTokenLimitReached).not.toHaveBeenCalled();
+    expect(mocks.isGrantLimitReached).not.toHaveBeenCalled();
   });
 
   it.each(["invalid-client", "invalid-redirect-uri"])(
@@ -209,13 +209,13 @@ describe("loadConsent", () => {
 
   it("does not ask the user when the tokens cannot be counted, and logs it", async () => {
     const err = new Error("connection lost");
-    mocks.isTokenLimitReached.mockRejectedValue(err);
+    mocks.isGrantLimitReached.mockRejectedValue(err);
 
     await expect(loadConsent(QUERY)).resolves.toEqual({ kind: "untrusted", reason: "failed" });
 
     expect(mocks.error).toHaveBeenCalledExactlyOnceWith(
       { err, userId: USER.id, clientId: CLIENT_ID },
-      "failed to count the tokens for the consent page",
+      "failed to count the grants for the consent page",
     );
   });
 });

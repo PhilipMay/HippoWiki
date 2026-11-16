@@ -6,7 +6,7 @@ import {
   checkAuthorizationRequest,
   createCode,
   exchangeCode,
-  isTokenLimitReached,
+  isGrantLimitReached,
   refreshGrant,
   registerClient,
 } from "@/features/oauth/service";
@@ -55,7 +55,7 @@ vi.mock("@/lib/db", () => ({
       createMany: mocks.windowCreateMany,
       deleteMany: mocks.windowDeleteMany,
     },
-    apiToken: {
+    oAuthGrant: {
       count: mocks.tokenCount,
       findUnique: mocks.tokenFindUnique,
       deleteMany: mocks.tokenDeleteMany,
@@ -174,7 +174,7 @@ beforeEach(() => {
   // The transaction client of `exchangeCode`: the reads and writes it makes inside the transaction.
   const tx = {
     $queryRaw: mocks.queryRaw,
-    apiToken: { deleteMany: mocks.tokenDeleteMany, count: mocks.tokenCount, create: mocks.tokenCreate },
+    oAuthGrant: { deleteMany: mocks.tokenDeleteMany, count: mocks.tokenCount, create: mocks.tokenCreate },
   };
   mocks.transaction.mockImplementation((run: (client: typeof tx) => Promise<unknown>) => run(tx));
 });
@@ -528,12 +528,12 @@ describe("a client from a metadata document", () => {
   });
 });
 
-describe("isTokenLimitReached", () => {
+describe("isGrantLimitReached", () => {
   it.each([
     ["a malformed actor id", { ...ALICE, id: "not-a-uuid" }, CLIENT_ID],
     ["a malformed client id", ALICE, "not-a-uuid"],
   ])("is true for %s, without asking the database", async (_case, actor, clientId) => {
-    await expect(isTokenLimitReached(actor, clientId)).resolves.toBe(true);
+    await expect(isGrantLimitReached(actor, clientId)).resolves.toBe(true);
 
     expect(mocks.clientFindUnique).not.toHaveBeenCalled();
     expect(mocks.tokenCount).not.toHaveBeenCalled();
@@ -542,7 +542,7 @@ describe("isTokenLimitReached", () => {
   it("is true for a client that does not exist", async () => {
     mocks.clientFindUnique.mockResolvedValue(null);
 
-    await expect(isTokenLimitReached(ALICE, CLIENT_ID)).resolves.toBe(true);
+    await expect(isGrantLimitReached(ALICE, CLIENT_ID)).resolves.toBe(true);
   });
 });
 
@@ -823,7 +823,7 @@ describe("refreshGrant", () => {
 
   it.each([
     ["a grant that does not exist", null],
-    ["a token of the account page, which has no client", grantRow({ client: null, refreshTokenHash: null })],
+    ["a grant without a refresh token, which only a broken row is", grantRow({ refreshTokenHash: null })],
   ])("reports %s as an invalid grant and deletes nothing", async (_case, row) => {
     mocks.tokenFindUnique.mockResolvedValue(row);
 

@@ -28,6 +28,30 @@ export type OAuthError = (typeof OAUTH_ERRORS)[number];
 /** The only scope a grant has: reading. Scopes that a client asks for and that are not known are ignored. */
 export const GRANT_SCOPES = ["read"] as const;
 
+/** A scope of a grant, as the check of an access token asks for it. */
+export type GrantScope = (typeof GRANT_SCOPES)[number];
+
+/** How long a grant lasts: the choices of the consent page, there are no other dates and no grants that never end. */
+export const GRANT_LIFETIMES = ["30d", "90d", "365d"] as const;
+
+export type GrantLifetime = (typeof GRANT_LIFETIMES)[number];
+
+/** The lifetime chosen when the consent page opens. */
+export const DEFAULT_GRANT_LIFETIME: GrantLifetime = "90d";
+
+/** The days of each lifetime. */
+export const GRANT_LIFETIME_DAYS: Record<GrantLifetime, number> = { "30d": 30, "90d": 90, "365d": 365 };
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** When a grant made at `now` with the given lifetime ends. */
+export function grantExpiresAt(lifetime: GrantLifetime, now: Date): Date {
+  return new Date(now.getTime() + GRANT_LIFETIME_DAYS[lifetime] * DAY_MS);
+}
+
+/** The lifetime of a grant, as the consent form sends it and as an authorization code keeps it. */
+export const grantLifetimeSchema = z.enum(GRANT_LIFETIMES, { error: "Choose how long the app may connect" });
+
 /** The id of a row of a client: a UUID, like every other id. It is the `client_id` of a registered client. */
 export const clientRowIdSchema = z.guid();
 

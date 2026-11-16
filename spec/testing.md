@@ -109,9 +109,8 @@ How the code is tested. Commands are listed in `README.md`.
     session cookie travels as headers: a test turns the response headers of a login into the request headers of the
     next call. `@/lib/password-hash` is mocked as spies, to count the hashes and to let one fail the way it does when
     no slot gets free.
-  - The token service (`integration/token-service.test.ts`): creating, listing and revoking only the own tokens, the
-    limit, also for tokens created at the same time, and the check of a bearer token, with the clock set past the
-    expiry and to the minute of the last use.
+  - The grant service (`integration/grant-service.test.ts`): listing and revoking only the own grants, and the check
+    of an access token, with the clock set past the expiry and to the minute of the last use.
   - The OAuth service (`integration/oauth-service.test.ts`): the registration and its limit per client address group
     and hour, the checks of an authorization request, codes that work once, also for exchanges at the same time
     (sent with `Promise.all`), the expiry of codes, access tokens and grants with the clock set, the refresh, a
@@ -192,9 +191,11 @@ How the code is tested. Commands are listed in `README.md`.
   - `createUser()` inserts a user with its credential account, in the shape of `src/features/users/records.ts`, with
     a unique name, the type `user` and the password `TEST_PASSWORD` unless they are given, and with the first password
     still to change unless `mustChangePassword` is false. A test that needs another admin passes `type: "admin"`. The hash of a password is computed once per process.
-  - `createApiToken()` inserts an API token of the user given as `owner`, with a generated token of which only the
-    hash is stored, and returns the row with the token. It has the scope `read`, a unique name and an expiry 90 days
-    ahead unless they are given; any field, e.g. `expiresAt` or `lastUsedAt`, can be set.
+  - `createGrant()` inserts an OAuth client and the grant of the user given as `owner` to it, a connected app, with a
+    generated access token of which only the hash is stored, and returns the grant, the client and the access token.
+    The grant is named after the client, has the scope `read`, expires 90 days ahead and its access token works for
+    an hour unless they are given; any field, e.g. `expiresAt`, `accessTokenExpiresAt` or `lastUsedAt`, can be set,
+    and `client` gives an existing client.
   - `createFolder()` inserts a folder directly into the test database with a unique name; any field, e.g. `name` or
     `updatedAt`, can be set. `roles` gives users roles on it, e.g. `roles: [{ user: bob, role: "reader" }]`, and
     `roles: []` none. Without `roles` the known user `alice` is its Owner when that user exists, as after
@@ -245,7 +246,7 @@ How the code is tested. Commands are listed in `README.md`.
 - `e2e/access.spec.ts` checks that every kind of address leads to the login page without a login, as a redirect that
   sends nothing of the page, and that the redirect carries the address as the way back. A new route adds its address
   there; a new public address is checked there as well, for not being sent to the login page.
-- `e2e/mcp.spec.ts` calls `/mcp` with `request` and a token from `createApiToken()`; `e2e/oauth.spec.ts` covers the
+- `e2e/mcp.spec.ts` calls `/mcp` with `request` and the access token of a grant from `createGrant()`; `e2e/oauth.spec.ts` covers the
   discovery, the registration, the token endpoint and the whole flow from the login over the consent page to a tool
   call, a refresh and a refresh token that is used again.
 - `e2e/security-headers.spec.ts` checks the security headers of `next.config.ts` (see "Security headers" in

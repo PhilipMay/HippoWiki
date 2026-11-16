@@ -52,7 +52,7 @@ test("a user without apps sees the user name and that no app is connected; the n
 
 test("creating a token is not found", async ({ page }) => {
   await expectNotFound(page, "/account?action=create");
-  expect(await getTestDb().apiToken.count()).toBe(0);
+  expect(await getTestDb().oAuthGrant.count()).toBe(0);
 });
 
 test("apps are listed newest first with their name, connection time, expiry or Expired, and last use or never", async ({
@@ -123,7 +123,7 @@ test("revoking asks first, then removes the app and ends its access token and it
   const clientId = await registerClient(request, "Example connector");
   const tokens = await connect(page, request, clientId);
   const { grant: other } = await createGrant({ owner: KNOWN_USER, createdAt: new Date(Date.now() - DAY_MS) });
-  const grant = await getTestDb().apiToken.findFirstOrThrow({ where: { clientId: { not: other.clientId } } });
+  const grant = await getTestDb().oAuthGrant.findFirstOrThrow({ where: { clientId: { not: other.clientId } } });
   expect(await listFoldersStatus(request, tokens.access_token)).toBe(200);
   await page.goto("/account");
 
@@ -143,7 +143,7 @@ test("revoking asks first, then removes the app and ends its access token and it
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(appRows(page)).toHaveCount(1);
   await expect(page.getByText("Example connector")).toHaveCount(0);
-  expect(await getTestDb().apiToken.findMany({ select: { id: true } })).toEqual([{ id: other.id }]);
+  expect(await getTestDb().oAuthGrant.findMany({ select: { id: true } })).toEqual([{ id: other.id }]);
   expect(await listFoldersStatus(request, tokens.access_token)).toBe(401);
   const refreshed = await refresh(request, clientId, tokens.refresh_token);
   expect(refreshed.status()).toBe(400);
@@ -162,13 +162,13 @@ test("Cancel in the revoke dialog keeps the app", async ({ page }) => {
 
   await expect(page).toHaveURL("/account");
   await expect(appRows(page)).toHaveCount(1);
-  expect(await getTestDb().apiToken.count()).toBe(1);
+  expect(await getTestDb().oAuthGrant.count()).toBe(1);
 });
 
 test("an app that was revoked in the meantime shows the not-found page", async ({ page }) => {
   const { grant } = await createGrant({ owner: KNOWN_USER, name: "Example connector" });
   await page.goto(`/account?action=revoke&app=${grant.id}`);
-  await getTestDb().apiToken.delete({ where: { id: grant.id } });
+  await getTestDb().oAuthGrant.delete({ where: { id: grant.id } });
 
   await revokeDialog(page).getByRole("button", { name: "Revoke" }).click();
 
@@ -181,7 +181,7 @@ test.describe("addresses that are not found", () => {
 
     await expectNotFound(page, `/account?action=revoke&token=${grant.id}`);
     await expectNotFound(page, `/account?token=${grant.id}`);
-    expect(await getTestDb().apiToken.count()).toBe(1);
+    expect(await getTestDb().oAuthGrant.count()).toBe(1);
   });
 
   test("the app of another user in the revoke address", async ({ page }) => {
@@ -190,7 +190,7 @@ test.describe("addresses that are not found", () => {
 
     await expectNotFound(page, `/account?action=revoke&app=${grant.id}`);
     await expect(page.getByText("Bob's connector")).toHaveCount(0);
-    expect(await getTestDb().apiToken.count()).toBe(1);
+    expect(await getTestDb().oAuthGrant.count()).toBe(1);
   });
 
   test("an app without the action revoke", async ({ page }) => {
@@ -227,7 +227,7 @@ test("a user sees only their own apps, also when another user connects one", asy
   await expect(bobPage).toHaveURL("/folders");
   const tokens = await connect(bobPage, bobContext.request, await registerClient(request, "Bob's connector"));
   await bobContext.close();
-  const bobsGrant = await getTestDb().apiToken.findFirstOrThrow({ where: { userId: bob.id } });
+  const bobsGrant = await getTestDb().oAuthGrant.findFirstOrThrow({ where: { userId: bob.id } });
   await createGrant({ owner: KNOWN_USER, name: "Alice's connector" });
 
   await page.goto("/account");
@@ -273,6 +273,6 @@ test.describe("an admin", () => {
       await expectNotFound(page, address);
     }
     await expect(page.getByText("Alice's connector")).toHaveCount(0);
-    expect(await getTestDb().apiToken.count()).toBe(2);
+    expect(await getTestDb().oAuthGrant.count()).toBe(2);
   });
 });

@@ -3,14 +3,7 @@ import type { APIRequestContext } from "@playwright/test";
 import { KNOWN_USER } from "../prisma/known-users";
 import { ADMIN_STORAGE_STATE, NO_STORAGE_STATE, USER_STORAGE_STATE } from "./support/auth";
 import { collectErrors } from "./support/browser";
-import {
-  createApiToken,
-  createFolder,
-  createUser,
-  getTestDb,
-  resetTestDatabase,
-  TEST_PASSWORD,
-} from "./support/database";
+import { createFolder, createGrant, createUser, getTestDb, resetTestDatabase, TEST_PASSWORD } from "./support/database";
 import {
   authorizeUrl,
   awaitCallback,
@@ -249,7 +242,7 @@ test.describe("the token endpoint", () => {
       expect(response.headers()["content-type"]).toContain("application/json");
       const body = (await response.json()) as Record<string, unknown>;
       expect(body).toEqual({ error, error_description: expect.any(String) });
-      expect(await getTestDb().apiToken.count()).toBe(0);
+      expect(await getTestDb().oAuthGrant.count()).toBe(0);
     });
   }
 
@@ -334,9 +327,10 @@ test.describe("the whole flow", () => {
     expect(again.status()).toBe(400);
     expect(await again.json()).toMatchObject({ error: "invalid_grant" });
 
-    // The grant is a token of the user, named after the client, for 90 days.
-    const grant = await getTestDb().apiToken.findFirstOrThrow({ where: { userId: KNOWN_USER.id } });
-    expect(grant).toMatchObject({ name: "Example connector", scopes: ["read"], tokenHash: null });
+    // The grant is a connected app of the user, named after the client, for 90 days.
+    const grant = await getTestDb().oAuthGrant.findFirstOrThrow({ where: { userId: KNOWN_USER.id } });
+    expect(grant).toMatchObject({ name: "Example connector", scopes: ["read"] });
+    expect(grant).not.toHaveProperty("tokenHash");
     expect(grant.expiresAt.getTime() - Date.now()).toBeGreaterThan(90 * DAY_MS - 60_000);
     expect(grant.expiresAt.getTime() - Date.now()).toBeLessThanOrEqual(90 * DAY_MS);
 
@@ -361,7 +355,7 @@ test.describe("the whole flow", () => {
     const reused = await refresh(request, clientId, tokens.refresh_token);
     expect(reused.status()).toBe(400);
     expect(await reused.json()).toMatchObject({ error: "invalid_grant" });
-    expect(await getTestDb().apiToken.count()).toBe(0);
+    expect(await getTestDb().oAuthGrant.count()).toBe(0);
     expect(await listFoldersStatus(request, newer.access_token)).toBe(401);
     expect((await refresh(request, clientId, newer.refresh_token)).status()).toBe(400);
   });
@@ -450,7 +444,7 @@ test.describe("the consent page, as an admin", () => {
       iss: ISSUER,
     });
     expect(await getTestDb().oAuthCode.count()).toBe(0);
-    expect(await getTestDb().apiToken.count()).toBe(0);
+    expect(await getTestDb().oAuthGrant.count()).toBe(0);
   });
 
   for (const [what, params, message] of [
@@ -500,7 +494,7 @@ test.describe("the consent page, as a logged-in user", () => {
       iss: ISSUER,
     });
     expect(await getTestDb().oAuthCode.count()).toBe(0);
-    expect(await getTestDb().apiToken.count()).toBe(0);
+    expect(await getTestDb().oAuthGrant.count()).toBe(0);
   });
 
   test("the chosen lifetime is the lifetime of the grant", async ({ page, request }) => {
@@ -513,7 +507,7 @@ test.describe("the consent page, as a logged-in user", () => {
     const { code } = await callback();
     expect((await exchange(request, clientId, code ?? "")).status()).toBe(200);
 
-    const grant = await getTestDb().apiToken.findFirstOrThrow();
+    const grant = await getTestDb().oAuthGrant.findFirstOrThrow();
     expect(grant.expiresAt.getTime() - Date.now()).toBeGreaterThan(30 * DAY_MS - 60_000);
     expect(grant.expiresAt.getTime() - Date.now()).toBeLessThanOrEqual(30 * DAY_MS);
   });
@@ -586,41 +580,48 @@ test.describe("the consent page, as a logged-in user", () => {
     });
   }
 
-  test("with 20 tokens the page asks to revoke one first and offers no approval; deny still answers the client", async ({
+  test("with 20 connected apps the page asks to revoke an app first and offers no approval; deny still answers the client", async ({
     page,
     request,
   }) => {
-    for (let index = 0; index < 20; index += 1) await createApiToken({ owner: KNOWN_USER });
+    for (let index = 0; index < 20; index += 1) await createGrant({ owner: KNOWN_USER });
     const clientId = await registerClient(request);
     const callback = await awaitCallback(page);
 
     await page.goto(authorizeUrl(clientId));
 
     const main = page.getByRole("main");
-    await expect(main.getByText(/You already have the most tokens allowed/)).toBeVisible();
+    await expect(
+      main.getByText(
+        "You already have the most connected apps allowed, so no further app can be connected. Revoke an app on " +
+          "your account page first, then connect again.",
+      ),
+    ).toBeVisible();
+    await expect(main.getByText(/token/i)).toHaveCount(0);
     await expect(main.getByRole("link", { name: "account page" })).toHaveAttribute("href", "/account");
     await expect(page.getByRole("button", { name: "Approve" })).toHaveCount(0);
     await expect(page.getByRole("radio")).toHaveCount(0);
 
     await page.getByRole("button", { name: "Deny" }).click();
     expect(await callback()).toMatchObject({ error: "access_denied", state: STATE });
-    expect(await getTestDb().apiToken.count()).toBe(20);
+    expect(await getTestDb().oAuthGrant.count()).toBe(20);
   });
 
-  test("the 20th token that is a grant of the same client does not block connecting it again: the grant is replaced", async ({
+  test("a 20th app that is a grant of the same client does not block connecting it again: the grant is replaced", async ({
     page,
     request,
   }) => {
-    for (let index = 0; index < 19; index += 1) await createApiToken({ owner: KNOWN_USER });
+    const others = [];
+    for (let index = 0; index < 19; index += 1) others.push((await createGrant({ owner: KNOWN_USER })).client.id);
     const clientId = await registerClient(request);
     const first = await connect(page, request, clientId);
-    expect(await getTestDb().apiToken.count()).toBe(20);
+    expect(await getTestDb().oAuthGrant.count()).toBe(20);
 
     // The connector registers again, as some do on every connect, with the same name and redirect address.
     const second = await connect(page, request, await registerClient(request));
 
-    expect(await getTestDb().apiToken.count()).toBe(20);
-    expect(await getTestDb().apiToken.count({ where: { clientId: { not: null } } })).toBe(1);
+    expect(await getTestDb().oAuthGrant.count()).toBe(20);
+    expect(await getTestDb().oAuthGrant.count({ where: { clientId: { notIn: others } } })).toBe(1);
     expect(await listFoldersStatus(request, first.access_token)).toBe(401);
     expect(await listFoldersStatus(request, second.access_token)).toBe(200);
   });
@@ -629,7 +630,7 @@ test.describe("the consent page, as a logged-in user", () => {
     const first = await connect(page, request, await registerClient(request, "First connector"));
     const second = await connect(page, request, await registerClient(request, "Second connector"));
 
-    expect((await getTestDb().apiToken.findMany({ orderBy: { name: "asc" } })).map((grant) => grant.name)).toEqual([
+    expect((await getTestDb().oAuthGrant.findMany({ orderBy: { name: "asc" } })).map((grant) => grant.name)).toEqual([
       "First connector",
       "Second connector",
     ]);
@@ -674,6 +675,6 @@ test.describe("the consent page, as a logged-in user", () => {
     expect(await stolen.json()).toMatchObject({ error: "invalid_grant" });
     // The failed exchange used the code up.
     expect((await exchange(request, clientId, code ?? "")).status()).toBe(400);
-    expect(await getTestDb().apiToken.count()).toBe(0);
+    expect(await getTestDb().oAuthGrant.count()).toBe(0);
   });
 });

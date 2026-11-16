@@ -9,8 +9,7 @@ Code: `src/features/oauth/` (`schema.ts` with the rules, `secret.ts` for codes a
 flow, `issuer.ts`, `public-address.ts` and `metadata-fetch.ts` for the metadata documents of clients, `http.ts` with
 the adapters of the public endpoints, `queries.ts`, `actions.ts`, `forms.ts` and `components/` for the consent page),
 the routes under `src/app/.well-known/` and `src/app/oauth/`, and the exceptions for them in `src/proxy.ts`. The
-models are `OAuthClient`, `OAuthCode`, `OAuthRegistrationWindow` and the grant columns of `ApiToken` in
-`prisma/schema.prisma`.
+models are `OAuthClient`, `OAuthCode`, `OAuthRegistrationWindow` and `OAuthGrant` in `prisma/schema.prisma`.
 
 Tests: `e2e/oauth.spec.ts`, `e2e/account.spec.ts`, `integration/oauth-service.test.ts`,
 `integration/oauth-metadata.test.ts`, and the unit tests next to the code, such as
@@ -108,9 +107,9 @@ The fetch of a metadata document must not be a way to make the server ask an add
 
 ## Grants
 
-- A grant is what a code is exchanged for: a row of `ApiToken` with a client, named after the client, with the
-  scope `read` and the lifetime the user chose. It is listed on `/account` as a connected app, counted in the limit
-  of 20 tokens per user and revoked like every other token (see `api-tokens.md`).
+- A grant is what a code is exchanged for: a row of `OAuthGrant`, named after the client, with the scope `read` and
+  the lifetime the user chose. It is listed on `/account` as a connected app, counted in the limit of 20 connected
+  apps per user and revoked there (see `api-tokens.md`).
 - A new grant replaces the user's older grants to the same client: the same client row, or for a registered client
   the same name and the same redirect addresses, because some connectors register again on every connect. The
   limit counts the new grant without the replaced ones.
@@ -151,8 +150,6 @@ The fetch of a metadata document must not be a way to make the server ask an add
 
 ## Decisions
 
-- A grant is a row of `ApiToken` and not a table of its own, so that the user sees and revokes everything that acts
-  for them in one list, and one limit covers both.
 - Access tokens are random values that are looked up by their hash, not signed tokens (JWT): revoking a grant ends
   its access token at once, and there are no keys to manage or to publish.
 - The refresh rule is strict, without a grace period for a refresh token that is used again: a grace period is a

@@ -3,7 +3,6 @@ import type { APIRequestContext, APIResponse } from "@playwright/test";
 import { KNOWN_ADMIN, KNOWN_USER } from "../prisma/known-users";
 import { NO_STORAGE_STATE } from "./support/auth";
 import {
-  createApiToken,
   createFolder,
   createGrant,
   createPage,
@@ -67,7 +66,8 @@ test("without a token /mcp answers 401 with a Bearer challenge and nothing of th
 
 test("a former API token gets 401 with a Bearer challenge and nothing of the wiki", async ({ request }) => {
   await createFolder({ name: "handbook" });
-  const { secret: former } = await createApiToken({ owner: KNOWN_USER, scopes: ["read", "write"] });
+  // The update deleted every API token; a tool that still sends one sends a value of the former shape.
+  const former = `hw_${"A".repeat(43)}`;
 
   const response = await send(request, { method: "tools/call", params: { name: "list_folders" } }, former);
 
@@ -119,7 +119,7 @@ test("the access token of an admin gets 401 with invalid_token and reaches no to
     expect(response.headers()["www-authenticate"]).toMatch(/^Bearer error="invalid_token"/);
     expect(await response.text()).not.toContain("handbook");
   }
-  expect((await getTestDb().apiToken.findFirstOrThrow({ where: { userId: KNOWN_ADMIN.id } })).lastUsedAt).toBeNull();
+  expect((await getTestDb().oAuthGrant.findFirstOrThrow({ where: { userId: KNOWN_ADMIN.id } })).lastUsedAt).toBeNull();
 });
 
 test("a bearer token reaches no task of an admin: creating a user leads to the login page and creates nothing", async ({
@@ -379,18 +379,18 @@ test("read_page does not find a deleted page, a page of another tab or a malform
 test("a tool call marks the grant as used", async ({ request }) => {
   const { grant, accessToken: fresh } = await createGrant({ owner: KNOWN_USER });
 
-  expect((await getTestDb().apiToken.findUniqueOrThrow({ where: { id: grant.id } })).lastUsedAt).toBeNull();
+  expect((await getTestDb().oAuthGrant.findUniqueOrThrow({ where: { id: grant.id } })).lastUsedAt).toBeNull();
   const response = await send(request, { method: "tools/list" }, fresh);
 
   expect(response.status()).toBe(200);
-  expect((await getTestDb().apiToken.findUniqueOrThrow({ where: { id: grant.id } })).lastUsedAt).not.toBeNull();
+  expect((await getTestDb().oAuthGrant.findUniqueOrThrow({ where: { id: grant.id } })).lastUsedAt).not.toBeNull();
 });
 
 test("the access token of a revoked grant stops working at once", async ({ request }) => {
   const { grant, accessToken: revoked } = await createGrant({ owner: KNOWN_USER });
   expect((await send(request, { method: "tools/list" }, revoked)).status()).toBe(200);
 
-  await getTestDb().apiToken.delete({ where: { id: grant.id } });
+  await getTestDb().oAuthGrant.delete({ where: { id: grant.id } });
 
   expect((await send(request, { method: "tools/list" }, revoked)).status()).toBe(401);
 });

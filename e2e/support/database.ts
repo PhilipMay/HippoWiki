@@ -8,15 +8,14 @@ import { PrismaPg } from "@prisma/adapter-pg";
 
 import { generateAccessToken, hashSecret } from "@/features/oauth/secret";
 import { titleFromContent } from "@/features/pages/derive";
-import { generateSecret, hashToken } from "@/features/tokens/secret";
 import { newUserData, type NewUser } from "@/features/users/records";
 import {
   PrismaClient,
-  type ApiToken,
   type Folder,
   type FolderRole,
   type FolderRoleType,
   type OAuthClient,
+  type OAuthGrant,
   type Page,
   type Prisma,
   type Session,
@@ -321,38 +320,9 @@ export async function createPage({ folder, tab, editor, ...data }: CreatePageDat
   });
 }
 
-/** The fields of an API token that `createApiToken()` can set, and the user it belongs to. */
-type CreateApiTokenData = Partial<Omit<Prisma.ApiTokenUncheckedCreateInput, "userId" | "tokenHash">> & {
-  owner: { id: string };
-};
-
-/**
- * Creates an API token of an earlier version of the given owner directly in the test database, a row without a
- * client, with a generated token of the former shape `hw_…` of which only the hash is stored, and returns the row
- * together with the token. It stands for the tokens that no longer work. Without other fields it has the scope
- * `read`, a unique name and an expiry 90 days from now; any field can be set.
- */
-export async function createApiToken({
-  owner,
-  ...data
-}: CreateApiTokenData): Promise<{ token: ApiToken; secret: string }> {
-  const secret = generateSecret("hw_");
-  const token = await getTestDb().apiToken.create({
-    data: {
-      name: `test-token-${crypto.randomUUID().slice(0, 8)}`,
-      scopes: ["read"],
-      expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
-      ...data,
-      userId: owner.id,
-      tokenHash: hashToken(secret),
-    },
-  });
-  return { token, secret };
-}
-
 /** The fields of a grant that `createGrant()` can set, the user it belongs to and, if given, its client. */
 type CreateGrantData = Partial<
-  Omit<Prisma.ApiTokenUncheckedCreateInput, "userId" | "clientId" | "tokenHash" | "accessTokenHash">
+  Omit<Prisma.OAuthGrantUncheckedCreateInput, "userId" | "clientId" | "accessTokenHash">
 > & {
   owner: { id: string };
   client?: OAuthClient;
@@ -370,7 +340,7 @@ export async function createGrant({
   owner,
   client: givenClient,
   ...data
-}: CreateGrantData): Promise<{ grant: ApiToken; client: OAuthClient; accessToken: string }> {
+}: CreateGrantData): Promise<{ grant: OAuthGrant; client: OAuthClient; accessToken: string }> {
   const client =
     givenClient ??
     (await getTestDb().oAuthClient.create({
@@ -380,7 +350,7 @@ export async function createGrant({
       },
     }));
   const accessToken = generateAccessToken();
-  const grant = await getTestDb().apiToken.create({
+  const grant = await getTestDb().oAuthGrant.create({
     data: {
       name: client.name,
       scopes: ["read"],

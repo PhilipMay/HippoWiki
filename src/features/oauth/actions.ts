@@ -10,11 +10,11 @@ import { readAuthorizationFormData, readLifetime, type ConsentFormState } from "
 import { issuer } from "@/features/oauth/issuer";
 import { authorizationResponseUrl } from "@/features/oauth/schema";
 import * as oauthService from "@/features/oauth/service";
-import { MAX_TOKENS_PER_USER } from "@/features/tokens/service";
+import { MAX_GRANTS_PER_USER } from "@/features/grants/service";
 
 const NOT_VALID_MESSAGE = "This request is no longer valid. Go back to the app and connect again.";
 const LIFETIME_MESSAGE = "Choose how long the app keeps its access.";
-const LIMIT_MESSAGE = `You already have ${MAX_TOKENS_PER_USER} tokens, the most allowed. Revoke one on your account page first.`;
+const LIMIT_MESSAGE = `You already have ${MAX_GRANTS_PER_USER} connected apps, the most allowed. Revoke an app on your account page first.`;
 const APPROVE_FAILED_MESSAGE = "The app could not be connected. Please try again.";
 const DENY_FAILED_MESSAGE = "The answer could not be sent. Please try again.";
 const OFF_MESSAGE = "Connecting apps is switched off in this wiki.";
@@ -37,7 +37,7 @@ function refusal(
 /**
  * Approves the request of the consent form: creates a code for the logged-in user with the chosen lifetime and
  * returns the address of the client with `code`, `state` and `iss`. Returns the error to show if the request is no
- * longer valid, the user holds the most tokens allowed or the code could not be created.
+ * longer valid, the user holds the most connected apps allowed or the code could not be created.
  */
 export async function approve(formData: FormData): Promise<ConsentFormState> {
   const user = await requireUser();

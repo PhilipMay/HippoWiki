@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { revokeToken } from "@/features/tokens/actions";
+import { revokeGrant } from "@/features/grants/actions";
 
 /** Thrown by the mocked `redirect` and `notFound`, like the real ones throw, so that code after them never runs. */
 class NavigationError extends Error {
@@ -10,7 +10,7 @@ class NavigationError extends Error {
 }
 
 const mocks = vi.hoisted(() => ({
-  revokeToken: vi.fn(),
+  revokeGrant: vi.fn(),
   issuer: vi.fn(),
   requireUser: vi.fn(),
   revalidatePath: vi.fn(),
@@ -18,9 +18,9 @@ const mocks = vi.hoisted(() => ({
   notFound: vi.fn(),
 }));
 
-vi.mock(import("@/features/tokens/service"), async (importOriginal) => ({
+vi.mock(import("@/features/grants/service"), async (importOriginal) => ({
   ...(await importOriginal()),
-  revokeToken: mocks.revokeToken,
+  revokeGrant: mocks.revokeGrant,
 }));
 vi.mock("@/features/oauth/issuer", () => ({ issuer: mocks.issuer }));
 vi.mock("@/features/auth/session", () => ({ requireUser: mocks.requireUser }));
@@ -50,13 +50,13 @@ beforeEach(() => {
   });
 });
 
-describe("revokeToken", () => {
+describe("revokeGrant", () => {
   it("revokes the app as the logged-in user, revalidates the account and redirects there", async () => {
-    mocks.revokeToken.mockResolvedValue({ ok: true, value: { id: TOKEN_ID } });
+    mocks.revokeGrant.mockResolvedValue({ ok: true, value: { id: TOKEN_ID } });
 
-    await expect(revokeToken(TOKEN_ID)).rejects.toMatchObject({ target: "/account" });
+    await expect(revokeGrant(TOKEN_ID)).rejects.toMatchObject({ target: "/account" });
 
-    expect(mocks.revokeToken).toHaveBeenCalledExactlyOnceWith(ALICE, TOKEN_ID);
+    expect(mocks.revokeGrant).toHaveBeenCalledExactlyOnceWith(ALICE, TOKEN_ID);
     expect(mocks.revalidatePath).toHaveBeenCalledExactlyOnceWith("/account");
     expect(mocks.revalidatePath.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.redirect.mock.invocationCallOrder[0] ?? 0,
@@ -64,9 +64,9 @@ describe("revokeToken", () => {
   });
 
   it("shows the not-found page for an app that is unknown or of another user", async () => {
-    mocks.revokeToken.mockResolvedValue(failure("token-not-found"));
+    mocks.revokeGrant.mockResolvedValue(failure("grant-not-found"));
 
-    await expect(revokeToken(TOKEN_ID)).rejects.toMatchObject({ target: "not-found" });
+    await expect(revokeGrant(TOKEN_ID)).rejects.toMatchObject({ target: "not-found" });
 
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
     expect(mocks.redirect).not.toHaveBeenCalled();
@@ -74,33 +74,33 @@ describe("revokeToken", () => {
 
   it("shows the not-found page for a malformed id without reaching the service", async () => {
     for (const id of ["", "not-a-uuid", `${TOKEN_ID}x`]) {
-      await expect(revokeToken(id)).rejects.toMatchObject({ target: "not-found" });
+      await expect(revokeGrant(id)).rejects.toMatchObject({ target: "not-found" });
     }
 
-    expect(mocks.revokeToken).not.toHaveBeenCalled();
+    expect(mocks.revokeGrant).not.toHaveBeenCalled();
   });
 
   it("shows the not-found page without a public URL, without reaching the service", async () => {
     mocks.issuer.mockReturnValue(null);
 
-    await expect(revokeToken(TOKEN_ID)).rejects.toMatchObject({ target: "not-found" });
+    await expect(revokeGrant(TOKEN_ID)).rejects.toMatchObject({ target: "not-found" });
 
-    expect(mocks.revokeToken).not.toHaveBeenCalled();
+    expect(mocks.revokeGrant).not.toHaveBeenCalled();
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 
   it("shows the not-found page when the service answers not-allowed", async () => {
-    mocks.revokeToken.mockResolvedValue(failure("not-allowed"));
+    mocks.revokeGrant.mockResolvedValue(failure("not-allowed"));
 
-    await expect(revokeToken(TOKEN_ID)).rejects.toMatchObject({ target: "not-found" });
+    await expect(revokeGrant(TOKEN_ID)).rejects.toMatchObject({ target: "not-found" });
 
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 
   it("shows a message when the app cannot be revoked", async () => {
-    mocks.revokeToken.mockResolvedValue(failure("failed"));
+    mocks.revokeGrant.mockResolvedValue(failure("failed"));
 
-    await expect(revokeToken(TOKEN_ID)).resolves.toEqual({
+    await expect(revokeGrant(TOKEN_ID)).resolves.toEqual({
       message: "The app could not be revoked. Please try again.",
     });
 
@@ -111,9 +111,9 @@ describe("revokeToken", () => {
   it("does not reach the service without a logged-in user", async () => {
     mocks.requireUser.mockRejectedValue(new NavigationError("/login"));
 
-    await expect(revokeToken(TOKEN_ID)).rejects.toMatchObject({ target: "/login" });
+    await expect(revokeGrant(TOKEN_ID)).rejects.toMatchObject({ target: "/login" });
 
-    expect(mocks.revokeToken).not.toHaveBeenCalled();
+    expect(mocks.revokeGrant).not.toHaveBeenCalled();
   });
 });
 
@@ -125,12 +125,12 @@ describe("for an admin", () => {
     mocks.requireUser.mockResolvedValue(ADMIN);
   });
 
-  it("revokeToken shows the not-found page when the service answers not-allowed", async () => {
-    mocks.revokeToken.mockResolvedValue(failure("not-allowed"));
+  it("revokeGrant shows the not-found page when the service answers not-allowed", async () => {
+    mocks.revokeGrant.mockResolvedValue(failure("not-allowed"));
 
-    await expect(revokeToken(TOKEN_ID)).rejects.toMatchObject({ target: "not-found" });
+    await expect(revokeGrant(TOKEN_ID)).rejects.toMatchObject({ target: "not-found" });
 
-    expect(mocks.revokeToken).toHaveBeenCalledExactlyOnceWith(ADMIN, TOKEN_ID);
+    expect(mocks.revokeGrant).toHaveBeenCalledExactlyOnceWith(ADMIN, TOKEN_ID);
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
     expect(mocks.redirect).not.toHaveBeenCalled();
   });

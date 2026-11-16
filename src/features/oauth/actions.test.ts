@@ -21,7 +21,7 @@ vi.mock("@/features/oauth/service", () => ({
   createCode: mocks.createCode,
   checkAuthorizationRequest: mocks.checkAuthorizationRequest,
 }));
-vi.mock("@/features/tokens/service", () => ({ MAX_TOKENS_PER_USER: 20 }));
+vi.mock("@/features/grants/service", () => ({ MAX_GRANTS_PER_USER: 20 }));
 vi.mock("@/lib/env", () => ({ getServerEnv: mocks.getServerEnv }));
 
 const USER = { id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002", name: "alice", mustChangePassword: false };
@@ -115,7 +115,10 @@ describe("approve", () => {
     ["invalid-client", "This request is no longer valid. Go back to the app and connect again."],
     ["invalid-redirect-uri", "This request is no longer valid. Go back to the app and connect again."],
     ["invalid-lifetime", "Choose how long the app keeps its access."],
-    ["limit-reached", "You already have 20 tokens, the most allowed. Revoke one on your account page first."],
+    [
+      "limit-reached",
+      "You already have 20 connected apps, the most allowed. Revoke an app on your account page first.",
+    ],
     ["failed", "The app could not be connected. Please try again."],
   ])("shows the message of the code %s and sends the browser nowhere", async (code, message) => {
     mocks.createCode.mockResolvedValue({ ok: false, error: { code } });

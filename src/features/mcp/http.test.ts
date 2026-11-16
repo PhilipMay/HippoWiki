@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { handleMcpRequest } from "@/features/mcp/http";
 
 const mocks = vi.hoisted(() => ({
-  authenticateToken: vi.fn(),
+  authenticateAccessToken: vi.fn(),
   getServerEnv: vi.fn(),
   listFolders: vi.fn(),
   info: vi.fn(),
@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
   error: vi.fn(),
 }));
 
-vi.mock("@/features/tokens/service", () => ({ authenticateToken: mocks.authenticateToken }));
+vi.mock("@/features/grants/service", () => ({ authenticateAccessToken: mocks.authenticateAccessToken }));
 vi.mock("@/features/folders/service", () => ({ listFolders: mocks.listFolders }));
 vi.mock("@/features/pages/service", () => ({}));
 vi.mock("@/lib/env", () => ({ getServerEnv: mocks.getServerEnv }));
@@ -64,7 +64,7 @@ function modernHeaders(method: string, name?: string): Record<string, string> {
 beforeEach(() => {
   vi.resetAllMocks();
   setPublicUrl(PUBLIC_URL);
-  mocks.authenticateToken.mockResolvedValue({ ok: true, value: ACTOR });
+  mocks.authenticateAccessToken.mockResolvedValue({ ok: true, value: ACTOR });
 });
 
 describe("without a public URL", () => {
@@ -91,7 +91,7 @@ describe("without a public URL", () => {
     expect(response.headers.get("content-type")).toContain("application/json");
     expect(response.headers.get("www-authenticate")).toBeNull();
     await expect(response.json()).resolves.toEqual({ error: "not_found" });
-    expect(mocks.authenticateToken).not.toHaveBeenCalled();
+    expect(mocks.authenticateAccessToken).not.toHaveBeenCalled();
     expect(mocks.listFolders).not.toHaveBeenCalled();
   });
 });
@@ -105,7 +105,7 @@ describe("the method", () => {
     expect(response.status).toBe(405);
     expect(response.headers.get("allow")).toBe("POST");
     expect(response.headers.get("content-type")).toContain("application/json");
-    expect(mocks.authenticateToken).not.toHaveBeenCalled();
+    expect(mocks.authenticateAccessToken).not.toHaveBeenCalled();
   });
 });
 
@@ -135,7 +135,7 @@ describe("the origin", () => {
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({ error: "forbidden_origin" });
-    expect(mocks.authenticateToken).not.toHaveBeenCalled();
+    expect(mocks.authenticateAccessToken).not.toHaveBeenCalled();
     expect(mocks.warn).toHaveBeenCalledOnce();
   });
 });
@@ -146,7 +146,7 @@ describe("the token", () => {
 
     await handleMcpRequest(request);
 
-    expect(mocks.authenticateToken).toHaveBeenCalledExactlyOnceWith(request.headers, "read");
+    expect(mocks.authenticateAccessToken).toHaveBeenCalledExactlyOnceWith(request.headers, "read");
   });
 
   it.each([
@@ -156,7 +156,7 @@ describe("the token", () => {
   ])(
     "answers %s with %i and says where the authorization server is found, without reaching the tools",
     async (code, status, challenge, error) => {
-      mocks.authenticateToken.mockResolvedValue({ ok: false, error: { code } });
+      mocks.authenticateAccessToken.mockResolvedValue({ ok: false, error: { code } });
 
       const response = await handleMcpRequest(
         post({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "list_folders" } }),
@@ -170,7 +170,7 @@ describe("the token", () => {
   );
 
   it("answers a token that could not be checked with 500 and no challenge", async () => {
-    mocks.authenticateToken.mockResolvedValue({ ok: false, error: { code: "failed" } });
+    mocks.authenticateAccessToken.mockResolvedValue({ ok: false, error: { code: "failed" } });
 
     const response = await handleMcpRequest(post(TOOLS_LIST));
 
@@ -180,7 +180,7 @@ describe("the token", () => {
   });
 
   it("never logs or returns the token", async () => {
-    mocks.authenticateToken.mockResolvedValue({ ok: false, error: { code: "invalid-token" } });
+    mocks.authenticateAccessToken.mockResolvedValue({ ok: false, error: { code: "invalid-token" } });
 
     const response = await handleMcpRequest(post(TOOLS_LIST));
 
@@ -285,7 +285,7 @@ describe("a client of the current protocol", () => {
       );
 
     await call();
-    mocks.authenticateToken.mockResolvedValue({ ok: true, value: other });
+    mocks.authenticateAccessToken.mockResolvedValue({ ok: true, value: other });
     await call();
 
     expect(mocks.listFolders.mock.calls).toEqual([[{ ...ACTOR, channel: "mcp" }], [{ ...other, channel: "mcp" }]]);

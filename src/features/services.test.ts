@@ -24,7 +24,7 @@ it("the services load without Next.js and React", async () => {
   const pageService = await import("@/features/pages/service");
   const folderRoleService = await import("@/features/folder-roles/service");
   const userService = await import("@/features/users/service");
-  const tokenService = await import("@/features/tokens/service");
+  const grantService = await import("@/features/grants/service");
   // The auth service loads Better Auth with its `nextCookies()` plugin, which must not need Next.js to be loaded.
   const authService = await import("@/features/auth/service");
   const oauthService = await import("@/features/oauth/service");
@@ -35,7 +35,7 @@ it("the services load without Next.js and React", async () => {
   expect(pageService.listFolderPages).toBeTypeOf("function");
   expect(folderRoleService.folderRoleOf).toBeTypeOf("function");
   expect(userService.ensureAdmin).toBeTypeOf("function");
-  expect(tokenService.listTokens).toBeTypeOf("function");
+  expect(grantService.listGrants).toBeTypeOf("function");
   expect(authService.logIn).toBeTypeOf("function");
   expect(oauthService.exchangeCode).toBeTypeOf("function");
   expect(mcpTools.createWikiServer).toBeTypeOf("function");

@@ -7,16 +7,41 @@ import {
   generateAccessToken,
   generateCode,
   generateRefreshToken,
+  generateSecret,
   grantIdOfRefreshToken,
   hashSecret,
   looksLikeAccessToken,
   looksLikeCode,
   sameHash,
+  SECRET_BYTES,
+  SECRET_PATTERN,
   verifiesChallenge,
 } from "@/features/oauth/secret";
-import { hashToken } from "@/features/tokens/secret";
 
 const GRANT_ID = "0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01";
+
+describe("generateSecret", () => {
+  const secrets = Array.from({ length: 500 }, () => generateSecret("hwx_"));
+
+  it("puts 32 random bytes in base64url without padding behind the given prefix", () => {
+    expect(SECRET_BYTES).toBe(32);
+    for (const secret of secrets) {
+      expect(secret).toMatch(new RegExp(`^hwx_${SECRET_PATTERN}$`));
+      expect(secret).toHaveLength(4 + 43);
+      expect(Buffer.from(secret.slice(4), "base64url")).toHaveLength(32);
+    }
+  });
+
+  it("uses the whole base64url alphabet", () => {
+    const expected = [..."ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"].sort();
+    // 21,500 characters: each of the 64 is missing with a probability far below 1e-100.
+    expect([...new Set(secrets.map((secret) => secret.slice(4)).join(""))].sort()).toEqual(expected);
+  });
+
+  it("generates another secret every time", () => {
+    expect(new Set(secrets).size).toBe(secrets.length);
+  });
+});
 
 describe("the secrets", () => {
   it("start with a prefix of their own and carry 32 random bytes", () => {
@@ -90,8 +115,15 @@ describe("hashSecret and sameHash", () => {
     const code = generateCode();
 
     expect(hashSecret(code)).toBe(createHash("sha256").update(code).digest("hex"));
-    expect(hashSecret(code)).toBe(hashToken(code));
-    expect(hashSecret(code)).toHaveLength(64);
+    expect(hashSecret(code)).toMatch(/^[0-9a-f]{64}$/);
+    // Computed with `printf 'hw_abc' | shasum -a 256`.
+    expect(hashSecret("hw_abc")).toBe("db1b81732b5b7ec95f3c0924f76afc0e433bdf6f68bb0214d47f87b8891131ef");
+  });
+
+  it("gives the same hash for the same secret and another for another secret", () => {
+    const [first, second] = [generateSecret("hwx_"), generateSecret("hwx_")];
+    expect(hashSecret(first)).toBe(hashSecret(first));
+    expect(hashSecret(first)).not.toBe(hashSecret(second));
   });
 
   it("tells the same hash from another one", () => {

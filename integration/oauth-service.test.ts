@@ -4,9 +4,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { challengeOf, hashSecret } from "@/features/oauth/secret";
 import * as oauthService from "@/features/oauth/service";
-import * as tokenService from "@/features/tokens/service";
+import * as grantService from "@/features/grants/service";
 
-import { createApiToken, createUser, getTestDb } from "../e2e/support/database";
+import { createGrant, createUser, getTestDb } from "../e2e/support/database";
 
 /** The address of the MCP endpoint of the wiki of these tests (`HIPPOWIKI_PUBLIC_URL` in `setup.ts`). */
 const MCP = "https://wiki.example.com/mcp";
@@ -85,13 +85,13 @@ function bearer(token: string): Headers {
   return new Headers({ authorization: `Bearer ${token}` });
 }
 
-/** Whether `/mcp` would accept the access token: `authenticateToken()` with the scope `read`. */
+/** Whether `/mcp` would accept the access token: `authenticateAccessToken()` with the scope `read`. */
 async function works(accessToken: string): Promise<boolean> {
-  return (await tokenService.authenticateToken(bearer(accessToken), "read")).ok;
+  return (await grantService.authenticateAccessToken(bearer(accessToken), "read")).ok;
 }
 
 function grantsOf(actor: Actor) {
-  return getTestDb().apiToken.findMany({ where: { userId: actor.id }, orderBy: { createdAt: "asc" } });
+  return getTestDb().oAuthGrant.findMany({ where: { userId: actor.id }, orderBy: { createdAt: "asc" } });
 }
 
 const INVALID_GRANT = { ok: false, error: { code: "invalid-grant" } };
@@ -387,7 +387,7 @@ describe("createCode", () => {
     });
     expect(JSON.stringify(rows[0])).not.toContain(code);
     // A code is no grant yet.
-    expect(await getTestDb().apiToken.count()).toBe(0);
+    expect(await getTestDb().oAuthGrant.count()).toBe(0);
   });
 
   it("checks the request again and creates no code for one that is not valid", async () => {
@@ -441,7 +441,6 @@ describe("exchangeCode", () => {
       clientId: client.id,
       name: "Claude",
       scopes: ["read"],
-      tokenHash: null,
       accessTokenHash: hashSecret(accessToken),
       refreshTokenHash: hashSecret(refreshToken),
       accessTokenExpiresAt: new Date(start + HOUR_MS),
@@ -494,7 +493,7 @@ describe("exchangeCode", () => {
     // The right request comes too late.
     await expect(oauthService.exchangeCode(exchangeOf(client, code))).resolves.toMatchObject(INVALID_GRANT);
 
-    expect(await getTestDb().apiToken.count()).toBe(0);
+    expect(await getTestDb().oAuthGrant.count()).toBe(0);
     expect(await getTestDb().oAuthCode.count()).toBe(0);
   });
 
@@ -504,7 +503,7 @@ describe("exchangeCode", () => {
 
     await expect(oauthService.exchangeCode(exchangeOf(other, code))).resolves.toMatchObject(INVALID_GRANT);
 
-    expect(await getTestDb().apiToken.count()).toBe(0);
+    expect(await getTestDb().oAuthGrant.count()).toBe(0);
   });
 
   it("accepts a code a millisecond before it expires and refuses it at the moment it expires", async () => {
@@ -526,7 +525,7 @@ describe("exchangeCode", () => {
 
     await expect(oauthService.exchangeCode(exchangeOf(client, code))).resolves.toMatchObject(INVALID_GRANT);
 
-    expect(await getTestDb().apiToken.count()).toBe(0);
+    expect(await getTestDb().oAuthGrant.count()).toBe(0);
   });
 
   it("refuses values that are no codes", async () => {
@@ -587,40 +586,45 @@ describe("the grants that a new grant replaces", () => {
     expect(await works(first.accessToken)).toBe(true);
   });
 
-  it("keeps the grants of other users to the same client, and the tokens of the account page", async () => {
+  it("keeps the grants of other users to the same client, and the grants of the user to other clients", async () => {
     const [alice, bob, client] = [await createActor(), await createActor(), await register()];
     const bobs = await grant(bob, client);
     await grant(alice, client);
-    const { token } = await createApiToken({ owner: alice, name: "Example" });
+    const other = await createGrant({ owner: alice, name: "Example" });
 
     await grant(alice, client);
 
     expect(await grantsOf(alice)).toHaveLength(2);
     expect(await grantsOf(bob)).toHaveLength(1);
     expect(await works(bobs.accessToken)).toBe(true);
-    expect(await getTestDb().apiToken.count({ where: { id: token.id } })).toBe(1);
+    expect(await works(other.accessToken)).toBe(true);
   });
 });
 
-describe("the limit of tokens per user", () => {
-  /** Fills the tokens of the user up to the given number, with tokens of the account page. */
+describe("the limit of connected apps per user", () => {
+  /**
+   * Fills the connected apps of the user up to the given number, with grants to clients of their own. The first one
+   * has expired, which counts like any other.
+   */
   async function fill(owner: Actor, count: number): Promise<void> {
-    for (let index = 0; index < count; index += 1) await createApiToken({ owner });
+    for (let index = 0; index < count; index += 1) {
+      await createGrant({ owner, ...(index === 0 && { expiresAt: new Date(Date.now() - 1000) }) });
+    }
   }
 
-  it("counts a grant like a token: the 21st is refused, at the consent and at the exchange", async () => {
+  it("refuses the 21st connected app, expired ones included, at the consent and at the exchange", async () => {
     const [alice, client] = [await createActor(), await register()];
-    await fill(alice, tokenService.MAX_TOKENS_PER_USER - 1);
+    await fill(alice, grantService.MAX_GRANTS_PER_USER - 1);
     const code = await approve(alice, client);
     // A second code, created while there was still room.
     const late = await approve(alice, await register({ client_name: "Late" }));
-    await expect(oauthService.isTokenLimitReached(alice, client.id)).resolves.toBe(false);
+    await expect(oauthService.isGrantLimitReached(alice, client.id)).resolves.toBe(false);
 
     await expect(oauthService.exchangeCode(exchangeOf(client, code))).resolves.toMatchObject({ ok: true });
 
-    expect(await getTestDb().apiToken.count({ where: { userId: alice.id } })).toBe(20);
+    expect(await getTestDb().oAuthGrant.count({ where: { userId: alice.id } })).toBe(20);
     const other = await register({ client_name: "Other" });
-    await expect(oauthService.isTokenLimitReached(alice, other.id)).resolves.toBe(true);
+    await expect(oauthService.isGrantLimitReached(alice, other.id)).resolves.toBe(true);
     await expect(oauthService.createCode(alice, paramsOf(other), "90d")).resolves.toEqual({
       ok: false,
       error: { code: "limit-reached" },
@@ -635,19 +639,19 @@ describe("the limit of tokens per user", () => {
         codeVerifier: VERIFIER,
       }),
     ).resolves.toMatchObject(INVALID_GRANT);
-    expect(await getTestDb().apiToken.count({ where: { userId: alice.id } })).toBe(20);
+    expect(await getTestDb().oAuthGrant.count({ where: { userId: alice.id } })).toBe(20);
   });
 
   it("does not count the grants that the new one replaces", async () => {
     const [alice, client] = [await createActor(), await register()];
-    await fill(alice, tokenService.MAX_TOKENS_PER_USER - 1);
+    await fill(alice, grantService.MAX_GRANTS_PER_USER - 1);
     const first = await grant(alice, client);
-    expect(await getTestDb().apiToken.count({ where: { userId: alice.id } })).toBe(20);
+    expect(await getTestDb().oAuthGrant.count({ where: { userId: alice.id } })).toBe(20);
 
-    await expect(oauthService.isTokenLimitReached(alice, client.id)).resolves.toBe(false);
+    await expect(oauthService.isGrantLimitReached(alice, client.id)).resolves.toBe(false);
     const second = await grant(alice, client);
 
-    expect(await getTestDb().apiToken.count({ where: { userId: alice.id } })).toBe(20);
+    expect(await getTestDb().oAuthGrant.count({ where: { userId: alice.id } })).toBe(20);
     expect(await works(first.accessToken)).toBe(false);
     expect(await works(second.accessToken)).toBe(true);
   });
@@ -656,7 +660,7 @@ describe("the limit of tokens per user", () => {
     const [alice, client] = [await createActor(), await register()];
     const first = await grant(alice, client);
     const code = await approve(alice, await register({ client_name: "Other" }));
-    await fill(alice, tokenService.MAX_TOKENS_PER_USER - 1);
+    await fill(alice, grantService.MAX_GRANTS_PER_USER - 1);
     const other = await getTestDb().oAuthClient.findFirstOrThrow({ where: { name: "Other" } });
 
     await expect(
@@ -664,12 +668,12 @@ describe("the limit of tokens per user", () => {
     ).resolves.toMatchObject(INVALID_GRANT);
 
     expect(await works(first.accessToken)).toBe(true);
-    expect(await getTestDb().apiToken.count({ where: { userId: alice.id } })).toBe(20);
+    expect(await getTestDb().oAuthGrant.count({ where: { userId: alice.id } })).toBe(20);
   });
 
   it("cannot be passed by exchanges at the same time", async () => {
     const alice = await createActor();
-    await fill(alice, tokenService.MAX_TOKENS_PER_USER - 2);
+    await fill(alice, grantService.MAX_GRANTS_PER_USER - 2);
     const exchanges = [];
     for (let index = 0; index < 4; index += 1) {
       const client = await register({ client_name: `Client ${index}` });
@@ -679,7 +683,7 @@ describe("the limit of tokens per user", () => {
     const results = await Promise.all(exchanges.map((exchange) => oauthService.exchangeCode(exchange)));
 
     expect(results.filter((result) => result.ok)).toHaveLength(2);
-    expect(await getTestDb().apiToken.count({ where: { userId: alice.id } })).toBe(20);
+    expect(await getTestDb().oAuthGrant.count({ where: { userId: alice.id } })).toBe(20);
   });
 });
 
@@ -810,18 +814,6 @@ describe("refreshGrant", () => {
       oauthService.refreshGrant({ refreshToken: tokens.refreshToken, clientId: client.clientId }),
     ).resolves.toMatchObject({ ok: true });
   });
-
-  it("does not refresh a token of the account page", async () => {
-    const [alice, client] = [await createActor(), await register()];
-    const { token } = await createApiToken({ owner: alice });
-
-    await expect(
-      oauthService.refreshGrant({ refreshToken: `hwr_${token.id}.${"A".repeat(43)}`, clientId: client.clientId }),
-    ).resolves.toMatchObject(INVALID_GRANT);
-
-    // It is not revoked either: it is no grant.
-    expect(await getTestDb().apiToken.count({ where: { id: token.id } })).toBe(1);
-  });
 });
 
 describe("expiry", () => {
@@ -865,42 +857,35 @@ describe("expiry", () => {
   });
 });
 
-describe("authenticateToken", () => {
+describe("authenticateAccessToken", () => {
   it("accepts the access token of a grant", async () => {
     const [alice, client] = [await createActor(), await register()];
     const { accessToken } = await grant(alice, client);
 
-    await expect(tokenService.authenticateToken(bearer(accessToken), "read")).resolves.toStrictEqual({
+    await expect(grantService.authenticateAccessToken(bearer(accessToken), "read")).resolves.toStrictEqual({
       ok: true,
       value: alice,
     });
   });
 
-  it("refuses a token of the account page as missing", async () => {
-    const alice = await createActor();
-    const { secret } = await createApiToken({ owner: alice });
-
-    await expect(tokenService.authenticateToken(bearer(secret), "read")).resolves.toEqual({
+  it("refuses a former API token as missing", async () => {
+    await expect(grantService.authenticateAccessToken(bearer(`hw_${"A".repeat(43)}`), "read")).resolves.toEqual({
       ok: false,
       error: { code: "missing-token" },
     });
   });
 
-  it("does not accept a refresh token, a code or the access token for the scope write", async () => {
+  it("does not accept a refresh token or a code", async () => {
     const [alice, client] = [await createActor(), await register()];
     const code = await approve(alice, client);
-    const { accessToken, refreshToken } = await grant(alice, client);
+    const { refreshToken } = await grant(alice, client);
 
     for (const secret of [refreshToken, code]) {
-      await expect(tokenService.authenticateToken(bearer(secret), "read")).resolves.toEqual({
+      await expect(grantService.authenticateAccessToken(bearer(secret), "read")).resolves.toEqual({
         ok: false,
         error: { code: "missing-token" },
       });
     }
-    await expect(tokenService.authenticateToken(bearer(accessToken), "write")).resolves.toEqual({
-      ok: false,
-      error: { code: "insufficient-scope" },
-    });
   });
 
   it("writes the last use of a grant", async () => {
@@ -917,7 +902,7 @@ describe("authenticateToken", () => {
     const { accessToken, refreshToken } = await grant(alice, client);
     const grantId = (await grantsOf(alice))[0]?.id ?? "";
 
-    await expect(tokenService.revokeToken(alice, grantId)).resolves.toMatchObject({ ok: true });
+    await expect(grantService.revokeGrant(alice, grantId)).resolves.toMatchObject({ ok: true });
 
     expect(await works(accessToken)).toBe(false);
     await expect(oauthService.refreshGrant({ refreshToken, clientId: client.clientId })).resolves.toMatchObject(
@@ -953,19 +938,6 @@ describe("deleting", () => {
     expect(await works(alices.accessToken)).toBe(false);
     expect(await works(bobs.accessToken)).toBe(true);
     expect(await getTestDb().oAuthClient.count()).toBe(1);
-  });
-});
-
-describe("the check constraint of ApiToken", () => {
-  it("refuses a row that is neither a token nor a grant, and one that is both", async () => {
-    const [alice, client] = [await createActor(), await register()];
-    const row = { userId: alice.id, name: "broken", scopes: ["read"], expiresAt: new Date() };
-
-    await expect(getTestDb().apiToken.create({ data: row })).rejects.toThrow(/ApiToken_token_or_grant/);
-    await expect(
-      getTestDb().apiToken.create({ data: { ...row, tokenHash: "d".repeat(64), clientId: client.id } }),
-    ).rejects.toThrow(/ApiToken_token_or_grant/);
-    expect(await getTestDb().apiToken.count()).toBe(0);
   });
 });
 
@@ -1049,12 +1021,11 @@ describe("an admin", () => {
     expect(await getTestDb().oAuthCode.count()).toBe(1);
   });
 
-  it("is refused for a token and a grant inserted for it", async () => {
+  it("is refused for a grant inserted for it", async () => {
     const maria = await createUser({ name: "maria", type: "admin", mustChangePassword: false });
     const client = await register();
-    const { secret } = await createApiToken({ owner: maria, scopes: ["read", "write"] });
     const accessToken = `hwa_${"C".repeat(43)}`;
-    await getTestDb().apiToken.create({
+    await getTestDb().oAuthGrant.create({
       data: {
         userId: maria.id,
         clientId: client.id,
@@ -1067,19 +1038,13 @@ describe("an admin", () => {
       },
     });
 
-    for (const scope of ["read", "write"] as const) {
-      await expect(tokenService.authenticateToken(bearer(secret), scope)).resolves.toEqual({
-        ok: false,
-        error: { code: "missing-token" },
-      });
-    }
-    await expect(tokenService.authenticateToken(bearer(accessToken), "read")).resolves.toEqual({
+    await expect(grantService.authenticateAccessToken(bearer(accessToken), "read")).resolves.toEqual({
       ok: false,
       error: { code: "invalid-token" },
     });
     // No last use is written for a refused token.
-    expect((await getTestDb().apiToken.findMany({ where: { userId: maria.id } })).map((row) => row.lastUsedAt)).toEqual(
-      [null, null],
-    );
+    expect(
+      (await getTestDb().oAuthGrant.findMany({ where: { userId: maria.id } })).map((row) => row.lastUsedAt),
+    ).toEqual([null]);
   });
 });

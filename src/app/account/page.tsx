@@ -4,10 +4,10 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { requireUser } from "@/features/auth/session";
-import { revokeToken } from "@/features/tokens/actions";
-import RevokeTokenDialog from "@/features/tokens/components/RevokeTokenDialog";
-import TokenList from "@/features/tokens/components/TokenList";
-import { listTokens } from "@/features/tokens/queries";
+import { revokeGrant } from "@/features/grants/actions";
+import RevokeAppDialog from "@/features/grants/components/RevokeAppDialog";
+import ConnectedAppList from "@/features/grants/components/ConnectedAppList";
+import { listGrants } from "@/features/grants/queries";
 import { accountPath, parseAction, parseChoice, parseView } from "@/lib/addresses";
 import { pageTitle } from "@/lib/site";
 
@@ -40,7 +40,7 @@ const ACTIONS = ["revoke"] as const;
 export default async function AccountPage({ searchParams }: PageProps<"/account">) {
   // Nothing is shown without a login. First, so that an invalid address also leads to the login page.
   const user = await requireUser();
-  const apps = await listTokens();
+  const apps = await listGrants();
   // The time of the request, to mark expired apps. The page is rendered on demand, so it is the time of the request.
   const now = new Date();
 
@@ -69,10 +69,10 @@ export default async function AccountPage({ searchParams }: PageProps<"/account"
       <Typography variant="h5" component="h2">
         Connected apps
       </Typography>
-      <TokenList apps={apps} now={now} />
+      <ConnectedAppList apps={apps} now={now} />
       {appToRevoke && (
-        <RevokeTokenDialog
-          action={revokeToken.bind(null, appToRevoke.id)}
+        <RevokeAppDialog
+          action={revokeGrant.bind(null, appToRevoke.id)}
           appName={appToRevoke.name}
           closeHref={accountPath()}
         />

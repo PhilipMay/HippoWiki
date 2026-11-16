@@ -5,7 +5,12 @@ import {
   CLIENT_NAME_MAX_LENGTH,
   clientNameOf,
   clientRegistrationSchema,
+  DEFAULT_GRANT_LIFETIME,
+  GRANT_LIFETIME_DAYS,
+  GRANT_LIFETIMES,
   GRANT_SCOPES,
+  grantExpiresAt,
+  grantLifetimeSchema,
   isCodeChallenge,
   isCodeVerifier,
   isRedirectUriOf,
@@ -17,6 +22,29 @@ import {
   parseRedirectUri,
   redirectTargetOf,
 } from "@/features/oauth/schema";
+
+describe("the lifetimes of a grant", () => {
+  it("are 30, 90 and 365 days, with 90 days as default", () => {
+    expect(GRANT_LIFETIMES).toEqual(["30d", "90d", "365d"]);
+    expect(GRANT_LIFETIME_DAYS).toEqual({ "30d": 30, "90d": 90, "365d": 365 });
+    expect(DEFAULT_GRANT_LIFETIME).toBe("90d");
+  });
+
+  it("give the end of a grant from the time it is made", () => {
+    const now = new Date("2026-01-01T10:00:00.000Z");
+    expect(grantExpiresAt("30d", now)).toEqual(new Date("2026-01-31T10:00:00.000Z"));
+    expect(grantExpiresAt("90d", now)).toEqual(new Date("2026-04-01T10:00:00.000Z"));
+    expect(grantExpiresAt("365d", now)).toEqual(new Date("2027-01-01T10:00:00.000Z"));
+  });
+
+  it("are the only choices", () => {
+    for (const lifetime of GRANT_LIFETIMES)
+      expect(grantLifetimeSchema.safeParse(lifetime).success, lifetime).toBe(true);
+    for (const lifetime of ["", "7d", "never", "90", undefined]) {
+      expect(grantLifetimeSchema.safeParse(lifetime).success, String(lifetime)).toBe(false);
+    }
+  });
+});
 
 describe("parseRedirectUri", () => {
   it.each([

@@ -1,11 +1,19 @@
-// The secrets of OAuth: authorization codes, access tokens and refresh tokens, and their hashes. They are made with
-// the shared generator (`src/features/tokens/secret.ts`), behind prefixes of their own, so that each kind is
-// recognised by its start and never taken for another. Only SHA-256 hashes are stored. Uses `node:crypto`, so only
-// the server imports it.
+// The secrets of OAuth: authorization codes, access tokens and refresh tokens, and their hashes. Each has 256 random
+// bits behind a prefix of its own, so that each kind is recognised by its start and never taken for another. Only
+// SHA-256 hashes are stored. Uses `node:crypto`, so only the server imports it.
 
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
-import { generateSecret, hashToken, SECRET_PATTERN } from "@/features/tokens/secret";
+/** The random bytes of a secret: 256 bits. */
+export const SECRET_BYTES = 32;
+
+/** The random part of a secret as a pattern: 32 bytes in base64url without padding are 43 characters. */
+export const SECRET_PATTERN = "[A-Za-z0-9_-]{43}";
+
+/** A new random secret behind the given prefix: 256 bits of a cryptographic source in base64url. */
+export function generateSecret(prefix: string): string {
+  return prefix + randomBytes(SECRET_BYTES).toString("base64url");
+}
 
 /** The start of an authorization code. */
 export const CODE_PREFIX = "hwc_";
@@ -57,11 +65,11 @@ export function grantIdOfRefreshToken(value: string): string | null {
 }
 
 /**
- * The hash of a code or a token as stored: the SHA-256 in hex. Each has 256 random bits, so a fast hash is
- * enough.
+ * The hash of a code or a token as stored: the SHA-256 in hex. Each has 256 random bits, so a fast hash is enough:
+ * there is nothing to guess, unlike with a password, and the hash can be looked up directly.
  */
 export function hashSecret(secret: string): string {
-  return hashToken(secret);
+  return createHash("sha256").update(secret).digest("hex");
 }
 
 /**

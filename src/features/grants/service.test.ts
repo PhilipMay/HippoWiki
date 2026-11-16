@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { hashToken } from "@/features/tokens/secret";
-import { authenticateToken, LAST_USE_INTERVAL_MS, listTokens, revokeToken } from "@/features/tokens/service";
+import { hashSecret } from "@/features/oauth/secret";
+import { authenticateAccessToken, LAST_USE_INTERVAL_MS, listGrants, revokeGrant } from "@/features/grants/service";
 import type { Actor } from "@/features/users/service";
 
 const mocks = vi.hoisted(() => ({
@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/db", () => ({
   getDb: () => ({
-    apiToken: {
+    oAuthGrant: {
       findMany: mocks.findMany,
       findUnique: mocks.findUnique,
       updateMany: mocks.updateMany,
@@ -30,18 +30,18 @@ vi.mock("@/features/oauth/issuer", () => ({ issuer: mocks.issuer }));
 
 /** A value of the shape of a former API token, which is never looked up. */
 const FORMER_API_TOKEN = `hw_${"A".repeat(43)}`;
-/** The access token of a grant, the only bearer token that `authenticateToken` looks up. */
+/** The access token of a grant, the only bearer token that `authenticateAccessToken` looks up. */
 const ACCESS_TOKEN = `hwa_${"B".repeat(43)}`;
 const HOUR_MS = 60 * 60 * 1000;
 const ALICE_ID = "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002";
-const TOKEN_ID = "0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01";
+const GRANT_ID = "0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01";
 const ALICE: Actor = { id: ALICE_ID, name: "alice", type: "user" };
 const NOW = new Date("2026-03-01T12:00:00.000Z");
 
 /** A grant as the database returns it for the columns of the list. */
 function storedRow(data: Record<string, unknown> = {}) {
   return {
-    id: TOKEN_ID,
+    id: GRANT_ID,
     name: "Example connector",
     createdAt: NOW,
     expiresAt: new Date("2026-05-30T12:00:00.000Z"),
@@ -51,12 +51,12 @@ function storedRow(data: Record<string, unknown> = {}) {
 }
 
 /**
- * A grant with its user as `authenticateToken` reads it: valid, with the scope `read`, never used, and with an access
+ * A grant with its user as `authenticateAccessToken` reads it: valid, with the scope `read`, never used, and with an access
  * token that works for another hour.
  */
 function tokenWithUser({ user = {}, ...data }: { user?: Record<string, unknown> } & Record<string, unknown> = {}) {
   return {
-    id: TOKEN_ID,
+    id: GRANT_ID,
     scopes: ["read"],
     expiresAt: new Date("2026-05-30T12:00:00.000Z"),
     accessTokenExpiresAt: new Date(NOW.getTime() + HOUR_MS),
@@ -84,7 +84,7 @@ function expectNothingLogged(): void {
 
 function expectNoSecretLogged(): void {
   expect(logged()).not.toContain(ACCESS_TOKEN);
-  expect(logged()).not.toContain(hashToken(ACCESS_TOKEN));
+  expect(logged()).not.toContain(hashSecret(ACCESS_TOKEN));
 }
 
 beforeEach(() => {
@@ -108,16 +108,15 @@ function expectDatabaseUntouched(): void {
   }
 }
 
-describe("listTokens", () => {
+describe("listGrants", () => {
   it("reads only the actor's grants, newest first, with the fields of the list only", async () => {
     const row = storedRow({ lastUsedAt: NOW });
     mocks.findMany.mockResolvedValue([row]);
 
-    await expect(listTokens(ALICE)).resolves.toStrictEqual([row]);
+    await expect(listGrants(ALICE)).resolves.toStrictEqual([row]);
 
     expect(mocks.findMany).toHaveBeenCalledExactlyOnceWith({
-      // A row without a client is an API token of an earlier version and is never listed.
-      where: { userId: ALICE_ID, clientId: { not: null } },
+      where: { userId: ALICE_ID },
       select: { id: true, name: true, createdAt: true, expiresAt: true, lastUsedAt: true },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     });
@@ -126,14 +125,14 @@ describe("listTokens", () => {
   it("returns null without a public URL, without asking the database", async () => {
     mocks.issuer.mockReturnValue(null);
 
-    await expect(listTokens(ALICE)).resolves.toBeNull();
+    await expect(listGrants(ALICE)).resolves.toBeNull();
 
     expectDatabaseUntouched();
     expectNothingLogged();
   });
 
   it("returns no apps for a malformed actor id, without asking the database", async () => {
-    await expect(listTokens({ id: "not-a-uuid", name: "alice", type: "user" })).resolves.toEqual([]);
+    await expect(listGrants({ id: "not-a-uuid", name: "alice", type: "user" })).resolves.toEqual([]);
 
     expect(mocks.findMany).not.toHaveBeenCalled();
   });
@@ -141,27 +140,27 @@ describe("listTokens", () => {
   it("throws a database error", async () => {
     mocks.findMany.mockRejectedValue(new Error("connection lost"));
 
-    await expect(listTokens(ALICE)).rejects.toThrow("connection lost");
+    await expect(listGrants(ALICE)).rejects.toThrow("connection lost");
   });
 });
 
-describe("revokeToken", () => {
-  it("deletes the grant only if it belongs to the actor and is a grant", async () => {
-    await expect(revokeToken(ALICE, TOKEN_ID)).resolves.toEqual({ ok: true, value: { id: TOKEN_ID } });
+describe("revokeGrant", () => {
+  it("deletes the grant only if it belongs to the actor", async () => {
+    await expect(revokeGrant(ALICE, GRANT_ID)).resolves.toEqual({ ok: true, value: { id: GRANT_ID } });
 
     expect(mocks.deleteMany).toHaveBeenCalledExactlyOnceWith({
-      where: { id: TOKEN_ID, userId: ALICE_ID, clientId: { not: null } },
+      where: { id: GRANT_ID, userId: ALICE_ID },
     });
-    expect(mocks.info).toHaveBeenCalledExactlyOnceWith({ userId: ALICE_ID, tokenId: TOKEN_ID }, "grant revoked");
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith({ userId: ALICE_ID, grantId: GRANT_ID }, "grant revoked");
   });
 
   it("reports a grant that is not the actor's or does not exist as not found, and logs it", async () => {
     mocks.deleteMany.mockResolvedValue({ count: 0 });
 
-    await expect(revokeToken(ALICE, TOKEN_ID)).resolves.toEqual({ ok: false, error: { code: "token-not-found" } });
+    await expect(revokeGrant(ALICE, GRANT_ID)).resolves.toEqual({ ok: false, error: { code: "grant-not-found" } });
 
     expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
-      { userId: ALICE_ID, tokenId: TOKEN_ID },
+      { userId: ALICE_ID, grantId: GRANT_ID },
       "grant to revoke not found",
     );
     expect(mocks.info).not.toHaveBeenCalled();
@@ -170,15 +169,15 @@ describe("revokeToken", () => {
   it("refuses without a public URL, logged, without a write", async () => {
     mocks.issuer.mockReturnValue(null);
 
-    await expect(revokeToken(ALICE, TOKEN_ID)).resolves.toEqual({ ok: false, error: { code: "not-allowed" } });
+    await expect(revokeGrant(ALICE, GRANT_ID)).resolves.toEqual({ ok: false, error: { code: "not-allowed" } });
 
     expectDatabaseUntouched();
     expect(mocks.warn).toHaveBeenCalledExactlyOnceWith({ actorId: ALICE_ID }, "grant not revoked: OAuth is off");
   });
 
   it("reports a malformed id as not found without asking the database or logging", async () => {
-    for (const id of ["", "not-a-uuid", `${TOKEN_ID}x`]) {
-      await expect(revokeToken(ALICE, id)).resolves.toEqual({ ok: false, error: { code: "token-not-found" } });
+    for (const id of ["", "not-a-uuid", `${GRANT_ID}x`]) {
+      await expect(revokeGrant(ALICE, id)).resolves.toEqual({ ok: false, error: { code: "grant-not-found" } });
     }
 
     expect(mocks.deleteMany).not.toHaveBeenCalled();
@@ -186,7 +185,7 @@ describe("revokeToken", () => {
   });
 
   it("refuses a malformed actor id before it asks the database, and logs it", async () => {
-    await expect(revokeToken({ id: "not-a-uuid", name: "alice", type: "user" }, TOKEN_ID)).resolves.toEqual({
+    await expect(revokeGrant({ id: "not-a-uuid", name: "alice", type: "user" }, GRANT_ID)).resolves.toEqual({
       ok: false,
       error: { code: "failed" },
     });
@@ -199,49 +198,47 @@ describe("revokeToken", () => {
     const err = new Error("connection lost");
     mocks.deleteMany.mockRejectedValue(err);
 
-    await expect(revokeToken(ALICE, TOKEN_ID)).resolves.toEqual({ ok: false, error: { code: "failed" } });
+    await expect(revokeGrant(ALICE, GRANT_ID)).resolves.toEqual({ ok: false, error: { code: "failed" } });
 
     expect(mocks.error).toHaveBeenCalledExactlyOnceWith(
-      { err, userId: ALICE_ID, tokenId: TOKEN_ID },
+      { err, userId: ALICE_ID, grantId: GRANT_ID },
       "failed to revoke grant",
     );
   });
 });
 
-describe("authenticateToken", () => {
+describe("authenticateAccessToken", () => {
   /** Request headers with the access token as the bearer token. */
   const BEARER = () => authorization(`Bearer ${ACCESS_TOKEN}`);
 
   it("refuses the access token of a grant of an admin as invalid, logs the reason and writes no last use", async () => {
     mocks.findUnique.mockResolvedValue(tokenWithUser({ user: { name: "maria", username: "maria", type: "admin" } }));
 
-    await expect(authenticateToken(BEARER(), "read")).resolves.toEqual({
+    await expect(authenticateAccessToken(BEARER(), "read")).resolves.toEqual({
       ok: false,
       error: { code: "invalid-token" },
     });
-    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith({ reason: "admin", tokenId: TOKEN_ID }, "token refused");
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith({ reason: "admin", grantId: GRANT_ID }, "access token refused");
     expect(mocks.updateMany).not.toHaveBeenCalled();
   });
 
-  it("refuses the access token of an admin for every scope", async () => {
+  it("refuses the access token of an admin also when its grant has more scopes", async () => {
     mocks.findUnique.mockResolvedValue(tokenWithUser({ scopes: ["read", "write"], user: { type: "admin" } }));
 
-    for (const scope of ["read", "write"] as const) {
-      await expect(authenticateToken(BEARER(), scope)).resolves.toEqual({
-        ok: false,
-        error: { code: "invalid-token" },
-      });
-    }
+    await expect(authenticateAccessToken(BEARER(), "read")).resolves.toEqual({
+      ok: false,
+      error: { code: "invalid-token" },
+    });
   });
 
   it("returns the actor of the grant's user for a valid access token, looked up by its hash", async () => {
-    await expect(authenticateToken(BEARER(), "read")).resolves.toStrictEqual({
+    await expect(authenticateAccessToken(BEARER(), "read")).resolves.toStrictEqual({
       ok: true,
       value: { id: ALICE_ID, name: "alice", type: "user" },
     });
 
     expect(mocks.findUnique).toHaveBeenCalledExactlyOnceWith({
-      where: { accessTokenHash: hashToken(ACCESS_TOKEN) },
+      where: { accessTokenHash: hashSecret(ACCESS_TOKEN) },
       select: {
         id: true,
         scopes: true,
@@ -260,7 +257,7 @@ describe("authenticateToken", () => {
     ["more than one space after the scheme", `Bearer    ${ACCESS_TOKEN}`],
     ["spaces around the value", `  Bearer ${ACCESS_TOKEN}  `],
   ])("reads an access token with %s", async (_case, value) => {
-    await expect(authenticateToken(authorization(value), "read")).resolves.toMatchObject({ ok: true });
+    await expect(authenticateAccessToken(authorization(value), "read")).resolves.toMatchObject({ ok: true });
   });
 
   it.each([
@@ -277,7 +274,7 @@ describe("authenticateToken", () => {
     ["a refresh token", authorization(`Bearer hwr_0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01.${"C".repeat(43)}`)],
     ["an authorization code", authorization(`Bearer hwc_${"C".repeat(43)}`)],
   ])("reports %s as a missing token, without asking the database or logging", async (_case, headers) => {
-    await expect(authenticateToken(headers, "read")).resolves.toEqual({
+    await expect(authenticateAccessToken(headers, "read")).resolves.toEqual({
       ok: false,
       error: { code: "missing-token" },
     });
@@ -289,12 +286,12 @@ describe("authenticateToken", () => {
   it("reports an unknown access token as invalid, and logs the reason without the token", async () => {
     mocks.findUnique.mockResolvedValue(null);
 
-    await expect(authenticateToken(BEARER(), "read")).resolves.toEqual({
+    await expect(authenticateAccessToken(BEARER(), "read")).resolves.toEqual({
       ok: false,
       error: { code: "invalid-token" },
     });
 
-    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith({ reason: "unknown" }, "token refused");
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith({ reason: "unknown" }, "access token refused");
     expectNoSecretLogged();
   });
 
@@ -302,13 +299,13 @@ describe("authenticateToken", () => {
     for (const expiresAt of [new Date(NOW.getTime() - 1), NOW]) {
       mocks.findUnique.mockResolvedValue(tokenWithUser({ expiresAt }));
 
-      await expect(authenticateToken(BEARER(), "read")).resolves.toEqual({
+      await expect(authenticateAccessToken(BEARER(), "read")).resolves.toEqual({
         ok: false,
         error: { code: "invalid-token" },
       });
     }
 
-    expect(mocks.warn).toHaveBeenCalledWith({ reason: "expired", tokenId: TOKEN_ID }, "token refused");
+    expect(mocks.warn).toHaveBeenCalledWith({ reason: "expired", grantId: GRANT_ID }, "access token refused");
     expect(mocks.updateMany).not.toHaveBeenCalled();
     expectNoSecretLogged();
   });
@@ -316,7 +313,7 @@ describe("authenticateToken", () => {
   it("accepts a grant a millisecond before it expires", async () => {
     mocks.findUnique.mockResolvedValue(tokenWithUser({ expiresAt: new Date(NOW.getTime() + 1) }));
 
-    await expect(authenticateToken(BEARER(), "read")).resolves.toMatchObject({ ok: true });
+    await expect(authenticateAccessToken(BEARER(), "read")).resolves.toMatchObject({ ok: true });
   });
 
   it.each([
@@ -325,14 +322,14 @@ describe("authenticateToken", () => {
   ])("refuses an access token %s, although its grant lasts on, and logs the grant id", async (_case, offset) => {
     mocks.findUnique.mockResolvedValue(tokenWithUser({ accessTokenExpiresAt: new Date(NOW.getTime() + offset) }));
 
-    await expect(authenticateToken(BEARER(), "read")).resolves.toEqual({
+    await expect(authenticateAccessToken(BEARER(), "read")).resolves.toEqual({
       ok: false,
       error: { code: "invalid-token" },
     });
 
     expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
-      { reason: "access-token-expired", tokenId: TOKEN_ID },
-      "token refused",
+      { reason: "access-token-expired", grantId: GRANT_ID },
+      "access token refused",
     );
     expect(mocks.updateMany).not.toHaveBeenCalled();
     expectNoSecretLogged();
@@ -341,7 +338,7 @@ describe("authenticateToken", () => {
   it("refuses an access token without an end of its own, which only a broken row has", async () => {
     mocks.findUnique.mockResolvedValue(tokenWithUser({ accessTokenExpiresAt: null }));
 
-    await expect(authenticateToken(BEARER(), "read")).resolves.toEqual({
+    await expect(authenticateAccessToken(BEARER(), "read")).resolves.toEqual({
       ok: false,
       error: { code: "invalid-token" },
     });
@@ -350,32 +347,33 @@ describe("authenticateToken", () => {
   it("reports the access token of a user with the first password as invalid", async () => {
     mocks.findUnique.mockResolvedValue(tokenWithUser({ user: { mustChangePassword: true } }));
 
-    await expect(authenticateToken(BEARER(), "read")).resolves.toEqual({
+    await expect(authenticateAccessToken(BEARER(), "read")).resolves.toEqual({
       ok: false,
       error: { code: "invalid-token" },
     });
 
     expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
-      { reason: "first-password", tokenId: TOKEN_ID },
-      "token refused",
+      { reason: "first-password", grantId: GRANT_ID },
+      "access token refused",
     );
     expect(mocks.updateMany).not.toHaveBeenCalled();
   });
 
   it.each([
-    ["read", ["write"]],
-    ["write", ["read"]],
-  ] as const)("reports a grant without the scope %s as insufficient", async (scope, scopes) => {
+    ["only another scope", ["write"]],
+    ["no scope", []],
+  ])("reports a grant with %s as insufficient for read", async (_case, scopes) => {
+    const scope = "read";
     mocks.findUnique.mockResolvedValue(tokenWithUser({ scopes }));
 
-    await expect(authenticateToken(BEARER(), scope)).resolves.toEqual({
+    await expect(authenticateAccessToken(BEARER(), scope)).resolves.toEqual({
       ok: false,
       error: { code: "insufficient-scope" },
     });
 
     expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
-      { reason: "insufficient-scope", tokenId: TOKEN_ID, scope },
-      "token refused",
+      { reason: "insufficient-scope", grantId: GRANT_ID, scope },
+      "access token refused",
     );
     expect(mocks.updateMany).not.toHaveBeenCalled();
     expectNoSecretLogged();
@@ -385,12 +383,12 @@ describe("authenticateToken", () => {
     const err = new Error("connection lost");
     mocks.findUnique.mockRejectedValue(err);
 
-    await expect(authenticateToken(BEARER(), "read")).resolves.toEqual({
+    await expect(authenticateAccessToken(BEARER(), "read")).resolves.toEqual({
       ok: false,
       error: { code: "failed" },
     });
 
-    expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ err }, "failed to look up token");
+    expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ err }, "failed to look up access token");
     expectNoSecretLogged();
   });
 
@@ -398,11 +396,11 @@ describe("authenticateToken", () => {
     it("is written for a grant that was never used", async () => {
       expect(LAST_USE_INTERVAL_MS).toBe(60_000);
 
-      await authenticateToken(BEARER(), "read");
+      await authenticateAccessToken(BEARER(), "read");
 
       const usedBefore = new Date(NOW.getTime() - 60_000);
       expect(mocks.updateMany).toHaveBeenCalledExactlyOnceWith({
-        where: { id: TOKEN_ID, OR: [{ lastUsedAt: null }, { lastUsedAt: { lte: usedBefore } }] },
+        where: { id: GRANT_ID, OR: [{ lastUsedAt: null }, { lastUsedAt: { lte: usedBefore } }] },
         data: { lastUsedAt: NOW },
       });
     });
@@ -410,18 +408,18 @@ describe("authenticateToken", () => {
     it("is not written again within a minute", async () => {
       mocks.findUnique.mockResolvedValue(tokenWithUser({ lastUsedAt: new Date(NOW.getTime() - 59_999) }));
 
-      await expect(authenticateToken(BEARER(), "read")).resolves.toMatchObject({ ok: true });
+      await expect(authenticateAccessToken(BEARER(), "read")).resolves.toMatchObject({ ok: true });
 
       expect(mocks.updateMany).not.toHaveBeenCalled();
     });
 
     it("is written again once a minute has passed", async () => {
       mocks.findUnique.mockResolvedValue(tokenWithUser({ lastUsedAt: NOW }));
-      await authenticateToken(BEARER(), "read");
+      await authenticateAccessToken(BEARER(), "read");
       expect(mocks.updateMany).not.toHaveBeenCalled();
 
       vi.setSystemTime(NOW.getTime() + 60_000);
-      await authenticateToken(BEARER(), "read");
+      await authenticateAccessToken(BEARER(), "read");
 
       expect(mocks.updateMany).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({ data: { lastUsedAt: new Date(NOW.getTime() + 60_000) } }),
@@ -432,14 +430,14 @@ describe("authenticateToken", () => {
       const err = new Error("connection lost");
       mocks.updateMany.mockRejectedValue(err);
 
-      await expect(authenticateToken(BEARER(), "read")).resolves.toStrictEqual({
+      await expect(authenticateAccessToken(BEARER(), "read")).resolves.toStrictEqual({
         ok: true,
         value: { id: ALICE_ID, name: "alice", type: "user" },
       });
 
       expect(mocks.error).toHaveBeenCalledExactlyOnceWith(
-        { err, tokenId: TOKEN_ID },
-        "failed to write the last use of a token",
+        { err, grantId: GRANT_ID },
+        "failed to write the last use of a grant",
       );
       expectNoSecretLogged();
     });
@@ -450,15 +448,15 @@ describe("an admin", () => {
   /** An admin, who has no grants; named like a user, so that only the type decides. */
   const ADMIN: Actor = { id: ALICE_ID, name: "alice", type: "admin" };
 
-  it("gets null from listTokens, without asking the database", async () => {
-    await expect(listTokens(ADMIN)).resolves.toBeNull();
+  it("gets null from listGrants, without asking the database", async () => {
+    await expect(listGrants(ADMIN)).resolves.toBeNull();
 
     expectDatabaseUntouched();
     expectNothingLogged();
   });
 
-  it("gets not-allowed from revokeToken, logged, without a write", async () => {
-    await expect(revokeToken(ADMIN, TOKEN_ID)).resolves.toEqual({ ok: false, error: { code: "not-allowed" } });
+  it("gets not-allowed from revokeGrant, logged, without a write", async () => {
+    await expect(revokeGrant(ADMIN, GRANT_ID)).resolves.toEqual({ ok: false, error: { code: "not-allowed" } });
 
     expectDatabaseUntouched();
     expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(

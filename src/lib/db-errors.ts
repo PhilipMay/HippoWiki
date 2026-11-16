@@ -32,17 +32,11 @@ export const PAGE_NAME: UniqueConstraint = {
 export const USER_NAME: UniqueConstraint = { indexes: ["User_username_key", "User_email_key"], field: "username" };
 
 /**
- * The unique index on the hash of an API token, as Prisma creates it for `@unique`. A token has 256 random bits, so a
- * violation means a broken token generator rather than bad luck.
+ * The unique index on the hash of the access token of a grant, as Prisma creates it for `@unique`. An access token has
+ * 256 random bits, so a violation means a broken generator rather than bad luck.
  */
-export const API_TOKEN_HASH: UniqueConstraint = { indexes: ["ApiToken_tokenHash_key"], field: "tokenHash" };
-
-/**
- * The unique index on the hash of the access token of a grant, as Prisma creates it for `@unique`. Like a token, an
- * access token has 256 random bits.
- */
-export const API_TOKEN_ACCESS_HASH: UniqueConstraint = {
-  indexes: ["ApiToken_accessTokenHash_key"],
+export const GRANT_ACCESS_TOKEN_HASH: UniqueConstraint = {
+  indexes: ["OAuthGrant_accessTokenHash_key"],
   field: "accessTokenHash",
 };
 

@@ -3,13 +3,12 @@
 ## Summary
 
 - Verdict: no Blocker. The core holds: every page, query and Server Action checks the login, the admin rights and the
-  owner of tokens and grants on the server; the session, API token and OAuth secrets are random, stored as hashes and
-  kept apart by kind; the OAuth server follows PKCE, exact redirect addresses, single-use codes and refresh rotation
+  owner of grants on the server; the session and OAuth secrets are random, stored as hashes and kept apart by kind; the OAuth server follows PKCE, exact redirect addresses, single-use codes and refresh rotation
   with reuse detection; the fetch of client metadata documents resists SSRF; Markdown cannot run script; and the
   tests cover the security rules of the specs well. The weak points are availability (a slow Markdown parse, unbounded
   bodies and batches, a lockout per name in the default configuration), the password policy, the trust that the OAuth
   server gives to clients nobody verified, and documentation that ASVS Level 2 asks for.
-- Findings: 110 in all, 0 Blocker, 2 Major, 67 Minor and 41 Nit (57 `issue:`, 19 `suggestion:`, 29 `nit:` and 5
+- Findings: 109 in all, 0 Blocker, 2 Major, 67 Minor and 40 Nit (57 `issue:`, 18 `suggestion:`, 29 `nit:` and 5
   `question:`). Accepted deviations: 20.
 - To fix first:
   1. Some Markdown takes quadratic time to parse, so one page blocks the whole server (Content; ASVS 15.1.3, 15.2.2;
@@ -78,8 +77,7 @@
 - Page content, folders, tabs and the deleted pages.
 - Accounts: user names, emails, the admin role, password hashes, the flag of a forced password change.
 - Sessions and their cookies.
-- API tokens (stored as hashes) and the secret shown once at creation.
-- OAuth: authorization codes, access and refresh tokens, grants, client registrations and the cached client metadata
+- OAuth: authorization codes, access and refresh tokens (stored as hashes), grants, client registrations and the cached client metadata
   documents.
 - The secrets in the environment: the Better Auth secret, the database URL with its password, the initial admin
   password of the setup.
@@ -90,7 +88,7 @@
 
 - Someone without a login on the internet.
 - A logged-in user, and an admin.
-- An MCP client with an API token or an OAuth grant.
+- An MCP client with an OAuth grant.
 - A malicious OAuth client, or the host of a malicious client ID metadata document.
 - A wiki author whose content reaches the agent of another user through the MCP tools (prompt injection).
 - The agent or LLM client that reads the tool output.
@@ -115,7 +113,7 @@
   - auth: `logIn()`, `changeFirstPassword()`, `logOut()`;
   - folders: `createFolder()`, `renameFolder()`, `createTab()`, `renameTab()`;
   - pages: `createPage()`, `updatePageContent()`, `moveOrRenamePage()`, `deletePage()`, `restorePage()`;
-  - tokens: `createToken()`, `revokeToken()`;
+  - grants: `revokeGrant()`;
   - users: `createUser()`;
   - oauth: `approve()`, `deny()`.
 - Route handlers: `src/app/api/health/route.ts`, `src/app/mcp/route.ts`, `src/app/oauth/register/route.ts`,
@@ -180,7 +178,7 @@ the threat.
 | T      | Two writes at the same time break a rule that is checked first and written later                      | Content; API tokens                                    |
 | R      | Writes, admin actions, token and consent events not logged                                            | Logging, errors and failure handling                   |
 | I      | An action returns more than the page shows; error answers with internal details                       | Browser security; Logging, errors and failure handling |
-| E      | `revokeToken()` or a grant action with the id of another user's object (IDOR)                         | Access control; API tokens                             |
+| E      | `revokeGrant()` or a grant action with the id of another user's object (IDOR)                         | Access control; API tokens                             |
 | E      | `createUser()` without the admin check on the server                                                  | Access control                                         |
 | E      | `approve()` used to approve a request the user never saw (CSRF, a changed client or redirect address) | OAuth                                                  |
 
@@ -195,7 +193,7 @@ the threat.
 
 | STRIDE | Threat                                                                                       | Checked in                                       |
 | ------ | -------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| S      | A tool runs without a valid token; an expired, revoked or forged token is accepted           | API tokens; MCP server                           |
+| S      | A tool runs without a valid access token; an expired, revoked or forged one is accepted      | API tokens; MCP server                           |
 | S      | A refresh token, a code or a token for another resource accepted as an access token          | API tokens; OAuth; MCP server                    |
 | T      | Tool arguments that break the name rule reach a service                                      | MCP server                                       |
 | T      | Prompt injection: wiki content written by one user steers the agent of another               | MCP server                                       |
@@ -203,7 +201,7 @@ the threat.
 | R      | Tool calls not logged with the token that made them                                          | Logging, errors and failure handling             |
 | I      | Deleted pages listed or read; error answers with internal details; tokens in answers or logs | MCP server; Logging, errors and failure handling |
 | D      | Large request bodies or large answers tie up the server                                      | MCP server                                       |
-| E      | A token with too few scopes reaches a tool; missing scope counts as all scopes               | API tokens; MCP server                           |
+| E      | A grant with too few scopes reaches a tool; missing scope counts as all scopes               | API tokens; MCP server                           |
 
 #### OAuth endpoints and the consent page
 
@@ -322,8 +320,8 @@ finding of the review report" in `step-plan-workflow.md` describes.
   exported Server Action first, outside its `try` blocks. No layout, loading or template file reads data. An action
   without a cookie is answered by the proxy with `303` and `x-action-redirect: /login;push` (local server).
 - The forced password change blocks everything else: `requireUser()` redirects to `/change-password`
-  (`src/features/auth/session.ts`), `authenticateToken()` refuses the token of such a user, and the OAuth token
-  exchange and refresh refuse it too.
+  (`src/features/auth/session.ts`), `authenticateAccessToken()` refuses the access token of such a user, and the OAuth
+  token exchange and refresh refuse it too.
 - The `matcher` of the proxy: every exception is anchored with `$` except `oauth-protected-resource(?:/.*)?` and
   `_next/static/`, which lead only to a catch-all route that answers 404 for other paths and to static files. Next.js
   matches the raw and the decoded path and resolves `..` before matching. On the local server, `/mcp/x`, `/MCP`,
@@ -335,21 +333,19 @@ finding of the review report" in `step-plan-workflow.md` describes.
   `src/features/users/service.ts`. On the local server, `createUser` called as `dave` with a valid name gives `404`
   and creates nothing.
 - Arguments a form never sends (ASVS 2.2.1, 2.2.2): bound ids are parsed in every action (`parseFolderId`,
-  `parseTabId`, `parsePageId`, `parseTokenId`) and again in the services; route segments go through `parseName` and
+  `parseTabId`, `parsePageId`, `parseGrantId`) and again in the services; route segments go through `parseName` and
   `parsePageSegment`. A tab of another folder is refused by the composite foreign key in the pages service.
-- Object level (ASVS 8.2.2, CWE-639): `revokeToken()` deletes with the token id and the user id in one condition
-  (`src/features/tokens/service.ts`); the revoke dialog of `/account` accepts only the caller's own token ids;
-  `listTokens()` filters by user; codes and grants are bound to the user of the session. On the local server,
-  `revokeToken` called as `dave` with the id of `erin`'s token gives `404` with `NEXT_HTTP_ERROR_FALLBACK;404`, and the
-  token stays. Content is checked by the role of the user on its folder in the browser (`folder-roles.md`); through
+- Object level (ASVS 8.2.2, CWE-639): `revokeGrant()` deletes with the grant id and the user id in one condition
+  (`src/features/grants/service.ts`); the revoke dialog of `/account` accepts only the caller's own grant ids;
+  `listGrants()` filters by user; codes and grants are bound to the user of the session. On the local server,
+  `revokeToken` called as `dave` with the id of `erin`'s token gave `404` with `NEXT_HTTP_ERROR_FALLBACK;404`, and the
+  token stayed; the same holds for `revokeGrant` and a grant (`e2e/account.spec.ts`). Content is checked by the role of the user on its folder in the browser (`folder-roles.md`); through
   MCP a user reads every folder (see "Accepted deviations").
 - Mass assignment (ASVS 8.2.3, 15.3.3): every spread of parsed data comes from a `z.object` schema, which strips
-  unknown keys; the last editor always comes from `requireUser()`, the scopes from the token schema or the fixed
-  scopes of a grant, `mustChangePassword` is only ever set to `true` for a new user, and the field is `input: false` in
+  unknown keys; the last editor always comes from `requireUser()`, the scopes from the fixed scopes of a grant, `mustChangePassword` is only ever set to `true` for a new user, and the field is `input: false` in
   Better Auth.
 - Missing and repeated parameters (ASVS 15.3.7, CWE-234): `parseChoice()` and `safeNextPath()` refuse arrays, the
-  OAuth readers treat a repeated parameter as missing, a token needs at least one scope and `authenticateToken()`
-  requires the exact scope.
+  OAuth readers treat a repeated parameter as missing, and `authenticateAccessToken()` requires the exact scope.
 - HTTP methods: Next.js answers 405 for every method a route does not export; on the local server `GET`, `PUT` and
   `DELETE /oauth/token` and `POST /api/health` give `405`. `OPTIONS /mcp` is the exception (finding above).
 - Open redirects (ASVS 3.7.2, `CON.10.A4`, CWE-601): `safeNextPath()` in `src/lib/addresses.ts` is used wherever
@@ -424,7 +420,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
 #### suggestion: the modules that read the database or hold secrets do not import `server-only`
 
 - Location: `src/lib/db.ts`, `src/lib/auth.ts`, `src/lib/env.ts`, `src/lib/password-hash.ts`, every
-  `src/features/*/service.ts` and `queries.ts`, `src/features/tokens/secret.ts`, `src/features/oauth/secret.ts`
+  `src/features/*/service.ts` and `queries.ts`, `src/features/oauth/secret.ts`
 - Severity: Minor. It is defence in depth: the lint rules in `eslint.config.mjs` already stop routes and components
   from importing `@/lib/db`, `@/lib/auth` and the values of services.
 - Category: security
@@ -537,9 +533,9 @@ finding of the review report" in `step-plan-workflow.md` describes.
 - CORS (ASVS 3.4.2, CWE-942): no response sends an `Access-Control-*` header. On the local server a preflight to
   `/mcp` and requests with a foreign `Origin` to `/oauth/token`, `/oauth/register` and `/.well-known/…` get none.
 - Data sent to the client (ASVS 15.3.1): the actions return small form states; `createUser` returns the generated
-  first password and `createToken` the secret, both on purpose and once. The RSC payloads of `/users` and `/account`
-  on the local server contain no hash, email, `mustChangePassword` or user id; the ids of tokens appear only as list
-  keys. The only extra fields are those of the `TabSummary` finding.
+  first password, on purpose and once. The RSC payloads of `/users` and `/account` on the local server contain no
+  hash, email, `mustChangePassword` or user id; the ids of grants appear only as list keys and in the revoke
+  addresses. The only extra fields are those of the `TabSummary` finding.
 - Error answers: the error pages show only the digest; the 500 answers of MCP and OAuth say only `server_error`.
 - Markdown links (CWE-1022): no link opens a new window (no `target="_blank"` in `src/`), and
   `Referrer-Policy: same-origin` keeps page addresses on the site.
@@ -561,12 +557,12 @@ finding of the review report" in `step-plan-workflow.md` describes.
 - Category: security
 - Problem: once the forced change is done, `changeFirstPassword()` refuses with `not-required`, and there is no other
   password change. A user cannot list or end other sessions, the admin cannot end the sessions of a user, and there is
-  no option to end other sessions or the API tokens after a change. "Current limits" lists "no change of the own
+  no option to end other sessions or the connected apps after a change. "Current limits" lists "no change of the own
   password after the forced password change" without a reason.
 - Impact: a leaked password stays valid for good, and a stolen session cookie for up to 30 days.
 - Evidence: `if (!user.mustChangePassword) return { ok: false, error: { code: "not-required" } };`
 - Suggestion (required): allow a change at any time on `/account`, with the current password and the same rules,
-  through `changePassword` of Better Auth with `revokeOtherSessions: true`, and offer to revoke the API tokens; add "end
+  through `changePassword` of Better Auth with `revokeOtherSessions: true`, and offer to revoke the connected apps; add "end
   all other sessions" for a user and "end all sessions of a user" for the admin. Until then, document it as a decision
   with its reason and the steps for an operator.
 - Reference: OWASP A07:2025 Authentication Failures; ASVS 6.2.2, 7.4.3, 7.4.5, 7.5.2; `CON.10.A12`.
@@ -766,7 +762,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
 - Location: `prisma/schema.prisma`, models `Session` and `AuthSecret`; `src/lib/auth.ts`, lines 34–46, `readSecret()`
 - Severity: Minor
 - Category: security
-- Problem: API tokens are stored only as hashes, but session tokens in plain text, and the signing secret is in the
+- Problem: the tokens of OAuth are stored only as hashes, but session tokens in plain text, and the signing secret is in the
   same database.
 - Impact: anyone who can read the database or a backup can build valid cookies for every session for up to 30 days.
 - Suggestion (optional): say in `container-image.md` that backups and read access to the database are as sensitive as
@@ -839,9 +835,9 @@ finding of the review report" in `step-plan-workflow.md` describes.
 - Cookie flags (ASVS 3.3.1, 3.3.2, 3.3.4): `HttpOnly`, `SameSite=Lax`, and `Secure` in production; the prefix is a
   finding above.
 - Ending sessions (ASVS 7.4.1): a logout deletes the session row; on the local server the old cookie gets `307` to the
-  login after the logout. Users cannot be deleted; `Session` and `ApiToken` cascade on a deleted user.
+  login after the logout. Users cannot be deleted; `Session` and `OAuthGrant` cascade on a deleted user.
 - The forced change blocks everything: every query and action calls `requireUser()`, only `/change-password` uses
-  `requireSession()`, and bearer tokens and grants check `mustChangePassword`.
+  `requireSession()`, and access tokens and grants check `mustChangePassword`.
 - Better Auth (ASVS 6.3.4): only `signInUsername`, `signOut`, `getSession` and `changePassword` are called; no route
   handler is mounted, sign-up is off, and a lint rule keeps `@/lib/auth` to the auth service. No login path the specs
   do not describe.
@@ -858,131 +854,128 @@ finding of the review report" in `step-plan-workflow.md` describes.
 
 ### API tokens
 
-#### issue: a successful use of a token, and a bearer value that does not look like a token, leave no log line, and refused tokens are logged without the client address
+#### issue: a successful use of an access token, and a bearer value that does not look like one, leave no log line, and refused access tokens are logged without the client address
 
-- Location: `src/features/tokens/service.ts`, lines 268–271, 299–302 and 336, `authenticateToken()`;
-  `src/features/mcp/http.ts`, lines 114–132, `handleMcpRequest()`
-- Severity: Minor. Guessing a token of 256 bits is not practical, so this costs the means to investigate, not access.
+- Location: `src/features/grants/service.ts`, `authenticateAccessToken()`; `src/features/mcp/http.ts`,
+  `handleMcpRequest()`
+- Severity: Minor. Guessing an access token of 256 bits is not practical, so this costs the means to investigate, not
+  access.
 - Category: security
-- Problem: a bearer value that does not look like a token (a refresh token, a code, a session cookie, garbage) returns
-  `missing-token` without a log line; a successful authentication is not logged at all, only `lastUsedAt` is written
-  at most once a minute; the line "token refused" has only `reason` and `tokenId`, and for an unknown token only
-  `reason`. None has the client address group. `api-tokens.md` says "nothing is logged" for a missing token and lists
-  "no audit log" under "Current limits", without a reason.
-- Impact: after a token leaks, the logs cannot show who used it, from where, or when beyond the minute; spraying
-  refresh tokens, codes or cookies at `/mcp` stays invisible.
-- Evidence: on the local server, an expired token logs `WARN: token refused` with `reason: "expired"` and `tokenId`,
-  a revoked one `reason: "unknown"` and nothing else; a refresh token, a code and a session cookie as bearer, and every
-  successful call, log nothing.
+- Problem: a bearer value that does not look like an access token (a former API token, a refresh token, a code, a
+  session cookie, garbage) returns `missing-token` without a log line; a successful authentication is not logged at
+  all, only `lastUsedAt` is written at most once a minute; the line "access token refused" has only `reason` and
+  `grantId`, and for an unknown access token only `reason`. None has the client address group. `api-tokens.md` says
+  "nothing is logged" for a missing token and lists "no audit log" under "Current limits", without a reason.
+- Impact: after an access token leaks, the logs cannot show who used it, from where, or when beyond the minute;
+  spraying refresh tokens, codes or cookies at `/mcp` stays invisible.
+- Evidence: on the local server, an expired access token logs a warning with `reason: "expired"` and the id of its
+  grant, a revoked one `reason: "unknown"` and nothing else; a refresh token, a code and a session cookie as bearer, and
+  every successful call, log nothing.
 - Suggestion (required): log a warning for a bearer value of the wrong shape (the reason and the kind, never the
-  value), an info line on success with `tokenId`, `userId` and the kind, and the client address group on every line;
-  or document the choice as a decision with its reason.
+  value), an info line on success with `grantId` and `userId`, and the client address group on every line; or
+  document the choice as a decision with its reason.
 - Reference: OWASP A09:2025 Security Logging and Alerting Failures; ASVS 16.3.1, 16.3.2, 16.2.1; CWE-778.
 
-#### issue: the admin has no way to stop the tokens or grants of another user
+#### issue: the admin has no way to stop the grants of another user
 
-- Location: `src/features/tokens/service.ts`, lines 202–224, `revokeToken()`; `spec/api-tokens.md`, sections "The own
-  tokens only" and "Current limits"
-- Severity: Minor. It needs a leaked token and an owner who cannot act.
+- Location: `src/features/grants/service.ts`, `revokeGrant()`; `spec/api-tokens.md`, sections "The own tokens only"
+  and "Current limits"
+- Severity: Minor. It needs a leaked refresh token and an owner who cannot act.
 - Category: security
-- Problem: revoking works only for the actor's own rows, users cannot be deactivated or deleted, and there is no admin
-  command, so a compromised token of a user who is not available can only be stopped by a `DELETE` in the database.
-  A token lives up to 365 days. The spec says "the admin cannot see or revoke the tokens of other users" without a
-  reason. This is the token side of the missing ending of sessions by the admin (area "Login, passwords, sessions and
-  users").
-- Impact: a leaked token keeps its access until it expires.
-- Evidence: "Every user sees and revokes only their own tokens, the admin included."
-- Suggestion (required): add a command to `scripts/admin.ts` that deletes all tokens and grants of a user and logs it,
-  or document the limit as a decision with a pointer to the roadmap entry on deactivating users.
+- Problem: revoking works only for the actor's own grants, users cannot be deactivated or deleted, and there is no
+  admin command, so a compromised grant of a user who is not available can only be stopped by a `DELETE` in the
+  database. A grant lives up to 365 days. The spec says the admin cannot see or revoke the grants of other users
+  without a reason. This is the grant side of the missing ending of sessions by the admin (area "Login, passwords,
+  sessions and users").
+- Impact: a leaked refresh token keeps its access until the grant expires or is refreshed by its client, which then
+  revokes it.
+- Evidence: "Every user sees and revokes only their own tokens."
+- Suggestion (required): add a command to `scripts/admin.ts` that deletes all grants of a user and logs it, or
+  document the limit as a decision with a pointer to the roadmap entry on deactivating users.
 - Reference: OWASP A07:2025 Authentication Failures; ASVS 7.4.5, 7.4.2; CWE-613.
 
-#### question: creating an API token or approving an OAuth grant needs no new authentication
+#### question: approving an OAuth grant needs no new authentication
 
-- Location: `src/features/tokens/actions.ts`, lines 26–32, `createToken()`; `src/features/oauth/actions.ts`, lines
-  42–47, `approve()`
+- Location: `src/features/oauth/actions.ts`, `approve()`
 - Severity: Minor. It needs a stolen session first; the question is whether the step from a session to a credential of
   its own should cost more.
 - Category: security
-- Problem: both actions need only the session. A token lives up to 365 days and a grant as long as chosen, and neither
-  ends with the session that created it, so whoever holds a stolen session cookie for a moment can turn it into access
-  that outlives a logout and the 30 days of the session. ASVS 7.5.1 asks for a new authentication before changes to
-  what the account uses to authenticate; a new credential is such a change in effect.
+- Problem: the approval needs only the session. A grant lives as long as chosen, up to 365 days, and does not end with
+  the session that created it, so whoever holds a stolen session cookie for a moment can turn it into access that
+  outlives a logout and the 30 days of the session. ASVS 7.5.1 asks for a new authentication before changes to what
+  the account uses to authenticate; a new credential is such a change in effect.
 - Impact: a short session theft (a shared computer, a leaked cookie) becomes access for up to a year, visible only on
   `/account`.
-- Evidence: `const user = await requireUser();` and then `tokenService.createToken(user, input.data)`; `approve()` the
-  same with `oauthService.createCode()`.
-- Suggestion (optional): ask for the password again before a token is created (or for tokens longer than 30 days), or
-  document that the session alone is enough as a decision with its reason.
+- Evidence: `const user = await requireUser();` and then `oauthService.createCode()`.
+- Suggestion (optional): ask for the password again before a grant is approved (or for grants longer than 30 days),
+  or document that the session alone is enough as a decision with its reason.
 - Reference: OWASP A07:2025 Authentication Failures; ASVS 7.5.1; CWE-306.
 
 #### nit: a bearer value of the wrong shape is answered without `error="invalid_token"`
 
-- Location: `src/features/tokens/service.ts`, lines 269–271, `authenticateToken()`; `src/features/mcp/http.ts`, lines
-  119–120; `spec/api-tokens.md`, section "The check of a bearer token"
+- Location: `src/features/grants/service.ts`, `authenticateAccessToken()`; `src/features/mcp/http.ts`,
+  `handleMcpRequest()`; `spec/api-tokens.md`, section "The check of a bearer token"
 - Severity: Nit. It concerns clients, not access.
 - Category: correctness
 - Problem: RFC 6750 section 3.1 counts a malformed token as `invalid_token` and leaves the error out only when the
-  request has no authentication. `Bearer hwr_…`, `Bearer hwc_…` or `Basic …` get the same answer as no header.
+  request has no authentication. `Bearer hw_…` (a former API token), `Bearer hwr_…`, `Bearer hwc_…` or `Basic …` get
+  the same answer as no header.
 - Evidence: on the local server, `Bearer xx_…`, a refresh token and a code give `401` with
   `WWW-Authenticate: Bearer resource_metadata="…", scope="read"` and `{"error":"unauthorized"}`; a well-formed unknown
-  token gives `error="invalid_token"`.
+  access token gives `error="invalid_token"`.
 - Suggestion (optional): answer `missing-token` only without an `Authorization` header with the scheme `Bearer`, and a
   value of the wrong shape with `invalid-token`, without a database lookup.
 - Reference: RFC 6750 section 3.1.
 
-#### suggestion: the format of a token does not let secret scanners recognise a leak with few false positives
-
-- Location: `src/features/tokens/secret.ts`, lines 7 and 16–24, `TOKEN_PREFIX` and `generateSecret()`
-- Severity: Nit
-- Category: security
-- Problem: the spec says the prefix lets scanners recognise a token, but `hw_` has 3 characters, the base64url body
-  contains `-` and `_`, and there is no checksum that a scanner could check offline.
-- Suggestion (optional): a more distinctive prefix, a base62 body and a CRC32 checksum, with the pattern published for
-  custom secret scanning; `looksLikeToken()` can accept both formats for a while.
-- Reference: OWASP Secrets Management Cheat Sheet, "Detection".
-
 #### nit: `api-tokens.md` says `/mcp` checks the token "for every request", but some requests are answered first
 
-- Location: `spec/api-tokens.md`, section "The check of a bearer token"; `src/features/mcp/http.ts`, lines 102–108
+- Location: `spec/api-tokens.md`, section "The check of a bearer token"; `src/features/mcp/http.ts`,
+  `handleMcpRequest()`
 - Severity: Nit
 - Category: docs
-- Problem: requests other than `POST` get 405, and a foreign `Origin` gets 403, before `authenticateToken()` runs.
+- Problem: without a public URL every request gets 404, requests other than `POST` get 405, and a foreign `Origin`
+  gets 403, before `authenticateAccessToken()` runs.
 - Evidence: "The adapter of `/mcp` calls it for every request."
 - Suggestion (optional): "for every `POST` from an allowed origin (see `mcp.md`)".
 
 #### Reviewed
 
-- Files read: `src/features/tokens/` (`secret.ts`, `service.ts`, `schema.ts`, `forms.ts`, `actions.ts`, `queries.ts`
-  and the components), `src/app/account/page.tsx`, `src/features/mcp/http.ts`, `src/app/mcp/route.ts`,
-  `src/features/oauth/secret.ts`, the access token parts of `src/features/oauth/service.ts`, the model `ApiToken` and
-  its migrations, `e2e/mcp.spec.ts`, `integration/token-service.test.ts`.
-- Randomness, storage and showing once (ASVS 11.5.1): `randomBytes(32)` gives 256 bits; only the SHA-256 hash is
-  stored, in a unique column, and found with `findUnique`, so no comparison can leak timing; the secret leaves only in
-  the answer of the creation action, never in an address. SHA-256 is a hash function of TR-02102-1 chapter 4.
-- The prefix: neither the secret nor its hash is stored or logged; on the local server the log holds no token, no hash
-  and no `hw_`.
-- The check (`authenticateToken()`): unknown, revoked and expired tokens are refused with `invalid_token`; the scope,
-  the first password and, for an access token, its own expiry are checked on every use. On the local server: an
-  expired token (`expiresAt` set into the past) and a revoked one give `401` with `error="invalid_token"`; a
-  `write`-only token gives `403` with `error="insufficient_scope", scope="read"`; the token of a user whose first
-  password is pending gives `401 invalid_token` and logs `reason: "first-password"`; `bearer` in lowercase is
-  accepted. A failed lookup gives `500`; only the `lastUsedAt` write fails open, on purpose.
-- Token kinds: the prefixes `hw_`, `hwc_`, `hwa_` and `hwr_` are matched exactly, API tokens and access tokens are
-  looked up in separate hash columns, and a check constraint keeps token rows and grant rows apart; there is no bearer
-  plugin of Better Auth. On the local server a refresh token, a code and the value of a session cookie are refused at
-  `/mcp` with `401`, and an API token and an access token are refused as refresh tokens with `400 invalid_grant`.
-- Owner checks (ASVS 8.2.2): see the area "Access control"; grants are revoked by the same action with the same check.
-- Tokens in addresses, logs and pages (ASVS 14.2.1): only the id of a token is part of `?action=revoke&token=`; no
-  logger call has the secret or the hash.
-- The limit per user: `createToken()` and `exchangeCode()` lock the row of the user (`FOR UPDATE`) before they count,
-  and `integration/token-service.test.ts` creates 21 tokens at once.
-- A removed user: tokens and grants are deleted with the user (`onDelete: Cascade`).
-- Expiry choices: only 30, 90 or 365 days, and `expiresAt` cannot be empty, so there is no token without an expiry.
+- Files read: `src/features/grants/` (`service.ts`, `schema.ts`, `forms.ts`, `actions.ts`, `queries.ts` and the
+  components), `src/app/account/page.tsx`, `src/features/mcp/http.ts`, `src/app/mcp/route.ts`,
+  `src/features/oauth/secret.ts`, the access token parts of `src/features/oauth/service.ts`, the model `OAuthGrant` and
+  its migrations, `e2e/mcp.spec.ts`, `integration/grant-service.test.ts`.
+- Randomness and storage (ASVS 11.5.1): `randomBytes(32)` gives 256 bits; only the SHA-256 hash of an access token is
+  stored, in a unique column, and found with `findUnique`, so no comparison can leak timing; the access token leaves
+  only in the answer of the token endpoint, never in an address. SHA-256 is a hash function of TR-02102-1 chapter 4.
+- No secret in logs: neither an access token nor its hash is logged; on the local server the log holds no token, no
+  hash and no `hwa_`.
+- The check (`authenticateAccessToken()`): unknown, revoked and expired access tokens and those of expired grants are
+  refused with `invalid_token`; the scope and the first password are checked on every use. On the local server: an
+  expired grant (`expiresAt` set into the past) and a revoked one give `401` with `error="invalid_token"`; the access
+  token of a user whose first password is pending gives `401 invalid_token` and logs `reason: "first-password"`;
+  `bearer` in lowercase is accepted. A failed lookup gives `500`; only the `lastUsedAt` write fails open, on purpose.
+- Token kinds: the prefixes `hwc_`, `hwa_` and `hwr_` are matched exactly, and only a value with the prefix of an
+  access token is looked up, in its own hash column; there is no bearer plugin of Better Auth. On the local server a
+  refresh token, a code and the value of a session cookie are refused at `/mcp` with `401`, and an access token is
+  refused as a refresh token with `400 invalid_grant`.
+- The removed API tokens (OWASP Secrets Management Cheat Sheet, "Detection"): there are no long-lived secrets that a
+  user copies by hand any more, so the format of such a secret no longer needs to let secret scanners recognise a
+  leak. The migration `prisma/migrations/20261116120000_remove_api_tokens/` deletes every row without a client, and a
+  former API token of the shape `hw_…` is answered at `/mcp` like any other value that is no access token, with `401`.
+  Checked by `e2e/mcp.spec.ts` and by `integration/grant-service.test.ts`, and on the development database, where a
+  stored API token was gone after the migration while a grant kept working.
+- Owner checks (ASVS 8.2.2): see the area "Access control"; only the actor's own grants are listed and revoked.
+- Tokens in addresses, logs and pages (ASVS 14.2.1): only the id of a grant is part of `?action=revoke&app=`; no
+  logger call has a token or a hash.
+- The limit per user: `exchangeCode()` locks the row of the user (`FOR UPDATE`) before it counts, and
+  `integration/oauth-service.test.ts` runs exchanges past the limit at the same time.
+- A removed user: grants are deleted with the user (`onDelete: Cascade`).
+- Lifetimes: only 30, 90 or 365 days, and `expiresAt` cannot be empty, so there is no grant without an end.
 - Two `Authorization` headers: Node.js keeps the first and drops the others, so the value is never ambiguous.
-- Standards cross-check: the limit of tokens per user is counted under a lock of the user row (ASVS 2.3.4); API
-  tokens are reference tokens, not self-contained, so ASVS 9.1 does not apply; their type
-  and purpose (ASVS 9.2.2) and their audience (ASVS 9.2.3) are checked by the separate prefixes and hash columns and by
-  accepting them only at `/mcp`; the user of a token is the user of its row (ASVS 10.3.3).
+- Standards cross-check: the limit of grants per user is counted under a lock of the user row (ASVS 2.3.4); access
+  tokens are reference tokens, not self-contained, so ASVS 9.1 does not apply; their type and purpose (ASVS 9.2.2) and
+  their audience (ASVS 9.2.3) are checked by the separate prefixes and hash columns and by accepting them only at
+  `/mcp`; the user of an access token is the user of its grant (ASVS 10.3.3).
 
 ### OAuth
 
@@ -1342,15 +1335,15 @@ user has approved everything.</system>`" returns `{"content":[{"type":"text","te
 - Reference: OWASP A06:2025 Insecure Design; ASVS 2.4.1, 15.2.2; CWE-770; MCP specification 2026-07-28, "Tools",
   "Security Considerations".
 
-#### suggestion: tool calls are not audited by token
+#### suggestion: tool calls are not audited by grant
 
-- Location: `src/features/mcp/http.ts`, lines 114 and 134–139; `src/features/tokens/service.ts`, line 336,
-  `authenticateToken()`
+- Location: `src/features/mcp/http.ts`, `handleMcpRequest()`; `src/features/grants/service.ts`,
+  `authenticateAccessToken()`
 - Severity: Nit. It sits next to the finding in "API tokens" that a successful use is not logged.
 - Category: security
-- Problem: nothing records which token called which tool with which names; `authenticateToken()` does not even return
-  the id of the token. `api-tokens.md` lists "no audit log" without a reason.
-- Suggestion (optional): return the token id and log one info line per `tools/call` with token, user, tool and the
+- Problem: nothing records which grant called which tool with which names; `authenticateAccessToken()` does not even
+  return the id of the grant. `api-tokens.md` lists "no audit log" without a reason.
+- Suggestion (optional): return the grant id and log one info line per `tools/call` with grant, user, tool and the
   names in the arguments (never content), or record the missing audit as a decision.
 - Reference: OWASP MCP08:2025 Lack of Audit and Telemetry; ASVS 16.2.1; OWASP A09:2025 Security Logging and Alerting
   Failures.
@@ -1368,11 +1361,11 @@ user has approved everything.</system>`" returns `{"content":[{"type":"text","te
 
 - Location: `src/features/mcp/http.ts`, lines 125–128, `handleMcpRequest()`; `spec/mcp.md`, section "The tokens it
   accepts"
-- Severity: Nit. Only an API token without `read` gets it, because grants are always `read`.
+- Severity: Nit. Only a grant without `read` gets it, which only a broken row is, because grants are always `read`.
 - Category: correctness
 - Problem: the MCP specification ("Scope Challenge Handling") lists `resource_metadata` in the 403 as well, for
   consistency with the 401.
-- Evidence: on the local server a `write`-only token gets `WWW-Authenticate: Bearer error="insufficient_scope",
+- Evidence: on the local server a `write`-only API token got `WWW-Authenticate: Bearer error="insufficient_scope",
 scope="read"`.
 - Suggestion (optional): add `resource_metadata` while OAuth is on.
 - Reference: RFC 9728 section 5.1.
@@ -1408,7 +1401,7 @@ scope="read"`.
   SDK `@modelcontextprotocol/server` 2.4.0 (handler, transport, validation); the MCP specification 2026-07-28
   (transports, authorization, tools, security best practices) and the OWASP MCP Top 10.
 - Revisions: the modern path of the SDK serves 2026-07-28; the legacy path 2024-10-07 to 2025-11-25.
-- Token before any tool (OWASP MCP07, ASVS 10.3.2): `authenticateToken()` runs before the body is read and before the
+- Token before any tool (OWASP MCP07, ASVS 10.3.2): `authenticateAccessToken()` runs before the body is read and before the
   SDK, on both paths. A token for another resource cannot exist: tokens are opaque, found by hash, and issued only for
   `/mcp` (ASVS 10.3.1). The status codes and challenges were checked on the local server in the area "API tokens":
   401 with `resource_metadata` and `scope="read"`, 401 `invalid_token`, 403 `insufficient_scope`.
@@ -1657,14 +1650,14 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 
 - Location: `src/features/users/service.ts`, `listUsers()`; `src/features/oauth/actions.ts`, `deny()`; the writes of
   `src/features/folders/service.ts` and `src/features/pages/service.ts`; `src/features/mcp/http.ts`, lines 66, 82 and
-  106; `src/features/oauth/service.ts`, `exchangeCode()` and `refreshGrant()`; `src/features/tokens/service.ts`,
-  `revokeToken()`
+  106; `src/features/oauth/service.ts`, `exchangeCode()` and `refreshGrant()`; `src/features/grants/service.ts`,
+  `revokeGrant()`
 - Severity: Minor
 - Category: security
 - Problem: a non-admin who opens `/users` is refused without a log line; a denied consent is not logged; every write of
   content is logged without the actor; "mcp request with a foreign origin refused" has no origin, and the refusals of
   the SDK no user or token; the lines of the token endpoint (a reused refresh token above all) have no client address
-  group, and "unknown-grant" leaves out the grant id; "token revoked" does not say whether it was a grant. The items
+  group, and "unknown-grant" leaves out the grant id; "grant revoked" does not name the client. The items
   already reported in "Login" and "API tokens" are not repeated here.
 - Impact: who did what from where cannot be traced for content changes, refused admin reads, denied consents and the
   token endpoint.
@@ -1729,8 +1722,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 - Severity: Nit. No reachable path was found; it is defence in depth.
 - Category: security
 - Problem: pino copies every enumerable property of `err`. For a PostgreSQL error the adapter does not map, such as a
-  violation of the check constraint `ApiToken_token_or_grant`, the cause includes "Failing row contains (…)" with the
-  hashes; a validation error of Prisma prints its arguments, for `user.create` the password hash. Both need a
+  not-null violation of `OAuthGrant`, the cause includes "Failing row contains (…)" with the hashes; a validation error of Prisma prints its arguments, for `user.create` the password hash. Both need a
   programming error first.
 - Suggestion (optional): a `redact` list in pino for passwords, secrets, tokens, `authorization`, `cookie` and the
   `detail` of driver errors, with a unit test.
@@ -1753,14 +1745,14 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   `scripts/`, the specs on validation, errors and the image; Better Auth (origin check, sign-out, session), the error
   mapping of the Prisma adapter and the error serialiser of pino.
 - Logged events: refused logins (name and group), waits (name, group, wait), busy hashing, the first password change,
-  users created and refused creations (with the actor), the admin setup, tokens created, revoked and refused, client
+  users created and refused creations (with the actor), the admin setup, grants revoked and access tokens refused, client
   registrations and their limit, refused metadata documents (URL and reason), refused authorization requests,
   approved consent (`authorization code created` with user and client), refused code exchanges and refreshes, grants
   created and refreshed, a reused refresh token, failures of tools and the health check. The gaps are the findings
   above and in "Login" and "API tokens".
 - Failing closed (ASVS 16.5.3, A10, CWE-636): every `catch` around a check of a login, a token, a scope, the wait, the
   metadata fetch or the `Origin` refuses or answers `failed`; an `Origin` that cannot be parsed counts as foreign; only
-  the write of the last use of a token is allowed to fail, as `api-tokens.md` documents. On the local server, with the
+  the write of the last use of a grant is allowed to fail, as `api-tokens.md` documents. On the local server, with the
   database paused, a login answers "The login failed. Please try again." and logs `ERROR login failed`, `/mcp`
   answers `500 {"error":"server_error"}` and logs "failed to look up token", a refresh answers `500 server_error`
   ("failed to read grant"), `/folders` the error page and `/api/health` `503 {"status":"error"}`.
@@ -2277,13 +2269,11 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
 
 #### nit: the database does not hold every invariant that the comments of the schema state
 
-- Location: `prisma/schema.prisma`, models `Account` and `ApiToken`; the check `ApiToken_token_or_grant` in
-  `prisma/migrations/20261113200522_add_oauth/migration.sql`
-- Severity: Nit. Only a broken caller can break them.
+- Location: `prisma/schema.prisma`, model `Account`
+- Severity: Nit. Only a broken caller can break it.
 - Category: correctness
-- Problem: the check ties only `tokenHash` to `clientId`, so a token row could carry an access token hash, which
-  `authenticateToken()` would accept; "Every user has exactly one" `Account` has no unique constraint behind it.
-- Suggestion (optional): extend the check to the access and refresh columns, and add a unique key on `Account`.
+- Problem: "Every user has exactly one" `Account` has no unique constraint behind it.
+- Suggestion (optional): add a unique key on `Account`.
 - Reference: CWE-20.
 
 #### nit: no index serves the lists of all pages and of the deleted pages of a folder
@@ -2410,9 +2400,10 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
   anyway.
 - ASVS 13.3.1, no secrets management solution for the cookie secret (Login): `users-and-login.md`, "Decisions": the
   secret is kept in the database so that a container needs only two variables.
-- ASVS 11.4.2 for API tokens (API tokens): a token of 256 random bits is stored as SHA-256, not with a password hash
-  function; `api-tokens.md`, "Decisions", gives the reason.
-- ASVS 7.2 and 7.4 for API tokens (API tokens): a token is not a session of Better Auth; `api-tokens.md`, "Decisions".
+- ASVS 11.4.2 for access tokens (API tokens): an access token of 256 random bits is stored as SHA-256, not with a
+  password hash function; `api-tokens.md`, "Decisions", gives the reason.
+- ASVS 7.2 and 7.4 for access tokens (API tokens): a grant is not a session of Better Auth; `api-tokens.md`,
+  "Decisions".
 - ASVS 10.4.10 and 10.4.16, authentication of confidential clients (OAuth): every client is public; `oauth.md`,
   "Decisions" and "Current limits".
 - ASVS 2.4.1, no limit on token requests (OAuth): `oauth.md`, "Current limits"; every secret has 256 bits.
@@ -2433,7 +2424,7 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
   environment has to provide" and "Current limits", with `roadmap.md`. The missing signing, provenance and scan of the
   image has no reason and is a finding in "Supply chain".
 - `/api/health` is public (Configuration, ASVS 13.4.5): `container-image.md`, "Health".
-- Expired API tokens are not deleted by themselves (Cross-cutting, ASVS 14.2.7, Level 3): `api-tokens.md`,
+- Expired grants are not deleted by themselves (Cross-cutting, ASVS 14.2.7, Level 3): `api-tokens.md`,
   "Current limits".
 
 ## What is good
@@ -2442,14 +2433,14 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
   (`src/features/auth/session.ts`), and an answer of the proxy that the client of Next.js understands for an action
   without a cookie (`src/proxy.ts`).
 - Access control: the decisions of who may do what live in the services (`listUsers()` and `createUser()` in
-  `src/features/users/service.ts`, `revokeToken()`, `listTokens()` and `authenticateToken()` in
-  `src/features/tokens/service.ts`), so that the MCP and OAuth adapters cannot skip them.
-- Access control: the owner of a token is part of the condition of the delete itself (`revokeToken()` in
-  `src/features/tokens/service.ts`), with no gap between a read and a check.
+  `src/features/users/service.ts`, `revokeGrant()`, `listGrants()` and `authenticateAccessToken()` in
+  `src/features/grants/service.ts`), so that the MCP and OAuth adapters cannot skip them.
+- Access control: the owner of a grant is part of the condition of the delete itself (`revokeGrant()` in
+  `src/features/grants/service.ts`), with no gap between a read and a check.
 - Access control: `safeNextPath()` in `src/lib/addresses.ts` combines a prefix check, a check for control characters
   and a check of the origin with the WHATWG `URL`.
 - Access control: `e2e/access.spec.ts` covers the protected addresses with the edge cases of the matcher, stale
-  cookies and actions without a session; `integration/token-service.test.ts` covers revoking another user's token.
+  cookies and actions without a session; `integration/grant-service.test.ts` covers revoking another user's grant.
 - Browser security: one rule with the source `/:path*` in `next.config.ts` puts the security headers on every
   response, the redirects of the proxy included; `e2e/security-headers.spec.ts` checks them and collects CSP
   violations in a real browser.
@@ -2473,13 +2464,11 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
 - Login: `ensureAdmin()` never overwrites an admin, is safe with two containers and never logs the password.
 - Login: the cookie cache of Better Auth is off and sessions are not refreshed, so an ended session is refused at once
   (`src/lib/auth.ts`).
-- API tokens: `looksLikeToken()` in `src/features/tokens/secret.ts` checks the exact shape, so malformed values never
-  reach the database, and one generator with a prefix per kind serves all four kinds of secret.
-- API tokens: `createToken()` locks the row of the user, as `exchangeCode()` does, so one limit covers tokens and
-  grants without a race; `revokeToken()` has the owner in the delete itself.
-- API tokens: the check constraint `ApiToken_token_or_grant` and a unique hash column per kind keep the kinds apart.
-- API tokens: the dialog that shows a new token cannot be closed by a stray click, and the token lives only in the
-  state of the component.
+- API tokens: `looksLikeAccessToken()` in `src/features/oauth/secret.ts` checks the exact shape, so malformed values
+  never reach the database, and one generator with a prefix per kind serves all three kinds of secret.
+- API tokens: `exchangeCode()` locks the row of the user, so the limit of grants holds without a race;
+  `revokeGrant()` has the owner in the delete itself.
+- API tokens: a unique hash column per kind of token keeps the kinds apart.
 - OAuth: `requireUser()` runs before any redirect and before any fetch of a metadata document
   (`src/app/oauth/authorize/page.tsx`, `loadConsent()`), as RFC 9700 asks.
 - OAuth: `parseMetadataUrl()` requires the address to equal its own WHATWG serialisation, which removes all numeric and
@@ -2501,7 +2490,7 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
   index frees the name of a deleted page at once.
 - Content: the services parse ids and names again, write with a condition on the state (`deletedAt`), check the key of
   the last editor first and redirect only to stored addresses.
-- Logging: every refusal of `authenticateToken()`, `exchangeCode()` and `refreshGrant()` is logged with a
+- Logging: every refusal of `authenticateAccessToken()`, `exchangeCode()` and `refreshGrant()` is logged with a
   machine-readable `reason`, and never with the token, the code or a hash.
 - Logging: `logIn()` counts an attempt before the password is checked and refuses when the database or the hash fails;
   `refreshGrant()` answers `failed`, not a token, when revoking after a reuse fails.

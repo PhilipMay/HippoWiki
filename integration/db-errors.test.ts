@@ -4,10 +4,9 @@ import { describe, expect, it } from "vitest";
 
 import { newUserData } from "@/features/users/records";
 import {
-  API_TOKEN_ACCESS_HASH,
-  API_TOKEN_HASH,
   FOLDER_NAME,
   FOLDER_ROLE_USER,
+  GRANT_ACCESS_TOKEN_HASH,
   isAdminRoleViolation,
   isForeignKeyViolation,
   isUniqueViolation,
@@ -27,8 +26,7 @@ const NAME_CONSTRAINTS = {
   TAB_NAME,
   PAGE_NAME,
   USER_NAME,
-  API_TOKEN_HASH,
-  API_TOKEN_ACCESS_HASH,
+  GRANT_ACCESS_TOKEN_HASH,
   OAUTH_CLIENT_METADATA_URL,
   OAUTH_CODE_HASH,
   FOLDER_ROLE_USER,
@@ -156,18 +154,7 @@ describe("unique violations", () => {
     expectUniqueViolationOf(await errorOf(createUserRow("bob", { email: alice.email })), USER_NAME);
   });
 
-  it("reports a token hash that is already stored as a violation of API_TOKEN_HASH", async () => {
-    const [alice, bob] = [await createUser(), await createUser()];
-    const token = { name: "MCP client", scopes: ["read"], tokenHash: "a".repeat(64), expiresAt: new Date() };
-    await getTestDb().apiToken.create({ data: { ...token, userId: alice.id } });
-
-    expectUniqueViolationOf(
-      await errorOf(getTestDb().apiToken.create({ data: { ...token, userId: bob.id } })),
-      API_TOKEN_HASH,
-    );
-  });
-
-  it("reports an access token hash that is already stored as a violation of API_TOKEN_ACCESS_HASH", async () => {
+  it("reports an access token hash that is already stored as a violation of GRANT_ACCESS_TOKEN_HASH", async () => {
     const [alice, bob, client] = [await createUser(), await createUser(), await createClientRow()];
     const grant = {
       name: "Example",
@@ -176,22 +163,22 @@ describe("unique violations", () => {
       accessTokenHash: "b".repeat(64),
       expiresAt: new Date(),
     };
-    await getTestDb().apiToken.create({ data: { ...grant, userId: alice.id } });
+    await getTestDb().oAuthGrant.create({ data: { ...grant, userId: alice.id } });
 
     expectUniqueViolationOf(
-      await errorOf(getTestDb().apiToken.create({ data: { ...grant, userId: bob.id } })),
-      API_TOKEN_ACCESS_HASH,
+      await errorOf(getTestDb().oAuthGrant.create({ data: { ...grant, userId: bob.id } })),
+      GRANT_ACCESS_TOKEN_HASH,
     );
   });
 
-  it("allows many grants without an access token hash and many tokens without one", async () => {
+  it("allows many grants without an access token hash", async () => {
     const [alice, client] = [await createUser(), await createClientRow()];
     const grant = { name: "Example", scopes: ["read"], clientId: client.id, expiresAt: new Date(), userId: alice.id };
 
-    await getTestDb().apiToken.create({ data: grant });
-    await getTestDb().apiToken.create({ data: grant });
+    await getTestDb().oAuthGrant.create({ data: grant });
+    await getTestDb().oAuthGrant.create({ data: grant });
 
-    expect(await getTestDb().apiToken.count()).toBe(2);
+    expect(await getTestDb().oAuthGrant.count()).toBe(2);
   });
 
   it("reports a metadata URL that is already stored as a violation of OAUTH_CLIENT_METADATA_URL", async () => {
