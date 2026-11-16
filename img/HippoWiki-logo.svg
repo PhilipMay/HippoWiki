@@ -1,0 +1,180 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="800" height="800">
+  <title>Hippo der Archivar</title>
+  <defs>
+    <pattern id="dots" width="18" height="18" patternUnits="userSpaceOnUse" patternTransform="rotate(20)">
+      <circle cx="9" cy="9" r="3.2" fill="#f2b53a"/>
+    </pattern>
+    <clipPath id="bodyClip">
+      <ellipse cx="400" cy="450" rx="160" ry="135"/>
+    </clipPath>
+    <clipPath id="headClip">
+      <ellipse cx="400" cy="235" rx="110" ry="90"/>
+    </clipPath>
+    <clipPath id="muzzleClip">
+      <ellipse cx="400" cy="315" rx="140" ry="82"/>
+    </clipPath>
+  </defs>
+
+  <g stroke="#1f1a2e" stroke-width="6" stroke-linejoin="round" stroke-linecap="round">
+
+    <!-- background -->
+    <rect width="800" height="800" fill="#fff7df" stroke="none"/>
+    <circle cx="400" cy="405" r="372" fill="#ffe594" stroke="none"/>
+    <circle cx="400" cy="405" r="372" fill="url(#dots)" opacity="0.45" stroke="none"/>
+
+    <!-- hippo and books, scaled up so they fill the picture -->
+    <g transform="translate(-56 -85.4) scale(1.14)">
+
+    <!-- shadow on the ground -->
+    <ellipse cx="400" cy="738" rx="235" ry="20" fill="#1f1a2e" opacity="0.18" stroke="none"/>
+
+    <!-- bottom book: blue, spine facing us -->
+    <rect x="215" y="660" width="370" height="66" rx="6" fill="#3d7fd9"/>
+    <rect x="248" y="662" width="14" height="62" fill="#f7c531" stroke-width="3"/>
+    <rect x="538" y="662" width="14" height="62" fill="#f7c531" stroke-width="3"/>
+    <rect x="345" y="676" width="110" height="34" rx="4" fill="#e9f1ff" stroke-width="3"/>
+    <path d="M362 688 H438 M362 698 H420" stroke-width="3" fill="none"/>
+
+    <!-- middle book: red, pages facing us -->
+    <rect x="232" y="604" width="342" height="58" rx="6" fill="#e2483d"/>
+    <rect x="244" y="614" width="330" height="38" fill="#fff3d6" stroke-width="4"/>
+    <path d="M252 624 H566 M252 633 H566 M252 642 H566" stroke="#d8c39a" stroke-width="2" fill="none"/>
+
+    <!-- top book: green, sagging under the hippo -->
+    <path d="M222 552 Q400 590 582 552 L582 604 Q400 614 222 604 Z" fill="#4cb36b"/>
+    <path d="M256 559 L256 605 M270 562 L270 606 M534 562 L534 606 M548 559 L548 605" stroke="#f7c531" stroke-width="5" fill="none"/>
+    <path d="M256 559 L256 605 M548 559 L548 605" stroke="#1f1a2e" stroke-width="2" fill="none" opacity="0"/>
+
+    <!-- strain lines next to the squeezed book -->
+    <path d="M196 548 L178 538 M192 566 L170 566 M196 584 L178 594" stroke-width="4" fill="none"/>
+    <path d="M608 548 L626 538 M612 566 L634 566 M608 584 L626 594" stroke-width="4" fill="none"/>
+
+    <!-- pencil behind the right ear -->
+    <g transform="translate(425 135) rotate(25)">
+      <rect x="0" y="-10" width="120" height="20" fill="#f7c531"/>
+      <path d="M0 -3 H120" stroke="#d99a1e" stroke-width="3" fill="none"/>
+      <path d="M120 -10 L150 0 L120 10 Z" fill="#f3d6a4"/>
+      <path d="M140 -3.4 L150 0 L140 3.4 Z" fill="#1f1a2e" stroke-width="3"/>
+      <rect x="-14" y="-10" width="14" height="20" fill="#b9bcc4"/>
+      <rect x="-34" y="-10" width="20" height="20" rx="5" fill="#f28aa5"/>
+    </g>
+
+    <!-- ears -->
+    <g>
+      <ellipse cx="318" cy="168" rx="22" ry="28" transform="rotate(-25 318 168)" fill="#a99ccf"/>
+      <ellipse cx="318" cy="170" rx="10" ry="15" transform="rotate(-25 318 170)" fill="#f2a3bd" stroke-width="3"/>
+      <ellipse cx="482" cy="168" rx="22" ry="28" transform="rotate(25 482 168)" fill="#a99ccf"/>
+      <ellipse cx="482" cy="170" rx="10" ry="15" transform="rotate(25 482 170)" fill="#f2a3bd" stroke-width="3"/>
+    </g>
+
+    <!-- body with cel shading -->
+    <g clip-path="url(#bodyClip)" stroke="none">
+      <rect x="230" y="300" width="340" height="300" fill="#8a7cb6"/>
+      <ellipse cx="378" cy="438" rx="160" ry="135" fill="#a99ccf"/>
+    </g>
+    <ellipse cx="400" cy="450" rx="160" ry="135" fill="none"/>
+    <ellipse cx="400" cy="488" rx="105" ry="88" fill="#cbc1ea" stroke="none"/>
+
+    <!-- hind feet dangling over the book stack -->
+    <g>
+      <ellipse cx="300" cy="582" rx="54" ry="42" fill="#a99ccf"/>
+      <ellipse cx="300" cy="592" rx="34" ry="24" fill="#f2b3c8" stroke-width="4"/>
+      <circle cx="280" cy="563" r="7" fill="#f2b3c8" stroke-width="3"/>
+      <circle cx="300" cy="558" r="7" fill="#f2b3c8" stroke-width="3"/>
+      <circle cx="320" cy="563" r="7" fill="#f2b3c8" stroke-width="3"/>
+      <ellipse cx="500" cy="582" rx="54" ry="42" fill="#a99ccf"/>
+      <ellipse cx="500" cy="592" rx="34" ry="24" fill="#f2b3c8" stroke-width="4"/>
+      <circle cx="480" cy="563" r="7" fill="#f2b3c8" stroke-width="3"/>
+      <circle cx="500" cy="558" r="7" fill="#f2b3c8" stroke-width="3"/>
+      <circle cx="520" cy="563" r="7" fill="#f2b3c8" stroke-width="3"/>
+    </g>
+
+    <!-- open book, seen from behind -->
+    <g>
+      <path d="M292 410 Q345 404 397 436 L397 446 L290 421 Z" fill="#fff3d6" stroke-width="4"/>
+      <path d="M508 410 Q455 404 403 436 L403 446 L510 421 Z" fill="#fff3d6" stroke-width="4"/>
+      <path d="M290 421 L397 446 L397 546 L290 522 Z" fill="#e2483d"/>
+      <path d="M510 421 L403 446 L403 546 L510 522 Z" fill="#e2483d"/>
+      <path d="M393 444 L407 444 L407 550 L393 550 Z" fill="#b8322a"/>
+      <text transform="translate(350 466) skewY(13)" text-anchor="middle" font-family="'Arial Black', 'Helvetica Neue', Arial, sans-serif" font-weight="900" font-size="23" fill="#f7c531" stroke-width="2.5" paint-order="stroke">Hippo</text>
+      <text transform="translate(450 466) skewY(-13)" text-anchor="middle" font-family="'Arial Black', 'Helvetica Neue', Arial, sans-serif" font-weight="900" font-size="23" fill="#f7c531" stroke-width="2.5" paint-order="stroke">Wiki</text>
+    </g>
+
+    <!-- front legs holding the book -->
+    <g>
+      <ellipse cx="282" cy="452" rx="34" ry="54" transform="rotate(28 282 452)" fill="#a99ccf"/>
+      <ellipse cx="298" cy="492" rx="25" ry="21" fill="#a99ccf"/>
+      <path d="M292 503 L294 511 M304 503 L306 511" stroke-width="3" fill="none"/>
+      <ellipse cx="518" cy="452" rx="34" ry="54" transform="rotate(-28 518 452)" fill="#a99ccf"/>
+      <ellipse cx="502" cy="492" rx="25" ry="21" fill="#a99ccf"/>
+      <path d="M508 503 L506 511 M496 503 L494 511" stroke-width="3" fill="none"/>
+    </g>
+
+    <!-- eye bumps (behind the head outline) -->
+    <circle cx="358" cy="170" r="30" fill="#a99ccf"/>
+    <circle cx="442" cy="170" r="30" fill="#a99ccf"/>
+
+    <!-- head -->
+    <ellipse cx="400" cy="235" rx="110" ry="90" fill="#a99ccf"/>
+    <g clip-path="url(#headClip)" stroke="none">
+      <ellipse cx="470" cy="250" rx="60" ry="95" fill="#8a7cb6" opacity="0.55"/>
+    </g>
+    <!-- fill the joints between bumps and head -->
+    <circle cx="358" cy="176" r="25" fill="#a99ccf" stroke="none"/>
+    <circle cx="442" cy="176" r="25" fill="#a99ccf" stroke="none"/>
+
+    <!-- muzzle -->
+    <ellipse cx="400" cy="315" rx="140" ry="82" fill="#c6b6e4"/>
+    <g clip-path="url(#muzzleClip)" stroke="none">
+      <ellipse cx="400" cy="400" rx="150" ry="45" fill="#ad9fd6" opacity="0.6"/>
+    </g>
+    <ellipse cx="312" cy="286" rx="16" ry="8" transform="rotate(-25 312 286)" fill="#ffffff" opacity="0.7" stroke="none"/>
+
+    <!-- blush -->
+    <ellipse cx="300" cy="335" rx="22" ry="13" fill="#f28aa5" opacity="0.6" stroke="none"/>
+    <ellipse cx="500" cy="335" rx="22" ry="13" fill="#f28aa5" opacity="0.6" stroke="none"/>
+
+    <!-- nostrils -->
+    <ellipse cx="345" cy="296" rx="10" ry="14" transform="rotate(-15 345 296)" fill="#3a2f55" stroke-width="3"/>
+    <ellipse cx="455" cy="296" rx="10" ry="14" transform="rotate(15 455 296)" fill="#3a2f55" stroke-width="3"/>
+
+    <!-- smile with two little teeth -->
+    <path d="M378 362 L380 376 L394 376 L394 365 Z" fill="#ffffff" stroke-width="3"/>
+    <path d="M406 365 L406 376 L420 376 L422 362 Z" fill="#ffffff" stroke-width="3"/>
+    <path d="M330 346 Q400 384 470 346" fill="none" stroke-width="5"/>
+
+    <!-- eyes looking down into the book -->
+    <circle cx="358" cy="174" r="19" fill="#ffffff" stroke-width="4"/>
+    <circle cx="442" cy="174" r="19" fill="#ffffff" stroke-width="4"/>
+    <circle cx="361" cy="183" r="9" fill="#1f1a2e" stroke="none"/>
+    <circle cx="445" cy="183" r="9" fill="#1f1a2e" stroke="none"/>
+    <circle cx="364" cy="179" r="3" fill="#ffffff" stroke="none"/>
+    <circle cx="448" cy="179" r="3" fill="#ffffff" stroke="none"/>
+    <!-- half-closed lids: deep in thought -->
+    <path d="M339 172 Q358 152 377 172 Q358 166 339 172 Z" fill="#a99ccf" stroke-width="4"/>
+    <path d="M423 172 Q442 152 461 172 Q442 166 423 172 Z" fill="#a99ccf" stroke-width="4"/>
+    <!-- eyebrows -->
+    <path d="M334 136 Q352 126 372 134" fill="none" stroke-width="5"/>
+    <path d="M428 134 Q448 124 466 134" fill="none" stroke-width="5"/>
+
+    <!-- small nickel glasses on the broad nose -->
+    <g stroke="#6c717c" stroke-width="5">
+      <circle cx="376" cy="250" r="18" fill="#dff2ff" fill-opacity="0.55"/>
+      <circle cx="424" cy="250" r="18" fill="#dff2ff" fill-opacity="0.55"/>
+      <path d="M393 246 Q400 240 407 246" fill="none"/>
+      <path d="M358 247 Q330 236 318 214 M442 247 Q470 236 482 214" fill="none" stroke-width="4"/>
+    </g>
+    <path d="M368 242 L374 236 M416 242 L422 236" stroke="#ffffff" stroke-width="3" fill="none"/>
+    <g fill="none" stroke="#1f1a2e" stroke-width="2">
+      <circle cx="376" cy="250" r="21"/>
+      <circle cx="424" cy="250" r="21"/>
+    </g>
+
+    </g>
+
+    <!-- sparkles -->
+    <path d="M150 170 L156 186 L172 192 L156 198 L150 214 L144 198 L128 192 L144 186 Z" fill="#ffffff" stroke-width="3"/>
+    <path d="M640 150 L648 172 L670 180 L648 188 L640 210 L632 188 L610 180 L632 172 Z" fill="#ffffff" stroke-width="4"/>
+    <path d="M690 260 L695 273 L708 278 L695 283 L690 296 L685 283 L672 278 L685 273 Z" fill="#ffffff" stroke-width="3"/>
+  </g>
+</svg>
