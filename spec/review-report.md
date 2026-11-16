@@ -949,10 +949,9 @@ finding of the review report" in `step-plan-workflow.md` describes.
   refused as a refresh token with `400 invalid_grant`.
 - The removed API tokens (OWASP Secrets Management Cheat Sheet, "Detection"): there are no long-lived secrets that a
   user copies by hand any more, so the format of such a secret no longer needs to let secret scanners recognise a
-  leak. The migration `prisma/migrations/20261116120000_remove_api_tokens/` deletes every row without a client, and a
+  leak. A
   former API token of the shape `hw_…` is answered at `/mcp` like any other value that is no access token, with `401`.
-  Checked by `e2e/mcp.spec.ts` and by `integration/grant-service.test.ts`, and on the development database, where a
-  stored API token was gone after the migration while a grant kept working.
+  Checked by `e2e/mcp.spec.ts` and by `integration/grant-service.test.ts`.
 - Owner checks (ASVS 8.2.2): see the area "Access control"; only the actor's own grants are listed and revoked.
 - Tokens in addresses, logs and pages (ASVS 14.2.1): only the id of a grant is part of `?action=revoke&app=`; no
   logger call has a token or a hash.

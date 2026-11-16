@@ -86,24 +86,12 @@ such as `src/features/grants/service.test.ts`.
 - `/account` of an admin, and of every user while `HIPPOWIKI_PUBLIC_URL` is not set, shows the user name only, with
   no list; every action and every `app` shows the not-found page.
 
-## The update that removed the API tokens
-
-- Earlier versions let a user create long-lived API tokens (`hw_…`) on `/account` and send them as bearer tokens.
-  The update that removed them deletes every API token of every user, in its migration
-  (`prisma/migrations/20261116120000_remove_api_tokens/`), and keeps every grant with its ids, hashes and dates, so
-  that connected apps keep working.
-- The deletion is not logged; the README tells the operator about it. A tool that still sends an API token gets 401
-  at `/mcp`, and its user connects it again through OAuth.
-
 ## Decisions
 
 - An AI assistant reaches the MCP server only through OAuth, as an app the user approved, not with a token the user
   copies by hand: one way in instead of two, no long-lived secret on the clipboard, and less code to keep secure.
   Headless clients and clients without OAuth lose access, accepted by the user; a later feature can bring a
   replacement (see `roadmap.md`).
-- Existing API tokens were deleted on the update, rather than left to expire: one clean cut, without keeping the
-  check of API tokens alive for up to a year. The operator learns of it from the README, not from a log line of the
-  update. Rejected: a log line with the number of deleted tokens.
 - An access token is hashed with SHA-256 and not with Argon2 like a password: it has 256 random bits, so there is
   nothing to guess, and a fast hash can be looked up directly by its value.
 - A grant is not a session of Better Auth ("Bearer token sessions" in `roadmap.md`): it has a scope and a lifetime of

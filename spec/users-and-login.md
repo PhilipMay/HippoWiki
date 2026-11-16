@@ -69,7 +69,7 @@ and `src/lib/client-address.test.ts`.
   as the role on each folder allows, creates folders, holds connected apps and uses the wiki through MCP. A user sees
   the user list but creates no accounts.
 - The type is chosen when an account is created and never changes, by anyone and in any way: no page, form, dialog,
-  tool or command offers to change it, and a trigger of the migration refuses every update of the database that
+  tool or command offers to change it, and a trigger of the migration `prisma/migrations/20261116103037_init/` refuses every update of the database that
   changes it. A person who needs both jobs has two accounts.
 - There can be any number of admins. Every admin manages the accounts like the first one.
 - Admin tasks are done only in the browser, with the session of an admin: no admin task is reachable through MCP or a
@@ -330,13 +330,6 @@ the authentication guide of Next.js describes:
 - The seed and the tests have a known admin and a known user (`prisma/known-users.ts`), both with the password change
   already done. The seed upserts them by name, because an admin that `npm run admin:setup` created has another id, and
   sets the type only when it creates one. The sample content has the known user as its last editor.
-
-## Existing installations
-
-- The migration that brought the types made the account named `admin` an admin and every other account a user, and
-  removed the tokens, the grants and the authorization codes of `admin`. After the update `admin` sees the user
-  list and no content, and creates a user account for whoever needs to keep working in the wiki.
-- Content that `admin` edited before keeps showing that name as its last editor.
 
 ## Current limits
 

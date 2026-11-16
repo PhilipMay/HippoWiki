@@ -7,7 +7,7 @@ who changed it last and when. The rule lives in the page service, so that every 
 described in `pages.md`, moving and renaming in `content-structure.md`, deleting and restoring in `page-deletion.md`.
 
 Code: the version of a page in `Page` of `prisma/schema.prisma` and the migration
-`prisma/migrations/20261116082523_add_page_version/`, the check in `updatePageContent`, `moveOrRenamePage` and
+`prisma/migrations/20261116103037_init/`, the check in `updatePageContent`, `moveOrRenamePage` and
 `deletePage` of `src/features/pages/service.ts`, the version of a form in `src/features/pages/forms.ts`, the notice of
 a page address in `src/lib/addresses.ts` and `src/features/pages/components/PageView.tsx`, the editor and the dialogs
 in `src/features/pages/components/`. Tests: `integration/page-service.test.ts`, the unit tests next to the code
@@ -92,7 +92,7 @@ in `src/features/pages/components/`. Tests: `integration/page-service.test.ts`, 
 - The state of a page is an integer version, not the time of the last change: that time comes from the clock of the
   app, which can jump back or differ between instances, and an exact time is more fragile to send back through a form
   field or an MCP call and compare than an integer. Rejected: comparing the time of the last change, which would have
-  saved the migration.
+  needed no column of its own.
 - The check is part of the write itself, so that no change can slip in between a check and the write.
 - A refused change redirects to the page's address as stored, with its action and the notice, for every case alike,
   also when the address has changed. Rejected: returning the current page in the form state without a redirect,

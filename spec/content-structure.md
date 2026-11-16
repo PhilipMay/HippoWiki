@@ -10,8 +10,9 @@ Code: `src/features/folders/` (folders and tabs), `src/features/pages/` (pages),
 `e2e/folders.spec.ts`, `e2e/tabs.spec.ts`, `e2e/all-pages.spec.ts`, `e2e/create-page.spec.ts`,
 `e2e/move-or-rename-page.spec.ts`, `e2e/access.spec.ts`, `src/lib/names.test.ts`, `src/lib/addresses.test.ts`,
 `integration/folder-service.test.ts`, `integration/page-service.test.ts`, `integration/db-errors.test.ts`. The last
-editor: the writes of `src/features/folders/service.ts` and `src/features/pages/service.ts`, the migration
-`prisma/migrations/20261113120000_add_last_editor/`.
+editor: the writes of `src/features/folders/service.ts` and `src/features/pages/service.ts`, the relation
+`lastEditedBy` of `Folder`, `Tab` and `Page` in `prisma/schema.prisma` and the migration
+`prisma/migrations/20261116103037_init/`.
 
 ## Overview
 

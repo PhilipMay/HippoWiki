@@ -104,7 +104,7 @@ export function isForeignKeyViolation(err: unknown, key?: ForeignKey): boolean {
 /** The SQLSTATE of a `check_violation`, which the triggers of the migrations raise. */
 const CHECK_VIOLATION = "23514";
 
-/** The message of the trigger that refuses a role of an admin (`prisma/migrations/*_add_folder_roles/`). */
+/** The message of the trigger that refuses a role of an admin (`prisma/migrations/20261116103037_init/`). */
 const ADMIN_ROLE_MESSAGE = "an admin cannot have a role on a folder";
 
 /**

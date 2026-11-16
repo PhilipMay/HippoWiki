@@ -153,11 +153,6 @@ To connect an app, such as Claude Code or the connector of claude.ai or ChatGPT:
 A client that cannot connect through OAuth cannot use the MCP server. The tools list the folders, list the tabs and
 pages of a folder and read a page (`spec/mcp.md`).
 
-API tokens are gone: earlier versions let a user create a token on `/account` and send it as a bearer token. The
-update deletes every existing API token, without a log line; a tool that still sends one gets 401, and its user
-connects it again through OAuth as above. Connected apps stay and keep working. MCP now needs `HIPPOWIKI_PUBLIC_URL`
-and a client that connects through OAuth.
-
 ## End-to-end tests
 
 The end-to-end tests use [Playwright](https://playwright.dev/) with Chromium and live in `e2e/`. Install the browser

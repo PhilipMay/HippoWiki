@@ -31,11 +31,10 @@ The specification lives in the `spec/` directory. This catalog should always be 
   list of common passwords and the context words, the account types admin and user, the admin setup, login and
   logout, sessions, the way back after a login and where it leads each type, failed logins with the wait per user
   name and client address group and the hour window per user name, authenticated access only, forced password change,
-  the user list for every account and creating accounts of either type, routes, decisions, existing installations,
-  limits)
+  the user list for every account and creating accounts of either type, routes, decisions, limits)
 - `spec/connected-apps.md`: the connected apps as built (the grants of users to OAuth clients, the limit of 20 per
   user, the own apps only, no apps for admins, the account page without a public URL, the check of an access token
-  with its codes, the own account page `/account`, the update that removed the API tokens, decisions, limits)
+  with its codes, the own account page `/account`, decisions, limits)
 - `spec/mcp.md`: the MCP server as built (the endpoint `/mcp`, off without the public URL, stateless with JSON answers,
   the access tokens it accepts, the read tools, decisions, limits)
 - `spec/oauth.md`: OAuth for MCP clients as built (switching it on with the public URL, discovery, clients by
@@ -47,8 +46,8 @@ The specification lives in the `spec/` directory. This catalog should always be 
   other than the browser, restoring unchecked, editors and dialogs open over a deployment, decisions, limits)
 - `spec/folder-roles.md`: folder roles as built (the roles Reader, Writer, Manager and Owner per user and folder and
   what each may do in the browser, admins never have a role, what a user sees and does, creating folders, the roles
-  view, giving, changing and removing roles with the last Owner kept, the admin overview `/folder-roles`, MCP, existing
-  installations, decisions, limits)
+  view, giving, changing and removing roles with the last Owner kept, the admin overview `/folder-roles`, MCP, decisions,
+  limits)
 - `spec/squash-migrations-steps.md`: step plan that replaces the migrations with a single `init` migration and
   removes the documents of updates of existing installations
 - `spec/roadmap.md`: backlog of candidate features, grouped by theme, and things still to check

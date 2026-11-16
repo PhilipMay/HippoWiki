@@ -22,6 +22,9 @@ the deletion of the API tokens) and the documents that describe those updates go
     that removed the API tokens" in `connected-apps.md`, the paragraph on the removed API tokens in `README.md`, and
     the sentences of `review-report.md` that rely on the migration that removed them
   - the rule in `architecture.md` that the history of migrations starts with this `init`, and why
+  - the check of `/mcp` in the smoke test of the container image (`scripts/image.sh`), which still expected `405`
+    without `HIPPOWIKI_PUBLIC_URL` instead of the `404` that `mcp.md` describes; added with the approval of the user,
+    because the smoke test of this plan failed on it
 - Not in:
   - any change to `prisma/schema.prisma` or to the database it describes: tables, columns, indexes, constraints and
     triggers stay as they are
@@ -33,7 +36,7 @@ the deletion of the API tokens) and the documents that describe those updates go
 
 ## Checklist
 
-- [ ] Replace the migrations with one init
+- [x] Replace the migrations with one init
 - [ ] Wrap-up
 
 ## Replace the migrations with one init
@@ -66,6 +69,8 @@ documents points to the old migrations or to an update of an existing installati
   against the database of the new migration. Remove both containers afterwards.
 - Delete the 20 old migration directories; keep `prisma/migrations/migration_lock.toml`.
 - Update the comment of `ADMIN_ROLE_MESSAGE` in `src/lib/db-errors.ts`, which points to `*_add_folder_roles`.
+- In `scripts/image.sh`, the smoke test expects `404` at `/mcp` without `HIPPOWIKI_PUBLIC_URL`, and its comments say
+  why.
 - Update the documents (the pointers are checked by `npm run docs:check`, so they change in this step):
   - `architecture.md`, "Database": the examples of hand-written SQL point to the `init` migration.
   - `content-structure.md`, `optimistic-locking.md` and `folder-roles.md`: the pointers in "Code" point to

@@ -11,7 +11,7 @@ components of the roles view, the "Give role" dialog and the admin overview), th
 `src/features/folders/service.ts` and `src/features/pages/service.ts`, the folder route
 `src/app/folders/[folder]/page.tsx` (the view `roles` and the action `give-role`), the routes of tabs, pages and
 deleted pages, the overview `src/app/folder-roles/page.tsx`, the model `FolderRole` in `prisma/schema.prisma` and the
-migration `prisma/migrations/20261115210306_add_folder_roles/`.
+migration `prisma/migrations/20261116103037_init/`.
 
 Tests: `e2e/folder-roles.spec.ts`, `e2e/mcp.spec.ts`, `e2e/access.spec.ts`, `e2e/hydration.spec.ts`,
 `integration/folder-role-service.test.ts`, `integration/folder-service.test.ts`, `integration/page-service.test.ts`,
@@ -49,7 +49,7 @@ and `src/features/folder-roles/service.test.ts`.
 - The services refuse it: the "Give role" dialog never lists an admin, a submitted name of an admin is answered like an
   unknown name, and creating a folder is refused for an admin before anything is written, so that no admin becomes an
   Owner.
-- The database refuses it as a second line: a trigger of the migration refuses every insert and update of a role whose
+- The database refuses it as a second line: a trigger of the migration `prisma/migrations/20261116103037_init/` refuses every insert and update of a role whose
   user is an admin. The type of an account never changes, so the check at insert and update is enough.
 
 ## What a user sees and does
@@ -116,11 +116,6 @@ and `src/features/folder-roles/service.test.ts`.
   `mcp.md`). The reads of the content take the channel of the call, `browser` or `mcp`, as a required part of the
   actor, so that no caller can leave it out; MCP has no writes, so a write is always one of the browser.
 
-## Existing installations
-
-- The migration made every existing account of the type user Owner of every existing folder, so that nobody lost
-  access on the day of the update; admins got no role. On an empty database it inserts nothing.
-
 ## Decisions
 
 - Roles are cumulative, so that a user needs only one role per folder and the matrix is easy to explain. Rejected:
@@ -175,9 +170,6 @@ and `src/features/folder-roles/service.test.ts`.
   Rejected: a view of the user list.
 - Saving and cancelling the "Give role" dialog lead to the folder, like every other dialog, so that the rule for
   dialogs has no exception. Rejected: back to the roles view.
-- On the update every existing user became Owner of every existing folder, so that nobody lost access on the day of
-  the update. Rejected: the last editor as the only Owner, and the last editor as Owner with every other user as
-  Writer.
 - A folder, tab or page that does not exist answers like one without a role, so that a write by id tells nothing about
   whether the id exists. Folders and tabs are never deleted and pages only softly, so a user meets this only with a
   crafted request; a page deleted in the meantime still shows that it no longer exists.

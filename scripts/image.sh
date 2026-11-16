@@ -278,8 +278,8 @@ smoke_users() {
 #   Argon2id hash; @node-rs/argon2 loads and hashes in /app.
 # - /login answers and stores the secret of the session cookies, sends the security headers of next.config.ts and no
 #   X-Powered-By, and its first /_next/static/ file answers; /folders and the image optimizer redirect to the login.
-# - /mcp answers 405 to a GET instead of redirecting to the login, and the metadata of the OAuth authorization server
-#   is not found, because the container has no HIPPOWIKI_PUBLIC_URL.
+# - /mcp and the metadata of the OAuth authorization server are not found instead of redirecting to the login,
+#   because the container has no HIPPOWIKI_PUBLIC_URL.
 # - /api/health answers on 127.0.0.1 inside the container; the server does not run as root; there is no .env file;
 #   the user node can write only the cache of Next.js.
 # - A second container without HIPPOWIKI_ADMIN_PASSWORD serves, applies no migration and leaves the admin as it was.
@@ -351,9 +351,9 @@ cmd_smoke() {
   smoke_require_login_redirect /folders
   smoke_require_login_redirect "/_next/image?url=%2Ffolders&w=64&q=75" \
     "%2F_next%2Fimage%3Furl%3D%252Ffolders%26w%3D64%26q%3D75"
-  # The MCP endpoint is not behind the login: it asks for a bearer token itself, and takes only POST. Without
-  # HIPPOWIKI_PUBLIC_URL there is no OAuth, so its endpoints are not found.
-  smoke_require_status /mcp 405
+  # The MCP endpoint is not behind the login. Without HIPPOWIKI_PUBLIC_URL there is no OAuth and therefore no MCP
+  # server, so the endpoint and those of OAuth are not found.
+  smoke_require_status /mcp 404
   smoke_require_status /.well-known/oauth-authorization-server 404
 
   # The published port reaches the address of the pod; this shows that the server listens on 127.0.0.1 as well,
