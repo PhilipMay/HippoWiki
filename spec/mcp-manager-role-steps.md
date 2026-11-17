@@ -20,7 +20,7 @@ in the browser. The plan is written from `spec/mcp-manager-role-requirements.md`
 
 ## Checklist
 
-- [ ] The services take the actor of MCP for deleting pages and for tabs
+- [x] The services take the actor of MCP for deleting pages and for tabs
 - [ ] The Manager address
 - [ ] The tools `delete_page`, `create_tab` and `rename_tab`
 - [ ] The tool `delete_tab` and the instructions of a Manager connection

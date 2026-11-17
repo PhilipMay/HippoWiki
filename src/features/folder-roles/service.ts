@@ -44,6 +44,14 @@ export type McpActor = Actor & { channel: "mcp"; connection: McpConnection };
 /** The actor of a read or a write of the content, together with the channel of the call, which no caller can leave out. */
 export type ContentActor = BrowserActor | McpActor;
 
+/**
+ * Where a write comes from, for its log line: the channel and, for MCP, the grant of the connection. The content itself
+ * does not show it; its last editor is the user in both channels.
+ */
+export function channelOf(actor: ContentActor): { channel: "browser" } | { channel: "mcp"; grantId: string } {
+  return actor.channel === "mcp" ? { channel: "mcp", grantId: actor.connection.grantId } : { channel: "browser" };
+}
+
 /** The actor of the browser for the given user, as the queries and actions pass it to the services. */
 export function inBrowser(user: Actor): BrowserActor {
   return { id: user.id, name: user.name, type: user.type, channel: "browser" };

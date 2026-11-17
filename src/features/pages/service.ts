@@ -16,6 +16,7 @@ import { z } from "zod";
 
 import { mayDo, type FolderFunction, type Role } from "@/features/folder-roles/roles";
 import {
+  channelOf,
   folderRoleOf,
   mayReadFolder,
   mayReadTab,
@@ -357,14 +358,6 @@ function unknownActor(err: unknown, actor: Actor): { ok: false; error: Failed } 
 }
 
 /**
- * Where a write comes from, for its log line: the channel and, for MCP, the grant of the connection. The page itself
- * does not show it; its last editor is the user in both channels.
- */
-function channelOf(actor: ContentActor): { channel: "browser" } | { channel: "mcp"; grantId: string } {
-  return actor.channel === "mcp" ? { channel: "mcp", grantId: actor.connection.grantId } : { channel: "browser" };
-}
-
-/**
  * The tab of a place: the id of a tab, `null` for the folder itself, or `undefined` if the id is malformed, so that
  * it never reaches the database.
  */
@@ -578,10 +571,10 @@ export async function moveOrRenamePage(
  * can be restored; it gets the time of deletion and loses its tab, because its place inside the folder is forgotten.
  * The actor becomes its last editor: for a deleted page, the user who deleted it. A page that is already deleted
  * counts as missing. The delete is based on the given version of the page: if the page has another one, or no valid
- * version is given, nothing is deleted and the result is `page-changed`.
+ * version is given, nothing is deleted and the result is `page-changed`. It is a write of the browser or of MCP.
  */
 export async function deletePage(
-  actor: BrowserActor,
+  actor: ContentActor,
   id: string,
   input: { version: number | null },
 ): Promise<Result<PagePlace, DeletePageError>> {

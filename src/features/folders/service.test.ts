@@ -28,7 +28,7 @@ const mocks = vi.hoisted(() => ({
   tabUpdateMany: vi.fn(),
   folderRoleFindFirst: vi.fn(),
   queryRaw: vi.fn(),
-  pageUpdateMany: vi.fn(),
+  pageUpdateManyAndReturn: vi.fn(),
   tabDelete: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
@@ -54,7 +54,11 @@ vi.mock("@/lib/db", () => ({
     folderRole: { findFirst: mocks.folderRoleFindFirst },
     // An interactive transaction runs its callback with a client of its own; here with the mocks of the deletion.
     $transaction: (fn: (tx: unknown) => Promise<unknown>) =>
-      fn({ $queryRaw: mocks.queryRaw, page: { updateMany: mocks.pageUpdateMany }, tab: { delete: mocks.tabDelete } }),
+      fn({
+        $queryRaw: mocks.queryRaw,
+        page: { updateManyAndReturn: mocks.pageUpdateManyAndReturn },
+        tab: { delete: mocks.tabDelete },
+      }),
   }),
 }));
 vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, error: mocks.error } }));
@@ -72,7 +76,7 @@ const databaseCalls = [
   mocks.tabUpdateMany,
   mocks.folderRoleFindFirst,
   mocks.queryRaw,
-  mocks.pageUpdateMany,
+  mocks.pageUpdateManyAndReturn,
   mocks.tabDelete,
 ];
 
@@ -82,7 +86,7 @@ const writeCalls = [
   mocks.folderUpdateMany,
   mocks.tabCreate,
   mocks.tabUpdateMany,
-  mocks.pageUpdateMany,
+  mocks.pageUpdateManyAndReturn,
   mocks.tabDelete,
 ];
 
@@ -524,7 +528,7 @@ describe("createTab", () => {
       data: { name: "guides", folderId: FOLDER_ID, lastEditedById: ACTOR_ID },
       select: STORED_TAB_SELECT,
     });
-    expect(mocks.info).toHaveBeenCalledWith({ tabId: TAB_ID }, "tab created");
+    expect(mocks.info).toHaveBeenCalledWith({ tabId: TAB_ID, channel: "browser" }, "tab created");
   });
 
   it.each(tabNameTakenErrors)("returns name-taken for a unique violation %s", async (_name, err) => {
@@ -587,7 +591,7 @@ describe("renameTab", () => {
       data: { name: "guides", lastEditedById: ACTOR_ID },
     });
     expect(mocks.tabFindUnique).toHaveBeenCalledWith({ where: { id: TAB_ID }, select: STORED_TAB_SELECT });
-    expect(mocks.info).toHaveBeenCalledWith({ tabId: TAB_ID }, "tab renamed");
+    expect(mocks.info).toHaveBeenCalledWith({ tabId: TAB_ID, channel: "browser" }, "tab renamed");
   });
 
   it("returns tab-not-found for a tab that no longer exists", async () => {
@@ -651,39 +655,53 @@ describe("deleteTab", () => {
     });
   });
 
-  it("locks the tab, soft deletes its pages, deletes the tab and returns the folder and the number of pages", async () => {
-    mocks.pageUpdateMany.mockResolvedValue({ count: 2 });
+  it("locks the tab, soft deletes its pages, deletes the tab and returns the folder and the pages by name", async () => {
+    mocks.pageUpdateManyAndReturn.mockResolvedValue([
+      { name: "second", title: "Second" },
+      { name: "first", title: "First" },
+    ]);
     mocks.tabDelete.mockResolvedValue({ id: TAB_ID });
 
     await expect(deleteTab(ACTOR, FOLDER_ID, TAB_ID)).resolves.toEqual({
       ok: true,
-      value: { folder: { id: FOLDER_ID, name: "handbook" }, pageCount: 2 },
+      value: {
+        folder: { id: FOLDER_ID, name: "handbook" },
+        pageCount: 2,
+        pages: [
+          { name: "first", title: "First" },
+          { name: "second", title: "Second" },
+        ],
+      },
     });
 
     const [strings, ...values] = mocks.queryRaw.mock.calls[0] ?? [];
     expect(strings.join("?")).toMatch(/FROM "Tab" t JOIN "Folder" f[\s\S]*FOR UPDATE OF t/);
     expect(values).toEqual([TAB_ID, FOLDER_ID]);
     // Without a version: whatever is in the tab now is deleted with it.
-    expect(mocks.pageUpdateMany).toHaveBeenCalledExactlyOnceWith({
+    expect(mocks.pageUpdateManyAndReturn).toHaveBeenCalledExactlyOnceWith({
       where: { tabId: TAB_ID },
       data: { deletedAt: expect.any(Date), tabId: null, lastEditedById: ACTOR_ID, version: { increment: 1 } },
+      select: { name: true, title: true },
     });
     expect(mocks.tabDelete).toHaveBeenCalledExactlyOnceWith({ where: { id: TAB_ID } });
     // The lock comes first, the tab goes last, when it has no pages left.
-    expect(mocks.queryRaw).toHaveBeenCalledBefore(mocks.pageUpdateMany);
-    expect(mocks.pageUpdateMany).toHaveBeenCalledBefore(mocks.tabDelete);
+    expect(mocks.queryRaw).toHaveBeenCalledBefore(mocks.pageUpdateManyAndReturn);
+    expect(mocks.pageUpdateManyAndReturn).toHaveBeenCalledBefore(mocks.tabDelete);
     // The folder is not written.
     expect(mocks.folderUpdateMany).not.toHaveBeenCalled();
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
-      { actorId: ACTOR_ID, folderId: FOLDER_ID, tabId: TAB_ID, pageCount: 2 },
+      { actorId: ACTOR_ID, folderId: FOLDER_ID, tabId: TAB_ID, pageCount: 2, channel: "browser" },
       "tab deleted",
     );
   });
 
   it("deletes a tab without pages", async () => {
-    mocks.pageUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.pageUpdateManyAndReturn.mockResolvedValue([]);
 
-    await expect(deleteTab(ACTOR, FOLDER_ID, TAB_ID)).resolves.toMatchObject({ ok: true, value: { pageCount: 0 } });
+    await expect(deleteTab(ACTOR, FOLDER_ID, TAB_ID)).resolves.toMatchObject({
+      ok: true,
+      value: { pageCount: 0, pages: [] },
+    });
     expect(mocks.tabDelete).toHaveBeenCalledOnce();
   });
 
@@ -702,10 +720,10 @@ describe("deleteTab", () => {
 
   it.each([
     ["an error of the lock", mocks.queryRaw],
-    ["an error of the update of the pages", mocks.pageUpdateMany],
+    ["an error of the update of the pages", mocks.pageUpdateManyAndReturn],
     ["an error of the delete of the tab", mocks.tabDelete],
   ])("returns failed for %s and logs it", async (_name, call) => {
-    mocks.pageUpdateMany.mockResolvedValue({ count: 1 });
+    mocks.pageUpdateManyAndReturn.mockResolvedValue([{ name: "intro", title: "Intro" }]);
     const err = new Error("connection lost");
     call.mockRejectedValue(err);
 
@@ -745,7 +763,7 @@ const writes = [
   [
     "deleteTab",
     (actor: BrowserActor) => deleteTab(actor, FOLDER_ID, TAB_ID),
-    mocks.pageUpdateMany,
+    mocks.pageUpdateManyAndReturn,
     "Page_lastEditedById_fkey",
   ],
 ] as const;
@@ -942,7 +960,7 @@ describe("the lowest role of each function", () => {
     mocks.tabCreate.mockResolvedValue({ id: TAB_ID, name: "guides", folder: { name: "handbook" } });
     mocks.tabUpdateMany.mockResolvedValue({ count: 1 });
     mocks.tabFindUnique.mockResolvedValue({ id: TAB_ID, name: "guides", folder: { name: "handbook" } });
-    mocks.pageUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.pageUpdateManyAndReturn.mockResolvedValue([]);
 
     const result = await write();
 

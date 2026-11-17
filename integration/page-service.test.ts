@@ -1126,4 +1126,17 @@ describe("writes through MCP", () => {
 
     expect(await getTestDb().page.findMany({ orderBy: { name: "asc" } })).toStrictEqual(before);
   });
+
+  it("refuse a delete through a Writer connection, which keeps the page undeleted with its version", async () => {
+    const folder = await createFolder({ name: "projects", roles: [{ user, role: "owner" }] });
+    const page = await createPage({ folder, name: "plan", version: 3 });
+    const writer = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "writer" });
+    const before = await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } });
+
+    await expect(pageService.deletePage(writer, page.id, { version: 3 })).resolves.toEqual(NOT_ALLOWED);
+
+    const after = await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } });
+    expect(after).toStrictEqual(before);
+    expect(after).toMatchObject({ deletedAt: null, version: 3 });
+  });
 });

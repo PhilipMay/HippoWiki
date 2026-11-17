@@ -7,15 +7,17 @@
 // checked and without asking the database. In the browser a user sees only the folders with a role of the user on
 // them: for any other folder every read returns `null` and every write `not-allowed`, as if it did not exist, and a
 // write needs the lowest role of its function (`FUNCTION_ROLES` in `roles.ts`), checked after the admin and before
-// anything else but the actor. Through MCP a user reads only the folder of the connection, with the lower of the
-// user's role and the role of the connection; every other folder reads like one that does not exist. A write stores
-// the actor as the last editor of the folder or tab, in the same write that changes `updatedAt`; deleting a tab stores
-// the actor as the last editor of the pages it deletes with the tab.
+// anything else but the actor. Through MCP a user works only on the folder of the connection, with the lower of the
+// user's role and the role of the connection; every other folder reads like one that does not exist, and a write there
+// is `not-allowed`. Folders are created and renamed only in the browser; tabs are created, renamed and deleted in the
+// browser and through MCP. A write stores the actor as the last editor of the folder or tab, in the same write that
+// changes `updatedAt`; deleting a tab stores the actor as the last editor of the pages it deletes with the tab.
 
 import { z } from "zod";
 
 import { mayDo, type FolderFunction, type Role } from "@/features/folder-roles/roles";
 import {
+  channelOf,
   folderRoleOf,
   mayReadFolder,
   readableFolderWhere,
@@ -81,8 +83,14 @@ export type CreateTabError = NotAllowed | FolderNotFound | InvalidName | NameTak
 export type RenameTabError = NotAllowed | TabNotFound | InvalidName | NameTaken | Failed;
 export type DeleteTabError = NotAllowed | TabNotFound | Failed;
 
-/** What a tab deletion leaves: the folder of the tab as stored, and the number of pages deleted with the tab. */
-export type DeletedTab = { folder: Folder; pageCount: number };
+/** A page deleted together with its tab: its name and its title. */
+export type PageDeletedWithTab = { name: string; title: string };
+
+/**
+ * What a tab deletion leaves: the folder of the tab as stored, the number of pages deleted with the tab, and these
+ * pages by name, exactly those the deletion changed.
+ */
+export type DeletedTab = { folder: Folder; pageCount: number; pages: PageDeletedWithTab[] };
 
 const SUMMARY_SELECT = { id: true, name: true, updatedAt: true, ...LAST_EDITOR_SELECT } as const;
 const STORED_TAB_SELECT = { id: true, name: true, folder: { select: { name: true } } } as const;
@@ -315,10 +323,10 @@ export async function renameFolder(
 
 /**
  * Creates a tab with the given name in the folder with the given id, with the actor as its last editor, and returns it
- * as stored. The folder's `updatedAt` and last editor are not touched.
+ * as stored. The folder's `updatedAt` and last editor are not touched. It is a write of the browser or of MCP.
  */
 export async function createTab(
-  actor: BrowserActor,
+  actor: ContentActor,
   folderId: string,
   input: { name: string },
 ): Promise<Result<StoredTab, CreateTabError>> {
@@ -358,13 +366,16 @@ export async function createTab(
     return { ok: false, error: { code: "failed" } };
   }
 
-  logger.info({ tabId: tab.id }, "tab created");
+  logger.info({ tabId: tab.id, ...channelOf(actor) }, "tab created");
   return { ok: true, value: tab };
 }
 
-/** Renames the tab with the given id, with the actor as its last editor, and returns it as stored. */
+/**
+ * Renames the tab with the given id, with the actor as its last editor, and returns it as stored. It is a write of the
+ * browser or of MCP.
+ */
 export async function renameTab(
-  actor: BrowserActor,
+  actor: ContentActor,
   id: string,
   input: { name: string },
 ): Promise<Result<StoredTab, RenameTabError>> {
@@ -403,24 +414,24 @@ export async function renameTab(
     return { ok: false, error: { code: "tab-not-found" } };
   }
 
-  logger.info({ tabId }, "tab renamed");
+  logger.info({ tabId, ...channelOf(actor) }, "tab renamed");
   return { ok: true, value: tab };
 }
 
 /**
  * Deletes the tab with the given id in the folder with the given id for good, together with its pages, and returns the
- * folder as stored and the number of pages deleted with the tab. The pages that are in the tab at that moment are soft
+ * folder as stored, the number of pages deleted with the tab and these pages by name. The pages that are in the tab at that moment are soft
  * deleted as `deletePage()` of the pages service deletes one page, with the actor as their last editor and one time of
  * deletion for all of them, but without checking their versions: whatever is in the tab now goes with it. Either the
  * tab and all its pages are deleted, or nothing changes. The folder is not touched: its `updatedAt` and last editor stay
- * as they are.
+ * as they are. It is a write of the browser or of MCP.
  *
  * The role is read on the given folder, not on the folder of the tab, because a tab deleted meanwhile has no folder any
  * more: a Manager of the folder learns that the tab is gone, while a user without the role is refused as for any other
  * write. A tab of another folder counts as missing.
  */
 export async function deleteTab(
-  actor: BrowserActor,
+  actor: ContentActor,
   folderId: string,
   id: string,
 ): Promise<Result<DeletedTab, DeleteTabError>> {
@@ -451,13 +462,17 @@ export async function deleteTab(
         FOR UPDATE OF t`;
       const tab = rows[0];
       if (!tab) return null;
-      // A page in a tab is never deleted, so these are exactly the pages of the tab; it sets `updatedAt` as well.
-      const { count } = await tx.page.updateMany({
+      // A page in a tab is never deleted, so these are exactly the pages of the tab; it sets `updatedAt` as well. The
+      // pages come back from the same write, so that the list holds exactly the pages that went with the tab.
+      const pages = await tx.page.updateManyAndReturn({
         where: { tabId },
         data: { deletedAt: new Date(), tabId: null, lastEditedById, version: { increment: 1 } },
+        select: { name: true, title: true },
       });
       await tx.tab.delete({ where: { id: tabId } });
-      return { folder: { id: parsedFolderId, name: tab.folderName }, pageCount: count };
+      // Names are lowercase letters, digits and hyphens, so comparing the strings sorts them.
+      pages.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+      return { folder: { id: parsedFolderId, name: tab.folderName }, pageCount: pages.length, pages };
     });
   } catch (err) {
     if (isForeignKeyViolation(err, LAST_EDITOR)) return unknownActor(err, actor);
@@ -469,6 +484,9 @@ export async function deleteTab(
     return { ok: false, error: { code: "tab-not-found" } };
   }
 
-  logger.info({ actorId: actor.id, folderId: parsedFolderId, tabId, pageCount: deleted.pageCount }, "tab deleted");
+  logger.info(
+    { actorId: actor.id, folderId: parsedFolderId, tabId, pageCount: deleted.pageCount, ...channelOf(actor) },
+    "tab deleted",
+  );
   return { ok: true, value: deleted };
 }

@@ -547,12 +547,19 @@ describe("deleting a tab", () => {
       const bob = await createUser({ name: "bob" });
       const folder = await createFolder({ name: "docs", roles: [{ user, role }] });
       const tab = await createTab({ folder, name: "meetngs", editor: bob });
-      const first = await createPage({ tab, name: "first", editor: bob });
-      const second = await createPage({ tab, name: "second", editor: bob, version: 4 });
+      const second = await createPage({ tab, name: "second", editor: bob, version: 4, content: "# Second page" });
+      const first = await createPage({ tab, name: "first", editor: bob, content: "# First page" });
 
       await expect(folderService.deleteTab(actor, folder.id, tab.id)).resolves.toStrictEqual({
         ok: true,
-        value: { folder: { id: folder.id, name: "docs" }, pageCount: 2 },
+        value: {
+          folder: { id: folder.id, name: "docs" },
+          pageCount: 2,
+          pages: [
+            { name: "first", title: "First page" },
+            { name: "second", title: "Second page" },
+          ],
+        },
       });
 
       await expect(getTestDb().tab.findUnique({ where: { id: tab.id } })).resolves.toBeNull();
@@ -584,7 +591,7 @@ describe("deleting a tab", () => {
 
     await expect(folderService.deleteTab(actor, folder.id, tab.id)).resolves.toMatchObject({
       ok: true,
-      value: { pageCount: 0 },
+      value: { pageCount: 0, pages: [] },
     });
     expect(await getTestDb().tab.count()).toBe(0);
   });
@@ -604,7 +611,7 @@ describe("deleting a tab", () => {
 
     await expect(folderService.deleteTab(actor, folder.id, tab.id)).resolves.toMatchObject({
       ok: true,
-      value: { pageCount: 1 },
+      value: { pageCount: 1, pages: [{ name: "inside", title: "Test page" }] },
     });
 
     expect(
@@ -707,10 +714,10 @@ describe("deleting a tab", () => {
       })),
     });
 
-    await expect(folderService.deleteTab(actor, folder.id, tab.id)).resolves.toMatchObject({
-      ok: true,
-      value: { pageCount: 300 },
-    });
+    const deleted = await folderService.deleteTab(actor, folder.id, tab.id);
+    expect(deleted).toMatchObject({ ok: true, value: { pageCount: 300 } });
+    // Every page is listed, without a limit.
+    expect(deleted.ok && deleted.value.pages).toHaveLength(300);
     expect(await getTestDb().page.count({ where: { folderId: folder.id, deletedAt: { not: null } } })).toBe(300);
   });
 
@@ -831,5 +838,45 @@ describe("deleting a tab", () => {
     await expect(
       pageService.createPage(mcp, folder.id, { name: "new", content: "# New", tabId: tab.id }),
     ).resolves.toEqual(TAB_NOT_FOUND);
+  });
+});
+
+describe("tab writes through MCP", () => {
+  /** Everything a tab write could change: the tabs and the pages, in a stable order. */
+  async function snapshot() {
+    const db = getTestDb();
+    return {
+      tabs: await db.tab.findMany({ orderBy: { id: "asc" } }),
+      pages: await db.page.findMany({ orderBy: { id: "asc" } }),
+    };
+  }
+
+  it("refuses create, rename and delete of a tab through a Writer connection of an Owner, and changes nothing", async () => {
+    const folder = await createFolder({ name: "projects", roles: [{ user, role: "owner" }] });
+    const tab = await createTab({ folder, name: "guides" });
+    await createPage({ tab, name: "intro" });
+    const writer = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "writer" });
+    const before = await snapshot();
+
+    await expect(folderService.createTab(writer, folder.id, { name: "news" })).resolves.toEqual(NOT_ALLOWED);
+    await expect(folderService.renameTab(writer, tab.id, { name: "news" })).resolves.toEqual(NOT_ALLOWED);
+    await expect(folderService.deleteTab(writer, folder.id, tab.id)).resolves.toEqual(NOT_ALLOWED);
+
+    expect(await snapshot()).toStrictEqual(before);
+  });
+
+  it("refuses the tab writes on a folder that is not the one of the connection, and changes nothing", async () => {
+    const folder = await createFolder({ name: "projects", roles: [{ user, role: "owner" }] });
+    const other = await createFolder({ name: "notes", roles: [{ user, role: "owner" }] });
+    const tab = await createTab({ folder: other, name: "guides" });
+    await createPage({ tab, name: "intro" });
+    const mcp = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "writer" });
+    const before = await snapshot();
+
+    await expect(folderService.createTab(mcp, other.id, { name: "news" })).resolves.toEqual(NOT_ALLOWED);
+    await expect(folderService.renameTab(mcp, tab.id, { name: "news" })).resolves.toEqual(NOT_ALLOWED);
+    await expect(folderService.deleteTab(mcp, other.id, tab.id)).resolves.toEqual(NOT_ALLOWED);
+
+    expect(await snapshot()).toStrictEqual(before);
   });
 });
