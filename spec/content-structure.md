@@ -122,6 +122,9 @@ hold pages directly and have tabs at the same time.
 
 - Folders and tabs are created and renamed in a name dialog. Pages are created in the editor and get their name and
   place in the "Save page" dialog.
+- Tabs are created, renamed and deleted through MCP as well, by a Manager connection of an AI app, under the same
+  rules and with the user of the connection as the last editor (see `mcp.md`). Folders are created and renamed only in
+  the browser.
 - A new page can be created in any place of its folder: directly in the folder or in one of its tabs. The place the
   editor was opened for is preselected.
 - A page is moved and renamed in one dialog, which stores name and place together: a page can be renamed, moved within
@@ -157,12 +160,14 @@ hold pages directly and have tabs at the same time.
 - A tab that no longer exists when the deletion is confirmed, because it was deleted meanwhile, keeps the dialog open
   with the message that the tab no longer exists and only the way back to the folder, and changes nothing.
 - An editor or dialog still open on a page of the deleted tab answers its save or confirmation with the message that the
-  page no longer exists. For an AI app through MCP the deleted tab is missing like one that never existed (see
-  `mcp.md`).
+  page no longer exists. For an AI app through MCP the deleted tab is missing like one that never existed, also for
+  `delete_tab` (see `mcp.md`).
 - Deleting a tab leaves the time of the last change and the last editor of the folder as they are.
 - Every deletion of a tab is logged with the user, the folder, the tab and the number of pages deleted with it; a
   refused deletion is logged like the other refused content writes.
-- Tabs are deleted only in the browser: MCP has no Manager role (see `mcp.md`).
+- A Manager connection of an AI app deletes a tab through MCP as well, with `delete_tab`, by the same rules: all or
+  nothing, with every page in it, the user of the connection as the user who deleted them, and the same log line,
+  which then also names the channel `mcp` and the grant (see `mcp.md`).
 
 ## Only users see content
 

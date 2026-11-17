@@ -18,6 +18,10 @@ the dialogs and lists in `components/`), routes under `src/app/deleted-pages/`. 
   tab as its last editor and so as the user who deleted it.
 - A delete is refused when the page was changed after the dialog was opened; the dialog then stays open with a message,
   and confirming again deletes the page (see `optimistic-locking.md`).
+- Pages are deleted through MCP as well, by a Manager connection of an AI app, on their own with `delete_page`, based
+  on a version, and together with their tab with `delete_tab`, with the user of the connection as the user who deleted
+  them (see `mcp.md`). Deleted pages, reading one and restoring stay in the browser: no connection sees, reads or
+  restores a deleted page.
 
 ## Deleted pages are invisible
 
@@ -76,6 +80,7 @@ the dialogs and lists in `components/`), routes under `src/app/deleted-pages/`. 
   and cannot be restored (see "Deleting folders" in `roadmap.md`). Tabs are deleted for good; the pages of a deleted
   tab are restored one by one, not all at once.
 - Only a Manager and an Owner of the folder delete and restore pages; a Writer cannot undo a page created by mistake.
+- Deleted pages cannot be listed, read or restored through MCP, also by a Manager connection that deleted them.
 - A deleted page cannot be removed for good; there is no emptying of all deleted pages and no automatic cleanup after a
   retention period. Neither is planned.
 - A page is restored only into its own folder, as a lasting rule.

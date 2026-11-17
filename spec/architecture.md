@@ -48,7 +48,7 @@ How the code is organised and which patterns new code follows. The technology st
 - A caller other than the GUI has an adapter of its own in place of `queries.ts` and `actions.ts`. The MCP server is
   the first: the route `src/app/mcp/[[...path]]/route.ts` only hands the request and the segments of its path to
   `handleMcpRequest()` in `src/features/mcp/http.ts`, which answers every path that is no folder address
-  (`/mcp/<folder-uuid>/<reader|writer>`) with 404, finds the actor and the connection from the bearer token instead of
+  (`/mcp/<folder-uuid>/<reader|writer|manager>`) with 404, finds the actor and the connection from the bearer token instead of
   the session, reads the folder of the connection and passes the request to the MCP SDK, with the actor of MCP and the
   folder as the authentication information that the SDK passes on to the factory of the server; the tools in
   `src/features/mcp/tools.ts` call the services of the folders and pages with that actor. The
@@ -236,7 +236,7 @@ The feature is described in `users-and-login.md`. What every new route, query an
   `content-structure.md`. The login is at `/login`, the forced password change at `/change-password` and the user list
   at `/users` (see `users-and-login.md`), the own account with the connected apps at `/account` (see
   `connected-apps.md`), the overview of the folder roles for admins at `/folder-roles` (see `folder-roles.md`), the MCP
-  addresses of the folders at `/mcp/<folder-uuid>/<reader|writer>` (see `mcp.md`) and the endpoints of OAuth under `/oauth/` and `/.well-known/` (see `oauth.md`).
+  addresses of the folders at `/mcp/<folder-uuid>/<reader|writer|manager>` (see `mcp.md`) and the endpoints of OAuth under `/oauth/` and `/.well-known/` (see `oauth.md`).
   Routes, Server Actions and links build them with the helpers in `src/lib/addresses.ts` instead of writing paths by
   hand.
 - What an address opens is given in its query string: an action as `?action=<action>`, a view as `?view=<view>`.

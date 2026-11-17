@@ -102,13 +102,9 @@ listed first; there is no order across themes.
   (`users-and-login.md`).
 - Access for clients without OAuth: scripts, CI jobs and MCP clients that cannot do OAuth with a browser get access
   again, for example through the OAuth device flow or client credentials (`connected-apps.md`, `oauth.md`).
-- MCP write tools for tabs and folders: create and rename tabs from AI assistants, which belongs to "Manager role for
-  MCP", and the writes of folders later; renaming a folder and its roles stay in the browser, because the Owner is
-  never a role of MCP (`mcp.md`, `folder-roles.md`).
+- MCP write tools for folders: create folders from AI assistants; renaming a folder and its roles stay in the browser,
+  because the Owner is never a role of MCP (`mcp.md`, `folder-roles.md`).
 - MCP search tool: search the wiki from AI assistants, after full-text search (see "Search") (`mcp.md`).
-- Manager role for MCP: an MCP address `/mcp/<folder-uuid>/manager` for Owners and Managers, with the tools of a
-  Manager, such as deleting and restoring pages and creating, renaming and deleting tabs, after MCP per folder and role
-  (`mcp.md`, `folder-roles.md`).
 - Exact search-and-replace for MCP: a write tool that replaces an exact piece of the content of a page instead of the
   whole content, after MCP per folder and role (`mcp.md`).
 - CORS for other origins: let web applications on other origins call the API.
@@ -198,8 +194,8 @@ parts with `--shard=<i>/<n>`, and each part can run at the same time as the othe
   - Add the wiki as a custom connector in claude.ai and in ChatGPT, approve it on the consent page, list and read
     pages, and revoke it on `/account`.
   - Claude Code with OAuth (`claude mcp add --transport http` with an address from "AI apps" and without a header)
-    lists and reads pages, and the MCP Inspector, connected through OAuth, shows the tools of a Reader and of a Writer
-    address (`mcp.md`).
+    lists and reads pages, and the MCP Inspector, connected through OAuth, shows the tools of a Reader, of a Writer and
+    of a Manager address (`mcp.md`).
   - A tool that is still configured with the plain `/mcp` gets 404 there, and its user connects it again through
     OAuth with an address from "AI apps" (`connected-apps.md`).
   - The connectors of claude.ai and ChatGPT send the folder address as `resource` and connect to several addresses

@@ -19,7 +19,7 @@ The wiki can only be used after a login. Every account is either an admin, who m
 and only an overview of who has which role on which folder, or a user, who creates folders, works with the folders on
 which the user has a role (Reader, Writer, Manager or Owner) and sees and revokes the connected apps on the own account
 page; admins create the accounts and choose their type, and the Owners of a folder give the roles on it. AI assistants work with one
-folder each through an MCP server, as a Reader or a Writer, connected through OAuth (see "MCP server").
+folder each through an MCP server, as a Reader, a Writer or a Manager, connected through OAuth (see "MCP server").
 
 What is built is described in `spec/`: `spec/content-structure.md`, `spec/pages.md`, `spec/page-deletion.md`,
 `spec/users-and-login.md`, `spec/connected-apps.md`, `spec/mcp.md`, `spec/oauth.md` and `spec/container-image.md`.
@@ -138,7 +138,8 @@ by the admin setup; further accounts of either type are created by an admin in t
 ## MCP server
 
 AI assistants work with the wiki through the Model Context Protocol, acting as a user, each connection for one folder
-and with one role, at an address of its own: `/mcp/<folder-uuid>/reader` or `/mcp/<folder-uuid>/writer`. The role of
+and with one role, at an address of its own: `/mcp/<folder-uuid>/reader`, `/mcp/<folder-uuid>/writer` or
+`/mcp/<folder-uuid>/manager`. The role of
 the address is the most the app may do, and never more than your own role on the folder. A client connects through
 OAuth: the user logs in, approves it on a consent page and revokes it on the own account page `/account`
 (`spec/oauth.md`). MCP needs `HIPPOWIKI_PUBLIC_URL`, which switches OAuth on; without it every address below `/mcp`
@@ -146,8 +147,8 @@ answers 404 and the wiki works only in the browser.
 
 To connect an app, such as Claude Code or the connector of claude.ai or ChatGPT:
 
-1. Open the folder in the wiki and choose "AI apps". It shows the addresses you may use: the Reader address, and for
-   a Writer, Manager or Owner also the Writer address. Copy one.
+1. Open the folder in the wiki and choose "AI apps". It shows the addresses you may use: the Reader address, for a
+   Writer also the Writer address, and for a Manager or Owner the Writer and the Manager address as well. Copy one.
 2. Add the wiki to the app as an MCP server or connector with that address. With
    `HIPPOWIKI_PUBLIC_URL=http://localhost:3000` in `.env` and `npm run dev`, Claude Code connects with, for example:
 
@@ -161,8 +162,9 @@ To connect an app, such as Claude Code or the connector of claude.ai or ChatGPT:
    apps" on `/account` with its folder and role, where you can revoke it.
 
 A client that cannot connect through OAuth cannot use the MCP server. A Reader connection lists the tabs and pages of
-its folder and reads pages; a Writer connection also creates pages, replaces their content and moves or renames them
-(`spec/mcp.md`).
+its folder and reads pages; a Writer connection also creates pages, replaces their content and moves or renames them;
+a Manager connection also deletes pages and creates, renames and deletes tabs. Deleted pages are restored only in the
+browser (`spec/mcp.md`).
 
 ## End-to-end tests
 

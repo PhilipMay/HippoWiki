@@ -115,8 +115,9 @@ and `src/features/folder-roles/service.test.ts`.
 
 - The folder offers "AI apps" next to "Roles" to every role, only while `HIPPOWIKI_PUBLIC_URL` is set: the view
   `/folders/<folder>?view=mcp` shows the full MCP addresses of the folder for the roles the user may use, the Reader
-  address to a Reader, the Reader and the Writer address to a Writer, a Manager and an Owner, each with one sentence on
-  what it allows through MCP and a copy button, which is locked until hydration.
+  address to a Reader, the Reader and the Writer address to a Writer, and the Reader, the Writer and the Manager
+  address to a Manager and an Owner, each with one sentence on what it allows through MCP and a copy button, which is
+  locked until hydration.
 - The view has a breadcrumb back to the folder and no actions; a view together with an action shows the not-found
   page, as everywhere. Without a role, and without `HIPPOWIKI_PUBLIC_URL`, it shows the not-found page.
 
@@ -126,13 +127,14 @@ and `src/features/folder-roles/service.test.ts`.
   required part of the actor, so that no caller can leave it out; the actor of MCP also carries its connection, the
   folder and the role of its address.
 - Through MCP a user has, on the folder of the connection, the lower of the own current role and the role of the
-  connection, Reader or Writer, and no role on any other folder. The checks of the folders and pages services are
-  otherwise the same as in the browser, so a Writer connection creates, saves, moves and renames pages, and nothing
-  of a Manager or an Owner.
+  connection, Reader, Writer or Manager, and no role on any other folder. The checks of the folders and pages services
+  are otherwise the same as in the browser, so a Writer connection creates, saves, moves and renames pages, and a
+  Manager connection also deletes pages and creates, renames and deletes tabs.
 - A role change takes effect on the next MCP request, like in the browser: a connection whose role is above the
   user's current role is refused until the role is high enough again (see `mcp.md`).
-- The writes of pages that MCP reaches are those of a Writer; deleting and restoring pages and the writes of folders,
-  tabs and roles stay writes of the browser.
+- The Owner role is never a role of MCP: renaming the folder and giving, changing and removing roles stay in the
+  browser. The deleted pages list, reading a deleted page and restoring one stay in the browser as well, also for a
+  Manager connection.
 
 ## Decisions
 
@@ -202,7 +204,7 @@ and `src/features/folder-roles/service.test.ts`.
 
 ## Current limits
 
-- no Manager role for MCP, and the Owner role never (see "Manager role for MCP" in `roadmap.md`)
+- no Owner role for MCP, as a lasting rule, and no deleted pages through MCP
 - no roles for admins, as a lasting rule
 - no groups of users: every role is given to one user
 - no public content without a login

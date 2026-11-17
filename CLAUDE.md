@@ -11,11 +11,6 @@ The specification lives in the `spec/` directory. This catalog should always be 
   step plan (starting and resuming, what may change, the commit on approval without a push, the rounds of questions,
   the checks for contradictions and feasibility, how requirements are written, the template); the result is one file
   `spec/<feature>-requirements.md`, listed here while it exists
-- `spec/mcp-manager-role-requirements.md`: the requirements of the Manager role for MCP (approved): the Manager address
-  of a folder, the tools `delete_page`, `create_tab`, `rename_tab` and `delete_tab`, and what stays out of MCP
-- `spec/mcp-manager-role-steps.md`: the step plan of the Manager role for MCP (services for the actor of MCP, the
-  Manager address, the tools `delete_page`, `create_tab` and `rename_tab`, the tool `delete_tab` and the instructions,
-  wrap-up)
 - `spec/step-plan-workflow.md`: how features are planned in step files, when a step is done, what to do when it
   cannot be finished, how a feature is wrapped up, what a feature spec holds, and how a finding of the review report is
   fixed and deleted
@@ -43,10 +38,11 @@ The specification lives in the `spec/` directory. This catalog should always be 
   folder, with folder and role, the limit of 50 per user, the own apps only, no apps for admins, the account page
   without a public URL, the check of an access token by address and current role with its codes, the own account page
   `/account`, decisions, limits)
-- `spec/mcp.md`: the MCP server as built (the addresses `/mcp/<folder-uuid>/<reader|writer>` per folder and role, off
-  without the public URL, stateless with JSON answers, connections bound to one address and checked against the
-  current role with the answers 404, 401 and 403, the actor of MCP, the read tools and the write tools of a Writer,
-  the version, the instructions per connection, decisions, limits)
+- `spec/mcp.md`: the MCP server as built (the addresses `/mcp/<folder-uuid>/<reader|writer|manager>` per folder and
+  role, off without the public URL, stateless with JSON answers, connections bound to one address and checked against
+  the current role with the answers 404, 401 and 403, the actor of MCP, the read tools, the write tools of a Writer,
+  the tools of a Manager that delete pages and create, rename and delete tabs, the version, the instructions per
+  connection, decisions, limits)
 - `spec/oauth.md`: OAuth for MCP clients as built (switching it on with the public URL, discovery with the metadata per
   folder address, clients by metadata document and by registration with its limit, the safe fetch of metadata
   documents, the authorization request with the folder address as `resource` and the consent page with folder and

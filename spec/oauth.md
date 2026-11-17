@@ -27,7 +27,7 @@ tests are in `e2e/support/oauth.ts`.
 
 - A connector starts at the 401 of a folder address, whose `WWW-Authenticate` header names the metadata of the
   protected resource at that address.
-- `/.well-known/oauth-protected-resource/mcp/<folder-uuid>/<reader|writer>` (RFC 9728) names the full folder address
+- `/.well-known/oauth-protected-resource/mcp/<folder-uuid>/<reader|writer|manager>` (RFC 9728) names the full folder address
   as the resource and the wiki as its only authorization server, for every folder address, whether a folder of that id
   exists or not. `/.well-known/oauth-protected-resource` alone, the one followed by `/mcp` and every other path answer
   404, because there is no resource at `/mcp`.
@@ -82,8 +82,8 @@ The fetch of a metadata document must not be a way to make the server ask an add
 - Every other error is shown on the page with a link "Return to <host>", which carries the error to the redirect
   address of the client; the browser goes there only when the user clicks the link. These checks are, in this order:
   `response_type` must be `code`; PKCE must be `S256` with a valid challenge; `resource` (RFC 8707) must be exactly
-  the full MCP address of a folder, `<HIPPOWIKI_PUBLIC_URL>/mcp/<folder-uuid>/<reader|writer>`, otherwise
-  `invalid_target` (a missing `resource`, the plain `/mcp`, the roles Owner and Manager and anything else); then the
+  the full MCP address of a folder, `<HIPPOWIKI_PUBLIC_URL>/mcp/<folder-uuid>/<reader|writer|manager>`, otherwise
+  `invalid_target` (a missing `resource`, the plain `/mcp`, the role Owner and anything else); then the
   admin refusal (below); then the folder must exist and the user's current role on it must include the role of the
   address. A missing folder, a folder without a role of the user and a role too low are refused alike, with
   `access_denied` and one message that no app can be connected to this address, so that the page tells nothing about

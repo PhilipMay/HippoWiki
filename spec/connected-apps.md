@@ -16,7 +16,8 @@ such as `src/features/grants/service.test.ts`.
 
 ## Connected apps
 
-- A connected app is a grant of the user to an OAuth client at one MCP address: a folder and a role, Reader or Writer.
+- A connected app is a grant of the user to an OAuth client at one MCP address: a folder and a role, Reader, Writer or
+  Manager. Owner is never the role of a connected app.
   It is named after its client. There are no scopes. The app holds its access token and refresh token itself; only
   their SHA-256 hashes are stored, and neither a token nor a hash is ever shown or logged.
 - One app connected to two addresses is two connected apps, each with its own tokens.

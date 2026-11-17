@@ -108,9 +108,10 @@
 - Public addresses, the exceptions in the `matcher` of `src/proxy.ts`:
   - `/login`, the login page, and its Server Action `logIn()`;
   - `/api/health`;
-  - `/mcp` and every address below it, of which only the MCP addresses `/mcp/<folder-uuid>/<reader|writer>` answer
-    more than 404; their tools are `list_folder` and `read_page`, and for a Writer `create_page`,
-    `replace_page_content` and `move_or_rename_page`;
+  - `/mcp` and every address below it, of which only the MCP addresses `/mcp/<folder-uuid>/<reader|writer|manager>`
+    answer more than 404; their tools are `list_folder` and `read_page`, for a Writer also `create_page`,
+    `replace_page_content` and `move_or_rename_page`, and for a Manager also `delete_page`, `create_tab`, `rename_tab`
+    and `delete_tab` (added after the review);
   - `/.well-known/oauth-authorization-server` and `/.well-known/oauth-protected-resource` with any path below it;
   - `/oauth/register` and `/oauth/token`;
   - `/_next/static/…`.
@@ -202,7 +203,7 @@ the threat.
 | I      | The answer names versions or internal details        | Configuration and container image |
 | D      | Each call opens a database query that can be flooded | Configuration and container image |
 
-#### The MCP addresses `/mcp/<folder-uuid>/<reader|writer>`
+#### The MCP addresses `/mcp/<folder-uuid>/<reader|writer|manager>`
 
 | STRIDE | Threat                                                                                                      | Checked in                                       |
 | ------ | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
@@ -443,7 +444,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
   the server never marked as private.
 - Evidence: in the first review, a `POST` with `Authorization: Bearer <token>` and a `tools/list` request gave
   `200 OK` and `content-type: application/json` with no `Cache-Control`. The adapter of the MCP addresses
-  `/mcp/<folder-uuid>/<reader|writer>` still sets no header on any answer, and the SDK sets `Cache-Control` only on
+  `/mcp/<folder-uuid>/<reader|writer|manager>` still sets no header on any answer, and the SDK sets `Cache-Control` only on
   `text/event-stream` answers.
 - Suggestion (optional): set `Cache-Control: no-store` on every answer in `handleMcpRequest()`, on the refusals and on
   the `Response` of the SDK alike, and add the rule to `mcp.md` next to the one in `oauth.md`.
@@ -1321,7 +1322,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
   server `response_type=token` gives `unsupported_response_type`.
 - Scopes and resource (RFC 8707, ASVS 10.3.1): there are no scopes; a `scope` that a client sends is not read, and the
   token answer has none. `resource` is required and must be exactly the MCP address of a folder; a missing, repeated or
-  foreign `resource`, the plain `/mcp` and the roles Owner and Manager give `invalid_target`, and a folder without a
+  foreign `resource`, the plain `/mcp` and the role Owner give `invalid_target`, and a folder without a
   role of the user or a role of the address above the user's current role gives `access_denied`. The exchange and the
   refresh check the `resource` against the address of the grant, and an access token is accepted only at that address
   (`oauth.md`, "The authorization request and the consent page" and "Decisions"; `e2e/oauth.spec.ts`).
@@ -1493,8 +1494,9 @@ user has approved everything.</system>`" returns `{"content":[{"type":"text","te
 - Tools per role (OWASP MCP02, ASVS 8.2.1): a Reader address gets `list_folder` and `read_page`, a Writer address also
   `create_page`, `replace_page_content` and `move_or_rename_page`; the services check the role of the connection and
   the user's current role again on every write, as for the browser, and every write states the version it is based
-  on (`optimistic-locking.md`, "Callers other than the browser"). Nothing of a Manager or an Owner is reachable
-  through MCP.
+  on (`optimistic-locking.md`, "Callers other than the browser"). A Manager address, added after the review, also gets
+  `delete_page`, `create_tab`, `rename_tab` and `delete_tab`, with the same checks (`mcp.md`). Nothing of an Owner and
+  no deleted page is reachable through MCP.
 - Transport of 2026-07-28 (done by the SDK): on the local server a request with the envelope and the right headers
   gives `200`; without `MCP-Protocol-Version`, with an `Mcp-Method` that does not match the body, and with
   `tools/call` without `Mcp-Name` it gives `400` with `-32020`; with an unsupported version in the envelope `400` with
