@@ -20,7 +20,10 @@ export const CHALLENGE = createHash("sha256").update(VERIFIER).digest("base64url
 export const STATE = "state/of the client&more";
 
 /** The full MCP address of the folder for the role, as a client sends it as `resource`. */
-export function mcpAddress(folder: { id: string }, role: "reader" | "writer" | (string & {}) = "reader"): string {
+export function mcpAddress(
+  folder: { id: string },
+  role: "reader" | "writer" | "manager" | (string & {}) = "reader",
+): string {
   return `${ISSUER}/mcp/${folder.id}/${role}`;
 }
 

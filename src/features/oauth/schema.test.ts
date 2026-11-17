@@ -282,6 +282,7 @@ describe("parseMcpPath", () => {
   it("gives the folder id and the role of the segments of a folder address", () => {
     expect(parseMcpPath([ID, "reader"])).toEqual({ folderId: ID, role: "reader" });
     expect(parseMcpPath([ID, "writer"])).toEqual({ folderId: ID, role: "writer" });
+    expect(parseMcpPath([ID, "manager"])).toEqual({ folderId: ID, role: "manager" });
   });
 
   it.each([
@@ -289,7 +290,7 @@ describe("parseMcpPath", () => {
     ["an empty list", []],
     ["a folder alone", [ID]],
     ["the role Owner", [ID, "owner"]],
-    ["the role Manager", [ID, "manager"]],
+    ["the role Manager in upper case", [ID, "Manager"]],
     ["a part that is no UUID", ["abc", "reader"]],
     ["a UUID in upper case", [ID.toUpperCase(), "reader"]],
     ["a further segment", [ID, "reader", "more"]],
@@ -306,6 +307,7 @@ describe("parseMcpResource", () => {
   it("gives the folder id and the role of a full MCP address of a folder", () => {
     expect(parseMcpResource(`${BASE}/mcp/${ID}/reader`, BASE)).toEqual({ folderId: ID, role: "reader" });
     expect(parseMcpResource(`${BASE}/mcp/${ID}/writer`, BASE)).toEqual({ folderId: ID, role: "writer" });
+    expect(parseMcpResource(`${BASE}/mcp/${ID}/manager`, BASE)).toEqual({ folderId: ID, role: "manager" });
   });
 
   it.each([
@@ -315,7 +317,6 @@ describe("parseMcpResource", () => {
     ["the plain /mcp with a slash", `${BASE}/mcp/`],
     ["a folder without a role", `${BASE}/mcp/${ID}`],
     ["the role Owner", `${BASE}/mcp/${ID}/owner`],
-    ["the role Manager", `${BASE}/mcp/${ID}/manager`],
     ["a role in upper case", `${BASE}/mcp/${ID}/Reader`],
     ["a part that is no UUID", `${BASE}/mcp/abc/reader`],
     ["a UUID in upper case", `${BASE}/mcp/${ID.toUpperCase()}/reader`],

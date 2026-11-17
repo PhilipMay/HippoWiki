@@ -91,7 +91,7 @@ export async function listGrants(actor: Actor): Promise<GrantSummary[] | null> {
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
   });
   return grants.flatMap(({ folder, role, ...grant }) => {
-    // The check constraint of the table keeps the role to Reader and Writer.
+    // The check constraint of the table keeps the role to Reader, Writer and Manager.
     if (!isMcpRole(role)) {
       logger.error({ grantId: grant.id }, "grant with a role that is no role of MCP");
       return [];

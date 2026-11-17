@@ -1,5 +1,5 @@
 // The tools of the MCP server: what an AI app can do with the folder of its connection. A Reader connection gets the
-// read tools, a Writer connection also the write tools, which follow the rules of the browser, the version check of
+// read tools, a Writer and a Manager connection also the write tools, which follow the rules of the browser, the version check of
 // optimistic locking included. They call the services of the
 // folders and pages with the actor of MCP, which carries the connection: the services give it only the folder of the
 // connection, with the lower of the user's role and the role of the connection, as `queries.ts` does with the channel
@@ -10,7 +10,7 @@
 import { McpServer, type CallToolResult } from "@modelcontextprotocol/server";
 import { z } from "zod";
 
-import { ROLE_LABELS, type McpRole } from "@/features/folder-roles/roles";
+import { includesRole, ROLE_LABELS, type McpRole } from "@/features/folder-roles/roles";
 import type { McpActor } from "@/features/folder-roles/service";
 import * as folderService from "@/features/folders/service";
 import { deriveName } from "@/features/pages/derive";
@@ -41,6 +41,10 @@ const SERVER_INFO = { name: "hippowiki", title: siteName, version: "1.0.0" };
 const ROLE_ABILITIES: Readonly<Record<McpRole, string>> = {
   reader: "It reads the folder and cannot change it.",
   writer:
+    "It reads the folder and changes its pages with create_page, replace_page_content and move_or_rename_page; it " +
+    "creates no tabs. Every change of a page states the version that read_page gave for it, and a change based on " +
+    "an older version is refused.",
+  manager:
     "It reads the folder and changes its pages with create_page, replace_page_content and move_or_rename_page; it " +
     "creates no tabs. Every change of a page states the version that read_page gave for it, and a change based on " +
     "an older version is refused.",
@@ -555,8 +559,8 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
     (input) => readPage(options, input),
   );
 
-  // The write tools only for a Writer connection: a Reader connection does not even see them.
-  if (options.actor.connection.role !== "writer") return server;
+  // The write tools for a connection whose role includes Writer: a Reader connection does not even see them.
+  if (!includesRole(options.actor.connection.role, "writer")) return server;
 
   server.registerTool(
     "create_page",

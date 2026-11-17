@@ -99,23 +99,30 @@ describe("rolesFor", () => {
 });
 
 describe("MCP_ROLES", () => {
-  it("are Reader and Writer, never Manager or Owner", () => {
-    expect(MCP_ROLES).toEqual(["reader", "writer"]);
+  it("are Reader, Writer and Manager, never Owner", () => {
+    expect(MCP_ROLES).toEqual(["reader", "writer", "manager"]);
   });
 
   it("each say in one sentence what they allow", () => {
     for (const role of MCP_ROLES) expect(MCP_ROLE_ABILITIES[role]).toMatch(/^[A-Z].+\.$/);
   });
+
+  it("say for Manager that it deletes pages and creates, renames and deletes tabs, a tab with its pages", () => {
+    expect(MCP_ROLE_ABILITIES.manager).toMatch(/delete pages/);
+    expect(MCP_ROLE_ABILITIES.manager).toMatch(/create, rename and delete tabs/);
+    expect(MCP_ROLE_ABILITIES.manager).toMatch(/deleting a tab deletes all its pages/);
+  });
 });
 
 describe("isMcpRole", () => {
-  it("is true for Reader and Writer", () => {
+  it("is true for Reader, Writer and Manager", () => {
     expect(isMcpRole("reader")).toBe(true);
     expect(isMcpRole("writer")).toBe(true);
+    expect(isMcpRole("manager")).toBe(true);
   });
 
-  it("is false for Manager, Owner and anything else", () => {
-    for (const value of ["manager", "owner", "", "Reader", "WRITER", null, undefined, 1]) {
+  it("is false for Owner and anything else", () => {
+    for (const value of ["owner", "", "Reader", "WRITER", "Manager", null, undefined, 1]) {
       expect(isMcpRole(value), String(value)).toBe(false);
     }
   });
@@ -125,8 +132,8 @@ describe("mcpRolesFor", () => {
   it("gives the MCP roles at most the own role", () => {
     expect(mcpRolesFor("reader")).toEqual(["reader"]);
     expect(mcpRolesFor("writer")).toEqual(["reader", "writer"]);
-    expect(mcpRolesFor("manager")).toEqual(["reader", "writer"]);
-    expect(mcpRolesFor("owner")).toEqual(["reader", "writer"]);
+    expect(mcpRolesFor("manager")).toEqual(["reader", "writer", "manager"]);
+    expect(mcpRolesFor("owner")).toEqual(["reader", "writer", "manager"]);
   });
 
   it("gives none without a role", () => {

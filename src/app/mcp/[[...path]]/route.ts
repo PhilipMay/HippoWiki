@@ -1,8 +1,8 @@
-// The MCP addresses of the folders, `/mcp/<folder-uuid>/<reader|writer>`: AI apps work with one folder here, with the
-// access token of a grant to an OAuth client as a bearer token. The route only hands the request and the segments of
-// its path to the adapter, which answers every other path below `/mcp` and `/mcp` itself with 404, checks the token
-// itself and answers 404 while `HIPPOWIKI_PUBLIC_URL` is not set; `src/proxy.ts` lets `/mcp` and every address below
-// it pass without a session cookie.
+// The MCP addresses of the folders, `/mcp/<folder-uuid>/<reader|writer|manager>`: AI apps work with one folder here,
+// with the access token of a grant to an OAuth client as a bearer token. The route only hands the request and the
+// segments of its path to the adapter, which answers every other path below `/mcp` and `/mcp` itself with 404, checks
+// the token itself and answers 404 while `HIPPOWIKI_PUBLIC_URL` is not set; `src/proxy.ts` lets `/mcp` and every
+// address below it pass without a session cookie.
 
 import { handleMcpRequest } from "@/features/mcp/http";
 

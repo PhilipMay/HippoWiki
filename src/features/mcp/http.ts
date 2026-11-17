@@ -1,10 +1,10 @@
-// The adapter between the MCP addresses of the folders, `/mcp/<folder-uuid>/<reader|writer>`, and the MCP server: it is
-// to an MCP client what `queries.ts` is to the GUI. It is the place where the actor of a request comes from the bearer
-// token instead of the session: every request is checked with `authenticateAccessToken()` for its address before the
-// SDK sees it. The SDK then speaks the protocol (Streamable HTTP, stateless, with JSON answers and no SSE) and calls
-// the tools of `tools.ts`. The bearer token is the access token of a grant to an OAuth client at exactly that address,
-// and the 401 says where a client finds the authorization server. Without `HIPPOWIKI_PUBLIC_URL` there is no OAuth and
-// therefore no MCP server: every request answers 404.
+// The adapter between the MCP addresses of the folders, `/mcp/<folder-uuid>/<reader|writer|manager>`, and the MCP
+// server: it is to an MCP client what `queries.ts` is to the GUI. It is the place where the actor of a request comes
+// from the bearer token instead of the session: every request is checked with `authenticateAccessToken()` for its
+// address before the SDK sees it. The SDK then speaks the protocol (Streamable HTTP, stateless, with JSON answers and
+// no SSE) and calls the tools of `tools.ts`. The bearer token is the access token of a grant to an OAuth client at
+// exactly that address, and the 401 says where a client finds the authorization server. Without
+// `HIPPOWIKI_PUBLIC_URL` there is no OAuth and therefore no MCP server: every request answers 404.
 
 import {
   createMcpHandler,
@@ -114,8 +114,8 @@ async function serveLegacy(request: Request, connected: Connected): Promise<Resp
  *
  * 1. Without `HIPPOWIKI_PUBLIC_URL` every request answers 404, like the endpoints of OAuth, before anything else is
  *    looked at: without OAuth there is no MCP server.
- * 2. A path that is not `<folder-uuid>/<reader|writer>` answers 404: the plain `/mcp`, the roles Owner and Manager and
- *    a part that is no UUID included.
+ * 2. A path that is not `<folder-uuid>/<reader|writer|manager>` answers 404: the plain `/mcp`, the role Owner and a
+ *    part that is no UUID included.
  * 3. Anything but `POST` answers 405: there are no sessions to end and no stream to open. An `Origin` that is not the
  *    public URL answers 403.
  * 4. Without a valid access token for the address it answers 401 with `WWW-Authenticate: Bearer` and the metadata of

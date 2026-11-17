@@ -51,6 +51,8 @@ const READER: McpActor = {
 };
 /** The same user with a Writer connection to the folder. */
 const WRITER: McpActor = { ...READER, connection: { ...READER.connection, role: "writer" } };
+/** The same user with a Manager connection to the folder. */
+const MANAGER: McpActor = { ...READER, connection: { ...READER.connection, role: "manager" } };
 
 /** A JSON-RPC answer of the server. */
 type Answer = { result?: Record<string, unknown>; error?: { code: number; message: string } };
@@ -437,6 +439,20 @@ describe("the write tools", () => {
         expect(argument.description).toBeTruthy();
     }
     expect(replace?.annotations.destructiveHint).toBe(true);
+  });
+
+  it("are registered for a Manager connection as well, after the read tools", async () => {
+    actor = MANAGER;
+
+    const answer = await send({ method: "tools/list" });
+
+    expect((answer.result?.tools as { name: string }[]).map((tool) => tool.name).slice(0, 5)).toEqual([
+      "list_folder",
+      "read_page",
+      "create_page",
+      "replace_page_content",
+      "move_or_rename_page",
+    ]);
   });
 
   it("are not registered for a Reader connection, and a call of one reaches no service", async () => {

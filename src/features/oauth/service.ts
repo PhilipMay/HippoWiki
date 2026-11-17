@@ -310,7 +310,8 @@ export const ADMIN_REFUSAL_DESCRIPTION = "Admin accounts cannot connect apps";
 export const ADDRESS_REFUSAL_DESCRIPTION = "No app can be connected to this address";
 
 /** Why a request names no MCP address of this wiki. */
-const NOT_MCP_ADDRESS = "resource must be the MCP address of a folder of this wiki, /mcp/<folder-uuid>/<reader|writer>";
+const NOT_MCP_ADDRESS =
+  "resource must be the MCP address of a folder of this wiki, /mcp/<folder-uuid>/<reader|writer|manager>";
 
 /**
  * Checks an authorization request for the actor who is asked to approve it.
@@ -641,7 +642,7 @@ export async function exchangeCode(input: {
   }
   const codeRole = code.role;
   if (!isMcpRole(codeRole)) {
-    // The check constraint of the table keeps the role to Reader and Writer.
+    // The check constraint of the table keeps the role to Reader, Writer and Manager.
     logger.error({ userId, clientId: client.id }, "authorization code with a role that is no role of MCP");
     return { ok: false, error: { code: "failed" } };
   }

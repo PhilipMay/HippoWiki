@@ -330,7 +330,7 @@ type CreateGrantData = Partial<
   owner: { id: string };
   client?: OAuthClient;
   folder?: { id: string };
-  role?: "reader" | "writer";
+  role?: "reader" | "writer" | "manager";
 };
 
 /**

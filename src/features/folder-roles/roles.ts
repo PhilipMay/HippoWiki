@@ -66,9 +66,9 @@ export function rolesFor(fn: FolderFunction): Role[] {
 
 /**
  * The roles of the MCP addresses of a folder (`/mcp/<folder-uuid>/<role>`): the most an AI app connected there may
- * do. Manager and Owner are no roles of MCP.
+ * do. Owner is no role of MCP: no AI app renames a folder or changes roles.
  */
-export const MCP_ROLES = ["reader", "writer"] as const satisfies readonly Role[];
+export const MCP_ROLES = ["reader", "writer", "manager"] as const satisfies readonly Role[];
 
 /** The role of an MCP address. */
 export type McpRole = (typeof MCP_ROLES)[number];
@@ -80,7 +80,8 @@ export function isMcpRole(value: unknown): value is McpRole {
 
 /**
  * The roles of the MCP addresses that a user with the given role on a folder may connect to: those at most the own
- * role, so Reader for a Reader, and Reader and Writer for a Writer, a Manager and an Owner. None without a role.
+ * role, so Reader for a Reader, Reader and Writer for a Writer, and Reader, Writer and Manager for a Manager and an
+ * Owner. None without a role.
  */
 export function mcpRolesFor(role: Role | null | undefined): McpRole[] {
   return role == null ? [] : MCP_ROLES.filter((mcpRole) => includesRole(role, mcpRole));
@@ -92,6 +93,9 @@ export const MCP_ROLE_ABILITIES: Readonly<Record<McpRole, string>> = {
   writer:
     "List the tabs and pages of the folder, read its pages, create pages, replace their content, and move or rename " +
     "them within the folder.",
+  manager:
+    "List the tabs and pages of the folder, read its pages, create pages, replace their content, move or rename them " +
+    "within the folder, delete pages, and create, rename and delete tabs; deleting a tab deletes all its pages with it.",
 };
 
 /**

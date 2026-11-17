@@ -358,12 +358,12 @@ describe("checkAuthorizationRequest", () => {
     ["no resource", undefined],
     ["the plain /mcp", `${PUBLIC_URL}/mcp`],
     ["the address of the role Owner", "owner"],
-    ["the address of the role Manager", "manager"],
+    ["an address with the role in upper case", "Manager"],
     ["a resource that is no folder address", `${PUBLIC_URL}/mcp/abc/reader`],
     ["a resource that is the wiki", PUBLIC_URL],
   ])("refuses a request with %s as invalid_target, and makes no code and no grant", async (_case, resource) => {
     const [alice, client] = [await createActor(), await register()];
-    const value = resource === "owner" || resource === "manager" ? addressOf(alice.folder, resource) : resource;
+    const value = resource === "owner" || resource === "Manager" ? addressOf(alice.folder, resource) : resource;
     const params = paramsOf(alice, client, { resource: value });
 
     await expect(oauthService.checkAuthorizationRequest(alice, params)).resolves.toMatchObject({
@@ -378,13 +378,20 @@ describe("checkAuthorizationRequest", () => {
     expect(await getTestDb().oAuthGrant.count()).toBe(0);
   });
 
-  it("refuses a missing folder, a folder without a role and a Reader at the Writer address alike with access_denied", async () => {
+  it("refuses a missing folder, a folder without a role and a role too low for the address alike with access_denied", async () => {
     const [alice, client] = [await createActor(), await register()];
     const foreign = await createFolder({ roles: [] });
     const reading = await createFolder({ roles: [{ user: alice, role: "reader" }] });
+    const writing = await createFolder({ roles: [{ user: alice, role: "writer" }] });
     const answers = [];
 
-    for (const resource of [addressOf({ id: crypto.randomUUID() }), addressOf(foreign), addressOf(reading, "writer")]) {
+    for (const resource of [
+      addressOf({ id: crypto.randomUUID() }),
+      addressOf(foreign),
+      addressOf(reading, "writer"),
+      addressOf(reading, "manager"),
+      addressOf(writing, "manager"),
+    ]) {
       answers.push(await oauthService.checkAuthorizationRequest(alice, paramsOf(alice, client, { resource })));
       await expect(oauthService.createCode(alice, paramsOf(alice, client, { resource }), "90d")).resolves.toEqual(
         answers.at(-1),
@@ -407,13 +414,28 @@ describe("checkAuthorizationRequest", () => {
     expect(await getTestDb().oAuthGrant.count()).toBe(0);
   });
 
-  it.each(["writer", "manager", "owner"] as const)(
-    "gives a %s codes for both addresses, and grants with the folder and the role",
+  it("gives a Writer codes for the Reader and the Writer address, and grants with the folder and the role", async () => {
+    const [alice, client] = [await createActor(), await register()];
+    const folder = await createFolder({ roles: [{ user: alice, role: "writer" }] });
+
+    for (const mcpRole of ["reader", "writer"]) {
+      await grant(alice, client, "90d", addressOf(folder, mcpRole));
+    }
+
+    const rows = await getTestDb().oAuthGrant.findMany({ orderBy: { role: "asc" } });
+    expect(rows.map((row) => [row.folderId, row.role])).toEqual([
+      [folder.id, "reader"],
+      [folder.id, "writer"],
+    ]);
+  });
+
+  it.each(["manager", "owner"] as const)(
+    "gives a %s codes for all three addresses, and grants with the folder and the role",
     async (role) => {
       const [alice, client] = [await createActor(), await register()];
       const folder = await createFolder({ roles: [{ user: alice, role }] });
 
-      for (const mcpRole of ["reader", "writer"]) {
+      for (const mcpRole of ["reader", "writer", "manager"]) {
         await grant(alice, client, "90d", addressOf(folder, mcpRole));
       }
 
@@ -421,7 +443,23 @@ describe("checkAuthorizationRequest", () => {
       expect(rows.map((row) => [row.folderId, row.role])).toEqual([
         [folder.id, "reader"],
         [folder.id, "writer"],
+        [folder.id, "manager"],
       ]);
+    },
+  );
+
+  it.each(["manager", "owner"] as const)(
+    "accepts a request of a %s for the Manager address, with the role Manager",
+    async (role) => {
+      const [alice, client] = [await createActor(), await register()];
+      const folder = await createFolder({ roles: [{ user: alice, role }] });
+
+      await expect(
+        oauthService.checkAuthorizationRequest(
+          alice,
+          paramsOf(alice, client, { resource: addressOf(folder, "manager") }),
+        ),
+      ).resolves.toMatchObject({ ok: true, value: { address: { folder: { id: folder.id }, role: "manager" } } });
     },
   );
 

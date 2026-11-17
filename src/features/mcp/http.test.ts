@@ -114,7 +114,6 @@ describe("the address", () => {
     ["/mcp", undefined],
     ["/mcp with an empty path", []],
     ["the role Owner", [FOLDER_ID, "owner"]],
-    ["the role Manager", [FOLDER_ID, "manager"]],
     ["a part that is no UUID", ["abc", "reader"]],
     ["a UUID in upper case", [FOLDER_ID.toUpperCase(), "reader"]],
     ["a folder without a role", [FOLDER_ID]],
@@ -133,16 +132,23 @@ describe("the address", () => {
     expect(mocks.authenticateAccessToken).not.toHaveBeenCalled();
   });
 
-  it("answers the Writer address like the Reader address, and names it in the 401", async () => {
-    mocks.authenticateAccessToken.mockResolvedValue({ ok: false, error: { code: "missing-token" } });
+  it.each(["writer", "manager"])(
+    "answers the address of the role %s like the Reader address, and names it in the 401",
+    async (role) => {
+      mocks.authenticateAccessToken.mockResolvedValue({ ok: false, error: { code: "missing-token" } });
 
-    const response = await handleMcpRequest(post(TOOLS_LIST), [FOLDER_ID, "writer"]);
+      const response = await handleMcpRequest(post(TOOLS_LIST), [FOLDER_ID, role]);
 
-    expect(response.status).toBe(401);
-    expect(response.headers.get("www-authenticate")).toBe(
-      `Bearer resource_metadata="${PUBLIC_URL}/.well-known/oauth-protected-resource/mcp/${FOLDER_ID}/writer"`,
-    );
-  });
+      expect(response.status).toBe(401);
+      expect(response.headers.get("www-authenticate")).toBe(
+        `Bearer resource_metadata="${PUBLIC_URL}/.well-known/oauth-protected-resource/mcp/${FOLDER_ID}/${role}"`,
+      );
+      expect(mocks.authenticateAccessToken).toHaveBeenCalledWith(expect.anything(), {
+        folderId: FOLDER_ID,
+        role,
+      });
+    },
+  );
 });
 
 describe("the folder of the connection", () => {

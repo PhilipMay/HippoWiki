@@ -152,6 +152,23 @@ test("two connections of the same app to different addresses are two entries, ea
   expect(errors).toEqual([]);
 });
 
+test("a connection to the Manager address is listed with its folder and the role Manager", async ({
+  page,
+  request,
+}) => {
+  const errors = collectErrors(page);
+  const clientId = await registerClient(request, "Example connector");
+  await connect(page, request, clientId, mcpAddress(projects, "manager"));
+
+  await page.goto("/account");
+
+  const rows = appRows(page);
+  await expect(rows).toHaveCount(1);
+  await expect(rows.nth(0)).toContainText("Folder projects · Role Manager");
+  await expect(page.getByRole("link", { name: "Revoke Example connector on projects as Manager" })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test("after the folder is renamed the list shows its new name", async ({ page }) => {
   await createGrant({ owner: KNOWN_USER, folder: projects, name: "Example connector" });
   await getTestDb().folder.update({ where: { id: projects.id }, data: { name: "renamed" } });

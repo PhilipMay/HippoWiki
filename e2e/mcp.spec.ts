@@ -199,7 +199,7 @@ test("/mcp answers 404, also with a valid token; a connected app works at its fo
 test("addresses that are no folder addresses answer 404; a folder address without a token answers 401, whether the folder exists or not", async ({
   request,
 }) => {
-  for (const to of [`/mcp/${projects.id}/owner`, `/mcp/${projects.id}/manager`, "/mcp/abc/reader"]) {
+  for (const to of [`/mcp/${projects.id}/owner`, `/mcp/${projects.id}/Manager`, "/mcp/abc/reader"]) {
     expect((await send(request, { method: "tools/list" }, secret, to)).status(), to).toBe(404);
   }
 
@@ -210,6 +210,9 @@ test("addresses that are no folder addresses answer 404; a folder address withou
     expect(response.headers()["www-authenticate"]).toMatch(/^Bearer resource_metadata="[^"]+\/reader"$/);
     expect(await response.json()).toEqual({ error: "unauthorized" });
   }
+  const manager = await send(request, { method: "tools/list" }, null, `/mcp/${projects.id}/manager`);
+  expect(manager.status()).toBe(401);
+  expect(manager.headers()["www-authenticate"]).toMatch(/^Bearer resource_metadata="[^"]+\/manager"$/);
 });
 
 test("the access token of a connection to /mcp/<A>/reader is refused at /mcp/<A>/writer and at /mcp/<B>/reader", async ({
@@ -269,6 +272,38 @@ test("after an Owner lowers a Writer to Reader the Writer connection answers 403
 
   expect((await send(request, call, writer.accessToken, `/mcp/${projects.id}/writer`)).status()).toBe(200);
   expect(await getTestDb().oAuthGrant.count({ where: { userId: bob.id } })).toBe(2);
+});
+
+test("after a Manager is lowered or loses the role the Manager connection answers 403, and works again once the user is Manager again", async ({
+  request,
+}) => {
+  const bob = await createUser({ name: "bob", mustChangePassword: false });
+  await createFolderRole({ folder: projects, user: bob, role: "manager" });
+  const manager = await createGrant({ owner: bob, folder: projects, role: "manager" });
+  const to = `/mcp/${projects.id}/manager`;
+  const where = { folderId_userId: { folderId: projects.id, userId: bob.id } };
+  const call = { method: "tools/call", params: { name: "list_folder", arguments: {} } };
+  const tooLow = {
+    error: "role_too_low",
+    error_description: "Your role on the folder does not allow this address.",
+  };
+
+  expect((await send(request, call, manager.accessToken, to)).status()).toBe(200);
+  for (const role of ["writer", "reader"] as const) {
+    await getTestDb().folderRole.update({ where, data: { role } });
+    const refused = await send(request, call, manager.accessToken, to);
+    expect(refused.status(), role).toBe(403);
+    expect(await refused.json()).toEqual(tooLow);
+  }
+  await getTestDb().folderRole.delete({ where });
+  const removed = await send(request, call, manager.accessToken, to);
+  expect(removed.status()).toBe(403);
+  expect(await removed.json()).toEqual(tooLow);
+
+  await createFolderRole({ folder: projects, user: bob, role: "manager" });
+
+  expect((await send(request, call, manager.accessToken, to)).status()).toBe(200);
+  expect(await getTestDb().oAuthGrant.count({ where: { userId: bob.id } })).toBe(1);
 });
 
 test("after the folder is renamed the connection lists and reads its pages under the new name", async ({ request }) => {

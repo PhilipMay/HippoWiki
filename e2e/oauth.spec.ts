@@ -651,18 +651,49 @@ test.describe("the consent page, as a logged-in user", () => {
     expect(await getTestDb().oAuthGrant.findFirstOrThrow()).toMatchObject({ folderId: projects.id, role: "writer" });
   });
 
+  for (const role of ["manager", "owner"] as const) {
+    test(`a ${role} approves a connection to the Manager address, and the app lists the folder through MCP`, async ({
+      page,
+      request,
+    }) => {
+      const errors = collectErrors(page);
+      const guides = await createFolder({ name: "guides", roles: [{ user: KNOWN_USER, role }] });
+      const manager = mcpAddress(guides, "manager");
+      const clientId = await registerClient(request);
+      const callback = await awaitCallback(page);
+
+      await page.goto(authorizeUrl(clientId, manager));
+
+      const main = page.getByRole("main");
+      await expect(main.getByText(/It asks to connect to the folder guides with the role Manager\./)).toBeVisible();
+      await expect(main.getByText(/delete pages, and create, rename and delete tabs/)).toBeVisible();
+      expect(errors).toEqual([]);
+
+      await page.getByRole("button", { name: "Approve" }).click();
+      const { code } = await callback();
+      const response = await exchange(request, clientId, code ?? "", manager);
+      expect(response.status()).toBe(200);
+      const tokens = (await response.json()) as Tokens;
+      expect(await getTestDb().oAuthGrant.findFirstOrThrow()).toMatchObject({ folderId: guides.id, role: "manager" });
+      expect(await listFolderStatus(request, tokens.access_token, manager)).toBe(200);
+    });
+  }
+
   test("a missing folder, a folder without a role and a role too low show the same refusal with access_denied", async ({
     page,
     request,
   }) => {
     const notes = await createFolder({ name: "notes", roles: [] });
     const handbook = await createFolder({ name: "handbook", roles: [{ user: KNOWN_USER, role: "reader" }] });
+    const drafts = await createFolder({ name: "drafts", roles: [{ user: KNOWN_USER, role: "writer" }] });
     const clientId = await registerClient(request);
 
     for (const resource of [
       mcpAddress({ id: "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10" }),
       mcpAddress(notes),
       mcpAddress(handbook, "writer"),
+      mcpAddress(handbook, "manager"),
+      mcpAddress(drafts, "manager"),
     ]) {
       const callback = await awaitCallback(page);
       await page.goto(authorizeUrl(clientId, resource));
@@ -671,7 +702,7 @@ test.describe("the consent page, as a logged-in user", () => {
       await expect(main.getByRole("alert")).toHaveText(
         "The request of the app cannot be answered: No app can be connected to this address.",
       );
-      await expect(main.getByText(/notes|handbook/)).toHaveCount(0);
+      await expect(main.getByText(/notes|handbook|drafts/)).toHaveCount(0);
       await expect(main.getByRole("button", { name: "Approve" })).toHaveCount(0);
       await main.getByRole("link", { name: "Return to 127.0.0.1:53682" }).click();
       expect(await callback()).toEqual({

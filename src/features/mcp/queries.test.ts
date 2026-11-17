@@ -9,6 +9,7 @@ vi.mock("@/lib/env", () => ({ getServerEnv: mocks.getServerEnv }));
 const FOLDER = { id: "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10" };
 const READER = { role: "reader", address: `https://wiki.example.com/mcp/${FOLDER.id}/reader` };
 const WRITER = { role: "writer", address: `https://wiki.example.com/mcp/${FOLDER.id}/writer` };
+const MANAGER = { role: "manager", address: `https://wiki.example.com/mcp/${FOLDER.id}/manager` };
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -20,8 +21,12 @@ describe("listMcpAddresses", () => {
     expect(listMcpAddresses(FOLDER, "reader")).toEqual([READER]);
   });
 
-  it.each(["writer", "manager", "owner"] as const)("gives a %s the Reader and the Writer address", (role) => {
-    expect(listMcpAddresses(FOLDER, role)).toEqual([READER, WRITER]);
+  it("gives a Writer the Reader and the Writer address", () => {
+    expect(listMcpAddresses(FOLDER, "writer")).toEqual([READER, WRITER]);
+  });
+
+  it.each(["manager", "owner"] as const)("gives a %s the Reader, the Writer and the Manager address", (role) => {
+    expect(listMcpAddresses(FOLDER, role)).toEqual([READER, WRITER, MANAGER]);
   });
 
   it("gives no address without a role", () => {

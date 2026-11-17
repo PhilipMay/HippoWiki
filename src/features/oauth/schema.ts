@@ -37,8 +37,8 @@ export type McpAddress = { folderId: string; role: McpRole };
 
 /**
  * The MCP address of the path segments after `/mcp`, if they are exactly a folder id in lower case and the role
- * `reader` or `writer`; otherwise `null`: no segments (the plain `/mcp`), the roles Owner and Manager, a part that is
- * no UUID, and any further segment. Whether the folder exists is not checked here.
+ * `reader`, `writer` or `manager`; otherwise `null`: no segments (the plain `/mcp`), the role Owner, a part that is no
+ * UUID, and any further segment. Whether the folder exists is not checked here.
  */
 export function parseMcpPath(segments: readonly string[] | undefined): McpAddress | null {
   if (segments?.length !== 2) return null;
@@ -49,9 +49,9 @@ export function parseMcpPath(segments: readonly string[] | undefined): McpAddres
 }
 
 /**
- * The MCP address of a `resource` (RFC 8707), if it is exactly `<publicUrl>/mcp/<folder-uuid>/<reader|writer>` as
- * `mcpFolderPath()` writes it, with the id in lower case; otherwise `null`: the plain `/mcp`, the roles Owner and
- * Manager, a part that is no UUID, another host, a trailing slash, a query and a fragment. Whether the folder exists
+ * The MCP address of a `resource` (RFC 8707), if it is exactly `<publicUrl>/mcp/<folder-uuid>/<reader|writer|manager>`
+ * as `mcpFolderPath()` writes it, with the id in lower case; otherwise `null`: the plain `/mcp`, the role Owner, a part
+ * that is no UUID, another host, a trailing slash, a query and a fragment. Whether the folder exists
  * is not checked here.
  */
 export function parseMcpResource(value: string | undefined, publicUrl: string): McpAddress | null {

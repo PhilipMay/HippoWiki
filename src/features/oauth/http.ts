@@ -55,8 +55,8 @@ export function authorizationServerMetadata(): Response {
 
 /**
  * The metadata of the protected resource at an MCP address of a folder (RFC 9728), at
- * `/.well-known/oauth-protected-resource/mcp/<folder-uuid>/<reader|writer>`, whether a folder of that id exists or not,
- * so that it tells nothing about which folders exist. `path` is what follows the well-known prefix; any other path,
+ * `/.well-known/oauth-protected-resource/mcp/<folder-uuid>/<reader|writer|manager>`, whether a folder of that id
+ * exists or not, so that it tells nothing about which folders exist. `path` is what follows the well-known prefix; any other path,
  * the well-known prefix alone and the one followed by `/mcp` included, is not found, because there is no resource at
  * `/mcp`. The wiki is the only authorization server.
  */

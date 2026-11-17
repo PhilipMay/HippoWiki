@@ -213,7 +213,7 @@ model OAuthGrant {
   folderId             String         @db.Uuid
   folder               Folder         @relation(fields: [folderId], references: [id], onDelete: Cascade)
   /// The role of the MCP address: the most the app may do, never more than the user's current role on the folder.
-  /// Only `reader` or `writer`, which a check constraint in the migration keeps.
+  /// Only `reader`, `writer` or `manager`, which a check constraint in the migration keeps: Owner is no role of MCP.
   role                 FolderRoleType
   /// When the grant ends: it can no longer be refreshed, and its access token stops working.
   expiresAt            DateTime       @db.Timestamptz(3)
@@ -282,7 +282,8 @@ model OAuthCode {
   redirectUri   String
   /// The PKCE challenge of the authorization request (`S256`); the exchange must show its verifier.
   codeChallenge String
-  /// The folder and the role of the MCP address of the grant the code stands for, as in `OAuthGrant`.
+  /// The folder and the role of the MCP address of the grant the code stands for, as in `OAuthGrant`: only `reader`,
+  /// `writer` or `manager`, which a check constraint in the migration keeps.
   folderId      String         @db.Uuid
   folder        Folder         @relation(fields: [folderId], references: [id], onDelete: Cascade)
   role          FolderRoleType

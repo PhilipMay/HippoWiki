@@ -12,12 +12,10 @@ test.beforeEach(async () => {
 for (const [role, roles] of [
   ["reader", ["Reader"]],
   ["writer", ["Reader", "Writer"]],
-  ["manager", ["Reader", "Writer"]],
-  ["owner", ["Reader", "Writer"]],
+  ["manager", ["Reader", "Writer", "Manager"]],
+  ["owner", ["Reader", "Writer", "Manager"]],
 ] as const) {
-  test(`a ${role} opens "AI apps" from the folder and sees the addresses of ${roles.join(" and ")}`, async ({
-    page,
-  }) => {
+  test(`a ${role} opens "AI apps" from the folder and sees the addresses of ${roles.join(", ")}`, async ({ page }) => {
     const errors = collectErrors(page);
     const folder = await createFolder({ name: "projects", roles: [{ user: KNOWN_USER, role }] });
     await page.goto("/folders/projects");
@@ -38,8 +36,13 @@ for (const [role, roles] of [
       await expect(page.getByRole("button", { name: `Copy ${label.toLowerCase()} address` })).toBeEnabled();
     }
     await expect(page.getByText("without changing anything")).toBeVisible();
-    if (roles.length === 2) {
+    if (roles.length >= 2) {
       await expect(page.getByText(/create pages, replace their content, and move or rename them/)).toBeVisible();
+    }
+    if (roles.length === 3) {
+      await expect(page.getByText(/delete pages, and create, rename and delete tabs/)).toBeVisible();
+    } else {
+      await expect(page.getByText(/delete tabs/)).toHaveCount(0);
     }
     expect(errors).toEqual([]);
   });

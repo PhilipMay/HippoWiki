@@ -170,6 +170,28 @@ describe("authenticateAccessToken", () => {
     expect((await getTestDb().oAuthGrant.findUniqueOrThrow({ where: { id: grant.id } })).lastUsedAt).not.toBeNull();
   });
 
+  it("accepts a Manager connection only while the user is Manager or Owner, and again once that holds again", async () => {
+    const alice = await createActor();
+    const folder = await createFolder({ roles: [{ user: alice, role: "manager" }] });
+    const { grant, accessToken } = await createGrant({ owner: alice, folder, role: "manager" });
+    const where = { folderId_userId: { folderId: folder.id, userId: alice.id } };
+    const accepted = { ok: true, value: { connection: { grantId: grant.id, folderId: folder.id, role: "manager" } } };
+    const refused = { ok: false, error: { code: "role-too-low" } };
+
+    await expect(authenticate(accessToken)).resolves.toMatchObject(accepted);
+    await getTestDb().folderRole.update({ where, data: { role: "owner" } });
+    await expect(authenticate(accessToken)).resolves.toMatchObject(accepted);
+    for (const role of ["writer", "reader"] as const) {
+      await getTestDb().folderRole.update({ where, data: { role } });
+      await expect(authenticate(accessToken)).resolves.toEqual(refused);
+    }
+    await getTestDb().folderRole.delete({ where });
+    await expect(authenticate(accessToken)).resolves.toEqual(refused);
+
+    await getTestDb().folderRole.create({ data: { folderId: folder.id, userId: alice.id, role: "manager" } });
+    await expect(authenticate(accessToken)).resolves.toMatchObject(accepted);
+  });
+
   it("returns the same actor as the session of the grant's user", async () => {
     const alice = await createActor();
     const { accessToken } = await createGrant({ owner: alice });

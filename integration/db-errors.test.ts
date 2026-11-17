@@ -225,7 +225,40 @@ describe("unique violations", () => {
 });
 
 describe("the role of an MCP address", () => {
-  it.each(["manager", "owner"] as const)("is never %s, for a grant and for a code", async (role) => {
+  it.each(["reader", "writer", "manager"] as const)("may be %s, for a grant and for a code", async (role) => {
+    const [alice, client, folder] = [await createUser(), await createClientRow(), await createFolder()];
+
+    await expect(
+      getTestDb().oAuthGrant.create({
+        data: {
+          name: "Example",
+          folderId: folder.id,
+          role,
+          clientId: client.id,
+          expiresAt: new Date(),
+          userId: alice.id,
+        },
+      }),
+    ).resolves.toMatchObject({ role });
+    await expect(
+      getTestDb().oAuthCode.create({
+        data: {
+          codeHash: "d".repeat(64),
+          clientId: client.id,
+          userId: alice.id,
+          redirectUri: "https://client.example/callback",
+          codeChallenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+          folderId: folder.id,
+          role,
+          lifetime: "90d",
+          expiresAt: new Date(),
+        },
+      }),
+    ).resolves.toMatchObject({ role });
+  });
+
+  it("is never owner, for a grant and for a code", async () => {
+    const role = "owner";
     const [alice, client, folder] = [await createUser(), await createClientRow(), await createFolder()];
 
     await expect(

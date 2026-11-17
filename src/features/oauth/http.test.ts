@@ -126,7 +126,7 @@ describe("authorizationServerMetadata", () => {
 describe("protectedResourceMetadata", () => {
   const FOLDER_ID = "3a5c7e90-1b2d-4f6a-8c0e-2d4f6a8c0e11";
 
-  it.each(["reader", "writer"])(
+  it.each(["reader", "writer", "manager"])(
     "describes the %s address of a folder, whether the folder exists or not",
     async (role) => {
       const response = protectedResourceMetadata(["mcp", FOLDER_ID, role]);
@@ -148,7 +148,7 @@ describe("protectedResourceMetadata", () => {
     [["mcp", "more"]],
     [["MCP", FOLDER_ID, "reader"]],
     [["mcp", FOLDER_ID, "owner"]],
-    [["mcp", FOLDER_ID, "manager"]],
+    [["mcp", FOLDER_ID, "Manager"]],
     [["mcp", "abc", "reader"]],
     [["mcp", FOLDER_ID, "reader", "more"]],
     [["oauth", "token"]],
