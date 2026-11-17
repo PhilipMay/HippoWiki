@@ -5,6 +5,8 @@
 - Language: TypeScript
 - Framework: Next.js (React, Node.js) with the App Router
 - UI library: Material UI, with the icons of `@mui/icons-material`
+- Comparing revisions of a page: jsdiff (`diff`), line by line, with a cap on the size of the difference (see
+  `page-history.md`)
 
 ## Data & Backend
 

@@ -31,8 +31,6 @@ listed first; there is no order across themes.
 
 ## History and Revisions
 
-- Page history: a revision with a full snapshot of the page on every save, listed per page (`pages.md`).
-- Page revert: set a page back to an earlier revision.
 - Folder history: the changes in a folder (items created, renamed, moved, deleted and restored), each entry with
   the items it changed.
 - Folder revert: set a folder back to an earlier state.

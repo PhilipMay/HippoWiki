@@ -345,8 +345,10 @@ the authentication guide of Next.js describes:
   `connected-apps.md`)
 - no deactivating or deleting of users; deactivating, when it comes, must also stop the user's connected apps and decide
   what happens to a folder whose last Owner it concerns (see `folder-roles.md`). A user who has edited content or has
-  a role cannot be deleted for good at all, because the keys from content to its last editor and from a role to its
-  user restrict deleting (`onDelete: Restrict`, see `content-structure.md`)
+  a role cannot be deleted for good at all, because the keys from content to its last editor, from a page revision to
+  its user and from a role to its user restrict deleting (`onDelete: Restrict`, see `content-structure.md`). The
+  history of a page keeps the name of every user who changed it for as long as the page exists, which a later
+  deletion of users has to take into account (see `page-history.md`)
 - no expiry of first passwords
 - no online check of new passwords against breached passwords, only the bundled list (see "Breached password check"
   in `roadmap.md`)

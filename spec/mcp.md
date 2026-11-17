@@ -115,6 +115,9 @@ Write tools of pages, for a Writer and a Manager connection, each with the hints
   follows the new title heading.
 - `move_or_rename_page`: a page to another tab of the folder, or directly into it, with a new name, based on a
   version. It stays in the folder of the connection.
+- `create_page` and `replace_page_content` record a revision of the page with the user of the connection and the
+  channel `mcp`, like a content change in the browser, so that a user can undo it in the browser from the history of
+  the page (see `page-history.md`). No tool reads the history or reverts a page.
 
 Tools of a Manager, for a Manager connection only. They do what the browser does for a Manager (see
 `content-structure.md` and `page-deletion.md`). `delete_page` and `delete_tab` carry the hint of a tool that destroys
@@ -197,8 +200,11 @@ What holds for all of them:
   Rejected: 404 for every refusal.
 - The tools work on the folder of the connection without naming it, so that an agent cannot even try another folder.
   Rejected: the tools with a folder name and only one folder that answers.
-- The write tools were built before page history. Accepted: a change by an AI agent cannot be reverted until page
-  history exists; the version check still keeps it from overwriting a newer change. Rejected: page history first.
+- The write tools were built before page history, and the version check kept a change by an AI agent from
+  overwriting a newer change until then. Since the page history, a content change through MCP is recorded and can be
+  reverted in the browser. Rejected: page history first.
+- The history and reverting stay in the browser: no tool reads the history or reverts a page, so that undoing an AI
+  app's change is the user's decision. Rejected: tools for the history and for reverting.
 - The name of a new page is optional for an agent and is then the name the browser would suggest, so that an agent
   needs to send only the content. Rejected: a name that is always required.
 - A change through MCP shows the user and the channel as "by <user> via mcp", in the browser and through the tools,
@@ -260,8 +266,9 @@ What holds for all of them:
 - no exact search-and-replace in a page: a change replaces the whole content (see "Exact search-and-replace for MCP" in
   `roadmap.md`)
 - no connection to several folders at once, or to all folders of a user
-- no page history, so a change made by an AI agent cannot be undone; the page shows that its last change came
-  through MCP, but not which app made it or what changed
+- no page history through MCP: a content change made by an AI agent is undone only in the browser, from the history
+  of the page; a move or rename is not part of the history. The page and its history show that a change came through
+  MCP, but not which app made it
 - no search tool
 - no resources and no prompts of the protocol, only tools
 - no SSE, no sessions, no notifications and no subscriptions

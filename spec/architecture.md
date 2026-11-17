@@ -70,8 +70,9 @@ How the code is organised and which patterns new code follows. The technology st
     included, without asking the database. Database errors are thrown.
   - Writes return a `Result` from `src/lib/result.ts`: `{ ok: true, value }` with the item as stored, or
     `{ ok: false, error }` with a code. The codes of the content are `invalid-input` (with `fieldErrors`),
-    `name-taken`, `folder-not-found`, `tab-not-found`, `page-not-found`, `page-changed` (with the page as stored) and
-    `failed`; the users, auth and grant
+    `name-taken`, `folder-not-found`, `tab-not-found`, `page-not-found`, `page-changed` (with the page as stored),
+    `revision-not-found` (a revert to a revision that does not exist or would change nothing) and `failed`; the users,
+    auth and grant
     services add codes such as `not-allowed`, `busy`, `invalid-credentials`, `wait`, `limit-reached` and
     `grant-not-found` (see `src/features/users/service.ts`, `src/features/auth/service.ts` and
     `src/features/grants/service.ts`). Each write declares the ones it can return in a type of its own, such as
@@ -83,6 +84,10 @@ How the code is organised and which patterns new code follows. The technology st
     `optimistic-locking.md`), puts the version into the condition of its `updateMany` and counts it up in the same
     write. A count of 0 is told apart by reading the row again: missing gives `page-not-found`, otherwise
     `page-changed`. A version that does not parse writes nothing and counts as an older one.
+  - A write that changes the content of a page also stores the revision of the change, in the same interactive
+    transaction as its conditional `updateMany` (`storeContentChange()` of the pages service): the update locks the row
+    of the page, so the next number of the revision is read and taken by one write at a time. Every content save,
+    reverts included, goes through it, so that the page and its history never disagree (see `page-history.md`).
   - It logs the events of its writes: the stored item, a taken name, an item that was not found in the database and
     an unexpected error. A malformed id and invalid input are not logged.
   - It returns no addresses and no messages, except the field errors of the schemas in `invalid-input`. The stored
@@ -287,7 +292,7 @@ The feature is described in `users-and-login.md`. What every new route, query an
   follows the schema of the installed Better Auth version.
 - Writes that must succeed together run in one interactive transaction of the Prisma client
   (`getDb().$transaction(async (tx) => ...)`), such as the two counts of a login in `reserveAttempt()` of the auth
-  service. A check that must hold until the write, such as that a folder keeps an Owner, reads its rows with
+  service and a content save of a page with its revision. A check that must hold until the write, such as that a folder keeps an Owner, reads its rows with
   `SELECT ... FOR UPDATE` in the same transaction (`changeRole()` and `removeRole()` of the folder-roles service). A conditional write inside it that finds its row changed throws an error that only the caller knows, which
   rolls the transaction back, and the caller reads again.
 - Prisma is used for CRUD. The `fullTextSearchPostgres` preview feature is not enabled; search uses PostgreSQL

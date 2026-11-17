@@ -28,11 +28,11 @@ and `src/features/folder-roles/service.test.ts`.
   | Function                                                                      | Reader | Writer | Manager | Owner |
   | ----------------------------------------------------------------------------- | :----: | :----: | :-----: | :---: |
   | See the folder in the folder list, open it, its tabs, "All pages" and "Roles" |   ✓    |   ✓    |    ✓    |   ✓   |
-  | Read pages                                                                    |   ✓    |   ✓    |    ✓    |   ✓   |
-  | Create a page, edit its content                                               |        |   ✓    |    ✓    |   ✓   |
+  | Read pages, see their history, open and compare their revisions               |   ✓    |   ✓    |    ✓    |   ✓   |
+  | Create a page, edit its content, revert it to an earlier revision             |        |   ✓    |    ✓    |   ✓   |
   | Move or rename a page                                                         |        |   ✓    |    ✓    |   ✓   |
   | Delete a page                                                                 |        |        |    ✓    |   ✓   |
-  | See the deleted pages of the folder, read and restore one                     |        |        |    ✓    |   ✓   |
+  | See the deleted pages of the folder, read one and its history, restore one    |        |        |    ✓    |   ✓   |
   | Create or rename a tab                                                        |        |        |    ✓    |   ✓   |
   | Delete a tab                                                                  |        |        |    ✓    |   ✓   |
   | Rename the folder                                                             |        |        |         |   ✓   |

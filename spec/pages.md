@@ -29,8 +29,11 @@ routes under `src/app/folders/`. Tests: `src/features/pages/derive.test.ts`, `sr
   - at most 10,000 table cells in all, counting the empty cells that fill a row up to the columns of its header: a
     small table with a header of many columns and many short rows would otherwise make a page view of millions of
     cells.
-- The content of a page is validated when it is created or edited. Moving or renaming neither validates nor touches
-  it, so a limit lowered later never blocks them.
+- The content of a page is validated when it is created or edited, and when it is reverted to an earlier revision,
+  with the limits in force at the time of the revert (see `page-history.md`). Moving or renaming neither validates nor
+  touches it, so a limit lowered later never blocks them.
+- Every content change is recorded as a revision of the page; a save whose content is the same as that of the newest
+  revision records none (see `page-history.md`).
 - The forms send only what they change; a submitted title is ignored. The service validates again before it writes.
 
 ## Name
@@ -49,13 +52,14 @@ given as `?action=<action>` (see `content-structure.md`).
   client that it has a title, then asks for the name and the place in the "Save page" dialog, which shows the address
   the page will get. Saving shows the new page.
 - The page address: the breadcrumb, the last update with its last editor and how it was made ("Last updated <time> by
-  mike via mcp", see "Last editor" in `content-structure.md`), "Edit" and "Move or rename" for a Writer and "Delete" for a Manager (see
-  `folder-roles.md`), then the rendered content.
+  mike via mcp", see "Last editor" in `content-structure.md`), "Edit" and "Move or rename" for a Writer, "Delete" for a
+  Manager (see `folder-roles.md`) and "History" for every role, then the rendered content.
   The content's `#` heading is the page's only level-one heading; the browser tab shows the stored title.
 - `?action=edit`: the content in the editor; no title or name field. Saving shows the page. A save is refused when
   the page was changed after the editor was opened; the editor then shows the page as stored (see
   `optimistic-locking.md`).
 - `?action=move-or-rename`: see `content-structure.md`. `?action=delete`: see `page-deletion.md`.
+- `?view=history`, `?view=revision`, `?view=compare` and `?action=revert`: see `page-history.md`.
 - `GET /api/health`: `{ "status": "ok" }` while the database is reachable, status 503 and a logged error otherwise.
 
 ## Rendering
@@ -130,7 +134,7 @@ costliest function of a page, and its guards are:
 - a deleted page cannot be removed for good, which is not planned, and is restored only into its own folder, as a
   lasting rule (see `page-deletion.md`)
 - a page has one content in one language; the same page in several languages is not planned
-- no search, no `[[wiki links]]`, no history, no attachments
+- no search, no `[[wiki links]]`, no attachments
 - raw Markdown editing in a textarea
 - the title comes only from a leading `# Title` heading: no setext headings, no front matter, no live display of the
   derived title while editing an existing page

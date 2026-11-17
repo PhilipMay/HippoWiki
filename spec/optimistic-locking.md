@@ -18,7 +18,7 @@ in `src/features/pages/components/`. Tests: `integration/page-service.test.ts`, 
 ## The version of a page
 
 - Every page has a version: 1 when it is created, counted up by one by every stored change of the page: a content
-  save, a move or rename, a delete and a restore. It changes in the same write as the time of the last change and the
+  save, a revert to an earlier revision, a move or rename, a delete and a restore. It changes in the same write as the time of the last change and the
   last editor (see "Last editor" in `content-structure.md`), and a write that fails changes none of them.
 - Pages stored before the version existed have the version 1.
 - Renaming a folder or a tab, and every change inside a folder or tab, is no change of its pages and leaves their
@@ -38,6 +38,8 @@ in `src/features/pages/components/`. Tests: `integration/page-service.test.ts`, 
 - A move to a name that is taken at the target, based on an older state, is refused as changed, not as a taken name.
 - The role is checked before the version, so a refusal tells nothing to a user without the role for the change.
 - A change that nobody overtook works as before.
+- A revert to an earlier revision is a content save and follows the rule (see `page-history.md`): it states the
+  version the "Revert page" dialog was opened with and is refused like "Edit".
 
 ## What the browser shows
 
@@ -45,7 +47,8 @@ in `src/features/pages/components/`. Tests: `integration/page-service.test.ts`, 
   new one when the page was moved or renamed in the meantime, with the search parameter `notice=changed` next to its
   action (see "Actions and views" in `content-structure.md`).
 - It shows the page as stored: the editor its current content, the "Move or rename page" dialog its current name and
-  place, the "Delete page" dialog its current name. What the user entered is not kept.
+  place, the "Delete page" dialog its current name, the "Revert page" dialog the same revision. What the user entered
+  is not kept.
 - Above its fields a message names the user who last changed the page, how (`via web` or `via mcp`, see "Last editor"
   in `content-structure.md`) and the time of that change, as the page view shows them: "This page was changed by mike
   via mcp at <time> after you opened it."
@@ -120,5 +123,6 @@ in `src/features/pages/components/`. Tests: `integration/page-service.test.ts`, 
 
 - Folders and tabs keep "the last save wins": two renames of the same folder or tab at once are not told apart.
 - No merging of two changes: a refused change has to be made again on the current page.
-- No history of a page, so the change that overtook the user's cannot be compared with it.
+- The change that overtook the user's is not shown next to it; it can be compared in the history of the page (see
+  `page-history.md`).
 - No display of who else is editing a page right now.

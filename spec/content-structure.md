@@ -87,11 +87,16 @@ hold pages directly and have tabs at the same time.
   | page         | `edit`           | the edit form (see `pages.md`)                           |
   | page         | `move-or-rename` | the "Move or rename page" dialog                         |
   | page         | `delete`         | the "Delete page" dialog                                 |
+  | page         | `revert`         | the "Revert page" dialog over a revision of the page     |
   | deleted page | `restore`        | the "Restore page" dialog                                |
 
 - A folder address also has the views `?view=all`, the list of all its pages, `?view=roles`, who has which role on
   the folder (see `folder-roles.md`), and `?view=mcp`, the MCP addresses of the folder for AI apps, which exists only
   while `HIPPOWIKI_PUBLIC_URL` is set (see "The view "AI apps"" in `folder-roles.md` and `mcp.md`).
+- A page address and the address of a deleted page have the views of the history of the page: `?view=history`, the
+  revisions of the page, `?view=revision&revision=<n>`, one revision, and `?view=compare&from=<n>&to=<n>`, a
+  comparison of two revisions. The action `revert` needs `&revision=<n>`. These parameters belong only to their view
+  or action; anywhere else they show the not-found page (see `page-history.md`).
 - A page address with an action may also carry the notice `?action=<action>&notice=changed`: the editor or dialog of
   the action is shown again after a change was refused, because the page was changed after it was opened (see
   `optimistic-locking.md`). A notice without an action, and an unknown, empty or repeated notice, show the not-found
@@ -214,8 +219,9 @@ hold pages directly and have tabs at the same time.
   after the word "via" in lowercase: "by mike via mcp" (see "Lists and order", `pages.md` and `page-deletion.md`). The
   two tables, the list of all pages and the deleted pages list, show the channel in a column of its own headed "Via".
   Through MCP, `read_page` and `list_folder` return the last editor and the channel (see `mcp.md`).
-- Only the last editor and the channel are stored: not who created an item, not which AI app or connection made a
-  change, and no history of editors. Recording who created an item is not planned.
+- Only the last editor and the channel are stored with an item: not who created it and not which AI app or connection
+  made a change. The revisions of a page keep the user and the channel of every content change (see
+  `page-history.md`); folders and tabs have no history. Recording who created an item is not planned.
 
 ## Lists and order
 
@@ -297,6 +303,7 @@ hold pages directly and have tabs at the same time.
 - Renaming a tab that was deleted after the "Rename tab" dialog was opened shows the not-found page instead of a
   message that the tab no longer exists.
 - No redirects from old addresses after a rename or move.
-- No history, no links between pages, no search.
+- No history of folders and tabs, and moves and renames of pages are not part of the history of a page (see
+  `page-history.md`). No links between pages, no search.
 - Changes of the same folder or tab at the same time are not told apart: the last save wins. Pages are protected (see
   `optimistic-locking.md`).

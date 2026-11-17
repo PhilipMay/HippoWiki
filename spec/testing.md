@@ -42,6 +42,9 @@ How the code is tested. Commands are listed in `README.md`.
   the parse and the page view: each must be parsed and rendered within 2 s, so
   that an update of markdown-it or a change of the renderer cannot bring a slow parse back unnoticed. A new input that
   turns out to be slow is added there.
+- The comparison of revisions gets unit tests in `src/features/pages/diff.test.ts`. `src/features/pages/diff.cost.test.ts`
+  (project `cost`) compares completely different revisions at the content limit, with many short lines and with few
+  long ones: each comparison must answer with a diff or "too different" within 2 s, which guards the cap of the diff.
 - `src/features/services.test.ts` checks that the services load without Next.js and React: it mocks `next/cache`,
   `next/headers`, `next/navigation`, `next/server` and `react` with factories that throw, then imports the services.
   An import of one of them, also an indirect one through `schema.ts` or `src/lib/`, fails the test. A new service is
@@ -234,7 +237,12 @@ How the code is tested. Commands are listed in `README.md`.
     Like the forms, it derives the title from the content; the content defaults to `# <title>`, so
     `createPage({ title: "Older page" })` works. A title given together with content is stored as is, to set up a page
     that was stored before titles were derived. With `deletedAt` it creates a deleted page, which has no tab, so it
-    cannot be combined with `tab`.
+    cannot be combined with `tab`. Like a page after the migration of the page history, it also inserts revision 1
+    with the content, title, editor and channel of the page, made at its `updatedAt`.
+  - `createRevisions()` adds revisions to a page given as `page`, numbered on from its newest revision: `count` of
+    them, with `content`, `createdAt` and `revertedTo` as functions of the number, and `editor` and `via` for all. It
+    gives the page the content and title of the last one, like the saves that recorded them, and leaves its version,
+    last editor and `updatedAt` as they are.
   - `createFolder()`, `createTab()` and `createPage()` take the last editor as `editor`, a `User`; without one, they
     create a user with `createUser()`, so that the integration tests, which start from an empty database, need no
     user of their own. A folder they create for a tab or page gets the same editor. A test that checks the editor shown

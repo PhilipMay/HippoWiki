@@ -42,10 +42,13 @@ the dialogs and lists in `components/`), routes under `src/app/deleted-pages/`. 
   how it was deleted: `web` in the browser, `mcp` through MCP, also for a page deleted with its tab (see "Last editor"
   in `content-structure.md`). The list does not show where in the folder a page was.
 - `/deleted-pages/<folder>/<id>` shows a deleted page read-only, with the time of deletion, the user who deleted it
-  and how ("Deleted <time> by mike via mcp") and "Restore" as its only action. A deleted page is
-  addressed by its id, because its name need not be unique and it has no `.md` address.
+  and how ("Deleted <time> by mike via mcp"), "Restore" as its only action and "History". A deleted page is addressed
+  by its id, because its name need not be unique and it has no `.md` address.
+- A deleted page keeps its history. Its views `?view=history`, `?view=revision` and `?view=compare` show it read-only,
+  without "Revert" (see `page-history.md`); deleting, restoring and deleting a tab record no revision, so a restored
+  page has its whole history again.
 - Everything else under `/deleted-pages` (an unknown folder or id, a page of another folder or one that is not deleted,
-  `/deleted-pages` alone, any view or other action) shows the not-found page.
+  `/deleted-pages` alone, any other view or action) shows the not-found page.
 
 ## Restoring
 
