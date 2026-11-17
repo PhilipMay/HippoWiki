@@ -9,7 +9,8 @@
 // write needs the lowest role of its function (`FUNCTION_ROLES` in `roles.ts`), checked after the admin and before
 // anything else but the actor. Through MCP a user reads only the folder of the connection, with the lower of the
 // user's role and the role of the connection; every other folder reads like one that does not exist. A write stores
-// the actor as the last editor of the folder or tab, in the same write that changes `updatedAt`.
+// the actor as the last editor of the folder or tab, in the same write that changes `updatedAt`; deleting a tab stores
+// the actor as the last editor of the pages it deletes with the tab.
 
 import { z } from "zod";
 
@@ -78,6 +79,10 @@ export type CreateFolderError = NotAllowed | InvalidName | NameTaken | Failed;
 export type RenameFolderError = NotAllowed | FolderNotFound | InvalidName | NameTaken | Failed;
 export type CreateTabError = NotAllowed | FolderNotFound | InvalidName | NameTaken | Failed;
 export type RenameTabError = NotAllowed | TabNotFound | InvalidName | NameTaken | Failed;
+export type DeleteTabError = NotAllowed | TabNotFound | Failed;
+
+/** What a tab deletion leaves: the folder of the tab as stored, and the number of pages deleted with the tab. */
+export type DeletedTab = { folder: Folder; pageCount: number };
 
 const SUMMARY_SELECT = { id: true, name: true, updatedAt: true, ...LAST_EDITOR_SELECT } as const;
 const STORED_TAB_SELECT = { id: true, name: true, folder: { select: { name: true } } } as const;
@@ -400,4 +405,70 @@ export async function renameTab(
 
   logger.info({ tabId }, "tab renamed");
   return { ok: true, value: tab };
+}
+
+/**
+ * Deletes the tab with the given id in the folder with the given id for good, together with its pages, and returns the
+ * folder as stored and the number of pages deleted with the tab. The pages that are in the tab at that moment are soft
+ * deleted as `deletePage()` of the pages service deletes one page, with the actor as their last editor and one time of
+ * deletion for all of them, but without checking their versions: whatever is in the tab now goes with it. Either the
+ * tab and all its pages are deleted, or nothing changes. The folder is not touched: its `updatedAt` and last editor stay
+ * as they are.
+ *
+ * The role is read on the given folder, not on the folder of the tab, because a tab deleted meanwhile has no folder any
+ * more: a Manager of the folder learns that the tab is gone, while a user without the role is refused as for any other
+ * write. A tab of another folder counts as missing.
+ */
+export async function deleteTab(
+  actor: BrowserActor,
+  folderId: string,
+  id: string,
+): Promise<Result<DeletedTab, DeleteTabError>> {
+  if (isAdmin(actor)) return notAllowed(actor, "tab not deleted: the actor is an admin");
+  const lastEditedById = editorIdOf(actor);
+  if (!lastEditedById) return { ok: false, error: { code: "failed" } };
+
+  const parsedFolderId = parseFolderId(folderId);
+  const tabId = parseTabId(id);
+  if (!parsedFolderId || !tabId) return { ok: false, error: { code: "tab-not-found" } };
+
+  const refused = refusedByRole(actor, "tab not deleted", await folderRoleOf(actor, parsedFolderId), "deleteTab", {
+    folderId: parsedFolderId,
+    tabId,
+  });
+  if (refused) return refused;
+
+  let deleted: DeletedTab | null;
+  try {
+    deleted = await getDb().$transaction(async (tx) => {
+      // The lock on the row of the tab makes a concurrent create, move or restore of a page into this tab wait until
+      // the end of the transaction and then fail on the foreign key as a missing tab, so that no page slips into the
+      // tab between the update of its pages and the delete of the tab. Only the tab is locked, not its folder.
+      const rows = await tx.$queryRaw<{ folderName: string }[]>`
+        SELECT f."name" AS "folderName"
+        FROM "Tab" t JOIN "Folder" f ON f."id" = t."folderId"
+        WHERE t."id" = ${tabId}::uuid AND t."folderId" = ${parsedFolderId}::uuid
+        FOR UPDATE OF t`;
+      const tab = rows[0];
+      if (!tab) return null;
+      // A page in a tab is never deleted, so these are exactly the pages of the tab; it sets `updatedAt` as well.
+      const { count } = await tx.page.updateMany({
+        where: { tabId },
+        data: { deletedAt: new Date(), tabId: null, lastEditedById, version: { increment: 1 } },
+      });
+      await tx.tab.delete({ where: { id: tabId } });
+      return { folder: { id: parsedFolderId, name: tab.folderName }, pageCount: count };
+    });
+  } catch (err) {
+    if (isForeignKeyViolation(err, LAST_EDITOR)) return unknownActor(err, actor);
+    logger.error({ err, tabId }, "failed to delete tab");
+    return { ok: false, error: { code: "failed" } };
+  }
+  if (deleted === null) {
+    logger.warn({ folderId: parsedFolderId, tabId }, "tab to delete not found");
+    return { ok: false, error: { code: "tab-not-found" } };
+  }
+
+  logger.info({ actorId: actor.id, folderId: parsedFolderId, tabId, pageCount: deleted.pageCount }, "tab deleted");
+  return { ok: true, value: deleted };
 }

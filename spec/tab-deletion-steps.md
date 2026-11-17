@@ -24,7 +24,7 @@ in `spec/tab-deletion-requirements.md`; their IDs are named below.
 
 ## Checklist
 
-- [ ] Delete a tab in the service
+- [x] Delete a tab in the service
 - [ ] Delete a tab in the browser
 - [ ] Wrap-up
 
@@ -39,16 +39,19 @@ logs it. Covers the service side of R1, R3, R4, R5, R8, R9, R10, R11, R13, R14, 
 
 - `FUNCTION_ROLES` in `src/features/folder-roles/roles.ts` gets the function `deleteTab` with the lowest role
   `manager` (R5), with a comment like those of the other functions.
-- `deleteTab(actor: BrowserActor, id: string)` in `src/features/folders/service.ts`, following `renameTab()`:
+- `deleteTab(actor: BrowserActor, folderId: string, id: string)` in `src/features/folders/service.ts`, following
+  `renameTab()`:
   - An admin gives `not-allowed`, logged, before anything else and without asking the database; a malformed actor id
-    gives `failed`; a malformed tab id gives `tab-not-found`.
-  - The role is read with `roleOnFolderOfTab()` and checked with `refusedByRole(…, "deleteTab", …)`: a Reader, a
-    Writer and a user without a role get `not-allowed`, logged like the other refused content writes (R5, R16). A tab
-    that does not exist has no role either, as for a rename.
+    gives `failed`; a malformed folder or tab id gives `tab-not-found`.
+  - The role is read on the given folder with `folderRoleOf()`, not with `roleOnFolderOfTab()`, and checked with
+    `refusedByRole(…, "deleteTab", …)`: a Reader, a Writer and a user without a role get `not-allowed`, logged like the
+    other refused content writes (R5, R16). A tab deleted meanwhile has no folder any more, so a role read through the
+    tab would refuse a Manager instead of telling that the tab is gone (R19); with the folder of the route, a Manager
+    learns that the tab is gone, and a user without a role is refused whether the tab exists or not.
   - One interactive transaction (`getDb().$transaction(async (tx) => ...)`), as "Database" in `architecture.md`
     describes:
-    1. Lock the row of the tab with `SELECT ... FOR UPDATE` and read its folder id and folder name. No row gives
-       `tab-not-found`, logged as not found (R19). The lock makes a concurrent create, move or restore of a page into
+    1. Lock the row of the tab in the given folder with `SELECT ... FOR UPDATE` and read the folder name. No row, also
+       for a tab of another folder, gives `tab-not-found`, logged as not found (R19). The lock makes a concurrent create, move or restore of a page into
        this tab wait for the end of the transaction and then fail on the foreign key as a missing tab, so no page can
        slip into the tab between the update of its pages and the delete of the tab.
     2. Soft delete every page that is in the tab now, with one `updateMany` and one time for all of them: `deletedAt`
@@ -72,8 +75,8 @@ logs it. Covers the service side of R1, R3, R4, R5, R8, R9, R10, R11, R13, R14, 
 ### Test
 
 - Unit tests in `src/features/folders/service.test.ts`, with the mocked database as for `renameTab`: an admin is
-  refused and logged without a database call; a malformed actor id gives `failed`; a malformed tab id gives
-  `tab-not-found`; the lowest role of `deleteTab` is Manager in "the lowest role of each function"; a Reader, a
+  refused and logged without a database call; a malformed actor id gives `failed`; a malformed folder or tab id gives
+  `tab-not-found`; the role is read on the given folder; the lowest role of `deleteTab` is Manager in "the lowest role of each function"; a Reader, a
   Writer and a user without a role get `not-allowed` and nothing is written; a missing locked row gives
   `tab-not-found`; a foreign key violation of the last editor gives `failed`; an unexpected error is logged and gives
   `failed`; a success logs `tab deleted` with actor, folder, tab and page count.
@@ -86,7 +89,8 @@ logs it. Covers the service side of R1, R3, R4, R5, R8, R9, R10, R11, R13, R14, 
   - A page placed directly in the folder, a page of another tab and an already deleted page of the folder are not
     touched (R8).
   - A Reader and a Writer get `not-allowed`, a user without a role and an admin as well; nothing changes (R5).
-  - A tab that does not exist, and one deleted before, give `tab-not-found` and change nothing (R19).
+  - A tab that does not exist, one deleted before and one of another folder give `tab-not-found` and change nothing
+    (R19); a user without a role on the given folder gets `not-allowed` also for a tab that is gone.
   - After a rename of the tab the deletion by id still deletes it with its pages (R17).
   - A tab of 300 pages is deleted with all its pages (R18).
   - After the deletion a new tab of the same name is created in the folder (R10).
@@ -114,9 +118,9 @@ browser, and checks R3, R4, R10, R11 and R17 end to end.
 
 ### Build
 
-- A Server Action `deleteTab(id, prevState, formData)` in `src/features/folders/actions.ts`, following `renameTab`:
-  `requireUser()` first, a malformed id gives the "tab gone" state; it calls `folderService.deleteTab(inBrowser(user),
-id)` and maps the errors:
+- A Server Action `deleteTab(folderId, id, prevState, formData)` in `src/features/folders/actions.ts`, following
+  `renameTab`: `requireUser()` first, a malformed id gives the "tab gone" state; it calls
+  `folderService.deleteTab(inBrowser(user), folderId, id)` and maps the errors:
   - `not-allowed`: `notFound()` (R5)
   - `tab-not-found`: the message "This tab no longer exists." together with a flag that the tab is gone (R19)
   - `failed`: the message "The tab could not be deleted. Please try again." (R9)

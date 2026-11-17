@@ -43,6 +43,8 @@ export const FUNCTION_ROLES = {
   deletedPages: "manager",
   /** Create or rename a tab. */
   editTab: "manager",
+  /** Delete a tab for good, with its pages, which are soft deleted. */
+  deleteTab: "manager",
   /** Rename the folder. */
   renameFolder: "owner",
   /** Give, change and remove roles on the folder. */

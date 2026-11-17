@@ -2,6 +2,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import * as folderService from "@/features/folders/service";
+import * as pageService from "@/features/pages/service";
 import { inBrowser, inMcp, type BrowserActor } from "@/features/folder-roles/service";
 import type { User } from "@/generated/prisma/client";
 
@@ -523,5 +524,312 @@ describe("the lowest role of each function", () => {
     await expect(folderService.renameFolder(actor, folder.id, { name: "handbook" })).resolves.toMatchObject({
       ok: true,
     });
+  });
+});
+
+describe("deleting a tab", () => {
+  const TAB_NOT_FOUND = { ok: false, error: { code: "tab-not-found" } };
+  const PAGE_NOT_FOUND = { ok: false, error: { code: "page-not-found" } };
+
+  /** Everything a tab deletion could change: the folders, the tabs and the pages, in a stable order. */
+  async function snapshot() {
+    const db = getTestDb();
+    return {
+      folders: await db.folder.findMany({ orderBy: { id: "asc" } }),
+      tabs: await db.tab.findMany({ orderBy: { id: "asc" } }),
+      pages: await db.page.findMany({ orderBy: { id: "asc" } }),
+    };
+  }
+
+  it.each(["manager", "owner"] as const)(
+    "lets a %s delete a tab with its pages, which become deleted pages of the actor",
+    async (role) => {
+      const bob = await createUser({ name: "bob" });
+      const folder = await createFolder({ name: "docs", roles: [{ user, role }] });
+      const tab = await createTab({ folder, name: "meetngs", editor: bob });
+      const first = await createPage({ tab, name: "first", editor: bob });
+      const second = await createPage({ tab, name: "second", editor: bob, version: 4 });
+
+      await expect(folderService.deleteTab(actor, folder.id, tab.id)).resolves.toStrictEqual({
+        ok: true,
+        value: { folder: { id: folder.id, name: "docs" }, pageCount: 2 },
+      });
+
+      await expect(getTestDb().tab.findUnique({ where: { id: tab.id } })).resolves.toBeNull();
+      const pages = await getTestDb().page.findMany({ where: { folderId: folder.id }, orderBy: { name: "asc" } });
+      expect(
+        pages.map(({ name, tabId, lastEditedById, version }) => ({ name, tabId, lastEditedById, version })),
+      ).toEqual([
+        { name: "first", tabId: null, lastEditedById: user.id, version: first.version + 1 },
+        { name: "second", tabId: null, lastEditedById: user.id, version: second.version + 1 },
+      ]);
+      // Both deleted at the same time.
+      const times = pages.map(({ deletedAt }) => deletedAt?.getTime());
+      expect(times[0]).toEqual(expect.any(Number));
+      expect(new Set(times).size).toBe(1);
+      // The pages keep their content.
+      expect(pages.map(({ content }) => content)).toEqual([first.content, second.content]);
+
+      const deleted = await pageService.listDeletedPages(actor, folder.id);
+      expect(deleted?.map(({ name, lastEditedBy }) => [name, lastEditedBy.name]).sort()).toEqual([
+        ["first", "alice"],
+        ["second", "alice"],
+      ]);
+    },
+  );
+
+  it("deletes a tab without pages", async () => {
+    const folder = await createFolder({ name: "docs" });
+    const tab = await createTab({ folder, name: "empty" });
+
+    await expect(folderService.deleteTab(actor, folder.id, tab.id)).resolves.toMatchObject({
+      ok: true,
+      value: { pageCount: 0 },
+    });
+    expect(await getTestDb().tab.count()).toBe(0);
+  });
+
+  it("touches no page outside the tab", async () => {
+    const folder = await createFolder({ name: "docs" });
+    const tab = await createTab({ folder, name: "old" });
+    const other = await createTab({ folder, name: "other" });
+    await createPage({ tab, name: "inside" });
+    const direct = await createPage({ folder, name: "direct" });
+    const inOther = await createPage({ tab: other, name: "elsewhere" });
+    const alreadyDeleted = await createPage({ folder, name: "gone", deletedAt: new Date("2026-01-01T00:00:00Z") });
+    const before = await getTestDb().page.findMany({
+      where: { id: { in: [direct.id, inOther.id, alreadyDeleted.id] } },
+      orderBy: { id: "asc" },
+    });
+
+    await expect(folderService.deleteTab(actor, folder.id, tab.id)).resolves.toMatchObject({
+      ok: true,
+      value: { pageCount: 1 },
+    });
+
+    expect(
+      await getTestDb().page.findMany({
+        where: { id: { in: [direct.id, inOther.id, alreadyDeleted.id] } },
+        orderBy: { id: "asc" },
+      }),
+    ).toStrictEqual(before);
+    await expect(getTestDb().tab.findUnique({ where: { id: other.id } })).resolves.not.toBeNull();
+  });
+
+  it.each(["reader", "writer", null] as const)("refuses the role %s and changes nothing", async (role) => {
+    const bob = await createUser({ name: "bob" });
+    const folder = await createFolder({
+      name: "docs",
+      roles: role
+        ? [
+            { user, role },
+            { user: bob, role: "owner" },
+          ]
+        : [{ user: bob, role: "owner" }],
+    });
+    const tab = await createTab({ folder, name: "guides" });
+    await createPage({ tab, name: "intro" });
+    const before = await snapshot();
+
+    await expect(folderService.deleteTab(actor, folder.id, tab.id)).resolves.toEqual(NOT_ALLOWED);
+
+    expect(await snapshot()).toStrictEqual(before);
+  });
+
+  it("refuses an admin and changes nothing", async () => {
+    const admin = await createUser({ name: "maria", type: "admin" });
+    const folder = await createFolder({ name: "docs" });
+    const tab = await createTab({ folder, name: "guides" });
+    await createPage({ tab, name: "intro" });
+    const before = await snapshot();
+
+    await expect(folderService.deleteTab(inBrowser(admin), folder.id, tab.id)).resolves.toEqual(NOT_ALLOWED);
+
+    expect(await snapshot()).toStrictEqual(before);
+  });
+
+  it("returns tab-not-found for a tab that does not exist or was deleted before, and changes nothing", async () => {
+    const folder = await createFolder({ name: "docs" });
+    const tab = await createTab({ folder, name: "guides" });
+    await createPage({ tab, name: "intro" });
+    await expect(folderService.deleteTab(actor, folder.id, tab.id)).resolves.toMatchObject({ ok: true });
+    const before = await snapshot();
+
+    await expect(folderService.deleteTab(actor, folder.id, tab.id)).resolves.toEqual(TAB_NOT_FOUND);
+    await expect(folderService.deleteTab(actor, folder.id, crypto.randomUUID())).resolves.toEqual(TAB_NOT_FOUND);
+
+    expect(await snapshot()).toStrictEqual(before);
+  });
+
+  it("returns tab-not-found for a tab of another folder of the actor, and changes nothing", async () => {
+    const folder = await createFolder({ name: "docs", roles: [{ user, role: "manager" }] });
+    const other = await createFolder({ name: "other", roles: [{ user, role: "manager" }] });
+    const tab = await createTab({ folder: other, name: "guides" });
+    await createPage({ tab, name: "intro" });
+    const before = await snapshot();
+
+    await expect(folderService.deleteTab(actor, folder.id, tab.id)).resolves.toEqual(TAB_NOT_FOUND);
+
+    expect(await snapshot()).toStrictEqual(before);
+  });
+
+  it("refuses a user without a role on the given folder also for a tab that is gone", async () => {
+    const bob = await createUser({ name: "bob" });
+    const folder = await createFolder({ name: "docs", roles: [{ user: bob, role: "owner" }] });
+
+    await expect(folderService.deleteTab(actor, folder.id, crypto.randomUUID())).resolves.toEqual(NOT_ALLOWED);
+  });
+
+  it("deletes a renamed tab by its id, with its pages", async () => {
+    const folder = await createFolder({ name: "docs" });
+    const tab = await createTab({ folder, name: "meetngs" });
+    await createPage({ tab, name: "intro" });
+    await expect(folderService.renameTab(actor, tab.id, { name: "meetings" })).resolves.toMatchObject({ ok: true });
+
+    await expect(folderService.deleteTab(actor, folder.id, tab.id)).resolves.toMatchObject({
+      ok: true,
+      value: { pageCount: 1 },
+    });
+    expect(await getTestDb().tab.count()).toBe(0);
+  });
+
+  it("deletes a tab of 300 pages with all of them", async () => {
+    const folder = await createFolder({ name: "docs" });
+    const tab = await createTab({ folder, name: "archive" });
+    await getTestDb().page.createMany({
+      data: Array.from({ length: 300 }, (_, i) => ({
+        name: `page-${i}`,
+        title: `Page ${i}`,
+        content: `# Page ${i}`,
+        folderId: folder.id,
+        tabId: tab.id,
+        lastEditedById: user.id,
+      })),
+    });
+
+    await expect(folderService.deleteTab(actor, folder.id, tab.id)).resolves.toMatchObject({
+      ok: true,
+      value: { pageCount: 300 },
+    });
+    expect(await getTestDb().page.count({ where: { folderId: folder.id, deletedAt: { not: null } } })).toBe(300);
+  });
+
+  it("frees the name of the tab at once", async () => {
+    const folder = await createFolder({ name: "docs" });
+    const tab = await createTab({ folder, name: "archive" });
+    await createPage({ tab, name: "intro" });
+    await expect(folderService.deleteTab(actor, folder.id, tab.id)).resolves.toMatchObject({ ok: true });
+
+    await expect(folderService.createTab(actor, folder.id, { name: "archive" })).resolves.toMatchObject({
+      ok: true,
+      value: { name: "archive" },
+    });
+  });
+
+  it("leaves the time of the last change and the last editor of the folder as they are", async () => {
+    const bob = await createUser({ name: "bob" });
+    const folder = await createFolder({ name: "docs", editor: bob, updatedAt: new Date("2026-01-01T00:00:00Z") });
+    const tab = await createTab({ folder, name: "guides" });
+    await createPage({ tab, name: "intro" });
+    const before = await getTestDb().folder.findUniqueOrThrow({ where: { id: folder.id } });
+
+    await expect(folderService.deleteTab(actor, folder.id, tab.id)).resolves.toMatchObject({ ok: true });
+
+    expect(await getTestDb().folder.findUniqueOrThrow({ where: { id: folder.id } })).toStrictEqual(before);
+    expect(await lastEditorOfFolder(folder.id)).toBe(bob.id);
+  });
+
+  it("deletes all or nothing: a failing delete of the tab leaves the tab and all its pages as they were", async () => {
+    const folder = await createFolder({ name: "docs" });
+    const tab = await createTab({ folder, name: "guides" });
+    await createPage({ tab, name: "first" });
+    await createPage({ tab, name: "second" });
+    const before = await snapshot();
+    const db = getTestDb();
+    await db.$executeRawUnsafe(`
+      CREATE FUNCTION refuse_tab_delete() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN RAISE EXCEPTION 'tab delete refused by the test'; END $$`);
+    await db.$executeRawUnsafe(
+      `CREATE TRIGGER refuse_tab_delete BEFORE DELETE ON "Tab" FOR EACH ROW EXECUTE FUNCTION refuse_tab_delete()`,
+    );
+    try {
+      await expect(folderService.deleteTab(actor, folder.id, tab.id)).resolves.toEqual(FAILED);
+    } finally {
+      await db.$executeRawUnsafe(`DROP TRIGGER refuse_tab_delete ON "Tab"`);
+      await db.$executeRawUnsafe(`DROP FUNCTION refuse_tab_delete()`);
+    }
+
+    expect(await snapshot()).toStrictEqual(before);
+  });
+
+  it("never leaves a page created at the same time in a missing tab", async () => {
+    const folder = await createFolder({ name: "docs" });
+    const tab = await createTab({ folder, name: "guides" });
+    const db = getTestDb();
+
+    /** How many sessions of the test database wait for a lock. */
+    async function waitingForLocks(): Promise<number> {
+      const rows = await db.$queryRaw<{ count: bigint }[]>`
+        SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`;
+      return Number(rows[0]?.count ?? 0);
+    }
+
+    let deletion: ReturnType<typeof folderService.deleteTab> | undefined;
+    let creation: ReturnType<typeof pageService.createPage> | undefined;
+    // A transaction of the test holds the row of the tab, so that the create and the deletion both have to wait for
+    // it; when it ends, they run against each other.
+    await db.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT 1 FROM "Tab" WHERE "id" = ${tab.id}::uuid FOR UPDATE`;
+        creation = pageService.createPage(actor, folder.id, { name: "late", content: "# Late", tabId: tab.id });
+        deletion = folderService.deleteTab(actor, folder.id, tab.id);
+        await expect.poll(waitingForLocks, { timeout: 10_000 }).toBeGreaterThanOrEqual(2);
+      },
+      { timeout: 20_000 },
+    );
+
+    await expect(deletion).resolves.toMatchObject({ ok: true });
+    const created = await creation;
+    if (created?.ok) {
+      const page = await db.page.findUniqueOrThrow({ where: { id: created.value.id } });
+      expect(page).toMatchObject({ tabId: null, deletedAt: expect.any(Date) });
+    } else {
+      expect(created).toEqual(TAB_NOT_FOUND);
+    }
+    expect(await db.page.count({ where: { tabId: { not: null } } })).toBe(0);
+    expect(await db.tab.count()).toBe(0);
+  });
+
+  it("answers the writes of a page of the deleted tab with page-not-found", async () => {
+    const folder = await createFolder({ name: "docs" });
+    const tab = await createTab({ folder, name: "guides" });
+    const page = await createPage({ tab, name: "intro" });
+    await expect(folderService.deleteTab(actor, folder.id, tab.id)).resolves.toMatchObject({ ok: true });
+    const before = await snapshot();
+
+    await expect(
+      pageService.updatePageContent(actor, page.id, { content: "# Changed", version: page.version }),
+    ).resolves.toEqual(PAGE_NOT_FOUND);
+    await expect(
+      pageService.moveOrRenamePage(actor, page.id, { name: "moved", tabId: null, version: page.version }),
+    ).resolves.toEqual(PAGE_NOT_FOUND);
+    await expect(pageService.deletePage(actor, page.id, { version: page.version })).resolves.toEqual(PAGE_NOT_FOUND);
+
+    expect(await snapshot()).toStrictEqual(before);
+  });
+
+  it("is gone for MCP: neither the tab nor its pages are listed, and no page is created in it", async () => {
+    const folder = await createFolder({ name: "docs" });
+    const tab = await createTab({ folder, name: "guides" });
+    await createPage({ tab, name: "intro" });
+    await createPage({ folder, name: "direct" });
+    await expect(folderService.deleteTab(actor, folder.id, tab.id)).resolves.toMatchObject({ ok: true });
+    const mcp = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "writer" });
+
+    await expect(folderService.listTabs(mcp, folder.id)).resolves.toEqual([]);
+    expect((await pageService.listAllFolderPages(mcp, folder.id))?.map(({ name }) => name)).toEqual(["direct"]);
+    await expect(
+      pageService.createPage(mcp, folder.id, { name: "new", content: "# New", tabId: tab.id }),
+    ).resolves.toEqual(TAB_NOT_FOUND);
   });
 });

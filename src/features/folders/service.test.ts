@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createFolder,
   createTab,
+  deleteTab,
   getFolderById,
   getFolderByName,
   getTab,
@@ -26,6 +27,9 @@ const mocks = vi.hoisted(() => ({
   tabCreate: vi.fn(),
   tabUpdateMany: vi.fn(),
   folderRoleFindFirst: vi.fn(),
+  queryRaw: vi.fn(),
+  pageUpdateMany: vi.fn(),
+  tabDelete: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
@@ -48,6 +52,9 @@ vi.mock("@/lib/db", () => ({
       updateMany: mocks.tabUpdateMany,
     },
     folderRole: { findFirst: mocks.folderRoleFindFirst },
+    // An interactive transaction runs its callback with a client of its own; here with the mocks of the deletion.
+    $transaction: (fn: (tx: unknown) => Promise<unknown>) =>
+      fn({ $queryRaw: mocks.queryRaw, page: { updateMany: mocks.pageUpdateMany }, tab: { delete: mocks.tabDelete } }),
   }),
 }));
 vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, error: mocks.error } }));
@@ -64,10 +71,20 @@ const databaseCalls = [
   mocks.tabCreate,
   mocks.tabUpdateMany,
   mocks.folderRoleFindFirst,
+  mocks.queryRaw,
+  mocks.pageUpdateMany,
+  mocks.tabDelete,
 ];
 
 /** The calls that write to the database. */
-const writeCalls = [mocks.folderCreate, mocks.folderUpdateMany, mocks.tabCreate, mocks.tabUpdateMany];
+const writeCalls = [
+  mocks.folderCreate,
+  mocks.folderUpdateMany,
+  mocks.tabCreate,
+  mocks.tabUpdateMany,
+  mocks.pageUpdateMany,
+  mocks.tabDelete,
+];
 
 function expectNothingWritten(): void {
   for (const call of writeCalls) expect(call).not.toHaveBeenCalled();
@@ -88,6 +105,8 @@ beforeEach(() => {
   vi.resetAllMocks();
   // The actor is Owner of every folder, unless a test says otherwise.
   mocks.folderRoleFindFirst.mockResolvedValue({ role: "owner" });
+  // The locked row of the tab that a deletion reads, unless a test says otherwise.
+  mocks.queryRaw.mockResolvedValue([{ folderId: FOLDER_ID, folderName: "handbook" }]);
 });
 
 const FOLDER_ID = "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10";
@@ -610,6 +629,93 @@ describe("renameTab", () => {
   });
 });
 
+describe("deleteTab", () => {
+  it.each([
+    ["tab", FOLDER_ID, MALFORMED_ID],
+    ["folder", MALFORMED_ID, TAB_ID],
+  ])("returns tab-not-found for a malformed %s id without touching the database", async (_name, folderId, tabId) => {
+    await expect(deleteTab(ACTOR, folderId, tabId)).resolves.toEqual(TAB_NOT_FOUND);
+    expect(databaseCallCount()).toBe(0);
+    expectNothingLogged();
+  });
+
+  it("reads the role on the given folder, so that a tab deleted meanwhile is reported as missing", async () => {
+    mocks.folderRoleFindFirst.mockResolvedValue({ role: "manager" });
+    mocks.queryRaw.mockResolvedValue([]);
+
+    await expect(deleteTab(ACTOR, FOLDER_ID, TAB_ID)).resolves.toEqual(TAB_NOT_FOUND);
+
+    expect(mocks.folderRoleFindFirst).toHaveBeenCalledExactlyOnceWith({
+      where: { userId: ACTOR_ID, folder: { id: FOLDER_ID } },
+      select: { role: true },
+    });
+  });
+
+  it("locks the tab, soft deletes its pages, deletes the tab and returns the folder and the number of pages", async () => {
+    mocks.pageUpdateMany.mockResolvedValue({ count: 2 });
+    mocks.tabDelete.mockResolvedValue({ id: TAB_ID });
+
+    await expect(deleteTab(ACTOR, FOLDER_ID, TAB_ID)).resolves.toEqual({
+      ok: true,
+      value: { folder: { id: FOLDER_ID, name: "handbook" }, pageCount: 2 },
+    });
+
+    const [strings, ...values] = mocks.queryRaw.mock.calls[0] ?? [];
+    expect(strings.join("?")).toMatch(/FROM "Tab" t JOIN "Folder" f[\s\S]*FOR UPDATE OF t/);
+    expect(values).toEqual([TAB_ID, FOLDER_ID]);
+    // Without a version: whatever is in the tab now is deleted with it.
+    expect(mocks.pageUpdateMany).toHaveBeenCalledExactlyOnceWith({
+      where: { tabId: TAB_ID },
+      data: { deletedAt: expect.any(Date), tabId: null, lastEditedById: ACTOR_ID, version: { increment: 1 } },
+    });
+    expect(mocks.tabDelete).toHaveBeenCalledExactlyOnceWith({ where: { id: TAB_ID } });
+    // The lock comes first, the tab goes last, when it has no pages left.
+    expect(mocks.queryRaw).toHaveBeenCalledBefore(mocks.pageUpdateMany);
+    expect(mocks.pageUpdateMany).toHaveBeenCalledBefore(mocks.tabDelete);
+    // The folder is not written.
+    expect(mocks.folderUpdateMany).not.toHaveBeenCalled();
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+      { actorId: ACTOR_ID, folderId: FOLDER_ID, tabId: TAB_ID, pageCount: 2 },
+      "tab deleted",
+    );
+  });
+
+  it("deletes a tab without pages", async () => {
+    mocks.pageUpdateMany.mockResolvedValue({ count: 0 });
+
+    await expect(deleteTab(ACTOR, FOLDER_ID, TAB_ID)).resolves.toMatchObject({ ok: true, value: { pageCount: 0 } });
+    expect(mocks.tabDelete).toHaveBeenCalledOnce();
+  });
+
+  it("returns tab-not-found when the locked row is missing, without writing anything", async () => {
+    mocks.queryRaw.mockResolvedValue([]);
+
+    await expect(deleteTab(ACTOR, FOLDER_ID, TAB_ID)).resolves.toEqual(TAB_NOT_FOUND);
+
+    expectNothingWritten();
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
+      { folderId: FOLDER_ID, tabId: TAB_ID },
+      "tab to delete not found",
+    );
+    expect(mocks.info).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["an error of the lock", mocks.queryRaw],
+    ["an error of the update of the pages", mocks.pageUpdateMany],
+    ["an error of the delete of the tab", mocks.tabDelete],
+  ])("returns failed for %s and logs it", async (_name, call) => {
+    mocks.pageUpdateMany.mockResolvedValue({ count: 1 });
+    const err = new Error("connection lost");
+    call.mockRejectedValue(err);
+
+    await expect(deleteTab(ACTOR, FOLDER_ID, TAB_ID)).resolves.toEqual(FAILED);
+
+    expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ err, tabId: TAB_ID }, "failed to delete tab");
+    expect(mocks.info).not.toHaveBeenCalled();
+  });
+});
+
 /** Every write, called by the given actor with valid input, the database call it writes with, and its editor key. */
 const writes = [
   [
@@ -635,6 +741,12 @@ const writes = [
     (actor: BrowserActor) => renameTab(actor, TAB_ID, TAB_VALID),
     mocks.tabUpdateMany,
     "Tab_lastEditedById_fkey",
+  ],
+  [
+    "deleteTab",
+    (actor: BrowserActor) => deleteTab(actor, FOLDER_ID, TAB_ID),
+    mocks.pageUpdateMany,
+    "Page_lastEditedById_fkey",
   ],
 ] as const;
 
@@ -692,6 +804,7 @@ describe("an admin", () => {
     renameFolder: "folder not renamed: the actor is an admin",
     createTab: "tab not created: the actor is an admin",
     renameTab: "tab not renamed: the actor is an admin",
+    deleteTab: "tab not deleted: the actor is an admin",
   };
 
   it.each(writes)("gets not-allowed from %s, logged, without touching the database", async (name, write) => {
@@ -709,6 +822,7 @@ describe("an admin", () => {
       await renameFolder(ADMIN, MALFORMED_ID, INVALID),
       await createTab(ADMIN, MALFORMED_ID, INVALID),
       await renameTab(ADMIN, MALFORMED_ID, INVALID),
+      await deleteTab(ADMIN, MALFORMED_ID, MALFORMED_ID),
       await createFolder({ ...ADMIN, id: MALFORMED_ID }, VALID),
     ];
 
@@ -758,6 +872,13 @@ describe("a user without a role on the folder", () => {
       "tab not renamed: the actor has no role on the folder",
       { tabs: { some: { id: TAB_ID } } },
     ],
+    [
+      "deleteTab",
+      () => deleteTab(ACTOR, FOLDER_ID, TAB_ID),
+      { folderId: FOLDER_ID, tabId: TAB_ID },
+      "tab not deleted: the actor has no role on the folder",
+      { id: FOLDER_ID },
+    ],
   ] as const)(
     "gets not-allowed from %s, logged, and nothing is written",
     async (_name, write, target, message, folder) => {
@@ -802,6 +923,13 @@ describe("the lowest role of each function", () => {
     ],
     ["createTab", () => createTab(ACTOR, FOLDER_ID, TAB_VALID), "manager", { folderId: FOLDER_ID }, "tab not created"],
     ["renameTab", () => renameTab(ACTOR, TAB_ID, TAB_VALID), "manager", { tabId: TAB_ID }, "tab not renamed"],
+    [
+      "deleteTab",
+      () => deleteTab(ACTOR, FOLDER_ID, TAB_ID),
+      "manager",
+      { folderId: FOLDER_ID, tabId: TAB_ID },
+      "tab not deleted",
+    ],
   ] as const;
 
   const cases = functions.flatMap(([name, write, lowest, target, what]) =>
@@ -814,6 +942,7 @@ describe("the lowest role of each function", () => {
     mocks.tabCreate.mockResolvedValue({ id: TAB_ID, name: "guides", folder: { name: "handbook" } });
     mocks.tabUpdateMany.mockResolvedValue({ count: 1 });
     mocks.tabFindUnique.mockResolvedValue({ id: TAB_ID, name: "guides", folder: { name: "handbook" } });
+    mocks.pageUpdateMany.mockResolvedValue({ count: 0 });
 
     const result = await write();
 

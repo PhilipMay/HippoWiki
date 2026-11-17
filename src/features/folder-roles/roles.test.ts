@@ -63,6 +63,7 @@ describe("FUNCTION_ROLES", () => {
       deletePage: "manager",
       deletedPages: "manager",
       editTab: "manager",
+      deleteTab: "manager",
       renameFolder: "owner",
       manageRoles: "owner",
     });
