@@ -55,6 +55,9 @@ The specification lives in the `spec/` directory. This catalog should always be 
   what each may do in the browser, deleting a tab from Manager up, admins never have a role, what a user sees and does, creating folders, the roles
   view, giving, changing and removing roles with the last Owner kept, the admin overview `/folder-roles`, the view "AI
   apps", MCP with the lower of the user's role and the role of the connection, decisions, limits)
+- `spec/change-channel-requirements.md`: the requirements of the change channel (how a folder, tab or page was last
+  changed, `web` or `mcp`, stored with the last editor and shown after the user name in the browser and through MCP;
+  `web` for content stored before)
 - `spec/roadmap.md`: backlog of candidate features, grouped by theme, and things still to check
 - `spec/issue-report.md`: how to report issues found in code and document reviews
 - `spec/review-report.md`: the report of the security and code review (scope and method, standards and target level,
