@@ -1,10 +1,11 @@
 import { notFound } from "next/navigation";
 
 import PageHistory from "@/features/pages/components/PageHistory";
+import RevisionComparison from "@/features/pages/components/RevisionComparison";
 import RevisionView from "@/features/pages/components/RevisionView";
 import PageView, { type PageQuery } from "@/features/pages/components/PageView";
 import { pageHistoryPlace } from "@/features/pages/components/history-place";
-import { getPageRevision, listPageRevisions } from "@/features/pages/queries";
+import { getPageRevision, getRevisionComparison, listPageRevisions } from "@/features/pages/queries";
 import type { PageWithPlace } from "@/features/pages/service";
 
 type PageAddressProps = {
@@ -29,6 +30,10 @@ export default async function PageAddress({ page, query }: PageAddressProps) {
   if (view?.name === "revision") {
     const revision = (await getPageRevision(page.id, view.revision)) ?? notFound();
     return <RevisionView place={pageHistoryPlace(page)} revision={revision} raw={view.raw} />;
+  }
+  if (view?.name === "compare") {
+    const comparison = (await getRevisionComparison(page.id, view.from, view.to)) ?? notFound();
+    return <RevisionComparison place={pageHistoryPlace(page)} comparison={comparison} />;
   }
   return <PageView page={page} action={query.action} notice={query.notice} />;
 }

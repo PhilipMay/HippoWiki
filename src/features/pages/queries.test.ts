@@ -4,6 +4,7 @@ import {
   getDeletedPage,
   getPage,
   getPageRevision,
+  getRevisionComparison,
   listAllFolderPages,
   listDeletedPages,
   listFolderPages,
@@ -22,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   getDeletedPage: vi.fn(),
   listPageRevisions: vi.fn(),
   getPageRevision: vi.fn(),
+  getRevisionComparison: vi.fn(),
 }));
 
 vi.mock("@/features/pages/service", () => ({
@@ -33,6 +35,7 @@ vi.mock("@/features/pages/service", () => ({
   getDeletedPage: mocks.getDeletedPage,
   listPageRevisions: mocks.listPageRevisions,
   getPageRevision: mocks.getPageRevision,
+  getRevisionComparison: mocks.getRevisionComparison,
 }));
 vi.mock("next/server", () => ({ connection: mocks.connection }));
 vi.mock("@/features/auth/session", () => ({ requireUser: mocks.requireUser }));
@@ -46,6 +49,7 @@ const serviceReads = [
   mocks.getDeletedPage,
   mocks.listPageRevisions,
   mocks.getPageRevision,
+  mocks.getRevisionComparison,
 ];
 
 /** How often the service has been called. */
@@ -80,6 +84,7 @@ const QUERIES: [string, () => Promise<unknown>, Mock, unknown[]][] = [
     [PAGE_ID, { before: 151 }],
   ],
   ["getPageRevision", () => getPageRevision(PAGE_ID, 5), mocks.getPageRevision, [PAGE_ID, 5]],
+  ["getRevisionComparison", () => getRevisionComparison(PAGE_ID, 5, 2), mocks.getRevisionComparison, [PAGE_ID, 5, 2]],
 ];
 
 /** Thrown by the mocked `requireUser()`, like the redirect to the login page that the real one throws. */

@@ -7,6 +7,7 @@ import {
   getDeletedPage,
   getPage,
   getPageRevision,
+  getRevisionComparison,
   listAllFolderPages,
   listDeletedPages,
   listFolderPages,
@@ -466,6 +467,89 @@ describe("getPageRevision", () => {
     ["a number that is no whole number", () => getPageRevision(ACTOR, PAGE_ID, 2.5)],
     ["a number too large for the column", () => getPageRevision(ACTOR, PAGE_ID, 2_147_483_648)],
     ["an admin", () => getPageRevision({ ...ACTOR, type: "admin" }, PAGE_ID, 1)],
+  ])("returns null for %s without reading the database", async (_name, read) => {
+    await expect(read()).resolves.toBeNull();
+    expect(readCount()).toBe(0);
+  });
+});
+
+describe("getRevisionComparison", () => {
+  const createdAt = new Date("2026-11-12T10:00:00Z");
+  /** A revision as the database returns it, with its content. */
+  function row(number: number) {
+    return {
+      number,
+      title: "Intro",
+      createdAt,
+      user: { username: "mike" },
+      via: "web",
+      revertedTo: null,
+      content: `# Intro\n\n${number}`,
+    };
+  }
+  /** The same revision as the service returns it. */
+  function revision(number: number) {
+    const { title, content, revertedTo } = row(number);
+    return { number, title, createdAt, madeBy: { name: "mike", via: "web" }, revertedTo, content };
+  }
+
+  it.each([
+    [2, 5],
+    [5, 2],
+  ])("returns the revisions %d and %d older first, with the number of the newest revision", async (a, b) => {
+    mocks.findFirst.mockResolvedValue({ content: "# Intro", revisions: [{ number: 7 }] });
+    // The database returns them in any order.
+    mocks.revisionFindMany.mockResolvedValue([row(5), row(2)]);
+
+    await expect(getRevisionComparison(ACTOR, PAGE_ID, a, b)).resolves.toEqual({
+      newest: 7,
+      older: revision(2),
+      newer: revision(5),
+    });
+    expect(mocks.revisionFindMany).toHaveBeenCalledExactlyOnceWith({
+      where: { pageId: PAGE_ID, number: { in: [2, 5] } },
+      select: {
+        number: true,
+        title: true,
+        createdAt: true,
+        user: { select: { username: true } },
+        via: true,
+        revertedTo: true,
+        content: true,
+      },
+    });
+  });
+
+  it("returns a revision compared with itself on both sides", async () => {
+    mocks.findFirst.mockResolvedValue({ content: "# Intro", revisions: [{ number: 7 }] });
+    mocks.revisionFindMany.mockResolvedValue([row(3)]);
+
+    await expect(getRevisionComparison(ACTOR, PAGE_ID, 3, 3)).resolves.toEqual({
+      newest: 7,
+      older: revision(3),
+      newer: revision(3),
+    });
+  });
+
+  it("returns null when the page does not have one of the revisions", async () => {
+    mocks.findFirst.mockResolvedValue({ content: "# Intro", revisions: [{ number: 7 }] });
+    mocks.revisionFindMany.mockResolvedValue([row(2)]);
+
+    await expect(getRevisionComparison(ACTOR, PAGE_ID, 2, 8)).resolves.toBeNull();
+  });
+
+  it("returns null and reads no revision for a page that the actor may not read or that does not exist", async () => {
+    mocks.findFirst.mockResolvedValue(null);
+
+    await expect(getRevisionComparison(ACTOR, PAGE_ID, 1, 2)).resolves.toBeNull();
+    expect(mocks.revisionFindMany).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a malformed id", () => getRevisionComparison(ACTOR, MALFORMED_ID, 1, 2)],
+    ["a first number below 1", () => getRevisionComparison(ACTOR, PAGE_ID, 0, 2)],
+    ["a second number that is no whole number", () => getRevisionComparison(ACTOR, PAGE_ID, 1, 1.5)],
+    ["an admin", () => getRevisionComparison({ ...ACTOR, type: "admin" }, PAGE_ID, 1, 2)],
   ])("returns null for %s without reading the database", async (_name, read) => {
     await expect(read()).resolves.toBeNull();
     expect(readCount()).toBe(0);

@@ -255,6 +255,14 @@ export function pageRevisionPath(
   return raw ? `${path}&format=raw` : path;
 }
 
+/**
+ * The address of the comparison of two revisions of a page: the page address with the view `compare` and the numbers
+ * of the two revisions. The comparison goes from the older to the newer one, whatever their order here.
+ */
+export function pageComparePath(folder: string, tab: string | null, page: string, from: number, to: number): string {
+  return `${pagePath(folder, tab, page)}?view=compare&from=${from}&to=${to}`;
+}
+
 /** The address of the list of the deleted pages of a folder. */
 export function deletedPagesPath(folder: string): string {
   return `${DELETED_PAGES_PATH}/${folder}`;

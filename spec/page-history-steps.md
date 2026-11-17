@@ -38,7 +38,7 @@ Choices this plan makes where the requirements leave the form open:
 - [x] Record revisions
 - [x] History list
 - [x] Revision view
-- [ ] Compare revisions
+- [x] Compare revisions
 - [ ] Revert a page
 - [ ] History of deleted pages
 - [ ] Wrap-up

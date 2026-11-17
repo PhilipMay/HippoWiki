@@ -1,5 +1,7 @@
 import type { Page } from "@playwright/test";
 
+import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
+
 import { KNOWN_USER } from "../prisma/known-users";
 import { collectErrors } from "./support/browser";
 import {
@@ -281,6 +283,112 @@ test.describe("the view of a revision", () => {
       "/folders/handbook/intro.md?view=history&revision=1",
       "/folders/handbook/intro.md?revision=1",
       "/folders/handbook/intro.md?action=edit&format=raw",
+    ]) {
+      await expectNotFound(page, address);
+    }
+  });
+});
+
+test.describe("comparing revisions", () => {
+  /** The content of the five revisions of "intro". */
+  const CONTENTS = [
+    "# Intro\n\nOne\nTwo",
+    "# Intro\n\nOne\nTwo\nThree",
+    "# Intro\n\nOne\nTwo\nThree\n",
+    "# Intro\n\nOne\nZwei\nThree",
+    "# Intro\n\nOne\nZwei\nThree\nFour",
+  ];
+
+  /** A page "intro" in "handbook" with the five revisions of `CONTENTS`; the logged-in user is a Reader. */
+  async function pageWithRevisions() {
+    const folder = await createFolder({ name: "handbook", roles: [{ user: ALICE, role: "reader" }] });
+    const intro = await createPage({ folder, name: "intro", content: CONTENTS[0] });
+    await createRevisions({ page: intro, count: 4, content: (number) => CONTENTS[number - 1] ?? "" });
+  }
+
+  /** The lines of the comparison with the given mark, as their text shows them. */
+  function changes(page: Page, kind: "added" | "removed") {
+    return page.getByRole("list", { name: "Changes" }).locator(`li[data-change="${kind}"]`);
+  }
+
+  test("comparing revision 5 with the preselected revision 4 shows the lines added since; choosing 1 compares 1 with 5", async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    await pageWithRevisions();
+
+    await page.goto("/folders/handbook/intro.md?view=revision&revision=5");
+    await expect(page.getByLabel("Compare with revision")).toHaveValue("4");
+    await page.getByRole("button", { name: "Compare" }).click();
+
+    await expect(page).toHaveURL("/folders/handbook/intro.md?view=compare&from=4&to=5");
+    await expect(page).toHaveTitle("Revisions 4 and 5 of Intro – HippoWiki");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Changes from revision 4 to revision 5");
+    await expect(changes(page, "added")).toHaveText(["+Four"]);
+    await expect(changes(page, "removed")).toHaveCount(0);
+    await expect(page.getByText(/^Revision 4 of 5 · /)).toBeVisible();
+    await expect(page.getByText(/^Revision 5 of 5 · /)).toBeVisible();
+
+    await page.goto("/folders/handbook/intro.md?view=revision&revision=5");
+    await page.getByLabel("Compare with revision").fill("1");
+    await page.getByRole("button", { name: "Compare" }).click();
+    await expect(page).toHaveURL("/folders/handbook/intro.md?view=compare&from=1&to=5");
+    await expect(changes(page, "removed")).toHaveText(["−Two"]);
+    await expect(changes(page, "added")).toHaveText(["+Zwei", "+Three", "+Four"]);
+
+    await page.getByRole("heading", { level: 1 }).getByRole("link", { name: "revision 1" }).click();
+    await expect(page).toHaveURL("/folders/handbook/intro.md?view=revision&revision=1");
+    await expect(page.getByRole("button", { name: "Compare" })).toHaveCount(0);
+    await expect(page.getByLabel("Compare with revision")).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+
+  test("a comparison goes from the older to the newer revision in either order, and equal content shows No differences", async ({
+    page,
+  }) => {
+    await pageWithRevisions();
+
+    await page.goto("/folders/handbook/intro.md?view=compare&from=5&to=2");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Changes from revision 2 to revision 5");
+    const reversed = [await changes(page, "removed").allTextContents(), await changes(page, "added").allTextContents()];
+    await page.goto("/folders/handbook/intro.md?view=compare&from=2&to=5");
+    await expect(changes(page, "removed")).toHaveText(reversed[0] ?? []);
+    await expect(changes(page, "added")).toHaveText(reversed[1] ?? []);
+    expect(reversed).toEqual([["−Two"], ["+Zwei", "+Four"]]);
+
+    await page.goto("/folders/handbook/intro.md?view=compare&from=3&to=3");
+    await expect(page.getByText("No differences")).toBeVisible();
+    await expect(page.getByRole("list", { name: "Changes" })).toHaveCount(0);
+  });
+
+  test("two completely different revisions at the length limit answer within a few seconds", async ({ page }) => {
+    const folder = await createFolder({ name: "handbook" });
+    const lines = (letter: string) => `# Big\n${`${letter}\n`.repeat((CONTENT_MAX_LENGTH - 6) / 2)}`;
+    const big = await createPage({ folder, name: "big", content: lines("a") });
+    await createRevisions({ page: big, count: 1, content: () => lines("b") });
+
+    const start = Date.now();
+    await page.goto("/folders/handbook/big.md?view=compare&from=1&to=2");
+    await expect(page.getByText("These revisions are too different to compare.")).toBeVisible();
+    expect(Date.now() - start).toBeLessThan(5_000);
+  });
+
+  test("a missing or invalid from or to, or a number the page does not have, shows the not-found page", async ({
+    page,
+  }) => {
+    await pageWithRevisions();
+
+    for (const address of [
+      "/folders/handbook/intro.md?view=compare",
+      "/folders/handbook/intro.md?view=compare&from=1",
+      "/folders/handbook/intro.md?view=compare&to=2",
+      "/folders/handbook/intro.md?view=compare&from=&to=2",
+      "/folders/handbook/intro.md?view=compare&from=0&to=2",
+      "/folders/handbook/intro.md?view=compare&from=x&to=2",
+      "/folders/handbook/intro.md?view=compare&from=1&to=6",
+      "/folders/handbook/intro.md?view=compare&from=1&from=2&to=3",
+      "/folders/handbook/intro.md?view=compare&from=1&to=2&revision=1",
+      "/folders/handbook/intro.md?view=revision&revision=2&from=1",
     ]) {
       await expectNotFound(page, address);
     }

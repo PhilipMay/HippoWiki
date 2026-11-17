@@ -20,6 +20,7 @@ import {
   oauthRegisterPath,
   oauthTokenPath,
   PAGE_NOTICES,
+  pageComparePath,
   pageHistoryPath,
   pagePath,
   pageRevisionPath,
@@ -129,6 +130,15 @@ describe("paths", () => {
     expect(pageRevisionPath("handbook", null, "intro", 5)).toBe("/folders/handbook/intro.md?view=revision&revision=5");
     expect(pageRevisionPath("handbook", "guides", "setup", 1, true)).toBe(
       "/folders/handbook/guides/setup.md?view=revision&revision=1&format=raw",
+    );
+  });
+
+  it("builds the address of the comparison of two revisions of a page", () => {
+    expect(pageComparePath("handbook", null, "intro", 4, 5)).toBe(
+      "/folders/handbook/intro.md?view=compare&from=4&to=5",
+    );
+    expect(pageComparePath("handbook", "guides", "setup", 5, 2)).toBe(
+      "/folders/handbook/guides/setup.md?view=compare&from=5&to=2",
     );
   });
 

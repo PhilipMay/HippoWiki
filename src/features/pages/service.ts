@@ -148,6 +148,12 @@ export type PageRevisions = { newest: number; revisions: RevisionSummary[] };
  */
 export type RevisionDetail = RevisionSummary & { content: string; newest: number; isCurrent: boolean };
 
+/** A revision of a page with its content, as a comparison shows it. */
+export type RevisionWithContent = RevisionSummary & { content: string };
+
+/** Two revisions of a page to compare, the older first, and the number of the newest revision of the page. */
+export type RevisionComparison = { newest: number; older: RevisionWithContent; newer: RevisionWithContent };
+
 /** The input of a write is invalid; `fieldErrors` holds the messages of the schema per field. */
 type InvalidInput<FieldErrors> = { code: "invalid-input"; fieldErrors: FieldErrors };
 /** Another page already uses the name at the place. */
@@ -419,6 +425,34 @@ export async function listPageRevisions(
     select: REVISION_SUMMARY_SELECT,
   });
   return { newest: page.newest, revisions: revisions.map(withMadeBy) };
+}
+
+/**
+ * The two revisions with the given numbers of the page with the given id, with their content, ordered older to newer
+ * whatever the order of the numbers, and the number of the newest revision. The same number twice gives the revision
+ * twice. The same roles as for the history (`listPageRevisions()`) apply. `null` for an admin, without the role, for a
+ * malformed id or number, and if the page or one of the revisions does not exist.
+ */
+export async function getRevisionComparison(
+  actor: BrowserActor,
+  id: string,
+  a: number,
+  b: number,
+): Promise<RevisionComparison | null> {
+  if (!readerOf(actor)) return null;
+  const pageId = parsePageId(id);
+  if (!pageId || !isRevisionNumber(a) || !isRevisionNumber(b)) return null;
+  const page = await historyPageOf(actor, pageId);
+  if (page === null) return null;
+  const [olderNumber, newerNumber] = a <= b ? [a, b] : [b, a];
+  const rows = await getDb().pageRevision.findMany({
+    where: { pageId, number: { in: [olderNumber, newerNumber] } },
+    select: { ...REVISION_SUMMARY_SELECT, content: true },
+  });
+  const older = rows.find(({ number }) => number === olderNumber);
+  const newer = rows.find(({ number }) => number === newerNumber);
+  if (!older || !newer) return null;
+  return { newest: page.newest, older: withMadeBy(older), newer: withMadeBy(newer) };
 }
 
 /**

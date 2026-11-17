@@ -67,16 +67,18 @@ export function parsePageNotice(
 
 /**
  * The views of a page address: `history` lists the revisions of the page, `revision` shows one of them, rendered or
- * with `format=raw` as its Markdown source.
+ * with `format=raw` as its Markdown source, and `compare` compares two of them.
  */
-export const PAGE_VIEWS = ["history", "revision"] as const;
+export const PAGE_VIEWS = ["history", "revision", "compare"] as const;
 
 /** The forms of a revision besides the rendered one, in the query string `format=<format>`. */
 const REVISION_FORMATS = ["raw"] as const;
 
 /** The view of a page address with its parameters, already checked. */
 export type PageAddressView =
-  { name: "history"; before: number | null } | { name: "revision"; revision: number; raw: boolean };
+  | { name: "history"; before: number | null }
+  | { name: "revision"; revision: number; raw: boolean }
+  | { name: "compare"; from: number; to: number };
 
 /** What the query string of a page address asks for, already checked: an action with its notice, or a view. */
 export type PageQuery = { action: PageAction | null; notice: PageNotice | null; view: PageAddressView | null };
@@ -91,6 +93,7 @@ const PAGE_QUERY_PARAMS = ["before", "revision", "format", "from", "to"] as cons
 const PAGE_VIEW_PARAMS: Record<(typeof PAGE_VIEWS)[number], readonly string[]> = {
   history: ["before"],
   revision: ["revision", "format"],
+  compare: ["from", "to"],
 };
 
 /**
@@ -110,6 +113,11 @@ function parseViewParams(view: (typeof PAGE_VIEWS)[number], searchParams: Search
       if (revision === null || format === "invalid") return "invalid";
       return { name: "revision", revision, raw: format === "raw" };
     }
+    case "compare": {
+      const from = parseRevisionNumber(searchParams.from);
+      const to = parseRevisionNumber(searchParams.to);
+      return from === null || to === null ? "invalid" : { name: "compare", from, to };
+    }
   }
 }
 
@@ -117,8 +125,8 @@ function parseViewParams(view: (typeof PAGE_VIEWS)[number], searchParams: Search
  * Reads what the query string of a page address asks for: at most one action, with its notice, or one view, with its
  * parameters. `"invalid"` for an unknown, empty or repeated action, notice or view, an action together with a view, a
  * parameter of a view or action that the address does not have, and a missing or malformed parameter: `before` of the
- * history must be a revision number from 2 up, `revision` a revision number and `format` only `raw` (whether the page
- * has the revision, the route checks). Routes show the not-found page for `"invalid"`; both page routes and their
+ * history must be a revision number from 2 up, `revision`, `from` and `to` revision numbers and `format` only `raw`
+ * (whether the page has the revisions, the route checks). Routes show the not-found page for `"invalid"`; both page routes and their
  * `generateMetadata` share it.
  */
 export function parsePageQuery(searchParams: SearchParams): PageQuery | "invalid" {
@@ -147,6 +155,10 @@ export function pageViewTitle(page: PageWithPlace, query: PageQuery | "invalid")
   if (query === "invalid") return page.title;
   if (query.view?.name === "history") return `History of ${page.title}`;
   if (query.view?.name === "revision") return `Revision ${query.view.revision} of ${page.title}`;
+  if (query.view?.name === "compare") {
+    const { from, to } = query.view;
+    return `Revisions ${Math.min(from, to)} and ${Math.max(from, to)} of ${page.title}`;
+  }
   return query.action === "edit" ? `Edit ${page.title}` : page.title;
 }
 
