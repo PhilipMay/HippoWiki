@@ -13,7 +13,7 @@ import MarkdownContent from "@/features/pages/components/MarkdownContent";
 import RestorePageDialog from "@/features/pages/components/RestorePageDialog";
 import type { DeletedPage } from "@/features/pages/service";
 import { editorWithChannel } from "@/features/users/records";
-import { deletedPagePath } from "@/lib/addresses";
+import { deletedPageHistoryPath, deletedPagePath } from "@/lib/addresses";
 import { formatDateTime } from "@/lib/format";
 
 /** The actions of the address of a deleted page: `restore` opens the "Restore page" dialog. */
@@ -34,8 +34,8 @@ type DeletedPageViewProps = {
 
 /**
  * What the address of a deleted page shows: the rendered page, read-only, with its breadcrumb through the folder's
- * deleted pages, its time of deletion and a "Restore" button; with the "Restore page" dialog on top for `restore`. A
- * deleted page has no `.md` address, so its name is shown without it.
+ * deleted pages, its time of deletion and the buttons "Restore" and "History"; with the "Restore page" dialog on top
+ * for `restore`. A deleted page has no `.md` address, so its name is shown without it.
  */
 export default async function DeletedPageView({ page, action }: DeletedPageViewProps) {
   const folderName = page.folder.name;
@@ -54,6 +54,9 @@ export default async function DeletedPageView({ page, action }: DeletedPageViewP
           <Stack direction="row" spacing={2} sx={{ pt: 1 }}>
             <Button component={Link} href={deletedPagePath(folderName, page.id, "restore")} variant="outlined">
               Restore
+            </Button>
+            <Button component={Link} href={deletedPageHistoryPath(folderName, page.id)} variant="outlined">
+              History
             </Button>
           </Stack>
         </Stack>

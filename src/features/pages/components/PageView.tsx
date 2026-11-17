@@ -142,18 +142,44 @@ function parseViewParams(view: (typeof PAGE_VIEWS)[number], searchParams: Search
 export function parsePageQuery(searchParams: SearchParams): PageQuery | "invalid" {
   const action = parseAction(searchParams, PAGE_ACTIONS);
   const notice = parsePageNotice(searchParams, action);
-  const view = parseView(searchParams, PAGE_VIEWS);
+  const view = parseHistoryView(searchParams, action === "revert" ? ["revision"] : []);
   if (action === "invalid" || notice === "invalid" || view === "invalid") return "invalid";
   if (action !== null && view !== null) return "invalid";
-  const allowed: readonly string[] = view !== null ? PAGE_VIEW_PARAMS[view] : action === "revert" ? ["revision"] : [];
-  if (PAGE_QUERY_PARAMS.some((key) => searchParams[key] !== undefined && !allowed.includes(key))) return "invalid";
   if (action === "revert") {
     const revision = parseRevisionNumber(searchParams.revision);
     return revision === null ? "invalid" : { action, notice, view: null, revision };
   }
-  if (view === null) return { action, notice, view: null, revision: null };
-  const params = parseViewParams(view, searchParams);
-  return params === "invalid" ? "invalid" : { action: null, notice: null, view: params, revision: null };
+  return { action, notice, view, revision: null };
+}
+
+/**
+ * Reads the view of the history of a page from a query string, with its parameters: `null` without a view, and
+ * `"invalid"` for an unknown, empty or repeated view, a missing or malformed parameter, and a parameter of a view or
+ * action of the history (`before`, `revision`, `format`, `from`, `to`) that belongs to no view of the address. The
+ * parameters in `allowed` belong to an action of the address instead. The page address and the address of a deleted
+ * page share it.
+ */
+export function parseHistoryView(
+  searchParams: SearchParams,
+  allowed: readonly string[] = [],
+): PageAddressView | null | "invalid" {
+  const view = parseView(searchParams, PAGE_VIEWS);
+  if (view === "invalid") return "invalid";
+  const params: readonly string[] = view === null ? allowed : PAGE_VIEW_PARAMS[view];
+  if (PAGE_QUERY_PARAMS.some((key) => searchParams[key] !== undefined && !params.includes(key))) return "invalid";
+  return view === null ? null : parseViewParams(view, searchParams);
+}
+
+/** The browser title of a view of the history of a page with the given title. */
+export function historyViewTitle(view: PageAddressView, title: string): string {
+  switch (view.name) {
+    case "history":
+      return `History of ${title}`;
+    case "revision":
+      return `Revision ${view.revision} of ${title}`;
+    case "compare":
+      return `Revisions ${Math.min(view.from, view.to)} and ${Math.max(view.from, view.to)} of ${title}`;
+  }
 }
 
 /**
@@ -167,12 +193,7 @@ export function changedMessage(page: PageWithPlace): string {
 /** The browser title of a page address with what its query string asks for. */
 export function pageViewTitle(page: PageWithPlace, query: PageQuery | "invalid"): string {
   if (query === "invalid") return page.title;
-  if (query.view?.name === "history") return `History of ${page.title}`;
-  if (query.view?.name === "revision") return `Revision ${query.view.revision} of ${page.title}`;
-  if (query.view?.name === "compare") {
-    const { from, to } = query.view;
-    return `Revisions ${Math.min(from, to)} and ${Math.max(from, to)} of ${page.title}`;
-  }
+  if (query.view !== null) return historyViewTitle(query.view, page.title);
   if (query.action === "revert") return `Revert ${page.title}`;
   return query.action === "edit" ? `Edit ${page.title}` : page.title;
 }

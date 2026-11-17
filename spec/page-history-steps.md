@@ -40,7 +40,7 @@ Choices this plan makes where the requirements leave the form open:
 - [x] Revision view
 - [x] Compare revisions
 - [x] Revert a page
-- [ ] History of deleted pages
+- [x] History of deleted pages
 - [ ] Wrap-up
 
 ## Record revisions

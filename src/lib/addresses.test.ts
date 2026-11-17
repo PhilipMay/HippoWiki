@@ -6,7 +6,10 @@ import {
   allPagesPath,
   authorizationServerMetadataPath,
   changePasswordPath,
+  deletedPageComparePath,
+  deletedPageHistoryPath,
   deletedPagePath,
+  deletedPageRevisionPath,
   deletedPagesPath,
   folderMcpPath,
   folderPath,
@@ -148,6 +151,17 @@ describe("paths", () => {
     expect(pageRevertPath("handbook", "guides", "setup", 3, CHANGED_NOTICE)).toBe(
       "/folders/handbook/guides/setup.md?action=revert&revision=3&notice=changed",
     );
+  });
+
+  it("builds the addresses of the history, a revision and a comparison of a deleted page", () => {
+    const id = "9c4d2b7e-1a3f-4c5d-8e6f-7a8b9c0d1e22";
+    expect(deletedPageHistoryPath("handbook", id)).toBe(`/deleted-pages/handbook/${id}?view=history`);
+    expect(deletedPageHistoryPath("handbook", id, 151)).toBe(`/deleted-pages/handbook/${id}?view=history&before=151`);
+    expect(deletedPageRevisionPath("handbook", id, 2)).toBe(`/deleted-pages/handbook/${id}?view=revision&revision=2`);
+    expect(deletedPageRevisionPath("handbook", id, 2, true)).toBe(
+      `/deleted-pages/handbook/${id}?view=revision&revision=2&format=raw`,
+    );
+    expect(deletedPageComparePath("handbook", id, 1, 3)).toBe(`/deleted-pages/handbook/${id}?view=compare&from=1&to=3`);
   });
 
   it("builds the address of the dialog that revokes a connected app", () => {

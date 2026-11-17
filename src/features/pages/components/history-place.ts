@@ -1,8 +1,17 @@
-// Where the history of a page lives, so that the views of the history serve the page address and, later, the address
-// of a deleted page alike: the components build no addresses themselves.
+// Where the history of a page lives, so that the views of the history serve the page address and the address of a
+// deleted page alike: the components build no addresses themselves.
 
-import type { PageWithPlace } from "@/features/pages/service";
-import { pageComparePath, pageHistoryPath, pagePath, pageRevisionPath } from "@/lib/addresses";
+import type { DeletedPage, PageWithPlace } from "@/features/pages/service";
+import {
+  deletedPageComparePath,
+  deletedPageHistoryPath,
+  deletedPagePath,
+  deletedPageRevisionPath,
+  pageComparePath,
+  pageHistoryPath,
+  pagePath,
+  pageRevisionPath,
+} from "@/lib/addresses";
 
 /** The place of the history of a page: its breadcrumb and the addresses its views link to. */
 export type HistoryPlace = {
@@ -36,5 +45,20 @@ export function pageHistoryPlace(page: PageWithPlace): HistoryPlace {
     historyHref: (before) => pageHistoryPath(folder, tab, page.name, before),
     revisionHref: (revision, raw) => pageRevisionPath(folder, tab, page.name, revision, raw),
     compareHref: (from, to) => pageComparePath(folder, tab, page.name, from, to),
+  };
+}
+
+/** The place of the history of a deleted page: the address of the deleted page, through the deleted pages. */
+export function deletedPageHistoryPlace(page: DeletedPage): HistoryPlace {
+  const folder = page.folder.name;
+  return {
+    folderName: folder,
+    tabName: null,
+    deleted: true,
+    pageLabel: page.name,
+    pageHref: deletedPagePath(folder, page.id),
+    historyHref: (before) => deletedPageHistoryPath(folder, page.id, before),
+    revisionHref: (revision, raw) => deletedPageRevisionPath(folder, page.id, revision, raw),
+    compareHref: (from, to) => deletedPageComparePath(folder, page.id, from, to),
   };
 }

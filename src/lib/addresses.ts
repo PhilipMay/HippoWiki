@@ -234,10 +234,25 @@ export function pagePath(
   return notice ? `${path}${action ? "&" : "?"}notice=${notice}` : path;
 }
 
+/** The address of the history at the given page address or address of a deleted page, with the revisions before `before`. */
+function historyPath(address: string, before?: number): string {
+  return before === undefined ? `${address}?view=history` : `${address}?view=history&before=${before}`;
+}
+
+/** The address of a revision at the given address, rendered or, with `raw`, as its Markdown source. */
+function revisionPath(address: string, revision: number, raw: boolean): string {
+  const path = `${address}?view=revision&revision=${revision}`;
+  return raw ? `${path}&format=raw` : path;
+}
+
+/** The address of the comparison of two revisions at the given address. */
+function comparePath(address: string, from: number, to: number): string {
+  return `${address}?view=compare&from=${from}&to=${to}`;
+}
+
 /** The address of the history of a page: the page address with the view `history`, and the revisions before `before`. */
 export function pageHistoryPath(folder: string, tab: string | null, page: string, before?: number): string {
-  const path = `${pagePath(folder, tab, page)}?view=history`;
-  return before === undefined ? path : `${path}&before=${before}`;
+  return historyPath(pagePath(folder, tab, page), before);
 }
 
 /**
@@ -251,8 +266,7 @@ export function pageRevisionPath(
   revision: number,
   raw = false,
 ): string {
-  const path = `${pagePath(folder, tab, page)}?view=revision&revision=${revision}`;
-  return raw ? `${path}&format=raw` : path;
+  return revisionPath(pagePath(folder, tab, page), revision, raw);
 }
 
 /**
@@ -260,7 +274,7 @@ export function pageRevisionPath(
  * of the two revisions. The comparison goes from the older to the newer one, whatever their order here.
  */
 export function pageComparePath(folder: string, tab: string | null, page: string, from: number, to: number): string {
-  return `${pagePath(folder, tab, page)}?view=compare&from=${from}&to=${to}`;
+  return comparePath(pagePath(folder, tab, page), from, to);
 }
 
 /**
@@ -289,6 +303,21 @@ export function deletedPagesPath(folder: string): string {
  */
 export function deletedPagePath(folder: string, id: string, action?: string): string {
   return withAction(`${DELETED_PAGES_PATH}/${folder}/${id}`, action);
+}
+
+/** The address of the history of a deleted page: its address with the view `history`, as for a page address. */
+export function deletedPageHistoryPath(folder: string, id: string, before?: number): string {
+  return historyPath(deletedPagePath(folder, id), before);
+}
+
+/** The address of a revision of a deleted page, rendered or, with `raw`, as its Markdown source. */
+export function deletedPageRevisionPath(folder: string, id: string, revision: number, raw = false): string {
+  return revisionPath(deletedPagePath(folder, id), revision, raw);
+}
+
+/** The address of the comparison of two revisions of a deleted page. */
+export function deletedPageComparePath(folder: string, id: string, from: number, to: number): string {
+  return comparePath(deletedPagePath(folder, id), from, to);
 }
 
 /**

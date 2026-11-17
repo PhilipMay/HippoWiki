@@ -394,3 +394,83 @@ test.describe("comparing revisions", () => {
     }
   });
 });
+
+test.describe("the history of a deleted page", () => {
+  /** A deleted page "old" in "handbook" with three revisions, and the role of the logged-in user on the folder. */
+  async function deletedPage(role: "reader" | "writer" | "manager") {
+    const folder = await createFolder({ name: "handbook", roles: [{ user: ALICE, role }] });
+    const old = await createPage({ folder, name: "old", content: "# Old\n\nOne", deletedAt: new Date() });
+    await createRevisions({ page: old, count: 2, content: (number) => `# Old\n\n${["Two", "Three"][number - 2]}` });
+    return old;
+  }
+
+  test("a Manager opens it from the deleted page, views and compares its revisions, without Revert", async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    const old = await deletedPage("manager");
+    const address = `/deleted-pages/handbook/${old.id}`;
+
+    await page.goto(address);
+    await page.getByRole("main").getByRole("link", { name: "History", exact: true }).click();
+    await expect(page).toHaveURL(`${address}?view=history`);
+    await expect(page).toHaveTitle("History of Deleted: Old – HippoWiki");
+    await expect(revisionLinks(page)).toHaveText(revisionsFromTo(3, 1));
+    await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("link")).toHaveText([
+      "Folders",
+      "handbook",
+      "Deleted pages",
+      "old",
+    ]);
+
+    await revisionLinks(page)
+      .filter({ hasText: /^Revision 2(?!\d)/ })
+      .click();
+    await expect(page).toHaveURL(`${address}?view=revision&revision=2`);
+    await expect(page.getByRole("article").getByText("Two", { exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Revert" })).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Compare" }).click();
+    await expect(page).toHaveURL(`${address}?view=compare&from=1&to=2`);
+    await expect(page.getByRole("list", { name: "Changes" }).locator('li[data-change="added"]')).toHaveText(["+Two"]);
+
+    await page.goto(`${address}?view=revision&revision=1&format=raw`);
+    await expect(page.getByLabel("Markdown source")).toHaveText("# Old\n\nOne");
+    await page.getByRole("link", { name: "Show the deleted page" }).click();
+    await expect(page).toHaveURL(address);
+    expect(errors).toEqual([]);
+
+    for (const notFoundAddress of [
+      `${address}?action=revert&revision=1`,
+      `${address}?view=history&action=restore`,
+      `${address}?view=revision&revision=4`,
+      `${address}?action=restore&revision=1`,
+      `${address}?view=compare&from=1`,
+    ]) {
+      await expectNotFound(page, notFoundAddress);
+    }
+  });
+
+  for (const role of ["writer", "reader"] as const) {
+    test(`a ${role} gets the not-found page at the history of a deleted page`, async ({ page }) => {
+      const old = await deletedPage(role);
+
+      for (const view of ["view=history", "view=revision&revision=1", "view=compare&from=1&to=2"]) {
+        await expectNotFound(page, `/deleted-pages/handbook/${old.id}?${view}`);
+      }
+    });
+  }
+
+  test("after a restore the page lists the same revisions as before its deletion", async ({ page }) => {
+    const old = await deletedPage("manager");
+
+    await page.goto(`/deleted-pages/handbook/${old.id}?action=restore`);
+    const dialog = page.getByRole("dialog", { name: "Restore page" });
+    await dialog.getByRole("radio", { name: "Directly in the folder" }).check();
+    await dialog.getByRole("button", { name: "Save" }).click();
+    await expect(page).toHaveURL("/folders/handbook/old.md");
+
+    await page.getByRole("main").getByRole("link", { name: "History", exact: true }).click();
+    await expect(revisionLinks(page)).toHaveText(revisionsFromTo(3, 1));
+  });
+});
