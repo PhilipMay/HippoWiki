@@ -39,7 +39,7 @@ Choices this plan makes where the requirements leave the form open:
 - [x] History list
 - [x] Revision view
 - [x] Compare revisions
-- [ ] Revert a page
+- [x] Revert a page
 - [ ] History of deleted pages
 - [ ] Wrap-up
 
@@ -280,7 +280,7 @@ R12, R16, R19, R20, R21).
   current content, the newest included, has no revert address: it shows the not-found page (R21). The notice
   `changed` is allowed with it like with the other actions.
 - A Client Component `RevertPageDialog` like `DeletePageDialog`: "Revert page" names the revision by number, time and
-  user; the version of the page and the revision number in hidden fields; the message of `notice=changed` that names
+  user; the version of the page in a hidden field, the revision number bound to the action like the id; the message of `notice=changed` that names
   who changed the page, how and when (R12); controls locked until hydration; closing leads to the revision view.
 - `RevisionView`: "Revert" for Writer and up, only on a revision whose content differs from the page now (R21), as a
   link to the revert address.

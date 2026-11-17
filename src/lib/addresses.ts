@@ -263,6 +263,21 @@ export function pageComparePath(folder: string, tab: string | null, page: string
   return `${pagePath(folder, tab, page)}?view=compare&from=${from}&to=${to}`;
 }
 
+/**
+ * The address of the "Revert page" dialog of a page for one of its revisions: the page address with the action `revert`
+ * and the number of the revision, optionally with a notice after it.
+ */
+export function pageRevertPath(
+  folder: string,
+  tab: string | null,
+  page: string,
+  revision: number,
+  notice?: PageNotice,
+): string {
+  const path = `${pagePath(folder, tab, page, "revert")}&revision=${revision}`;
+  return notice ? `${path}&notice=${notice}` : path;
+}
+
 /** The address of the list of the deleted pages of a folder. */
 export function deletedPagesPath(folder: string): string {
   return `${DELETED_PAGES_PATH}/${folder}`;

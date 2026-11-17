@@ -16,20 +16,26 @@ import {
   parsePageDeleteFormData,
   parsePageMoveOrRenameFormData,
   parsePageRestoreFormData,
+  parsePageRevertFormData,
   type PageDeleteFormState,
   type PageFormState,
   type PageMoveOrRenameFormState,
   type PageRestoreFormState,
+  type PageRevertFormState,
 } from "@/features/pages/forms";
-import { parsePageId } from "@/features/pages/schema";
+import { parsePageId, revisionNumberSchema } from "@/features/pages/schema";
 import * as pageService from "@/features/pages/service";
-import { CHANGED_NOTICE, folderPath, pagePath, tabPath, type PageNotice } from "@/lib/addresses";
+import { CHANGED_NOTICE, folderPath, pagePath, pageRevertPath, tabPath, type PageNotice } from "@/lib/addresses";
 import { NAME_TAKEN_MESSAGE } from "@/lib/names";
 import { revalidateContent } from "@/lib/revalidate";
 
 const SAVE_FAILED_MESSAGE = "The page could not be saved. Please try again.";
 const DELETE_FAILED_MESSAGE = "The page could not be deleted. Please try again.";
 const RESTORE_FAILED_MESSAGE = "The page could not be restored. Please try again.";
+const REVERT_FAILED_MESSAGE = "The page could not be reverted. Please try again.";
+/** The start of the message of a revert whose revision breaks a limit of pages now; the broken limits follow it. */
+const REVERT_INVALID_MESSAGE =
+  "This revision breaks a limit of pages and cannot be restored. Copy its raw form into the editor to fix it:";
 const PAGE_GONE_MESSAGE = "This page no longer exists.";
 const FOLDER_GONE_MESSAGE = "This folder no longer exists.";
 const TAB_GONE_MESSAGE = "This tab no longer exists.";
@@ -277,6 +283,56 @@ export async function restorePage(
         return nameTakenState;
       case "failed":
         return { message: RESTORE_FAILED_MESSAGE };
+    }
+  }
+
+  revalidateContent();
+  redirect(addressOf(result.value));
+}
+
+/**
+ * Sets the page with the given id back to its revision with the given number and redirects to the page, which then
+ * shows the content of the revision. Returns the error to show in the dialog if the content of the revision breaks a
+ * limit of pages now, naming the limit, if the page no longer exists or is deleted, or if it cannot be stored. If the
+ * page was changed after the submitted version, or the form submits none, the dialog is shown again at the page's
+ * address as stored, with the notice. A revision that does not exist or whose content is the content of the page now
+ * has no revert, so it shows the not-found page. The form submits only the version. Bind the id and the number with
+ * `revertPage.bind(null, id, revision)`.
+ */
+export async function revertPage(
+  id: string,
+  revision: number,
+  _prevState: PageRevertFormState,
+  formData: FormData,
+): Promise<PageRevertFormState> {
+  const user = await requireUser();
+
+  const pageId = parsePageId(id);
+  if (!pageId) return { message: PAGE_GONE_MESSAGE };
+  if (!revisionNumberSchema.safeParse(revision).success) notFound();
+
+  const { version } = parsePageRevertFormData(formData);
+  const result = await pageService.revertPage(inBrowser(user), pageId, { revision, version });
+  if (!result.ok) {
+    switch (result.error.code) {
+      // An admin changes no content, and for an admin no content exists; nor does a folder without a role of the user.
+      case "not-allowed":
+      // A revert that would change nothing is not offered.
+      case "revision-not-found":
+        notFound();
+      case "page-not-found":
+        return { message: PAGE_GONE_MESSAGE };
+      case "page-changed": {
+        const { folder, tab, name } = result.error.page;
+        revalidateContent();
+        redirect(pageRevertPath(folder.name, tab?.name ?? null, name, revision, CHANGED_NOTICE));
+      }
+      case "invalid-input":
+        return {
+          message: `${REVERT_INVALID_MESSAGE} ${(result.error.fieldErrors.content ?? []).join(". ")}.`,
+        };
+      case "failed":
+        return { message: REVERT_FAILED_MESSAGE };
     }
   }
 

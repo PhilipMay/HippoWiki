@@ -6,6 +6,7 @@ import MuiLink from "@mui/material/Link";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
+import type { ReactNode } from "react";
 
 import Link from "@/components/Link";
 import HistoryBreadcrumbs from "@/features/pages/components/HistoryBreadcrumbs";
@@ -20,6 +21,13 @@ type RevisionViewProps = {
   revision: RevisionDetail;
   /** Whether the address asks for the Markdown source instead of the rendered content. */
   raw: boolean;
+  /**
+   * The address of the "Revert page" dialog for the revision, or `null` where there is no "Revert": for a role below
+   * Writer, for a revision with the content of the page now, and for a deleted page.
+   */
+  revertHref?: string | null;
+  /** A dialog over the revision, such as "Revert page". */
+  children?: ReactNode;
 };
 
 /**
@@ -60,9 +68,9 @@ function CompareForm({ place, number }: { place: HistoryPlace; number: number })
 /**
  * One revision of a page: the revision line with its number, time, user and channel, for an old revision a notice with
  * a link to the current page, the switch "Rendered | Raw", which is part of the address, "Compare" for every revision
- * but the first, and the content in the chosen form.
+ * but the first, "Revert" where it is offered, and the content in the chosen form.
  */
-export default function RevisionView({ place, revision, raw }: RevisionViewProps) {
+export default function RevisionView({ place, revision, raw, revertHref = null, children }: RevisionViewProps) {
   const forms = [
     { label: "Rendered", href: place.revisionHref(revision.number), current: !raw },
     { label: "Raw", href: place.revisionHref(revision.number, true), current: raw },
@@ -99,6 +107,11 @@ export default function RevisionView({ place, revision, raw }: RevisionViewProps
             </Stack>
             {/* The first revision has no earlier one to compare with. */}
             {revision.number > 1 && <CompareForm place={place} number={revision.number} />}
+            {revertHref !== null && (
+              <Button component={Link} href={revertHref} variant="outlined">
+                Revert
+              </Button>
+            )}
           </Stack>
         </Stack>
         <Divider sx={{ mb: 3 }} />
@@ -114,6 +127,7 @@ export default function RevisionView({ place, revision, raw }: RevisionViewProps
           <MarkdownContent>{revision.content}</MarkdownContent>
         )}
       </Paper>
+      {children}
     </Stack>
   );
 }

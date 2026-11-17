@@ -23,6 +23,7 @@ import {
   pageComparePath,
   pageHistoryPath,
   pagePath,
+  pageRevertPath,
   pageRevisionPath,
   parseAction,
   parseChoice,
@@ -139,6 +140,13 @@ describe("paths", () => {
     );
     expect(pageComparePath("handbook", "guides", "setup", 5, 2)).toBe(
       "/folders/handbook/guides/setup.md?view=compare&from=5&to=2",
+    );
+  });
+
+  it("builds the address of the Revert page dialog of a revision, with a notice after it", () => {
+    expect(pageRevertPath("handbook", null, "intro", 2)).toBe("/folders/handbook/intro.md?action=revert&revision=2");
+    expect(pageRevertPath("handbook", "guides", "setup", 3, CHANGED_NOTICE)).toBe(
+      "/folders/handbook/guides/setup.md?action=revert&revision=3&notice=changed",
     );
   });
 

@@ -6,6 +6,7 @@ import {
   parsePageDeleteFormData,
   parsePageMoveOrRenameFormData,
   parsePageRestoreFormData,
+  parsePageRevertFormData,
   PLACE_FIELD,
   VERSION_FIELD,
 } from "@/features/pages/forms";
@@ -442,5 +443,23 @@ describe("parsePageRestoreFormData", () => {
       success: true,
       data: { name: "release-notes", tabId },
     });
+  });
+});
+
+describe("parsePageRevertFormData", () => {
+  it("reads the version of the page and nothing else", () => {
+    expect(parsePageRevertFormData(formData({ [VERSION_FIELD]: "9", revision: "2", content: "# Other" }))).toEqual({
+      version: 9,
+    });
+  });
+
+  // No version is no error of the form: the service refuses the revert, so that the dialog is shown again.
+  it.each(["", "0", "-2", "1.5", "nine"])("gives no version for the version %j", (version) => {
+    expect(parsePageRevertFormData(formData({ [VERSION_FIELD]: version }))).toEqual({ version: null });
+  });
+
+  it("gives no version for a missing version field or a file", () => {
+    expect(parsePageRevertFormData(formData({}))).toEqual({ version: null });
+    expect(parsePageRevertFormData(formData({ [VERSION_FIELD]: new Blob(["9"]) }))).toEqual({ version: null });
   });
 });

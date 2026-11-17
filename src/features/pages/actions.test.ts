@@ -1,6 +1,14 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
-import { createPage, deletePage, moveOrRenamePage, restorePage, updatePageContent } from "@/features/pages/actions";
+import {
+  createPage,
+  deletePage,
+  moveOrRenamePage,
+  restorePage,
+  revertPage,
+  updatePageContent,
+} from "@/features/pages/actions";
+import { CONTENT_TABLE_CELLS_MESSAGE } from "@/features/pages/schema";
 
 /** Thrown by the mocked `redirect`, like the real one throws, so that code after it never runs. */
 class RedirectError extends Error {
@@ -15,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   moveOrRenamePage: vi.fn(),
   deletePage: vi.fn(),
   restorePage: vi.fn(),
+  revertPage: vi.fn(),
   revalidatePath: vi.fn(),
   redirect: vi.fn(),
   notFound: vi.fn(),
@@ -27,6 +36,7 @@ vi.mock("@/features/pages/service", () => ({
   moveOrRenamePage: mocks.moveOrRenamePage,
   deletePage: mocks.deletePage,
   restorePage: mocks.restorePage,
+  revertPage: mocks.revertPage,
 }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect, notFound: mocks.notFound }));
@@ -38,6 +48,7 @@ const serviceWrites = [
   mocks.moveOrRenamePage,
   mocks.deletePage,
   mocks.restorePage,
+  mocks.revertPage,
 ];
 
 /** The logged-in user that `requireUser()` returns; every action passes it to its service write as the actor. */
@@ -487,12 +498,93 @@ const ACTIONS: [string, () => Promise<unknown>, Mock][] = [
     mocks.moveOrRenamePage,
   ],
   ["deletePage", () => deletePage(crypto.randomUUID(), {}, formData({ version: "1" })), mocks.deletePage],
+  ["revertPage", () => revertPage(crypto.randomUUID(), 2, {}, formData({ version: "1" })), mocks.revertPage],
   [
     "restorePage",
     () => restorePage(crypto.randomUUID(), {}, formData({ name: "new-name", place: "" })),
     mocks.restorePage,
   ],
 ];
+
+describe("revertPage", () => {
+  const id = crypto.randomUUID();
+  const REVERT_FAILED = { message: "The page could not be reverted. Please try again." };
+  const VALID = { version: "6" };
+
+  it("reports a malformed id as a missing page without calling the service", async () => {
+    await expect(revertPage(MALFORMED_ID, 2, {}, formData(VALID))).resolves.toEqual(PAGE_GONE);
+    expectServiceNotCalled();
+    expectNotRevalidatedOrRedirected();
+  });
+
+  it.each([0, -1, 1.5, Number.NaN])(
+    "shows the not-found page for the revision number %j without calling the service",
+    async (revision) => {
+      await expect(revertPage(id, revision, {}, formData(VALID))).rejects.toBeInstanceOf(NotFoundError);
+      expectServiceNotCalled();
+      expectNotRevalidatedOrRedirected();
+    },
+  );
+
+  it("passes the revision and the version to the service and redirects to the page as stored", async () => {
+    mocks.revertPage.mockResolvedValue({ ok: true, value: STORED_IN_TAB });
+
+    await expect(
+      revertPage(id, 2, {}, formData({ ...VALID, content: "# Other", revision: "3" })),
+    ).rejects.toMatchObject({
+      path: "/folders/stored-folder/stored-tab/stored-name.md",
+    });
+
+    expect(mocks.revertPage).toHaveBeenCalledExactlyOnceWith(BROWSER_USER, id, { revision: 2, version: 6 });
+    expectContentRevalidated();
+  });
+
+  it.each([
+    ["missing", {}],
+    ["malformed", { version: "six" }],
+  ])("passes a %s version on as null", async (_name, fields) => {
+    mocks.revertPage.mockResolvedValue({ ok: false, error: { code: "failed" } });
+
+    await revertPage(id, 2, {}, formData(fields));
+
+    expect(mocks.revertPage).toHaveBeenCalledWith(BROWSER_USER, id, { revision: 2, version: null });
+  });
+
+  it("shows the dialog again at the stored address with the notice when the page was changed", async () => {
+    mocks.revertPage.mockResolvedValue({ ok: false, error: { code: "page-changed", page: STORED_IN_TAB } });
+
+    await expect(revertPage(id, 2, {}, formData(VALID))).rejects.toMatchObject({
+      path: "/folders/stored-folder/stored-tab/stored-name.md?action=revert&revision=2&notice=changed",
+    });
+    expectContentRevalidated();
+  });
+
+  it("names the broken limit when the content of the revision breaks one now", async () => {
+    mocks.revertPage.mockResolvedValue(failure("invalid-input", { content: [CONTENT_TABLE_CELLS_MESSAGE] }));
+
+    await expect(revertPage(id, 2, {}, formData(VALID))).resolves.toEqual({
+      message: `This revision breaks a limit of pages and cannot be restored. Copy its raw form into the editor to fix it: ${CONTENT_TABLE_CELLS_MESSAGE}.`,
+    });
+    expectNotRevalidatedOrRedirected();
+  });
+
+  it("shows the not-found page when there is no revision to revert to", async () => {
+    mocks.revertPage.mockResolvedValue(failure("revision-not-found"));
+
+    await expect(revertPage(id, 2, {}, formData(VALID))).rejects.toBeInstanceOf(NotFoundError);
+    expectNotRevalidatedOrRedirected();
+  });
+
+  it.each([
+    ["page-not-found", failure("page-not-found"), PAGE_GONE],
+    ["failed", failure("failed"), REVERT_FAILED],
+  ])("shows the form state of %s", async (_code, result, state) => {
+    mocks.revertPage.mockResolvedValue(result);
+
+    await expect(revertPage(id, 2, {}, formData(VALID))).resolves.toEqual(state);
+    expectNotRevalidatedOrRedirected();
+  });
+});
 
 describe("without a logged-in user", () => {
   // A Server Action is a public endpoint: its form may be shown by a page that checked the login, but the request can

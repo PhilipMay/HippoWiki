@@ -30,10 +30,10 @@ import {
 import { formatDateTime } from "@/lib/format";
 
 /**
- * The actions of a page address: `edit` opens the edit form, `move-or-rename` the "Move or rename page" dialog and
- * `delete` the "Delete page" dialog.
+ * The actions of a page address: `edit` opens the edit form, `move-or-rename` the "Move or rename page" dialog,
+ * `delete` the "Delete page" dialog and `revert` the "Revert page" dialog over the revision `revision`.
  */
-export const PAGE_ACTIONS = ["edit", "move-or-rename", "delete"] as const;
+export const PAGE_ACTIONS = ["edit", "move-or-rename", "delete", "revert"] as const;
 
 export type PageAction = (typeof PAGE_ACTIONS)[number];
 
@@ -42,6 +42,8 @@ const PAGE_ACTION_FUNCTIONS: Record<PageAction, FolderFunction> = {
   edit: "editPage",
   "move-or-rename": "moveOrRenamePage",
   delete: "deletePage",
+  // A revert is a content save.
+  revert: "editPage",
 };
 
 /**
@@ -80,8 +82,16 @@ export type PageAddressView =
   | { name: "revision"; revision: number; raw: boolean }
   | { name: "compare"; from: number; to: number };
 
-/** What the query string of a page address asks for, already checked: an action with its notice, or a view. */
-export type PageQuery = { action: PageAction | null; notice: PageNotice | null; view: PageAddressView | null };
+/**
+ * What the query string of a page address asks for, already checked: an action with its notice, or a view; for the
+ * action `revert` the number of the revision to revert to, `null` otherwise.
+ */
+export type PageQuery = {
+  action: PageAction | null;
+  notice: PageNotice | null;
+  view: PageAddressView | null;
+  revision: number | null;
+};
 
 /**
  * The search parameters that belong to a view or an action of the history of a page, besides `view`, `action` and
@@ -125,9 +135,9 @@ function parseViewParams(view: (typeof PAGE_VIEWS)[number], searchParams: Search
  * Reads what the query string of a page address asks for: at most one action, with its notice, or one view, with its
  * parameters. `"invalid"` for an unknown, empty or repeated action, notice or view, an action together with a view, a
  * parameter of a view or action that the address does not have, and a missing or malformed parameter: `before` of the
- * history must be a revision number from 2 up, `revision`, `from` and `to` revision numbers and `format` only `raw`
- * (whether the page has the revisions, the route checks). Routes show the not-found page for `"invalid"`; both page routes and their
- * `generateMetadata` share it.
+ * history must be a revision number from 2 up, `revision` of the view `revision` and of the action `revert`, `from` and
+ * `to` revision numbers and `format` only `raw` (whether the page has the revisions, the route checks). Routes show the
+ * not-found page for `"invalid"`; both page routes and their `generateMetadata` share it.
  */
 export function parsePageQuery(searchParams: SearchParams): PageQuery | "invalid" {
   const action = parseAction(searchParams, PAGE_ACTIONS);
@@ -135,18 +145,22 @@ export function parsePageQuery(searchParams: SearchParams): PageQuery | "invalid
   const view = parseView(searchParams, PAGE_VIEWS);
   if (action === "invalid" || notice === "invalid" || view === "invalid") return "invalid";
   if (action !== null && view !== null) return "invalid";
-  const allowed: readonly string[] = view === null ? [] : PAGE_VIEW_PARAMS[view];
+  const allowed: readonly string[] = view !== null ? PAGE_VIEW_PARAMS[view] : action === "revert" ? ["revision"] : [];
   if (PAGE_QUERY_PARAMS.some((key) => searchParams[key] !== undefined && !allowed.includes(key))) return "invalid";
-  if (view === null) return { action, notice, view: null };
+  if (action === "revert") {
+    const revision = parseRevisionNumber(searchParams.revision);
+    return revision === null ? "invalid" : { action, notice, view: null, revision };
+  }
+  if (view === null) return { action, notice, view: null, revision: null };
   const params = parseViewParams(view, searchParams);
-  return params === "invalid" ? "invalid" : { action: null, notice: null, view: params };
+  return params === "invalid" ? "invalid" : { action: null, notice: null, view: params, revision: null };
 }
 
 /**
  * The message of the notice `changed`: who changed the page last, how and when, as the page view shows them. The editor or
  * dialog shows it after a change was refused, because the page was changed after it was opened.
  */
-function changedMessage(page: PageWithPlace): string {
+export function changedMessage(page: PageWithPlace): string {
   return `This page was changed by ${editorWithChannel(page.lastEditedBy)} at ${formatDateTime(page.updatedAt)} after you opened it.`;
 }
 
@@ -159,6 +173,7 @@ export function pageViewTitle(page: PageWithPlace, query: PageQuery | "invalid")
     const { from, to } = query.view;
     return `Revisions ${Math.min(from, to)} and ${Math.max(from, to)} of ${page.title}`;
   }
+  if (query.action === "revert") return `Revert ${page.title}`;
   return query.action === "edit" ? `Edit ${page.title}` : page.title;
 }
 

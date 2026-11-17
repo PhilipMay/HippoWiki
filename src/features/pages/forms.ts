@@ -149,6 +149,23 @@ export function parsePageDeleteFormData(formData: FormData): { version: number |
   return { version: parseVersion(formData) };
 }
 
+/** State of the "Revert page" form between submissions: the error of the last attempt, if any. */
+export type PageRevertFormState = {
+  /** Why the page could not be reverted, e.g. when the content of the revision breaks a limit of pages now. */
+  message?: string;
+};
+
+/** A Server Action behind the "Revert page" form; it returns the error to show, or redirects on success. */
+export type PageRevertFormAction = (prevState: PageRevertFormState, formData: FormData) => Promise<PageRevertFormState>;
+
+/**
+ * Reads the version of the page from a submitted "Revert page" form, the only field it has: `null` if it is missing or
+ * malformed, which the service refuses like a revert based on an older state.
+ */
+export function parsePageRevertFormData(formData: FormData): { version: number | null } {
+  return { version: parseVersion(formData) };
+}
+
 /** Shown at the place field of the "Restore page" form when no place is chosen. */
 export const CHOOSE_PLACE_MESSAGE = "Choose a place";
 

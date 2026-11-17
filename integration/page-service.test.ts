@@ -2,6 +2,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import * as folderService from "@/features/folders/service";
+import { CONTENT_MAX_TABLE_CELLS } from "@/features/pages/limits";
+import { CONTENT_TABLE_CELLS_MESSAGE } from "@/features/pages/schema";
 import * as pageService from "@/features/pages/service";
 import { inBrowser, inMcp, type BrowserActor } from "@/features/folder-roles/service";
 import type { User } from "@/generated/prisma/client";
@@ -1473,5 +1475,111 @@ describe("a revision of a page", () => {
       isCurrent: true,
     });
     await expect(pageService.getPageRevision(actor, page.id, 3)).resolves.toBeNull();
+  });
+});
+
+describe("reverting a page", () => {
+  /** A page of the actor with four revisions, whose content is that of revision 4, at version 1. */
+  async function pageWithFourRevisions() {
+    const page = await createPage({ folder: await createFolder(), editor: user, content: "# Intro\n\nOne" });
+    await createRevisions({ page, count: 3, content: (number) => `# Intro\n\nRevision ${number}` });
+    return page;
+  }
+
+  it("records a new revision with the content of the chosen one, the reverting user, web and its mark", async () => {
+    const bob = await createUser({ name: "bob" });
+    const page = await createPage({
+      folder: await createFolder({ roles: owners(user, bob) }),
+      editor: user,
+      via: "mcp",
+      content: "# Intro\n\nOne",
+    });
+    await createRevisions({ page, count: 3, content: (number) => `# Start\n\nRevision ${number}`, via: "mcp" });
+
+    const result = await pageService.revertPage(inBrowser(bob), page.id, { revision: 2, version: 1 });
+
+    expect(result).toMatchObject({ ok: true, value: { id: page.id, version: 2 } });
+    const revisions = await getTestDb().pageRevision.findMany({
+      where: { pageId: page.id },
+      orderBy: { number: "asc" },
+    });
+    expect(revisions).toHaveLength(5);
+    expect(revisions[4]).toMatchObject({
+      number: 5,
+      title: "Start",
+      content: "# Start\n\nRevision 2",
+      userId: bob.id,
+      via: "web",
+      revertedTo: 2,
+    });
+    const stored = await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } });
+    expect(stored).toMatchObject({
+      content: "# Start\n\nRevision 2",
+      title: "Start",
+      lastEditedById: bob.id,
+      lastEditedVia: "web",
+      version: 2,
+    });
+  });
+
+  it("changes nothing when it is based on an older version", async () => {
+    const page = await pageWithFourRevisions();
+    await getTestDb().page.update({ where: { id: page.id }, data: { version: 2 } });
+
+    await expect(pageService.revertPage(actor, page.id, { revision: 2, version: 1 })).resolves.toMatchObject({
+      ok: false,
+      error: { code: "page-changed" },
+    });
+
+    expect(await getTestDb().pageRevision.count({ where: { pageId: page.id } })).toBe(4);
+    const stored = await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } });
+    expect([stored.content, stored.version]).toEqual(["# Intro\n\nRevision 4", 2]);
+  });
+
+  it("refuses a revision past the table cell limit and changes nothing", async () => {
+    const page = await pageWithFourRevisions();
+    const table = `# Intro\n\n| a |\n| - |\n${"| x |\n".repeat(CONTENT_MAX_TABLE_CELLS)}`;
+    await getTestDb().pageRevision.update({
+      where: { pageId_number: { pageId: page.id, number: 2 } },
+      data: { content: table },
+    });
+
+    await expect(pageService.revertPage(actor, page.id, { revision: 2, version: 1 })).resolves.toMatchObject({
+      ok: false,
+      error: { code: "invalid-input", fieldErrors: { content: [CONTENT_TABLE_CELLS_MESSAGE] } },
+    });
+
+    expect(await getTestDb().pageRevision.count({ where: { pageId: page.id } })).toBe(4);
+    const stored = await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } });
+    expect([stored.content, stored.version]).toEqual(["# Intro\n\nRevision 4", 1]);
+  });
+
+  it("gives revision-not-found for the newest revision, one with the content of the page and one that does not exist", async () => {
+    const page = await pageWithFourRevisions();
+    await createRevisions({ page, count: 1, content: () => "# Intro\n\nRevision 3" });
+
+    for (const revision of [5, 3, 6]) {
+      await expect(pageService.revertPage(actor, page.id, { revision, version: 1 })).resolves.toEqual({
+        ok: false,
+        error: { code: "revision-not-found" },
+      });
+    }
+  });
+
+  it("is not allowed for a Reader and gives page-not-found for a deleted page", async () => {
+    const reader = await createUser({ name: "reader" });
+    const folder = await createFolder({ roles: [...owners(user), { user: reader, role: "reader" }] });
+    const page = await createPage({ folder, editor: user, content: "# Intro" });
+    await createRevisions({ page, count: 1 });
+    const deleted = await createPage({ folder, editor: user, content: "# Gone", deletedAt: new Date() });
+    await createRevisions({ page: deleted, count: 1 });
+
+    await expect(pageService.revertPage(inBrowser(reader), page.id, { revision: 1, version: 1 })).resolves.toEqual(
+      NOT_ALLOWED,
+    );
+    await expect(pageService.revertPage(actor, deleted.id, { revision: 1, version: 1 })).resolves.toEqual({
+      ok: false,
+      error: { code: "page-not-found" },
+    });
   });
 });

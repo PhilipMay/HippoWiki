@@ -15,9 +15,12 @@ import {
   listTabPages,
   moveOrRenamePage,
   restorePage,
+  revertPage,
   updatePageContent,
 } from "@/features/pages/service";
 import type { BrowserActor, ContentActor } from "@/features/folder-roles/service";
+import { CONTENT_MAX_TABLE_CELLS } from "@/features/pages/limits";
+import { CONTENT_TABLE_CELLS_MESSAGE } from "@/features/pages/schema";
 import { Prisma } from "@/generated/prisma/client";
 
 const mocks = vi.hoisted(() => ({
@@ -1111,6 +1114,205 @@ describe("updatePageContent", () => {
     await expect(updatePageContent(ACTOR, PAGE_ID, VALID)).resolves.toEqual(FAILED);
 
     expect(mocks.error).toHaveBeenCalledWith({ err, pageId: PAGE_ID }, "failed to update page");
+  });
+});
+
+describe("revertPage", () => {
+  const VERSION = 4;
+  const VALID = { revision: 2, version: VERSION };
+  const OLD = "# Old title\n\nOld text";
+  const STORED = { id: PAGE_ID, name: "stored-name", version: 5, folder: { name: "stored-folder" }, tab: null };
+  const REVISION_NOT_FOUND = { ok: false, error: { code: "revision-not-found" } };
+  const NOT_ALLOWED = { ok: false, error: { code: "not-allowed" } };
+
+  /** The page as the revert reads it: its content now and the content of the chosen revision, if it has it. */
+  function pageWith(revision: string | null, content = CONTENT) {
+    return { content, revisions: revision === null ? [] : [{ content: revision }] };
+  }
+
+  /** Nothing is stored: no update of the page and no revision. */
+  function expectNothingStored(): void {
+    expect(mocks.transaction).not.toHaveBeenCalled();
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+    expect(mocks.revisionCreate).not.toHaveBeenCalled();
+  }
+
+  it("stores the content of the revision and records a new revision that names it, in one transaction", async () => {
+    mocks.findFirst.mockResolvedValue(pageWith(OLD));
+    mocks.updateMany.mockResolvedValue({ count: 1 });
+    mocks.findUnique.mockResolvedValue(STORED);
+
+    await expect(revertPage(ACTOR, PAGE_ID, VALID)).resolves.toEqual({ ok: true, value: STORED });
+
+    expect(mocks.findFirst).toHaveBeenCalledExactlyOnceWith({
+      where: { id: PAGE_ID, deletedAt: null },
+      select: { content: true, revisions: { where: { number: 2 }, select: { content: true } } },
+    });
+    expect(mocks.updateMany).toHaveBeenCalledExactlyOnceWith({
+      where: { id: PAGE_ID, deletedAt: null, version: VERSION },
+      data: {
+        title: "Old title",
+        content: OLD,
+        lastEditedById: ACTOR_ID,
+        lastEditedVia: "web",
+        version: { increment: 1 },
+      },
+    });
+    expect(mocks.revisionCreate).toHaveBeenCalledExactlyOnceWith({
+      data: {
+        pageId: PAGE_ID,
+        number: 4,
+        title: "Old title",
+        content: OLD,
+        userId: ACTOR_ID,
+        via: "web",
+        revertedTo: 2,
+      },
+    });
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+      { pageId: PAGE_ID, revision: 2, channel: "browser" },
+      "page reverted",
+    );
+  });
+
+  // A revert always records a revision, also when the newest revision has the same content as the chosen one.
+  it("records a revision also when the newest revision has the content of the chosen one", async () => {
+    mocks.findFirst.mockResolvedValue(pageWith(OLD));
+    mocks.revisionFindFirst.mockResolvedValue({ number: 3, content: OLD });
+    mocks.updateMany.mockResolvedValue({ count: 1 });
+    mocks.findUnique.mockResolvedValue(STORED);
+
+    await revertPage(ACTOR, PAGE_ID, VALID);
+
+    expect(mocks.revisionCreate.mock.calls[0]?.[0].data).toMatchObject({ number: 4, revertedTo: 2 });
+  });
+
+  it("is not allowed for an admin, without a role and for a Reader, before anything else is read", async () => {
+    await expect(
+      revertPage({ ...ACTOR, type: "admin" }, MALFORMED_ID, { revision: 0, version: null }),
+    ).resolves.toEqual(NOT_ALLOWED);
+    expect(mocks.roleFindFirst).not.toHaveBeenCalled();
+
+    mocks.roleFindFirst.mockResolvedValue(null);
+    await expect(revertPage(ACTOR, PAGE_ID, VALID)).resolves.toEqual(NOT_ALLOWED);
+    mocks.roleFindFirst.mockResolvedValue({ role: "reader" });
+    await expect(revertPage(ACTOR, PAGE_ID, VALID)).resolves.toEqual(NOT_ALLOWED);
+
+    expect(mocks.findFirst).not.toHaveBeenCalled();
+    expectNothingStored();
+    expect(mocks.warn).toHaveBeenLastCalledWith(
+      { actorId: ACTOR_ID, pageId: PAGE_ID, role: "reader" },
+      "page not reverted: the role of the actor does not allow it",
+    );
+  });
+
+  it("returns page-not-found for a malformed id without reading the database", async () => {
+    await expect(revertPage(ACTOR, MALFORMED_ID, VALID)).resolves.toEqual(PAGE_NOT_FOUND);
+    expectDatabaseUntouched();
+  });
+
+  it.each([0, -1, 1.5, Number.NaN, 2_147_483_648])(
+    "returns revision-not-found for the malformed revision number %j without reading the page",
+    async (revision) => {
+      await expect(revertPage(ACTOR, PAGE_ID, { ...VALID, revision })).resolves.toEqual(REVISION_NOT_FOUND);
+      expect(mocks.findFirst).not.toHaveBeenCalled();
+      expectNothingStored();
+    },
+  );
+
+  it("returns revision-not-found for a revision the page does not have", async () => {
+    mocks.findFirst.mockResolvedValue(pageWith(null));
+
+    await expect(revertPage(ACTOR, PAGE_ID, VALID)).resolves.toEqual(REVISION_NOT_FOUND);
+    expectNothingStored();
+  });
+
+  it("returns revision-not-found for a revision with the content of the page now", async () => {
+    mocks.findFirst.mockResolvedValue(pageWith(CONTENT));
+
+    await expect(revertPage(ACTOR, PAGE_ID, VALID)).resolves.toEqual(REVISION_NOT_FOUND);
+    expectNothingStored();
+  });
+
+  it("returns page-not-found for a page that does not exist or is deleted", async () => {
+    mocks.findFirst.mockResolvedValue(null);
+
+    await expect(revertPage(ACTOR, PAGE_ID, VALID)).resolves.toEqual(PAGE_NOT_FOUND);
+    expectNothingStored();
+    expect(mocks.warn).toHaveBeenCalledWith({ pageId: PAGE_ID }, "page to revert not found");
+  });
+
+  // The limits in force now apply, which a revision stored before a limit existed may break (R16).
+  it("returns the field errors of content that breaks a limit now, and stores nothing", async () => {
+    const table = `# Table\n\n| a |\n| - |\n${"| x |\n".repeat(CONTENT_MAX_TABLE_CELLS)}`;
+    mocks.findFirst.mockResolvedValue(pageWith(table));
+
+    await expect(revertPage(ACTOR, PAGE_ID, VALID)).resolves.toEqual({
+      ok: false,
+      error: { code: "invalid-input", fieldErrors: { content: [CONTENT_TABLE_CELLS_MESSAGE] } },
+    });
+    expectNothingStored();
+  });
+
+  it.each([null, 0, 1.5])("stores nothing and returns page-changed for the version %j", async (version) => {
+    mocks.findFirst.mockResolvedValue(pageWith(OLD));
+    mocks.findUnique.mockResolvedValue(STORED);
+
+    await expect(revertPage(ACTOR, PAGE_ID, { ...VALID, version })).resolves.toEqual({
+      ok: false,
+      error: { code: "page-changed", page: STORED },
+    });
+    expectNothingStored();
+  });
+
+  it("returns page-changed with the page as stored for an older version, and records nothing", async () => {
+    mocks.findFirst.mockResolvedValue(pageWith(OLD));
+    mocks.updateMany.mockResolvedValue({ count: 0 });
+    mocks.findUnique.mockResolvedValue(STORED);
+
+    await expect(revertPage(ACTOR, PAGE_ID, VALID)).resolves.toEqual({
+      ok: false,
+      error: { code: "page-changed", page: STORED },
+    });
+    expect(mocks.revisionCreate).not.toHaveBeenCalled();
+    expect(mocks.warn).toHaveBeenCalledWith(
+      { pageId: PAGE_ID, version: VERSION },
+      "page to revert changed after the version the write is based on",
+    );
+    expect(mocks.info).not.toHaveBeenCalled();
+  });
+
+  it("returns failed and logs it for an error in the transaction", async () => {
+    const err = new Error("connection lost");
+    mocks.findFirst.mockResolvedValue(pageWith(OLD));
+    mocks.updateMany.mockResolvedValue({ count: 1 });
+    mocks.revisionCreate.mockRejectedValue(err);
+
+    await expect(revertPage(ACTOR, PAGE_ID, VALID)).resolves.toEqual(FAILED);
+
+    expect(mocks.error).toHaveBeenCalledWith({ err, pageId: PAGE_ID }, "failed to revert page");
+    expect(mocks.info).not.toHaveBeenCalled();
+  });
+
+  it("returns failed and logs it when the page cannot be read", async () => {
+    const err = new Error("connection lost");
+    mocks.findFirst.mockRejectedValue(err);
+
+    await expect(revertPage(ACTOR, PAGE_ID, VALID)).resolves.toEqual(FAILED);
+
+    expect(mocks.error).toHaveBeenCalledWith({ err, pageId: PAGE_ID }, "failed to revert page");
+    expectNothingStored();
+  });
+
+  it("returns failed for an actor that does not exist", async () => {
+    mocks.findFirst.mockResolvedValue(pageWith(OLD));
+    mocks.updateMany.mockRejectedValue(foreignKeyViolation({ index: "Page_lastEditedById_fkey" }));
+
+    await expect(revertPage(ACTOR, PAGE_ID, VALID)).resolves.toEqual(FAILED);
+    expect(mocks.error).toHaveBeenCalledWith(
+      expect.objectContaining({ actorId: ACTOR_ID }),
+      "actor of write not found",
+    );
   });
 });
 

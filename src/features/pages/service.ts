@@ -14,8 +14,9 @@
 // of the page keep their `updatedAt`, last editor and channel.
 //
 // Every content change records a revision of the page in the same write (`PageRevision`): creating a page records
-// revision 1, and a content save records the next one when its content differs from that of the newest revision.
-// Moving, renaming, deleting and restoring a page record none.
+// revision 1, a content save records the next one when its content differs from that of the newest revision, and a
+// revert, a content save of the browser, records one that names the revision it went back to. Moving, renaming,
+// deleting and restoring a page record none. The history is read only by the actor of the browser.
 
 import { z } from "zod";
 
@@ -168,6 +169,11 @@ type PageNotFound = { code: "page-not-found" };
  * page as stored now, so that the caller can show it at its current address.
  */
 type PageChanged = { code: "page-changed"; page: StoredPage };
+/**
+ * The revision to revert to does not exist, its number is malformed, or its content is the content of the page now,
+ * so that a revert to it would change nothing.
+ */
+type RevisionNotFound = { code: "revision-not-found" };
 /** An unexpected database error, or an actor that is malformed or does not exist; it has been logged. */
 type Failed = { code: "failed" };
 /** The actor is an admin, who changes no content, or has no role on the folder; it has been logged. */
@@ -179,6 +185,8 @@ export type UpdatePageContentError = NotAllowed | PageNotFound | PageChanged | I
 export type MoveOrRenamePageError =
   NotAllowed | PageNotFound | PageChanged | TabNotFound | InvalidInput<NameFieldErrors> | NameTaken | Failed;
 export type DeletePageError = NotAllowed | PageNotFound | PageChanged | Failed;
+export type RevertPageError =
+  NotAllowed | PageNotFound | RevisionNotFound | PageChanged | InvalidInput<PageFieldErrors> | Failed;
 export type RestorePageError =
   NotAllowed | PageNotFound | TabNotFound | InvalidInput<NameFieldErrors> | NameTaken | Failed;
 
@@ -714,26 +722,122 @@ export async function updatePageContent(
 
   const parsed = pageContentInputSchema.safeParse({ content: input.content });
   if (!parsed.success) return invalidInput(parsed.error);
-  const version = parsePageVersion(input.version);
 
+  const saved = await saveContentChange(
+    actor,
+    pageId,
+    input.version,
+    { ...parsed.data, lastEditedById, lastEditedVia },
+    {
+      revertedTo: null,
+      what: "page to update",
+      failure: "failed to update page",
+    },
+  );
+  if (saved.ok) logger.info({ pageId, ...channelOf(actor) }, "page updated");
+  return saved;
+}
+
+/**
+ * Stores a content change of the page with the given id with `storeContentChange()`, based on the given version, and
+ * returns the page as stored: the end of every content save, so that a save in the editor and a revert are stored and
+ * refused alike. No valid version, or another one than the page has, stores nothing and gives `page-changed`; a missing
+ * or deleted page gives `page-not-found`, logged as `<what> not found`. An unexpected error gives `failed`, logged with
+ * `failure`. The caller logs the stored change.
+ */
+async function saveContentChange(
+  actor: ContentActor,
+  pageId: string,
+  givenVersion: number | null,
+  change: ContentChange,
+  { revertedTo, what, failure }: { revertedTo: number | null; what: string; failure: string },
+): Promise<Result<StoredPage, PageNotFound | PageChanged | Failed>> {
+  const version = parsePageVersion(givenVersion);
   let page: StoredPage | null;
   try {
-    if (version === null) return await refusedWrite(pageId, input.version, "page to update");
-    const stored = await storeContentChange(pageId, version, { ...parsed.data, lastEditedById, lastEditedVia }, null);
-    if (!stored) return await refusedWrite(pageId, version, "page to update");
+    if (version === null) return await refusedWrite(pageId, givenVersion, what);
+    const stored = await storeContentChange(pageId, version, change, revertedTo);
+    if (!stored) return await refusedWrite(pageId, version, what);
     page = await findStoredPage(pageId);
   } catch (err) {
     if (isForeignKeyViolation(err, LAST_EDITOR)) return unknownActor(err, actor);
-    logger.error({ err, pageId }, "failed to update page");
+    logger.error({ err, pageId }, failure);
     return { ok: false, error: { code: "failed" } };
   }
   if (page === null) {
-    logger.warn({ pageId }, "page to update not found");
+    logger.warn({ pageId }, `${what} not found`);
     return { ok: false, error: { code: "page-not-found" } };
   }
-
-  logger.info({ pageId, ...channelOf(actor) }, "page updated");
   return { ok: true, value: page };
+}
+
+/**
+ * Sets the page with the given id back to its revision with the given number: stores the content of the revision, with
+ * the title derived from it, and records a new revision with that content, the actor, the channel `web` and the number
+ * it went back to, in one write, and returns the page as stored. It is a content save like one in the editor: it needs
+ * the function `editPage`, checks the content of the revision with the limits in force (`invalid-input`), and is based
+ * on the given version of the page (`page-changed`). A revision that does not exist, a malformed number and a revision
+ * whose content is the content of the page now give `revision-not-found`: a revert always changes the content. A
+ * deleted page counts as missing. Only the browser reverts.
+ */
+export async function revertPage(
+  actor: BrowserActor,
+  id: string,
+  input: { revision: number; version: number | null },
+): Promise<Result<StoredPage, RevertPageError>> {
+  if (isAdmin(actor)) return notAllowed(actor, "page not reverted: the actor is an admin");
+  const lastEditedById = editorIdOf(actor);
+  if (!lastEditedById) return { ok: false, error: { code: "failed" } };
+  const lastEditedVia = storedChannelOf(actor);
+
+  const pageId = parsePageId(id);
+  if (!pageId) return { ok: false, error: { code: "page-not-found" } };
+
+  // A page that does not exist has no role either, so that nothing tells whether a page of this id exists.
+  const role = await roleOnFolderOfPage(actor, pageId);
+  const refused = refusedByRole(actor, "page not reverted", role, "editPage", { pageId });
+  if (refused) return refused;
+
+  const { revision } = input;
+  if (!isRevisionNumber(revision)) return { ok: false, error: { code: "revision-not-found" } };
+
+  let page: { content: string; revisions: { content: string }[] } | null;
+  try {
+    page = await getDb().page.findFirst({
+      where: { id: pageId, deletedAt: null },
+      select: { content: true, revisions: { where: { number: revision }, select: { content: true } } },
+    });
+  } catch (err) {
+    logger.error({ err, pageId }, "failed to revert page");
+    return { ok: false, error: { code: "failed" } };
+  }
+  if (page === null) {
+    logger.warn({ pageId }, "page to revert not found");
+    return { ok: false, error: { code: "page-not-found" } };
+  }
+  const target = page.revisions[0];
+  if (!target || target.content === page.content) {
+    logger.warn({ pageId, revision }, "revision to revert to not found or the content of the page");
+    return { ok: false, error: { code: "revision-not-found" } };
+  }
+
+  // The limits in force now, which may be stricter than those of the time of the revision.
+  const parsed = pageContentInputSchema.safeParse({ content: target.content });
+  if (!parsed.success) return invalidInput(parsed.error);
+
+  const saved = await saveContentChange(
+    actor,
+    pageId,
+    input.version,
+    { ...parsed.data, lastEditedById, lastEditedVia },
+    {
+      revertedTo: revision,
+      what: "page to revert",
+      failure: "failed to revert page",
+    },
+  );
+  if (saved.ok) logger.info({ pageId, revision, ...channelOf(actor) }, "page reverted");
+  return saved;
 }
 
 /**

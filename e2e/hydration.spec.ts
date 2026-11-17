@@ -4,6 +4,7 @@ import {
   createFolder,
   createGrant,
   createPage,
+  createRevisions,
   createTab,
   createUser,
   resetTestDatabase,
@@ -285,6 +286,22 @@ test("the delete dialog is locked until hydration", async ({ page }) => {
   await expect(dialog.getByRole("link", { name: "Cancel" })).toHaveAttribute(
     "href",
     "/folders/locked-folder/locked-page.md",
+  );
+});
+
+test("the revert dialog is locked until hydration", async ({ page }) => {
+  const folder = await createFolder({ name: "locked-folder" });
+  const locked = await createPage({ folder, name: "locked-page", content: "# Locked page\n\nOld" });
+  await createRevisions({ page: locked, count: 1, content: () => "# Locked page\n\nNew" });
+
+  await page.goto("/folders/locked-folder/locked-page.md?action=revert&revision=1");
+
+  const dialog = page.getByRole("dialog", { name: "Revert page" });
+  await expect(dialog).toContainText("revision 1");
+  await expect(dialog.getByRole("button", { name: "Revert" })).toBeDisabled();
+  await expect(dialog.getByRole("link", { name: "Cancel" })).toHaveAttribute(
+    "href",
+    "/folders/locked-folder/locked-page.md?view=revision&revision=1",
   );
 });
 
