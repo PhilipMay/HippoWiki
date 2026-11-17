@@ -1,16 +1,13 @@
 // Turns the tokens of markdown-it into React elements with the Material UI components of the page view. Plain code of
 // its own instead of the HTML renderer of markdown-it: text only ever reaches React as children, never as HTML, so
-// there is no `dangerouslySetInnerHTML`, and the elements are the Material UI components of the rest of the app.
+// there is no `dangerouslySetInnerHTML`, and the elements are the Material UI components of the rest of the app, except
+// the rows and cells of tables, which are plain elements with the look of Material UI (`TABLE_STYLES`).
 
 import Box from "@mui/material/Box";
 import MuiLink from "@mui/material/Link";
 import Paper from "@mui/material/Paper";
 import Table from "@mui/material/Table";
-import TableBody from "@mui/material/TableBody";
-import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
-import TableHead from "@mui/material/TableHead";
-import TableRow from "@mui/material/TableRow";
 import Typography, { type TypographyProps } from "@mui/material/Typography";
 import { Fragment, type ReactNode } from "react";
 
@@ -46,6 +43,32 @@ function textAlign(token: Token): "left" | "right" | "center" | undefined {
   const match = /^text-align:(left|right|center)$/.exec(attribute(token, "style") ?? "");
   return match?.[1] as "left" | "right" | "center" | undefined;
 }
+
+/** The class of a table cell with an alignment, styled by `TABLE_STYLES`. */
+function alignClass(token: Token): string | undefined {
+  const align = textAlign(token);
+  return align && `align-${align}`;
+}
+
+/**
+ * The styles of the cells of a table, set once at the table: the look of the small `TableCell` of Material UI. The rows
+ * and cells are plain elements, because a `TableCell` costs about five times as much to render, and the page view of a
+ * table can have about 66,000 cells (markdown-it fills rows up to the columns of the header, up to 65,536 cells).
+ */
+const TABLE_STYLES = {
+  "& th, & td": {
+    typography: "body2",
+    color: "text.primary",
+    verticalAlign: "inherit",
+    textAlign: "left",
+    padding: "6px 16px",
+    borderBottom: "1px solid var(--mui-palette-TableCell-border)",
+  },
+  "& th": { lineHeight: "1.5rem", fontWeight: 500 },
+  "& .align-left": { textAlign: "left" },
+  "& .align-center": { textAlign: "center" },
+  "& .align-right": { textAlign: "right" },
+} as const;
 
 /** The number of a footnote as the reader sees it, from the `id` that markdown-it-footnote counts from 0. */
 function footnoteNumber(token: Token): number {
@@ -124,26 +147,28 @@ function containerElement(open: Token, children: ReactNode[], key: string): Reac
     case "table_open":
       return (
         <TableContainer key={key} component={Paper} variant="outlined" sx={{ mb: 2 }}>
-          <Table size="small">{children}</Table>
+          <Table size="small" sx={TABLE_STYLES}>
+            {children}
+          </Table>
         </TableContainer>
       );
     case "thead_open":
-      return <TableHead key={key}>{children}</TableHead>;
+      return <thead key={key}>{children}</thead>;
     case "tbody_open":
-      return <TableBody key={key}>{children}</TableBody>;
+      return <tbody key={key}>{children}</tbody>;
     case "tr_open":
-      return <TableRow key={key}>{children}</TableRow>;
+      return <tr key={key}>{children}</tr>;
     case "th_open":
       return (
-        <TableCell key={key} align={textAlign(open)} sx={{ fontWeight: 500 }}>
+        <th key={key} scope="col" className={alignClass(open)}>
           {children}
-        </TableCell>
+        </th>
       );
     case "td_open":
       return (
-        <TableCell key={key} align={textAlign(open)}>
+        <td key={key} className={alignClass(open)}>
           {children}
-        </TableCell>
+        </td>
       );
     case "em_open":
       return <em key={key}>{children}</em>;

@@ -85,7 +85,9 @@ deleted pages and the delete dialog included, and in the browser when the save d
 costliest function of a page, and its guards are:
 
 - The parse is linear in the length of the content: at the content limit its worst case, measured with the inputs
-  that are slow for other parsers, takes about 0.1 s for the parse and well below 1 s with the page view.
+  that are slow for other parsers, takes about 0.1 s for the parse and well below 1 s with the page view. The page
+  view of a table is its costliest case: a header of 3,000 columns with 3,000 rows of one cell becomes about 66,000
+  cells and takes about 0.3 s on a developer machine and about three times as long on the CI runner.
   `src/features/pages/markdown.cost.test.ts` keeps these inputs below 2 s each, in a run of its own without coverage.
 - The length of the content is checked before any parse, also in the MCP tool `create_page`, which checks the content
   before it derives a name from it.
@@ -111,6 +113,9 @@ costliest function of a page, and its guards are:
   makes the same tokens in one pass.
 - The page view is converted from the tokens by code of its own instead of the HTML that markdown-it renders: no
   `dangerouslySetInnerHTML`, and the elements are the Material UI components of the rest of the app.
+- The rows and cells of a table are plain elements, styled once at the table with the look of the small `TableCell` of
+  Material UI: a `TableCell` costs about five times as much to render, and with it the page view of the largest table
+  took about 0.7 s on a developer machine and more than 2 s on the CI runner.
 - Task lists are a rule of its own in `markdown.ts`, because the common plugins for them are no longer maintained.
 - A save in the browser validates the content in the form and again in the service, as `architecture.md` asks, and
   each validation parses it once. With a linear parse of at most about 0.1 s at the content limit, the second parse

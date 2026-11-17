@@ -94,8 +94,8 @@ describe("GitHub Flavored Markdown", () => {
     expect(html.match(/<th\b/g)).toHaveLength(3);
     // The second row is filled up to the columns of the header.
     expect(html.match(/<td\b/g)).toHaveLength(6);
-    expect(html).toContain("MuiTableCell-alignCenter");
-    expect(html).toContain("MuiTableCell-alignRight");
+    expect(html).toContain('<th scope="col" class="align-center">');
+    expect(html).toContain('<td class="align-right">');
     expect(html).not.toMatch(/style="/);
   });
 
