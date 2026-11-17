@@ -86,7 +86,8 @@ How the code is tested. Commands are listed in `README.md`.
 - A code span counts as a reference when it starts with a top-level file or directory of the repository (checked by its
   first word, so a command such as `scripts/image.sh smoke` passes) or ends in `.md` (a bare name such as `pages.md`
   is also looked up in `spec/`). Bare file names such as `wait.ts`, spans with a placeholder or a glob (`<`, `*`) and
-  paths that Git ignores are not checked.
+  paths that Git ignores are not checked. A path also counts as ignored when Git ignores it as a directory (a pattern
+  with a trailing slash such as `/e2e/.auth/`), so the result does not depend on whether that directory exists.
 - Step plans (`spec/*-steps.md`) are not checked: they name files that do not exist yet.
 - A broken reference is printed with its file and line, and the check fails.
 

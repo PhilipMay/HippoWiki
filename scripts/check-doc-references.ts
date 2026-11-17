@@ -8,7 +8,7 @@
 //   This catches a reference to a Markdown file in a directory that does not exist at all.
 //
 // Skipped: spans with a placeholder or a glob (`<`, `*`), paths that Git ignores (`coverage/`, `build/`,
-// `src/generated/`), and the step plans `spec/*-steps.md`, which name files that do not exist yet. A bare file name
+// `src/generated/`), also as a directory whether or not it exists (`e2e/.auth`), and the step plans `spec/*-steps.md`, which name files that do not exist yet. A bare file name
 // such as `wait.ts` is not checked: the sentence around it names its directory.
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -75,11 +75,16 @@ for (const document of documents) {
     });
 }
 
-const ignored = ignoredPaths([...new Set(references.flatMap((reference) => reference.candidates))]);
+// A pattern with a trailing slash (`/e2e/.auth/`) only matches a directory, and Git can tell that a path is a
+// directory only when it exists. Asking for `path/` as well keeps the result the same whether or not it exists.
+const asDirectory = (candidate: string) => (candidate.endsWith("/") ? candidate : `${candidate}/`);
+const ignored = ignoredPaths([
+  ...new Set(references.flatMap(({ candidates }) => candidates.flatMap((c) => [c, asDirectory(c)]))),
+]);
+const isIgnored = (candidate: string) => ignored.has(candidate) || ignored.has(asDirectory(candidate));
 const broken = references.filter(
   ({ candidates }) =>
-    !candidates.some((candidate) => ignored.has(candidate)) &&
-    !candidates.some((candidate) => existsSync(path.join(root, candidate))),
+    !candidates.some(isIgnored) && !candidates.some((candidate) => existsSync(path.join(root, candidate))),
 );
 
 for (const { document, line, span } of broken) {
