@@ -11,6 +11,8 @@ The specification lives in the `spec/` directory. This catalog should always be 
   step plan (starting and resuming, what may change, the rounds of questions, the checks for contradictions and
   feasibility, how requirements are written, the template); the result is one file `spec/<feature>-requirements.md`,
   listed here while it exists
+- `spec/mcp-manager-role-requirements.md`: the requirements of the Manager role for MCP (approved): the Manager address
+  of a folder, the tools `delete_page`, `create_tab`, `rename_tab` and `delete_tab`, and what stays out of MCP
 - `spec/step-plan-workflow.md`: how features are planned in step files, when a step is done, what to do when it
   cannot be finished, how a feature is wrapped up, what a feature spec holds, and how a finding of the review report is
   fixed and deleted
