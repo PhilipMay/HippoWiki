@@ -38,10 +38,11 @@ the dialogs and lists in `components/`), routes under `src/app/deleted-pages/`. 
 ## Deleted pages of a folder
 
 - The folder address links a Manager and an Owner to "Deleted pages", `/deleted-pages/<folder>`: the deleted pages of the folder, newest
-  first, with name, title, time of deletion and the user who deleted it. The list does not show where in the folder a
-  page was.
+  first, with name, title, time of deletion, the user who deleted it and, in a column "Via" right after "Deleted by",
+  how it was deleted: `web` in the browser, `mcp` through MCP, also for a page deleted with its tab (see "Last editor"
+  in `content-structure.md`). The list does not show where in the folder a page was.
 - `/deleted-pages/<folder>/<id>` shows a deleted page read-only, with the time of deletion, the user who deleted it
-  and "Restore" as its only action. A deleted page is
+  and how ("Deleted <time> by mike via mcp") and "Restore" as its only action. A deleted page is
   addressed by its id, because its name need not be unique and it has no `.md` address.
 - Everything else under `/deleted-pages` (an unknown folder or id, a page of another folder or one that is not deleted,
   `/deleted-pages` alone, any view or other action) shows the not-found page.
@@ -54,8 +55,9 @@ the dialogs and lists in `components/`), routes under `src/app/deleted-pages/`. 
 - Restoring checks the name like moving a page (`content-structure.md`); the content is neither validated nor
   touched. It leads to the page's new address.
 - Restoring is not checked against a change in the meantime (see `optimistic-locking.md`).
-- Deleting and restoring a page each make the logged-in user its last editor (see "Last editor" in
-  `content-structure.md`): a restored page shows the user who restored it.
+- Deleting and restoring a page each make the logged-in user its last editor, with the channel `web` (see "Last
+  editor" in `content-structure.md`): a restored page shows the user who restored it "via web", also when it was
+  deleted through MCP.
 
 ## Decisions
 
@@ -64,15 +66,17 @@ the dialogs and lists in `components/`), routes under `src/app/deleted-pages/`. 
   on the names within a tab never sees a page without a tab. So the name is free at once.
 - Deleted pages have addresses of their own under `/deleted-pages`, named for what it holds. Tabs are deleted for good
   and get none, and so will folders (see "Deleting folders" in `roadmap.md`).
-- Who deleted a page is its last editor; it is not stored on its own. This holds only as long as nothing writes to a
-  deleted page; a later write to deleted pages has to keep the last editor of the deleted pages it touches. Deleting a
+- Who deleted a page, and how, is its last editor and its channel; neither is stored on its own. This holds only as
+  long as nothing writes to a deleted page; a later write to deleted pages has to keep the last editor and the channel
+  of the deleted pages it touches. Deleting a
   tab writes only the pages of the tab, which are not deleted yet, and deleting a folder for good will remove its
   deleted pages instead of writing to them.
 - A deleted page is restored only into its own folder, as a lasting rule, like pages are moved only within their
   folder (see `content-structure.md`). Rejected: restoring a page into another folder.
 - Pages deleted before the last editor was recorded show the admin as the user who deleted them, like all content
   stored before (see "Decisions" in `content-structure.md`); a page that an admin deleted before the account types
-  came keeps that admin's name.
+  came keeps that admin's name. Pages deleted before the channel was recorded show `web`, also when an AI app deleted
+  them.
 
 ## Current limits
 

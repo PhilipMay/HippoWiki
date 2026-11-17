@@ -3,7 +3,7 @@
 Optimistic locking for pages as built: two users who change the same page at the same time no longer overwrite each
 other without noticing. A content save, move, rename or delete of a page that is based on an older state of the page
 than the one stored is refused; the editor or dialog is shown again with the page as stored and a message that names
-who changed it last and when. The rule lives in the page service, so that every caller follows it. Pages are
+who changed it last, how and when. The rule lives in the page service, so that every caller follows it. Pages are
 described in `pages.md`, moving and renaming in `content-structure.md`, deleting and restoring in `page-deletion.md`.
 
 Code: the version of a page in `Page` of `prisma/schema.prisma` and the migration
@@ -46,8 +46,9 @@ in `src/features/pages/components/`. Tests: `integration/page-service.test.ts`, 
   action (see "Actions and views" in `content-structure.md`).
 - It shows the page as stored: the editor its current content, the "Move or rename page" dialog its current name and
   place, the "Delete page" dialog its current name. What the user entered is not kept.
-- Above its fields a message names the user who last changed the page and the time of that change, as the page view
-  shows them.
+- Above its fields a message names the user who last changed the page, how (`via web` or `via mcp`, see "Last editor"
+  in `content-structure.md`) and the time of that change, as the page view shows them: "This page was changed by mike
+  via mcp at <time> after you opened it."
 - Saving or confirming again succeeds, unless the page was changed once more.
 - A notice is allowed only on a page address together with one of its actions. A notice without an action, an
   unknown, empty or repeated notice shows the not-found page.
@@ -59,8 +60,8 @@ in `src/features/pages/components/`. Tests: `integration/page-service.test.ts`, 
   without a version is refused and changes nothing.
 - The MCP write tools follow the rule unchanged (see `mcp.md`): `read_page` gives the version of a page, and
   `replace_page_content`, `move_or_rename_page` and `delete_page` state it. A change or delete based on an older
-  version, or on none, is refused with a tool error that names who changed the page last and when and tells the agent to read the page again;
-  nothing is changed.
+  version, or on none, is refused with a tool error that names who changed the page last, how (`web` or `mcp`) and
+  when, and tells the agent to read the page again; nothing is changed.
 
 ## Restoring
 
@@ -89,8 +90,9 @@ in `src/features/pages/components/`. Tests: `integration/page-service.test.ts`, 
   content shown below the editor for comparison.
 - A refused move, rename or delete reloads its dialog, like the editor. Rejected: closing the dialog and showing the
   page with a message.
-- The message names the last editor and the time, which the page already shows to everyone who may change it.
-  Rejected: a message that says nothing about who or when.
+- The message names the last editor, the channel and the time, which the page already shows to everyone who may
+  change it, so that the user sees whether a person or an AI app changed the page meanwhile. Rejected: a message that
+  says nothing about who or when.
 - The state of a page is an integer version, not the time of the last change: that time comes from the clock of the
   app, which can jump back or differ between instances, and an exact time is more fragile to send back through a form
   field or an MCP call and compare than an integer. Rejected: comparing the time of the last change, which would have

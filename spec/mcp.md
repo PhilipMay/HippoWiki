@@ -99,9 +99,12 @@ Read tools, which say so to the client (`readOnlyHint`):
 
 - `list_folder`: the tabs and the pages of the folder of the connection, without arguments. The pages placed directly
   in the folder come first, then the pages in tabs, tab by tab; each page has its name, its title, its tab (none for a
-  page placed directly in the folder), its address and its last change.
+  page placed directly in the folder), its address and its last change. Every tab and every page also comes with its
+  last editor and how it was last changed (`web` or `mcp`, see "Last editor" in `content-structure.md`), so that an
+  agent sees which pages an AI app changed last without reading each one.
 - `read_page`: one page of the folder by its tab, if it is in one, and its name: the title, the Markdown content, the
-  address, the last change, the last editor and its version (see `optimistic-locking.md`).
+  address, the last change, the last editor, how it was last changed (`web` or `mcp`) and its version (see
+  `optimistic-locking.md`).
 
 Write tools of pages, for a Writer and a Manager connection, each with the hints of a tool that writes:
 
@@ -152,13 +155,14 @@ What holds for all of them:
   name that breaks the name rule, a taken name and a tab that does not exist are tool errors that say what to do next,
   and nothing is changed.
 - Every change and every delete of a page states the version that `read_page` gave. One based on an older version, or
-  on none, is refused as in the browser, with a tool error that names who changed the page last and when and tells the agent to
-  read the page again; nothing is changed.
+  on none, is refused as in the browser, with a tool error that names who changed the page last, how (`web` or `mcp`)
+  and when, and tells the agent to read the page again; nothing is changed.
 - A change whose role is too low, because the role was lowered meanwhile, is `not-allowed` and changes nothing.
 - A change through MCP records the user of the connection as the last editor, as a change in the browser does: of a
-  page, of a tab, and, for a page deleted alone or with its tab, as the user who deleted it. The page or tab does not
-  show that the change came from an AI app; the server log of the change names the channel `mcp` and the grant, and
-  the log of a tab deletion also the number of pages.
+  page, of a tab, and, for a page deleted alone or with its tab, as the user who deleted it. With it, the change
+  records the channel `mcp`, so that the browser shows it as "by <user> via mcp" and the tools as `mcp`; which app or
+  connection made it is not recorded. The server log of the change names the channel `mcp` and the grant, and the log
+  of a tab deletion also the number of pages.
 - Every write tool of pages returns the page as stored: its name, title, tab, address and new version.
 - An address is the path of the folder, tab or page; with `HIPPOWIKI_PUBLIC_URL` it is the full URL, which a person
   can open.
@@ -197,8 +201,12 @@ What holds for all of them:
   history exists; the version check still keeps it from overwriting a newer change. Rejected: page history first.
 - The name of a new page is optional for an agent and is then the name the browser would suggest, so that an agent
   needs to send only the content. Rejected: a name that is always required.
-- A change through MCP shows only the user as the last editor, like a change in the browser; the log keeps the channel
-  until page history can show it. Rejected: "via <app>" on the page.
+- A change through MCP shows the user and the channel as "by <user> via mcp", in the browser and through the tools,
+  so that a reader sees that an AI app made it; only the server log names the grant. Rejected: "via <app>" on the
+  page, because "via" names only the channel, and the name of an app is chosen by the app itself.
+- AI apps are told the channel too, in `read_page`, `list_folder` and the error of an outdated version, so that an
+  agent sees whether a person or another agent changed a page. `list_folder` returns the last editor and the channel
+  of every tab and page. Rejected: the browser only, and leaving `list_folder` as it was.
 - The Owner role is never a role of MCP, as a lasting rule: the functions of an Owner, renaming the folder and its
   roles, stay in the browser, and no address, tool or connection gives an AI app one of them. Rejected: an Owner
   address.
@@ -252,8 +260,8 @@ What holds for all of them:
 - no exact search-and-replace in a page: a change replaces the whole content (see "Exact search-and-replace for MCP" in
   `roadmap.md`)
 - no connection to several folders at once, or to all folders of a user
-- no page history, so a change made by an AI agent cannot be undone, and the page does not show that it came through
-  MCP
+- no page history, so a change made by an AI agent cannot be undone; the page shows that its last change came
+  through MCP, but not which app made it or what changed
 - no search tool
 - no resources and no prompts of the protocol, only tools
 - no SSE, no sessions, no notifications and no subscriptions

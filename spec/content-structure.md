@@ -12,9 +12,11 @@ Code: `src/features/folders/` (folders and tabs), `src/features/pages/` (pages),
 `e2e/move-or-rename-page.spec.ts`, `e2e/delete-tab.spec.ts`, `e2e/access.spec.ts`, `src/lib/names.test.ts`,
 `src/lib/addresses.test.ts`,
 `integration/folder-service.test.ts`, `integration/page-service.test.ts`, `integration/db-errors.test.ts`. The last
-editor: the writes of `src/features/folders/service.ts` and `src/features/pages/service.ts`, the relation
-`lastEditedBy` of `Folder`, `Tab` and `Page` in `prisma/schema.prisma` and the migration
-`prisma/migrations/20261116103037_init/`.
+editor and the channel: the writes of `src/features/folders/service.ts` and `src/features/pages/service.ts`,
+`storedChannelOf()` in `src/features/folder-roles/service.ts`, `src/features/users/records.ts` (what the reads return
+of the last editor and how the browser names it), the relation `lastEditedBy` and the field `lastEditedVia` of
+`Folder`, `Tab` and `Page` in `prisma/schema.prisma`, and the migrations `prisma/migrations/20261116103037_init/` and
+`prisma/migrations/20261117130000_change_channel/`.
 
 ## Overview
 
@@ -147,7 +149,7 @@ hold pages directly and have tabs at the same time.
 - Every page in the tab is soft deleted exactly as if it had been deleted on its own (see `page-deletion.md`): it keeps
   its content and its folder, forgets its tab, and is listed under "Deleted pages" of the folder, from where it is
   restored one by one into a place of the folder. The user who deleted the tab becomes its last editor and so the user
-  who deleted it; all pages of the tab get the same time of deletion, and their versions count up.
+  who deleted it, with the channel of the deletion; all pages of the tab get the same time of deletion, and their versions count up.
 - The deletion takes the pages that are in the tab when it is confirmed, without checking for changes since the dialog
   was opened: a page added to the tab meanwhile goes with it, a page moved out meanwhile stays, and a page edited
   meanwhile is deleted with its latest content. A page created, moved or restored into the tab while it is being
@@ -183,6 +185,8 @@ hold pages directly and have tabs at the same time.
 - The check lives in the folders and pages services: every read and write takes the acting user and the channel of the
   call. For an admin every read returns nothing and every write is refused and logged, before anything else is checked
   and without asking the database; then the role of a user is checked (see `folder-roles.md`).
+- The channel of the last change is shown only where the last editor is, so it is as hidden from admins as the last
+  editor: the overview `/folder-roles` shows neither.
 
 ## Last editor
 
@@ -200,10 +204,18 @@ hold pages directly and have tabs at the same time.
 - The user is the one who is logged in. Every content write takes the acting user; a write by a user that does not
   exist fails and writes nothing.
 - Content that an admin edited before the account types came keeps showing that admin's name as its last editor.
-- The last editor is shown by user name, as plain text, next to the time of the last change (see "Lists and order",
-  `pages.md` and `page-deletion.md`).
-- Only the last editor is stored: not who created an item, and no history of editors. Recording who created an item
-  is not planned.
+- With the last editor, every folder, tab and page stores how it was last changed, its channel: `web` for a change in
+  the browser, `mcp` for a change by an AI app through MCP. These are the only two values. The channel is set on
+  exactly the writes that set the last editor, in the same write, so that time, name and channel always describe the
+  same change; a write that fails changes none of them. For a deleted page it is how the page was deleted, also with
+  its tab.
+- Content stored before the channel was recorded got `web`, deleted pages included.
+- The last editor is shown by user name, as plain text, next to the time of the last change, followed by the channel
+  after the word "via" in lowercase: "by mike via mcp" (see "Lists and order", `pages.md` and `page-deletion.md`). The
+  two tables, the list of all pages and the deleted pages list, show the channel in a column of its own headed "Via".
+  Through MCP, `read_page` and `list_folder` return the last editor and the channel (see `mcp.md`).
+- Only the last editor and the channel are stored: not who created an item, not which AI app or connection made a
+  change, and no history of editors. Recording who created an item is not planned.
 
 ## Lists and order
 
@@ -213,8 +225,9 @@ hold pages directly and have tabs at the same time.
   directly in the folder comes first.
 - Deleted pages are missing from all of these lists.
 - Lists show names and metadata only, never page content.
-- Every list shows the time of the last change of each item and its last editor: the folder list, the contents of a
-  folder (its pages and its tabs), the pages of a tab and the list of all pages of a folder.
+- Every list shows the time of the last change of each item, its last editor and the channel: the folder list, the
+  contents of a folder (its pages and its tabs), the pages of a tab and the list of all pages of a folder. The list of
+  all pages shows the channel in a column "Via" right after "Updated by".
 
 ## Decisions
 
@@ -231,6 +244,21 @@ hold pages directly and have tabs at the same time.
   be an account that nobody owns and that the user list would show. Migrating content without an admin fails and is
   rolled back.
 - The last editor is required, so that every item always has one.
+- The channel is stored and shown so that readers can tell changes by AI apps from changes in the browser, and know
+  what to check. Rejected: showing which AI app made a change, because the name of an app is chosen by the app itself
+  and may be long or misleading, and two values are enough to tell AI changes apart.
+- The channel is shown everywhere the last editor is, in the browser and through MCP, so that the two never tell
+  different stories. Rejected: only the page header and the lists, only the page header, and the browser only.
+- The channel follows the user name as "via <channel>" ("by mike via mcp"). Rejected: the channel in brackets ("by
+  mike (mcp)").
+- Content stored before the channel was recorded got `web`, also where an AI app made the last change, because the
+  past cannot be told apart and the channel is right from the next change on. Rejected: a third value such as
+  "unknown" for old content.
+- The two tables, the list of all pages and the deleted pages list, show the channel in a column of its own headed
+  "Via", so that both look alike; the other places show it in the sentence. Rejected: the channel in the cell of the
+  user, and the heading "Channel", a word the interface uses nowhere else.
+- The channel is plain text, so that it reads the same on touch screens. Rejected: an explanation on hover.
+- The channel is required, without a default, so that no write can leave it out.
 - A content address shows an admin the not-found page instead of a page that says admins cannot see content, so that
   it reveals nothing, not even whether an item exists. Rejected: a page that says admins cannot see content.
 - The key from an item to its last editor restricts deleting (`onDelete: Restrict`), like the other keys of the

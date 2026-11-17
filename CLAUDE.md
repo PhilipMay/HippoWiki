@@ -22,9 +22,11 @@ The specification lives in the `spec/` directory. This catalog should always be 
   suggested name, routes, rendering with markdown-it, the cost of the Markdown parse, decisions, limits)
 - `spec/content-structure.md`: the content structure as built (folders, tabs and pages under `/folders`: overview,
   names, addresses, actions and views with the view "AI apps", routes, changing the structure, deleting a tab for good
-  with its pages soft deleted, only users see content, the last editor, lists, decisions, limits)
+  with its pages soft deleted, only users see content, the last editor with the channel `web` or `mcp` of the last
+  change, lists with the column "Via", decisions, limits)
 - `spec/page-deletion.md`: the soft delete of pages as built (deleting, also together with their tab, deleted pages are
-  invisible, the deleted pages of a folder under `/deleted-pages` with who deleted them, restoring, decisions, limits)
+  invisible, the deleted pages of a folder under `/deleted-pages` with who deleted them and how, restoring, decisions,
+  limits)
 - `spec/container-image.md`: the container image as built (image and build stages, start with the migration, the
   command that only migrates, the admin setup, configuration including the trusted reverse proxies and the public
   URL, health, smoke test, publishing on a release, what the environment has to provide, including the client address
@@ -40,7 +42,8 @@ The specification lives in the `spec/` directory. This catalog should always be 
   `/account`, decisions, limits)
 - `spec/mcp.md`: the MCP server as built (the addresses `/mcp/<folder-uuid>/<reader|writer|manager>` per folder and
   role, off without the public URL, stateless with JSON answers, connections bound to one address and checked against
-  the current role with the answers 404, 401 and 403, the actor of MCP, the read tools, the write tools of a Writer,
+  the current role with the answers 404, 401 and 403, the actor of MCP, the read tools with the last editor and the
+  channel, the write tools of a Writer,
   the tools of a Manager that delete pages and create, rename and delete tabs, the version, the instructions per
   connection, decisions, limits)
 - `spec/oauth.md`: OAuth for MCP clients as built (switching it on with the public URL, discovery with the metadata per
@@ -55,11 +58,6 @@ The specification lives in the `spec/` directory. This catalog should always be 
   what each may do in the browser, deleting a tab from Manager up, admins never have a role, what a user sees and does, creating folders, the roles
   view, giving, changing and removing roles with the last Owner kept, the admin overview `/folder-roles`, the view "AI
   apps", MCP with the lower of the user's role and the role of the connection, decisions, limits)
-- `spec/change-channel-requirements.md`: the requirements of the change channel (how a folder, tab or page was last
-  changed, `web` or `mcp`, stored with the last editor and shown after the user name in the browser and through MCP;
-  `web` for content stored before)
-- `spec/change-channel-steps.md`: the step plan of the change channel (storing `web` or `mcp` with the last editor,
-  showing it in the browser with the column "Via", telling AI apps through MCP, wrap-up)
 - `spec/roadmap.md`: backlog of candidate features, grouped by theme, and things still to check
 - `spec/issue-report.md`: how to report issues found in code and document reviews
 - `spec/review-report.md`: the report of the security and code review (scope and method, standards and target level,

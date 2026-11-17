@@ -48,8 +48,8 @@ given as `?action=<action>` (see `content-structure.md`).
 - `?action=new` on a folder or tab address: the editor for a new page. The content comes first; "Save" checks on the
   client that it has a title, then asks for the name and the place in the "Save page" dialog, which shows the address
   the page will get. Saving shows the new page.
-- The page address: the breadcrumb, the last update with its last editor (see "Last editor" in
-  `content-structure.md`), "Edit" and "Move or rename" for a Writer and "Delete" for a Manager (see
+- The page address: the breadcrumb, the last update with its last editor and how it was made ("Last updated <time> by
+  mike via mcp", see "Last editor" in `content-structure.md`), "Edit" and "Move or rename" for a Writer and "Delete" for a Manager (see
   `folder-roles.md`), then the rendered content.
   The content's `#` heading is the page's only level-one heading; the browser tab shows the stored title.
 - `?action=edit`: the content in the editor; no title or name field. Saving shows the page. A save is refused when
