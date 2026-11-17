@@ -213,11 +213,12 @@ describe("list_folder", () => {
     ]);
   });
 
-  it("returns the tabs and the pages of the folder of the connection, each page with its tab", async () => {
-    mocks.listTabs.mockResolvedValue([{ id: "tab-1", name: "guides", updatedAt: CHANGED, lastEditedBy: EDITOR }]);
+  it("returns the tabs and the pages of the folder of the connection, each with its last editor and channel", async () => {
+    const agent = { name: "bob", via: "mcp" as const };
+    mocks.listTabs.mockResolvedValue([{ id: "tab-1", name: "guides", updatedAt: CHANGED, lastEditedBy: agent }]);
     mocks.listAllFolderPages.mockResolvedValue([
       { id: "p1", name: "overview", title: "Overview", updatedAt: CHANGED, lastEditedBy: EDITOR, tab: null },
-      { id: "p2", name: "setup", title: "Setup", updatedAt: CHANGED, lastEditedBy: EDITOR, tab: { name: "guides" } },
+      { id: "p2", name: "setup", title: "Setup", updatedAt: CHANGED, lastEditedBy: agent, tab: { name: "guides" } },
     ]);
 
     const result = await callTool("list_folder");
@@ -232,6 +233,8 @@ describe("list_folder", () => {
           name: "guides",
           address: "https://wiki.example.com/folders/handbook/guides",
           lastChanged: "2026-03-01T12:00:00.000Z",
+          lastEditedBy: "bob",
+          lastEditedVia: "mcp",
         },
       ],
       pages: [
@@ -241,6 +244,8 @@ describe("list_folder", () => {
           tab: null,
           address: "https://wiki.example.com/folders/handbook/overview.md",
           lastChanged: "2026-03-01T12:00:00.000Z",
+          lastEditedBy: "alice",
+          lastEditedVia: "web",
         },
         {
           name: "setup",
@@ -248,6 +253,8 @@ describe("list_folder", () => {
           tab: "guides",
           address: "https://wiki.example.com/folders/handbook/guides/setup.md",
           lastChanged: "2026-03-01T12:00:00.000Z",
+          lastEditedBy: "bob",
+          lastEditedVia: "mcp",
         },
       ],
     });
@@ -300,14 +307,14 @@ describe("read_page", () => {
     title: "Setup",
     content: "# Setup\n\nInstall it.",
     updatedAt: CHANGED,
-    lastEditedBy: EDITOR,
+    lastEditedBy: { name: "alice", via: "mcp" as const },
     version: 4,
     folder: { id: FOLDER_ID, name: "handbook" },
     tab: { id: "tab-1", name: "guides" },
     role: "reader",
   };
 
-  it("returns a page in a tab with title, content, address, last change, last editor and version", async () => {
+  it("returns a page in a tab with title, content, address, last change, last editor, channel and version", async () => {
     mocks.getPage.mockResolvedValue(PAGE);
 
     const result = await callTool("read_page", { tab: "guides", page: "setup" });
@@ -323,6 +330,7 @@ describe("read_page", () => {
       address: "https://wiki.example.com/folders/handbook/guides/setup.md",
       lastChanged: "2026-03-01T12:00:00.000Z",
       lastEditedBy: "alice",
+      lastEditedVia: "mcp",
       version: 4,
     });
     expect(JSON.parse(result.content[0]?.text ?? "")).toEqual(result.structuredContent);
@@ -406,7 +414,7 @@ describe("the write tools", () => {
     title: "Setup",
     content: "# Setup",
     updatedAt: CHANGED,
-    lastEditedBy: { name: "bob", via: "web" as const },
+    lastEditedBy: { name: "bob", via: "mcp" as const },
     version: 4,
     folder: { id: FOLDER_ID, name: "handbook" },
     tab: null,
@@ -597,7 +605,7 @@ describe("the write tools", () => {
 
       expect(mocks.updatePageContent).toHaveBeenCalledWith(WRITER, "p1", { content: "# Setup 2", version: null });
       expect(message).toBe(
-        "The page was changed by bob at 2026-03-01T12:00:00.000Z, after the version this change is based on, or the " +
+        "The page was changed by bob via mcp at 2026-03-01T12:00:00.000Z, after the version this change is based on, or the " +
           "change states no valid version. Nothing was changed. Read the page again with read_page and base the " +
           "change on its current content and version.",
       );
@@ -881,7 +889,7 @@ describe("the tools of a Manager connection", () => {
       const message = errorOf(await callTool("delete_page", { tab: "guides", page: "setup" }));
 
       expect(mocks.deletePage).toHaveBeenCalledWith(MANAGER, "p1", { version: null });
-      expect(message).toContain("The page was changed by bob at 2026-03-01T12:00:00.000Z");
+      expect(message).toContain("The page was changed by bob via web at 2026-03-01T12:00:00.000Z");
       expect(message).toContain("read_page");
     });
 

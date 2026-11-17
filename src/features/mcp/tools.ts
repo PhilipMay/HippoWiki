@@ -162,6 +162,18 @@ const readPageInput = z.object({
   page: nameArgument("The name of the page, without the .md at the end of its address"),
 });
 
+/** The user name of the last editor, as every tool that names it describes it. */
+const lastEditedByOutput = (item: string) => z.string().describe(`The user name of who changed the ${item} last`);
+
+/** How an item was last changed, as every tool that names it describes it. */
+const lastEditedViaOutput = (item: string) =>
+  z
+    .enum(["web", "mcp"])
+    .describe(
+      `How the ${item} was last changed: web for a change by a person in the browser, mcp for a change by an AI app ` +
+        "through MCP",
+    );
+
 const listFolderOutput = z.object({
   folder: z.object({ name: z.string(), address: z.string() }),
   tabs: z.array(
@@ -169,6 +181,8 @@ const listFolderOutput = z.object({
       name: z.string(),
       address: z.string(),
       lastChanged: z.string().describe("When the tab itself was last changed, as an ISO 8601 time"),
+      lastEditedBy: lastEditedByOutput("tab itself"),
+      lastEditedVia: lastEditedViaOutput("tab itself"),
     }),
   ),
   pages: z
@@ -179,6 +193,8 @@ const listFolderOutput = z.object({
         tab: z.string().nullable().describe("The tab the page is in, or null for a page placed directly in the folder"),
         address: z.string(),
         lastChanged: z.string().describe("When the page was last changed, as an ISO 8601 time"),
+        lastEditedBy: lastEditedByOutput("page"),
+        lastEditedVia: lastEditedViaOutput("page"),
       }),
     )
     .describe("The pages placed directly in the folder first, then the pages in tabs"),
@@ -192,7 +208,8 @@ const readPageOutput = z.object({
   content: z.string().describe("The Markdown source of the page"),
   address: z.string().describe("Where a person opens the page in a browser"),
   lastChanged: z.string().describe("When the page was last changed, as an ISO 8601 time"),
-  lastEditedBy: z.string().describe("The user name of who changed the page last"),
+  lastEditedBy: lastEditedByOutput("page"),
+  lastEditedVia: lastEditedViaOutput("page"),
   version: z.number().int().describe("The version of the page, counted up by every change"),
 });
 
@@ -311,6 +328,8 @@ export async function listFolder(options: WikiToolsOptions): Promise<CallToolRes
         name: tab.name,
         address: addressOf(options, tabPath(folder.name, tab.name)),
         lastChanged: tab.updatedAt.toISOString(),
+        lastEditedBy: tab.lastEditedBy.name,
+        lastEditedVia: tab.lastEditedBy.via,
       })),
       pages: pages.map((page) => ({
         name: page.name,
@@ -318,6 +337,8 @@ export async function listFolder(options: WikiToolsOptions): Promise<CallToolRes
         tab: page.tab?.name ?? null,
         address: addressOf(options, pagePath(folder.name, page.tab?.name ?? null, page.name)),
         lastChanged: page.updatedAt.toISOString(),
+        lastEditedBy: page.lastEditedBy.name,
+        lastEditedVia: page.lastEditedBy.via,
       })),
     } satisfies z.infer<typeof listFolderOutput>);
   });
@@ -349,6 +370,7 @@ export async function readPage(
       address: addressOf(options, pagePath(page.folder.name, page.tab?.name ?? null, page.name)),
       lastChanged: page.updatedAt.toISOString(),
       lastEditedBy: page.lastEditedBy.name,
+      lastEditedVia: page.lastEditedBy.via,
       version: page.version,
     } satisfies z.infer<typeof readPageOutput>);
   });
@@ -422,11 +444,13 @@ function nameTaken(folderName: string, tab: string | null, name: string): CallTo
 
 /**
  * The tool error of a change based on an older version than the stored one, or on no valid version: who changed the
- * page last and when, and that the page has to be read again.
+ * page last, how and when, and that the page has to be read again.
  */
 async function pageChanged(options: WikiToolsOptions, stored: pageService.StoredPage): Promise<CallToolResult> {
   const page = await pageService.getPage(options.actor, options.folder.name, stored.tab?.name ?? null, stored.name);
-  const by = page ? ` by ${page.lastEditedBy.name} at ${page.updatedAt.toISOString()}` : "";
+  const by = page
+    ? ` by ${page.lastEditedBy.name} via ${page.lastEditedBy.via} at ${page.updatedAt.toISOString()}`
+    : "";
   return toolError(
     `The page was changed${by}, after the version this change is based on, or the change states no valid version. ` +
       "Nothing was changed. Read the page again with read_page and base the change on its current content and " +
@@ -761,7 +785,9 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
       title: "List the tabs and pages of the folder",
       description:
         "Lists the tabs and the pages of the folder of this connection. Every page comes with its name, its title " +
-        "and the tab it is in (null for a page placed directly in the folder); pass these to read_page to read it.",
+        "and the tab it is in (null for a page placed directly in the folder); pass these to read_page to read it. " +
+        "Every tab and page also comes with when it was last changed, by whom and how: web in the browser, mcp by an " +
+        "AI app.",
       outputSchema: listFolderOutput,
       annotations: READ_ONLY,
     },
@@ -774,7 +800,8 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
       title: "Read a page",
       description:
         "Reads one page of the folder of this connection: its title, its Markdown content, its address, when it was " +
-        "last changed and by whom, and its version. A page is named by its tab if it is in one, and its own name, " +
+        "last changed, by whom and how (web in the browser, mcp by an AI app), and its version. A page is named by its " +
+        "tab if it is in one, and its own name, " +
         "as list_folder returns them.",
       inputSchema: readPageInput,
       outputSchema: readPageOutput,

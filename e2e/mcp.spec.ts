@@ -396,13 +396,29 @@ test("there is no tool that lists folders", async ({ request }) => {
 test("list_folder lists the tabs and pages of the folder of the connection, pages placed directly in it first, no deleted page and nothing of another folder", async ({
   request,
 }) => {
-  const guides = await createTab({ folder: projects, name: "guides", updatedAt: new Date("2026-03-02T09:00:00.000Z") });
-  await createPage({ tab: guides, name: "install", title: "Install", updatedAt: new Date("2026-03-03T09:00:00.000Z") });
+  const bob = await createUser({ name: "bob" });
+  const carol = await createUser({ name: "carol" });
+  const guides = await createTab({
+    folder: projects,
+    name: "guides",
+    updatedAt: new Date("2026-03-02T09:00:00.000Z"),
+    editor: carol,
+    via: "mcp",
+  });
+  await createPage({
+    tab: guides,
+    name: "install",
+    title: "Install",
+    updatedAt: new Date("2026-03-03T09:00:00.000Z"),
+    editor: bob,
+    via: "mcp",
+  });
   await createPage({
     folder: projects,
     name: "overview",
     title: "Overview",
     updatedAt: new Date("2026-03-04T09:00:00.000Z"),
+    editor: carol,
   });
   await createPage({ folder: projects, name: "removed", title: "Removed", deletedAt: new Date() });
   const notes = await createFolder({ name: "notes" });
@@ -417,7 +433,13 @@ test("list_folder lists the tabs and pages of the folder of the connection, page
   expect(result.structuredContent).toEqual({
     folder: { name: "projects", address: `${PUBLIC_URL}/folders/projects` },
     tabs: [
-      { name: "guides", address: `${PUBLIC_URL}/folders/projects/guides`, lastChanged: "2026-03-02T09:00:00.000Z" },
+      {
+        name: "guides",
+        address: `${PUBLIC_URL}/folders/projects/guides`,
+        lastChanged: "2026-03-02T09:00:00.000Z",
+        lastEditedBy: "carol",
+        lastEditedVia: "mcp",
+      },
     ],
     pages: [
       {
@@ -426,6 +448,8 @@ test("list_folder lists the tabs and pages of the folder of the connection, page
         tab: null,
         address: `${PUBLIC_URL}/folders/projects/overview.md`,
         lastChanged: "2026-03-04T09:00:00.000Z",
+        lastEditedBy: "carol",
+        lastEditedVia: "web",
       },
       {
         name: "install",
@@ -433,9 +457,12 @@ test("list_folder lists the tabs and pages of the folder of the connection, page
         tab: "guides",
         address: `${PUBLIC_URL}/folders/projects/guides/install.md`,
         lastChanged: "2026-03-03T09:00:00.000Z",
+        lastEditedBy: "bob",
+        lastEditedVia: "mcp",
       },
     ],
   });
+  expect(JSON.parse(result.content[0]?.text ?? "")).toEqual(result.structuredContent);
   expect(JSON.stringify(named)).not.toMatch(/notes|drafts|elsewhere/);
 });
 
@@ -485,6 +512,7 @@ test("read_page reads a page placed directly in the folder and a page in a tab, 
     address: `${PUBLIC_URL}/folders/projects/overview.md`,
     lastChanged: "2026-03-04T09:00:00.000Z",
     lastEditedBy: KNOWN_USER.name,
+    lastEditedVia: "web",
     version: 3,
   });
   expect(inTab.structuredContent).toMatchObject({
@@ -718,7 +746,7 @@ test.describe("the write tools", () => {
     expect(await storedPages()).toEqual(before);
   });
 
-  test("of two changes based on the same version the first is stored and the second is refused with who changed the page and when", async ({
+  test("of two changes based on the same version the first is stored and the second is refused with who changed the page, how and when", async ({
     request,
   }) => {
     await createPage({ folder: projects, name: "plan", content: "# Plan" });
@@ -735,11 +763,50 @@ test.describe("the write tools", () => {
       expect(refused.isError).toBe(true);
       expect(refused.content[0]?.text).toMatch(
         new RegExp(
-          `^The page was changed by ${KNOWN_USER.name} at \\d{4}-\\d{2}-\\d{2}T.*Read the page again with read_page`,
+          `^The page was changed by ${KNOWN_USER.name} via mcp at \\d{4}-\\d{2}-\\d{2}T.*Read the page again with read_page`,
         ),
       );
     }
     expect(await storedPages()).toMatchObject([{ content: "# First", version: 2 }]);
+  });
+
+  test("read_page tells how the page was last changed: web after the browser, mcp and the user after a write tool", async ({
+    request,
+  }) => {
+    const bob = await createUser({ name: "bob" });
+    await createPage({ folder: projects, name: "plan", content: "# Plan", editor: bob });
+
+    await expect(callTool(request, "read_page", { page: "plan" })).resolves.toMatchObject({
+      structuredContent: { lastEditedBy: "bob", lastEditedVia: "web", version: 1 },
+    });
+    await write(request, "replace_page_content", { page: "plan", version: 1, content: "# Plan\n\nBy an agent." });
+
+    const read = await callTool(request, "read_page", { page: "plan" });
+    expect(read.structuredContent).toMatchObject({ lastEditedBy: KNOWN_USER.name, lastEditedVia: "mcp", version: 2 });
+    expect(JSON.parse(read.content[0]?.text ?? "")).toEqual(read.structuredContent);
+  });
+
+  test("a change based on a version older than an edit in the browser is refused with the user, via web and the time", async ({
+    request,
+  }) => {
+    const bob = await createUser({ name: "bob" });
+    const plan = await createPage({ folder: projects, name: "plan", content: "# Plan" });
+    const { version } = (await callTool(request, "read_page", { page: "plan" })).structuredContent as {
+      version: number;
+    };
+    // bob saves the page in the browser meanwhile.
+    const edited = await getTestDb().page.update({
+      where: { id: plan.id },
+      data: { content: "# Plan\n\nBy bob.", version: { increment: 1 }, lastEditedById: bob.id, lastEditedVia: "web" },
+    });
+
+    const refused = await write(request, "replace_page_content", { page: "plan", version, content: "# Mine" });
+
+    expect(refused.isError).toBe(true);
+    expect(refused.content[0]?.text).toContain(
+      `The page was changed by bob via web at ${edited.updatedAt.toISOString()}, after the version`,
+    );
+    expect(await storedPages()).toMatchObject([{ content: "# Plan\n\nBy bob.", version: 2 }]);
   });
 
   test("after the user is lowered to Reader a write through the Writer connection is refused and the page stays as it was", async ({
@@ -864,7 +931,7 @@ test.describe("the tools of a Manager connection", () => {
 
     for (const args of [{ page: "plan", version: 2 }, { page: "plan" }]) {
       const message = errorOf(await manage(request, "delete_page", args));
-      expect(message).toMatch(/^The page was changed by bob at \d{4}-/);
+      expect(message).toMatch(/^The page was changed by bob via web at \d{4}-/);
       expect(message).toContain("read_page");
     }
     expect(await stored()).toEqual(before);

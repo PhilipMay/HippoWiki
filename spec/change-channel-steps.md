@@ -26,7 +26,7 @@ content an AI app changed last. The requirements are in `spec/change-channel-req
 
 - [x] Store the channel with the last editor
 - [x] Show the channel in the browser
-- [ ] Tell AI apps the channel through MCP
+- [x] Tell AI apps the channel through MCP
 - [ ] Wrap-up
 
 ## Store the channel with the last editor
