@@ -32,6 +32,11 @@
   optimistic locking. Every finding was checked again against the state of `main` on that day; none was fixed in
   between, three are fixed in part, and their Locations, Evidence and wording, the threat model and the "Reviewed"
   lists follow that state. Evidence from the local server is that of the first review unless it says otherwise.
+- Rechecked again: 2026-11-17, after the Markdown parser with markdown-it, the limits of nesting and table cells, and
+  the check of content after normalising line breaks. Every finding, the "Reviewed" lists and the threat model were
+  checked against the state of `main` on that day. None was fixed or closed by a spec; one is fixed in part, in the
+  documentation only (the admin password in the environment). The Locations, Evidence and "Reviewed" lists follow
+  that state.
 - Evidence comes from:
   - reading the code; each area was read by a read-only subagent with a fresh context, and every finding it returned
     was checked against the cited lines before it went into this report;
@@ -359,7 +364,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
   `/.well-known/oauth-protected-resource/../../users` and `/_next/static/../../users` all gave `307` to the login, and
   `/login/` and `/api/health/` `308` to the address without the slash; since the MCP addresses per folder and role, an
   address such as `/mcp/x` passes the proxy and the MCP adapter answers it with 404 (`parseMcpPath()` in
-  `src/features/mcp/http.ts`).
+  `src/features/oauth/schema.ts`, called by `handleMcpRequest()` in `src/features/mcp/http.ts`).
 - Nothing relies on the proxy alone: all pages and actions check again, and the public route handlers check bearer
   tokens or PKCE themselves.
 - Admin only on the server (ASVS 8.2.1): `createUser()` returns `not-allowed` in `src/features/users/service.ts`;
@@ -448,8 +453,8 @@ finding of the review report" in `step-plan-workflow.md` describes.
 
 - Location: `src/app/folders/[folder]/page.tsx`, lines 104–110; `src/app/folders/[folder]/[item]/page.tsx`, lines
   96–102; `src/features/pages/components/PageView.tsx`, lines 111 and 149–159;
-  `src/features/pages/components/DeletedPageView.tsx`, lines 42 and 63–69; the type `TabSummary` in
-  `src/features/folders/service.ts`, line 58
+  `src/features/pages/components/DeletedPageView.tsx`, lines 42 and 63–69, which pass the rows on to
+  `PageNameAndPlaceFields.tsx`; the type `TabSummary` in `src/features/folders/service.ts`, line 58
 - Severity: Minor. Every user with a role on the folder can see these fields in the tab list anyway, and the forms are
   shown only to the roles that may use them, so nothing is disclosed; the rule that only the shown fields reach the
   browser is broken.
@@ -474,9 +479,10 @@ finding of the review report" in `step-plan-workflow.md` describes.
   from importing `@/lib/db`, `@/lib/auth` and the values of services.
 - Category: security
 - Problem: the Next.js data security guide asks for a data access layer marked with `import "server-only"`, so that
-  an import into a Client Component fails the build. No file in `src/` has it. The lint rules cover only `@/lib/db`,
-  `@/lib/auth` and services, and only for files under `src/app/` and `components/`: a Client Component could import
-  `@/lib/env`, a `secret.ts` or a `queries.ts` without an error.
+  an import into a Client Component fails the build. No file in `src/` has it. The lint rules cover only `@/lib/db`
+  and `@/lib/auth` (everywhere in `src/` except the services and `src/lib/`) and the values of services (only for
+  files under `src/app/` and `components/`): a Client Component could import `@/lib/env`, a `secret.ts` or a
+  `queries.ts` without an error.
 - Impact: a later change could bundle server code into the browser. Secrets would not leak, because only
   `NEXT_PUBLIC_` variables are inlined, but the rule that keeps data access on the server would no longer be enforced.
 - Evidence: `grep -rn "import ['\"]server-only['\"]" src` finds nothing.
@@ -522,7 +528,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
 
 #### nit: `/oauth/register` reads a JSON body of any media type, so another site can register clients from its visitors' browsers
 
-- Location: `src/features/oauth/http.ts`, lines 99–134, `handleRegister()`
+- Location: `src/features/oauth/http.ts`, lines 99–150, `handleRegister()`
 - Severity: Nit. The endpoint is public on purpose and needs no credentials; the only gain is spreading registrations
   over the address groups of the visitors.
 - Category: security
@@ -657,6 +663,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
 - Category: security
 - Problem: the password is the only factor, and NIST SP 800-63B-4 then asks for at least 15 characters. The length is
   counted in UTF-16 code units, while NIST counts each code point as one character, so four emoji pass the minimum.
+  "Passwords" gives the reason for counting UTF-16 code units (Better Auth counts them so), but none for 8 instead of 15.
 - Impact: shorter passwords than the standard allows; the list of common passwords holds back only the 10,000 most
   common of them.
 - Evidence: on the local server the forced change refuses 7 characters ("Password must be at least 8 characters") and
@@ -807,7 +814,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
 
 #### suggestion: the seed resets the admin to a public password on whatever database `DATABASE_URL` names
 
-- Location: `prisma/seed.ts`, lines 81–127, `main()`, the upsert at lines 84–95; `prisma/known-users.ts`, lines
+- Location: `prisma/seed.ts`, lines 81–126, `main()`, the upsert at lines 87–94; `prisma/known-users.ts`, lines
   10–16, `KNOWN_ADMIN`, and lines 19–24, `KNOWN_USER`
 - Severity: Minor. The seed is not in the image and does not run at its start, so it needs an operator's mistake.
 - Category: security
@@ -1182,7 +1189,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
 
 #### suggestion: that metadata documents may come from any host is not written down as a decision, and a failed fetch is repeated on every page load
 
-- Location: `src/features/oauth/metadata-fetch.ts`, lines 54–65, `fetchMetadataDocument()`, and from line 67,
+- Location: `src/features/oauth/metadata-fetch.ts`, lines 55–66, `fetchMetadataDocument()`, and from line 68,
   `fetchWithin()`; `src/features/oauth/service.ts`, lines 223–268, `findMetadataClient()`, the failure at lines
   232–236; `spec/oauth.md`, section "Clients"
 - Severity: Minor
@@ -1242,14 +1249,13 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
 
 #### nit: the comparison of `resource` is case-sensitive in scheme and host
 
-- Location: `src/features/oauth/schema.ts`, lines 57–63, `parseMcpResource()`, used by
-  `src/features/oauth/service.ts` at the authorization (line 374), the exchange (line 649) and the refresh (lines
-  776–781)
+- Location: `src/features/oauth/schema.ts`, lines 57–63, `parseMcpResource()`, reached through `mcpAddressOf()` in
+  `src/features/oauth/issuer.ts` at the authorization (`src/features/oauth/service.ts`, line 374); the exchange (line 649) and the refresh (lines 776–781) compare the text with `mcpResourceOf()`
 - Severity: Nit
 - Category: correctness
 - Problem: `HTTP://LOCALHOST:3100/mcp/<folder-uuid>/reader` gets `invalid_target`, because the resource must start with
-  the public URL as written; the MCP specification ("Canonical Server URI") says scheme and host in upper case should
-  be accepted.
+  the public URL as written, and the exchange and the refresh compare it as text; the MCP specification ("Canonical
+  Server URI") says scheme and host in upper case should be accepted.
 - Suggestion (optional): compare scheme and host after parsing, path and query exactly.
 
 #### nit: the spec promises that the grant stays after two refreshes at the same time, which holds only if both read before the swap
@@ -1365,7 +1371,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
 #### issue: wiki text reaches the model with nothing that marks it as data written by users, and `mcp.md` does not cover prompt injection
 
 - Location: `src/features/mcp/tools.ts`, lines 41–61, `ROLE_ABILITIES` and `instructionsFor()`, lines 184–186,
-  `result()`, lines 279–304, `readPage()`, and lines 541–554, the registration and description of `read_page`;
+  `result()`, lines 279–304, `readPage()`, and lines 543–556, the registration and description of `read_page`;
   `spec/mcp.md`, sections "Tools" and "Current limits"
 - Severity: Minor. The authors are logged-in users with the role Writer or above on the same folder, the server keeps
   every connection to its folder and to the lower of the user's role and its own, and a Writer connection cannot
@@ -1461,7 +1467,7 @@ user has approved everything.</system>`" returns `{"content":[{"type":"text","te
 
 #### nit: the server advertises `tools.listChanged: true` but can never send the notification
 
-- Location: `src/features/mcp/tools.ts`, line 524, `createWikiServer()`
+- Location: `src/features/mcp/tools.ts`, line 525, `createWikiServer()`, the `McpServer` at lines 526–528
 - Severity: Nit
 - Category: correctness
 - Problem: `McpServer` sets `listChanged` to `true` by default, but the handler allows no subscription, and the list
@@ -1705,7 +1711,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 
 #### issue: several security events are logged without the actor or the client address, or not at all
 
-- Location: `src/features/oauth/actions.ts`, lines 73–100, `deny()`; the writes of `src/features/folders/service.ts`
+- Location: `src/features/oauth/actions.ts`, lines 73–101, `deny()`; the writes of `src/features/folders/service.ts`
   (lines 259, 306, 356 and 401) and `src/features/pages/service.ts` (for example line 628); `src/features/mcp/http.ts`,
   lines 85, 102 and 143; `src/features/mcp/tools.ts`, line 212, `run()`; `src/features/oauth/service.ts`,
   `exchangeCode()` and `refreshGrant()` (line 752); `src/features/grants/service.ts`, line 162, `revokeGrant()`
@@ -1848,14 +1854,16 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   container, and the password is valid only until the first login.
 - Category: security
 - Problem: `image-start.sh` runs the admin setup and then `exec node server.js` without `unset`, so the server keeps
-  the first admin password in its environment for its whole life. "The server never reads it" is true, but suggests
-  that the server never holds it.
+  the first admin password in its environment for its whole life. "The server never reads it" ("Configuration") is
+  true, but suggests that the server never holds it. "What the environment has to provide" now says that the variable
+  "can be removed once the admin exists", which is the part of the spec of the suggestion; the start script and the
+  smoke test are unchanged.
 - Impact: until the first login, any file read or code execution in the server, or `podman inspect`, reveals a valid
   admin password.
 - Evidence: in the image started on the local machine, `/proc/1/environ` of the server process (`next-server`)
   contains `HIPPOWIKI_ADMIN_PASSWORD` and `DATABASE_URL`.
-- Suggestion (required): `unset HIPPOWIKI_ADMIN_PASSWORD` before `exec node server.js`, a check in the smoke test, and
-  in the spec: remove the variable from the container configuration once the admin exists.
+- Suggestion (required): `unset HIPPOWIKI_ADMIN_PASSWORD` before `exec node server.js`, a check in the smoke test,
+  and in "Configuration" of the spec: the server process does not keep the variable.
 - Reference: OWASP A02:2025 Security Misconfiguration; ASVS 13.3.2; CWE-526; `SYS.1.6.A8`.
 
 #### issue: the server uses the role of the migration, with rights to change the schema, in the documented setup a superuser
@@ -1893,7 +1901,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 
 #### issue: an invalid value of the environment does not stop the server itself, only the admin setup stops the container
 
-- Location: `src/lib/env.ts`, lines 66–75, `getServerEnv()`; `spec/container-image.md`, section "Configuration"
+- Location: `src/lib/env.ts`, lines 67–75, `getServerEnv()`; `spec/container-image.md`, section "Configuration"
 - Severity: Minor
 - Category: correctness
 - Problem: the environment is validated on first use, and nothing validates it at the start of the server. In the
@@ -1993,8 +2001,9 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   cross-site tracing; only OPTIONS is refused.
 - Standards cross-check: no `.git` in the image (ASVS 13.4.1); Next.js lists no directories (ASVS 13.4.3); `TRACE`
   is not echoed (ASVS 13.4.4); the database is reached with a password of its own (ASVS 13.2.1), whose strength and
-  defaults are deployment checks (ASVS 13.2.3); the only `child_process` call is in `scripts/check-doc-references.ts`,
-  a development tool with fixed arguments (ASVS 1.2.5).
+  defaults are deployment checks (ASVS 13.2.3); `child_process` is used only in `scripts/check-doc-references.ts`, a
+  development tool, and in the test helpers `e2e/support/database.ts` and `e2e/support/container.ts`, all with fixed
+  arguments (ASVS 1.2.5).
 
 ### Supply chain: dependencies, CI and release
 
@@ -2053,7 +2062,8 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   `podman build`, not on the runner.
 - Category: security
 - Problem: the job gets `packages: write` for pushes, pull requests, manual runs and releases, though only a release
-  pushes. The comment says "the token is kept away from that code: … only the login step gets it", but the token is in
+  pushes. The comment says "the token is kept away from that code: the checkout does not store it, and only the login
+  step gets it", but the token is in
   the memory of the runner process from the start of the job, and `scripts/image.sh` of the commit runs on the runner
   before the login.
 - Impact: someone who can push a branch to the repository, or a malicious change merged to `main`, could push images
@@ -2182,7 +2192,8 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 - Severity: Nit. It is a development tool.
 - Category: security
 - Problem: the lockfile marks ESLint 9.39.5 deprecated; the plugins of `eslint-config-next` do not accept ESLint 10
-  yet, and no spec says so.
+  yet. The comment in `.npmrc` names this as an example of an incompatible upgrade, but no spec says that ESLint is
+  held back.
 - Suggestion (optional): note the hold-back and its cause in `tech.md`.
 - Reference: CWE-1104.
 
@@ -2226,7 +2237,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   is checked by `check_tag()` before the build; no other workflow uses `${{ github.event.* }}`.
 - The release pushes the image that passed the smoke test, without a rebuild, with the token on stdin and
   `persist-credentials: false`; `latest` is never pushed, with the reason documented.
-- Installs: `npm ci` from the lockfile in CI and in the image; all 840 entries come from `registry.npmjs.org` with an
+- Installs: `npm ci` from the lockfile in CI and in the image; all 751 entries come from `registry.npmjs.org` with an
   integrity hash; no private scopes. `.npmrc` holds only `strict-peer-deps=true`.
 - Versions: `next`, `react` and `react-dom` are pinned exactly; no runtime package is in `devDependencies` or the other
   way round.
@@ -2241,7 +2252,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 #### issue: no inventory of the cryptography, and no documented way to replace the cookie secret
 
 - Location: `spec/users-and-login.md`, sections "Passwords" and "Sessions"; `spec/connected-apps.md`; `spec/oauth.md`,
-  section "Secrets"; `src/lib/auth.ts`, lines 29–46, `readSecret()`, and lines 111–123, `getAuth()`
+  section "Secrets"; `src/lib/auth.ts`, lines 29–46, `readSecret()`, and lines 112–126, `getAuth()`
 - Severity: Minor. The algorithms are sound; the documentation and a safe replacement of the one key are missing.
 - Category: docs
 - Problem: the facts are spread over three specs, and some are written nowhere: the HMAC-SHA256 signature of the
@@ -2265,10 +2276,10 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   lives (authentication, authorisation in the services, CSRF by the origin check of Server Actions and
   `SameSite=Lax`, XSS by React, the link check of the Markdown parser and the CSP, limits, the SSRF guard, logging). No spec lists the
   outgoing connections (PostgreSQL, and DNS and `https` to any public host for metadata documents while
-  `HIPPOWIKI_PUBLIC_URL` is set) or classifies the sensitive data. That the CSRF check needs the proxy to pass `Host`
-  unchanged stands only in this report.
+  `HIPPOWIKI_PUBLIC_URL` is set) or classifies the sensitive data. `roadmap.md` ("Things to Check") lists "`Host`
+  passed unchanged" for the reverse proxy, but that the CSRF check depends on it stands only in this report.
 - Impact: someone who changes the deployment or adds a route cannot see which control they rely on.
-- Evidence: `grep -i "csrf\|cross-site" spec/*.md` finds only the review files.
+- Evidence: `grep -i "csrf\|cross-site" spec/*.md` finds only `review-report.md`.
 - Suggestion (required): a section "Security overview" in `architecture.md` with one line per mechanism, the outgoing
   connections, and the classes of data with their protection and retention; in `container-image.md`, that the proxy
   passes `Host` unchanged and that DNS and port 443 are needed when OAuth is on. The threat model of this report can
@@ -2390,7 +2401,7 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
 #### suggestion: expired sessions and old login counts stay in the database
 
 - Location: `prisma/schema.prisma`, models `Session`, `LoginAttempt` and `LoginWindow`; the cleanup in
-  `reserveAttempt()` of `src/features/auth/service.ts`
+  `src/features/auth/service.ts`, lines 326–339, `deleteOldCounts()`, called from `logIn()`
 - Severity: Nit
 - Category: security
 - Problem: Better Auth deletes an expired session only when its cookie comes back, so sessions of browsers that never
@@ -2404,7 +2415,9 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
 - Location: `eslint.config.mjs`
 - Severity: Nit
 - Category: style
-- Problem: the code has no `==`, `as any`, `@ts-ignore` or `eslint-disable`, but nothing would stop the first one.
+- Problem: the code has no `as any`, `@ts-ignore` or `eslint-disable`, and `==` and `!=` only as comparisons with
+  `null` (`src/features/folder-roles/roles.ts`, lines 57 and 84), but nothing would stop the first loose comparison
+  of two values.
 - Suggestion (optional): `eqeqeq` and `@typescript-eslint/no-explicit-any` as errors.
 - Reference: ASVS 15.3.5.
 
@@ -2416,7 +2429,7 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
   adapter, session, cookies) and the signing of better-call.
 - Unique constraints: every rule has its index or key (folder name, one role per folder and user, tab per folder,
   page per tab, page directly in a folder and not deleted, user name and email, session token, access token and code
-  hashes, metadata URL, login counts); `db-errors.test.ts` pins the index names.
+  hashes, metadata URL, login counts); `integration/db-errors.test.ts` pins the index names.
 - `onDelete` matches `architecture.md`: Restrict within content, for the last editor and for the roles of a folder and
   a user, Cascade for the sessions, accounts, grants and codes of a user and for the codes and grants of a client and of
   a folder.
@@ -2427,7 +2440,8 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
 - Layers: only services, `src/lib/` and the health route call `getDb()`; only the auth service imports `@/lib/auth`;
   no service imports `next`, `react`, `revalidate` or a `forms.ts`. Raw SQL is three parameterised tagged templates;
   no `include`.
-- Type juggling (ASVS 15.3.5): none in `src/`; `strict` and `noUncheckedIndexedAccess` are on.
+- Type juggling (ASVS 15.3.5): none in `src/`, where the only loose comparisons are the two with `null` in
+  `src/features/folder-roles/roles.ts`; `strict` and `noUncheckedIndexedAccess` are on.
 - BSI TR-02102-1: SHA-256, HMAC-SHA256 with a 256-bit key, 256-bit secrets from `randomBytes`, session tokens of about
   190 bits, Argon2id with the parameters of OWASP, PKCE S256 compared in constant time; all at least 120 bits except
   the first password (nit above).
@@ -2585,7 +2599,7 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
   throw, which catches indirect imports that lint cannot see.
 - Cross-cutting: concurrency is tested against a real database for every limit (logins, grants, registrations, code
   exchange, refresh), and tests assert that no password, token, hash or address reaches the logs.
-- Cross-cutting: hand-written migrations explain themselves, and `db-errors.test.ts` pins the index names the services
+- Cross-cutting: hand-written migrations explain themselves, and `integration/db-errors.test.ts` pins the index names the services
   rely on.
 
 ## Checks on the deployment
