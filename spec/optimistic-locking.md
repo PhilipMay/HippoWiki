@@ -22,7 +22,7 @@ in `src/features/pages/components/`. Tests: `integration/page-service.test.ts`, 
   last editor (see "Last editor" in `content-structure.md`), and a write that fails changes none of them.
 - Pages stored before the version existed have the version 1.
 - Renaming a folder or a tab, and every change inside a folder or tab, is no change of its pages and leaves their
-  versions as they are.
+  versions as they are. Deleting a tab deletes its pages, and their versions count up as with every delete.
 
 ## Which changes are refused
 
@@ -108,6 +108,9 @@ in `src/features/pages/components/`. Tests: `integration/page-service.test.ts`, 
   release only.
 - Restoring is not checked: nothing changes a deleted page, and two restores at once are already told apart. Rejected:
   checking restore as well, for the very rare delete, restore and delete again while the dialog is open.
+- The pages deleted with their tab are deleted without checking their versions: the deletion takes whatever is in the
+  tab when it is confirmed, and every page deleted this way can be restored (see "Deleting a tab" in
+  `content-structure.md`). Rejected: refusing the deletion of the tab when one of its pages changed meanwhile.
 - Folders and tabs are left out: a rename changes only a name, and a taken name is already refused. Creating a page is
   left out for the same reason.
 

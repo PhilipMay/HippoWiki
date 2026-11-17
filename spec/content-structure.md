@@ -2,13 +2,15 @@
 
 The content structure as built: folders, optional tabs inside a folder and Markdown pages, and the addresses they have.
 What a page itself is (its content, derived title, editor and rendering) is described in `pages.md`, deleting and
-restoring pages in `page-deletion.md`, and who sees and does what with a folder in `folder-roles.md`.
+restoring pages in `page-deletion.md`, and who sees and does what with a folder in `folder-roles.md`. Deleting a tab is
+described below in "Deleting a tab".
 
 Code: `src/features/folders/` (folders and tabs), `src/features/pages/` (pages), `src/lib/names.ts` (the name rule),
 `src/lib/addresses.ts` (building and parsing addresses), the models `Folder`, `Tab` and `Page` in
 `prisma/schema.prisma`, and the routes under `src/app/folders/` and `src/app/deleted-pages/`. Tests:
 `e2e/folders.spec.ts`, `e2e/tabs.spec.ts`, `e2e/all-pages.spec.ts`, `e2e/create-page.spec.ts`,
-`e2e/move-or-rename-page.spec.ts`, `e2e/access.spec.ts`, `src/lib/names.test.ts`, `src/lib/addresses.test.ts`,
+`e2e/move-or-rename-page.spec.ts`, `e2e/delete-tab.spec.ts`, `e2e/access.spec.ts`, `src/lib/names.test.ts`,
+`src/lib/addresses.test.ts`,
 `integration/folder-service.test.ts`, `integration/page-service.test.ts`, `integration/db-errors.test.ts`. The last
 editor: the writes of `src/features/folders/service.ts` and `src/features/pages/service.ts`, the relation
 `lastEditedBy` of `Folder`, `Tab` and `Page` in `prisma/schema.prisma` and the migration
@@ -29,7 +31,8 @@ hold pages directly and have tabs at the same time.
 
 - The database guarantees that a page's tab belongs to the page's folder: a composite foreign key from the page's tab
   and folder to the tab's id and folder. A tab of another folder is refused like a tab that no longer exists.
-- No folder, tab or page is deleted by a cascade: every foreign key between them restricts deleting.
+- No folder, tab or page is deleted by a cascade: every foreign key between them restricts deleting. A tab is deleted
+  only after its pages have left it (see "Deleting a tab").
 
 ## Names
 
@@ -61,8 +64,8 @@ hold pages directly and have tabs at the same time.
   a tab.
 - Every address maps to at most one item. A malformed name, an unknown folder, tab or page, and a page of another
   folder or tab show the not-found page. Pages have no address outside `/folders`.
-- A rename or move changes the address, deleting a page removes it. There are no redirects from the old address; it
-  shows the not-found page. Renaming a folder changes the addresses of its deleted pages as well.
+- A rename or move changes the address, deleting a page or a tab removes it. There are no redirects from the old
+  address; it shows the not-found page. Renaming a folder changes the addresses of its deleted pages as well.
 
 ## Actions and views
 
@@ -78,6 +81,7 @@ hold pages directly and have tabs at the same time.
   | folder       | `give-role`      | the "Give role" dialog (see `folder-roles.md`)           |
   | tab          | `new`            | the editor for a new page, the tab preselected           |
   | tab          | `rename`         | the "Rename tab" dialog                                  |
+  | tab          | `delete`         | the "Delete tab" dialog                                  |
   | page         | `edit`           | the edit form (see `pages.md`)                           |
   | page         | `move-or-rename` | the "Move or rename page" dialog                         |
   | page         | `delete`         | the "Delete page" dialog                                 |
@@ -109,8 +113,8 @@ hold pages directly and have tabs at the same time.
 - `/folders/<folder>?view=all`: all pages of the folder, with their tab.
 - `/folders/<folder>?view=roles`: the roles view (see `folder-roles.md`).
 - `/folders/<folder>?view=mcp`: the view "AI apps" with the MCP addresses of the folder that the user may use.
-- `/folders/<folder>/<tab>`: the tab with "Rename" for a Manager and "New page" for a Writer, and the pages of the
-  tab.
+- `/folders/<folder>/<tab>`: the tab with "Rename" and "Delete" for a Manager and "New page" for a Writer, and the
+  pages of the tab. The contents list of the folder offers no deletion of its tabs.
 - Page addresses are described in `pages.md`, the addresses under `/deleted-pages` in `page-deletion.md`.
 - Every address below a folder has a breadcrumb back to the folder list and the folder.
 
@@ -127,6 +131,38 @@ hold pages directly and have tabs at the same time.
   the name and place as stored (see `optimistic-locking.md`). Renaming a folder or a tab is not checked: the last save
   wins.
 - After every write, all addresses under `/folders` and `/deleted-pages` show the new state.
+
+## Deleting a tab
+
+- A Manager or an Owner of the folder deletes a tab from the tab address with "Delete" (`?action=delete`), after a
+  confirmation in the "Delete tab" dialog. The dialog names the tab and the number of pages that will be deleted with
+  it, as the tab held them when the dialog was opened, and says that the pages can be restored one by one and the tab
+  itself not. Confirming leads to the folder; cancelling and the Escape key lead back to the tab. Code: `deleteTab()`
+  in `src/features/folders/service.ts` and `actions.ts`, `src/features/folders/components/DeleteTabDialog.tsx`.
+- The tab is deleted for good: it cannot be restored, it is not listed among deleted items, and its name is free at
+  once for a new tab of the folder.
+- Every page in the tab is soft deleted exactly as if it had been deleted on its own (see `page-deletion.md`): it keeps
+  its content and its folder, forgets its tab, and is listed under "Deleted pages" of the folder, from where it is
+  restored one by one into a place of the folder. The user who deleted the tab becomes its last editor and so the user
+  who deleted it; all pages of the tab get the same time of deletion, and their versions count up.
+- The deletion takes the pages that are in the tab when it is confirmed, without checking for changes since the dialog
+  was opened: a page added to the tab meanwhile goes with it, a page moved out meanwhile stays, and a page edited
+  meanwhile is deleted with its latest content. A page created, moved or restored into the tab while it is being
+  deleted either goes with it or is refused as written into a tab that does not exist; no page is ever left in a
+  missing tab.
+- Deleting is all or nothing: either the tab and all its pages are deleted, or nothing changes and the dialog stays open
+  with a message.
+- The dialog refers to the tab, not to its name: a tab renamed after the dialog was opened is still deleted.
+- There is no limit on the number of pages of a deleted tab.
+- A tab that no longer exists when the deletion is confirmed, because it was deleted meanwhile, keeps the dialog open
+  with the message that the tab no longer exists and only the way back to the folder, and changes nothing.
+- An editor or dialog still open on a page of the deleted tab answers its save or confirmation with the message that the
+  page no longer exists. For an AI app through MCP the deleted tab is missing like one that never existed (see
+  `mcp.md`).
+- Deleting a tab leaves the time of the last change and the last editor of the folder as they are.
+- Every deletion of a tab is logged with the user, the folder, the tab and the number of pages deleted with it; a
+  refused deletion is logged like the other refused content writes.
+- Tabs are deleted only in the browser: MCP has no Manager role (see `mcp.md`).
 
 ## Only users see content
 
@@ -149,12 +185,12 @@ hold pages directly and have tabs at the same time.
   set it:
   - folder: created, renamed
   - tab: created, renamed
-  - page: created, content edited, moved or renamed, deleted, restored
+  - page: created, content edited, moved or renamed, deleted (on its own or with its tab), restored
 - Each of these writes stores its user in the same write that changes the item's time of the last change, so that
   time and name always describe the same change. A write that fails changes neither. The same write counts the
   version of a page up, which the page's later changes are checked against (see `optimistic-locking.md`).
-- A change inside a folder or tab is no edit of it: creating, moving, deleting or restoring a page and creating a tab
-  leave the time of the last change and the last editor of the folder and the tab as they are. Renaming a folder
+- A change inside a folder or tab is no edit of it: creating, moving, deleting or restoring a page and creating or
+  deleting a tab leave the time of the last change and the last editor of the folder and the tab as they are. Renaming a folder
   leaves those of its tabs and pages as they are.
 - The user is the one who is logged in. Every content write takes the acting user; a write by a user that does not
   exist fails and writes nothing.
@@ -193,10 +229,34 @@ hold pages directly and have tabs at the same time.
   it reveals nothing, not even whether an item exists. Rejected: a page that says admins cannot see content.
 - The key from an item to its last editor restricts deleting (`onDelete: Restrict`), like the other keys of the
   content: a user who has edited content cannot be deleted by accident, and no content loses its editor.
+- A tab is deleted for good instead of softly, because a tab holds no content of its own: its pages keep their content
+  as deleted pages, and a new tab can be created at any time. Rejected: a soft delete of tabs with a list of deleted
+  tabs and restoring them.
+- The confirmation of a tab deletion names the number of pages, so that the user sees how much goes with the tab.
+  Rejected: typing the tab name to confirm, and a confirmation without the number of pages.
+- "Delete" is offered on the tab only, like "Delete" on a page, and leads to the folder. Rejected: a delete control
+  next to each tab in the contents list of the folder.
+- A tab deletion takes the pages that are in the tab when it is confirmed, without checking for changes since the
+  dialog was opened: tabs have no version, renaming a tab is not checked either, and every page deleted this way can
+  be restored. Rejected: refusing the deletion when the pages of the tab changed meanwhile.
+- The pages of a deleted tab show nothing about their former tab, so that the rules of deleted pages do not change.
+  Rejected: showing the name of the former tab.
+- A renamed tab is still deleted, because the dialog refers to the tab and not to its name, like the deletion takes the
+  pages that are there. Rejected: refusing the deletion after a rename.
+- No limit on the number of pages of a deleted tab: the pages are only marked as deleted. Rejected: a maximum number of
+  pages.
+- A tab deleted meanwhile is answered with a message in the dialog, like a page deleted meanwhile. Rejected: the
+  not-found page, which does not tell the user why. So the deletion checks the role on the folder of the address, not
+  on the folder of the tab, which a deleted tab no longer has: a Manager learns that the tab is gone, while a user
+  without the role is refused whether the tab exists or not.
+- Hard deletion is the lasting rule for tabs. Rejected: soft deleting, listing and restoring deleted tabs later.
 
 ## Current limits
 
-- Folders and tabs cannot be deleted. Deleted pages cannot be removed for good (see `page-deletion.md`).
+- Folders cannot be deleted. A deleted tab cannot be restored; its pages are restored one by one. Deleted pages cannot
+  be removed for good (see `page-deletion.md`).
+- Renaming a tab that was deleted after the "Rename tab" dialog was opened shows the not-found page instead of a
+  message that the tab no longer exists.
 - A page cannot be moved to another folder, a tab cannot be moved to another folder.
 - No redirects from old addresses after a rename or move.
 - No history, no links between pages, no search.

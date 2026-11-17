@@ -20,10 +20,10 @@ The specification lives in the `spec/` directory. This catalog should always be 
 - `spec/pages.md`: the page feature as built (content and title with the limits of length, nesting and table cells,
   suggested name, routes, rendering with markdown-it, the cost of the Markdown parse, decisions, limits)
 - `spec/content-structure.md`: the content structure as built (folders, tabs and pages under `/folders`: overview,
-  names, addresses, actions and views with the view "AI apps", routes, changing the structure, only users see content, the last editor,
-  lists, decisions, limits)
-- `spec/page-deletion.md`: the soft delete of pages as built (deleting, deleted pages are invisible, the deleted pages
-  of a folder under `/deleted-pages` with who deleted them, restoring, decisions, limits)
+  names, addresses, actions and views with the view "AI apps", routes, changing the structure, deleting a tab for good
+  with its pages soft deleted, only users see content, the last editor, lists, decisions, limits)
+- `spec/page-deletion.md`: the soft delete of pages as built (deleting, also together with their tab, deleted pages are
+  invisible, the deleted pages of a folder under `/deleted-pages` with who deleted them, restoring, decisions, limits)
 - `spec/container-image.md`: the container image as built (image and build stages, start with the migration, the
   command that only migrates, the admin setup, configuration including the trusted reverse proxies and the public
   URL, health, smoke test, publishing on a release, what the environment has to provide, including the client address
@@ -50,13 +50,9 @@ The specification lives in the `spec/` directory. This catalog should always be 
   which content saves, moves, renames and deletes are refused, what the browser shows then, the rule for callers
   other than the browser and the MCP write tools, restoring unchecked, editors and dialogs open over a deployment, decisions, limits)
 - `spec/folder-roles.md`: folder roles as built (the roles Reader, Writer, Manager and Owner per user and folder and
-  what each may do in the browser, admins never have a role, what a user sees and does, creating folders, the roles
+  what each may do in the browser, deleting a tab from Manager up, admins never have a role, what a user sees and does, creating folders, the roles
   view, giving, changing and removing roles with the last Owner kept, the admin overview `/folder-roles`, the view "AI
   apps", MCP with the lower of the user's role and the role of the connection, decisions, limits)
-- `spec/tab-deletion-requirements.md`: the approved requirements of deleting a tab (a Manager or Owner deletes
-  a tab for good, its pages are soft deleted)
-- `spec/tab-deletion-steps.md`: the step plan of deleting a tab (the service write with its lock and transaction, the
-  "Delete tab" dialog at the tab address, wrap-up)
 - `spec/roadmap.md`: backlog of candidate features, grouped by theme, and things still to check
 - `spec/issue-report.md`: how to report issues found in code and document reviews
 - `spec/review-report.md`: the report of the security and code review (scope and method, standards and target level,

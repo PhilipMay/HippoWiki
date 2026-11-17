@@ -12,11 +12,11 @@ listed first; there is no order across themes.
 
 ## Content Structure
 
-- Soft delete of folders and tabs: delete a folder or a tab together with its pages, as pages can be deleted today
+- Soft delete of folders: delete a folder together with its tabs and pages, as pages can be deleted today
   (`content-structure.md`).
-- Deleted folders and tabs: lists of the deleted folders and tabs at addresses of their own, next to
-  `/deleted-pages` (`page-deletion.md`).
-- Restoring deleted folders and tabs: bring a deleted folder or tab back with its pages.
+- Deleted folders: a list of the deleted folders at an address of its own, next to `/deleted-pages`
+  (`page-deletion.md`).
+- Restoring deleted folders: bring a deleted folder back with its pages.
 - Moving pages and tabs to another folder: today a page or a tab can only be moved within its folder
   (`content-structure.md`).
 - Restoring a page into another folder: today a deleted page is restored only into its own folder
@@ -118,7 +118,7 @@ listed first; there is no order across themes.
   never a role of MCP (`mcp.md`, `folder-roles.md`).
 - MCP search tool: search the wiki from AI assistants, after full-text search (see "Search") (`mcp.md`).
 - Manager role for MCP: an MCP address `/mcp/<folder-uuid>/manager` for Owners and Managers, with the tools of a
-  Manager, such as deleting and restoring pages and creating and renaming tabs, after MCP per folder and role
+  Manager, such as deleting and restoring pages and creating, renaming and deleting tabs, after MCP per folder and role
   (`mcp.md`, `folder-roles.md`).
 - Exact search-and-replace for MCP: a write tool that replaces an exact piece of the content of a page instead of the
   whole content, after MCP per folder and role (`mcp.md`).

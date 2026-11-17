@@ -12,8 +12,8 @@ HippoWiki is a knowledge management system, built with Next.js (App Router) and 
 ## What the prototype can do
 
 The prototype manages wiki pages written in Markdown, organises them in folders and optional tabs and stores them in
-PostgreSQL: create, view, edit, move and rename pages, create and rename folders and tabs, and delete pages and
-restore them from the deleted pages of their folder. Folders and tabs cannot be deleted yet.
+PostgreSQL: create, view, edit, move and rename pages, create and rename folders and tabs, delete pages and tabs and
+restore the pages from the deleted pages of their folder. Folders cannot be deleted yet.
 
 The wiki can only be used after a login. Every account is either an admin, who manages the accounts, sees no content
 and only an overview of who has which role on which folder, or a user, who creates folders, works with the folders on

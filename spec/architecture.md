@@ -138,8 +138,8 @@ How the code is organised and which patterns new code follows. The technology st
     `not-allowed` is mapped to `notFound()`: what an account may not change does not exist for it.
   - On success it calls `revalidateContent()` from `src/lib/revalidate.ts` and redirects. `revalidateContent()` calls
     `revalidatePath` with `"layout"` for `/folders` and `/deleted-pages` and so covers every address under both:
-    renaming a folder changes the addresses of its deleted pages, and creating or renaming a tab changes the places
-    offered when a page is restored.
+    renaming a folder changes the addresses of its deleted pages, creating, renaming or deleting a tab changes the
+    places offered when a page is restored, and deleting a tab adds deleted pages.
   - It redirects to the address of the item as stored, built from the result of the service with the helpers in
     `addresses.ts`, never to one built from submitted values.
   - `redirect` is called last and outside `try` blocks, because it throws.

@@ -13,6 +13,9 @@ the dialogs and lists in `components/`), routes under `src/app/deleted-pages/`. 
 - A page is deleted from its page address with "Delete" (`?action=delete`), after a confirmation. Deleting leads to
   the folder or tab the page was in. Deleting needs the role Manager or Owner on the folder (see `folder-roles.md`).
 - A deleted page keeps its content and its folder, but forgets its tab: the wiki only knows which folder it belongs to.
+- Pages are also deleted together with their tab (see "Deleting a tab" in `content-structure.md`): each of them becomes
+  a deleted page as if it had been deleted on its own, without a check of its version, with the user who deleted the
+  tab as its last editor and so as the user who deleted it.
 - A delete is refused when the page was changed after the dialog was opened; the dialog then stays open with a message,
   and confirming again deletes the page (see `optimistic-locking.md`).
 
@@ -55,18 +58,20 @@ the dialogs and lists in `components/`), routes under `src/app/deleted-pages/`. 
 - A deleted page loses its tab, because its place inside the folder is forgotten. As a result no unique index on page
   names covers it: the index on the names of pages placed directly in a folder leaves out deleted pages, and the one
   on the names within a tab never sees a page without a tab. So the name is free at once.
-- Deleted pages have addresses of their own under `/deleted-pages`, named for what it holds, so that deleted tabs and
-  folders can get addresses there later.
+- Deleted pages have addresses of their own under `/deleted-pages`, named for what it holds, so that deleted folders
+  can get addresses there later. Tabs are deleted for good and get none.
 - Who deleted a page is its last editor; it is not stored on its own. This holds only as long as nothing writes to a
-  deleted page. A later write to deleted pages, such as deleting or restoring folders and tabs or restoring a page into
-  another folder, has to keep the last editor of the deleted pages it touches.
+  deleted page. A later write to deleted pages, such as deleting or restoring folders or restoring a page into another
+  folder, has to keep the last editor of the deleted pages it touches. Deleting a tab writes only the pages of the tab,
+  which are not deleted yet.
 - Pages deleted before the last editor was recorded show the admin as the user who deleted them, like all content
   stored before (see "Decisions" in `content-structure.md`); a page that an admin deleted before the account types
   came keeps that admin's name.
 
 ## Current limits
 
-- Folders and tabs cannot be deleted.
+- Folders cannot be deleted. Tabs are deleted for good; the pages of a deleted tab are restored one by one, not all at
+  once.
 - Only a Manager and an Owner of the folder delete and restore pages; a Writer cannot undo a page created by mistake.
 - A deleted page cannot be removed for good; there is no emptying of all deleted pages and no automatic cleanup.
 - A page is restored only into its own folder.

@@ -191,8 +191,8 @@ What holds for all of them:
 
 ## Current limits
 
-- no Manager role for MCP: no deleting and restoring of pages, no deleted pages, and no creating or renaming of tabs
-  through MCP (see "Manager role for MCP" in `roadmap.md`)
+- no Manager role for MCP: no deleting and restoring of pages, no deleted pages, and no creating, renaming or deleting
+  of tabs through MCP; a tab deleted in the browser is missing for MCP like one that never existed (see "Manager role for MCP" in `roadmap.md`)
 - no exact search-and-replace in a page: a change replaces the whole content (see "Exact search-and-replace for MCP" in
   `roadmap.md`)
 - no connection to several folders at once, or to all folders of a user
