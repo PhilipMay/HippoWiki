@@ -23,3 +23,14 @@ export function parseTabFormData(formData: FormData): ParseTabInputResult {
   if (result.success) return { success: true, data: result.data };
   return { success: false, fieldErrors: z.flattenError(result.error).fieldErrors };
 }
+
+/** The state of the "Delete tab" dialog after a submit that did not delete the tab. */
+export type TabDeleteFormState = {
+  /** Why the tab could not be deleted, e.g. when it no longer exists. */
+  message?: string;
+  /** The tab no longer exists: the dialog offers only the way back to the folder. */
+  tabGone?: boolean;
+};
+
+/** A Server Action that deletes a tab: it returns the state to show, or redirects to the folder on success. */
+export type TabDeleteFormAction = (prevState: TabDeleteFormState, formData: FormData) => Promise<TabDeleteFormState>;

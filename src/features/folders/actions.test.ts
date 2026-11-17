@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
-import { createFolder, createTab, renameFolder, renameTab } from "@/features/folders/actions";
+import { createFolder, createTab, deleteTab, renameFolder, renameTab } from "@/features/folders/actions";
 
 /** Thrown by the mocked `redirect`, like the real one throws, so that code after it never runs. */
 class RedirectError extends Error {
@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   renameFolder: vi.fn(),
   createTab: vi.fn(),
   renameTab: vi.fn(),
+  deleteTab: vi.fn(),
   revalidatePath: vi.fn(),
   redirect: vi.fn(),
   notFound: vi.fn(),
@@ -25,12 +26,13 @@ vi.mock("@/features/folders/service", () => ({
   renameFolder: mocks.renameFolder,
   createTab: mocks.createTab,
   renameTab: mocks.renameTab,
+  deleteTab: mocks.deleteTab,
 }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect, notFound: mocks.notFound }));
 vi.mock("@/features/auth/session", () => ({ requireUser: mocks.requireUser }));
 
-const serviceWrites = [mocks.createFolder, mocks.renameFolder, mocks.createTab, mocks.renameTab];
+const serviceWrites = [mocks.createFolder, mocks.renameFolder, mocks.createTab, mocks.renameTab, mocks.deleteTab];
 
 /** The logged-in user that `requireUser()` returns; every action passes it to its service write as the actor. */
 const USER = { id: crypto.randomUUID(), name: "alice", type: "user", mustChangePassword: false };
@@ -253,12 +255,52 @@ describe("renameTab", () => {
   });
 });
 
+describe("deleteTab", () => {
+  const folderId = crypto.randomUUID();
+  const id = crypto.randomUUID();
+  const TAB_GONE_STATE = { message: "This tab no longer exists.", tabGone: true };
+
+  it.each([
+    ["tab", folderId, MALFORMED_ID],
+    ["folder", MALFORMED_ID, id],
+  ])("reports a malformed %s id as a missing tab without calling the service", async (_name, folder, tab) => {
+    await expect(deleteTab(folder, tab)).resolves.toEqual(TAB_GONE_STATE);
+    expectServiceNotCalled();
+    expectNotRevalidatedOrRedirected();
+  });
+
+  it("passes the ids to the service, revalidates and redirects to the stored folder", async () => {
+    mocks.deleteTab.mockResolvedValue({
+      ok: true,
+      value: { folder: { id: folderId, name: "stored-folder" }, pageCount: 2 },
+    });
+
+    await expect(deleteTab(folderId, id)).rejects.toMatchObject({
+      path: "/folders/stored-folder",
+    });
+
+    expect(mocks.deleteTab).toHaveBeenCalledWith(BROWSER_USER, folderId, id);
+    expectContentRevalidated();
+  });
+
+  it.each([
+    ["tab-not-found", failure("tab-not-found"), TAB_GONE_STATE],
+    ["failed", failure("failed"), { message: "The tab could not be deleted. Please try again." }],
+  ])("shows the dialog state of %s", async (_code, result, state) => {
+    mocks.deleteTab.mockResolvedValue(result);
+
+    await expect(deleteTab(folderId, id)).resolves.toEqual(state);
+    expectNotRevalidatedOrRedirected();
+  });
+});
+
 /** Every action with a call that reaches the service when a user is logged in, and the service write it calls. */
 const ACTIONS: [string, () => Promise<unknown>, Mock][] = [
   ["createFolder", () => createFolder({}, formData("docs")), mocks.createFolder],
   ["renameFolder", () => renameFolder(crypto.randomUUID(), {}, formData("docs")), mocks.renameFolder],
   ["createTab", () => createTab(crypto.randomUUID(), {}, formData("guides")), mocks.createTab],
   ["renameTab", () => renameTab(crypto.randomUUID(), {}, formData("guides")), mocks.renameTab],
+  ["deleteTab", () => deleteTab(crypto.randomUUID(), crypto.randomUUID()), mocks.deleteTab],
 ];
 
 describe("without a logged-in user", () => {

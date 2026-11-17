@@ -6,7 +6,8 @@ import { notFound } from "next/navigation";
 
 import Link from "@/components/Link";
 import { requireUser } from "@/features/auth/session";
-import { renameTab } from "@/features/folders/actions";
+import { deleteTab, renameTab } from "@/features/folders/actions";
+import DeleteTabDialog from "@/features/folders/components/DeleteTabDialog";
 import FolderBreadcrumbs from "@/features/folders/components/FolderBreadcrumbs";
 import NameDialog from "@/features/folders/components/NameDialog";
 import { getTab, listTabs } from "@/features/folders/queries";
@@ -21,21 +22,22 @@ import PageView, {
   parsePageNotice,
 } from "@/features/pages/components/PageView";
 import { getPage, listTabPages } from "@/features/pages/queries";
-import { parseAction, parsePageSegment, parseView, tabPath } from "@/lib/addresses";
+import { folderPath, parseAction, parsePageSegment, parseView, tabPath } from "@/lib/addresses";
 import { pageTitle } from "@/lib/site";
 
 type Props = PageProps<"/folders/[folder]/[item]">;
 
 /**
  * The actions of a tab address: `new` opens the editor for a new page, with the tab as the preselected place, `rename`
- * the "Rename tab" dialog.
+ * the "Rename tab" dialog, `delete` the "Delete tab" dialog.
  */
-const TAB_ACTIONS = ["new", "rename"] as const;
+const TAB_ACTIONS = ["new", "rename", "delete"] as const;
 
 /** The function of each action of a tab, whose lowest role the user needs; one beyond the role does not exist. */
 const TAB_ACTION_FUNCTIONS: Record<(typeof TAB_ACTIONS)[number], FolderFunction> = {
   new: "editPage",
   rename: "editTab",
+  delete: "deleteTab",
 };
 
 /**
@@ -125,6 +127,11 @@ export default async function FolderItemPage({ params, searchParams }: Props) {
               Rename
             </Button>
           )}
+          {mayDo(role, "deleteTab") && (
+            <Button component={Link} href={tabPath(folder.name, tab.name, "delete")} variant="outlined">
+              Delete
+            </Button>
+          )}
           {mayDo(role, "editPage") && (
             <Button component={Link} href={tabPath(folder.name, tab.name, "new")} variant="contained">
               New page
@@ -139,6 +146,15 @@ export default async function FolderItemPage({ params, searchParams }: Props) {
           action={renameTab.bind(null, tab.id)}
           initialName={tab.name}
           closeHref={tabPath(folder.name, tab.name)}
+        />
+      )}
+      {action === "delete" && (
+        <DeleteTabDialog
+          action={deleteTab.bind(null, folder.id, tab.id)}
+          tabName={tab.name}
+          pageCount={pages.length}
+          closeHref={tabPath(folder.name, tab.name)}
+          folderHref={folderPath(folder.name)}
         />
       )}
     </Stack>

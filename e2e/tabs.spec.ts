@@ -530,7 +530,8 @@ for (const address of [
   "/folders/handbook/guides/meetings",
   // Actions that the address does not have.
   "/folders/handbook/guides?action=edit",
-  "/folders/handbook/guides?action=delete",
+  "/folders/handbook/guides?action=move-or-rename",
+  "/folders/handbook/guides?action=delete&action=delete",
   "/folders/handbook/guides?action=new-tab",
   "/folders/handbook/guides?action=new&action=new",
   "/folders/handbook/guides/in-guides.md?action=new",

@@ -9,7 +9,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { requireUser } from "@/features/auth/session";
 import { inBrowser } from "@/features/folder-roles/service";
-import { parseFolderFormData, parseTabFormData } from "@/features/folders/forms";
+import { parseFolderFormData, parseTabFormData, type TabDeleteFormState } from "@/features/folders/forms";
 import { parseFolderId, parseTabId } from "@/features/folders/schema";
 import * as folderService from "@/features/folders/service";
 import { folderPath, tabPath } from "@/lib/addresses";
@@ -20,6 +20,7 @@ const SAVE_FAILED_MESSAGE = "The folder could not be saved. Please try again.";
 const FOLDER_GONE_MESSAGE = "This folder no longer exists.";
 const TAB_SAVE_FAILED_MESSAGE = "The tab could not be saved. Please try again.";
 const TAB_GONE_MESSAGE = "This tab no longer exists.";
+const TAB_DELETE_FAILED_MESSAGE = "The tab could not be deleted. Please try again.";
 
 /** The form state that shows "Name is already in use" at the name field. */
 const nameTakenState: NameFormState = { fieldErrors: { name: [NAME_TAKEN_MESSAGE] } };
@@ -161,4 +162,38 @@ export async function renameTab(id: string, _prevState: NameFormState, formData:
 
   revalidateContent();
   redirect(tabPath(result.value.folder.name, result.value.name));
+}
+
+/** The state of the "Delete tab" dialog for a tab that no longer exists. */
+const tabGoneState: TabDeleteFormState = { message: TAB_GONE_MESSAGE, tabGone: true };
+
+/**
+ * Deletes the tab with the given id in the folder with the given id, together with its pages, and redirects to the
+ * folder. Returns the message to show in the dialog if the tab no longer exists or cannot be deleted. The form submits
+ * no field, so the action takes neither the previous state nor the form data: the pages that are in the tab when it is
+ * deleted go with it, without a version to check. Bind the ids with `deleteTab.bind(null, folderId, id)`.
+ */
+export async function deleteTab(folderId: string, id: string): Promise<TabDeleteFormState> {
+  const user = await requireUser();
+
+  const parsedFolderId = parseFolderId(folderId);
+  const tabId = parseTabId(id);
+  if (!parsedFolderId || !tabId) return tabGoneState;
+
+  const result = await folderService.deleteTab(inBrowser(user), parsedFolderId, tabId);
+  if (!result.ok) {
+    switch (result.error.code) {
+      // An admin changes no content, and for an admin no content exists; nor does a folder without a role of the user.
+      case "not-allowed":
+        notFound();
+      case "tab-not-found":
+        return tabGoneState;
+      case "failed":
+        return { message: TAB_DELETE_FAILED_MESSAGE };
+    }
+  }
+
+  revalidateContent();
+  // The address is built from the stored folder, never from submitted values.
+  redirect(folderPath(result.value.folder.name));
 }

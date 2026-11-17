@@ -25,7 +25,7 @@ in `spec/tab-deletion-requirements.md`; their IDs are named below.
 ## Checklist
 
 - [x] Delete a tab in the service
-- [ ] Delete a tab in the browser
+- [x] Delete a tab in the browser
 - [ ] Wrap-up
 
 ## Delete a tab in the service
@@ -118,7 +118,7 @@ browser, and checks R3, R4, R10, R11 and R17 end to end.
 
 ### Build
 
-- A Server Action `deleteTab(folderId, id, prevState, formData)` in `src/features/folders/actions.ts`, following
+- A Server Action `deleteTab(folderId, id)` (the form submits no field, so it takes neither state nor form data) in `src/features/folders/actions.ts`, following
   `renameTab`: `requireUser()` first, a malformed id gives the "tab gone" state; it calls
   `folderService.deleteTab(inBrowser(user), folderId, id)` and maps the errors:
   - `not-allowed`: `notFound()` (R5)

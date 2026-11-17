@@ -53,6 +53,7 @@ test.describe("without a role on a folder", () => {
       "/folders/hidden/guides",
       "/folders/hidden/guides?action=new",
       "/folders/hidden/guides?action=rename",
+      "/folders/hidden/guides?action=delete",
       "/folders/hidden/intro.md",
       "/folders/hidden/intro.md?action=edit",
       "/folders/hidden/intro.md?action=move-or-rename",
@@ -212,6 +213,7 @@ test.describe("what each role may do", () => {
       "/folders/handbook?action=rename",
       "/folders/handbook/guides?action=new",
       "/folders/handbook/guides?action=rename",
+      "/folders/handbook/guides?action=delete",
       "/folders/handbook/intro.md?action=edit",
       "/folders/handbook/intro.md?action=move-or-rename",
       "/folders/handbook/intro.md?action=delete",
@@ -228,6 +230,7 @@ test.describe("what each role may do", () => {
     const folder = await createFolder({ name: "handbook" });
     const tab = await createTab({ folder, name: "guides" });
     const intro = await createPage({ folder, name: "intro", title: "Intro" });
+    await createPage({ tab, name: "setup", title: "Setup" });
     const deleted = await createPage({ folder, name: "old", deletedAt: new Date() });
     const before = {
       folders: await getTestDb().folder.findMany(),
@@ -277,6 +280,7 @@ test.describe("what each role may do", () => {
       () => page.getByRole("dialog").getByLabel("Name").fill("crafted"),
       save("Save"),
     );
+    await submitAsReader("/folders/handbook/guides?action=delete", async () => {}, save("Delete"));
     await submitAsReader(
       "/folders/handbook?action=rename",
       () => page.getByRole("dialog").getByLabel("Name").fill("crafted"),
@@ -329,6 +333,7 @@ test.describe("what each role may do", () => {
       "/folders/handbook/guides/final.md?action=delete",
       "/folders/handbook?action=new-tab",
       "/folders/handbook/guides?action=rename",
+      "/folders/handbook/guides?action=delete",
       "/folders/handbook?action=rename",
       "/deleted-pages/handbook",
     ]) {
@@ -336,7 +341,23 @@ test.describe("what each role may do", () => {
     }
   });
 
-  test("a Manager deletes, reads and restores a page, creates and renames a tab, and does not rename the folder", async ({
+  test("a crafted form of a Writer to delete a tab shows the not-found page and deletes nothing", async ({ page }) => {
+    const folder = await createFolder({ name: "handbook" });
+    const tab = await createTab({ folder, name: "guides" });
+    await createPage({ tab, name: "setup" });
+    const before = { tabs: await getTestDb().tab.findMany(), pages: await getTestDb().page.findMany() };
+    await page.goto("/folders/handbook/guides?action=delete");
+    await expect(page.getByRole("dialog", { name: "Delete tab" })).toBeVisible();
+    await setOwnRole(folder, "writer");
+
+    await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
+
+    await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
+    expect(await getTestDb().tab.findMany()).toStrictEqual(before.tabs);
+    expect(await getTestDb().page.findMany()).toStrictEqual(before.pages);
+  });
+
+  test("a Manager deletes, reads and restores a page, creates, renames and deletes a tab, and does not rename the folder", async ({
     page,
   }) => {
     const errors = collectErrors(page);
@@ -363,11 +384,15 @@ test.describe("what each role may do", () => {
     await page.getByRole("dialog").getByLabel("Name").fill("guides");
     await page.getByRole("dialog").getByRole("button", { name: "Save" }).click();
     await expect(page).toHaveURL("/folders/handbook/guides");
-    await expectOffers(page, ["New page", "Rename"]);
+    await expectOffers(page, ["New page", "Rename", "Delete"]);
     await page.getByRole("main").getByRole("link", { name: "Rename" }).click();
     await page.getByRole("dialog").getByLabel("Name").fill("news");
     await page.getByRole("dialog").getByRole("button", { name: "Save" }).click();
     await expect(page).toHaveURL("/folders/handbook/news");
+    await page.getByRole("main").getByRole("link", { name: "Delete" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
+    await expect(page).toHaveURL("/folders/handbook");
+    expect(await getTestDb().tab.count()).toBe(0);
     expect(errors).toEqual([]);
 
     await expectNotFound(page, "/folders/handbook?action=rename");
@@ -386,8 +411,11 @@ test.describe("what each role may do", () => {
   });
 
   test("an Owner is offered everything and renames the folder", async ({ page }) => {
-    await createFolder({ name: "handbook", roles: [{ user: ALICE, role: "owner" }] });
+    const folder = await createFolder({ name: "handbook", roles: [{ user: ALICE, role: "owner" }] });
+    await createTab({ folder, name: "guides" });
 
+    await page.goto("/folders/handbook/guides");
+    await expectOffers(page, ["New page", "Rename", "Delete"]);
     await page.goto("/folders/handbook");
     await expectOffers(page, ["New page", "Deleted pages", "New tab", "Rename"]);
     await page.getByRole("main").getByRole("link", { name: "Rename" }).click();

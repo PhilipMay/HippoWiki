@@ -288,6 +288,21 @@ test("the delete dialog is locked until hydration", async ({ page }) => {
   );
 });
 
+test("the delete dialog of a tab is locked until hydration", async ({ page }) => {
+  const folder = await createFolder({ name: "locked-folder" });
+  await createTab({ folder, name: "locked-tab" });
+
+  await page.goto("/folders/locked-folder/locked-tab?action=delete");
+
+  const dialog = page.getByRole("dialog", { name: "Delete tab" });
+  await expect(dialog).toContainText("locked-tab");
+  await expect(dialog.getByRole("button", { name: "Delete" })).toBeDisabled();
+  await expect(dialog.getByRole("link", { name: "Cancel" })).toHaveAttribute(
+    "href",
+    "/folders/locked-folder/locked-tab",
+  );
+});
+
 test("the restore dialog is prefilled and locked until hydration, without a place", async ({ page }) => {
   const folder = await createFolder({ name: "locked-folder" });
   await createTab({ folder, name: "locked-tab" });
