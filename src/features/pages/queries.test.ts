@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import {
   getDeletedPage,
   getPage,
+  getPageRevision,
   listAllFolderPages,
   listDeletedPages,
   listFolderPages,
@@ -20,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   listDeletedPages: vi.fn(),
   getDeletedPage: vi.fn(),
   listPageRevisions: vi.fn(),
+  getPageRevision: vi.fn(),
 }));
 
 vi.mock("@/features/pages/service", () => ({
@@ -30,6 +32,7 @@ vi.mock("@/features/pages/service", () => ({
   listDeletedPages: mocks.listDeletedPages,
   getDeletedPage: mocks.getDeletedPage,
   listPageRevisions: mocks.listPageRevisions,
+  getPageRevision: mocks.getPageRevision,
 }));
 vi.mock("next/server", () => ({ connection: mocks.connection }));
 vi.mock("@/features/auth/session", () => ({ requireUser: mocks.requireUser }));
@@ -42,6 +45,7 @@ const serviceReads = [
   mocks.listDeletedPages,
   mocks.getDeletedPage,
   mocks.listPageRevisions,
+  mocks.getPageRevision,
 ];
 
 /** How often the service has been called. */
@@ -75,6 +79,7 @@ const QUERIES: [string, () => Promise<unknown>, Mock, unknown[]][] = [
     mocks.listPageRevisions,
     [PAGE_ID, { before: 151 }],
   ],
+  ["getPageRevision", () => getPageRevision(PAGE_ID, 5), mocks.getPageRevision, [PAGE_ID, 5]],
 ];
 
 /** Thrown by the mocked `requireUser()`, like the redirect to the login page that the real one throws. */

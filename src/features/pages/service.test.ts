@@ -6,6 +6,7 @@ import {
   directPagesFirst,
   getDeletedPage,
   getPage,
+  getPageRevision,
   listAllFolderPages,
   listDeletedPages,
   listFolderPages,
@@ -28,6 +29,7 @@ const mocks = vi.hoisted(() => ({
   revisionFindFirst: vi.fn(),
   revisionCreate: vi.fn(),
   revisionFindMany: vi.fn(),
+  revisionFindUnique: vi.fn(),
   roleFindFirst: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
@@ -43,7 +45,11 @@ vi.mock("@/lib/db", () => ({
       create: mocks.create,
       updateMany: mocks.updateMany,
     },
-    pageRevision: { findMany: mocks.revisionFindMany, findFirst: mocks.revisionFindFirst },
+    pageRevision: {
+      findMany: mocks.revisionFindMany,
+      findFirst: mocks.revisionFindFirst,
+      findUnique: mocks.revisionFindUnique,
+    },
     folderRole: { findFirst: mocks.roleFindFirst },
     $transaction: mocks.transaction,
   }),
@@ -52,7 +58,7 @@ vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, e
 
 /** How often the pages and their revisions have been read; the role of the actor is not counted. */
 function readCount(): number {
-  return [mocks.findMany, mocks.findFirst, mocks.revisionFindMany].reduce(
+  return [mocks.findMany, mocks.findFirst, mocks.revisionFindMany, mocks.revisionFindUnique].reduce(
     (count, read) => count + read.mock.calls.length,
     0,
   );
@@ -335,7 +341,7 @@ describe("listPageRevisions", () => {
           { deletedAt: { not: null }, folder: WITH_DELETED_PAGES_ROLE },
         ],
       },
-      select: { revisions: { orderBy: { number: "desc" }, take: 1, select: { number: true } } },
+      select: { content: true, revisions: { orderBy: { number: "desc" }, take: 1, select: { number: true } } },
     });
   });
 
@@ -384,6 +390,82 @@ describe("listPageRevisions", () => {
     ["a revision number below 1", () => listPageRevisions(ACTOR, PAGE_ID, { before: 0 })],
     ["an admin", () => listPageRevisions({ ...ACTOR, type: "admin" }, PAGE_ID, { before: null })],
     ["a malformed actor id", () => listPageRevisions(MALFORMED_ACTOR, PAGE_ID, { before: null })],
+  ])("returns null for %s without reading the database", async (_name, read) => {
+    await expect(read()).resolves.toBeNull();
+    expect(readCount()).toBe(0);
+  });
+});
+
+describe("getPageRevision", () => {
+  const createdAt = new Date("2026-11-12T10:00:00Z");
+  const ROW = {
+    number: 3,
+    title: "Intro",
+    createdAt,
+    user: { username: "mike" },
+    via: "web",
+    revertedTo: null,
+    content: "# Intro\n\nOld",
+  };
+
+  it("returns the revision with its content, the newest number and whether it is the content of the page now", async () => {
+    mocks.findFirst.mockResolvedValue({ content: "# Intro\n\nNew", revisions: [{ number: 5 }] });
+    mocks.revisionFindUnique.mockResolvedValue(ROW);
+
+    await expect(getPageRevision(ACTOR, PAGE_ID, 3)).resolves.toEqual({
+      number: 3,
+      title: "Intro",
+      createdAt,
+      madeBy: { name: "mike", via: "web" },
+      revertedTo: null,
+      content: "# Intro\n\nOld",
+      newest: 5,
+      isCurrent: false,
+    });
+    expect(mocks.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ id: PAGE_ID }) }),
+    );
+    expect(mocks.revisionFindUnique).toHaveBeenCalledExactlyOnceWith({
+      where: { pageId_number: { pageId: PAGE_ID, number: 3 } },
+      select: {
+        number: true,
+        title: true,
+        createdAt: true,
+        user: { select: { username: true } },
+        via: true,
+        revertedTo: true,
+        content: true,
+      },
+    });
+  });
+
+  it("says whether the content of the revision is the content of the page now", async () => {
+    mocks.findFirst.mockResolvedValue({ content: "# Intro\n\nOld", revisions: [{ number: 5 }] });
+    mocks.revisionFindUnique.mockResolvedValue(ROW);
+
+    await expect(getPageRevision(ACTOR, PAGE_ID, 3)).resolves.toMatchObject({ isCurrent: true });
+  });
+
+  it("returns null for a revision the page does not have", async () => {
+    mocks.findFirst.mockResolvedValue({ content: "# Intro", revisions: [{ number: 5 }] });
+    mocks.revisionFindUnique.mockResolvedValue(null);
+
+    await expect(getPageRevision(ACTOR, PAGE_ID, 6)).resolves.toBeNull();
+  });
+
+  it("returns null and reads no revision for a page that the actor may not read or that does not exist", async () => {
+    mocks.findFirst.mockResolvedValue(null);
+
+    await expect(getPageRevision(ACTOR, PAGE_ID, 1)).resolves.toBeNull();
+    expect(mocks.revisionFindUnique).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a malformed id", () => getPageRevision(ACTOR, MALFORMED_ID, 1)],
+    ["a number below 1", () => getPageRevision(ACTOR, PAGE_ID, 0)],
+    ["a number that is no whole number", () => getPageRevision(ACTOR, PAGE_ID, 2.5)],
+    ["a number too large for the column", () => getPageRevision(ACTOR, PAGE_ID, 2_147_483_648)],
+    ["an admin", () => getPageRevision({ ...ACTOR, type: "admin" }, PAGE_ID, 1)],
   ])("returns null for %s without reading the database", async (_name, read) => {
     await expect(read()).resolves.toBeNull();
     expect(readCount()).toBe(0);

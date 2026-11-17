@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation";
 
 import PageHistory from "@/features/pages/components/PageHistory";
+import RevisionView from "@/features/pages/components/RevisionView";
 import PageView, { type PageQuery } from "@/features/pages/components/PageView";
 import { pageHistoryPlace } from "@/features/pages/components/history-place";
-import { listPageRevisions } from "@/features/pages/queries";
+import { getPageRevision, listPageRevisions } from "@/features/pages/queries";
 import type { PageWithPlace } from "@/features/pages/service";
 
 type PageAddressProps = {
@@ -24,6 +25,10 @@ export default async function PageAddress({ page, query }: PageAddressProps) {
     // The history starts at most at the newest revision; a later one is no page of it.
     if (view.before !== null && view.before > history.newest) notFound();
     return <PageHistory place={pageHistoryPlace(page)} title={page.title} history={history} before={view.before} />;
+  }
+  if (view?.name === "revision") {
+    const revision = (await getPageRevision(page.id, view.revision)) ?? notFound();
+    return <RevisionView place={pageHistoryPlace(page)} revision={revision} raw={view.raw} />;
   }
   return <PageView page={page} action={query.action} notice={query.notice} />;
 }

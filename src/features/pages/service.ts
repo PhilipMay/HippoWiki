@@ -142,6 +142,12 @@ export type RevisionSummary = {
 /** One page of the history of a page: its revisions newest first, and the number of its newest revision. */
 export type PageRevisions = { newest: number; revisions: RevisionSummary[] };
 
+/**
+ * A revision of a page as its view shows it: the revision with its content, the number of the newest revision of the
+ * page, and whether its content is the content of the page now.
+ */
+export type RevisionDetail = RevisionSummary & { content: string; newest: number; isCurrent: boolean };
+
 /** The input of a write is invalid; `fieldErrors` holds the messages of the schema per field. */
 type InvalidInput<FieldErrors> = { code: "invalid-input"; fieldErrors: FieldErrors };
 /** Another page already uses the name at the place. */
@@ -372,17 +378,22 @@ function historyPageWhere(actor: BrowserActor, pageId: string): Prisma.PageWhere
 }
 
 /**
- * The number of the newest revision of the page with the given id, 0 for a page without revisions, or `null` if the
- * actor may not read its history or there is no such page.
+ * The page with the given id as its history needs it: the number of its newest revision, 0 for a page without
+ * revisions, and its content now. `null` if the actor may not read its history or there is no such page.
  */
-async function newestRevisionOf(actor: BrowserActor, pageId: string): Promise<number | null> {
+async function historyPageOf(actor: BrowserActor, pageId: string): Promise<{ newest: number; content: string } | null> {
   const where = historyPageWhere(actor, pageId);
   if (!where) return null;
   const page = await getDb().page.findFirst({
     where,
-    select: { revisions: { orderBy: { number: "desc" }, take: 1, select: { number: true } } },
+    select: { content: true, revisions: { orderBy: { number: "desc" }, take: 1, select: { number: true } } },
   });
-  return page ? (page.revisions[0]?.number ?? 0) : null;
+  return page ? { newest: page.revisions[0]?.number ?? 0, content: page.content } : null;
+}
+
+/** Whether the value is the number of a revision; a number that is not one never reaches the database. */
+function isRevisionNumber(value: number): boolean {
+  return revisionNumberSchema.safeParse(value).success;
 }
 
 /**
@@ -398,16 +409,36 @@ export async function listPageRevisions(
 ): Promise<PageRevisions | null> {
   if (!readerOf(actor)) return null;
   const pageId = parsePageId(id);
-  if (!pageId || (before !== null && !revisionNumberSchema.safeParse(before).success)) return null;
-  const newest = await newestRevisionOf(actor, pageId);
-  if (newest === null) return null;
+  if (!pageId || (before !== null && !isRevisionNumber(before))) return null;
+  const page = await historyPageOf(actor, pageId);
+  if (page === null) return null;
   const revisions = await getDb().pageRevision.findMany({
     where: { pageId, ...(before === null ? {} : { number: { lt: before } }) },
     orderBy: { number: "desc" },
     take: REVISIONS_PER_PAGE,
     select: REVISION_SUMMARY_SELECT,
   });
-  return { newest, revisions: revisions.map(withMadeBy) };
+  return { newest: page.newest, revisions: revisions.map(withMadeBy) };
+}
+
+/**
+ * The revision with the given number of the page with the given id, with its content, the number of the newest
+ * revision of the page, and whether its content is the content of the page now. The same roles as for the history
+ * (`listPageRevisions()`) apply. `null` for an admin, without the role, for a malformed id or number, and if the page
+ * or the revision does not exist.
+ */
+export async function getPageRevision(actor: BrowserActor, id: string, number: number): Promise<RevisionDetail | null> {
+  if (!readerOf(actor)) return null;
+  const pageId = parsePageId(id);
+  if (!pageId || !isRevisionNumber(number)) return null;
+  const page = await historyPageOf(actor, pageId);
+  if (page === null) return null;
+  const revision = await getDb().pageRevision.findUnique({
+    where: { pageId_number: { pageId, number } },
+    select: { ...REVISION_SUMMARY_SELECT, content: true },
+  });
+  if (!revision) return null;
+  return { ...withMadeBy(revision), newest: page.newest, isCurrent: revision.content === page.content };
 }
 
 function invalidInput<Input>(error: z.ZodError<Input>): {

@@ -65,11 +65,18 @@ export function parsePageNotice(
   return notice !== null && action === null ? "invalid" : notice;
 }
 
-/** The views of a page address: `history` lists the revisions of the page. */
-export const PAGE_VIEWS = ["history"] as const;
+/**
+ * The views of a page address: `history` lists the revisions of the page, `revision` shows one of them, rendered or
+ * with `format=raw` as its Markdown source.
+ */
+export const PAGE_VIEWS = ["history", "revision"] as const;
+
+/** The forms of a revision besides the rendered one, in the query string `format=<format>`. */
+const REVISION_FORMATS = ["raw"] as const;
 
 /** The view of a page address with its parameters, already checked. */
-export type PageAddressView = { name: "history"; before: number | null };
+export type PageAddressView =
+  { name: "history"; before: number | null } | { name: "revision"; revision: number; raw: boolean };
 
 /** What the query string of a page address asks for, already checked: an action with its notice, or a view. */
 export type PageQuery = { action: PageAction | null; notice: PageNotice | null; view: PageAddressView | null };
@@ -81,14 +88,38 @@ export type PageQuery = { action: PageAction | null; notice: PageNotice | null; 
 const PAGE_QUERY_PARAMS = ["before", "revision", "format", "from", "to"] as const;
 
 /** The parameters each view of a page address allows. */
-const PAGE_VIEW_PARAMS: Record<(typeof PAGE_VIEWS)[number], readonly string[]> = { history: ["before"] };
+const PAGE_VIEW_PARAMS: Record<(typeof PAGE_VIEWS)[number], readonly string[]> = {
+  history: ["before"],
+  revision: ["revision", "format"],
+};
+
+/**
+ * Reads the parameters of a view of a page address, already known to belong to it: `"invalid"` for a missing or
+ * malformed one.
+ */
+function parseViewParams(view: (typeof PAGE_VIEWS)[number], searchParams: SearchParams): PageAddressView | "invalid" {
+  switch (view) {
+    case "history": {
+      if (searchParams.before === undefined) return { name: "history", before: null };
+      const before = parseRevisionNumber(searchParams.before);
+      return before === null || before < 2 ? "invalid" : { name: "history", before };
+    }
+    case "revision": {
+      const revision = parseRevisionNumber(searchParams.revision);
+      const format = parseChoice(searchParams, "format", REVISION_FORMATS);
+      if (revision === null || format === "invalid") return "invalid";
+      return { name: "revision", revision, raw: format === "raw" };
+    }
+  }
+}
 
 /**
  * Reads what the query string of a page address asks for: at most one action, with its notice, or one view, with its
  * parameters. `"invalid"` for an unknown, empty or repeated action, notice or view, an action together with a view, a
- * parameter of a view or action that the address does not have, and a malformed parameter: `before` of the history
- * must be a revision number from 2 up (whether the page has it, the route checks). Routes show the not-found page for
- * `"invalid"`; both page routes and their `generateMetadata` share it.
+ * parameter of a view or action that the address does not have, and a missing or malformed parameter: `before` of the
+ * history must be a revision number from 2 up, `revision` a revision number and `format` only `raw` (whether the page
+ * has the revision, the route checks). Routes show the not-found page for `"invalid"`; both page routes and their
+ * `generateMetadata` share it.
  */
 export function parsePageQuery(searchParams: SearchParams): PageQuery | "invalid" {
   const action = parseAction(searchParams, PAGE_ACTIONS);
@@ -99,13 +130,8 @@ export function parsePageQuery(searchParams: SearchParams): PageQuery | "invalid
   const allowed: readonly string[] = view === null ? [] : PAGE_VIEW_PARAMS[view];
   if (PAGE_QUERY_PARAMS.some((key) => searchParams[key] !== undefined && !allowed.includes(key))) return "invalid";
   if (view === null) return { action, notice, view: null };
-
-  let before: number | null = null;
-  if (searchParams.before !== undefined) {
-    before = parseRevisionNumber(searchParams.before);
-    if (before === null || before < 2) return "invalid";
-  }
-  return { action: null, notice: null, view: { name: "history", before } };
+  const params = parseViewParams(view, searchParams);
+  return params === "invalid" ? "invalid" : { action: null, notice: null, view: params };
 }
 
 /**
@@ -120,6 +146,7 @@ function changedMessage(page: PageWithPlace): string {
 export function pageViewTitle(page: PageWithPlace, query: PageQuery | "invalid"): string {
   if (query === "invalid") return page.title;
   if (query.view?.name === "history") return `History of ${page.title}`;
+  if (query.view?.name === "revision") return `Revision ${query.view.revision} of ${page.title}`;
   return query.action === "edit" ? `Edit ${page.title}` : page.title;
 }
 

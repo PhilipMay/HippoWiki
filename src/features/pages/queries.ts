@@ -74,6 +74,17 @@ export async function listPageRevisions(
 }
 
 /**
+ * The revision with the given number of the page with the given id, with its content, the number of the newest
+ * revision and whether its content is the content of the page now. `null` without the role for the history, or if the
+ * page or the revision does not exist.
+ */
+export async function getPageRevision(pageId: string, number: number): Promise<pageService.RevisionDetail | null> {
+  await connection();
+  const user = await requireUser();
+  return pageService.getPageRevision(inBrowser(user), pageId, number);
+}
+
+/**
  * The deleted page with the given id in the folder with the given name, together with its folder. `null` if the name
  * or the id is malformed, the page belongs to another folder or is not deleted. Cached per request, so that
  * `generateMetadata` and the page component share one query.

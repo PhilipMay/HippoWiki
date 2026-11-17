@@ -1435,3 +1435,43 @@ describe("the history of a page", () => {
     for (const who of [reader, stranger]) await expect(read(who, deleted.id)).resolves.toBeNull();
   });
 });
+
+describe("a revision of a page", () => {
+  it("returns exactly the declared fields of an old revision and of the newest one", async () => {
+    const mike = await createUser({ name: "mike" });
+    const page = await createPage({ folder: await createFolder(), editor: user, content: "# Intro\n\nFirst" });
+    const [second] = await createRevisions({
+      page,
+      count: 1,
+      content: () => "# Start\n\nSecond",
+      editor: mike,
+      via: "mcp",
+      revertedTo: () => 1,
+    });
+    const first = await getTestDb().pageRevision.findUniqueOrThrow({
+      where: { pageId_number: { pageId: page.id, number: 1 } },
+    });
+
+    await expect(pageService.getPageRevision(actor, page.id, 1)).resolves.toStrictEqual({
+      number: 1,
+      title: "Intro",
+      createdAt: first.createdAt,
+      madeBy: { name: "alice", via: "web" },
+      revertedTo: null,
+      content: "# Intro\n\nFirst",
+      newest: 2,
+      isCurrent: false,
+    });
+    await expect(pageService.getPageRevision(actor, page.id, 2)).resolves.toStrictEqual({
+      number: 2,
+      title: "Start",
+      createdAt: second?.createdAt,
+      madeBy: { name: "mike", via: "mcp" },
+      revertedTo: 1,
+      content: "# Start\n\nSecond",
+      newest: 2,
+      isCurrent: true,
+    });
+    await expect(pageService.getPageRevision(actor, page.id, 3)).resolves.toBeNull();
+  });
+});

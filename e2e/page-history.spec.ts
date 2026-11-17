@@ -192,3 +192,97 @@ test.describe("the history list", () => {
     }
   });
 });
+
+test.describe("the view of a revision", () => {
+  /** A page "intro" in "handbook" with three revisions, the second one through MCP by mike; returns the page. */
+  async function pageWithRevisions() {
+    const mike = await createUser({ name: "mike" });
+    const folder = await createFolder({ name: "handbook", roles: [{ user: ALICE, role: "reader" }] });
+    const intro = await createPage({ folder, name: "intro", content: "# Intro\n\nThe **first** text" });
+    await createRevisions({
+      page: intro,
+      count: 1,
+      content: () => "# Intro\n\nThe second text",
+      editor: mike,
+      via: "mcp",
+    });
+    await createRevisions({ page: intro, count: 1, content: () => "# Intro\n\nThe third text" });
+    return intro;
+  }
+
+  test("an old revision shows its rendered content, the revision line and a notice with a link to the current page; Raw shows its source", async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    await pageWithRevisions();
+
+    await page.goto("/folders/handbook/intro.md?view=history");
+    await revisionLinks(page)
+      .filter({ hasText: /^Revision 2(?!\d)/ })
+      .click();
+
+    await expect(page).toHaveURL("/folders/handbook/intro.md?view=revision&revision=2");
+    await expect(page).toHaveTitle("Revision 2 of Intro – HippoWiki");
+    await expect(page.getByText(/^Revision 2 of 3 · .+ by mike via mcp$/)).toBeVisible();
+    await expect(page.getByRole("article").getByText("The second text")).toBeVisible();
+    await expect(page.getByText("This is an old revision of the page.")).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("link")).toHaveText([
+      "Folders",
+      "handbook",
+      "intro.md",
+      "History",
+    ]);
+
+    await page.getByRole("link", { name: "Raw" }).click();
+    await expect(page).toHaveURL("/folders/handbook/intro.md?view=revision&revision=2&format=raw");
+    await expect(page.getByLabel("Markdown source")).toHaveText("# Intro\n\nThe second text");
+    await expect(page.getByRole("link", { name: "Raw" })).toHaveAttribute("aria-current", "page");
+    await page.reload();
+    await expect(page.getByLabel("Markdown source")).toHaveText("# Intro\n\nThe second text");
+
+    await page.getByRole("link", { name: "Rendered" }).click();
+    await expect(page).toHaveURL("/folders/handbook/intro.md?view=revision&revision=2");
+    await expect(page.getByLabel("Markdown source")).toHaveCount(0);
+    await expect(page.getByRole("article").getByText("The second text")).toBeVisible();
+
+    await page.getByRole("link", { name: "Show the current page" }).click();
+    await expect(page).toHaveURL("/folders/handbook/intro.md");
+    await expect(page.getByRole("article").getByText("The third text")).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+
+  test("the first revision renders its Markdown, and the newest revision shows no notice", async ({ page }) => {
+    await pageWithRevisions();
+
+    await page.goto("/folders/handbook/intro.md?view=revision&revision=1");
+    await expect(page.getByRole("article").getByText("first", { exact: true })).toHaveCSS("font-weight", "700");
+
+    await page.goto("/folders/handbook/intro.md?view=revision&revision=3");
+    await expect(page.getByText(/^Revision 3 of 3 · .+ by .+ via web$/)).toBeVisible();
+    await expect(page.getByText("This is an old revision of the page.")).toHaveCount(0);
+  });
+
+  test("a missing, invalid or unknown revision number and an unknown format show the not-found page", async ({
+    page,
+  }) => {
+    await pageWithRevisions();
+
+    for (const address of [
+      "/folders/handbook/intro.md?view=revision",
+      "/folders/handbook/intro.md?view=revision&revision=",
+      "/folders/handbook/intro.md?view=revision&revision=0",
+      "/folders/handbook/intro.md?view=revision&revision=02",
+      "/folders/handbook/intro.md?view=revision&revision=x",
+      "/folders/handbook/intro.md?view=revision&revision=4",
+      "/folders/handbook/intro.md?view=revision&revision=1&revision=2",
+      "/folders/handbook/intro.md?view=revision&revision=1&format=html",
+      "/folders/handbook/intro.md?view=revision&revision=1&format=",
+      "/folders/handbook/intro.md?view=revision&revision=1&before=2",
+      "/folders/handbook/intro.md?view=history&revision=1",
+      "/folders/handbook/intro.md?revision=1",
+      "/folders/handbook/intro.md?action=edit&format=raw",
+    ]) {
+      await expectNotFound(page, address);
+    }
+  });
+});

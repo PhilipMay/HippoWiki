@@ -37,7 +37,7 @@ Choices this plan makes where the requirements leave the form open:
 
 - [x] Record revisions
 - [x] History list
-- [ ] Revision view
+- [x] Revision view
 - [ ] Compare revisions
 - [ ] Revert a page
 - [ ] History of deleted pages
@@ -325,8 +325,10 @@ reverting; a restored page has its whole history again (R15, R18).
   `deletedPages` only.
 - Address helpers for the three views of a deleted page.
 - `PageHistory`, `RevisionView` and `RevisionComparison` take the place of the page (a page address or the address
-  of a deleted page) instead of building page addresses themselves, so that the same components serve both. On a
-  deleted page the notice of an old revision links to the deleted page, and there is no "Revert" (R15, R24).
+  of a deleted page) instead of building page addresses themselves, so that the same components serve both. They do
+  so since the step "History list" (`src/features/pages/components/history-place.ts`); this step adds the place of a
+  deleted page. On a deleted page the notice of an old revision links to the deleted page, and there is no "Revert"
+  (R15, R24).
 - `DeletedPageView`: a "History" button next to "Restore".
 
 ### Test
