@@ -99,15 +99,17 @@ A feature spec (`spec/<feature>.md`) describes a feature as built. The wrap-up s
 
 A step is done only when both of the following hold:
 
-- These commands pass. Run them one after another, in this order, and never in parallel: the integration and
-  end-to-end tests use the same test database container and port (see `testing.md`). A step that changes only
-  documentation runs only the first one (see "Changes to documentation only" below).
-  1. `npm run check`
-  2. `npm run test:integration`
-  3. The end-to-end tests: in every step except the wrap-up, only the specs the step affects (see below), for example
-     `npm run test:e2e -- e2e/<name>.spec.ts`; in a wrap-up step that changes more than documentation, the complete
-     `npm run test:e2e`, so that the whole suite has passed before the push.
-  4. `npm run build`
+- These commands pass, in this order. A step that changes only documentation runs `npm run check` instead of both
+  (see "Changes to documentation only" below).
+  1. `npm run check:all`: `npm run check`, `npm run test:integration` and `npm run build`, run side by side by
+     `scripts/check.ts`, then the cost tests alone. Every check runs also when another one fails, so one run shows all
+     failures.
+  2. The end-to-end tests, only after `npm run check:all` is done and never at the same time: the integration and
+     end-to-end tests use the same test database container and port (see `testing.md`). In every step except the
+     wrap-up, only the specs the step affects (see below), for example `npm run test:e2e -- e2e/<name>.spec.ts`; in a
+     wrap-up step that changes more than documentation, the complete `npm run test:e2e`, so that the whole suite has
+     passed before the push. The complete suite takes about five minutes: run it with a timeout long enough or in the
+     background, so that it is not cut off and run again.
 - Its "Test" items have been verified. Do the manual checks you can yourself, for example in the browser. A manual
   check you cannot do does not hold the step back: list it in the report of the step so that the user can do it. Never report
   a check as done that you did not do.
@@ -118,7 +120,13 @@ The end-to-end specs a step affects:
   changes.
 - The complete suite instead, when the step changes something every page depends on: `src/proxy.ts`, the root layout,
   `src/features/auth/session.ts`, a module of `src/lib/` that every request uses, `next.config.ts`,
-  `playwright.config.ts`, `e2e/support/`, or `prisma/schema.prisma` and its migrations.
+  `playwright.config.ts`, `e2e/support/`, or `prisma/schema.prisma` and its migrations in a way that changes what is
+  there: a table, column, constraint or index that is changed, renamed or removed, a new unique constraint, a new
+  column without a default that may not be empty, or a migration that changes data.
+- A change of `prisma/schema.prisma` and its migrations that only adds (new tables, new columns that may be empty or
+  have a default, new indexes that are not unique) runs the specs of the features whose models it changes, and
+  `e2e/smoke.spec.ts`, which loads a page and resets the test database on the migrated schema. The complete suite of
+  the wrap-up still covers all features.
 - No spec, when the step changes nothing that the app runs yet, such as a pure module that nothing imports.
 - When it is unclear whether a spec is affected, run it.
 
@@ -141,11 +149,17 @@ is pushed.
 `npm run test:e2e:production` is left out of this list on purpose: CI runs it on every push to `main` and on every pull
 request (`end_to_end_tests_production`, see `testing.md`). Run it as well when the step changes something that only
 exists in a production build, such as prerendering, the route cache or `error.tsx`, for the specs the step affects
-(`npm run test:e2e:production -- e2e/<name>.spec.ts`). When you run it, it runs last, after `npm run build` and never in
-parallel with the other commands (it uses the same test database container), and it must pass like them.
+(`npm run test:e2e:production -- e2e/<name>.spec.ts`). When you run it, it runs last, after the end-to-end tests and
+never in parallel with the other commands (it uses the same test database container), and it must pass like them.
 
-A test that fails and then passes when run again is flaky: the step is not done, so follow "When a step cannot be
-finished".
+After a fix, the step runs from the point of failure:
+
+- An end-to-end test failed: run only the failed tests first, with `npm run test:e2e -- --last-failed`, until they
+  pass. Then run both commands of the step once more, in full, because the fix may have broken something else.
+- `npm run check:all` failed: fix every failure it reported, then run it again.
+
+A test that fails and then passes when run again, without a change in between, is flaky: the step is not done, so
+follow "When a step cannot be finished".
 
 ## When a step cannot be finished
 

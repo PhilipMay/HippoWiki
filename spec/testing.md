@@ -9,7 +9,8 @@ How the code is tested. Commands are listed in `README.md`.
 - Vitest project `cost`: tests with a wall-clock budget, next to the code as `*.cost.test.ts` and left out of `unit`.
   `npm run test:cost` runs only this project, on its own and never with coverage: V8 coverage instruments every module,
   the dependencies included, and other test files running at the same time share the CPU, so a budget measured then
-  says nothing about the code. `npm run test` runs `unit`, then `cost`, as two runs.
+  says nothing about the code. `npm run test:unit` runs only `unit`; `npm run test` runs `unit`, then `cost`, as two
+  runs.
 - Schemas, environment parsing and other pure helpers get unit tests.
 - Mocks are set up with `vi.mock` and shared mock functions from `vi.hoisted`, reset in `beforeEach`.
 - Services (`service.test.ts`) get unit tests for the branches the end-to-end tests cannot reach without breaking the
@@ -68,7 +69,14 @@ How the code is tested. Commands are listed in `README.md`.
 - `getDb()`, `getAuth()` and `getServerEnv()` are tested for creating the client, the Better Auth instance and
   validating the environment on first use only, not on import. These tests load the module anew for every case
   (`vi.resetModules()` and a dynamic import), because the modules keep their result.
-- `npm run check` (format, lint, typecheck, unit tests) stays fast and does not include the end-to-end tests.
+- `npm run check` (format, doc references, lint, typecheck, unit tests, cost tests) stays fast and does not include
+  the integration or end-to-end tests. `scripts/check.ts` runs its checks side by side and prints the output of each one
+  as a block when it is done. Only what would clash waits: `next typegen` runs first, because lint and the type check
+  read the route types it writes, and the cost tests run last and alone. Every check runs also when another one fails.
+- `npm run check:all` adds the integration tests and the build to the same run; the build waits for lint and the type
+  check, because it writes the route types again. A step of a step plan runs it before its end-to-end tests (see
+  `step-plan-workflow.md`). `npm run check` alone writes nothing but the route types; `npm run check:all` also
+  writes `.next/` and starts the test database container, so it never runs next to `npm run test:e2e`.
 - `npm run test:coverage` measures the coverage of the unit tests with `@vitest/coverage-v8` (configured in
   `vitest.config.ts`). It covers all `.ts` and `.tsx` files in `src/` except the tests and `src/generated/`, so files
   that no unit test loads show up with 0%. It prints a table, writes an HTML report to `coverage/index.html` and a
@@ -94,7 +102,7 @@ How the code is tested. Commands are listed in `README.md`.
 ## Integration tests
 
 - Vitest project `integration` (`vitest.config.ts`); tests live in `integration/` (`npm run test:integration`). They
-  are not part of `npm run check`, which stays fast and needs no Podman.
+  are not part of `npm run check`, which stays fast and needs no Podman; `npm run check:all` runs them.
 - They run against the throwaway test database container of the end-to-end tests (`e2e/support/container.ts`):
   `integration/global-setup.ts` starts it and applies the migrations, and its teardown removes it. Both runs use the
   same container name and port, so integration and end-to-end tests must not run at the same time.

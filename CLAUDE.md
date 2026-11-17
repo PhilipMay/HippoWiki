@@ -16,7 +16,8 @@ The specification lives in the `spec/` directory. This catalog should always be 
   fixed and deleted
 - `spec/architecture.md`: code layout and conventions (layers and services, reads, writes, the adapters of callers
   other than the GUI, login and sessions, the public addresses, security headers, validation, addresses, database, UI)
-- `spec/testing.md`: the check of doc references, and unit, integration and end-to-end test conventions
+- `spec/testing.md`: how `npm run check` and `npm run check:all` run their checks side by side, the check of doc
+  references, and unit, integration and end-to-end test conventions
 - `spec/pages.md`: the page feature as built (content and title with the limits of length, nesting and table cells,
   suggested name, routes, rendering with markdown-it, the cost of the Markdown parse, decisions, limits)
 - `spec/content-structure.md`: the content structure as built (folders, tabs and pages under `/folders`: overview,
@@ -67,7 +68,8 @@ Node.js is managed with nvm; every shell session needs `nvm use` first (it reads
 ```bash
 source ~/.nvm/nvm.sh && nvm use
 npm install
-npm run check   # format:check, docs:check, lint, typecheck, test
+npm run check   # format:check, docs:check, lint, typecheck, test, side by side
+npm run check:all  # check, test:integration and build side by side; never next to test:e2e
 npm run test:coverage  # unit test coverage, report in coverage/
 npm run test:cost  # tests with a time budget, on their own and without coverage
 npm run build
@@ -78,12 +80,14 @@ npm run test:e2e:production  # the same end-to-end tests against a production bu
 
 Run `npm run format` to fix formatting issues reported by `format:check`.
 
-For every change, inside a step plan or not, the end-to-end tests run in two stages, as "When a step is done" in
-`spec/step-plan-workflow.md` describes:
+For every change, inside a step plan or not, run `npm run check:all` first, then the end-to-end tests in two stages,
+as "When a step is done" in `spec/step-plan-workflow.md` describes:
 
 - While working, run only the specs the change affects: `npm run test:e2e -- e2e/<name>.spec.ts`, one path per spec.
   Which specs count as affected, and when the complete suite is needed right away, is listed there.
-- Before the work is finished, committed or pushed, run the complete `npm run test:e2e` once.
+- Before the work is finished, committed or pushed, run the complete `npm run test:e2e` once. It takes about five
+  minutes: give it a long enough timeout or run it in the background.
+- After a fix of a failed end-to-end test, run `npm run test:e2e -- --last-failed` first, then the commands again.
 
 A change that touches only documentation (the files in `spec/`, `README.md`, `CLAUDE.md`, `AGENTS.md` and the skills in
 `.claude/skills/`) runs only `npm run check`: no integration tests, no end-to-end tests and no build. This also holds
