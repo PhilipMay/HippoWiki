@@ -13,6 +13,8 @@ The specification lives in the `spec/` directory. This catalog should always be 
   `spec/<feature>-requirements.md`, listed here while it exists
 - `spec/page-history-requirements.md`: the approved requirements of the page history and revert (revisions of every
   content change from the browser and MCP, kept forever, viewed, compared and reverted only in the browser)
+- `spec/page-history-steps.md`: the step plan of the page history (recording revisions, the history list, the revision
+  view, comparing, reverting, the history of deleted pages, wrap-up)
 - `spec/step-plan-workflow.md`: how features are planned in step files, when a step is done, what to do when it
   cannot be finished, how a feature is wrapped up, what a feature spec holds, and how a finding of the review report is
   fixed and deleted
