@@ -58,20 +58,24 @@ the dialogs and lists in `components/`), routes under `src/app/deleted-pages/`. 
 - A deleted page loses its tab, because its place inside the folder is forgotten. As a result no unique index on page
   names covers it: the index on the names of pages placed directly in a folder leaves out deleted pages, and the one
   on the names within a tab never sees a page without a tab. So the name is free at once.
-- Deleted pages have addresses of their own under `/deleted-pages`, named for what it holds, so that deleted folders
-  can get addresses there later. Tabs are deleted for good and get none.
+- Deleted pages have addresses of their own under `/deleted-pages`, named for what it holds. Tabs are deleted for good
+  and get none, and so will folders (see "Deleting folders" in `roadmap.md`).
 - Who deleted a page is its last editor; it is not stored on its own. This holds only as long as nothing writes to a
-  deleted page. A later write to deleted pages, such as deleting or restoring folders or restoring a page into another
-  folder, has to keep the last editor of the deleted pages it touches. Deleting a tab writes only the pages of the tab,
-  which are not deleted yet.
+  deleted page; a later write to deleted pages has to keep the last editor of the deleted pages it touches. Deleting a
+  tab writes only the pages of the tab, which are not deleted yet, and deleting a folder for good will remove its
+  deleted pages instead of writing to them.
+- A deleted page is restored only into its own folder, as a lasting rule, like pages are moved only within their
+  folder (see `content-structure.md`). Rejected: restoring a page into another folder.
 - Pages deleted before the last editor was recorded show the admin as the user who deleted them, like all content
   stored before (see "Decisions" in `content-structure.md`); a page that an admin deleted before the account types
   came keeps that admin's name.
 
 ## Current limits
 
-- Folders cannot be deleted. Tabs are deleted for good; the pages of a deleted tab are restored one by one, not all at
-  once.
+- Folders cannot be deleted yet; once they can, a folder is deleted for good after a warning, with its deleted pages,
+  and cannot be restored (see "Deleting folders" in `roadmap.md`). Tabs are deleted for good; the pages of a deleted
+  tab are restored one by one, not all at once.
 - Only a Manager and an Owner of the folder delete and restore pages; a Writer cannot undo a page created by mistake.
-- A deleted page cannot be removed for good; there is no emptying of all deleted pages and no automatic cleanup.
-- A page is restored only into its own folder.
+- A deleted page cannot be removed for good; there is no emptying of all deleted pages and no automatic cleanup after a
+  retention period. Neither is planned.
+- A page is restored only into its own folder, as a lasting rule.

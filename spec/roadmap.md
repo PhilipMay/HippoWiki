@@ -12,28 +12,17 @@ listed first; there is no order across themes.
 
 ## Content Structure
 
-- Soft delete of folders: delete a folder together with its tabs and pages, as pages can be deleted today
-  (`content-structure.md`).
-- Deleted folders: a list of the deleted folders at an address of its own, next to `/deleted-pages`
-  (`page-deletion.md`).
-- Restoring deleted folders: bring a deleted folder back with its pages.
-- Moving pages and tabs to another folder: today a page or a tab can only be moved within its folder
-  (`content-structure.md`).
-- Restoring a page into another folder: today a deleted page is restored only into its own folder
-  (`page-deletion.md`).
+- Deleting folders: delete a folder for good after a warning, together with its tabs, its pages and its deleted
+  pages, like a tab is deleted for good; there is no soft delete, no list of deleted folders and no restoring
+  (`content-structure.md`, `page-deletion.md`).
 - Redirects from old addresses: lead the old address of a renamed or moved item to its new one instead of the
   not-found page (`content-structure.md`, `pages.md`).
-- Erasure and retention of deleted content: remove deleted content for good, by hand or after a retention period
-  (`page-deletion.md`).
 
 ## Pages and Editing
 
-- Pages with an author: record who created a page; the last editor is already recorded (`pages.md`,
-  `content-structure.md`).
 - Rich editor: TipTap, or Milkdown since pages are stored as Markdown, with slash commands and the derived title
   shown while editing, instead of the raw Markdown textarea (`pages.md`, `tech.md`).
 - Import and export: move pages and folders in and out of the wiki as Markdown files.
-- Multi-language content: the same page in several languages.
 
 ## Links
 

@@ -193,7 +193,7 @@ and `src/features/folder-roles/service.test.ts`.
 - Saving and cancelling the "Give role" dialog lead to the folder, like every other dialog, so that the rule for
   dialogs has no exception. Rejected: back to the roles view.
 - A folder, tab or page that does not exist answers like one without a role, so that a write by id tells nothing about
-  whether the id exists. Folders are never deleted and pages only softly, so a user meets this for them only with a
+  whether the id exists. Folders cannot be deleted yet and pages are deleted only softly, so a user meets this for them only with a
   crafted request; a page deleted in the meantime still shows that it no longer exists. Tabs are deleted for good: the
   deletion of a tab reads the role on the folder of its address, so that a Manager learns that a tab deleted meanwhile
   is gone; renaming a tab deleted meanwhile shows the not-found page.

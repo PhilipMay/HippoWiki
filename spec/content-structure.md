@@ -197,7 +197,8 @@ hold pages directly and have tabs at the same time.
 - Content that an admin edited before the account types came keeps showing that admin's name as its last editor.
 - The last editor is shown by user name, as plain text, next to the time of the last change (see "Lists and order",
   `pages.md` and `page-deletion.md`).
-- Only the last editor is stored: not who created an item, and no history of editors.
+- Only the last editor is stored: not who created an item, and no history of editors. Recording who created an item
+  is not planned.
 
 ## Lists and order
 
@@ -250,14 +251,18 @@ hold pages directly and have tabs at the same time.
   on the folder of the tab, which a deleted tab no longer has: a Manager learns that the tab is gone, while a user
   without the role is refused whether the tab exists or not.
 - Hard deletion is the lasting rule for tabs. Rejected: soft deleting, listing and restoring deleted tabs later.
+- Hard deletion is the lasting rule for folders as well, once they can be deleted: a folder is deleted for good after
+  a warning, together with its tabs, its pages and its deleted pages (see "Deleting folders" in `roadmap.md`).
+  Rejected: a soft delete of folders, a list of deleted folders and restoring them.
+- Pages and tabs stay in their folder: they are moved only within it, as a lasting rule. Rejected: moving a page or a
+  tab to another folder.
 
 ## Current limits
 
-- Folders cannot be deleted. A deleted tab cannot be restored; its pages are restored one by one. Deleted pages cannot
-  be removed for good (see `page-deletion.md`).
+- Folders cannot be deleted yet. A deleted tab cannot be restored; its pages are restored one by one. Deleted pages
+  cannot be removed for good, which is not planned (see `page-deletion.md`).
 - Renaming a tab that was deleted after the "Rename tab" dialog was opened shows the not-found page instead of a
   message that the tab no longer exists.
-- A page cannot be moved to another folder, a tab cannot be moved to another folder.
 - No redirects from old addresses after a rename or move.
 - No history, no links between pages, no search.
 - Changes of the same folder or tab at the same time are not told apart: the last save wins. Pages are protected (see

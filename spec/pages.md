@@ -121,8 +121,10 @@ costliest function of a page, and its guards are:
 ## Current limits
 
 - every user with a role on a folder reads all its pages; there are no roles per page (see `folder-roles.md`)
-- only the last editor of a page is stored, not who created it
-- a deleted page cannot be removed for good and is restored only into its own folder (see `page-deletion.md`)
+- only the last editor of a page is stored, not who created it; recording who created it is not planned
+- a deleted page cannot be removed for good, which is not planned, and is restored only into its own folder, as a
+  lasting rule (see `page-deletion.md`)
+- a page has one content in one language; the same page in several languages is not planned
 - no search, no `[[wiki links]]`, no history, no attachments
 - raw Markdown editing in a textarea
 - the title comes only from a leading `# Title` heading: no setext headings, no front matter, no live display of the
