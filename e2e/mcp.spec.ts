@@ -555,6 +555,15 @@ test.describe("the write tools", () => {
     return callTool(request, name, args, writer, writerAddress);
   }
 
+  /** The last editor and the channel of the pages of "projects" as stored, by name. */
+  async function storedEditors() {
+    return getTestDb().page.findMany({
+      where: { folderId: projects.id },
+      orderBy: { name: "asc" },
+      select: { name: true, lastEditedById: true, lastEditedVia: true },
+    });
+  }
+
   /** The pages of "projects" as stored, by name, with what a write changes. */
   async function storedPages() {
     return getTestDb().page.findMany({
@@ -603,6 +612,10 @@ test.describe("the write tools", () => {
       version: 1,
     });
     expect(inTab.structuredContent).toMatchObject({ name: "install", tab: "guides", version: 1 });
+    expect(await storedEditors()).toEqual([
+      { name: "install", lastEditedById: KNOWN_USER.id, lastEditedVia: "mcp" },
+      { name: "release-notes", lastEditedById: KNOWN_USER.id, lastEditedVia: "mcp" },
+    ]);
     const before = await storedPages();
 
     for (const [args, message] of [
@@ -641,6 +654,7 @@ test.describe("the write tools", () => {
     expect(await storedPages()).toEqual([
       { name: "plan", title: "Roadmap", content: "# Roadmap\n\nNew.", tabId: null, version: 2 },
     ]);
+    expect(await storedEditors()).toEqual([{ name: "plan", lastEditedById: KNOWN_USER.id, lastEditedVia: "mcp" }]);
   });
 
   test("replace_page_content with lists nested too deep is refused and the page keeps its content and version", async ({
@@ -681,6 +695,10 @@ test.describe("the write tools", () => {
       address: `${PUBLIC_URL}/folders/projects/guides/roadmap.md`,
       version: 2,
     });
+    expect(await storedEditors()).toEqual([
+      { name: "roadmap", lastEditedById: KNOWN_USER.id, lastEditedVia: "mcp" },
+      { name: "taken", lastEditedById: expect.any(String), lastEditedVia: "web" },
+    ]);
     const before = await storedPages();
 
     for (const [args, message] of [
@@ -826,7 +844,12 @@ test.describe("the tools of a Manager connection", () => {
       'There is no page named "setup"',
     );
     const deleted = await getTestDb().page.findFirstOrThrow({ where: { name: "setup" } });
-    expect(deleted).toMatchObject({ deletedAt: expect.any(Date), tabId: null, lastEditedById: KNOWN_USER.id });
+    expect(deleted).toMatchObject({
+      deletedAt: expect.any(Date),
+      tabId: null,
+      lastEditedById: KNOWN_USER.id,
+      lastEditedVia: "mcp",
+    });
   });
 
   test("delete_page based on an older version or on none is refused with who changed the page and when; a deleted page is not found", async ({
@@ -863,6 +886,10 @@ test.describe("the tools of a Manager connection", () => {
       address: `${PUBLIC_URL}/folders/projects/meetings`,
     });
     expect((await listed(request)).tabs.map(({ name }) => name)).toEqual(["meetings"]);
+    await expect(getTestDb().tab.findFirstOrThrow({ where: { name: "meetings" } })).resolves.toMatchObject({
+      lastEditedById: KNOWN_USER.id,
+      lastEditedVia: "mcp",
+    });
     await expect(manage(request, "create_page", { tab: "meetings", content: "# Kick-off" })).resolves.toMatchObject({
       structuredContent: { name: "kick-off", tab: "meetings" },
     });
@@ -893,6 +920,10 @@ test.describe("the tools of a Manager connection", () => {
     });
     const { tabs, pages } = await listed(request);
     expect(tabs.map(({ name }) => name)).toEqual(["archive", "guides"]);
+    await expect(getTestDb().tab.findUniqueOrThrow({ where: { id: misc.id } })).resolves.toMatchObject({
+      lastEditedById: KNOWN_USER.id,
+      lastEditedVia: "mcp",
+    });
     expect(pages).toMatchObject([
       { name: "notes", tab: "archive", address: `${PUBLIC_URL}/folders/projects/archive/notes.md` },
     ]);
@@ -935,7 +966,12 @@ test.describe("the tools of a Manager connection", () => {
     const deleted = await getTestDb().page.findMany({ where: { name: { startsWith: "draft-" } } });
     expect(deleted).toHaveLength(5);
     for (const page of deleted) {
-      expect(page).toMatchObject({ deletedAt: expect.any(Date), tabId: null, lastEditedById: KNOWN_USER.id });
+      expect(page).toMatchObject({
+        deletedAt: expect.any(Date),
+        tabId: null,
+        lastEditedById: KNOWN_USER.id,
+        lastEditedVia: "mcp",
+      });
     }
     await expect(manage(request, "create_tab", { name: "drafts" })).resolves.toMatchObject({
       structuredContent: { name: "drafts" },

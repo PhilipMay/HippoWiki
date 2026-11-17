@@ -18,6 +18,7 @@ import {
   roleOf,
   roleOnFolderOfPage,
   roleOnFolderOfTab,
+  storedChannelOf,
   roleSelection,
   type ContentActor,
 } from "@/features/folder-roles/service";
@@ -84,6 +85,15 @@ describe("inBrowser and inMcp", () => {
       channel: "mcp",
       connection,
     });
+  });
+});
+
+describe("storedChannelOf", () => {
+  it("is web for the actor of the browser and mcp for the actor of MCP", () => {
+    const connection = { grantId: GRANT_ID, folderId: FOLDER_ID, role: "writer" as const };
+
+    expect(storedChannelOf(inBrowser(USER))).toBe("web");
+    expect(storedChannelOf(inMcp(USER, connection))).toBe("mcp");
   });
 });
 

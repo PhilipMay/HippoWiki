@@ -10,8 +10,9 @@
 // anything else but the actor. Through MCP a user works only on the folder of the connection, with the lower of the
 // user's role and the role of the connection; every other folder reads like one that does not exist, and a write there
 // is `not-allowed`. Folders are created and renamed only in the browser; tabs are created, renamed and deleted in the
-// browser and through MCP. A write stores the actor as the last editor of the folder or tab, in the same write that
-// changes `updatedAt`; deleting a tab stores the actor as the last editor of the pages it deletes with the tab.
+// browser and through MCP. A write stores the actor as the last editor of the folder or tab, together with the channel
+// of the write (`storedChannelOf()`), in the same write that changes `updatedAt`; deleting a tab stores the actor and
+// the channel as the last editor of the pages it deletes with the tab.
 
 import { z } from "zod";
 
@@ -25,6 +26,7 @@ import {
   roleOf,
   roleOnFolderOfTab,
   roleSelection,
+  storedChannelOf,
   type BrowserActor,
   type ContentActor,
 } from "@/features/folder-roles/service";
@@ -247,6 +249,7 @@ export async function createFolder(
   if (isAdmin(actor)) return notAllowed(actor, "folder not created: the actor is an admin");
   const lastEditedById = editorIdOf(actor);
   if (!lastEditedById) return { ok: false, error: { code: "failed" } };
+  const lastEditedVia = storedChannelOf(actor);
 
   const parsed = folderInputSchema.safeParse(input);
   if (!parsed.success) return invalidName(parsed.error);
@@ -255,7 +258,12 @@ export async function createFolder(
   try {
     // The folder and the Owner role of its creator in one write, so that no folder is ever left without an Owner.
     folder = await getDb().folder.create({
-      data: { ...parsed.data, lastEditedById, roles: { create: { userId: lastEditedById, role: "owner" } } },
+      data: {
+        ...parsed.data,
+        lastEditedById,
+        lastEditedVia,
+        roles: { create: { userId: lastEditedById, role: "owner" } },
+      },
       select: { id: true, name: true },
     });
   } catch (err) {
@@ -282,6 +290,7 @@ export async function renameFolder(
   if (isAdmin(actor)) return notAllowed(actor, "folder not renamed: the actor is an admin");
   const lastEditedById = editorIdOf(actor);
   if (!lastEditedById) return { ok: false, error: { code: "failed" } };
+  const lastEditedVia = storedChannelOf(actor);
 
   const folderId = parseFolderId(id);
   if (!folderId) return { ok: false, error: { code: "folder-not-found" } };
@@ -300,7 +309,7 @@ export async function renameFolder(
     // `updateMany` reports a missing folder as a count of 0 instead of throwing; it sets `updatedAt` as well.
     ({ count } = await getDb().folder.updateMany({
       where: { id: folderId },
-      data: { ...parsed.data, lastEditedById },
+      data: { ...parsed.data, lastEditedById, lastEditedVia },
     }));
   } catch (err) {
     if (isForeignKeyViolation(err, LAST_EDITOR)) return unknownActor(err, actor);
@@ -333,6 +342,7 @@ export async function createTab(
   if (isAdmin(actor)) return notAllowed(actor, "tab not created: the actor is an admin");
   const lastEditedById = editorIdOf(actor);
   if (!lastEditedById) return { ok: false, error: { code: "failed" } };
+  const lastEditedVia = storedChannelOf(actor);
 
   const parsedFolderId = parseFolderId(folderId);
   if (!parsedFolderId) return { ok: false, error: { code: "folder-not-found" } };
@@ -348,7 +358,7 @@ export async function createTab(
   let tab: StoredTab;
   try {
     tab = await getDb().tab.create({
-      data: { ...parsed.data, folderId: parsedFolderId, lastEditedById },
+      data: { ...parsed.data, folderId: parsedFolderId, lastEditedById, lastEditedVia },
       select: STORED_TAB_SELECT,
     });
   } catch (err) {
@@ -382,6 +392,7 @@ export async function renameTab(
   if (isAdmin(actor)) return notAllowed(actor, "tab not renamed: the actor is an admin");
   const lastEditedById = editorIdOf(actor);
   if (!lastEditedById) return { ok: false, error: { code: "failed" } };
+  const lastEditedVia = storedChannelOf(actor);
 
   const tabId = parseTabId(id);
   if (!tabId) return { ok: false, error: { code: "tab-not-found" } };
@@ -397,7 +408,10 @@ export async function renameTab(
   try {
     const db = getDb();
     // `updateMany` reports a missing tab as a count of 0 instead of throwing; it sets `updatedAt` as well.
-    const { count } = await db.tab.updateMany({ where: { id: tabId }, data: { ...parsed.data, lastEditedById } });
+    const { count } = await db.tab.updateMany({
+      where: { id: tabId },
+      data: { ...parsed.data, lastEditedById, lastEditedVia },
+    });
     // The tab is read back, so that a caller gets the stored names, never submitted values.
     tab = count === 0 ? null : await db.tab.findUnique({ where: { id: tabId }, select: STORED_TAB_SELECT });
   } catch (err) {
@@ -438,6 +452,7 @@ export async function deleteTab(
   if (isAdmin(actor)) return notAllowed(actor, "tab not deleted: the actor is an admin");
   const lastEditedById = editorIdOf(actor);
   if (!lastEditedById) return { ok: false, error: { code: "failed" } };
+  const lastEditedVia = storedChannelOf(actor);
 
   const parsedFolderId = parseFolderId(folderId);
   const tabId = parseTabId(id);
@@ -466,7 +481,7 @@ export async function deleteTab(
       // pages come back from the same write, so that the list holds exactly the pages that went with the tab.
       const pages = await tx.page.updateManyAndReturn({
         where: { tabId },
-        data: { deletedAt: new Date(), tabId: null, lastEditedById, version: { increment: 1 } },
+        data: { deletedAt: new Date(), tabId: null, lastEditedById, lastEditedVia, version: { increment: 1 } },
         select: { name: true, title: true },
       });
       await tx.tab.delete({ where: { id: tabId } });

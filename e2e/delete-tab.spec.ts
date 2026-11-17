@@ -66,7 +66,7 @@ function storedPages(folder: { id: string }) {
   return getTestDb().page.findMany({
     where: { folderId: folder.id },
     orderBy: { name: "asc" },
-    select: { name: true, tabId: true, deletedAt: true, lastEditedById: true, version: true },
+    select: { name: true, tabId: true, deletedAt: true, lastEditedById: true, lastEditedVia: true, version: true },
   });
 }
 
@@ -75,8 +75,8 @@ test("a Manager deletes a tab with two pages, which become deleted pages of the 
   const team = await createFolder({ name: "team", roles: [{ user: ALICE, role: "manager" }] });
   const bob = await createUser({ name: "bob" });
   const meetngs = await createTab({ folder: team, name: "meetngs" });
-  const first = await createPage({ tab: meetngs, name: "monday", title: "Monday", editor: bob });
-  await createPage({ tab: meetngs, name: "tuesday", title: "Tuesday", editor: bob });
+  const first = await createPage({ tab: meetngs, name: "monday", title: "Monday", editor: bob, via: "mcp" });
+  await createPage({ tab: meetngs, name: "tuesday", title: "Tuesday", editor: bob, via: "mcp" });
   await createPage({ folder: team, name: "intro", title: "Intro" });
 
   await openDeleteDialog(page, "/folders/team/meetngs");
@@ -92,7 +92,12 @@ test("a Manager deletes a tab with two pages, which become deleted pages of the 
   const [intro, monday, tuesday] = await storedPages(team);
   expect(intro).toMatchObject({ name: "intro", deletedAt: null });
   for (const deleted of [monday, tuesday]) {
-    expect(deleted).toMatchObject({ tabId: null, deletedAt: expect.any(Date), lastEditedById: KNOWN_USER.id });
+    expect(deleted).toMatchObject({
+      tabId: null,
+      deletedAt: expect.any(Date),
+      lastEditedById: KNOWN_USER.id,
+      lastEditedVia: "web",
+    });
   }
   expect(monday?.deletedAt).toEqual(tuesday?.deletedAt);
   expect(monday?.version).toBe(first.version + 1);

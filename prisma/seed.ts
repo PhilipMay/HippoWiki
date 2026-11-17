@@ -3,6 +3,7 @@
 // its pages and the role of the known user are upserted by fixed keys, so running it again changes nothing. The known users are upserted by their names: running it
 // again gives them their known passwords back and leaves their types as they are, because a type never changes.
 import { titleFromContent } from "../src/features/pages/derive";
+import type { ChangeChannel } from "../src/generated/prisma/client";
 import { CREDENTIAL_PROVIDER_ID, newUserData } from "../src/features/users/records";
 import { getDb } from "../src/lib/db";
 import { logger } from "../src/lib/logger";
@@ -99,10 +100,12 @@ async function main() {
     // do not edit content. It is looked up by name, like the upsert above.
     const user = await db.user.findUniqueOrThrow({ where: { username: KNOWN_USER.name }, select: { id: true } });
     const lastEditedById = user.id;
+    // Seeded content counts as changed in the browser.
+    const lastEditedVia: ChangeChannel = "web";
     await db.folder.upsert({
       where: { id: folder.id },
-      create: { ...folder, lastEditedById },
-      update: { name: folder.name, lastEditedById },
+      create: { ...folder, lastEditedById, lastEditedVia },
+      update: { name: folder.name, lastEditedById, lastEditedVia },
     });
     // The known user owns the sample folder, as every user owns every folder after the update of an existing
     // installation. Admins get no role.
@@ -116,7 +119,7 @@ async function main() {
       const title = titleFromContent(content);
       if (title === null) throw new Error(`Sample page ${name} has no title heading`);
       // Placed directly in the sample folder.
-      const data = { title, name, content, folderId: folder.id, lastEditedById };
+      const data = { title, name, content, folderId: folder.id, lastEditedById, lastEditedVia };
       await db.page.upsert({ where: { id }, create: { id, ...data }, update: data });
     }
     logger.info({ folder: folder.name, count: pages.length }, "seeded sample folder and pages");

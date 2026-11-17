@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { newUserData, placeholderEmail, withLastEditor } from "@/features/users/records";
+import { editorWithChannel, newUserData, placeholderEmail, withLastEditor } from "@/features/users/records";
 
 describe("placeholderEmail", () => {
   it("is an address of the user in a domain that never resolves", () => {
@@ -74,13 +74,28 @@ describe("newUserData", () => {
 });
 
 describe("withLastEditor", () => {
-  it("replaces the selected user row by the user name, named as the users service names it", () => {
+  it("replaces the selected user row and channel by the user name and the channel, and nothing else of the user", () => {
     const updatedAt = new Date();
 
-    expect(withLastEditor({ id: "1", updatedAt, lastEditedBy: { username: "alice" } })).toStrictEqual({
+    expect(
+      withLastEditor({ id: "1", updatedAt, lastEditedBy: { username: "alice" }, lastEditedVia: "mcp" }),
+    ).toStrictEqual({
       id: "1",
       updatedAt,
-      lastEditedBy: { name: "alice" },
+      lastEditedBy: { name: "alice", via: "mcp" },
     });
+  });
+
+  it("keeps the channel web", () => {
+    expect(withLastEditor({ lastEditedBy: { username: "bob" }, lastEditedVia: "web" })).toStrictEqual({
+      lastEditedBy: { name: "bob", via: "web" },
+    });
+  });
+});
+
+describe("editorWithChannel", () => {
+  it("names the user, then the channel after the word via", () => {
+    expect(editorWithChannel({ name: "mike", via: "mcp" })).toBe("mike via mcp");
+    expect(editorWithChannel({ name: "anna", via: "web" })).toBe("anna via web");
   });
 });

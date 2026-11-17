@@ -152,7 +152,7 @@ describe("the fields of a page", () => {
       title: "Intro",
       content: "# Intro\n\nText",
       updatedAt: page.updatedAt,
-      lastEditedBy: { name: "alice" },
+      lastEditedBy: { name: "alice", via: "web" },
       version: 1,
       folder: { id: folder.id, name: "docs" },
       tab: { id: tab.id, name: "guides" },
@@ -170,7 +170,7 @@ describe("the fields of a page", () => {
       title: page.title,
       content: page.content,
       updatedAt: page.updatedAt,
-      lastEditedBy: { name: "alice" },
+      lastEditedBy: { name: "alice", via: "web" },
       version: 1,
       folder: { id: folder.id, name: "docs" },
       tab: null,
@@ -181,7 +181,7 @@ describe("the fields of a page", () => {
   it("returns exactly the declared fields of a deleted page", async () => {
     const folder = await createFolder({ name: "docs" });
     const deletedAt = new Date("2026-11-03T10:00:00Z");
-    const page = await createPage({ folder, name: "intro", content: "# Intro", deletedAt, editor: user });
+    const page = await createPage({ folder, name: "intro", content: "# Intro", deletedAt, editor: user, via: "mcp" });
 
     await expect(pageService.getDeletedPage(actor, "docs", page.id)).resolves.toStrictEqual({
       id: page.id,
@@ -189,7 +189,7 @@ describe("the fields of a page", () => {
       title: "Intro",
       content: "# Intro",
       deletedAt,
-      lastEditedBy: { name: "alice" },
+      lastEditedBy: { name: "alice", via: "mcp" },
       folder: { id: folder.id, name: "docs" },
     });
   });
@@ -885,7 +885,10 @@ describe("the last editor in the page reads", () => {
     await expect(pageService.getPage(actor, "docs", null, "intro")).resolves.toMatchObject({
       lastEditedBy: { name: "bob" },
     });
-    expect((await pageService.listFolderPages(actor, folder.id))?.[0]?.lastEditedBy).toEqual({ name: "bob" });
+    expect((await pageService.listFolderPages(actor, folder.id))?.[0]?.lastEditedBy).toEqual({
+      name: "bob",
+      via: "web",
+    });
   });
 
   it("is the user who deleted the page in the deleted pages and the deleted page view", async () => {
@@ -909,7 +912,99 @@ describe("the last editor in the page reads", () => {
 
     const [summary] = (await pageService.listFolderPages(actor, folder.id)) ?? [];
 
-    expect(summary?.lastEditedBy).toStrictEqual({ name: "alice" });
+    expect(summary?.lastEditedBy).toStrictEqual({ name: "alice", via: "web" });
+  });
+
+  it("returns the channel with the last editor in every list, the page view and the deleted pages", async () => {
+    const folder = await createFolder({ name: "docs" });
+    const tab = await createTab({ folder, name: "guides" });
+    await createPage({ folder, name: "direct", editor: user, via: "mcp" });
+    await createPage({ tab, name: "in-tab", editor: user });
+    const deleted = await createPage({ folder, name: "old", editor: user, deletedAt: new Date(), via: "mcp" });
+
+    const channels = (pages: { name: string; lastEditedBy: { via: string } }[]) =>
+      pages.map(({ name, lastEditedBy }) => [name, lastEditedBy.via]);
+    expect(channels((await pageService.listFolderPages(actor, folder.id)) ?? [])).toEqual([["direct", "mcp"]]);
+    expect(channels((await pageService.listTabPages(actor, tab.id)) ?? [])).toEqual([["in-tab", "web"]]);
+    expect(channels((await pageService.listAllFolderPages(actor, folder.id)) ?? [])).toEqual([
+      ["direct", "mcp"],
+      ["in-tab", "web"],
+    ]);
+    expect(channels((await pageService.listDeletedPages(actor, folder.id)) ?? [])).toEqual([["old", "mcp"]]);
+    await expect(pageService.getPage(actor, "docs", null, "direct")).resolves.toMatchObject({
+      lastEditedBy: { name: "alice", via: "mcp" },
+    });
+    await expect(pageService.getDeletedPage(actor, "docs", deleted.id)).resolves.toMatchObject({
+      lastEditedBy: { name: "alice", via: "mcp" },
+    });
+  });
+});
+
+describe("the channel of pages", () => {
+  /** The channel of the page with the given id, as stored. */
+  async function channelOf(pageId: string) {
+    return (await getTestDb().page.findUniqueOrThrow({ where: { id: pageId } })).lastEditedVia;
+  }
+
+  it("is the channel of the actor of each write, which replaces the one before", async () => {
+    const folder = await createFolder({ roles: owners(user) });
+    const tab = await createTab({ folder });
+    const manager = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "manager" });
+
+    const inWeb = await pageService.createPage(actor, folder.id, { name: "web", content: "# Web", tabId: null });
+    const viaMcp = await pageService.createPage(manager, folder.id, { name: "mcp", content: "# Mcp", tabId: null });
+    if (!inWeb.ok || !viaMcp.ok) throw new Error("expected the pages to be created");
+    const [web, mcp] = [inWeb.value.id, viaMcp.value.id];
+    expect([await channelOf(web), await channelOf(mcp)]).toEqual(["web", "mcp"]);
+
+    await pageService.updatePageContent(manager, web, { content: "# Web 2", version: 1 });
+    await pageService.updatePageContent(actor, mcp, { content: "# Mcp 2", version: 1 });
+    expect([await channelOf(web), await channelOf(mcp)]).toEqual(["mcp", "web"]);
+
+    await pageService.moveOrRenamePage(actor, web, { name: "web", tabId: tab.id, version: 2 });
+    await pageService.moveOrRenamePage(manager, mcp, { name: "mcp-2", tabId: null, version: 2 });
+    expect([await channelOf(web), await channelOf(mcp)]).toEqual(["web", "mcp"]);
+
+    await pageService.deletePage(manager, web, { version: 3 });
+    await pageService.deletePage(actor, mcp, { version: 3 });
+    expect([await channelOf(web), await channelOf(mcp)]).toEqual(["mcp", "web"]);
+
+    // Only the browser restores; a page deleted through MCP gets web.
+    await pageService.restorePage(actor, web, { name: "web", tabId: null });
+    expect(await channelOf(web)).toBe("web");
+  });
+
+  it("stays as it was, with the last editor and the time, when a write is based on an older version", async () => {
+    const bob = await createUser({ name: "bob" });
+    const folder = await createFolder({ roles: owners(user, bob) });
+    const page = await createPage({ folder, name: "intro", editor: user, via: "mcp", version: 2 });
+    const before = await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } });
+
+    await pageService.updatePageContent(inBrowser(bob), page.id, { content: "# New", version: 1 });
+    await pageService.moveOrRenamePage(inBrowser(bob), page.id, { name: "start", tabId: null, version: 1 });
+    await pageService.moveOrRenamePage(inBrowser(bob), page.id, { name: "intro", tabId: null, version: 1 });
+    await pageService.deletePage(inBrowser(bob), page.id, { version: 1 });
+
+    const after = await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } });
+    expect([after.lastEditedVia, after.lastEditedById, after.updatedAt]).toEqual(["mcp", user.id, before.updatedAt]);
+  });
+
+  it("of the folder and the tab is not touched by creating or moving a page into the tab through MCP", async () => {
+    const folder = await createFolder({ roles: owners(user) });
+    const tab = await createTab({ folder });
+    const page = await createPage({ folder, name: "intro" });
+    const writer = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "writer" });
+
+    await expect(
+      pageService.createPage(writer, folder.id, { name: "new", content: "# New", tabId: tab.id }),
+    ).resolves.toMatchObject({ ok: true });
+    await expect(
+      pageService.moveOrRenamePage(writer, page.id, { name: "intro", tabId: tab.id, version: 1 }),
+    ).resolves.toMatchObject({ ok: true });
+
+    const storedFolder = await getTestDb().folder.findUniqueOrThrow({ where: { id: folder.id } });
+    const storedTab = await getTestDb().tab.findUniqueOrThrow({ where: { id: tab.id } });
+    expect([storedFolder.lastEditedVia, storedTab.lastEditedVia]).toEqual(["web", "web"]);
   });
 });
 

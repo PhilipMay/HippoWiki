@@ -95,8 +95,8 @@ const WITH_ROLE = { roles: { some: { userId: ACTOR_ID } } };
 const MALFORMED_NAMES = ["Overview", " overview", "overview ", "release--notes", "-overview", ""];
 
 /** The last editor as the database returns it for a read, and as the service returns it. */
-const EDITOR_ROW = { lastEditedBy: { username: "alice" } };
-const EDITOR = { lastEditedBy: { name: "alice" } };
+const EDITOR_ROW = { lastEditedBy: { username: "alice" }, lastEditedVia: "web" };
+const EDITOR = { lastEditedBy: { name: "alice", via: "web" } };
 
 function page(name: string, tab: string | null) {
   return { name, tab: tab === null ? null : { name: tab } };
@@ -412,8 +412,8 @@ describe("a write through MCP", () => {
       [{ pageId: PAGE_ID, channel: "mcp", grantId }, "page updated"],
       [{ pageId: PAGE_ID, tabId: null, channel: "mcp", grantId }, "page moved or renamed"],
     ]);
-    expect(mocks.create.mock.calls[0]?.[0].data).toMatchObject({ lastEditedById: ACTOR_ID });
-    expect(mocks.updateMany.mock.calls[0]?.[0].data).toMatchObject({ lastEditedById: ACTOR_ID });
+    expect(mocks.create.mock.calls[0]?.[0].data).toMatchObject({ lastEditedById: ACTOR_ID, lastEditedVia: "mcp" });
+    expect(mocks.updateMany.mock.calls[0]?.[0].data).toMatchObject({ lastEditedById: ACTOR_ID, lastEditedVia: "mcp" });
   });
 
   it("is not allowed for a Reader connection, for another folder and without a role, and writes nothing", async () => {
@@ -451,7 +451,7 @@ describe("a write through MCP", () => {
       { pageId: PAGE_ID, channel: "mcp", grantId: "0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01" },
       "page deleted",
     );
-    expect(mocks.updateMany.mock.calls[0]?.[0].data).toMatchObject({ lastEditedById: ACTOR_ID });
+    expect(mocks.updateMany.mock.calls[0]?.[0].data).toMatchObject({ lastEditedById: ACTOR_ID, lastEditedVia: "mcp" });
   });
 
   it("refuses a delete through a Writer connection of an Owner and writes nothing", async () => {
@@ -512,6 +512,7 @@ describe("createPage", () => {
         folderId: FOLDER_ID,
         tabId: null,
         lastEditedById: ACTOR_ID,
+        lastEditedVia: "web",
       },
       select: STORED_PAGE_SELECT,
     });
@@ -542,6 +543,7 @@ describe("createPage", () => {
         folderId: FOLDER_ID,
         tabId: TAB_ID,
         lastEditedById: ACTOR_ID,
+        lastEditedVia: "web",
       },
       select: STORED_PAGE_SELECT,
     });
@@ -638,7 +640,13 @@ describe("updatePageContent", () => {
 
     expect(mocks.updateMany).toHaveBeenCalledWith({
       where: { id: PAGE_ID, deletedAt: null, version: VERSION },
-      data: { title: "My page", content: CONTENT, lastEditedById: ACTOR_ID, version: { increment: 1 } },
+      data: {
+        title: "My page",
+        content: CONTENT,
+        lastEditedById: ACTOR_ID,
+        lastEditedVia: "web",
+        version: { increment: 1 },
+      },
     });
     expect(mocks.findUnique).toHaveBeenCalledWith({
       where: { id: PAGE_ID, deletedAt: null },
@@ -790,7 +798,13 @@ describe("moveOrRenamePage", () => {
     expect(mocks.updateMany).toHaveBeenCalledTimes(1);
     expect(mocks.updateMany).toHaveBeenCalledWith({
       where: { id: PAGE_ID, deletedAt: null, version: VERSION },
-      data: { name: "new-name", tabId: TAB_ID, lastEditedById: ACTOR_ID, version: { increment: 1 } },
+      data: {
+        name: "new-name",
+        tabId: TAB_ID,
+        lastEditedById: ACTOR_ID,
+        lastEditedVia: "web",
+        version: { increment: 1 },
+      },
     });
     expect(mocks.findUnique).toHaveBeenCalledWith({
       where: { id: PAGE_ID, deletedAt: null },
@@ -810,7 +824,13 @@ describe("moveOrRenamePage", () => {
 
     expect(mocks.updateMany).toHaveBeenCalledWith({
       where: { id: PAGE_ID, deletedAt: null, version: VERSION },
-      data: { name: "new-name", tabId: null, lastEditedById: ACTOR_ID, version: { increment: 1 } },
+      data: {
+        name: "new-name",
+        tabId: null,
+        lastEditedById: ACTOR_ID,
+        lastEditedVia: "web",
+        version: { increment: 1 },
+      },
     });
   });
 
@@ -926,7 +946,13 @@ describe("deletePage", () => {
     );
     expect(mocks.updateMany).toHaveBeenCalledWith({
       where: { id: PAGE_ID, deletedAt: null, version: VERSION },
-      data: { deletedAt: expect.any(Date), tabId: null, lastEditedById: ACTOR_ID, version: { increment: 1 } },
+      data: {
+        deletedAt: expect.any(Date),
+        tabId: null,
+        lastEditedById: ACTOR_ID,
+        lastEditedVia: "web",
+        version: { increment: 1 },
+      },
     });
     expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID, channel: "browser" }, "page deleted");
   });
@@ -1055,7 +1081,14 @@ describe("restorePage", () => {
 
     expect(mocks.updateMany).toHaveBeenCalledWith({
       where: { id: PAGE_ID, deletedAt: { not: null } },
-      data: { deletedAt: null, name: "new-name", tabId: TAB_ID, lastEditedById: ACTOR_ID, version: { increment: 1 } },
+      data: {
+        deletedAt: null,
+        name: "new-name",
+        tabId: TAB_ID,
+        lastEditedById: ACTOR_ID,
+        lastEditedVia: "web",
+        version: { increment: 1 },
+      },
     });
     expect(mocks.findUnique).toHaveBeenCalledWith({
       where: { id: PAGE_ID, deletedAt: null },
@@ -1072,7 +1105,14 @@ describe("restorePage", () => {
 
     expect(mocks.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: { deletedAt: null, name: "new-name", tabId: null, lastEditedById: ACTOR_ID, version: { increment: 1 } },
+        data: {
+          deletedAt: null,
+          name: "new-name",
+          tabId: null,
+          lastEditedById: ACTOR_ID,
+          lastEditedVia: "web",
+          version: { increment: 1 },
+        },
       }),
     );
   });

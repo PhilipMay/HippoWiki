@@ -11,6 +11,7 @@ import { titleFromContent } from "@/features/pages/derive";
 import { newUserData, type NewUser } from "@/features/users/records";
 import {
   PrismaClient,
+  type ChangeChannel,
   type Folder,
   type FolderRole,
   type FolderRoleType,
@@ -217,11 +218,14 @@ export async function createUser({
 export type FolderRoleData = { user: { id: string }; role: FolderRoleType };
 
 /**
- * The fields of a folder that `createFolder()` can set, the user who last edited it and the roles of users on the
- * folder.
+ * The fields of a folder that `createFolder()` can set, the user who last edited it, the channel of that change and
+ * the roles of users on the folder.
  */
-type CreateFolderData = Partial<Omit<Prisma.FolderUncheckedCreateInput, "lastEditedById" | "roles">> & {
+type CreateFolderData = Partial<
+  Omit<Prisma.FolderUncheckedCreateInput, "lastEditedById" | "lastEditedVia" | "roles">
+> & {
   editor?: User;
+  via?: ChangeChannel;
   roles?: readonly FolderRoleData[];
 };
 
@@ -238,13 +242,13 @@ async function defaultRoles(): Promise<FolderRoleData[]> {
 /**
  * Creates a folder directly in the test database, with a unique name unless one is given. The given editor is its last
  * editor; without one, a new user is created for it, so that a test that starts from an empty database needs no user
- * of its own. The given roles are stored with it; without them, `alice` is its Owner if that user exists (see
+ * of its own. The given channel is how it was last changed, `web` unless given. The given roles are stored with it; without them, `alice` is its Owner if that user exists (see
  * `defaultRoles()`). Any other field can be overridden, e.g. `updatedAt`.
  */
-export async function createFolder({ editor, roles, ...data }: CreateFolderData = {}): Promise<Folder> {
+export async function createFolder({ editor, via = "web", roles, ...data }: CreateFolderData = {}): Promise<Folder> {
   const lastEditedById = (editor ?? (await createUser())).id;
   const folder = await getTestDb().folder.create({
-    data: { name: `test-folder-${crypto.randomUUID()}`, ...data, lastEditedById },
+    data: { name: `test-folder-${crypto.randomUUID()}`, ...data, lastEditedById, lastEditedVia: via },
   });
   for (const { user, role } of roles ?? (await defaultRoles())) {
     await createFolderRole({ folder, user, role });
@@ -265,43 +269,61 @@ export async function createFolderRole({
   return getTestDb().folderRole.create({ data: { folderId: folder.id, userId: user.id, role } });
 }
 
-/** The fields of a tab that `createTab()` can set, the folder it belongs to and the user who last edited it. */
-type CreateTabData = Partial<Omit<Prisma.TabUncheckedCreateInput, "folderId" | "lastEditedById">> & {
+/**
+ * The fields of a tab that `createTab()` can set, the folder it belongs to, the user who last edited it and the channel
+ * of that change.
+ */
+type CreateTabData = Partial<Omit<Prisma.TabUncheckedCreateInput, "folderId" | "lastEditedById" | "lastEditedVia">> & {
   folder?: Folder;
   editor?: User;
+  via?: ChangeChannel;
 };
 
 /**
  * Creates a tab directly in the test database, in the given folder; without one, a new folder is created for it. The
  * tab gets a unique name unless one is given. The given editor is its last editor, and that of a folder created for
- * it; without one, a new user is created for them.
+ * it; without one, a new user is created for them. The given channel is how the tab was last changed, `web` unless
+ * given; a folder created for it gets `web`.
  */
-export async function createTab({ folder, editor, ...data }: CreateTabData = {}): Promise<Tab> {
+export async function createTab({ folder, editor, via = "web", ...data }: CreateTabData = {}): Promise<Tab> {
   const lastEditor = editor ?? (await createUser());
   const folderId = (folder ?? (await createFolder({ editor: lastEditor }))).id;
   return getTestDb().tab.create({
-    data: { name: `test-tab-${crypto.randomUUID()}`, ...data, folderId, lastEditedById: lastEditor.id },
+    data: {
+      name: `test-tab-${crypto.randomUUID()}`,
+      ...data,
+      folderId,
+      lastEditedById: lastEditor.id,
+      lastEditedVia: via,
+    },
   });
 }
 
-/** The fields of a page that `createPage()` can set, the folder or tab to place it in and the user who last edited it. */
-type CreatePageData = Partial<Omit<Prisma.PageUncheckedCreateInput, "folderId" | "tabId" | "lastEditedById">> & {
+/**
+ * The fields of a page that `createPage()` can set, the folder or tab to place it in, the user who last edited it and
+ * the channel of that change.
+ */
+type CreatePageData = Partial<
+  Omit<Prisma.PageUncheckedCreateInput, "folderId" | "tabId" | "lastEditedById" | "lastEditedVia">
+> & {
   folder?: Folder;
   tab?: Tab;
   editor?: User;
+  via?: ChangeChannel;
 };
 
 /**
  * Creates a page directly in the test database: in the given tab, or placed directly in the given folder; without
  * either, a new folder is created for it. The page gets a unique name unless one is given. The given editor is its last
  * editor (for a deleted page, the user who deleted it), and that of a folder created for it; without one, a new user
- * is created for them. Like a save through the forms, the title is derived from the content; the content defaults to
+ * is created for them. The given channel is how the page was last changed (for a deleted page, how it was deleted),
+ * `web` unless given; a folder created for it gets `web`. Like a save through the forms, the title is derived from the content; the content defaults to
  * `# <title>`, so `createPage({ title: "Old" })` gives a page with the content `# Old`. A title given together with
  * content is stored as is, e.g. to set up a page that was stored before titles were derived. Any other field can be
  * overridden, e.g. `updatedAt` or `version`. Setting `deletedAt` creates a deleted page; a deleted page has no tab, so
  * it cannot be combined with `tab`.
  */
-export async function createPage({ folder, tab, editor, ...data }: CreatePageData = {}): Promise<Page> {
+export async function createPage({ folder, tab, editor, via = "web", ...data }: CreatePageData = {}): Promise<Page> {
   if (tab && data.deletedAt) throw new Error("A deleted page has no tab: give a folder instead");
   const content = data.content ?? `# ${data.title ?? "Test page"}`;
   const title = data.title ?? titleFromContent(content) ?? "Test page";
@@ -316,6 +338,7 @@ export async function createPage({ folder, tab, editor, ...data }: CreatePageDat
       folderId,
       tabId: tab?.id ?? null,
       lastEditedById: lastEditor.id,
+      lastEditedVia: via,
     },
   });
 }

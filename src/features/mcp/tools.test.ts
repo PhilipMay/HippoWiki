@@ -50,7 +50,7 @@ const PUBLIC_URL = "https://wiki.example.com";
 const FOLDER_ID = "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10";
 const FOLDER = { id: FOLDER_ID, name: "handbook" };
 const CHANGED = new Date("2026-03-01T12:00:00.000Z");
-const EDITOR = { name: "alice" };
+const EDITOR = { name: "alice", via: "web" as const };
 
 /** The actor of MCP of a Reader connection to the folder "handbook". */
 const READER: McpActor = {
@@ -406,7 +406,7 @@ describe("the write tools", () => {
     title: "Setup",
     content: "# Setup",
     updatedAt: CHANGED,
-    lastEditedBy: { name: "bob" },
+    lastEditedBy: { name: "bob", via: "web" as const },
     version: 4,
     folder: { id: FOLDER_ID, name: "handbook" },
     tab: null,
@@ -711,7 +711,7 @@ describe("the tools of a Manager connection", () => {
     title: "Setup",
     content: "# Setup",
     updatedAt: CHANGED,
-    lastEditedBy: { name: "bob" },
+    lastEditedBy: { name: "bob", via: "web" as const },
     version: 4,
     folder: { id: FOLDER_ID, name: "handbook" },
     tab: { name: "guides" },

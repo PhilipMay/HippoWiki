@@ -410,6 +410,7 @@ describe("foreign key violations", () => {
         folderId: otherFolder.id,
         tabId: tab.id,
         lastEditedById: tab.lastEditedById,
+        lastEditedVia: "web",
       },
     });
 

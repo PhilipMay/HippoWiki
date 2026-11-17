@@ -22,7 +22,7 @@ import { parsePageId } from "@/features/pages/schema";
 import { parseUserId, parseUserName } from "@/features/users/schema";
 import type { Actor } from "@/features/users/service";
 import { isAdmin } from "@/features/users/user-type";
-import type { Prisma } from "@/generated/prisma/client";
+import type { ChangeChannel, Prisma } from "@/generated/prisma/client";
 import { getDb } from "@/lib/db";
 import { FOLDER_ROLE_USER, isAdminRoleViolation, isUniqueViolation } from "@/lib/db-errors";
 import { logger } from "@/lib/logger";
@@ -45,11 +45,19 @@ export type McpActor = Actor & { channel: "mcp"; connection: McpConnection };
 export type ContentActor = BrowserActor | McpActor;
 
 /**
- * Where a write comes from, for its log line: the channel and, for MCP, the grant of the connection. The content itself
- * does not show it; its last editor is the user in both channels.
+ * Where a write comes from, for its log line: the channel and, for MCP, the grant of the connection. The content stores
+ * only the channel, as `storedChannelOf()` names it, never the grant.
  */
 export function channelOf(actor: ContentActor): { channel: "browser" } | { channel: "mcp"; grantId: string } {
   return actor.channel === "mcp" ? { channel: "mcp", grantId: actor.connection.grantId } : { channel: "browser" };
+}
+
+/**
+ * The channel of a write as the content stores it with its last editor: `web` for the browser, `mcp` for MCP. The log
+ * lines keep naming the channel of the actor (`channelOf()`).
+ */
+export function storedChannelOf(actor: ContentActor): ChangeChannel {
+  return actor.channel === "mcp" ? "mcp" : "web";
 }
 
 /** The actor of the browser for the given user, as the queries and actions pass it to the services. */

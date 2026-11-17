@@ -504,6 +504,7 @@ test("the database refuses a page whose tab belongs to another folder", async ()
         folderId: handbook.id,
         tabId: foreignTab.id,
         lastEditedById: foreignTab.lastEditedById,
+        lastEditedVia: "web",
       },
     }),
   ).rejects.toMatchObject({ code: "P2003" });

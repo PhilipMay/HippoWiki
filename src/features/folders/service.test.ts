@@ -178,10 +178,12 @@ describe("listFolders", () => {
   it("returns the folders with a role of the actor, each with the role", async () => {
     const folder = { id: FOLDER_ID, name: "handbook", updatedAt: new Date() };
     mocks.folderFindMany.mockResolvedValue([
-      { ...folder, lastEditedBy: { username: "alice" }, roles: [{ role: "writer" }] },
+      { ...folder, lastEditedBy: { username: "alice" }, lastEditedVia: "web", roles: [{ role: "writer" }] },
     ]);
 
-    await expect(listFolders(ACTOR)).resolves.toEqual([{ ...folder, lastEditedBy: { name: "alice" }, role: "writer" }]);
+    await expect(listFolders(ACTOR)).resolves.toEqual([
+      { ...folder, lastEditedBy: { name: "alice", via: "web" }, role: "writer" },
+    ]);
     expect(mocks.folderFindMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: ROLE_WHERE, select: expect.objectContaining(ROLE_SELECT) }),
     );
@@ -190,11 +192,11 @@ describe("listFolders", () => {
   it("returns only the folder of the connection through MCP, with the lower of the two roles", async () => {
     const folder = { id: FOLDER_ID, name: "handbook", updatedAt: new Date() };
     mocks.folderFindMany.mockResolvedValue([
-      { ...folder, lastEditedBy: { username: "alice" }, roles: [{ role: "owner" }] },
+      { ...folder, lastEditedBy: { username: "alice" }, lastEditedVia: "web", roles: [{ role: "owner" }] },
     ]);
 
     await expect(listFolders(MCP_ACTOR)).resolves.toEqual([
-      { ...folder, lastEditedBy: { name: "alice" }, role: "writer" },
+      { ...folder, lastEditedBy: { name: "alice", via: "web" }, role: "writer" },
     ]);
     expect(mocks.folderFindMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: MCP_WHERE, select: expect.objectContaining(ROLE_SELECT) }),
@@ -289,9 +291,11 @@ describe("getFolderById", () => {
 describe("listTabs", () => {
   it("returns the tabs of the folder", async () => {
     const tab = { id: TAB_ID, name: "guides", updatedAt: new Date() };
-    mocks.tabFindMany.mockResolvedValue([{ ...tab, lastEditedBy: { username: "alice" } }]);
+    mocks.tabFindMany.mockResolvedValue([{ ...tab, lastEditedBy: { username: "alice" }, lastEditedVia: "web" }]);
 
-    await expect(listTabs(ACTOR, FOLDER_ID)).resolves.toEqual([{ ...tab, lastEditedBy: { name: "alice" } }]);
+    await expect(listTabs(ACTOR, FOLDER_ID)).resolves.toEqual([
+      { ...tab, lastEditedBy: { name: "alice", via: "web" } },
+    ]);
     expect(mocks.tabFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { folderId: FOLDER_ID } }));
     expect(mocks.folderRoleFindFirst).toHaveBeenCalledWith({
       where: { userId: ACTOR_ID, folder: { id: FOLDER_ID } },
@@ -381,7 +385,12 @@ describe("createFolder", () => {
     await expect(createFolder(ACTOR, VALID)).resolves.toEqual({ ok: true, value: stored });
 
     expect(mocks.folderCreate).toHaveBeenCalledWith({
-      data: { name: "handbook", lastEditedById: ACTOR_ID, roles: { create: { userId: ACTOR_ID, role: "owner" } } },
+      data: {
+        name: "handbook",
+        lastEditedById: ACTOR_ID,
+        lastEditedVia: "web",
+        roles: { create: { userId: ACTOR_ID, role: "owner" } },
+      },
       select: { id: true, name: true },
     });
     // A new folder needs no role of its creator.
@@ -397,11 +406,17 @@ describe("createFolder", () => {
       id: "other",
       createdAt: new Date(0),
       lastEditedById: "other",
+      lastEditedVia: "mcp",
     } as { name: string });
 
     expect(mocks.folderCreate).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: { name: "handbook", lastEditedById: ACTOR_ID, roles: { create: { userId: ACTOR_ID, role: "owner" } } },
+        data: {
+          name: "handbook",
+          lastEditedById: ACTOR_ID,
+          lastEditedVia: "web",
+          roles: { create: { userId: ACTOR_ID, role: "owner" } },
+        },
       }),
     );
   });
@@ -452,7 +467,7 @@ describe("renameFolder", () => {
 
     expect(mocks.folderUpdateMany).toHaveBeenCalledWith({
       where: { id: FOLDER_ID },
-      data: { name: "handbook", lastEditedById: ACTOR_ID },
+      data: { name: "handbook", lastEditedById: ACTOR_ID, lastEditedVia: "web" },
     });
     expect(mocks.info).toHaveBeenCalledWith({ folderId: FOLDER_ID }, "folder renamed");
   });
@@ -525,7 +540,7 @@ describe("createTab", () => {
     await expect(createTab(ACTOR, FOLDER_ID, TAB_VALID)).resolves.toEqual({ ok: true, value: stored });
 
     expect(mocks.tabCreate).toHaveBeenCalledWith({
-      data: { name: "guides", folderId: FOLDER_ID, lastEditedById: ACTOR_ID },
+      data: { name: "guides", folderId: FOLDER_ID, lastEditedById: ACTOR_ID, lastEditedVia: "web" },
       select: STORED_TAB_SELECT,
     });
     expect(mocks.info).toHaveBeenCalledWith({ tabId: TAB_ID, channel: "browser" }, "tab created");
@@ -588,7 +603,7 @@ describe("renameTab", () => {
 
     expect(mocks.tabUpdateMany).toHaveBeenCalledWith({
       where: { id: TAB_ID },
-      data: { name: "guides", lastEditedById: ACTOR_ID },
+      data: { name: "guides", lastEditedById: ACTOR_ID, lastEditedVia: "web" },
     });
     expect(mocks.tabFindUnique).toHaveBeenCalledWith({ where: { id: TAB_ID }, select: STORED_TAB_SELECT });
     expect(mocks.info).toHaveBeenCalledWith({ tabId: TAB_ID, channel: "browser" }, "tab renamed");
@@ -650,8 +665,11 @@ describe("a tab write through MCP", () => {
       [{ tabId: TAB_ID, channel: "mcp", grantId: GRANT_ID }, "tab created"],
       [{ tabId: TAB_ID, channel: "mcp", grantId: GRANT_ID }, "tab renamed"],
     ]);
-    expect(mocks.tabCreate.mock.calls[0]?.[0].data).toMatchObject({ lastEditedById: ACTOR_ID });
-    expect(mocks.tabUpdateMany.mock.calls[0]?.[0].data).toMatchObject({ lastEditedById: ACTOR_ID });
+    expect(mocks.tabCreate.mock.calls[0]?.[0].data).toMatchObject({ lastEditedById: ACTOR_ID, lastEditedVia: "mcp" });
+    expect(mocks.tabUpdateMany.mock.calls[0]?.[0].data).toMatchObject({
+      lastEditedById: ACTOR_ID,
+      lastEditedVia: "mcp",
+    });
   });
 
   it("logs a tab deletion through a Manager connection with the channel mcp, the grant and the number of pages", async () => {
@@ -663,7 +681,10 @@ describe("a tab write through MCP", () => {
       { actorId: ACTOR_ID, folderId: FOLDER_ID, tabId: TAB_ID, pageCount: 1, channel: "mcp", grantId: GRANT_ID },
       "tab deleted",
     );
-    expect(mocks.pageUpdateManyAndReturn.mock.calls[0]?.[0].data).toMatchObject({ lastEditedById: ACTOR_ID });
+    expect(mocks.pageUpdateManyAndReturn.mock.calls[0]?.[0].data).toMatchObject({
+      lastEditedById: ACTOR_ID,
+      lastEditedVia: "mcp",
+    });
   });
 
   it("refuses a Writer connection of an Owner and writes nothing", async () => {
@@ -724,7 +745,13 @@ describe("deleteTab", () => {
     // Without a version: whatever is in the tab now is deleted with it.
     expect(mocks.pageUpdateManyAndReturn).toHaveBeenCalledExactlyOnceWith({
       where: { tabId: TAB_ID },
-      data: { deletedAt: expect.any(Date), tabId: null, lastEditedById: ACTOR_ID, version: { increment: 1 } },
+      data: {
+        deletedAt: expect.any(Date),
+        tabId: null,
+        lastEditedById: ACTOR_ID,
+        lastEditedVia: "web",
+        version: { increment: 1 },
+      },
       select: { name: true, title: true },
     });
     expect(mocks.tabDelete).toHaveBeenCalledExactlyOnceWith({ where: { id: TAB_ID } });

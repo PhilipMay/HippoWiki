@@ -9,8 +9,9 @@
 // before anything that could tell whether a page exists. The deleted pages and every write need the lowest role of
 // their function (`FUNCTION_ROLES` in `roles.ts`). Through MCP a user works only on the folder of the connection, with
 // the lower of the user's role and the role of the connection; every other folder reads like one without a role. A
-// write stores the actor as the last editor of the page and counts its version up, in the same write that changes `updatedAt`; a new
-// page starts with version 1. The folder and the tab of the page keep their `updatedAt` and last editor.
+// write stores the actor as the last editor of the page, with the channel of the write (`storedChannelOf()`), and counts
+// its version up, in the same write that changes `updatedAt`; a new page starts with version 1. The folder and the tab
+// of the page keep their `updatedAt`, last editor and channel.
 
 import { z } from "zod";
 
@@ -25,6 +26,7 @@ import {
   roleOf,
   roleOnFolderOfPage,
   roleSelection,
+  storedChannelOf,
   type BrowserActor,
   type ContentActor,
 } from "@/features/folder-roles/service";
@@ -73,7 +75,7 @@ export type PageWithPlace = {
 
 /**
  * What the list of deleted pages shows of a page: no content, and when and by whom it was deleted. Nothing writes to a
- * deleted page, so its last editor is the user who deleted it.
+ * deleted page, so its last editor is the user who deleted it, with the channel of the delete.
  */
 export type DeletedPageSummary = {
   id: string;
@@ -85,7 +87,7 @@ export type DeletedPageSummary = {
 
 /**
  * A deleted page with its folder, as the deleted page view shows it. A deleted page has no tab; its last editor is the
- * user who deleted it.
+ * user who deleted it, with the channel of the delete.
  */
 export type DeletedPage = {
   id: string;
@@ -406,6 +408,7 @@ export async function createPage(
   if (isAdmin(actor)) return notAllowed(actor, "page not created: the actor is an admin");
   const lastEditedById = editorIdOf(actor);
   if (!lastEditedById) return { ok: false, error: { code: "failed" } };
+  const lastEditedVia = storedChannelOf(actor);
 
   const parsedFolderId = parseFolderId(folderId);
   if (!parsedFolderId) return { ok: false, error: { code: "folder-not-found" } };
@@ -424,7 +427,7 @@ export async function createPage(
   let page: StoredPage;
   try {
     page = await getDb().page.create({
-      data: { ...parsed.data, tabId, folderId: parsedFolderId, lastEditedById },
+      data: { ...parsed.data, tabId, folderId: parsedFolderId, lastEditedById, lastEditedVia },
       select: STORED_PAGE_SELECT,
     });
   } catch (err) {
@@ -461,6 +464,7 @@ export async function updatePageContent(
   if (isAdmin(actor)) return notAllowed(actor, "page not saved: the actor is an admin");
   const lastEditedById = editorIdOf(actor);
   if (!lastEditedById) return { ok: false, error: { code: "failed" } };
+  const lastEditedVia = storedChannelOf(actor);
 
   const pageId = parsePageId(id);
   if (!pageId) return { ok: false, error: { code: "page-not-found" } };
@@ -481,7 +485,7 @@ export async function updatePageContent(
     // page, and one with another version than the given one, match no row.
     const { count } = await getDb().page.updateMany({
       where: { id: pageId, deletedAt: null, version },
-      data: { ...parsed.data, lastEditedById, version: { increment: 1 } },
+      data: { ...parsed.data, lastEditedById, lastEditedVia, version: { increment: 1 } },
     });
     if (count === 0) return await refusedWrite(pageId, version, "page to update");
     page = await findStoredPage(pageId);
@@ -516,6 +520,7 @@ export async function moveOrRenamePage(
   if (isAdmin(actor)) return notAllowed(actor, "page not moved or renamed: the actor is an admin");
   const lastEditedById = editorIdOf(actor);
   if (!lastEditedById) return { ok: false, error: { code: "failed" } };
+  const lastEditedVia = storedChannelOf(actor);
 
   const pageId = parsePageId(id);
   if (!pageId) return { ok: false, error: { code: "page-not-found" } };
@@ -539,7 +544,7 @@ export async function moveOrRenamePage(
     // A deleted page, and one with another version than the given one, match no row; then no name is checked either.
     const { count } = await getDb().page.updateMany({
       where: { id: pageId, deletedAt: null, version },
-      data: { name, tabId, lastEditedById, version: { increment: 1 } },
+      data: { name, tabId, lastEditedById, lastEditedVia, version: { increment: 1 } },
     });
     if (count === 0) return await refusedWrite(pageId, version, "page to move or rename");
     page = await findStoredPage(pageId);
@@ -581,6 +586,7 @@ export async function deletePage(
   if (isAdmin(actor)) return notAllowed(actor, "page not deleted: the actor is an admin");
   const lastEditedById = editorIdOf(actor);
   if (!lastEditedById) return { ok: false, error: { code: "failed" } };
+  const lastEditedVia = storedChannelOf(actor);
 
   const pageId = parsePageId(id);
   if (!pageId) return { ok: false, error: { code: "page-not-found" } };
@@ -606,7 +612,7 @@ export async function deletePage(
       // `updateMany` reports a page changed or deleted in the meantime as a count of 0; it sets `updatedAt` as well.
       const { count } = await tx.page.updateMany({
         where,
-        data: { deletedAt: new Date(), tabId: null, lastEditedById, version: { increment: 1 } },
+        data: { deletedAt: new Date(), tabId: null, lastEditedById, lastEditedVia, version: { increment: 1 } },
       });
       return count === 0 ? null : page;
     });
@@ -638,6 +644,7 @@ export async function restorePage(
   if (isAdmin(actor)) return notAllowed(actor, "page not restored: the actor is an admin");
   const lastEditedById = editorIdOf(actor);
   if (!lastEditedById) return { ok: false, error: { code: "failed" } };
+  const lastEditedVia = storedChannelOf(actor);
 
   const pageId = parsePageId(id);
   if (!pageId) return { ok: false, error: { code: "page-not-found" } };
@@ -659,7 +666,7 @@ export async function restorePage(
     // Only a deleted page can be restored; `updateMany` reports any other as a count of 0. It sets `updatedAt` as well.
     const { count } = await getDb().page.updateMany({
       where: { id: pageId, deletedAt: { not: null } },
-      data: { deletedAt: null, name, tabId, lastEditedById, version: { increment: 1 } },
+      data: { deletedAt: null, name, tabId, lastEditedById, lastEditedVia, version: { increment: 1 } },
     });
     page = count === 0 ? null : await findStoredPage(pageId);
   } catch (err) {

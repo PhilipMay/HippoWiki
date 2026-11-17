@@ -323,21 +323,21 @@ describe("the last editor of tabs", () => {
 });
 
 describe("the last editor in the folder and tab reads", () => {
-  it("is the user name of the last editor in the folder list and the tab list", async () => {
+  it("is the user name of the last editor and the channel in the folder list and the tab list", async () => {
     const bob = await createUser({ name: "bob" });
     const folder = await createFolder({ name: "docs", editor: user });
-    await createFolder({ name: "news", editor: bob });
-    await createTab({ folder, name: "guides", editor: bob });
+    await createFolder({ name: "news", editor: bob, via: "mcp" });
+    await createTab({ folder, name: "guides", editor: bob, via: "mcp" });
 
     // `toStrictEqual` fails on any further field of the user.
     expect(
       (await folderService.listFolders(actor))?.map(({ name, lastEditedBy }) => [name, lastEditedBy]),
     ).toStrictEqual([
-      ["docs", { name: "alice" }],
-      ["news", { name: "bob" }],
+      ["docs", { name: "alice", via: "web" }],
+      ["news", { name: "bob", via: "mcp" }],
     ]);
     expect((await folderService.listTabs(actor, folder.id))?.map(({ lastEditedBy }) => lastEditedBy)).toStrictEqual([
-      { name: "bob" },
+      { name: "bob", via: "mcp" },
     ]);
   });
 
@@ -351,13 +351,98 @@ describe("the last editor in the folder and tab reads", () => {
         { user: bob, role: "owner" },
       ],
     });
-    const tab = await createTab({ folder, name: "guides", editor: user });
+    const tab = await createTab({ folder, name: "guides", editor: user, via: "mcp" });
 
     await folderService.renameFolder(inBrowser(bob), folder.id, { name: "handbook" });
     await folderService.renameTab(inBrowser(bob), tab.id, { name: "news" });
 
-    expect((await folderService.listFolders(actor))?.[0]?.lastEditedBy).toEqual({ name: "bob" });
-    expect((await folderService.listTabs(actor, folder.id))?.[0]?.lastEditedBy).toEqual({ name: "bob" });
+    expect((await folderService.listFolders(actor))?.[0]?.lastEditedBy).toEqual({ name: "bob", via: "web" });
+    expect((await folderService.listTabs(actor, folder.id))?.[0]?.lastEditedBy).toEqual({ name: "bob", via: "web" });
+  });
+});
+
+describe("the channel of folders and tabs", () => {
+  /** The channel of the folder, the tab or the page with the given id, as stored. */
+  async function channelOfFolder(id: string) {
+    return (await getTestDb().folder.findUniqueOrThrow({ where: { id } })).lastEditedVia;
+  }
+  async function channelOfTab(id: string) {
+    return (await getTestDb().tab.findUniqueOrThrow({ where: { id } })).lastEditedVia;
+  }
+
+  it("is web after creating and renaming a folder in the browser", async () => {
+    const created = await folderService.createFolder(actor, { name: "docs" });
+    if (!created.ok) throw new Error("expected the folder to be created");
+    expect(await channelOfFolder(created.value.id)).toBe("web");
+
+    await getTestDb().folder.update({ where: { id: created.value.id }, data: { lastEditedVia: "mcp" } });
+    await folderService.renameFolder(actor, created.value.id, { name: "handbook" });
+    expect(await channelOfFolder(created.value.id)).toBe("web");
+  });
+
+  it("is the channel of the actor after creating and renaming a tab", async () => {
+    const folder = await createFolder({ name: "docs", roles: [{ user, role: "manager" }] });
+    const manager = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "manager" });
+
+    const inWeb = await folderService.createTab(actor, folder.id, { name: "guides" });
+    const throughMcp = await folderService.createTab(manager, folder.id, { name: "news" });
+    if (!inWeb.ok || !throughMcp.ok) throw new Error("expected the tabs to be created");
+    expect(await channelOfTab(inWeb.value.id)).toBe("web");
+    expect(await channelOfTab(throughMcp.value.id)).toBe("mcp");
+
+    await folderService.renameTab(manager, inWeb.value.id, { name: "manuals" });
+    await folderService.renameTab(actor, throughMcp.value.id, { name: "updates" });
+    expect(await channelOfTab(inWeb.value.id)).toBe("mcp");
+    expect(await channelOfTab(throughMcp.value.id)).toBe("web");
+  });
+
+  it("is the channel of the actor for each page deleted with a tab, and the folder keeps its own", async () => {
+    const folder = await createFolder({ name: "docs", roles: [{ user, role: "manager" }] });
+    const manager = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "manager" });
+    const viaMcp = await createTab({ folder, name: "drafts" });
+    const inWeb = await createTab({ folder, name: "notes", via: "mcp" });
+    const first = await createPage({ tab: viaMcp, name: "first" });
+    const second = await createPage({ tab: viaMcp, name: "second" });
+    const third = await createPage({ tab: inWeb, name: "third", via: "mcp" });
+
+    await folderService.deleteTab(manager, folder.id, viaMcp.id);
+    await folderService.deleteTab(actor, folder.id, inWeb.id);
+
+    const channels = await getTestDb().page.findMany({
+      select: { id: true, lastEditedVia: true },
+      orderBy: { name: "asc" },
+    });
+    expect(channels).toEqual([
+      { id: first.id, lastEditedVia: "mcp" },
+      { id: second.id, lastEditedVia: "mcp" },
+      { id: third.id, lastEditedVia: "web" },
+    ]);
+    expect(await channelOfFolder(folder.id)).toBe("web");
+  });
+
+  it("is not touched for the folder by creating a tab in it through MCP", async () => {
+    const folder = await createFolder({ name: "docs", roles: [{ user, role: "manager" }] });
+    const manager = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "manager" });
+
+    await expect(folderService.createTab(manager, folder.id, { name: "news" })).resolves.toMatchObject({ ok: true });
+
+    expect(await channelOfFolder(folder.id)).toBe("web");
+  });
+
+  it("stays as it was when a write is refused for a taken name or a role too low", async () => {
+    const folder = await createFolder({ name: "docs", via: "mcp", roles: [{ user, role: "owner" }] });
+    await createFolder({ name: "taken" });
+    await createTab({ folder, name: "taken" });
+    const tab = await createTab({ folder, name: "guides", via: "mcp" });
+    const writer = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "writer" });
+
+    await folderService.renameFolder(actor, folder.id, { name: "taken" });
+    await folderService.renameTab(actor, tab.id, { name: "taken" });
+    await folderService.renameTab(writer, tab.id, { name: "news" });
+    await folderService.deleteTab(writer, folder.id, tab.id);
+
+    expect(await channelOfFolder(folder.id)).toBe("mcp");
+    expect(await channelOfTab(tab.id)).toBe("mcp");
   });
 });
 
@@ -711,6 +796,7 @@ describe("deleting a tab", () => {
         folderId: folder.id,
         tabId: tab.id,
         lastEditedById: user.id,
+        lastEditedVia: "web",
       })),
     });
 
