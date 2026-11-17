@@ -3,7 +3,7 @@ import type { Page } from "@playwright/test";
 import { KNOWN_USER } from "../prisma/known-users";
 import { ADMIN_STORAGE_STATE, becomeUser } from "./support/auth";
 import { collectErrors } from "./support/browser";
-import { createFolder, createUser, getTestDb, resetTestDatabase } from "./support/database";
+import { createFolder, createPage, createTab, createUser, getTestDb, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
 
 test.beforeEach(async () => {
@@ -26,11 +26,11 @@ async function expectNotFound(page: Page, address: string) {
 const USER = KNOWN_USER.name;
 
 /**
- * Text that ends with "by <user>" and the role of the logged-in user, as the folder list shows the last editor of a
- * folder next to the own role, Owner for the folders of these tests.
+ * Text that ends with "by <user> via <channel>" and the role of the logged-in user, as the folder list shows the last
+ * editor of a folder and the channel next to the own role, Owner for the folders of these tests.
  */
-function by(user: string): RegExp {
-  return new RegExp(`by ${user}Owner$`);
+function by(user: string, via: "web" | "mcp" = "web"): RegExp {
+  return new RegExp(`by ${user} via ${via}Owner$`);
 }
 
 test("the folder list shows an empty state without folders", async ({ page }) => {
@@ -289,11 +289,11 @@ test("the folder list shows who changed each folder last; creating and renaming 
 }) => {
   const errors = collectErrors(page);
   const bob = await createUser({ name: "bob" });
-  await createFolder({ name: "archive", editor: bob });
+  await createFolder({ name: "archive", editor: bob, via: "mcp" });
   const items = page.getByRole("list", { name: "Folders" }).getByRole("listitem");
 
   await page.goto("/folders");
-  await expect(items).toHaveText([by("bob")]);
+  await expect(items).toHaveText([by("bob", "mcp")]);
 
   await page.goto("/folders?action=new");
   const dialog = page.getByRole("dialog", { name: "New folder" });
@@ -302,7 +302,7 @@ test("the folder list shows who changed each folder last; creating and renaming 
   await expect(page).toHaveURL("/folders/handbook");
 
   await page.goto("/folders");
-  await expect(items).toHaveText([by("bob"), by(USER)]);
+  await expect(items).toHaveText([by("bob", "mcp"), by(USER)]);
 
   await page.goto("/folders/archive?action=rename");
   const rename = page.getByRole("dialog", { name: "Rename folder" });
@@ -313,6 +313,32 @@ test("the folder list shows who changed each folder last; creating and renaming 
   await page.goto("/folders");
   await expect(listLinks(page)).toHaveText([/^handbook/, /^old-stuff/]);
   await expect(items).toHaveText([by(USER), by(USER)]);
+  expect(errors).toEqual([]);
+});
+
+test("the folder list and the contents of a folder show the channel after each last editor", async ({ page }) => {
+  const errors = collectErrors(page);
+  const bob = await createUser({ name: "bob" });
+  const handbook = await createFolder({ name: "handbook", editor: bob, via: "mcp" });
+  await createFolder({ name: "news", editor: bob });
+  await createPage({ folder: handbook, name: "alpha", title: "Alpha", editor: bob, via: "mcp" });
+  await createPage({ folder: handbook, name: "beta", title: "Beta", editor: bob });
+  await createTab({ folder: handbook, name: "drafts", editor: bob, via: "mcp" });
+  await createTab({ folder: handbook, name: "guides", editor: bob });
+
+  await page.goto("/folders");
+  await expect(page.getByRole("list", { name: "Folders" }).getByRole("listitem")).toHaveText([
+    by("bob", "mcp"),
+    by("bob", "web"),
+  ]);
+
+  await page.goto("/folders/handbook");
+  await expect(page.getByRole("list", { name: "Contents" }).getByRole("listitem")).toHaveText([
+    /^Alpha.*by bob via mcp$/,
+    /^Beta.*by bob via web$/,
+    /^drafts.*by bob via mcp$/,
+    /^guides.*by bob via web$/,
+  ]);
   expect(errors).toEqual([]);
 });
 

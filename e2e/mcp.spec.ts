@@ -771,15 +771,18 @@ test.describe("the write tools", () => {
   test.describe("in the browser", () => {
     test.use({ storageState: USER_STORAGE_STATE });
 
-    test("a page changed through MCP names the user as its last editor and nothing else", async ({ page, request }) => {
+    test("a page changed through MCP names the user and the channel mcp as its last change, and no app", async ({
+      page,
+      request,
+    }) => {
       const bob = await createUser({ name: "bob" });
       await createPage({ folder: projects, name: "plan", content: "# Plan", editor: bob });
 
       await write(request, "replace_page_content", { page: "plan", version: 1, content: "# Plan\n\nBy an agent." });
       await page.goto("/folders/projects/plan.md");
 
-      await expect(page.getByText(/^Last updated /)).toHaveText(new RegExp(`by ${KNOWN_USER.name}$`));
-      await expect(page.getByRole("main")).not.toContainText(/MCP|agent app|connected app|via/i);
+      await expect(page.getByText(/^Last updated /)).toHaveText(new RegExp(`by ${KNOWN_USER.name} via mcp$`));
+      await expect(page.getByRole("main")).not.toContainText(/agent app|connected app/i);
     });
   });
 });
@@ -1075,7 +1078,7 @@ test.describe("the tools of a Manager connection", () => {
   test.describe("in the browser", () => {
     test.use({ storageState: USER_STORAGE_STATE });
 
-    test("a page deleted through MCP is listed under Deleted pages with the user who deleted it", async ({
+    test("a page deleted through MCP is listed under Deleted pages with the user who deleted it, via mcp", async ({
       page,
       request,
     }) => {
@@ -1091,10 +1094,11 @@ test.describe("the tools of a Manager connection", () => {
         .filter({ has: page.getByRole("cell") });
       await expect(rows).toHaveCount(1);
       await expect(rows.nth(0)).toContainText("plan");
-      await expect(rows.nth(0)).toContainText(new RegExp(`${KNOWN_USER.name}$`));
+      await expect(rows.nth(0).getByRole("cell").nth(3)).toHaveText(KNOWN_USER.name);
+      await expect(rows.nth(0).getByRole("cell").nth(4)).toHaveText("mcp");
     });
 
-    test("the pages of a tab deleted through MCP are listed under Deleted pages with the user who deleted them", async ({
+    test("the pages of a tab deleted through MCP are listed under Deleted pages with the user who deleted them, via mcp", async ({
       page,
       request,
     }) => {
@@ -1112,7 +1116,10 @@ test.describe("the tools of a Manager connection", () => {
         .getByRole("row")
         .filter({ has: page.getByRole("cell") });
       await expect(rows).toHaveCount(5);
-      for (const i of [0, 1, 2, 3, 4]) await expect(rows.nth(i)).toContainText(new RegExp(`${KNOWN_USER.name}$`));
+      for (const i of [0, 1, 2, 3, 4]) {
+        await expect(rows.nth(i).getByRole("cell").nth(3)).toHaveText(KNOWN_USER.name);
+        await expect(rows.nth(i).getByRole("cell").nth(4)).toHaveText("mcp");
+      }
     });
 
     test("a tab deleted in the browser meanwhile is a tool error of delete_tab that changes nothing", async ({
@@ -1150,9 +1157,9 @@ test.describe("the tools of a Manager connection", () => {
       await page.goto("/folders/projects");
 
       await expect(items).toHaveText([
-        new RegExp(`^archive.*by ${KNOWN_USER.name}$`),
-        new RegExp(`^meetings.*by ${KNOWN_USER.name}$`),
-        /^other.*by bob$/,
+        new RegExp(`^archive.*by ${KNOWN_USER.name} via mcp$`),
+        new RegExp(`^meetings.*by ${KNOWN_USER.name} via mcp$`),
+        /^other.*by bob via web$/,
       ]);
     });
   });

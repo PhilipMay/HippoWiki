@@ -11,6 +11,7 @@ import Link from "@/components/Link";
 import type { TabSummary } from "@/features/folders/service";
 import PageListItem from "@/features/pages/components/PageListItem";
 import type { PageSummary } from "@/features/pages/service";
+import { editorWithChannel } from "@/features/users/records";
 import { tabPath } from "@/lib/addresses";
 import { formatDateTime } from "@/lib/format";
 
@@ -61,7 +62,7 @@ export default function FolderContentsList({ folderName, pages, tabs }: FolderCo
                 secondary={
                   <>
                     Updated <time dateTime={tab.updatedAt.toISOString()}>{formatDateTime(tab.updatedAt)}</time> by{" "}
-                    {tab.lastEditedBy.name}
+                    {editorWithChannel(tab.lastEditedBy)}
                   </>
                 }
                 sx={{ overflowWrap: "anywhere" }}

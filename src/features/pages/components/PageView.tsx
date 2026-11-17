@@ -15,6 +15,7 @@ import MarkdownContent from "@/features/pages/components/MarkdownContent";
 import MoveOrRenamePageDialog from "@/features/pages/components/MoveOrRenamePageDialog";
 import PageForm from "@/features/pages/components/PageForm";
 import type { PageWithPlace } from "@/features/pages/service";
+import { editorWithChannel } from "@/features/users/records";
 import { PAGE_NOTICES, pagePath, parseChoice, type PageNotice, type SearchParams } from "@/lib/addresses";
 import { formatDateTime } from "@/lib/format";
 
@@ -55,11 +56,11 @@ export function parsePageNotice(
 }
 
 /**
- * The message of the notice `changed`: who changed the page last and when, as the page view shows them. The editor or
+ * The message of the notice `changed`: who changed the page last, how and when, as the page view shows them. The editor or
  * dialog shows it after a change was refused, because the page was changed after it was opened.
  */
 function changedMessage(page: PageWithPlace): string {
-  return `This page was changed by ${page.lastEditedBy.name} at ${formatDateTime(page.updatedAt)} after you opened it.`;
+  return `This page was changed by ${editorWithChannel(page.lastEditedBy)} at ${formatDateTime(page.updatedAt)} after you opened it.`;
 }
 
 /** The browser title of a page address with the given action. */
@@ -117,7 +118,7 @@ export default async function PageView({ page, action, notice }: PageViewProps) 
         <Stack spacing={1} sx={{ mb: 3 }}>
           <Typography variant="body2" color="text.secondary">
             Last updated <time dateTime={page.updatedAt.toISOString()}>{formatDateTime(page.updatedAt)}</time> by{" "}
-            {page.lastEditedBy.name}
+            {editorWithChannel(page.lastEditedBy)}
           </Typography>
           {/* Only what the role includes is offered; a Reader gets no buttons at all. */}
           {mayDo(page.role, "editPage") && (

@@ -6,6 +6,7 @@ import ListItemText from "@mui/material/ListItemText";
 
 import Link from "@/components/Link";
 import type { PageSummary } from "@/features/pages/service";
+import { editorWithChannel } from "@/features/users/records";
 import { pagePath } from "@/lib/addresses";
 import { formatDateTime } from "@/lib/format";
 
@@ -36,7 +37,7 @@ export default function PageListItem({ page, folderName, tabName, divider }: Pag
             <>
               {page.name}.md · Updated{" "}
               <time dateTime={page.updatedAt.toISOString()}>{formatDateTime(page.updatedAt)}</time> by{" "}
-              {page.lastEditedBy.name}
+              {editorWithChannel(page.lastEditedBy)}
             </>
           }
           slotProps={{ primary: { sx: { overflowWrap: "anywhere" } } }}

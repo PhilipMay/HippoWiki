@@ -12,6 +12,7 @@ import { restorePage } from "@/features/pages/actions";
 import MarkdownContent from "@/features/pages/components/MarkdownContent";
 import RestorePageDialog from "@/features/pages/components/RestorePageDialog";
 import type { DeletedPage } from "@/features/pages/service";
+import { editorWithChannel } from "@/features/users/records";
 import { deletedPagePath } from "@/lib/addresses";
 import { formatDateTime } from "@/lib/format";
 
@@ -48,7 +49,7 @@ export default async function DeletedPageView({ page, action }: DeletedPageViewP
         <Stack spacing={1} sx={{ mb: 3 }}>
           <Typography variant="body2" color="text.secondary">
             Deleted <time dateTime={page.deletedAt.toISOString()}>{formatDateTime(page.deletedAt)}</time> by{" "}
-            {page.lastEditedBy.name}
+            {editorWithChannel(page.lastEditedBy)}
           </Typography>
           <Stack direction="row" spacing={2} sx={{ pt: 1 }}>
             <Button component={Link} href={deletedPagePath(folderName, page.id, "restore")} variant="outlined">

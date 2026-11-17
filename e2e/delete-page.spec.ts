@@ -38,9 +38,9 @@ async function deleteThroughDialog(page: Page, address: string) {
 /** The logged-in user of the tests, who makes every change through the GUI. */
 const USER = KNOWN_USER.name;
 
-/** Text that ends with "by <user>", as the lists and views show the last editor. */
-function by(user: string): RegExp {
-  return new RegExp(`by ${user}$`);
+/** Text that ends with "by <user> via <channel>", as the lists and views show the last editor and the channel. */
+function by(user: string, via: "web" | "mcp" = "web"): RegExp {
+  return new RegExp(`by ${user} via ${via}$`);
 }
 
 test("deleting a page placed directly in a folder leads to the folder and removes it everywhere", async ({ page }) => {
@@ -164,7 +164,7 @@ test("deleting a page that was deleted in the meantime shows an error in the dia
 test("the deleted pages and the deleted page show the logged-in user who deleted the page", async ({ page }) => {
   const errors = collectErrors(page);
   const bob = await createUser({ name: "bob" });
-  const removed = await createPage({ folder: handbook, name: "removed", editor: bob });
+  const removed = await createPage({ folder: handbook, name: "removed", editor: bob, via: "mcp" });
 
   await deleteThroughDialog(page, "/folders/handbook/removed.md");
   await expect(page).toHaveURL("/folders/handbook");
@@ -174,7 +174,8 @@ test("the deleted pages and the deleted page show the logged-in user who deleted
     .getByRole("table", { name: "Deleted pages" })
     .getByRole("row")
     .filter({ has: page.getByRole("cell") });
-  await expect(rows.getByRole("cell").last()).toHaveText(USER);
+  await expect(rows.getByRole("cell").nth(3)).toHaveText(USER);
+  await expect(rows.getByRole("cell").nth(4)).toHaveText("web");
   await page.goto(`/deleted-pages/handbook/${removed.id}`);
   await expect(page.getByRole("article").getByText(/^Deleted /)).toHaveText(by(USER));
   expect(errors).toEqual([]);
@@ -217,7 +218,9 @@ test.describe("a page changed after the dialog was opened", () => {
 
     // R8, R9: the dialog stays open with the message, and the page is still at its address.
     await expect(page).toHaveURL("/folders/team/plan.md?action=delete&notice=changed");
-    await expect(dialog.getByRole("alert")).toHaveText(`This page was changed by bob at ${time} after you opened it.`);
+    await expect(dialog.getByRole("alert")).toHaveText(
+      `This page was changed by bob via web at ${time} after you opened it.`,
+    );
     expect(await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).toMatchObject({
       deletedAt: null,
       content: "# Plan\n\nBob's version",
@@ -229,6 +232,30 @@ test.describe("a page changed after the dialog was opened", () => {
     expect((await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).deletedAt).not.toBeNull();
     expect(errors).toEqual([]);
     await other.context.close();
+  });
+
+  test("names the channel mcp for a page changed through MCP after the dialog was opened", async ({ page }) => {
+    const plan = await createPage({ folder: team, name: "plan", content: "# Plan\n\nFirst draft" });
+
+    await page.goto("/folders/team/plan.md?action=delete");
+    // A change through MCP meanwhile, as a connection of bob stores it.
+    await getTestDb().page.update({
+      where: { id: plan.id },
+      data: {
+        content: "# Plan\n\nBy an agent",
+        version: { increment: 1 },
+        lastEditedById: bob.id,
+        lastEditedVia: "mcp",
+      },
+    });
+    const dialog = deleteDialog(page);
+    await dialog.getByRole("button", { name: "Delete" }).click();
+
+    await expect(page).toHaveURL("/folders/team/plan.md?action=delete&notice=changed");
+    await expect(dialog.getByRole("alert")).toHaveText(
+      /^This page was changed by bob via mcp at .+ after you opened it\.$/,
+    );
+    expect((await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).deletedAt).toBeNull();
   });
 
   // R12: the dialog is shown again at the page's new address.
@@ -248,7 +275,9 @@ test.describe("a page changed after the dialog was opened", () => {
 
     await expect(page).toHaveURL("/folders/team/release-plan.md?action=delete&notice=changed");
     await expect(dialog).toContainText("Delete the page release-plan.md?");
-    await expect(dialog.getByRole("alert")).toHaveText(/^This page was changed by bob at .+ after you opened it\.$/);
+    await expect(dialog.getByRole("alert")).toHaveText(
+      /^This page was changed by bob via web at .+ after you opened it\.$/,
+    );
     expect((await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).deletedAt).toBeNull();
     await other.context.close();
   });
@@ -284,7 +313,7 @@ test.describe("a page changed after the dialog was opened", () => {
 
     await expect(page).toHaveURL("/folders/team/plan.md?action=delete&notice=changed");
     await expect(deleteDialog(page).getByRole("alert")).toHaveText(
-      /^This page was changed by bob at .+ after you opened it\.$/,
+      /^This page was changed by bob via web at .+ after you opened it\.$/,
     );
     expect(await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).toStrictEqual(plan);
   });

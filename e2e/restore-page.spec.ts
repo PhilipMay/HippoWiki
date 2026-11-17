@@ -38,9 +38,9 @@ async function openRestoreDialog(page: Page, id: string) {
 /** The logged-in user of the tests, who makes every change through the GUI. */
 const USER = KNOWN_USER.name;
 
-/** Text that ends with "by <user>", as the lists and views show the last editor. */
-function by(user: string): RegExp {
-  return new RegExp(`by ${user}$`);
+/** Text that ends with "by <user> via <channel>", as the lists and views show the last editor and the channel. */
+function by(user: string, via: "web" | "mcp" = "web"): RegExp {
+  return new RegExp(`by ${user} via ${via}$`);
 }
 
 test("restoring a page directly into the folder under its old name leads to it", async ({ page }) => {
@@ -242,15 +242,17 @@ test("the second of two Managers who restore the same page at once gets an error
   await other.context.close();
 });
 
-test("the restored page shows the logged-in user who restored it", async ({ page }) => {
+test("the restored page shows the logged-in user who restored it, via web", async ({ page }) => {
   const errors = collectErrors(page);
   const bob = await createUser({ name: "bob" });
+  // Deleted through MCP; only the browser restores.
   const removed = await createPage({
     folder: handbook,
     name: "removed",
     content: CONTENT,
     deletedAt: new Date("2026-11-01T10:00:00Z"),
     editor: bob,
+    via: "mcp",
   });
 
   const dialog = await openRestoreDialog(page, removed.id);

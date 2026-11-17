@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { collectErrors } from "./support/browser";
-import { createFolder, createPage, resetTestDatabase } from "./support/database";
+import { createFolder, createPage, createUser, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
 
 test.beforeEach(async () => {
@@ -246,3 +246,15 @@ for (const address of [
     await expect(page.getByRole("link", { name: "Back to folders" })).toHaveAttribute("href", "/folders");
   });
 }
+
+test("a page shows when, by whom and how it was last changed", async ({ page }) => {
+  const bob = await createUser({ name: "bob" });
+  const folder = await createFolder({ name: "notes" });
+  await createPage({ folder, name: "by-agent", title: "By agent", editor: bob, via: "mcp" });
+  await createPage({ folder, name: "by-hand", title: "By hand", editor: bob });
+
+  await page.goto("/folders/notes/by-agent.md");
+  await expect(page.getByText(/^Last updated /)).toHaveText(/^Last updated .+ by bob via mcp$/);
+  await page.goto("/folders/notes/by-hand.md");
+  await expect(page.getByText(/^Last updated /)).toHaveText(/^Last updated .+ by bob via web$/);
+});

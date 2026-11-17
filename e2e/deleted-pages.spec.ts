@@ -22,9 +22,9 @@ async function expectNotFound(page: Page, address: string) {
 /** The logged-in user of the tests, who makes every change through the GUI. */
 const USER = KNOWN_USER.name;
 
-/** Text that ends with "by <user>", as the lists and views show the last editor. */
-function by(user: string): RegExp {
-  return new RegExp(`by ${user}$`);
+/** Text that ends with "by <user> via <channel>", as the lists and views show the last editor and the channel. */
+function by(user: string, via: "web" | "mcp" = "web"): RegExp {
+  return new RegExp(`by ${user} via ${via}$`);
 }
 
 test("a deleted page is missing from the folder contents, the tab and all pages", async ({ page }) => {
@@ -123,7 +123,7 @@ test("the deleted pages button of a folder leads to its deleted pages, newest fi
 
   const table = page.getByRole("table", { name: "Deleted pages" });
   // Where in the folder a page was is not known, so there is no tab column.
-  await expect(table.getByRole("columnheader")).toHaveText(["Name", "Title", "Deleted", "Deleted by"]);
+  await expect(table.getByRole("columnheader")).toHaveText(["Name", "Title", "Deleted", "Deleted by", "Via"]);
   const rows = deletedPageRows(page);
   await expect(rows).toHaveText([/^newerNewer page/, /^olderOlder page/]);
   await expect(rows.nth(1).locator("time")).toHaveAttribute("datetime", "2026-11-01T10:00:00.000Z");
@@ -228,7 +228,9 @@ test.describe("addresses that are no deleted pages", () => {
   });
 });
 
-test("the deleted pages show who deleted each page in a column, and the deleted page in its view", async ({ page }) => {
+test("the deleted pages show who deleted each page and how in columns, and the deleted page in its view", async ({
+  page,
+}) => {
   const errors = collectErrors(page);
   const bob = await createUser({ name: "bob" });
   const folder = await createFolder({ name: "docs" });
@@ -237,19 +239,22 @@ test("the deleted pages show who deleted each page in a column, and the deleted 
     name: "by-bob",
     deletedAt: new Date("2026-11-02T10:00:00Z"),
     editor: bob,
+    via: "mcp",
   });
   const user = await getTestDb().user.findUniqueOrThrow({ where: { id: KNOWN_USER.id } });
   await createPage({ folder, name: "by-user", deletedAt: new Date("2026-11-01T10:00:00Z"), editor: user });
 
   await page.goto("/deleted-pages/docs");
   const table = page.getByRole("table", { name: "Deleted pages" });
-  await expect(table.getByRole("columnheader")).toHaveText(["Name", "Title", "Deleted", "Deleted by"]);
+  await expect(table.getByRole("columnheader")).toHaveText(["Name", "Title", "Deleted", "Deleted by", "Via"]);
   const rows = table.getByRole("row").filter({ has: page.getByRole("cell") });
   await expect(rows).toHaveText([/^by-bob/, /^by-user/]);
-  await expect(rows.nth(0).getByRole("cell").last()).toHaveText("bob");
-  await expect(rows.nth(1).getByRole("cell").last()).toHaveText(USER);
+  await expect(rows.nth(0).getByRole("cell").nth(3)).toHaveText("bob");
+  await expect(rows.nth(0).getByRole("cell").nth(4)).toHaveText("mcp");
+  await expect(rows.nth(1).getByRole("cell").nth(3)).toHaveText(USER);
+  await expect(rows.nth(1).getByRole("cell").nth(4)).toHaveText("web");
 
   await page.goto(`/deleted-pages/docs/${removed.id}`);
-  await expect(page.getByRole("article").getByText(/^Deleted /)).toHaveText(by("bob"));
+  await expect(page.getByRole("article").getByText(/^Deleted /)).toHaveText(by("bob", "mcp"));
   expect(errors).toEqual([]);
 });

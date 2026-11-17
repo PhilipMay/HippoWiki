@@ -36,9 +36,9 @@ async function expectNotFound(page: BrowserPage, address: string) {
 /** The logged-in user of the tests, who makes every change through the GUI. */
 const USER = KNOWN_USER.name;
 
-/** Text that ends with "by <user>", as the lists and views show the last editor. */
-function by(user: string): RegExp {
-  return new RegExp(`by ${user}$`);
+/** Text that ends with "by <user> via <channel>", as the lists and views show the last editor and the channel. */
+function by(user: string, via: "web" | "mcp" = "web"): RegExp {
+  return new RegExp(`by ${user} via ${via}$`);
 }
 
 test("editing the content shows the new version and keeps the name", async ({ page }) => {
@@ -326,10 +326,10 @@ test("a folder and a page can be created, and the page edited and renamed", asyn
 test("editing a page makes the logged-in user its last editor in the page view and the list", async ({ page }) => {
   const errors = collectErrors(page);
   const bob = await createUser({ name: "bob" });
-  await createPage({ folder: handbook, name: "edited", content: "# Edited", editor: bob });
+  await createPage({ folder: handbook, name: "edited", content: "# Edited", editor: bob, via: "mcp" });
 
   await page.goto("/folders/handbook/edited.md");
-  await expect(page.getByText(/^Last updated /)).toHaveText(by("bob"));
+  await expect(page.getByText(/^Last updated /)).toHaveText(/^Last updated .+ by bob via mcp$/);
   await page.goto("/folders/handbook/edited.md?action=edit");
   await page.getByLabel("Content").fill("# Edited\n\nNew text");
   await page.getByRole("button", { name: "Save" }).click();
@@ -407,7 +407,9 @@ test.describe("a page changed after the editor was opened", () => {
     await expect(page).toHaveURL("/folders/team/plan.md?action=edit&notice=changed");
     await expect(page.getByLabel("Content")).toHaveValue("# Plan\n\nBob's version");
     const time = await shownTime(other.page, "/folders/team/plan.md");
-    await expect(changedMessage(page)).toHaveText(`This page was changed by bob at ${time} after you opened it.`);
+    await expect(changedMessage(page)).toHaveText(
+      `This page was changed by bob via web at ${time} after you opened it.`,
+    );
     expect((await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).content).toBe(
       "# Plan\n\nBob's version",
     );
@@ -418,6 +420,27 @@ test.describe("a page changed after the editor was opened", () => {
     await expect(page.getByText(/^Last updated /)).toHaveText(by(USER));
     expect(errors).toEqual([]);
     await other.context.close();
+  });
+
+  test("names the channel mcp for a page changed through MCP after the editor was opened", async ({ page }) => {
+    const plan = await createPage({ folder: team, name: "plan", content: "# Plan\n\nFirst draft" });
+
+    await page.goto("/folders/team/plan.md?action=edit");
+    // A change through MCP meanwhile, as a connection of bob stores it.
+    await getTestDb().page.update({
+      where: { id: plan.id },
+      data: {
+        content: "# Plan\n\nBy an agent",
+        version: { increment: 1 },
+        lastEditedById: bob.id,
+        lastEditedVia: "mcp",
+      },
+    });
+    await page.getByLabel("Content").fill("# Plan\n\nAlice's version");
+    await page.getByRole("button", { name: "Save" }).click();
+
+    await expect(page).toHaveURL("/folders/team/plan.md?action=edit&notice=changed");
+    await expect(changedMessage(page)).toHaveText(/^This page was changed by bob via mcp at .+ after you opened it\.$/);
   });
 
   // R10: the user's own save in another tab counts like the save of another user.
@@ -437,7 +460,7 @@ test.describe("a page changed after the editor was opened", () => {
     await expect(second).toHaveURL("/folders/team/plan.md?action=edit&notice=changed");
     await expect(second.getByLabel("Content")).toHaveValue("# Plan\n\nFrom the first tab");
     await expect(changedMessage(second)).toHaveText(
-      new RegExp(`^This page was changed by ${USER} at .+ after you opened it\\.$`),
+      new RegExp(`^This page was changed by ${USER} via web at .+ after you opened it\\.$`),
     );
   });
 
@@ -458,7 +481,7 @@ test.describe("a page changed after the editor was opened", () => {
 
     await expect(page).toHaveURL("/folders/team/release-plan.md?action=edit&notice=changed");
     await expect(page.getByLabel("Content")).toHaveValue("# Plan\n\nFirst draft");
-    await expect(changedMessage(page)).toHaveText(/^This page was changed by bob at .+ after you opened it\.$/);
+    await expect(changedMessage(page)).toHaveText(/^This page was changed by bob via web at .+ after you opened it\.$/);
     expect((await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).content).toBe(
       "# Plan\n\nFirst draft",
     );
@@ -481,7 +504,7 @@ test.describe("a page changed after the editor was opened", () => {
 
     await expect(page).toHaveURL("/folders/team/plan.md?action=edit&notice=changed");
     await expect(page.getByLabel("Content")).toHaveValue("# Plan\n\nStored");
-    await expect(changedMessage(page)).toHaveText(/^This page was changed by bob at .+ after you opened it\.$/);
+    await expect(changedMessage(page)).toHaveText(/^This page was changed by bob via web at .+ after you opened it\.$/);
     expect(await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).toStrictEqual(plan);
   });
 

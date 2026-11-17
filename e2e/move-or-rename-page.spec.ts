@@ -40,9 +40,9 @@ async function expectNotFound(page: Page, address: string) {
 /** The logged-in user of the tests, who makes every change through the GUI. */
 const USER = KNOWN_USER.name;
 
-/** Text that ends with "by <user>", as the lists and views show the last editor. */
-function by(user: string): RegExp {
-  return new RegExp(`by ${user}$`);
+/** Text that ends with "by <user> via <channel>", as the lists and views show the last editor and the channel. */
+function by(user: string, via: "web" | "mcp" = "web"): RegExp {
+  return new RegExp(`by ${user} via ${via}$`);
 }
 
 test("Move or rename opens the dialog with the current name, place and address", async ({ page }) => {
@@ -504,7 +504,9 @@ test.describe("a page changed after the dialog was opened", () => {
 
     // R8, R9: the dialog stays open with the name and place as stored and the message.
     await expect(page).toHaveURL("/folders/team/plan.md?action=move-or-rename&notice=changed");
-    await expect(dialog.getByRole("alert")).toHaveText(`This page was changed by bob at ${time} after you opened it.`);
+    await expect(dialog.getByRole("alert")).toHaveText(
+      `This page was changed by bob via web at ${time} after you opened it.`,
+    );
     await expect(dialog.getByLabel("Name")).toHaveValue("plan");
     await expect(dialog.getByRole("radio", { name: "Directly in the folder" })).toBeChecked();
     expect(await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).toMatchObject({
@@ -519,6 +521,30 @@ test.describe("a page changed after the dialog was opened", () => {
     await expect(page).toHaveURL("/folders/team/guides/new-plan.md");
     expect(errors).toEqual([]);
     await other.context.close();
+  });
+
+  test("names the channel mcp for a page changed through MCP after the dialog was opened", async ({ page }) => {
+    const plan = await createPage({ folder: team, name: "plan", content: "# Plan\n\nFirst draft" });
+
+    await page.goto("/folders/team/plan.md?action=move-or-rename");
+    // A change through MCP meanwhile, as a connection of bob stores it.
+    await getTestDb().page.update({
+      where: { id: plan.id },
+      data: {
+        content: "# Plan\n\nBy an agent",
+        version: { increment: 1 },
+        lastEditedById: bob.id,
+        lastEditedVia: "mcp",
+      },
+    });
+    const dialog = dialogOf(page);
+    await dialog.getByLabel("Name").fill("new-plan");
+    await dialog.getByRole("button", { name: "Save" }).click();
+
+    await expect(page).toHaveURL("/folders/team/plan.md?action=move-or-rename&notice=changed");
+    await expect(dialog.getByRole("alert")).toHaveText(
+      /^This page was changed by bob via mcp at .+ after you opened it\.$/,
+    );
   });
 
   // R12: the dialog is shown again at the page's new address, with the new name.
@@ -541,7 +567,9 @@ test.describe("a page changed after the dialog was opened", () => {
 
     await expect(page).toHaveURL("/folders/team/release-plan.md?action=move-or-rename&notice=changed");
     await expect(dialog.getByLabel("Name")).toHaveValue("release-plan");
-    await expect(dialog.getByRole("alert")).toHaveText(/^This page was changed by bob at .+ after you opened it\.$/);
+    await expect(dialog.getByRole("alert")).toHaveText(
+      /^This page was changed by bob via web at .+ after you opened it\.$/,
+    );
     expect((await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).name).toBe("release-plan");
     await other.context.close();
   });
@@ -565,7 +593,9 @@ test.describe("a page changed after the dialog was opened", () => {
     await expect(page).toHaveURL("/folders/team/plan.md?action=move-or-rename&notice=changed");
     await expect(dialog.getByLabel("Name")).toHaveValue("plan");
     await expect(dialog.getByRole("radio", { name: "Directly in the folder" })).toBeChecked();
-    await expect(dialog.getByRole("alert")).toHaveText(/^This page was changed by bob at .+ after you opened it\.$/);
+    await expect(dialog.getByRole("alert")).toHaveText(
+      /^This page was changed by bob via web at .+ after you opened it\.$/,
+    );
     expect(await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).toStrictEqual(plan);
   });
 });

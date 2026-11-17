@@ -14,13 +14,14 @@ test.beforeEach(async () => {
   const handbook = await createFolder({ name: "handbook" });
   const guides = await createTab({ folder: handbook, name: "guides" });
   await createPage({ folder: handbook, name: "overview", content: "# Secret overview\n\nSecret text" });
-  await createPage({ tab: guides, name: "setup", content: "# Secret setup\n\nSecret text" });
+  await createPage({ tab: guides, name: "setup", content: "# Secret setup\n\nSecret text", via: "mcp" });
   await createPage({
     id: DELETED_PAGE_ID,
     folder: handbook,
     name: "removed",
     content: "# Secret removed page\n\nSecret text",
     deletedAt: new Date(),
+    via: "mcp",
   });
 });
 
@@ -333,14 +334,22 @@ test.describe("with the saved login of the admin", () => {
     ["the deleted pages of a folder that does not exist", "/deleted-pages/nowhere"],
   ] as const;
 
+  test("the admin overview of the folder roles shows no last editor and no channel", async ({ page }) => {
+    await page.goto("/folder-roles");
+
+    await expect(page.getByRole("main")).toContainText("handbook");
+    await expect(page.getByRole("main")).not.toContainText(/Updated|Deleted| via (web|mcp)|\bweb\b|\bmcp\b/);
+  });
+
   for (const [what, address] of CONTENT_ADDRESSES) {
     test(`${what} (${address}) shows the not-found page`, async ({ page }) => {
       const response = await page.goto(address);
 
       expect(response?.status()).toBe(404);
       await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
-      // Neither the content nor the names of folders, tabs and pages.
+      // Neither the content nor the names of folders, tabs and pages, nor a last editor or a channel.
       await expect(page.getByText(/Secret|handbook|guides|overview|setup|removed/)).toHaveCount(0);
+      await expect(page.getByText(/Updated|Deleted| via (web|mcp)/)).toHaveCount(0);
       await expect(page.getByRole("banner").getByText(KNOWN_ADMIN.name, { exact: true })).toBeVisible();
     });
   }

@@ -37,9 +37,9 @@ async function expectNotFound(page: Page, address: string) {
 /** The logged-in user of the tests, who makes every change through the GUI. */
 const USER = KNOWN_USER.name;
 
-/** Text that ends with "by <user>", as the lists and views show the last editor. */
-function by(user: string): RegExp {
-  return new RegExp(`by ${user}$`);
+/** Text that ends with "by <user> via <channel>", as the lists and views show the last editor and the channel. */
+function by(user: string, via: "web" | "mcp" = "web"): RegExp {
+  return new RegExp(`by ${user} via ${via}$`);
 }
 
 test("creating a tab through the dialog shows the new tab", async ({ page }) => {
@@ -558,11 +558,11 @@ test("the folder contents show who changed each tab last; creating and renaming 
 }) => {
   const errors = collectErrors(page);
   const bob = await createUser({ name: "bob" });
-  await createTab({ folder: handbook, name: "guides", editor: bob });
+  await createTab({ folder: handbook, name: "guides", editor: bob, via: "mcp" });
   const items = page.getByRole("list", { name: "Contents" }).getByRole("listitem");
 
   await page.goto("/folders/handbook");
-  await expect(items).toHaveText([by("bob")]);
+  await expect(items).toHaveText([by("bob", "mcp")]);
 
   await page.goto("/folders/handbook?action=new-tab");
   const dialog = page.getByRole("dialog", { name: "New tab" });
@@ -571,7 +571,7 @@ test("the folder contents show who changed each tab last; creating and renaming 
   await expect(page).toHaveURL("/folders/handbook/news");
 
   await page.goto("/folders/handbook");
-  await expect(items).toHaveText([by("bob"), by(USER)]);
+  await expect(items).toHaveText([by("bob", "mcp"), by(USER)]);
 
   await page.goto("/folders/handbook/guides?action=rename");
   const rename = page.getByRole("dialog", { name: "Rename tab" });
@@ -582,5 +582,21 @@ test("the folder contents show who changed each tab last; creating and renaming 
   await page.goto("/folders/handbook");
   await expect(contentsLinks(page)).toHaveText([/^manuals/, /^news/]);
   await expect(items).toHaveText([by(USER), by(USER)]);
+  expect(errors).toEqual([]);
+});
+
+test("the pages of a tab show the channel after each last editor", async ({ page }) => {
+  const errors = collectErrors(page);
+  const bob = await createUser({ name: "bob" });
+  const guides = await createTab({ folder: handbook, name: "guides" });
+  await createPage({ tab: guides, name: "alpha", title: "Alpha", editor: bob, via: "mcp" });
+  await createPage({ tab: guides, name: "beta", title: "Beta", editor: bob });
+
+  await page.goto("/folders/handbook/guides");
+
+  await expect(page.getByRole("list", { name: "Pages" }).getByRole("listitem")).toHaveText([
+    by("bob", "mcp"),
+    by("bob", "web"),
+  ]);
   expect(errors).toEqual([]);
 });

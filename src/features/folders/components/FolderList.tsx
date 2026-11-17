@@ -8,6 +8,7 @@ import Typography from "@mui/material/Typography";
 import Link from "@/components/Link";
 import { ROLE_LABELS } from "@/features/folder-roles/roles";
 import type { FolderSummary } from "@/features/folders/service";
+import { editorWithChannel } from "@/features/users/records";
 import { folderPath } from "@/lib/addresses";
 import { formatDateTime } from "@/lib/format";
 
@@ -40,7 +41,7 @@ export default function FolderList({ folders }: { folders: FolderSummary[] }) {
                 secondary={
                   <>
                     Updated <time dateTime={folder.updatedAt.toISOString()}>{formatDateTime(folder.updatedAt)}</time> by{" "}
-                    {folder.lastEditedBy.name}
+                    {editorWithChannel(folder.lastEditedBy)}
                   </>
                 }
               />

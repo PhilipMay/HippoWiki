@@ -47,6 +47,7 @@ export default function AllPagesList({ pages, folderName }: AllPagesListProps) {
             <TableCell>Title</TableCell>
             <TableCell>Last update</TableCell>
             <TableCell>Updated by</TableCell>
+            <TableCell>Via</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -64,6 +65,7 @@ export default function AllPagesList({ pages, folderName }: AllPagesListProps) {
                 <time dateTime={page.updatedAt.toISOString()}>{formatDateTime(page.updatedAt)}</time>
               </TableCell>
               <TableCell sx={{ overflowWrap: "anywhere" }}>{page.lastEditedBy.name}</TableCell>
+              <TableCell>{page.lastEditedBy.via}</TableCell>
             </TableRow>
           ))}
         </TableBody>
