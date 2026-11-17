@@ -8,9 +8,9 @@ The specification lives in the `spec/` directory. This catalog should always be 
 
 - `spec/tech.md`: technology stack
 - `spec/requirements-workflow.md`: how the requirements of a feature are gathered in a guided conversation before its
-  step plan (starting and resuming, what may change, the rounds of questions, the checks for contradictions and
-  feasibility, how requirements are written, the template); the result is one file `spec/<feature>-requirements.md`,
-  listed here while it exists
+  step plan (starting and resuming, what may change, the commit on approval without a push, the rounds of questions,
+  the checks for contradictions and feasibility, how requirements are written, the template); the result is one file
+  `spec/<feature>-requirements.md`, listed here while it exists
 - `spec/mcp-manager-role-requirements.md`: the requirements of the Manager role for MCP (approved): the Manager address
   of a folder, the tools `delete_page`, `create_tab`, `rename_tab` and `delete_tab`, and what stays out of MCP
 - `spec/mcp-manager-role-steps.md`: the step plan of the Manager role for MCP (services for the actor of MCP, the
@@ -128,3 +128,5 @@ This applies to code reviews and to reviews of documents such as the files in `s
 - Do not ask whether something should be committed or pushed, and do not offer to do so.
 - After each finished step of a step plan, commit as described in `spec/step-plan-workflow.md`.
 - After the last step of a step plan, push as described in `spec/step-plan-workflow.md`.
+- After the requirements of a feature are approved, commit as described in `spec/requirements-workflow.md`; do not
+  push.

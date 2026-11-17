@@ -10,7 +10,7 @@ implements it.
 - When the feature has a requirements file `spec/<feature>-requirements.md` (see `requirements-workflow.md`), the step
   plan is written only once that file has the status `approved`, and it is written from it: its scope matches the
   scope of the requirements, every requirement ID is covered by a step, and the "Test" sections check the acceptance
-  criteria. The commit of the first step includes the requirements file.
+  criteria. The requirements file is already committed when the conversation that gathered it ends.
 - A step plan has a goal, a scope (what is in, what is explicitly not in), an ordered checklist of steps, and for every
   step a "Goal", "Build" and "Test" section. "Test" lists the unit, integration and end-to-end tests the step adds (see
   `testing.md`), plus any manual checks that cannot be automated.

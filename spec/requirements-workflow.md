@@ -33,8 +33,10 @@ that leads the conversation with the user.
 - The conversation writes only the requirements file and its entry in the spec catalog of `CLAUDE.md`, which is added
   when the file is created. Nothing else changes: no code, configuration, tests, fixtures, other spec files,
   `README.md` or skills.
-- No Git action: do not commit and do not push. The requirements file stays in the working tree and is committed with
-  the first step of the step plan (see "Step plans" in `step-plan-workflow.md`).
+- Once the requirements are approved, commit the requirements file and its catalog entry in `CLAUDE.md` as one Git
+  commit on the current branch, without asking first. Stage only these two files. The message is a short lowercase
+  summary, for example `gather requirements for search`. Do not push. Before the approval nothing is committed, so an
+  interrupted conversation leaves the file in the working tree.
 - Reading is free and needed for the checks: the spec files, the code, and the documentation of the installed packages
   in `node_modules/`.
 - If the conversation shows that another spec file is wrong or that an entry of `roadmap.md` should change, name it in
@@ -57,9 +59,11 @@ that leads the conversation with the user.
      conversation can be resumed from the file.
 5. When no question is open, run all the checks once more on the whole file. Then present the whole file in the chat
    and ask the user with the question tool to approve it or to change something. A change leads back to step 4.
-6. On approval, set the status to `approved` and run `npm run check`; fix formatting with `npm run format`. Report
-   that the requirements are approved, name anything found in other spec files or in `roadmap.md` (see "What may
-   change"), and name the next step: writing the step plan `spec/<feature>-steps.md`.
+6. On approval, set the status to `approved` and run `npm run check`; fix formatting with `npm run format`. Then
+   commit (see "What may change"). Report that the requirements are approved, give the commit message, name anything
+   found in other spec files or in `roadmap.md` (see "What may change"), and name the next step as information only:
+   writing the step plan `spec/<feature>-steps.md`. Do not ask whether to write or implement the step plan, and do not
+   offer to.
 
 ## Asking questions
 
