@@ -91,7 +91,7 @@ model Tab {
 
 /// A wiki page with its Markdown source. It lives in exactly one folder: directly in it or in one of its tabs.
 model Page {
-  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   /// Derived from the content's first heading (`# Title`) on every save; never entered directly.
   title          String
   /// The page's part of its address, followed by `.md`: `/folders/<folder>/<name>.md` or, in a tab,
@@ -100,29 +100,31 @@ model Page {
   name           String
   /// Markdown source of the page.
   content        String
-  folderId       String        @db.Uuid
-  folder         Folder        @relation(fields: [folderId], references: [id], onDelete: Restrict)
+  folderId       String         @db.Uuid
+  folder         Folder         @relation(fields: [folderId], references: [id], onDelete: Restrict)
   /// The tab the page lives in; without one, the page is placed directly in its folder.
-  tabId          String?       @db.Uuid
+  tabId          String?        @db.Uuid
   /// The foreign key includes `folderId`, so the tab is always one of the page's folder.
-  tab            Tab?          @relation(fields: [tabId, folderId], references: [id, folderId], onDelete: Restrict)
-  createdAt      DateTime      @default(now()) @db.Timestamptz(3)
-  updatedAt      DateTime      @updatedAt @db.Timestamptz(3)
+  tab            Tab?           @relation(fields: [tabId, folderId], references: [id, folderId], onDelete: Restrict)
+  createdAt      DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime       @updatedAt @db.Timestamptz(3)
   /// When the page was deleted, or `null` for a page that is not deleted. A deleted page keeps its folder but has no
   /// tab, because its place inside the folder is forgotten; it is missing from every list and every page address.
-  deletedAt      DateTime?     @db.Timestamptz(3)
+  deletedAt      DateTime?      @db.Timestamptz(3)
   /// The user who last edited the page: changes on the same writes as `updatedAt` and `version`, so that all three
   /// describe the same change. Creating, editing, moving or renaming, deleting and restoring the page count as edits;
   /// for a deleted page it is the user who deleted it.
-  lastEditedById String        @db.Uuid
-  lastEditedBy   User          @relation("PageLastEditedBy", fields: [lastEditedById], references: [id], onDelete: Restrict)
+  lastEditedById String         @db.Uuid
+  lastEditedBy   User           @relation("PageLastEditedBy", fields: [lastEditedById], references: [id], onDelete: Restrict)
   /// How the page was last changed (`web` or `mcp`): changes on the same writes as the last editor; for a deleted page
   /// it is how the page was deleted.
   lastEditedVia  ChangeChannel
   /// The state of the page: 1 when it is created, counted up by every later write of the page, in the same write that
   /// changes `updatedAt` and the last editor. A content save, move, rename or delete states the version it is based on
   /// and is refused if that is not the stored one.
-  version        Int           @default(1)
+  version        Int            @default(1)
+  /// The revisions of the content, one per content change; kept for as long as the page exists.
+  revisions      PageRevision[]
 
   // Pages in a tab: unique within the tab. Deleted pages have no tab, so they are not covered.
   @@unique([tabId, name])
@@ -130,20 +132,49 @@ model Page {
   @@unique([folderId, name], where: { tabId: null, deletedAt: null })
 }
 
+/// A revision of a page: its content and title after a content change, stored in the same write as the change
+/// (`src/features/pages/service.ts`). Creating a page records revision 1, every content save that changes the content
+/// the next one, and a revert one that names the revision it went back to; moving, renaming, deleting and restoring a
+/// page record none. A revision is never changed or deleted.
+model PageRevision {
+  id         String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// The page of the revision. Pages are never removed, only soft deleted, so the revisions stay with them.
+  pageId     String        @db.Uuid
+  page       Page          @relation(fields: [pageId], references: [id], onDelete: Restrict)
+  /// The number of the revision: 1 for the oldest, counted up per page; unique per page.
+  number     Int
+  /// The title of the page after the change, derived from the content like that of the page.
+  title      String
+  /// The Markdown source of the page after the change.
+  content    String
+  /// When the change was made.
+  createdAt  DateTime      @default(now()) @db.Timestamptz(3)
+  /// The user who made the change, like the last editor of the page; users are not deleted.
+  userId     String        @db.Uuid
+  user       User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  /// How the change was made (`web` or `mcp`).
+  via        ChangeChannel
+  /// The number of the revision a revert went back to; `null` for every revision that no revert recorded.
+  revertedTo Int?
+
+  // The order of the history and the uniqueness of the number per page.
+  @@unique([pageId, number])
+}
+
 /// A user account. The table has the shape Better Auth expects for its `user` model with the `username` plugin; Better
 /// Auth reads it through its Prisma adapter, and the users service writes it with Prisma.
 model User {
-  id                 String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id                 String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   /// Better Auth needs a display name; it is always the same as `username`.
   name               String
   /// Better Auth needs an email address; it is the hidden placeholder `<username>@users.hippowiki.invalid`, which is
   /// never shown and never gets mail.
-  email              String       @unique
-  emailVerified      Boolean      @default(false)
+  email              String         @unique
+  emailVerified      Boolean        @default(false)
   /// A field of Better Auth that HippoWiki does not use.
   image              String?
   /// The user name people log in with; unique across the wiki.
-  username           String       @unique
+  username           String         @unique
   /// What the account may do: an admin manages the accounts, a user works with the content. Chosen when the account is
   /// created and never changed: a trigger in the migration refuses every update that changes it. No default, so that
   /// every write that creates a user has to name it.
@@ -151,15 +182,17 @@ model User {
   /// A field of the `username` plugin that HippoWiki does not use.
   displayUsername    String?
   /// Whether the user still has the first password and must set an own one before doing anything else.
-  mustChangePassword Boolean      @default(true)
-  createdAt          DateTime     @default(now()) @db.Timestamptz(3)
-  updatedAt          DateTime     @updatedAt @db.Timestamptz(3)
+  mustChangePassword Boolean        @default(true)
+  createdAt          DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime       @updatedAt @db.Timestamptz(3)
   sessions           Session[]
   accounts           Account[]
   /// The folders, tabs and pages the user edited last.
-  lastEditedFolders  Folder[]     @relation("FolderLastEditedBy")
-  lastEditedTabs     Tab[]        @relation("TabLastEditedBy")
-  lastEditedPages    Page[]       @relation("PageLastEditedBy")
+  lastEditedFolders  Folder[]       @relation("FolderLastEditedBy")
+  lastEditedTabs     Tab[]          @relation("TabLastEditedBy")
+  lastEditedPages    Page[]         @relation("PageLastEditedBy")
+  /// The revisions of pages the user made.
+  pageRevisions      PageRevision[]
   /// The grants of the user to OAuth clients, the connected apps of the account page.
   grants             OAuthGrant[]
   /// The authorization codes that wait to be exchanged for a grant of the user.

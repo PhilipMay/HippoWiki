@@ -12,6 +12,10 @@
 // write stores the actor as the last editor of the page, with the channel of the write (`storedChannelOf()`), and counts
 // its version up, in the same write that changes `updatedAt`; a new page starts with version 1. The folder and the tab
 // of the page keep their `updatedAt`, last editor and channel.
+//
+// Every content change records a revision of the page in the same write (`PageRevision`): creating a page records
+// revision 1, and a content save records the next one when its content differs from that of the newest revision.
+// Moving, renaming, deleting and restoring a page record none.
 
 import { z } from "zod";
 
@@ -43,8 +47,15 @@ import { LAST_EDITOR_SELECT, withLastEditor, type LastEditor } from "@/features/
 import { parseUserId } from "@/features/users/schema";
 import type { Actor } from "@/features/users/service";
 import { isAdmin } from "@/features/users/user-type";
+import type { ChangeChannel } from "@/generated/prisma/client";
 import { getDb } from "@/lib/db";
-import { isForeignKeyViolation, isUniqueViolation, LAST_EDITOR, PAGE_NAME } from "@/lib/db-errors";
+import {
+  isForeignKeyViolation,
+  isUniqueViolation,
+  LAST_EDITOR,
+  PAGE_NAME,
+  PAGE_REVISION_NUMBER,
+} from "@/lib/db-errors";
 import { logger } from "@/lib/logger";
 import { parseName, type NameFieldErrors } from "@/lib/names";
 import type { Result } from "@/lib/result";
@@ -398,7 +409,8 @@ async function refusedWrite(
 /**
  * Creates a page with the given name and content, with the title derived from the content, and returns it as stored.
  * The page is placed in the tab with the id `tabId` or, with `null`, directly in the folder with the given id; the tab
- * must be one of that folder. The actor is the page's last editor, in the browser and through MCP.
+ * must be one of that folder. The actor is the page's last editor, in the browser and through MCP. Revision 1 of the
+ * page, with its title and content, the actor and the channel, is stored in the same write.
  */
 export async function createPage(
   actor: ContentActor,
@@ -427,7 +439,22 @@ export async function createPage(
   let page: StoredPage;
   try {
     page = await getDb().page.create({
-      data: { ...parsed.data, tabId, folderId: parsedFolderId, lastEditedById, lastEditedVia },
+      data: {
+        ...parsed.data,
+        tabId,
+        folderId: parsedFolderId,
+        lastEditedById,
+        lastEditedVia,
+        revisions: {
+          create: {
+            number: 1,
+            title: parsed.data.title,
+            content: parsed.data.content,
+            userId: lastEditedById,
+            via: lastEditedVia,
+          },
+        },
+      },
       select: STORED_PAGE_SELECT,
     });
   } catch (err) {
@@ -450,11 +477,65 @@ export async function createPage(
   return { ok: true, value: page };
 }
 
+/** What a content change stores in the page, and with it in the revision it records. */
+type ContentChange = { title: string; content: string; lastEditedById: string; lastEditedVia: ChangeChannel };
+
+/**
+ * Stores the content change in the page with the given id, if it is not deleted and has the given version, counts its
+ * version up and records the revision, all in one transaction: the revision has the next number, the title and the
+ * content, the actor and the channel, and `revertedTo`, the number of the revision a revert went back to. A change
+ * that is no revert records a revision only when its content differs from that of the newest revision; the page is
+ * stored all the same, so the actor becomes its last editor. Returns whether the page was stored: `false` when no row
+ * matched, and when another write took the number of the revision first, which then changed the page.
+ */
+async function storeContentChange(
+  pageId: string,
+  version: number,
+  change: ContentChange,
+  revertedTo: number | null,
+): Promise<boolean> {
+  try {
+    return await getDb().$transaction(async (tx) => {
+      // `updateMany` reports a missing page as a count of 0 instead of throwing; it sets `updatedAt` as well. A deleted
+      // page, and one with another version than the given one, match no row.
+      const { count } = await tx.page.updateMany({
+        where: { id: pageId, deletedAt: null, version },
+        data: { ...change, version: { increment: 1 } },
+      });
+      if (count === 0) return false;
+      // The update locks the row of the page until the transaction ends, so no other write of the page reads the newest
+      // revision before this one is stored, and two writes never take the same number.
+      const newest = await tx.pageRevision.findFirst({
+        where: { pageId },
+        orderBy: { number: "desc" },
+        select: { number: true, content: true },
+      });
+      if (revertedTo === null && newest?.content === change.content) return true;
+      await tx.pageRevision.create({
+        data: {
+          pageId,
+          number: (newest?.number ?? 0) + 1,
+          title: change.title,
+          content: change.content,
+          userId: change.lastEditedById,
+          via: change.lastEditedVia,
+          revertedTo,
+        },
+      });
+      return true;
+    });
+  } catch (err) {
+    if (isUniqueViolation(err, PAGE_REVISION_NUMBER)) return false;
+    throw err;
+  }
+}
+
 /**
  * Stores the given content of the page with the given id, with the title derived from it, and returns the page as
  * stored, with the actor as its last editor. Name and place are not touched. A deleted page counts as missing. The
  * write is based on the given version of the page: if the page has another one, or no valid version is given, nothing
- * is stored and the result is `page-changed`. It is a write of the browser or of MCP.
+ * is stored and the result is `page-changed`. It records a revision in the same write when the content differs from
+ * that of the newest revision (`storeContentChange()`). It is a write of the browser or of MCP.
  */
 export async function updatePageContent(
   actor: ContentActor,
@@ -481,13 +562,8 @@ export async function updatePageContent(
   let page: StoredPage | null;
   try {
     if (version === null) return await refusedWrite(pageId, input.version, "page to update");
-    // `updateMany` reports a missing page as a count of 0 instead of throwing; it sets `updatedAt` as well. A deleted
-    // page, and one with another version than the given one, match no row.
-    const { count } = await getDb().page.updateMany({
-      where: { id: pageId, deletedAt: null, version },
-      data: { ...parsed.data, lastEditedById, lastEditedVia, version: { increment: 1 } },
-    });
-    if (count === 0) return await refusedWrite(pageId, version, "page to update");
+    const stored = await storeContentChange(pageId, version, { ...parsed.data, lastEditedById, lastEditedVia }, null);
+    if (!stored) return await refusedWrite(pageId, version, "page to update");
     page = await findStoredPage(pageId);
   } catch (err) {
     if (isForeignKeyViolation(err, LAST_EDITOR)) return unknownActor(err, actor);

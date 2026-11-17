@@ -6,7 +6,15 @@ import { CONTENT_MAX_LENGTH, CONTENT_MAX_TABLE_CELLS } from "@/features/pages/li
 import { KNOWN_USER } from "../prisma/known-users";
 import { ADMIN_STORAGE_STATE, becomeUser, logInElsewhere } from "./support/auth";
 import { collectErrors } from "./support/browser";
-import { createFolder, createPage, createTab, createUser, getTestDb, resetTestDatabase } from "./support/database";
+import {
+  createFolder,
+  createFolderRole,
+  createPage,
+  createTab,
+  createUser,
+  getTestDb,
+  resetTestDatabase,
+} from "./support/database";
 import { expect, test } from "./support/test";
 
 let handbook: Awaited<ReturnType<typeof createFolder>>;
@@ -320,6 +328,48 @@ test("a folder and a page can be created, and the page edited and renamed", asyn
   await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("link", { name: "lifecycle" }).click();
   await expect(listLinks(page)).toHaveText([/^Lifecycle page, edited.*lifecycle-renamed\.md/]);
   expect(await getTestDb().page.count()).toBe(1);
+  expect(errors).toEqual([]);
+});
+
+test("a page created and saved in the browser has a revision per change, and a save without a change adds none", async ({
+  page,
+  browser,
+}) => {
+  const errors = collectErrors(page);
+  const bob = await createUser({ name: "bob", mustChangePassword: false });
+  await createFolderRole({ folder: handbook, user: bob, role: "writer" });
+  /** The revisions of the page as stored, oldest first. */
+  const revisions = async () =>
+    getTestDb().pageRevision.findMany({
+      where: { page: { name: "history" } },
+      orderBy: { number: "asc" },
+      select: { number: true, content: true, user: { select: { username: true } }, via: true },
+    });
+
+  await page.goto("/folders/handbook?action=new");
+  await page.getByLabel("Content").fill("# History\n\nFirst version");
+  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("dialog", { name: "Save page" }).getByRole("button", { name: "Save" }).click();
+  await expect(page).toHaveURL("/folders/handbook/history.md");
+
+  await page.goto("/folders/handbook/history.md?action=edit");
+  await page.getByLabel("Content").fill("# History\n\nSecond version");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page).toHaveURL("/folders/handbook/history.md");
+
+  expect(await revisions()).toEqual([
+    { number: 1, content: "# History\n\nFirst version", user: { username: USER }, via: "web" },
+    { number: 2, content: "# History\n\nSecond version", user: { username: USER }, via: "web" },
+  ]);
+
+  // Another user saves without a change: no revision, but that user is now the last editor (R14).
+  const other = await logInElsewhere(browser, "bob");
+  await other.page.goto("/folders/handbook/history.md?action=edit");
+  await other.page.getByRole("button", { name: "Save" }).click();
+  await expect(other.page).toHaveURL("/folders/handbook/history.md");
+  await expect(other.page.getByText(/^Last updated /)).toHaveText(by("bob"));
+  await other.context.close();
+  expect(await revisions()).toHaveLength(2);
   expect(errors).toEqual([]);
 });
 

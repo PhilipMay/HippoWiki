@@ -120,7 +120,22 @@ async function main() {
       if (title === null) throw new Error(`Sample page ${name} has no title heading`);
       // Placed directly in the sample folder.
       const data = { title, name, content, folderId: folder.id, lastEditedById, lastEditedVia };
-      await db.page.upsert({ where: { id }, create: { id, ...data }, update: data });
+      const revision = { title, content, userId: lastEditedById, via: lastEditedVia };
+      // Like every content change, the sample content is recorded as a revision: revision 1 of a new page, and the
+      // next one of a page whose content was changed since it was seeded.
+      await db.page.upsert({
+        where: { id },
+        create: { id, ...data, revisions: { create: { number: 1, ...revision } } },
+        update: data,
+      });
+      const newest = await db.pageRevision.findFirst({
+        where: { pageId: id },
+        orderBy: { number: "desc" },
+        select: { number: true, content: true },
+      });
+      if (newest && newest.content !== content) {
+        await db.pageRevision.create({ data: { pageId: id, number: newest.number + 1, ...revision } });
+      }
     }
     logger.info({ folder: folder.name, count: pages.length }, "seeded sample folder and pages");
   } finally {

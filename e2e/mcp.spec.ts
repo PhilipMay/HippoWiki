@@ -592,6 +592,15 @@ test.describe("the write tools", () => {
     });
   }
 
+  /** The revisions of the pages of "projects" as stored, by page name and number. */
+  async function storedRevisions() {
+    return getTestDb().pageRevision.findMany({
+      where: { page: { folderId: projects.id } },
+      orderBy: [{ page: { name: "asc" } }, { number: "asc" }],
+      select: { page: { select: { name: true } }, number: true, content: true, userId: true, via: true },
+    });
+  }
+
   /** The pages of "projects" as stored, by name, with what a write changes. */
   async function storedPages() {
     return getTestDb().page.findMany({
@@ -644,6 +653,17 @@ test.describe("the write tools", () => {
       { name: "install", lastEditedById: KNOWN_USER.id, lastEditedVia: "mcp" },
       { name: "release-notes", lastEditedById: KNOWN_USER.id, lastEditedVia: "mcp" },
     ]);
+    // Creating a page through MCP records its first revision with the channel mcp.
+    expect(await storedRevisions()).toEqual([
+      { page: { name: "install" }, number: 1, content: "# Setup", userId: KNOWN_USER.id, via: "mcp" },
+      {
+        page: { name: "release-notes" },
+        number: 1,
+        content: "# Release Notes\n\nFirst.",
+        userId: KNOWN_USER.id,
+        via: "mcp",
+      },
+    ]);
     const before = await storedPages();
 
     for (const [args, message] of [
@@ -664,7 +684,8 @@ test.describe("the write tools", () => {
   test("replace_page_content gives the page the new content and the title of its new heading; content without a title heading changes nothing", async ({
     request,
   }) => {
-    await createPage({ folder: projects, name: "plan", content: "# Plan\n\nOld." });
+    const bob = await createUser({ name: "bob" });
+    await createPage({ folder: projects, name: "plan", content: "# Plan\n\nOld.", editor: bob });
     const { version } = (await callTool(request, "read_page", { page: "plan" })).structuredContent as {
       version: number;
     };
@@ -683,6 +704,11 @@ test.describe("the write tools", () => {
       { name: "plan", title: "Roadmap", content: "# Roadmap\n\nNew.", tabId: null, version: 2 },
     ]);
     expect(await storedEditors()).toEqual([{ name: "plan", lastEditedById: KNOWN_USER.id, lastEditedVia: "mcp" }]);
+    // The new content is recorded as the next revision with the channel mcp; the refused one records nothing.
+    expect(await storedRevisions()).toEqual([
+      { page: { name: "plan" }, number: 1, content: "# Plan\n\nOld.", userId: bob.id, via: "web" },
+      { page: { name: "plan" }, number: 2, content: "# Roadmap\n\nNew.", userId: KNOWN_USER.id, via: "mcp" },
+    ]);
   });
 
   test("replace_page_content with lists nested too deep is refused and the page keeps its content and version", async ({

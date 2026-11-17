@@ -14,6 +14,7 @@ import {
   OAUTH_CLIENT_METADATA_URL,
   OAUTH_CODE_HASH,
   PAGE_NAME,
+  PAGE_REVISION_NUMBER,
   TAB_NAME,
   USER_NAME,
   type UniqueConstraint,
@@ -25,6 +26,7 @@ const NAME_CONSTRAINTS = {
   FOLDER_NAME,
   TAB_NAME,
   PAGE_NAME,
+  PAGE_REVISION_NUMBER,
   USER_NAME,
   GRANT_ACCESS_TOKEN_HASH,
   OAUTH_CLIENT_METADATA_URL,
@@ -134,6 +136,26 @@ describe("unique violations", () => {
 
     await expect(createPage({ tab: first, name: "intro" })).resolves.toMatchObject({ tabId: first.id });
     await expect(createPage({ tab: second, name: "intro" })).resolves.toMatchObject({ tabId: second.id });
+  });
+
+  it("reports a revision number that the page already has as a violation of PAGE_REVISION_NUMBER", async () => {
+    const page = await createPage();
+    const revision = { pageId: page.id, number: 1, title: "Again", content: "# Again", userId: page.lastEditedById };
+
+    expectUniqueViolationOf(
+      await errorOf(getTestDb().pageRevision.create({ data: { ...revision, via: "web" } })),
+      PAGE_REVISION_NUMBER,
+    );
+  });
+
+  it("allows the same revision number for another page", async () => {
+    const [first, second] = [await createPage(), await createPage()];
+
+    const numbers = await getTestDb().pageRevision.findMany({
+      where: { pageId: { in: [first.id, second.id] } },
+      select: { number: true },
+    });
+    expect(numbers).toEqual([{ number: 1 }, { number: 1 }]);
   });
 
   it("reports a taken user name as a violation of USER_NAME", async () => {
@@ -428,6 +450,12 @@ describe("foreign key violations", () => {
 
     expectForeignKeyViolation(await errorOf(getTestDb().folder.delete({ where: { id: page.folderId } })));
   });
+
+  it("reports deleting a page that still has revisions", async () => {
+    const page = await createPage();
+
+    expectForeignKeyViolation(await errorOf(getTestDb().page.delete({ where: { id: page.id } })));
+  });
 });
 
 describe("foreign key violations of the last editor", () => {
@@ -451,6 +479,16 @@ describe("foreign key violations of the last editor", () => {
       ofLastEditor: true,
     });
     expectForeignKeyViolation(await errorOf(createPage({ tab, editor })), { ofLastEditor: true });
+  });
+
+  it("reports a revision whose user does not exist", async () => {
+    const page = await createPage();
+
+    const write = getTestDb().pageRevision.create({
+      data: { pageId: page.id, number: 2, title: "Next", content: "# Next", userId: editor.id, via: "web" },
+    });
+
+    expectForeignKeyViolation(await errorOf(write), { ofLastEditor: true });
   });
 
   it("reports a change of the last editor to a user that does not exist", async () => {

@@ -24,6 +24,8 @@ const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   updateMany: vi.fn(),
   transaction: vi.fn(),
+  revisionFindFirst: vi.fn(),
+  revisionCreate: vi.fn(),
   roleFindFirst: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
@@ -50,7 +52,14 @@ function readCount(): number {
   return mocks.findMany.mock.calls.length + mocks.findFirst.mock.calls.length;
 }
 
-const databaseWrites = [mocks.create, mocks.updateMany, mocks.findUnique, mocks.transaction];
+const databaseWrites = [
+  mocks.create,
+  mocks.updateMany,
+  mocks.findUnique,
+  mocks.transaction,
+  mocks.revisionFindFirst,
+  mocks.revisionCreate,
+];
 
 /** A write that stops before the database neither reads nor writes it, and logs nothing. */
 function expectDatabaseUntouched(): void {
@@ -68,8 +77,13 @@ beforeEach(() => {
   mocks.roleFindFirst.mockResolvedValue({ role: "owner" });
   // An interactive transaction runs its callback with a client of its own.
   mocks.transaction.mockImplementation((run: (tx: unknown) => Promise<unknown>) =>
-    run({ page: { findFirst: mocks.findFirst, updateMany: mocks.updateMany } }),
+    run({
+      page: { findFirst: mocks.findFirst, updateMany: mocks.updateMany },
+      pageRevision: { findFirst: mocks.revisionFindFirst, create: mocks.revisionCreate },
+    }),
   );
+  // The newest revision of a page has other content than the saves of the tests, unless a test says otherwise.
+  mocks.revisionFindFirst.mockResolvedValue({ number: 3, content: "# Older content" });
 });
 
 const FOLDER_ID = "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10";
@@ -412,8 +426,13 @@ describe("a write through MCP", () => {
       [{ pageId: PAGE_ID, channel: "mcp", grantId }, "page updated"],
       [{ pageId: PAGE_ID, tabId: null, channel: "mcp", grantId }, "page moved or renamed"],
     ]);
-    expect(mocks.create.mock.calls[0]?.[0].data).toMatchObject({ lastEditedById: ACTOR_ID, lastEditedVia: "mcp" });
+    expect(mocks.create.mock.calls[0]?.[0].data).toMatchObject({
+      lastEditedById: ACTOR_ID,
+      lastEditedVia: "mcp",
+      revisions: { create: { number: 1, userId: ACTOR_ID, via: "mcp" } },
+    });
     expect(mocks.updateMany.mock.calls[0]?.[0].data).toMatchObject({ lastEditedById: ACTOR_ID, lastEditedVia: "mcp" });
+    expect(mocks.revisionCreate.mock.calls[0]?.[0].data).toMatchObject({ number: 4, userId: ACTOR_ID, via: "mcp" });
   });
 
   it("is not allowed for a Reader connection, for another folder and without a role, and writes nothing", async () => {
@@ -513,6 +532,7 @@ describe("createPage", () => {
         tabId: null,
         lastEditedById: ACTOR_ID,
         lastEditedVia: "web",
+        revisions: { create: { number: 1, title: "My page", content: CONTENT, userId: ACTOR_ID, via: "web" } },
       },
       select: STORED_PAGE_SELECT,
     });
@@ -544,6 +564,7 @@ describe("createPage", () => {
         tabId: TAB_ID,
         lastEditedById: ACTOR_ID,
         lastEditedVia: "web",
+        revisions: { create: { number: 1, title: "My page", content: CONTENT, userId: ACTOR_ID, via: "web" } },
       },
       select: STORED_PAGE_SELECT,
     });
@@ -653,6 +674,98 @@ describe("updatePageContent", () => {
       select: STORED_PAGE_SELECT,
     });
     expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID, channel: "browser" }, "page updated");
+  });
+
+  it("records a revision with the next number, the title, the content, the actor and the channel in the same transaction", async () => {
+    mocks.updateMany.mockResolvedValue({ count: 1 });
+    mocks.findUnique.mockResolvedValue(STORED);
+
+    await expect(updatePageContent(ACTOR, PAGE_ID, VALID)).resolves.toEqual({ ok: true, value: STORED });
+
+    expect(mocks.transaction).toHaveBeenCalledOnce();
+    expect(mocks.revisionFindFirst).toHaveBeenCalledWith({
+      where: { pageId: PAGE_ID },
+      orderBy: { number: "desc" },
+      select: { number: true, content: true },
+    });
+    expect(mocks.revisionCreate).toHaveBeenCalledExactlyOnceWith({
+      data: {
+        pageId: PAGE_ID,
+        number: 4,
+        title: "My page",
+        content: CONTENT,
+        userId: ACTOR_ID,
+        via: "web",
+        revertedTo: null,
+      },
+    });
+    // The page is updated before the newest revision is read, so that the row of the page is locked first.
+    expect(mocks.updateMany.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.revisionFindFirst.mock.invocationCallOrder[0] ?? 0,
+    );
+  });
+
+  it("records revision 1 for a page without revisions", async () => {
+    mocks.updateMany.mockResolvedValue({ count: 1 });
+    mocks.findUnique.mockResolvedValue(STORED);
+    mocks.revisionFindFirst.mockResolvedValue(null);
+
+    await updatePageContent(ACTOR, PAGE_ID, VALID);
+
+    expect(mocks.revisionCreate.mock.calls[0]?.[0].data).toMatchObject({ number: 1 });
+  });
+
+  // A save without a change still makes the actor the last editor and counts the version up (R14).
+  it("records no revision when the content is that of the newest revision, but stores the page", async () => {
+    mocks.updateMany.mockResolvedValue({ count: 1 });
+    mocks.findUnique.mockResolvedValue(STORED);
+    mocks.revisionFindFirst.mockResolvedValue({ number: 3, content: CONTENT });
+
+    await expect(updatePageContent(ACTOR, PAGE_ID, VALID)).resolves.toEqual({ ok: true, value: STORED });
+
+    expect(mocks.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ lastEditedById: ACTOR_ID, version: { increment: 1 } }),
+      }),
+    );
+    expect(mocks.revisionCreate).not.toHaveBeenCalled();
+    expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID, channel: "browser" }, "page updated");
+  });
+
+  it("records no revision when the update matches no page", async () => {
+    mocks.updateMany.mockResolvedValue({ count: 0 });
+    mocks.findUnique.mockResolvedValue(STORED);
+
+    await updatePageContent(ACTOR, PAGE_ID, VALID);
+
+    expect(mocks.revisionFindFirst).not.toHaveBeenCalled();
+    expect(mocks.revisionCreate).not.toHaveBeenCalled();
+  });
+
+  it("returns failed and logs it when the revision cannot be stored", async () => {
+    const err = new Error("connection lost");
+    mocks.updateMany.mockResolvedValue({ count: 1 });
+    mocks.revisionCreate.mockRejectedValue(err);
+
+    await expect(updatePageContent(ACTOR, PAGE_ID, VALID)).resolves.toEqual(FAILED);
+
+    expect(mocks.error).toHaveBeenCalledWith({ err, pageId: PAGE_ID }, "failed to update page");
+    expect(mocks.findUnique).not.toHaveBeenCalled();
+    expect(mocks.info).not.toHaveBeenCalled();
+  });
+
+  // The row lock keeps this from happening; if another write took the number all the same, it changed the page.
+  it("returns page-changed when another write took the number of the revision", async () => {
+    mocks.updateMany.mockResolvedValue({ count: 1 });
+    mocks.revisionCreate.mockRejectedValue(uniqueViolation({ index: "PageRevision_pageId_number_key" }));
+    mocks.findUnique.mockResolvedValue(STORED);
+
+    await expect(updatePageContent(ACTOR, PAGE_ID, VALID)).resolves.toEqual({
+      ok: false,
+      error: { code: "page-changed", page: STORED },
+    });
+
+    expect(mocks.error).not.toHaveBeenCalled();
   });
 
   // The update matches neither a deleted page nor one with another version; the page as stored tells them apart.

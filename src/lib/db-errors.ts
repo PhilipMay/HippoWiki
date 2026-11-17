@@ -26,6 +26,15 @@ export const PAGE_NAME: UniqueConstraint = {
 };
 
 /**
+ * The unique index on the page and the number of a revision, as Prisma creates it for `@@unique`. A content save locks
+ * the row of its page before it numbers its revision, so a violation means that another write took the number first.
+ */
+export const PAGE_REVISION_NUMBER: UniqueConstraint = {
+  indexes: ["PageRevision_pageId_number_key"],
+  field: "number",
+};
+
+/**
  * The unique indexes on the user name and on the email of `User`, as Prisma creates them for `@unique`. The email is
  * derived from the name, so both stand for a taken name.
  */
@@ -79,9 +88,17 @@ export type ForeignKey = {
   field: string;
 };
 
-/** The foreign keys of the last editor of folders, tabs and pages, as Prisma creates them for the relations to `User`. */
+/**
+ * The foreign keys of the last editor of folders, tabs and pages, as Prisma creates them for the relations to `User`,
+ * and that of the user of a page revision, who is always the last editor of the same write.
+ */
 export const LAST_EDITOR: ForeignKey = {
-  constraints: ["Folder_lastEditedById_fkey", "Tab_lastEditedById_fkey", "Page_lastEditedById_fkey"],
+  constraints: [
+    "Folder_lastEditedById_fkey",
+    "Tab_lastEditedById_fkey",
+    "Page_lastEditedById_fkey",
+    "PageRevision_userId_fkey",
+  ],
   field: "lastEditedById",
 };
 

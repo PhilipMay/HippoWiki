@@ -18,6 +18,7 @@ import {
   type OAuthClient,
   type OAuthGrant,
   type Page,
+  type PageRevision,
   type Prisma,
   type Session,
   type Tab,
@@ -304,7 +305,7 @@ export async function createTab({ folder, editor, via = "web", ...data }: Create
  * the channel of that change.
  */
 type CreatePageData = Partial<
-  Omit<Prisma.PageUncheckedCreateInput, "folderId" | "tabId" | "lastEditedById" | "lastEditedVia">
+  Omit<Prisma.PageUncheckedCreateInput, "folderId" | "tabId" | "lastEditedById" | "lastEditedVia" | "revisions">
 > & {
   folder?: Folder;
   tab?: Tab;
@@ -321,7 +322,8 @@ type CreatePageData = Partial<
  * `# <title>`, so `createPage({ title: "Old" })` gives a page with the content `# Old`. A title given together with
  * content is stored as is, e.g. to set up a page that was stored before titles were derived. Any other field can be
  * overridden, e.g. `updatedAt` or `version`. Setting `deletedAt` creates a deleted page; a deleted page has no tab, so
- * it cannot be combined with `tab`.
+ * it cannot be combined with `tab`. Like a page after the migration of the page history, the page gets revision 1
+ * with its content, title, last editor and channel, made at its `updatedAt`; `createRevisions()` adds more.
  */
 export async function createPage({ folder, tab, editor, via = "web", ...data }: CreatePageData = {}): Promise<Page> {
   if (tab && data.deletedAt) throw new Error("A deleted page has no tab: give a folder instead");
@@ -329,6 +331,7 @@ export async function createPage({ folder, tab, editor, via = "web", ...data }: 
   const title = data.title ?? titleFromContent(content) ?? "Test page";
   const lastEditor = editor ?? (await createUser());
   const folderId = tab ? tab.folderId : (folder ?? (await createFolder({ editor: lastEditor }))).id;
+  const updatedAt = data.updatedAt ?? new Date();
   return getTestDb().page.create({
     data: {
       name: `test-page-${crypto.randomUUID()}`,
@@ -339,8 +342,69 @@ export async function createPage({ folder, tab, editor, via = "web", ...data }: 
       tabId: tab?.id ?? null,
       lastEditedById: lastEditor.id,
       lastEditedVia: via,
+      updatedAt,
+      revisions: { create: { number: 1, title, content, userId: lastEditor.id, via, createdAt: updatedAt } },
     },
   });
+}
+
+/** The revisions that `createRevisions()` adds to a page, and how they were made. */
+type CreateRevisionsData = {
+  page: Page;
+  /** How many revisions to add after the newest one of the page. */
+  count: number;
+  /** The content of the revision with the given number; `# <title of the page>` and a line with the number by default. */
+  content?: (number: number) => string;
+  /** The user who made them; the last editor of the page by default. */
+  editor?: { id: string };
+  /** How they were made; `web` by default. */
+  via?: ChangeChannel;
+  /** When the revision with the given number was made; one minute apart after the newest revision by default. */
+  createdAt?: (number: number) => Date;
+  /** The revision that a revert to the revision with the given number went back to; `null` by default. */
+  revertedTo?: (number: number) => number | null;
+};
+
+/**
+ * Adds revisions to a page directly in the test database, numbered on from its newest revision, and gives the page
+ * the content and title of the last one, like the content saves that recorded them would have. The version, the last
+ * editor and `updatedAt` of the page stay as they are. Returns the added revisions, oldest first.
+ */
+export async function createRevisions({
+  page,
+  count,
+  content = (number) => `# ${page.title}\n\nRevision ${number}`,
+  editor = { id: page.lastEditedById },
+  via = "web",
+  createdAt,
+  revertedTo = () => null,
+}: CreateRevisionsData): Promise<PageRevision[]> {
+  const db = getTestDb();
+  const newest = await db.pageRevision.findFirst({ where: { pageId: page.id }, orderBy: { number: "desc" } });
+  const first = (newest?.number ?? 0) + 1;
+  const start = newest?.createdAt ?? new Date();
+  const revisions = Array.from({ length: count }, (_, index) => {
+    const number = first + index;
+    const text = content(number);
+    return {
+      pageId: page.id,
+      number,
+      title: titleFromContent(text) ?? page.title,
+      content: text,
+      userId: editor.id,
+      via,
+      createdAt: createdAt?.(number) ?? new Date(start.getTime() + (index + 1) * 60_000),
+      revertedTo: revertedTo(number),
+    };
+  });
+  const last = revisions.at(-1);
+  if (!last) return [];
+  await db.pageRevision.createMany({ data: revisions });
+  await db.page.update({
+    where: { id: page.id },
+    data: { content: last.content, title: last.title, updatedAt: page.updatedAt },
+  });
+  return db.pageRevision.findMany({ where: { pageId: page.id, number: { gte: first } }, orderBy: { number: "asc" } });
 }
 
 /**

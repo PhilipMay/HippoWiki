@@ -1,6 +1,7 @@
 // Runs the page service against the test database, to check its reads and writes on real data.
 import { beforeEach, describe, expect, it } from "vitest";
 
+import * as folderService from "@/features/folders/service";
 import * as pageService from "@/features/pages/service";
 import { inBrowser, inMcp, type BrowserActor } from "@/features/folder-roles/service";
 import type { User } from "@/generated/prisma/client";
@@ -8,6 +9,7 @@ import type { User } from "@/generated/prisma/client";
 import {
   createFolder,
   createPage,
+  createRevisions,
   createTab,
   createUser,
   getTestDb,
@@ -1263,5 +1265,121 @@ describe("writes through MCP", () => {
     await expect(pageService.deletePage(manager, page.id, { version: 1 })).resolves.toEqual(NOT_ALLOWED);
 
     expect(await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } })).toStrictEqual(before);
+  });
+});
+
+describe("the revisions of pages", () => {
+  /** The revisions of the page with the given id, oldest first, with what a test compares. */
+  async function revisionsOf(pageId: string) {
+    return getTestDb().pageRevision.findMany({
+      where: { pageId },
+      orderBy: { number: "asc" },
+      select: { number: true, title: true, content: true, userId: true, via: true, revertedTo: true },
+    });
+  }
+
+  /** Expects the newest revision of the page to have the content and the title of the page. */
+  async function expectNewestRevisionIsThePage(pageId: string): Promise<void> {
+    const page = await getTestDb().page.findUniqueOrThrow({ where: { id: pageId } });
+    const revisions = await revisionsOf(pageId);
+    expect(revisions.at(-1)).toMatchObject({ content: page.content, title: page.title });
+  }
+
+  // R1, R2: creating and saving in the browser and through MCP.
+  it("records revision 1 on creation and one per content save, with the users and the channels", async () => {
+    const bob = await createUser({ name: "bob" });
+    const folder = await createFolder({ roles: [...owners(user), { user: bob, role: "writer" }] });
+    const viaMcp = inMcp(bob, { grantId: crypto.randomUUID(), folderId: folder.id, role: "writer" });
+
+    const created = await pageService.createPage(actor, folder.id, { name: "intro", content: "# Intro", tabId: null });
+    if (!created.ok) throw new Error("expected the page to be created");
+    const id = created.value.id;
+    await pageService.updatePageContent(actor, id, { content: "# Intro\n\nIn the browser", version: 1 });
+    await pageService.updatePageContent(viaMcp, id, { content: "# Start\n\nThrough MCP", version: 2 });
+
+    expect(await revisionsOf(id)).toEqual([
+      { number: 1, title: "Intro", content: "# Intro", userId: user.id, via: "web", revertedTo: null },
+      {
+        number: 2,
+        title: "Intro",
+        content: "# Intro\n\nIn the browser",
+        userId: user.id,
+        via: "web",
+        revertedTo: null,
+      },
+      { number: 3, title: "Start", content: "# Start\n\nThrough MCP", userId: bob.id, via: "mcp", revertedTo: null },
+    ]);
+    await expectNewestRevisionIsThePage(id);
+  });
+
+  // R23: a refused save records nothing; every stored change has its revision.
+  it("leaves the revisions as they were when a save is refused for an older version or invalid content", async () => {
+    const page = await createPage({ folder: await createFolder(), editor: user, content: "# Intro" });
+    const before = await revisionsOf(page.id);
+
+    await expect(
+      pageService.updatePageContent(actor, page.id, { content: "# Older", version: 0 }),
+    ).resolves.toMatchObject({ ok: false, error: { code: "page-changed" } });
+    await expect(
+      pageService.updatePageContent(actor, page.id, { content: "No heading", version: 1 }),
+    ).resolves.toMatchObject({ ok: false, error: { code: "invalid-input" } });
+    expect(await revisionsOf(page.id)).toEqual(before);
+
+    await expect(
+      pageService.updatePageContent(actor, page.id, { content: "# Intro\n\nNew", version: 1 }),
+    ).resolves.toMatchObject({ ok: true });
+    await expectNewestRevisionIsThePage(page.id);
+    await expect(
+      pageService.updatePageContent(actor, page.id, { content: "# Intro\n\nOld", version: 1 }),
+    ).resolves.toMatchObject({ ok: false, error: { code: "page-changed" } });
+    expect(await revisionsOf(page.id)).toHaveLength(2);
+    await expectNewestRevisionIsThePage(page.id);
+  });
+
+  // R14: a save without a change records nothing, but makes the actor the last editor.
+  it("records no revision for a save without a change, which still makes the actor the last editor", async () => {
+    const bob = await createUser({ name: "bob" });
+    const folder = await createFolder({ roles: owners(user, bob) });
+    const page = await createPage({ folder, editor: user, content: "# Intro" });
+
+    await expect(
+      pageService.updatePageContent(inBrowser(bob), page.id, { content: "# Intro", version: 1 }),
+    ).resolves.toMatchObject({ ok: true, value: { version: 2 } });
+
+    expect(await revisionsOf(page.id)).toHaveLength(1);
+    expect(await lastEditorOf(page.id)).toBe(bob.id);
+  });
+
+  // R3: moves, renames, deletes and restores are not part of the history.
+  it("are not changed by moving, renaming, deleting and restoring a page, and by deleting its tab", async () => {
+    const folder = await createFolder({ roles: owners(user) });
+    const [tab, other] = [await createTab({ folder }), await createTab({ folder })];
+    const page = await createPage({ folder, editor: user });
+    await createRevisions({ page, count: 2 });
+    const inTab = await createPage({ tab: other, editor: user });
+    const before = await revisionsOf(page.id);
+
+    await pageService.moveOrRenamePage(actor, page.id, { name: "moved", tabId: tab.id, version: 1 });
+    await pageService.moveOrRenamePage(actor, page.id, { name: "renamed", tabId: tab.id, version: 2 });
+    await pageService.deletePage(actor, page.id, { version: 3 });
+    await pageService.restorePage(actor, page.id, { name: "restored", tabId: null });
+    await expect(folderService.deleteTab(actor, folder.id, other.id)).resolves.toMatchObject({ ok: true });
+
+    expect(await revisionsOf(page.id)).toEqual(before);
+    expect(await revisionsOf(inTab.id)).toHaveLength(1);
+  });
+
+  it("take one new revision of two saves at the same time with the same version; the other is page-changed", async () => {
+    const page = await createPage({ folder: await createFolder(), editor: user, content: "# Intro" });
+
+    const results = await Promise.all([
+      pageService.updatePageContent(actor, page.id, { content: "# Intro\n\nFirst", version: 1 }),
+      pageService.updatePageContent(actor, page.id, { content: "# Intro\n\nSecond", version: 1 }),
+    ]);
+
+    expect(results.filter((result) => result.ok)).toHaveLength(1);
+    expect(results.filter((result) => !result.ok)).toMatchObject([{ error: { code: "page-changed" } }]);
+    expect((await revisionsOf(page.id)).map(({ number }) => number)).toEqual([1, 2]);
+    await expectNewestRevisionIsThePage(page.id);
   });
 });
