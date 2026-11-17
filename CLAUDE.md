@@ -126,6 +126,7 @@ This applies to code reviews and to reviews of documents such as the files in `s
 - Do not look at the Git history, and do not mention how something used to be in an earlier commit.
 - Do not create branches or pull requests.
 - Do not ask whether something should be committed or pushed, and do not offer to do so.
+- After a new step plan is written, commit as described in `spec/step-plan-workflow.md`; do not push.
 - After each finished step of a step plan, commit as described in `spec/step-plan-workflow.md`.
 - After the last step of a step plan, push as described in `spec/step-plan-workflow.md`.
 - After the requirements of a feature are approved, commit as described in `spec/requirements-workflow.md`; do not

@@ -11,6 +11,12 @@ implements it.
   plan is written only once that file has the status `approved`, and it is written from it: its scope matches the
   scope of the requirements, every requirement ID is covered by a step, and the "Test" sections check the acceptance
   criteria. The requirements file is already committed when the conversation that gathered it ends.
+- Once a new step plan is written and added to the spec catalog, run `npm run check`; fix formatting with
+  `npm run format`. Then commit the step file and its catalog entry in `CLAUDE.md` as one Git commit on the current
+  branch, without asking first. Stage only these two files. The message is a short lowercase summary, for example
+  `plan search`. Do not push.
+- Then stop, so that the user can review the plan before any step is built. Report the steps of the plan and the
+  commit message. Do not say how to start implementing the plan, and do not offer to.
 - A step plan has a goal, a scope (what is in, what is explicitly not in), an ordered checklist of steps, and for every
   step a "Goal", "Build" and "Test" section. "Test" lists the unit, integration and end-to-end tests the step adds (see
   `testing.md`), plus any manual checks that cannot be automated.

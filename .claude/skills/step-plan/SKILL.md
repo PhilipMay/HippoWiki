@@ -13,7 +13,7 @@ The feature: $ARGUMENTS
 
 Plan mode is welcome while reading: the spec, the requirements and the code can be explored in it. It has to be left
 before anything is written, because the workflow writes the step plan into `spec/`, adds it to `CLAUDE.md` and commits
-every step, which plan mode blocks. Plan mode would also demand its own plan file and an approval step, which the
+the new plan and every step, which plan mode blocks. Plan mode would also demand its own plan file and an approval step, which the
 workflow does not use: the step plan in `spec/` is the plan, and the user reviews it there.
 
 If plan mode is active (a system message says so):
@@ -43,8 +43,9 @@ push.
 - If `spec/<feature>-steps.md` exists, continue it, as if the user had written "Implement spec/<feature>-steps.md": the
   steps that are already ticked off are skipped.
 - If it does not exist, start it: write the step plan as the workflow describes, from `spec/<feature>-requirements.md`
-  if that file exists (it must have the status `approved`), and add it to the spec catalog in `CLAUDE.md`. Then stop,
-  so the user can review the plan before any step is built; `/step-plan <feature>` again implements it.
+  if that file exists (it must have the status `approved`), and add it to the spec catalog in `CLAUDE.md`. Then commit
+  it, without pushing, and stop, as "Step plans" in `spec/step-plan-workflow.md` describes. Do not tell the user how
+  to implement it.
 
 If no feature was given with the command, ask for it with the question tool. Offer the step plans in `spec/` that can be
 continued, the approved requirements files in `spec/` and the entries of `spec/roadmap.md`; the user can also name a new
