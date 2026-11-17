@@ -1383,3 +1383,55 @@ describe("the revisions of pages", () => {
     await expectNewestRevisionIsThePage(page.id);
   });
 });
+
+describe("the history of a page", () => {
+  it("returns exactly the declared fields of a revision, without its content", async () => {
+    const mike = await createUser({ name: "mike" });
+    const page = await createPage({ folder: await createFolder(), editor: user, content: "# Intro" });
+    const [added] = await createRevisions({ page, count: 1, editor: mike, via: "mcp", revertedTo: () => 1 });
+
+    const history = await pageService.listPageRevisions(actor, page.id, { before: null });
+
+    expect(history?.revisions[0]).toStrictEqual({
+      number: 2,
+      title: "Intro",
+      createdAt: added?.createdAt,
+      madeBy: { name: "mike", via: "mcp" },
+      revertedTo: 1,
+    });
+    expect(history?.newest).toBe(2);
+  });
+
+  it("lists at most 100 revisions newest first, and the ones before a number", async () => {
+    const page = await createPage({ folder: await createFolder(), editor: user });
+    await createRevisions({ page, count: 249 });
+
+    const numbers = async (before: number | null) =>
+      (await pageService.listPageRevisions(actor, page.id, { before }))?.revisions.map(({ number }) => number);
+
+    expect(await numbers(null)).toEqual(Array.from({ length: 100 }, (_, index) => 250 - index));
+    expect(await numbers(151)).toEqual(Array.from({ length: 100 }, (_, index) => 150 - index));
+    expect(await numbers(51)).toEqual(Array.from({ length: 50 }, (_, index) => 50 - index));
+    expect((await pageService.listPageRevisions(actor, page.id, { before: 51 }))?.newest).toBe(250);
+  });
+
+  it("is read by every role on a page that is not deleted, and only by a Manager or Owner on a deleted page", async () => {
+    const [reader, manager, stranger] = [
+      await createUser({ name: "reader" }),
+      await createUser({ name: "manager" }),
+      await createUser({ name: "stranger" }),
+    ];
+    const folder = await createFolder({
+      roles: [...owners(user), { user: reader, role: "reader" }, { user: manager, role: "manager" }],
+    });
+    const page = await createPage({ folder, editor: user });
+    const deleted = await createPage({ folder, editor: user, deletedAt: new Date() });
+
+    const read = (who: User, id: string) => pageService.listPageRevisions(inBrowser(who), id, { before: null });
+
+    for (const who of [user, reader, manager]) await expect(read(who, page.id)).resolves.not.toBeNull();
+    await expect(read(stranger, page.id)).resolves.toBeNull();
+    for (const who of [user, manager]) await expect(read(who, deleted.id)).resolves.not.toBeNull();
+    for (const who of [reader, stranger]) await expect(read(who, deleted.id)).resolves.toBeNull();
+  });
+});

@@ -60,6 +60,20 @@ export async function listDeletedPages(folderId: string): Promise<pageService.De
 }
 
 /**
+ * The revisions of the page with the given id, newest first, without their content: at most 100, those before the
+ * revision `before` if it is given, and the number of the newest revision. `null` without the role for the history or
+ * if there is no such page.
+ */
+export async function listPageRevisions(
+  pageId: string,
+  options: { before: number | null },
+): Promise<pageService.PageRevisions | null> {
+  await connection();
+  const user = await requireUser();
+  return pageService.listPageRevisions(inBrowser(user), pageId, options);
+}
+
+/**
  * The deleted page with the given id in the folder with the given name, together with its folder. `null` if the name
  * or the id is malformed, the page belongs to another folder or is not deleted. Cached per request, so that
  * `generateMetadata` and the page component share one query.

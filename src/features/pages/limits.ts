@@ -16,3 +16,9 @@ export const CONTENT_MAX_DEPTH = 20;
  * columns and many short rows.
  */
 export const CONTENT_MAX_TABLE_CELLS = 10_000;
+
+/**
+ * The most revisions the history of a page shows at once, so that a page with thousands of revisions stays fast; links
+ * lead to the newer and the older ones.
+ */
+export const REVISIONS_PER_PAGE = 100;

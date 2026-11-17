@@ -9,6 +9,7 @@ import {
   pageContentInputSchema,
   parsePageId,
   parsePageVersion,
+  parseRevisionNumber,
   TITLE_HEADING_MISSING_MESSAGE,
 } from "@/features/pages/schema";
 
@@ -157,5 +158,35 @@ describe("the limits of the Markdown of a page", () => {
   it("reports only the length error for too long content nested too deep", () => {
     const content = `${nestedLists(CONTENT_MAX_DEPTH + 1)}\n\n${"a".repeat(CONTENT_MAX_LENGTH)}`;
     expect(fieldErrorsOf(pageContentInputSchema.safeParse({ content }))).toEqual({ content: [LENGTH_MESSAGE] });
+  });
+});
+
+describe("parseRevisionNumber", () => {
+  it.each([
+    ["1", 1],
+    ["5", 5],
+    ["250", 250],
+    ["2147483647", 2_147_483_647],
+  ])("accepts %j as %d", (value, number) => {
+    expect(parseRevisionNumber(value)).toBe(number);
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["empty", ""],
+    ["zero", "0"],
+    ["a leading zero", "05"],
+    ["a plus sign", "+5"],
+    ["a minus sign", "-5"],
+    ["a decimal point", "5.0"],
+    ["an exponent", "1e3"],
+    ["a space", " 5"],
+    ["letters", "abc"],
+    ["a hex number", "0x10"],
+    ["too large for the column", "2147483648"],
+    ["far too large", "99999999999999999999"],
+    ["repeated", ["3", "4"]],
+  ])("refuses %s", (_name, value) => {
+    expect(parseRevisionNumber(value)).toBeNull();
   });
 });

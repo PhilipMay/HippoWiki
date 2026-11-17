@@ -16,7 +16,17 @@ import MoveOrRenamePageDialog from "@/features/pages/components/MoveOrRenamePage
 import PageForm from "@/features/pages/components/PageForm";
 import type { PageWithPlace } from "@/features/pages/service";
 import { editorWithChannel } from "@/features/users/records";
-import { PAGE_NOTICES, pagePath, parseChoice, type PageNotice, type SearchParams } from "@/lib/addresses";
+import { parseRevisionNumber } from "@/features/pages/schema";
+import {
+  PAGE_NOTICES,
+  pagePath,
+  pageHistoryPath,
+  parseAction,
+  parseChoice,
+  parseView,
+  type PageNotice,
+  type SearchParams,
+} from "@/lib/addresses";
 import { formatDateTime } from "@/lib/format";
 
 /**
@@ -55,6 +65,49 @@ export function parsePageNotice(
   return notice !== null && action === null ? "invalid" : notice;
 }
 
+/** The views of a page address: `history` lists the revisions of the page. */
+export const PAGE_VIEWS = ["history"] as const;
+
+/** The view of a page address with its parameters, already checked. */
+export type PageAddressView = { name: "history"; before: number | null };
+
+/** What the query string of a page address asks for, already checked: an action with its notice, or a view. */
+export type PageQuery = { action: PageAction | null; notice: PageNotice | null; view: PageAddressView | null };
+
+/**
+ * The search parameters that belong to a view or an action of the history of a page, besides `view`, `action` and
+ * `notice`; each is allowed only with its own view or action.
+ */
+const PAGE_QUERY_PARAMS = ["before", "revision", "format", "from", "to"] as const;
+
+/** The parameters each view of a page address allows. */
+const PAGE_VIEW_PARAMS: Record<(typeof PAGE_VIEWS)[number], readonly string[]> = { history: ["before"] };
+
+/**
+ * Reads what the query string of a page address asks for: at most one action, with its notice, or one view, with its
+ * parameters. `"invalid"` for an unknown, empty or repeated action, notice or view, an action together with a view, a
+ * parameter of a view or action that the address does not have, and a malformed parameter: `before` of the history
+ * must be a revision number from 2 up (whether the page has it, the route checks). Routes show the not-found page for
+ * `"invalid"`; both page routes and their `generateMetadata` share it.
+ */
+export function parsePageQuery(searchParams: SearchParams): PageQuery | "invalid" {
+  const action = parseAction(searchParams, PAGE_ACTIONS);
+  const notice = parsePageNotice(searchParams, action);
+  const view = parseView(searchParams, PAGE_VIEWS);
+  if (action === "invalid" || notice === "invalid" || view === "invalid") return "invalid";
+  if (action !== null && view !== null) return "invalid";
+  const allowed: readonly string[] = view === null ? [] : PAGE_VIEW_PARAMS[view];
+  if (PAGE_QUERY_PARAMS.some((key) => searchParams[key] !== undefined && !allowed.includes(key))) return "invalid";
+  if (view === null) return { action, notice, view: null };
+
+  let before: number | null = null;
+  if (searchParams.before !== undefined) {
+    before = parseRevisionNumber(searchParams.before);
+    if (before === null || before < 2) return "invalid";
+  }
+  return { action: null, notice: null, view: { name: "history", before } };
+}
+
 /**
  * The message of the notice `changed`: who changed the page last, how and when, as the page view shows them. The editor or
  * dialog shows it after a change was refused, because the page was changed after it was opened.
@@ -63,9 +116,11 @@ function changedMessage(page: PageWithPlace): string {
   return `This page was changed by ${editorWithChannel(page.lastEditedBy)} at ${formatDateTime(page.updatedAt)} after you opened it.`;
 }
 
-/** The browser title of a page address with the given action. */
-export function pageViewTitle(page: PageWithPlace, action: PageAction | null | "invalid"): string {
-  return action === "edit" ? `Edit ${page.title}` : page.title;
+/** The browser title of a page address with what its query string asks for. */
+export function pageViewTitle(page: PageWithPlace, query: PageQuery | "invalid"): string {
+  if (query === "invalid") return page.title;
+  if (query.view?.name === "history") return `History of ${page.title}`;
+  return query.action === "edit" ? `Edit ${page.title}` : page.title;
 }
 
 type PageViewProps = {
@@ -120,28 +175,31 @@ export default async function PageView({ page, action, notice }: PageViewProps) 
             Last updated <time dateTime={page.updatedAt.toISOString()}>{formatDateTime(page.updatedAt)}</time> by{" "}
             {editorWithChannel(page.lastEditedBy)}
           </Typography>
-          {/* Only what the role includes is offered; a Reader gets no buttons at all. */}
-          {mayDo(page.role, "editPage") && (
-            <Stack direction="row" spacing={2} sx={{ pt: 1 }}>
+          {/* Only what the role includes is offered; a Reader gets only "History". The buttons wrap on narrow screens. */}
+          <Stack direction="row" useFlexGap sx={{ pt: 1, flexWrap: "wrap", gap: 2 }}>
+            {mayDo(page.role, "editPage") && (
               <Button component={Link} href={pagePath(folderName, tabName, page.name, "edit")} variant="outlined">
                 Edit
               </Button>
-              {mayDo(page.role, "moveOrRenamePage") && (
-                <Button
-                  component={Link}
-                  href={pagePath(folderName, tabName, page.name, "move-or-rename")}
-                  variant="outlined"
-                >
-                  Move or rename
-                </Button>
-              )}
-              {mayDo(page.role, "deletePage") && (
-                <Button component={Link} href={pagePath(folderName, tabName, page.name, "delete")} variant="outlined">
-                  Delete
-                </Button>
-              )}
-            </Stack>
-          )}
+            )}
+            {mayDo(page.role, "moveOrRenamePage") && (
+              <Button
+                component={Link}
+                href={pagePath(folderName, tabName, page.name, "move-or-rename")}
+                variant="outlined"
+              >
+                Move or rename
+              </Button>
+            )}
+            {mayDo(page.role, "deletePage") && (
+              <Button component={Link} href={pagePath(folderName, tabName, page.name, "delete")} variant="outlined">
+                Delete
+              </Button>
+            )}
+            <Button component={Link} href={pageHistoryPath(folderName, tabName, page.name)} variant="outlined">
+              History
+            </Button>
+          </Stack>
         </Stack>
         <Divider sx={{ mb: 3 }} />
         <MarkdownContent>{page.content}</MarkdownContent>

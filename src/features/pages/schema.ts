@@ -16,8 +16,11 @@ export function parsePageId(id: string): string | null {
   return result.success ? result.data : null;
 }
 
-/** The largest version a page can have: the largest value of the column, a PostgreSQL `integer`. */
-const PAGE_VERSION_MAX = 2_147_483_647;
+/** The largest value of a PostgreSQL `integer` column, such as the version of a page and the number of a revision. */
+const INTEGER_MAX = 2_147_483_647;
+
+/** The largest version a page can have: the largest value of the column. */
+const PAGE_VERSION_MAX = INTEGER_MAX;
 
 /**
  * The version of a page that a change is based on: an integer of at least 1, as the page had it when its editor or
@@ -31,6 +34,20 @@ export const pageVersionSchema = z.number().int().min(1).max(PAGE_VERSION_MAX);
  */
 export function parsePageVersion(value: unknown): number | null {
   const result = pageVersionSchema.safeParse(value);
+  return result.success ? result.data : null;
+}
+
+/** The number of a revision of a page: 1 for the oldest, counted up per page, at most the largest value of the column. */
+export const revisionNumberSchema = z.number().int().min(1).max(INTEGER_MAX);
+
+/**
+ * Returns the number of a revision as an address writes it, or `null` for anything else: only a whole number from 1
+ * up, written with digits alone, without a sign, leading zeros, spaces or other characters, and small enough for the
+ * column. A missing or repeated value counts as missing as well.
+ */
+export function parseRevisionNumber(value: string | string[] | undefined): number | null {
+  if (typeof value !== "string" || !/^[1-9][0-9]{0,9}$/.test(value)) return null;
+  const result = revisionNumberSchema.safeParse(Number(value));
   return result.success ? result.data : null;
 }
 

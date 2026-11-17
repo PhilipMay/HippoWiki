@@ -9,6 +9,7 @@ import {
   listAllFolderPages,
   listDeletedPages,
   listFolderPages,
+  listPageRevisions,
   listTabPages,
   moveOrRenamePage,
   restorePage,
@@ -26,6 +27,7 @@ const mocks = vi.hoisted(() => ({
   transaction: vi.fn(),
   revisionFindFirst: vi.fn(),
   revisionCreate: vi.fn(),
+  revisionFindMany: vi.fn(),
   roleFindFirst: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
@@ -41,15 +43,19 @@ vi.mock("@/lib/db", () => ({
       create: mocks.create,
       updateMany: mocks.updateMany,
     },
+    pageRevision: { findMany: mocks.revisionFindMany, findFirst: mocks.revisionFindFirst },
     folderRole: { findFirst: mocks.roleFindFirst },
     $transaction: mocks.transaction,
   }),
 }));
 vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, error: mocks.error } }));
 
-/** How often the pages have been read; the role of the actor is not counted. */
+/** How often the pages and their revisions have been read; the role of the actor is not counted. */
 function readCount(): number {
-  return mocks.findMany.mock.calls.length + mocks.findFirst.mock.calls.length;
+  return [mocks.findMany, mocks.findFirst, mocks.revisionFindMany].reduce(
+    (count, read) => count + read.mock.calls.length,
+    0,
+  );
 }
 
 const databaseWrites = [
@@ -305,6 +311,83 @@ describe("getDeletedPage", () => {
       expect(readCount()).toBe(0);
     },
   );
+});
+
+describe("listPageRevisions", () => {
+  /** The condition on the folder of a page whose deleted pages the actor may read: Manager or Owner. */
+  const WITH_DELETED_PAGES_ROLE = { roles: { some: { userId: ACTOR_ID, role: { in: ["manager", "owner"] } } } };
+  const createdAt = new Date("2026-11-12T10:00:00Z");
+  const ROW = { number: 5, title: "Intro", createdAt, user: { username: "mike" }, via: "mcp", revertedTo: 2 };
+
+  it("reads a page that is not deleted with a role on its folder, and a deleted one with Manager or Owner", async () => {
+    mocks.findFirst.mockResolvedValue({ revisions: [{ number: 5 }] });
+    mocks.revisionFindMany.mockResolvedValue([ROW]);
+
+    await expect(listPageRevisions(ACTOR, PAGE_ID, { before: null })).resolves.toEqual({
+      newest: 5,
+      revisions: [{ number: 5, title: "Intro", createdAt, madeBy: { name: "mike", via: "mcp" }, revertedTo: 2 }],
+    });
+    expect(mocks.findFirst).toHaveBeenCalledExactlyOnceWith({
+      where: {
+        id: PAGE_ID,
+        OR: [
+          { deletedAt: null, folder: WITH_ROLE },
+          { deletedAt: { not: null }, folder: WITH_DELETED_PAGES_ROLE },
+        ],
+      },
+      select: { revisions: { orderBy: { number: "desc" }, take: 1, select: { number: true } } },
+    });
+  });
+
+  it("lists at most 100 revisions newest first, without their content", async () => {
+    mocks.findFirst.mockResolvedValue({ revisions: [{ number: 250 }] });
+    mocks.revisionFindMany.mockResolvedValue([]);
+
+    await listPageRevisions(ACTOR, PAGE_ID, { before: null });
+
+    expect(mocks.revisionFindMany).toHaveBeenCalledExactlyOnceWith({
+      where: { pageId: PAGE_ID },
+      orderBy: { number: "desc" },
+      take: 100,
+      select: {
+        number: true,
+        title: true,
+        createdAt: true,
+        user: { select: { username: true } },
+        via: true,
+        revertedTo: true,
+      },
+    });
+  });
+
+  it("lists the revisions before the given number", async () => {
+    mocks.findFirst.mockResolvedValue({ revisions: [{ number: 250 }] });
+    mocks.revisionFindMany.mockResolvedValue([]);
+
+    await listPageRevisions(ACTOR, PAGE_ID, { before: 151 });
+
+    expect(mocks.revisionFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { pageId: PAGE_ID, number: { lt: 151 } } }),
+    );
+  });
+
+  it("returns null and lists nothing for a page that the actor may not read or that does not exist", async () => {
+    mocks.findFirst.mockResolvedValue(null);
+
+    await expect(listPageRevisions(ACTOR, PAGE_ID, { before: null })).resolves.toBeNull();
+    expect(mocks.revisionFindMany).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a malformed id", () => listPageRevisions(ACTOR, MALFORMED_ID, { before: null })],
+    ["a revision number that is no whole number", () => listPageRevisions(ACTOR, PAGE_ID, { before: 1.5 })],
+    ["a revision number below 1", () => listPageRevisions(ACTOR, PAGE_ID, { before: 0 })],
+    ["an admin", () => listPageRevisions({ ...ACTOR, type: "admin" }, PAGE_ID, { before: null })],
+    ["a malformed actor id", () => listPageRevisions(MALFORMED_ACTOR, PAGE_ID, { before: null })],
+  ])("returns null for %s without reading the database", async (_name, read) => {
+    await expect(read()).resolves.toBeNull();
+    expect(readCount()).toBe(0);
+  });
 });
 
 describe("directPagesFirst", () => {

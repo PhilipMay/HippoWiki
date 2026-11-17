@@ -234,6 +234,27 @@ export function pagePath(
   return notice ? `${path}${action ? "&" : "?"}notice=${notice}` : path;
 }
 
+/** The address of the history of a page: the page address with the view `history`, and the revisions before `before`. */
+export function pageHistoryPath(folder: string, tab: string | null, page: string, before?: number): string {
+  const path = `${pagePath(folder, tab, page)}?view=history`;
+  return before === undefined ? path : `${path}&before=${before}`;
+}
+
+/**
+ * The address of a revision of a page: the page address with the view `revision` and its number, rendered or, with
+ * `raw`, as its Markdown source.
+ */
+export function pageRevisionPath(
+  folder: string,
+  tab: string | null,
+  page: string,
+  revision: number,
+  raw = false,
+): string {
+  const path = `${pagePath(folder, tab, page)}?view=revision&revision=${revision}`;
+  return raw ? `${path}&format=raw` : path;
+}
+
 /** The address of the list of the deleted pages of a folder. */
 export function deletedPagesPath(folder: string): string {
   return `${DELETED_PAGES_PATH}/${folder}`;

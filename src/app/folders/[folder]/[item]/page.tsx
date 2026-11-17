@@ -15,12 +15,8 @@ import { createPage } from "@/features/pages/actions";
 import NewPageForm from "@/features/pages/components/NewPageForm";
 import PageList from "@/features/pages/components/PageList";
 import { mayDo, type FolderFunction } from "@/features/folder-roles/roles";
-import PageView, {
-  mayDoPageAction,
-  PAGE_ACTIONS,
-  pageViewTitle,
-  parsePageNotice,
-} from "@/features/pages/components/PageView";
+import PageAddress from "@/features/pages/components/PageAddress";
+import { mayDoPageAction, pageViewTitle, parsePageQuery } from "@/features/pages/components/PageView";
 import { getPage, listTabPages } from "@/features/pages/queries";
 import { folderPath, parseAction, parsePageSegment, parseView, tabPath } from "@/lib/addresses";
 import { pageTitle } from "@/lib/site";
@@ -59,7 +55,7 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
   const item = await findItem(params);
   if (!item) return { title: pageTitle() };
   if (item.kind === "page") {
-    return { title: pageTitle(pageViewTitle(item.page, parseAction(await searchParams, PAGE_ACTIONS))) };
+    return { title: pageTitle(pageViewTitle(item.page, parsePageQuery(await searchParams))) };
   }
   const action = parseAction(await searchParams, TAB_ACTIONS);
   return { title: pageTitle(action === "new" ? "New page" : `${item.tab.name} – ${item.tab.folder.name}`) };
@@ -73,15 +69,15 @@ export default async function FolderItemPage({ params, searchParams }: Props) {
   if (!item) notFound();
 
   const query = await searchParams;
-  // Neither a page nor a tab has views.
-  if (parseView(query) !== null) notFound();
 
   if (item.kind === "page") {
-    const action = parseAction(query, PAGE_ACTIONS);
-    const notice = parsePageNotice(query, action);
-    if (action === "invalid" || notice === "invalid" || !mayDoPageAction(item.page.role, action)) notFound();
-    return <PageView page={item.page} action={action} notice={notice} />;
+    const pageQuery = parsePageQuery(query);
+    if (pageQuery === "invalid" || !mayDoPageAction(item.page.role, pageQuery.action)) notFound();
+    return <PageAddress page={item.page} query={pageQuery} />;
   }
+
+  // A tab has no views.
+  if (parseView(query) !== null) notFound();
 
   const { tab } = item;
   const { folder, role } = tab;

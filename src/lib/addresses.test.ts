@@ -20,7 +20,9 @@ import {
   oauthRegisterPath,
   oauthTokenPath,
   PAGE_NOTICES,
+  pageHistoryPath,
   pagePath,
+  pageRevisionPath,
   parseAction,
   parseChoice,
   parsePageSegment,
@@ -114,6 +116,20 @@ describe("paths", () => {
   it("builds the address of the own account", () => {
     expect(accountPath()).toBe("/account");
     expect(accountPath("revoke")).toBe("/account?action=revoke");
+  });
+
+  it("builds the address of the history of a page, with the revisions before a number", () => {
+    expect(pageHistoryPath("handbook", null, "intro")).toBe("/folders/handbook/intro.md?view=history");
+    expect(pageHistoryPath("handbook", "guides", "setup", 151)).toBe(
+      "/folders/handbook/guides/setup.md?view=history&before=151",
+    );
+  });
+
+  it("builds the address of a revision of a page, rendered and raw", () => {
+    expect(pageRevisionPath("handbook", null, "intro", 5)).toBe("/folders/handbook/intro.md?view=revision&revision=5");
+    expect(pageRevisionPath("handbook", "guides", "setup", 1, true)).toBe(
+      "/folders/handbook/guides/setup.md?view=revision&revision=1&format=raw",
+    );
   });
 
   it("builds the address of the dialog that revokes a connected app", () => {

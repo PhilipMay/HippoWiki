@@ -2,14 +2,10 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { requireUser } from "@/features/auth/session";
-import PageView, {
-  mayDoPageAction,
-  PAGE_ACTIONS,
-  pageViewTitle,
-  parsePageNotice,
-} from "@/features/pages/components/PageView";
+import PageAddress from "@/features/pages/components/PageAddress";
+import { mayDoPageAction, pageViewTitle, parsePageQuery } from "@/features/pages/components/PageView";
 import { getPage } from "@/features/pages/queries";
-import { parseAction, parsePageSegment, parseView } from "@/lib/addresses";
+import { parsePageSegment } from "@/lib/addresses";
 import { pageTitle } from "@/lib/site";
 
 type Props = PageProps<"/folders/[folder]/[item]/[page]">;
@@ -28,7 +24,7 @@ async function findPage(params: Props["params"]) {
 export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
   const page = await findPage(params);
   if (!page) return { title: pageTitle() };
-  return { title: pageTitle(pageViewTitle(page, parseAction(await searchParams, PAGE_ACTIONS))) };
+  return { title: pageTitle(pageViewTitle(page, parsePageQuery(await searchParams))) };
 }
 
 export default async function TabPageView({ params, searchParams }: Props) {
@@ -38,18 +34,8 @@ export default async function TabPageView({ params, searchParams }: Props) {
   const page = await findPage(params);
   if (!page) notFound();
 
-  const query = await searchParams;
-  const action = parseAction(query, PAGE_ACTIONS);
-  const notice = parsePageNotice(query, action);
-  // A page has no views.
-  if (
-    action === "invalid" ||
-    notice === "invalid" ||
-    parseView(query) !== null ||
-    !mayDoPageAction(page.role, action)
-  ) {
-    notFound();
-  }
+  const query = parsePageQuery(await searchParams);
+  if (query === "invalid" || !mayDoPageAction(page.role, query.action)) notFound();
 
-  return <PageView page={page} action={action} notice={notice} />;
+  return <PageAddress page={page} query={query} />;
 }

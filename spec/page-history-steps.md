@@ -36,7 +36,7 @@ Choices this plan makes where the requirements leave the form open:
 ## Checklist
 
 - [x] Record revisions
-- [ ] History list
+- [x] History list
 - [ ] Revision view
 - [ ] Compare revisions
 - [ ] Revert a page

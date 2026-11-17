@@ -44,6 +44,7 @@ const PROTECTED_ADDRESSES = [
   ["the view AI apps of a folder", "/folders/handbook?view=mcp"],
   ["the overview of the folder roles", "/folder-roles"],
   ["a page with an action", "/folders/handbook/overview.md?action=edit"],
+  ["the history of a page", "/folders/handbook/guides/setup.md?view=history"],
   ["the own account", "/account"],
   ["the own account with an action", "/account?action=revoke"],
   ["a deleted page with an action", `/deleted-pages/handbook/${DELETED_PAGE_ID}?action=restore`],

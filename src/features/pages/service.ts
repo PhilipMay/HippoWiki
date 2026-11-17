@@ -41,13 +41,15 @@ import {
   pageNameInputSchema,
   parsePageId,
   parsePageVersion,
+  revisionNumberSchema,
   type PageFieldErrors,
 } from "@/features/pages/schema";
+import { REVISIONS_PER_PAGE } from "@/features/pages/limits";
 import { LAST_EDITOR_SELECT, withLastEditor, type LastEditor } from "@/features/users/records";
 import { parseUserId } from "@/features/users/schema";
 import type { Actor } from "@/features/users/service";
 import { isAdmin } from "@/features/users/user-type";
-import type { ChangeChannel } from "@/generated/prisma/client";
+import type { ChangeChannel, Prisma } from "@/generated/prisma/client";
 import { getDb } from "@/lib/db";
 import {
   isForeignKeyViolation,
@@ -124,6 +126,21 @@ export type StoredPage = {
 
 /** The place a page was in when it was deleted: its folder and its tab, if it had one. */
 export type PagePlace = { folder: { name: string }; tab: { name: string } | null };
+
+/**
+ * A revision of a page as the history lists it, without its content: its number, the title of the page after the
+ * change, when and by whom and how it was made, and the number of the revision a revert went back to, or `null`.
+ */
+export type RevisionSummary = {
+  number: number;
+  title: string;
+  createdAt: Date;
+  madeBy: LastEditor;
+  revertedTo: number | null;
+};
+
+/** One page of the history of a page: its revisions newest first, and the number of its newest revision. */
+export type PageRevisions = { newest: number; revisions: RevisionSummary[] };
 
 /** The input of a write is invalid; `fieldErrors` holds the messages of the schema per field. */
 type InvalidInput<FieldErrors> = { code: "invalid-input"; fieldErrors: FieldErrors };
@@ -316,6 +333,81 @@ export async function getDeletedPage(actor: ContentActor, folderName: string, id
     },
   });
   return page && asDeleted(withLastEditor(page));
+}
+
+const REVISION_SUMMARY_SELECT = {
+  number: true,
+  title: true,
+  createdAt: true,
+  user: { select: { username: true } },
+  via: true,
+  revertedTo: true,
+} as const;
+
+/** The row of a revision with its user and channel as `LastEditor`, like the last editor of a page. */
+function withMadeBy<Row extends { user: { username: string }; via: ChangeChannel }>({
+  user,
+  via,
+  ...row
+}: Row): Omit<Row, "user" | "via"> & { madeBy: LastEditor } {
+  return { ...row, madeBy: { name: user.username, via } };
+}
+
+/**
+ * The condition on the page with the given id whose history the actor of the browser may read: a page that is not
+ * deleted in a folder with a role of the actor, or a deleted page in a folder whose deleted pages the role shows.
+ * `null` for an actor who may read no content.
+ */
+function historyPageWhere(actor: BrowserActor, pageId: string): Prisma.PageWhereInput | null {
+  const readable = readableFolderWhere(actor);
+  const deletedReadable = readableFolderWhere(actor, "deletedPages");
+  if (!readable || !deletedReadable) return null;
+  return {
+    id: pageId,
+    OR: [
+      { deletedAt: null, folder: readable },
+      { deletedAt: { not: null }, folder: deletedReadable },
+    ],
+  };
+}
+
+/**
+ * The number of the newest revision of the page with the given id, 0 for a page without revisions, or `null` if the
+ * actor may not read its history or there is no such page.
+ */
+async function newestRevisionOf(actor: BrowserActor, pageId: string): Promise<number | null> {
+  const where = historyPageWhere(actor, pageId);
+  if (!where) return null;
+  const page = await getDb().page.findFirst({
+    where,
+    select: { revisions: { orderBy: { number: "desc" }, take: 1, select: { number: true } } },
+  });
+  return page ? (page.revisions[0]?.number ?? 0) : null;
+}
+
+/**
+ * The revisions of the page with the given id, newest first, without their content: at most `REVISIONS_PER_PAGE`,
+ * those before the revision `before` if it is given, and the number of the newest revision. Only the browser shows the
+ * history: a page that is not deleted needs a role on its folder, a deleted page the role that shows the deleted
+ * pages. `null` for an admin, without the role, for a malformed id or number, and if there is no such page.
+ */
+export async function listPageRevisions(
+  actor: BrowserActor,
+  id: string,
+  { before }: { before: number | null },
+): Promise<PageRevisions | null> {
+  if (!readerOf(actor)) return null;
+  const pageId = parsePageId(id);
+  if (!pageId || (before !== null && !revisionNumberSchema.safeParse(before).success)) return null;
+  const newest = await newestRevisionOf(actor, pageId);
+  if (newest === null) return null;
+  const revisions = await getDb().pageRevision.findMany({
+    where: { pageId, ...(before === null ? {} : { number: { lt: before } }) },
+    orderBy: { number: "desc" },
+    take: REVISIONS_PER_PAGE,
+    select: REVISION_SUMMARY_SELECT,
+  });
+  return { newest, revisions: revisions.map(withMadeBy) };
 }
 
 function invalidInput<Input>(error: z.ZodError<Input>): {
