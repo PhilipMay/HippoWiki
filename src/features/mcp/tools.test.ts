@@ -15,18 +15,27 @@ const mocks = vi.hoisted(() => ({
   createPage: vi.fn(),
   updatePageContent: vi.fn(),
   moveOrRenamePage: vi.fn(),
+  deletePage: vi.fn(),
+  createTab: vi.fn(),
+  renameTab: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
 }));
 
-vi.mock("@/features/folders/service", () => ({ listTabs: mocks.listTabs, getTab: mocks.getTab }));
+vi.mock("@/features/folders/service", () => ({
+  listTabs: mocks.listTabs,
+  getTab: mocks.getTab,
+  createTab: mocks.createTab,
+  renameTab: mocks.renameTab,
+}));
 vi.mock("@/features/pages/service", () => ({
   listAllFolderPages: mocks.listAllFolderPages,
   getPage: mocks.getPage,
   createPage: mocks.createPage,
   updatePageContent: mocks.updatePageContent,
   moveOrRenamePage: mocks.moveOrRenamePage,
+  deletePage: mocks.deletePage,
 }));
 vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, error: mocks.error } }));
 // The real parse, watched, to see whether the content was parsed.
@@ -689,6 +698,272 @@ describe("the write tools", () => {
         errorOf(await callTool("move_or_rename_page", { page: "setup", version: 4, newTab: null, newName: "x" })),
       ).toBe("The change could not be stored. Please try again later.");
       expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ err, tool: "move_or_rename_page" }, "mcp tool failed");
+    });
+  });
+});
+
+describe("the tools of a Manager connection", () => {
+  const PAGE = {
+    id: "p1",
+    name: "setup",
+    title: "Setup",
+    content: "# Setup",
+    updatedAt: CHANGED,
+    lastEditedBy: { name: "bob" },
+    version: 4,
+    folder: { id: FOLDER_ID, name: "handbook" },
+    tab: { name: "guides" },
+    role: "manager",
+  };
+  const TAB = { id: "tab-1", name: "guides", folder: FOLDER, role: "manager" };
+  const NOT_ALLOWED = "Your role on the folder does not allow this change, so nothing was changed.";
+  const MANAGER_TOOLS = ["delete_page", "create_tab", "rename_tab"];
+
+  type ListedTool = {
+    name: string;
+    description: string;
+    inputSchema: { properties?: Record<string, { description?: string }>; required?: string[] };
+    outputSchema?: unknown;
+    annotations: Record<string, boolean>;
+  };
+
+  async function listedTools(): Promise<ListedTool[]> {
+    return (await send({ method: "tools/list" })).result?.tools as ListedTool[];
+  }
+
+  /** The calls of every service that a tool of a Manager connection writes with. */
+  function expectNoManagerWrite(): void {
+    expect(mocks.deletePage).not.toHaveBeenCalled();
+    expect(mocks.createTab).not.toHaveBeenCalled();
+    expect(mocks.renameTab).not.toHaveBeenCalled();
+  }
+
+  beforeEach(() => {
+    actor = MANAGER;
+    mocks.getPage.mockResolvedValue(PAGE);
+    mocks.getTab.mockResolvedValue(TAB);
+  });
+
+  it("are registered for a Manager connection after the write tools, with inputs, output schemas and hints", async () => {
+    const tools = await listedTools();
+
+    expect(tools.map((tool) => tool.name).slice(5, 8)).toEqual(MANAGER_TOOLS);
+    const byName = Object.fromEntries(tools.map((tool) => [tool.name, tool]));
+    expect(Object.keys(byName.delete_page?.inputSchema.properties ?? {})).toEqual(["tab", "page", "version"]);
+    expect(byName.delete_page?.inputSchema.required).toEqual(["page"]);
+    expect(Object.keys(byName.create_tab?.inputSchema.properties ?? {})).toEqual(["name"]);
+    expect(byName.create_tab?.inputSchema.required).toEqual(["name"]);
+    expect(Object.keys(byName.rename_tab?.inputSchema.properties ?? {})).toEqual(["tab", "newName"]);
+    expect(byName.rename_tab?.inputSchema.required).toEqual(["tab", "newName"]);
+    for (const name of MANAGER_TOOLS) {
+      const tool = byName[name];
+      expect(tool?.description.length).toBeGreaterThan(40);
+      expect(tool?.outputSchema).toBeTruthy();
+      expect(tool?.annotations).toMatchObject({ readOnlyHint: false, idempotentHint: false, openWorldHint: false });
+      for (const argument of Object.values(tool?.inputSchema.properties ?? {}))
+        expect(argument.description).toBeTruthy();
+    }
+    expect(byName.delete_page?.annotations.destructiveHint).toBe(true);
+    expect(byName.create_tab?.annotations.destructiveHint).toBe(false);
+    expect(byName.rename_tab?.annotations.destructiveHint).toBe(false);
+  });
+
+  it.each([
+    ["Writer", WRITER],
+    ["Reader", READER],
+  ])("are not registered for a %s connection, and a call of one reaches no service", async (_role, other) => {
+    actor = other;
+
+    expect((await listedTools()).map((tool) => tool.name)).not.toContain("delete_page");
+    for (const [name, args] of [
+      ["delete_page", { page: "setup", version: 4 }],
+      ["create_tab", { name: "news" }],
+      ["rename_tab", { tab: "guides", newName: "news" }],
+    ] as const) {
+      const answer = await send({ method: "tools/call", params: { name, arguments: args } });
+      expect(JSON.stringify(answer)).toContain(name);
+    }
+    expectNoManagerWrite();
+  });
+
+  it("tell a Manager connection about a missing tab that it can create the tab, and other connections the browser", async () => {
+    mocks.getTab.mockResolvedValue(null);
+
+    const manager = errorOf(await callTool("create_page", { content: "# New", tab: "news" }));
+    actor = WRITER;
+    const writer = errorOf(await callTool("create_page", { content: "# New", tab: "news" }));
+
+    expect(manager).toContain("create the tab with create_tab");
+    expect(manager).not.toContain("browser");
+    expect(writer).toContain("tabs are created in the browser");
+    expect(writer).not.toContain("create_tab");
+  });
+
+  describe("delete_page", () => {
+    const PLACE = { folder: { name: "handbook" }, tab: { name: "guides" } };
+
+    it("deletes the page found by its tab and name, based on the given version, and says where to restore it", async () => {
+      mocks.deletePage.mockResolvedValue({ ok: true, value: PLACE });
+
+      const result = await callTool("delete_page", { tab: "guides", page: "setup", version: 4 });
+
+      expect(mocks.getPage).toHaveBeenCalledWith(MANAGER, "handbook", "guides", "setup");
+      expect(mocks.deletePage).toHaveBeenCalledExactlyOnceWith(MANAGER, "p1", { version: 4 });
+      expect(result.isError).toBeFalsy();
+      expect(result.structuredContent).toEqual({
+        name: "setup",
+        title: "Setup",
+        tab: "guides",
+        deletedPagesAddress: "https://wiki.example.com/deleted-pages/handbook",
+        restore: expect.stringMatching(/restored by a Manager or Owner of the folder in the browser/),
+      });
+      expect(JSON.parse(result.content[0]?.text ?? "")).toEqual(result.structuredContent);
+    });
+
+    it("gives the path of the deleted pages without a public URL", async () => {
+      publicUrl = undefined;
+      mocks.deletePage.mockResolvedValue({ ok: true, value: { folder: { name: "handbook" }, tab: null } });
+
+      const result = await callTool("delete_page", { page: "setup", version: 4 });
+
+      expect(result.structuredContent).toMatchObject({ tab: null, deletedPagesAddress: "/deleted-pages/handbook" });
+    });
+
+    it("passes no version on as null, which the service refuses as changed", async () => {
+      mocks.deletePage.mockResolvedValue({ ok: false, error: { code: "page-changed", page: PAGE } });
+
+      const message = errorOf(await callTool("delete_page", { tab: "guides", page: "setup" }));
+
+      expect(mocks.deletePage).toHaveBeenCalledWith(MANAGER, "p1", { version: null });
+      expect(message).toContain("The page was changed by bob at 2026-03-01T12:00:00.000Z");
+      expect(message).toContain("read_page");
+    });
+
+    it("answers a page that does not exist, or is deleted, with a tool error and deletes nothing", async () => {
+      mocks.getPage.mockResolvedValue(null);
+
+      expect(errorOf(await callTool("delete_page", { page: "gone", version: 1 }))).toContain(
+        'There is no page named "gone" directly in the folder "handbook"',
+      );
+      expect(mocks.deletePage).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [{ code: "not-allowed" }, NOT_ALLOWED],
+      [{ code: "page-not-found" }, 'There is no page named "setup"'],
+      [{ code: "page-changed", page: { ...PAGE, tab: { name: "guides" } } }, "The page was changed by bob"],
+      [{ code: "failed" }, "The change could not be stored."],
+    ])("maps the error %j to a tool error", async (error, message) => {
+      mocks.deletePage.mockResolvedValue({ ok: false, error });
+
+      expect(errorOf(await callTool("delete_page", { tab: "guides", page: "setup", version: 4 }))).toContain(message);
+    });
+
+    it("answers a failing database with a tool error that does not pass on the error, and logs it", async () => {
+      const err = new Error("connection lost");
+      mocks.deletePage.mockRejectedValue(err);
+
+      expect(errorOf(await callTool("delete_page", { page: "setup", version: 4 }))).toBe(
+        "The change could not be stored. Please try again later.",
+      );
+      expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ err, tool: "delete_page" }, "mcp tool failed");
+    });
+  });
+
+  describe("create_tab", () => {
+    it("creates the tab in the folder of the connection and returns it with its address", async () => {
+      mocks.createTab.mockResolvedValue({ ok: true, value: { id: "t2", name: "news", folder: { name: "handbook" } } });
+
+      const result = await callTool("create_tab", { name: "news" });
+
+      expect(mocks.createTab).toHaveBeenCalledExactlyOnceWith(MANAGER, FOLDER_ID, { name: "news" });
+      expect(result.structuredContent).toEqual({
+        name: "news",
+        address: "https://wiki.example.com/folders/handbook/news",
+      });
+    });
+
+    it("gives the path of the tab without a public URL", async () => {
+      publicUrl = undefined;
+      mocks.createTab.mockResolvedValue({ ok: true, value: { id: "t2", name: "news", folder: { name: "handbook" } } });
+
+      expect((await callTool("create_tab", { name: "news" })).structuredContent).toMatchObject({
+        address: "/folders/handbook/news",
+      });
+    });
+
+    it.each([
+      [{ code: "not-allowed" }, NOT_ALLOWED],
+      [{ code: "folder-not-found" }, "The folder of this connection cannot be read any more."],
+      [
+        { code: "invalid-input", fieldErrors: { name: ["Name is not valid"] } },
+        "The name is not valid: Name is not valid A name has lowercase letters, digits and single hyphens",
+      ],
+      [{ code: "name-taken" }, 'A tab named "News" already exists in the folder "handbook", so nothing was changed.'],
+      [{ code: "failed" }, "The change could not be stored."],
+    ])("maps the error %j to a tool error", async (error, message) => {
+      mocks.createTab.mockResolvedValue({ ok: false, error });
+
+      expect(errorOf(await callTool("create_tab", { name: "News" }))).toContain(message);
+    });
+
+    it("answers a failing database with a tool error that does not pass on the error, and logs it", async () => {
+      const err = new Error("connection lost");
+      mocks.createTab.mockRejectedValue(err);
+
+      expect(errorOf(await callTool("create_tab", { name: "news" }))).toBe(
+        "The change could not be stored. Please try again later.",
+      );
+      expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ err, tool: "create_tab" }, "mcp tool failed");
+    });
+  });
+
+  describe("rename_tab", () => {
+    it("renames the tab found by its name and returns it with its new address, without a version", async () => {
+      mocks.renameTab.mockResolvedValue({
+        ok: true,
+        value: { id: "tab-1", name: "howtos", folder: { name: "handbook" } },
+      });
+
+      const result = await callTool("rename_tab", { tab: "guides", newName: "howtos" });
+
+      expect(mocks.getTab).toHaveBeenCalledWith(MANAGER, "handbook", "guides");
+      expect(mocks.renameTab).toHaveBeenCalledExactlyOnceWith(MANAGER, "tab-1", { name: "howtos" });
+      expect(result.structuredContent).toEqual({
+        name: "howtos",
+        address: "https://wiki.example.com/folders/handbook/howtos",
+      });
+    });
+
+    it("answers a tab that does not exist with a tool error and renames nothing", async () => {
+      mocks.getTab.mockResolvedValue(null);
+
+      expect(errorOf(await callTool("rename_tab", { tab: "gone", newName: "news" }))).toContain(
+        'There is no tab named "gone" in the folder "handbook", so nothing was changed.',
+      );
+      expect(mocks.renameTab).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [{ code: "not-allowed" }, NOT_ALLOWED],
+      [{ code: "tab-not-found" }, 'There is no tab named "guides"'],
+      [{ code: "invalid-input", fieldErrors: { name: ["Name is not valid"] } }, "The name is not valid"],
+      [{ code: "name-taken" }, 'A tab named "news" already exists in the folder "handbook"'],
+      [{ code: "failed" }, "The change could not be stored."],
+    ])("maps the error %j to a tool error", async (error, message) => {
+      mocks.renameTab.mockResolvedValue({ ok: false, error });
+
+      expect(errorOf(await callTool("rename_tab", { tab: "guides", newName: "news" }))).toContain(message);
+    });
+
+    it("answers a failing database with a tool error that does not pass on the error, and logs it", async () => {
+      const err = new Error("connection lost");
+      mocks.renameTab.mockRejectedValue(err);
+
+      expect(errorOf(await callTool("rename_tab", { tab: "guides", newName: "news" }))).toBe(
+        "The change could not be stored. Please try again later.",
+      );
+      expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ err, tool: "rename_tab" }, "mcp tool failed");
     });
   });
 });

@@ -439,6 +439,29 @@ describe("a write through MCP", () => {
     expect(mocks.create).not.toHaveBeenCalled();
     expect(mocks.updateMany).not.toHaveBeenCalled();
   });
+
+  it("deletes a page through a Manager connection and logs the channel mcp and the grant", async () => {
+    const manager = { ...MCP_ACTOR, connection: { ...MCP_ACTOR.connection, role: "manager" } } as ContentActor;
+    mocks.findFirst.mockResolvedValue({ folder: { name: "projects" }, tab: null });
+    mocks.updateMany.mockResolvedValue({ count: 1 });
+
+    await expect(deletePage(manager, PAGE_ID, { version: 2 })).resolves.toMatchObject({ ok: true });
+
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+      { pageId: PAGE_ID, channel: "mcp", grantId: "0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01" },
+      "page deleted",
+    );
+    expect(mocks.updateMany.mock.calls[0]?.[0].data).toMatchObject({ lastEditedById: ACTOR_ID });
+  });
+
+  it("refuses a delete through a Writer connection of an Owner and writes nothing", async () => {
+    await expect(deletePage(MCP_ACTOR, PAGE_ID, { version: 2 })).resolves.toEqual({
+      ok: false,
+      error: { code: "not-allowed" },
+    });
+
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
 });
 
 describe("createPage", () => {

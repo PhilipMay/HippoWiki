@@ -879,4 +879,37 @@ describe("tab writes through MCP", () => {
 
     expect(await snapshot()).toStrictEqual(before);
   });
+
+  it("creates and renames tabs through a Manager connection with the user as the last editor", async () => {
+    const bob = await createUser({ name: "bob" });
+    const folder = await createFolder({ name: "projects", roles: [{ user, role: "manager" }] });
+    const old = await createTab({ folder, name: "misc", editor: bob });
+    const manager = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "manager" });
+
+    const created = await folderService.createTab(manager, folder.id, { name: "meetings" });
+    if (!created.ok) throw new Error(`not created: ${created.error.code}`);
+    await expect(folderService.renameTab(manager, old.id, { name: "archive" })).resolves.toStrictEqual({
+      ok: true,
+      value: { id: old.id, name: "archive", folder: { name: "projects" } },
+    });
+
+    expect(await lastEditorOfTab(created.value.id)).toBe(user.id);
+    expect(await lastEditorOfTab(old.id)).toBe(user.id);
+  });
+
+  it("refuses create and rename through a Manager connection after the user was lowered to Writer", async () => {
+    const folder = await createFolder({ name: "projects", roles: [{ user, role: "manager" }] });
+    const tab = await createTab({ folder, name: "misc" });
+    const manager = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "manager" });
+    await getTestDb().folderRole.update({
+      where: { folderId_userId: { folderId: folder.id, userId: user.id } },
+      data: { role: "writer" },
+    });
+    const before = await snapshot();
+
+    await expect(folderService.createTab(manager, folder.id, { name: "news" })).resolves.toEqual(NOT_ALLOWED);
+    await expect(folderService.renameTab(manager, tab.id, { name: "news" })).resolves.toEqual(NOT_ALLOWED);
+
+    expect(await snapshot()).toStrictEqual(before);
+  });
 });

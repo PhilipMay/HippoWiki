@@ -1,5 +1,6 @@
 // The tools of the MCP server: what an AI app can do with the folder of its connection. A Reader connection gets the
-// read tools, a Writer and a Manager connection also the write tools, which follow the rules of the browser, the version check of
+// read tools, a Writer and a Manager connection also the write tools of pages, and a Manager connection the tools that
+// delete pages and create, rename and delete tabs. They follow the rules of the browser, the version check of
 // optimistic locking included. They call the services of the
 // folders and pages with the actor of MCP, which carries the connection: the services give it only the folder of the
 // connection, with the lower of the user's role and the role of the connection, as `queries.ts` does with the channel
@@ -16,7 +17,7 @@ import * as folderService from "@/features/folders/service";
 import { deriveName } from "@/features/pages/derive";
 import { pageContentInputSchema, TITLE_HEADING_MISSING_MESSAGE } from "@/features/pages/schema";
 import * as pageService from "@/features/pages/service";
-import { folderPath, pagePath, tabPath } from "@/lib/addresses";
+import { deletedPagesPath, folderPath, pagePath, tabPath } from "@/lib/addresses";
 import { logger } from "@/lib/logger";
 import { nameSchema } from "@/lib/names";
 import { siteName } from "@/lib/site";
@@ -45,9 +46,10 @@ const ROLE_ABILITIES: Readonly<Record<McpRole, string>> = {
     "creates no tabs. Every change of a page states the version that read_page gave for it, and a change based on " +
     "an older version is refused.",
   manager:
-    "It reads the folder and changes its pages with create_page, replace_page_content and move_or_rename_page; it " +
-    "creates no tabs. Every change of a page states the version that read_page gave for it, and a change based on " +
-    "an older version is refused.",
+    "It reads the folder and changes its pages with create_page, replace_page_content and move_or_rename_page, " +
+    "deletes pages with delete_page, and creates and renames tabs with create_tab and rename_tab. Every change and " +
+    "every delete of a page states the version that read_page gave for it, and one based on an older version is " +
+    "refused.",
 };
 
 /**
@@ -125,6 +127,20 @@ const moveOrRenamePageInput = z.object({
     .describe("The new name of the page: lowercase letters, digits and single hyphens. Pass the old name to keep it."),
 });
 
+const deletePageInput = z.object(pageArguments);
+
+/** A new tab name as a tool takes it: checked by the service, so that a bad name is a tool error with the rule. */
+function newTabNameArgument(description: string) {
+  return z.string().describe(`${description}: lowercase letters, digits and single hyphens, such as meeting-notes`);
+}
+
+/** An existing tab as a tool takes it; a name that no tab has is a tool error that says how to find the tabs. */
+const existingTabArgument = z.string().describe("The name of the tab, as list_folder returns it");
+
+const createTabInput = z.object({ name: newTabNameArgument("The name of the new tab") });
+
+const renameTabInput = z.object({ tab: existingTabArgument, newName: newTabNameArgument("The new name of the tab") });
+
 /**
  * The tab a page is in, as a tool takes it. `null` is accepted next to a missing tab, because `list_folder` returns
  * the tab of such a page as `null`. The description comes last: one on the name alone would be lost when the argument
@@ -182,6 +198,21 @@ const storedPageOutput = z.object({
   tab: z.string().nullable(),
   address: z.string().describe("Where a person opens the page in a browser"),
   version: z.number().int().describe("The version of the page after the change, for the next change"),
+});
+
+const deletedPageOutput = z.object({
+  name: z.string(),
+  title: z.string(),
+  tab: z.string().nullable().describe("The tab the page was in, or null for a page placed directly in the folder"),
+  deletedPagesAddress: z
+    .string()
+    .describe("Where a person sees the deleted pages of the folder in a browser, as a Manager or Owner restores them"),
+  restore: z.string().describe("How the page can be restored"),
+});
+
+const storedTabOutput = z.object({
+  name: z.string(),
+  address: z.string().describe("Where a person opens the tab in a browser"),
 });
 
 /** The result of a tool that worked: the data for the client, and the same as text for the model. */
@@ -317,10 +348,20 @@ function pageNotFound(folderName: string, tab: string | null, page: string): Cal
   );
 }
 
-function tabNotFound(folderName: string, tab: string): CallToolResult {
+/** Whether the connection is one of a Manager, with the tools that delete pages and change tabs. */
+function isManager({ actor }: WikiToolsOptions): boolean {
+  return includesRole(actor.connection.role, "manager");
+}
+
+/**
+ * The tool error of a tab that does not exist, also one deleted meanwhile: a Manager connection learns that it can
+ * create the tab, the other connections that tabs are created in the browser.
+ */
+function tabNotFound(options: WikiToolsOptions, tab: string): CallToolResult {
+  const create = isManager(options) ? "or create the tab with create_tab" : "tabs are created in the browser";
   return toolError(
-    `There is no tab named "${tab}" in the folder "${folderName}", so nothing was changed. Use list_folder to see ` +
-      "the tabs of the folder; tabs are created in the browser.",
+    `There is no tab named "${tab}" in the folder "${options.folder.name}", so nothing was changed. Use list_folder ` +
+      `to see the tabs of the folder; ${create}.`,
   );
 }
 
@@ -334,7 +375,7 @@ async function tabIdOf(
 ): Promise<{ tabId: string | null; error?: never } | { error: CallToolResult }> {
   if (tab === null || tab === undefined) return { tabId: null };
   const found = await folderService.getTab(options.actor, options.folder.name, tab);
-  return found ? { tabId: found.id } : { error: tabNotFound(options.folder.name, tab) };
+  return found ? { tabId: found.id } : { error: tabNotFound(options, tab) };
 }
 
 /** The tool error of input that the service refused, with what to do next. */
@@ -430,7 +471,7 @@ export async function createPage(
         case "folder-not-found":
           return folderGone();
         case "tab-not-found":
-          return tabNotFound(folder.name, input.tab ?? "");
+          return tabNotFound(options, input.tab ?? "");
         case "invalid-input":
           return invalidInput(created.error.fieldErrors);
         case "name-taken":
@@ -506,7 +547,7 @@ export async function moveOrRenamePage(
         case "page-changed":
           return pageChanged(options, moved.error.page);
         case "tab-not-found":
-          return tabNotFound(options.folder.name, input.newTab ?? "");
+          return tabNotFound(options, input.newTab ?? "");
         case "invalid-input":
           return invalidInput(moved.error.fieldErrors);
         case "name-taken":
@@ -519,8 +560,132 @@ export async function moveOrRenamePage(
   );
 }
 
+/** What a delete tells the agent about restoring: only a person in the browser restores deleted pages. */
+const RESTORE_PAGE =
+  "The page can be restored by a Manager or Owner of the folder in the browser, under Deleted pages at the address " +
+  "deletedPagesAddress. Deleted pages can be neither seen nor restored through this connection.";
+
+/**
+ * The tool `delete_page`: a page of the folder of the connection by its tab, if it is in one, and its name, based on a
+ * version, deleted as in the browser: it goes to the deleted pages of the folder, from where a person can restore it.
+ */
+export async function deletePage(
+  options: WikiToolsOptions,
+  input: z.infer<typeof deletePageInput>,
+): Promise<CallToolResult> {
+  return run(
+    "delete_page",
+    async () => {
+      const tab = input.tab ?? null;
+      const page = await pageService.getPage(options.actor, options.folder.name, tab, input.page);
+      if (!page) return pageNotFound(options.folder.name, tab, input.page);
+      const deleted = await pageService.deletePage(options.actor, page.id, { version: input.version ?? null });
+      if (deleted.ok) {
+        return result({
+          name: page.name,
+          title: page.title,
+          tab: deleted.value.tab?.name ?? null,
+          deletedPagesAddress: addressOf(options, deletedPagesPath(deleted.value.folder.name)),
+          restore: RESTORE_PAGE,
+        } satisfies z.infer<typeof deletedPageOutput>);
+      }
+      switch (deleted.error.code) {
+        case "not-allowed":
+          return toolError(NOT_ALLOWED);
+        case "page-not-found":
+          return pageNotFound(options.folder.name, tab, input.page);
+        case "page-changed":
+          return pageChanged(options, deleted.error.page);
+        case "failed":
+          return toolError(WRITE_FAILED);
+      }
+    },
+    WRITE_FAILED,
+  );
+}
+
+/** The tool error of a tab name that another tab of the folder has. */
+function tabNameTaken(options: WikiToolsOptions, name: string, next: string): CallToolResult {
+  return toolError(
+    `A tab named "${name}" already exists in the folder "${options.folder.name}", so nothing was changed. ${next}`,
+  );
+}
+
+/** The tab as stored by a write, as `create_tab` and `rename_tab` return it, with its address. */
+function storedTabResult(options: WikiToolsOptions, tab: folderService.StoredTab): CallToolResult {
+  return result({
+    name: tab.name,
+    address: addressOf(options, tabPath(tab.folder.name, tab.name)),
+  } satisfies z.infer<typeof storedTabOutput>);
+}
+
+/** The tool `create_tab`: a new, empty tab of the folder of the connection with the given name. */
+export async function createTab(
+  options: WikiToolsOptions,
+  input: z.infer<typeof createTabInput>,
+): Promise<CallToolResult> {
+  return run(
+    "create_tab",
+    async () => {
+      const created = await folderService.createTab(options.actor, options.folder.id, { name: input.name });
+      if (created.ok) return storedTabResult(options, created.value);
+      switch (created.error.code) {
+        case "not-allowed":
+          return toolError(NOT_ALLOWED);
+        case "folder-not-found":
+          return folderGone();
+        case "invalid-input":
+          return invalidInput(created.error.fieldErrors);
+        case "name-taken":
+          return tabNameTaken(options, input.name, "Choose another name, or put the pages into that tab.");
+        case "failed":
+          return toolError(WRITE_FAILED);
+      }
+    },
+    WRITE_FAILED,
+  );
+}
+
+/**
+ * The tool `rename_tab`: a tab of the folder of the connection, by its current name, with a new name. As in the
+ * browser, a rename is not checked against changes meanwhile; the addresses of the pages in the tab change with it.
+ */
+export async function renameTab(
+  options: WikiToolsOptions,
+  input: z.infer<typeof renameTabInput>,
+): Promise<CallToolResult> {
+  return run(
+    "rename_tab",
+    async () => {
+      const tab = await folderService.getTab(options.actor, options.folder.name, input.tab);
+      if (!tab) return tabNotFound(options, input.tab);
+      const renamed = await folderService.renameTab(options.actor, tab.id, { name: input.newName });
+      if (renamed.ok) return storedTabResult(options, renamed.value);
+      switch (renamed.error.code) {
+        case "not-allowed":
+          return toolError(NOT_ALLOWED);
+        case "tab-not-found":
+          return tabNotFound(options, input.tab);
+        case "invalid-input":
+          return invalidInput(renamed.error.fieldErrors);
+        case "name-taken":
+          return tabNameTaken(options, input.newName, "Choose another name.");
+        case "failed":
+          return toolError(WRITE_FAILED);
+      }
+    },
+    WRITE_FAILED,
+  );
+}
+
 /** What every read tool tells a client about itself: it only reads, and only the wiki. */
 const READ_ONLY = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
+
+/** What a tool tells a client that writes to the wiki and destroys nothing. */
+const WRITES = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false };
+
+/** What a tool tells a client that deletes from the wiki. */
+const WRITES_AND_DELETES = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false };
 
 /**
  * A new MCP server with the tools of the wiki for the connection of the request. The SDK asks for one per request, so
@@ -605,6 +770,53 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     (input) => moveOrRenamePage(options, input),
+  );
+
+  // The tools that delete pages and change tabs only for a Manager connection.
+  if (!isManager(options)) return server;
+
+  server.registerTool(
+    "delete_page",
+    {
+      title: "Delete a page",
+      description:
+        "Deletes a page of the folder of this connection, as deleting it in the browser does: it goes to the deleted " +
+        "pages of the folder, where a Manager or Owner can restore it in the browser; deleted pages cannot be seen " +
+        "or restored through this connection. State the version that read_page gave: if the page has changed since, " +
+        "nothing is deleted. Returns the deleted page and the address of the deleted pages of the folder.",
+      inputSchema: deletePageInput,
+      outputSchema: deletedPageOutput,
+      annotations: WRITES_AND_DELETES,
+    },
+    (input) => deletePage(options, input),
+  );
+
+  server.registerTool(
+    "create_tab",
+    {
+      title: "Create a tab",
+      description:
+        "Creates a new, empty tab in the folder of this connection. create_page and move_or_rename_page can put " +
+        "pages into it at once. Returns the tab with its address.",
+      inputSchema: createTabInput,
+      outputSchema: storedTabOutput,
+      annotations: WRITES,
+    },
+    (input) => createTab(options, input),
+  );
+
+  server.registerTool(
+    "rename_tab",
+    {
+      title: "Rename a tab",
+      description:
+        "Gives a tab of the folder of this connection a new name, which changes its address and the addresses of " +
+        "all pages in it. Returns the tab with its new address.",
+      inputSchema: renameTabInput,
+      outputSchema: storedTabOutput,
+      annotations: WRITES,
+    },
+    (input) => renameTab(options, input),
   );
 
   return server;

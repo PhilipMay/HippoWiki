@@ -633,6 +633,38 @@ describe("renameTab", () => {
   });
 });
 
+describe("a tab write through MCP", () => {
+  const GRANT_ID = "0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01";
+  const MANAGER = { ...MCP_ACTOR, connection: { ...MCP_ACTOR.connection, role: "manager" } } as ContentActor;
+
+  it("logs the channel mcp and the grant for a Manager connection, with the user as the last editor", async () => {
+    const stored = { id: TAB_ID, name: "guides", folder: { name: "handbook" } };
+    mocks.tabCreate.mockResolvedValue(stored);
+    mocks.tabUpdateMany.mockResolvedValue({ count: 1 });
+    mocks.tabFindUnique.mockResolvedValue(stored);
+
+    await expect(createTab(MANAGER, FOLDER_ID, TAB_VALID)).resolves.toMatchObject({ ok: true });
+    await expect(renameTab(MANAGER, TAB_ID, TAB_VALID)).resolves.toMatchObject({ ok: true });
+
+    expect(mocks.info.mock.calls).toEqual([
+      [{ tabId: TAB_ID, channel: "mcp", grantId: GRANT_ID }, "tab created"],
+      [{ tabId: TAB_ID, channel: "mcp", grantId: GRANT_ID }, "tab renamed"],
+    ]);
+    expect(mocks.tabCreate.mock.calls[0]?.[0].data).toMatchObject({ lastEditedById: ACTOR_ID });
+    expect(mocks.tabUpdateMany.mock.calls[0]?.[0].data).toMatchObject({ lastEditedById: ACTOR_ID });
+  });
+
+  it("refuses a Writer connection of an Owner and writes nothing", async () => {
+    const NOT_ALLOWED = { ok: false, error: { code: "not-allowed" } };
+
+    await expect(createTab(MCP_ACTOR, FOLDER_ID, TAB_VALID)).resolves.toEqual(NOT_ALLOWED);
+    await expect(renameTab(MCP_ACTOR, TAB_ID, TAB_VALID)).resolves.toEqual(NOT_ALLOWED);
+    await expect(deleteTab(MCP_ACTOR, FOLDER_ID, TAB_ID)).resolves.toEqual(NOT_ALLOWED);
+
+    expectNothingWritten();
+  });
+});
+
 describe("deleteTab", () => {
   it.each([
     ["tab", FOLDER_ID, MALFORMED_ID],

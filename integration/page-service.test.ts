@@ -1139,4 +1139,34 @@ describe("writes through MCP", () => {
     expect(after).toStrictEqual(before);
     expect(after).toMatchObject({ deletedAt: null, version: 3 });
   });
+
+  it("delete a page through a Manager connection with the user as the user who deleted it", async () => {
+    const bob = await createUser({ name: "bob" });
+    const folder = await createFolder({ name: "projects", roles: [{ user, role: "manager" }] });
+    const page = await createPage({ folder, name: "plan", editor: bob });
+    const manager = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "manager" });
+
+    await expect(pageService.deletePage(manager, page.id, { version: 1 })).resolves.toStrictEqual({
+      ok: true,
+      value: { folder: { name: "projects" }, tab: null },
+    });
+
+    const deleted = await pageService.listDeletedPages(inBrowser(user), folder.id);
+    expect(deleted?.map(({ name, lastEditedBy }) => [name, lastEditedBy.name])).toEqual([["plan", "alice"]]);
+  });
+
+  it("refuse a delete through a Manager connection after the user was lowered to Writer, and change nothing", async () => {
+    const folder = await createFolder({ name: "projects", roles: [{ user, role: "manager" }] });
+    const page = await createPage({ folder, name: "plan" });
+    const manager = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "manager" });
+    await getTestDb().folderRole.update({
+      where: { folderId_userId: { folderId: folder.id, userId: user.id } },
+      data: { role: "writer" },
+    });
+    const before = await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } });
+
+    await expect(pageService.deletePage(manager, page.id, { version: 1 })).resolves.toEqual(NOT_ALLOWED);
+
+    expect(await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } })).toStrictEqual(before);
+  });
 });
