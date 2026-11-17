@@ -55,6 +55,8 @@ The specification lives in the `spec/` directory. This catalog should always be 
   apps", MCP with the lower of the user's role and the role of the connection, decisions, limits)
 - `spec/tab-deletion-requirements.md`: the approved requirements of deleting a tab (a Manager or Owner deletes
   a tab for good, its pages are soft deleted)
+- `spec/tab-deletion-steps.md`: the step plan of deleting a tab (the service write with its lock and transaction, the
+  "Delete tab" dialog at the tab address, wrap-up)
 - `spec/roadmap.md`: backlog of candidate features, grouped by theme, and things still to check
 - `spec/issue-report.md`: how to report issues found in code and document reviews
 - `spec/review-report.md`: the report of the security and code review (scope and method, standards and target level,
