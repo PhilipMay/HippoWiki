@@ -209,7 +209,8 @@ container.
 ## Unit test coverage
 
 `npm run test:coverage` runs the unit tests, prints a coverage table and writes an HTML report to
-`coverage/index.html`. On GitHub, every run of the `unit_tests` workflow shows the coverage in its job summary and
+`coverage/index.html`. The tests with a time budget (`*.cost.test.ts`) are left out; `npm run test:cost` runs them on
+their own, because coverage slows down every module. On GitHub, every run of the `unit_tests` workflow shows the coverage in its job summary and
 offers the HTML report as the artifact `coverage-report`.
 
 ## Container image
@@ -267,8 +268,9 @@ first, with a token that has the `read:packages` scope.
 | `npm run format:check`        | Check formatting without changing files                               |
 | `npm run docs:check`          | Check that the file references in the docs point to existing files    |
 | `npm run typecheck`           | Generate the Next.js route types and run the type checker             |
-| `npm run test`                | Run the unit tests with Vitest                                        |
+| `npm run test`                | Run the unit tests with Vitest, then the cost tests                   |
 | `npm run test:coverage`       | Run the unit tests and measure their coverage (report in `coverage/`) |
+| `npm run test:cost`           | Run the tests with a time budget, on their own and without coverage   |
 | `npm run check`               | Run `format:check`, `docs:check`, `lint`, `typecheck` and `test`      |
 | `npm run test:integration`    | Run the integration tests against a throwaway test database           |
 | `npm run test:e2e`            | Run the end-to-end tests with Playwright                              |

@@ -69,6 +69,7 @@ source ~/.nvm/nvm.sh && nvm use
 npm install
 npm run check   # format:check, docs:check, lint, typecheck, test
 npm run test:coverage  # unit test coverage, report in coverage/
+npm run test:cost  # tests with a time budget, on their own and without coverage
 npm run build
 npm run test:integration  # integration tests against a throwaway database container, needs only Podman
 npm run test:e2e  # end-to-end tests in a throwaway database container, needs only Podman

@@ -13,6 +13,16 @@ export default defineConfig({
           name: "unit",
           environment: "node",
           include: ["src/**/*.test.ts"],
+          exclude: ["src/**/*.cost.test.ts"],
+        },
+      },
+      {
+        // Wall-clock budgets (`npm run test:cost`). Never run with coverage, which instruments every module, the
+        // dependencies included, and never next to other test files, so the time measures the code alone.
+        test: {
+          name: "cost",
+          environment: "node",
+          include: ["src/**/*.cost.test.ts"],
         },
       },
       {

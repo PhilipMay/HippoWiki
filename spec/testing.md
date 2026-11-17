@@ -4,8 +4,12 @@ How the code is tested. Commands are listed in `README.md`.
 
 ## Unit tests
 
-- Vitest project `unit` (`vitest.config.ts`); unit tests sit next to the code as `*.test.ts`. `npm run test` and
-  `npm run test:coverage` run only this project.
+- Vitest project `unit` (`vitest.config.ts`); unit tests sit next to the code as `*.test.ts`. `npm run test:coverage`
+  runs only this project.
+- Vitest project `cost`: tests with a wall-clock budget, next to the code as `*.cost.test.ts` and left out of `unit`.
+  `npm run test:cost` runs only this project, on its own and never with coverage: V8 coverage instruments every module,
+  the dependencies included, and other test files running at the same time share the CPU, so a budget measured then
+  says nothing about the code. `npm run test` runs `unit`, then `cost`, as two runs.
 - Schemas, environment parsing and other pure helpers get unit tests.
 - Mocks are set up with `vi.mock` and shared mock functions from `vi.hoisted`, reset in `beforeEach`.
 - Services (`service.test.ts`) get unit tests for the branches the end-to-end tests cannot reach without breaking the
@@ -32,8 +36,9 @@ How the code is tested. Commands are listed in `README.md`.
   `requireUser()` redirects. They mock the service of the feature, `next/server` and `@/features/auth/session`.
 - The form parsers get unit tests in `forms.test.ts`, the ids in `schema.test.ts`.
 - The Markdown parser gets unit tests in `src/features/pages/markdown.test.ts`, which also renders the page view
-  (`MarkdownContent`) with `renderToString()` of `react-dom/server`. Its inputs that are slow for other parsers, each
-  at the content limit, guard the cost of the parse and the page view: each must be parsed and rendered within 2 s, so
+  (`MarkdownContent`) with `renderToString()` of `react-dom/server`. `src/features/pages/markdown.cost.test.ts`
+  (project `cost`) holds the inputs that are slow for other parsers, each at the content limit; they guard the cost of
+  the parse and the page view: each must be parsed and rendered within 2 s, so
   that an update of markdown-it or a change of the renderer cannot bring a slow parse back unnoticed. A new input that
   turns out to be slow is added there.
 - `src/features/services.test.ts` checks that the services load without Next.js and React: it mocks `next/cache`,
@@ -272,7 +277,7 @@ How the code is tested. Commands are listed in `README.md`.
   shows at a glance which kind of check broke:
   - `format_check`: `npm run format:check`
   - `lint`: `npm run build`, `npm run typecheck`, `npm run lint`, `npm run docs:check`, as separate steps in this order
-  - `unit_tests`: `npm run test:coverage`
+  - `unit_tests`: `npm run test:coverage`, then `npm run test:cost`, also when the first step failed
   - `integration_tests`: `npm run test:integration`, using the Podman preinstalled on the runner
   - `end_to_end_tests`: `npm run test:e2e`, against the development server
   - `end_to_end_tests_production`: `npm run test:e2e:production`, against a production build

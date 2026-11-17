@@ -8,7 +8,7 @@ Code: `src/features/pages/` (the model is `Page` in `prisma/schema.prisma`, the 
 `src/features/pages/limits.ts`, the title and the suggested name in `src/features/pages/derive.ts`, the Markdown
 parser in `src/features/pages/markdown.ts` and the page view in `src/features/pages/components/markdownToReact.tsx`),
 routes under `src/app/folders/`. Tests: `src/features/pages/derive.test.ts`, `src/features/pages/markdown.test.ts`,
-`src/features/pages/schema.test.ts`,
+`src/features/pages/markdown.cost.test.ts`, `src/features/pages/schema.test.ts`,
 `src/features/pages/forms.test.ts`, `src/features/pages/actions.test.ts`, `e2e/create-page.spec.ts`,
 `e2e/edit-page.spec.ts`, `e2e/pages.spec.ts`, `integration/page-service.test.ts`.
 
@@ -86,7 +86,7 @@ costliest function of a page, and its guards are:
 
 - The parse is linear in the length of the content: at the content limit its worst case, measured with the inputs
   that are slow for other parsers, takes about 0.1 s for the parse and well below 1 s with the page view.
-  `src/features/pages/markdown.test.ts` keeps these inputs below 2 s each.
+  `src/features/pages/markdown.cost.test.ts` keeps these inputs below 2 s each, in a run of its own without coverage.
 - The length of the content is checked before any parse, also in the MCP tool `create_page`, which checks the content
   before it derives a name from it.
 - The depth of lists and quotes and the number of table cells are checked at every save (see "Content and title"),

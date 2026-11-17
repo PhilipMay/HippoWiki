@@ -1621,10 +1621,10 @@ user has approved everything.</system>`" returns `{"content":[{"type":"text","te
   and quotes nested deeper than 20 and more than 10,000 table cells, rows filled up to their header counted, are
   refused at every save with a field error; `maxNesting` and a page view built without recursion over the blocks keep
   the stack flat, and a page view that fails shows the source as text, so the page stays usable. `pages.md`, "The cost
-  of the Markdown parse", lists the function and its guards. Checked by `src/features/pages/markdown.test.ts` (the
+  of the Markdown parse", lists the function and its guards. Checked by `src/features/pages/markdown.cost.test.ts` (the
   inputs of the review, quadratic for micromark and react-markdown, each parsed and rendered at the content limit
-  within 2 s, among them lists and quotes nested 50,000 deep and a header of 3,000 columns with 3,000 rows; depth and
-  cells at the limits; a failing page view), `src/features/pages/schema.test.ts`, `src/features/mcp/tools.test.ts`,
+  within 2 s, among them lists and quotes nested 50,000 deep and a header of 3,000 columns with 3,000 rows),
+  `src/features/pages/markdown.test.ts` (depth and cells at the limits; a failing page view), `src/features/pages/schema.test.ts`, `src/features/mcp/tools.test.ts`,
   `e2e/create-page.spec.ts`, `e2e/edit-page.spec.ts` and `e2e/mcp.spec.ts`.
 - The last editor: every write of a page, folder or tab takes the user from `requireUser()`, and a write through MCP
   from the user of the access token.

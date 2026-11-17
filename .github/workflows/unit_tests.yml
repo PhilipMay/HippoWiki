@@ -25,6 +25,9 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run test:coverage
+      # The wall-clock budgets run on their own, without coverage; also when the unit tests failed.
+      - if: ${{ !cancelled() }}
+        run: npm run test:cost
       # Also when the tests fail (the report is written then too), but not when the run was cancelled.
       - name: Write coverage to the job summary
         if: ${{ !cancelled() && hashFiles('coverage/coverage-summary.json') != '' }}
