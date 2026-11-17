@@ -46,10 +46,12 @@ const ROLE_ABILITIES: Readonly<Record<McpRole, string>> = {
     "creates no tabs. Every change of a page states the version that read_page gave for it, and a change based on " +
     "an older version is refused.",
   manager:
-    "It reads the folder and changes its pages with create_page, replace_page_content and move_or_rename_page, " +
-    "deletes pages with delete_page, and creates and renames tabs with create_tab and rename_tab. Every change and " +
-    "every delete of a page states the version that read_page gave for it, and one based on an older version is " +
-    "refused.",
+    "It reads the folder and changes its pages like a Writer connection, with create_page, replace_page_content and " +
+    "move_or_rename_page, deletes pages with delete_page, and creates, renames and deletes tabs with create_tab, " +
+    "rename_tab and delete_tab. Every change and every delete of a page states the version that read_page gave for " +
+    "it, and one based on an older version is refused. Deleting a tab deletes all its pages with it. Deleted pages " +
+    "can be neither seen nor restored through this connection: only a Manager or Owner of the folder restores them, " +
+    "in the browser.",
 };
 
 /**
@@ -141,6 +143,8 @@ const createTabInput = z.object({ name: newTabNameArgument("The name of the new 
 
 const renameTabInput = z.object({ tab: existingTabArgument, newName: newTabNameArgument("The new name of the tab") });
 
+const deleteTabInput = z.object({ tab: existingTabArgument });
+
 /**
  * The tab a page is in, as a tool takes it. `null` is accepted next to a missing tab, because `list_folder` returns
  * the tab of such a page as `null`. The description comes last: one on the name alone would be lost when the argument
@@ -213,6 +217,18 @@ const deletedPageOutput = z.object({
 const storedTabOutput = z.object({
   name: z.string(),
   address: z.string().describe("Where a person opens the tab in a browser"),
+});
+
+const deletedTabOutput = z.object({
+  name: z.string().describe("The name the deleted tab had"),
+  pageCount: z.number().int().describe("How many pages were deleted with the tab"),
+  pages: z
+    .array(z.object({ name: z.string(), title: z.string() }))
+    .describe("Every page deleted with the tab, by name, without a limit"),
+  deletedPagesAddress: z
+    .string()
+    .describe("Where a person sees the deleted pages of the folder in a browser, as a Manager or Owner restores them"),
+  restore: z.string().describe("How the pages can be restored"),
 });
 
 /** The result of a tool that worked: the data for the client, and the same as text for the model. */
@@ -678,6 +694,49 @@ export async function renameTab(
   );
 }
 
+/** What `delete_tab` tells the agent about restoring: the tab is gone, its pages come back one by one in the browser. */
+const RESTORE_TAB_PAGES =
+  "The tab is deleted for good and cannot be restored. Its pages can be restored one by one by a Manager or Owner of " +
+  "the folder in the browser, under Deleted pages at the address deletedPagesAddress. Deleted pages can be neither " +
+  "seen nor restored through this connection.";
+
+/**
+ * The tool `delete_tab`: a tab of the folder of the connection, by its name, deleted for good together with all its
+ * pages, as deleting it in the browser does, without a further confirmation: the description warns of it before the
+ * call. The pages go to the deleted pages of the folder.
+ */
+export async function deleteTab(
+  options: WikiToolsOptions,
+  input: z.infer<typeof deleteTabInput>,
+): Promise<CallToolResult> {
+  return run(
+    "delete_tab",
+    async () => {
+      const tab = await folderService.getTab(options.actor, options.folder.name, input.tab);
+      if (!tab) return tabNotFound(options, input.tab);
+      const deleted = await folderService.deleteTab(options.actor, options.folder.id, tab.id);
+      if (deleted.ok) {
+        return result({
+          name: tab.name,
+          pageCount: deleted.value.pageCount,
+          pages: deleted.value.pages.map(({ name, title }) => ({ name, title })),
+          deletedPagesAddress: addressOf(options, deletedPagesPath(deleted.value.folder.name)),
+          restore: RESTORE_TAB_PAGES,
+        } satisfies z.infer<typeof deletedTabOutput>);
+      }
+      switch (deleted.error.code) {
+        case "not-allowed":
+          return toolError(NOT_ALLOWED);
+        case "tab-not-found":
+          return tabNotFound(options, input.tab);
+        case "failed":
+          return toolError(WRITE_FAILED);
+      }
+    },
+    WRITE_FAILED,
+  );
+}
+
 /** What every read tool tells a client about itself: it only reads, and only the wiki. */
 const READ_ONLY = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 
@@ -772,7 +831,7 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
     (input) => moveOrRenamePage(options, input),
   );
 
-  // The tools that delete pages and change tabs only for a Manager connection.
+  // The tools that delete pages and create, rename and delete tabs only for a Manager connection.
   if (!isManager(options)) return server;
 
   server.registerTool(
@@ -817,6 +876,23 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
       annotations: WRITES,
     },
     (input) => renameTab(options, input),
+  );
+
+  server.registerTool(
+    "delete_tab",
+    {
+      title: "Delete a tab with all its pages",
+      description:
+        "Deletes a tab of the folder of this connection together with every page in it, in one call and without a " +
+        "further confirmation. The tab is deleted for good and cannot be restored. Its pages go to the deleted " +
+        "pages of the folder and can only be restored one by one, by a Manager or Owner of the folder in the " +
+        "browser. Use list_folder first to see which pages are in the tab. Returns the number of pages deleted with " +
+        "the tab, the name and title of each, and the address of the deleted pages of the folder.",
+      inputSchema: deleteTabInput,
+      outputSchema: deletedTabOutput,
+      annotations: WRITES_AND_DELETES,
+    },
+    (input) => deleteTab(options, input),
   );
 
   return server;

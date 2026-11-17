@@ -910,7 +910,108 @@ test.describe("the tools of a Manager connection", () => {
     expect(await stored()).toEqual(before);
   });
 
-  test("a call of delete_page, create_tab or rename_tab through a Writer or a Reader connection changes nothing", async ({
+  test("delete_tab deletes a tab with its five pages at once, lists each of them, and frees the name of the tab", async ({
+    request,
+  }) => {
+    const drafts = await createTab({ folder: projects, name: "drafts" });
+    for (const i of [1, 2, 3, 4, 5]) {
+      await createPage({ tab: drafts, name: `draft-${i}`, content: `# Draft ${i}` });
+    }
+    await createPage({ folder: projects, name: "plan", content: "# Plan" });
+
+    const result = await manage(request, "delete_tab", { tab: "drafts" });
+
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toEqual({
+      name: "drafts",
+      pageCount: 5,
+      pages: [1, 2, 3, 4, 5].map((i) => ({ name: `draft-${i}`, title: `Draft ${i}` })),
+      deletedPagesAddress: `${PUBLIC_URL}/deleted-pages/projects`,
+      restore: expect.stringMatching(/restored one by one by a Manager or Owner of the folder in the browser/),
+    });
+    const { tabs, pages } = await listed(request);
+    expect(tabs).toEqual([]);
+    expect(pages.map(({ name }) => name)).toEqual(["plan"]);
+    const deleted = await getTestDb().page.findMany({ where: { name: { startsWith: "draft-" } } });
+    expect(deleted).toHaveLength(5);
+    for (const page of deleted) {
+      expect(page).toMatchObject({ deletedAt: expect.any(Date), tabId: null, lastEditedById: KNOWN_USER.id });
+    }
+    await expect(manage(request, "create_tab", { name: "drafts" })).resolves.toMatchObject({
+      structuredContent: { name: "drafts" },
+    });
+  });
+
+  test("delete_tab deletes an empty tab with 0 pages; a tab that does not exist is a tool error that changes nothing", async ({
+    request,
+  }) => {
+    await createTab({ folder: projects, name: "empty" });
+    await createTab({ folder: projects, name: "guides" });
+
+    await expect(manage(request, "delete_tab", { tab: "empty" })).resolves.toMatchObject({
+      structuredContent: { name: "empty", pageCount: 0, pages: [] },
+    });
+
+    const before = await stored();
+    for (const tab of ["empty", "missing"]) {
+      expect(errorOf(await manage(request, "delete_tab", { tab }))).toContain(
+        `There is no tab named "${tab}" in the folder "projects", so nothing was changed.`,
+      );
+    }
+    expect(await stored()).toEqual(before);
+  });
+
+  test("the tool list of a Manager connection has nine tools, the destructive hint on the deletes and none for deleted pages, roles or the folder", async ({
+    request,
+  }) => {
+    const answer = await send(request, { method: "tools/list" }, manager, managerAddress);
+    const tools = (
+      (await answer.json()) as {
+        result: { tools: { name: string; annotations: Record<string, boolean> }[] };
+      }
+    ).result.tools;
+
+    expect(tools.map(({ name }) => name)).toEqual([
+      "list_folder",
+      "read_page",
+      "create_page",
+      "replace_page_content",
+      "move_or_rename_page",
+      "delete_page",
+      "create_tab",
+      "rename_tab",
+      "delete_tab",
+    ]);
+    const hints = Object.fromEntries(tools.map(({ name, annotations }) => [name, annotations]));
+    for (const name of ["delete_page", "create_tab", "rename_tab", "delete_tab"]) {
+      expect(hints[name]?.readOnlyHint, name).toBe(false);
+    }
+    expect(hints.delete_page?.destructiveHint).toBe(true);
+    expect(hints.delete_tab?.destructiveHint).toBe(true);
+    expect(hints.create_tab?.destructiveHint).toBe(false);
+    expect(hints.rename_tab?.destructiveHint).toBe(false);
+    expect(tools.map(({ name }) => name).join(" ")).not.toMatch(/restore|deleted|role|owner|folder_/);
+  });
+
+  test("initialize at the Manager address gives the instructions of a Manager connection", async ({ request }) => {
+    const response = await send(
+      request,
+      {
+        method: "initialize",
+        params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "e2e", version: "1" } },
+      },
+      manager,
+      managerAddress,
+    );
+
+    const { instructions } = ((await response.json()) as { result: { instructions: string } }).result;
+    expect(instructions).toContain('the folder "projects" with the role Manager');
+    expect(instructions).toContain("creates, renames and deletes tabs");
+    expect(instructions).toContain("Deleting a tab deletes all its pages with it.");
+    expect(instructions).toContain("Deleted pages can be neither seen nor restored through this connection");
+  });
+
+  test("a call of delete_page, create_tab, rename_tab or delete_tab through a Writer or a Reader connection changes nothing", async ({
     request,
   }) => {
     const { accessToken: writer } = await createGrant({ owner: KNOWN_USER, folder: projects, role: "writer" });
@@ -926,6 +1027,7 @@ test.describe("the tools of a Manager connection", () => {
         ["delete_page", { page: "plan", version: 1 }],
         ["create_tab", { name: "news" }],
         ["rename_tab", { tab: "guides", newName: "news" }],
+        ["delete_tab", { tab: "guides" }],
       ] as const) {
         const answer = await send(request, { method: "tools/call", params: { name, arguments: args } }, token, to);
         expect(JSON.stringify(await answer.json()), `${name} at ${to}`).toContain(name);
@@ -954,6 +1056,48 @@ test.describe("the tools of a Manager connection", () => {
       await expect(rows).toHaveCount(1);
       await expect(rows.nth(0)).toContainText("plan");
       await expect(rows.nth(0)).toContainText(new RegExp(`${KNOWN_USER.name}$`));
+    });
+
+    test("the pages of a tab deleted through MCP are listed under Deleted pages with the user who deleted them", async ({
+      page,
+      request,
+    }) => {
+      const bob = await createUser({ name: "bob" });
+      const drafts = await createTab({ folder: projects, name: "drafts", editor: bob });
+      for (const i of [1, 2, 3, 4, 5]) {
+        await createPage({ tab: drafts, name: `draft-${i}`, content: `# Draft ${i}`, editor: bob });
+      }
+
+      await manage(request, "delete_tab", { tab: "drafts" });
+      await page.goto("/deleted-pages/projects");
+
+      const rows = page
+        .getByRole("table", { name: "Deleted pages" })
+        .getByRole("row")
+        .filter({ has: page.getByRole("cell") });
+      await expect(rows).toHaveCount(5);
+      for (const i of [0, 1, 2, 3, 4]) await expect(rows.nth(i)).toContainText(new RegExp(`${KNOWN_USER.name}$`));
+    });
+
+    test("a tab deleted in the browser meanwhile is a tool error of delete_tab that changes nothing", async ({
+      page,
+      request,
+    }) => {
+      const guides = await createTab({ folder: projects, name: "guides" });
+      await createPage({ tab: guides, name: "intro", content: "# Intro" });
+      await expect(manage(request, "list_folder")).resolves.toMatchObject({
+        structuredContent: { tabs: [{ name: "guides" }] },
+      });
+
+      await page.goto("/folders/projects/guides?action=delete");
+      await page.getByRole("dialog", { name: "Delete tab" }).getByRole("button", { name: "Delete" }).click();
+      await expect(page).toHaveURL("/folders/projects");
+      const before = await stored();
+
+      expect(errorOf(await manage(request, "delete_tab", { tab: "guides" }))).toContain(
+        'There is no tab named "guides" in the folder "projects"',
+      );
+      expect(await stored()).toEqual(before);
     });
 
     test("a tab created and a tab renamed through MCP show the user as their last editor", async ({

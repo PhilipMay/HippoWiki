@@ -912,4 +912,48 @@ describe("tab writes through MCP", () => {
 
     expect(await snapshot()).toStrictEqual(before);
   });
+
+  it("deletes a tab through a Manager connection with all its pages, with the user as the user who deleted them", async () => {
+    const bob = await createUser({ name: "bob" });
+    const folder = await createFolder({ name: "projects", roles: [{ user, role: "manager" }] });
+    const tab = await createTab({ folder, name: "drafts", editor: bob });
+    await createPage({ tab, name: "first", editor: bob, content: "# First" });
+    await createPage({ tab, name: "second", editor: bob, content: "# Second" });
+    const manager = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "manager" });
+
+    await expect(folderService.deleteTab(manager, folder.id, tab.id)).resolves.toStrictEqual({
+      ok: true,
+      value: {
+        folder: { id: folder.id, name: "projects" },
+        pageCount: 2,
+        pages: [
+          { name: "first", title: "First" },
+          { name: "second", title: "Second" },
+        ],
+      },
+    });
+
+    await expect(getTestDb().tab.findUnique({ where: { id: tab.id } })).resolves.toBeNull();
+    const deleted = await pageService.listDeletedPages(inBrowser(user), folder.id);
+    expect(deleted?.map(({ name, lastEditedBy }) => [name, lastEditedBy.name]).sort()).toEqual([
+      ["first", "alice"],
+      ["second", "alice"],
+    ]);
+  });
+
+  it("refuses a tab deletion through a Manager connection after the user was lowered to Writer", async () => {
+    const folder = await createFolder({ name: "projects", roles: [{ user, role: "manager" }] });
+    const tab = await createTab({ folder, name: "drafts" });
+    await createPage({ tab, name: "intro" });
+    const manager = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "manager" });
+    await getTestDb().folderRole.update({
+      where: { folderId_userId: { folderId: folder.id, userId: user.id } },
+      data: { role: "writer" },
+    });
+    const before = await snapshot();
+
+    await expect(folderService.deleteTab(manager, folder.id, tab.id)).resolves.toEqual(NOT_ALLOWED);
+
+    expect(await snapshot()).toStrictEqual(before);
+  });
 });

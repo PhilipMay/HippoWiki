@@ -654,6 +654,18 @@ describe("a tab write through MCP", () => {
     expect(mocks.tabUpdateMany.mock.calls[0]?.[0].data).toMatchObject({ lastEditedById: ACTOR_ID });
   });
 
+  it("logs a tab deletion through a Manager connection with the channel mcp, the grant and the number of pages", async () => {
+    mocks.pageUpdateManyAndReturn.mockResolvedValue([{ name: "intro", title: "Intro" }]);
+
+    await expect(deleteTab(MANAGER, FOLDER_ID, TAB_ID)).resolves.toMatchObject({ ok: true, value: { pageCount: 1 } });
+
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+      { actorId: ACTOR_ID, folderId: FOLDER_ID, tabId: TAB_ID, pageCount: 1, channel: "mcp", grantId: GRANT_ID },
+      "tab deleted",
+    );
+    expect(mocks.pageUpdateManyAndReturn.mock.calls[0]?.[0].data).toMatchObject({ lastEditedById: ACTOR_ID });
+  });
+
   it("refuses a Writer connection of an Owner and writes nothing", async () => {
     const NOT_ALLOWED = { ok: false, error: { code: "not-allowed" } };
 

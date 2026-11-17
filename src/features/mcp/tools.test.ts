@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   deletePage: vi.fn(),
   createTab: vi.fn(),
   renameTab: vi.fn(),
+  deleteTab: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
@@ -28,6 +29,7 @@ vi.mock("@/features/folders/service", () => ({
   getTab: mocks.getTab,
   createTab: mocks.createTab,
   renameTab: mocks.renameTab,
+  deleteTab: mocks.deleteTab,
 }));
 vi.mock("@/features/pages/service", () => ({
   listAllFolderPages: mocks.listAllFolderPages,
@@ -717,7 +719,7 @@ describe("the tools of a Manager connection", () => {
   };
   const TAB = { id: "tab-1", name: "guides", folder: FOLDER, role: "manager" };
   const NOT_ALLOWED = "Your role on the folder does not allow this change, so nothing was changed.";
-  const MANAGER_TOOLS = ["delete_page", "create_tab", "rename_tab"];
+  const MANAGER_TOOLS = ["delete_page", "create_tab", "rename_tab", "delete_tab"];
 
   type ListedTool = {
     name: string;
@@ -736,6 +738,7 @@ describe("the tools of a Manager connection", () => {
     expect(mocks.deletePage).not.toHaveBeenCalled();
     expect(mocks.createTab).not.toHaveBeenCalled();
     expect(mocks.renameTab).not.toHaveBeenCalled();
+    expect(mocks.deleteTab).not.toHaveBeenCalled();
   }
 
   beforeEach(() => {
@@ -747,7 +750,7 @@ describe("the tools of a Manager connection", () => {
   it("are registered for a Manager connection after the write tools, with inputs, output schemas and hints", async () => {
     const tools = await listedTools();
 
-    expect(tools.map((tool) => tool.name).slice(5, 8)).toEqual(MANAGER_TOOLS);
+    expect(tools.map((tool) => tool.name).slice(5)).toEqual(MANAGER_TOOLS);
     const byName = Object.fromEntries(tools.map((tool) => [tool.name, tool]));
     expect(Object.keys(byName.delete_page?.inputSchema.properties ?? {})).toEqual(["tab", "page", "version"]);
     expect(byName.delete_page?.inputSchema.required).toEqual(["page"]);
@@ -755,6 +758,8 @@ describe("the tools of a Manager connection", () => {
     expect(byName.create_tab?.inputSchema.required).toEqual(["name"]);
     expect(Object.keys(byName.rename_tab?.inputSchema.properties ?? {})).toEqual(["tab", "newName"]);
     expect(byName.rename_tab?.inputSchema.required).toEqual(["tab", "newName"]);
+    expect(Object.keys(byName.delete_tab?.inputSchema.properties ?? {})).toEqual(["tab"]);
+    expect(byName.delete_tab?.inputSchema.required).toEqual(["tab"]);
     for (const name of MANAGER_TOOLS) {
       const tool = byName[name];
       expect(tool?.description.length).toBeGreaterThan(40);
@@ -766,6 +771,46 @@ describe("the tools of a Manager connection", () => {
     expect(byName.delete_page?.annotations.destructiveHint).toBe(true);
     expect(byName.create_tab?.annotations.destructiveHint).toBe(false);
     expect(byName.rename_tab?.annotations.destructiveHint).toBe(false);
+    expect(byName.delete_tab?.annotations.destructiveHint).toBe(true);
+  });
+
+  it.each([
+    ["Manager", MANAGER, 9],
+    ["Writer", WRITER, 5],
+    ["Reader", READER, 2],
+  ])("give a %s connection %i tools", async (_role, other, count) => {
+    actor = other;
+
+    expect(await listedTools()).toHaveLength(count);
+  });
+
+  it("warn in the description of delete_tab that its pages go with it, for good, restored one by one in the browser", async () => {
+    const description = (await listedTools()).find((tool) => tool.name === "delete_tab")?.description ?? "";
+
+    expect(description).toContain("together with every page in it");
+    expect(description).toContain("deleted for good and cannot be restored");
+    expect(description).toContain("restored one by one, by a Manager or Owner of the folder in the browser");
+  });
+
+  it("tell a Manager connection in the instructions what it may do and what stays in the browser", () => {
+    const instructions = instructionsFor("handbook", "manager");
+
+    expect(instructions).toContain('the folder "handbook" with the role Manager');
+    for (const tool of ["create_page", "replace_page_content", "move_or_rename_page", ...MANAGER_TOOLS]) {
+      expect(instructions).toContain(tool);
+    }
+    expect(instructions).toContain("Deleting a tab deletes all its pages with it.");
+    expect(instructions).toContain(
+      "Deleted pages can be neither seen nor restored through this connection: only a Manager or Owner of the folder " +
+        "restores them, in the browser.",
+    );
+  });
+
+  it("leave the instructions of Reader and Writer connections without the tools of a Manager", () => {
+    for (const role of ["reader", "writer"] as const) {
+      const instructions = instructionsFor("handbook", role);
+      for (const word of [...MANAGER_TOOLS, "Deleted pages"]) expect(instructions).not.toContain(word);
+    }
   });
 
   it.each([
@@ -779,6 +824,7 @@ describe("the tools of a Manager connection", () => {
       ["delete_page", { page: "setup", version: 4 }],
       ["create_tab", { name: "news" }],
       ["rename_tab", { tab: "guides", newName: "news" }],
+      ["delete_tab", { tab: "guides" }],
     ] as const) {
       const answer = await send({ method: "tools/call", params: { name, arguments: args } });
       expect(JSON.stringify(answer)).toContain(name);
@@ -964,6 +1010,85 @@ describe("the tools of a Manager connection", () => {
         "The change could not be stored. Please try again later.",
       );
       expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ err, tool: "rename_tab" }, "mcp tool failed");
+    });
+  });
+
+  describe("delete_tab", () => {
+    const DELETED = {
+      folder: FOLDER,
+      pageCount: 2,
+      pages: [
+        { name: "install", title: "Install" },
+        { name: "setup", title: "Setup" },
+      ],
+    };
+
+    it("deletes the tab found by its name with its pages, and lists them with where to restore them", async () => {
+      mocks.deleteTab.mockResolvedValue({ ok: true, value: DELETED });
+
+      const result = await callTool("delete_tab", { tab: "guides" });
+
+      expect(mocks.getTab).toHaveBeenCalledWith(MANAGER, "handbook", "guides");
+      expect(mocks.deleteTab).toHaveBeenCalledExactlyOnceWith(MANAGER, FOLDER_ID, "tab-1");
+      expect(result.isError).toBeFalsy();
+      expect(result.structuredContent).toEqual({
+        name: "guides",
+        pageCount: 2,
+        pages: DELETED.pages,
+        deletedPagesAddress: "https://wiki.example.com/deleted-pages/handbook",
+        restore: expect.stringMatching(/restored one by one by a Manager or Owner of the folder in the browser/),
+      });
+      expect(JSON.parse(result.content[0]?.text ?? "")).toEqual(result.structuredContent);
+    });
+
+    it("deletes an empty tab with the number 0 and no pages, and gives the path without a public URL", async () => {
+      publicUrl = undefined;
+      mocks.deleteTab.mockResolvedValue({ ok: true, value: { folder: FOLDER, pageCount: 0, pages: [] } });
+
+      expect((await callTool("delete_tab", { tab: "guides" })).structuredContent).toMatchObject({
+        pageCount: 0,
+        pages: [],
+        deletedPagesAddress: "/deleted-pages/handbook",
+      });
+    });
+
+    it("lists every page of a tab with more than a hundred pages", async () => {
+      const pages = Array.from({ length: 150 }, (_, i) => ({ name: `page-${i}`, title: `Page ${i}` }));
+      mocks.deleteTab.mockResolvedValue({ ok: true, value: { folder: FOLDER, pageCount: 150, pages } });
+
+      expect((await callTool("delete_tab", { tab: "guides" })).structuredContent).toMatchObject({
+        pageCount: 150,
+        pages,
+      });
+    });
+
+    it("answers a tab that does not exist with a tool error and deletes nothing", async () => {
+      mocks.getTab.mockResolvedValue(null);
+
+      expect(errorOf(await callTool("delete_tab", { tab: "gone" }))).toContain(
+        'There is no tab named "gone" in the folder "handbook", so nothing was changed.',
+      );
+      expect(mocks.deleteTab).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [{ code: "not-allowed" }, NOT_ALLOWED],
+      [{ code: "tab-not-found" }, 'There is no tab named "guides" in the folder "handbook"'],
+      [{ code: "failed" }, "The change could not be stored."],
+    ])("maps the error %j to a tool error", async (error, message) => {
+      mocks.deleteTab.mockResolvedValue({ ok: false, error });
+
+      expect(errorOf(await callTool("delete_tab", { tab: "guides" }))).toContain(message);
+    });
+
+    it("answers a failing database with a tool error that does not pass on the error, and logs it", async () => {
+      const err = new Error("connection lost");
+      mocks.deleteTab.mockRejectedValue(err);
+
+      expect(errorOf(await callTool("delete_tab", { tab: "guides" }))).toBe(
+        "The change could not be stored. Please try again later.",
+      );
+      expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ err, tool: "delete_tab" }, "mcp tool failed");
     });
   });
 });
