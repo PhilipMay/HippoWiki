@@ -63,9 +63,17 @@ be undone in the browser without retyping it. Moves and renames of a page are no
   - Acceptance: a Reader sees "History" on a page and the list of its revisions; a user without a role on the folder
     gets the not-found page at the address of the history.
 - R6: A user who may see the history must be able to click a revision in the history to open it: the page as it was
-  in that revision, rendered and as raw Markdown.
-  - Acceptance: clicking an old revision in the history shows its rendered content, and switching to raw shows its
-    Markdown source.
+  in that revision, first rendered like the page itself. A switch "Rendered | Raw" above the content must show its
+  Markdown source instead, and back. The switch is part of the address, so that the raw form can be linked and stays
+  after a reload.
+  - Acceptance: clicking an old revision in the history shows its rendered content; "Raw" shows its Markdown source,
+    also after a reload of the address; "Rendered" shows the rendered content again.
+- R24: Above its content, the view of a revision must show the revision line "Revision 5 of 12 · <time> by mike via
+  mcp", with "Reverted to revision N" where R20 applies. For every revision but the newest it must show a notice that
+  this is an old revision of the page, with a link to the current page (for a deleted page: to the deleted page). Then
+  come "Compare" (R7) and, for a Writer and up, "Revert" (R21).
+  - Acceptance: an old revision shows its revision line, the notice and the link, which leads to the current page; the
+    newest revision shows no notice; a Reader sees "Compare" but no "Revert".
 - R7: The open revision must offer "Compare", with which the user selects one of the earlier revisions of the page and
   compares it with the open one; the revision right before it is preselected. The difference is shown as one column
   of the Markdown lines, with added and removed lines marked. The first revision has no earlier one and offers no
@@ -132,7 +140,7 @@ be undone in the browser without retyping it. Moves and renames of a page are no
 
 - R18: The history, a revision, a comparison and a revert must be views and an action of the page address, like the
   existing views and actions (see "Actions and views" in `content-structure.md`): `?view=history`,
-  `?view=revision&revision=<n>`, `?view=compare&from=<n>&to=<n>` and `?action=revert&revision=<n>`. A deleted page has
+  `?view=revision&revision=<n>` (with `&format=raw` for the raw form), `?view=compare&from=<n>&to=<n>` and `?action=revert&revision=<n>`. A deleted page has
   the same views at `/deleted-pages/<folder>/<id>`, without the action. A moved or renamed page keeps its history at
   its new address.
   - Acceptance: each address shows its view or dialog to a user with the role for it; an unknown, invalid or missing
@@ -176,6 +184,10 @@ be undone in the browser without retyping it. Moves and renames of a page are no
 - A revision can be viewed rendered and as raw Markdown, and any two revisions can be compared as a unified diff of
   their lines, which also fits narrow screens. Rejected: side by side columns; comparing only with the revision before
   and the current page.
+- A revision opens rendered, like the page, with a switch to the raw form that is part of the address. Rejected:
+  opening raw first; both forms at once, which shows a long page twice.
+- The view of a revision says which revision it is and, for an old one, that it is not the current page, with a link
+  to it. Rejected: the revision line alone.
 - Two revisions are picked for a comparison by opening one from the history and selecting an earlier one with
   "Compare". Rejected: picking both in the history list with two columns of marks, and selectors for both sides in the
   comparison.
