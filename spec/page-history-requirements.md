@@ -19,7 +19,7 @@ be undone in the browser without retyping it. Moves and renames of a page are no
 ## Scenarios
 
 - An AI app rewrites a page through MCP and drops a section. A Writer of the folder opens the history of the page, sees
-  the revision "via mcp", compares it with the revision before, and reverts the page to the revision before. The page
+  the revision "via mcp", opens it, compares it with the revision before, and reverts the page to the revision before. The page
   shows the old content again, and the history has one revision more.
 - A Reader wonders why a page changed. They open its history, see who changed it, when and how, and open an older
   revision rendered and as raw Markdown.
@@ -62,13 +62,17 @@ be undone in the browser without retyping it. Moves and renames of a page are no
   the browser.
   - Acceptance: a Reader sees "History" on a page and the list of its revisions; a user without a role on the folder
     gets the not-found page at the address of the history.
-- R6: A user who may see the history must be able to open a single revision rendered as a page and as raw Markdown.
-  - Acceptance: an old revision shows its rendered content, and switching to raw shows its Markdown source.
-- R7: A user who may see the history must be able to compare any two revisions of the same page, by default a
-  revision with the one before it. The difference is shown as one column of the Markdown lines, with added and removed
-  lines marked.
-  - Acceptance: comparing two revisions shows exactly the lines added and removed between them; any two revisions can be
-    chosen, also the first and the latest.
+- R6: A user who may see the history must be able to click a revision in the history to open it: the page as it was
+  in that revision, rendered and as raw Markdown.
+  - Acceptance: clicking an old revision in the history shows its rendered content, and switching to raw shows its
+    Markdown source.
+- R7: The open revision must offer "Compare", with which the user selects one of the earlier revisions of the page and
+  compares it with the open one; the revision right before it is preselected. The difference is shown as one column
+  of the Markdown lines, with added and removed lines marked. The first revision has no earlier one and offers no
+  "Compare".
+  - Acceptance: opening revision 5 and comparing it with the preselected revision shows exactly the lines added and
+    removed since revision 4; selecting revision 1 instead compares 1 with 5; revision 1 shows no "Compare". Any two
+    revisions can be compared by opening the newer one.
 - R22: A comparison must always go from the older to the newer of the two revisions, in whatever order they were
   chosen. When both have the same content, it must say "No differences" instead of an empty diff.
   - Acceptance: comparing revision 5 with revision 2 shows the same diff as comparing 2 with 5; comparing a revision
@@ -172,6 +176,9 @@ be undone in the browser without retyping it. Moves and renames of a page are no
 - A revision can be viewed rendered and as raw Markdown, and any two revisions can be compared as a unified diff of
   their lines, which also fits narrow screens. Rejected: side by side columns; comparing only with the revision before
   and the current page.
+- Two revisions are picked for a comparison by opening one from the history and selecting an earlier one with
+  "Compare". Rejected: picking both in the history list with two columns of marks, and selectors for both sides in the
+  comparison.
 - The diff comes from a small, widely used package without dependencies (such as jsdiff), with a cap on the size of the
   difference, past which the page says the revisions are too different. Rejected: own diff code, which is more to
   maintain; the package without a cap, which can take seconds on two very different large revisions.
