@@ -1130,6 +1130,47 @@ test.describe("the tools of a Manager connection", () => {
     expect(await stored()).toEqual(before);
   });
 
+  test("rename_tab with the current name of a tab changes nothing and answers as a rename; an unknown tab and a Writer connection are refused as for any name", async ({
+    request,
+  }) => {
+    const bob = await createUser({ name: "bob" });
+    const longAgo = new Date("2026-01-01T10:00:00Z");
+    await createTab({ folder: projects, name: "misc" });
+    await createTab({ folder: projects, name: "guides", editor: bob, via: "web", updatedAt: longAgo });
+    // The answer of a rename to a new name, for comparison.
+    const renamed = await manage(request, "rename_tab", { tab: "misc", newName: "archive" });
+    const before = await stored();
+    const listedBefore = (await manage(request, "list_folder")).structuredContent;
+
+    for (const newName of ["guides", " guides "]) {
+      const result = await manage(request, "rename_tab", { tab: "guides", newName });
+
+      expect(result.structuredContent).toEqual({ name: "guides", address: `${PUBLIC_URL}/folders/projects/guides` });
+      expect(JSON.stringify(result)).toBe(JSON.stringify(renamed).replaceAll("archive", "guides"));
+    }
+    expect(await stored()).toEqual(before);
+    expect((await manage(request, "list_folder")).structuredContent).toEqual(listedBefore);
+    await expect(getTestDb().tab.findFirstOrThrow({ where: { name: "guides" } })).resolves.toMatchObject({
+      updatedAt: longAgo,
+      lastEditedById: bob.id,
+      lastEditedVia: "web",
+    });
+
+    expect(errorOf(await manage(request, "rename_tab", { tab: "unknown", newName: "unknown" }))).toContain(
+      'There is no tab named "unknown" in the folder "projects"',
+    );
+    const { accessToken: writer } = await createGrant({ owner: KNOWN_USER, folder: projects, role: "writer" });
+    const asWriter = (newName: string) =>
+      send(
+        request,
+        { method: "tools/call", params: { name: "rename_tab", arguments: { tab: "guides", newName } } },
+        writer,
+        `/mcp/${projects.id}/writer`,
+      ).then((answer) => answer.json());
+    expect(await asWriter("guides")).toEqual(await asWriter("news"));
+    expect(await stored()).toEqual(before);
+  });
+
   test("delete_tab deletes a tab with its five pages at once, lists each of them, and frees the name of the tab", async ({
     request,
   }) => {

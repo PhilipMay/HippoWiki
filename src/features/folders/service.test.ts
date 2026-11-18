@@ -465,18 +465,77 @@ describe("renameFolder", () => {
       value: { id: FOLDER_ID, name: "handbook" },
     });
 
-    expect(mocks.folderUpdateMany).toHaveBeenCalledWith({
-      where: { id: FOLDER_ID },
+    expect(mocks.folderUpdateMany).toHaveBeenCalledExactlyOnceWith({
+      where: { id: FOLDER_ID, name: { not: "handbook" } },
       data: { name: "handbook", lastEditedById: ACTOR_ID, lastEditedVia: "web" },
     });
-    expect(mocks.info).toHaveBeenCalledWith({ folderId: FOLDER_ID }, "folder renamed");
+    expect(mocks.folderFindUnique).not.toHaveBeenCalled();
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith({ folderId: FOLDER_ID, channel: "browser" }, "folder renamed");
+  });
+
+  it.each([
+    ["the stored name", { name: "handbook" }],
+    ["the stored name with surrounding spaces", VALID],
+  ])("stores nothing for %s and returns the folder as stored", async (_name, input) => {
+    mocks.folderUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.folderFindUnique.mockResolvedValue({ id: FOLDER_ID, name: "handbook" });
+
+    await expect(renameFolder(ACTOR, FOLDER_ID, input)).resolves.toEqual({
+      ok: true,
+      value: { id: FOLDER_ID, name: "handbook" },
+    });
+
+    // The only write is the update that matches the folder only when its stored name differs.
+    expect(mocks.folderUpdateMany).toHaveBeenCalledExactlyOnceWith({
+      where: { id: FOLDER_ID, name: { not: "handbook" } },
+      data: { name: "handbook", lastEditedById: ACTOR_ID, lastEditedVia: "web" },
+    });
+    expect(mocks.folderFindUnique).toHaveBeenCalledExactlyOnceWith({
+      where: { id: FOLDER_ID },
+      select: { id: true, name: true },
+    });
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+      { folderId: FOLDER_ID, channel: "browser" },
+      "folder not changed: name is the same",
+    );
+    expect(mocks.warn).not.toHaveBeenCalled();
+  });
+
+  it("stores the name once more without the condition for a folder renamed meanwhile to another name", async () => {
+    mocks.folderUpdateMany.mockResolvedValueOnce({ count: 0 }).mockResolvedValueOnce({ count: 1 });
+    mocks.folderFindUnique.mockResolvedValue({ id: FOLDER_ID, name: "other" });
+
+    await expect(renameFolder(ACTOR, FOLDER_ID, VALID)).resolves.toEqual({
+      ok: true,
+      value: { id: FOLDER_ID, name: "handbook" },
+    });
+
+    const data = { name: "handbook", lastEditedById: ACTOR_ID, lastEditedVia: "web" };
+    expect(mocks.folderUpdateMany.mock.calls).toEqual([
+      [{ where: { id: FOLDER_ID, name: { not: "handbook" } }, data }],
+      [{ where: { id: FOLDER_ID }, data }],
+    ]);
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith({ folderId: FOLDER_ID, channel: "browser" }, "folder renamed");
   });
 
   it("returns folder-not-found for a folder that no longer exists", async () => {
     mocks.folderUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.folderFindUnique.mockResolvedValue(null);
 
     await expect(renameFolder(ACTOR, FOLDER_ID, VALID)).resolves.toEqual(FOLDER_NOT_FOUND);
 
+    expect(mocks.folderUpdateMany).toHaveBeenCalledOnce();
+    expect(mocks.warn).toHaveBeenCalledWith({ folderId: FOLDER_ID }, "folder to rename not found");
+    expect(mocks.info).not.toHaveBeenCalled();
+  });
+
+  it("returns folder-not-found for a folder renamed meanwhile and then deleted", async () => {
+    mocks.folderUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.folderFindUnique.mockResolvedValue({ id: FOLDER_ID, name: "other" });
+
+    await expect(renameFolder(ACTOR, FOLDER_ID, VALID)).resolves.toEqual(FOLDER_NOT_FOUND);
+
+    expect(mocks.folderUpdateMany).toHaveBeenCalledTimes(2);
     expect(mocks.warn).toHaveBeenCalledWith({ folderId: FOLDER_ID }, "folder to rename not found");
     expect(mocks.info).not.toHaveBeenCalled();
   });
@@ -601,20 +660,71 @@ describe("renameTab", () => {
 
     await expect(renameTab(ACTOR, TAB_ID, TAB_VALID)).resolves.toEqual({ ok: true, value: stored });
 
-    expect(mocks.tabUpdateMany).toHaveBeenCalledWith({
-      where: { id: TAB_ID },
+    expect(mocks.tabUpdateMany).toHaveBeenCalledExactlyOnceWith({
+      where: { id: TAB_ID, name: { not: "guides" } },
       data: { name: "guides", lastEditedById: ACTOR_ID, lastEditedVia: "web" },
     });
-    expect(mocks.tabFindUnique).toHaveBeenCalledWith({ where: { id: TAB_ID }, select: STORED_TAB_SELECT });
-    expect(mocks.info).toHaveBeenCalledWith({ tabId: TAB_ID, channel: "browser" }, "tab renamed");
+    expect(mocks.tabFindUnique).toHaveBeenCalledExactlyOnceWith({ where: { id: TAB_ID }, select: STORED_TAB_SELECT });
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith({ tabId: TAB_ID, channel: "browser" }, "tab renamed");
+  });
+
+  it.each([
+    ["the stored name", { name: "guides" }],
+    ["the stored name with surrounding spaces", TAB_VALID],
+  ])("stores nothing for %s and returns the tab as stored", async (_name, input) => {
+    const stored = { id: TAB_ID, name: "guides", folder: { name: "handbook" } };
+    mocks.tabUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.tabFindUnique.mockResolvedValue(stored);
+
+    await expect(renameTab(ACTOR, TAB_ID, input)).resolves.toEqual({ ok: true, value: stored });
+
+    // The only write is the update that matches the tab only when its stored name differs.
+    expect(mocks.tabUpdateMany).toHaveBeenCalledExactlyOnceWith({
+      where: { id: TAB_ID, name: { not: "guides" } },
+      data: { name: "guides", lastEditedById: ACTOR_ID, lastEditedVia: "web" },
+    });
+    expect(mocks.tabFindUnique).toHaveBeenCalledExactlyOnceWith({ where: { id: TAB_ID }, select: STORED_TAB_SELECT });
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+      { tabId: TAB_ID, channel: "browser" },
+      "tab not changed: name is the same",
+    );
+    expect(mocks.warn).not.toHaveBeenCalled();
+  });
+
+  it("stores the name once more without the condition for a tab renamed meanwhile to another name", async () => {
+    const stored = { id: TAB_ID, name: "guides", folder: { name: "handbook" } };
+    mocks.tabUpdateMany.mockResolvedValueOnce({ count: 0 }).mockResolvedValueOnce({ count: 1 });
+    mocks.tabFindUnique.mockResolvedValueOnce({ ...stored, name: "other" }).mockResolvedValueOnce(stored);
+
+    await expect(renameTab(ACTOR, TAB_ID, TAB_VALID)).resolves.toEqual({ ok: true, value: stored });
+
+    const data = { name: "guides", lastEditedById: ACTOR_ID, lastEditedVia: "web" };
+    expect(mocks.tabUpdateMany.mock.calls).toEqual([
+      [{ where: { id: TAB_ID, name: { not: "guides" } }, data }],
+      [{ where: { id: TAB_ID }, data }],
+    ]);
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith({ tabId: TAB_ID, channel: "browser" }, "tab renamed");
   });
 
   it("returns tab-not-found for a tab that no longer exists", async () => {
     mocks.tabUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.tabFindUnique.mockResolvedValue(null);
 
     await expect(renameTab(ACTOR, TAB_ID, TAB_VALID)).resolves.toEqual(TAB_NOT_FOUND);
 
-    expect(mocks.tabFindUnique).not.toHaveBeenCalled();
+    expect(mocks.tabUpdateMany).toHaveBeenCalledOnce();
+    expect(mocks.tabFindUnique).toHaveBeenCalledOnce();
+    expect(mocks.warn).toHaveBeenCalledWith({ tabId: TAB_ID }, "tab to rename not found");
+    expect(mocks.info).not.toHaveBeenCalled();
+  });
+
+  it("returns tab-not-found for a tab renamed meanwhile and then deleted", async () => {
+    mocks.tabUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.tabFindUnique.mockResolvedValue({ id: TAB_ID, name: "other", folder: { name: "handbook" } });
+
+    await expect(renameTab(ACTOR, TAB_ID, TAB_VALID)).resolves.toEqual(TAB_NOT_FOUND);
+
+    expect(mocks.tabUpdateMany).toHaveBeenCalledTimes(2);
     expect(mocks.warn).toHaveBeenCalledWith({ tabId: TAB_ID }, "tab to rename not found");
     expect(mocks.info).not.toHaveBeenCalled();
   });
@@ -648,6 +758,50 @@ describe("renameTab", () => {
   });
 });
 
+describe("a rename to the stored name", () => {
+  const ADMIN: BrowserActor = { id: ACTOR_ID, name: "alice", type: "admin", channel: "browser" };
+  const NOT_ALLOWED = { ok: false, error: { code: "not-allowed" } };
+
+  beforeEach(() => {
+    // The stored names: a write that got past the checks would find them unchanged.
+    mocks.folderUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.folderFindUnique.mockResolvedValue({ id: FOLDER_ID, name: "handbook" });
+    mocks.tabUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.tabFindUnique.mockResolvedValue({ id: TAB_ID, name: "guides", folder: { name: "handbook" } });
+  });
+
+  it.each([
+    ["of a folder by an admin", () => renameFolder(ADMIN, FOLDER_ID, { name: "handbook" }), NOT_ALLOWED, null],
+    ["of a tab by an admin", () => renameTab(ADMIN, TAB_ID, { name: "guides" }), NOT_ALLOWED, null],
+    ["of a folder without a role", () => renameFolder(ACTOR, FOLDER_ID, { name: "handbook" }), NOT_ALLOWED, null],
+    ["of a tab without a role", () => renameTab(ACTOR, TAB_ID, { name: "guides" }), NOT_ALLOWED, null],
+    ["of a folder by a Manager", () => renameFolder(ACTOR, FOLDER_ID, { name: "handbook" }), NOT_ALLOWED, "manager"],
+    ["of a tab by a Writer", () => renameTab(ACTOR, TAB_ID, { name: "guides" }), NOT_ALLOWED, "writer"],
+    ["of a folder with a malformed id", () => renameFolder(ACTOR, MALFORMED_ID, VALID), FOLDER_NOT_FOUND, "owner"],
+    ["of a tab with a malformed id", () => renameTab(ACTOR, MALFORMED_ID, TAB_VALID), TAB_NOT_FOUND, "owner"],
+  ] as const)("is refused %s as any other rename, without a write", async (_name, write, expected, role) => {
+    mocks.folderRoleFindFirst.mockResolvedValue(role === null ? null : { role });
+
+    await expect(write()).resolves.toEqual(expected);
+
+    expectNothingWritten();
+    expect(mocks.folderFindUnique).not.toHaveBeenCalled();
+    expect(mocks.tabFindUnique).not.toHaveBeenCalled();
+    expect(mocks.info).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["of a folder", () => renameFolder(ACTOR, FOLDER_ID, { name: "Handbook" })],
+    ["of a tab", () => renameTab(ACTOR, TAB_ID, { name: "Guides" })],
+  ])("checks the name rule %s before comparing", async (_name, write) => {
+    await expect(write()).resolves.toMatchObject({ ok: false, error: { code: "invalid-input" } });
+
+    expectNothingWritten();
+    expect(mocks.folderFindUnique).not.toHaveBeenCalled();
+    expect(mocks.tabFindUnique).not.toHaveBeenCalled();
+  });
+});
+
 describe("a tab write through MCP", () => {
   const GRANT_ID = "0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01";
   const MANAGER = { ...MCP_ACTOR, connection: { ...MCP_ACTOR.connection, role: "manager" } } as ContentActor;
@@ -670,6 +824,20 @@ describe("a tab write through MCP", () => {
       lastEditedById: ACTOR_ID,
       lastEditedVia: "mcp",
     });
+  });
+
+  it("logs a rename to the stored name through a Manager connection with the channel mcp and the grant", async () => {
+    const stored = { id: TAB_ID, name: "guides", folder: { name: "handbook" } };
+    mocks.tabUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.tabFindUnique.mockResolvedValue(stored);
+
+    await expect(renameTab(MANAGER, TAB_ID, TAB_VALID)).resolves.toEqual({ ok: true, value: stored });
+
+    expect(mocks.tabUpdateMany).toHaveBeenCalledOnce();
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+      { tabId: TAB_ID, channel: "mcp", grantId: GRANT_ID },
+      "tab not changed: name is the same",
+    );
   });
 
   it("logs a tab deletion through a Manager connection with the channel mcp, the grant and the number of pages", async () => {

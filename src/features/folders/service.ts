@@ -12,7 +12,8 @@
 // is `not-allowed`. Folders are created and renamed only in the browser; tabs are created, renamed and deleted in the
 // browser and through MCP. A write stores the actor as the last editor of the folder or tab, together with the channel
 // of the write (`storedChannelOf()`), in the same write that changes `updatedAt`; deleting a tab stores the actor and
-// the channel as the last editor of the pages it deletes with the tab.
+// the channel as the last editor of the pages it deletes with the tab. A rename to the name the folder or tab has stored
+// changes nothing: it is no edit, so it keeps `updatedAt`, the last editor and the channel.
 
 import { z } from "zod";
 
@@ -144,6 +145,27 @@ function editorIdOf(actor: Actor): string | null {
 function unknownActor(err: unknown, actor: Actor): { ok: false; error: Failed } {
   logger.error({ err, actorId: actor.id }, "actor of write not found");
   return { ok: false, error: { code: "failed" } };
+}
+
+/** What the write of a rename did: stored the name, found the name already stored, or found no item. */
+type Written<T> = { kind: "stored" } | { kind: "unchanged"; item: T } | { kind: "not-found" };
+
+/**
+ * Writes a rename to the validated name, unless the item has that name stored already. The comparison is part of the
+ * write, so that it holds for the name stored at that moment: `update` is called with a condition on the name, and only
+ * when it matched no row is the item read. An item renamed meanwhile to another name, between the update and the read,
+ * is updated once more without the condition, so that the last save wins as for every rename.
+ */
+async function writeRename<T extends { name: string }>(
+  name: string,
+  update: (where: { name?: { not: string } }) => Promise<number>,
+  read: () => Promise<T | null>,
+): Promise<Written<T>> {
+  if ((await update({ name: { not: name } })) > 0) return { kind: "stored" };
+  const item = await read();
+  if (!item) return { kind: "not-found" };
+  if (item.name === name) return { kind: "unchanged", item };
+  return (await update({})) > 0 ? { kind: "stored" } : { kind: "not-found" };
 }
 
 /**
@@ -281,7 +303,11 @@ export async function createFolder(
   return { ok: true, value: folder };
 }
 
-/** Renames the folder with the given id, with the actor as its last editor, and returns it as stored. */
+/**
+ * Renames the folder with the given id, with the actor as its last editor, and returns it as stored. A rename to the
+ * name the folder has stored at that moment stores nothing and returns the folder as it is, after the same checks as
+ * every rename.
+ */
 export async function renameFolder(
   actor: BrowserActor,
   id: string,
@@ -303,31 +329,44 @@ export async function renameFolder(
 
   const parsed = folderInputSchema.safeParse(input);
   if (!parsed.success) return invalidName(parsed.error);
+  const { name } = parsed.data;
 
-  let count: number;
+  let written: Written<Folder>;
   try {
-    // `updateMany` reports a missing folder as a count of 0 instead of throwing; it sets `updatedAt` as well.
-    ({ count } = await getDb().folder.updateMany({
-      where: { id: folderId },
-      data: { ...parsed.data, lastEditedById, lastEditedVia },
-    }));
+    const db = getDb();
+    written = await writeRename(
+      name,
+      // `updateMany` reports a missing folder as a count of 0 instead of throwing; it sets `updatedAt` as well.
+      async (where) =>
+        (
+          await db.folder.updateMany({
+            where: { id: folderId, ...where },
+            data: { name, lastEditedById, lastEditedVia },
+          })
+        ).count,
+      () => db.folder.findUnique({ where: { id: folderId }, select: { id: true, name: true } }),
+    );
   } catch (err) {
     if (isForeignKeyViolation(err, LAST_EDITOR)) return unknownActor(err, actor);
     if (isUniqueViolation(err, FOLDER_NAME)) {
-      logger.warn({ folderId, name: parsed.data.name }, "name of renamed folder already in use");
+      logger.warn({ folderId, name }, "name of renamed folder already in use");
       return { ok: false, error: { code: "name-taken" } };
     }
     logger.error({ err, folderId }, "failed to rename folder");
     return { ok: false, error: { code: "failed" } };
   }
-  if (count === 0) {
-    logger.warn({ folderId }, "folder to rename not found");
-    return { ok: false, error: { code: "folder-not-found" } };
+  switch (written.kind) {
+    case "not-found":
+      logger.warn({ folderId }, "folder to rename not found");
+      return { ok: false, error: { code: "folder-not-found" } };
+    case "unchanged":
+      logger.info({ folderId, ...channelOf(actor) }, "folder not changed: name is the same");
+      return { ok: true, value: written.item };
+    case "stored":
+      logger.info({ folderId, ...channelOf(actor) }, "folder renamed");
+      // The validated name is the stored one: the update wrote exactly this value.
+      return { ok: true, value: { id: folderId, name } };
   }
-
-  logger.info({ folderId }, "folder renamed");
-  // The validated name is the stored one: the update wrote exactly this value.
-  return { ok: true, value: { id: folderId, name: parsed.data.name } };
 }
 
 /**
@@ -381,8 +420,9 @@ export async function createTab(
 }
 
 /**
- * Renames the tab with the given id, with the actor as its last editor, and returns it as stored. It is a write of the
- * browser or of MCP.
+ * Renames the tab with the given id, with the actor as its last editor, and returns it as stored. A rename to the name
+ * the tab has stored at that moment stores nothing and returns the tab as it is, after the same checks as every rename.
+ * It is a write of the browser or of MCP.
  */
 export async function renameTab(
   actor: ContentActor,
@@ -403,21 +443,27 @@ export async function renameTab(
 
   const parsed = tabInputSchema.safeParse(input);
   if (!parsed.success) return invalidName(parsed.error);
+  const { name } = parsed.data;
 
+  let written: Written<StoredTab>;
   let tab: StoredTab | null;
   try {
     const db = getDb();
-    // `updateMany` reports a missing tab as a count of 0 instead of throwing; it sets `updatedAt` as well.
-    const { count } = await db.tab.updateMany({
-      where: { id: tabId },
-      data: { ...parsed.data, lastEditedById, lastEditedVia },
-    });
-    // The tab is read back, so that a caller gets the stored names, never submitted values.
-    tab = count === 0 ? null : await db.tab.findUnique({ where: { id: tabId }, select: STORED_TAB_SELECT });
+    const read = () => db.tab.findUnique({ where: { id: tabId }, select: STORED_TAB_SELECT });
+    written = await writeRename(
+      name,
+      // `updateMany` reports a missing tab as a count of 0 instead of throwing; it sets `updatedAt` as well.
+      async (where) =>
+        (await db.tab.updateMany({ where: { id: tabId, ...where }, data: { name, lastEditedById, lastEditedVia } }))
+          .count,
+      read,
+    );
+    // A stored tab is read back, so that a caller gets the stored names, never submitted values.
+    tab = written.kind === "unchanged" ? written.item : written.kind === "stored" ? await read() : null;
   } catch (err) {
     if (isForeignKeyViolation(err, LAST_EDITOR)) return unknownActor(err, actor);
     if (isUniqueViolation(err, TAB_NAME)) {
-      logger.warn({ tabId, name: parsed.data.name }, "name of renamed tab already in use");
+      logger.warn({ tabId, name }, "name of renamed tab already in use");
       return { ok: false, error: { code: "name-taken" } };
     }
     logger.error({ err, tabId }, "failed to rename tab");
@@ -428,7 +474,11 @@ export async function renameTab(
     return { ok: false, error: { code: "tab-not-found" } };
   }
 
-  logger.info({ tabId, ...channelOf(actor) }, "tab renamed");
+  if (written.kind === "unchanged") {
+    logger.info({ tabId, ...channelOf(actor) }, "tab not changed: name is the same");
+  } else {
+    logger.info({ tabId, ...channelOf(actor) }, "tab renamed");
+  }
   return { ok: true, value: tab };
 }
 

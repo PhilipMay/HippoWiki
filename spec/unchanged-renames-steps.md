@@ -24,7 +24,7 @@ written from `spec/unchanged-renames-requirements.md` (R1 to R8).
 
 ## Checklist
 
-- [ ] Store nothing for an unchanged rename
+- [x] Store nothing for an unchanged rename
 - [ ] Disable "Save" while the name is unchanged
 - [ ] Wrap-up
 
@@ -79,7 +79,9 @@ answer as after every rename (R1, R2, R3, R5, R6, R7).
   - a tab renamed meanwhile from `guides` to `news` and then renamed to `news` by another user stores nothing and
     returns the tab `news` (R7);
   - a Writer renaming a tab, and an admin renaming a folder or tab, to the current name are refused as with any other
-    name; a tab that does not exist gives `tab-not-found` also through MCP; nothing is stored (R6).
+    name; a tab that does not exist has no role and gives `not-allowed`, in the browser as through MCP, as for any
+    other name (the tool error of `rename_tab` for an unknown tab is checked in `e2e/mcp.spec.ts`); nothing is stored
+    (R6).
 - End-to-end tests:
   - `e2e/folders.spec.ts`: an Owner opens "Rename folder" for `old-name`, the folder is renamed to `new-name` in the
     database meanwhile, the Owner types `new-name` and saves: the browser ends on `/folders/new-name` without a notice,

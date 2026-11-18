@@ -581,6 +581,133 @@ describe("roles", () => {
   });
 });
 
+describe("a rename to the stored name", () => {
+  const LONG_AGO = new Date("2026-01-01T10:00:00Z");
+
+  /** What a rename that stores something would change: the name, the time, the last editor and the channel. */
+  async function storedFolder(id: string) {
+    const { name, updatedAt, lastEditedById, lastEditedVia } = await getTestDb().folder.findUniqueOrThrow({
+      where: { id },
+    });
+    return { name, updatedAt, lastEditedById, lastEditedVia };
+  }
+  async function storedTab(id: string) {
+    const { name, updatedAt, lastEditedById, lastEditedVia } = await getTestDb().tab.findUniqueOrThrow({
+      where: { id },
+    });
+    return { name, updatedAt, lastEditedById, lastEditedVia };
+  }
+
+  /** A folder and a tab last changed long ago by bob through MCP, so that a write by alice in the browser would show. */
+  async function changedByBob() {
+    const bob = await createUser({ name: "bob" });
+    const folder = await createFolder({
+      name: "handbook",
+      editor: bob,
+      via: "mcp",
+      updatedAt: LONG_AGO,
+      roles: [{ user, role: "owner" }],
+    });
+    const tab = await createTab({ folder, name: "guides", editor: bob, via: "mcp", updatedAt: LONG_AGO });
+    return { bob, folder, tab };
+  }
+
+  it.each(["handbook", " handbook "])("stores nothing for a folder renamed to %j and returns it", async (name) => {
+    const { bob, folder } = await changedByBob();
+
+    await expect(folderService.renameFolder(actor, folder.id, { name })).resolves.toStrictEqual({
+      ok: true,
+      value: { id: folder.id, name: "handbook" },
+    });
+
+    expect(await storedFolder(folder.id)).toStrictEqual({
+      name: "handbook",
+      updatedAt: LONG_AGO,
+      lastEditedById: bob.id,
+      lastEditedVia: "mcp",
+    });
+  });
+
+  it.each(["guides", " guides "])(
+    "stores nothing for a tab renamed to %j in the browser and returns it",
+    async (name) => {
+      const { bob, tab } = await changedByBob();
+
+      await expect(folderService.renameTab(actor, tab.id, { name })).resolves.toStrictEqual({
+        ok: true,
+        value: { id: tab.id, name: "guides", folder: { name: "handbook" } },
+      });
+
+      expect(await storedTab(tab.id)).toStrictEqual({
+        name: "guides",
+        updatedAt: LONG_AGO,
+        lastEditedById: bob.id,
+        lastEditedVia: "mcp",
+      });
+    },
+  );
+
+  it("stores nothing for a tab renamed to its name through MCP", async () => {
+    const bob = await createUser({ name: "bob" });
+    const folder = await createFolder({ name: "handbook", roles: [{ user, role: "owner" }] });
+    const tab = await createTab({ folder, name: "guides", editor: bob, via: "web", updatedAt: LONG_AGO });
+    const manager = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "manager" });
+
+    await expect(folderService.renameTab(manager, tab.id, { name: "guides" })).resolves.toStrictEqual({
+      ok: true,
+      value: { id: tab.id, name: "guides", folder: { name: "handbook" } },
+    });
+
+    expect(await storedTab(tab.id)).toStrictEqual({
+      name: "guides",
+      updatedAt: LONG_AGO,
+      lastEditedById: bob.id,
+      lastEditedVia: "web",
+    });
+  });
+
+  it("compares with the name stored at the moment of the save, not with the name of the open dialog", async () => {
+    const { bob, folder, tab } = await changedByBob();
+    // Another Manager renamed the tab from `guides` to `news` while the dialog for `guides` was open.
+    await getTestDb().tab.update({ where: { id: tab.id }, data: { name: "news", updatedAt: LONG_AGO } });
+
+    await expect(folderService.renameTab(actor, tab.id, { name: "news" })).resolves.toStrictEqual({
+      ok: true,
+      value: { id: tab.id, name: "news", folder: { name: folder.name } },
+    });
+
+    expect(await storedTab(tab.id)).toStrictEqual({
+      name: "news",
+      updatedAt: LONG_AGO,
+      lastEditedById: bob.id,
+      lastEditedVia: "mcp",
+    });
+  });
+
+  it("is refused as any other rename: a Writer, an admin, and a tab that does not exist", async () => {
+    const { folder, tab } = await changedByBob();
+    const admin = await createUser({ name: "maria", type: "admin" });
+    const writer = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "writer" });
+    const manager = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "manager" });
+    const before = [await storedFolder(folder.id), await storedTab(tab.id)];
+
+    // A tab that does not exist has no role either, in the browser as through MCP, also for an Owner.
+    await expect(folderService.renameTab(actor, crypto.randomUUID(), { name: "guides" })).resolves.toEqual(NOT_ALLOWED);
+    await expect(folderService.renameTab(manager, crypto.randomUUID(), { name: "guides" })).resolves.toEqual(
+      NOT_ALLOWED,
+    );
+    await expect(folderService.renameTab(writer, tab.id, { name: "guides" })).resolves.toEqual(NOT_ALLOWED);
+    await expect(folderService.renameFolder(inBrowser(admin), folder.id, { name: "handbook" })).resolves.toEqual(
+      NOT_ALLOWED,
+    );
+    await expect(folderService.renameTab(inBrowser(admin), tab.id, { name: "guides" })).resolves.toEqual(NOT_ALLOWED);
+    await getTestDb().folderRole.updateMany({ where: { folderId: folder.id }, data: { role: "writer" } });
+    await expect(folderService.renameTab(actor, tab.id, { name: "guides" })).resolves.toEqual(NOT_ALLOWED);
+
+    expect([await storedFolder(folder.id), await storedTab(tab.id)]).toStrictEqual(before);
+  });
+});
+
 describe("the lowest role of each function", () => {
   it("lets a Manager create and rename tabs but not rename the folder", async () => {
     const folder = await createFolder({ name: "docs", roles: [{ user, role: "manager" }] });

@@ -162,6 +162,45 @@ test("renaming a tab shows it at its new address with its pages and the old addr
   }
 });
 
+test("saving the rename dialog with the name the tab got meanwhile stores nothing and leads to the tab", async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  const bob = await createUser({ name: "bob" });
+  const tab = await createTab({ folder: handbook, name: "guides" });
+  await createPage({ tab, name: "inside", title: "Inside the tab" });
+
+  await page.goto("/folders/handbook/guides?action=rename");
+  const dialog = page.getByRole("dialog", { name: "Rename tab" });
+  await expect(dialog.getByLabel("Name")).toBeEditable();
+  // Another Manager, bob, renames the tab to `news` while the dialog is open.
+  const renamedAt = new Date("2026-01-01T10:00:00Z");
+  await getTestDb().tab.update({
+    where: { id: tab.id },
+    data: { name: "news", lastEditedById: bob.id, lastEditedVia: "mcp", updatedAt: renamedAt },
+  });
+  await dialog.getByLabel("Name").fill("news");
+  await dialog.getByRole("button", { name: "Save" }).click();
+
+  await expect(page).toHaveURL("/folders/handbook/news");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(["news"]);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("main").getByRole("alert")).toHaveCount(0);
+  await expect(listLinks(page)).toHaveText([/^Inside the tab/]);
+  await expect(getTestDb().tab.findUniqueOrThrow({ where: { id: tab.id } })).resolves.toMatchObject({
+    name: "news",
+    lastEditedById: bob.id,
+    lastEditedVia: "mcp",
+    updatedAt: renamedAt,
+  });
+
+  await page.goto("/folders/handbook");
+  const item = page.getByRole("list", { name: "Contents" }).getByRole("listitem");
+  await expect(item).toHaveText([/^news.*by bob via mcp$/]);
+  await expect(item.locator("time")).toHaveAttribute("datetime", renamedAt.toISOString());
+  expect(errors).toEqual([]);
+});
+
 test("cancelling the tab dialogs returns to the address without the query string", async ({ page }) => {
   await createTab({ folder: handbook, name: "guides" });
 

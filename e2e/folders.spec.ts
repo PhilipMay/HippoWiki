@@ -210,14 +210,41 @@ test("renaming a folder to a taken or invalid name shows the error and keeps the
   expect((await getTestDb().folder.findUniqueOrThrow({ where: { id: folder.id } })).name).toBe("renamed");
 });
 
-test("saving the rename dialog with the unchanged name keeps the folder", async ({ page }) => {
-  await createFolder({ name: "unchanged" });
+test("saving the rename dialog with the name the folder got meanwhile stores nothing and leads to the folder", async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  const bob = await createUser({ name: "bob" });
+  const folder = await createFolder({ name: "old-name" });
 
-  await page.goto("/folders/unchanged?action=rename");
-  await page.getByRole("dialog", { name: "Rename folder" }).getByRole("button", { name: "Save" }).click();
+  await page.goto("/folders/old-name?action=rename");
+  const dialog = page.getByRole("dialog", { name: "Rename folder" });
+  await expect(dialog.getByLabel("Name")).toBeEditable();
+  // Bob renames the folder to `new-name` while the dialog is open.
+  const renamedAt = new Date("2026-01-01T10:00:00Z");
+  await getTestDb().folder.update({
+    where: { id: folder.id },
+    data: { name: "new-name", lastEditedById: bob.id, lastEditedVia: "mcp", updatedAt: renamedAt },
+  });
+  await dialog.getByLabel("Name").fill("new-name");
+  await dialog.getByRole("button", { name: "Save" }).click();
 
-  await expect(page).toHaveURL("/folders/unchanged");
+  await expect(page).toHaveURL("/folders/new-name");
+  await expect(page.getByRole("heading", { level: 1, name: "new-name" })).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("main").getByRole("alert")).toHaveCount(0);
+  await expect(getTestDb().folder.findUniqueOrThrow({ where: { id: folder.id } })).resolves.toMatchObject({
+    name: "new-name",
+    lastEditedById: bob.id,
+    lastEditedVia: "mcp",
+    updatedAt: renamedAt,
+  });
+
+  await page.goto("/folders");
+  const item = page.getByRole("list", { name: "Folders" }).getByRole("listitem");
+  await expect(item).toHaveText([by("bob", "mcp")]);
+  await expect(item.locator("time")).toHaveAttribute("datetime", renamedAt.toISOString());
+  expect(errors).toEqual([]);
 });
 
 test("an unknown folder shows the not-found page", async ({ page }) => {
