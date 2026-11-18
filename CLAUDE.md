@@ -11,6 +11,9 @@ The specification lives in the `spec/` directory. This catalog should always be 
   step plan (starting and resuming, what may change, the commit on approval without a push, the rounds of questions,
   the checks for contradictions and feasibility, how requirements are written, the template); the result is one file
   `spec/<feature>-requirements.md`, listed here while it exists
+- `spec/unchanged-renames-requirements.md`: the requirements of renaming a folder or a tab to its own name without a
+  change (nothing stored in the browser and through MCP, the same answer as a rename, a log line of its own, "Save"
+  disabled in the rename dialogs while the name is unchanged); approved
 - `spec/step-plan-workflow.md`: how features are planned in step files, when a step is done, what to do when it
   cannot be finished, how a feature is wrapped up, what a feature spec holds, and how a finding of the review report is
   fixed and deleted
