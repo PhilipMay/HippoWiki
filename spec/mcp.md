@@ -161,6 +161,11 @@ What holds for all of them:
 - The content, the names and the tabs of a write follow the same rules as in the browser (see `pages.md` and
   `content-structure.md`). Content without a title heading, a title that suggests no name and comes without a name, a
   name that breaks the name rule and a taken name are tool errors that say what to do next, and nothing is changed.
+- The instructions of `initialize`, the descriptions of the arguments that take a new name (`name` of `create_page`
+  and `create_tab`, `newName` of `move_or_rename_page` and `rename_tab`) and the error for a title that suggests no
+  name state the whole name rule in the same words, the length limit included (`src/lib/name-limits.ts`), so that a
+  model learns it before a tool refuses a name. The input schema still refuses no name: a new name is a plain string,
+  so that a name that breaks the rule stays a tool error with the rule.
 - A page or tab that does not exist, also one deleted meanwhile, is a tool error and not a protocol error, so that the
   model reads it and tries again. The error says what to do next: for a page, to look the names up with
   `list_folder`; for a tab, to create it with `create_tab` on a Manager connection, and that tabs are created in the
