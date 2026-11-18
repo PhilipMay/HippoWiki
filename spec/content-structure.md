@@ -167,8 +167,36 @@ that the time of the last change, the last editor and the channel name only who 
   then. The dialog shows no extra text about it; the field keeps its hint about the name rule. An empty field differs
   from the current name, so "Save" is enabled and the server answers that a name is required. The "New folder" and
   "New tab" dialogs keep "Save" enabled for every name.
-- Moving or renaming a page to its own name and place is not covered: it makes the user its last editor and counts the
-  version of the page up, like every move or rename of a page.
+- Moving or renaming a page to its own name and place stores nothing as well (see "Moving or renaming a page to its
+  own name and place").
+
+## Moving or renaming a page to its own name and place
+
+A move or rename of a page to the name and the place it already has changes nothing, in the browser and through
+`move_or_rename_page`, so that the last editor, the channel, the time of the last change and the version name only
+real changes, and an editor or dialog that another user has open on the page is not refused for no reason. Code:
+`moveOrRenamePage()` in `src/features/pages/service.ts`,
+`src/features/pages/components/MoveOrRenamePageDialog.tsx`. Tests: `src/features/pages/service.test.ts`,
+`src/features/mcp/tools.test.ts`, `integration/page-service.test.ts`, `e2e/move-or-rename-page.spec.ts`,
+`e2e/mcp.spec.ts`, `e2e/folder-roles.spec.ts`.
+
+- A move or rename to the name and the place the page has stored stores nothing: the page keeps its last editor, its
+  channel, its time of the last change and its version, and no revision is recorded. The place is the same when it is
+  the tab the page is in, or directly in the folder for a page in no tab. A name counts as the same when it equals the
+  stored name once its surrounding spaces are removed (" setup " for the page `setup`).
+- It is checked like every move or rename, in the same order: the admin, the role, the place, the name rule, the
+  version it is based on, and only then the comparison. Whoever may not move the page, a deleted or missing page, a
+  tab that does not exist, an invalid name and a save based on another version than the page has, or on none, are
+  refused as with any other move (see `optimistic-locking.md`).
+- The comparison is with the name and place stored at the moment of the save, in the same write.
+- It is answered as every move is: the browser leads to the page address without a notice, and `move_or_rename_page`
+  returns the page as stored, with the version the call stated (see `mcp.md`).
+- The server log records it in a line of its own, with the page and the channel, not as a move or rename.
+- In the "Move or rename page" dialog, "Save" is disabled while the name in the field, without its surrounding spaces,
+  and the chosen place are those the page had when the dialog was opened, and Enter in the field submits nothing then.
+  This holds also after a refused move reloaded the dialog with the current name and place: "Save" is disabled until
+  the user changes one of them. The dialog shows no extra text about it; the name field keeps its address hint. An
+  empty field differs from the current name, so "Save" is enabled and the server answers that a name is required.
 
 ## Deleting a tab
 
@@ -234,7 +262,9 @@ that the time of the last change, the last editor and the channel name only who 
 - A content save without a change, whose content is the same as the stored content of the page, is no edit: it
   changes neither the last editor nor the time of the last change (see "Saves without a change" in `pages.md`).
 - A rename of a folder or a tab to the name it already has is no edit either: it changes neither the last editor, nor
-  the channel, nor the time of the last change (see "Renaming to the same name").
+  the channel, nor the time of the last change (see "Renaming to the same name"). Nor is a move or rename of a page to
+  its own name and place, which keeps the version of the page as well (see "Moving or renaming a page to its own name
+  and place").
 - A change inside a folder or tab is no edit of it: creating, moving, deleting or restoring a page and creating or
   deleting a tab leave the time of the last change and the last editor of the folder and the tab as they are. Renaming a folder
   leaves those of its tabs and pages as they are.
@@ -327,8 +357,20 @@ that the time of the last change, the last editor and the channel name only who 
   Rejected: a soft delete of folders, a list of deleted folders and restoring them.
 - Pages and tabs stay in their folder: they are moved only within it, as a lasting rule. Rejected: moving a page or a
   tab to another folder.
-- Only folders and tabs are left unchanged by a rename to their own name. Rejected for now: moves and renames of pages
-  to their own name and place, which touch the version of a page and optimistic locking.
+- A move or rename of a page to its own name and place stores nothing, like a content save without a change and a
+  rename of a folder or tab to its own name, in the browser and through MCP alike. Rejected: refusing it with a
+  message; covering the browser only.
+- An unchanged move based on an older version is refused as changed, like an unchanged content save, so that one rule
+  holds for every change of a page. Rejected: accepting it without checking the version.
+- An unchanged move is answered as every move is and logged in a line of its own, like unchanged content saves and
+  renames. Rejected: a notice in the browser and a note in the result of `move_or_rename_page`; no log line; logging it
+  as a move.
+- "Save" of the "Move or rename page" dialog is disabled while nothing changed, like that of the rename dialogs, with
+  the name compared without its surrounding spaces, by the dialog and by the server alike. Rejected: keeping it
+  enabled; comparing the exact text.
+- The "Move or rename page" dialog compares with the name and place it was opened with, also after a refusal reloaded
+  it with the current page, so that "Save" is disabled then until the user enters the move again. Rejected: keeping
+  "Save" enabled after the refusal.
 - "Save" of a rename dialog compares the name without its surrounding spaces, as the server does, so that the button
   and the server always agree. Rejected: comparing the exact text of the field.
 - A rename to the same name is answered as every rename is, as unchanged content saves of pages are. Rejected: a notice

@@ -54,10 +54,10 @@ routes under `src/app/folders/`. Tests: `src/features/pages/derive.test.ts`, `sr
   `replace_page_content` returns the page with the version the call stated (see `mcp.md`).
 - The server log records such a save in a line of its own, with the page and the channel, and not as "page updated",
   so that an operator sees which saves changed a page.
-- Moving or renaming a page to its own name and place is no content save: it still makes the user the last editor and
-  counts the version of the page up. Renaming a folder or tab to its own name stores nothing and no longer makes the
-  user its last editor (see "Renaming to the same name" in `content-structure.md`). A revert always changes the
-  content.
+- Moving or renaming a page to its own name and place is no content save, but stores nothing either: the page keeps
+  its last editor, its channel, the time of its last change and its version (see "Moving or renaming a page to its own
+  name and place" in `content-structure.md`). Renaming a folder or tab to its own name stores nothing as well (see
+  "Renaming to the same name" there). A revert always changes the content.
 
 ## Name
 
@@ -156,9 +156,9 @@ costliest function of a page, and its guards are:
   holds for every save and every caller. Rejected: accepting it because it would overwrite nothing.
 - A save without a change is checked against the limits like every other save, so that the editor never accepts
   content it could not store. Rejected: letting it pass unchecked because it stores nothing.
-- Only content saves of pages are covered, because they are the saves that the history compares with; renames of
-  folders and tabs to their own name are covered as well (see `content-structure.md`). Rejected for now: covering
-  unchanged moves and renames of pages, which touch the version of a page and optimistic locking.
+- Content saves of pages store nothing without a change, because they are the saves that the history compares with;
+  renames of folders and tabs to their own name, and moves and renames of pages to their own name and place, store
+  nothing as well (see `content-structure.md`).
 - The browser and MCP answer as after every save. Rejected: a notice in the browser and an extra field in the MCP
   result, which a user or an AI app does not need to go on.
 - The log tells a save without a change from a stored one, so that an operator reading it sees which saves changed a

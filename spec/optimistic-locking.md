@@ -23,6 +23,10 @@ in `src/features/pages/components/`. Tests: `integration/page-service.test.ts`, 
 - A content save without a change, whose content is the same as the stored content, is no stored change and does not
   count the version up (see "Saves without a change" in `pages.md`). It is checked and refused like every other
   content save below, also when its content is the same as that of the changed page.
+- Nor is a move or rename of a page to the name and place it has stored (see "Moving or renaming a page to its own
+  name and place" in `content-structure.md`). It is checked and refused like every other move below, so an unchanged
+  move based on an older version is refused as changed, and it refuses no editor or dialog that another user has open
+  on the page.
 - Pages stored before the version existed have the version 1.
 - Renaming a folder or a tab, and every change inside a folder or tab, is no change of its pages and leaves their
   versions as they are. Deleting a tab deletes its pages, and their versions count up as with every delete.

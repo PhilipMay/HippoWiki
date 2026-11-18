@@ -98,8 +98,13 @@ and `src/features/folder-roles/service.test.ts`.
   that a folder needs at least one Owner. The check and the write run in one transaction with the roles of the
   folder locked, so that two Owners who lower each other at the same time cannot leave the folder without one.
 - The controls of the roles view and of the dialog are locked until hydration.
+- A change of a role to the role the user already has is checked like every change, in the same order (the admin,
+  the Owner of the folder, the user with a role on it, the last Owner, which never refuses an Owner staying Owner), and
+  then stores nothing: the role keeps its time. It is answered like every change, so the Owner stays in the roles view
+  without an error. A change to the same role by anyone but an Owner is refused as for any other role.
 - Every role given, changed and removed is logged with the folder, the user, the old and the new role and the Owner
-  who made the change; so is a refused change of the last Owner.
+  who made the change; so is a refused change of the last Owner. A change to the same role is logged in a line of its
+  own, with the folder, the user, the role and the Owner, not as a change.
 
 ## The admin overview
 
@@ -173,6 +178,10 @@ and `src/features/folder-roles/service.test.ts`.
   why. Rejected: an empty list without a hint.
 - Every change of a role is logged with who made it, so that a change of access can be traced until an audit log
   comes. Rejected: no logging.
+- A change to the same role stores nothing, like other saves without a change, so that the log and the time of a role
+  name only real changes of access. It is checked in the usual order with the comparison last, answered like every
+  change and logged in a line of its own. Rejected: refusing it with an error that the role is already set; writing
+  and logging it as a change.
 - A change of a role takes effect with the next request, so that a removed user loses access at once. Rejected: roles
   read at the login, which would keep a removed user's access until the session ends.
 - The "Give role" dialog with nobody left says so instead of disappearing, so that an Owner learns why nobody can be

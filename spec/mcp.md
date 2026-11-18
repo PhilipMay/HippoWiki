@@ -116,7 +116,9 @@ Write tools of pages, for a Writer and a Manager connection, each with the hints
   last editor, channel, time and version, and the tool returns the same version that the call stated (see "Saves
   without a change" in `pages.md`).
 - `move_or_rename_page`: a page to another tab of the folder, or directly into it, with a new name, based on a
-  version. It stays in the folder of the connection.
+  version. It stays in the folder of the connection. The current name and place change nothing: the page keeps its
+  last editor, channel, time and version, and the tool answers as for every move, with the version that the call
+  stated (see "Moving or renaming a page to its own name and place" in `content-structure.md`).
 - `create_page` and `replace_page_content` record a revision of the page with the user of the connection and the
   channel `mcp`, like a content change in the browser, so that a user can undo it in the browser from the history of
   the page (see `page-history.md`). No tool reads the history or reverts a page.
@@ -172,7 +174,7 @@ What holds for all of them:
   connection made it is not recorded. The server log of the change names the channel `mcp` and the grant, and the log
   of a tab deletion also the number of pages.
 - Every write tool of pages returns the page as stored: its name, title, tab, address and version, which a change
-  counts up and a content save without a change keeps.
+  counts up and a content save without a change and a move to the current name and place keep.
 - An address is the path of the folder, tab or page; with `HIPPOWIKI_PUBLIC_URL` it is the full URL, which a person
   can open.
 - A deleted page is never listed, read or changed; it is answered like a page that does not exist.
