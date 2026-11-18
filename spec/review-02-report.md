@@ -5,21 +5,33 @@
 - Verdict: no Blocker. The code is in better shape than "dirty" suggests: the layers hold and ESLint enforces
   them, every adapter handles every code of every write, the browser and MCP agree on the seven writes they share,
   and the newest rules (writes that store nothing) are proven against the real database and in the browser. The
-  weak points are three:
-  - Rules that are written several times: the frame of a dialog in nine components, and the same rule in up to five
-    specs. Both are fixed: the frame is shared, and each rule of the content has one owning spec. Two copies had
-    drifted already; both are fixed.
-  - Tests that would not catch the refactoring this report suggests: the unit tests of the services pinned the calls
-    of Prisma, and three rules of access and of the transaction had no test that could fail. Both are fixed; the
-    findings of the tests that are still open are minor.
+  weak points were three, and all are fixed:
+  - Rules that were written several times: the frame of a dialog in nine components, and the same rule in up to
+    five specs. The frame is shared, and each rule of the content has one owning spec; the two copies that had
+    drifted are gone.
+  - Tests that would not catch the refactoring this report suggested: the unit tests of the services pinned the
+    calls of Prisma, and three rules of access and of the transaction had no test that could fail. The unit tests
+    assert behaviour, and the rules have integration tests.
   - Documents that the features outran: rules stated in full in several documents, and copies of code and
-    constants in the specs.
+    constants in the specs. Each rule stands once, and the documents point to the code.
+- Open: the one finding on the confidences of `review-report.md`, which by its Decision waits for the next recheck of
+  that report.
 - Findings: 1 open of 107, 0 Blocker, 0 Major, 1 Minor and 0 Nit (1 `suggestion:`); no `question:` is open.
 - Confidence of the suggestions: 0 High, 1 Medium and 0 Low. A High suggestion can be fixed as written; the others
   wait for the user, as `issue-report.md` describes.
-- Decisions: on 2026-11-18 the user decided all Medium and Low suggestions. Each of these findings ends with a line
-  `Decision`, and is fixed as that line says, without asking again. The questions were decided by the user on the
-  same day, in "Decisions on the questions" of `spec/review-02-fixes-steps.md`.
+- Decisions: on 2026-11-18 the user decided all Medium and Low suggestions and the questions; each finding was fixed
+  as its line `Decision` said. The questions and their answers, which shaped the code:
+  - A malformed name of an existing tab or page is answered by the MCP tool with its not-found error, not refused by
+    the input schema, because the MCP specification asks for errors of input that a model can act on.
+  - The OAuth service returns the descriptions of its errors, as the protocol sends them; the codes of an
+    authorization request without a description are `unknown-client` and `foreign-redirect-uri`.
+  - Client Components were measured first; only the names of the form fields and the limit of a name moved to
+    modules without imports.
+  - "Bearer token sessions" was merged into "Access for clients without OAuth" in `roadmap.md`, and the condition of
+    "Exact search-and-replace for MCP" was dropped.
+  - The hint under "New password" keeps the lengths.
+  - A change outside a step plan is not committed (`CLAUDE.md`, "Git Handling"), and the check of doc references
+    reads the skills.
 - To fix first: no Major finding is open; the four Major findings of the tests are fixed.
 - Not covered by this review: security, which `review-report.md` covers and whose findings are not repeated here;
   the unit tests of auth, users, OAuth and grants, of which only the names and the copied helpers were looked at;
@@ -32,7 +44,9 @@
 - Reviewed: all of `src/` without `src/generated/` and without the list of common passwords, `e2e/`,
   `integration/`, `prisma/`, `scripts/`, `eslint.config.mjs`, `vitest.config.ts`, `playwright.config.ts`,
   `.env.example`, every file of `spec/`, `README.md`, `CLAUDE.md`, `AGENTS.md` and the skills in `.claude/skills/`.
-- Date: 2026-11-18. The code is the state of the branch `main` on that day.
+- Date: 2026-11-18. The code is the state of the branch `main` on that day. The findings were fixed on the same
+  day, by a step plan that is finished; the "Reviewed" lists of each area describe the code and the documents after
+  the fixes.
 - The question of the review: after many features in a short time, where did the code, the tests and the
   documents get "dirty", and what has to be in place before a cleanup? It is no security review.
 - Evidence comes from:
@@ -401,3 +415,5 @@ documents name.
    splits of the large files. Done: the code findings are fixed.
 5. Restructure the documents last: one owner per rule in the feature specs, the sections of `architecture.md`, and
    the form of the catalog in `CLAUDE.md`. Done.
+
+All of it is done but the confidences of `review-report.md`, which its next recheck assigns.

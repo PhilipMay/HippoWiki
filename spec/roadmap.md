@@ -96,7 +96,7 @@ listed first; there is no order across themes.
 
 ## API and Integrations
 
-- Access for clients without OAuth: scripts, CI jobs and MCP clients that cannot do OAuth with a browser get access
+- Access for clients without OAuth: scripts, CI jobs and AI apps that cannot do OAuth with a browser get access
   again, for example through the OAuth device flow or client credentials, or a bearer token sent in the
   `Authorization` header (`connected-apps.md`, `oauth.md`, `users-and-login.md`).
 - MCP write tools for folders: create folders from AI apps; renaming a folder and its roles stay in the browser,

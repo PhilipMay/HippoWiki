@@ -106,7 +106,7 @@ such as `src/features/grants/service.test.ts`.
   replacement (see `roadmap.md`).
 - An access token is hashed with SHA-256 and not with Argon2 like a password: it has 256 random bits, so there is
   nothing to guess, and a fast hash can be looked up directly by its value.
-- A grant is not a session of Better Auth ("Bearer token sessions" in `roadmap.md`): it has an address and a lifetime
+- A grant is not a session of Better Auth (see "Access for clients without OAuth" in `roadmap.md`): it has an address and a lifetime
   of its own and is approved on purpose by the user, while a session is the login of one browser.
 - Revoking deletes the row instead of marking it, so a revoked grant cannot come back by mistake and the limit counts
   only grants that still exist.
@@ -136,7 +136,7 @@ such as `src/features/grants/service.test.ts`.
 
 ## Current limits
 
-- no access for scripts, CI jobs and MCP clients that cannot do OAuth with a browser: no device flow and no client
+- no access for scripts, CI jobs and AI apps that cannot do OAuth with a browser: no device flow and no client
   credentials (see `roadmap.md`)
 - only the MCP server accepts an access token; there is no other API
 - a password change does not end the grants of a user; only revoking and expiry do

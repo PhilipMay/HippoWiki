@@ -32,7 +32,6 @@ file itself holds.
   the file with its last finding.
 - `spec/review-02-report.md`: Which findings of the review of code quality, tests and documentation are open? A fixed
   finding is deleted.
-- `spec/review-02-fixes-steps.md`: Which steps fix the findings of `spec/review-02-report.md`?
 
 ## Running the Checks
 
