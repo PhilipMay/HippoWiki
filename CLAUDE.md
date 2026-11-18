@@ -13,6 +13,9 @@ The specification lives in the `spec/` directory. This catalog should always be 
   `spec/<feature>-requirements.md`, listed here while it exists
 - `spec/unchanged-moves-and-roles-requirements.md`: the approved requirements of moves and renames of
   pages to their own name and place and of changes of a role to the same role, which store nothing
+- `spec/unchanged-moves-and-roles-steps.md`: the step plan of unchanged moves and roles (the page service storing
+  nothing for a move or rename to the own name and place, "Save" of the "Move or rename page" dialog disabled while
+  nothing changed, the role service storing nothing for a change to the same role, wrap-up)
 - `spec/step-plan-workflow.md`: how features are planned in step files, when a step is done, what to do when it
   cannot be finished, how a feature is wrapped up, what a feature spec holds, and how a finding of the review report is
   fixed and deleted
