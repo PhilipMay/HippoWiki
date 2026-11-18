@@ -14,16 +14,13 @@ Code: `src/features/pages/` (`deletePage`, `restorePage`, `listDeletedPages` and
 - A page is deleted from its page address with "Delete" (`?action=delete`), after a confirmation. Deleting leads to
   the folder or tab the page was in. Deleting needs the role Manager or Owner on the folder (see `folder-roles.md`).
 - A deleted page keeps its content and its folder, but forgets its tab: the wiki only knows which folder it belongs to.
-- Pages are also deleted together with their tab (see "Deleting a tab" in `content-structure.md`): each of them becomes
-  a deleted page as if it had been deleted on its own, without a check of its version, with the user who deleted the
-  tab as its last editor and so as the user who deleted it.
+- Pages are also deleted together with their tab, each as if it had been deleted on its own (see "Deleting a tab" in
+  `content-structure.md`).
 - A delete is refused when the page was changed after the dialog was opened; the dialog then stays open with a message,
   and confirming again deletes the page (see `optimistic-locking.md`).
 - Pages are deleted through MCP as well, by a Manager connection of an AI app, on their own with `delete_page`, based
   on a version, and together with their tab with `delete_tab`, with the user of the connection as the user who deleted
-  them (see `mcp.md`). Deleted pages, reading one and restoring stay in the browser: no tool lists, reads or
-  restores a deleted page. Only the list of tools holds this rule: the reads of the service would give a Manager
-  connection the deleted pages, so a new tool must not call them.
+  them. The deleted pages themselves stay in the browser (see "Tools" in `mcp.md`).
 
 ## Deleted pages are invisible
 
@@ -39,13 +36,13 @@ Code: `src/features/pages/` (`deletePage`, `restorePage`, `listDeletedPages` and
 
 ## Deleted pages of a folder
 
-- The folder address links a Manager and an Owner to "Deleted pages", `/deleted-pages/<folder>`: the deleted pages of the folder, newest
-  first, with name, title, time of deletion, the user who deleted it and, in a column "Via" right after "Deleted by",
-  how it was deleted: `web` in the browser, `mcp` through MCP, also for a page deleted with its tab (see "Last editor"
-  in `content-structure.md`). The list does not show where in the folder a page was.
+- The folder address links a Manager and an Owner to "Deleted pages", `/deleted-pages/<folder>`: the deleted pages of
+  the folder, newest first, with name, title, time of deletion, the user who deleted it and, in a column "Via" right
+  after "Deleted by", how it was deleted, also for a page deleted with its tab (see "Channel" in
+  `content-structure.md`). The list does not show where in the folder a page was.
 - `/deleted-pages/<folder>/<id>` shows a deleted page read-only, with the time of deletion, the user who deleted it
-  and how ("Deleted <time> by mike via mcp"), "Restore" as its only action and "History". A deleted page is addressed
-  by its id, because its name need not be unique and it has no `.md` address.
+  and the channel, "Restore" as its only action and "History". A deleted page is addressed by its id, because its name
+  need not be unique and it has no `.md` address.
 - A deleted page keeps its history. Its views `?view=history`, `?view=revision` and `?view=compare` show it read-only,
   without "Revert" (see `page-history.md`); deleting, restoring and deleting a tab record no revision, so a restored
   page has its whole history again.
@@ -60,9 +57,9 @@ Code: `src/features/pages/` (`deletePage`, `restorePage`, `listDeletedPages` and
 - Restoring checks the name like moving a page (`content-structure.md`); the content is neither validated nor
   touched. It leads to the page's new address.
 - Restoring is not checked against a change in the meantime (see `optimistic-locking.md`).
-- Restoring makes the logged-in user the last editor of the page, with the channel `web` (see "Last editor" in
-  `content-structure.md`): a restored page shows the user who restored it "via web", also when it was deleted through
-  MCP.
+- Restoring makes the logged-in user the last editor of the page, with the channel `web` (see "Last editor" and
+  "Channel" in `content-structure.md`): a restored page shows the user who restored it via `web`, also when it was
+  deleted through MCP.
 
 ## Decisions
 
@@ -87,7 +84,8 @@ Code: `src/features/pages/` (`deletePage`, `restorePage`, `listDeletedPages` and
   and cannot be restored (see "Deleting folders" in `roadmap.md`). Tabs are deleted for good; the pages of a deleted
   tab are restored one by one, not all at once.
 - Only a Manager and an Owner of the folder delete and restore pages; a Writer cannot undo a page created by mistake.
-- Deleted pages cannot be listed, read or restored through MCP, also by a Manager connection that deleted them.
+- Deleted pages cannot be listed, read or restored through MCP, also by a Manager connection that deleted them (see
+  `mcp.md`).
 - A deleted page cannot be removed for good; there is no emptying of all deleted pages and no automatic cleanup after a
   retention period. Neither is planned.
 - A page is restored only into its own folder, as a lasting rule.

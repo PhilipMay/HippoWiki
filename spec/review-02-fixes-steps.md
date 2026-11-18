@@ -116,7 +116,7 @@ Decided by the user on 2026-11-18:
 - [x] Views of the folder routes and pieces of the lists
 - [x] Dialogs
 - [x] The first review report
-- [ ] One owner per rule in the feature specs
+- [x] One owner per rule in the feature specs
 - [ ] Structure of `architecture.md` and the other documents
 - [ ] Wrap-up
 

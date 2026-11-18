@@ -2,22 +2,30 @@
 
 The content structure as built: folders, optional tabs inside a folder and Markdown pages, and the addresses they have.
 What a page itself is (its content, derived title, editor and rendering) is described in `pages.md`, deleting and
-restoring pages in `page-deletion.md`, and who sees and does what with a folder in `folder-roles.md`. Deleting a tab is
-described below in "Deleting a tab".
+restoring pages in `page-deletion.md`, and who sees and does what with a folder in `folder-roles.md`. This spec owns
+deleting a tab, renaming a folder or tab to its own name, moving or renaming a page to its own name and place, and the
+last editor and the channel of every item.
 
-Code: `src/features/folders/` (folders and tabs), `src/features/pages/` (pages), `src/lib/names.ts` (the name rule),
-`src/lib/addresses.ts` (building and parsing addresses), `src/features/folders/folder-query.ts` and
-`src/features/pages/page-query.ts` (what an address shows, with its title and the role of each action), the models `Folder`, `Tab` and `Page` in
-`prisma/schema.prisma`, and the routes under `src/app/folders/` and `src/app/deleted-pages/`. Tests:
-`e2e/folders.spec.ts`, `e2e/tabs.spec.ts`, `e2e/all-pages.spec.ts`, `e2e/create-page.spec.ts`,
-`e2e/move-or-rename-page.spec.ts`, `e2e/delete-tab.spec.ts`, `e2e/access.spec.ts`, `src/lib/names.test.ts`,
-`src/lib/addresses.test.ts`, `src/features/folders/folder-query.test.ts`, `src/features/pages/page-query.test.ts`,
-`integration/folder-service.test.ts`, `integration/page-service.test.ts`, `integration/db-errors.test.ts`. The last
-editor and the channel: the writes of `src/features/folders/service.ts` and `src/features/pages/service.ts`,
-the actors in `src/features/folder-roles/actors.ts`, `src/features/users/records.ts` (what the reads return
-of the last editor and how the browser names it), the relation `lastEditedBy` and the field `lastEditedVia` of
-`Folder`, `Tab` and `Page` in `prisma/schema.prisma`, and the migrations `prisma/migrations/20261116103037_init/` and
+Code: `src/features/folders/` (folders and tabs, with `renameFolder()`, `renameTab()` and `deleteTab()` in
+`service.ts` and `actions.ts`, and the dialogs `NameDialog.tsx` and `DeleteTabDialog.tsx` in `components/`),
+`src/features/pages/` (pages, with `moveOrRenamePage()` in `service.ts` and `MoveOrRenamePageDialog.tsx` in
+`components/`), `src/lib/names.ts` (the name rule), `src/lib/addresses.ts` (building and parsing addresses),
+`src/features/folders/folder-query.ts` and `src/features/pages/page-query.ts` (what an address shows, with its title
+and the role of each action), the models `Folder`, `Tab` and `Page` in `prisma/schema.prisma`, and the routes under
+`src/app/folders/` and `src/app/deleted-pages/`. The last editor and the channel: the writes of
+`src/features/folders/service.ts` and `src/features/pages/service.ts`, the actors in
+`src/features/folder-roles/actors.ts`, `src/features/users/records.ts` (what the reads return of the last editor and
+how the browser names it), the relation `lastEditedBy` and the field `lastEditedVia` of `Folder`, `Tab` and `Page` in
+`prisma/schema.prisma`, and the migrations `prisma/migrations/20261116103037_init/` and
 `prisma/migrations/20261117130000_change_channel/`.
+
+Tests: `e2e/folders.spec.ts`, `e2e/tabs.spec.ts`, `e2e/all-pages.spec.ts`, `e2e/create-page.spec.ts`,
+`e2e/move-or-rename-page.spec.ts`, `e2e/delete-tab.spec.ts`, `e2e/access.spec.ts`, `e2e/mcp-write.spec.ts`,
+`e2e/mcp-manager.spec.ts`, `e2e/folder-roles.spec.ts`, `e2e/hydration.spec.ts`, `src/lib/names.test.ts`,
+`src/lib/addresses.test.ts`, `src/features/folders/folder-query.test.ts`, `src/features/pages/page-query.test.ts`,
+`src/features/folders/service.test.ts`, `src/features/pages/service-writes.test.ts`,
+`src/features/mcp/tools.test.ts`, `integration/folder-service.test.ts`, `integration/page-service.test.ts`,
+`integration/db-errors.test.ts`.
 
 ## Overview
 
@@ -92,9 +100,11 @@ hold pages directly and have tabs at the same time.
   | page         | `revert`         | the "Revert page" dialog over a revision of the page     |
   | deleted page | `restore`        | the "Restore page" dialog                                |
 
-- A folder address also has the views `?view=all`, the list of all its pages, `?view=roles`, who has which role on
-  the folder (see `folder-roles.md`), and `?view=mcp`, the MCP addresses of the folder for AI apps, which exists only
-  while `HIPPOWIKI_PUBLIC_URL` is set (see "The view "AI apps"" in `folder-roles.md` and `mcp.md`).
+- A folder address has three views, which this list is the one place to name:
+  - `?view=all`: all pages of the folder, with their tab (see "Lists and order");
+  - `?view=roles`: who has which role on the folder (see "The roles view" in `folder-roles.md`);
+  - `?view=mcp`: the MCP addresses of the folder for AI apps, which exists only while `HIPPOWIKI_PUBLIC_URL` is set
+    (see "The view "AI apps"" in `folder-roles.md` and `mcp.md`).
 - A page address and the address of a deleted page have the views of the history of the page: `?view=history`, the
   revisions of the page, `?view=revision&revision=<n>`, one revision, and `?view=compare&from=<n>&to=<n>`, a
   comparison of two revisions. The action `revert` needs `&revision=<n>`. These parameters belong only to their view
@@ -118,11 +128,8 @@ hold pages directly and have tabs at the same time.
   button; without any folder a hint that the user can create one or ask an Owner of a folder for a role.
 - `/folders/<folder>`: the folder with the own role, the buttons the role includes ("Rename" for an Owner, "All pages"
   and "Roles" for every role, "AI apps" for every role while `HIPPOWIKI_PUBLIC_URL` is set, "Deleted pages" and
-  "New tab" for a Manager, "New page" for a Writer), and one list of
-  its contents: first the pages placed directly in the folder, then its tabs.
-- `/folders/<folder>?view=all`: all pages of the folder, with their tab.
-- `/folders/<folder>?view=roles`: the roles view (see `folder-roles.md`).
-- `/folders/<folder>?view=mcp`: the view "AI apps" with the MCP addresses of the folder that the user may use.
+  "New tab" for a Manager, "New page" for a Writer), and one list of its contents: first the pages placed directly in
+  the folder, then its tabs. Its views are listed in "Actions and views".
 - `/folders/<folder>/<tab>`: the tab with "Rename" and "Delete" for a Manager and "New page" for a Writer, and the
   pages of the tab. The contents list of the folder offers no deletion of its tabs.
 - Page addresses are described in `pages.md`, the addresses under `/deleted-pages` in `page-deletion.md`.
@@ -148,100 +155,89 @@ hold pages directly and have tabs at the same time.
 ## Renaming to the same name
 
 A rename of a folder or a tab to the name it already has changes nothing, in the browser and through `rename_tab`, so
-that the time of the last change, the last editor and the channel name only who really changed the item. Code:
-`renameFolder()`, `renameTab()` in `src/features/folders/service.ts`,
-`src/features/folders/components/NameDialog.tsx`. Tests: `src/features/folders/service.test.ts`,
-`integration/folder-service.test.ts`, `e2e/folders.spec.ts`, `e2e/tabs.spec.ts`, `e2e/mcp-manager.spec.ts`,
-`e2e/hydration.spec.ts`.
+that the time of the last change, the last editor and the channel name only who really changed the item. This section
+is the rule for every caller; the other specs point here.
 
-- A rename to the name the folder or tab has stored stores nothing: the item keeps its time of the last change, its
-  last editor and its channel. A name counts as the same when it equals the stored name once its surrounding spaces
-  are removed, as the name is checked before it is stored (" guides " for the tab `guides`).
-- It is checked like every rename, in the same order: the admin, the role, the name rule, and only then the comparison.
+- The same: the name equals the stored name once its surrounding spaces are removed, as the name is checked before it
+  is stored (" guides " for the tab `guides`). The comparison is with the name stored at the moment of the save, not
+  with the name the item had when the dialog was opened: a tab renamed from `guides` to `news` while a "Rename tab"
+  dialog for it was open, and then saved in that dialog as `news`, stores nothing and leads to the tab `news`.
+- What it stores: nothing. The folder or tab keeps its time of the last change, its last editor and its channel.
+- The order of the checks: those of every rename, the admin, the role, the name rule, and only then the comparison.
   Whoever may not rename, a folder or tab that does not exist and an invalid name are refused as with any other name.
-- The comparison is with the name stored at the moment of the save, not with the name the item had when the dialog was
-  opened. A tab renamed from `guides` to `news` while a "Rename tab" dialog for it was open, and then saved in that
-  dialog as `news`, stores nothing and leads to the tab `news`.
-- It is answered as every rename is: the browser leads to the address of the item without a notice, and `rename_tab`
+- The answer: that of every rename. The browser leads to the address of the item without a notice, and `rename_tab`
   returns its usual result with the tab and its address.
-- The server log records it in a line of its own, with the item and the channel, not as a rename.
-- In the "Rename folder" and the "Rename tab" dialog, "Save" is disabled while the name in the field, without its
-  surrounding spaces, is the name the item had when the dialog was opened, and Enter in the field submits nothing
-  then. The dialog shows no extra text about it; the field keeps its hint about the name rule. An empty field differs
-  from the current name, so "Save" is enabled and the server answers that a name is required. The "New folder" and
-  "New tab" dialogs keep "Save" enabled for every name.
-- Moving or renaming a page to its own name and place stores nothing as well (see "Moving or renaming a page to its
-  own name and place").
+- The log: a line of its own, with the item and the channel, not a rename.
+- The dialogs: in "Rename folder" and "Rename tab", "Save" is disabled while the name in the field, without its
+  surrounding spaces, is the name the item had when the dialog was opened. An empty field differs from the current
+  name, so "Save" is enabled and the server answers that a name is required. "New folder" and "New tab" keep "Save"
+  enabled for every name.
 
 ## Moving or renaming a page to its own name and place
 
 A move or rename of a page to the name and the place it already has changes nothing, in the browser and through
 `move_or_rename_page`, so that the last editor, the channel, the time of the last change and the version name only
-real changes, and an editor or dialog that another user has open on the page is not refused for no reason. Code:
-`moveOrRenamePage()` in `src/features/pages/service.ts`,
-`src/features/pages/components/MoveOrRenamePageDialog.tsx`. Tests: `src/features/pages/service-writes.test.ts`,
-`src/features/mcp/tools.test.ts`, `integration/page-service.test.ts`, `e2e/move-or-rename-page.spec.ts`,
-`e2e/mcp-write.spec.ts`, `e2e/folder-roles.spec.ts`.
+real changes, and an editor or dialog that another user has open on the page is not refused for no reason. This
+section is the rule for every caller; the other specs point here.
 
-- A move or rename to the name and the place the page has stored stores nothing: the page keeps its last editor, its
-  channel, its time of the last change and its version, and no revision is recorded. The place is the same when it is
-  the tab the page is in, or directly in the folder for a page in no tab. A name counts as the same when it equals the
-  stored name once its surrounding spaces are removed (" setup " for the page `setup`).
-- It is checked like every move or rename, in the same order: the admin, the role, the place, the name rule, the
-  version it is based on, and only then the comparison. Whoever may not move the page, a deleted or missing page, a
-  tab that does not exist, an invalid name and a save based on another version than the page has, or on none, are
-  refused as with any other move (see `optimistic-locking.md`).
-- The comparison is with the name and place stored at the moment of the save, in the same write.
-- It is answered as every move is: the browser leads to the page address without a notice, and `move_or_rename_page`
-  returns the page as stored, with the version the call stated (see `mcp.md`).
-- The server log records it in a line of its own, with the page and the channel, not as a move or rename.
-- In the "Move or rename page" dialog, "Save" is disabled while the name in the field, without its surrounding spaces,
-  and the chosen place are those the page had when the dialog was opened, and Enter in the field submits nothing then.
-  This holds also after a refused move reloaded the dialog with the current name and place: "Save" is disabled until
-  the user changes one of them. The dialog shows no extra text about it; the name field keeps its address hint. An
-  empty field differs from the current name, so "Save" is enabled and the server answers that a name is required.
+- The same: the place is the tab the page is in, or directly in the folder for a page in no tab, and the name equals
+  the stored name once its surrounding spaces are removed (" setup " for the page `setup`). The comparison is with the
+  name and place stored at the moment of the save, in the same write.
+- What it stores: nothing. The page keeps its last editor, its channel, its time of the last change and its version,
+  and no revision is recorded.
+- The order of the checks: those of every move or rename, the admin, the role, the place, the name rule, the version
+  it is based on, and only then the comparison. Whoever may not move the page, a deleted or missing page, a tab that
+  does not exist, an invalid name and a save based on another version than the page has, or on none, are refused as
+  with any other move (see `optimistic-locking.md`).
+- The answer: that of every move. The browser leads to the page address without a notice, and `move_or_rename_page`
+  returns the page as stored, with the version the call stated.
+- The log: a line of its own, with the page and the channel, not a move or rename.
+- The dialog: in "Move or rename page", "Save" is disabled while the name in the field, without its surrounding
+  spaces, and the chosen place are those the page had when the dialog was opened, also after a refused move reloaded
+  the dialog with the current name and place, until the user changes one of them. An empty field differs from the
+  current name, so "Save" is enabled and the server answers that a name is required.
 
 ## Deleting a tab
+
+This section is the rule for deleting a tab, in the browser and through `delete_tab`; the other specs point here.
 
 - A Manager or an Owner of the folder deletes a tab from the tab address with "Delete" (`?action=delete`), after a
   confirmation in the "Delete tab" dialog. The dialog names the tab and the number of pages that will be deleted with
   it, as the tab held them when the dialog was opened, and says that the pages can be restored one by one and the tab
-  itself not. Confirming leads to the folder; cancelling and the Escape key lead back to the tab. Code: `deleteTab()`
-  in `src/features/folders/service.ts` and `actions.ts`, `src/features/folders/components/DeleteTabDialog.tsx`.
+  itself not. Confirming leads to the folder; cancelling leads back to the tab.
+- A Manager connection of an AI app deletes a tab through MCP with `delete_tab`, by the same rules (see `mcp.md`).
 - The tab is deleted for good: it cannot be restored, it is not listed among deleted items, and its name is free at
   once for a new tab of the folder.
 - Every page in the tab is soft deleted exactly as if it had been deleted on its own (see `page-deletion.md`): it keeps
   its content and its folder, forgets its tab, and is listed under "Deleted pages" of the folder, from where it is
   restored one by one into a place of the folder. The user who deleted the tab becomes its last editor and so the user
-  who deleted it, with the channel of the deletion; all pages of the tab get the same time of deletion, and their versions count up.
-- The deletion takes the pages that are in the tab when it is confirmed, without checking for changes since the dialog
-  was opened: a page added to the tab meanwhile goes with it, a page moved out meanwhile stays, and a page edited
-  meanwhile is deleted with its latest content. A page created, moved or restored into the tab while it is being
-  deleted either goes with it or is refused as written into a tab that does not exist; no page is ever left in a
-  missing tab.
+  who deleted it, with the channel of the deletion; all pages of the tab get the same time of deletion, and their
+  versions count up.
+- The deletion takes the pages that are in the tab when it is confirmed, without checking their versions or for
+  changes since the dialog was opened: a page added to the tab meanwhile goes with it, a page moved out meanwhile
+  stays, and a page edited meanwhile is deleted with its latest content. A page created, moved or restored into the
+  tab while it is being deleted either goes with it or is refused as written into a tab that does not exist; no page
+  is ever left in a missing tab.
 - Deleting is all or nothing: either the tab and all its pages are deleted, or nothing changes and the dialog stays open
   with a message.
 - The dialog refers to the tab, not to its name: a tab renamed after the dialog was opened is still deleted.
 - There is no limit on the number of pages of a deleted tab.
 - A tab that no longer exists when the deletion is confirmed, because it was deleted meanwhile, keeps the dialog open
-  with the message that the tab no longer exists and only the way back to the folder, and changes nothing.
+  with the message that the tab no longer exists and only the way back to the folder, and changes nothing. The
+  deletion checks the role on the folder of the address, not on the folder of the tab, which a deleted tab no longer
+  has.
 - An editor or dialog still open on a page of the deleted tab answers its save or confirmation with the message that the
-  page no longer exists. For an AI app through MCP the deleted tab is missing like one that never existed, also for
-  `delete_tab` (see `mcp.md`).
+  page no longer exists. For an AI app the deleted tab is missing like one that never existed, also for `delete_tab`.
 - Deleting a tab leaves the time of the last change and the last editor of the folder as they are.
-- Every deletion of a tab is logged with the user, the folder, the tab and the number of pages deleted with it; a
-  refused deletion is logged like the other refused content writes.
-- A Manager connection of an AI app deletes a tab through MCP as well, with `delete_tab`, by the same rules: all or
-  nothing, with every page in it, the user of the connection as the user who deleted them, and the same log line,
-  which then also names the channel `mcp` and the grant (see `mcp.md`).
+- Every deletion of a tab is logged with the user, the folder, the tab, the number of pages deleted with it and the
+  channel, through MCP also the grant; a refused deletion is logged like the other refused content writes.
 
 ## Only users see content
 
 - Folders, tabs, pages and deleted pages are for users only (see "Account types" in `users-and-login.md`), and only
   for the users with a role on the folder, as far as the role allows, through MCP also as far as the role of the
-  connection allows (see `folder-roles.md`). An admin
-  reaches no content through any address, form, action or MCP tool; an admin sees the names of the folders and who has
-  which role on them only on the overview `/folder-roles`.
+  connection allows (see `folder-roles.md`). An admin reaches no content through any address, form, action or MCP
+  tool; an admin sees the names of the folders and who has which role on them only on the overview `/folder-roles`.
 - Every address under `/folders` and `/deleted-pages` shows an admin the not-found page, with and without an action
   or a view, also for items that exist, so that it reveals nothing, not even whether an item exists. A form of the
   content that an admin submits shows the not-found page and writes nothing. The same holds for a user and a folder
@@ -262,31 +258,33 @@ real changes, and an editor or dialog that another user has open on the page is 
 - Each of these writes stores its user in the same write that changes the item's time of the last change, so that
   time and name always describe the same change. A write that fails changes neither. The same write counts the
   version of a page up, which the page's later changes are checked against (see `optimistic-locking.md`).
-- A content save without a change, whose content is the same as the stored content of the page, is no edit: it
-  changes neither the last editor nor the time of the last change (see "Saves without a change" in `pages.md`).
-- A rename of a folder or a tab to the name it already has is no edit either: it changes neither the last editor, nor
-  the channel, nor the time of the last change (see "Renaming to the same name"). Nor is a move or rename of a page to
-  its own name and place, which keeps the version of the page as well (see "Moving or renaming a page to its own name
-  and place").
+- A write that changes nothing is no edit: a content save without a change (see "Saves without a change" in
+  `pages.md`), a rename to the own name (see "Renaming to the same name") and a move or rename of a page to its own
+  name and place (see "Moving or renaming a page to its own name and place").
 - A change inside a folder or tab is no edit of it: creating, moving, deleting or restoring a page and creating or
-  deleting a tab leave the time of the last change and the last editor of the folder and the tab as they are. Renaming a folder
-  leaves those of its tabs and pages as they are.
-- The user is the one who is logged in, through MCP the user of the connection. Every content write takes the acting user; a write by a user that does not
-  exist fails and writes nothing.
-- With the last editor, every folder, tab and page stores how it was last changed, its channel: `web` for a change in
-  the browser, `mcp` for a change by an AI app through MCP. These are the only two values, and the same two name the
-  channel of the actor of a read or write and of every line of the server log. The channel is set on
-  exactly the writes that set the last editor, in the same write, so that time, name and channel always describe the
-  same change; a write that fails changes none of them. For a deleted page it is how the page was deleted, also with
-  its tab.
-- Content stored before the channel was recorded got `web`, deleted pages included.
+  deleting a tab leave the time of the last change and the last editor of the folder and the tab as they are. Renaming
+  a folder leaves those of its tabs and pages as they are.
+- The user is the one who is logged in, through MCP the user of the connection. Every content write takes the acting
+  user; a write by a user that does not exist fails and writes nothing.
 - The last editor is shown by user name, as plain text, next to the time of the last change, followed by the channel
-  after the word "via" in lowercase: "by mike via mcp" (see "Lists and order", `pages.md` and `page-deletion.md`). The
-  two tables, the list of all pages and the deleted pages list, show the channel in a column of its own headed "Via".
-  Through MCP, `read_page` and `list_folder` return the last editor and the channel (see `mcp.md`).
+  (see "Channel"); through MCP, `read_page` and `list_folder` return both (see `mcp.md`).
 - Only the last editor and the channel are stored with an item: not who created it and not which AI app or connection
   made a change. The revisions of a page keep the user and the channel of every content change (see
   `page-history.md`); folders and tabs have no history. Recording who created an item is not planned.
+
+## Channel
+
+- With the last editor, every folder, tab and page stores how it was last changed, its channel: `web` for a change in
+  the browser, `mcp` for a change by an AI app through MCP. These are the only two values, and the same two name the
+  channel of the actor of a read or write and of every line of the server log.
+- The channel is set on exactly the writes that set the last editor, in the same write, so that time, name and
+  channel always describe the same change; a write that fails changes none of them. For a deleted page it is how the
+  page was deleted, also with its tab.
+- Content stored before the channel was recorded got `web`, deleted pages included.
+- The browser shows the channel after the user name, after the word "via" in lowercase: "by mike via mcp", in the
+  page view, the lists, the history and the messages of a refused change (`editorWithChannel()` in
+  `src/features/users/records.ts`). The two tables, the list of all pages and the deleted pages list, show it in a
+  column of its own headed "Via".
 
 ## Lists and order
 
@@ -302,23 +300,33 @@ real changes, and an editor or dialog that another user has open on the page is 
 
 ## Decisions
 
+Addresses:
+
 - Content lives under the fixed prefix `/folders` and actions in the query string, so that no name has to be reserved
   for a route of the app.
 - The `.md` suffix tells pages from tabs in an address, so that a tab and a page placed directly in the folder may
   share a name.
+- A content address shows an admin the not-found page instead of a page that says admins cannot see content, so that
+  it reveals nothing, not even whether an item exists. Rejected: a page that says admins cannot see content.
+- Pages and tabs stay in their folder: they are moved only within it, as a lasting rule. Rejected: moving a page or a
+  tab to another folder.
+
+The last editor and the channel:
+
 - The last editor changes on exactly the writes that change the time of the last change, in the same write, so that a
   reader sees who made the change whose time is shown. Counting a change inside a folder or tab as an edit of it was
   rejected: the folder or tab itself did not change.
 - The last editor is required, so that every item always has one. Rejected: an optional editor, which every read and
   view would have to handle, and an "unknown" placeholder user, which would be an account that nobody owns and that
   the user list would show.
+- The key from an item to its last editor restricts deleting (`onDelete: Restrict`), like the other keys of the
+  content: a user who has edited content cannot be deleted by accident, and no content loses its editor.
 - The channel is stored and shown so that readers can tell changes by AI apps from changes in the browser, and know
   what to check. Rejected: showing which AI app made a change, because the name of an app is chosen by the app itself
   and may be long or misleading, and two values are enough to tell AI changes apart.
 - The channel is shown everywhere the last editor is, in the browser and through MCP, so that the two never tell
   different stories. Rejected: only the page header and the lists, only the page header, and the browser only.
-- The channel follows the user name as "via <channel>" ("by mike via mcp"). Rejected: the channel in brackets ("by
-  mike (mcp)").
+- The channel follows the user name as "via <channel>". Rejected: the channel in brackets ("by mike (mcp)").
 - Content stored before the channel was recorded got `web`, also where an AI app made the last change, because the
   past cannot be told apart and the channel is right from the next change on. Rejected: a third value such as
   "unknown" for old content.
@@ -327,13 +335,35 @@ real changes, and an editor or dialog that another user has open on the page is 
   user, and the heading "Channel", a word the interface uses nowhere else.
 - The channel is plain text, so that it reads the same on touch screens. Rejected: an explanation on hover.
 - The channel is required, without a default, so that no write can leave it out.
-- A content address shows an admin the not-found page instead of a page that says admins cannot see content, so that
-  it reveals nothing, not even whether an item exists. Rejected: a page that says admins cannot see content.
-- The key from an item to its last editor restricts deleting (`onDelete: Restrict`), like the other keys of the
-  content: a user who has edited content cannot be deleted by accident, and no content loses its editor.
+
+Writes that change nothing:
+
+- A rename of a folder or tab to its own name and a move or rename of a page to its own name and place store nothing,
+  like a content save without a change (see "Saves without a change" in `pages.md`), in the browser and through MCP
+  alike. Rejected: refusing them with a message; covering the browser only.
+- They are checked in the order of every rename or move, the comparison last, so that they never tell someone without
+  the role the current name. An unchanged move based on an older version is refused as changed, so that one rule
+  holds for every change of a page. Rejected: comparing first; accepting an unchanged move without checking the
+  version.
+- They are answered as every rename or move is and logged in a line of their own. Rejected: a notice in the browser
+  and a note in the result of `rename_tab` or `move_or_rename_page`; a tool error for `rename_tab`; no log line;
+  logging them as a rename or a move.
+- "Save" of the rename dialogs and of the "Move or rename page" dialog is disabled while nothing changed, with the name
+  compared without its surrounding spaces, as the server does, so that the button and the server always agree.
+  Rejected: keeping it enabled; comparing the exact text of the field; a hint such as "Enter a new name to save".
+- A dialog compares with the name and place it was opened with, also after a refusal reloaded the "Move or rename
+  page" dialog with the current page, so that "Save" is disabled then until the user enters the move again; the server
+  compares with what is stored. Rejected: keeping "Save" enabled after the refusal; refusing a save after a rename
+  meanwhile with a notice, which needs a version for folders and tabs.
+
+Deleting tabs and folders:
+
 - A tab is deleted for good instead of softly, because a tab holds no content of its own: its pages keep their content
-  as deleted pages, and a new tab can be created at any time. Rejected: a soft delete of tabs with a list of deleted
-  tabs and restoring them.
+  as deleted pages, and a new tab can be created at any time. Hard deletion is the lasting rule for tabs. Rejected: a
+  soft delete of tabs with a list of deleted tabs and restoring them, now or later.
+- Hard deletion is the lasting rule for folders as well, once they can be deleted: a folder is deleted for good after
+  a warning, together with its tabs, its pages and its deleted pages (see "Deleting folders" in `roadmap.md`).
+  Rejected: a soft delete of folders, a list of deleted folders and restoring them.
 - The confirmation of a tab deletion names the number of pages, so that the user sees how much goes with the tab.
   Rejected: typing the tab name to confirm, and a confirmation without the number of pages.
 - "Delete" is offered on the tab only, like "Delete" on a page, and leads to the folder. Rejected: a delete control
@@ -348,42 +378,8 @@ real changes, and an editor or dialog that another user has open on the page is 
 - No limit on the number of pages of a deleted tab: the pages are only marked as deleted. Rejected: a maximum number of
   pages.
 - A tab deleted meanwhile is answered with a message in the dialog, like a page deleted meanwhile. Rejected: the
-  not-found page, which does not tell the user why. So the deletion checks the role on the folder of the address, not
-  on the folder of the tab, which a deleted tab no longer has: a Manager learns that the tab is gone, while a user
-  without the role is refused whether the tab exists or not.
-- Hard deletion is the lasting rule for tabs. Rejected: soft deleting, listing and restoring deleted tabs later.
-- Hard deletion is the lasting rule for folders as well, once they can be deleted: a folder is deleted for good after
-  a warning, together with its tabs, its pages and its deleted pages (see "Deleting folders" in `roadmap.md`).
-  Rejected: a soft delete of folders, a list of deleted folders and restoring them.
-- Pages and tabs stay in their folder: they are moved only within it, as a lasting rule. Rejected: moving a page or a
-  tab to another folder.
-- A move or rename of a page to its own name and place stores nothing, like a content save without a change and a
-  rename of a folder or tab to its own name, in the browser and through MCP alike. Rejected: refusing it with a
-  message; covering the browser only.
-- An unchanged move based on an older version is refused as changed, like an unchanged content save, so that one rule
-  holds for every change of a page. Rejected: accepting it without checking the version.
-- An unchanged move is answered as every move is and logged in a line of its own, like unchanged content saves and
-  renames. Rejected: a notice in the browser and a note in the result of `move_or_rename_page`; no log line; logging it
-  as a move.
-- "Save" of the "Move or rename page" dialog is disabled while nothing changed, like that of the rename dialogs, with
-  the name compared without its surrounding spaces, by the dialog and by the server alike. Rejected: keeping it
-  enabled; comparing the exact text.
-- The "Move or rename page" dialog compares with the name and place it was opened with, also after a refusal reloaded
-  it with the current page, so that "Save" is disabled then until the user enters the move again. Rejected: keeping
-  "Save" enabled after the refusal.
-- "Save" of a rename dialog compares the name without its surrounding spaces, as the server does, so that the button
-  and the server always agree. Rejected: comparing the exact text of the field.
-- A rename to the same name is answered as every rename is, as unchanged content saves of pages are. Rejected: a notice
-  in the browser and a note in the result of `rename_tab`; a tool error for `rename_tab`.
-- A rename to the same name is logged in a line of its own, as unchanged content saves of pages are. Rejected: no log
-  line; logging it as a rename.
-- A rename to the same name is checked in the order of every rename, the comparison last, as unchanged content saves of
-  pages are, so that it never tells someone without the role the current name. Rejected: comparing first.
-- The rename dialog compares with the name it was opened with, the server with the stored name. Rejected: refusing a
-  save after a rename meanwhile with a notice, which needs a version for folders and tabs.
-- The rename dialog shows no extra text while "Save" is disabled. Rejected: a hint such as "Enter a new name to save".
-- Enter submits nothing while "Save" is disabled, so that the keyboard and the button behave the same. Rejected: Enter
-  sending the unchanged name.
+  not-found page, which does not tell the user why. So the deletion checks the role on the folder of the address: a
+  Manager learns that the tab is gone, while a user without the role is refused whether the tab exists or not.
 
 ## Current limits
 

@@ -20,17 +20,14 @@ in `src/features/pages/components/`. Tests: `integration/page-service.test.ts`, 
 ## The version of a page
 
 - Every page has a version: 1 when it is created, counted up by one by every stored change of the page: a content
-  save, a revert to an earlier revision, a move or rename, a delete and a restore. It changes in the same write as the time of the last change and the
-  last editor (see "Last editor" in `content-structure.md`), and a write that fails changes none of them.
-- A content save without a change, whose content is the same as the stored content, is no stored change and does not
-  count the version up (see "Saves without a change" in `pages.md`). It is checked and refused like every other
-  content save below, also when its content is the same as that of the changed page.
-- Nor is a move or rename of a page to the name and place it has stored (see "Moving or renaming a page to its own
-  name and place" in `content-structure.md`). It is checked and refused like every other move below, so an unchanged
-  move based on an older version is refused as changed, and it refuses no editor or dialog that another user has open
-  on the page.
+  save, a revert to an earlier revision, a move or rename, a delete, also with its tab, and a restore. It changes in
+  the same write as the time of the last change, the last editor and the channel (see "Last editor" and "Channel" in
+  `content-structure.md`), and a write that fails changes none of them.
+- A content save without a change and a move or rename of a page to its own name and place store nothing and keep the
+  version; they are checked and refused like every other save or move below (see "Saves without a change" in
+  `pages.md` and "Moving or renaming a page to its own name and place" in `content-structure.md`).
 - Renaming a folder or a tab, and every change inside a folder or tab, is no change of its pages and leaves their
-  versions as they are. Deleting a tab deletes its pages, and their versions count up as with every delete.
+  versions as they are.
 
 ## Which changes are refused
 
@@ -57,19 +54,21 @@ in `src/features/pages/components/`. Tests: `integration/page-service.test.ts`, 
 - It shows the page as stored: the editor its current content, the "Move or rename page" dialog its current name and
   place, the "Delete page" dialog its current name, the "Revert page" dialog the same revision. What the user entered
   is not kept.
-- Above its fields a message names the user who last changed the page, how (`via web` or `via mcp`, see "Last editor"
-  in `content-structure.md`) and the time of that change, as the page view shows them: "This page was changed by mike
-  via mcp at <time> after you opened it."
+- Above its fields a message names the user who last changed the page, the channel and the time of that change, as
+  the page view shows them (`changedPageForm()` in `src/features/pages/changed-page.ts`, see "Channel" in
+  `content-structure.md`).
 - Saving or confirming again succeeds, unless the page was changed once more.
 - A notice is allowed only on a page address together with one of its actions. A notice without an action, an
   unknown, empty or repeated notice shows the not-found page.
 
 ## Callers other than the browser
 
+This section is the rule of the version for every caller other than the browser, MCP included; `mcp.md` points here.
+
 - The rule does not depend on the browser. Every caller of the page service states, with every content save, move,
   rename and delete, the version of the page its change is based on, and is refused in the same cases; a change
   without a version is refused and changes nothing.
-- The MCP write tools follow the rule unchanged (see `mcp.md`): `read_page` gives the version of a page, and
+- The MCP write tools follow the rule unchanged: `read_page` gives the version of a page, and
   `replace_page_content`, `move_or_rename_page` and `delete_page` state it. A change or delete based on an older
   version, or on none, is refused with a tool error that names who changed the page last, how (`web` or `mcp`) and
   when, and tells the agent to read the page again; nothing is changed.
@@ -114,9 +113,8 @@ in `src/features/pages/components/`. Tests: `integration/page-service.test.ts`, 
   accepting it, which would weaken the rule for the browser.
 - Restoring is not checked: nothing changes a deleted page, and two restores at once are already told apart. Rejected:
   checking restore as well, for the very rare delete, restore and delete again while the dialog is open.
-- The pages deleted with their tab are deleted without checking their versions: the deletion takes whatever is in the
-  tab when it is confirmed, and every page deleted this way can be restored (see "Deleting a tab" in
-  `content-structure.md`). Rejected: refusing the deletion of the tab when one of its pages changed meanwhile.
+- The pages deleted with their tab are deleted without checking their versions, because every page deleted this way
+  can be restored (see "Deleting a tab" and "Decisions" in `content-structure.md`).
 - Folders and tabs are left out: a rename changes only a name, and a taken name is already refused. Creating a page is
   left out for the same reason.
 

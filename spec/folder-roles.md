@@ -99,7 +99,6 @@ and `src/features/folder-roles/service.test.ts`.
 - A folder always keeps at least one Owner: lowering or removing the role of its last Owner is refused with a message
   that a folder needs at least one Owner. The check and the write run in one transaction with the roles of the
   folder locked, so that two Owners who lower each other at the same time cannot leave the folder without one.
-- The controls of the roles view and of the dialog are locked until hydration.
 - A change of a role to the role the user already has is checked like every change, in the same order (the admin,
   the Owner of the folder, the user with a role on it, the last Owner, which never refuses an Owner staying Owner), and
   then stores nothing: the role keeps its time. It is answered like every change, so the Owner stays in the roles view
@@ -126,26 +125,26 @@ and `src/features/folder-roles/service.test.ts`.
 - The folder offers "AI apps" next to "Roles" to every role, only while `HIPPOWIKI_PUBLIC_URL` is set: the view
   `/folders/<folder>?view=mcp` shows the full MCP addresses of the folder for the roles the user may use, the Reader
   address to a Reader, the Reader and the Writer address to a Writer, and the Reader, the Writer and the Manager
-  address to a Manager and an Owner, each with one sentence on what it allows through MCP and a copy button, which is
-  locked until hydration.
+  address to a Manager and an Owner, each with one sentence on what it allows through MCP and a copy button.
 - The view has a breadcrumb back to the folder and no actions; a view together with an action shows the not-found
   page, as everywhere. Without a role, and without `HIPPOWIKI_PUBLIC_URL`, it shows the not-found page.
 
 ## MCP
 
+This section is the rule of the roles of MCP; `mcp.md` points here.
+
 - MCP follows the roles. Every read and write of the content takes the channel of the call, `web` or `mcp`, as a
   required part of the actor, so that no caller can leave it out; the actor of MCP also carries its connection, the
-  folder and the role of its address. The same two values are stored with the last editor and named in every line of
-  the server log (see "Last editor" in `content-structure.md`).
+  folder and the role of its address (see "Channel" in `content-structure.md`).
 - Through MCP a user has, on the folder of the connection, the lower of the own current role and the role of the
-  connection, Reader, Writer or Manager, and no role on any other folder. The checks of the folders and pages services
-  are otherwise the same as in the browser, so a Writer connection creates, saves, moves and renames pages, and a
-  Manager connection also deletes pages and creates, renames and deletes tabs.
+  connection, Reader, Writer or Manager, and no role on any other folder: every other folder, also one on which the
+  user has a role, reads like one that does not exist, and every write there is `not-allowed`. The checks of the
+  folders and pages services are otherwise the same as in the browser, so a Writer connection creates, saves, moves
+  and renames pages, and a Manager connection also deletes pages and creates, renames and deletes tabs.
 - A role change takes effect on the next MCP request, like in the browser: a connection whose role is above the
   user's current role is refused until the role is high enough again (see `mcp.md`).
 - The Owner role is never a role of MCP: renaming the folder and giving, changing and removing roles stay in the
-  browser. The deleted pages list, reading a deleted page and restoring one stay in the browser as well: no tool
-  offers them, also not to a Manager connection (see `page-deletion.md`).
+  browser. The deleted pages stay in the browser as well (see "Tools" in `mcp.md`).
 
 ## Decisions
 
@@ -211,9 +210,8 @@ and `src/features/folder-roles/service.test.ts`.
   dialogs has no exception. Rejected: back to the roles view.
 - A folder, tab or page that does not exist answers like one without a role, so that a write by id tells nothing about
   whether the id exists. Folders cannot be deleted yet and pages are deleted only softly, so a user meets this for them only with a
-  crafted request; a page deleted in the meantime still shows that it no longer exists. Tabs are deleted for good: the
-  deletion of a tab reads the role on the folder of its address, so that a Manager learns that a tab deleted meanwhile
-  is gone; renaming a tab deleted meanwhile shows the not-found page.
+  crafted request; a page deleted in the meantime still shows that it no longer exists. Tabs are deleted for good, and
+  a tab deleted meanwhile is the exception (see "Deleting a tab" in `content-structure.md`).
 - The foreign keys of a role restrict deleting (`onDelete: Restrict`), like the other keys of the content, so that no
   role disappears by a cascade and no folder or user with a role is deleted by accident.
 

@@ -6,16 +6,17 @@
   them, every adapter handles every code of every write, the browser and MCP agree on the seven writes they share,
   and the newest rules (writes that store nothing) are proven against the real database and in the browser. The
   weak points are three:
-  - Rules that are written several times: the frame of a dialog in nine components, which is shared now, and the
-    same rule in up to five specs. Two copies had drifted already; the one in the "Save page" dialog is fixed.
+  - Rules that are written several times: the frame of a dialog in nine components, and the same rule in up to five
+    specs. Both are fixed: the frame is shared, and each rule of the content has one owning spec. Two copies had
+    drifted already; both are fixed.
   - Tests that would not catch the refactoring this report suggests: the unit tests of the services pinned the calls
     of Prisma, and three rules of access and of the transaction had no test that could fail. Both are fixed; the
     findings of the tests that are still open are minor.
   - Documents that the features outran: rules stated in full in several documents, and copies of code and
     constants in the specs.
-- Findings: 9 open of 107, 0 Blocker, 0 Major, 9 Minor and 0 Nit (2 `issue:` and 7 `suggestion:`); no `question:`
+- Findings: 5 open of 107, 0 Blocker, 0 Major, 5 Minor and 0 Nit (2 `issue:` and 3 `suggestion:`); no `question:`
   is open.
-- Confidence of the suggestions: 0 High, 8 Medium and 1 Low. A High suggestion can be fixed as written; the others
+- Confidence of the suggestions: 0 High, 4 Medium and 1 Low. A High suggestion can be fixed as written; the others
   wait for the user, as `issue-report.md` describes.
 - Decisions: on 2026-11-18 the user decided all Medium and Low suggestions. Each of these findings ends with a line
   `Decision`, and is fixed as that line says, without asking again. The questions were decided by the user on the
@@ -255,103 +256,7 @@ them are fixed.
 
 The seven specs of the content (`pages.md`, `content-structure.md`, `page-history.md`, `page-deletion.md`,
 `optimistic-locking.md`, `folder-roles.md`, `mcp.md`) were read sentence by sentence against the code. The rules
-that several of them state were compared with each other and with the code:
-
-| Rule                                                 | Stated in                                                                                  | The specs agree                       | The code agrees       |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------- | --------------------- |
-| A content save without a change stores nothing       | `pages.md`, `page-history.md`, `optimistic-locking.md`, `content-structure.md`, `mcp.md`   | Yes; two copies leave out the channel | Yes                   |
-| A rename of a folder or tab to its own name          | `content-structure.md`, `pages.md`, `mcp.md`                                               | Yes                                   | Yes                   |
-| A move or rename of a page to its own name and place | `content-structure.md`, `pages.md`, `optimistic-locking.md`, `mcp.md`                      | Yes                                   | Yes                   |
-| A change to the same role                            | `folder-roles.md`                                                                          | One place                             | Yes                   |
-| Who may delete a tab                                 | `folder-roles.md`, `content-structure.md`, `mcp.md`                                        | Yes                                   | Yes                   |
-| What the roles of MCP may do                         | `mcp.md`, `folder-roles.md`, `content-structure.md`, `page-deletion.md`, `architecture.md` | Yes                                   | The seven specs yes   |
-| The last editor and the channel                      | all seven                                                                                  | Yes                                   | The stored values yes |
-| Who is stored for a page                             | `pages.md`, `content-structure.md`, `page-history.md`                                      | Yes                                   | Yes                   |
-| Deleting a tab counts the versions up, unchecked     | `content-structure.md`, `optimistic-locking.md`, `page-deletion.md`                        | Yes                                   | Yes                   |
-| Restoring is unchecked and stores the channel `web`  | `page-deletion.md`, `optimistic-locking.md`                                                | Yes                                   | Yes                   |
-
-#### suggestion: the rules of writes without a change are explained in full in five specs
-
-- Location: `spec/pages.md`, sections "Content and title", "Saves without a change", "Decisions" and "Current
-  limits"; `spec/content-structure.md`, sections "Renaming to the same name", "Moving or renaming a page to its own
-  name and place", "Last editor" and "Decisions"; `spec/page-history.md`, sections "Revisions" and "Decisions";
-  `spec/optimistic-locking.md`, section "The version of a page"; `spec/mcp.md`, section "Tools"
-- Severity: Minor. The copies agree today, but each change touches five files.
-- Category: docs
-- Problem: "the page keeps its last editor, channel, time and version" is written out about nine times, and the
-  decisions of the three variants repeat each other.
-- Impact: the next change of the rule leaves a copy behind; the table above shows the first drift, the channel
-  missing in two copies.
-- Evidence: `mcp.md`: "the page keeps its last editor, channel, time and version, and the tool returns the same
-  version that the call stated"; `page-history.md`: "stores nothing and records no revision: the page keeps its
-  last editor, time and version".
-- Suggestion (optional): `pages.md` owns the content save and `content-structure.md` the rename and the move, in
-  one section with one list for the order, the answer and the log; every other place keeps one clause and a
-  pointer.
-- Confidence: Medium. Which spec owns a rule is a judgement; no behaviour changes.
-- Decision (2026-11-18): as suggested.
-
-#### suggestion: more rules are stated in full in two or more specs
-
-- Location: the rule of the version for MCP in `spec/optimistic-locking.md`, "Callers other than the browser", and
-  `spec/mcp.md`, "What holds for all of them"; deleting a tab in `spec/content-structure.md`,
-  `spec/page-deletion.md`, `spec/optimistic-locking.md`, `spec/mcp.md` and `spec/folder-roles.md`; the lower of two
-  roles in `spec/mcp.md` and `spec/folder-roles.md`; "no deleted pages through MCP" four times in `spec/mcp.md`,
-  twice in `spec/page-deletion.md` and twice in `spec/folder-roles.md`; the folder views twice inside
-  `spec/content-structure.md` and again in `spec/folder-roles.md`
-- Severity: Minor. The same risk as the finding above.
-- Category: docs
-- Problem: each rule has several full copies with slightly different detail.
-- Impact: a reader cannot tell which spec decides, and a reviewer has to compare all copies.
-- Evidence: `optimistic-locking.md` and `mcp.md` both hold: "with a tool error that names who changed the page
-  last, how (`web` or `mcp`) and when, and tells the agent to read the page again; nothing is changed".
-- Suggestion (optional): keep the full text in the spec that owns the rule and replace the copies with a clause
-  and a pointer.
-- Confidence: Medium. Who owns a rule is a judgement.
-- Decision (2026-11-18): as suggested.
-
-#### suggestion: the specs restate messages, constants and details of the UI that the workflow gives to the code
-
-- Location: exact messages in `spec/optimistic-locking.md`, "What the browser shows", `spec/page-history.md`,
-  "Seeing the history", `spec/pages.md`, "Routes", and `spec/page-deletion.md`, "Deleted pages of a folder";
-  hydration and the Enter key in `spec/folder-roles.md` and `spec/content-structure.md`; the list of safe
-  protocols and the prefix of ids in `spec/pages.md`, "Rendering"; measured times in `spec/pages.md`, "The cost
-  of the Markdown parse"; how the transport of the SDK works in `spec/mcp.md`, "Decisions"
-- Severity: Minor. All match the code today; each goes stale with a change of a wording or a tuning.
-- Category: docs
-- Problem: `step-plan-workflow.md` leaves "exact messages, focus, hydration and layout details, and how a read or
-  write works" out of a feature spec.
-- Impact: a changed message makes a spec stale, and the check of doc references sees only file names.
-- Evidence: `optimistic-locking.md`: "This page was changed by mike via mcp at <time> after you opened it.", which
-  is the text of `changedMessage()` in `src/features/pages/changed-page.ts`.
-- Suggestion (optional): say what a message names and point to its function; drop the sentences on hydration and
-  Enter; keep the list of protocols as a security rule and name its constant; keep only the bound that the cost
-  test enforces.
-- Confidence: Medium. Which statements are guarantees to keep is a judgement.
-- Decision (2026-11-18): as suggested.
-
-#### suggestion: several sections grew sentence by sentence and no longer read as one set of rules
-
-- Location: `spec/content-structure.md`, the introduction, "Last editor" (13 bullets that mix rule, display and
-  transition) and "Decisions" (about 45 bullets); `spec/mcp.md`, the introduction, "Tools" and "What holds for all
-  of them" (17 bullets); `spec/pages.md`, "Saves without a change", "Decisions" and "Current limits";
-  `spec/optimistic-locking.md`, "The version of a page"
-- Severity: Minor. Readability; no numbered heading and no wrong numbered list was found in the seven specs.
-- Category: docs
-- Problem: sentences were added per feature at the nearest place. `mcp.md` says three times that a tab that does
-  not exist is a tool error. `content-structure.md` has paragraphs "Code: … Tests: …" inside three sections, though
-  the workflow puts the pointers at the top. `pages.md` lists wiki links twice under "Current limits", and its
-  last bullet of "Saves without a change" is about moves and renames. `mcp.md` counts "nine tools, five and two"
-  against the order of its sentence.
-- Impact: a rule is hard to find and is repeated inside one section.
-- Evidence: `mcp.md`: "A page or tab that does not exist is a tool error with a message that says what to do
-  next" and "A tab that does not exist is a tool error that tells a Manager connection to create it with
-  `create_tab`".
-- Suggestion (optional): move the pointers to the top, split "Last editor" into the last editor and the channel,
-  group "Decisions" by topic, merge the three bullets on a tab, and write the order of the refusals of a
-  connection as a numbered list, because there the order matters.
-- Confidence: Medium. Beyond the single items, a new structure is a matter of taste.
-- Decision (2026-11-18): as suggested.
+that several of them stated were compared with each other and with the code; all copies agreed with the code.
 
 #### Reviewed
 
@@ -368,6 +273,23 @@ that several of them state were compared with each other and with the code:
   changes that change nothing, "Deleting a tab" and "Lists and order" match the code.
 - `page-deletion.md` and `pages.md` match the code.
 - Every heading of a section that one of the seven specs cites in another spec exists under that name.
+- Each rule that several specs stated has one owner, which holds it in full; the other specs keep a clause and a
+  pointer:
+  - a content save without a change: "Saves without a change" in `pages.md`;
+  - a rename of a folder or tab to its own name, and a move or rename of a page to its own name and place: the
+    sections of their own in `content-structure.md`, each with one list for what counts as the same, what it stores,
+    the order of the checks, the answer and the log;
+  - deleting a tab, the last editor and the channel, and the views of a folder: `content-structure.md`;
+  - the version for MCP: "Callers other than the browser" in `optimistic-locking.md`;
+  - the lower of two roles: "MCP" in `folder-roles.md`;
+  - no deleted pages through MCP: "Tools" in `mcp.md`.
+- The specs say what a message names and point to its function or component; they hold no sentence on hydration or
+  Enter; the list of safe protocols stays as a security rule with `SAFE_PROTOCOLS`; of the measured times only the
+  bound that the cost test enforces stays.
+- The pointers of `content-structure.md` stand at the top, "Last editor" and "Channel" are two sections, its
+  "Decisions" and those of `pages.md` are grouped by topic, `mcp.md` has one bullet on a page or tab that does not
+  exist and a numbered list for the order of the refusals of a connection, and `pages.md` names wiki links once under
+  "Current limits".
 
 ### Documentation: architecture, testing, catalog and workflows
 
@@ -561,5 +483,5 @@ documents name.
 3. Close the gaps of the tests before any refactoring: the states of the dialogs that a shared frame would move.
 4. Refactor the code in small steps, each with its checks: the hooks and the frame of the dialogs, then the
    splits of the large files. Done: the code findings are fixed.
-5. Restructure the documents last: one owner per rule in the feature specs, the sections of `architecture.md`,
-   and the form of the catalog in `CLAUDE.md`.
+5. Restructure the documents last: one owner per rule in the feature specs (done), the sections of
+   `architecture.md`, and the form of the catalog in `CLAUDE.md`.

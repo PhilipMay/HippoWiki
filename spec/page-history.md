@@ -26,8 +26,7 @@ model `PageRevision` in `prisma/schema.prisma` and its migration
 - A revision is stored in the same write as the content change it records, like the last editor and the version of
   the page: a save that is refused or fails records nothing, and after every stored content change the newest
   revision has the content of the page.
-- A content save without a change, whose content is the same as the stored content of the page, stores nothing and
-  records no revision: the page keeps its last editor, time and version (see "Saves without a change" in `pages.md`).
+- A content save without a change records no revision (see "Saves without a change" in `pages.md`).
 - Moving, renaming, deleting and restoring a page record no revision, and neither does deleting a tab with its pages.
 - Revisions are kept for as long as the page exists, deleted pages included, with no limit on their number or age. No
   revision is ever changed or removed.
@@ -42,19 +41,20 @@ model `PageRevision` in `prisma/schema.prisma` and its migration
   "Actions and views" in `content-structure.md`). A moved or renamed page keeps its history at its new address.
 - A user with any role on the folder, the Reader included, opens the history from the page with "History". Admins see
   no content and so no history; for every other user without a role the addresses show the not-found page.
-- The history lists the revisions newest first, each with its number, time, user, channel and title, and "Reverted to
-  revision N" for one that a revert recorded. It shows 100 revisions at a time (`REVISIONS_PER_PAGE` in
-  `src/features/pages/limits.ts`), with "Newer revisions" and "Older revisions"; the older ones are addressed with
+- The history lists the revisions newest first, each with its number, time, user, channel and title, and, for one
+  that a revert recorded, the revision it went back to. It shows 100 revisions at a time (`REVISIONS_PER_PAGE` in
+  `src/features/pages/limits.ts`), with links to the newer and the older ones; the older ones are addressed with
   `&before=<n>`, the revisions before revision `n`, from 2 up to the newest.
-- A revision opens rendered like the page. The switch "Rendered | Raw" above it is part of the address, so the raw
-  form can be linked. Above the content the revision line says "Revision 5 of 12 · <time> by mike via mcp", and every
-  revision but the newest has a notice that it is an old revision, with a link to the current page.
+- A revision opens rendered like the page. A switch between the rendered and the raw form above it is part of the
+  address, so the raw form can be linked. Above the content a line names the revision, the number of the newest, the
+  time, the user and the channel (`RevisionLine.tsx`), and every revision but the newest has a notice that it is an
+  old revision, with a link to the current page.
 - "Compare" on every revision but the first compares an earlier revision with the open one: a number field, preset to
   the revision right before and limited to the earlier ones, in a form that works without JavaScript.
 - A comparison always goes from the older to the newer revision, in whatever order they were given, and shows the
   Markdown lines of both in one column, added and removed lines marked by color and by `+` or `−` in front. Equal
-  content, and content that differs only in a line break at its end, says "No differences"; the same revision twice
-  is allowed.
+  content, and content that differs only in a line break at its end, says that there are no differences; the same
+  revision twice is allowed.
 - Comparing stays fast for revisions up to the length limit of a page: when more than 2,000 lines are added and
   removed together (`DIFF_MAX_EDIT_LENGTH` in `src/features/pages/diff.ts`), the comparison says that the revisions
   are too different to compare instead of showing a diff.
@@ -73,7 +73,7 @@ model `PageRevision` in `prisma/schema.prisma` and its migration
   reverting user via `web`, marked with the revision it went back to. No revision is removed, so a revert can itself
   be reverted.
 - A revert is checked like "Edit": it is refused when the page was changed after the dialog was opened, and the dialog
-  is shown again with the message that names who changed the page, how and when (see `optimistic-locking.md`). It
+  is shown again with the message of a refused change (see `optimistic-locking.md`). It
   checks the content of the revision with the limits in force at the time of the revert (see `pages.md`): content
   that breaks one is refused, nothing changes, and the dialog names the limit.
 
@@ -107,8 +107,8 @@ model `PageRevision` in `prisma/schema.prisma` and its migration
   are picked by opening one and choosing an earlier one with "Compare", in a number field instead of a list, so that
   the view stays fast for pages with thousands of revisions. Rejected: side by side columns; comparing only with the
   revision before and the current page; picking both in the history list; selectors for both sides in the comparison.
-- A comparison always goes from the older to the newer revision, and says "No differences" for equal content.
-  Rejected: the order as chosen; an empty diff.
+- A comparison always goes from the older to the newer revision, and says that there are no differences for equal
+  content. Rejected: the order as chosen; an empty diff.
 - The diff comes from jsdiff (`diff`), a small and widely used package without dependencies, with `maxEditLength` as
   the cap past which the revisions are too different; the cap is chosen with the cost test, which compares completely
   different revisions at the length limit in a few hundred milliseconds. Rejected: own diff code, which is more to
@@ -128,8 +128,8 @@ model `PageRevision` in `prisma/schema.prisma` and its migration
   offering it everywhere, with a revert to the same content recording nothing.
 - A revert checks the limits in force, so that every stored content is within them. The raw form of the revision can
   still be copied and fixed in the editor. Rejected: reverting past the limits.
-- A save without a change records no revision, so that the history lists only real changes, and because such a save
-  changes nothing at all: not the page, its last editor or its version either. Rejected: a revision per save.
+- A save without a change records no revision, so that the history lists only real changes (see "Decisions" in
+  `pages.md`). Rejected: a revision per save.
 - A revision is stored in the same write as its content change, so that the history and the page never disagree.
   Rejected: storing it afterwards on a best-effort basis.
 - The history of a deleted page is kept and can be read by a Manager and an Owner, who already see the deleted page.
