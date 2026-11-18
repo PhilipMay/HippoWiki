@@ -29,6 +29,16 @@ implements it.
 - In that session, work through the steps one after the other, in checklist order, starting with the first step that
   is not ticked off, until the plan is finished, wrap-up included. Do not ask the user between steps whether to go on.
   The same prompt resumes a plan that was interrupted: the steps that are already ticked off are skipped.
+- A large plan can name stop points: its section "Sessions" lists the steps after which a session ends. A session then
+  works through the steps up to the next stop point and ends there, also when later steps are still open. The same
+  prompt starts the next session at the first step that is not ticked off. At a stop point:
+  - The last step of the session that changes anything but documentation runs the complete `npm run test:e2e` in
+    place of the specs it affects, so that the whole suite has passed before the push (see "When a step is done"). A
+    session that changes only documentation runs none.
+  - Once the last step of the session is committed, push the current branch with `git push`, without asking first,
+    as after the wrap-up step.
+  - The final reply names the stop point and the step the next session starts with.
+  - A session that stops early does not push (see "When a step cannot be finished").
 - The steps build on each other. Finish each step completely (done, ticked off, committed) before you start the next
   one; never work on two steps at once. Before you start a step, check that every earlier step is ticked off and that
   the working tree is clean; otherwise stop and ask the user. Tick a step off in the checklist once it is done (see
@@ -38,7 +48,8 @@ implements it.
   what the step does, for example `add search index`. A step that is not done is not committed (see "When a step cannot
   be finished").
 - Once the wrap-up step is committed and the plan is finished, push the current branch with `git push`, without asking
-  first. Push only then: not after each step, and not when the plan stops early (see "When a step cannot be finished").
+  first. Push only then and at a stop point of the plan: not after each step, and not when the plan stops early (see
+  "When a step cannot be finished").
 - Never force-push. If the push fails (for example because the remote has new commits or the branch has no upstream),
   stop and report the error with the relevant part of its output; do not pull, rebase or merge to fix it. The commits
   stay local.
@@ -114,8 +125,9 @@ A step is done only when both of the following hold:
      end-to-end tests use the same test database container and port (see `testing.md`). In every step except the
      wrap-up, only the specs the step affects (see below), for example `npm run test:e2e -- e2e/<name>.spec.ts`; in a
      wrap-up step that changes more than documentation, the complete `npm run test:e2e`, so that the whole suite has
-     passed before the push. The complete suite takes about five minutes: run it with a timeout long enough or in the
-     background, so that it is not cut off and run again.
+     passed before the push. In a plan with stop points, the complete suite also runs in the last step of each
+     session that changes anything but documentation (see "Step plans"). The complete suite takes about five minutes:
+     run it with a timeout long enough or in the background, so that it is not cut off and run again.
 - Its "Test" items have been verified. Do the manual checks you can yourself, for example in the browser. A manual
   check you cannot do does not hold the step back: list it in the report of the step so that the user can do it. Never report
   a check as done that you did not do.
@@ -149,8 +161,8 @@ Changes to documentation only:
 - The report of the step names the specs that ran, or says that none ran and why.
 
 A failure that only the complete suite of the wrap-up step shows is fixed in the wrap-up step, also when an earlier step
-caused it, and the fix is named in its report. If it cannot be fixed, follow "When a step cannot be finished": nothing
-is pushed.
+caused it, and the fix is named in its report. The same holds for the complete suite at a stop point: the step that
+runs it fixes the failure. If it cannot be fixed, follow "When a step cannot be finished": nothing is pushed.
 
 `npm run test:e2e:production` is left out of this list on purpose: CI runs it on every push to `main` and on every pull
 request (`end_to_end_tests_production`, see `testing.md`). Run it as well when the step changes something that only

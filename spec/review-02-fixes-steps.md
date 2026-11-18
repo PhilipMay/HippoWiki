@@ -76,9 +76,9 @@ Decided by the user on 2026-11-18:
 - A refactoring step keeps the behaviour. A test is changed only where it pins how the code is written and not what
   it does, and never to make a check pass. If a new test shows a defect of the code, stop and ask the user before
   anything is fixed: a fix of behaviour is a change of the scope.
-- The complete end-to-end suite of this plan runs in the step "Dialogs", the last step that changes anything but
-  documentation, as the first step of this plan writes into "When a step is done". A step that changes `e2e/support/`
-  or another file every page depends on runs it right away, as the workflow says.
+- The complete end-to-end suite runs once per session, in the last step of the session that changes anything but
+  documentation (see "Sessions"). A step that changes `e2e/support/` or another file every page depends on runs it
+  right away, as the workflow says.
 
 ## Checklist
 
@@ -114,6 +114,23 @@ Decided by the user on 2026-11-18:
 - [ ] Structure of `architecture.md` and the other documents
 - [ ] Wrap-up
 
+## Sessions
+
+The plan has stop points, as "Step plans" in `step-plan-workflow.md` describes. It is implemented in seven sessions,
+each started with the same prompt, `Implement spec/review-02-fixes-steps.md`. A session starts at the first step that
+is not ticked off, ends after the step named here, and pushes there:
+
+1. The documents that are wrong: ends after "`testing.md`, `tech.md`, the README and the roadmap". It changes only
+   documentation, so no end-to-end test runs.
+2. The tests below the browser: ends after "Shared helpers of the unit and integration tests".
+3. The end-to-end tests: ends after "Split of `e2e/mcp.spec.ts`".
+4. The services: ends after "The reads of the history in a service of their own".
+5. MCP, OAuth, actions and lint: ends after "Lint rules and checks".
+6. The routes and the dialogs: ends after "Dialogs".
+7. The documents last: ends after "Wrap-up". It changes only documentation, so no end-to-end test runs.
+
+The last step of the sessions 2 to 6 runs the complete `npm run test:e2e` in place of the specs it affects.
+
 ## Rules of the checks and of a review
 
 ### Goal
@@ -127,8 +144,9 @@ Findings of "Documentation: architecture, testing, catalog and workflows":
 
 - "three documents disagree on when the complete end-to-end suite runs":
   - "When a step is done" in `step-plan-workflow.md` says: the complete suite runs once per plan, in the last step
-    that changes anything but documentation; a change outside a step plan that changes code counts as a plan of one
-    step; a step or a wrap-up that changes only documentation relies on that run and on CI.
+    that changes anything but documentation, and in a plan with stop points once per session, in the last such step
+    of the session; a change outside a step plan that changes code counts as a plan of one step; a step or a wrap-up
+    that changes only documentation relies on that run and on CI.
   - The sentences of the same file that assume a run in the wrap-up are brought in line, among them "The complete
     suite of the wrap-up still covers all features" and the paragraph on a failure that only the complete suite shows.
   - `CLAUDE.md`, "Running the Checks", keeps the commands and points to "When a step is done" for the rest.
@@ -384,7 +402,8 @@ Finding of "Tests: unit and integration":
 
 - The number of unit and integration tests is the same before and after the step, apart from tables that were merged;
   the report of the step gives both numbers.
-- `npm run check:all` passes. No end-to-end spec is affected.
+- `npm run check:all` passes.
+- The complete `npm run test:e2e` passes: the step is the last of its session.
 
 ## Shared helpers of the end-to-end tests
 
@@ -518,9 +537,10 @@ Finding of "Tests: end-to-end":
 
 ### Test
 
-- End-to-end: the new specs of MCP, `e2e/tabs.spec.ts` and `e2e/smoke.spec.ts` run; the number of their tests is the
+- End-to-end: the number of the tests of the new specs of MCP, of `e2e/tabs.spec.ts` and of `e2e/smoke.spec.ts` is the
   same before and after, apart from the tests that moved.
 - `npm run check:all` passes.
+- The complete `npm run test:e2e` passes: the step is the last of its session.
 
 ## Actors, guards and one channel
 
@@ -677,8 +697,9 @@ Finding of "Code: services of the content features":
   tried once and taken back.
 - Unit and integration: the tests of the three reads pass, moved to files of their service; the table of the access
   rules of the step "Integration tests of access and of rules without a test" passes unchanged.
-- End-to-end: `page-history`, `revert-page` and `deleted-pages`.
+- End-to-end: the specs `page-history`, `revert-page` and `deleted-pages` cover the moved reads.
 - `npm run check:all` passes.
+- The complete `npm run test:e2e` passes: the step is the last of its session.
 
 ## MCP tools
 
@@ -866,7 +887,8 @@ Finding of "Documentation: architecture, testing, catalog and workflows":
   component, `react` in the MCP tools, `include` in a service.
 - `npm run docs:check` fails for a file that a skill names and that does not exist; tried once and taken back.
 - `knip` passes and fails for an export that nothing imports; tried once and taken back.
-- The complete `npm run test:e2e` passes, because the step changes `src/lib/addresses.ts` and `src/lib/revalidate.ts`.
+- The complete `npm run test:e2e` passes: the step is the last of its session, and it changes `src/lib/addresses.ts`
+  and `src/lib/revalidate.ts`.
 - `npm run check:all` passes.
 
 ## The query of a page and what a route shows
@@ -944,8 +966,7 @@ Findings of "Code: components, routes, auth, users and lib":
 
 ### Test
 
-- End-to-end: the complete `npm run test:e2e` passes; it is the run of the complete suite of this plan.
-  `e2e/hydration.spec.ts` covers every dialog with JavaScript disabled, and the tests of the pending state the guard
+- End-to-end: the complete `npm run test:e2e` passes: the step is the last of its session. `e2e/hydration.spec.ts` covers every dialog with JavaScript disabled, and the tests of the pending state the guard
   against a double submission.
 - `npm run check:all` passes.
 
