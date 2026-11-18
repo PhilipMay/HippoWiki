@@ -1,13 +1,7 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import { createFolder, createTab, deleteTab, renameFolder, renameTab } from "@/features/folders/actions";
-
-/** Thrown by the mocked `redirect`, like the real one throws, so that code after it never runs. */
-class RedirectError extends Error {
-  constructor(readonly path: string) {
-    super(`redirect to ${path}`);
-  }
-}
+import { NotFoundError, RedirectError } from "@/test/unit";
 
 const mocks = vi.hoisted(() => ({
   createFolder: vi.fn(),
@@ -38,9 +32,6 @@ const serviceWrites = [mocks.createFolder, mocks.renameFolder, mocks.createTab, 
 const USER = { id: crypto.randomUUID(), name: "alice", type: "user", mustChangePassword: false };
 /** The actor the actions pass to the services: the logged-in user, in the browser. */
 const BROWSER_USER = { id: USER.id, name: USER.name, type: USER.type, channel: "browser" };
-
-/** Thrown by the mocked `notFound`, like the real one throws, so that code after it never runs. */
-class NotFoundError extends Error {}
 
 beforeEach(() => {
   vi.resetAllMocks();

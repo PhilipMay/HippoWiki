@@ -178,7 +178,7 @@ A move or rename of a page to the name and the place it already has changes noth
 `move_or_rename_page`, so that the last editor, the channel, the time of the last change and the version name only
 real changes, and an editor or dialog that another user has open on the page is not refused for no reason. Code:
 `moveOrRenamePage()` in `src/features/pages/service.ts`,
-`src/features/pages/components/MoveOrRenamePageDialog.tsx`. Tests: `src/features/pages/service.test.ts`,
+`src/features/pages/components/MoveOrRenamePageDialog.tsx`. Tests: `src/features/pages/service-writes.test.ts`,
 `src/features/mcp/tools.test.ts`, `integration/page-service.test.ts`, `e2e/move-or-rename-page.spec.ts`,
 `e2e/mcp.spec.ts`, `e2e/folder-roles.spec.ts`.
 

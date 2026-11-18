@@ -3,11 +3,12 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import * as folderService from "@/features/folders/service";
 import * as pageService from "@/features/pages/service";
-import { inBrowser, inMcp, type BrowserActor } from "@/features/folder-roles/service";
+import { inBrowser, type BrowserActor } from "@/features/folder-roles/service";
 import type { User } from "@/generated/prisma/client";
 
 import { createFolder, createFolderRole, createPage, createTab, createUser, getTestDb } from "../e2e/support/database";
 import { KNOWN_USER } from "../prisma/known-users";
+import { createBob, FAILED, NOT_ALLOWED, storedPage, UNKNOWN_ACTOR, mcpActorOf } from "./helpers";
 
 /**
  * The user who makes the writes, unless a test says otherwise; created anew for every test. It is the known user
@@ -21,17 +22,6 @@ beforeEach(async () => {
   user = await createUser({ id: KNOWN_USER.id, name: "alice" });
   actor = inBrowser(user);
 });
-
-/** An actor that does not exist: a well-formed id that no user has. */
-const UNKNOWN_ACTOR = {
-  id: "8f7e6d5c-4b3a-4291-8f7e-6d5c4b3a2910",
-  name: "ghost",
-  type: "user" as const,
-  channel: "browser" as const,
-};
-
-const FAILED = { ok: false, error: { code: "failed" } };
-const NOT_ALLOWED = { ok: false, error: { code: "not-allowed" } };
 
 /** The id of the last editor of the folder, the tab or the page with the given id. */
 async function lastEditorOfFolder(id: string): Promise<string> {
@@ -245,7 +235,7 @@ describe("tab writes", () => {
 
 describe("the last editor of folders", () => {
   it("is the actor of the creation, and the actor of a rename replaces it", async () => {
-    const bob = await createUser({ name: "bob" });
+    const bob = await createBob();
 
     const created = await folderService.createFolder(actor, { name: "docs" });
     if (!created.ok) throw new Error("expected the folder to be created");
@@ -257,7 +247,7 @@ describe("the last editor of folders", () => {
   });
 
   it("stays as it was when a rename fails", async () => {
-    const bob = await createUser({ name: "bob" });
+    const bob = await createBob();
     await createFolder({ name: "taken" });
     const folder = await createFolder({ name: "docs", editor: user, roles: [{ user: bob, role: "owner" }] });
 
@@ -268,7 +258,7 @@ describe("the last editor of folders", () => {
   });
 
   it("is not touched by renaming the folder for its tabs, its pages and its deleted pages", async () => {
-    const bob = await createUser({ name: "bob" });
+    const bob = await createBob();
     const folder = await createFolder({ name: "docs", editor: user, roles: [{ user: bob, role: "owner" }] });
     const tab = await createTab({ folder, editor: user });
     const pageInTab = await createPage({ tab, editor: user });
@@ -295,7 +285,7 @@ describe("the last editor of folders", () => {
 
 describe("the last editor of tabs", () => {
   it("is the actor of the creation, and the actor of a rename replaces it", async () => {
-    const bob = await createUser({ name: "bob" });
+    const bob = await createBob();
     const folder = await createFolder({
       roles: [
         { user: KNOWN_USER, role: "owner" },
@@ -312,7 +302,7 @@ describe("the last editor of tabs", () => {
   });
 
   it("stays as it was when a rename fails", async () => {
-    const bob = await createUser({ name: "bob" });
+    const bob = await createBob();
     const folder = await createFolder({ roles: [{ user: bob, role: "owner" }] });
     await createTab({ folder, name: "taken" });
     const tab = await createTab({ folder, name: "guides", editor: user });
@@ -324,7 +314,7 @@ describe("the last editor of tabs", () => {
   });
 
   it("is not touched for the folder by creating a tab in it", async () => {
-    const bob = await createUser({ name: "bob" });
+    const bob = await createBob();
     const folder = await createFolder({ editor: user, roles: [{ user: bob, role: "owner" }] });
 
     await folderService.createTab(inBrowser(bob), folder.id, { name: "guides" });
@@ -349,7 +339,7 @@ describe("the last editor of tabs", () => {
 
 describe("the last editor in the folder and tab reads", () => {
   it("is the user name of the last editor and the channel in the folder list and the tab list", async () => {
-    const bob = await createUser({ name: "bob" });
+    const bob = await createBob();
     const folder = await createFolder({ name: "docs", editor: user });
     await createFolder({ name: "news", editor: bob, via: "mcp" });
     await createTab({ folder, name: "guides", editor: bob, via: "mcp" });
@@ -367,7 +357,7 @@ describe("the last editor in the folder and tab reads", () => {
   });
 
   it("is the user who changed the folder or tab last, after a write through the service", async () => {
-    const bob = await createUser({ name: "bob" });
+    const bob = await createBob();
     const folder = await createFolder({
       name: "docs",
       editor: user,
@@ -407,7 +397,7 @@ describe("the channel of folders and tabs", () => {
 
   it("is the channel of the actor after creating and renaming a tab", async () => {
     const folder = await createFolder({ name: "docs", roles: [{ user, role: "manager" }] });
-    const manager = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "manager" });
+    const manager = mcpActorOf(user, folder, "manager");
 
     const inWeb = await folderService.createTab(actor, folder.id, { name: "guides" });
     const throughMcp = await folderService.createTab(manager, folder.id, { name: "news" });
@@ -423,7 +413,7 @@ describe("the channel of folders and tabs", () => {
 
   it("is the channel of the actor for each page deleted with a tab, and the folder keeps its own", async () => {
     const folder = await createFolder({ name: "docs", roles: [{ user, role: "manager" }] });
-    const manager = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "manager" });
+    const manager = mcpActorOf(user, folder, "manager");
     const viaMcp = await createTab({ folder, name: "drafts" });
     const inWeb = await createTab({ folder, name: "notes", via: "mcp" });
     const first = await createPage({ tab: viaMcp, name: "first" });
@@ -447,7 +437,7 @@ describe("the channel of folders and tabs", () => {
 
   it("is not touched for the folder by creating a tab in it through MCP", async () => {
     const folder = await createFolder({ name: "docs", roles: [{ user, role: "manager" }] });
-    const manager = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "manager" });
+    const manager = mcpActorOf(user, folder, "manager");
 
     await expect(folderService.createTab(manager, folder.id, { name: "news" })).resolves.toMatchObject({ ok: true });
 
@@ -459,7 +449,7 @@ describe("the channel of folders and tabs", () => {
     await createFolder({ name: "taken" });
     await createTab({ folder, name: "taken" });
     const tab = await createTab({ folder, name: "guides", via: "mcp" });
-    const writer = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "writer" });
+    const writer = mcpActorOf(user, folder, "writer");
 
     await folderService.renameFolder(actor, folder.id, { name: "taken" });
     await folderService.renameTab(actor, tab.id, { name: "taken" });
@@ -495,7 +485,7 @@ describe("an admin", () => {
 
 describe("roles", () => {
   it("lists only the folders with a role of the actor, by name, each with the role", async () => {
-    const bob = await createUser({ name: "bob" });
+    const bob = await createBob();
     await createFolder({ name: "zeta", roles: [{ user: user, role: "reader" }] });
     await createFolder({ name: "alpha", roles: [{ user: user, role: "manager" }] });
     await createFolder({ name: "hidden", roles: [{ user: bob, role: "owner" }] });
@@ -508,7 +498,7 @@ describe("roles", () => {
   });
 
   it("reads no folder and no tab without a role of the actor", async () => {
-    const bob = await createUser({ name: "bob" });
+    const bob = await createBob();
     const folder = await createFolder({ name: "hidden", roles: [{ user: bob, role: "owner" }] });
     await createTab({ folder, name: "guides" });
 
@@ -518,7 +508,7 @@ describe("roles", () => {
   });
 
   it("makes the creator of a folder its Owner, and gives nobody else a role", async () => {
-    await createUser({ name: "bob" });
+    await createBob();
 
     const created = await folderService.createFolder(actor, { name: "docs" });
     if (!created.ok) throw new Error("expected the folder to be created");
@@ -533,7 +523,7 @@ describe("roles", () => {
   });
 
   it("refuses a taken name also for a folder the actor cannot see", async () => {
-    const bob = await createUser({ name: "bob" });
+    const bob = await createBob();
     await createFolder({ name: "hidden", roles: [{ user: bob, role: "owner" }] });
 
     await expect(folderService.createFolder(actor, { name: "hidden" })).resolves.toEqual({
@@ -543,7 +533,7 @@ describe("roles", () => {
   });
 
   it("changes nothing on a write without a role", async () => {
-    const bob = await createUser({ name: "bob" });
+    const bob = await createBob();
     const folder = await createFolder({ name: "hidden", roles: [{ user: bob, role: "owner" }] });
     const tab = await createTab({ folder, name: "guides" });
     const [folderBefore, tabsBefore] = [
@@ -564,7 +554,7 @@ describe("roles", () => {
     await createTab({ folder: projects, name: "guides" });
     const notes = await createFolder({ name: "notes", roles: [{ user, role: "owner" }] });
     await createTab({ folder: notes, name: "drafts" });
-    const mcp = inMcp(user, { grantId: crypto.randomUUID(), folderId: projects.id, role: "writer" });
+    const mcp = mcpActorOf(user, projects, "writer");
 
     expect((await folderService.listFolders(mcp))?.map(({ name, role }) => [name, role])).toEqual([
       ["projects", "writer"],
@@ -587,16 +577,16 @@ describe("roles", () => {
 
   it("gives a Reader connection of an Owner the role Reader", async () => {
     const projects = await createFolder({ name: "projects", roles: [{ user, role: "owner" }] });
-    const mcp = inMcp(user, { grantId: crypto.randomUUID(), folderId: projects.id, role: "reader" });
+    const mcp = mcpActorOf(user, projects, "reader");
 
     await expect(folderService.getFolderById(mcp, projects.id)).resolves.toMatchObject({ role: "reader" });
   });
 
   it("reads nothing through MCP for a user without a role on the folder of the connection", async () => {
-    const bob = await createUser({ name: "bob" });
+    const bob = await createBob();
     const hidden = await createFolder({ name: "hidden", roles: [{ user: bob, role: "owner" }] });
     await createTab({ folder: hidden, name: "guides" });
-    const mcp = inMcp(user, { grantId: crypto.randomUUID(), folderId: hidden.id, role: "reader" });
+    const mcp = mcpActorOf(user, hidden, "reader");
 
     await expect(folderService.listFolders(mcp)).resolves.toEqual([]);
     await expect(folderService.getFolderByName(mcp, "hidden")).resolves.toBeNull();
@@ -625,7 +615,7 @@ describe("a rename to the stored name", () => {
 
   /** A folder and a tab last changed long ago by bob through MCP, so that a write by alice in the browser would show. */
   async function changedByBob() {
-    const bob = await createUser({ name: "bob" });
+    const bob = await createBob();
     const folder = await createFolder({
       name: "handbook",
       editor: bob,
@@ -673,10 +663,10 @@ describe("a rename to the stored name", () => {
   );
 
   it("stores nothing for a tab renamed to its name through MCP", async () => {
-    const bob = await createUser({ name: "bob" });
+    const bob = await createBob();
     const folder = await createFolder({ name: "handbook", roles: [{ user, role: "owner" }] });
     const tab = await createTab({ folder, name: "guides", editor: bob, via: "web", updatedAt: LONG_AGO });
-    const manager = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "manager" });
+    const manager = mcpActorOf(user, folder, "manager");
 
     await expect(folderService.renameTab(manager, tab.id, { name: "guides" })).resolves.toStrictEqual({
       ok: true,
@@ -712,8 +702,8 @@ describe("a rename to the stored name", () => {
   it("is refused as any other rename: a Writer, an admin, and a tab that does not exist", async () => {
     const { folder, tab } = await changedByBob();
     const admin = await createUser({ name: "maria", type: "admin" });
-    const writer = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "writer" });
-    const manager = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "manager" });
+    const writer = mcpActorOf(user, folder, "writer");
+    const manager = mcpActorOf(user, folder, "manager");
     const before = [await storedFolder(folder.id), await storedTab(tab.id)];
 
     // A tab that does not exist has no role either, in the browser as through MCP, also for an Owner.
@@ -781,7 +771,7 @@ describe("deleting a tab", () => {
   it.each(["manager", "owner"] as const)(
     "lets a %s delete a tab with its pages, which become deleted pages of the actor",
     async (role) => {
-      const bob = await createUser({ name: "bob" });
+      const bob = await createBob();
       const folder = await createFolder({ name: "docs", roles: [{ user, role }] });
       const tab = await createTab({ folder, name: "meetngs", editor: bob });
       const second = await createPage({ tab, name: "second", editor: bob, version: 4, content: "# Second page" });
@@ -861,7 +851,7 @@ describe("deleting a tab", () => {
   });
 
   it.each(["reader", "writer", null] as const)("refuses the role %s and changes nothing", async (role) => {
-    const bob = await createUser({ name: "bob" });
+    const bob = await createBob();
     const folder = await createFolder({
       name: "docs",
       roles: role
@@ -918,7 +908,7 @@ describe("deleting a tab", () => {
   });
 
   it("refuses a user without a role on the given folder also for a tab that is gone", async () => {
-    const bob = await createUser({ name: "bob" });
+    const bob = await createBob();
     const folder = await createFolder({ name: "docs", roles: [{ user: bob, role: "owner" }] });
 
     await expect(folderService.deleteTab(actor, folder.id, crypto.randomUUID())).resolves.toEqual(NOT_ALLOWED);
@@ -972,7 +962,7 @@ describe("deleting a tab", () => {
   });
 
   it("leaves the time of the last change and the last editor of the folder as they are", async () => {
-    const bob = await createUser({ name: "bob" });
+    const bob = await createBob();
     const folder = await createFolder({ name: "docs", editor: bob, updatedAt: new Date("2026-01-01T00:00:00Z") });
     const tab = await createTab({ folder, name: "guides" });
     await createPage({ tab, name: "intro" });
@@ -1052,7 +1042,7 @@ describe("deleting a tab", () => {
     );
 
     if (created?.ok) {
-      const page = await getTestDb().page.findUniqueOrThrow({ where: { id: created.value.id } });
+      const page = await storedPage(created.value.id);
       expect(page).toMatchObject({ tabId: null, deletedAt: expect.any(Date) });
     } else {
       expect(created).toEqual(TAB_NOT_FOUND);
@@ -1064,13 +1054,13 @@ describe("deleting a tab", () => {
     const folder = await createFolder({ name: "docs" });
     const tab = await createTab({ folder, name: "guides" });
     const page = await createPage({ folder, name: "late" });
-    const before = await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } });
+    const before = await storedPage(page.id);
 
     const moved = await againstDeleteOfTab(folder, tab, () =>
       pageService.moveOrRenamePage(actor, page.id, { name: "late", tabId: tab.id, version: 1 }),
     );
 
-    const after = await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } });
+    const after = await storedPage(page.id);
     if (moved?.ok === false && moved.error.code === "tab-not-found") {
       expect(after).toStrictEqual(before);
     } else {
@@ -1085,13 +1075,13 @@ describe("deleting a tab", () => {
     const folder = await createFolder({ name: "docs" });
     const tab = await createTab({ folder, name: "guides" });
     const page = await createPage({ folder, name: "late", deletedAt: new Date() });
-    const before = await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } });
+    const before = await storedPage(page.id);
 
     const restored = await againstDeleteOfTab(folder, tab, () =>
       pageService.restorePage(actor, page.id, { name: "late", tabId: tab.id }),
     );
 
-    const after = await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } });
+    const after = await storedPage(page.id);
     if (restored?.ok === false && restored.error.code === "tab-not-found") {
       expect(after).toStrictEqual(before);
     } else {
@@ -1126,7 +1116,7 @@ describe("deleting a tab", () => {
     await createPage({ tab, name: "intro" });
     await createPage({ folder, name: "direct" });
     await expect(folderService.deleteTab(actor, folder.id, tab.id)).resolves.toMatchObject({ ok: true });
-    const mcp = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "writer" });
+    const mcp = mcpActorOf(user, folder, "writer");
 
     await expect(folderService.listTabs(mcp, folder.id)).resolves.toEqual([]);
     expect((await pageService.listAllFolderPages(mcp, folder.id))?.map(({ name }) => name)).toEqual(["direct"]);
@@ -1150,7 +1140,7 @@ describe("tab writes through MCP", () => {
     const folder = await createFolder({ name: "projects", roles: [{ user, role: "owner" }] });
     const tab = await createTab({ folder, name: "guides" });
     await createPage({ tab, name: "intro" });
-    const writer = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "writer" });
+    const writer = mcpActorOf(user, folder, "writer");
     const before = await snapshot();
 
     await expect(folderService.createTab(writer, folder.id, { name: "news" })).resolves.toEqual(NOT_ALLOWED);
@@ -1165,7 +1155,7 @@ describe("tab writes through MCP", () => {
     const other = await createFolder({ name: "notes", roles: [{ user, role: "owner" }] });
     const tab = await createTab({ folder: other, name: "guides" });
     await createPage({ tab, name: "intro" });
-    const mcp = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "writer" });
+    const mcp = mcpActorOf(user, folder, "writer");
     const before = await snapshot();
 
     await expect(folderService.createTab(mcp, other.id, { name: "news" })).resolves.toEqual(NOT_ALLOWED);
@@ -1176,10 +1166,10 @@ describe("tab writes through MCP", () => {
   });
 
   it("creates and renames tabs through a Manager connection with the user as the last editor", async () => {
-    const bob = await createUser({ name: "bob" });
+    const bob = await createBob();
     const folder = await createFolder({ name: "projects", roles: [{ user, role: "manager" }] });
     const old = await createTab({ folder, name: "misc", editor: bob });
-    const manager = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "manager" });
+    const manager = mcpActorOf(user, folder, "manager");
 
     const created = await folderService.createTab(manager, folder.id, { name: "meetings" });
     if (!created.ok) throw new Error(`not created: ${created.error.code}`);
@@ -1195,7 +1185,7 @@ describe("tab writes through MCP", () => {
   it("refuses create and rename through a Manager connection after the user was lowered to Writer", async () => {
     const folder = await createFolder({ name: "projects", roles: [{ user, role: "manager" }] });
     const tab = await createTab({ folder, name: "misc" });
-    const manager = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "manager" });
+    const manager = mcpActorOf(user, folder, "manager");
     await getTestDb().folderRole.update({
       where: { folderId_userId: { folderId: folder.id, userId: user.id } },
       data: { role: "writer" },
@@ -1209,12 +1199,12 @@ describe("tab writes through MCP", () => {
   });
 
   it("deletes a tab through a Manager connection with all its pages, with the user as the user who deleted them", async () => {
-    const bob = await createUser({ name: "bob" });
+    const bob = await createBob();
     const folder = await createFolder({ name: "projects", roles: [{ user, role: "manager" }] });
     const tab = await createTab({ folder, name: "drafts", editor: bob });
     await createPage({ tab, name: "first", editor: bob, content: "# First" });
     await createPage({ tab, name: "second", editor: bob, content: "# Second" });
-    const manager = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "manager" });
+    const manager = mcpActorOf(user, folder, "manager");
 
     await expect(folderService.deleteTab(manager, folder.id, tab.id)).resolves.toStrictEqual({
       ok: true,
@@ -1240,7 +1230,7 @@ describe("tab writes through MCP", () => {
     const folder = await createFolder({ name: "projects", roles: [{ user, role: "manager" }] });
     const tab = await createTab({ folder, name: "drafts" });
     await createPage({ tab, name: "intro" });
-    const manager = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "manager" });
+    const manager = mcpActorOf(user, folder, "manager");
     await getTestDb().folderRole.update({
       where: { folderId_userId: { folderId: folder.id, userId: user.id } },
       data: { role: "writer" },

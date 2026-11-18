@@ -34,6 +34,7 @@ How the code is organised and which patterns new code follows. The technology st
     see "Reads and writes", and `queries.ts` and `components/` for the folder view "AI apps") and `oauth` (the OAuth authorization server for MCP clients: `service.ts` with the rules of the code
     flow, `http.ts` with the adapters of its public endpoints, `secret.ts` for codes and tokens and their hashes,
     `metadata-fetch.ts` for the metadata documents of clients). Their specs are listed in `CLAUDE.md`.
+- `src/test/`: the helpers of the unit tests, no code of the app (see "Unit tests" in `testing.md`)
 - `src/generated/prisma/`: the generated Prisma client (`npm run db:generate`), not checked in
 - `prisma/`: schema, migrations, seed, and `known-users.ts`, the known users of the seed and the tests
 - `scripts/`: development scripts (`db.sh`), the admin setup (`admin.ts`) and the scripts of the container image

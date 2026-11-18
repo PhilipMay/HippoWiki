@@ -1,13 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getCurrentUser, requireSession, requireUser } from "@/features/auth/session";
-
-/** Thrown by the mocked `redirect`, like the real one throws, so that code after it never runs. */
-class RedirectError extends Error {
-  constructor(readonly path: string) {
-    super(`redirect to ${path}`);
-  }
-}
+import { RedirectError } from "@/test/unit";
 
 const mocks = vi.hoisted(() => ({
   getSessionUser: vi.fn(),

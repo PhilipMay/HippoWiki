@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { Prisma } from "@/generated/prisma/client";
 import {
   changeRole,
   folderRoleOf,
@@ -22,6 +21,21 @@ import {
   roleSelection,
   type ContentActor,
 } from "@/features/folder-roles/service";
+import {
+  ACTOR,
+  ACTOR_ID,
+  dataOf,
+  FOLDER_ID,
+  GRANT_ID,
+  knownError,
+  MALFORMED_ID,
+  MCP_ACTOR,
+  mcpActor,
+  OTHER_FOLDER_ID,
+  PAGE_ID,
+  TAB_ID,
+  USER,
+} from "@/test/unit";
 
 const mocks = vi.hoisted(() => ({
   roleFindFirst: vi.fn(),
@@ -50,37 +64,17 @@ vi.mock("@/lib/db", () => ({
 }));
 vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, error: mocks.error } }));
 
-/**
- * What the first call of the given write stores: the `data` of its argument. The tests assert what a write stores, not
- * the condition it finds its row with, which the integration tests prove against the database.
- */
-function dataOf(write: ReturnType<typeof vi.fn>): unknown {
-  return (write.mock.calls[0]?.[0] as { data?: unknown } | undefined)?.data;
-}
-
 beforeEach(() => {
   vi.resetAllMocks();
 });
 
-const FOLDER_ID = "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10";
-const TAB_ID = "5a2c1c0e-3f55-4a55-8a42-5d2f0e6a9b11";
-const PAGE_ID = "9c4d2b7e-1a3f-4c5d-8e6f-7a8b9c0d1e22";
-const ACTOR_ID = "9d4b2f6e-1c3a-4e8b-b7d5-2a6c8e0f1b12";
-const MALFORMED_ID = "not-a-uuid";
-
-const USER = { id: ACTOR_ID, name: "alice", type: "user" as const };
-const ADMIN = { id: ACTOR_ID, name: "alice", type: "admin" as const };
-const OTHER_FOLDER_ID = "1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e55";
-const GRANT_ID = "0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01";
-const BROWSER: ContentActor = { ...USER, channel: "browser" };
+/** An admin without a channel, as the writes of roles take it. */
+const ADMIN = { ...USER, type: "admin" as const };
+const BROWSER: ContentActor = ACTOR;
 /** An actor of MCP with a Writer connection to the folder `FOLDER_ID`. */
-const MCP: ContentActor = {
-  ...USER,
-  channel: "mcp",
-  connection: { grantId: GRANT_ID, folderId: FOLDER_ID, role: "writer" },
-};
+const MCP: ContentActor = MCP_ACTOR;
 /** An actor of MCP with a Reader connection to the folder `FOLDER_ID`. */
-const MCP_READER: ContentActor = { ...MCP, connection: { grantId: GRANT_ID, folderId: FOLDER_ID, role: "reader" } };
+const MCP_READER: ContentActor = mcpActor("reader");
 
 describe("inBrowser and inMcp", () => {
   it("give the user the channel and, through MCP, the connection, and nothing else of the session", () => {
@@ -330,11 +324,6 @@ describe("listFolderRoles", () => {
 });
 
 const BOB_ID = "5a2c1c0e-3f55-4a55-8a42-5d2f0e6a9b99";
-
-/** A Prisma error as the client reports it with the `pg` adapter. */
-function knownError(code: string, meta: Record<string, unknown>): Prisma.PrismaClientKnownRequestError {
-  return new Prisma.PrismaClientKnownRequestError("database error", { code, clientVersion: "test", meta });
-}
 
 describe("listRoleCandidates", () => {
   it("lists the users of the type user without a role on the folder, for an Owner", async () => {

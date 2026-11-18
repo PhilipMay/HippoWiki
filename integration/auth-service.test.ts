@@ -8,6 +8,7 @@ import * as userService from "@/features/users/service";
 import { hashPassword, PasswordHashBusyError, verifyPassword } from "@/lib/password-hash";
 
 import { createUser, getTestDb, TEST_PASSWORD } from "../e2e/support/database";
+import { createBob } from "./helpers";
 
 // The real functions, as spies: one test lets them fail the way they do when no hash slot gets free.
 vi.mock(import("@/lib/password-hash"), { spy: true });
@@ -221,7 +222,7 @@ describe("sessions", () => {
 describe("logOut", () => {
   it("ends only the session of the request", async () => {
     await createUser({ name: "alice" });
-    await createUser({ name: "bob" });
+    await createBob();
     const first = await logInAs("alice");
     const second = await logInAs("alice");
     const bob = await logInAs("bob");
@@ -878,7 +879,7 @@ describe("changeFirstPassword", () => {
 
   it("ends the other sessions of the user and keeps the request logged in, with a new session", async () => {
     const alice = await createUser({ name: "alice" });
-    await createUser({ name: "bob" });
+    await createBob();
     const request = await logInAs("alice");
     const other = await logInAs("alice");
     const bob = await logInAs("bob");

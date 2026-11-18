@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { listGrants } from "@/features/grants/queries";
+import { RedirectError } from "@/test/unit";
 
 const mocks = vi.hoisted(() => ({
   connection: vi.fn(),
@@ -11,13 +12,6 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/features/grants/service", () => ({ listGrants: mocks.listGrants }));
 vi.mock("@/features/auth/session", () => ({ requireUser: mocks.requireUser }));
 vi.mock("next/server", () => ({ connection: mocks.connection }));
-
-/** Thrown by the mocked `requireUser()`, like the redirect to the login page that the real one throws. */
-class RedirectError extends Error {
-  constructor(readonly path: string) {
-    super(`redirect to ${path}`);
-  }
-}
 
 const ALICE = {
   id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002",

@@ -5,6 +5,7 @@ import * as folderRoleService from "@/features/folder-roles/service";
 import type { User } from "@/generated/prisma/client";
 
 import { createFolder, createUser, getTestDb } from "../e2e/support/database";
+import { createBob, mcpActorOf } from "./helpers";
 
 /** The user who reads, unless a test says otherwise; created anew for every test. */
 let actor: User;
@@ -52,7 +53,7 @@ describe("listFolderRoles", () => {
   });
 
   it("returns null without a role of the actor on the folder, and for an admin", async () => {
-    const bob = await createUser({ name: "bob" });
+    const bob = await createBob();
     const admin = await createUser({ name: "maria", type: "admin" });
     const folder = await createFolder({ roles: [{ user: bob, role: "owner" }] });
 
@@ -63,7 +64,7 @@ describe("listFolderRoles", () => {
 
 describe("giveRole", () => {
   it("stores the role and lists the user in the roles", async () => {
-    const bob = await createUser({ name: "bob" });
+    const bob = await createBob();
     const folder = await createFolder({ name: "docs", roles: [{ user: actor, role: "owner" }] });
 
     await expect(folderRoleService.giveRole(actor, folder.id, { user: "bob", role: "writer" })).resolves.toEqual({
@@ -79,7 +80,7 @@ describe("giveRole", () => {
   });
 
   it("gives a user who already has a role role-taken and keeps the role", async () => {
-    const bob = await createUser({ name: "bob" });
+    const bob = await createBob();
     const folder = await createFolder({
       roles: [
         { user: actor, role: "owner" },
@@ -108,7 +109,7 @@ describe("giveRole", () => {
   });
 
   it("lets a Manager give nothing", async () => {
-    await createUser({ name: "bob" });
+    await createBob();
     const folder = await createFolder({ roles: [{ user: actor, role: "manager" }] });
 
     await expect(folderRoleService.giveRole(actor, folder.id, { user: "bob", role: "reader" })).resolves.toEqual({
@@ -121,7 +122,7 @@ describe("giveRole", () => {
 
 describe("listRoleCandidates", () => {
   it("lists the users of the type user without a role on the folder by name, never an admin", async () => {
-    const [zoe, bob] = [await createUser({ name: "zoe" }), await createUser({ name: "bob" })];
+    const [zoe, bob] = [await createUser({ name: "zoe" }), await createBob()];
     await createUser({ name: "dave" });
     await createUser({ name: "maria", type: "admin" });
     // The actor is the last editor, so that `createFolder()` creates no other user.
@@ -154,7 +155,7 @@ describe("changeRole and removeRole", () => {
   }
 
   it("stores a change and a removal", async () => {
-    const [bob, dave] = [await createUser({ name: "bob" }), await createUser({ name: "dave" })];
+    const [bob, dave] = [await createBob(), await createUser({ name: "dave" })];
     const folder = await createFolder({
       roles: [
         { user: actor, role: "owner" },
@@ -176,7 +177,7 @@ describe("changeRole and removeRole", () => {
 
   // R5: a change to the role the user has writes nothing; a change to another role updates role and time.
   it("keeps the role and its time for a change to the same role, and updates both for another role", async () => {
-    const bob = await createUser({ name: "bob" });
+    const bob = await createBob();
     const folder = await createFolder({ roles: [{ user: actor, role: "owner" }] });
     const old = new Date("2026-01-02T03:04:05Z");
     const where = { folderId_userId: { folderId: folder.id, userId: bob.id } };
@@ -201,7 +202,7 @@ describe("changeRole and removeRole", () => {
   });
 
   it("refuses the last Owner, who stays Owner", async () => {
-    const bob = await createUser({ name: "bob" });
+    const bob = await createBob();
     const folder = await createFolder({
       roles: [
         { user: actor, role: "owner" },
@@ -244,7 +245,7 @@ describe("changeRole and removeRole", () => {
   });
 
   it("lets a Manager change and remove nothing", async () => {
-    const bob = await createUser({ name: "bob" });
+    const bob = await createBob();
     const folder = await createFolder({
       roles: [
         { user: actor, role: "manager" },
@@ -270,7 +271,7 @@ describe("changeRole and removeRole", () => {
 describe("listAllFolderRoles", () => {
   it("lists every folder with its roles in the order of the roles view, also one without roles, for an admin", async () => {
     const admin = await createUser({ name: "maria", type: "admin" });
-    const [bob, anna] = [await createUser({ name: "bob" }), await createUser({ name: "anna" })];
+    const [bob, anna] = [await createBob(), await createUser({ name: "anna" })];
     await createFolder({
       name: "zeta",
       editor: actor,
@@ -300,7 +301,7 @@ describe("listAllFolderRoles", () => {
 
   it("gives an admin no way to change a role or create a folder", async () => {
     const admin = await createUser({ name: "maria", type: "admin" });
-    const bob = await createUser({ name: "bob" });
+    const bob = await createBob();
     const folder = await createFolder({ editor: actor, roles: [{ user: bob, role: "owner" }] });
     const notAllowed = { ok: false, error: { code: "not-allowed" } };
 
@@ -341,7 +342,7 @@ describe("the role of an actor of MCP", () => {
 
   it("is none on the folder of the connection once the user's role is removed", async () => {
     const folder = await createFolder({ roles: [{ user: actor, role: "writer" }] });
-    const mcp = folderRoleService.inMcp(actor, { grantId: crypto.randomUUID(), folderId: folder.id, role: "writer" });
+    const mcp = mcpActorOf(actor, folder, "writer");
     await getTestDb().folderRole.deleteMany({ where: { userId: actor.id } });
 
     await expect(folderRoleService.folderRoleOf(mcp, folder.id)).resolves.toBeNull();

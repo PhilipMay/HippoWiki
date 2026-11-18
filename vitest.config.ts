@@ -44,7 +44,8 @@ export default defineConfig({
       provider: "v8",
       // Also lists files that no unit test loads, with 0% coverage.
       include: ["src/**/*.{ts,tsx}"],
-      exclude: ["src/**/*.test.ts", "src/generated/**"],
+      // The helpers of the unit tests in `src/test/` are no code of the app.
+      exclude: ["src/**/*.test.ts", "src/generated/**", "src/test/**"],
       // `json-summary` writes coverage/coverage-summary.json for scripts/coverage-summary.ts.
       reporter: ["text", "html", "json-summary"],
       // Also write the report when a test fails, so CI can still show and upload it.

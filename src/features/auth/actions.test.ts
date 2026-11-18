@@ -1,13 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { changeFirstPassword, logIn, logOut } from "@/features/auth/actions";
-
-/** `redirect` throws in Next.js; the mock throws this error, so code after it does not run. */
-class RedirectError extends Error {
-  constructor(readonly path: string) {
-    super(`redirect to ${path}`);
-  }
-}
+import { RedirectError } from "@/test/unit";
 
 const mocks = vi.hoisted(() => ({
   logIn: vi.fn(),

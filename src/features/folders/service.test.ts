@@ -12,8 +12,23 @@ import {
   renameFolder,
   renameTab,
 } from "@/features/folders/service";
-import type { BrowserActor, ContentActor } from "@/features/folder-roles/service";
-import { Prisma } from "@/generated/prisma/client";
+import type { ContentActor } from "@/features/folder-roles/service";
+import { allows, contentWritesOf, ROLES } from "@/test/content-writes";
+import {
+  ACTOR,
+  ACTOR_ID,
+  ADMIN,
+  dataOf,
+  FOLDER_ID,
+  foreignKeyViolation,
+  knownError,
+  MALFORMED_ACTOR,
+  MALFORMED_ID,
+  MCP_ACTOR,
+  mcpActor,
+  TAB_ID,
+  uniqueViolation,
+} from "@/test/unit";
 
 const mocks = vi.hoisted(() => ({
   folderFindMany: vi.fn(),
@@ -94,14 +109,6 @@ function expectNothingWritten(): void {
   for (const call of writeCalls) expect(call).not.toHaveBeenCalled();
 }
 
-/**
- * What the first call of the given write stores: the `data` of its argument. The tests assert what a write stores, not
- * the condition it finds its row with, which the integration tests prove against the database.
- */
-function dataOf(write: ReturnType<typeof vi.fn>): unknown {
-  return (write.mock.calls[0]?.[0] as { data?: unknown } | undefined)?.data;
-}
-
 /** How often the database has been read or written. */
 function databaseCallCount(): number {
   return databaseCalls.reduce((count, call) => count + call.mock.calls.length, 0);
@@ -121,21 +128,6 @@ beforeEach(() => {
   mocks.queryRaw.mockResolvedValue([{ folderId: FOLDER_ID, folderName: "handbook" }]);
 });
 
-const FOLDER_ID = "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10";
-const TAB_ID = "5a2c1c0e-3f55-4a55-8a42-5d2f0e6a9b11";
-const MALFORMED_ID = "not-a-uuid";
-const ACTOR_ID = "9d4b2f6e-1c3a-4e8b-b7d5-2a6c8e0f1b12";
-
-/** The user who makes the writes in the browser, one whose id is malformed, and the same user through MCP. */
-const ACTOR: BrowserActor = { id: ACTOR_ID, name: "alice", type: "user", channel: "browser" };
-const MALFORMED_ACTOR: BrowserActor = { id: MALFORMED_ID, name: "alice", type: "user", channel: "browser" };
-/** The same user through MCP, with a Writer connection to the folder `FOLDER_ID`. */
-const MCP_ACTOR: ContentActor = {
-  ...ACTOR,
-  channel: "mcp",
-  connection: { grantId: "0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01", folderId: FOLDER_ID, role: "writer" },
-};
-
 /** Names that are not valid as written: not lowercase, surrounding whitespace, a double hyphen, empty. */
 const MALFORMED_NAMES = ["Handbook", " handbook", "handbook ", "release--notes", "-handbook", ""];
 
@@ -147,21 +139,6 @@ const FAILED = { ok: false, error: { code: "failed" } };
 const FOLDER_NOT_FOUND = { ok: false, error: { code: "folder-not-found" } };
 const TAB_NOT_FOUND = { ok: false, error: { code: "tab-not-found" } };
 const NAME_REQUIRED = { ok: false, error: { code: "invalid-input", fieldErrors: { name: ["Name is required"] } } };
-
-/** A Prisma error as the client reports it, e.g. `P2002` for a unique violation. */
-function knownError(code: string, meta?: Record<string, unknown>): Prisma.PrismaClientKnownRequestError {
-  return new Prisma.PrismaClientKnownRequestError("database error", { code, clientVersion: "test", meta });
-}
-
-/** A unique violation as reported with the `pg` adapter, on the given index or fields. */
-function uniqueViolation(constraint: { index?: string; fields?: string[] }): Prisma.PrismaClientKnownRequestError {
-  return knownError("P2002", { driverAdapterError: { cause: { constraint } } });
-}
-
-/** A foreign key violation as reported with the `pg` adapter, on the given constraint or fields. */
-function foreignKeyViolation(constraint: { index?: string; fields?: string[] }): Prisma.PrismaClientKnownRequestError {
-  return knownError("P2003", { driverAdapterError: { cause: { constraint } } });
-}
 
 const nameTakenErrors = [
   ["on the name index", uniqueViolation({ index: "Folder_name_key" })],
@@ -695,7 +672,6 @@ describe("renameTab", () => {
 });
 
 describe("a rename to the stored name", () => {
-  const ADMIN: BrowserActor = { id: ACTOR_ID, name: "alice", type: "admin", channel: "browser" };
   const NOT_ALLOWED = { ok: false, error: { code: "not-allowed" } };
 
   beforeEach(() => {
@@ -740,7 +716,7 @@ describe("a rename to the stored name", () => {
 
 describe("a tab write through MCP", () => {
   const GRANT_ID = "0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01";
-  const MANAGER = { ...MCP_ACTOR, connection: { ...MCP_ACTOR.connection, role: "manager" } } as ContentActor;
+  const MANAGER = mcpActor("manager");
 
   it("logs the channel mcp and the grant for a Manager connection, with the user as the last editor", async () => {
     const stored = { id: TAB_ID, name: "guides", folder: { name: "handbook" } };
@@ -882,42 +858,24 @@ describe("deleteTab", () => {
 });
 
 /** Every write, called by the given actor with valid input, the database call it writes with, and its editor key. */
-const writes = [
-  [
-    "createFolder",
-    (actor: BrowserActor) => createFolder(actor, VALID),
-    mocks.folderCreate,
-    "Folder_lastEditedById_fkey",
-  ],
-  [
-    "renameFolder",
-    (actor: BrowserActor) => renameFolder(actor, FOLDER_ID, VALID),
-    mocks.folderUpdateMany,
-    "Folder_lastEditedById_fkey",
-  ],
-  [
-    "createTab",
-    (actor: BrowserActor) => createTab(actor, FOLDER_ID, TAB_VALID),
-    mocks.tabCreate,
-    "Tab_lastEditedById_fkey",
-  ],
-  [
-    "renameTab",
-    (actor: BrowserActor) => renameTab(actor, TAB_ID, TAB_VALID),
-    mocks.tabUpdateMany,
-    "Tab_lastEditedById_fkey",
-  ],
-  [
-    "deleteTab",
-    (actor: BrowserActor) => deleteTab(actor, FOLDER_ID, TAB_ID),
-    mocks.pageUpdateManyAndReturn,
-    "Page_lastEditedById_fkey",
-  ],
-] as const;
+/** The content writes of the folders service, from the table of all content writes. */
+const WRITES = contentWritesOf("folders");
+
+/** The call of the database that each write stores with, so that a test can make it fail. */
+const STORING_CALL: Record<string, ReturnType<typeof vi.fn>> = {
+  createFolder: mocks.folderCreate,
+  renameFolder: mocks.folderUpdateMany,
+  createTab: mocks.tabCreate,
+  renameTab: mocks.tabUpdateMany,
+  deleteTab: mocks.pageUpdateManyAndReturn,
+};
+
+/** The writes that need a role on the folder: all but creating a folder. */
+const WRITES_WITH_ROLE = WRITES.filter(({ lowest }) => lowest !== null);
 
 describe("the actor of a write", () => {
-  it.each(writes)("%s returns failed for a malformed actor id without touching the database", async (_name, write) => {
-    await expect(write(MALFORMED_ACTOR)).resolves.toEqual(FAILED);
+  it.each(WRITES)("$name returns failed for a malformed actor id without touching the database", async ({ call }) => {
+    await expect(call(MALFORMED_ACTOR)).resolves.toEqual(FAILED);
 
     expect(databaseCallCount()).toBe(0);
     expect(mocks.error).toHaveBeenCalledWith({ actorId: MALFORMED_ID }, "malformed actor id");
@@ -926,12 +884,12 @@ describe("the actor of a write", () => {
   });
 
   it.each(
-    writes.flatMap(([name, write, call, constraint]) => [
-      [name, "on the editor key", write, call, foreignKeyViolation({ index: constraint })] as const,
-      [name, "on the editor field", write, call, foreignKeyViolation({ fields: ["lastEditedById"] })] as const,
+    WRITES.flatMap(({ name, call, editorKey }) => [
+      [name, "on the editor key", call, foreignKeyViolation({ index: editorKey })] as const,
+      [name, "on the editor field", call, foreignKeyViolation({ fields: ["lastEditedById"] })] as const,
     ]),
-  )("%s returns failed for a foreign key violation %s", async (_name, _kind, write, call, err) => {
-    call.mockRejectedValue(err);
+  )("%s returns failed for a foreign key violation %s", async (name, _kind, write, err) => {
+    STORING_CALL[name]?.mockRejectedValue(err);
 
     await expect(write(ACTOR)).resolves.toEqual(FAILED);
 
@@ -942,8 +900,6 @@ describe("the actor of a write", () => {
 });
 
 describe("an admin", () => {
-  /** An admin, who sees and changes no content; named like a user, so that only the type decides. */
-  const ADMIN: BrowserActor = { id: ACTOR_ID, name: "alice", type: "admin", channel: "browser" };
   const MCP_ADMIN: ContentActor = { ...MCP_ACTOR, type: "admin" };
 
   it.each([
@@ -964,19 +920,11 @@ describe("an admin", () => {
     expectNothingLogged();
   });
 
-  const MESSAGES = {
-    createFolder: "folder not created: the actor is an admin",
-    renameFolder: "folder not renamed: the actor is an admin",
-    createTab: "tab not created: the actor is an admin",
-    renameTab: "tab not renamed: the actor is an admin",
-    deleteTab: "tab not deleted: the actor is an admin",
-  };
-
-  it.each(writes)("gets not-allowed from %s, logged, without touching the database", async (name, write) => {
-    await expect(write(ADMIN)).resolves.toEqual({ ok: false, error: { code: "not-allowed" } });
+  it.each(WRITES)("gets not-allowed from $name, logged, without touching the database", async ({ call, what }) => {
+    await expect(call(ADMIN)).resolves.toEqual({ ok: false, error: { code: "not-allowed" } });
 
     expect(databaseCallCount()).toBe(0);
-    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith({ actorId: ACTOR_ID }, MESSAGES[name]);
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith({ actorId: ACTOR_ID }, `${what}: the actor is an admin`);
     expect(mocks.info).not.toHaveBeenCalled();
     expect(mocks.error).not.toHaveBeenCalled();
   });
@@ -1015,38 +963,19 @@ describe("a user without a role on the folder", () => {
     mocks.folderRoleFindFirst.mockResolvedValue(null);
   });
 
-  it.each([
-    [
-      "renameFolder",
-      () => renameFolder(ACTOR, FOLDER_ID, VALID),
-      { folderId: FOLDER_ID },
-      "folder not renamed: the actor has no role on the folder",
-    ],
-    [
-      "createTab",
-      () => createTab(ACTOR, FOLDER_ID, TAB_VALID),
-      { folderId: FOLDER_ID },
-      "tab not created: the actor has no role on the folder",
-    ],
-    [
-      "renameTab",
-      () => renameTab(ACTOR, TAB_ID, TAB_VALID),
-      { tabId: TAB_ID },
-      "tab not renamed: the actor has no role on the folder",
-    ],
-    [
-      "deleteTab",
-      () => deleteTab(ACTOR, FOLDER_ID, TAB_ID),
-      { folderId: FOLDER_ID, tabId: TAB_ID },
-      "tab not deleted: the actor has no role on the folder",
-    ],
-  ] as const)("gets not-allowed from %s, logged, and nothing is written", async (_name, write, target, message) => {
-    await expect(write()).resolves.toEqual({ ok: false, error: { code: "not-allowed" } });
+  it.each(WRITES_WITH_ROLE)(
+    "gets not-allowed from $name, logged, and nothing is written",
+    async ({ call, target, what }) => {
+      await expect(call(ACTOR)).resolves.toEqual({ ok: false, error: { code: "not-allowed" } });
 
-    expectNothingWritten();
-    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith({ actorId: ACTOR_ID, ...target }, message);
-    expect(mocks.info).not.toHaveBeenCalled();
-  });
+      expectNothingWritten();
+      expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
+        { actorId: ACTOR_ID, ...target },
+        `${what}: the actor has no role on the folder`,
+      );
+      expect(mocks.info).not.toHaveBeenCalled();
+    },
+  );
 
   it("is refused before the input is checked", async () => {
     await expect(renameFolder(ACTOR, FOLDER_ID, INVALID)).resolves.toEqual({
@@ -1065,29 +994,8 @@ describe("a user without a role on the folder", () => {
 });
 
 describe("the lowest role of each function", () => {
-  const ROLES = ["reader", "writer", "manager", "owner"] as const;
-
-  const functions = [
-    [
-      "renameFolder",
-      () => renameFolder(ACTOR, FOLDER_ID, VALID),
-      "owner",
-      { folderId: FOLDER_ID },
-      "folder not renamed",
-    ],
-    ["createTab", () => createTab(ACTOR, FOLDER_ID, TAB_VALID), "manager", { folderId: FOLDER_ID }, "tab not created"],
-    ["renameTab", () => renameTab(ACTOR, TAB_ID, TAB_VALID), "manager", { tabId: TAB_ID }, "tab not renamed"],
-    [
-      "deleteTab",
-      () => deleteTab(ACTOR, FOLDER_ID, TAB_ID),
-      "manager",
-      { folderId: FOLDER_ID, tabId: TAB_ID },
-      "tab not deleted",
-    ],
-  ] as const;
-
-  const cases = functions.flatMap(([name, write, lowest, target, what]) =>
-    ROLES.map((role) => [name, role, write, ROLES.indexOf(role) >= ROLES.indexOf(lowest), target, what] as const),
+  const cases = WRITES_WITH_ROLE.flatMap((write) =>
+    ROLES.map((role) => [write.name, role, write.call, allows(write, role), write.target, write.what] as const),
   );
 
   it.each(cases)("%s as %s", async (_name, role, write, allowed, target, what) => {
@@ -1098,7 +1006,7 @@ describe("the lowest role of each function", () => {
     mocks.tabFindUnique.mockResolvedValue({ id: TAB_ID, name: "guides", folder: { name: "handbook" } });
     mocks.pageUpdateManyAndReturn.mockResolvedValue([]);
 
-    const result = await write();
+    const result = await write(ACTOR);
 
     if (allowed) {
       expect(result).toMatchObject({ ok: true });

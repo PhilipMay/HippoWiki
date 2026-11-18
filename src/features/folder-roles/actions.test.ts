@@ -1,16 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { changeRole, giveRole } from "@/features/folder-roles/actions";
-
-/** Thrown by the mocked `redirect`, like the real one throws, so that code after it never runs. */
-class RedirectError extends Error {
-  constructor(readonly path: string) {
-    super(`redirect to ${path}`);
-  }
-}
-
-/** Thrown by the mocked `notFound`, like the real one throws, so that code after it never runs. */
-class NotFoundError extends Error {}
+import { NotFoundError, RedirectError } from "@/test/unit";
 
 const mocks = vi.hoisted(() => ({
   giveRole: vi.fn(),

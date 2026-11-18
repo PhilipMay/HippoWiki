@@ -11,7 +11,8 @@ Code: the version of a page in `Page` of `prisma/schema.prisma` and the migratio
 `deletePage` of `src/features/pages/service.ts`, with the check of a content save in `storeContentChange`, the version of a form in `src/features/pages/forms.ts`, the notice of
 a page address in `src/lib/addresses.ts` and `src/features/pages/components/PageView.tsx`, the editor and the dialogs
 in `src/features/pages/components/`. Tests: `integration/page-service.test.ts`, the unit tests next to the code
-(`src/features/pages/service.test.ts`, `src/features/pages/forms.test.ts`, `src/features/pages/actions.test.ts`,
+(`src/features/pages/service-writes.test.ts`, `src/features/pages/service-access.test.ts`,
+`src/features/pages/forms.test.ts`, `src/features/pages/actions.test.ts`,
 `src/features/pages/schema.test.ts`, `src/lib/addresses.test.ts`), `e2e/edit-page.spec.ts`,
 `e2e/move-or-rename-page.spec.ts`, `e2e/delete-page.spec.ts`, `e2e/restore-page.spec.ts`.
 

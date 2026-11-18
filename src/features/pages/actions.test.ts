@@ -9,13 +9,7 @@ import {
   updatePageContent,
 } from "@/features/pages/actions";
 import { CONTENT_TABLE_CELLS_MESSAGE } from "@/features/pages/schema";
-
-/** Thrown by the mocked `redirect`, like the real one throws, so that code after it never runs. */
-class RedirectError extends Error {
-  constructor(readonly path: string) {
-    super(`redirect to ${path}`);
-  }
-}
+import { NotFoundError, RedirectError } from "@/test/unit";
 
 const mocks = vi.hoisted(() => ({
   createPage: vi.fn(),
@@ -55,9 +49,6 @@ const serviceWrites = [
 const USER = { id: crypto.randomUUID(), name: "alice", type: "user", mustChangePassword: false };
 /** The actor the actions pass to the services: the logged-in user, in the browser. */
 const BROWSER_USER = { id: USER.id, name: USER.name, type: USER.type, channel: "browser" };
-
-/** Thrown by the mocked `notFound`, like the real one throws, so that code after it never runs. */
-class NotFoundError extends Error {}
 
 beforeEach(() => {
   vi.resetAllMocks();

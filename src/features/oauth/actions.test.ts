@@ -1,13 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { approve, deny } from "@/features/oauth/actions";
-
-/** Thrown by the mocked `requireUser`, like its redirect throws, so that code after it never runs. */
-class RedirectError extends Error {
-  constructor(readonly path: string) {
-    super(`redirect to ${path}`);
-  }
-}
+import { RedirectError } from "@/test/unit";
 
 const mocks = vi.hoisted(() => ({
   requireUser: vi.fn(),

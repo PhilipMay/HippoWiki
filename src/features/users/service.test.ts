@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createUser, ensureAdmin, listUsers, type Actor } from "@/features/users/service";
 import { Prisma } from "@/generated/prisma/client";
 import { PasswordHashBusyError } from "@/lib/password-hash";
+import { knownError, uniqueViolation } from "@/test/unit";
 
 const mocks = vi.hoisted(() => ({
   userFindUnique: vi.fn(),
@@ -35,15 +36,6 @@ const ALICE_ID = "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002";
 /** The acting users: the admin, and a normal user. */
 const ADMIN: Actor = { id: ADMIN_ID, name: "admin", type: "admin" };
 const ALICE: Actor = { id: ALICE_ID, name: "alice", type: "user" };
-
-function knownError(code: string, meta?: Record<string, unknown>): Prisma.PrismaClientKnownRequestError {
-  return new Prisma.PrismaClientKnownRequestError("database error", { code, clientVersion: "test", meta });
-}
-
-/** A unique violation as Prisma reports it with a driver adapter. */
-function uniqueViolation(constraint: { index?: string; fields?: string[] }) {
-  return knownError("P2002", { driverAdapterError: { cause: { constraint } } });
-}
 
 /** Everything that was passed to the logger, as one string. */
 function logged(): string {

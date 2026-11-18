@@ -14,9 +14,9 @@
     findings of the tests that are still open are minor.
   - Documents that the features outran: rules stated in full in several documents, and copies of code and
     constants in the specs.
-- Findings: 73 open of 107, 0 Blocker, 0 Major, 59 Minor and 14 Nit (28 `issue:`, 29 `suggestion:`, 12 `nit:` and
+- Findings: 72 open of 107, 0 Blocker, 0 Major, 58 Minor and 14 Nit (27 `issue:`, 29 `suggestion:`, 12 `nit:` and
   4 `question:`).
-- Confidence of the suggestions: 12 High, 47 Medium and 10 Low; the 4 questions have none. A High suggestion can be
+- Confidence of the suggestions: 12 High, 46 Medium and 10 Low; the 4 questions have none. A High suggestion can be
   fixed as written; the others wait for the user, as `issue-report.md` describes.
 - Decisions: on 2026-11-18 the user decided all Medium and Low suggestions. Each of these findings ends with a line
   `Decision`, and is fixed as that line says, without asking again. The 4 questions were decided by the user on the
@@ -1024,27 +1024,8 @@ PageDeleteFormAction } from "@/features/pages/forms";`.
 
 Unit coverage on 2026-11-18 is 78.95 % of the lines and 69.71 % of the branches. The gap is almost only the
 components and the route pages, which have no unit tests on purpose (67 of 138 files, 690 lines); the services are
-between 94 % and 100 %. The findings below are therefore about what is asserted, not about lines.
-
-#### issue: fixtures and builders of mocks are copied between the test files, and the tests of the services mix every concern
-
-- Location: the three `service.test.ts` files and the `actions.test.ts` and `queries.test.ts` files of the content
-  features; `integration/page-service.test.ts`; `integration/folder-service.test.ts`
-- Severity: Minor. A cost of maintenance, not a risk of behaviour.
-- Category: tests
-- Problem: the unit tests have no shared module of helpers. `RedirectError` is defined in 12 test files, the
-  builders of database errors in up to five, and the ids and actors are the same in three. The tables of writes,
-  of messages and of functions are copied between the tests of pages and folders. In the integration tests the
-  read of a stored page appears 40 times, the creation of the user "bob" 52 times, and `revisionsOf()` is defined
-  twice with different fields. The pages test has 2,230 lines, with the roles spread over four describes.
-- Impact: a new write or role has four tables in two files, and `revertPage()` was forgotten in three already. The
-  premise "the role of a connection is at most Writer" lived in three copies and outlived the Manager connections.
-- Evidence: the counts come from searches over the named files.
-- Suggestion (optional): a module of test helpers for the unit tests, left out of the coverage, with the builders,
-  the actors and one table of all content writes; helpers for a stored page and an MCP actor for the integration
-  tests; a split of the pages test into reads, history, writes and access.
-- Confidence: Medium. The duplication is counted; where the helpers live and how the file is split is a trade-off.
-- Decision (2026-11-18): as suggested, the split of the pages test included.
+between 94 % and 100 %. The findings of this section were therefore about what is asserted, not about lines; all of
+them are fixed.
 
 #### Reviewed
 
@@ -1056,6 +1037,9 @@ between 94 % and 100 %. The findings below are therefore about what is asserted,
   of the untouched row, including "changed, not taken" and the restore without a version.
 - The last Owner with a real race, and the trigger of the database against roles of admins.
 - The delete of a tab: the rollback with a trigger, a race with a held lock, 300 pages, and MCP.
+- The unit tests of the services assert what needs a mock, and the integration tests prove the queries; the helpers
+  of both exist once (`src/test/`, `integration/helpers.ts`), and the unit tests of the pages service are split by
+  concern.
 - A content save and a revert with their revision as one unit, by a trigger; the races of every pair of save,
   revert, move and delete with the same version, of two restores, and of a create, move and restore into a tab while
   it is deleted.
@@ -1280,7 +1264,8 @@ lastEditedById: bob.id, lastEditedVia: "mcp" } });`.
 
 - Location: 36 comments in `e2e/` (`edit-page.spec.ts` 11, `move-or-rename-page.spec.ts` 12, `delete-page.spec.ts`
   6, `mcp.spec.ts` 4, `folder-roles.spec.ts` 2, `restore-page.spec.ts` 1) and 35 in the unit and integration tests
-  (`integration/page-service.test.ts` 19, `src/features/pages/service.test.ts` 6, six more files)
+  (`integration/page-service.test.ts` 19, the unit tests of the pages service in
+  `src/features/pages/service-*.test.ts` 6, six more files)
 - Severity: Nit. Comments only.
 - Category: tests
 - Problem: the IDs `R1` to `R14` point into requirements files, which the wrap-up of a feature deletes; `spec/`

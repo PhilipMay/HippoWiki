@@ -11,6 +11,7 @@ import {
   listPageRevisions,
   listTabPages,
 } from "@/features/pages/queries";
+import { RedirectError } from "@/test/unit";
 
 const mocks = vi.hoisted(() => ({
   connection: vi.fn(),
@@ -86,13 +87,6 @@ const QUERIES: [string, () => Promise<unknown>, Mock, unknown[]][] = [
   ["getPageRevision", () => getPageRevision(PAGE_ID, 5), mocks.getPageRevision, [PAGE_ID, 5]],
   ["getRevisionComparison", () => getRevisionComparison(PAGE_ID, 5, 2), mocks.getRevisionComparison, [PAGE_ID, 5, 2]],
 ];
-
-/** Thrown by the mocked `requireUser()`, like the redirect to the login page that the real one throws. */
-class RedirectError extends Error {
-  constructor(readonly path: string) {
-    super(`redirect to ${path}`);
-  }
-}
 
 describe("every query", () => {
   // Without `connection()` Next.js would prerender the calling route at build time and serve a stale snapshot. The

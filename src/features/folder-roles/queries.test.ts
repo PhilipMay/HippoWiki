@@ -1,6 +1,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
 
 import { listAllFolderRoles, listFolderRoles, listRoleCandidates } from "@/features/folder-roles/queries";
+import { RedirectError } from "@/test/unit";
 
 const mocks = vi.hoisted(() => ({
   connection: vi.fn(),
@@ -21,9 +22,6 @@ vi.mock("@/features/auth/session", () => ({ requireUser: mocks.requireUser }));
 /** The logged-in user that the mocked `requireUser()` returns: the actor of the service read. */
 const USER = { id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002", name: "alice", type: "user", mustChangePassword: false };
 const FOLDER_ID = "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10";
-
-/** Thrown by the mocked `requireUser()`, like the redirect to the login page that the real one throws. */
-class RedirectError extends Error {}
 
 beforeEach(() => {
   vi.resetAllMocks();

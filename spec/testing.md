@@ -32,6 +32,20 @@ How the code is tested. Commands are listed in `README.md`.
   runs.
 - Schemas, environment parsing and other pure helpers get unit tests.
 - Mocks are set up with `vi.mock` and shared mock functions from `vi.hoisted`, reset in `beforeEach`.
+- The helpers of the unit tests live in `src/test/`, which `vitest.config.ts` leaves out of the coverage, and are
+  imported, never copied:
+  - `src/test/unit.ts`: `RedirectError` and `NotFoundError`, which the mocked `redirect()` and `notFound()` throw;
+    the builders of Prisma errors (`knownError()`, `uniqueViolation()`, `foreignKeyViolation()`); `dataOf()`, the
+    data of a write; the ids and the actors of the tests of the content services, among them `mcpActor()` for a
+    connection of a given role. It imports no service.
+  - `src/test/content-writes.ts`: `CONTENT_WRITES`, the one table of all content writes of the pages and the folders
+    service, each with valid input, its lowest role, the ids and the start of its log lines and the key of its last
+    editor. The tables of these tests that go over the writes (the actor, an admin, no role, the lowest role of each
+    function) are built from it, so a new write is added there once.
+  - `src/test/pages-service.ts`: the mocked database and logger of the unit tests of the pages service, which are
+    split by concern into `src/features/pages/service-reads.test.ts`, `service-history.test.ts`,
+    `service-writes.test.ts` and `service-access.test.ts` (the actor, an admin and the roles). Each file mocks
+    `@/lib/db` and `@/lib/logger` with a factory that imports this module.
 - Services (`service.test.ts`) get unit tests for what needs a mock: the branches that the database cannot be made to
   take on purpose, and what the integration tests cannot tell apart. They mock `@/lib/db` and `@/lib/logger`, and
   assert what the service does, not how it asks the database, so that a refactoring that keeps the behaviour keeps
@@ -128,6 +142,10 @@ How the code is tested. Commands are listed in `README.md`.
 - Rows are created with the helpers of `e2e/support/database.ts` (`createFolder()`, `createTab()`, `createPage()`,
   `createRevisions()`, `createFolderRole()`, `createUser()`, `createGrant()`). A state that no helper sets up, such as
   another version, channel or revision of a stored row, is written directly with the client of `getTestDb()`.
+- `integration/helpers.ts` holds what the tests of the content services share: the results `NOT_ALLOWED` and
+  `FAILED`, `UNKNOWN_ACTOR`, `owners()` for the roles of a folder, `createBob()` for the second user, `mcpActorOf()`
+  for an actor of MCP with a new grant, `storedPage()` for the stored row of a page, and `revisionsOf()` for the
+  revisions of a page with the fields a test compares.
 - They cover what the unit tests can only mock:
   - `src/lib/db-errors.ts` against the errors that Prisma and its `pg` adapter really report
     (`integration/db-errors.test.ts`): every unique constraint that the module names is recognised by its constant
