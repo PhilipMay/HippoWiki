@@ -48,7 +48,7 @@ const serviceWrites = [
 /** The logged-in user that `requireUser()` returns; every action passes it to its service write as the actor. */
 const USER = { id: crypto.randomUUID(), name: "alice", type: "user", mustChangePassword: false };
 /** The actor the actions pass to the services: the logged-in user, in the browser. */
-const BROWSER_USER = { id: USER.id, name: USER.name, type: USER.type, channel: "browser" };
+const BROWSER_USER = { id: USER.id, name: USER.name, type: USER.type, channel: "web" };
 
 beforeEach(() => {
   vi.resetAllMocks();

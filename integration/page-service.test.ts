@@ -5,7 +5,7 @@ import * as folderService from "@/features/folders/service";
 import { CONTENT_MAX_LENGTH, CONTENT_MAX_TABLE_CELLS } from "@/features/pages/limits";
 import { CONTENT_TABLE_CELLS_MESSAGE } from "@/features/pages/schema";
 import * as pageService from "@/features/pages/service";
-import { inBrowser, type BrowserActor } from "@/features/folder-roles/service";
+import { inBrowser, type BrowserActor } from "@/features/folder-roles/actors";
 import type { Page, User } from "@/generated/prisma/client";
 
 import {

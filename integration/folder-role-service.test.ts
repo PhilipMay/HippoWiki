@@ -1,6 +1,7 @@
 // Runs the folder roles service against the test database, to check its reads and writes on real data.
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { inMcp } from "@/features/folder-roles/actors";
 import * as folderRoleService from "@/features/folder-roles/service";
 import type { User } from "@/generated/prisma/client";
 
@@ -328,13 +329,13 @@ describe("the role of an actor of MCP", () => {
     });
 
     await expect(
-      folderRoleService.folderRoleOf(folderRoleService.inMcp(actor, connection(projects.id, "writer")), projects.id),
+      folderRoleService.folderRoleOf(inMcp(actor, connection(projects.id, "writer")), projects.id),
     ).resolves.toBe("writer");
     await expect(
-      folderRoleService.folderRoleOf(folderRoleService.inMcp(actor, connection(projects.id, "writer")), notes.id),
+      folderRoleService.folderRoleOf(inMcp(actor, connection(projects.id, "writer")), notes.id),
     ).resolves.toBeNull();
     await expect(
-      folderRoleService.folderRoleOf(folderRoleService.inMcp(actor, connection(reading.id, "writer")), reading.id),
+      folderRoleService.folderRoleOf(inMcp(actor, connection(reading.id, "writer")), reading.id),
     ).resolves.toBe("reader");
     // The user's own role, without a connection.
     await expect(folderRoleService.folderRoleOf(actor, notes.id)).resolves.toBe("owner");

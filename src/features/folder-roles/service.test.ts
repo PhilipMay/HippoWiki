@@ -4,8 +4,6 @@ import {
   changeRole,
   folderRoleOf,
   giveRole,
-  inBrowser,
-  inMcp,
   listAllFolderRoles,
   listFolderRoles,
   listRoleCandidates,
@@ -17,16 +15,14 @@ import {
   roleOf,
   roleOnFolderOfPage,
   roleOnFolderOfTab,
-  storedChannelOf,
   roleSelection,
-  type ContentActor,
 } from "@/features/folder-roles/service";
+import type { ContentActor } from "@/features/folder-roles/actors";
 import {
   ACTOR,
   ACTOR_ID,
   dataOf,
   FOLDER_ID,
-  GRANT_ID,
   knownError,
   MALFORMED_ID,
   MCP_ACTOR,
@@ -75,29 +71,6 @@ const BROWSER: ContentActor = ACTOR;
 const MCP: ContentActor = MCP_ACTOR;
 /** An actor of MCP with a Reader connection to the folder `FOLDER_ID`. */
 const MCP_READER: ContentActor = mcpActor("reader");
-
-describe("inBrowser and inMcp", () => {
-  it("give the user the channel and, through MCP, the connection, and nothing else of the session", () => {
-    const sessionUser = { ...USER, mustChangePassword: false, email: "alice@users.hippowiki.invalid" };
-    const connection = { grantId: GRANT_ID, folderId: FOLDER_ID, role: "writer" as const };
-
-    expect(inBrowser(sessionUser)).toStrictEqual({ ...USER, channel: "browser" });
-    expect(inMcp(sessionUser, { ...connection, extra: "x" } as typeof connection)).toStrictEqual({
-      ...USER,
-      channel: "mcp",
-      connection,
-    });
-  });
-});
-
-describe("storedChannelOf", () => {
-  it("is web for the actor of the browser and mcp for the actor of MCP", () => {
-    const connection = { grantId: GRANT_ID, folderId: FOLDER_ID, role: "writer" as const };
-
-    expect(storedChannelOf(inBrowser(USER))).toBe("web");
-    expect(storedChannelOf(inMcp(USER, connection))).toBe("mcp");
-  });
-});
 
 describe("the role of an actor of MCP", () => {
   it.each([
@@ -199,7 +172,7 @@ describe("readerOf and readableFolderWhere", () => {
 
   it("give an admin nothing, in either channel", () => {
     for (const actor of [
-      { ...ADMIN, channel: "browser" },
+      { ...ADMIN, channel: "web" },
       { ...MCP, ...ADMIN },
     ] as const) {
       expect(readerOf(actor)).toBeNull();
@@ -232,7 +205,7 @@ describe("mayReadFolder and mayReadTab", () => {
 
     await expect(check(MCP)).resolves.toBe(true);
     await expect(check(MCP)).resolves.toBe(false);
-    await expect(check({ ...ADMIN, channel: "browser" })).resolves.toBe(false);
+    await expect(check({ ...ADMIN, channel: "web" })).resolves.toBe(false);
     await expect(check({ ...MCP, ...ADMIN })).resolves.toBe(false);
   });
 

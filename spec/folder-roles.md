@@ -128,9 +128,10 @@ and `src/features/folder-roles/service.test.ts`.
 
 ## MCP
 
-- MCP follows the roles. Every read and write of the content takes the channel of the call, `browser` or `mcp`, as a
+- MCP follows the roles. Every read and write of the content takes the channel of the call, `web` or `mcp`, as a
   required part of the actor, so that no caller can leave it out; the actor of MCP also carries its connection, the
-  folder and the role of its address.
+  folder and the role of its address. The same two values are stored with the last editor and named in every line of
+  the server log (see "Last editor" in `content-structure.md`).
 - Through MCP a user has, on the folder of the connection, the lower of the own current role and the role of the
   connection, Reader, Writer or Manager, and no role on any other folder. The checks of the folders and pages services
   are otherwise the same as in the browser, so a Writer connection creates, saves, moves and renames pages, and a

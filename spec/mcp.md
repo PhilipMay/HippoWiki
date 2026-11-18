@@ -11,7 +11,7 @@ or renames them; a Manager connection also deletes pages and creates, renames an
 Code: `src/features/mcp/` (`tools.ts` with the tools, `http.ts` with the adapter of the route, `queries.ts` and
 `components/` for the view "AI apps"), the route `src/app/mcp/[[...path]]/route.ts` and the exception for it in
 `src/proxy.ts`. The roles of MCP are `MCP_ROLES` and `mcpRolesFor()` in `src/features/folder-roles/roles.ts`, the
-actor of MCP `inMcp()` in `src/features/folder-roles/service.ts`. The protocol is spoken by the MCP SDK
+actor of MCP `inMcp()` in `src/features/folder-roles/actors.ts`. The protocol is spoken by the MCP SDK
 (`@modelcontextprotocol/server`, see `tech.md`).
 
 Tests: `e2e/mcp-access.spec.ts`, `e2e/mcp-read.spec.ts`, `e2e/mcp-write.spec.ts`, `e2e/mcp-manager.spec.ts`, `e2e/oauth.spec.ts` for the access tokens of OAuth, `e2e/ai-apps.spec.ts` for the view "AI

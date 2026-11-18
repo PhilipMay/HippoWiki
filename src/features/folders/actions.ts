@@ -8,7 +8,7 @@
 import { notFound, redirect } from "next/navigation";
 
 import { requireUser } from "@/features/auth/session";
-import { inBrowser } from "@/features/folder-roles/service";
+import { inBrowser } from "@/features/folder-roles/actors";
 import { parseFolderFormData, parseTabFormData, type TabDeleteFormState } from "@/features/folders/forms";
 import { parseFolderId, parseTabId } from "@/features/folders/schema";
 import * as folderService from "@/features/folders/service";

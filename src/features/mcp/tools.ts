@@ -12,7 +12,7 @@ import { McpServer, type CallToolResult } from "@modelcontextprotocol/server";
 import { z } from "zod";
 
 import { includesRole, ROLE_LABELS, type McpRole } from "@/features/folder-roles/roles";
-import type { McpActor } from "@/features/folder-roles/service";
+import type { McpActor } from "@/features/folder-roles/actors";
 import * as folderService from "@/features/folders/service";
 import { deriveName } from "@/features/pages/derive";
 import { pageContentInputSchema, TITLE_HEADING_MISSING_MESSAGE } from "@/features/pages/schema";

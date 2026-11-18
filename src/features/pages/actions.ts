@@ -8,7 +8,7 @@
 import { notFound, redirect } from "next/navigation";
 
 import { requireUser } from "@/features/auth/session";
-import { inBrowser } from "@/features/folder-roles/service";
+import { inBrowser } from "@/features/folder-roles/actors";
 import { parseFolderId } from "@/features/folders/schema";
 import {
   parseNewPageFormData,

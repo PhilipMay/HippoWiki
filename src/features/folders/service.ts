@@ -11,15 +11,22 @@
 // user's role and the role of the connection; every other folder reads like one that does not exist, and a write there
 // is `not-allowed`. Folders are created and renamed only in the browser; tabs are created, renamed and deleted in the
 // browser and through MCP. A write stores the actor as the last editor of the folder or tab, together with the channel
-// of the write (`storedChannelOf()`), in the same write that changes `updatedAt`; deleting a tab stores the actor and
+// of the write (`openContentWrite()` in `actors.ts`), in the same write that changes `updatedAt`; deleting a tab stores the actor and
 // the channel as the last editor of the pages it deletes with the tab. A rename to the name the folder or tab has stored
 // changes nothing: it is no edit, so it keeps `updatedAt`, the last editor and the channel.
 
 import { z } from "zod";
 
-import { mayDo, type FolderFunction, type Role } from "@/features/folder-roles/roles";
+import type { Role } from "@/features/folder-roles/roles";
 import {
   channelOf,
+  openContentWrite,
+  refusedByRole,
+  unknownActor,
+  type BrowserActor,
+  type ContentActor,
+} from "@/features/folder-roles/actors";
+import {
   folderRoleOf,
   mayReadFolder,
   readableFolderWhere,
@@ -27,14 +34,9 @@ import {
   roleOf,
   roleOnFolderOfTab,
   roleSelection,
-  storedChannelOf,
-  type BrowserActor,
-  type ContentActor,
 } from "@/features/folder-roles/service";
 import { folderInputSchema, parseFolderId, parseTabId, tabInputSchema } from "@/features/folders/schema";
 import { LAST_EDITOR_SELECT, withLastEditor, type LastEditor } from "@/features/users/records";
-import { parseUserId } from "@/features/users/schema";
-import type { Actor } from "@/features/users/service";
 import { isAdmin } from "@/features/users/user-type";
 import { getDb } from "@/lib/db";
 import { FOLDER_NAME, isForeignKeyViolation, isUniqueViolation, LAST_EDITOR, TAB_NAME } from "@/lib/db-errors";
@@ -100,51 +102,6 @@ const STORED_TAB_SELECT = { id: true, name: true, folder: { select: { name: true
 
 function invalidName(error: z.ZodError<{ name: string }>): { ok: false; error: InvalidName } {
   return { ok: false, error: { code: "invalid-input", fieldErrors: z.flattenError(error).fieldErrors } };
-}
-
-/**
- * The result of a write by an admin, who changes no content, or by a user whose role on the folder does not allow it;
- * it is logged with the id of the actor and, for a role, the id of the folder or tab and the role, if any.
- */
-function notAllowed(
-  actor: Actor,
-  message: string,
-  target: Record<string, string> = {},
-): { ok: false; error: NotAllowed } {
-  logger.warn({ actorId: actor.id, ...target }, message);
-  return { ok: false, error: { code: "not-allowed" } };
-}
-
-/**
- * The result of a write whose function the role of the actor does not include, or `null` if it does. Without a role
- * the folder does not exist for the actor; with a lower role the function is not offered.
- */
-function refusedByRole(
-  actor: Actor,
-  what: string,
-  role: Role | null,
-  fn: FolderFunction,
-  target: { folderId: string } | { tabId: string },
-): { ok: false; error: NotAllowed } | null {
-  if (mayDo(role, fn)) return null;
-  if (role === null) return notAllowed(actor, `${what}: the actor has no role on the folder`, target);
-  return notAllowed(actor, `${what}: the role of the actor does not allow it`, { ...target, role });
-}
-
-/**
- * The id of the actor, to be stored as the last editor, or `null` if it is malformed, which is logged: the adapters
- * take the actor from a valid session, so only a broken caller passes a malformed id.
- */
-function editorIdOf(actor: Actor): string | null {
-  const id = parseUserId(actor.id);
-  if (!id) logger.error({ actorId: actor.id }, "malformed actor id");
-  return id;
-}
-
-/** The result of a write whose actor does not exist; it is logged, because only a broken caller can cause it. */
-function unknownActor(err: unknown, actor: Actor): { ok: false; error: Failed } {
-  logger.error({ err, actorId: actor.id }, "actor of write not found");
-  return { ok: false, error: { code: "failed" } };
 }
 
 /** What the write of a rename did: stored the name, found the name already stored, or found no item. */
@@ -268,10 +225,9 @@ export async function createFolder(
   actor: BrowserActor,
   input: { name: string },
 ): Promise<Result<Folder, CreateFolderError>> {
-  if (isAdmin(actor)) return notAllowed(actor, "folder not created: the actor is an admin");
-  const lastEditedById = editorIdOf(actor);
-  if (!lastEditedById) return { ok: false, error: { code: "failed" } };
-  const lastEditedVia = storedChannelOf(actor);
+  const opened = openContentWrite(actor, "folder not created");
+  if (opened.refused) return opened.refused;
+  const { lastEditedById, lastEditedVia } = opened.editor;
 
   const parsed = folderInputSchema.safeParse(input);
   if (!parsed.success) return invalidName(parsed.error);
@@ -313,10 +269,9 @@ export async function renameFolder(
   id: string,
   input: { name: string },
 ): Promise<Result<Folder, RenameFolderError>> {
-  if (isAdmin(actor)) return notAllowed(actor, "folder not renamed: the actor is an admin");
-  const lastEditedById = editorIdOf(actor);
-  if (!lastEditedById) return { ok: false, error: { code: "failed" } };
-  const lastEditedVia = storedChannelOf(actor);
+  const opened = openContentWrite(actor, "folder not renamed");
+  if (opened.refused) return opened.refused;
+  const { lastEditedById, lastEditedVia } = opened.editor;
 
   const folderId = parseFolderId(id);
   if (!folderId) return { ok: false, error: { code: "folder-not-found" } };
@@ -378,10 +333,9 @@ export async function createTab(
   folderId: string,
   input: { name: string },
 ): Promise<Result<StoredTab, CreateTabError>> {
-  if (isAdmin(actor)) return notAllowed(actor, "tab not created: the actor is an admin");
-  const lastEditedById = editorIdOf(actor);
-  if (!lastEditedById) return { ok: false, error: { code: "failed" } };
-  const lastEditedVia = storedChannelOf(actor);
+  const opened = openContentWrite(actor, "tab not created");
+  if (opened.refused) return opened.refused;
+  const { lastEditedById, lastEditedVia } = opened.editor;
 
   const parsedFolderId = parseFolderId(folderId);
   if (!parsedFolderId) return { ok: false, error: { code: "folder-not-found" } };
@@ -429,10 +383,9 @@ export async function renameTab(
   id: string,
   input: { name: string },
 ): Promise<Result<StoredTab, RenameTabError>> {
-  if (isAdmin(actor)) return notAllowed(actor, "tab not renamed: the actor is an admin");
-  const lastEditedById = editorIdOf(actor);
-  if (!lastEditedById) return { ok: false, error: { code: "failed" } };
-  const lastEditedVia = storedChannelOf(actor);
+  const opened = openContentWrite(actor, "tab not renamed");
+  if (opened.refused) return opened.refused;
+  const { lastEditedById, lastEditedVia } = opened.editor;
 
   const tabId = parseTabId(id);
   if (!tabId) return { ok: false, error: { code: "tab-not-found" } };
@@ -499,10 +452,9 @@ export async function deleteTab(
   folderId: string,
   id: string,
 ): Promise<Result<DeletedTab, DeleteTabError>> {
-  if (isAdmin(actor)) return notAllowed(actor, "tab not deleted: the actor is an admin");
-  const lastEditedById = editorIdOf(actor);
-  if (!lastEditedById) return { ok: false, error: { code: "failed" } };
-  const lastEditedVia = storedChannelOf(actor);
+  const opened = openContentWrite(actor, "tab not deleted");
+  if (opened.refused) return opened.refused;
+  const { lastEditedById, lastEditedVia } = opened.editor;
 
   const parsedFolderId = parseFolderId(folderId);
   const tabId = parseTabId(id);

@@ -4,7 +4,7 @@ import { connection } from "next/server";
 import { cache } from "react";
 
 import { requireUser } from "@/features/auth/session";
-import { inBrowser } from "@/features/folder-roles/service";
+import { inBrowser } from "@/features/folder-roles/actors";
 import * as folderService from "@/features/folders/service";
 
 // Every query starts with `connection()`: without a request-time API, Next.js would prerender the calling route at

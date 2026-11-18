@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import * as folderService from "@/features/folders/service";
 import * as pageService from "@/features/pages/service";
-import { inBrowser, type BrowserActor } from "@/features/folder-roles/service";
+import { inBrowser, type BrowserActor } from "@/features/folder-roles/actors";
 import type { User } from "@/generated/prisma/client";
 
 import { createFolder, createFolderRole, createPage, createTab, createUser, getTestDb } from "../e2e/support/database";

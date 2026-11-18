@@ -6,7 +6,7 @@
   them, every adapter handles every code of every write, the browser and MCP agree on the seven writes they share,
   and the newest rules (writes that store nothing) are proven against the real database and in the browser. The
   weak points are three:
-  - Rules that are written several times: the guards of a content write in three services, the frame of a dialog
+  - Rules that are written several times: the frame of a dialog
     in nine components, a write without a change in five shapes, and the same rule in up to five specs. Two copies
     had drifted already; the one in the "Save page" dialog is fixed.
   - Tests that would not catch the refactoring this report suggests: the unit tests of the services pinned the calls
@@ -14,9 +14,9 @@
     findings of the tests that are still open are minor.
   - Documents that the features outran: rules stated in full in several documents, and copies of code and
     constants in the specs.
-- Findings: 57 open of 107, 0 Blocker, 0 Major, 46 Minor and 11 Nit (16 `issue:`, 28 `suggestion:`, 9 `nit:` and
+- Findings: 55 open of 107, 0 Blocker, 0 Major, 44 Minor and 11 Nit (14 `issue:`, 28 `suggestion:`, 9 `nit:` and
   4 `question:`).
-- Confidence of the suggestions: 6 High, 38 Medium and 9 Low; the 4 questions have none. A High suggestion can be
+- Confidence of the suggestions: 6 High, 36 Medium and 9 Low; the 4 questions have none. A High suggestion can be
   fixed as written; the others wait for the user, as `issue-report.md` describes.
 - Decisions: on 2026-11-18 the user decided all Medium and Low suggestions. Each of these findings ends with a line
   `Decision`, and is fixed as that line says, without asking again. The 4 questions were decided by the user on the
@@ -104,34 +104,6 @@ What can go wrong in a cleanup, and what several findings warn about:
 - Confidence: High. One fix; the `where` that reaches Prisma stays the same, so the tests of both reads in
   `src/features/folders/service.test.ts` pass unchanged, and `integration/folder-service.test.ts`, "reads no folder
   and no tab without a role of the actor", covers the behaviour.
-
-#### issue: the guards of a content write are copied into three services
-
-- Location: `src/features/folders/service.ts`, lines 109–148, `notAllowed()`, `refusedByRole()`, `editorIdOf()` and
-  `unknownActor()`; `src/features/pages/service.ts`, lines 500–539, the same four; `src/features/folder-roles/service.ts`,
-  lines 100–105, `roleHolderId()`, and lines 305–312, `notAllowed()`
-- Severity: Minor. Duplicated code with no wrong behaviour today.
-- Category: readability
-- Problem: `notAllowed()` is the same in all three services. `editorIdOf()` and `unknownActor()` are the same in
-  folders and pages, and `refusedByRole()` differs only in the type of its target. `roleHolderId()` is a third copy
-  of `editorIdOf()` behind a check for the admin. The opening of a write, "an admin gives `not-allowed`, a malformed
-  actor id gives `failed`, then take the stored channel", is written as the same four lines in all 11 content
-  writes, and the rule of the catch block, "the last editor before the other foreign keys", nine times.
-- Impact: a change of the rule, for example the actor id in every log line, which the first review report asks
-  for, has up to 14 places. One that is missed makes the services disagree without a failing test.
-- Evidence: `src/features/folders/service.ts`, lines 138–141, and `src/features/pages/service.ts`, lines 529–532,
-  both: `const id = parseUserId(actor.id);` and `if (!id) logger.error({ actorId: actor.id }, "malformed actor id");`.
-- Suggestion (required): move the four helpers to one module that both services import, and add one function for
-  the opening that returns the last editor and the channel, or the refusal, as `ownerOf()` does for the roles.
-- Confidence: Medium. No behaviour changes and the unit tests of both services cover the refusals; where the module
-  lives is a choice.
-- Alternatives:
-  - A new pure module in the feature of the folder roles. It needs no database, so the lint rule allows it.
-  - Next to `roleHolderId()` in the service of the folder roles, which both import already; that file is mixed
-    enough (see the finding on the three concerns below).
-- Decision (2026-11-18): a new pure module of the feature of the folder roles, for example one named
-  `actors.ts`, holds the four helpers and one function for the opening of a content write, next to the actors and
-  the channel (see the finding on the three concerns below).
 
 #### issue: "a write that stored nothing" has five shapes inside the services and none in their results
 
@@ -287,7 +259,7 @@ folderName }` for roles (next to `"done"`, where folders say `"stored"`), `{ out
   service needs a change of the lint rule that allows the database only in a `service.ts`, and of
   `architecture.md`; it is worth it only if the file keeps growing.
 - Confidence: Low. A choice of structure; the import paths of many files change.
-- Decision (2026-11-18): the actors and the channel move to the pure module named in the finding on the guards above.
+- Decision (2026-11-18): the actors and the channel move to the pure module `src/features/folder-roles/actors.ts`, which holds the guards of a content write as well.
   The reads of the history move out of the pages service, with the lint rule for the database and `architecture.md`
   changed to allow it.
 
@@ -1088,37 +1060,18 @@ The seven specs of the content (`pages.md`, `content-structure.md`, `page-histor
 `optimistic-locking.md`, `folder-roles.md`, `mcp.md`) were read sentence by sentence against the code. The rules
 that several of them state were compared with each other and with the code:
 
-| Rule                                                 | Stated in                                                                                  | The specs agree                         | The code agrees       |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------- | --------------------- |
-| A content save without a change stores nothing       | `pages.md`, `page-history.md`, `optimistic-locking.md`, `content-structure.md`, `mcp.md`   | Yes; two copies leave out the channel   | Yes                   |
-| A rename of a folder or tab to its own name          | `content-structure.md`, `pages.md`, `mcp.md`                                               | Yes                                     | Yes                   |
-| A move or rename of a page to its own name and place | `content-structure.md`, `pages.md`, `optimistic-locking.md`, `mcp.md`                      | Yes                                     | Yes                   |
-| A change to the same role                            | `folder-roles.md`                                                                          | One place                               | Yes                   |
-| Who may delete a tab                                 | `folder-roles.md`, `content-structure.md`, `mcp.md`                                        | Yes                                     | Yes                   |
-| What the roles of MCP may do                         | `mcp.md`, `folder-roles.md`, `content-structure.md`, `page-deletion.md`, `architecture.md` | Yes                                     | The seven specs yes   |
-| The last editor and the channel                      | all seven                                                                                  | In part: see the finding on the channel | The stored values yes |
-| Who is stored for a page                             | `pages.md`, `content-structure.md`, `page-history.md`                                      | Yes                                     | Yes                   |
-| Deleting a tab counts the versions up, unchecked     | `content-structure.md`, `optimistic-locking.md`, `page-deletion.md`                        | Yes                                     | Yes                   |
-| Restoring is unchecked and stores the channel `web`  | `page-deletion.md`, `optimistic-locking.md`                                                | Yes                                     | Yes                   |
-
-#### issue: "the channel" has two sets of values, and the specs call one of them "the only two values"
-
-- Location: `spec/content-structure.md`, section "Last editor"; `spec/folder-roles.md`, section "MCP";
-  `spec/architecture.md`, section "Reads and writes"; `src/features/folder-roles/service.ts`, lines 36 and 51–61
-- Severity: Minor. A matter of names, but an operator searches the log by it.
-- Category: docs
-- Problem: the stored and shown channel is `web` or `mcp`. The channel of the actor and of every log line is
-  `browser` or `mcp`. The specs use one word for both and never say that the value in the log differs.
-- Impact: an operator who filters the log for the channel `web` finds nothing.
-- Evidence: "its channel: `web` for a change in the browser, `mcp` … These are the only two values."; against
-  `export type Channel = "browser" | "mcp";`.
-- Suggestion (required): one sentence in "Last editor": the log lines and the actor name the channel of the call,
-  `browser` or `mcp`; only the stored channel says `web`.
-- Confidence: Medium. The fix is clear; the same word in the log is a reasonable alternative.
-- Alternatives: let the log lines say `web` as well, which changes output that an operator may filter on.
-- Decision (2026-11-18): the Alternative: the actor and every log line name the channel `web` as well, so there is one
-  set of values, `web` and `mcp`, for the stored channel, the actor and the log. The output of the log changes for the
-  browser.
+| Rule                                                 | Stated in                                                                                  | The specs agree                       | The code agrees       |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------- | --------------------- |
+| A content save without a change stores nothing       | `pages.md`, `page-history.md`, `optimistic-locking.md`, `content-structure.md`, `mcp.md`   | Yes; two copies leave out the channel | Yes                   |
+| A rename of a folder or tab to its own name          | `content-structure.md`, `pages.md`, `mcp.md`                                               | Yes                                   | Yes                   |
+| A move or rename of a page to its own name and place | `content-structure.md`, `pages.md`, `optimistic-locking.md`, `mcp.md`                      | Yes                                   | Yes                   |
+| A change to the same role                            | `folder-roles.md`                                                                          | One place                             | Yes                   |
+| Who may delete a tab                                 | `folder-roles.md`, `content-structure.md`, `mcp.md`                                        | Yes                                   | Yes                   |
+| What the roles of MCP may do                         | `mcp.md`, `folder-roles.md`, `content-structure.md`, `page-deletion.md`, `architecture.md` | Yes                                   | The seven specs yes   |
+| The last editor and the channel                      | all seven                                                                                  | Yes                                   | The stored values yes |
+| Who is stored for a page                             | `pages.md`, `content-structure.md`, `page-history.md`                                      | Yes                                   | Yes                   |
+| Deleting a tab counts the versions up, unchecked     | `content-structure.md`, `optimistic-locking.md`, `page-deletion.md`                        | Yes                                   | Yes                   |
+| Restoring is unchecked and stores the channel `web`  | `page-deletion.md`, `optimistic-locking.md`                                                | Yes                                   | Yes                   |
 
 #### suggestion: the rules of writes without a change are explained in full in five specs
 
@@ -1546,8 +1499,7 @@ documents name.
    missing integration cases exist. The Decision of each finding holds the rest.
 2. Fix the findings with a High confidence that change no code: the Locations of the first report.
 3. Close the gaps of the tests before any refactoring: the states of the dialogs that a shared frame would move.
-4. Refactor the code in small steps, each with its checks: the `null` check of the two reads, the shared guards of
-   a content write, one shape for a write without a change, the hooks and the frame of the dialogs, then the
+4. Refactor the code in small steps, each with its checks: the `null` check of the two reads, one shape for a write without a change, the hooks and the frame of the dialogs, then the
    splits of the large files.
 5. Restructure the documents last: one owner per rule in the feature specs, the sections of `architecture.md`,
    and the form of the catalog in `CLAUDE.md`.

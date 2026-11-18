@@ -27,7 +27,8 @@ How the code is organised and which patterns new code follows. The technology st
     actions and the names of form fields. It has no server-only imports, so Client Components can use it.
   - `queries.ts` and `actions.ts`: the adapters between the web and the service
   - The features are `folders` (folders and their tabs), `pages`, `folder-roles` (the roles of users on folders, with
-    `roles.ts` for the roles and the lowest role of each function, which services and routes share), `users` (the
+    `roles.ts` for the roles and the lowest role of each function, which services and routes share, and `actors.ts`
+    for the actors of the content and the guards of a content write, which the content services share), `users` (the
     accounts), `auth` (login, logout, the session and the login wait, with `session.ts` for who is calling, see "Login
     and sessions"), `grants` (the connected apps, the grants of users to OAuth clients, and the check of an access
     token), `mcp` (the MCP server: `tools.ts` with its tools, `http.ts`, the adapter of the route of the MCP addresses,
@@ -115,9 +116,12 @@ How the code is organised and which patterns new code follows. The technology st
     changes for a user, and the grant service answers `null` and `not-allowed` for an admin. Who the actor is, the
     adapters find out from the session (see "Login and sessions").
   - Every read and write of content (folders, tabs, pages and deleted pages) takes the acting user as its first
-    argument as well, together with the channel of the call, `browser` or `mcp` (`ContentActor`, `BrowserActor` and
-    `McpActor` in `src/features/folder-roles/service.ts`; `inBrowser()` and `inMcp()` build them), which no caller can
-    leave out. The actor of MCP also carries its connection: the grant, the folder and the role of its address. The
+    argument as well, together with the channel of the call, `web` or `mcp` (`ContentActor`, `BrowserActor` and
+    `McpActor` in `src/features/folder-roles/actors.ts`; `inBrowser()` and `inMcp()` build them), which no caller can
+    leave out. The same two values are the channel the content stores with its last editor and the channel of every
+    log line. `actors.ts` is a pure module: it also holds the guards that the services of folders, pages and folder
+    roles share, among them `openContentWrite()`, the opening of every content write (an admin gets `not-allowed`, a
+    malformed actor id `failed`, otherwise the last editor and the channel to store). The actor of MCP also carries its connection: the grant, the folder and the role of its address. The
     queries and actions pass the actor of the browser, the MCP tools the actor of MCP. The type of the first argument
     says which channel a function accepts: `ContentActor` for what MCP may do as well, `BrowserActor` for what only
     the browser does (creating and renaming folders, reverting, restoring, the reads of the history). Which tools

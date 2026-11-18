@@ -12,7 +12,7 @@ import {
   renameFolder,
   renameTab,
 } from "@/features/folders/service";
-import type { ContentActor } from "@/features/folder-roles/service";
+import type { ContentActor } from "@/features/folder-roles/actors";
 import { allows, contentWritesOf, ROLES } from "@/test/content-writes";
 import {
   ACTOR,
@@ -404,7 +404,7 @@ describe("renameFolder", () => {
       lastEditedById: ACTOR_ID,
       lastEditedVia: "web",
     });
-    expect(mocks.info).toHaveBeenCalledExactlyOnceWith({ folderId: FOLDER_ID, channel: "browser" }, "folder renamed");
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith({ folderId: FOLDER_ID, channel: "web" }, "folder renamed");
   });
 
   it.each([
@@ -420,7 +420,7 @@ describe("renameFolder", () => {
     });
 
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
-      { folderId: FOLDER_ID, channel: "browser" },
+      { folderId: FOLDER_ID, channel: "web" },
       "folder not changed: name is the same",
     );
     expect(mocks.warn).not.toHaveBeenCalled();
@@ -441,7 +441,7 @@ describe("renameFolder", () => {
       [{ where: { id: FOLDER_ID, name: { not: "handbook" } }, data }],
       [{ where: { id: FOLDER_ID }, data }],
     ]);
-    expect(mocks.info).toHaveBeenCalledExactlyOnceWith({ folderId: FOLDER_ID, channel: "browser" }, "folder renamed");
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith({ folderId: FOLDER_ID, channel: "web" }, "folder renamed");
   });
 
   it("returns folder-not-found for a folder that no longer exists", async () => {
@@ -527,7 +527,7 @@ describe("createTab", () => {
       lastEditedById: ACTOR_ID,
       lastEditedVia: "web",
     });
-    expect(mocks.info).toHaveBeenCalledWith({ tabId: TAB_ID, channel: "browser" }, "tab created");
+    expect(mocks.info).toHaveBeenCalledWith({ tabId: TAB_ID, channel: "web" }, "tab created");
   });
 
   it.each(tabNameTakenErrors)("returns name-taken for a unique violation %s", async (_name, err) => {
@@ -586,7 +586,7 @@ describe("renameTab", () => {
     await expect(renameTab(ACTOR, TAB_ID, TAB_VALID)).resolves.toEqual({ ok: true, value: stored });
 
     expect(dataOf(mocks.tabUpdateMany)).toEqual({ name: "guides", lastEditedById: ACTOR_ID, lastEditedVia: "web" });
-    expect(mocks.info).toHaveBeenCalledExactlyOnceWith({ tabId: TAB_ID, channel: "browser" }, "tab renamed");
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith({ tabId: TAB_ID, channel: "web" }, "tab renamed");
   });
 
   it.each([
@@ -600,7 +600,7 @@ describe("renameTab", () => {
     await expect(renameTab(ACTOR, TAB_ID, input)).resolves.toEqual({ ok: true, value: stored });
 
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
-      { tabId: TAB_ID, channel: "browser" },
+      { tabId: TAB_ID, channel: "web" },
       "tab not changed: name is the same",
     );
     expect(mocks.warn).not.toHaveBeenCalled();
@@ -619,7 +619,7 @@ describe("renameTab", () => {
       [{ where: { id: TAB_ID, name: { not: "guides" } }, data }],
       [{ where: { id: TAB_ID }, data }],
     ]);
-    expect(mocks.info).toHaveBeenCalledExactlyOnceWith({ tabId: TAB_ID, channel: "browser" }, "tab renamed");
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith({ tabId: TAB_ID, channel: "web" }, "tab renamed");
   });
 
   it("returns tab-not-found for a tab that no longer exists", async () => {
@@ -814,7 +814,7 @@ describe("deleteTab", () => {
       version: { increment: 1 },
     });
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
-      { actorId: ACTOR_ID, folderId: FOLDER_ID, tabId: TAB_ID, pageCount: 2, channel: "browser" },
+      { actorId: ACTOR_ID, folderId: FOLDER_ID, tabId: TAB_ID, pageCount: 2, channel: "web" },
       "tab deleted",
     );
   });

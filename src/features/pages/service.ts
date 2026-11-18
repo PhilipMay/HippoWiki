@@ -9,7 +9,7 @@
 // before anything that could tell whether a page exists. The deleted pages and every write need the lowest role of
 // their function (`FUNCTION_ROLES` in `roles.ts`). Through MCP a user works only on the folder of the connection, with
 // the lower of the user's role and the role of the connection; every other folder reads like one without a role. A
-// write stores the actor as the last editor of the page, with the channel of the write (`storedChannelOf()`), and counts
+// write stores the actor as the last editor of the page, with the channel of the write (`openContentWrite()` in `actors.ts`), and counts
 // its version up, in the same write that changes `updatedAt`; a new page starts with version 1. The folder and the tab
 // of the page keep their `updatedAt`, last editor and channel.
 //
@@ -23,9 +23,16 @@
 
 import { z } from "zod";
 
-import { mayDo, type FolderFunction, type Role } from "@/features/folder-roles/roles";
+import type { Role } from "@/features/folder-roles/roles";
 import {
   channelOf,
+  openContentWrite,
+  refusedByRole,
+  unknownActor,
+  type BrowserActor,
+  type ContentActor,
+} from "@/features/folder-roles/actors";
+import {
   folderRoleOf,
   mayReadFolder,
   mayReadTab,
@@ -34,9 +41,6 @@ import {
   roleOf,
   roleOnFolderOfPage,
   roleSelection,
-  storedChannelOf,
-  type BrowserActor,
-  type ContentActor,
 } from "@/features/folder-roles/service";
 import { parseFolderId, parseTabId } from "@/features/folders/schema";
 import {
@@ -50,9 +54,6 @@ import {
 } from "@/features/pages/schema";
 import { REVISIONS_PER_PAGE } from "@/features/pages/limits";
 import { LAST_EDITOR_SELECT, withLastEditor, type LastEditor } from "@/features/users/records";
-import { parseUserId } from "@/features/users/schema";
-import type { Actor } from "@/features/users/service";
-import { isAdmin } from "@/features/users/user-type";
 import type { ChangeChannel, Prisma } from "@/generated/prisma/client";
 import { getDb } from "@/lib/db";
 import {
@@ -494,51 +495,6 @@ function invalidInput<Input>(error: z.ZodError<Input>): {
 }
 
 /**
- * The result of a write by an admin, who changes no content, or by a user whose role on the folder does not allow it;
- * it is logged with the id of the actor and, for a role, the id of the folder or page and the role, if any.
- */
-function notAllowed(
-  actor: Actor,
-  message: string,
-  target: Record<string, string> = {},
-): { ok: false; error: NotAllowed } {
-  logger.warn({ actorId: actor.id, ...target }, message);
-  return { ok: false, error: { code: "not-allowed" } };
-}
-
-/**
- * The result of a write whose function the role of the actor does not include, or `null` if it does. Without a role
- * the folder does not exist for the actor; with a lower role the function is not offered.
- */
-function refusedByRole(
-  actor: Actor,
-  what: string,
-  role: Role | null,
-  fn: FolderFunction,
-  target: { folderId: string } | { pageId: string },
-): { ok: false; error: NotAllowed } | null {
-  if (mayDo(role, fn)) return null;
-  if (role === null) return notAllowed(actor, `${what}: the actor has no role on the folder`, target);
-  return notAllowed(actor, `${what}: the role of the actor does not allow it`, { ...target, role });
-}
-
-/**
- * The id of the actor, to be stored as the last editor, or `null` if it is malformed, which is logged: the adapters
- * take the actor from a valid session, so only a broken caller passes a malformed id.
- */
-function editorIdOf(actor: Actor): string | null {
-  const id = parseUserId(actor.id);
-  if (!id) logger.error({ actorId: actor.id }, "malformed actor id");
-  return id;
-}
-
-/** The result of a write whose actor does not exist; it is logged, because only a broken caller can cause it. */
-function unknownActor(err: unknown, actor: Actor): { ok: false; error: Failed } {
-  logger.error({ err, actorId: actor.id }, "actor of write not found");
-  return { ok: false, error: { code: "failed" } };
-}
-
-/**
  * The tab of a place: the id of a tab, `null` for the folder itself, or `undefined` if the id is malformed, so that
  * it never reaches the database.
  */
@@ -585,10 +541,9 @@ export async function createPage(
   folderId: string,
   input: { name: string; content: string; tabId: string | null },
 ): Promise<Result<StoredPage, CreatePageError>> {
-  if (isAdmin(actor)) return notAllowed(actor, "page not created: the actor is an admin");
-  const lastEditedById = editorIdOf(actor);
-  if (!lastEditedById) return { ok: false, error: { code: "failed" } };
-  const lastEditedVia = storedChannelOf(actor);
+  const opened = openContentWrite(actor, "page not created");
+  if (opened.refused) return opened.refused;
+  const { lastEditedById, lastEditedVia } = opened.editor;
 
   const parsedFolderId = parseFolderId(folderId);
   if (!parsedFolderId) return { ok: false, error: { code: "folder-not-found" } };
@@ -730,10 +685,9 @@ export async function updatePageContent(
   id: string,
   input: { content: string; version: number | null },
 ): Promise<Result<StoredPage, UpdatePageContentError>> {
-  if (isAdmin(actor)) return notAllowed(actor, "page not saved: the actor is an admin");
-  const lastEditedById = editorIdOf(actor);
-  if (!lastEditedById) return { ok: false, error: { code: "failed" } };
-  const lastEditedVia = storedChannelOf(actor);
+  const opened = openContentWrite(actor, "page not saved");
+  if (opened.refused) return opened.refused;
+  const { lastEditedById, lastEditedVia } = opened.editor;
 
   const pageId = parsePageId(id);
   if (!pageId) return { ok: false, error: { code: "page-not-found" } };
@@ -814,10 +768,9 @@ export async function revertPage(
   id: string,
   input: { revision: number; version: number | null },
 ): Promise<Result<StoredPage, RevertPageError>> {
-  if (isAdmin(actor)) return notAllowed(actor, "page not reverted: the actor is an admin");
-  const lastEditedById = editorIdOf(actor);
-  if (!lastEditedById) return { ok: false, error: { code: "failed" } };
-  const lastEditedVia = storedChannelOf(actor);
+  const opened = openContentWrite(actor, "page not reverted");
+  if (opened.refused) return opened.refused;
+  const { lastEditedById, lastEditedVia } = opened.editor;
 
   const pageId = parsePageId(id);
   if (!pageId) return { ok: false, error: { code: "page-not-found" } };
@@ -887,10 +840,9 @@ export async function moveOrRenamePage(
   id: string,
   input: { name: string; tabId: string | null; version: number | null },
 ): Promise<Result<StoredPage, MoveOrRenamePageError>> {
-  if (isAdmin(actor)) return notAllowed(actor, "page not moved or renamed: the actor is an admin");
-  const lastEditedById = editorIdOf(actor);
-  if (!lastEditedById) return { ok: false, error: { code: "failed" } };
-  const lastEditedVia = storedChannelOf(actor);
+  const opened = openContentWrite(actor, "page not moved or renamed");
+  if (opened.refused) return opened.refused;
+  const { lastEditedById, lastEditedVia } = opened.editor;
 
   const pageId = parsePageId(id);
   if (!pageId) return { ok: false, error: { code: "page-not-found" } };
@@ -971,10 +923,9 @@ export async function deletePage(
   id: string,
   input: { version: number | null },
 ): Promise<Result<PagePlace, DeletePageError>> {
-  if (isAdmin(actor)) return notAllowed(actor, "page not deleted: the actor is an admin");
-  const lastEditedById = editorIdOf(actor);
-  if (!lastEditedById) return { ok: false, error: { code: "failed" } };
-  const lastEditedVia = storedChannelOf(actor);
+  const opened = openContentWrite(actor, "page not deleted");
+  if (opened.refused) return opened.refused;
+  const { lastEditedById, lastEditedVia } = opened.editor;
 
   const pageId = parsePageId(id);
   if (!pageId) return { ok: false, error: { code: "page-not-found" } };
@@ -1029,10 +980,9 @@ export async function restorePage(
   id: string,
   input: { name: string; tabId: string | null },
 ): Promise<Result<StoredPage, RestorePageError>> {
-  if (isAdmin(actor)) return notAllowed(actor, "page not restored: the actor is an admin");
-  const lastEditedById = editorIdOf(actor);
-  if (!lastEditedById) return { ok: false, error: { code: "failed" } };
-  const lastEditedVia = storedChannelOf(actor);
+  const opened = openContentWrite(actor, "page not restored");
+  if (opened.refused) return opened.refused;
+  const { lastEditedById, lastEditedVia } = opened.editor;
 
   const pageId = parsePageId(id);
   if (!pageId) return { ok: false, error: { code: "page-not-found" } };

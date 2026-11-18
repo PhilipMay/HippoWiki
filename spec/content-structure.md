@@ -13,7 +13,7 @@ Code: `src/features/folders/` (folders and tabs), `src/features/pages/` (pages),
 `src/lib/addresses.test.ts`,
 `integration/folder-service.test.ts`, `integration/page-service.test.ts`, `integration/db-errors.test.ts`. The last
 editor and the channel: the writes of `src/features/folders/service.ts` and `src/features/pages/service.ts`,
-`storedChannelOf()` in `src/features/folder-roles/service.ts`, `src/features/users/records.ts` (what the reads return
+the actors in `src/features/folder-roles/actors.ts`, `src/features/users/records.ts` (what the reads return
 of the last editor and how the browser names it), the relation `lastEditedBy` and the field `lastEditedVia` of
 `Folder`, `Tab` and `Page` in `prisma/schema.prisma`, and the migrations `prisma/migrations/20261116103037_init/` and
 `prisma/migrations/20261117130000_change_channel/`.
@@ -273,7 +273,8 @@ real changes, and an editor or dialog that another user has open on the page is 
 - The user is the one who is logged in, through MCP the user of the connection. Every content write takes the acting user; a write by a user that does not
   exist fails and writes nothing.
 - With the last editor, every folder, tab and page stores how it was last changed, its channel: `web` for a change in
-  the browser, `mcp` for a change by an AI app through MCP. These are the only two values. The channel is set on
+  the browser, `mcp` for a change by an AI app through MCP. These are the only two values, and the same two name the
+  channel of the actor of a read or write and of every line of the server log. The channel is set on
   exactly the writes that set the last editor, in the same write, so that time, name and channel always describe the
   same change; a write that fails changes none of them. For a deleted page it is how the page was deleted, also with
   its tab.

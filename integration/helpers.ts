@@ -1,7 +1,7 @@
 // Helpers shared by the integration tests of the content services: the results they compare with, an actor that does
 // not exist, the user "bob", an actor of MCP, and the reads of a stored page and its revisions. The rows themselves are
 // created with the helpers of e2e/support/database.ts. It is no test itself.
-import { inMcp, type McpActor } from "@/features/folder-roles/service";
+import { inMcp, type McpActor } from "@/features/folder-roles/actors";
 import type { Page, User } from "@/generated/prisma/client";
 
 import { createUser, getTestDb, type FolderRoleData } from "../e2e/support/database";
@@ -14,7 +14,7 @@ export const UNKNOWN_ACTOR = {
   id: "8f7e6d5c-4b3a-4291-8f7e-6d5c4b3a2910",
   name: "ghost",
   type: "user" as const,
-  channel: "browser" as const,
+  channel: "web" as const,
 };
 
 /** Owner roles for the given users, for `createFolder({ roles })`. */

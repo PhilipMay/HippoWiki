@@ -4,7 +4,7 @@
 // import it before its `vi.mock` calls take effect.
 import { vi } from "vitest";
 
-import type { BrowserActor, McpActor } from "@/features/folder-roles/service";
+import type { BrowserActor, McpActor } from "@/features/folder-roles/actors";
 import { Prisma } from "@/generated/prisma/client";
 
 /** What the mocked `redirect()` throws, like the real one: code after it never runs, and a test asserts the path. */
@@ -58,7 +58,7 @@ export const MALFORMED_ID = "not-a-uuid";
 /** The user who makes the writes, without a channel: the actor of the writes of roles. */
 export const USER = { id: ACTOR_ID, name: "alice", type: "user" as const };
 /** The user who makes the writes in the browser. */
-export const ACTOR: BrowserActor = { ...USER, channel: "browser" };
+export const ACTOR: BrowserActor = { ...USER, channel: "web" };
 /** The same user with a malformed id, which only a broken caller passes. */
 export const MALFORMED_ACTOR: BrowserActor = { ...ACTOR, id: MALFORMED_ID };
 /** An admin in the browser, who sees and changes no content; named like the user, so that only the type decides. */

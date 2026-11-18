@@ -2,7 +2,7 @@
 // once, and every table of those tests that goes over the writes (the actor of a write, an admin, no role, the lowest
 // role of each function) picks it up. It imports the services, so a test imports it after its `vi.mock` calls, as
 // every static import is. It is no test itself and is left out of the coverage (`vitest.config.ts`).
-import type { BrowserActor } from "@/features/folder-roles/service";
+import type { BrowserActor } from "@/features/folder-roles/actors";
 import type { Role } from "@/features/folder-roles/roles";
 import * as folders from "@/features/folders/service";
 import * as pages from "@/features/pages/service";

@@ -10,7 +10,7 @@ import {
   revertPage,
   updatePageContent,
 } from "@/features/pages/service";
-import type { ContentActor } from "@/features/folder-roles/service";
+import type { ContentActor } from "@/features/folder-roles/actors";
 import { CONTENT_MAX_TABLE_CELLS } from "@/features/pages/limits";
 import { CONTENT_TABLE_CELLS_MESSAGE } from "@/features/pages/schema";
 import {
@@ -179,7 +179,7 @@ describe("createPage", () => {
       lastEditedVia: "web",
       revisions: { create: { number: 1, title: "My page", content: CONTENT, userId: ACTOR_ID, via: "web" } },
     });
-    expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID, channel: "browser" }, "page created");
+    expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID, channel: "web" }, "page created");
   });
 
   it("stores the content with plain line feeds", async () => {
@@ -295,7 +295,7 @@ describe("updatePageContent", () => {
       lastEditedVia: "web",
       version: { increment: 1 },
     });
-    expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID, channel: "browser" }, "page updated");
+    expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID, channel: "web" }, "page updated");
   });
 
   it("records a revision with the next number, the title, the content, the actor and the channel", async () => {
@@ -338,7 +338,7 @@ describe("updatePageContent", () => {
 
   // A save of the stored content, based on the version of the page, leaves the page as it is.
   it.each([
-    ["in the browser", ACTOR, { channel: "browser" }],
+    ["in the browser", ACTOR, { channel: "web" }],
     ["through MCP", MCP_ACTOR, { channel: "mcp", grantId: MCP_ACTOR.connection?.grantId }],
   ] as const)(
     "stores nothing and records no revision for the stored content %s, and logs it apart",
@@ -555,7 +555,7 @@ describe("revertPage", () => {
       revertedTo: 2,
     });
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
-      { pageId: PAGE_ID, revision: 2, channel: "browser" },
+      { pageId: PAGE_ID, revision: 2, channel: "web" },
       "page reverted",
     );
   });
@@ -752,7 +752,7 @@ describe("moveOrRenamePage", () => {
       version: { increment: 1 },
     });
     expect(mocks.info).toHaveBeenCalledWith(
-      { pageId: PAGE_ID, tabId: TAB_ID, channel: "browser" },
+      { pageId: PAGE_ID, tabId: TAB_ID, channel: "web" },
       "page moved or renamed",
     );
   });
@@ -782,7 +782,7 @@ describe("moveOrRenamePage", () => {
     });
 
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
-      { pageId: PAGE_ID, channel: "browser" },
+      { pageId: PAGE_ID, channel: "web" },
       "page not changed: name and place are the same",
     );
     expect(mocks.warn).not.toHaveBeenCalled();
@@ -942,7 +942,7 @@ describe("deletePage", () => {
       lastEditedVia: "web",
       version: { increment: 1 },
     });
-    expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID, channel: "browser" }, "page deleted");
+    expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID, channel: "web" }, "page deleted");
   });
 
   it("returns the folder as the place of a page placed directly in it", async () => {
@@ -1075,7 +1075,7 @@ describe("restorePage", () => {
       lastEditedVia: "web",
       version: { increment: 1 },
     });
-    expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID, tabId: TAB_ID, channel: "browser" }, "page restored");
+    expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID, tabId: TAB_ID, channel: "web" }, "page restored");
   });
 
   it("restores the page directly into its folder without a tab", async () => {

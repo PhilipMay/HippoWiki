@@ -17,7 +17,7 @@ import {
   revertPage,
   updatePageContent,
 } from "@/features/pages/service";
-import type { ContentActor } from "@/features/folder-roles/service";
+import type { ContentActor } from "@/features/folder-roles/actors";
 import {
   mocks,
   readCount,

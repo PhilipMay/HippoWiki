@@ -8,78 +8,19 @@
 
 import { z } from "zod";
 
-import {
-  includesRole,
-  mayDo,
-  rolesFor,
-  type FolderFunction,
-  type McpConnection,
-  type Role,
-} from "@/features/folder-roles/roles";
+import { includesRole, mayDo, rolesFor, type FolderFunction, type Role } from "@/features/folder-roles/roles";
+import { editorIdOf, isMcpActor, notAllowed, type ContentActor } from "@/features/folder-roles/actors";
 import { giveRoleInputSchema, parseRole, type GiveRoleFieldErrors } from "@/features/folder-roles/schema";
 import { parseFolderId, parseTabId } from "@/features/folders/schema";
 import { parsePageId } from "@/features/pages/schema";
 import { parseUserId, parseUserName } from "@/features/users/schema";
 import type { Actor } from "@/features/users/service";
 import { isAdmin } from "@/features/users/user-type";
-import type { ChangeChannel, Prisma } from "@/generated/prisma/client";
+import type { Prisma } from "@/generated/prisma/client";
 import { getDb } from "@/lib/db";
 import { FOLDER_ROLE_USER, isAdminRoleViolation, isUniqueViolation } from "@/lib/db-errors";
 import { logger } from "@/lib/logger";
 import type { Result } from "@/lib/result";
-
-/**
- * Where a read or a write of the content comes from. In the browser a user sees and does with a folder what the role
- * on it allows. Through MCP a user works only on the folder of the connection, with the lower of the user's current
- * role on it and the role of the connection, and has no role on any other folder.
- */
-export type Channel = "browser" | "mcp";
-
-/** The actor of the browser: the user of the session. */
-export type BrowserActor = Actor & { channel: "browser" };
-
-/** The actor of MCP: the user of the access token, together with the connection of its grant. */
-export type McpActor = Actor & { channel: "mcp"; connection: McpConnection };
-
-/** The actor of a read or a write of the content, together with the channel of the call, which no caller can leave out. */
-export type ContentActor = BrowserActor | McpActor;
-
-/**
- * Where a write comes from, for its log line: the channel and, for MCP, the grant of the connection. The content stores
- * only the channel, as `storedChannelOf()` names it, never the grant.
- */
-export function channelOf(actor: ContentActor): { channel: "browser" } | { channel: "mcp"; grantId: string } {
-  return actor.channel === "mcp" ? { channel: "mcp", grantId: actor.connection.grantId } : { channel: "browser" };
-}
-
-/**
- * The channel of a write as the content stores it with its last editor: `web` for the browser, `mcp` for MCP. The log
- * lines keep naming the channel of the actor (`channelOf()`).
- */
-export function storedChannelOf(actor: ContentActor): ChangeChannel {
-  return actor.channel === "mcp" ? "mcp" : "web";
-}
-
-/** The actor of the browser for the given user, as the queries and actions pass it to the services. */
-export function inBrowser(user: Actor): BrowserActor {
-  return { id: user.id, name: user.name, type: user.type, channel: "browser" };
-}
-
-/** The actor of MCP for the given user and connection, as the adapter of the MCP server passes it to the tools. */
-export function inMcp(user: Actor, connection: McpConnection): McpActor {
-  return {
-    id: user.id,
-    name: user.name,
-    type: user.type,
-    channel: "mcp",
-    connection: { grantId: connection.grantId, folderId: connection.folderId, role: connection.role },
-  };
-}
-
-/** Whether the actor is one of MCP, with a connection. A plain actor, without a channel, is none. */
-function isMcpActor(actor: Actor | ContentActor): actor is McpActor {
-  return "channel" in actor && actor.channel === "mcp";
-}
 
 /**
  * The role that counts for the actor on the folder with the given id, from the user's role on it: for an actor of the
@@ -99,9 +40,7 @@ function effectiveRole(actor: Actor | ContentActor, folderId: string, role: Role
  */
 function roleHolderId(actor: Actor): string | null {
   if (isAdmin(actor)) return null;
-  const id = parseUserId(actor.id);
-  if (!id) logger.error({ actorId: actor.id }, "malformed actor id");
-  return id;
+  return editorIdOf(actor);
 }
 
 /** The folder a role is read on: by its id, by one of its tabs or by one of its pages. */
@@ -185,7 +124,7 @@ export function readableFolderWhere(actor: ContentActor, fn: FolderFunction = "r
   if (!reader) return null;
   // Every role may read, so reading needs only a role; the other functions need one of the roles that allow them.
   const roles = { roles: { some: { userId: reader, ...(fn === "read" ? {} : { role: { in: rolesFor(fn) } }) } } };
-  if (actor.channel === "browser") return roles;
+  if (actor.channel === "web") return roles;
   if (!mayDo(actor.connection.role, fn)) return NO_FOLDER;
   return { id: actor.connection.folderId, ...roles };
 }
@@ -299,16 +238,6 @@ const STORED_ROLE_SELECT = {
 
 function storedRole(row: { role: Role; folder: { name: string }; user: { id: string; username: string } }): StoredRole {
   return { folder: { name: row.folder.name }, user: { id: row.user.id, name: row.user.username }, role: row.role };
-}
-
-/** The result of a write of a role by an admin or by anyone but an Owner of the folder; it is logged. */
-function notAllowed(
-  actor: Actor,
-  message: string,
-  target: Record<string, string> = {},
-): { ok: false; error: NotAllowed } {
-  logger.warn({ actorId: actor.id, ...target }, message);
-  return { ok: false, error: { code: "not-allowed" } };
 }
 
 /**

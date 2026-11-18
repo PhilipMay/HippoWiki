@@ -16,7 +16,7 @@ import {
 } from "@modelcontextprotocol/server";
 
 import { createWikiServer, type WikiToolsOptions } from "@/features/mcp/tools";
-import { inMcp } from "@/features/folder-roles/service";
+import { inMcp } from "@/features/folder-roles/actors";
 import * as folderService from "@/features/folders/service";
 import { protectedResourceMetadataUrl } from "@/features/oauth/issuer";
 import { parseMcpPath } from "@/features/oauth/schema";

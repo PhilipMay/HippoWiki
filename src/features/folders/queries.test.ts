@@ -69,7 +69,7 @@ describe("every query", () => {
       expect(readCount()).toBe(1);
       // The logged-in user is the actor, in the browser: the service decides what the user may read.
       expect(read).toHaveBeenCalledExactlyOnceWith(
-        { id: USER.id, name: USER.name, type: USER.type, channel: "browser" },
+        { id: USER.id, name: USER.name, type: USER.type, channel: "web" },
         ...args,
       );
     },
@@ -108,7 +108,7 @@ describe("every query", () => {
     await expect(query()).resolves.toBeNull();
 
     expect(read).toHaveBeenCalledExactlyOnceWith(
-      { id: USER.id, name: "maria", type: "admin", channel: "browser" },
+      { id: USER.id, name: "maria", type: "admin", channel: "web" },
       ...args,
     );
   });

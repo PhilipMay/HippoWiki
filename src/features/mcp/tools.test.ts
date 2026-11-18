@@ -1,7 +1,7 @@
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { McpActor } from "@/features/folder-roles/service";
+import type { McpActor } from "@/features/folder-roles/actors";
 import { createWikiServer, instructionsFor } from "@/features/mcp/tools";
 import { CONTENT_MAX_DEPTH, CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 import { analyseMarkdown } from "@/features/pages/markdown";
