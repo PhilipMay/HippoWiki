@@ -1,19 +1,10 @@
 "use client";
 
-import Alert from "@mui/material/Alert";
-import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
-import Dialog from "@mui/material/Dialog";
-import DialogActions from "@mui/material/DialogActions";
-import DialogContent from "@mui/material/DialogContent";
-import DialogTitle from "@mui/material/DialogTitle";
-import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
-import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useId, useRef, useState } from "react";
+import { useActionState, useId, useRef, useState } from "react";
 
-import Link from "@/components/Link";
-import { focusOnEntered } from "@/lib/focus";
+import ActionDialog, { DialogForm, DialogFormActions } from "@/components/ActionDialog";
+import { useFocusOnFirstError } from "@/lib/form-hooks";
 import { useHydrated } from "@/lib/hydration";
 import type { NameFormAction } from "@/features/folders/forms";
 import { NAME_MAX_LENGTH } from "@/lib/name-limits";
@@ -42,8 +33,6 @@ export default function NameDialog({ title, action, currentName, closeHref }: Na
   // after a submission.
   const [name, setName] = useState(currentName ?? "");
   const nameRef = useRef<HTMLInputElement>(null);
-  const router = useRouter();
-  const titleId = useId();
   const formId = useId();
   // The dialog is part of the server-rendered page. Input before hydration could be lost, so the name is read-only
   // and "Save" is disabled until then.
@@ -55,68 +44,40 @@ export default function NameDialog({ title, action, currentName, closeHref }: Na
   // compares with the name stored at the moment of the save.
   const unchanged = currentName !== undefined && name.trim() === currentName;
 
-  // Field errors come back from the Server Action, not from a client event, so the focus moves once the new state
-  // arrives. Each submission returns a new state object, so a repeated rejection moves the focus again; the initial
-  // state and message-only states leave the focus where it is.
-  useEffect(() => {
-    if (state.fieldErrors?.name) nameRef.current?.focus();
-  }, [state]);
-
-  const close = () => {
-    if (!pending) router.push(closeHref);
-  };
+  useFocusOnFirstError(state, [["name", nameRef]]);
 
   return (
-    <Dialog
-      open
-      onClose={close}
-      fullWidth
-      maxWidth="sm"
-      aria-labelledby={titleId}
-      // Without a portal the dialog is in the server-rendered HTML, like the rest of the page.
-      disablePortal
-      // The name is the only field. `autoFocus` does not hold here, because the dialog focuses itself on opening, so
-      // the name field is focused once the dialog has entered, unless the focus has moved into the dialog by then.
-      slotProps={{ transition: { onEntered: (node) => focusOnEntered(node, nameRef.current) } }}
-    >
-      <DialogTitle id={titleId}>{title}</DialogTitle>
-      <DialogContent>
-        {/* `noValidate`: the server validates, and its errors are shown at the field. */}
-        <Box component="form" id={formId} action={formAction} noValidate>
-          <Stack spacing={3} sx={{ pt: 1 }}>
-            {state.message && <Alert severity="error">{state.message}</Alert>}
-            <TextField
-              name="name"
-              label="Name"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              inputRef={nameRef}
-              required
-              fullWidth
-              error={!!nameError}
-              helperText={nameError ?? "Lowercase letters, digits and single hyphens, e.g. release-notes"}
-              slotProps={{
-                htmlInput: {
-                  maxLength: NAME_MAX_LENGTH,
-                  spellCheck: false,
-                  autoCapitalize: "none",
-                  readOnly: !hydrated,
-                },
-              }}
-            />
-          </Stack>
-        </Box>
-      </DialogContent>
-      <DialogActions>
-        <Button component={Link} href={closeHref} disabled={pending}>
-          Cancel
-        </Button>
-        {/* Outside the form element, so it is tied to the form by its id. It is the default button of the form, so while it
-            is disabled, Enter in the field submits nothing either. */}
-        <Button type="submit" form={formId} variant="contained" disabled={pending || !hydrated || unchanged}>
-          {pending ? "Saving…" : "Save"}
-        </Button>
-      </DialogActions>
-    </Dialog>
+    // The name is the only field, so it is focused once the dialog has entered.
+    <ActionDialog title={title} closeHref={closeHref} pending={pending} focusRef={nameRef}>
+      <DialogForm id={formId} action={formAction} message={state.message}>
+        <TextField
+          name="name"
+          label="Name"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          inputRef={nameRef}
+          required
+          fullWidth
+          error={!!nameError}
+          helperText={nameError ?? "Lowercase letters, digits and single hyphens, e.g. release-notes"}
+          slotProps={{
+            htmlInput: {
+              maxLength: NAME_MAX_LENGTH,
+              spellCheck: false,
+              autoCapitalize: "none",
+              readOnly: !hydrated,
+            },
+          }}
+        />
+      </DialogForm>
+      <DialogFormActions
+        closeHref={closeHref}
+        formId={formId}
+        pending={pending}
+        label="Save"
+        pendingLabel="Saving…"
+        disabled={unchanged}
+      />
+    </ActionDialog>
   );
 }

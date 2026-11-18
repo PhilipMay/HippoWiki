@@ -9,7 +9,8 @@ How the code is organised and which patterns new code follows. The technology st
 - `src/proxy.ts`: the proxy of Next.js, which sends requests without a session cookie to the login page (see "Login
   and sessions")
 - `src/components/`: shared UI components (app bar, `Link`, and the pieces of the lists and heads: `Time` for a point
-  in time, `EmptyState` for a list without items, `HeadingWithActions` for a heading with its row of buttons)
+  in time, `EmptyState` for a list without items, `HeadingWithActions` for a heading with its row of buttons, and
+  `ActionDialog.tsx`, the frame of the dialogs, see "UI")
 - `src/lib/`: cross-cutting modules, such as the environment, the database client, the logger, the name rule, the
   addresses, the revalidation after a write, the type `Result`, the Better Auth instance and the password hashing.
   What each module holds is in the module itself. A module that a Client Component imports, such as `names.ts` or
@@ -394,9 +395,11 @@ The feature is described in `users-and-login.md`. What every new route, query an
   Links use `@/components/Link` as `component={Link}`.
 - `sx` props in Server Components are plain objects, because functions cannot cross to Client Components.
 - Forms focus the field the user most likely edits first. When the server rejects a save with field errors, the first
-  field with an error is focused; errors that only show a message above the form leave the focus where it is.
+  field with an error is focused, with `useFocusOnFirstError()` of `src/lib/form-hooks.ts`; errors that only show a
+  message above the form leave the focus where it is.
 - A dialog focuses itself on opening, so `autoFocus` does not hold in it; its first field is focused once the dialog
-  has entered, with `focusOnEntered` from `src/lib/focus.ts` in the transition's `onEntered`. It leaves the focus where
+  has entered, with `focusOnEntered` from `src/lib/focus.ts` in the transition's `onEntered` (the `focusRef` of
+  `ActionDialog`). It leaves the focus where
   it is when it has already moved into the dialog: to a control the user clicked while the dialog faded in, or to a
   field with an error when the server rejected a save before the dialog had entered.
 - Controls of Client Components that need JavaScript stay read-only (text fields) or disabled (buttons) until the
@@ -406,16 +409,25 @@ The feature is described in `users-and-login.md`. What every new route, query an
   editable and a button is enabled; `e2e/hydration.spec.ts` checks the lock with JavaScript disabled.
 - The root layout renders `HydrationMarker` (`src/components/`), which sets `data-hydrated="true"` on `<html>` in the
   same commit in which `useHydrated()` turns true. The end-to-end tests wait for it after every page load.
-- Dialogs that a route renders for an action use `disablePortal`, so that they are part of the server-rendered HTML
-  like the rest of the page, and lock their controls until hydration as described above. The name dialog
+- Dialogs that a route renders for an action are built on the frame of `src/components/ActionDialog.tsx`, which holds
+  their rules once: `ActionDialog` is open from the start, uses `disablePortal`, so that the dialog is part of the
+  server-rendered HTML like the rest of the page, does not close while the submission runs and closes to the address
+  without the action; `DialogForm` is the form with the error of its state; `DialogFormActions` is "Cancel" as a link
+  and the submit button outside the form, locked while pending and until hydration as described above;
+  `ConfirmDialog` is a dialog without fields that confirms a delete, a revoke or a revert. The dialogs keep their
+  fields and texts. The name dialog
   (`NameDialog` in `src/features/folders/components/`) is shared by folders and tabs; pages are moved and renamed in
   `MoveOrRenamePageDialog` of `src/features/pages/components/`. The name field and the
   place choice of a page (`PageNameAndPlaceFields` in `src/features/pages/components/`) are shared by the "Save page",
   the "Move or rename page" and the "Restore page" dialog; its `locked` prop locks them in a dialog that renders before
   hydration, and a place of `null` checks no place.
-- A form with controlled radio buttons or checkboxes calls its Server Action in `onSubmit` inside `startTransition`
-  instead of passing it as the form's `action`: React resets a form after its action, which puts these controls back
-  to their initial state, out of sync with the controlled one.
+- A form with controlled radio buttons, checkboxes or selects calls its Server Action in `onSubmit` inside
+  `startTransition`, with `useSubmitInTransition()` of `src/lib/form-hooks.ts`, instead of passing it as the form's
+  `action`: React resets a form after its action, which puts these controls back to their initial state, out of sync
+  with the controlled one.
+- A form that rests on the version of a page holds `PageVersionField` of `src/features/pages/components/`, the hidden
+  version and the warning after a refused change, and its parent mounts it with the key of `changedPageForm()` of
+  `src/features/pages/changed-page.ts`, which starts it anew with the page as stored (see `optimistic-locking.md`).
 - Browser titles are built with `pageTitle()` from `src/lib/site.ts`.
 - Markdown is parsed only with the markdown-it instance of `src/features/pages/markdown.ts`, which has no server-only
   imports, so the browser can use it too. Raw HTML is never rendered, and only links and images with a safe address

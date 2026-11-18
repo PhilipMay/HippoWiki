@@ -1,21 +1,10 @@
 "use client";
 
-import Alert from "@mui/material/Alert";
-import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
-import Dialog from "@mui/material/Dialog";
-import DialogActions from "@mui/material/DialogActions";
-import DialogContent from "@mui/material/DialogContent";
-import DialogContentText from "@mui/material/DialogContentText";
-import DialogTitle from "@mui/material/DialogTitle";
-import Stack from "@mui/material/Stack";
-import { useRouter } from "next/navigation";
-import { useActionState, useId } from "react";
+import { useActionState } from "react";
 
-import Link from "@/components/Link";
-import { VERSION_FIELD } from "@/features/pages/fields";
+import { ConfirmDialog } from "@/components/ActionDialog";
+import PageVersionField from "@/features/pages/components/PageVersionField";
 import type { PageRevertFormAction } from "@/features/pages/forms";
-import { useHydrated } from "@/lib/hydration";
 
 type RevertPageDialogProps = {
   /** Server Action that reverts the page to the revision; it returns the error to show, or redirects on success. */
@@ -43,52 +32,18 @@ export default function RevertPageDialog({
   closeHref,
 }: RevertPageDialogProps) {
   const [state, formAction, pending] = useActionState(action, {});
-  const router = useRouter();
-  const titleId = useId();
-  const descriptionId = useId();
-  const formId = useId();
-  // The dialog is part of the server-rendered page. A click before hydration would do nothing, so "Revert" is disabled
-  // until then.
-  const hydrated = useHydrated();
-
-  const close = () => {
-    if (!pending) router.push(closeHref);
-  };
 
   return (
-    <Dialog
-      open
-      onClose={close}
-      fullWidth
-      maxWidth="sm"
-      aria-labelledby={titleId}
-      aria-describedby={descriptionId}
-      // Without a portal the dialog is in the server-rendered HTML, like the rest of the page.
-      disablePortal
-    >
-      <DialogTitle id={titleId}>Revert page</DialogTitle>
-      <DialogContent>
-        <Box component="form" id={formId} action={formAction}>
-          <input type="hidden" name={VERSION_FIELD} value={version} />
-          <Stack spacing={3}>
-            {changedMessage && <Alert severity="warning">{changedMessage}</Alert>}
-            {state.message && <Alert severity="error">{state.message}</Alert>}
-            <DialogContentText id={descriptionId} sx={{ overflowWrap: "anywhere" }}>
-              Set the page back to {revisionLabel}? This records a new revision with its content; no revision is lost.
-            </DialogContentText>
-          </Stack>
-        </Box>
-      </DialogContent>
-      <DialogActions>
-        {/* A link, so it works without JavaScript as well. */}
-        <Button component={Link} href={closeHref} disabled={pending}>
-          Cancel
-        </Button>
-        {/* Outside the form element, so it is tied to the form by its id. */}
-        <Button type="submit" form={formId} variant="contained" disabled={pending || !hydrated}>
-          {pending ? "Reverting…" : "Revert"}
-        </Button>
-      </DialogActions>
-    </Dialog>
+    <ConfirmDialog
+      title="Revert page"
+      closeHref={closeHref}
+      formAction={formAction}
+      pending={pending}
+      message={state.message}
+      lead={<PageVersionField version={version} changedMessage={changedMessage} />}
+      description={`Set the page back to ${revisionLabel}? This records a new revision with its content; no revision is lost.`}
+      label="Revert"
+      pendingLabel="Reverting…"
+    />
   );
 }

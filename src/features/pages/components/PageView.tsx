@@ -16,17 +16,9 @@ import MoveOrRenamePageDialog from "@/features/pages/components/MoveOrRenamePage
 import PageForm from "@/features/pages/components/PageForm";
 import type { PageWithPlace } from "@/features/pages/service";
 import { editorWithChannel } from "@/features/users/records";
+import { changedPageForm } from "@/features/pages/changed-page";
 import { mayDoPageAction, type PageAction } from "@/features/pages/page-query";
 import { pageHistoryPath, pageLabel, pagePath, type PageNotice } from "@/lib/addresses";
-import { formatDateTime } from "@/lib/format";
-
-/**
- * The message of the notice `changed`: who changed the page last, how and when, as the page view shows them. The editor or
- * dialog shows it after a change was refused, because the page was changed after it was opened.
- */
-export function changedMessage(page: PageWithPlace): string {
-  return `This page was changed by ${editorWithChannel(page.lastEditedBy)} at ${formatDateTime(page.updatedAt)} after you opened it.`;
-}
 
 type PageViewProps = {
   page: PageWithPlace;
@@ -45,10 +37,7 @@ export default async function PageView({ page, action, notice }: PageViewProps) 
   const folderName = page.folder.name;
   const tabName = page.tab?.name ?? null;
   const address = pagePath(folderName, tabName, page.name);
-  const message = notice === "changed" ? changedMessage(page) : undefined;
-  // A new key after a refused change starts the editor or dialog anew with the page as stored, instead of keeping the
-  // input of the user: the version changes with every change of the page, the notice when no version was submitted.
-  const formKey = `${page.version}-${notice ?? ""}`;
+  const { key: formKey, changedMessage: message } = changedPageForm(page, notice);
 
   if (action === "edit") {
     return (

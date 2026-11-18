@@ -6,17 +6,16 @@
   them, every adapter handles every code of every write, the browser and MCP agree on the seven writes they share,
   and the newest rules (writes that store nothing) are proven against the real database and in the browser. The
   weak points are three:
-  - Rules that are written several times: the frame of a dialog
-    in nine components, and the same rule in up to five specs. Two copies
-    had drifted already; the one in the "Save page" dialog is fixed.
+  - Rules that are written several times: the frame of a dialog in nine components, which is shared now, and the
+    same rule in up to five specs. Two copies had drifted already; the one in the "Save page" dialog is fixed.
   - Tests that would not catch the refactoring this report suggests: the unit tests of the services pinned the calls
     of Prisma, and three rules of access and of the transaction had no test that could fail. Both are fixed; the
     findings of the tests that are still open are minor.
   - Documents that the features outran: rules stated in full in several documents, and copies of code and
     constants in the specs.
-- Findings: 15 open of 107, 0 Blocker, 0 Major, 14 Minor and 1 Nit (5 `issue:`, 9 `suggestion:` and 1 `nit:`); no
+- Findings: 13 open of 107, 0 Blocker, 0 Major, 12 Minor and 1 Nit (5 `issue:`, 7 `suggestion:` and 1 `nit:`); no
   `question:` is open.
-- Confidence of the suggestions: 1 High, 12 Medium and 2 Low. A High suggestion can be
+- Confidence of the suggestions: 1 High, 10 Medium and 2 Low. A High suggestion can be
   fixed as written; the others wait for the user, as `issue-report.md` describes.
 - Decisions: on 2026-11-18 the user decided all Medium and Low suggestions. Each of these findings ends with a line
   `Decision`, and is fixed as that line says, without asking again. The questions were decided by the user on the
@@ -133,55 +132,6 @@ for `not-allowed` the browser shows the not-found page and MCP says that the rol
 
 ### Code: components, routes, auth, users and lib
 
-#### suggestion: nine dialogs repeat the same frame and its rules by hand
-
-- Location: `src/features/folders/components/NameDialog.tsx` and `DeleteTabDialog.tsx` in the same folder;
-  `MoveOrRenamePageDialog.tsx`, `DeletePageDialog.tsx`, `RestorePageDialog.tsx` and `RevertPageDialog.tsx` in
-  `src/features/pages/components/`; `src/features/folder-roles/components/GiveRoleDialog.tsx`;
-  `src/features/grants/components/RevokeAppDialog.tsx`; `src/features/users/components/CreateUserDialog.tsx`
-- Severity: Minor. Duplicated code, but it carries rules, and one copy had drifted: the "Save page" dialog did not
-  move the focus to the name field after a refused name, which is fixed.
-- Category: readability
-- Problem: these rules of `architecture.md` are written once per dialog: close only while nothing is pending
-  (9 times), `disablePortal` with the same comment (9), the submit button outside the form, disabled while pending
-  or not hydrated (9), "Cancel" as a link (9), the alert for the message of the form state (14), the submit in a
-  transition for controlled fields (5), and the focus on the first field with an error (8 chains written by hand).
-  `DeletePageDialog`, `RevertPageDialog` and `RevokeAppDialog` are the same component except for the title, the
-  sentence, the label and the hidden version.
-- Impact: a change of one rule, for example the lock until hydration, has nine files.
-- Evidence: `src/features/grants/components/RevokeAppDialog.tsx`, lines 32–80, and
-  `src/features/pages/components/DeletePageDialog.tsx`, lines 36–91, differ in about ten lines.
-- Suggestion (optional): a frame component for a dialog that submits a form, a confirmation dialog on top of it for
-  the three deletes and the revert, and two hooks: one for the submit in a transition, one for the focus on the
-  first error. Keep the bodies of the forms, the second stage of `CreateUserDialog` and the texts where they are.
-  Close the gaps of the tests first: the pending state has no test (see "Tests: end-to-end").
-- Confidence: Medium. A refactoring with choices of design; `e2e/hydration.spec.ts` and the specs of the features
-  cover every dialog.
-- Alternatives: only the two hooks, which are small and would have prevented the finding above; or only the
-  confirmation dialog, which removes about 250 lines.
-- Decision (2026-11-18): as suggested: the frame component, the confirmation dialog for the three deletes and the
-  revert, and the two hooks, after the tests of the pending state exist.
-
-#### suggestion: the handling of a changed page is put together by hand in four forms, two parents and twice in the actions
-
-- Location: `PageForm.tsx`, `MoveOrRenamePageDialog.tsx`, `DeletePageDialog.tsx` and `RevertPageDialog.tsx` in
-  `src/features/pages/components/`; `PageView.tsx`, lines 218–234 and 284–301, and `PageAddress.tsx`, lines 41–46,
-  in the same folder; `src/features/pages/actions.ts`, lines 59–62 and 326–330
-- Severity: Minor. The pieces work only together, and nothing ties them.
-- Category: readability
-- Problem: a form that rests on the version of a page needs the hidden field with the version, the warning with
-  the message, and a key of the version and the notice that mounts it again. Each of the four forms writes the
-  first two, each of the two parents the key and the message. `revertPage()` repeats `showChanged()` because its
-  address differs.
-- Impact: a new dialog without the hidden field has every save refused as changed; one without the key keeps the
-  old input after a refused save. Both compile.
-- Evidence: `PageView.tsx`, line 221, ``const formKey = `${page.version}-${notice ?? ""}`;``, and
-  `PageAddress.tsx`, line 42, ``key={`${page.version}-${query.notice ?? ""}`}``.
-- Suggestion (optional): one component for the hidden field and the warning, one helper for the key and the
-  message, and an address parameter for `showChanged()`.
-- Confidence: Medium. A choice of design; the tests of a changed page in four end-to-end specs cover the behaviour.
-- Decision (2026-11-18): as suggested.
-
 #### Reviewed
 
 - The boundary of client and server holds today: none of the 22 Client Components imports a service, a queries
@@ -208,7 +158,12 @@ for `not-allowed` the browser shows the not-found page and MCP says that the rol
   pure modules for the wait, the limits and the type of an account.
 - Every form state is the field errors and a message, with at most one documented extra.
 - Every dialog with a form moves the focus to the first field with an error after a refused save, the "Save page"
-  dialog included (`e2e/create-page.spec.ts`).
+  dialog included (`e2e/create-page.spec.ts`), with one hook, `useFocusOnFirstError()`.
+- The frame of the dialogs of an action is written once in `src/components/ActionDialog.tsx`: `ActionDialog`,
+  `DialogForm`, `DialogFormActions` and `ConfirmDialog` for the deletes, the revoke and the revert, with
+  `useSubmitInTransition()` for the forms with controlled choices; `e2e/hydration.spec.ts` and
+  `e2e/pending-states.spec.ts` cover the lock until hydration and while pending. A form that rests on the version of
+  a page holds `PageVersionField`, and its parent takes the key and the message from `changedPageForm()`.
 - There is no `TODO` or `FIXME` in `src/`, `scripts/` or `prisma/`.
 - The conventions that were habits are checks now: `no-console` holds for all of `src/` but the two error pages, the
   MCP server and the pure modules of OAuth hold the rules of a service, a service reads with `select` only, the
@@ -368,7 +323,7 @@ that several of them state were compared with each other and with the code:
   write works" out of a feature spec.
 - Impact: a changed message makes a spec stale, and the check of doc references sees only file names.
 - Evidence: `optimistic-locking.md`: "This page was changed by mike via mcp at <time> after you opened it.", which
-  is the text of `changedMessage()` in `src/features/pages/components/PageView.tsx`.
+  is the text of `changedMessage()` in `src/features/pages/changed-page.ts`.
 - Suggestion (optional): say what a message names and point to its function; drop the sentences on hydration and
   Enter; keep the list of protocols as a security rule and name its constant; keep only the bound that the cost
   test enforces.
@@ -713,6 +668,6 @@ documents name.
 2. Fix the findings with a High confidence that change no code: the Locations of the first report.
 3. Close the gaps of the tests before any refactoring: the states of the dialogs that a shared frame would move.
 4. Refactor the code in small steps, each with its checks: the hooks and the frame of the dialogs, then the
-   splits of the large files.
+   splits of the large files. Done: the code findings are fixed.
 5. Restructure the documents last: one owner per rule in the feature specs, the sections of `architecture.md`,
    and the form of the catalog in `CLAUDE.md`.

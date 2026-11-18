@@ -9,7 +9,7 @@ import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
-import { startTransition, useActionState, useEffect, useId, useRef, useState, type SubmitEvent } from "react";
+import { useActionState, useId, useRef, useState } from "react";
 
 import Link from "@/components/Link";
 import PageNameAndPlaceFields, { FOLDER_TARGET } from "@/features/pages/components/PageNameAndPlaceFields";
@@ -19,6 +19,7 @@ import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 import { TITLE_HEADING_MISSING_MESSAGE } from "@/features/pages/schema";
 import { folderPath, tabPath } from "@/lib/addresses";
 import { focusOnEntered } from "@/lib/focus";
+import { useFocusOnFirstError, useSubmitInTransition } from "@/lib/form-hooks";
 import { useHydrated } from "@/lib/hydration";
 
 type NewPageFormProps = {
@@ -138,18 +139,9 @@ function SavePageDialog({
   const nameError = state.fieldErrors?.name?.[0];
   const message = state.message ?? state.fieldErrors?.content?.[0];
 
-  // After a refused save the name field gets the focus when it has an error, as in every dialog with a form.
-  useEffect(() => {
-    if (state.fieldErrors?.name) nameRef.current?.focus();
-  }, [state]);
-
-  // The form calls the action itself instead of passing it as the form's `action`: React resets a form after its
-  // action, and that reset puts the radio buttons back to the initial choice, out of sync with the controlled one.
-  const submit = (event: SubmitEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    startTransition(() => formAction(formData));
-  };
+  useFocusOnFirstError(state, [["name", nameRef]]);
+  // The radio buttons of the place are controlled.
+  const submit = useSubmitInTransition(formAction);
 
   const close = () => {
     if (!pending) onClose();

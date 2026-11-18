@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation";
 
 import { revertPage } from "@/features/pages/actions";
+import { changedPageForm } from "@/features/pages/changed-page";
 import HistoryAddress from "@/features/pages/components/HistoryAddress";
 import RevertPageDialog from "@/features/pages/components/RevertPageDialog";
-import PageView, { changedMessage } from "@/features/pages/components/PageView";
+import PageView from "@/features/pages/components/PageView";
 import { pageHistoryPlace } from "@/features/pages/components/history-place";
 import type { RevisionDetail } from "@/features/pages/history-service";
 import { mayDoPageAction, type PageQuery } from "@/features/pages/page-query";
@@ -37,14 +38,14 @@ export default async function PageAddress({ page, query }: PageAddressProps) {
     const mayRevert = mayDoPageAction(page.role, "revert") && !revision.isCurrent;
     if (query.action === "revert" && !mayRevert) notFound();
     const href = mayRevert ? pageRevertPath(place.folderName, place.tabName, page.name, revision.number) : null;
+    const changed = changedPageForm(page, query.notice);
     const dialog = query.action === "revert" && (
       <RevertPageDialog
-        // A new key after a refused revert starts the dialog anew with the page as stored.
-        key={`${page.version}-${query.notice ?? ""}`}
+        key={changed.key}
         action={revertPage.bind(null, page.id, revision.number)}
         revisionLabel={`revision ${revision.number} of ${formatDateTime(revision.createdAt)} by ${editorWithChannel(revision.madeBy)}`}
         version={page.version}
-        changedMessage={query.notice === "changed" ? changedMessage(page) : undefined}
+        changedMessage={changed.changedMessage}
         closeHref={place.revisionHref(revision.number)}
       />
     );

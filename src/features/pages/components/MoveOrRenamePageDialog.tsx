@@ -1,21 +1,12 @@
 "use client";
 
-import Alert from "@mui/material/Alert";
-import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
-import Dialog from "@mui/material/Dialog";
-import DialogActions from "@mui/material/DialogActions";
-import DialogContent from "@mui/material/DialogContent";
-import DialogTitle from "@mui/material/DialogTitle";
-import Stack from "@mui/material/Stack";
-import { useRouter } from "next/navigation";
-import { startTransition, useActionState, useEffect, useId, useRef, useState, type SubmitEvent } from "react";
+import { useActionState, useId, useRef, useState } from "react";
 
-import Link from "@/components/Link";
+import ActionDialog, { DialogForm, DialogFormActions } from "@/components/ActionDialog";
 import PageNameAndPlaceFields, { FOLDER_TARGET } from "@/features/pages/components/PageNameAndPlaceFields";
-import { VERSION_FIELD } from "@/features/pages/fields";
+import PageVersionField from "@/features/pages/components/PageVersionField";
 import type { PageMoveOrRenameFormAction } from "@/features/pages/forms";
-import { focusOnEntered } from "@/lib/focus";
+import { useFocusOnFirstError, useSubmitInTransition } from "@/lib/form-hooks";
 import { useHydrated } from "@/lib/hydration";
 
 type MoveOrRenamePageDialogProps = {
@@ -57,8 +48,6 @@ export default function MoveOrRenamePageDialog({
   const [name, setName] = useState(initialName);
   const [target, setTarget] = useState(currentTabId ?? FOLDER_TARGET);
   const nameRef = useRef<HTMLInputElement>(null);
-  const router = useRouter();
-  const titleId = useId();
   const formId = useId();
   // The dialog is part of the server-rendered page. Input before hydration could be lost, so the name is read-only and
   // the places and "Save" are disabled until then.
@@ -71,69 +60,38 @@ export default function MoveOrRenamePageDialog({
   // it the submission by Enter in the name field, because it is the form's default button.
   const unchanged = name.trim() === initialName && target === (currentTabId ?? FOLDER_TARGET);
 
-  // Field errors come back from the Server Action, not from a client event, so the focus moves once the new state
-  // arrives. Each submission returns a new state object, so a repeated rejection moves the focus again; the initial
-  // state and message-only states leave the focus where it is.
-  useEffect(() => {
-    if (state.fieldErrors?.name) nameRef.current?.focus();
-  }, [state]);
-
-  // The form calls the action itself instead of passing it as the form's `action`: React resets a form after its
-  // action, and that reset puts the radio buttons back to the initial choice, out of sync with the controlled one.
-  const submit = (event: SubmitEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    startTransition(() => formAction(formData));
-  };
-
-  const close = () => {
-    if (!pending) router.push(closeHref);
-  };
+  useFocusOnFirstError(state, [["name", nameRef]]);
+  // The radio buttons of the place are controlled.
+  const submit = useSubmitInTransition(formAction);
 
   return (
-    <Dialog
-      open
-      onClose={close}
-      fullWidth
-      maxWidth="sm"
-      aria-labelledby={titleId}
-      // Without a portal the dialog is in the server-rendered HTML, like the rest of the page.
-      disablePortal
-      // `autoFocus` does not hold here, because the dialog focuses itself on opening, so the name field is focused once
-      // the dialog has entered, unless the focus has moved into the dialog by then (see `focusOnEntered`).
-      slotProps={{ transition: { onEntered: (node) => focusOnEntered(node, nameRef.current) } }}
-    >
-      <DialogTitle id={titleId}>Move or rename page</DialogTitle>
-      <DialogContent>
-        {/* `noValidate`: the server validates, and its errors are shown at the field. */}
-        <Box component="form" id={formId} onSubmit={submit} noValidate>
-          <input type="hidden" name={VERSION_FIELD} value={version} />
-          <Stack spacing={3} sx={{ pt: 1 }}>
-            {changedMessage && <Alert severity="warning">{changedMessage}</Alert>}
-            {state.message && <Alert severity="error">{state.message}</Alert>}
-            <PageNameAndPlaceFields
-              folderName={folderName}
-              tabs={tabs}
-              name={name}
-              onNameChange={setName}
-              place={target}
-              onPlaceChange={setTarget}
-              nameError={nameError}
-              nameRef={nameRef}
-              locked={!hydrated}
-            />
-          </Stack>
-        </Box>
-      </DialogContent>
-      <DialogActions>
-        <Button component={Link} href={closeHref} disabled={pending}>
-          Cancel
-        </Button>
-        {/* Outside the form element, so it is tied to the form by its id. */}
-        <Button type="submit" form={formId} variant="contained" disabled={pending || !hydrated || unchanged}>
-          {pending ? "Saving…" : "Save"}
-        </Button>
-      </DialogActions>
-    </Dialog>
+    <ActionDialog title="Move or rename page" closeHref={closeHref} pending={pending} focusRef={nameRef}>
+      <DialogForm
+        id={formId}
+        onSubmit={submit}
+        message={state.message}
+        lead={<PageVersionField version={version} changedMessage={changedMessage} />}
+      >
+        <PageNameAndPlaceFields
+          folderName={folderName}
+          tabs={tabs}
+          name={name}
+          onNameChange={setName}
+          place={target}
+          onPlaceChange={setTarget}
+          nameError={nameError}
+          nameRef={nameRef}
+          locked={!hydrated}
+        />
+      </DialogForm>
+      <DialogFormActions
+        closeHref={closeHref}
+        formId={formId}
+        pending={pending}
+        label="Save"
+        pendingLabel="Saving…"
+        disabled={unchanged}
+      />
+    </ActionDialog>
   );
 }

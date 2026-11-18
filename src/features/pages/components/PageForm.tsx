@@ -4,12 +4,13 @@ import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useRef, useState } from "react";
 
 import Link from "@/components/Link";
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
-import { VERSION_FIELD } from "@/features/pages/fields";
+import PageVersionField from "@/features/pages/components/PageVersionField";
 import type { PageFormAction } from "@/features/pages/forms";
+import { useFocusOnFirstError } from "@/lib/form-hooks";
 import { useHydrated } from "@/lib/hydration";
 
 type PageFormProps = {
@@ -42,18 +43,12 @@ export default function PageForm({ action, initialContent, version, changedMessa
 
   const contentError = state.fieldErrors?.content?.[0];
 
-  // Field errors come back from the Server Action, not from a client event, so the focus moves once the new state
-  // arrives. Each submission returns a new state object, so a repeated rejection moves the focus again; the initial
-  // state and message-only states leave the focus where it is.
-  useEffect(() => {
-    if (state.fieldErrors?.content) contentRef.current?.focus();
-  }, [state]);
+  useFocusOnFirstError(state, [["content", contentRef]]);
 
   return (
     // `noValidate`: the server validates, and its errors are shown at the field instead of browser bubbles.
     <Stack component="form" action={formAction} noValidate spacing={3}>
-      <input type="hidden" name={VERSION_FIELD} value={version} />
-      {changedMessage && <Alert severity="warning">{changedMessage}</Alert>}
+      <PageVersionField version={version} changedMessage={changedMessage} />
       {state.message && <Alert severity="error">{state.message}</Alert>}
       <TextField
         name="content"

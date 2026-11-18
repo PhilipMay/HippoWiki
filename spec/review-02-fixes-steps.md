@@ -114,7 +114,7 @@ Decided by the user on 2026-11-18:
 - [x] Lint rules and checks
 - [x] The query of a page and what a route shows
 - [x] Views of the folder routes and pieces of the lists
-- [ ] Dialogs
+- [x] Dialogs
 - [ ] The first review report
 - [ ] One owner per rule in the feature specs
 - [ ] Structure of `architecture.md` and the other documents

@@ -1,20 +1,11 @@
 "use client";
 
-import Alert from "@mui/material/Alert";
-import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
-import Dialog from "@mui/material/Dialog";
-import DialogActions from "@mui/material/DialogActions";
-import DialogContent from "@mui/material/DialogContent";
-import DialogTitle from "@mui/material/DialogTitle";
-import Stack from "@mui/material/Stack";
-import { useRouter } from "next/navigation";
-import { startTransition, useActionState, useEffect, useId, useRef, useState, type SubmitEvent } from "react";
+import { useActionState, useId, useRef, useState } from "react";
 
-import Link from "@/components/Link";
+import ActionDialog, { DialogForm, DialogFormActions } from "@/components/ActionDialog";
 import PageNameAndPlaceFields from "@/features/pages/components/PageNameAndPlaceFields";
 import type { PageRestoreFormAction } from "@/features/pages/forms";
-import { focusOnEntered } from "@/lib/focus";
+import { useFocusOnFirstError, useSubmitInTransition } from "@/lib/form-hooks";
 import { useHydrated } from "@/lib/hydration";
 
 type RestorePageDialogProps = {
@@ -49,8 +40,6 @@ export default function RestorePageDialog({
   const [place, setPlace] = useState<string | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   const placeRef = useRef<HTMLInputElement>(null);
-  const router = useRouter();
-  const titleId = useId();
   const formId = useId();
   // The dialog is part of the server-rendered page. Input before hydration could be lost, so the name is read-only and
   // the places and "Save" are disabled until then.
@@ -59,69 +48,31 @@ export default function RestorePageDialog({
   const nameError = state.fieldErrors?.name?.[0];
   const placeError = state.fieldErrors?.place?.[0];
 
-  // Field errors come back from the Server Action, so the focus moves once the new state arrives: to the name if it has
-  // an error, otherwise to the place. Message-only states leave the focus where it is.
-  useEffect(() => {
-    if (state.fieldErrors?.name) nameRef.current?.focus();
-    else if (state.fieldErrors?.place) placeRef.current?.focus();
-  }, [state]);
-
-  // The form calls the action itself instead of passing it as the form's `action`: React resets a form after its
-  // action, and that reset puts the radio buttons back to the initial choice, out of sync with the controlled one.
-  const submit = (event: SubmitEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    startTransition(() => formAction(formData));
-  };
-
-  const close = () => {
-    if (!pending) router.push(closeHref);
-  };
+  useFocusOnFirstError(state, [
+    ["name", nameRef],
+    ["place", placeRef],
+  ]);
+  // The radio buttons of the place are controlled.
+  const submit = useSubmitInTransition(formAction);
 
   return (
-    <Dialog
-      open
-      onClose={close}
-      fullWidth
-      maxWidth="sm"
-      aria-labelledby={titleId}
-      // Without a portal the dialog is in the server-rendered HTML, like the rest of the page.
-      disablePortal
-      // `autoFocus` does not hold here, because the dialog focuses itself on opening, so the name field is focused once
-      // the dialog has entered, unless the focus has moved into the dialog by then (see `focusOnEntered`).
-      slotProps={{ transition: { onEntered: (node) => focusOnEntered(node, nameRef.current) } }}
-    >
-      <DialogTitle id={titleId}>Restore page</DialogTitle>
-      <DialogContent>
-        {/* `noValidate`: the server validates, and its errors are shown at the fields. */}
-        <Box component="form" id={formId} onSubmit={submit} noValidate>
-          <Stack spacing={3} sx={{ pt: 1 }}>
-            {state.message && <Alert severity="error">{state.message}</Alert>}
-            <PageNameAndPlaceFields
-              folderName={folderName}
-              tabs={tabs}
-              name={name}
-              onNameChange={setName}
-              place={place}
-              onPlaceChange={setPlace}
-              nameError={nameError}
-              nameRef={nameRef}
-              placeError={placeError}
-              placeRef={placeRef}
-              locked={!hydrated}
-            />
-          </Stack>
-        </Box>
-      </DialogContent>
-      <DialogActions>
-        <Button component={Link} href={closeHref} disabled={pending}>
-          Cancel
-        </Button>
-        {/* Outside the form element, so it is tied to the form by its id. */}
-        <Button type="submit" form={formId} variant="contained" disabled={pending || !hydrated}>
-          {pending ? "Saving…" : "Save"}
-        </Button>
-      </DialogActions>
-    </Dialog>
+    <ActionDialog title="Restore page" closeHref={closeHref} pending={pending} focusRef={nameRef}>
+      <DialogForm id={formId} onSubmit={submit} message={state.message}>
+        <PageNameAndPlaceFields
+          folderName={folderName}
+          tabs={tabs}
+          name={name}
+          onNameChange={setName}
+          place={place}
+          onPlaceChange={setPlace}
+          nameError={nameError}
+          nameRef={nameRef}
+          placeError={placeError}
+          placeRef={placeRef}
+          locked={!hydrated}
+        />
+      </DialogForm>
+      <DialogFormActions closeHref={closeHref} formId={formId} pending={pending} label="Save" pendingLabel="Saving…" />
+    </ActionDialog>
   );
 }
