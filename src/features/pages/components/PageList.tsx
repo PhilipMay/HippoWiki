@@ -1,7 +1,7 @@
 import List from "@mui/material/List";
 import Paper from "@mui/material/Paper";
-import Typography from "@mui/material/Typography";
 
+import EmptyState from "@/components/EmptyState";
 import PageListItem from "@/features/pages/components/PageListItem";
 import type { PageSummary } from "@/features/pages/service";
 
@@ -20,16 +20,7 @@ type PageListProps = {
  */
 export default function PageList({ pages, folderName, tabName = null }: PageListProps) {
   if (pages.length === 0) {
-    return (
-      <Paper variant="outlined" sx={{ p: 4, textAlign: "center" }}>
-        <Typography variant="h6" component="p" gutterBottom>
-          No pages yet
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Pages you create here will be listed. Start with “New page”.
-        </Typography>
-      </Paper>
-    );
+    return <EmptyState title="No pages yet" text="Pages you create here will be listed. Start with “New page”." />;
   }
 
   return (

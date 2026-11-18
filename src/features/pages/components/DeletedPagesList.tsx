@@ -6,12 +6,12 @@ import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
-import Typography from "@mui/material/Typography";
 
+import EmptyState from "@/components/EmptyState";
 import Link from "@/components/Link";
+import Time from "@/components/Time";
 import type { DeletedPageSummary } from "@/features/pages/service";
 import { deletedPagePath } from "@/lib/addresses";
-import { formatDateTime } from "@/lib/format";
 
 type DeletedPagesListProps = {
   /** The deleted pages of the folder, in display order. */
@@ -26,14 +26,10 @@ type DeletedPagesListProps = {
 export default function DeletedPagesList({ pages, folderName }: DeletedPagesListProps) {
   if (pages.length === 0) {
     return (
-      <Paper variant="outlined" sx={{ p: 4, textAlign: "center" }}>
-        <Typography variant="h6" component="p" gutterBottom>
-          No deleted pages
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Pages you delete in this folder will be listed here, where you can restore them.
-        </Typography>
-      </Paper>
+      <EmptyState
+        title="No deleted pages"
+        text="Pages you delete in this folder will be listed here, where you can restore them."
+      />
     );
   }
 
@@ -60,7 +56,7 @@ export default function DeletedPagesList({ pages, folderName }: DeletedPagesList
               </TableCell>
               <TableCell sx={{ overflowWrap: "anywhere" }}>{page.title}</TableCell>
               <TableCell sx={{ whiteSpace: "nowrap" }}>
-                <time dateTime={page.deletedAt.toISOString()}>{formatDateTime(page.deletedAt)}</time>
+                <Time date={page.deletedAt} />
               </TableCell>
               <TableCell sx={{ overflowWrap: "anywhere" }}>{page.lastEditedBy.name}</TableCell>
               <TableCell>{page.lastEditedBy.via}</TableCell>

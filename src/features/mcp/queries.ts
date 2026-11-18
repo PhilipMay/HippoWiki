@@ -5,7 +5,7 @@ import { mcpRolesFor, type McpRole, type Role } from "@/features/folder-roles/ro
 import { isOAuthOn, mcpResourceOf } from "@/features/oauth/issuer";
 
 /** An MCP address of a folder as the view "AI apps" shows it: the full address and its role. */
-type McpAddressEntry = { role: McpRole; address: string };
+export type McpAddressEntry = { role: McpRole; address: string };
 
 /**
  * The full MCP addresses of the folder for the roles the user's role allows (`mcpRolesFor()`): the Reader address for

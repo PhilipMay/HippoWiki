@@ -4,9 +4,9 @@ import ListItem from "@mui/material/ListItem";
 import ListItemText from "@mui/material/ListItemText";
 import Paper from "@mui/material/Paper";
 
+import Time from "@/components/Time";
 import type { UserListEntry, UserSummary } from "@/features/users/service";
 import { USER_TYPE_LABELS } from "@/features/users/user-type";
-import { formatDateTime } from "@/lib/format";
 
 /**
  * The list of all users, by name: each with its type and the time it was created. Entries that carry the pending
@@ -30,8 +30,7 @@ export default function UserList({ users }: { users: UserListEntry[] | UserSumma
               primary={user.name}
               secondary={
                 <>
-                  {USER_TYPE_LABELS[user.type]} · Created{" "}
-                  <time dateTime={user.createdAt.toISOString()}>{formatDateTime(user.createdAt)}</time>
+                  {USER_TYPE_LABELS[user.type]} · Created <Time date={user.createdAt} />
                 </>
               }
             />

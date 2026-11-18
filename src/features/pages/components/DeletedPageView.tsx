@@ -6,6 +6,7 @@ import Typography from "@mui/material/Typography";
 import { notFound } from "next/navigation";
 
 import Link from "@/components/Link";
+import Time from "@/components/Time";
 import FolderBreadcrumbs from "@/features/folders/components/FolderBreadcrumbs";
 import { listTabs } from "@/features/folders/queries";
 import { restorePage } from "@/features/pages/actions";
@@ -15,7 +16,6 @@ import type { DeletedPageAction } from "@/features/pages/page-query";
 import type { DeletedPage } from "@/features/pages/service";
 import { editorWithChannel } from "@/features/users/records";
 import { deletedPageHistoryPath, deletedPagePath } from "@/lib/addresses";
-import { formatDateTime } from "@/lib/format";
 
 type DeletedPageViewProps = {
   page: DeletedPage;
@@ -39,8 +39,7 @@ export default async function DeletedPageView({ page, action }: DeletedPageViewP
       <Paper component="article" variant="outlined" sx={{ p: { xs: 2, sm: 4 } }}>
         <Stack spacing={1} sx={{ mb: 3 }}>
           <Typography variant="body2" color="text.secondary">
-            Deleted <time dateTime={page.deletedAt.toISOString()}>{formatDateTime(page.deletedAt)}</time> by{" "}
-            {editorWithChannel(page.lastEditedBy)}
+            Deleted <Time date={page.deletedAt} /> by {editorWithChannel(page.lastEditedBy)}
           </Typography>
           <Stack direction="row" spacing={2} sx={{ pt: 1 }}>
             <Button component={Link} href={deletedPagePath(folderName, page.id, "restore")} variant="outlined">

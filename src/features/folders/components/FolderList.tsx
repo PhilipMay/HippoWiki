@@ -5,12 +5,13 @@ import ListItemText from "@mui/material/ListItemText";
 import Paper from "@mui/material/Paper";
 import Typography from "@mui/material/Typography";
 
+import EmptyState from "@/components/EmptyState";
 import Link from "@/components/Link";
+import Time from "@/components/Time";
 import { ROLE_LABELS } from "@/features/folder-roles/roles";
 import type { FolderSummary } from "@/features/folders/service";
 import { editorWithChannel } from "@/features/users/records";
 import { folderPath } from "@/lib/addresses";
-import { formatDateTime } from "@/lib/format";
 
 /**
  * The list of the folders the user has a role on, each linking to its folder and naming the user's role on it, or a
@@ -19,14 +20,10 @@ import { formatDateTime } from "@/lib/format";
 export default function FolderList({ folders }: { folders: FolderSummary[] }) {
   if (folders.length === 0) {
     return (
-      <Paper variant="outlined" sx={{ p: 4, textAlign: "center" }}>
-        <Typography variant="h6" component="p" gutterBottom>
-          No folders yet
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Create a folder with “New folder”, or ask an Owner of a folder to give you a role on it.
-        </Typography>
-      </Paper>
+      <EmptyState
+        title="No folders yet"
+        text="Create a folder with “New folder”, or ask an Owner of a folder to give you a role on it."
+      />
     );
   }
 
@@ -40,8 +37,7 @@ export default function FolderList({ folders }: { folders: FolderSummary[] }) {
                 primary={folder.name}
                 secondary={
                   <>
-                    Updated <time dateTime={folder.updatedAt.toISOString()}>{formatDateTime(folder.updatedAt)}</time> by{" "}
-                    {editorWithChannel(folder.lastEditedBy)}
+                    Updated <Time date={folder.updatedAt} /> by {editorWithChannel(folder.lastEditedBy)}
                   </>
                 }
               />

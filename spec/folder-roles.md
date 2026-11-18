@@ -9,7 +9,9 @@ Code: `src/features/folder-roles/` (`roles.ts` with the roles and the lowest rol
 the reads and writes of roles and the role checks that the folders and pages services call, the queries, actions and
 components of the roles view, the "Give role" dialog and the admin overview), the role checks in
 `src/features/folders/service.ts` and `src/features/pages/service.ts`, the folder route
-`src/app/folders/[folder]/page.tsx` (the views `roles` and `mcp` and the action `give-role`), the routes of tabs, pages and
+`src/app/folders/[folder]/page.tsx`, which hands the view `roles` to `FolderRolesView` of `components/`, the view
+`mcp` to `AiAppsView` of `src/features/mcp/components/` and the action `give-role` to `FolderView` of
+`src/features/folders/components/`, the routes of tabs, pages and
 deleted pages, the overview `src/app/folder-roles/page.tsx`, the model `FolderRole` in `prisma/schema.prisma` and the
 migration `prisma/migrations/20261116103037_init/`.
 

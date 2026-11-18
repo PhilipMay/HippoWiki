@@ -14,9 +14,9 @@
     findings of the tests that are still open are minor.
   - Documents that the features outran: rules stated in full in several documents, and copies of code and
     constants in the specs.
-- Findings: 17 open of 107, 0 Blocker, 0 Major, 15 Minor and 2 Nit (5 `issue:`, 10 `suggestion:` and 2 `nit:`); no
+- Findings: 15 open of 107, 0 Blocker, 0 Major, 14 Minor and 1 Nit (5 `issue:`, 9 `suggestion:` and 1 `nit:`); no
   `question:` is open.
-- Confidence of the suggestions: 1 High, 14 Medium and 2 Low. A High suggestion can be
+- Confidence of the suggestions: 1 High, 12 Medium and 2 Low. A High suggestion can be
   fixed as written; the others wait for the user, as `issue-report.md` describes.
 - Decisions: on 2026-11-18 the user decided all Medium and Low suggestions. Each of these findings ends with a line
   `Decision`, and is fixed as that line says, without asking again. The questions were decided by the user on the
@@ -182,42 +182,6 @@ for `not-allowed` the browser shows the not-found page and MCP says that the rol
 - Confidence: Medium. A choice of design; the tests of a changed page in four end-to-end specs cover the behaviour.
 - Decision (2026-11-18): as suggested.
 
-#### suggestion: the folder route is a switch of five views written inline, while the routes of pages hand over to components
-
-- Location: `src/app/folders/[folder]/page.tsx`, lines 84–257; `src/app/folders/[folder]/[item]/page.tsx`, lines
-  88–157; `src/features/pages/components/NewPageForm.tsx`, lines 31–34
-- Severity: Minor. Readability; the checks of the role and the reads are where `architecture.md` wants them.
-- Category: readability
-- Problem: the folder route renders five views itself, the view "AI apps" as 20 lines of JSX; the routes of pages
-  hand everything to components. The view "New page" is written twice, the same except for two props, and so is
-  the head with its row of buttons. `NewPageForm` takes the name and the id of the same tab, though its list of
-  tabs holds the name for the id.
-- Impact: each new view or action makes the route longer, and a reader learns two patterns.
-- Evidence: lines 104–110 of the folder route and lines 94–100 of the tab route are the same call of
-  `NewPageForm`.
-- Suggestion (optional): keep in the route only `requireUser()`, the read, the parse, the gate and the switch, and
-  move the views into Server Components of the features, as pages do with `PageView`.
-- Confidence: Medium. A choice of structure without a change of behaviour.
-- Decision (2026-11-18): as suggested.
-
-#### nit: the time, the empty state and the label of a page are typed again in every list
-
-- Location: the `<time>` element in ten components, for example `src/features/pages/components/PageListItem.tsx`
-  and `src/features/folders/components/FolderList.tsx`, with a local `Time` in
-  `src/features/grants/components/ConnectedAppList.tsx`; the empty state in six; the `.md` of a page label in five
-- Severity: Nit
-- Category: readability
-- Problem: the markup of a time, with the ISO value and the text of `formatDateTime()`, is written ten times,
-  though one component wraps it already. The suffix of a page is typed by hand five times, while its constant is
-  private in `src/lib/addresses.ts`. Two breadcrumb components build the same trail.
-- Impact: a change of the time format or of the suffix needs a search over the components.
-- Evidence: `function Time({ date }: { date: Date }) { return <time dateTime={date.toISOString()}>
-{formatDateTime(date)}</time>; }`.
-- Suggestion (optional): move `Time` to `src/components/`, add a component for the empty state and a helper for
-  the label of a page.
-- Confidence: Medium. No behaviour should change; whether a test reads the `dateTime` attribute was not checked.
-- Decision (2026-11-18): as suggested.
-
 #### Reviewed
 
 - The boundary of client and server holds today: none of the 22 Client Components imports a service, a queries
@@ -231,6 +195,10 @@ for `not-allowed` the browser shows the not-found page and MCP says that the rol
   the page alike; their unit tests cover the views, the actions, `before` from 2 up, the parameters of each view, the
   role of each action and the titles, and `e2e/folders.spec.ts` and `e2e/folder-roles.spec.ts` check that a
   not-found page keeps the plain title. The buttons ask the same tables of the lowest roles.
+- The routes of a folder and a tab hold only the login, `resolve()`, the gate and a switch, as the routes of pages
+  do; the views are Server Components of their features (`FolderView`, `TabView`, `FolderRolesView`, `AllPagesView`,
+  `NewPageView`, `AiAppsView`), the head with its buttons is `HeadingWithActions`, and `NewPageForm` takes the tab
+  once. The lists share `Time`, `EmptyState` and `pageLabel()`.
 - Links, redirects and the addresses that close a dialog are built with `src/lib/addresses.ts`, with the three
   exceptions named above.
 - The two error pages use the `retry` prop, which is the API of the installed Next.js.

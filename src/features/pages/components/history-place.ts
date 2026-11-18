@@ -9,6 +9,7 @@ import {
   deletedPageRevisionPath,
   pageComparePath,
   pageHistoryPath,
+  pageLabel,
   pagePath,
   pageRevisionPath,
 } from "@/lib/addresses";
@@ -40,7 +41,7 @@ export function pageHistoryPlace(page: PageWithPlace): HistoryPlace {
     folderName: folder,
     tabName: tab,
     deleted: false,
-    pageLabel: `${page.name}.md`,
+    pageLabel: pageLabel(page.name),
     pageHref: pagePath(folder, tab, page.name),
     historyHref: (before) => pageHistoryPath(folder, tab, page.name, before),
     revisionHref: (revision, raw) => pageRevisionPath(folder, tab, page.name, revision, raw),

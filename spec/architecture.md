@@ -8,7 +8,8 @@ How the code is organised and which patterns new code follows. The technology st
 - `src/app/`: routes (App Router), including the global `not-found`, `error` and `global-error` pages
 - `src/proxy.ts`: the proxy of Next.js, which sends requests without a session cookie to the login page (see "Login
   and sessions")
-- `src/components/`: shared UI components (app bar, `Link`)
+- `src/components/`: shared UI components (app bar, `Link`, and the pieces of the lists and heads: `Time` for a point
+  in time, `EmptyState` for a list without items, `HeadingWithActions` for a heading with its row of buttons)
 - `src/lib/`: cross-cutting modules, such as the environment, the database client, the logger, the name rule, the
   addresses, the revalidation after a write, the type `Result`, the Better Auth instance and the password hashing.
   What each module holds is in the module itself. A module that a Client Component imports, such as `names.ts` or
@@ -379,6 +380,11 @@ The feature is described in `users-and-login.md`. What every new route, query an
   `src/lib/theme.ts`, `CssBaseline`, the app bar and a centered content container. The app bar reads the user of the
   session, so every route is rendered on demand.
 - Components are Server Components unless they need interaction; then they are small Client Components.
+- A route holds only `requireUser()`, its `resolve()` (see "Addresses and actions"), the gate and a switch over what
+  the address shows; each view is a Server Component of its feature that reads its own data through `queries.ts`,
+  such as `FolderView`, `TabView` and `FolderRolesView`, `AllPagesView`, `NewPageView` and `PageView`, and `AiAppsView`
+  of MCP.
+- A page is labelled as its address names it, with `pageLabel()` of `src/lib/addresses.ts`.
 - A Client Component imports a value only from a module that pulls in nothing it does not use: the names of form
   fields of pages from `src/features/pages/fields.ts` and the limit of a name from `src/lib/name-limits.ts`, both
   without imports, and the limits of users and pages from their `limits.ts`. A constant read from a module of forms

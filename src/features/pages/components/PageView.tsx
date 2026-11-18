@@ -6,6 +6,7 @@ import Typography from "@mui/material/Typography";
 import { notFound } from "next/navigation";
 
 import Link from "@/components/Link";
+import Time from "@/components/Time";
 import FolderBreadcrumbs from "@/features/folders/components/FolderBreadcrumbs";
 import { listTabs } from "@/features/folders/queries";
 import { deletePage, moveOrRenamePage, updatePageContent } from "@/features/pages/actions";
@@ -16,7 +17,7 @@ import PageForm from "@/features/pages/components/PageForm";
 import type { PageWithPlace } from "@/features/pages/service";
 import { editorWithChannel } from "@/features/users/records";
 import { mayDoPageAction, type PageAction } from "@/features/pages/page-query";
-import { pagePath, pageHistoryPath, type PageNotice } from "@/lib/addresses";
+import { pageHistoryPath, pageLabel, pagePath, type PageNotice } from "@/lib/addresses";
 import { formatDateTime } from "@/lib/format";
 
 /**
@@ -72,12 +73,11 @@ export default async function PageView({ page, action, notice }: PageViewProps) 
 
   return (
     <Stack spacing={2}>
-      <FolderBreadcrumbs folderName={folderName} tabName={tabName} current={`${page.name}.md`} />
+      <FolderBreadcrumbs folderName={folderName} tabName={tabName} current={pageLabel(page.name)} />
       <Paper component="article" variant="outlined" sx={{ p: { xs: 2, sm: 4 } }}>
         <Stack spacing={1} sx={{ mb: 3 }}>
           <Typography variant="body2" color="text.secondary">
-            Last updated <time dateTime={page.updatedAt.toISOString()}>{formatDateTime(page.updatedAt)}</time> by{" "}
-            {editorWithChannel(page.lastEditedBy)}
+            Last updated <Time date={page.updatedAt} /> by {editorWithChannel(page.lastEditedBy)}
           </Typography>
           {/* Only what the role includes is offered; a Reader gets only "History". The buttons wrap on narrow screens. */}
           <Stack direction="row" useFlexGap sx={{ pt: 1, flexWrap: "wrap", gap: 2 }}>
@@ -125,7 +125,7 @@ export default async function PageView({ page, action, notice }: PageViewProps) 
         <DeletePageDialog
           key={formKey}
           action={deletePage.bind(null, page.id)}
-          pageLabel={`${page.name}.md`}
+          pageLabel={pageLabel(page.name)}
           version={page.version}
           changedMessage={message}
           closeHref={address}

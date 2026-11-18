@@ -7,16 +7,12 @@ import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 
+import EmptyState from "@/components/EmptyState";
 import Link from "@/components/Link";
+import Time from "@/components/Time";
 import { ROLE_LABELS } from "@/features/folder-roles/roles";
 import type { GrantSummary } from "@/features/grants/service";
 import { revokeAppPath } from "@/lib/addresses";
-import { formatDateTime } from "@/lib/format";
-
-/** A point in time as a `<time>` element. */
-function Time({ date }: { date: Date }) {
-  return <time dateTime={date.toISOString()}>{formatDateTime(date)}</time>;
-}
 
 type ConnectedAppListProps = {
   /** The connected apps of the logged-in user, newest first. */
@@ -33,11 +29,7 @@ type ConnectedAppListProps = {
  */
 export default function ConnectedAppList({ apps, now }: ConnectedAppListProps) {
   if (apps.length === 0) {
-    return (
-      <Paper variant="outlined" sx={{ p: 3 }}>
-        <Typography color="text.secondary">No app is connected yet.</Typography>
-      </Paper>
-    );
+    return <EmptyState text="No app is connected yet." />;
   }
 
   return (

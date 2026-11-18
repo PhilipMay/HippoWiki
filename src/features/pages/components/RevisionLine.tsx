@@ -1,8 +1,8 @@
 import Typography from "@mui/material/Typography";
 
+import Time from "@/components/Time";
 import type { RevisionSummary } from "@/features/pages/history-service";
 import { editorWithChannel } from "@/features/users/records";
-import { formatDateTime } from "@/lib/format";
 
 type RevisionLineProps = {
   revision: RevisionSummary;
@@ -17,8 +17,7 @@ type RevisionLineProps = {
 export default function RevisionLine({ revision, newest }: RevisionLineProps) {
   return (
     <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: "anywhere" }}>
-      Revision {revision.number} of {newest} ·{" "}
-      <time dateTime={revision.createdAt.toISOString()}>{formatDateTime(revision.createdAt)}</time> by{" "}
+      Revision {revision.number} of {newest} · <Time date={revision.createdAt} /> by{" "}
       {editorWithChannel(revision.madeBy)}
       {revision.revertedTo !== null && ` · Reverted to revision ${revision.revertedTo}`}
     </Typography>

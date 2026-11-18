@@ -5,10 +5,10 @@ import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 
 import Link from "@/components/Link";
+import Time from "@/components/Time";
 import type { PageSummary } from "@/features/pages/service";
 import { editorWithChannel } from "@/features/users/records";
-import { pagePath } from "@/lib/addresses";
-import { formatDateTime } from "@/lib/format";
+import { pageLabel, pagePath } from "@/lib/addresses";
 
 type PageListItemProps = {
   page: PageSummary;
@@ -35,9 +35,7 @@ export default function PageListItem({ page, folderName, tabName, divider }: Pag
           primary={page.title}
           secondary={
             <>
-              {page.name}.md · Updated{" "}
-              <time dateTime={page.updatedAt.toISOString()}>{formatDateTime(page.updatedAt)}</time> by{" "}
-              {editorWithChannel(page.lastEditedBy)}
+              {pageLabel(page.name)} · Updated <Time date={page.updatedAt} /> by {editorWithChannel(page.lastEditedBy)}
             </>
           }
           slotProps={{ primary: { sx: { overflowWrap: "anywhere" } } }}

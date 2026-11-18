@@ -113,7 +113,7 @@ Decided by the user on 2026-11-18:
 - [x] Leftovers and small duplicates
 - [x] Lint rules and checks
 - [x] The query of a page and what a route shows
-- [ ] Views of the folder routes and pieces of the lists
+- [x] Views of the folder routes and pieces of the lists
 - [ ] Dialogs
 - [ ] The first review report
 - [ ] One owner per rule in the feature specs

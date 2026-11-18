@@ -8,12 +8,12 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 
 import Link from "@/components/Link";
+import Time from "@/components/Time";
 import HistoryBreadcrumbs from "@/features/pages/components/HistoryBreadcrumbs";
 import type { HistoryPlace } from "@/features/pages/components/history-place";
 import { REVISIONS_PER_PAGE } from "@/features/pages/limits";
 import type { PageRevisions } from "@/features/pages/history-service";
 import { editorWithChannel } from "@/features/users/records";
-import { formatDateTime } from "@/lib/format";
 
 type PageHistoryProps = {
   /** Where the page lives, for the breadcrumb and the links. */
@@ -64,8 +64,7 @@ export default function PageHistory({ place, title, history, before }: PageHisto
                   primary={`Revision ${revision.number}`}
                   secondary={
                     <>
-                      <time dateTime={revision.createdAt.toISOString()}>{formatDateTime(revision.createdAt)}</time> by{" "}
-                      {editorWithChannel(revision.madeBy)} · {revision.title}
+                      <Time date={revision.createdAt} /> by {editorWithChannel(revision.madeBy)} · {revision.title}
                       {revision.revertedTo !== null && ` · Reverted to revision ${revision.revertedTo}`}
                     </>
                   }

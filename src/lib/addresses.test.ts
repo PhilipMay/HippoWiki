@@ -26,6 +26,7 @@ import {
   PAGE_NOTICES,
   pageComparePath,
   pageHistoryPath,
+  pageLabel,
   pagePath,
   pageRevertPath,
   pageRevisionPath,
@@ -174,6 +175,13 @@ describe("paths", () => {
   it("builds the address of the dialog that revokes a connected app", () => {
     const id = "0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01";
     expect(revokeAppPath(id)).toBe(`/account?action=revoke&app=${id}`);
+  });
+});
+
+describe("pageLabel", () => {
+  it("names a page with .md after its name, as its address does", () => {
+    expect(pageLabel("overview")).toBe("overview.md");
+    expect(parsePageSegment(pageLabel("release-notes"))).toBe("release-notes");
   });
 });
 

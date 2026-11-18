@@ -337,6 +337,11 @@ export function deletedPageComparePath(folder: string, id: string, from: number,
   return comparePath(deletedPagePath(folder, id), from, to);
 }
 
+/** A page as its address names it, with `.md` after its name: how lists, breadcrumbs and dialogs label a page. */
+export function pageLabel(name: string): string {
+  return `${name}${PAGE_SUFFIX}`;
+}
+
 /**
  * Returns the page name if the URL segment is a valid name followed by `.md`, otherwise `null`. Only the lowercase
  * suffix counts, and names never contain a dot, so `guides.MD` and `guides.md.md` are no pages.

@@ -5,15 +5,15 @@ import ListItemButton from "@mui/material/ListItemButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 import Paper from "@mui/material/Paper";
-import Typography from "@mui/material/Typography";
 
+import EmptyState from "@/components/EmptyState";
 import Link from "@/components/Link";
+import Time from "@/components/Time";
 import type { TabSummary } from "@/features/folders/service";
 import PageListItem from "@/features/pages/components/PageListItem";
 import type { PageSummary } from "@/features/pages/service";
 import { editorWithChannel } from "@/features/users/records";
 import { tabPath } from "@/lib/addresses";
-import { formatDateTime } from "@/lib/format";
 
 type FolderContentsListProps = {
   folderName: string;
@@ -30,16 +30,7 @@ type FolderContentsListProps = {
  */
 export default function FolderContentsList({ folderName, pages, tabs }: FolderContentsListProps) {
   if (pages.length === 0 && tabs.length === 0) {
-    return (
-      <Paper variant="outlined" sx={{ p: 4, textAlign: "center" }}>
-        <Typography variant="h6" component="p" gutterBottom>
-          This folder is empty
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Create a page with “New page” or a tab with “New tab”.
-        </Typography>
-      </Paper>
-    );
+    return <EmptyState title="This folder is empty" text="Create a page with “New page” or a tab with “New tab”." />;
   }
 
   const lastIndex = pages.length + tabs.length - 1;
@@ -61,8 +52,7 @@ export default function FolderContentsList({ folderName, pages, tabs }: FolderCo
                 primary={tab.name}
                 secondary={
                   <>
-                    Updated <time dateTime={tab.updatedAt.toISOString()}>{formatDateTime(tab.updatedAt)}</time> by{" "}
-                    {editorWithChannel(tab.lastEditedBy)}
+                    Updated <Time date={tab.updatedAt} /> by {editorWithChannel(tab.lastEditedBy)}
                   </>
                 }
                 sx={{ overflowWrap: "anywhere" }}

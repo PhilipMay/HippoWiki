@@ -6,12 +6,12 @@ import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
-import Typography from "@mui/material/Typography";
 
+import EmptyState from "@/components/EmptyState";
 import Link from "@/components/Link";
+import Time from "@/components/Time";
 import type { PageWithTabSummary } from "@/features/pages/service";
-import { pagePath } from "@/lib/addresses";
-import { formatDateTime } from "@/lib/format";
+import { pageLabel, pagePath } from "@/lib/addresses";
 
 type AllPagesListProps = {
   /** All pages of the folder, in display order. */
@@ -26,14 +26,10 @@ type AllPagesListProps = {
 export default function AllPagesList({ pages, folderName }: AllPagesListProps) {
   if (pages.length === 0) {
     return (
-      <Paper variant="outlined" sx={{ p: 4, textAlign: "center" }}>
-        <Typography variant="h6" component="p" gutterBottom>
-          No pages yet
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          This folder has no pages, neither placed directly in it nor in its tabs.
-        </Typography>
-      </Paper>
+      <EmptyState
+        title="No pages yet"
+        text="This folder has no pages, neither placed directly in it nor in its tabs."
+      />
     );
   }
 
@@ -55,14 +51,14 @@ export default function AllPagesList({ pages, folderName }: AllPagesListProps) {
             <TableRow key={page.id}>
               <TableCell sx={{ overflowWrap: "anywhere" }}>
                 <MuiLink component={Link} href={pagePath(folderName, page.tab?.name ?? null, page.name)}>
-                  {page.name}.md
+                  {pageLabel(page.name)}
                 </MuiLink>
               </TableCell>
               {/* A page placed directly in the folder has no tab. */}
               <TableCell sx={{ overflowWrap: "anywhere" }}>{page.tab?.name ?? "–"}</TableCell>
               <TableCell sx={{ overflowWrap: "anywhere" }}>{page.title}</TableCell>
               <TableCell sx={{ whiteSpace: "nowrap" }}>
-                <time dateTime={page.updatedAt.toISOString()}>{formatDateTime(page.updatedAt)}</time>
+                <Time date={page.updatedAt} />
               </TableCell>
               <TableCell sx={{ overflowWrap: "anywhere" }}>{page.lastEditedBy.name}</TableCell>
               <TableCell>{page.lastEditedBy.via}</TableCell>

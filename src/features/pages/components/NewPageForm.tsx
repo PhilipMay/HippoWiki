@@ -28,10 +28,11 @@ type NewPageFormProps = {
   folderName: string;
   /** The tabs of the folder, in display order: the places the dialog offers besides the folder itself. */
   tabs: { id: string; name: string }[];
-  /** Name of the tab the editor was opened for, or `null` for the folder itself. "Cancel" leads to this place. */
-  tabName: string | null;
-  /** The id of the tab the editor was opened for, or `null` for the folder itself; the dialog preselects this place. */
-  initialTabId: string | null;
+  /**
+   * The tab the editor was opened for, or `null` for the folder itself: "Cancel" leads to this place, and the dialog
+   * preselects it.
+   */
+  tab: { id: string; name: string } | null;
 };
 
 /**
@@ -39,7 +40,7 @@ type NewPageFormProps = {
  * "Save" derives the title and opens a dialog that asks for the name, prefilled from the title, and the place, with the
  * place the editor was opened for preselected.
  */
-export default function NewPageForm({ action, folderName, tabs, tabName, initialTabId }: NewPageFormProps) {
+export default function NewPageForm({ action, folderName, tabs, tab }: NewPageFormProps) {
   const [content, setContent] = useState("");
   const [open, setOpen] = useState(false);
   // The title derived when "Save" was last pressed; the dialog suggests the name from it. The title is not submitted,
@@ -85,7 +86,7 @@ export default function NewPageForm({ action, folderName, tabs, tabName, initial
         <Button type="button" variant="contained" onClick={save} disabled={!hydrated}>
           Save
         </Button>
-        <Button component={Link} href={tabName === null ? folderPath(folderName) : tabPath(folderName, tabName)}>
+        <Button component={Link} href={tab === null ? folderPath(folderName) : tabPath(folderName, tab.name)}>
           Cancel
         </Button>
       </Stack>
@@ -95,7 +96,7 @@ export default function NewPageForm({ action, folderName, tabs, tabName, initial
         action={action}
         folderName={folderName}
         tabs={tabs}
-        initialTabId={initialTabId}
+        initialTabId={tab?.id ?? null}
         title={title}
         content={content}
         onClose={() => setOpen(false)}
@@ -104,7 +105,9 @@ export default function NewPageForm({ action, folderName, tabs, tabName, initial
   );
 }
 
-type SavePageDialogProps = Omit<NewPageFormProps, "tabName"> & {
+type SavePageDialogProps = Omit<NewPageFormProps, "tab"> & {
+  /** The id of the tab the editor was opened for, or `null` for the folder itself; the dialog preselects this place. */
+  initialTabId: string | null;
   open: boolean;
   /** The title derived from the content, used to suggest the name; the server derives it again on save. */
   title: string;
