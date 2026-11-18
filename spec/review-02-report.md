@@ -636,8 +636,9 @@ error_description: description, state, iss: base })`.
   a title that suggests no name.
 - Confidence: Low. It adds a code to the service and to the browser action.
 - Alternatives: keep the rule in the tool and record the second parse as accepted in `pages.md`.
-- Decision (2026-11-18): the Alternative: the rule stays in the tool, and `pages.md` and `mcp.md` record the second
-  parse and the other order of the checks as accepted.
+- Decision (2026-11-18): as suggested: the service accepts a missing name and derives it after its own checks, with a
+  code of its own for a title that suggests no name; the tool no longer parses the content, so the content is parsed
+  once and the order of the checks is that of the service. `pages.md` and `mcp.md` are brought in line.
 
 #### suggestion: `tools.ts` and the OAuth service each hold several parts that could stand alone
 
