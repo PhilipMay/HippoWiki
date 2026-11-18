@@ -14,6 +14,8 @@ import {
   deletedTabOutput,
   deletePageInput,
   deleteTabInput,
+  editedPageOutput,
+  editPageContentInput,
   listFolderOutput,
   moveOrRenamePageInput,
   NAME_RULE,
@@ -29,6 +31,7 @@ import {
   createTab,
   deletePage,
   deleteTab,
+  editPageContent,
   listFolder,
   moveOrRenamePage,
   readPage,
@@ -82,7 +85,10 @@ const READ_ONLY = { readOnlyHint: true, destructiveHint: false, idempotentHint: 
 /** What a tool tells a client that writes to the wiki and destroys nothing. */
 const WRITES = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false };
 
-/** What a tool tells a client that overwrites the whole content of a page, which loses the content before. */
+/**
+ * What a tool tells a client that changes the content of a page, which loses the content before: the whole of it with
+ * `replace_page_content`, any text that a replacement of `edit_page_content` names.
+ */
 const OVERWRITES = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false };
 
 /** What a tool tells a client that deletes from the wiki. */
@@ -159,6 +165,25 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
         annotations: OVERWRITES,
       },
       (input) => replacePageContent(options, input),
+    );
+
+    server.registerTool(
+      "edit_page_content",
+      {
+        title: "Replace exact texts in the content of a page",
+        description:
+          "Changes parts of the content of a page of the folder of this connection: each replacement names an exact " +
+          "text of the content, as read_page gave it, and the text that replaces it. A text must appear exactly " +
+          "once, unless the replacement sets replaceAll. The replacements are applied in the order given, each to " +
+          "the content as the ones before it left it, and stored as one change; if one of them cannot be applied, " +
+          "nothing is changed. State the version that read_page gave: if the page has changed since, nothing is " +
+          "changed. The content must still start with a title heading; the title of the page follows it. Returns " +
+          "the page with its version and how many places each replacement changed.",
+        inputSchema: editPageContentInput,
+        outputSchema: editedPageOutput,
+        annotations: OVERWRITES,
+      },
+      (input) => editPageContent(options, input),
     );
   }
 

@@ -1,5 +1,6 @@
 // The write tools of MCP for a Writer connection: create_page, replace_page_content and move_or_rename_page,
-// with optimistic locking and what the browser shows of their changes.
+// with optimistic locking and what the browser shows of their changes. edit_page_content has its own spec,
+// `mcp-edit.spec.ts`; here it is only listed.
 import type { APIRequestContext } from "@playwright/test";
 
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
@@ -71,7 +72,7 @@ test.describe("the write tools", () => {
   test("are listed for a Writer connection and not for a Reader connection; a call at the Reader address changes nothing", async ({
     request,
   }) => {
-    const writeTools = ["create_page", "replace_page_content", "move_or_rename_page"];
+    const writeTools = ["create_page", "replace_page_content", "edit_page_content", "move_or_rename_page"];
     const listed = async (token: string, to: string) =>
       (
         (await (await send(request, { method: "tools/list" }, token, to)).json()) as {

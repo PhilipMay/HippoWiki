@@ -73,6 +73,33 @@ export const replacePageContentInput = z.object({
     .describe("The whole new Markdown content of the page. It must start with a title heading: # Title"),
 });
 
+/**
+ * The replacements of `edit_page_content`. The list has no minimum and no maximum, and no text is refused here: every
+ * mistake is a tool error of the tool that says what to do (see "What holds for all of them" in `spec/mcp.md`).
+ */
+export const editPageContentInput = z.object({
+  ...pageArguments,
+  edits: z
+    .array(
+      z.object({
+        oldText: z
+          .string()
+          .describe(
+            "The exact text to find, as read_page gave the content: case, spaces, indentation and line breaks count. " +
+              "It must appear exactly once in the content, unless replaceAll is set.",
+          ),
+        newText: z.string().describe("The text that replaces oldText, inserted exactly as it is"),
+        replaceAll: z
+          .boolean()
+          .optional()
+          .describe("Replace every place where oldText appears, instead of exactly one place"),
+      }),
+    )
+    .describe(
+      "The replacements, applied in the order given, each to the content as the replacements before it left it",
+    ),
+});
+
 export const moveOrRenamePageInput = z.object({
   ...pageArguments,
   newTab: z
@@ -174,6 +201,13 @@ export const storedPageOutput = z.object({
       "The version of the page as stored, for the next change: counted up by a change, kept when the content, or " +
         "the name and place, are the same as before",
     ),
+});
+
+/** The page as stored by `edit_page_content`, with the places each replacement changed, and without the content. */
+export const editedPageOutput = storedPageOutput.extend({
+  replaced: z
+    .array(z.number().int())
+    .describe("How many places each replacement changed, in the order of the replacements"),
 });
 
 export const deletedPageOutput = z.object({

@@ -23,7 +23,7 @@ did not mean to touch stay exactly as they were. Written from `spec/mcp-search-a
 ## Checklist
 
 - [x] The replacements of a content
-- [ ] The tool edit_page_content
+- [x] The tool edit_page_content
 - [ ] Which tool is for what
 - [ ] Wrap-up
 

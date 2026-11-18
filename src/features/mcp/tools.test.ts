@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { McpActor } from "@/features/folder-roles/actors";
 import { MCP_ROLES, mayDo, type FolderFunction } from "@/features/folder-roles/roles";
 import { createWikiServer, instructionsFor } from "@/features/mcp/server";
+import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 import { analyseMarkdown } from "@/features/pages/markdown";
 import { TITLE_HEADING_MISSING_MESSAGE as TITLE_MISSING } from "@/features/pages/schema";
 import { NAME_MAX_LENGTH } from "@/lib/name-limits";
@@ -426,13 +427,16 @@ describe("the write tools", () => {
       "read_page",
       "create_page",
       "replace_page_content",
+      "edit_page_content",
       "move_or_rename_page",
     ]);
-    const [create, replace, move] = tools.slice(2);
+    const [create, replace, edit, move] = tools.slice(2);
     expect(Object.keys(create?.inputSchema.properties ?? {})).toEqual(["content", "tab", "name"]);
     expect(create?.inputSchema.required).toEqual(["content"]);
     expect(Object.keys(replace?.inputSchema.properties ?? {})).toEqual(["tab", "page", "version", "content"]);
     expect(replace?.inputSchema.required).toEqual(["page", "content"]);
+    expect(Object.keys(edit?.inputSchema.properties ?? {})).toEqual(["tab", "page", "version", "edits"]);
+    expect(edit?.inputSchema.required).toEqual(["page", "edits"]);
     expect(Object.keys(move?.inputSchema.properties ?? {})).toEqual(["tab", "page", "version", "newTab", "newName"]);
     expect(move?.inputSchema.required).toEqual(["page", "newTab", "newName"]);
     expect(create?.inputSchema.properties?.name?.description).toContain(LENGTH_LIMIT);
@@ -444,6 +448,8 @@ describe("the write tools", () => {
         expect(argument.description).toBeTruthy();
     }
     expect(replace?.annotations.destructiveHint).toBe(true);
+    // A replacement can remove any text, so the tool carries the hints of the full replacement (R10).
+    expect(edit?.annotations).toStrictEqual(replace?.annotations);
   });
 
   it("are registered for a Manager connection as well, after the read tools", async () => {
@@ -451,11 +457,12 @@ describe("the write tools", () => {
 
     const answer = await send({ method: "tools/list" });
 
-    expect((answer.result?.tools as { name: string }[]).map((tool) => tool.name).slice(0, 5)).toEqual([
+    expect((answer.result?.tools as { name: string }[]).map((tool) => tool.name).slice(0, 6)).toEqual([
       "list_folder",
       "read_page",
       "create_page",
       "replace_page_content",
+      "edit_page_content",
       "move_or_rename_page",
     ]);
   });
@@ -468,10 +475,17 @@ describe("the write tools", () => {
       method: "tools/call",
       params: { name: "create_page", arguments: { content: "# New" } },
     });
+    const edit = await send({
+      method: "tools/call",
+      params: { name: "edit_page_content", arguments: { page: "setup", version: 4, edits: [] } },
+    });
 
     expect((list.result?.tools as { name: string }[]).map((tool) => tool.name)).toEqual(["list_folder", "read_page"]);
     expectToolNotFound(call, "create_page");
+    expectToolNotFound(edit, "edit_page_content");
     expect(mocks.createPage).not.toHaveBeenCalled();
+    expect(mocks.getPage).not.toHaveBeenCalled();
+    expect(mocks.updatePageContent).not.toHaveBeenCalled();
   });
 
   it("tell a Writer connection in the instructions about the write tools and the version", () => {
@@ -614,6 +628,172 @@ describe("the write tools", () => {
       expect(errorOf(await callTool("replace_page_content", { page: "setup", version: 4, content: "x" }))).toContain(
         message,
       );
+    });
+  });
+
+  describe("edit_page_content", () => {
+    const CONTENT = "# Setup\n\nInstall on 2026-03-01.\n\nRun npm, npm and npm.\n";
+    const CHANGED_MESSAGE =
+      "The page was changed by bob via mcp at 2026-03-01T12:00:00.000Z, after the version this change is based on, or " +
+      "the change states no valid version. Nothing was changed. Read the page again with read_page and base the " +
+      "change on its current content and version.";
+
+    beforeEach(() => {
+      mocks.getPage.mockResolvedValue({ ...PAGE, content: CONTENT });
+    });
+
+    it("stores the content with the replacements applied, based on the given version, and returns the counts and no content (R2, R11)", async () => {
+      mocks.updatePageContent.mockResolvedValue({ ok: true, value: STORED });
+
+      const result = await callTool("edit_page_content", {
+        page: "setup",
+        version: 4,
+        edits: [
+          { oldText: "2026-03-01", newText: "2026-04-15" },
+          { oldText: "npm", newText: "pnpm", replaceAll: true },
+        ],
+      });
+
+      expect(mocks.getPage).toHaveBeenCalledWith(WRITER, "handbook", null, "setup");
+      expect(mocks.updatePageContent).toHaveBeenCalledExactlyOnceWith(WRITER, "p1", {
+        content: "# Setup\n\nInstall on 2026-04-15.\n\nRun pnpm, pnpm and pnpm.\n",
+        version: 4,
+      });
+      expect(result.isError).toBeFalsy();
+      expect(result.structuredContent).toStrictEqual({
+        name: "setup",
+        title: "Setup",
+        tab: null,
+        address: "https://wiki.example.com/folders/handbook/setup.md",
+        version: 5,
+        replaced: [1, 3],
+      });
+    });
+
+    it("finds the page in its tab", async () => {
+      mocks.updatePageContent.mockResolvedValue({ ok: true, value: { ...STORED, tab: { name: "guides" } } });
+
+      const result = await callTool("edit_page_content", {
+        tab: "guides",
+        page: "setup",
+        version: 4,
+        edits: [{ oldText: "Install", newText: "Set up" }],
+      });
+
+      expect(mocks.getPage).toHaveBeenCalledWith(WRITER, "handbook", "guides", "setup");
+      expect(result.structuredContent).toMatchObject({ tab: "guides", replaced: [1] });
+    });
+
+    it.each([
+      ["missing", undefined],
+      ["older than the page as read", 3],
+    ])(
+      "refuses a version that is %s with the message of replace_page_content, before the replacements (R4, R18)",
+      async (_kind, version) => {
+        const message = errorOf(
+          await callTool("edit_page_content", {
+            page: "setup",
+            ...(version === undefined ? {} : { version }),
+            edits: [{ oldText: "not on the page", newText: "x" }],
+          }),
+        );
+
+        expect(message).toBe(CHANGED_MESSAGE);
+        expect(mocks.updatePageContent).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([
+      [
+        "a text that is not found",
+        [
+          { oldText: "Install", newText: "Set up" },
+          { oldText: "run npm", newText: "x" },
+        ],
+        [
+          'Replacement 2 (oldText "run npm") was not found in the content',
+          "so nothing was changed",
+          "Read the page again with read_page",
+        ],
+      ],
+      [
+        "a text found several times",
+        [{ oldText: "npm", newText: "pnpm" }],
+        ['Replacement 1 (oldText "npm") was found 3 times', "Add surrounding text", "set replaceAll"],
+      ],
+      [
+        "an empty text to find",
+        [
+          { oldText: "Install", newText: "Set up" },
+          { oldText: "", newText: "x" },
+        ],
+        ["Replacement 2 has an empty oldText, so nothing was changed"],
+      ],
+      [
+        "a new text equal to the text to find",
+        [{ oldText: "Install", newText: "Install" }],
+        ['Replacement 1 (oldText "Install") has a newText that is the same as its oldText', "differs from it"],
+      ],
+      ["an empty list", [], ["The call has no replacements, so nothing was changed", "at least one replacement"]],
+      [
+        "a result longer than the limit",
+        [{ oldText: "Install", newText: "x".repeat(CONTENT_MAX_LENGTH) }],
+        ["would make the content longer than 100,000 characters", "so nothing was changed"],
+      ],
+    ])(
+      "answers %s with a tool error that names the replacement and what to do, and changes nothing (R3, R8, R14, R16)",
+      async (_kind, edits, parts) => {
+        const message = errorOf(await callTool("edit_page_content", { page: "setup", version: 4, edits }));
+
+        for (const part of parts) expect(message).toContain(part);
+        expect(mocks.updatePageContent).not.toHaveBeenCalled();
+      },
+    );
+
+    it("quotes only the start of a long text to find, as JSON", async () => {
+      const oldText = `Line one\n${"y".repeat(100)}`;
+
+      const message = errorOf(
+        await callTool("edit_page_content", { page: "setup", version: 4, edits: [{ oldText, newText: "x" }] }),
+      );
+
+      expect(message).toContain(`Replacement 1 (oldText ${JSON.stringify(`${oldText.slice(0, 60)}…`)}) was not found`);
+    });
+
+    it("answers a page that does not exist with the error that points to list_folder, and changes nothing (R12)", async () => {
+      mocks.getPage.mockResolvedValue(null);
+
+      const message = errorOf(
+        await callTool("edit_page_content", { page: "gone", version: 1, edits: [{ oldText: "a", newText: "b" }] }),
+      );
+
+      expect(message).toBe(
+        'There is no page named "gone" directly in the folder "handbook". Use list_folder to see the pages of the ' +
+          "folder and the tab each one is in.",
+      );
+      expect(mocks.updatePageContent).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [{ code: "not-allowed" }],
+      [{ code: "page-not-found" }],
+      [{ code: "page-changed", page: STORED }],
+      [{ code: "invalid-input", fieldErrors: { content: [TITLE_MISSING] } }],
+      [{ code: "invalid-input", fieldErrors: { content: ["Content must be at most 100,000 characters"] } }],
+      [{ code: "failed" }],
+    ])("maps the error %j to the tool error of replace_page_content (R5)", async (error) => {
+      mocks.updatePageContent.mockResolvedValue({ ok: false, error });
+
+      const edited = errorOf(
+        await callTool("edit_page_content", {
+          page: "setup",
+          version: 4,
+          edits: [{ oldText: "# Setup", newText: "Setup" }],
+        }),
+      );
+      const replaced = errorOf(await callTool("replace_page_content", { page: "setup", version: 4, content: "x" }));
+
+      expect(edited).toBe(replaced);
     });
   });
 
@@ -760,7 +940,7 @@ describe("the tools of a Manager connection", () => {
   it("are registered for a Manager connection after the write tools, with inputs, output schemas and hints", async () => {
     const tools = await listedTools();
 
-    expect(tools.map((tool) => tool.name).slice(5)).toEqual(MANAGER_TOOLS);
+    expect(tools.map((tool) => tool.name).slice(6)).toEqual(MANAGER_TOOLS);
     const byName = Object.fromEntries(tools.map((tool) => [tool.name, tool]));
     expect(Object.keys(byName.delete_page?.inputSchema.properties ?? {})).toEqual(["tab", "page", "version"]);
     expect(byName.delete_page?.inputSchema.required).toEqual(["page"]);
@@ -787,8 +967,8 @@ describe("the tools of a Manager connection", () => {
   });
 
   it.each([
-    ["Manager", MANAGER, 9],
-    ["Writer", WRITER, 5],
+    ["Manager", MANAGER, 10],
+    ["Writer", WRITER, 6],
     ["Reader", READER, 2],
   ])("give a %s connection %i tools", async (_role, other, count) => {
     actor = other;
@@ -1052,6 +1232,7 @@ describe("the tools of each role", () => {
     ["read_page", "read"],
     ["create_page", "editPage"],
     ["replace_page_content", "editPage"],
+    ["edit_page_content", "editPage"],
     ["move_or_rename_page", "moveOrRenamePage"],
     ["delete_page", "deletePage"],
     ["create_tab", "editTab"],
@@ -1121,6 +1302,18 @@ describe("a name of an existing tab or page", () => {
       (name) => ({ page: name, version: 4, content: "# X" }),
       "page",
       (name) => `There is no page named "${name}"`,
+    ],
+    [
+      "edit_page_content",
+      (name) => ({ page: name, version: 4, edits: [{ oldText: "Setup", newText: "X" }] }),
+      "page",
+      (name) => `There is no page named "${name}"`,
+    ],
+    [
+      "edit_page_content",
+      (name) => ({ tab: name, page: "setup", version: 4, edits: [{ oldText: "Setup", newText: "X" }] }),
+      "page",
+      (name) => `There is no page named "setup" in the tab "${name}"`,
     ],
     [
       "move_or_rename_page",
@@ -1197,7 +1390,7 @@ describe("every tool", () => {
   const WRITE_FAILED = "The change could not be stored. Please try again later.";
 
   /**
-   * Each of the nine tools, called by a Manager connection, which has all of them: its arguments, the service it
+   * Each of the ten tools, called by a Manager connection, which has all of them: its arguments, the service it
    * calls, and the message of a failure of that service.
    */
   const TOOLS = [
@@ -1207,6 +1400,12 @@ describe("every tool", () => {
     [
       "replace_page_content",
       { page: "setup", version: 4, content: "# Setup 2" },
+      mocks.updatePageContent,
+      WRITE_FAILED,
+    ],
+    [
+      "edit_page_content",
+      { page: "setup", version: 4, edits: [{ oldText: "Setup", newText: "Setup 2" }] },
       mocks.updatePageContent,
       WRITE_FAILED,
     ],

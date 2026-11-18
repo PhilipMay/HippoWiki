@@ -278,7 +278,7 @@ test.describe("the tools of a Manager connection", () => {
     expect(await stored()).toEqual(before);
   });
 
-  test("the tool list of a Manager connection has nine tools, the destructive hint on the deletes and none for deleted pages, roles or the folder", async ({
+  test("the tool list of a Manager connection has ten tools, the destructive hint on the content changes and the deletes and none for deleted pages, roles or the folder", async ({
     request,
   }) => {
     const answer = await send(request, { method: "tools/list" }, manager, managerAddress);
@@ -293,6 +293,7 @@ test.describe("the tools of a Manager connection", () => {
       "read_page",
       "create_page",
       "replace_page_content",
+      "edit_page_content",
       "move_or_rename_page",
       "delete_page",
       "create_tab",
@@ -303,6 +304,8 @@ test.describe("the tools of a Manager connection", () => {
     for (const name of ["delete_page", "create_tab", "rename_tab", "delete_tab"]) {
       expect(hints[name]?.readOnlyHint, name).toBe(false);
     }
+    expect(hints.replace_page_content?.destructiveHint).toBe(true);
+    expect(hints.edit_page_content).toStrictEqual(hints.replace_page_content);
     expect(hints.delete_page?.destructiveHint).toBe(true);
     expect(hints.delete_tab?.destructiveHint).toBe(true);
     expect(hints.create_tab?.destructiveHint).toBe(false);

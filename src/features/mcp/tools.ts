@@ -19,6 +19,8 @@ import type {
   deletedTabOutput,
   deletePageInput,
   deleteTabInput,
+  editedPageOutput,
+  editPageContentInput,
   listFolderOutput,
   moveOrRenamePageInput,
   readPageInput,
@@ -28,7 +30,9 @@ import type {
   storedPageOutput,
   storedTabOutput,
 } from "@/features/mcp/tool-schemas";
+import { applyEdits, type EditsResult } from "@/features/mcp/edits";
 import { NAME_RULE } from "@/features/mcp/tool-schemas";
+import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 import { TITLE_HEADING_MISSING_MESSAGE } from "@/features/pages/schema";
 import * as pageService from "@/features/pages/service";
 import { deletedPagesPath, folderPath, pagePath, tabPath } from "@/lib/addresses";
@@ -258,19 +262,23 @@ async function pageChanged(options: WikiToolsOptions, stored: pageService.Stored
 }
 
 /**
- * The page as stored by a write, as `create_page`, `replace_page_content` and `move_or_rename_page` return it, with its
- * title and its version: the new one after a change, the same one after a content save, or a move to the own name and
- * place, without a change, which stores nothing.
+ * The page as stored by a write, as `create_page`, `replace_page_content`, `edit_page_content` and
+ * `move_or_rename_page` return it, with its title and its version: the new one after a change, the same one after a
+ * content save, or a move to the own name and place, without a change, which stores nothing.
  */
-function storedResult(options: WikiToolsOptions, stored: pageService.StoredPage): CallToolResult {
+function storedPageData(options: WikiToolsOptions, stored: pageService.StoredPage): z.infer<typeof storedPageOutput> {
   const tab = stored.tab?.name ?? null;
-  return result({
+  return {
     name: stored.name,
     title: stored.title,
     tab,
     address: addressOf(options, pagePath(options.folder.name, tab, stored.name)),
     version: stored.version,
-  } satisfies z.infer<typeof storedPageOutput>);
+  };
+}
+
+function storedResult(options: WikiToolsOptions, stored: pageService.StoredPage): CallToolResult {
+  return result(storedPageData(options, stored));
 }
 
 /**
@@ -333,18 +341,111 @@ export async function replacePageContent(
         version: input.version ?? null,
       });
       if (saved.ok) return storedResult(options, saved.value);
-      switch (saved.error.code) {
-        case "not-allowed":
-          return toolError(NOT_ALLOWED);
-        case "page-not-found":
-          return pageNotFound(options.folder.name, tab, input.page);
-        case "page-changed":
-          return pageChanged(options, saved.error.page);
-        case "invalid-input":
-          return invalidInput(saved.error.fieldErrors);
-        case "failed":
-          return toolError(WRITE_FAILED);
-      }
+      return contentNotSaved(options, tab, input.page, saved.error);
+    },
+    WRITE_FAILED,
+  );
+}
+
+/** The tool error of a content save that the service refused, as `replace_page_content` and `edit_page_content` give it. */
+function contentNotSaved(
+  options: WikiToolsOptions,
+  tab: string | null,
+  page: string,
+  error: pageService.UpdatePageContentError,
+): CallToolResult | Promise<CallToolResult> {
+  switch (error.code) {
+    case "not-allowed":
+      return toolError(NOT_ALLOWED);
+    case "page-not-found":
+      return pageNotFound(options.folder.name, tab, page);
+    case "page-changed":
+      return pageChanged(options, error.page);
+    case "invalid-input":
+      return invalidInput(error.fieldErrors);
+    case "failed":
+      return toolError(WRITE_FAILED);
+  }
+}
+
+/** The most characters of a text to find that an error quotes, so that the error of a long text stays short. */
+const QUOTED_TEXT_LENGTH = 60;
+
+/** The start of a text to find, as an error quotes it: as JSON, so that line breaks and quotes stay visible. */
+function quoted(text: string): string {
+  return JSON.stringify(text.length > QUOTED_TEXT_LENGTH ? `${text.slice(0, QUOTED_TEXT_LENGTH)}…` : text);
+}
+
+/**
+ * The tool error of a replacement that cannot be applied: which one, by its position and the start of its text to
+ * find, that nothing was changed, and what to do next (R3).
+ */
+function editNotApplied(failure: Extract<EditsResult, { ok: false }>): CallToolResult {
+  const { position, oldText, reason } = failure;
+  const replacement = `Replacement ${position} (oldText ${quoted(oldText)})`;
+  switch (reason.code) {
+    case "no-edits":
+      return toolError("The call has no replacements, so nothing was changed. Send at least one replacement in edits.");
+    case "empty-old-text":
+      return toolError(
+        `Replacement ${position} has an empty oldText, so nothing was changed. Send the exact text to find, as ` +
+          "read_page gave the content.",
+      );
+    case "no-change":
+      return toolError(
+        `${replacement} has a newText that is the same as its oldText, so nothing was changed. Send a newText that ` +
+          "differs from it, or leave the replacement out.",
+      );
+    case "not-found":
+      // A plain error, without a guess at similar text, so that the agent reads the real text again (R16).
+      return toolError(
+        `${replacement} was not found in the content, as the replacements before it left it, so nothing was ` +
+          "changed. The text must match exactly, case, spaces, indentation and line breaks included. Read the page " +
+          "again with read_page and copy the text from its content.",
+      );
+    case "found-several-times":
+      return toolError(
+        `${replacement} was found ${reason.count} times in the content, so nothing was changed. Add surrounding ` +
+          "text to oldText so that it appears exactly once, or set replaceAll to replace every place.",
+      );
+    case "too-long":
+      return toolError(
+        `${replacement} would make the content longer than ${CONTENT_MAX_LENGTH.toLocaleString("en-US")} ` +
+          "characters, the length limit of a page, so nothing was changed.",
+      );
+  }
+}
+
+/**
+ * The tool `edit_page_content`: exact texts of the content of a page of the folder of the connection replaced by new
+ * texts, based on a version, and stored as one change, or nothing at all. The version is checked before the
+ * replacements, so that a call based on an older version learns who changed the page, also when one of its texts is
+ * gone (R4, R18). The service checks the new content like content saved in full (R5) and stores nothing when it is
+ * the same as before (R6).
+ */
+export async function editPageContent(
+  options: WikiToolsOptions,
+  input: z.infer<typeof editPageContentInput>,
+): Promise<CallToolResult> {
+  return run(
+    "edit_page_content",
+    async () => {
+      const tab = input.tab ?? null;
+      const page = await pageService.getPage(options.actor, options.folder.name, tab, input.page);
+      if (!page) return pageNotFound(options.folder.name, tab, input.page);
+      if (input.version !== page.version) return pageChanged(options, page);
+      const edited = applyEdits(page.content, input.edits);
+      if (!edited.ok) return editNotApplied(edited);
+      // The version of the call, so that a change between the read above and the write is refused as well.
+      const saved = await pageService.updatePageContent(options.actor, page.id, {
+        content: edited.content,
+        version: input.version,
+      });
+      if (!saved.ok) return contentNotSaved(options, tab, input.page, saved.error);
+      return result({
+        ...storedPageData(options, saved.value),
+        replaced: edited.counts,
+      } satisfies z.infer<typeof editedPageOutput>);
     },
     WRITE_FAILED,
   );
