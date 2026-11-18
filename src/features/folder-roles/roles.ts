@@ -16,11 +16,6 @@ export const ROLE_LABELS: Readonly<Record<Role, string>> = {
   owner: "Owner",
 };
 
-/** Whether the text is a role. */
-export function isRole(value: unknown): value is Role {
-  return typeof value === "string" && (ROLES as readonly string[]).includes(value);
-}
-
 /** Whether the role includes everything of the needed role: whether it is the same role or a higher one. */
 export function includesRole(role: Role, needed: Role): boolean {
   return ROLES.indexOf(role) >= ROLES.indexOf(needed);

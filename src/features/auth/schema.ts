@@ -1,4 +1,6 @@
-// The input of the login and of the password change. No server-only imports, so Client Components can use it.
+// The input of the login and of the password change. No server-only imports, but it imports the schema of the users and
+// with it the list of common passwords: Client Components import only its types, and take the length limits from
+// `src/features/users/limits.ts`.
 
 import { z } from "zod";
 
@@ -18,9 +20,6 @@ export const loginInputSchema = z.object({
     // The length of the string, as Better Auth counts it; `.max()` of Zod counts code points.
     .refine((password) => password.length <= PASSWORD_MAX_LENGTH),
 });
-
-/** A user name and a password that may belong to a user. */
-export type LoginInput = z.output<typeof loginInputSchema>;
 
 export const NEW_PASSWORD_IS_CURRENT_MESSAGE = "New password must differ from the current one";
 export const PASSWORDS_DIFFER_MESSAGE = "The two new passwords do not match";

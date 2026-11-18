@@ -9,9 +9,9 @@ import RadioGroup from "@mui/material/RadioGroup";
 import TextField from "@mui/material/TextField";
 import { useId, type Ref } from "react";
 
-import { PLACE_FIELD } from "@/features/pages/forms";
+import { PLACE_FIELD } from "@/features/pages/fields";
 import { pagePath } from "@/lib/addresses";
-import { NAME_MAX_LENGTH } from "@/lib/names";
+import { NAME_MAX_LENGTH } from "@/lib/name-limits";
 
 /** The value of the place "directly in the folder": no tab. */
 export const FOLDER_TARGET = "";

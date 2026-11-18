@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 
-import { VERSION_FIELD } from "@/features/pages/forms";
+import { VERSION_FIELD } from "@/features/pages/fields";
 import { CONTENT_MAX_TABLE_CELLS } from "@/features/pages/limits";
 import { CONTENT_TABLE_CELLS_MESSAGE } from "@/features/pages/schema";
 

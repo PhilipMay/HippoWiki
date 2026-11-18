@@ -1,6 +1,6 @@
 import type { Page as BrowserPage } from "@playwright/test";
 
-import { VERSION_FIELD } from "@/features/pages/forms";
+import { VERSION_FIELD } from "@/features/pages/fields";
 import { CONTENT_MAX_LENGTH, CONTENT_MAX_TABLE_CELLS } from "@/features/pages/limits";
 
 import { KNOWN_USER } from "../prisma/known-users";

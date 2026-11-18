@@ -1,7 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
-import { PLACE_FIELD, VERSION_FIELD } from "@/features/pages/forms";
+import { PLACE_FIELD, VERSION_FIELD } from "@/features/pages/fields";
 
 import { KNOWN_USER } from "../prisma/known-users";
 import { logInElsewhere } from "./support/auth";

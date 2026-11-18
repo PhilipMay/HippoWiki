@@ -16,9 +16,6 @@ export type LoginFormState = FormState<LoginFieldErrors>;
 /** The Server Action behind the login form; it returns the errors to show, or redirects on success. */
 export type LoginFormAction = (prevState: LoginFormState, formData: FormData) => Promise<LoginFormState>;
 
-/** The Server Action behind the "Log out" button; it redirects to the login page. */
-export type LogoutFormAction = () => Promise<void>;
-
 /**
  * The address to go to after the login or the password change, from the hidden field of the form: a path on this
  * site, or the folder list for a missing field and for anything `safeNextPath()` refuses. It is checked here again,

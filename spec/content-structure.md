@@ -40,7 +40,7 @@ hold pages directly and have tabs at the same time.
 
 - Folders, tabs and pages each have a name, which is also their part of the address. The rule is in
   `src/lib/names.ts`: lowercase letters and digits in groups joined by single hyphens, and so never a dot, at most 80
-  characters long (`NAME_MAX_LENGTH`).
+  characters long (`NAME_MAX_LENGTH` in `src/lib/name-limits.ts`).
 - No name is reserved: all content lives under `/folders`, and actions are in the query string.
 - Names are unique only where they meet, each guaranteed by a unique index in the database:
   - folder names across the wiki

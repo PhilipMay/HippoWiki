@@ -14,7 +14,7 @@ import * as folderService from "@/features/folders/service";
 // and a user sees only the folders with a role on them, so every other read returns `null`, and the routes show the
 // not-found page.
 
-/** All folders, by name; `null` for an admin. */
+/** All folders the user sees, by name; `null` for an admin. */
 export async function listFolders(): Promise<folderService.FolderSummary[] | null> {
   await connection();
   const user = await requireUser();
@@ -31,7 +31,7 @@ export const getFolderByName = cache(async (name: string): Promise<folderService
   return folderService.getFolderByName(inBrowser(user), name);
 });
 
-/** The tabs of the folder, by name; `null` for an admin. */
+/** The tabs of the folder, by name; `null` for an admin and for a folder without a role of the user. */
 export async function listTabs(folderId: string): Promise<folderService.TabSummary[] | null> {
   await connection();
   const user = await requireUser();

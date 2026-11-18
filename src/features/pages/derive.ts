@@ -2,7 +2,7 @@
 // imports.
 
 import { parseMarkdown, titleFromTokens } from "@/features/pages/markdown";
-import { NAME_MAX_LENGTH } from "@/lib/names";
+import { NAME_MAX_LENGTH } from "@/lib/name-limits";
 
 /**
  * Returns the page title of the Markdown content, or `null` if it has none: the text of a leading level-one ATX

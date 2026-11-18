@@ -371,6 +371,11 @@ The feature is described in `users-and-login.md`. What every new route, query an
   `src/lib/theme.ts`, `CssBaseline`, the app bar and a centered content container. The app bar reads the user of the
   session, so every route is rendered on demand.
 - Components are Server Components unless they need interaction; then they are small Client Components.
+- A Client Component imports a value only from a module that pulls in nothing it does not use: the names of form
+  fields of pages from `src/features/pages/fields.ts` and the limit of a name from `src/lib/name-limits.ts`, both
+  without imports, and the limits of users and pages from their `limits.ts`. A constant read from a module of forms
+  or schemas would bring Zod and the Markdown parser into the bundle of every page with such a dialog; a production
+  build showed both in the chunks of a page until the field names moved. Types may come from any module.
 - Material UI components and icons are imported per path (`@mui/material/Button`, `@mui/icons-material/Folder`).
   Links use `@/components/Link` as `component={Link}`.
 - `sx` props in Server Components are plain objects, because functions cannot cross to Client Components.

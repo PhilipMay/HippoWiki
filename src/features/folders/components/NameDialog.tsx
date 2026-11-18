@@ -16,7 +16,7 @@ import Link from "@/components/Link";
 import { focusOnEntered } from "@/lib/focus";
 import { useHydrated } from "@/lib/hydration";
 import type { NameFormAction } from "@/features/folders/forms";
-import { NAME_MAX_LENGTH } from "@/lib/names";
+import { NAME_MAX_LENGTH } from "@/lib/name-limits";
 
 type NameDialogProps = {
   /** Heading of the dialog, e.g. "New folder". */

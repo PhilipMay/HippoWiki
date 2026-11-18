@@ -4,7 +4,6 @@ import {
   CHANGED_NOTICE,
   accountPath,
   allPagesPath,
-  authorizationServerMetadataPath,
   changePasswordPath,
   deletedPageComparePath,
   deletedPageHistoryPath,
@@ -113,7 +112,6 @@ describe("paths", () => {
     expect(oauthAuthorizePath()).toBe("/oauth/authorize");
     expect(oauthTokenPath()).toBe("/oauth/token");
     expect(oauthRegisterPath()).toBe("/oauth/register");
-    expect(authorizationServerMetadataPath()).toBe("/.well-known/oauth-authorization-server");
     const id = "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10";
     expect(protectedResourceMetadataPath(id, "writer")).toBe(`/.well-known/oauth-protected-resource/mcp/${id}/writer`);
   });

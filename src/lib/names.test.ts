@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { NAME_MAX_LENGTH, nameSchema, nameSchemaWith, parseExact, parseName } from "@/lib/names";
+import { NAME_MAX_LENGTH } from "@/lib/name-limits";
+import { nameSchema, nameSchemaWith, parseExact, parseName } from "@/lib/names";
 
 function nameErrors(name: string): string[] {
   const result = nameSchema.safeParse(name);

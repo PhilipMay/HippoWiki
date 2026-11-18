@@ -1,8 +1,8 @@
 // The client address group of a request: the address of the client as the reverse proxies in front of the server saw
 // it, for the wait after failed logins. Next.js never shows the application the address of the connecting peer, so
 // the only source is `X-Forwarded-For`, and it is read only when `HIPPOWIKI_TRUSTED_PROXIES` says how many reverse
-// proxies added an entry to it. The leftmost entry is never used, because a client can write it. A pure helper, no
-// server-only imports; it does not log, its caller does.
+// proxies added an entry to it. The leftmost entry is never used, because a client can write it. A helper for the
+// server, which imports `node:net`; it does not log, its caller does.
 
 import { isIP } from "node:net";
 

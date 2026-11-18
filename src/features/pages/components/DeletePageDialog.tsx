@@ -13,7 +13,8 @@ import { useRouter } from "next/navigation";
 import { useActionState, useId } from "react";
 
 import Link from "@/components/Link";
-import { VERSION_FIELD, type PageDeleteFormAction } from "@/features/pages/forms";
+import { VERSION_FIELD } from "@/features/pages/fields";
+import type { PageDeleteFormAction } from "@/features/pages/forms";
 import { useHydrated } from "@/lib/hydration";
 
 type DeletePageDialogProps = {

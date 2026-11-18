@@ -110,7 +110,7 @@ Decided by the user on 2026-11-18:
 - [x] MCP tools
 - [x] OAuth and grants
 - [x] Actions, forms and schemas
-- [ ] Leftovers and small duplicates
+- [x] Leftovers and small duplicates
 - [ ] Lint rules and checks
 - [ ] The query of a page and what a route shows
 - [ ] Views of the folder routes and pieces of the lists

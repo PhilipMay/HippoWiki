@@ -13,7 +13,8 @@ import { startTransition, useActionState, useEffect, useId, useRef, useState, ty
 
 import Link from "@/components/Link";
 import PageNameAndPlaceFields, { FOLDER_TARGET } from "@/features/pages/components/PageNameAndPlaceFields";
-import { VERSION_FIELD, type PageMoveOrRenameFormAction } from "@/features/pages/forms";
+import { VERSION_FIELD } from "@/features/pages/fields";
+import type { PageMoveOrRenameFormAction } from "@/features/pages/forms";
 import { focusOnEntered } from "@/lib/focus";
 import { useHydrated } from "@/lib/hydration";
 

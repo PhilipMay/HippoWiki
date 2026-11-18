@@ -93,7 +93,10 @@ export type PageWithPlace = {
   content: string;
   updatedAt: Date;
   lastEditedBy: LastEditor;
-  /** The state of the page: 1 when it is created, counted up by every write. */
+  /**
+   * The state of the page: 1 when it is created, counted up by every write that changes it; a save or a move without a
+   * change keeps it (see `optimistic-locking.md`).
+   */
   version: number;
   folder: { id: string; name: string };
   tab: { id: string; name: string } | null;
@@ -204,7 +207,10 @@ export async function listFolderPages(actor: ContentActor, folderId: string): Pr
   return pages.map(withLastEditor);
 }
 
-/** The pages of the tab, without their content, by name; deleted pages are left out. `null` for an admin. */
+/**
+ * The pages of the tab, without their content, by name; deleted pages are left out. `null` for an admin and for a tab
+ * of a folder without a role of the actor.
+ */
 export async function listTabPages(actor: ContentActor, tabId: string): Promise<PageSummary[] | null> {
   if (!(await mayReadTab(actor, tabId))) return null;
   const parsedTabId = parseTabId(tabId);
@@ -219,7 +225,7 @@ export async function listTabPages(actor: ContentActor, tabId: string): Promise<
 
 /**
  * All pages of the folder, without their content, each with its tab: by name and then by tab, pages placed directly
- * in the folder first. Deleted pages are left out. `null` for an admin.
+ * in the folder first. Deleted pages are left out. `null` for an admin and for a folder without a role of the actor.
  */
 export async function listAllFolderPages(actor: ContentActor, folderId: string): Promise<PageWithTabSummary[] | null> {
   if (!(await mayReadFolder(actor, folderId))) return null;

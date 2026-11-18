@@ -125,8 +125,8 @@ const NO_FOLDER: Prisma.FolderWhereInput = { id: { in: [] } };
 export function readableFolderWhere(actor: ContentActor, fn: FolderFunction = "read"): Prisma.FolderWhereInput | null {
   const reader = readerOf(actor);
   if (!reader) return null;
-  // Every role may read, so reading needs only a role; the other functions need one of the roles that allow them.
-  const roles = { roles: { some: { userId: reader, ...(fn === "read" ? {} : { role: { in: rolesFor(fn) } }) } } };
+  // A role of the actor that may do the function (`mayDo()`), as the database checks it.
+  const roles = { roles: { some: { userId: reader, role: { in: rolesFor(fn) } } } };
   if (actor.channel === "web") return roles;
   if (!mayDo(actor.connection.role, fn)) return NO_FOLDER;
   return { id: actor.connection.folderId, ...roles };
@@ -170,7 +170,7 @@ export async function mayReadFolder(
 export async function mayReadTab(actor: ContentActor, tabId: string): Promise<boolean> {
   if (isAdmin(actor)) return false;
   if (!parseTabId(tabId)) return true;
-  return (await roleOnFolderOfTab(actor, tabId)) !== null;
+  return mayDo(await roleOnFolderOfTab(actor, tabId), "read");
 }
 
 /** A user with a role on a folder, as the roles view shows it. */
@@ -192,7 +192,7 @@ const ROLE_LIST_ORDER = [
  */
 export async function listFolderRoles(actor: Actor, folderId: string): Promise<FolderRoleEntry[] | null> {
   const folder = parseFolderId(folderId);
-  if (!folder || !(await folderRoleOf(actor, folder))) return null;
+  if (!folder || !mayDo(await folderRoleOf(actor, folder), "read")) return null;
   const roles = await getDb().folderRole.findMany({
     where: { folderId: folder },
     select: { role: true, user: { select: { id: true, username: true } } },

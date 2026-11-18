@@ -4,7 +4,6 @@ import {
   FUNCTION_ROLES,
   includesRole,
   isMcpRole,
-  isRole,
   mayDo,
   MCP_ROLE_ABILITIES,
   MCP_ROLES,
@@ -23,18 +22,6 @@ describe("ROLES", () => {
 
   it("have labels", () => {
     expect(ROLES.map((role) => ROLE_LABELS[role])).toEqual(["Reader", "Writer", "Manager", "Owner"]);
-  });
-});
-
-describe("isRole", () => {
-  it("is true for the four roles", () => {
-    for (const role of ROLES) expect(isRole(role)).toBe(true);
-  });
-
-  it("is false for anything else", () => {
-    for (const value of ["", "Reader", "OWNER", " owner", "admin", null, undefined, 1, {}]) {
-      expect(isRole(value), String(value)).toBe(false);
-    }
   });
 });
 

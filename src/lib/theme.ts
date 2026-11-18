@@ -8,7 +8,6 @@ export const theme = createTheme({
   cssVariables: true,
   palette: {
     primary: { main: "#3f51b5" },
-    secondary: { main: "#00897b" },
     background: { default: "#f7f8fa" },
   },
   shape: { borderRadius: 8 },

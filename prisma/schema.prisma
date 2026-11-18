@@ -248,8 +248,8 @@ model Account {
 }
 
 /// The grant of a user to an OAuth client, such as the connector of an AI assistant: a connected app on the account
-/// page (`src/features/grants/service.ts`). It stands for its user, limited to its scopes, until it expires or is
-/// revoked; revoking deletes the row. The client holds a short-lived access token and a refresh token that changes
+/// page (`src/features/grants/service.ts`). It stands for its user at the one MCP address of its folder and role, with
+/// at most what that role allows (there are no scopes), until it expires or is revoked; revoking deletes the row. The client holds a short-lived access token and a refresh token that changes
 /// with every use, and the row holds the hashes of the current ones; a token is never stored.
 model OAuthGrant {
   id                   String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid

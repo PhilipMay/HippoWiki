@@ -18,6 +18,7 @@ import {
   roleSelection,
 } from "@/features/folder-roles/service";
 import type { ContentActor } from "@/features/folder-roles/actors";
+import { ROLES } from "@/features/folder-roles/roles";
 import {
   ACTOR,
   ACTOR_ID,
@@ -162,12 +163,16 @@ describe("the role of the actor", () => {
 describe("readerOf and readableFolderWhere", () => {
   it("in the browser need a role of the actor on the folder", () => {
     expect(readerOf(BROWSER)).toBe(ACTOR_ID);
-    expect(readableFolderWhere(BROWSER)).toEqual({ roles: { some: { userId: ACTOR_ID } } });
+    // Every role may read.
+    expect(readableFolderWhere(BROWSER)).toEqual({ roles: { some: { userId: ACTOR_ID, role: { in: [...ROLES] } } } });
   });
 
   it("through MCP need a role of the actor on the folder, and that it is the folder of the connection", () => {
     expect(readerOf(MCP)).toBe(ACTOR_ID);
-    expect(readableFolderWhere(MCP)).toEqual({ id: FOLDER_ID, roles: { some: { userId: ACTOR_ID } } });
+    expect(readableFolderWhere(MCP)).toEqual({
+      id: FOLDER_ID,
+      roles: { some: { userId: ACTOR_ID, role: { in: [...ROLES] } } },
+    });
   });
 
   it("give an admin nothing, in either channel", () => {

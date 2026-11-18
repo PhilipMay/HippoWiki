@@ -1,3 +1,6 @@
+// The revalidation of the cached pages after a write, for the Server Actions of the content features. It imports
+// `next/cache`, so no service imports it (see "Linting" in `architecture.md`).
+
 import { revalidatePath } from "next/cache";
 
 /**

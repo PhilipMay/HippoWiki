@@ -4,6 +4,7 @@
 import { z } from "zod";
 
 import { parseTabId } from "@/features/folders/schema";
+import { PLACE_FIELD, VERSION_FIELD } from "@/features/pages/fields";
 import {
   newPageInputSchema,
   pageContentInputSchema,
@@ -23,12 +24,6 @@ export type PageFormState = FormState<PageFieldErrors>;
 
 /** A Server Action behind a page form; it returns the errors to show, or redirects on success. */
 export type PageFormAction = (prevState: PageFormState, formData: FormData) => Promise<PageFormState>;
-
-/**
- * Name of the hidden form field that holds the version of the page that the editor or dialog was opened with: the
- * state of the page the change is based on.
- */
-export const VERSION_FIELD = "version";
 
 /**
  * Reads the version of the page from the submitted form, or `null` if it is missing or malformed, such as a file, an
@@ -52,9 +47,6 @@ export function parsePageContentFormData(
   if (result.success) return { success: true, data: { ...result.data, version: parseVersion(formData) } };
   return { success: false, fieldErrors: z.flattenError(result.error).fieldErrors };
 }
-
-/** Name of the form field that holds the place of a page: a tab id, or empty for the folder itself. */
-export const PLACE_FIELD = "place";
 
 /**
  * Reads the place of a page from the submitted form: the id of a tab, or `null` for the folder itself when the field

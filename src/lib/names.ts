@@ -3,9 +3,10 @@
 
 import { z } from "zod";
 
+import { NAME_MAX_LENGTH } from "@/lib/name-limits";
+
 /** Lowercase letters and digits in groups joined by single hyphens, e.g. `release-notes`. */
 export const NAME_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
-export const NAME_MAX_LENGTH = 80;
 
 /** Shown at the name field when another item already uses the name where it must be unique. */
 export const NAME_TAKEN_MESSAGE = "Name is already in use";

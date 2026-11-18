@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 
-import { VERSION_FIELD } from "@/features/pages/forms";
+import { VERSION_FIELD } from "@/features/pages/fields";
 
 import { KNOWN_USER } from "../prisma/known-users";
 import { logInElsewhere } from "./support/auth";

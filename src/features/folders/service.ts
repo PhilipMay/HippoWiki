@@ -124,13 +124,13 @@ async function writeRename<T extends { name: string }>(
 
 /**
  * The folders the actor sees, by name, each with the role of the actor on it: the folders with a role of the actor,
- * through MCP only the folder of the connection. `null` for an admin.
+ * through MCP only the folder of the connection. `null` for an admin and, as for every read, for a malformed actor id.
  */
 export async function listFolders(actor: ContentActor): Promise<FolderSummary[] | null> {
   if (isAdmin(actor)) return null;
   const reader = readerOf(actor);
   const readable = readableFolderWhere(actor);
-  if (!reader || !readable) return [];
+  if (!reader || !readable) return null;
   const folders = await getDb().folder.findMany({
     where: readable,
     select: { ...SUMMARY_SELECT, roles: roleSelection(reader) },

@@ -1,4 +1,6 @@
-// Recognises the database errors that Server Actions report to the user instead of as a failed save.
+// Recognises the database errors that a service answers with a code of its own instead of as a failed write: the
+// violations of the unique constraints and foreign keys that a user can cause, and the refusals of the triggers. The
+// services call it; the adapters only map the codes.
 
 import { Prisma } from "@/generated/prisma/client";
 
@@ -41,15 +43,6 @@ export const PAGE_REVISION_NUMBER: UniqueConstraint = {
 export const USER_NAME: UniqueConstraint = { indexes: ["User_username_key", "User_email_key"], field: "username" };
 
 /**
- * The unique index on the hash of the access token of a grant, as Prisma creates it for `@unique`. An access token has
- * 256 random bits, so a violation means a broken generator rather than bad luck.
- */
-export const GRANT_ACCESS_TOKEN_HASH: UniqueConstraint = {
-  indexes: ["OAuthGrant_accessTokenHash_key"],
-  field: "accessTokenHash",
-};
-
-/**
  * The unique index on the URL of the metadata document of an OAuth client, as Prisma creates it for `@unique`. Two
  * requests that fetch the document of a new client at the same time both try to store it.
  */
@@ -57,9 +50,6 @@ export const OAUTH_CLIENT_METADATA_URL: UniqueConstraint = {
   indexes: ["OAuthClient_metadataUrl_key"],
   field: "metadataUrl",
 };
-
-/** The unique index on the hash of an authorization code, as Prisma creates it for `@unique`. */
-export const OAUTH_CODE_HASH: UniqueConstraint = { indexes: ["OAuthCode_codeHash_key"], field: "codeHash" };
 
 /**
  * The unique index on the folder and the user of a role, as Prisma creates it for `@@unique`: a user holds at most one
@@ -73,10 +63,19 @@ export const FOLDER_ROLE_USER: UniqueConstraint = { indexes: ["FolderRole_folder
  */
 export function isUniqueViolation(err: unknown, { indexes, field }: UniqueConstraint): boolean {
   if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== "P2002") return false;
+  return isConstraint(err, indexes, field);
+}
+
+/**
+ * Whether the violated constraint of the error is one of the given names, or, if its name is unknown, covers the
+ * field. With the `pg` driver adapter, Prisma reports it in `meta.driverAdapterError.cause.constraint`: as the name
+ * (`index`) or as the fields.
+ */
+function isConstraint(err: Prisma.PrismaClientKnownRequestError, names: readonly string[], field: string): boolean {
   const adapterError = err.meta?.driverAdapterError as
     { cause?: { constraint?: { index?: string; fields?: string[] } } } | undefined;
   const constraint = adapterError?.cause?.constraint;
-  if (constraint?.index !== undefined) return indexes.includes(constraint.index);
+  if (constraint?.index !== undefined) return names.includes(constraint.index);
   return constraint?.fields?.includes(field) ?? false;
 }
 
@@ -111,11 +110,7 @@ export const LAST_EDITOR: ForeignKey = {
 export function isForeignKeyViolation(err: unknown, key?: ForeignKey): boolean {
   if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== "P2003") return false;
   if (key === undefined) return true;
-  const adapterError = err.meta?.driverAdapterError as
-    { cause?: { constraint?: { index?: string; fields?: string[] } } } | undefined;
-  const constraint = adapterError?.cause?.constraint;
-  if (constraint?.index !== undefined) return key.constraints.includes(constraint.index);
-  return constraint?.fields?.includes(key.field) ?? false;
+  return isConstraint(err, key.constraints, key.field);
 }
 
 /** The SQLSTATE of a `check_violation`, which the triggers of the migrations raise. */

@@ -44,5 +44,8 @@ export type TabDeleteFormState = {
   tabGone?: boolean;
 };
 
-/** A Server Action that deletes a tab: it returns the state to show, or redirects to the folder on success. */
-export type TabDeleteFormAction = (prevState: TabDeleteFormState, formData: FormData) => Promise<TabDeleteFormState>;
+/**
+ * A Server Action that deletes a tab, with its ids bound: it returns the state to show, or redirects to the folder on
+ * success. The form submits no field, so it takes neither the previous state nor the form data.
+ */
+export type TabDeleteFormAction = () => Promise<TabDeleteFormState>;

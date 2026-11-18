@@ -7,12 +7,11 @@ import {
   parsePageMoveOrRenameFormData,
   parsePageRestoreFormData,
   parsePageRevertFormData,
-  PLACE_FIELD,
-  VERSION_FIELD,
 } from "@/features/pages/forms";
+import { PLACE_FIELD, VERSION_FIELD } from "@/features/pages/fields";
 import { CONTENT_MAX_LENGTH, TITLE_MAX_LENGTH } from "@/features/pages/limits";
 import { TITLE_HEADING_MISSING_MESSAGE } from "@/features/pages/schema";
-import { NAME_MAX_LENGTH } from "@/lib/names";
+import { NAME_MAX_LENGTH } from "@/lib/name-limits";
 
 function formData(fields: Record<string, string | Blob>): FormData {
   const data = new FormData();

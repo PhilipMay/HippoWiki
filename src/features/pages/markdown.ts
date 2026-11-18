@@ -10,7 +10,7 @@ import { TITLE_MAX_LENGTH } from "@/features/pages/limits";
 export type { Token };
 
 /**
- * The protocols a link or image may use, as react-markdown allowed them before; any other address with a protocol,
+ * The protocols a link or image may use (a security rule of `pages.md`, "Rendering"); any other address with a protocol,
  * `javascript:`, `vbscript:` and `data:` included, is not parsed as a link or image and stays its Markdown text.
  */
 const SAFE_PROTOCOLS: ReadonlySet<string> = new Set(["http", "https", "mailto", "irc", "ircs", "xmpp"]);

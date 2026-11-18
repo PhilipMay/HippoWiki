@@ -29,7 +29,7 @@ export default async function FoldersPage({ searchParams }: PageProps<"/folders"
   // The folder list has no views.
   if (action === "invalid" || parseView(query) !== null) notFound();
 
-  // `null` for an admin, who sees no content.
+  // `null` for an admin, who sees no content, and for a malformed id of the user.
   const folders = (await listFolders()) ?? notFound();
 
   return (

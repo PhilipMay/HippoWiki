@@ -13,7 +13,8 @@ import { useRouter } from "next/navigation";
 import { useActionState, useId } from "react";
 
 import Link from "@/components/Link";
-import { VERSION_FIELD, type PageRevertFormAction } from "@/features/pages/forms";
+import { VERSION_FIELD } from "@/features/pages/fields";
+import type { PageRevertFormAction } from "@/features/pages/forms";
 import { useHydrated } from "@/lib/hydration";
 
 type RevertPageDialogProps = {

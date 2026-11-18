@@ -6,13 +6,11 @@ import { newUserData } from "@/features/users/records";
 import {
   FOLDER_NAME,
   FOLDER_ROLE_USER,
-  GRANT_ACCESS_TOKEN_HASH,
   isAdminRoleViolation,
   isForeignKeyViolation,
   isUniqueViolation,
   LAST_EDITOR,
   OAUTH_CLIENT_METADATA_URL,
-  OAUTH_CODE_HASH,
   PAGE_NAME,
   PAGE_REVISION_NUMBER,
   TAB_NAME,
@@ -28,9 +26,7 @@ const NAME_CONSTRAINTS = {
   PAGE_NAME,
   PAGE_REVISION_NUMBER,
   USER_NAME,
-  GRANT_ACCESS_TOKEN_HASH,
   OAUTH_CLIENT_METADATA_URL,
-  OAUTH_CODE_HASH,
   FOLDER_ROLE_USER,
 } as const;
 
@@ -176,24 +172,6 @@ describe("unique violations", () => {
     expectUniqueViolationOf(await errorOf(createUserRow("bob", { email: alice.email })), USER_NAME);
   });
 
-  it("reports an access token hash that is already stored as a violation of GRANT_ACCESS_TOKEN_HASH", async () => {
-    const [alice, bob, client] = [await createUser(), await createUser(), await createClientRow()];
-    const grant = {
-      name: "Example",
-      folderId: (await createFolder()).id,
-      role: "reader" as const,
-      clientId: client.id,
-      accessTokenHash: "b".repeat(64),
-      expiresAt: new Date(),
-    };
-    await getTestDb().oAuthGrant.create({ data: { ...grant, userId: alice.id } });
-
-    expectUniqueViolationOf(
-      await errorOf(getTestDb().oAuthGrant.create({ data: { ...grant, userId: bob.id } })),
-      GRANT_ACCESS_TOKEN_HASH,
-    );
-  });
-
   it("allows many grants without an access token hash", async () => {
     const [alice, client] = [await createUser(), await createClientRow()];
     const grant = {
@@ -225,24 +203,6 @@ describe("unique violations", () => {
     await createClientRow();
 
     expect(await getTestDb().oAuthClient.count()).toBe(2);
-  });
-
-  it("reports a code hash that is already stored as a violation of OAUTH_CODE_HASH", async () => {
-    const [alice, client] = [await createUser(), await createClientRow()];
-    const code = {
-      codeHash: "c".repeat(64),
-      clientId: client.id,
-      userId: alice.id,
-      redirectUri: "https://client.example/callback",
-      codeChallenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
-      folderId: (await createFolder()).id,
-      role: "reader" as const,
-      lifetime: "90d",
-      expiresAt: new Date(),
-    };
-    await getTestDb().oAuthCode.create({ data: code });
-
-    expectUniqueViolationOf(await errorOf(getTestDb().oAuthCode.create({ data: code })), OAUTH_CODE_HASH);
   });
 });
 

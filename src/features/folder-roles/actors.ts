@@ -10,13 +10,10 @@ import type { ChangeChannel } from "@/generated/prisma/client";
 import { logger } from "@/lib/logger";
 import type { Failed, NotAllowed, Result } from "@/lib/result";
 
-/**
- * Where a read or a write of the content comes from: `web` for the browser, `mcp` for MCP. The content stores the same
- * value with its last editor, and every log line names it. In the browser a user sees and does with a folder what the
- * role on it allows. Through MCP a user works only on the folder of the connection, with the lower of the user's
- * current role on it and the role of the connection, and has no role on any other folder.
- */
-export type Channel = "web" | "mcp";
+// The channel of an actor says where a read or a write of the content comes from: `web` for the browser, `mcp` for
+// MCP. The content stores the same value with its last editor, and every log line names it. In the browser a user sees
+// and does with a folder what the role on it allows. Through MCP a user works only on the folder of the connection,
+// with the lower of the user's current role on it and the role of the connection, and has no role on any other folder.
 
 /** The actor of the browser: the user of the session. */
 export type BrowserActor = Actor & { channel: "web" };

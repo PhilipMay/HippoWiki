@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 
-import { PLACE_FIELD } from "@/features/pages/forms";
+import { PLACE_FIELD } from "@/features/pages/fields";
 import { CONTENT_MAX_DEPTH } from "@/features/pages/limits";
 
 import { KNOWN_USER } from "../prisma/known-users";

@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { deriveName, titleFromContent } from "@/features/pages/derive";
 import { TITLE_MAX_LENGTH } from "@/features/pages/limits";
-import { NAME_MAX_LENGTH, parseName } from "@/lib/names";
+import { NAME_MAX_LENGTH } from "@/lib/name-limits";
+import { parseName } from "@/lib/names";
 
 describe("titleFromContent", () => {
   it("takes the text of a leading level-one heading", () => {

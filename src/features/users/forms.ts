@@ -1,4 +1,6 @@
-// What only the forms of users need. No server-only imports, so Client Components can use it.
+// What only the forms of users need. No server-only imports, but it imports the schema of the users and with it the list
+// of common passwords: Client Components import only its types, and take the length limits from
+// `src/features/users/limits.ts`.
 
 import { z } from "zod";
 

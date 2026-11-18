@@ -14,9 +14,9 @@
     findings of the tests that are still open are minor.
   - Documents that the features outran: rules stated in full in several documents, and copies of code and
     constants in the specs.
-- Findings: 27 open of 107, 0 Blocker, 0 Major, 21 Minor and 6 Nit (7 `issue:`, 13 `suggestion:`, 5 `nit:` and
-  2 `question:`).
-- Confidence of the suggestions: 2 High, 21 Medium and 2 Low; the 2 questions have none. A High suggestion can be
+- Findings: 23 open of 107, 0 Blocker, 0 Major, 19 Minor and 4 Nit (6 `issue:`, 13 `suggestion:`, 3 `nit:` and
+  1 `question:`).
+- Confidence of the suggestions: 1 High, 19 Medium and 2 Low; the question has none. A High suggestion can be
   fixed as written; the others wait for the user, as `issue-report.md` describes.
 - Decisions: on 2026-11-18 the user decided all Medium and Low suggestions. Each of these findings ends with a line
   `Decision`, and is fixed as that line says, without asking again. The questions were decided by the user on the
@@ -24,8 +24,9 @@
 - To fix first: no Major finding is open; the four Major findings of the tests are fixed.
 - Not covered by this review: security, which `review-report.md` covers and whose findings are not repeated here;
   the unit tests of auth, users, OAuth and grants, of which only the names and the copied helpers were looked at;
-  the size of the bundles for the browser, because no build was read (one `question:` asks for it); and the
-  behaviour in a browser, because the review ran no server.
+  and the behaviour in a browser, because the review ran no server. The bundles for the browser were measured in the
+  fixes: a production build showed Zod and markdown-it in the chunks of a page route until the names of the form
+  fields moved; Zod stays there through `src/lib/addresses.ts`, which imports the schema of a name.
 
 ## Scope and method
 
@@ -81,51 +82,6 @@ What can go wrong in a cleanup, and what several findings warn about:
 ## Findings
 
 ### Code: services of the content features
-
-#### nit: unused names and comments that no longer match the code
-
-- Location: `src/features/folder-roles/service.ts`, line 36, `Channel`; `src/features/folder-roles/roles.ts`, line
-  20, `isRole()`; `src/lib/db-errors.ts`, `GRANT_ACCESS_TOKEN_HASH` and `OAUTH_CODE_HASH`;
-  `src/features/pages/service.ts`, line 86 and lines 208, 222 and 237; `src/features/pages/markdown.ts`, line 13;
-  `src/lib/addresses.ts`, lines 1–3; `src/lib/db-errors.ts`, line 1; `src/lib/revalidate.ts`, line 4;
-  `src/features/folders/forms.ts`, line 36; `prisma/schema.prisma`, line 251
-- Severity: Nit
-- Category: docs
-- Problem: `Channel` is used nowhere; `isRole()` only by its test, while the code uses `parseRole()`; the two
-  constants only by an integration test, and no service catches those violations. The comment on the version of a
-  page says "counted up by every write", against the rule of writes without a change. The comment in `markdown.ts`
-  says "as react-markdown allowed them before", which describes an earlier state. The heads of `addresses.ts`,
-  `db-errors.ts` and `revalidate.ts` leave out what the modules hold or who calls them today.
-  `TabDeleteFormAction` declares two parameters that `deleteTab()` says it does not take. The schema says a grant
-  is "limited to its scopes", while `mcp.md` says there are no scopes. Three reads say "`null` for an admin" and
-  leave out the user without a role.
-- Impact: readers follow dead names and stale statements.
-- Evidence: `/** The state of the page: 1 when it is created, counted up by every write. */`.
-- Suggestion (optional): delete `Channel` and `isRole()` with its test, correct the comments, and decide whether
-  the services of grants and OAuth should catch the two violations or the constants go.
-- Confidence: Medium. High for `Channel` and the comments; the two constants need a decision.
-- Decision (2026-11-18): as suggested. `GRANT_ACCESS_TOKEN_HASH` and `OAUTH_CODE_HASH` are dropped together with their
-  cases in `integration/db-errors.test.ts`; the unique constraints stay in the schema.
-
-#### nit: small rules that are written more than once
-
-- Location: `src/features/folder-roles/service.ts`, lines 187, 224, 231 and 252; `src/lib/addresses.ts`, lines
-  192–250; `src/lib/db-errors.ts`, lines 76–80 and 114–118; `src/features/pages/actions.ts`, `revertPage()`;
-  `src/features/folders/service.ts`, line 179
-- Severity: Nit
-- Category: style
-- Problem: "every role may read" is coded in four ways in one file. `?view=` is built by hand six times, while
-  `withAction()` exists for actions. The constraint of a database error is extracted twice. A revision number is
-  checked with `isRevisionNumber()` of the schema in the services, and by hand in the action that reverts. `listFolders()` returns an empty list for a malformed actor id, where every other read
-  returns `null`.
-- Impact: none today; each is a place where two copies can drift.
-- Evidence: line 231, `return (await roleOnFolderOfTab(actor, tabId)) !== null;`, next to line 224,
-  `return mayDo(await folderRoleOf(actor, folderId), fn);`.
-- Suggestion (optional): `mayDo(role, "read")` in all four places, a `withView()`, one extraction of the
-  constraint, and `isRevisionNumber()` of the schema in the action as well.
-- Confidence: Medium. Each is mechanical and covered by the unit tests of its file; none is needed.
-- Status: `revertPage()` of the actions checks the revision number with `isRevisionNumber()` of the schema now.
-- Decision (2026-11-18): as suggested.
 
 #### Reviewed
 
@@ -302,46 +258,6 @@ for `not-allowed` the browser shows the not-found page and MCP says that the rol
 - Confidence: Medium. A choice of structure without a change of behaviour.
 - Decision (2026-11-18): as suggested.
 
-#### issue: comments promise "Client Components can use it" for modules that pull in the list of common passwords or a module of Node
-
-- Location: `src/features/users/forms.ts`, lines 1 and 5; `src/features/auth/schema.ts`, lines 1 and 6;
-  `src/lib/client-address.ts`, lines 4–7
-- Severity: Minor. Nothing is wrong in the bundle today; the comments invite the mistake they should prevent.
-- Category: docs
-- Problem: both modules of forms import values from `src/features/users/schema.ts`, which imports the 10,000
-  common passwords. `architecture.md` says exactly that Client Components must not import that schema.
-  `client-address.ts` says "no server-only imports" and imports `node:net`. It is safe today only because the one
-  Client Component that touches these modules imports a type. No lint rule would notice an import of a value.
-- Impact: a developer who follows the pattern of the pages, whose forms module exports the name of a field for
-  Client Components, and adds such a constant to the forms of the users, ships the list of passwords to every
-  browser that opens "New user".
-- Evidence: `src/features/users/forms.ts`, line 1, "What only the forms of users need. No server-only imports, so
-  Client Components can use it.", and line 5, `import { userInputSchema, type UserFieldErrors, type UserInput }
-from "@/features/users/schema";`.
-- Suggestion (required): correct the three comments: Client Components import only the types of the two modules,
-  and limits come from `src/features/users/limits.ts`; `client-address.ts` is for the server. Optional on top: a
-  lint rule for routes and components that allows only type imports of these modules.
-- Confidence: High for the comments. One fix without a change of behaviour; the cited lines are the evidence, and
-  `npm run check` covers the files. The lint rule was not run.
-
-#### question: do Client Components ship Zod and markdown-it only to read the name of a field or a length limit?
-
-- Location: `DeletePageDialog.tsx`, `RevertPageDialog.tsx`, `MoveOrRenamePageDialog.tsx`, `PageForm.tsx` and
-  `PageNameAndPlaceFields.tsx` in `src/features/pages/components/`; `src/features/pages/forms.ts`, lines 4–17;
-  `src/features/oauth/components/ConsentForm.tsx`, lines 15–22; `src/lib/names.ts`
-- Severity: Minor, if it holds.
-- Category: performance
-- Problem: the dialogs import `VERSION_FIELD` and `PLACE_FIELD` from the forms module of the pages, which imports
-  Zod and the schema of the pages, which imports the Markdown parser. `NAME_MAX_LENGTH` comes from a module that
-  builds a schema when it loads. Whether the bundler drops the unused code was not measured, because no build was
-  read. The same worry is the stated reason for the two `limits.ts` modules.
-- Impact: if it is not dropped, every page with a delete, revert or move dialog loads Zod and markdown-it for the
-  string `"version"`.
-- Evidence: `src/features/pages/components/DeletePageDialog.tsx`, line 16: `import { VERSION_FIELD, type
-PageDeleteFormAction } from "@/features/pages/forms";`.
-- Suggestion (optional): look at the chunks of the client for a page with `?action=delete` in a production build;
-  if the two libraries are in them, move the names of the fields and the limit to modules without imports.
-
 #### suggestion: four rules of `architecture.md` are convention only, and a lint rule could hold them
 
 - Location: `eslint.config.mjs`, lines 122–192; `spec/architecture.md`, section "Linting"
@@ -392,7 +308,9 @@ PageDeleteFormAction } from "@/features/pages/forms";`.
   answer for a malformed id, and add a check for unused exports to `npm run check`.
 - Confidence: Medium. High for the two types, which nothing references; the rest are small decisions.
 - Status: the answer to a malformed id is fixed: it is the answer to a missing row of the feature of the action in
-  all four, as "Validation and errors" in `architecture.md` says now.
+  all four, as "Validation and errors" in `architecture.md` says now. `LogoutFormAction`, `LoginInput`,
+  `authorizationServerMetadataPath()` with its test and the secondary colour are deleted, and `listMcpAddresses()`
+  builds its addresses with `mcpResourceOf()`. Open: the check for unused exports.
 - Decision (2026-11-18): as suggested: the two types, `authorizationServerMetadataPath()` and the colour are deleted; a
   malformed id bound to an action is answered as the action answers a missing row of its feature; `knip` is added to
   `npm run check`.

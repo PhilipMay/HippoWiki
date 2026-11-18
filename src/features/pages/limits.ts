@@ -1,5 +1,5 @@
 // Limits of page fields. A module of its own, so that `schema.ts`, `derive.ts` and `markdown.ts` can all use them
-// without importing each other. The limit of the page name is `NAME_MAX_LENGTH` in `src/lib/names.ts`.
+// without importing each other. The limit of the page name is `NAME_MAX_LENGTH` in `src/lib/name-limits.ts`.
 
 export const TITLE_MAX_LENGTH = 200;
 export const CONTENT_MAX_LENGTH = 100_000;

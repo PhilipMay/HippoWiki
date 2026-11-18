@@ -1,6 +1,8 @@
-// Addresses of folders, tabs and pages under `/folders`, of deleted pages under `/deleted-pages`, of the users, the own
-// account, the login and the password change, the actions in their query string and the way back after a login. Pure
-// functions used by routes, Server Actions and links; no server-only imports.
+// Every address of the wiki: the folders, tabs and pages under `/folders` with their views and actions in the query
+// string, the deleted pages under `/deleted-pages`, the users, the roles overview, the own account, the login and the
+// password change with the way back after a login, the MCP addresses of the folders, and the endpoints of OAuth and
+// their metadata under `/.well-known/`. Pure functions used by routes, Server Actions, the adapters of MCP and OAuth
+// and links; no server-only imports.
 
 import type { McpRole } from "@/features/folder-roles/roles";
 import { isAdmin, type UserType } from "@/features/users/user-type";
@@ -152,11 +154,6 @@ export function oauthRegisterPath(): string {
   return "/oauth/register";
 }
 
-/** The address of the metadata of the OAuth authorization server (RFC 8414). */
-export function authorizationServerMetadataPath(): string {
-  return "/.well-known/oauth-authorization-server";
-}
-
 /**
  * The address of the metadata of the protected resource at the MCP address of a folder for a role (RFC 9728): the
  * well-known prefix followed by the path of the resource.
@@ -177,6 +174,14 @@ function withAction(path: string, action?: string): string {
   return action ? `${path}?action=${action}` : path;
 }
 
+/** The address with a view in its query string, followed by the parameters of the view that are given, in order. */
+function withView(path: string, view: string, parameters: Record<string, string | number | undefined> = {}): string {
+  const rest = Object.entries(parameters).flatMap(([name, value]) =>
+    value === undefined ? [] : [`&${name}=${value}`],
+  );
+  return `${path}?view=${view}${rest.join("")}`;
+}
+
 /** The address of the folder list, optionally with an action. */
 export function foldersPath(action?: string): string {
   return withAction(FOLDERS_PATH, action);
@@ -189,17 +194,17 @@ export function folderPath(folder: string, action?: string): string {
 
 /** The address of the list of all pages of a folder: the folder address with the view `all`. */
 export function allPagesPath(folder: string): string {
-  return `${FOLDERS_PATH}/${folder}?view=all`;
+  return withView(`${FOLDERS_PATH}/${folder}`, "all");
 }
 
 /** The address of the roles of a folder: the folder address with the view `roles`. */
 export function folderRolesPath(folder: string): string {
-  return `${FOLDERS_PATH}/${folder}?view=roles`;
+  return withView(`${FOLDERS_PATH}/${folder}`, "roles");
 }
 
 /** The address of the MCP addresses of a folder for AI apps: the folder address with the view `mcp`. */
 export function folderMcpPath(folder: string): string {
-  return `${FOLDERS_PATH}/${folder}?view=mcp`;
+  return withView(`${FOLDERS_PATH}/${folder}`, "mcp");
 }
 
 /** The address of a tab of a folder, optionally with an action. */
@@ -236,18 +241,17 @@ export function pagePath(
 
 /** The address of the history at the given page address or address of a deleted page, with the revisions before `before`. */
 function historyPath(address: string, before?: number): string {
-  return before === undefined ? `${address}?view=history` : `${address}?view=history&before=${before}`;
+  return withView(address, "history", { before });
 }
 
 /** The address of a revision at the given address, rendered or, with `raw`, as its Markdown source. */
 function revisionPath(address: string, revision: number, raw: boolean): string {
-  const path = `${address}?view=revision&revision=${revision}`;
-  return raw ? `${path}&format=raw` : path;
+  return withView(address, "revision", { revision, format: raw ? "raw" : undefined });
 }
 
 /** The address of the comparison of two revisions at the given address. */
 function comparePath(address: string, from: number, to: number): string {
-  return `${address}?view=compare&from=${from}&to=${to}`;
+  return withView(address, "compare", { from, to });
 }
 
 /** The address of the history of a page: the page address with the view `history`, and the revisions before `before`. */

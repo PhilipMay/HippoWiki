@@ -176,8 +176,8 @@ describe("listFolders", () => {
     ]);
   });
 
-  it("returns no folder for a malformed actor id in the browser, logged, without reading the database", async () => {
-    await expect(listFolders(MALFORMED_ACTOR)).resolves.toEqual([]);
+  it("returns null for a malformed actor id in the browser, as every read, logged, without reading the database", async () => {
+    await expect(listFolders(MALFORMED_ACTOR)).resolves.toBeNull();
 
     expect(databaseCallCount()).toBe(0);
     expect(mocks.error).toHaveBeenCalledWith({ actorId: MALFORMED_ID }, "malformed actor id");
