@@ -155,7 +155,13 @@ How the code is tested. Commands are listed in `README.md`.
   `Promise.all`, several of them or in rounds where a single pair could pass by chance. Where a race needs both writes
   to wait for the same row, a transaction of the test holds it with `SELECT ... FOR UPDATE` until both wait for the
   lock. A rollback is shown with a trigger that the test creates to raise an error inside the write and drops in
-  `finally`, comparing the whole rows before and after (the delete of a tab in `integration/folder-service.test.ts`).
+  `finally`, comparing the whole rows before and after. The tests:
+  - `integration/page-service.test.ts`, "a content save and its revision": a save and a revert whose revision is
+    refused store nothing; of every pair of save, revert, move and delete with the same version exactly one wins;
+    of two restores at once exactly one wins.
+  - `integration/folder-service.test.ts`, "deleting a tab": the rollback of the delete of a tab, and a page created,
+    moved or restored into a tab while it is deleted never stays in the missing tab.
+  - `integration/folder-role-service.test.ts`: two Owners who lower each other at once keep one Owner.
 - A new unique constraint gets a constant in `db-errors.ts` and a case in `integration/db-errors.test.ts`; a new
   read with a condition the database must get right and every new write get a case in the integration test of their
   service.

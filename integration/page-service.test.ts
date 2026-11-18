@@ -6,7 +6,7 @@ import { CONTENT_MAX_LENGTH, CONTENT_MAX_TABLE_CELLS } from "@/features/pages/li
 import { CONTENT_TABLE_CELLS_MESSAGE } from "@/features/pages/schema";
 import * as pageService from "@/features/pages/service";
 import { inBrowser, inMcp, type BrowserActor } from "@/features/folder-roles/service";
-import type { User } from "@/generated/prisma/client";
+import type { Page, User } from "@/generated/prisma/client";
 
 import {
   createFolder,
@@ -1533,19 +1533,131 @@ describe("the revisions of pages", () => {
     expect(await revisionsOf(page.id)).toEqual(before);
     expect(await revisionsOf(inTab.id)).toHaveLength(1);
   });
+});
 
-  it("take one new revision of two saves at the same time with the same version; the other is page-changed", async () => {
-    const page = await createPage({ folder: await createFolder(), editor: user, content: "# Intro" });
+describe("a content save and its revision", () => {
+  /** The page with the given id and its revisions, as stored. */
+  async function snapshotOf(pageId: string) {
+    const db = getTestDb();
+    return {
+      page: await db.page.findUniqueOrThrow({ where: { id: pageId } }),
+      revisions: await db.pageRevision.findMany({ where: { pageId }, orderBy: { number: "asc" } }),
+    };
+  }
+
+  /** Runs the given write while a trigger of the test refuses every new revision, and drops the trigger after. */
+  async function whileRevisionsAreRefused<T>(write: () => Promise<T>): Promise<T> {
+    const db = getTestDb();
+    await db.$executeRawUnsafe(`
+      CREATE FUNCTION refuse_revision() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN RAISE EXCEPTION 'revision refused by the test'; END $$`);
+    await db.$executeRawUnsafe(
+      `CREATE TRIGGER refuse_revision BEFORE INSERT ON "PageRevision" FOR EACH ROW EXECUTE FUNCTION refuse_revision()`,
+    );
+    try {
+      return await write();
+    } finally {
+      await db.$executeRawUnsafe(`DROP TRIGGER refuse_revision ON "PageRevision"`);
+      await db.$executeRawUnsafe(`DROP FUNCTION refuse_revision()`);
+    }
+  }
+
+  // The page and its revision are stored in one transaction (page-history.md, "Revisions").
+  it.each([
+    ["a save", (id: string) => pageService.updatePageContent(actor, id, { content: "# Intro\n\nNew", version: 1 })],
+    ["a revert", (id: string) => pageService.revertPage(actor, id, { revision: 1, version: 1 })],
+  ])("%s stores nothing when its revision cannot be stored", async (_name, write) => {
+    const page = await createPage({ folder: await createFolder({ roles: owners(user) }), editor: user });
+    await createRevisions({ page, count: 1 });
+    const before = await snapshotOf(page.id);
+
+    await expect(whileRevisionsAreRefused(() => write(page.id))).resolves.toEqual({
+      ok: false,
+      error: { code: "failed" },
+    });
+
+    expect(await snapshotOf(page.id)).toStrictEqual(before);
+  });
+
+  /**
+   * The writes of a page with a version, each based on version 1 of a page named `intro` with the revisions 1 and 2,
+   * whether the page as stored is the one the write stored, and whether the write records a revision.
+   */
+  const WRITES = {
+    save: {
+      write: (id: string, n: number) =>
+        pageService.updatePageContent(actor, id, { content: `# Intro\n\nSave ${n}`, version: 1 }),
+      stored: (page: Page, n: number) => page.content === `# Intro\n\nSave ${n}`,
+      recordsRevision: true,
+    },
+    revert: {
+      write: (id: string) => pageService.revertPage(actor, id, { revision: 1, version: 1 }),
+      stored: (page: Page) => page.content === "# Intro",
+      recordsRevision: true,
+    },
+    move: {
+      write: (id: string, n: number) =>
+        pageService.moveOrRenamePage(actor, id, { name: `moved-${n}`, tabId: null, version: 1 }),
+      stored: (page: Page, n: number) => page.name === `moved-${n}`,
+      recordsRevision: false,
+    },
+    delete: {
+      write: (id: string) => pageService.deletePage(actor, id, { version: 1 }),
+      stored: (page: Page) => page.deletedAt !== null,
+      recordsRevision: false,
+    },
+  } as const;
+  type Kind = keyof typeof WRITES;
+  const KINDS = Object.keys(WRITES) as Kind[];
+  const PAIRS = KINDS.flatMap((first, index) => KINDS.slice(index).map((second) => [first, second] as const));
+
+  // Of two writes with the same version, exactly one is stored (optimistic-locking.md, "Which changes are refused").
+  // The other is page-changed, or page-not-found when the one stored deleted the page.
+  it.each(PAIRS)("of a %s and a %s at the same time with the same version, exactly one wins", async (first, second) => {
+    const page = await createPage({
+      folder: await createFolder({ roles: owners(user) }),
+      editor: user,
+      name: "intro",
+      content: "# Intro",
+    });
+    await createRevisions({ page, count: 1 });
+
+    const results = await Promise.all([WRITES[first].write(page.id, 1), WRITES[second].write(page.id, 2)]);
+
+    const winners = results.flatMap((result, index) => (result.ok ? [index] : []));
+    expect(winners).toHaveLength(1);
+    const winner = winners[0] === 0 ? { kind: first, n: 1 } : { kind: second, n: 2 };
+    expect(results[winners[0] === 0 ? 1 : 0]).toMatchObject({
+      ok: false,
+      error: { code: winner.kind === "delete" ? "page-not-found" : "page-changed" },
+    });
+    const { page: stored, revisions } = await snapshotOf(page.id);
+    expect(stored.version).toBe(2);
+    expect(WRITES[winner.kind].stored(stored, winner.n)).toBe(true);
+    if (WRITES[winner.kind].recordsRevision) {
+      expect(revisions.map(({ number }) => number)).toEqual([1, 2, 3]);
+      expect(revisions.at(-1)).toMatchObject({ content: stored.content, title: stored.title });
+    } else {
+      expect(revisions.map(({ number }) => number)).toEqual([1, 2]);
+    }
+  });
+
+  it("of two restores at the same time, exactly one wins; the other finds no deleted page", async () => {
+    const page = await createPage({ folder: await createFolder({ roles: owners(user) }), deletedAt: new Date() });
 
     const results = await Promise.all([
-      pageService.updatePageContent(actor, page.id, { content: "# Intro\n\nFirst", version: 1 }),
-      pageService.updatePageContent(actor, page.id, { content: "# Intro\n\nSecond", version: 1 }),
+      pageService.restorePage(actor, page.id, { name: "first", tabId: null }),
+      pageService.restorePage(actor, page.id, { name: "second", tabId: null }),
     ]);
 
-    expect(results.filter((result) => result.ok)).toHaveLength(1);
-    expect(results.filter((result) => !result.ok)).toMatchObject([{ error: { code: "page-changed" } }]);
-    expect((await revisionsOf(page.id)).map(({ number }) => number)).toEqual([1, 2]);
-    await expectNewestRevisionIsThePage(page.id);
+    const restored = results.flatMap((result) => (result.ok ? [result.value] : []));
+    expect(restored).toHaveLength(1);
+    expect(results.filter((result) => !result.ok)).toEqual([{ ok: false, error: { code: "page-not-found" } }]);
+    expect(await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } })).toMatchObject({
+      deletedAt: null,
+      version: 2,
+      name: restored[0]?.name,
+    });
   });
 });
 

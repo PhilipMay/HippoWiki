@@ -13,19 +13,17 @@
     of Prisma, and three rules of access and of the transaction have no test that could fail.
   - Documents that the features outran: rules stated in full in several documents, and copies of code and
     constants in the specs.
-- Findings: 78 open of 107, 0 Blocker, 3 Major, 61 Minor and 14 Nit (32 `issue:`, 30 `suggestion:`, 12 `nit:` and
+- Findings: 77 open of 107, 0 Blocker, 2 Major, 61 Minor and 14 Nit (31 `issue:`, 30 `suggestion:`, 12 `nit:` and
   4 `question:`).
-- Confidence of the suggestions: 14 High, 48 Medium and 12 Low; the 4 questions have none. A High suggestion can be
+- Confidence of the suggestions: 14 High, 47 Medium and 12 Low; the 4 questions have none. A High suggestion can be
   fixed as written; the others wait for the user, as `issue-report.md` describes.
 - Decisions: on 2026-11-18 the user decided all Medium and Low suggestions. Each of these findings ends with a line
   `Decision`, and is fixed as that line says, without asking again. The 4 questions were decided by the user on the
   same day, in "Decisions on the questions" of `spec/review-02-fixes-steps.md`.
-- To fix first, the three Major findings:
+- To fix first, the two Major findings:
   1. Tests say that no MCP connection reads deleted pages, but try only a Writer connection; by the code the
      service would answer a Manager connection (Tests: unit and integration; Low, decided).
-  2. That a content save and its revision are one unit, and most races of pages, are proven by no test against the
-     real database (Tests: unit and integration; Medium).
-  3. The unit tests of the services pin the calls of Prisma, not the behaviour (Tests: unit and integration; Low,
+  2. The unit tests of the services pin the calls of Prisma, not the behaviour (Tests: unit and integration; Low,
      decided).
 - Not covered by this review: security, which `review-report.md` covers and whose findings are not repeated here;
   the unit tests of auth, users, OAuth and grants, of which only the names and the copied helpers were looked at;
@@ -1031,41 +1029,6 @@ Unit coverage on 2026-11-18 is 78.95 % of the lines and 69.71 % of the branches.
 components and the route pages, which have no unit tests on purpose (67 of 138 files, 690 lines); the services are
 between 94 % and 100 %. The findings below are therefore about what is asserted, not about lines.
 
-#### issue: that a content save and its revision are one unit, and most races of pages, are proven by no test against the real database
-
-- Location: `src/features/pages/service.test.ts`, lines 43–60 and 94–100 (the mock of the database and of the
-  transaction) and lines 932–959; `integration/page-service.test.ts`, lines 1457–1469, the only race of pages;
-  `spec/page-history.md`, section "Revisions"; `spec/optimistic-locking.md`, section "Decisions"
-- Severity: Major. The central promise of the history and of optimistic locking is proven for one of four writes
-  of a page, and a mock cannot prove the rest.
-- Category: tests
-- Problem: proven with real concurrency are two content saves with the same version, two Owners who lower each
-  other, a page created in a tab while the tab is deleted, and the rollback of `deleteTab()`. Proven only with
-  mocks are the rename that was renamed meanwhile, a delete changed between its read and its update, and the lock
-  of the roles. Proven nowhere:
-  - the rollback of the page when the revision cannot be stored: the mock gives the database and the transaction
-    the same functions, so the unit tests pass when the update moves out of the transaction;
-  - the races with the same version for two moves, a save and a move, a save and a delete, two deletes, and a
-    revert and a save;
-  - a move or a restore into a tab while it is deleted, though `content-structure.md` names "created, moved or
-    restored";
-  - two restores at once; the end-to-end test waits for the first before it submits the second.
-- Impact: a refactoring of `storeContentChange()`, which the findings under "Code: services of the content
-  features" suggest, can take the update of the page out of the transaction. A failed insert of the revision then
-  leaves a changed page with a new version and no revision, and every unit and integration test stays green.
-- Evidence: `src/features/pages/service.test.ts`, line 938, `expect(mocks.transaction).toHaveBeenCalledOnce();`, is
-  the only assertion about the transaction. `Promise.all` appears once in `integration/page-service.test.ts`.
-- Suggestion (required): add to `integration/page-service.test.ts`: a save and a revert that leave the page and
-  its revisions as they were when a trigger refuses the insert of the revision, as the test of `deleteTab()` in
-  `integration/folder-service.test.ts` does; a table of races over pairs of save, move, delete and revert with the
-  same version; and two restores at once. Add a move and a restore into a tab that is being deleted.
-- Confidence: Medium. The rollback test is one clear addition with a technique the repository has; a new race test
-  could show a real defect.
-- Alternatives: give the transaction of the mock functions of its own, so that "inside the transaction" can be
-  asserted; cheaper, and still no proof of a rollback.
-- Decision (2026-11-18): as suggested: the rollback of a save and of a revert, the table of races, two restores at once,
-  and a move and a restore into a tab that is being deleted.
-
 #### issue: tests say that no MCP connection reads deleted pages, but try only a Writer connection
 
 - Location: `src/features/pages/service.test.ts`, lines 2042–2047 and 2056–2073;
@@ -1204,6 +1167,9 @@ deletedAt: null, version: VERSION, content: { not: CONTENT } },`.
   of the untouched row, including "changed, not taken" and the restore without a version.
 - The last Owner with a real race, and the trigger of the database against roles of admins.
 - The delete of a tab: the rollback with a trigger, a race with a held lock, 300 pages, and MCP.
+- A content save and a revert with their revision as one unit, by a trigger; the races of every pair of save,
+  revert, move and delete with the same version, of two restores, and of a create, move and restore into a tab while
+  it is deleted.
 - The limits on a revert in unit, integration and end-to-end tests.
 - The mapping of the codes: every code of every action of pages, folders and roles has its form state, and every
   code of all nine tools its tool error. The tests of the tools run the real SDK and check the lists of tools per
@@ -1958,8 +1924,7 @@ documents name.
    the writes of roles, and nothing in the code enforces it; the unit tests of the services are cut after the
    missing integration cases exist. The Decision of each finding holds the rest.
 2. Fix the findings with a High confidence that change no code: the Locations of the first report.
-3. Close the gaps of the tests before any refactoring: the rollback of a content save, and the states of the
-   dialogs that a shared frame would move.
+3. Close the gaps of the tests before any refactoring: the states of the dialogs that a shared frame would move.
 4. Refactor the code in small steps, each with its checks: the `null` check of the two reads, the shared guards of
    a content write, one shape for a write without a change, the hooks and the frame of the dialogs, then the
    splits of the large files.

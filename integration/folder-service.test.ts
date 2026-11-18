@@ -1007,44 +1007,99 @@ describe("deleting a tab", () => {
     expect(await snapshot()).toStrictEqual(before);
   });
 
-  // The timeout of the test is above the 20 seconds of its transaction and the 10 of its poll, so that a slow run
-  // fails with their message.
-  it("never leaves a page created at the same time in a missing tab", async () => {
-    const folder = await createFolder({ name: "docs" });
-    const tab = await createTab({ folder, name: "guides" });
-    const db = getTestDb();
+  /** How many sessions of the test database wait for a lock. */
+  async function waitingForLocks(): Promise<number> {
+    const rows = await getTestDb().$queryRaw<{ count: bigint }[]>`
+      SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`;
+    return Number(rows[0]?.count ?? 0);
+  }
 
-    /** How many sessions of the test database wait for a lock. */
-    async function waitingForLocks(): Promise<number> {
-      const rows = await db.$queryRaw<{ count: bigint }[]>`
-        SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`;
-      return Number(rows[0]?.count ?? 0);
-    }
-
+  /**
+   * Runs the given write of a page into the tab and the delete of the tab against each other, expects the delete to
+   * succeed and returns the result of the write. A transaction of the test holds the row of the tab, so that the
+   * write and the delete both have to wait for it; when it ends, they run against each other.
+   */
+  async function againstDeleteOfTab<T>(folder: { id: string }, tab: { id: string }, write: () => Promise<T>) {
     let deletion: ReturnType<typeof folderService.deleteTab> | undefined;
-    let creation: ReturnType<typeof pageService.createPage> | undefined;
-    // A transaction of the test holds the row of the tab, so that the create and the deletion both have to wait for
-    // it; when it ends, they run against each other.
-    await db.$transaction(
+    let written: Promise<T> | undefined;
+    await getTestDb().$transaction(
       async (tx) => {
         await tx.$queryRaw`SELECT 1 FROM "Tab" WHERE "id" = ${tab.id}::uuid FOR UPDATE`;
-        creation = pageService.createPage(actor, folder.id, { name: "late", content: "# Late", tabId: tab.id });
+        written = write();
         deletion = folderService.deleteTab(actor, folder.id, tab.id);
         await expect.poll(waitingForLocks, { timeout: 10_000 }).toBeGreaterThanOrEqual(2);
       },
       { timeout: 20_000 },
     );
-
     await expect(deletion).resolves.toMatchObject({ ok: true });
-    const created = await creation;
+    return written;
+  }
+
+  /** Expects no page in a tab and no tab: the tab is deleted, and no page slipped into it. */
+  async function expectNoTabAndNoPageInOne(): Promise<void> {
+    expect(await getTestDb().page.count({ where: { tabId: { not: null } } })).toBe(0);
+    expect(await getTestDb().tab.count()).toBe(0);
+  }
+
+  // The timeout of these tests is above the 20 seconds of the transaction and the 10 of the poll of
+  // `againstDeleteOfTab()`, so that a slow run fails with their message.
+  it("never leaves a page created at the same time in a missing tab", async () => {
+    const folder = await createFolder({ name: "docs" });
+    const tab = await createTab({ folder, name: "guides" });
+
+    const created = await againstDeleteOfTab(folder, tab, () =>
+      pageService.createPage(actor, folder.id, { name: "late", content: "# Late", tabId: tab.id }),
+    );
+
     if (created?.ok) {
-      const page = await db.page.findUniqueOrThrow({ where: { id: created.value.id } });
+      const page = await getTestDb().page.findUniqueOrThrow({ where: { id: created.value.id } });
       expect(page).toMatchObject({ tabId: null, deletedAt: expect.any(Date) });
     } else {
       expect(created).toEqual(TAB_NOT_FOUND);
     }
-    expect(await db.page.count({ where: { tabId: { not: null } } })).toBe(0);
-    expect(await db.tab.count()).toBe(0);
+    await expectNoTabAndNoPageInOne();
+  }, 30_000);
+
+  it("never leaves a page moved at the same time in a missing tab", async () => {
+    const folder = await createFolder({ name: "docs" });
+    const tab = await createTab({ folder, name: "guides" });
+    const page = await createPage({ folder, name: "late" });
+    const before = await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } });
+
+    const moved = await againstDeleteOfTab(folder, tab, () =>
+      pageService.moveOrRenamePage(actor, page.id, { name: "late", tabId: tab.id, version: 1 }),
+    );
+
+    const after = await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } });
+    if (moved?.ok === false && moved.error.code === "tab-not-found") {
+      expect(after).toStrictEqual(before);
+    } else {
+      // The move came first and the page went with the tab; the page it returns may already be deleted.
+      expect(moved).toSatisfy((result) => result?.ok === true || result?.error.code === "page-not-found");
+      expect(after).toMatchObject({ tabId: null, deletedAt: expect.any(Date), version: 3 });
+    }
+    await expectNoTabAndNoPageInOne();
+  }, 30_000);
+
+  it("never leaves a page restored at the same time in a missing tab", async () => {
+    const folder = await createFolder({ name: "docs" });
+    const tab = await createTab({ folder, name: "guides" });
+    const page = await createPage({ folder, name: "late", deletedAt: new Date() });
+    const before = await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } });
+
+    const restored = await againstDeleteOfTab(folder, tab, () =>
+      pageService.restorePage(actor, page.id, { name: "late", tabId: tab.id }),
+    );
+
+    const after = await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } });
+    if (restored?.ok === false && restored.error.code === "tab-not-found") {
+      expect(after).toStrictEqual(before);
+    } else {
+      // The restore came first and the page went with the tab; the page it returns may already be deleted.
+      expect(restored).toSatisfy((result) => result?.ok === true || result?.error.code === "page-not-found");
+      expect(after).toMatchObject({ tabId: null, deletedAt: expect.any(Date), version: 3 });
+    }
+    await expectNoTabAndNoPageInOne();
   }, 30_000);
 
   it("answers the writes of a page of the deleted tab with page-not-found", async () => {
