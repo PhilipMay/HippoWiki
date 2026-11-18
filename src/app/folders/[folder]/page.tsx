@@ -238,7 +238,7 @@ export default async function FolderPage({ params, searchParams }: PageProps<"/f
         <NameDialog
           title="Rename folder"
           action={renameFolder.bind(null, folder.id)}
-          initialName={folder.name}
+          currentName={folder.name}
           closeHref={address}
         />
       )}

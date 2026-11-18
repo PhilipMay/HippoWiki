@@ -230,8 +230,9 @@ test("the name dialog is prefilled and locked until hydration", async ({ page })
 
   const dialog = page.getByRole("dialog", { name: "Rename folder" });
   await expect(dialog.getByLabel("Name")).toHaveValue("locked-folder");
+  // "Save" of a rename dialog stays disabled after hydration as well while the name is unchanged, so the read-only
+  // field proves the lock here; the dialogs of new items below check "Save".
   await expect(dialog.getByLabel("Name")).not.toBeEditable();
-  await expect(dialog.getByRole("button", { name: "Save" })).toBeDisabled();
   await expect(dialog.getByRole("link", { name: "Cancel" })).toHaveAttribute("href", "/folders/locked-folder");
 });
 
@@ -244,11 +245,28 @@ test("the name dialog on a tab is prefilled and locked until hydration", async (
   const dialog = page.getByRole("dialog", { name: "Rename tab" });
   await expect(dialog.getByLabel("Name")).toHaveValue("locked-tab");
   await expect(dialog.getByLabel("Name")).not.toBeEditable();
-  await expect(dialog.getByRole("button", { name: "Save" })).toBeDisabled();
   await expect(dialog.getByRole("link", { name: "Cancel" })).toHaveAttribute(
     "href",
     "/folders/locked-folder/locked-tab",
   );
+});
+
+test("the new folder and new tab dialogs are locked until hydration", async ({ page }) => {
+  await createFolder({ name: "locked-folder" });
+
+  // An empty field enables "Save" after hydration, so here it is disabled only until then.
+  for (const [address, title, closeHref] of [
+    ["/folders?action=new", "New folder", "/folders"],
+    ["/folders/locked-folder?action=new-tab", "New tab", "/folders/locked-folder"],
+  ] as const) {
+    await page.goto(address);
+
+    const dialog = page.getByRole("dialog", { name: title });
+    await expect(dialog.getByLabel("Name")).toHaveValue("");
+    await expect(dialog.getByLabel("Name")).not.toBeEditable();
+    await expect(dialog.getByRole("button", { name: "Save" })).toBeDisabled();
+    await expect(dialog.getByRole("link", { name: "Cancel" })).toHaveAttribute("href", closeHref);
+  }
 });
 
 test("the move or rename dialog is prefilled and locked until hydration", async ({ page }) => {

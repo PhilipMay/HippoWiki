@@ -22,6 +22,9 @@ async function expectNotFound(page: Page, address: string) {
   await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
 }
 
+/** The hint below the name field of the name dialogs. */
+const NAME_HINT = "Lowercase letters, digits and single hyphens, e.g. release-notes";
+
 /** The logged-in user of the tests, who makes every change through the GUI. */
 const USER = KNOWN_USER.name;
 
@@ -244,6 +247,56 @@ test("saving the rename dialog with the name the folder got meanwhile stores not
   const item = page.getByRole("list", { name: "Folders" }).getByRole("listitem");
   await expect(item).toHaveText([by("bob", "mcp")]);
   await expect(item.locator("time")).toHaveAttribute("datetime", renamedAt.toISOString());
+  expect(errors).toEqual([]);
+});
+
+test("the rename dialog of a folder keeps Save disabled, and Enter without effect, while the name is unchanged", async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  const item = await createFolder({ name: "handbook", updatedAt: new Date("2026-01-01T10:00:00Z") });
+  // The submissions of the dialog: each save is a POST to the address of the dialog.
+  const saves: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST") saves.push(request.url());
+  });
+
+  await page.goto("/folders/handbook?action=rename");
+  const dialog = page.getByRole("dialog", { name: "Rename folder" });
+  const field = dialog.getByLabel("Name");
+  const save = dialog.getByRole("button", { name: "Save" });
+  await expect(field).toBeEditable();
+  await expect(field).toHaveValue("handbook");
+  await expect(save).toBeDisabled();
+  await expect(field).toHaveAccessibleDescription(NAME_HINT);
+
+  await field.fill("manual");
+  await expect(save).toBeEnabled();
+  await expect(field).toHaveAccessibleDescription(NAME_HINT);
+  for (const unchanged of ["handbook", " handbook "]) {
+    await field.fill(unchanged);
+    await expect(save).toBeDisabled();
+    await expect(field).toHaveAccessibleDescription(NAME_HINT);
+  }
+
+  await field.press("Enter");
+  // An empty name differs from the current one, so Save is enabled and the server answers. Once its answer is shown,
+  // a submission of the Enter before would have been sent as well.
+  await field.fill("");
+  await expect(save).toBeEnabled();
+  await save.click();
+  await expect(field).toHaveAccessibleDescription("Name is required");
+  expect(saves).toHaveLength(1);
+  await expect(page).toHaveURL("/folders/handbook?action=rename");
+  await expect(getTestDb().folder.findUniqueOrThrow({ where: { id: item.id } })).resolves.toMatchObject({
+    name: "handbook",
+    updatedAt: item.updatedAt,
+    lastEditedById: item.lastEditedById,
+  });
+
+  await field.fill("manual");
+  await field.press("Enter");
+  await expect(page).toHaveURL("/folders/manual");
   expect(errors).toEqual([]);
 });
 

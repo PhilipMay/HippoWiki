@@ -22,8 +22,11 @@ type NameDialogProps = {
   title: string;
   /** Server Action that stores the name; it returns the errors to show, or redirects on success. */
   action: NameFormAction;
-  /** The name the field starts with: the current name when renaming, empty for a new item. */
-  initialName?: string;
+  /**
+   * The current name of the item when renaming: the field starts with it, and "Save" stays disabled while the name in
+   * the field, without its surrounding spaces, is this name. Left out for a new item, whose field starts empty.
+   */
+  currentName?: string;
   /** The address without the action, where closing the dialog leads. */
   closeHref: string;
 };
@@ -32,11 +35,11 @@ type NameDialogProps = {
  * Dialog that asks for the name of a folder or tab, used to create and to rename. The route renders it for an action
  * in the query string, so it is open from the start; closing it leads to the address without the action.
  */
-export default function NameDialog({ title, action, initialName = "", closeHref }: NameDialogProps) {
+export default function NameDialog({ title, action, currentName, closeHref }: NameDialogProps) {
   const [state, formAction, pending] = useActionState(action, {});
   // A controlled field keeps the entered name when the action returns errors; React resets only uncontrolled fields
   // after a submission.
-  const [name, setName] = useState(initialName);
+  const [name, setName] = useState(currentName ?? "");
   const nameRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const titleId = useId();
@@ -46,6 +49,10 @@ export default function NameDialog({ title, action, initialName = "", closeHref 
   const hydrated = useHydrated();
 
   const nameError = state.fieldErrors?.name?.[0];
+  // A rename to the current name would change nothing. The name is trimmed as the server's name schema trims it, so that
+  // the button and the server agree; the comparison is with the name the dialog was opened with, while the server
+  // compares with the name stored at the moment of the save.
+  const unchanged = currentName !== undefined && name.trim() === currentName;
 
   // Field errors come back from the Server Action, not from a client event, so the focus moves once the new state
   // arrives. Each submission returns a new state object, so a repeated rejection moves the focus again; the initial
@@ -103,8 +110,9 @@ export default function NameDialog({ title, action, initialName = "", closeHref 
         <Button component={Link} href={closeHref} disabled={pending}>
           Cancel
         </Button>
-        {/* Outside the form element, so it is tied to the form by its id. */}
-        <Button type="submit" form={formId} variant="contained" disabled={pending || !hydrated}>
+        {/* Outside the form element, so it is tied to the form by its id. It is the default button of the form, so while it
+            is disabled, Enter in the field submits nothing either. */}
+        <Button type="submit" form={formId} variant="contained" disabled={pending || !hydrated || unchanged}>
           {pending ? "Saving…" : "Save"}
         </Button>
       </DialogActions>

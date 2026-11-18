@@ -140,7 +140,7 @@ export default async function FolderItemPage({ params, searchParams }: Props) {
         <NameDialog
           title="Rename tab"
           action={renameTab.bind(null, tab.id)}
-          initialName={tab.name}
+          currentName={tab.name}
           closeHref={tabPath(folder.name, tab.name)}
         />
       )}

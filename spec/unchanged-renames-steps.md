@@ -25,7 +25,7 @@ written from `spec/unchanged-renames-requirements.md` (R1 to R8).
 ## Checklist
 
 - [x] Store nothing for an unchanged rename
-- [ ] Disable "Save" while the name is unchanged
+- [x] Disable "Save" while the name is unchanged
 - [ ] Wrap-up
 
 ## Store nothing for an unchanged rename
