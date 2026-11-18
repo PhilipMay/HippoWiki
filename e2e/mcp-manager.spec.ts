@@ -327,6 +327,7 @@ test.describe("the tools of a Manager connection", () => {
     const { instructions } = ((await response.json()) as { result: { instructions: string } }).result;
     expect(instructions).toContain('the folder "projects" with the role Manager');
     expect(instructions).toContain("creates, renames and deletes tabs");
+    expect(instructions).toContain("Use edit_page_content to change parts of a page");
     expect(instructions).toContain("Deleting a tab deletes all its pages with it.");
     expect(instructions).toContain("Deleted pages can be neither seen nor restored through this connection");
   });

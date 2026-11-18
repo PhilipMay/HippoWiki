@@ -491,9 +491,21 @@ describe("the write tools", () => {
   it("tell a Writer connection in the instructions about the write tools and the version", () => {
     const instructions = instructionsFor("handbook", "writer");
 
-    for (const word of ["create_page", "replace_page_content", "move_or_rename_page", "version"]) {
+    for (const word of ["create_page", "replace_page_content", "edit_page_content", "move_or_rename_page", "version"]) {
       expect(instructions).toContain(word);
     }
+  });
+
+  it("tell a Writer and a Manager connection which content tool is for what, and a Reader connection neither (R17)", () => {
+    for (const role of ["writer", "manager"] as const) {
+      expect(instructionsFor("handbook", role)).toContain(
+        "Use edit_page_content to change parts of a page, such as a sentence or a list item, and " +
+          "replace_page_content only to rewrite a page as a whole.",
+      );
+    }
+    const reader = instructionsFor("handbook", "reader");
+    expect(reader).not.toContain("edit_page_content");
+    expect(reader).not.toContain("replace_page_content");
   });
 
   describe("create_page", () => {
@@ -988,7 +1000,13 @@ describe("the tools of a Manager connection", () => {
     const instructions = instructionsFor("handbook", "manager");
 
     expect(instructions).toContain('the folder "handbook" with the role Manager');
-    for (const tool of ["create_page", "replace_page_content", "move_or_rename_page", ...MANAGER_TOOLS]) {
+    for (const tool of [
+      "create_page",
+      "replace_page_content",
+      "edit_page_content",
+      "move_or_rename_page",
+      ...MANAGER_TOOLS,
+    ]) {
       expect(instructions).toContain(tool);
     }
     expect(instructions).toContain("Deleting a tab deletes all its pages with it.");
@@ -1269,6 +1287,18 @@ describe("the descriptions", () => {
     }
     expect(byName.move_or_rename_page?.description).toContain("A move to the current name and place changes nothing.");
     expect(byName.rename_tab?.description).toContain("A rename to the current name changes nothing.");
+  });
+
+  it("of the two content tools say which one is for what and name the other one (R17)", async () => {
+    actor = WRITER;
+
+    const tools = (await send({ method: "tools/list" })).result?.tools as ListedTool[];
+    const byName = Object.fromEntries(tools.map((tool) => [tool.name, tool]));
+
+    expect(byName.replace_page_content?.description).toContain(
+      "It is for rewriting a page; to change parts of it, use edit_page_content",
+    );
+    expect(byName.edit_page_content?.description).toContain("to rewrite a page as a whole, use replace_page_content");
   });
 });
 

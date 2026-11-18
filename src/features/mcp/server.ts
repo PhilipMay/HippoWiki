@@ -46,6 +46,11 @@ import packageJson from "../../../package.json";
 /** How the server introduces itself to a client, with the version of the wiki. */
 const SERVER_INFO = { name: "hippowiki", title: siteName, version: packageJson.version };
 
+/** Which of the two tools that change the content of a page is for what, as the instructions tell the model. */
+const CONTENT_TOOLS =
+  "Use edit_page_content to change parts of a page, such as a sentence or a list item, and replace_page_content " +
+  "only to rewrite a page as a whole.";
+
 /**
  * What a connection of each role may do, as the instructions tell the model. Written by hand for the model; the tools
  * themselves follow `mayDo()`.
@@ -53,14 +58,14 @@ const SERVER_INFO = { name: "hippowiki", title: siteName, version: packageJson.v
 const ROLE_ABILITIES: Readonly<Record<McpRole, string>> = {
   reader: "It reads the folder and cannot change it.",
   writer:
-    "It reads the folder and changes its pages with create_page, replace_page_content and move_or_rename_page; it " +
-    "creates no tabs. Every change of a page states the version that read_page gave for it, and a change based on " +
-    "an older version is refused.",
+    "It reads the folder and changes its pages with create_page, edit_page_content, replace_page_content and " +
+    `move_or_rename_page; it creates no tabs. ${CONTENT_TOOLS} Every change of a page states the version that ` +
+    "read_page gave for it, and a change based on an older version is refused.",
   manager:
-    "It reads the folder and changes its pages like a Writer connection, with create_page, replace_page_content and " +
-    "move_or_rename_page, deletes pages with delete_page, and creates, renames and deletes tabs with create_tab, " +
-    "rename_tab and delete_tab. Every change and every delete of a page states the version that read_page gave for " +
-    "it, and one based on an older version is refused. Deleting a tab deletes all its pages with it. Deleted pages " +
+    "It reads the folder and changes its pages like a Writer connection, with create_page, edit_page_content, " +
+    "replace_page_content and move_or_rename_page, deletes pages with delete_page, and creates, renames and deletes " +
+    `tabs with create_tab, rename_tab and delete_tab. ${CONTENT_TOOLS} Every change and every delete of a page ` +
+    "states the version that read_page gave for it, and one based on an older version is refused. Deleting a tab deletes all its pages with it. Deleted pages " +
     "can be neither seen nor restored through this connection: only a Manager or Owner of the folder restores them, " +
     "in the browser.",
 };
@@ -156,7 +161,8 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
         title: "Replace the content of a page",
         description:
           "Replaces the whole content of a page of the folder of this connection with the given Markdown, which " +
-          "must start with a title heading; the title of the page follows it. State the version that read_page " +
+          "must start with a title heading; the title of the page follows it. It is for rewriting a page; to " +
+          "change parts of it, use edit_page_content, which sends only the changed texts. State the version that read_page " +
           "gave: if the page has changed since, nothing is changed. Content that is the same as the stored content " +
           "changes nothing either. Returns the page with its version, which a change counts up and content without " +
           "a change keeps.",
@@ -172,8 +178,9 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
       {
         title: "Replace exact texts in the content of a page",
         description:
-          "Changes parts of the content of a page of the folder of this connection: each replacement names an exact " +
-          "text of the content, as read_page gave it, and the text that replaces it. A text must appear exactly " +
+          "Changes parts of the content of a page of the folder of this connection, such as a sentence or a list " +
+          "item: each replacement names an exact text of the content, as read_page gave it, and the text that " +
+          "replaces it; to rewrite a page as a whole, use replace_page_content. A text must appear exactly " +
           "once, unless the replacement sets replaceAll. The replacements are applied in the order given, each to " +
           "the content as the ones before it left it, and stored as one change; if one of them cannot be applied, " +
           "nothing is changed. State the version that read_page gave: if the page has changed since, nothing is " +

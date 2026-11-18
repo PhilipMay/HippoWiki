@@ -24,7 +24,7 @@ did not mean to touch stay exactly as they were. Written from `spec/mcp-search-a
 
 - [x] The replacements of a content
 - [x] The tool edit_page_content
-- [ ] Which tool is for what
+- [x] Which tool is for what
 - [ ] Wrap-up
 
 ## The replacements of a content
