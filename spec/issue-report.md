@@ -17,6 +17,7 @@ Every issue you report should answer these questions. Write them in this order.
 | Confidence   | How sure is the reviewer that the suggestion is right?               | High, Medium or Low from the scale below, with a one-line reason.                      |
 | Alternatives | What other fixes are possible?                                       | Optional: only if there are several reasonable solutions. Name the trade-offs briefly. |
 | Reference    | Where can I read more?                                               | Optional: coding guideline, docs, OWASP, a related ticket.                             |
+| Decision     | What did the user decide?                                            | Only after the user reviewed a Medium or Low suggestion; see "Confidence levels".      |
 
 If you can't fill in Impact, ask yourself whether the issue really matters. If you're unsure, it may be a question rather than an issue.
 
@@ -65,6 +66,11 @@ Rules:
   review. An optional suggestion with High confidence stays optional.
 - Write the confidence on its own line after the suggestion, for example:
   `- Confidence: High. One fix, no behaviour change, the test of the headers covers it.`
+- When the user has reviewed a Medium or Low suggestion, write the outcome as the last line of the finding, with the
+  date: `- Decision (2026-11-18): as suggested.`, or the fix that was chosen instead, for example one of the
+  Alternatives. The Decision is the agreement with the user: the finding is then fixed as the Decision says, without
+  asking again. The Suggestion, the Confidence and the Alternatives stay as they were written, so that the reasons
+  can be read later.
 
 ## Tips and common mistakes
 

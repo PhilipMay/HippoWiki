@@ -17,18 +17,20 @@
   `question:`).
 - Confidence of the suggestions: 33 High, 54 Medium and 15 Low; the 5 questions have none. A High suggestion can be
   fixed as written; the others wait for the user, as `issue-report.md` describes.
+- Decisions: on 2026-11-18 the user decided all 54 Medium and 15 Low suggestions. Each of these findings ends with a
+  line `Decision`, and is fixed as that line says, without asking again. The 5 questions are still open.
 - To fix first, the six Major findings:
   1. `architecture.md` says deleting pages and the writes of tabs take only the actor of the browser, but MCP does
      them (Documentation: architecture; High).
   2. Tests say that no MCP connection reads deleted pages, but try only a Writer connection; by the code the
-     service would answer a Manager connection (Tests: unit and integration; Low, a decision).
+     service would answer a Manager connection (Tests: unit and integration; Low, decided).
   3. The access rules of two reads of the history are asserted by no test (Tests: unit and integration; High).
   4. That a content save and its revision are one unit, and most races of pages, are proven by no test against the
      real database (Tests: unit and integration; Medium).
   5. The unit tests of the services pin the calls of Prisma, not the behaviour (Tests: unit and integration; Low,
-     a decision before the refactoring).
+     decided).
   6. Three documents disagree on when the complete end-to-end suite runs before a commit or a push
-     (Documentation: architecture; Low, a decision).
+     (Documentation: architecture; Low, decided).
 - Not covered by this review: security, which `review-report.md` covers and whose findings are not repeated here;
   the unit tests of auth, users, OAuth and grants, of which only the names and the copied helpers were looked at;
   the size of the bundles for the browser, because no build was read (one `question:` asks for it); and the
@@ -136,6 +138,9 @@ What can go wrong in a cleanup, and what several findings warn about:
   - A new pure module in the feature of the folder roles. It needs no database, so the lint rule allows it.
   - Next to `roleHolderId()` in the service of the folder roles, which both import already; that file is mixed
     enough (see the finding on the three concerns below).
+- Decision (2026-11-18): a new pure module of the feature of the folder roles, for example one named
+  `actors.ts`, holds the four helpers and one function for the opening of a content write, next to the actors and
+  the channel (see the finding on the three concerns below).
 
 #### issue: the writes of roles take an MCP actor by their type, and `writeRole()` would ignore the role of the connection
 
@@ -158,6 +163,8 @@ What can go wrong in a cleanup, and what several findings warn about:
   the tests change.
 - Alternatives: keep `Actor` and refuse an MCP actor at the top of `writeRole()`: a smaller change, checked at run
   time, not by the compiler.
+- Decision (2026-11-18): no change of the types and no check in the code. MCP offers no tool that writes roles, and that
+  stays so; `architecture.md` and `mcp.md` say that the writes of roles are not offered through MCP.
 
 #### issue: "a write that stored nothing" has five shapes inside the services and none in their results
 
@@ -181,6 +188,8 @@ folderName }` for roles (next to `"done"`, where folders say `"stored"`), `{ out
   `renameFolder()`.
 - Confidence: Low. Whether the public result should say "unchanged" as well is a design decision; the specs say a
   write without a change is "answered like a stored change".
+- Decision (2026-11-18): one internal shape with the discriminant `kind` in all four helpers, and a small store function
+  for `moveOrRenamePage()`. The public result stays `{ ok: true, value }`, as the specs say.
 
 #### suggestion: the write with the version in its condition is built by hand three times, each fragile in its own way
 
@@ -215,6 +224,9 @@ folderName }` for roles (next to `"done"`, where folders say `"stored"`), `{ out
 - Confidence: Low. The log line and the comment are safe; the helper is a judgement, and the race of the tab name
   was reasoned, not reproduced. `integration/page-service.test.ts` and `integration/folder-service.test.ts` pin
   the properties above.
+- Decision (2026-11-18): now only the warning in the log for the swallowed violation and the corrected comment in
+  `deletePage()`. The shared helper is built only after the races of pages are tested against the database (see "Tests:
+  unit and integration"), and it keeps the properties listed above.
 
 #### issue: the soft delete of a page is written in two services
 
@@ -231,6 +243,8 @@ folderName }` for roles (next to `"done"`, where folders say `"stored"`), `{ out
   pages of a tab inside a given transaction, and call it from `deleteTab()`.
 - Confidence: Medium. No behaviour changes and the integration tests of both deletes cover it; a transaction
   passed between services is a new pattern for `architecture.md`.
+- Decision (2026-11-18): the pages service exports a function that builds the data of a soft delete, and `deleteTab()`
+  uses it inside its own transaction. No transaction is passed between services.
 
 #### issue: the check for the Owner exists twice inside the service of the folder roles, and its writes follow other conventions
 
@@ -249,6 +263,7 @@ folderName }` for roles (next to `"done"`, where folders say `"stored"`), `{ out
 - Suggestion (optional): let `writeRole()` start with the shared check and keep only the check inside the
   transaction; parse the folder id once per function; carry the role of the actor in `ChangeOutcome`.
 - Confidence: Medium. The unit tests pin the log lines; the order "Owner before input" must stay.
+- Decision (2026-11-18): as suggested.
 
 #### issue: a database error in the lookup before a write is thrown, not returned as `failed`
 
@@ -267,6 +282,8 @@ folderName }` for roles (next to `"done"`, where folders say `"stored"`), `{ out
 - Suggestion (optional): decide one rule and write it down: either the lookup counts as a read and throws, or the
   writes catch it and return `failed`.
 - Confidence: Low. It needs a decision, and the effect on the form was read, not tried.
+- Decision (2026-11-18): the writes catch it: the lookup moves inside the `try` of every write, is logged with the ids
+  and returns `failed`, as `revertPage()` does and `architecture.md` says.
 
 #### issue: the error types and the helper for `invalid-input` are declared per service, and one `invalid-input` has no `fieldErrors`
 
@@ -283,6 +300,8 @@ folderName }` for roles (next to `"done"`, where folders say `"stored"`), `{ out
 - Suggestion (optional): move the shared types and the generic `invalidInput()` to `src/lib/result.ts`, and give
   `changeRole()` a code of its own or `fieldErrors` for the role.
 - Confidence: Medium. Moving types changes nothing at run time; the shape of `InvalidRole` touches the action.
+- Decision (2026-11-18): the shared types and the generic `invalidInput()` move to `src/lib/result.ts`; `changeRole()`
+  returns `invalid-input` with `fieldErrors` for the role, built by `invalidInput()`.
 
 #### suggestion: the service of the folder roles holds three concerns, and the pages service has one clear seam
 
@@ -301,6 +320,9 @@ folderName }` for roles (next to `"done"`, where folders say `"stored"`), `{ out
   service needs a change of the lint rule that allows the database only in a `service.ts`, and of
   `architecture.md`; it is worth it only if the file keeps growing.
 - Confidence: Low. A choice of structure; the import paths of many files change.
+- Decision (2026-11-18): the actors and the channel move to the pure module named in the finding on the guards above.
+  The reads of the history move out of the pages service, with the lint rule for the database and `architecture.md`
+  changed to allow it.
 
 #### nit: the actions of pages and folders repeat messages, form states and the mapping of a failed parse
 
@@ -316,6 +338,7 @@ folderName }` for roles (next to `"done"`, where folders say `"stored"`), `{ out
 - Suggestion (optional): export the two messages and the state from one place, add one helper for the errors of
   the place, and let `showChanged()` take the address.
 - Confidence: Medium. The tests of the actions assert the messages; the home of the shared messages is a choice.
+- Decision (2026-11-18): as suggested.
 
 #### nit: the log lines of the role writes name the actor and the outcome in another way than the content writes
 
@@ -333,6 +356,8 @@ folderName }` for roles (next to `"done"`, where folders say `"stored"`), `{ out
 - Suggestion (optional): `actorId` in every line, another wording for the change to the same role, and the channel
   in "folder created".
 - Confidence: Medium. The unit tests pin the lines; the wording is a choice.
+- Decision (2026-11-18): as suggested: `actorId` in every line, "role unchanged: the role is the same" for a change to
+  the same role, and the channel in "folder created".
 
 #### nit: unused names and comments that no longer match the code
 
@@ -356,6 +381,8 @@ folderName }` for roles (next to `"done"`, where folders say `"stored"`), `{ out
 - Suggestion (optional): delete `Channel` and `isRole()` with its test, correct the comments, and decide whether
   the services of grants and OAuth should catch the two violations or the constants go.
 - Confidence: Medium. High for `Channel` and the comments; the two constants need a decision.
+- Decision (2026-11-18): as suggested. `GRANT_ACCESS_TOKEN_HASH` and `OAUTH_CODE_HASH` are dropped together with their
+  cases in `integration/db-errors.test.ts`; the unique constraints stay in the schema.
 
 #### nit: small rules that are written more than once
 
@@ -375,6 +402,7 @@ folderName }` for roles (next to `"done"`, where folders say `"stored"`), `{ out
 - Suggestion (optional): `mayDo(role, "read")` in all four places, a `withView()`, one extraction of the
   constraint, and `isRevisionNumber()` exported from the schema.
 - Confidence: Medium. Each is mechanical and covered by the unit tests of its file; none is needed.
+- Decision (2026-11-18): as suggested.
 
 #### Reviewed
 
@@ -419,6 +447,7 @@ stored.name);` and `title: page?.title ?? "",`.
   page alone.
 - Confidence: Medium. One fix, but it changes a type that the browser actions and many mocks of the tests use;
   nothing was run.
+- Decision (2026-11-18): as suggested.
 
 #### suggestion: the tools decide by the name of a role which tools a connection gets, not by `mayDo()`
 
@@ -437,6 +466,8 @@ stored.name);` and `title: page?.title ?? "",`.
   two texts by hand.
 - Confidence: Medium. The list is the same today and the unit tests of the tools cover it.
 - Alternatives: keep the two gates and add a unit test that compares the tools of each role with `FUNCTION_ROLES`.
+- Decision (2026-11-18): as suggested: each tool is registered under `mayDo()` with the function that its write checks;
+  the two texts for people stay hand-written.
 
 #### suggestion: the tools still support a server without a public URL, which the adapter never lets through
 
@@ -454,6 +485,7 @@ stored.name);` and `title: page?.title ?? "",`.
 - Suggestion (optional): type the option as a string, pass the value that was checked, drop the fallback, the four
   tests and the half sentence of the spec.
 - Confidence: Medium. It removes tests and changes a sentence of a spec.
+- Decision (2026-11-18): as suggested.
 
 #### question: is a malformed name of an existing tab or page refused by the input schema or answered by the tool?
 
@@ -510,6 +542,9 @@ idempotentHint: false, openWorldHint: false },`.
 - Suggestion (optional): "kept by content, or a name and place, that is the same as before", and one sentence in
   each of the two descriptions.
 - Confidence: Medium. The text reaches clients, so the wording is for the user to read.
+- Decision (2026-11-18): as suggested, with these texts: the description of `version` says "counted up by a change, kept
+  when the content, or the name and place, are the same as before", and the descriptions of `move_or_rename_page` and
+  `rename_tab` each get one sentence that a move or a rename to the current name and place changes nothing.
 
 #### suggestion: the log lines of the OAuth and the grant service follow several conventions
 
@@ -529,6 +564,7 @@ idempotentHint: false, openWorldHint: false },`.
 - Suggestion (optional): a reason of its own for each refusal, `clientRowId` for the id of the row, and one of
   `actorId` and `userId` per function.
 - Confidence: Medium. The unit tests of the service must be checked for the changed reasons.
+- Decision (2026-11-18): as suggested.
 
 #### question: the OAuth service returns texts of messages, and one code has two shapes; is that a meant exception?
 
@@ -565,6 +601,9 @@ idempotentHint: false, openWorldHint: false },`.
 - Suggestion (optional): move the constant to a pure module, export one `isOAuthOn()` from the issuer module, and
   drop the check in the action.
 - Confidence: Low. Which feature owns the limit and the check of a token is a design choice.
+- Decision (2026-11-18): as suggested: `MAX_GRANTS_PER_USER` moves to a pure module of the grants, one `isOAuthOn()` is
+  exported from the issuer module and used everywhere, the two files of MCP included, and the check in the action that
+  revokes a grant is dropped.
 
 #### suggestion: the error answer of an authorization request is put together in three places
 
@@ -597,6 +636,8 @@ error_description: description, state, iss: base })`.
   a title that suggests no name.
 - Confidence: Low. It adds a code to the service and to the browser action.
 - Alternatives: keep the rule in the tool and record the second parse as accepted in `pages.md`.
+- Decision (2026-11-18): the Alternative: the rule stays in the tool, and `pages.md` and `mcp.md` record the second
+  parse and the other order of the checks as accepted.
 
 #### suggestion: `tools.ts` and the OAuth service each hold several parts that could stand alone
 
@@ -614,6 +655,9 @@ invalidGrant(INVALID_CODE).error);`.
   to `src/features/services.test.ts`. A split of the OAuth service has to respect the lint rule that only a
   `service.ts` imports the database.
 - Confidence: Low. Whether and how to split is a design decision.
+- Decision (2026-11-18): both are split: the schemas of the tools and the registration with the descriptions move to
+  modules of their own; the OAuth service is split along its parts, with the lint rule for the database changed, the
+  error of an invalid grant unwrapped once and one `refuse()`.
 
 #### nit: two helpers with nearly the same name give two orders, and the tool sorts again what the service sorted
 
@@ -631,6 +675,7 @@ invalidGrant(INVALID_CODE).error);`.
 - Suggestion (optional): a name that says what the helper does, a sort by tab and then by name, and a word about
   the other order in both comments.
 - Confidence: Medium. The explicit sort gives the same result today; the tests were not run.
+- Decision (2026-11-18): as suggested.
 
 #### nit: leftovers in the features of OAuth, grants and MCP
 
@@ -656,6 +701,8 @@ invalidGrant(INVALID_CODE).error);`.
   the same way in all four places, share `mediaTypeOf()`, and decide where the version of the server comes from.
 - Confidence: Medium. Dropping `export` is safe by the type checker; removing the two codes breaks a unit test of
   the schema that asserts them; the version needs a decision.
+- Decision (2026-11-18): as suggested, all of it: the two codes leave `OAUTH_ERRORS` and the unit test of the schema is
+  adjusted, and the MCP server reports the version of `package.json`.
 
 #### Reviewed
 
@@ -694,6 +741,7 @@ invalidGrant(INVALID_CODE).error);`.
   focus to the test named above.
 - Confidence: Medium. The same three lines as in the other dialogs, and no spec says otherwise; no existing test
   covers the focus of this dialog, and the fix was not tried.
+- Decision (2026-11-18): as suggested.
 
 #### suggestion: nine dialogs repeat the same frame and its rules by hand
 
@@ -720,6 +768,8 @@ invalidGrant(INVALID_CODE).error);`.
   cover every dialog.
 - Alternatives: only the two hooks, which are small and would have prevented the finding above; or only the
   confirmation dialog, which removes about 250 lines.
+- Decision (2026-11-18): as suggested: the frame component, the confirmation dialog for the three deletes and the
+  revert, and the two hooks, after the tests of the pending state exist.
 
 #### issue: the title and the page each decide what an address shows, and they disagree in three routes
 
@@ -741,6 +791,7 @@ invalidGrant(INVALID_CODE).error);`.
   what to show, the role included, used by the title and by the page.
 - Confidence: Medium. The two rules are in the cited lines; that the title stays on the not-found page was not
   tried in a browser, and no test checks the title of a not-found page.
+- Decision (2026-11-18): as suggested.
 
 #### suggestion: `PageView.tsx` holds the parser of the query, the table of roles and the titles, without a unit test
 
@@ -760,6 +811,7 @@ invalidGrant(INVALID_CODE).error);`.
 - Suggestion (optional): move the pure part to a module of the feature without server-only imports, add a unit
   test, drop the unused exports and correct the sentence in `architecture.md`.
 - Confidence: Medium. The name of the module and the cut are a choice; nothing changes in behaviour.
+- Decision (2026-11-18): as suggested.
 
 #### suggestion: the handling of a changed page is put together by hand in four forms, two parents and twice in the actions
 
@@ -779,6 +831,7 @@ invalidGrant(INVALID_CODE).error);`.
 - Suggestion (optional): one component for the hidden field and the warning, one helper for the key and the
   message, and an address parameter for `showChanged()`.
 - Confidence: Medium. A choice of design; the tests of a changed page in four end-to-end specs cover the behaviour.
+- Decision (2026-11-18): as suggested.
 
 #### suggestion: each route states the role of an action twice, in its table and again at the button
 
@@ -794,6 +847,7 @@ invalidGrant(INVALID_CODE).error);`.
 - Evidence: the folder route, line 48, `"new-tab": "editTab",`, and line 224, `{mayDo(role, "editTab") && (`.
 - Suggestion (optional): build the buttons from the table.
 - Confidence: Medium. Nothing changes in behaviour; `e2e/folder-roles.spec.ts` uses the buttons of each role.
+- Decision (2026-11-18): as suggested.
 
 #### suggestion: the folder route is a switch of five views written inline, while the routes of pages hand over to components
 
@@ -811,6 +865,7 @@ invalidGrant(INVALID_CODE).error);`.
 - Suggestion (optional): keep in the route only `requireUser()`, the read, the parse, the gate and the switch, and
   move the views into Server Components of the features, as pages do with `PageView`.
 - Confidence: Medium. A choice of structure without a change of behaviour.
+- Decision (2026-11-18): as suggested.
 
 #### issue: comments promise "Client Components can use it" for modules that pull in the list of common passwords or a module of Node
 
@@ -870,6 +925,9 @@ PageDeleteFormAction } from "@/features/pages/forms";`.
   next to the types of an account.
 - Confidence: Medium. Moving the labels changes nothing; the two texts are seen by users and pinned by unit and
   end-to-end tests.
+- Decision (2026-11-18): as suggested, with these texts: `createUser()` answers "The server is busy, please try again in
+  a moment", the hint under "New password" says "Not built from your user name or the name of the wiki, and not a common
+  password", and `TYPE_LABELS` moves next to the types of an account.
 
 #### suggestion: the schema of a user name is a second copy of the name rule and of its parser
 
@@ -886,6 +944,7 @@ PageDeleteFormAction } from "@/features/pages/forms";`.
   match.
 - Confidence: Medium. The unit tests of both schemas pin the messages; whether a builder keeps the order of the
   errors was not tried.
+- Decision (2026-11-18): as suggested.
 
 #### suggestion: a text field of a form is read in three ways, with two outcomes for a file
 
@@ -902,6 +961,8 @@ PageDeleteFormAction } from "@/features/pages/forms";`.
 - Suggestion (optional): one helper for a text field and one generic type of a parse result and of a form state,
   in a module of `src/lib/` without server-only imports.
 - Confidence: Medium. The helper changes nothing; one outcome for a file changes what unit tests pin.
+- Decision (2026-11-18): as suggested; the one outcome for a file is that it counts as empty, so the schema reports the
+  field as missing.
 
 #### suggestion: four rules of `architecture.md` are convention only, and a lint rule could hold them
 
@@ -923,6 +984,7 @@ PageDeleteFormAction } from "@/features/pages/forms";`.
   and the pure modules of OAuth to the rule of the services; a syntax rule against `include`; helpers for the
   roots that the revalidation uses.
 - Confidence: Medium. The gaps are as cited; none of the rules was run against the code.
+- Decision (2026-11-18): as suggested, all four rules.
 
 #### nit: unused names, an unused colour, and small twins
 
@@ -951,6 +1013,9 @@ PageDeleteFormAction } from "@/features/pages/forms";`.
 - Suggestion (optional): delete the two types and the unused function or use it, drop the colour, decide on one
   answer for a malformed id, and add a check for unused exports to `npm run check`.
 - Confidence: Medium. High for the two types, which nothing references; the rest are small decisions.
+- Decision (2026-11-18): as suggested: the two types, `authorizationServerMetadataPath()` and the colour are deleted; a
+  malformed id bound to an action is answered as the action answers a missing row of its feature; `knip` is added to
+  `npm run check`.
 
 #### nit: the time, the empty state and the label of a page are typed again in every list
 
@@ -968,6 +1033,7 @@ PageDeleteFormAction } from "@/features/pages/forms";`.
 - Suggestion (optional): move `Time` to `src/components/`, add a component for the empty state and a helper for
   the label of a page.
 - Confidence: Medium. No behaviour should change; whether a test reads the `dateTime` attribute was not checked.
+- Decision (2026-11-18): as suggested.
 
 #### Reviewed
 
@@ -1024,6 +1090,8 @@ between 94 % and 100 %. The findings below are therefore about what is asserted,
   could show a real defect.
 - Alternatives: give the transaction of the mock functions of its own, so that "inside the transaction" can be
   asserted; cheaper, and still no proof of a rollback.
+- Decision (2026-11-18): as suggested: the rollback of a save and of a revert, the table of races, two restores at once,
+  and a move and a restore into a tab that is being deleted.
 
 #### issue: tests say that no MCP connection reads deleted pages, but try only a Writer connection
 
@@ -1054,6 +1122,9 @@ folderId: folder.id, role: "writer" });`; `folder-roles.md`: "The deleted pages 
     with a Manager connection. One changed type, and it fits the wording of three specs.
   - The list of tools holds the rule: the tests are renamed, a case documents that a Manager connection may read
     at the level of the service, and the specs say "no tool" instead of "no connection".
+- Decision (2026-11-18): the second Alternative: the list of tools holds the rule, and nothing in the code enforces it.
+  MCP offers no tool for the deleted pages; the tests are renamed, one case documents that a Manager connection may read
+  them at the level of the service, and the specs say "no tool" instead of "no connection".
 
 #### issue: the access rules of two reads of the history are asserted by no test
 
@@ -1114,6 +1185,8 @@ deletedAt: null, version: VERSION, content: { not: CONTENT } },`.
   - Keep the tests and accept that they are rewritten with the code.
   - One scripted fake of the client with helpers that say what happens, not which method is called.
   - Move the mapping of errors to integration tests with triggers, which run slower.
+- Decision (2026-11-18): as suggested: first the missing integration cases of this section, then the unit tests are cut
+  down to what needs a mock.
 
 #### issue: "the role is checked before the version and the content" is tested only with a current version and valid content
 
@@ -1219,6 +1292,7 @@ crypto.randomUUID() };`.
   the actors and one table of all content writes; helpers for a stored page and an MCP actor for the integration
   tests; a split of the pages test into reads, history, writes and access.
 - Confidence: Medium. The duplication is counted; where the helpers live and how the file is split is a trade-off.
+- Decision (2026-11-18): as suggested, the split of the pages test included.
 
 #### nit: a race test waits up to 10 and 20 seconds inside a test that times out after 5
 
@@ -1276,6 +1350,7 @@ crypto.randomUUID() };`.
   - Correct `testing.md`: the error pages are covered by no test, and why.
   - Add a test for the production run that makes one read fail and checks the page and "Try again". It must restore
     the database even when it fails, or every later spec fails with it.
+- Decision (2026-11-18): the first Alternative: `testing.md` says that the error pages are covered by no test, and why.
 
 #### issue: `/users` and `/change-password` are missing from the protected addresses of `access.spec.ts`
 
@@ -1350,6 +1425,7 @@ crypto.randomUUID() };`.
 - Suggestion (required): add the five cases to `e2e/folder-roles.spec.ts`; `createFolderRole()` and a delete of the
   row after the view opened set up the two races.
 - Confidence: Medium. The states were read in the code; the accessible description of the select was not tried.
+- Decision (2026-11-18): as suggested.
 
 #### issue: the revert dialog has one locking case in the browser, and two locking rules have none
 
@@ -1388,6 +1464,8 @@ crypto.randomUUID() };`.
   a helper in `e2e/support/browser.ts`.
 - Confidence: Medium. Holding a Server Action with `page.route()` was not tried with this version of Next.js.
 - Alternatives: say in `testing.md` that pending states are left untested on purpose.
+- Decision (2026-11-18): as suggested, if `page.route()` can hold a Server Action with this version of Next.js; if it
+  cannot, the Alternative: `testing.md` says that pending states are left untested on purpose.
 
 #### issue: an end-to-end test asserts a wall-clock time
 
@@ -1405,6 +1483,7 @@ crypto.randomUUID() };`.
   compare."; the timeout of `expect` still bounds the wait.
 - Confidence: Medium. The flakiness is reasoned, not observed.
 - Alternatives: keep a budget far above the noise, with a comment.
+- Decision (2026-11-18): as suggested.
 
 #### issue: helpers are copied between the specs, and the copies have drifted
 
@@ -1440,6 +1519,7 @@ crypto.randomUUID() };`.
 - Suggestion (optional): export a helper from `e2e/support/test.ts` that wraps `goto()` and `reload()` of any page,
   use it where second pages are opened, and correct the sentence in `testing.md`.
 - Confidence: Medium. No current action was shown to run unhydrated; the fix is mechanical.
+- Decision (2026-11-18): as suggested.
 
 #### suggestion: "changed through MCP meanwhile" is simulated with a database row that MCP could not write
 
@@ -1457,6 +1537,7 @@ lastEditedById: bob.id, lastEditedVia: "mcp" } });`.
 - Suggestion (optional): one test in `e2e/mcp.spec.ts` with a real tool call, then a save in the browser and the
   history view.
 - Confidence: Medium. The building blocks exist in `e2e/mcp.spec.ts`; the test was not written.
+- Decision (2026-11-18): as suggested.
 
 #### issue: single states of other components have no test
 
@@ -1473,6 +1554,8 @@ lastEditedById: bob.id, lastEditedVia: "mcp" } });`.
   only `src/features/folders/service.test.ts` proves.
 - Suggestion (optional): one short test each in the spec of the feature.
 - Confidence: Medium. Whether the browser of the tests refuses the clipboard without a permission was not tried.
+- Decision (2026-11-18): as suggested; the case of a failed copy is dropped if the browser of the tests cannot be made
+  to refuse the clipboard.
 
 #### nit: 71 comments in the tests cite requirement IDs of files that no longer exist
 
@@ -1506,6 +1589,8 @@ lastEditedById: bob.id, lastEditedVia: "mcp" } });`.
   `integration/db-errors.test.ts`.
 - Confidence: Low. The split is a preference, and whether an integration test already covers that foreign key was
   not checked.
+- Decision (2026-11-18): as suggested; the database test moves to `integration/db-errors.test.ts` unless a test there
+  covers the foreign key already.
 
 #### nit: a few assertions prove nothing, and the selector rule of `testing.md` names no exceptions
 
@@ -1522,6 +1607,7 @@ lastEditedById: bob.id, lastEditedVia: "mcp" } });`.
 - Suggestion (optional): delete the two assertions, assert the field errors at the field, assert the JSON-RPC error,
   and name the exceptions in `testing.md` (`time`, the form for `requestSubmit()`, `data-change`).
 - Confidence: Medium. The accessible description of the field joins several helper texts and must be read first.
+- Decision (2026-11-18): as suggested.
 
 #### Reviewed
 
@@ -1666,6 +1752,7 @@ that several of them state were compared with each other and with the code:
 - Confidence: Medium. The migrations were read; whether an installation older than the first migration exists and
   needs the notes was not checked.
 - Alternatives: keep the notes about transitions in one place for upgrades.
+- Decision (2026-11-18): as suggested.
 
 #### issue: "the channel" has two sets of values, and the specs call one of them "the only two values"
 
@@ -1682,6 +1769,9 @@ that several of them state were compared with each other and with the code:
   `browser` or `mcp`; only the stored channel says `web`.
 - Confidence: Medium. The fix is clear; the same word in the log is a reasonable alternative.
 - Alternatives: let the log lines say `web` as well, which changes output that an operator may filter on.
+- Decision (2026-11-18): the Alternative: the actor and every log line name the channel `web` as well, so there is one
+  set of values, `web` and `mcp`, for the stored channel, the actor and the log. The output of the log changes for the
+  browser.
 
 #### suggestion: the rules of writes without a change are explained in full in five specs
 
@@ -1702,6 +1792,7 @@ that several of them state were compared with each other and with the code:
   one section with one list for the order, the answer and the log; every other place keeps one clause and a
   pointer.
 - Confidence: Medium. Which spec owns a rule is a judgement; no behaviour changes.
+- Decision (2026-11-18): as suggested.
 
 #### suggestion: more rules are stated in full in two or more specs
 
@@ -1720,6 +1811,7 @@ that several of them state were compared with each other and with the code:
 - Suggestion (optional): keep the full text in the spec that owns the rule and replace the copies with a clause
   and a pointer.
 - Confidence: Medium. Who owns a rule is a judgement.
+- Decision (2026-11-18): as suggested.
 
 #### suggestion: the specs restate messages, constants and details of the UI that the workflow gives to the code
 
@@ -1739,6 +1831,7 @@ that several of them state were compared with each other and with the code:
   Enter; keep the list of protocols as a security rule and name its constant; keep only the bound that the cost
   test enforces.
 - Confidence: Medium. Which statements are guarantees to keep is a judgement.
+- Decision (2026-11-18): as suggested.
 
 #### suggestion: several sections grew sentence by sentence and no longer read as one set of rules
 
@@ -1761,6 +1854,7 @@ that several of them state were compared with each other and with the code:
   group "Decisions" by topic, merge the three bullets on a tab, and write the order of the refusals of a
   connection as a numbered list, because there the order matters.
 - Confidence: Medium. Beyond the single items, a new structure is a matter of taste.
+- Decision (2026-11-18): as suggested.
 
 #### nit: `pages.md` lists the health endpoint among its routes
 
@@ -1858,6 +1952,10 @@ that several of them state were compared with each other and with the code:
   - The complete suite runs once per plan, in the last step that changes anything but documentation.
   - The complete suite always runs in the wrap-up, which costs five minutes per plan.
   - CI is relied on, and every document says so.
+- Decision (2026-11-18): the first Alternative: the complete suite runs once per plan, in the last step that changes
+  anything but documentation; a change outside a step plan that changes code counts as a plan of one step. A step or a
+  wrap-up that changes only documentation relies on that run and on CI. The rule stands only in "When a step is done";
+  `CLAUDE.md` points to it, and `roadmap.md` is brought in line.
 
 #### issue: single statements of `architecture.md` that the code contradicts
 
@@ -1929,6 +2027,8 @@ result = await authService.logOut(await headers());`.
 - Suggestion (required): state the scope, "for the queries and actions of a page behind the login", and add one
   bullet of exceptions that names each case with its reason.
 - Confidence: Medium. The deviations were checked; whether to write them down or to change the code is a choice.
+- Decision (2026-11-18): as suggested: the scope is stated, and one bullet names each exception with its reason; the
+  code stays as it is.
 
 #### issue: `testing.md` does not match the integration tests it describes
 
@@ -1967,6 +2067,8 @@ result = await authService.logOut(await headers());`.
 - Suggestion (required for the search and the parser, optional for the rest): say in `architecture.md` that the
   search is not built, add the parser to `tech.md`, and reduce "Later Aspects" to a pointer to the roadmap.
 - Confidence: Medium. The facts were checked; removing "Later Aspects" drops text the author may want to keep.
+- Decision (2026-11-18): as suggested, the optional part included: "Later Aspects" becomes a pointer to `roadmap.md`,
+  and the line on Podman is corrected.
 
 #### issue: the README names 8 of 11 feature specs and no page history
 
@@ -2021,6 +2123,7 @@ result = await authService.logOut(await headers());`.
 - Suggestion (optional): a rule under "Specification": an entry is one line, the file and the question it answers,
   without behaviour, numbers or lists of sections; the same rule in the item of the wrap-up.
 - Confidence: Medium. A change of form that the author should approve.
+- Decision (2026-11-18): as suggested.
 
 #### issue: the same rules of the workflow stand in three to five places, with small differences
 
@@ -2044,6 +2147,9 @@ result = await authService.logOut(await headers());`.
   rule for the summary into `issue-report.md`, keep the rules of the checks only in "When a step is done", and let
   the template point to the list of the wrap-up.
 - Confidence: Medium. Which document becomes the one source is the choice of the author.
+- Decision (2026-11-18): as suggested: `issue-report.md` holds the rules of a review, those for documents and the one
+  rule for the summary included, and its title names code and documents; the rules of the checks stand only in "When a
+  step is done"; `CLAUDE.md`, the README, `testing.md` and the template point there.
 
 #### suggestion: `architecture.md` has bullets that grew into paragraphs, and states rules twice
 
@@ -2064,6 +2170,7 @@ result = await authService.logOut(await headers());`.
   roles, the queries, the actions and the callers other than the browser; turn the list of features into a table;
   state each repeated rule once.
 - Confidence: Medium. A new structure with judgement calls; no statement changes.
+- Decision (2026-11-18): as suggested.
 
 #### issue: documents restate code, constants and configuration instead of pointing to them
 
@@ -2091,6 +2198,8 @@ result = await authService.logOut(await headers());`.
 - Suggestion (optional): keep a number where a user or an operator relies on it, once and with a pointer;
   elsewhere point to the file.
 - Confidence: Low. Which numbers count as rules is a decision per item.
+- Decision (2026-11-18): as suggested: a number stays only where a user or an operator relies on it, once and with a
+  pointer to its constant; everywhere else the document points to the file.
 
 #### issue: the same things carry different names across the documents
 
@@ -2109,6 +2218,9 @@ result = await authService.logOut(await headers());`.
 - Suggestion (optional): a short list of terms at the top of `architecture.md`, and "caller other than the
   browser" throughout.
 - Confidence: Medium. The differences were checked; the terms are the choice of the author.
+- Decision (2026-11-18): as suggested: a list of terms at the top of `architecture.md` and "caller other than the
+  browser" throughout; the terms for connected apps are chosen to fit the names the UI shows, the view "AI apps" and the
+  page of the connected apps.
 
 #### suggestion: rules that the code follows everywhere are not written down in `architecture.md`
 
@@ -2128,6 +2240,8 @@ result = await authService.logOut(await headers());`.
 - Suggestion (optional): four bullets: the write that changes nothing, the full order of the checks, the home of a
   helper of two services, and the name of an adapter.
 - Confidence: Low. Whether these become rules is a decision of design.
+- Decision (2026-11-18): as suggested, all four bullets; a helper that two services need lives in a pure module of the
+  feature that owns the rule.
 
 #### question: are two entries of the roadmap still open as written?
 
@@ -2246,6 +2360,8 @@ code with less depth than the specs of the content; they match it closely.
 - Suggestion (required): rewrite the four passages, and judge the severity of the finding on prompt injection
   again.
 - Confidence: Low. The new wording is clear; the new severity is a judgement for the user.
+- Decision (2026-11-18): as suggested; the finding on prompt injection becomes Major, not a Blocker, because deleted
+  pages can be restored. The counts of the first report change with it.
 
 #### issue: the threat model and the "Reviewed" lists of `review-report.md` leave out the page history, the delete of a tab and the tools of a Manager
 
@@ -2273,6 +2389,8 @@ code with less depth than the specs of the content; they match it closely.
   "Not covered by this review".
 - Confidence: Medium. The corrections are clear; the missing entries need a real review of that code.
 - Alternatives: narrow "Scope and method" to the code the lists name, which is cheaper and leaves a gap.
+- Decision (2026-11-18): as suggested, with the first of the two ways: the page history, the delete of a tab and the
+  tools of a Manager are listed under "Not covered by this review" until a security recheck.
 
 #### suggestion: none of the 98 findings of `review-report.md` that need one has a confidence
 
@@ -2288,6 +2406,7 @@ code with less depth than the specs of the content; they match it closely.
 - Suggestion (required): assign the confidences at the recheck that corrects the Locations, and add the three
   counts to "Summary".
 - Confidence: Medium. Each level is a judgement per finding.
+- Decision (2026-11-18): the confidences are assigned at the next recheck, as the report says, and not in this cleanup.
 
 #### nit: the first nit of `review-report.md` still names `changeRole()` for an invalid role
 
@@ -2305,6 +2424,7 @@ code with less depth than the specs of the content; they match it closely.
 - Suggestion (optional): say that for `changeRole()` only a submission without a user or an intent is answered
   before the rights.
 - Confidence: Medium. Read on both sides, not sent to a running server.
+- Decision (2026-11-18): as suggested.
 
 #### nit: `container-image.md` says the probe of the client address is skipped only for `/login` and `/api/health`
 
@@ -2360,6 +2480,8 @@ code with less depth than the specs of the content; they match it closely.
 long");`.
 - Suggestion (optional): one sentence before the list that points to the limit in the schema of OAuth.
 - Confidence: Medium. The nit of the first report on `oauth.md` argues against more constants in the spec.
+- Decision (2026-11-18): as suggested; the sentence points to the limit in the schema of OAuth and does not restate the
+  number.
 
 #### Reviewed
 
@@ -2405,9 +2527,10 @@ keep doing:
 The order matters: the tests are the safety net of the refactoring, and the refactoring changes files that the
 documents name.
 
-1. Decide the open questions that other work depends on: where the rule "no deleted pages through MCP" lives, when
-   the complete end-to-end suite runs, whether the writes of roles take only the actor of the browser, and how far
-   the unit tests of the services are cut.
+1. Decide the open questions that other work depends on. Done on 2026-11-18: no tool offers the deleted pages or
+   the writes of roles, and nothing in the code enforces it; the complete end-to-end suite runs in the last step of
+   a plan that changes anything but documentation; the unit tests of the services are cut after the missing
+   integration cases exist. The Decision of each finding holds the rest.
 2. Fix the findings with a High confidence that change no code: the wrong statements of `architecture.md` and of
    the feature specs, `testing.md`, the README and the Locations of the first report.
 3. Close the gaps of the tests before any refactoring: the access rules of the reads of the history, the rollback

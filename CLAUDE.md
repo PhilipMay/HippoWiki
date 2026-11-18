@@ -72,14 +72,14 @@ The specification lives in the `spec/` directory. This catalog should always be 
 - `spec/roadmap.md`: backlog of candidate features, grouped by theme, and things still to check
 - `spec/issue-report.md`: how to report issues found in code and document reviews (the building blocks, the severity
   levels, the confidence levels of a suggestion that decide whether a fix is made directly or reviewed first, the
-  checklist)
+  decision of the user recorded in a finding, the checklist)
 - `spec/review-report.md`: the report of the security and code review (scope and method, standards and target level,
   threat model, findings per area, accepted deviations, what is good, checks on the deployment, standards coverage,
   open questions); it holds only open findings: a fixed finding is deleted, and the file is deleted with its last
   finding
 - `spec/review-02-report.md`: the report of the review of code quality, tests and documentation (scope and method,
-  the criteria, findings per area of the code, the tests and the documents, what is good, a suggested order of
-  work); it holds only open findings: a fixed finding is deleted
+  the criteria, findings per area of the code, the tests and the documents with the decisions of the user, what is
+  good, a suggested order of work); it holds only open findings: a fixed finding is deleted
 
 ## Running the Checks
 

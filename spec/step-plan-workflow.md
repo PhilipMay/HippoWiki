@@ -191,7 +191,8 @@ are those of "When a step is done", with "Changes to documentation only" for a f
 
 1. Fix the finding in the code or in the documentation. A finding whose Suggestion has the confidence High (see
    "Confidence levels" in `issue-report.md`) is fixed as its Suggestion describes; a finding with Medium, Low or no
-   confidence is fixed only as agreed with the user.
+   confidence is fixed only as agreed with the user, which is the line Decision of the finding once the user has
+   decided.
 2. Update the feature spec that the fix touches, and `architecture.md`, `testing.md` or `tech.md` where a rule or a
    convention changed. A finding that is closed by a documented reason instead of a change (a decision or a current
    limit in a feature spec) gets an entry in "Accepted deviations" of the report, with the ID of the requirement and
