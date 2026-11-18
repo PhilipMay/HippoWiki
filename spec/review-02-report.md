@@ -11,24 +11,22 @@
     have drifted already.
   - Tests that would not catch the refactoring this report suggests: the unit tests of the services pin the calls
     of Prisma, and three rules of access and of the transaction have no test that could fail.
-  - Documents that the features outran: `architecture.md` has about a dozen statements the code contradicts, one
-    of them about what MCP may delete.
-- Findings: 105 open of 107, 0 Blocker, 5 Major, 79 Minor and 21 Nit (50 `issue:`, 31 `suggestion:`, 19 `nit:` and
+  - Documents that the features outran: statements of the feature specs that the code contradicts, and rules
+    stated in full in several documents.
+- Findings: 99 open of 107, 0 Blocker, 4 Major, 74 Minor and 21 Nit (45 `issue:`, 30 `suggestion:`, 19 `nit:` and
   5 `question:`).
-- Confidence of the suggestions: 33 High, 53 Medium and 14 Low; the 5 questions have none. A High suggestion can be
+- Confidence of the suggestions: 30 High, 51 Medium and 13 Low; the 5 questions have none. A High suggestion can be
   fixed as written; the others wait for the user, as `issue-report.md` describes.
 - Decisions: on 2026-11-18 the user decided all Medium and Low suggestions. Each of these findings ends with a line
   `Decision`, and is fixed as that line says, without asking again. The 5 questions were decided by the user on the
   same day, in "Decisions on the questions" of `spec/review-02-fixes-steps.md`.
-- To fix first, the five Major findings:
-  1. `architecture.md` says deleting pages and the writes of tabs take only the actor of the browser, but MCP does
-     them (Documentation: architecture; High).
-  2. Tests say that no MCP connection reads deleted pages, but try only a Writer connection; by the code the
+- To fix first, the four Major findings:
+  1. Tests say that no MCP connection reads deleted pages, but try only a Writer connection; by the code the
      service would answer a Manager connection (Tests: unit and integration; Low, decided).
-  3. The access rules of two reads of the history are asserted by no test (Tests: unit and integration; High).
-  4. That a content save and its revision are one unit, and most races of pages, are proven by no test against the
+  2. The access rules of two reads of the history are asserted by no test (Tests: unit and integration; High).
+  3. That a content save and its revision are one unit, and most races of pages, are proven by no test against the
      real database (Tests: unit and integration; Medium).
-  5. The unit tests of the services pin the calls of Prisma, not the behaviour (Tests: unit and integration; Low,
+  4. The unit tests of the services pin the calls of Prisma, not the behaviour (Tests: unit and integration; Low,
      decided).
 - Not covered by this review: security, which `review-report.md` covers and whose findings are not repeated here;
   the unit tests of auth, users, OAuth and grants, of which only the names and the copied helpers were looked at;
@@ -140,30 +138,6 @@ What can go wrong in a cleanup, and what several findings warn about:
 - Decision (2026-11-18): a new pure module of the feature of the folder roles, for example one named
   `actors.ts`, holds the four helpers and one function for the opening of a content write, next to the actors and
   the channel (see the finding on the three concerns below).
-
-#### issue: the writes of roles take an MCP actor by their type, and `writeRole()` would ignore the role of the connection
-
-- Location: `src/features/folder-roles/service.ts`, lines 344–348, `giveRole()`, lines 425–462, `writeRole()`,
-  lines 510–536, `changeRole()` and `removeRole()`
-- Severity: Minor. No caller passes an MCP actor today; the MCP tools import only the services of folders and
-  pages.
-- Category: correctness
-- Problem: the three writes take `Actor`, and the actor of MCP is an `Actor`. `giveRole()` reads the role of the
-  actor with `folderRoleOf()`, which applies the role of the connection and so refuses MCP. `writeRole()` reads the
-  role with a raw query and never applies it. `renameFolder()` solves the same rule, "no AI app changes roles",
-  with the type `BrowserActor`.
-- Impact: a later tool that passes its actor to `changeRole()` or `removeRole()` acts with the full rights of the
-  user as an Owner, on every folder, while `giveRole()` refuses. Two paths of one feature disagree.
-- Evidence: lines 446–447: `const actorRole = roles.find((row) => row.userId === ownerId)?.role ?? null;` and
-  `if (!mayDo(actorRole, "manageRoles")) return { kind: "not-allowed", actorRole };`.
-- Suggestion (required): type the writes of roles with `BrowserActor` and pass `inBrowser(user)` from the actions,
-  as the other features do.
-- Confidence: Medium. Nothing changes at run time for the browser; the signatures, the actions and the fixtures of
-  the tests change.
-- Alternatives: keep `Actor` and refuse an MCP actor at the top of `writeRole()`: a smaller change, checked at run
-  time, not by the compiler.
-- Decision (2026-11-18): no change of the types and no check in the code. MCP offers no tool that writes roles, and that
-  stays so; `architecture.md` and `mcp.md` say that the writes of roles are not offered through MCP.
 
 #### issue: "a write that stored nothing" has five shapes inside the services and none in their results
 
@@ -1644,7 +1618,7 @@ that several of them state were compared with each other and with the code:
 | A move or rename of a page to its own name and place | `content-structure.md`, `pages.md`, `optimistic-locking.md`, `mcp.md`                      | Yes                                          | Yes                   |
 | A change to the same role                            | `folder-roles.md`                                                                          | One place                                    | Yes                   |
 | Who may delete a tab                                 | `folder-roles.md`, `content-structure.md`, `mcp.md`                                        | Yes                                          | Yes                   |
-| What the roles of MCP may do                         | `mcp.md`, `folder-roles.md`, `content-structure.md`, `page-deletion.md`, `architecture.md` | No: `architecture.md` differs                | The seven specs yes   |
+| What the roles of MCP may do                         | `mcp.md`, `folder-roles.md`, `content-structure.md`, `page-deletion.md`, `architecture.md` | Yes                                          | The seven specs yes   |
 | The last editor and the channel                      | all seven                                                                                  | In part: see the two findings on the channel | The stored values yes |
 | Who is stored for a page                             | `pages.md`, `content-structure.md`, `page-history.md`                                      | No: `pages.md` differs                       | The other two yes     |
 | Deleting a tab counts the versions up, unchecked     | `content-structure.md`, `optimistic-locking.md`, `page-deletion.md`                        | Yes                                          | Yes                   |
@@ -1902,104 +1876,6 @@ that several of them state were compared with each other and with the code:
 
 ### Documentation: architecture, testing, catalog and workflows
 
-#### issue: `architecture.md` says deleting pages and the writes of tabs take only the actor of the browser, but MCP does them
-
-- Location: `spec/architecture.md`, section "Reads and writes"; `src/features/pages/service.ts`, lines 969–970,
-  `deletePage()`; `src/features/folders/service.ts`, lines 376–377, 427–428 and 497–498, `createTab()`,
-  `renameTab()` and `deleteTab()`; `src/features/mcp/tools.ts`, lines 631, 679, 711 and 750
-- Severity: Major. A false statement about what a caller other than the browser may delete, in the document that
-  reviews and coding agents check the code against. `mcp.md` and `folder-roles.md` state it right.
-- Category: docs
-- Problem: the sentence has been out of date since the tools of a Manager exist. The four writes take
-  `ContentActor`, and the MCP tools call them. Only for the browser are creating and renaming a folder, reverting
-  and restoring a page and the reads of the history. The writes of roles take a plain `Actor`. The same section
-  speaks of "the token service", which does not exist; it means the grant service.
-- Impact: an agent that adds or reviews a tool gets a wrong picture of which writes MCP reaches, and a review
-  that follows the spec misses four paths of writes or reports them as a hole.
-- Evidence: "Creating a page, saving its content and moving or renaming it take either; deleting and restoring
-  pages and the writes of folders, tabs and roles take only the actor of the browser."; against
-  `export async function deletePage(actor: ContentActor,`.
-- Suggestion (required): "The type of the first argument says which channel a function accepts: `ContentActor`
-  for what MCP may do as well, `BrowserActor` for what only the browser does (creating and renaming folders,
-  reverting, restoring, the reads of the history). Which tools exist is in `mcp.md`." State the writes of roles
-  after the finding on their actor under "Code: services of the content features" is decided, and write "the
-  grant service".
-- Confidence: High. The signatures and the four calls of the tools were read; one fix without a change of
-  behaviour, covered by `npm run check`.
-
-#### issue: single statements of `architecture.md` that the code contradicts
-
-- Location: `spec/architecture.md`, sections "Layout", "Reads and writes", "Addresses and actions", "Database" and
-  "UI"
-- Severity: Minor. Each is small; together they make the document unreliable.
-- Category: docs
-- Problem:
-  - "The name dialog … is shared by folders, tabs and pages": only the routes of folders and tabs use
-    `NameDialog`; pages use `MoveOrRenamePageDialog`.
-  - "`limits.ts` holds the field length limits: for pages, so that `schema.ts` can import `derive.ts` without a
-    cycle": the schema does not import `derive.ts`; the head of the file gives the real reason, and it also holds
-    the number of revisions per page, which is no length.
-  - "Every model has a UUID id generated by PostgreSQL": `AuthSecret`, `LoginAttempt`, `LoginWindow` and
-    `OAuthRegistrationWindow` have other keys.
-  - "only `service.ts` calls `getDb()` … The health route … is the one exception": `src/lib/auth.ts` calls it as
-    well, for Better Auth; the section "Linting" allows `src/lib/` correctly.
-  - "A read that the actor may not do returns `null`, a list included, without asking the database": true for an
-    admin; for a user without a role the role is looked up first.
-  - "The messages live in `actions.ts`, and each action has its own message for `failed`": three actions of pages
-    share one message, and the message of a taken name lives in `src/lib/names.ts`.
-  - "Three kinds of addresses carry other search parameters": the history, a revision, a comparison, the revert
-    dialog and the app to revoke carry parameters of their own as well.
-  - The routes read the notice "with `parsePageNotice()`": they call `parsePageQuery()`.
-- Impact: an agent reuses the wrong dialog, expects a UUID on a table without one, or takes the list of
-  parameters for closed.
-- Evidence: `prisma/schema.prisma`, line 370, `id Int @id @default(1)`, and line 393,
-  `@@id([username, clientAddress])`; `src/lib/addresses.ts`, line 239, `?view=history&before=${before}`.
-- Suggestion (required): correct each sentence in its place; for the parameters, replace the count with the rule
-  that each is built by a helper of `src/lib/addresses.ts` and read with a parser, and that an unknown value is
-  not found.
-- Confidence: High. Each statement was checked against the code; the fixes are wording only.
-
-#### issue: the list of codes of a `Result` is incomplete and names the wrong services
-
-- Location: `spec/architecture.md`, section "Reads and writes"; the union types of the services
-- Severity: Minor. Wrong reference material, no wrong behaviour.
-- Category: docs
-- Problem: "the codes of the content" leave out `not-allowed`, which every content write returns. `limit-reached`
-  is given to "the users, auth and grant services" but exists only in the OAuth service. The codes of the roles
-  (`user-not-found`, `role-taken`, `role-not-found`, `last-owner`), of OAuth and of the check of a token are
-  missing. The list restates union types and goes stale with every feature.
-- Impact: an agent that writes a `switch` of an action copies an incomplete list.
-- Evidence: "the users, auth and grant services add codes such as `not-allowed`, `busy`, `invalid-credentials`,
-  `wait`, `limit-reached` and `grant-not-found`"; against `src/features/oauth/service.ts`, line 443,
-  `type LimitReached = { code: "limit-reached" }`.
-- Suggestion (required): keep the rule and drop the list: each write declares its codes in a union type next to
-  it, and the lint rule for exhaustive switches makes every adapter handle each one.
-- Confidence: High. The codes of the seven services were compared, and the lint rule is active.
-
-#### issue: the rules for queries and actions are written for all features, but only the content features follow them
-
-- Location: `spec/architecture.md`, sections "Layout", "Reads and writes" and "Login and sessions";
-  `spec/users-and-login.md`, section "Authenticated access only"; `src/features/mcp/queries.ts`;
-  `src/features/oauth/queries.ts`; `src/features/auth/actions.ts`; `src/app/oauth/authorize/page.tsx`
-- Severity: Minor
-- Category: docs
-- Problem: "Every query first awaits `connection()` … then `requireUser()` … and then calls the service read of
-  the same name": `listMcpAddresses()` is synchronous and calls no service, and `loadConsent()` has no read of its
-  name. "Every Server Action first" calls `requireUser()`: `logIn()` and `logOut()` call neither. "On success it
-  calls `revalidateContent()`": the actions of users, grants and auth revalidate their own paths. "Every page
-  calls `requireUser()` first, before it reads the query string": the consent page and the login page read the
-  query first. A service "knows nothing about … addresses": the services of grants and OAuth build the public
-  address of a folder.
-- Impact: an agent that adds a query to another feature forces the pattern where it does not fit, or copies an
-  exception without knowing that it is one, and a reviewer who goes by the sentence reports `logOut()` as a hole.
-- Evidence: `src/features/auth/actions.ts`, lines 127–128: `export async function logOut(): Promise<void> { const
-result = await authService.logOut(await headers());`.
-- Suggestion (required): state the scope, "for the queries and actions of a page behind the login", and add one
-  bullet of exceptions that names each case with its reason.
-- Confidence: Medium. The deviations were checked; whether to write them down or to change the code is a choice.
-- Decision (2026-11-18): as suggested: the scope is stated, and one bullet names each exception with its reason; the
-  code stays as it is.
-
 #### issue: `testing.md` does not match the integration tests it describes
 
 - Location: `spec/testing.md`, sections "Unit tests" and "Integration tests"; `integration/db-errors.test.ts`;
@@ -2106,9 +1982,9 @@ result = await authService.logOut(await headers());`.
   order of `requireUser()`, `redirect()` outside a `try`, ids that count as missing rows, the second validation of
   a service, "a caller other than the GUI can use the same service", and the layers. How the check of the version
   works, the reasons of the revalidation and the development database repeat the code or the README.
-- Impact: a rule inside a bullet of 17 lines is not found; the wrong sentence on the actors of MCP sits in exactly
+- Impact: a rule inside a bullet of 17 lines is not found; the wrong sentence on the actors of MCP sat in exactly
   such a bullet.
-- Evidence: the sentence on the actors quoted in the first finding of this section is line 10 of a bullet of 17
+- Evidence: the sentence on the actors of MCP, which the code contradicted, was line 10 of a bullet of 17
   lines.
 - Suggestion (optional): split "Reads and writes" into the layers, the services, the actors with channels and
   roles, the queries, the actions and the callers other than the browser; turn the list of features into a table;
@@ -2135,7 +2011,7 @@ result = await authService.logOut(await headers());`.
     pointer to the constant, and the limits of a name and a password several times.
   - `connected-apps.md` and `oauth.md` state "at most once a minute", the lifetimes of a grant, the limit of 50 in
     five places, the times of the cache, and the prefixes of the secrets.
-- Impact: each is a second copy; the stale lists of codes and of constraints in the findings above are the same
+- Impact: each is a second copy; the stale lists of the codes of a `Result` and of the unique constraints are the same
   pattern one feature later.
 - Evidence: `testing.md`: "`lock_timeout` of 2 seconds"; the constants `TRUNCATE_LOCK_TIMEOUT` and
   `TRUNCATE_ATTEMPTS` in `e2e/support/database.ts`.
@@ -2165,27 +2041,6 @@ result = await authService.logOut(await headers());`.
 - Decision (2026-11-18): as suggested: a list of terms at the top of `architecture.md` and "caller other than the
   browser" throughout; the terms for connected apps are chosen to fit the names the UI shows, the view "AI apps" and the
   page of the connected apps.
-
-#### suggestion: rules that the code follows everywhere are not written down in `architecture.md`
-
-- Location: `spec/architecture.md`, section "Reads and writes"
-- Severity: Minor. Worth writing down before a refactoring.
-- Category: docs
-- Problem: a write that would store what is stored already stores nothing, keeps the last editor, the time and
-  the version, answers like a stored change and is logged in a line of its own. This is built four times and told
-  in three feature specs, but not once as a convention. The order of the checks is given as "actor first, then
-  its ids, then its input, then writes"; the code has the admin, the actor id, the ids, the role, the input, the
-  version and the write. There is no rule for where a helper lives that two services need. That the adapter of a
-  caller other than the browser is always called `http.ts` is not said either.
-- Impact: the next write without a change, or the next shared helper, is built a fifth time in a slightly
-  different way.
-- Evidence: the comment of `updatePageContent()` in `src/features/pages/service.ts`: "The checks come in the order
-  role, content with the limits in force, version".
-- Suggestion (optional): four bullets: the write that changes nothing, the full order of the checks, the home of a
-  helper of two services, and the name of an adapter.
-- Confidence: Low. Whether these become rules is a decision of design.
-- Decision (2026-11-18): as suggested, all four bullets; a helper that two services need lives in a pure module of the
-  feature that owns the rule.
 
 #### question: are two entries of the roadmap still open as written?
 
@@ -2474,8 +2329,7 @@ documents name.
 1. Decide the open questions that other work depends on. Done on 2026-11-18: no tool offers the deleted pages or
    the writes of roles, and nothing in the code enforces it; the unit tests of the services are cut after the
    missing integration cases exist. The Decision of each finding holds the rest.
-2. Fix the findings with a High confidence that change no code: the wrong statements of `architecture.md` and of
-   the feature specs, `testing.md`, the README and the Locations of the first report.
+2. Fix the findings with a High confidence that change no code: the wrong statements of the feature specs, `testing.md`, the README and the Locations of the first report.
 3. Close the gaps of the tests before any refactoring: the access rules of the reads of the history, the rollback
    of a content save, the role before the version, the rules that only an end-to-end test covers, and the states
    of the dialogs that a shared frame would move.

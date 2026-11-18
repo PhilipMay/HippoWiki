@@ -15,9 +15,10 @@ How the code is organised and which patterns new code follows. The technology st
   `addresses.ts`, has no server-only imports.
 - `src/features/<feature>/`: everything about one feature – `schema.ts`, `service.ts`, `forms.ts`, `queries.ts`,
   `actions.ts`, `components/` and pure helpers such as `derive.ts` and `limits.ts` (no server-only imports, so Client
-  Components can use them). `limits.ts` holds the field length limits: for pages, so that `schema.ts` can import
-  `derive.ts` without a cycle; for users, so that Client Components show the limits without importing `schema.ts`,
-  which would put the list of common passwords into the bundle for the browser. For the same reason the type of an
+  Components can use them). `limits.ts` holds the limits of the fields: for pages, the lengths, the limits of the
+  content and the number of revisions the history shows at once, so that `schema.ts`, `derive.ts` and `markdown.ts`
+  can all use them without importing each other; for users, so that Client Components show the limits without
+  importing `schema.ts`, which would put the list of common passwords into the bundle for the browser. For the same reason the type of an
   account and `isAdmin()` live in `src/features/users/user-type.ts`, which Client Components and
   `src/lib/addresses.ts` import.
   - `schema.ts`: the ids, the Zod schemas and the types of validated input
@@ -43,9 +44,11 @@ How the code is organised and which patterns new code follows. The technology st
 ## Reads and writes
 
 - The layers: a route or component calls `queries.ts` or `actions.ts`, these call `service.ts`, and only `service.ts`
-  calls `getDb()`. Routes and components import a service only for its types. The health route
-  (`src/app/api/health/route.ts`) is the one exception: it checks the database connection itself.
-- A caller other than the GUI has an adapter of its own in place of `queries.ts` and `actions.ts`. The MCP server is
+  calls `getDb()`. Routes and components import a service only for its types. Two modules outside a feature call it
+  as well: the health route (`src/app/api/health/route.ts`), which checks the database connection itself, and
+  `src/lib/auth.ts`, which hands the client to Better Auth.
+- A caller other than the GUI has an adapter of its own in place of `queries.ts` and `actions.ts`, named `http.ts` in
+  its feature. The MCP server is
   the first: the route `src/app/mcp/[[...path]]/route.ts` only hands the request and the segments of its path to
   `handleMcpRequest()` in `src/features/mcp/http.ts`, which answers every path that is no folder address
   (`/mcp/<folder-uuid>/<reader|writer|manager>`) with 404, finds the actor and the connection from the bearer token instead of
@@ -67,17 +70,20 @@ How the code is organised and which patterns new code follows. The technology st
     derive the title of a page (see "Validation and errors").
   - Reads return rows, a list or `null`. A malformed id or name counts as a missing row and never reaches the
     database: a list is empty, a single item is `null`. A read that the actor may not do returns `null`, a list
-    included, without asking the database. Database errors are thrown.
+    included: for an admin without asking the database, for a user without the needed role after the lookup of the
+    role and before anything else is read. Database errors are thrown.
   - Writes return a `Result` from `src/lib/result.ts`: `{ ok: true, value }` with the item as stored, or
-    `{ ok: false, error }` with a code. The codes of the content are `invalid-input` (with `fieldErrors`),
-    `name-taken`, `folder-not-found`, `tab-not-found`, `page-not-found`, `page-changed` (with the page as stored),
-    `revision-not-found` (a revert to a revision that does not exist or would change nothing) and `failed`; the users,
-    auth and grant
-    services add codes such as `not-allowed`, `busy`, `invalid-credentials`, `wait`, `limit-reached` and
-    `grant-not-found` (see `src/features/users/service.ts`, `src/features/auth/service.ts` and
-    `src/features/grants/service.ts`). Each write declares the ones it can return in a type of its own, such as
-    `CreatePageError`.
-  - A write checks its actor first, then its ids, then its input, then writes.
+    `{ ok: false, error }` with a code. Each write declares the codes it can return in a union type next to it, such
+    as `CreatePageError`, and the lint rule for exhaustive switches (see "Linting") makes every adapter handle each
+    one.
+  - A write checks, in this order: the actor (an admin gets `not-allowed` for content), the id of the actor, the ids
+    of its arguments, the role of the actor on the folder, its input, the version of the row, and then writes. The
+    writes of roles check that the actor is an Owner before they look at the input, so that the answer to anyone else
+    does not depend on it.
+  - A write that would store what is stored already stores nothing: the item keeps its last editor, its time and its
+    version, the write answers as a stored change does, and it is logged in a line of its own. The feature specs
+    describe each case (see "Saves without a change" in `pages.md` and the sections on changes to the own name in
+    `content-structure.md`).
   - Rows that may no longer exist are changed with `updateMany` and the returned count is checked, instead of catching
     "not found" errors.
   - A write that is based on a version of its row, such as a content save, move, rename or delete of a page (see
@@ -91,7 +97,11 @@ How the code is organised and which patterns new code follows. The technology st
   - It logs the events of its writes: the stored item, a taken name, an item that was not found in the database and
     an unexpected error. A malformed id and invalid input are not logged.
   - It returns no addresses and no messages, except the field errors of the schemas in `invalid-input`. The stored
-    item carries what an address is built from: its name and the names of its folder and tab.
+    item carries what an address is built from: its name and the names of its folder and tab. The services of grants
+    and OAuth are the exception for addresses: they build the public MCP address of a folder with
+    `src/features/oauth/issuer.ts`, because OAuth names a connection by it.
+  - A helper that two services need lives in a pure module of the feature that owns the rule, not in one of the two
+    services.
   - It declares the types of its results itself (`FolderSummary`, `PageWithPlace`, `StoredPage` and the like) instead
     of deriving them from a Prisma query, states the return type of every function, and names the columns of every
     query with `select`, never `include`, so that a new column does not reach a caller by accident. Components import
@@ -101,15 +111,16 @@ How the code is organised and which patterns new code follows. The technology st
     first argument (`Actor` in the users service: `id`, `name` and the type of the account) and decides itself with
     `isAdmin()` from `src/features/users/user-type.ts`, by the type and never by the name. Examples:
     `createUser(actor, input)` answers `not-allowed` for a user, `listUsers(actor)` leaves out the pending password
-    changes for a user, and the token service answers `null` and `not-allowed` for an admin. Who the actor is, the
+    changes for a user, and the grant service answers `null` and `not-allowed` for an admin. Who the actor is, the
     adapters find out from the session (see "Login and sessions").
   - Every read and write of content (folders, tabs, pages and deleted pages) takes the acting user as its first
     argument as well, together with the channel of the call, `browser` or `mcp` (`ContentActor`, `BrowserActor` and
     `McpActor` in `src/features/folder-roles/service.ts`; `inBrowser()` and `inMcp()` build them), which no caller can
     leave out. The actor of MCP also carries its connection: the grant, the folder and the role of its address. The
-    queries and actions pass the actor of the browser, the MCP tools the actor of MCP. Creating a page, saving its
-    content and moving or renaming it take either; deleting and restoring pages and the writes of folders, tabs and
-    roles take only the actor of the browser. An admin sees no
+    queries and actions pass the actor of the browser, the MCP tools the actor of MCP. The type of the first argument
+    says which channel a function accepts: `ContentActor` for what MCP may do as well, `BrowserActor` for what only
+    the browser does (creating and renaming folders, reverting, restoring, the reads of the history). Which tools
+    exist is in `mcp.md`. The writes of roles take a plain `Actor` and are not offered through MCP. An admin sees no
     content: for an admin a read returns `null` and a write `not-allowed`, logged with the actor id, before anything
     else is checked (see "Only users see content" in `content-structure.md`). Then the role of the actor on the folder
     is checked with the functions of the folder-roles service and `mayDo()` of `roles.ts`, before any other database
@@ -129,6 +140,17 @@ How the code is organised and which patterns new code follows. The technology st
     headers; the service never reads a forwarding header itself.
   - Its functions have the names of the queries and actions, so the adapters import it as a namespace:
     `import * as folderService from "@/features/folders/service"`.
+- The rules for queries and actions below hold for the queries and actions of a page behind the login. The
+  exceptions, each for its reason:
+  - `listMcpAddresses()` of the MCP feature is synchronous and calls no service: it builds the addresses of the view
+    "AI apps" from the folder and the role that the folder query of the route has read after the login.
+  - `loadConsent()` of the OAuth feature has no service read of its name: it puts the checks of the consent page
+    together, so that they can be unit tested (see `testing.md`).
+  - `logIn()` and `logOut()` call neither `requireUser()` nor `requireSession()`, because they are what makes and ends
+    a session, and `changeFirstPassword()` calls `requireSession()`, because `requireUser()` would send the user back
+    to the password change.
+  - The actions of users, grants and auth revalidate their own paths instead of calling `revalidateContent()`,
+    because they change no content.
 - Reads happen in Server Components through the feature's `queries.ts`.
   - Every query first awaits `connection()`, so that Next.js does not prerender the route at build time, then
     `requireUser()` (see "Login and sessions"), and then calls the service read of the same name with that user as
@@ -139,7 +161,9 @@ How the code is organised and which patterns new code follows. The technology st
     throws. Then it checks the id, parses the form with a `parse*FormData` function of `forms.ts`, calls the service
     and maps the result.
   - It maps every error code to a form state `{ fieldErrors?, message? }` in a `switch`; the form shows the state and
-    keeps the entered values. The messages live in `actions.ts`, and each action has its own message for `failed`.
+    keeps the entered values. The messages live in `actions.ts`, apart from the message of a taken name, which is
+    `NAME_TAKEN_MESSAGE` of `src/lib/names.ts`. Actions that do the same thing share a message for `failed`, such as
+    the content saves, moves and renames of a page.
     `not-allowed` is mapped to `notFound()`: what an account may not change does not exist for it.
   - On success it calls `revalidateContent()` from `src/lib/revalidate.ts` and redirects. `revalidateContent()` calls
     `revalidatePath` with `"layout"` for `/folders` and `/deleted-pages` and so covers every address under both:
@@ -169,8 +193,10 @@ The feature is described in `users-and-login.md`. What every new route, query an
   - `requireUser()` from `src/features/auth/session.ts` checks the session in the database. It is the layer that
     protects the data: it redirects to the login page without a session, and to the password change while the user
     still has the first password.
-- Every page calls `requireUser()` first, before it reads the query string, so that an invalid address also leads to
-  the login page. Every query calls it after `connection()`, every Server Action first. `not-found.tsx`, `error.tsx`
+- Every page behind the login calls `requireUser()` first, before it reads the query string, so that an invalid address
+  also leads to the login page. The login page and the consent page of OAuth read the query first: the login page
+  needs no login, and the consent page passes its whole address to `requireUser()` as the way back. Every query calls
+  it after `connection()`, every Server Action first, with the exceptions of "Reads and writes". `not-found.tsx`, `error.tsx`
   and `global-error.tsx` show no data and have no check.
 - `requireUser()` returns the user of the session (`SessionUser` of the auth service: `id`, `name`, `type`,
   `mustChangePassword`). Better Auth reads the type with the session (an additional field of `src/lib/auth.ts`); a
@@ -247,10 +273,12 @@ The feature is described in `users-and-login.md`. What every new route, query an
 - What an address opens is given in its query string: an action as `?action=<action>`, a view as `?view=<view>`.
   A route reads them with `parseAction` and `parseView`, passing only the actions and views it has, and calls
   `notFound()` for `"invalid"`. A route without views calls `parseView` without allowed views.
-- Three kinds of addresses carry other search parameters:
+- Other search parameters, such as `before` of the history, the revisions of a comparison or the app to revoke, are
+  built by a helper of `src/lib/addresses.ts` and read with a parser of the route; an unknown or malformed value shows
+  the not-found page. Among them:
   - A page address with an action may carry `?notice=changed` after it, which an action sets when it redirects after
     a change refused as `page-changed` (see `optimistic-locking.md`). The page routes read it with
-    `parsePageNotice()` of `src/features/pages/components/PageView.tsx`, and `pagePath()` builds it.
+    `parsePageQuery()` of `src/features/pages/components/PageView.tsx`, and `pagePath()` builds it.
   - The login and the forced password change take `?next=<path>`, the address to go to afterwards. It is accepted
     only as a path on this site, checked with `safeNextPath()` wherever it is read, and `loginPath(next)` and
     `changePasswordPath(next)` build it. Where a login or a password change leads on, `landingPath(next, user)` turns
@@ -283,7 +311,9 @@ The feature is described in `users-and-login.md`. What every new route, query an
   trigger that refuses every update that changes the type of a `User`, or the trigger that refuses every role of an
   admin (all three at the end of `prisma/migrations/20261116103037_init/`), is added to the SQL of the migration by
   hand (`npm run db:migrate -- --name <change> --create-only`, edit the file, then `npm run db:migrate`).
-- Every model has a UUID id generated by PostgreSQL (`gen_random_uuid()`) and stores its times as `timestamptz(3)`. The
+- Every model has a UUID id generated by PostgreSQL (`gen_random_uuid()`), except the single row of `AuthSecret` and
+  the counters `LoginAttempt`, `LoginWindow` and `OAuthRegistrationWindow`, whose keys are what they count, and every
+  model stores its times as `timestamptz(3)`. The
   foreign keys between folders, tabs and pages, and those of a role to its folder and user, restrict deleting
   (`onDelete: Restrict`), so that no content and no role disappears by a cascade; the sessions, accounts, grants and
   OAuth codes of a user are deleted with the user, and the codes and grants of an OAuth client and of a folder with the
@@ -328,7 +358,8 @@ The feature is described in `users-and-login.md`. What every new route, query an
   same commit in which `useHydrated()` turns true. The end-to-end tests wait for it after every page load.
 - Dialogs that a route renders for an action use `disablePortal`, so that they are part of the server-rendered HTML
   like the rest of the page, and lock their controls until hydration as described above. The name dialog
-  (`NameDialog` in `src/features/folders/components/`) is shared by folders, tabs and pages. The name field and the
+  (`NameDialog` in `src/features/folders/components/`) is shared by folders and tabs; pages are moved and renamed in
+  `MoveOrRenamePageDialog` of `src/features/pages/components/`. The name field and the
   place choice of a page (`PageNameAndPlaceFields` in `src/features/pages/components/`) are shared by the "Save page",
   the "Move or rename page" and the "Restore page" dialog; its `locked` prop locks them in a dialog that renders before
   hydration, and a place of `null` checks no place.

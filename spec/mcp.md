@@ -151,7 +151,8 @@ Tools of a Manager, for a Manager connection only. They do what the browser does
 
 What a Manager connection cannot do: see, read or restore deleted pages, see the roles of the folder or its Owners,
 rename the folder, or give, change or remove roles. A deleted page is answered like a page that does not exist, as for
-the other roles.
+the other roles. The writes of roles are not offered through MCP: no tool calls them, and no tool may, because they
+take a plain actor and nothing in their type keeps the actor of MCP out (see "Reads and writes" in `architecture.md`).
 
 What holds for all of them:
 

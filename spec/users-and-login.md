@@ -201,10 +201,12 @@ the authentication guide of Next.js describes:
   login page, `/api/health`, `/mcp` and the addresses below it, the public endpoints of OAuth and the static files of Next.js (`/_next/static/`)
   pass it; the image optimizer of Next.js is behind the login like every other address. A Server Action called
   without the cookie leads to the login page as well, with a full page load instead of the error page.
-- `requireUser()` in `src/features/auth/session.ts` checks the session in the database. Every page, every query and
-  every Server Action calls it first; it is the layer that protects the data. Without a session it leads to the login
-  page, and while the first password is pending, to the password change. Pages call it before they read the query
-  string, so that an invalid address also leads to the login page.
+- `requireUser()` in `src/features/auth/session.ts` checks the session in the database. Every page behind the login,
+  every query and every Server Action calls it first; it is the layer that protects the data. Without a session it
+  leads to the login page, and while the first password is pending, to the password change. Pages call it before they
+  read the query string, so that an invalid address also leads to the login page. The exceptions, among them the
+  login and the logout and the consent page of OAuth, are listed with their reasons in "Reads and writes" and "Login
+  and sessions" of `architecture.md`.
 - An address that does not exist stays "not found" for everyone who has a session cookie.
 - `not-found.tsx`, `error.tsx` and `global-error.tsx` show no data and have no check. Without a user the header shows
   no menu.
