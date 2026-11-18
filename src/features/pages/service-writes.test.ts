@@ -405,9 +405,10 @@ describe("updatePageContent", () => {
   });
 
   // The row lock keeps this from happening; if another write took the number all the same, it changed the page.
-  it("returns page-changed when another write took the number of the revision", async () => {
+  it("returns page-changed when another write took the number of the revision, logged as a warning", async () => {
+    const err = uniqueViolation({ index: "PageRevision_pageId_number_key" });
     mocks.updateMany.mockResolvedValue({ count: 1 });
-    mocks.revisionCreate.mockRejectedValue(uniqueViolation({ index: "PageRevision_pageId_number_key" }));
+    mocks.revisionCreate.mockRejectedValue(err);
     mocks.findUnique.mockResolvedValue(STORED);
 
     await expect(updatePageContent(ACTOR, PAGE_ID, VALID)).resolves.toEqual({
@@ -415,6 +416,10 @@ describe("updatePageContent", () => {
       error: { code: "page-changed", page: STORED },
     });
 
+    expect(mocks.warn).toHaveBeenCalledWith(
+      { err, pageId: PAGE_ID, version: VALID.version },
+      "revision number of the content change already taken: the change is refused",
+    );
     expect(mocks.error).not.toHaveBeenCalled();
   });
 

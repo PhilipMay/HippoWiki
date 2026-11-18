@@ -361,7 +361,7 @@ type ChangeOutcome =
   | { kind: "role-not-found" }
   | { kind: "last-owner"; oldRole: Role }
   | { kind: "unchanged"; role: Role; folderName: string; actorRole: Role | null }
-  | { kind: "done"; oldRole: Role; folderName: string; actorRole: Role | null };
+  | { kind: "stored"; oldRole: Role; folderName: string; actorRole: Role | null };
 
 /**
  * Changes the role of the user on the folder to the given role or, with `null`, removes it, as an Owner. The write
@@ -404,7 +404,7 @@ async function writeRole(
       const { name } = await tx.folder.findUniqueOrThrow({ where: { id: folder }, select: { name: true } });
       const actorRoleAfter = target === actorId ? newRole : actorRole;
       if (unchanged) return { kind: "unchanged", role: current.role, folderName: name, actorRole: actorRoleAfter };
-      return { kind: "done", oldRole: current.role, folderName: name, actorRole: actorRoleAfter };
+      return { kind: "stored", oldRole: current.role, folderName: name, actorRole: actorRoleAfter };
     });
   } catch (err) {
     logger.error({ err, folderId: folder, userId: target, actorId }, "failed to change role");
@@ -432,7 +432,7 @@ async function writeRole(
         "role unchanged: the role is the same",
       );
       return { ok: true, value: { folder: { name: outcome.folderName }, actorRole: outcome.actorRole } };
-    case "done":
+    case "stored":
       logger.info(
         { folderId: folder, userId: target, oldRole: outcome.oldRole, newRole, actorId },
         newRole === null ? "role removed" : "role changed",

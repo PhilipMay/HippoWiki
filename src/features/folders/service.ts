@@ -35,6 +35,7 @@ import {
   roleSelection,
 } from "@/features/folder-roles/service";
 import { folderInputSchema, parseFolderId, parseTabId, tabInputSchema } from "@/features/folders/schema";
+import { softDeleteData } from "@/features/pages/writes";
 import { LAST_EDITOR_SELECT, withLastEditor, type LastEditor } from "@/features/users/records";
 import { isAdmin } from "@/features/users/user-type";
 import { getDb } from "@/lib/db";
@@ -441,9 +442,10 @@ export async function renameTab(
 
 /**
  * Deletes the tab with the given id in the folder with the given id for good, together with its pages, and returns the
- * folder as stored, the number of pages deleted with the tab and these pages by name. The pages that are in the tab at that moment are soft
- * deleted as `deletePage()` of the pages service deletes one page, with the actor as their last editor and one time of
- * deletion for all of them, but without checking their versions: whatever is in the tab now goes with it. Either the
+ * folder as stored, the number of pages deleted with the tab and these pages by name. The pages that are in the tab at
+ * that moment are soft deleted with the data that `deletePage()` of the pages service stores for one page
+ * (`softDeleteData()`), with the actor as their last editor and one time of deletion for all of them, but without
+ * checking their versions: whatever is in the tab now goes with it. Either the
  * tab and all its pages are deleted, or nothing changes. The folder is not touched: its `updatedAt` and last editor stay
  * as they are. It is a write of the browser or of MCP.
  *
@@ -458,7 +460,6 @@ export async function deleteTab(
 ): Promise<Result<DeletedTab, DeleteTabError>> {
   const opened = openContentWrite(actor, "tab not deleted");
   if (opened.refused) return opened.refused;
-  const { lastEditedById, lastEditedVia } = opened.editor;
 
   const parsedFolderId = parseFolderId(folderId);
   const tabId = parseTabId(id);
@@ -493,7 +494,7 @@ export async function deleteTab(
       // pages come back from the same write, so that the list holds exactly the pages that went with the tab.
       const pages = await tx.page.updateManyAndReturn({
         where: { tabId },
-        data: { deletedAt: new Date(), tabId: null, lastEditedById, lastEditedVia, version: { increment: 1 } },
+        data: softDeleteData(opened.editor),
         select: { name: true, title: true },
       });
       await tx.tab.delete({ where: { id: tabId } });

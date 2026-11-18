@@ -7,16 +7,16 @@
   and the newest rules (writes that store nothing) are proven against the real database and in the browser. The
   weak points are three:
   - Rules that are written several times: the frame of a dialog
-    in nine components, a write without a change in five shapes, and the same rule in up to five specs. Two copies
+    in nine components, and the same rule in up to five specs. Two copies
     had drifted already; the one in the "Save page" dialog is fixed.
   - Tests that would not catch the refactoring this report suggests: the unit tests of the services pinned the calls
     of Prisma, and three rules of access and of the transaction had no test that could fail. Both are fixed; the
     findings of the tests that are still open are minor.
   - Documents that the features outran: rules stated in full in several documents, and copies of code and
     constants in the specs.
-- Findings: 50 open of 107, 0 Blocker, 0 Major, 40 Minor and 10 Nit (10 `issue:`, 28 `suggestion:`, 8 `nit:` and
+- Findings: 47 open of 107, 0 Blocker, 0 Major, 37 Minor and 10 Nit (8 `issue:`, 27 `suggestion:`, 8 `nit:` and
   4 `question:`).
-- Confidence of the suggestions: 5 High, 33 Medium and 8 Low; the 4 questions have none. A High suggestion can be
+- Confidence of the suggestions: 5 High, 32 Medium and 6 Low; the 4 questions have none. A High suggestion can be
   fixed as written; the others wait for the user, as `issue-report.md` describes.
 - Decisions: on 2026-11-18 the user decided all Medium and Low suggestions. Each of these findings ends with a line
   `Decision`, and is fixed as that line says, without asking again. The 4 questions were decided by the user on the
@@ -72,8 +72,8 @@ What can go wrong in a cleanup, and what several findings warn about:
 - The wrong abstraction: two things that only look alike are merged, and the shared function grows a flag per
   caller. The findings say where a copy should stay, for example the nine `switch` blocks of the MCP tools.
 - A change of behaviour by accident, above all in the writes with a version: the comparison inside the condition
-  of the write, the order of the checks and the transaction of a content save. The finding on the three writes
-  with a version lists the properties to keep.
+  of the write, the order of the checks and the transaction of a content save. The integration tests of
+  `integration/page-service.test.ts` pin the properties to keep, the races and the rollbacks included.
 - A lost check of access when helpers are shared: the role before the version, and the `null` of the condition
   for readable folders.
 - A cleanup in one step: the findings are cut so that each can be fixed and checked on its own.
@@ -81,86 +81,6 @@ What can go wrong in a cleanup, and what several findings warn about:
 ## Findings
 
 ### Code: services of the content features
-
-#### issue: "a write that stored nothing" has five shapes inside the services and none in their results
-
-- Location: `src/features/folders/service.ts`, line 151, `Written<T>`; `src/features/pages/service.ts`, line 655,
-  `ContentStoreOutcome`, lines 776–801, `saveContentChange()`, and lines 927–937, `moveOrRenamePage()`;
-  `src/features/folder-roles/service.ts`, lines 411–416, `ChangeOutcome`
-- Severity: Minor. Each variant works; the cost is in reading and in the next feature.
-- Category: readability
-- Problem: the same outcome is `{ kind: "unchanged"; item }` for folders and tabs, `{ kind: "unchanged"; role;
-folderName }` for roles (next to `"done"`, where folders say `"stored"`), `{ outcome: "unchanged"; page }` for the
-  content, `changed: false` inside a value in `saveContentChange()`, and an early `return` with a log line of its
-  own, without a type, in `moveOrRenamePage()`. The public result of every write is `{ ok: true, value }` either way.
-- Impact: a fourth feature copies whichever shape it finds first. The actions revalidate the content after a write
-  that stored nothing, and the MCP tools cannot say that nothing changed.
-- Evidence: line 151 of the folders service,
-  `type Written<T> = { kind: "stored" } | { kind: "unchanged"; item: T } | { kind: "not-found" };`; line 655 of the
-  pages service, `type ContentStoreOutcome = { outcome: "stored" } | { outcome: "unchanged"; page: StoredPage } |
-{ outcome: "refused" };`; line 789, `return { ok: true, value: { page: stored.page, changed: false } };`.
-- Suggestion (optional): one shape with the discriminant `kind` in all four helpers, and a small store function for
-  `moveOrRenamePage()` that returns it, so that the log line and the result are built after the `try`, as in
-  `renameFolder()`.
-- Confidence: Low. Whether the public result should say "unchanged" as well is a design decision; the specs say a
-  write without a change is "answered like a stored change".
-- Decision (2026-11-18): one internal shape with the discriminant `kind` in all four helpers, and a small store function
-  for `moveOrRenamePage()`. The public result stays `{ ok: true, value }`, as the specs say.
-
-#### suggestion: the write with the version in its condition is built by hand three times, each fragile in its own way
-
-- Location: `src/features/pages/service.ts`, lines 563–575, `refusedWrite()`, lines 666–716, `storeContentChange()`,
-  lines 909–937, `moveOrRenamePage()`, and lines 988–1008, `deletePage()`
-- Severity: Minor. No wrong result was found; the risk is in the next change.
-- Category: correctness
-- Problem:
-  - `moveOrRenamePage()` writes the condition "differs" (lines 919–922) and its opposite (line 931) apart, with the
-    rules of SQL for `NULL` handled by hand. The update, the read of the unchanged page and `refusedWrite()` are
-    three statements without a transaction, where `storeContentChange()` uses one.
-  - `refusedWrite()` concludes "changed" from "the row exists" and compares no version, so every reason for no
-    matching row is reported as `page-changed`.
-  - `storeContentChange()` turns a violation of the revision number into `refused` without a log line (line 713).
-  - The comment in `deletePage()` (line 991) credits the transaction for a consistent place. No isolation level is
-    set anywhere, so it is the version in the condition that guarantees it; a tab renamed between the read and the
-    update does not count the version of the page up.
-- Impact: a refactoring that trusts the comments can break the lock.
-- Evidence: line 713, `if (isUniqueViolation(err, PAGE_REVISION_NUMBER)) return { outcome: "refused" };`; line 991,
-  "One transaction, so that the place read is the one the page had when it was deleted."
-- Suggestion (optional): log the swallowed violation as a warning, correct the comment, and build the condition
-  `{ id, deletedAt: null, version }` and the data `version: { increment: 1 }` in one helper; they appear four times
-  each. A refactoring must keep these properties:
-  - the comparison "is it the same" stays inside the condition of the write;
-  - the version is in the condition and counted up in the same statement;
-  - a write without a change keeps the time, the last editor and the version, and is `page-changed` when it rests
-    on an older version;
-  - an older version wins over a taken name;
-  - in `storeContentChange()` the update comes first in the transaction, because its row lock puts the revision
-    numbers in order;
-  - the last editor is tested before the other foreign keys.
-- Confidence: Low. The log line and the comment are safe; the helper is a judgement, and the race of the tab name
-  was reasoned, not reproduced. `integration/page-service.test.ts` and `integration/folder-service.test.ts` pin
-  the properties above.
-- Decision (2026-11-18): now only the warning in the log for the swallowed violation and the corrected comment in
-  `deletePage()`. The shared helper is built only after the races of pages are tested against the database (see "Tests:
-  unit and integration"), and it keeps the properties listed above.
-
-#### issue: the soft delete of a page is written in two services
-
-- Location: `src/features/folders/service.ts`, lines 532–536, `deleteTab()`; `src/features/pages/service.ts`,
-  lines 1001–1004, `deletePage()`
-- Severity: Minor. One rule in two features, held together by a comment.
-- Category: readability
-- Problem: the folders service writes the table of the pages itself, with a copy of the data of `deletePage()`.
-- Impact: a new column of a soft delete has to be added in two features, or pages deleted with their tab differ
-  from pages deleted alone.
-- Evidence: both hold the same line:
-  `data: { deletedAt: new Date(), tabId: null, lastEditedById, lastEditedVia, version: { increment: 1 } },`.
-- Suggestion (optional): let the pages service export the data of a soft delete, or a function that deletes the
-  pages of a tab inside a given transaction, and call it from `deleteTab()`.
-- Confidence: Medium. No behaviour changes and the integration tests of both deletes cover it; a transaction
-  passed between services is a new pattern for `architecture.md`.
-- Decision (2026-11-18): the pages service exports a function that builds the data of a soft delete, and `deleteTab()`
-  uses it inside its own transaction. No transaction is passed between services.
 
 #### suggestion: the service of the folder roles holds three concerns, and the pages service has one clear seam
 
@@ -1400,7 +1320,7 @@ documents name.
    missing integration cases exist. The Decision of each finding holds the rest.
 2. Fix the findings with a High confidence that change no code: the Locations of the first report.
 3. Close the gaps of the tests before any refactoring: the states of the dialogs that a shared frame would move.
-4. Refactor the code in small steps, each with its checks: one shape for a write without a change, the hooks and the frame of the dialogs, then the
+4. Refactor the code in small steps, each with its checks: the hooks and the frame of the dialogs, then the
    splits of the large files.
 5. Restructure the documents last: one owner per rule in the feature specs, the sections of `architecture.md`,
    and the form of the catalog in `CLAUDE.md`.

@@ -5,7 +5,8 @@ the deleted pages of its folder and can be restored from there. Pages themselves
 tabs and addresses in `content-structure.md`.
 
 Code: `src/features/pages/` (`deletePage`, `restorePage`, `listDeletedPages` and `getDeletedPage` in `service.ts`,
-the dialogs and lists in `components/`), routes under `src/app/deleted-pages/`. Tests: `e2e/delete-page.spec.ts`,
+`softDeleteData()` in `writes.ts`, which the delete of a tab stores for its pages as well, the dialogs and lists in
+`components/`), routes under `src/app/deleted-pages/`. Tests: `e2e/delete-page.spec.ts`,
 `e2e/deleted-pages.spec.ts`, `e2e/restore-page.spec.ts`, `integration/page-service.test.ts`.
 
 ## Deleting

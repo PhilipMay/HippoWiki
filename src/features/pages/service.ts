@@ -52,6 +52,7 @@ import {
   type PageFieldErrors,
 } from "@/features/pages/schema";
 import { REVISIONS_PER_PAGE } from "@/features/pages/limits";
+import { NEXT_VERSION, softDeleteData } from "@/features/pages/writes";
 import { LAST_EDITOR_SELECT, withLastEditor, type LastEditor } from "@/features/users/records";
 import type { ChangeChannel, Prisma } from "@/generated/prisma/client";
 import { getDb } from "@/lib/db";
@@ -598,10 +599,20 @@ export async function createPage(
 type ContentChange = { title: string; content: string; lastEditedById: string; lastEditedVia: ChangeChannel };
 
 /**
- * What `storeContentChange()` did: stored the change, found the page with the given version and the same content and
- * stored nothing (with the page as it is stored), or matched no page.
+ * What the store of a write of a page did: stored the change; found the page with the given version and the change
+ * already in it, and stored nothing (with the page as it is stored); or matched no page, which the caller tells apart
+ * with `refusedWrite()`.
  */
-type ContentStoreOutcome = { outcome: "stored" } | { outcome: "unchanged"; page: StoredPage } | { outcome: "refused" };
+type PageWrite = { kind: "stored" } | { kind: "unchanged"; page: StoredPage } | { kind: "refused" };
+
+/**
+ * The condition of a write that is based on the given version of the page: the page with the id, not deleted, with
+ * that version. The write counts the version up in the same statement (`NEXT_VERSION`), so that of two writes based on
+ * the same version only the first matches a row.
+ */
+function atVersion(pageId: string, version: number): { id: string; deletedAt: null; version: number } {
+  return { id: pageId, deletedAt: null, version };
+}
 
 /**
  * Stores the content change in the page with the given id, if it is not deleted and has the given version, counts its
@@ -617,26 +628,26 @@ async function storeContentChange(
   version: number,
   change: ContentChange,
   revertedTo: number | null,
-): Promise<ContentStoreOutcome> {
+): Promise<PageWrite> {
   try {
-    return await getDb().$transaction(async (tx): Promise<ContentStoreOutcome> => {
-      const current = { id: pageId, deletedAt: null, version };
+    return await getDb().$transaction(async (tx): Promise<PageWrite> => {
+      const current = atVersion(pageId, version);
       // `updateMany` reports a missing page as a count of 0 instead of throwing; it sets `updatedAt` as well. A deleted
       // page, one with another version than the given one, and for a content save one with the same content, match no
       // row.
       const { count } = await tx.page.updateMany({
         where: revertedTo === null ? { ...current, content: { not: change.content } } : current,
-        data: { ...change, version: { increment: 1 } },
+        data: { ...change, ...NEXT_VERSION },
       });
       if (count === 0) {
-        if (revertedTo !== null) return { outcome: "refused" };
+        if (revertedTo !== null) return { kind: "refused" };
         // The page as it is now, in the same transaction: a save of the same content to the version it is based on
         // changes nothing; anything else is refused.
         const page = await tx.page.findFirst({
           where: { ...current, content: change.content },
           select: STORED_PAGE_SELECT,
         });
-        return page ? { outcome: "unchanged", page } : { outcome: "refused" };
+        return page ? { kind: "unchanged", page } : { kind: "refused" };
       }
       // The update locks the row of the page until the transaction ends, so no other write of the page reads the newest
       // revision before this one is stored, and two writes never take the same number.
@@ -656,10 +667,17 @@ async function storeContentChange(
           revertedTo,
         },
       });
-      return { outcome: "stored" };
+      return { kind: "stored" };
     });
   } catch (err) {
-    if (isUniqueViolation(err, PAGE_REVISION_NUMBER)) return { outcome: "refused" };
+    if (isUniqueViolation(err, PAGE_REVISION_NUMBER)) {
+      // The row lock of the update orders the numbers, so only a write outside this rule can have taken the number.
+      logger.warn(
+        { err, pageId, version },
+        "revision number of the content change already taken: the change is refused",
+      );
+      return { kind: "refused" };
+    }
     throw err;
   }
 }
@@ -708,8 +726,8 @@ export async function updatePageContent(
     },
   );
   if (!saved.ok) return saved;
-  const { page, changed } = saved.value;
-  if (changed) logger.info({ pageId, ...channelOf(actor) }, "page updated");
+  const { kind, page } = saved.value;
+  if (kind === "stored") logger.info({ pageId, ...channelOf(actor) }, "page updated");
   else logger.info({ pageId, ...channelOf(actor) }, "page not changed: content is the same");
   return { ok: true, value: page };
 }
@@ -718,7 +736,7 @@ export async function updatePageContent(
  * Stores a content change of the page with the given id with `storeContentChange()`, based on the given version, and
  * returns the page as stored and whether the change was stored: the end of every content save, so that a save in the
  * editor and a revert are stored and refused alike. A save of the same content stores nothing and returns the page as
- * it is, with `changed: false`. No valid version, or another one than the page has, stores nothing and gives
+ * it is, with the kind `unchanged`. No valid version, or another one than the page has, stores nothing and gives
  * `page-changed`; a missing or deleted page gives `page-not-found`, logged as `<what> not found`. An unexpected error
  * gives `failed`, logged with `failure`. The caller logs the outcome.
  */
@@ -728,14 +746,14 @@ async function saveContentChange(
   givenVersion: number | null,
   change: ContentChange,
   { revertedTo, what, failure }: { revertedTo: number | null; what: string; failure: string },
-): Promise<Result<{ page: StoredPage; changed: boolean }, PageNotFound | PageChanged | Failed>> {
+): Promise<Result<{ kind: "stored" | "unchanged"; page: StoredPage }, PageNotFound | PageChanged | Failed>> {
   const version = parsePageVersion(givenVersion);
   let page: StoredPage | null;
   try {
     if (version === null) return await refusedWrite(pageId, givenVersion, what);
     const stored = await storeContentChange(pageId, version, change, revertedTo);
-    if (stored.outcome === "refused") return await refusedWrite(pageId, version, what);
-    if (stored.outcome === "unchanged") return { ok: true, value: { page: stored.page, changed: false } };
+    if (stored.kind === "refused") return await refusedWrite(pageId, version, what);
+    if (stored.kind === "unchanged") return { ok: true, value: { kind: "unchanged", page: stored.page } };
     page = await findStoredPage(pageId);
   } catch (err) {
     if (isForeignKeyViolation(err, LAST_EDITOR)) return unknownActor(err, actor);
@@ -746,7 +764,7 @@ async function saveContentChange(
     logger.warn({ pageId }, `${what} not found`);
     return { ok: false, error: { code: "page-not-found" } };
   }
-  return { ok: true, value: { page, changed: true } };
+  return { ok: true, value: { kind: "stored", page } };
 }
 
 /**
@@ -820,6 +838,34 @@ export async function revertPage(
 }
 
 /**
+ * Stores the name and the place of a move or rename in the page with the given id, if it is not deleted and has the
+ * given version, and counts its version up. A deleted page, one with another version than the given one, and one that
+ * has this name and place already, match no row; then no name is checked either. The comparison is part of the write,
+ * so that it holds for the name and place stored at that moment. A page with the given version and this name and place
+ * stores nothing (`unchanged`); anything else that matched no row is `refused`.
+ */
+async function storeMoveOrRename(
+  pageId: string,
+  version: number,
+  change: { name: string; tabId: string | null; lastEditedById: string; lastEditedVia: ChangeChannel },
+): Promise<PageWrite> {
+  const { name, tabId } = change;
+  const current = atVersion(pageId, version);
+  // `not` never matches a column that is `null`, so a page directly in the folder is matched apart.
+  const differs: Prisma.PageWhereInput[] = [
+    { name: { not: name } },
+    ...(tabId === null ? [{ tabId: { not: null } }] : [{ tabId: null }, { tabId: { not: tabId } }]),
+  ];
+  const { count } = await getDb().page.updateMany({
+    where: { ...current, OR: differs },
+    data: { ...change, ...NEXT_VERSION },
+  });
+  if (count > 0) return { kind: "stored" };
+  const unchanged = await getDb().page.findFirst({ where: { ...current, name, tabId }, select: STORED_PAGE_SELECT });
+  return unchanged ? { kind: "unchanged", page: unchanged } : { kind: "refused" };
+}
+
+/**
  * Stores the given name and place of the page with the given id in one update, with the actor as its last editor, and
  * returns the page as stored. The
  * page is placed in the tab with the id `tabId` of its folder or, with `null`, directly in the folder. The content is
@@ -857,34 +903,13 @@ export async function moveOrRenamePage(
   const { name } = parsed.data;
   const version = parsePageVersion(input.version);
 
+  let written: PageWrite;
   let page: StoredPage | null;
   try {
     if (version === null) return await refusedWrite(pageId, input.version, "page to move or rename");
-    const current = { id: pageId, deletedAt: null, version };
-    // A deleted page, one with another version than the given one, and one that has this name and place already, match
-    // no row; then no name is checked either. The comparison is part of the write, so that it holds for the name and
-    // place stored at that moment. `not` never matches a column that is `null`, so a page directly in the folder is
-    // matched apart.
-    const differs: Prisma.PageWhereInput[] = [
-      { name: { not: name } },
-      ...(tabId === null ? [{ tabId: { not: null } }] : [{ tabId: null }, { tabId: { not: tabId } }]),
-    ];
-    const { count } = await getDb().page.updateMany({
-      where: { ...current, OR: differs },
-      data: { name, tabId, lastEditedById, lastEditedVia, version: { increment: 1 } },
-    });
-    if (count === 0) {
-      // A move to the name and place the page has stored, based on its version, changes nothing; anything else is
-      // refused.
-      const unchanged = await getDb().page.findFirst({
-        where: { ...current, name, tabId },
-        select: STORED_PAGE_SELECT,
-      });
-      if (!unchanged) return await refusedWrite(pageId, version, "page to move or rename");
-      logger.info({ pageId, ...channelOf(actor) }, "page not changed: name and place are the same");
-      return { ok: true, value: unchanged };
-    }
-    page = await findStoredPage(pageId);
+    written = await storeMoveOrRename(pageId, version, { name, tabId, lastEditedById, lastEditedVia });
+    if (written.kind === "refused") return await refusedWrite(pageId, version, "page to move or rename");
+    page = written.kind === "unchanged" ? written.page : await findStoredPage(pageId);
   } catch (err) {
     // Before the tab key: a missing actor must not be reported as a missing tab.
     if (isForeignKeyViolation(err, LAST_EDITOR)) return unknownActor(err, actor);
@@ -904,7 +929,11 @@ export async function moveOrRenamePage(
     return { ok: false, error: { code: "page-not-found" } };
   }
 
-  logger.info({ pageId, tabId, ...channelOf(actor) }, "page moved or renamed");
+  if (written.kind === "unchanged") {
+    logger.info({ pageId, ...channelOf(actor) }, "page not changed: name and place are the same");
+  } else {
+    logger.info({ pageId, tabId, ...channelOf(actor) }, "page moved or renamed");
+  }
   return { ok: true, value: page };
 }
 
@@ -922,7 +951,6 @@ export async function deletePage(
 ): Promise<Result<PagePlace, DeletePageError>> {
   const opened = openContentWrite(actor, "page not deleted");
   if (opened.refused) return opened.refused;
-  const { lastEditedById, lastEditedVia } = opened.editor;
 
   const pageId = parsePageId(id);
   if (!pageId) return { ok: false, error: { code: "page-not-found" } };
@@ -937,10 +965,13 @@ export async function deletePage(
   let place: PagePlace;
   try {
     if (version === null) return await refusedWrite(pageId, input.version, "page to delete");
-    // One transaction, so that the place read is the one the page had when it was deleted.
+    // The read of the place and the update in one transaction, which sets no isolation level: it is the version in the
+    // condition of the update that makes the place read the one the page had when it was deleted, because a move
+    // between the two counts the version up and then the update matches no row. A tab renamed in between counts no
+    // version of a page up, so the name of the tab returned can be the one it had at the read.
     const deleted = await getDb().$transaction(async (tx) => {
       // A deleted page, and one with another version than the given one, match neither the read nor the update.
-      const where = { id: pageId, deletedAt: null, version };
+      const where = atVersion(pageId, version);
       const page = await tx.page.findFirst({
         where,
         select: { folder: { select: { name: true } }, tab: { select: { name: true } } },
@@ -949,7 +980,7 @@ export async function deletePage(
       // `updateMany` reports a page changed or deleted in the meantime as a count of 0; it sets `updatedAt` as well.
       const { count } = await tx.page.updateMany({
         where,
-        data: { deletedAt: new Date(), tabId: null, lastEditedById, lastEditedVia, version: { increment: 1 } },
+        data: softDeleteData(opened.editor),
       });
       return count === 0 ? null : page;
     });
@@ -1003,7 +1034,7 @@ export async function restorePage(
     // Only a deleted page can be restored; `updateMany` reports any other as a count of 0. It sets `updatedAt` as well.
     const { count } = await getDb().page.updateMany({
       where: { id: pageId, deletedAt: { not: null } },
-      data: { deletedAt: null, name, tabId, lastEditedById, lastEditedVia, version: { increment: 1 } },
+      data: { deletedAt: null, name, tabId, lastEditedById, lastEditedVia, ...NEXT_VERSION },
     });
     page = count === 0 ? null : await findStoredPage(pageId);
   } catch (err) {

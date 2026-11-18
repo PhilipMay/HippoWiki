@@ -98,7 +98,7 @@ Decided by the user on 2026-11-18:
 - [x] Split of `e2e/mcp.spec.ts`
 - [x] Actors, guards and one channel
 - [x] Guards and errors of the services
-- [ ] Writes of pages
+- [x] Writes of pages
 - [ ] The stored page and the derived name
 - [ ] The reads of the history in a service of their own
 - [ ] MCP tools
@@ -631,8 +631,10 @@ Findings of "Code: services of the content features":
   number is logged as a warning, the comment in `deletePage()` is corrected, and one helper builds the condition
   `{ id, deletedAt: null, version }` and the data `version: { increment: 1 }`. The six properties the finding lists
   are kept; the tests of the step "Integration tests of the rollback and the races of pages" prove them.
-- "the soft delete of a page is written in two services": the pages service exports a function that builds the data
-  of a soft delete, and `deleteTab()` uses it inside its own transaction. No transaction is passed between services.
+- "the soft delete of a page is written in two services": a function that builds the data of a soft delete,
+  `softDeleteData()` in the pure module `src/features/pages/writes.ts`, as "A helper that two services need" in
+  `architecture.md` asks, and `deleteTab()` uses it inside its own transaction. No transaction is passed between
+  services.
 
 ### Test
 

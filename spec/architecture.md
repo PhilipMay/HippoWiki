@@ -105,7 +105,9 @@ How the code is organised and which patterns new code follows. The technology st
     and OAuth are the exception for addresses: they build the public MCP address of a folder with
     `src/features/oauth/issuer.ts`, because OAuth names a connection by it.
   - A helper that two services need lives in a pure module of the feature that owns the rule, not in one of the two
-    services.
+    services: `src/features/folder-roles/actors.ts` for the actors and the guards of a content write,
+    `src/features/pages/writes.ts` for the data of the soft delete of a page, which the delete of a tab stores for its
+    pages inside its own transaction.
   - It declares the types of its results itself (`FolderSummary`, `PageWithPlace`, `StoredPage` and the like) instead
     of deriving them from a Prisma query, states the return type of every function, and names the columns of every
     query with `select`, never `include`, so that a new column does not reach a caller by accident. Components import
