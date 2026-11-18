@@ -32,9 +32,8 @@ implements it.
 - A large plan can name stop points: its section "Sessions" lists the steps after which a session ends. A session then
   works through the steps up to the next stop point and ends there, also when later steps are still open. The same
   prompt starts the next session at the first step that is not ticked off. At a stop point:
-  - The last step of the session that changes anything but documentation runs the complete `npm run test:e2e` in
-    place of the specs it affects, so that the whole suite has passed before the push (see "When a step is done"). A
-    session that changes only documentation runs none.
+  - The complete end-to-end suite runs once per session, as "The complete end-to-end suite" in "When a step is done"
+    says.
   - Once the last step of the session is committed, push the current branch with `git push`, without asking first,
     as after the wrap-up step.
   - The final reply names the stop point and the step the next session starts with.
@@ -67,8 +66,7 @@ implements it.
 ## Wrap-up step
 
 The last step of every plan moves its lasting content into the other spec files and removes the plan. It has the same
-Goal/Build/Test sections as the other steps, and its Build section covers, in this order (the template below has the
-same items, ready to copy):
+Goal/Build/Test sections as the other steps, and its Build section covers, in this order:
 
 1. Describe the feature as built in `spec/<feature>.md` (see "Feature specs"), or extend an existing feature spec, and
    move the rules and decisions of the requirements file that still hold into it; update `architecture.md`,
@@ -116,21 +114,36 @@ A feature spec (`spec/<feature>.md`) describes a feature as built. The wrap-up s
 
 A step is done only when both of the following hold:
 
+These rules hold for every change, inside a step plan or not; a change outside a step plan counts as a plan of one
+step.
+
 - These commands pass, in this order. A step that changes only documentation runs `npm run check` instead of both
   (see "Changes to documentation only" below).
-  1. `npm run check:all`: `npm run check`, `npm run test:integration` and `npm run build`, run side by side by
-     `scripts/check.ts`, then the cost tests alone. Every check runs also when another one fails, so one run shows all
-     failures.
-  2. The end-to-end tests, only after `npm run check:all` is done and never at the same time: the integration and
-     end-to-end tests use the same test database container and port (see `testing.md`). In every step except the
-     wrap-up, only the specs the step affects (see below), for example `npm run test:e2e -- e2e/<name>.spec.ts`; in a
-     wrap-up step that changes more than documentation, the complete `npm run test:e2e`, so that the whole suite has
-     passed before the push. In a plan with stop points, the complete suite also runs in the last step of each
-     session that changes anything but documentation (see "Step plans"). The complete suite takes about five minutes:
-     run it with a timeout long enough or in the background, so that it is not cut off and run again.
+  1. `npm run check:all`: `npm run check` (the format check, the doc references, lint, the type check, the unit tests
+     and the cost tests), `npm run test:integration` and `npm run build`, run side by side by `scripts/check.ts`, with
+     the cost tests last and alone. Every check runs also when another one fails, so one run shows all failures.
+  2. The end-to-end tests, only after `npm run check:all` is done and never at the same time, also not next to
+     `npm run test:integration` alone: the integration and end-to-end tests use the same test database container and
+     port (see `testing.md`). Only the specs the step affects (see below), one path per spec, for example
+     `npm run test:e2e -- e2e/<name>.spec.ts`, or the complete `npm run test:e2e` where "The complete end-to-end
+     suite" below asks for it.
 - Its "Test" items have been verified. Do the manual checks you can yourself, for example in the browser. A manual
   check you cannot do does not hold the step back: list it in the report of the step so that the user can do it. Never report
   a check as done that you did not do.
+
+The complete end-to-end suite:
+
+- It runs once per plan, in the last step that changes anything but documentation, in place of the specs that step
+  affects, so that the whole suite has passed before the push. That step may be the wrap-up.
+- In a plan with stop points, it runs once per session, in the last step of the session that changes anything but
+  documentation (see "Step plans").
+- A change outside a step plan that changes anything but documentation runs it once, before the work is finished.
+- A step or a wrap-up that changes only documentation runs none: it relies on the complete suite of the last step that
+  changed more, and on CI, which runs it on every push (see `testing.md`).
+- A step that changes something every page depends on runs it right away (see the list below), whether or not it is
+  the last such step.
+- It takes about five minutes: run it with a timeout long enough or in the background, so that it is not cut off and
+  run again.
 
 The end-to-end specs a step affects:
 
@@ -144,7 +157,7 @@ The end-to-end specs a step affects:
 - A change of `prisma/schema.prisma` and its migrations that only adds (new tables, new columns that may be empty or
   have a default, new indexes that are not unique) runs the specs of the features whose models it changes, and
   `e2e/smoke.spec.ts`, which loads a page and resets the test database on the migrated schema. The complete suite of
-  the wrap-up still covers all features.
+  the plan still covers all features.
 - No spec, when the step changes nothing that the app runs yet, such as a pure module that nothing imports.
 - When it is unclear whether a spec is affected, run it.
 
@@ -153,16 +166,14 @@ Changes to documentation only:
 - A step that changes only documentation (the files in `spec/`, `README.md`, `CLAUDE.md`, `AGENTS.md` and the skills in
   `.claude/skills/`) is done when `npm run check` passes and its "Test" items have been verified. The integration
   tests, the end-to-end tests and the build do not run, because none of them reads these files.
-- This also holds for the wrap-up step. When the wrap-up step changes only documentation, the complete end-to-end
-  suite does not run locally before the push; CI runs it on the push (see `testing.md`).
+- This also holds for the wrap-up step and for a change outside a step plan.
 - A step that also changes any other file, such as code, configuration, `.env.example` or a fixture, is not
   documentation only and runs all the commands above.
 - The report of the step says that only `npm run check` ran and why.
 - The report of the step names the specs that ran, or says that none ran and why.
 
-A failure that only the complete suite of the wrap-up step shows is fixed in the wrap-up step, also when an earlier step
-caused it, and the fix is named in its report. The same holds for the complete suite at a stop point: the step that
-runs it fixes the failure. If it cannot be fixed, follow "When a step cannot be finished": nothing is pushed.
+A failure that only the complete suite shows is fixed in the step that runs it, also when an earlier step caused it,
+and the fix is named in its report. If it cannot be fixed, follow "When a step cannot be finished": nothing is pushed.
 
 `npm run test:e2e:production` is left out of this list on purpose: CI runs it on every push to `main` and on every pull
 request (`end_to_end_tests_production`, see `testing.md`). Run it as well when the step changes something that only
@@ -262,13 +273,7 @@ Move the lasting content of this plan into the other spec files and remove the p
 
 ### Build
 
-1. Describe the feature as built in `spec/<feature>.md` (see "Feature specs" in `step-plan-workflow.md`), or extend an
-   existing feature spec, and move the rules and decisions of the requirements file that still hold into it; update
-   `architecture.md`, `testing.md` or `tech.md` where conventions changed.
-2. Remove the feature from `roadmap.md`.
-3. Check that `README.md` has all the commands a developer needs.
-4. Delete this step file and the requirements file of the feature, if there is one.
-5. Update the spec catalog in `CLAUDE.md`: add new spec files, remove this step file and the requirements file.
+The items of "Wrap-up step" in `spec/step-plan-workflow.md`, in that order, written out for this feature.
 
 ### Test
 

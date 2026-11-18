@@ -205,8 +205,9 @@ in `integration/`. Like the end-to-end tests, they need only the Podman machine:
 npm run test:integration
 ```
 
-They are not part of `npm run check`; `npm run check:all` runs them together with the checks and the build. Do not run them at the same time as the end-to-end tests: both use the same
-container.
+They are not part of `npm run check`; `npm run check:all` runs them together with the checks and the build. They use the
+same container as the end-to-end tests, so the two never run at the same time. Which checks a change runs, and in which
+order, is stated in "When a step is done" in `spec/step-plan-workflow.md`.
 
 ## Unit test coverage
 

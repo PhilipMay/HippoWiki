@@ -72,14 +72,13 @@ How the code is tested. Commands are listed in `README.md`.
 - `getDb()`, `getAuth()` and `getServerEnv()` are tested for creating the client, the Better Auth instance and
   validating the environment on first use only, not on import. These tests load the module anew for every case
   (`vi.resetModules()` and a dynamic import), because the modules keep their result.
-- `npm run check` (format, doc references, lint, typecheck, unit tests, cost tests) stays fast and does not include
-  the integration or end-to-end tests. `scripts/check.ts` runs its checks side by side and prints the output of each one
-  as a block when it is done. Only what would clash waits: `next typegen` runs first, because lint and the type check
-  read the route types it writes, and the cost tests run last and alone. Every check runs also when another one fails.
-- `npm run check:all` adds the integration tests and the build to the same run; the build waits for lint and the type
-  check, because it writes the route types again. A step of a step plan runs it before its end-to-end tests (see
-  `step-plan-workflow.md`). `npm run check` alone writes nothing but the route types; `npm run check:all` also
-  writes `.next/` and starts the test database container, so it never runs next to `npm run test:e2e`.
+- What `npm run check` and `npm run check:all` hold, when a change runs them and what never runs next to the
+  end-to-end tests is stated in "When a step is done" in `step-plan-workflow.md`. `npm run check` stays fast and needs
+  no Podman. `scripts/check.ts` runs the checks side by side and prints the output of each one as a block when it is
+  done. Only what would clash waits: `next typegen` runs first, because lint and the type check read the route types
+  it writes, the build of `npm run check:all` waits for lint and the type check, because it writes the route types
+  again, and the cost tests run last and alone. `npm run check` alone writes nothing but the route types;
+  `npm run check:all` also writes `.next/` and starts the test database container.
 - `npm run test:coverage` measures the coverage of the unit tests with `@vitest/coverage-v8` (configured in
   `vitest.config.ts`). It covers all `.ts` and `.tsx` files in `src/` except the tests and `src/generated/`, so files
   that no unit test loads show up with 0%. It prints a table, writes an HTML report to `coverage/index.html` and a

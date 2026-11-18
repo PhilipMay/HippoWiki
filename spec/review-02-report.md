@@ -12,14 +12,15 @@
   - Tests that would not catch the refactoring this report suggests: the unit tests of the services pin the calls
     of Prisma, and three rules of access and of the transaction have no test that could fail.
   - Documents that the features outran: `architecture.md` has about a dozen statements the code contradicts, one
-    of them about what MCP may delete, and three documents disagree on when the complete end-to-end suite runs.
-- Findings: 107 in all, 0 Blocker, 6 Major, 80 Minor and 21 Nit (52 `issue:`, 31 `suggestion:`, 19 `nit:` and 5
-  `question:`).
-- Confidence of the suggestions: 33 High, 54 Medium and 15 Low; the 5 questions have none. A High suggestion can be
+    of them about what MCP may delete.
+- Findings: 105 open of 107, 0 Blocker, 5 Major, 79 Minor and 21 Nit (50 `issue:`, 31 `suggestion:`, 19 `nit:` and
+  5 `question:`).
+- Confidence of the suggestions: 33 High, 53 Medium and 14 Low; the 5 questions have none. A High suggestion can be
   fixed as written; the others wait for the user, as `issue-report.md` describes.
-- Decisions: on 2026-11-18 the user decided all 54 Medium and 15 Low suggestions. Each of these findings ends with a
-  line `Decision`, and is fixed as that line says, without asking again. The 5 questions are still open.
-- To fix first, the six Major findings:
+- Decisions: on 2026-11-18 the user decided all Medium and Low suggestions. Each of these findings ends with a line
+  `Decision`, and is fixed as that line says, without asking again. The 5 questions were decided by the user on the
+  same day, in "Decisions on the questions" of `spec/review-02-fixes-steps.md`.
+- To fix first, the five Major findings:
   1. `architecture.md` says deleting pages and the writes of tabs take only the actor of the browser, but MCP does
      them (Documentation: architecture; High).
   2. Tests say that no MCP connection reads deleted pages, but try only a Writer connection; by the code the
@@ -29,8 +30,6 @@
      real database (Tests: unit and integration; Medium).
   5. The unit tests of the services pin the calls of Prisma, not the behaviour (Tests: unit and integration; Low,
      decided).
-  6. Three documents disagree on when the complete end-to-end suite runs before a commit or a push
-     (Documentation: architecture; Low, decided).
 - Not covered by this review: security, which `review-report.md` covers and whose findings are not repeated here;
   the unit tests of auth, users, OAuth and grants, of which only the names and the copied helpers were looked at;
   the size of the bundles for the browser, because no build was read (one `question:` asks for it); and the
@@ -1928,36 +1927,6 @@ that several of them state were compared with each other and with the code:
 - Confidence: High. The signatures and the four calls of the tools were read; one fix without a change of
   behaviour, covered by `npm run check`.
 
-#### issue: three documents disagree on when the complete end-to-end suite runs before a commit or a push
-
-- Location: `CLAUDE.md`, section "Running the Checks"; `spec/step-plan-workflow.md`, sections "When a step is
-  done" and "Changes to documentation only"; `spec/roadmap.md`, "Sharding the end-to-end tests"
-- Severity: Major. These are the instructions that decide what an agent runs before it commits and pushes to
-  `main`.
-- Category: docs
-- Problem: `CLAUDE.md` asks for the complete suite before every commit. `step-plan-workflow.md` commits every step
-  except the wrap-up after only the affected specs, and frees a wrap-up that changes only documentation. All five
-  items of the wrap-up template are documentation, so in a normal plan the complete suite never runs locally. The
-  same file and the roadmap still assume that it runs once per plan.
-- Impact: an agent either runs the suite of five minutes at every step, or pushes a plan whose complete suite ran
-  only in CI, and the author cannot tell which is meant.
-- Evidence: `CLAUDE.md`: "Before the work is finished, committed or pushed, run the complete `npm run test:e2e`
-  once."; `step-plan-workflow.md`: "In every step except the wrap-up, only the specs the step affects", "When the
-  wrap-up step changes only documentation, the complete end-to-end suite does not run locally before the push" and
-  "The complete suite of the wrap-up still covers all features."; `roadmap.md`: "the complete suite runs about once
-  per plan".
-- Suggestion (required): decide the rule once, state it only in "When a step is done", and reduce `CLAUDE.md` to
-  a pointer.
-- Confidence: Low. It needs the decision of the author.
-- Alternatives:
-  - The complete suite runs once per plan, in the last step that changes anything but documentation.
-  - The complete suite always runs in the wrap-up, which costs five minutes per plan.
-  - CI is relied on, and every document says so.
-- Decision (2026-11-18): the first Alternative: the complete suite runs once per plan, in the last step that changes
-  anything but documentation; a change outside a step plan that changes code counts as a plan of one step. A step or a
-  wrap-up that changes only documentation relies on that run and on CI. The rule stands only in "When a step is done";
-  `CLAUDE.md` points to it, and `roadmap.md` is brought in line.
-
 #### issue: single statements of `architecture.md` that the code contradicts
 
 - Location: `spec/architecture.md`, sections "Layout", "Reads and writes", "Addresses and actions", "Database" and
@@ -2125,32 +2094,6 @@ result = await authService.logOut(await headers());`.
   without behaviour, numbers or lists of sections; the same rule in the item of the wrap-up.
 - Confidence: Medium. A change of form that the author should approve.
 - Decision (2026-11-18): as suggested.
-
-#### issue: the same rules of the workflow stand in three to five places, with small differences
-
-- Location: `CLAUDE.md`, sections "Running the Checks" and "Reporting Review Issues";
-  `spec/step-plan-workflow.md`, sections "When a step is done", "Wrap-up step" and "Step plan template";
-  `spec/testing.md`; `README.md`; `spec/issue-report.md`
-- Severity: Minor
-- Category: docs
-- Problem: what `npm run check` and `npm run check:all` hold, and "never next to `test:e2e`", stand in `CLAUDE.md`,
-  `step-plan-workflow.md`, `testing.md`, the README and the head of `scripts/check.ts`. The list of the wrap-up is
-  in `step-plan-workflow.md` twice. The summary of a review differs: `CLAUDE.md` asks for the counts per severity,
-  `issue-report.md` also for the counts per confidence. The rule for documents, with the heading as Location and
-  a quote as Evidence, exists only in `CLAUDE.md`, while `issue-report.md` is titled "How to Report Issues in a
-  Code Review".
-- Impact: the finding on the end-to-end suite above is the result of such copies, and a reviewer who follows only
-  `issue-report.md` reports issues of documents with the wrong Location.
-- Evidence: `CLAUDE.md`: "the overall verdict and how many issues there are at each severity level";
-  `issue-report.md`: "the overall verdict, number of blockers vs. minor issues, and how many suggestions are High,
-  Medium and Low".
-- Suggestion (required for the two differences, optional for the rest): move the rules for documents and the one
-  rule for the summary into `issue-report.md`, keep the rules of the checks only in "When a step is done", and let
-  the template point to the list of the wrap-up.
-- Confidence: Medium. Which document becomes the one source is the choice of the author.
-- Decision (2026-11-18): as suggested: `issue-report.md` holds the rules of a review, those for documents and the one
-  rule for the summary included, and its title names code and documents; the rules of the checks stand only in "When a
-  step is done"; `CLAUDE.md`, the README, `testing.md` and the template point there.
 
 #### suggestion: `architecture.md` has bullets that grew into paragraphs, and states rules twice
 
@@ -2529,9 +2472,8 @@ The order matters: the tests are the safety net of the refactoring, and the refa
 documents name.
 
 1. Decide the open questions that other work depends on. Done on 2026-11-18: no tool offers the deleted pages or
-   the writes of roles, and nothing in the code enforces it; the complete end-to-end suite runs in the last step of
-   a plan that changes anything but documentation; the unit tests of the services are cut after the missing
-   integration cases exist. The Decision of each finding holds the rest.
+   the writes of roles, and nothing in the code enforces it; the unit tests of the services are cut after the
+   missing integration cases exist. The Decision of each finding holds the rest.
 2. Fix the findings with a High confidence that change no code: the wrong statements of `architecture.md` and of
    the feature specs, `testing.md`, the README and the Locations of the first report.
 3. Close the gaps of the tests before any refactoring: the access rules of the reads of the history, the rollback

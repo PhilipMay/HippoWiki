@@ -90,7 +90,7 @@ Node.js is managed with nvm; every shell session needs `nvm use` first (it reads
 source ~/.nvm/nvm.sh && nvm use
 npm install
 npm run check   # format:check, docs:check, lint, typecheck, test, side by side
-npm run check:all  # check, test:integration and build side by side; never next to test:e2e
+npm run check:all  # check, test:integration and build side by side
 npm run test:coverage  # unit test coverage, report in coverage/
 npm run test:cost  # tests with a time budget, on their own and without coverage
 npm run build
@@ -101,18 +101,9 @@ npm run test:e2e:production  # the same end-to-end tests against a production bu
 
 Run `npm run format` to fix formatting issues reported by `format:check`.
 
-For every change, inside a step plan or not, run `npm run check:all` first, then the end-to-end tests in two stages,
-as "When a step is done" in `spec/step-plan-workflow.md` describes:
-
-- While working, run only the specs the change affects: `npm run test:e2e -- e2e/<name>.spec.ts`, one path per spec.
-  Which specs count as affected, and when the complete suite is needed right away, is listed there.
-- Before the work is finished, committed or pushed, run the complete `npm run test:e2e` once. It takes about five
-  minutes: give it a long enough timeout or run it in the background.
-- After a fix of a failed end-to-end test, run `npm run test:e2e -- --last-failed` first, then the commands again.
-
-A change that touches only documentation (the files in `spec/`, `README.md`, `CLAUDE.md`, `AGENTS.md` and the skills in
-`.claude/skills/`) runs only `npm run check`: no integration tests, no end-to-end tests and no build. This also holds
-for the wrap-up step of a step plan; see "Changes to documentation only" in `spec/step-plan-workflow.md`.
+Which of these commands a change runs, in which order, which end-to-end specs, when the complete `npm run test:e2e`
+runs, what a change that touches only documentation runs, and what follows a failure, is stated in "When a step is
+done" in `spec/step-plan-workflow.md`. It holds for every change, inside a step plan or not.
 
 ## Next.js Agent Rules
 
@@ -128,14 +119,9 @@ and other unordered items; numbered lists only where the order itself matters, s
 
 ## Reporting Review Issues
 
-Report every issue found in a review using the structure, severity levels, confidence levels and checklist in
-`spec/issue-report.md`. This applies to code reviews and to reviews of documents such as the files in `spec/`.
-
-- For code, Location is the file, line range and function.
-- For documents, Location is the file and the heading of the section; Evidence is a short quote of the passage.
-- Start the review with a short summary: the overall verdict and how many issues there are at each severity level.
-- When a finding of `spec/review-report.md` is fixed, delete it from the report and update the other documents in the
-  same change, as "Fixing a finding of the review report" in `spec/step-plan-workflow.md` describes.
+Report every issue found in a review of code or of documents, such as the files in `spec/`, as `spec/issue-report.md`
+describes. When a finding of a review report is fixed, follow "Fixing a finding of the review report" in
+`spec/step-plan-workflow.md`.
 
 ## Git Handling
 

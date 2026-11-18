@@ -82,7 +82,7 @@ Decided by the user on 2026-11-18:
 
 ## Checklist
 
-- [ ] Rules of the checks and of a review
+- [x] Rules of the checks and of a review
 - [ ] Statements of `architecture.md`
 - [ ] Statements of the feature specs
 - [ ] `testing.md`, `tech.md`, the README and the roadmap

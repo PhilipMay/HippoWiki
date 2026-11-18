@@ -165,7 +165,8 @@ parts with `--shard=<i>/<n>`, and each part can run at the same time as the othe
   `AuthSecret` in all databases, so that the saved logins work on every server.
 - When: CI first, once waiting for `end_to_end_tests` after a push becomes a problem. Locally, once the complete suite
   takes more than about 8 minutes or runs more than once or twice per step plan. Until then it would save only 2.5 to
-  5 minutes per plan, because the complete suite runs about once per plan.
+  5 minutes per plan or session, because the complete suite runs once per plan, or once per session of a plan with
+  stop points (see "When a step is done" in `step-plan-workflow.md`).
 
 ## Things to Check
 

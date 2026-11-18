@@ -1,23 +1,25 @@
-# How to Report Issues in a Code Review
+# How to Report Issues in a Review of Code or Documents
+
+These rules hold for a review of code and for a review of documents, such as the files in `spec/`.
 
 ## The building blocks of an issue report
 
 Every issue you report should answer these questions. Write them in this order.
 
-| Heading      | Question it answers                                                  | Tip                                                                                    |
-| ------------ | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| Title        | What is the problem, in one line?                                    | Name the problem, not the fix.                                                         |
-| Location     | Where exactly is it?                                                 | File, line range, function.                                                            |
-| Severity     | How urgent is it?                                                    | Use the fixed scale below.                                                             |
-| Category     | What kind of problem is it?                                          | Correctness, security, performance, readability, error handling, tests, docs, style.   |
-| Problem      | What does the code or document do or say now, and why is that wrong? | Facts first, opinion last.                                                             |
-| Impact       | What can go wrong because of it?                                     | Who is affected and when. This convinces the author the issue is real.                 |
-| Evidence     | How can I see it?                                                    | An input that fails, a test, a log line, a short code excerpt.                         |
-| Suggestion   | How could it be fixed?                                               | Concrete, ideally with a snippet. Say if it is required or optional.                   |
-| Confidence   | How sure is the reviewer that the suggestion is right?               | High, Medium or Low from the scale below, with a one-line reason.                      |
-| Alternatives | What other fixes are possible?                                       | Optional: only if there are several reasonable solutions. Name the trade-offs briefly. |
-| Reference    | Where can I read more?                                               | Optional: coding guideline, docs, OWASP, a related ticket.                             |
-| Decision     | What did the user decide?                                            | Only after the user reviewed a Medium or Low suggestion; see "Confidence levels".      |
+| Heading      | Question it answers                                                  | Tip                                                                                     |
+| ------------ | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Title        | What is the problem, in one line?                                    | Name the problem, not the fix.                                                          |
+| Location     | Where exactly is it?                                                 | Code: file, line range, function. Document: file and the heading of the section.        |
+| Severity     | How urgent is it?                                                    | Use the fixed scale below.                                                              |
+| Category     | What kind of problem is it?                                          | Correctness, security, performance, readability, error handling, tests, docs, style.    |
+| Problem      | What does the code or document do or say now, and why is that wrong? | Facts first, opinion last.                                                              |
+| Impact       | What can go wrong because of it?                                     | Who is affected and when. This convinces the author the issue is real.                  |
+| Evidence     | How can I see it?                                                    | An input that fails, a test, a log line, a code excerpt; for a document, a short quote. |
+| Suggestion   | How could it be fixed?                                               | Concrete, ideally with a snippet. Say if it is required or optional.                    |
+| Confidence   | How sure is the reviewer that the suggestion is right?               | High, Medium or Low from the scale below, with a one-line reason.                       |
+| Alternatives | What other fixes are possible?                                       | Optional: only if there are several reasonable solutions. Name the trade-offs briefly.  |
+| Reference    | Where can I read more?                                               | Optional: coding guideline, docs, OWASP, a related ticket.                              |
+| Decision     | What did the user decide?                                            | Only after the user reviewed a Medium or Low suggestion; see "Confidence levels".       |
 
 If you can't fill in Impact, ask yourself whether the issue really matters. If you're unsure, it may be a question rather than an issue.
 
@@ -81,8 +83,8 @@ Do:
 - Group repeated problems. If the same mistake appears in ten places, write one report and list all locations.
 - Ask when you're unsure. A question is better than a wrong claim.
 - Mention what is good, too. It tells the author what to keep doing.
-- Start the review with a short summary: the overall verdict, number of blockers vs. minor issues, and how many
-  suggestions are High, Medium and Low.
+- Start the review with a short summary: the overall verdict, how many issues there are at each severity level, and
+  how many suggestions are High, Medium and Low.
 
 Avoid:
 
