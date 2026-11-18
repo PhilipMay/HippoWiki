@@ -14,9 +14,8 @@
     findings of the tests that are still open are minor.
   - Documents that the features outran: rules stated in full in several documents, and copies of code and
     constants in the specs.
-- Findings: 5 open of 107, 0 Blocker, 0 Major, 5 Minor and 0 Nit (2 `issue:` and 3 `suggestion:`); no `question:`
-  is open.
-- Confidence of the suggestions: 0 High, 4 Medium and 1 Low. A High suggestion can be fixed as written; the others
+- Findings: 1 open of 107, 0 Blocker, 0 Major, 1 Minor and 0 Nit (1 `suggestion:`); no `question:` is open.
+- Confidence of the suggestions: 0 High, 1 Medium and 0 Low. A High suggestion can be fixed as written; the others
   wait for the user, as `issue-report.md` describes.
 - Decisions: on 2026-11-18 the user decided all Medium and Low suggestions. Each of these findings ends with a line
   `Decision`, and is fixed as that line says, without asking again. The questions were decided by the user on the
@@ -293,101 +292,18 @@ that several of them stated were compared with each other and with the code; all
 
 ### Documentation: architecture, testing, catalog and workflows
 
-#### suggestion: the entries of the catalog in `CLAUDE.md` have grown into second copies of the specs
-
-- Location: `CLAUDE.md`, section "Specification"
-- Severity: Minor. The list of files is right; the form is the problem.
-- Category: docs
-- Problem: the 19 entries match the files of `spec/`, without a leftover step plan or requirements file. The
-  entries of the feature specs list behaviour instead of saying what the file is for; the longest have about 700
-  characters, and every feature adds a clause. Two entries disagree with the sections of their file already: the
-  one of `architecture.md` leaves out "Linting", the one of `testing.md` "Continuous integration". The entry of
-  `pages.md` carries the renames of folders and tabs, which `content-structure.md` owns. `CLAUDE.md` is loaded
-  into every session.
-- Impact: a third place to update per feature, next to the spec and its headings, and tokens in every session.
-- Evidence: the entry of `content-structure.md`: "…renaming a folder or tab to its own name, which stores nothing
-  and keeps "Save" of the rename dialogs disabled, moving or renaming a page to its own name and place, which
-  stores nothing and keeps "Save" of the "Move or rename page" dialog disabled, deleting a tab for good with its
-  pages soft deleted…".
-- Suggestion (optional): a rule under "Specification": an entry is one line, the file and the question it answers,
-  without behaviour, numbers or lists of sections; the same rule in the item of the wrap-up.
-- Confidence: Medium. A change of form that the author should approve.
-- Decision (2026-11-18): as suggested.
-
-#### suggestion: `architecture.md` has bullets that grew into paragraphs, and states rules twice
-
-- Location: `spec/architecture.md`, sections "Layout", "Reads and writes", "Login and sessions" and "Database"
-- Severity: Minor
-- Category: docs
-- Problem: the bullet on a feature folder ends in one sentence that describes eight features with nested
-  brackets; the bullet on the MCP adapter is one chain of 13 lines; the bullet on the actor covers the channel,
-  the connection, admins, roles, MCP, the last editor and the parsing of ids in 17 lines. Stated twice are the
-  order of `requireUser()`, `redirect()` outside a `try`, ids that count as missing rows, the second validation of
-  a service, "a caller other than the GUI can use the same service", and the layers. How the check of the version
-  works, the reasons of the revalidation and the development database repeat the code or the README.
-- Impact: a rule inside a bullet of 17 lines is not found; the wrong sentence on the actors of MCP sat in exactly
-  such a bullet.
-- Evidence: the sentence on the actors of MCP, which the code contradicted, was line 10 of a bullet of 17
-  lines.
-- Suggestion (optional): split "Reads and writes" into the layers, the services, the actors with channels and
-  roles, the queries, the actions and the callers other than the browser; turn the list of features into a table;
-  state each repeated rule once.
-- Confidence: Medium. A new structure with judgement calls; no statement changes.
-- Decision (2026-11-18): as suggested.
-
-#### issue: documents restate code, constants and configuration instead of pointing to them
-
-- Location: `spec/architecture.md`, sections "Security headers", "Linting" and "Login and sessions";
-  `spec/testing.md`, the helpers of `e2e/support/` and the section "Continuous integration"; `spec/roadmap.md`;
-  `README.md`; `spec/users-and-login.md`; `spec/connected-apps.md`; `spec/oauth.md`; `spec/container-image.md`
-- Severity: Minor. All copies are right today. The first review report lists such nits for `oauth.md`,
-  `container-image.md` and the security headers of `architecture.md`; the places below are new.
-- Category: docs
-- Problem:
-  - `architecture.md` retells `tsconfig.json` and `eslint.config.mjs`, with the list of globs of `no-console`, and
-    the comment on the matcher of `src/proxy.ts`.
-  - `testing.md` restates the retry of the reset ("`lock_timeout` of 2 seconds … up to five times"), the defaults
-    of every helper and the steps of each workflow, though `step-plan-workflow.md` says "Internal limits … such as
-    a retry count, stay in the code".
-  - `roadmap.md` names "the 50 rounds of `reserveAttempt()`" and dated timings.
-  - `users-and-login.md` states the lifetime of a session and the length of a generated password without a
-    pointer to the constant, and the limits of a name and a password several times.
-  - `connected-apps.md` and `oauth.md` state "at most once a minute", the lifetimes of a grant, the limit of 50 in
-    five places, the times of the cache, and the prefixes of the secrets.
-- Impact: each is a second copy; the stale lists of the codes of a `Result` and of the unique constraints are the same
-  pattern one feature later.
-- Evidence: `testing.md`: "`lock_timeout` of 2 seconds"; the constants `TRUNCATE_LOCK_TIMEOUT` and
-  `TRUNCATE_ATTEMPTS` in `e2e/support/database.ts`.
-- Suggestion (optional): keep a number where a user or an operator relies on it, once and with a pointer;
-  elsewhere point to the file.
-- Confidence: Low. Which numbers count as rules is a decision per item.
-- Decision (2026-11-18): as suggested: a number stays only where a user or an operator relies on it, once and with a
-  pointer to its constant; everywhere else the document points to the file.
-
-#### issue: the same things carry different names across the documents
-
-- Location: `spec/architecture.md`, `spec/folder-roles.md`, `spec/content-structure.md`, `spec/mcp.md`,
-  `spec/optimistic-locking.md`, `spec/testing.md`, `spec/step-plan-workflow.md`, `CLAUDE.md` and `README.md`
-- Severity: Minor
-- Category: docs
-- Problem: one idea has three wordings: "a caller other than the GUI", "a caller other than the browser" and "a
-  caller other than a form". "Connected app", "grant", "AI app", "AI assistant", "MCP client", "OAuth client" and
-  "connector" stand for one or two concepts; the README alone uses five. "Item" means any folder, tab or page in
-  `content-structure.md`, while the segment `[item]` of the route means a tab or a page placed in the folder. The
-  file `step-plan-workflow.md` is titled "Development Workflow". "Version" and "revision" are used consistently.
-- Impact: an agent takes "AI app" and "connected app" for two features.
-- Evidence: `architecture.md` uses "a caller other than the GUI" in "Reads and writes" and "a caller other than
-  the browser" in "Login and sessions".
-- Suggestion (optional): a short list of terms at the top of `architecture.md`, and "caller other than the
-  browser" throughout.
-- Confidence: Medium. The differences were checked; the terms are the choice of the author.
-- Decision (2026-11-18): as suggested: a list of terms at the top of `architecture.md` and "caller other than the
-  browser" throughout; the terms for connected apps are chosen to fit the names the UI shows, the view "AI apps" and the
-  page of the connected apps.
-
 #### Reviewed
 
-- The catalog: its 19 entries match the files of `spec/`; there is no leftover step plan or requirements file.
+- The catalog: its entries match the files of `spec/`, each one line with the file and the question it answers, as
+  the rule under "Specification" in `CLAUDE.md` and the wrap-up of `step-plan-workflow.md` ask.
+- `architecture.md` starts with a list of terms, gives the features as a table and splits "Reads and writes" into the
+  layers, the services, the actors with channels and roles, the queries, the actions and the callers other than the
+  browser; each rule that it stated twice stands once. The documents say "caller other than the browser", "AI app" and
+  "connected app" throughout, and `step-plan-workflow.md` is titled after its file.
+- A number stays in a document only where a user or an operator relies on it, once and with a pointer to its
+  constant; `testing.md`, `roadmap.md`, `architecture.md`, `users-and-login.md`, `connected-apps.md` and `oauth.md`
+  point to the code for the rest. The constants that the first report names for `oauth.md`, `container-image.md` and
+  the security headers stay to its findings.
 - The style rules: no numbered heading in `spec/`, the README, `CLAUDE.md` or the skills; every numbered list is a
   procedure or an order of priority.
 - The layer rules of `architecture.md` and its section "Linting" match `eslint.config.mjs` and the imports.
@@ -483,5 +399,5 @@ documents name.
 3. Close the gaps of the tests before any refactoring: the states of the dialogs that a shared frame would move.
 4. Refactor the code in small steps, each with its checks: the hooks and the frame of the dialogs, then the
    splits of the large files. Done: the code findings are fixed.
-5. Restructure the documents last: one owner per rule in the feature specs (done), the sections of
-   `architecture.md`, and the form of the catalog in `CLAUDE.md`.
+5. Restructure the documents last: one owner per rule in the feature specs, the sections of `architecture.md`, and
+   the form of the catalog in `CLAUDE.md`. Done.

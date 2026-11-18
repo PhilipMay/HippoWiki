@@ -1,7 +1,7 @@
 # HippoWiki – Connected Apps
 
-The connected apps as built: every account of the type user sees the apps it connected through OAuth, such as the
-connector of an AI assistant, on the own account page `/account`, and revokes them there. A connected app is a grant:
+The connected apps as built: every account of the type user sees the AI apps it connected through OAuth on the own
+account page `/account`, and revokes them there. A connected app is a grant:
 it stands for its user at one MCP address of a folder, limited to the folder and the role of that address and never
 more than the user's current role on the folder, until it expires or is revoked. How a grant comes about, and how its
 access token and refresh token work, is described in `oauth.md`; the MCP server at the folder addresses, which accepts
@@ -25,7 +25,8 @@ such as `src/features/grants/service.test.ts`.
   `src/features/grants/limits.ts`). A new grant that replaces older grants of the same client at the same address is
   counted without them (see "Grants" in `oauth.md`). At the limit the consent page asks the user to revoke an app on the account page
   first and offers no approval; grants made at the same time cannot get past the limit.
-- A grant lasts 30, 90 or 365 days, as the user chose on the consent page. There are no other dates and no grants
+- A grant lasts 30, 90 or 365 days, as the user chose on the consent page, where 90 days are preselected
+  (`GRANT_LIFETIMES` and `DEFAULT_GRANT_LIFETIME` in `src/features/oauth/schema.ts`). There are no other dates and no grants
   that never end. An expired grant stays in the list, marked as expired, until it is revoked, and counts towards the
   limit.
 - Deleting a user, the client or the folder deletes its grants.
@@ -37,7 +38,8 @@ such as `src/features/grants/service.test.ts`.
 - Revoking deletes the grant after a confirmation; its access token and its refresh token stop working at once. It
   cannot be undone: the app has to be connected again.
 - The list shows each app with its name, the current name of its folder and its role, the time it was connected, its
-  expiry or "Expired", and its last use or "never", newest first. The last use is written at most once a minute per grant, so it is exact to the minute.
+  expiry or "Expired", and its last use or "never", newest first. The last use is written at most once a minute per grant (`LAST_USE_INTERVAL_MS` in
+  `src/features/grants/service.ts`), so it is exact to the minute.
 
 ## No apps for admins
 
@@ -98,7 +100,7 @@ such as `src/features/grants/service.test.ts`.
 
 ## Decisions
 
-- An AI assistant reaches the MCP server only through OAuth, as an app the user approved, not with a token the user
+- An AI app reaches the MCP server only through OAuth, as an app the user approved, not with a token the user
   copies by hand: one way in instead of two, no long-lived secret on the clipboard, and less code to keep secure.
   Headless clients and clients without OAuth lose access, accepted by the user; a later feature can bring a
   replacement (see `roadmap.md`).
@@ -108,9 +110,9 @@ such as `src/features/grants/service.test.ts`.
   of its own and is approved on purpose by the user, while a session is the login of one browser.
 - Revoking deletes the row instead of marking it, so a revoked grant cannot come back by mistake and the limit counts
   only grants that still exist.
-- The limit of connected apps is 50, because a user now holds one connection per folder, role and app, and it counts
-  expired grants too, so that a connector that registers again on every connect cannot pile up rows and the user
-  cleans up the list. Rejected: no limit, and keeping 20.
+- The limit of connected apps leaves room for one connection per folder, role and app, and it counts expired grants
+  too, so that an AI app that registers again on every connect cannot pile up rows and the user cleans up the list.
+  Rejected: no limit, and keeping 20.
 - The consent page and `/account` both name the folder and the role, so that a user sees which agent may write where.
   Rejected: naming them on the consent page only.
 - The revoke address names `app` instead of `token`, so that the address matches what the page shows. Rejected:
@@ -125,8 +127,8 @@ such as `src/features/grants/service.test.ts`.
 - Admins have no grants, because the only thing a grant reaches is the content through MCP, which admins do not see.
   The check of an access token looks at the type of the account as well, as a second line behind "admins have no
   grants", so that a leaked access token can never act for an admin.
-- The last use is written at most once a minute and with a conditional write, so that a burst of requests does not
-  write on every one.
+- The last use is written at most once per interval and with a conditional write, so that a burst of requests does
+  not write on every one.
 - The check of an access token lives in the grant service, not in `src/proxy.ts`, so that the MCP route decides itself
   how it answers; `src/proxy.ts` only lets the addresses below `/mcp` pass and does not look at the header.
 - A connection above the current role is refused but kept, so that nothing is deleted behind the user's back and a

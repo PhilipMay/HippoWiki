@@ -97,7 +97,7 @@ How the code is tested. Commands are listed in `README.md`.
 - The limiter of the password hashing is tested with a work function that the test controls and with fake timers;
   the hashing itself with real hashes.
 - Route handlers get unit tests for their failure branches; they mock `@/lib/db` and `@/lib/logger`.
-- The adapters of callers other than the GUI get unit tests like actions and queries, with the service mocked: the
+- The adapters of callers other than the browser get unit tests like actions and queries, with the service mocked: the
   adapter of the MCP addresses (`src/features/mcp/http.test.ts`) for the 404 of every address that is no folder
   address, the status and the headers of every outcome of the token check, the 403 of a role that is too low, the
   `Origin` check and 405, and the adapters of the OAuth endpoints (`src/features/oauth/http.test.ts`) for
@@ -260,47 +260,31 @@ How the code is tested. Commands are listed in `README.md`.
   - `resetTestDatabase()` empties all tables except the migration history and `AuthSecret`, then creates the known
     users with their fixed ids and restores their saved sessions; tests call it in `beforeEach`.
     `emptyTestDatabase()` only empties the tables; the integration tests use it.
-  - The `TRUNCATE` of `emptyTestDatabase()` runs in a transaction with `lock_timeout` of 2 seconds and is tried up to
-    five times, with a growing pause in between. A login of the server that is still running writes `LoginAttempt` and
-    `LoginWindow` in one transaction, while the `TRUNCATE` locks the tables one after another, so the two can deadlock
-    (PostgreSQL `40P01`) or the `TRUNCATE` can wait too long for a lock (`55P03`). Both are over in milliseconds, so
-    the next try succeeds; without the retry such a reset fails its test, and in CI a test that only passes on a retry
-    fails the run. A fixed order of the tables would not help, because the order of the login is its own.
-  - `createUser()` inserts a user with its credential account, in the shape of `src/features/users/records.ts`, with
-    a unique name, the type `user` and the password `TEST_PASSWORD` unless they are given, and with the first password
-    still to change unless `mustChangePassword` is false. A test that needs another admin passes `type: "admin"`. The hash of a password is computed once per process.
-  - `createGrant()` inserts an OAuth client and the grant of the user given as `owner` to it at an MCP address, a
-    connected app, with a generated access token of which only the hash is stored, and returns the grant, its folder,
-    the client and the access token. `folder` and `role` give the address; without a folder it creates one on which
-    the owner is Owner (no role for an admin), and without a role the address is the one of Reader. The grant is named
-    after the client, expires 90 days ahead and its access token works for an hour unless they are given; any field,
-    e.g. `expiresAt`, `accessTokenExpiresAt` or `lastUsedAt`, can be set, and `client` gives an existing client.
-  - `createFolder()` inserts a folder directly into the test database with a unique name; any field, e.g. `name` or
-    `updatedAt`, can be set. `roles` gives users roles on it, e.g. `roles: [{ user: bob, role: "reader" }]`, and
-    `roles: []` none. Without `roles` the known user `alice` is its Owner when that user exists, as after
-    `resetTestDatabase()`, so that the end-to-end tests, which run as `alice`, see every folder they create; the
-    integration tests start from empty tables and give roles where a test needs them, or create their actor with the
-    id of `alice` (`KNOWN_USER.id`) to get the same default. `createTab()` and `createPage()` create their folder with
-    the same default.
-  - `createFolderRole()` gives the user given as `user` the role given as `role` on the folder given as `folder`.
-  - `createTab()` inserts a tab with a unique name into the folder given as `folder`; without one, it creates a folder
-    for the tab.
-  - `createPage()` inserts a page with a unique name: into the tab given as `tab`, or directly into the folder given
-    as `folder`; without either, it creates a folder for the page. Any field, e.g. `name`, `updatedAt` or `version`,
-    can be set.
-    Like the forms, it derives the title from the content; the content defaults to `# <title>`, so
-    `createPage({ title: "Older page" })` works. A title given together with content is stored as is, to set up a page
-    whose stored title differs from its content. With `deletedAt` it creates a deleted page, which has no tab, so it
-    cannot be combined with `tab`. Like a page after the migration of the page history, it also inserts revision 1
-    with the content, title, editor and channel of the page, made at its `updatedAt`.
-  - `createRevisions()` adds revisions to a page given as `page`, numbered on from its newest revision: `count` of
-    them, with `content`, `createdAt` and `revertedTo` as functions of the number, and `editor` and `via` for all. It
-    gives the page the content and title of the last one, like the saves that recorded them, and leaves its version,
-    last editor and `updatedAt` as they are.
-  - `createFolder()`, `createTab()` and `createPage()` take the last editor as `editor`, a `User`; without one, they
-    create a user with `createUser()`, so that the integration tests, which start from an empty database, need no
-    user of their own. A folder they create for a tab or page gets the same editor. A test that checks the editor shown
-    after a change through the GUI sets up the item with another editor, e.g. `createPage({ folder, editor: bob })`.
+  - The `TRUNCATE` of `emptyTestDatabase()` waits for its locks only a short time and is tried again a few times
+    (`TRUNCATE_LOCK_TIMEOUT` and `TRUNCATE_ATTEMPTS` in `e2e/support/database.ts`). A login of the server that is
+    still running writes `LoginAttempt` and `LoginWindow` in one transaction, while the `TRUNCATE` locks the tables one
+    after another, so the two can deadlock or the `TRUNCATE` can wait too long for a lock. Both are over in
+    milliseconds, so the next try succeeds; without the retry such a reset fails its test, and in CI a test that only
+    passes on a retry fails the run. A fixed order of the tables would not help, because the order of the login is its
+    own.
+  - The helpers that insert rows directly into the test database: `createUser()`, `createGrant()` (an OAuth client
+    and the grant of a user to it at an MCP address, with its access token), `createFolder()`, `createFolderRole()`,
+    `createTab()`, `createPage()` and `createRevisions()`. Each gives every row a unique name and lets a test set any
+    field; what each one creates when a field is left out is in its doc comment in `e2e/support/database.ts`. What a
+    test relies on:
+    - Without `roles`, a folder that `createFolder()`, `createTab()` or `createPage()` creates has the known user
+      `alice` as its Owner when that user exists, as after `resetTestDatabase()`, so that the end-to-end tests, which
+      run as `alice`, see every folder they create; the integration tests start from empty tables and give roles where
+      a test needs them, or create their actor with the id of `alice` (`KNOWN_USER.id`) to get the same default.
+    - Without `editor`, these three create a user as the last editor, so that the integration tests need no user of
+      their own. A test that checks the editor shown after a change through the browser sets up the item with another
+      editor, e.g. `createPage({ folder, editor: bob })`.
+    - `createPage()` derives the title from the content, like the forms, and inserts revision 1 of the page, like a
+      page after the migration of the page history; a title given together with content is stored as is, to set up a
+      page whose stored title differs from its content. A deleted page has no tab.
+    - `createRevisions()` gives the page the content and title of its last revision, like the saves that recorded
+      them, and leaves its version, last editor and `updatedAt` as they are.
+    - `createUser()` creates a user whose first password is still to change, unless `mustChangePassword` is false.
   - Tests that open an address give the folder, tab and page fixed names, e.g.
     `createPage({ folder, name: "overview" })` for `/folders/<folder>/overview.md`.
   - `getTestDb()` returns a Prisma client for the test database, e.g. to check what an action stored.
@@ -378,38 +362,30 @@ How the code is tested. Commands are listed in `README.md`.
 ## Continuous integration
 
 - GitHub Actions runs the checks in seven workflows in `.github/workflows/`, each named like its file, so a failure
-  shows at a glance which kind of check broke:
-  - `format_check`: `npm run format:check`
-  - `lint`: `npm run build`, `npm run typecheck`, `npm run lint`, `npm run docs:check`, `npm run knip`, as separate
-    steps in this order
-  - `unit_tests`: `npm run test:coverage`, then `npm run test:cost`, also when the first step failed
-  - `integration_tests`: `npm run test:integration`, using the Podman preinstalled on the runner
-  - `end_to_end_tests`: `npm run test:e2e`, against the development server
-  - `end_to_end_tests_production`: `npm run test:e2e:production`, against a production build
-  - `container_image`: `scripts/image.sh build` and `scripts/image.sh smoke`, and for a published release the push of
-    the image to the GitHub Container Registry (see `container-image.md`)
+  shows at a glance which kind of check broke. The steps of each are in its file:
+  - `format_check`: the format check
+  - `lint`: the build, the type check, lint, the doc references and knip
+  - `unit_tests`: the unit tests with coverage and the cost tests
+  - `integration_tests`: the integration tests
+  - `end_to_end_tests`: the end-to-end tests against the development server
+  - `end_to_end_tests_production`: the end-to-end tests against a production build
+  - `container_image`: the build and the smoke test of the container image, and for a published release its push to
+    the GitHub Container Registry (see `container-image.md`)
 - They run on every push to `main`, on pull requests and when started by hand (`workflow_dispatch`). Pushes to other
   branches run them only through their pull request, so a pull request's commits are not tested twice. A newer push to
   the same ref cancels a run still in progress. `container_image` also runs when a release is published, and a run for a
   release is never cancelled.
-- Every workflow runs on `ubuntu-24.04`. All but `container_image` install Node.js from `.nvmrc` and run `npm ci`;
-  `container_image` calls `bash scripts/image.sh` directly, with the Podman preinstalled on the runner, and builds
-  Node.js into the image instead.
+- All workflows but `container_image` install Node.js from `.nvmrc` and run `npm ci`; `container_image` builds
+  Node.js into the image instead. The workflows that need a container use the Podman preinstalled on the runner.
 - No workflow sets `DATABASE_URL`. `prisma generate` during `npm ci` does not need it, and the build needs no
   database, because every query calls `connection()` and no route is prerendered. No workflow sets
   `HIPPOWIKI_ADMIN_PASSWORD` either: the tests create their users themselves, and the smoke test of the container
   image passes its own value.
-- Both end-to-end workflows install Chromium with `npx playwright install --with-deps chromium` and use the Podman
-  preinstalled on the runner; the tests start and remove their throwaway container `hippowiki-test-db` as they do
-  locally. With `CI` set, Playwright retries a failed test twice, fails the run if a test passed only on a
-  retry, and rejects `test.only`.
-- The Playwright HTML report (`playwright-report/`) is uploaded as the artifact `playwright-report`, or
-  `playwright-report-production` for the production run, also when the tests fail (not when the run was cancelled),
-  and kept for 7 days.
-- The unit test workflow writes the coverage tables of `scripts/coverage-summary.ts` to the job summary and uploads
-  `coverage/` as the artifact `coverage-report`, also when the tests fail (not when the run was cancelled or no report
-  was written), kept for 7 days.
-- Dependabot (`.github/dependabot.yml`) checks the `npm` and `github-actions` dependencies and the two `docker` images
-  weekly: the PostgreSQL image in `scripts/Containerfile` and the Node.js image in the `Containerfile` of the project
-  root, both for minor updates only. All minor and patch npm updates arrive in one pull request, each major npm update
-  in a pull request of its own, all action updates in one. Its pull requests run the same workflows; merging one is an upgrade, a task of its own (see `step-plan-workflow.md`).
+- The end-to-end tests start and remove their throwaway container `hippowiki-test-db` as they do locally. With `CI`
+  set, Playwright retries a failed test, fails the run if a test passed only on a retry, and rejects `test.only`
+  (`playwright.config.ts`).
+- The end-to-end workflows upload the Playwright HTML report, and the unit test workflow the coverage report with its
+  tables of `scripts/coverage-summary.ts` in the job summary, also when the tests fail.
+- Dependabot (`.github/dependabot.yml`) checks the `npm` and `github-actions` dependencies and the two images of
+  `scripts/Containerfile` and the `Containerfile` of the project root every week. Its pull requests run the same
+  workflows; merging one is an upgrade, a task of its own (see `step-plan-workflow.md`).

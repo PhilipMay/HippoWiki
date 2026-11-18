@@ -18,7 +18,7 @@ restore the pages from the deleted pages of their folder. Folders cannot be dele
 The wiki can only be used after a login. Every account is either an admin, who manages the accounts, sees no content
 and only an overview of who has which role on which folder, or a user, who creates folders, works with the folders on
 which the user has a role (Reader, Writer, Manager or Owner) and sees and revokes the connected apps on the own account
-page; admins create the accounts and choose their type, and the Owners of a folder give the roles on it. AI assistants work with one
+page; admins create the accounts and choose their type, and the Owners of a folder give the roles on it. AI apps work with one
 folder each through an MCP server, as a Reader, a Writer or a Manager, connected through OAuth (see "MCP server").
 
 Every content change of a page is kept in its history, where two revisions can be compared and a page can be reverted
@@ -127,7 +127,7 @@ by the admin setup; further accounts of either type are created by an admin in t
   | `alice` | `alice-password` | a user                    |
 
 - `npm run admin:setup` creates the admin account `admin` with the password from `HIPPOWIKI_ADMIN_PASSWORD` (8 to 128
-  characters), which it reads from the environment or from `.env`, and which the admin has to change at the first
+  characters, see "Passwords" in `spec/users-and-login.md`), which it reads from the environment or from `.env`, and which the admin has to change at the first
   login. When an account named `admin` exists, it does nothing and ignores the variable. Replace `<first password>` with a password
   of your own, for example from `openssl rand -base64 24`; the setup refuses the placeholder, and `.env.example`
   leaves the variable empty.
@@ -138,7 +138,7 @@ by the admin setup; further accounts of either type are created by an admin in t
 
 ## MCP server
 
-AI assistants work with the wiki through the Model Context Protocol, acting as a user, each connection for one folder
+AI apps work with the wiki through the Model Context Protocol, acting as a user, each connection for one folder
 and with one role, at an address of its own: `/mcp/<folder-uuid>/reader`, `/mcp/<folder-uuid>/writer` or
 `/mcp/<folder-uuid>/manager`. The role of
 the address is the most the app may do, and never more than your own role on the folder. A client connects through

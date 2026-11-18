@@ -117,7 +117,7 @@ Decided by the user on 2026-11-18:
 - [x] Dialogs
 - [x] The first review report
 - [x] One owner per rule in the feature specs
-- [ ] Structure of `architecture.md` and the other documents
+- [x] Structure of `architecture.md` and the other documents
 - [ ] Wrap-up
 
 ## Sessions

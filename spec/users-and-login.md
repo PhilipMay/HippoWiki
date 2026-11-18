@@ -98,8 +98,8 @@ and `src/lib/client-address.test.ts`.
   admin to `/users`, or to the password change when it is pending. Who is logged in and opens `/login` is led there
   as well, and `/` leads a user to `/folders` and an admin to `/users`.
 - An unknown user name and a wrong password get the same answer, and both compute one hash, so nobody can find out
-  which names exist. A name that breaks the name rule and a password of more than 128 characters cannot belong to a
-  user; they are answered like a wrong password, without a hash.
+  which names exist. A name that breaks the name rule and a password longer than a password may be cannot belong to
+  a user; they are answered like a wrong password, without a hash.
 - The header shows "Folders" for a user, "Users" for every account, "Folder roles" for an admin, the name of the
   logged-in user, which links to the own account `/account`, and "Log out", a plain form that works without
   JavaScript. An admin has no "Folders".
@@ -110,7 +110,8 @@ and `src/lib/client-address.test.ts`.
 
 ## Sessions
 
-- A session lasts 30 days from the login and is not extended by use. Every check of a session reads the database, so
+- A session lasts 30 days from the login (`SESSION_LIFETIME_SECONDS` in `src/lib/auth.ts`) and is not extended by
+  use. Every check of a session reads the database, so
   an ended session is refused at once.
 - A user can have several sessions at the same time, one per browser.
 - The session cookie cannot be read by scripts (`HttpOnly`), is sent with same-site requests and top-level navigations
@@ -166,7 +167,7 @@ What a user and an operator can rely on:
   that a wait that was over does not start again.
 - An unknown name is counted and has to wait like a known one. A name that breaks the name rule is not counted,
   because it cannot belong to a user and the tables would otherwise take any text.
-- A password of more than 128 characters for a valid name counts as a failure.
+- A password longer than a password may be, for a valid name, counts as a failure.
 - The counts are stored in the database, so they survive a restart of the server. Counts that no wait needs any more
   are deleted by later logins.
 - How the counting works (conditional writes, the retries, taking a count back, the deleting) is described in
@@ -238,8 +239,8 @@ the authentication guide of Next.js describes:
 - HippoWiki generates a first password and shows it exactly once, with the name and the type, for the admin to pass
   on. The new account has to change it at the first login.
 - The log line of a new account names its user name, its type and the admin who created it, never the password.
-- A generated password is 20 characters long, drawn from a cryptographic random source from letters and digits that are
-  not easy to confuse.
+- A generated password is 20 characters long (`FIRST_PASSWORD_LENGTH` in `src/features/users/password.ts`), drawn
+  from a cryptographic random source from letters and digits that are not easy to confuse.
 - The password is not part of an address or of a stored page, and it is gone after a reload. The dialog closes only
   through its link back to the user list, so that it cannot be lost by a stray click.
 - A form cannot choose the password or skip the password change: only the name and the type are read.

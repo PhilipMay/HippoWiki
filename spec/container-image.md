@@ -133,7 +133,7 @@ Code: `Containerfile`, `.containerignore`, `scripts/image.sh`, `scripts/image-mi
     reason.
   - Set it only when the environment provides what "What the environment has to provide" names for it; otherwise a
     client that reaches the server around the reverse proxy chooses its own address.
-- `HIPPOWIKI_PUBLIC_URL` is optional: the public address of the wiki, as browsers and the connectors of AI assistants
+- `HIPPOWIKI_PUBLIC_URL` is optional: the public address of the wiki, as browsers and AI apps
   reach it, such as `https://wiki.example.com`. It is read when the server runs.
   - It is an `https` URL, or `http` only for `localhost`, `127.0.0.1` and `[::1]`, without user name, password,
     path, query or fragment; any other value stops the server with an error like a wrong `DATABASE_URL`. It is kept

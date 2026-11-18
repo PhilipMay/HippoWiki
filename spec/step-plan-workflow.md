@@ -1,4 +1,4 @@
-# HippoWiki – Development Workflow
+# HippoWiki – Step Plan Workflow
 
 How new features are planned, built and finished. The rules for implementing a step are addressed to you, the AI that
 implements it.
@@ -77,7 +77,9 @@ Goal/Build/Test sections as the other steps, and its Build section covers, in th
 4. Delete this step file and the requirements file of the feature, if there is one. The requirement IDs of that file
    leave the comments of the code and the tests in the same step: each is replaced by the section of the feature spec
    that holds the rule now, or dropped with its sentence kept.
-5. Update the spec catalog in `CLAUDE.md`: add new spec files, remove this step file and the requirements file.
+5. Update the spec catalog in `CLAUDE.md`: add new spec files, remove this step file and the requirements file. An
+   entry is one line, the file and the question it answers, as "Specification" in `CLAUDE.md` says; a feature that
+   extends a spec changes its entry only when the question changes.
 
 The wrap-up step is not ticked off, because its step file is deleted; its commit includes the deletion of the step
 file and the requirements file. The push of the finished plan follows this commit (see "Step plans"). Otherwise it

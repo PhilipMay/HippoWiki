@@ -107,7 +107,7 @@ This section is the rule of the version for every caller other than the browser,
   also when the address has changed. Rejected: returning the current page in the form state without a redirect,
   because the address can have changed and a second path for the same refusal would differ from the first; a cookie
   for the notice, which is more code for a message that may show again on a reload.
-- A caller other than the browser must always state the version, so that an AI assistant cannot skip the check and
+- A caller other than the browser must always state the version, so that an AI app cannot skip the check and
   overwrite a page it read minutes ago. Rejected: an optional version, with "the last save wins" without it.
 - A browser change without a version is refused as well, so that one rule holds for every caller. Rejected:
   accepting it, which would weaken the rule for the browser.

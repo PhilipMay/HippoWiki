@@ -99,9 +99,9 @@ listed first; there is no order across themes.
 - Access for clients without OAuth: scripts, CI jobs and MCP clients that cannot do OAuth with a browser get access
   again, for example through the OAuth device flow or client credentials, or a bearer token sent in the
   `Authorization` header (`connected-apps.md`, `oauth.md`, `users-and-login.md`).
-- MCP write tools for folders: create folders from AI assistants; renaming a folder and its roles stay in the browser,
+- MCP write tools for folders: create folders from AI apps; renaming a folder and its roles stay in the browser,
   because the Owner is never a role of MCP (`mcp.md`, `folder-roles.md`).
-- MCP search tool: search the wiki from AI assistants, after full-text search (see "Search") (`mcp.md`).
+- MCP search tool: search the wiki from AI apps, after full-text search (see "Search") (`mcp.md`).
 - Exact search-and-replace for MCP: a write tool that replaces an exact piece of the content of a page instead of the
   whole content (`mcp.md`).
 - CORS for other origins: let web applications on other origins call the API.
@@ -139,21 +139,21 @@ All from "Current limits" in `container-image.md`:
 ### Sharding the end-to-end tests
 
 All end-to-end tests run one after another, with one worker, one test database and one server
-(`playwright.config.ts`), because every test resets the whole database. On 2026-11-17 the complete suite took 4.7
-minutes locally for 628 tests; on 2026-11-14 it was 485 tests in 3.3 minutes. Playwright splits the test files into
-parts with `--shard=<i>/<n>`, and each part can run at the same time as the others.
+(`playwright.config.ts`), because every test resets the whole database. The complete suite takes about five minutes
+locally and grows with every feature. Playwright splits the test files into parts with `--shard=<i>/<n>`, and each
+part can run at the same time as the others.
 
 - In CI: the `end_to_end_tests` workflow becomes a matrix of three jobs, each on its own runner with
   `--shard=<i>/3` and `fail-fast: false`. The runners share nothing, so the test code stays as it is. Each shard
   writes a blob report, and a final job merges them with `npx playwright merge-reports` into the artifact
   `playwright-report` and gives the rules of `main` one check name to require. The same works for
   `end_to_end_tests_production`. The wait goes down, but the runner minutes go up: each job sets itself up anew
-  (`npm ci`, Chromium, the PostgreSQL image, the first compiles of the routes), roughly 2 to 3 minutes per shard.
+  (`npm ci`, Chromium, the PostgreSQL image, the first compiles of the routes).
 - Locally: three shards on one machine at the same time each need their own container, database port, server port,
   build directory, directory of the saved logins and output directories. These come from a shard number in the
   environment (`e2e/support/container.ts`, `e2e/support/auth.ts`, `playwright.config.ts`), and without it everything
   stays as it is. A launcher starts the shards, prints the output of each as one block and fails when one of them
-  fails. Estimated 2 to 2.5 minutes instead of 4.7, not measured.
+  fails. Not measured.
 - Risks of the local shards: Playwright splits by test files, not by time, so the shard with the slowest specs
   (`e2e/folder-roles.spec.ts`, `e2e/access.spec.ts`) finishes last. Three development servers compiling at the same
   time may make tests that depend on timing flaky. `next dev` adds the types directory of every build directory to
@@ -163,9 +163,9 @@ parts with `--shard=<i>/<n>`, and each part can run at the same time as the othe
   better, and there is one command and one report. It needs a database and a server per worker, and the same
   `AuthSecret` in all databases, so that the saved logins work on every server.
 - When: CI first, once waiting for `end_to_end_tests` after a push becomes a problem. Locally, once the complete suite
-  takes more than about 8 minutes or runs more than once or twice per step plan. Until then it would save only 2.5 to
-  5 minutes per plan or session, because the complete suite runs once per plan, or once per session of a plan with
-  stop points (see "When a step is done" in `step-plan-workflow.md`).
+  takes about twice as long as now or runs more than once or twice per step plan. Until then it would save only a few
+  minutes per plan or session, because the complete suite runs once per plan, or once per session of a plan with stop
+  points (see "When a step is done" in `step-plan-workflow.md`).
 
 ## Things to Check
 
@@ -183,8 +183,8 @@ parts with `--shard=<i>/<n>`, and each part can run at the same time as the othe
   neither for the probe nor for the login limit.
 - Logins at the same time on the deployment: each counted login holds a database connection for an interactive
   transaction, and the pool of the `pg` adapter has 10 connections by default. Check that a burst of logins for one
-  name is answered with waits and not with "The login failed", and whether the 50 rounds of `reserveAttempt()` are
-  enough when many logins with the right password arrive at the same moment.
+  name is answered with waits and not with a failed login, and whether the rounds of `reserveAttempt()`
+  (`MAX_RESERVE_ROUNDS` in `src/features/auth/service.ts`) are enough when many logins with the right password arrive at the same moment.
 - Log volume: every login whose `X-Forwarded-For` has no usable entry logs a warning; check that a correct setup
   behind Traefik writes none, so that a warning points to a broken setup.
 - OAuth on the deployment, after the checks above and only then with `HIPPOWIKI_PUBLIC_URL` set

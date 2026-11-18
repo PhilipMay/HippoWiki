@@ -1,8 +1,8 @@
-# HippoWiki – OAuth for MCP Clients
+# HippoWiki – OAuth for AI Apps
 
-OAuth as built: HippoWiki is an OAuth 2.1 authorization server for the MCP server (see `mcp.md`), so that a connector,
-such as the ones of claude.ai and ChatGPT, gets access to one MCP address of a folder on behalf of a user without ever
-seeing a password. The user logs in, approves the connector for the folder and the role of that address on a consent
+OAuth as built: HippoWiki is an OAuth 2.1 authorization server for the MCP server (see `mcp.md`), so that an AI app,
+such as claude.ai and ChatGPT, gets access to one MCP address of a folder on behalf of a user without ever
+seeing a password. The user logs in, approves the app for the folder and the role of that address on a consent
 page and can revoke it on `/account` at any time. There are no scopes: the address says what a connection may do. Only accounts of the type user connect apps; an admin is refused. All clients are public: none has a secret, and each proves itself with PKCE.
 
 Code: `src/features/oauth/` (`schema.ts` with the rules, `secret.ts` for codes and tokens, the service modules of the
@@ -28,7 +28,7 @@ tests are in `e2e/support/oauth.ts`.
 
 ## Discovery
 
-- A connector starts at the 401 of a folder address, whose `WWW-Authenticate` header names the metadata of the
+- An AI app starts at the 401 of a folder address, whose `WWW-Authenticate` header names the metadata of the
   protected resource at that address.
 - `/.well-known/oauth-protected-resource/mcp/<folder-uuid>/<reader|writer|manager>` (RFC 9728) names the full folder address
   as the resource and the wiki as its only authorization server, for every folder address, whether a folder of that id
@@ -48,7 +48,8 @@ A client identifies itself in one of two ways:
   - The document must be JSON with a `client_id` that is exactly its URL, a `client_name` and `redirect_uris`, and
     must not ask for anything but a public client.
   - The document is kept and fetched again when it is older than the cache time of its response: its
-    `Cache-Control: max-age`, but at least 5 minutes and at most 24 hours, and 1 hour without one.
+    `Cache-Control: max-age` within the bounds of `metadataCacheSeconds()` in `src/features/oauth/schema.ts`, and a
+    default without one.
   - A fetch that fails and a document that is not valid refuse the authorization request without a redirect; the
     reason is logged with the URL. A document that was kept before stays, and so do its grants.
 - By registering (dynamic client registration, RFC 7591) at `/oauth/register`, which answers with a generated
@@ -101,7 +102,7 @@ The fetch of a metadata document must not be a way to make the server ask an add
 - A `scope` that a client sends is ignored and not carried by the consent form.
 - A valid request shows the host of the redirect address more prominently than the name of the client, the
   logged-in user, the name of the folder and the role of the address, what that role allows through MCP, and the
-  lifetime of the grant: 30, 90 or 365 days, with 90 chosen.
+  lifetime of the grant to choose (see `connected-apps.md`).
 - "Approve" sends the client a code; "Deny" sends it `access_denied`. Both check the request again from the
   submitted values. Every answer to the client carries its `state` and `iss`, the issuer (RFC 9207).
 - Every connect asks again; no consent is remembered.
@@ -110,15 +111,15 @@ The fetch of a metadata document must not be a way to make the server ask an add
   <host>" that carries `access_denied`, `state` and `iss` to the client, like the other errors of the page. No code
   and no grant is created: the service refuses a code for an admin as well. An unknown client or a foreign redirect
   address is answered as for every user, without sending the browser anywhere.
-- A user who already holds 50 connected apps, not counting the grants this one would replace, is asked to revoke an app
-  first and cannot approve.
+- A user at the limit of connected apps (see `connected-apps.md`), not counting the grants this one would replace,
+  is asked to revoke an app first and cannot approve.
 - "Approve" and "Deny" need JavaScript to send the answer to the client, because the Content Security Policy keeps
   forms on this site (`form-action 'self'`, see "Security headers" in `architecture.md`). Without JavaScript the page
   says so. The link back of a refused request is a plain link and works without JavaScript.
 
 ## Codes
 
-- A code works once and for 10 minutes. It is deleted as it is read, so it also works only once when two exchanges
+- A code works once and for 10 minutes (`CODE_LIFETIME_MS` in `src/features/oauth/authorization-service.ts`). It is deleted as it is read, so it also works only once when two exchanges
   arrive at the same time, and an exchange that fails a check uses it up.
 - A code keeps the folder and the role of the address of its request.
 - The exchange at `/oauth/token` must name the client and the redirect address of the authorization request and
@@ -130,12 +131,13 @@ The fetch of a metadata document must not be a way to make the server ask an add
 
 - A grant is what a code is exchanged for: a row of `OAuthGrant`, named after the client, with the folder and the role
   of the address of the code and the lifetime the user chose. It is listed on `/account` as a connected app, counted
-  in the limit of 50 connected apps per user and revoked there (see `connected-apps.md`).
+  in the limit of connected apps per user and revoked there (see `connected-apps.md`).
 - A new grant replaces only the user's older grants to the same client at the same address: the same client row, or
-  for a registered client the same name and the same redirect addresses, because some connectors register again on
+  for a registered client the same name and the same redirect addresses, because some AI apps register again on
   every connect. The grants of that client at other addresses stay. The limit counts the new grant without the
   replaced ones.
-- The client holds an access token that works for 1 hour, and never longer than its grant, and a refresh token.
+- The client holds an access token that works for 1 hour (`ACCESS_TOKEN_LIFETIME_MS` in
+  `src/features/oauth/token-service.ts`), and never longer than its grant, and a refresh token.
   Only the MCP address of the grant accepts the access token.
 - Revoking the grant, deleting its user, its client or its folder ends both tokens at once.
 - A grant past its lifetime cannot be refreshed; it stays in the list, marked as expired, until it is revoked.
@@ -161,8 +163,8 @@ The fetch of a metadata document must not be a way to make the server ask an add
 
 ## Secrets
 
-- A code, an access token and a refresh token are 256 random bits behind a prefix of their own (`hwc_`, `hwa_`,
-  `hwr_`), so that none is taken for another. A refresh token also names its grant.
+- A code, an access token and a refresh token are 256 random bits behind a prefix of their own kind
+  (`src/features/oauth/secret.ts`), so that none is taken for another. A refresh token also names its grant.
 - Only their SHA-256 hashes are stored. A code, a token and their hashes are never logged.
 
 ## Routes
@@ -182,11 +184,11 @@ The fetch of a metadata document must not be a way to make the server ask an add
 - A refresh that loses the conditional swap of the hashes is refused without revoking the grant: it showed the
   token that was current when it was read, so it is not a reuse.
 - A code is deleted before it is checked, so that a failed check cannot be repeated with other values.
-- Clients are public only. A connector that runs on the machine of a user or in the cloud of a provider cannot keep
+- Clients are public only. An AI app that runs on the machine of a user or in the cloud of a provider cannot keep
   a secret of this wiki in a way the wiki could check, and PKCE protects the code without one.
 - Both ways to identify a client are supported: claude.ai, ChatGPT and Claude Code identify themselves by the URL of
   their metadata document, and the registration is the fallback for clients that do not.
-- The registration is open, because a connector registers before any user is involved. The limit per client address
+- The registration is open, because an AI app registers before any user is involved. The limit per client address
   group and the deletion of unused clients keep the table small.
 - The consent page shows where the code goes, the host of the redirect address, more prominently than the name of
   the client: the address is what was checked, the name is whatever the client calls itself.
@@ -207,13 +209,12 @@ The fetch of a metadata document must not be a way to make the server ask an add
   specification asks clients to send it. Rejected: picking a folder and a role on the consent page.
 - A new grant replaces only the older grants of the same app at the same address, so that reconnecting does not pile
   up entries while connections to other addresses stay. Rejected: never replacing.
-- The limit of connected apps is 50, because a user holds one connection per folder, role and app. Rejected: 20.
 - The grants and codes that named the plain `/mcp` before the folder addresses were removed by the migration that
   brought the folder addresses, because none of them names a folder; their users connect again. Rejected: keeping them
   on `/account`, marked as no longer usable.
 - Deleting a folder deletes its grants and codes, like those of a user and of a client: a grant is no content.
 - The consent page tells an admin why no app can be connected and leads back to the app with a refusal, so that the
-  connector does not wait for an answer that never comes. Rejected: the not-found page.
+  AI app does not wait for an answer that never comes. Rejected: the not-found page.
 
 ## Current limits
 
