@@ -33,6 +33,8 @@ The specification lives in the `spec/` directory. This catalog should always be 
   decisions, limits)
 - `spec/unchanged-saves-requirements.md`: the approved requirements for content saves without a change
   in the browser and through MCP, which leave the page with its last editor, time and version as it is
+- `spec/unchanged-saves-steps.md`: the step plan for content saves without a change (the service stores nothing and
+  logs it apart, the browser and MCP checks, wrap-up)
 - `spec/page-deletion.md`: the soft delete of pages as built (deleting, also together with their tab, deleted pages are
   invisible, the deleted pages of a folder under `/deleted-pages` with who deleted them and how, their history,
   restoring, decisions, limits)
