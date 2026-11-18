@@ -31,3 +31,28 @@ export async function expectNotFound(page: Page, address: string): Promise<void>
 export function by(user: string, via: "web" | "mcp" = "web", then = ""): RegExp {
   return new RegExp(`by ${user} via ${via}${then}$`);
 }
+
+/**
+ * Holds the next request of a Server Action of the page, a `POST` with the header `Next-Action`, until the test
+ * releases it, so that a test sees the state of a form while its submission runs. `held` resolves once the request
+ * has been sent; `release()` lets it through. Every other request passes.
+ */
+export async function holdServerAction(page: Page): Promise<{ held: Promise<void>; release: () => void }> {
+  let release = () => {};
+  const released = new Promise<void>((resolve) => (release = resolve));
+  let markHeld = () => {};
+  const held = new Promise<void>((resolve) => (markHeld = resolve));
+  let holding = true;
+  await page.route("**/*", async (route) => {
+    const request = route.request();
+    if (!holding || request.method() !== "POST" || request.headers()["next-action"] === undefined) {
+      await route.fallback();
+      return;
+    }
+    holding = false;
+    markHeld();
+    await released;
+    await route.continue();
+  });
+  return { held, release };
+}

@@ -14,9 +14,9 @@
     findings of the tests that are still open are minor.
   - Documents that the features outran: rules stated in full in several documents, and copies of code and
     constants in the specs.
-- Findings: 59 open of 107, 0 Blocker, 0 Major, 47 Minor and 12 Nit (17 `issue:`, 28 `suggestion:`, 10 `nit:` and
+- Findings: 58 open of 107, 0 Blocker, 0 Major, 46 Minor and 12 Nit (16 `issue:`, 28 `suggestion:`, 10 `nit:` and
   4 `question:`).
-- Confidence of the suggestions: 6 High, 39 Medium and 10 Low; the 4 questions have none. A High suggestion can be
+- Confidence of the suggestions: 6 High, 38 Medium and 10 Low; the 4 questions have none. A High suggestion can be
   fixed as written; the others wait for the user, as `issue-report.md` describes.
 - Decisions: on 2026-11-18 the user decided all Medium and Low suggestions. Each of these findings ends with a line
   `Decision`, and is fixed as that line says, without asking again. The 4 questions were decided by the user on the
@@ -1036,27 +1036,6 @@ them are fixed.
 
 ### Tests: end-to-end
 
-#### issue: the pending state of the forms and dialogs is tested nowhere
-
-- Location: every dialog and form with a pending state, for example
-  `src/features/folders/components/NameDialog.tsx`, `src/features/pages/components/PageForm.tsx`,
-  `src/features/pages/components/MoveOrRenamePageDialog.tsx`, `src/features/pages/components/NewPageForm.tsx`,
-  `src/features/folder-roles/components/GiveRoleDialog.tsx`, `src/features/oauth/components/ConsentForm.tsx`
-- Severity: Minor. It is the guard against a double submission; no spec names it, and no test at any level sees it.
-- Category: tests
-- Problem: while a submission runs, each component disables its buttons, ignores Escape and changes the label
-  ("Saving…", "Deleting…", "Reverting…", "Revoking…", "Creating…"). No test holds a submission open.
-- Impact: a refactoring that drops `disabled={pending}` or the guard of Escape passes every test. This matters for
-  the finding on the copied dialogs under "Code: components, routes, auth, users and lib": a shared dialog would
-  move exactly this code.
-- Evidence: a search of `e2e/` for the five labels gives no hit.
-- Suggestion (optional): one test per pattern that holds the request of the Server Action with `page.route()`, with
-  a helper in `e2e/support/browser.ts`.
-- Confidence: Medium. Holding a Server Action with `page.route()` was not tried with this version of Next.js.
-- Alternatives: say in `testing.md` that pending states are left untested on purpose.
-- Decision (2026-11-18): as suggested, if `page.route()` can hold a Server Action with this version of Next.js; if it
-  cannot, the Alternative: `testing.md` says that pending states are left untested on purpose.
-
 #### nit: `mcp.spec.ts` has 1,465 lines, and two specs hold tests that use neither browser nor server
 
 - Location: `e2e/mcp.spec.ts`; `e2e/tabs.spec.ts`, lines 586–604, "the database refuses a page whose tab belongs
@@ -1088,6 +1067,10 @@ them are fixed.
   name taken meanwhile on an older state is refused as changed. MCP has a first and a second writer and a refusal
   after an edit in the browser, and a real `replace_page_content` while an editor is open is refused in the browser
   and shows in the history.
+- The pending state: `e2e/pending-states.spec.ts` holds the request of a Server Action and checks, for a dialog with
+  a name, a confirmation dialog, the editor, the "Save page" dialog, "Give role" and the consent form, that the
+  buttons are disabled with the pending label and that Escape does nothing; the test of the name dialog was shown to
+  fail without the guard of Escape.
 - Single states: the grant limit reached between the consent page and "Approve", "Returning to the app…", a tab
   deleted while its rename dialog is open, Escape in the "Save page" and the revoke dialog, and a copy that the
   browser refuses, for the first password and for an MCP address.

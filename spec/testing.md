@@ -307,8 +307,9 @@ How the code is tested. Commands are listed in `README.md`.
     opens the login page first; the test asserts where the login leads.
   - `browser.ts` has `collectErrors()`, which records console errors and uncaught exceptions of the browser page (tests
     assert it stays empty); `expectNotFound()`, which opens an address and expects the not-found page with the status
-    404, named with the address; and `by()`, the end of a line of a list or view that names the last editor and the
-    channel, "by <user> via <channel>".
+    404, named with the address; `by()`, the end of a line of a list or view that names the last editor and the
+    channel, "by <user> via <channel>"; and `holdServerAction()`, which holds the next request of a Server Action of
+    the page with `page.route()` until the test releases it.
   - The public URL of the test server, the base of every full address, is `ISSUER` of `oauth.ts`.
 - `eslint-plugin-playwright` checks all files in `e2e/`: a Playwright call or `expect` that is not awaited
   (`missing-playwright-await`), `page.waitForTimeout()` (`no-wait-for-timeout`) and checks such as
@@ -329,6 +330,9 @@ How the code is tested. Commands are listed in `README.md`.
 - A test that simulates a crafted request adds hidden fields to the form, or changes the submitted data in the form's
   `formdata` event. It does not change the value of a control that React renders: React writes that value back
   whenever it renders the control again, e.g. when it gets the focus.
+- `e2e/pending-states.spec.ts` checks the guard against a double submission once per pattern of a form: while a
+  Server Action is held with `holdServerAction()`, the buttons are disabled with their pending label, and Escape,
+  pressed with the focus in the dialog, leaves the dialog open. A new pattern of a form adds a case there.
 - Playwright cannot read a page while it navigates away. A test of the state a page shows on its way out, such as
   "Returning to the app…" of the consent page, lets the target answer `204 No Content` with `page.route()`, so the
   browser stays on the page.
