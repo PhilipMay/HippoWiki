@@ -11,6 +11,8 @@ The specification lives in the `spec/` directory. This catalog should always be 
   step plan (starting and resuming, what may change, the commit on approval without a push, the rounds of questions,
   the checks for contradictions and feasibility, how requirements are written, the template); the result is one file
   `spec/<feature>-requirements.md`, listed here while it exists
+- `spec/unchanged-moves-and-roles-requirements.md`: the approved requirements of moves and renames of
+  pages to their own name and place and of changes of a role to the same role, which store nothing
 - `spec/step-plan-workflow.md`: how features are planned in step files, when a step is done, what to do when it
   cannot be finished, how a feature is wrapped up, what a feature spec holds, and how a finding of the review report is
   fixed and deleted
