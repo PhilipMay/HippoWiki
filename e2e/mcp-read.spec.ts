@@ -1,5 +1,7 @@
 // The read tools of MCP and the answers of the protocol: initialize, the tool list of a Reader connection,
 // list_folder and read_page.
+import { NAME_MAX_LENGTH } from "@/lib/name-limits";
+
 import { KNOWN_USER } from "../prisma/known-users";
 import { NO_STORAGE_STATE } from "./support/auth";
 import { createFolder, createGrant, createPage, createTab, createUser, getTestDb } from "./support/database";
@@ -39,6 +41,8 @@ test("initialize answers as JSON with the instructions and without a session", a
   // A Reader connection to "projects" is told that it reads that folder and cannot change it.
   expect(result.instructions).toContain('the folder "projects" with the role Reader');
   expect(result.instructions).toContain("It reads the folder and cannot change it.");
+  // The name rule comes with its length limit, so that a model learns it before a tool refuses a name.
+  expect(result.instructions).toContain(`at most ${NAME_MAX_LENGTH} characters`);
   expect(result.capabilities).toHaveProperty("tools");
 });
 

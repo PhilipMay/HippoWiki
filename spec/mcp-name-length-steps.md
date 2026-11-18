@@ -26,7 +26,7 @@ hyphens; that a name has at most 80 characters, the app finds out only when a to
 
 ## Checklist
 
-- [ ] Name the length limit to MCP clients
+- [x] Name the length limit to MCP clients
 - [ ] Wrap-up
 
 ## Name the length limit to MCP clients

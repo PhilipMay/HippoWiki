@@ -5,6 +5,14 @@
 
 import { z } from "zod";
 
+import { NAME_MAX_LENGTH } from "@/lib/name-limits";
+
+/**
+ * The whole rule of a tab or page name, length limit included, as the instructions, the descriptions of the arguments
+ * that take a new name and the error for a title without a name state it, so that a model learns it before a call.
+ */
+export const NAME_RULE = `lowercase letters, digits and single hyphens, at most ${NAME_MAX_LENGTH} characters`;
+
 /**
  * The tab a page is in, as a tool takes it. `null` is accepted next to a missing tab, because `list_folder` returns
  * the tab of such a page as `null`. The description comes last: one on the name alone would be lost when the argument
@@ -33,7 +41,7 @@ const EXISTING_TAB_ARGUMENT = z.string().describe("The name of the tab, as list_
 
 /** A new tab name as a tool takes it: checked by the service, so that a bad name is a tool error with the rule. */
 function newTabNameArgument(description: string) {
-  return z.string().describe(`${description}: lowercase letters, digits and single hyphens, such as meeting-notes`);
+  return z.string().describe(`${description}: ${NAME_RULE}, such as meeting-notes`);
 }
 
 /** The page a write tool changes: its tab, if it is in one, its name, and the version the write is based on. */
@@ -55,10 +63,7 @@ export const createPageInput = z.object({
   name: z
     .string()
     .optional()
-    .describe(
-      "The name of the page in its address: lowercase letters, digits and single hyphens. Leave it out to derive " +
-        "it from the title.",
-    ),
+    .describe(`The name of the page in its address: ${NAME_RULE}. Leave it out to derive it from the title.`),
 });
 
 export const replacePageContentInput = z.object({
@@ -76,9 +81,7 @@ export const moveOrRenamePageInput = z.object({
     .describe(
       "The name of an existing tab of the folder to move the page to, or null to place it directly in the folder",
     ),
-  newName: z
-    .string()
-    .describe("The new name of the page: lowercase letters, digits and single hyphens. Pass the old name to keep it."),
+  newName: z.string().describe(`The new name of the page: ${NAME_RULE}. Pass the old name to keep it.`),
 });
 
 export const deletePageInput = z.object(pageArguments);

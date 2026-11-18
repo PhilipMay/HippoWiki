@@ -16,6 +16,7 @@ import {
   deleteTabInput,
   listFolderOutput,
   moveOrRenamePageInput,
+  NAME_RULE,
   readPageInput,
   readPageOutput,
   renameTabInput,
@@ -70,7 +71,7 @@ export function instructionsFor(folderName: string, role: McpRole): string {
     `${siteName} is a wiki. This connection works on the folder "${folderName}" with the role ${ROLE_LABELS[role]}. ` +
     `${ROLE_ABILITIES[role]} The folder holds pages, either directly or grouped in tabs, which are optional ` +
     "sections of the folder. Every page is written in Markdown and has a name, which is part of its address, and a " +
-    "title, which is its first heading. Tab and page names are lowercase letters, digits and single hyphens. Start " +
+    `title, which is its first heading. Tab and page names are ${NAME_RULE}. Start ` +
     "with list_folder for the tabs and pages of the folder, then read_page for the content of one page."
   );
 }

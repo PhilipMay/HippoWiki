@@ -6,8 +6,12 @@ import { MCP_ROLES, mayDo, type FolderFunction } from "@/features/folder-roles/r
 import { createWikiServer, instructionsFor } from "@/features/mcp/server";
 import { analyseMarkdown } from "@/features/pages/markdown";
 import { TITLE_HEADING_MISSING_MESSAGE as TITLE_MISSING } from "@/features/pages/schema";
+import { NAME_MAX_LENGTH } from "@/lib/name-limits";
 
 import packageJson from "../../../package.json";
+
+/** The length limit of a name, as the instructions, the descriptions of a new name and the errors state it. */
+const LENGTH_LIMIT = `at most ${NAME_MAX_LENGTH} characters`;
 
 const mocks = vi.hoisted(() => ({
   listTabs: vi.fn(),
@@ -151,6 +155,15 @@ describe("the instructions", () => {
     expect(answer.result).toMatchObject({ instructions: instructionsFor("handbook", "writer") });
     expect(instructionsFor("handbook", "writer")).toContain('the folder "handbook" with the role Writer');
   });
+
+  it.each(["reader", "writer", "manager"] as const)(
+    "state the name rule with its length limit for a %s connection",
+    (role) => {
+      expect(instructionsFor("handbook", role)).toContain(
+        `Tab and page names are lowercase letters, digits and single hyphens, ${LENGTH_LIMIT}.`,
+      );
+    },
+  );
 });
 
 describe("the read tools", () => {
@@ -422,6 +435,8 @@ describe("the write tools", () => {
     expect(replace?.inputSchema.required).toEqual(["page", "content"]);
     expect(Object.keys(move?.inputSchema.properties ?? {})).toEqual(["tab", "page", "version", "newTab", "newName"]);
     expect(move?.inputSchema.required).toEqual(["page", "newTab", "newName"]);
+    expect(create?.inputSchema.properties?.name?.description).toContain(LENGTH_LIMIT);
+    expect(move?.inputSchema.properties?.newName?.description).toContain(LENGTH_LIMIT);
     for (const tool of tools.slice(2)) {
       expect(tool.description.length).toBeGreaterThan(40);
       expect(tool.annotations).toMatchObject({ readOnlyHint: false, openWorldHint: false });
@@ -521,7 +536,7 @@ describe("the write tools", () => {
       [
         { code: "no-suggested-name" },
         "The title suggests no name for the page, so nothing was changed. Give a name of lowercase letters, digits " +
-          "and single hyphens.",
+          `and single hyphens, ${LENGTH_LIMIT}.`,
       ],
       [{ code: "invalid-input", fieldErrors: { name: ["Name is not valid"] } }, "The name is not valid"],
       [{ code: "invalid-input", fieldErrors: { content: ["Content must be at most 10"] } }, "The content is not valid"],
@@ -753,6 +768,8 @@ describe("the tools of a Manager connection", () => {
     expect(byName.create_tab?.inputSchema.required).toEqual(["name"]);
     expect(Object.keys(byName.rename_tab?.inputSchema.properties ?? {})).toEqual(["tab", "newName"]);
     expect(byName.rename_tab?.inputSchema.required).toEqual(["tab", "newName"]);
+    expect(byName.create_tab?.inputSchema.properties?.name?.description).toContain(LENGTH_LIMIT);
+    expect(byName.rename_tab?.inputSchema.properties?.newName?.description).toContain(LENGTH_LIMIT);
     expect(Object.keys(byName.delete_tab?.inputSchema.properties ?? {})).toEqual(["tab"]);
     expect(byName.delete_tab?.inputSchema.required).toEqual(["tab"]);
     for (const name of MANAGER_TOOLS) {

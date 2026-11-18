@@ -28,6 +28,7 @@ import type {
   storedPageOutput,
   storedTabOutput,
 } from "@/features/mcp/tool-schemas";
+import { NAME_RULE } from "@/features/mcp/tool-schemas";
 import { TITLE_HEADING_MISSING_MESSAGE } from "@/features/pages/schema";
 import * as pageService from "@/features/pages/service";
 import { deletedPagesPath, folderPath, pagePath, tabPath } from "@/lib/addresses";
@@ -304,8 +305,7 @@ export async function createPage(
           return invalidInput(created.error.fieldErrors);
         case "no-suggested-name":
           return toolError(
-            "The title suggests no name for the page, so nothing was changed. Give a name of lowercase letters, " +
-              "digits and single hyphens.",
+            `The title suggests no name for the page, so nothing was changed. Give a name of ${NAME_RULE}.`,
           );
         case "name-taken":
           return nameTaken(folder.name, input.tab ?? null, created.error.name);
