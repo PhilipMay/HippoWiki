@@ -506,6 +506,48 @@ test.describe("the consent page, as an admin", () => {
 test.describe("the consent page, as a logged-in user", () => {
   test.use({ storageState: USER_STORAGE_STATE });
 
+  test("a limit reached after the page was opened is told on Approve, and nothing is granted", async ({
+    page,
+    request,
+  }) => {
+    const clientId = await registerClient(request);
+    await page.goto(authorizeUrl(clientId, reader));
+    await expect(page.getByRole("button", { name: "Approve" })).toBeEnabled();
+    // Other apps are connected in another tab while the page is open.
+    for (let index = 0; index < 50; index += 1) await createGrant({ owner: KNOWN_USER, folder: projects });
+
+    await page.getByRole("button", { name: "Approve" }).click();
+
+    await expect(page.getByRole("main").getByRole("alert")).toHaveText(
+      "You already have 50 connected apps, the most allowed. Revoke an app on your account page first.",
+    );
+    await expect(page).toHaveURL(authorizeUrl(clientId, reader));
+    expect(await getTestDb().oAuthGrant.count()).toBe(50);
+    expect(await getTestDb().oAuthCode.count()).toBe(0);
+  });
+
+  test("after Approve the page says that it returns to the app and locks its choices", async ({ page, request }) => {
+    const clientId = await registerClient(request);
+    // The client answers with 204 No Content, so the browser stays on the consent page instead of leaving it, and the
+    // state of the page on its way to the app can be read.
+    let arrived = false;
+    await page.route(`${new URL(REDIRECT_URI).origin}/**`, async (route) => {
+      arrived = true;
+      await route.fulfill({ status: 204 });
+    });
+    await page.goto(authorizeUrl(clientId, reader));
+
+    await page.getByRole("button", { name: "Approve" }).click();
+
+    const main = page.getByRole("main");
+    await expect(main.getByRole("alert")).toHaveText("Returning to the app…");
+    await expect(main.getByRole("button", { name: "Approve" })).toBeDisabled();
+    await expect(main.getByRole("button", { name: "Deny" })).toBeDisabled();
+    await expect(main.getByRole("radio", { name: "90 days" })).toBeDisabled();
+    expect(arrived).toBe(true);
+    expect(await getTestDb().oAuthCode.count()).toBe(1);
+  });
+
   test("deny sends the client access_denied with its state and the issuer, and grants nothing", async ({
     page,
     request,

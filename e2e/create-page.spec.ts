@@ -171,6 +171,7 @@ test("a taken name shows an error in the open dialog and keeps all values", asyn
   const name = dialog.getByLabel("Name");
   await expect(name).toHaveAttribute("aria-invalid", "true");
   await expect(name).toHaveAccessibleDescription("Name is already in use");
+  await expect(name).toBeFocused();
   await expect(dialog).toBeVisible();
   await expect(page).toHaveURL(NEW_PAGE);
   await expect(name).toHaveValue("taken");
@@ -251,6 +252,16 @@ test("cancel in the dialog keeps the content, creates nothing and derives again 
   await content.fill("# Second draft\n\nBody");
   await page.getByRole("button", { name: "Save" }).click();
   await expect(dialog.getByLabel("Name")).toHaveValue("second-draft");
+});
+
+test("the Escape key closes the dialog, keeps the content and creates nothing", async ({ page }) => {
+  const dialog = await openSaveDialog(page, "# First draft\n\nBody");
+  await page.keyboard.press("Escape");
+
+  await expect(dialog).toBeHidden();
+  await expect(page).toHaveURL(NEW_PAGE);
+  await expect(page.getByLabel("Content")).toHaveValue("# First draft\n\nBody");
+  expect(await getTestDb().page.count()).toBe(0);
 });
 
 test("cancel on the form returns to the folder and creates nothing", async ({ page }) => {

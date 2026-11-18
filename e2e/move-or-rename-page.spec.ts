@@ -623,6 +623,31 @@ test.describe("a page changed after the dialog was opened", () => {
     );
   });
 
+  test("refuses a move to a name taken meanwhile as changed, not as taken, when the page changed too", async ({
+    page,
+  }) => {
+    const plan = await createPage({ folder: team, name: "plan", content: "# Plan\n\nFirst draft" });
+
+    await page.goto("/folders/team/plan.md?action=move-or-rename");
+    const dialog = dialogOf(page);
+    await expect(dialog.getByLabel("Name")).toBeEditable();
+    // Meanwhile bob saves the page, and another page takes the name the dialog will ask for.
+    await getTestDb().page.update({
+      where: { id: plan.id },
+      data: { content: "# Plan\n\nBob's version", version: { increment: 1 }, lastEditedById: bob.id },
+    });
+    await createPage({ folder: team, name: "taken" });
+    await dialog.getByLabel("Name").fill("taken");
+    await dialog.getByRole("button", { name: "Save" }).click();
+
+    await expect(page).toHaveURL("/folders/team/plan.md?action=move-or-rename&notice=changed");
+    await expect(dialog.getByRole("alert")).toHaveText(
+      /^This page was changed by bob via web at .+ after you opened it\.$/,
+    );
+    await expect(dialog.getByLabel("Name")).not.toHaveAccessibleDescription("Name is already in use");
+    expect(await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).toMatchObject({ name: "plan" });
+  });
+
   // An unchanged save of the dialog does not refuse the editor that another user has open.
   test("an unchanged save of the dialog keeps the editor of another user from being refused", async ({
     page,

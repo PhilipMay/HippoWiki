@@ -8,15 +8,15 @@
   weak points are three:
   - Rules that are written several times: the guards of a content write in three services, the frame of a dialog
     in nine components, a write without a change in five shapes, and the same rule in up to five specs. Two copies
-    have drifted already.
+    had drifted already; the one in the "Save page" dialog is fixed.
   - Tests that would not catch the refactoring this report suggests: the unit tests of the services pinned the calls
     of Prisma, and three rules of access and of the transaction had no test that could fail. Both are fixed; the
     findings of the tests that are still open are minor.
   - Documents that the features outran: rules stated in full in several documents, and copies of code and
     constants in the specs.
-- Findings: 63 open of 107, 0 Blocker, 0 Major, 51 Minor and 12 Nit (20 `issue:`, 29 `suggestion:`, 10 `nit:` and
+- Findings: 59 open of 107, 0 Blocker, 0 Major, 47 Minor and 12 Nit (17 `issue:`, 28 `suggestion:`, 10 `nit:` and
   4 `question:`).
-- Confidence of the suggestions: 7 High, 42 Medium and 10 Low; the 4 questions have none. A High suggestion can be
+- Confidence of the suggestions: 6 High, 39 Medium and 10 Low; the 4 questions have none. A High suggestion can be
   fixed as written; the others wait for the user, as `issue-report.md` describes.
 - Decisions: on 2026-11-18 the user decided all Medium and Low suggestions. Each of these findings ends with a line
   `Decision`, and is fixed as that line says, without asking again. The 4 questions were decided by the user on the
@@ -689,35 +689,14 @@ invalidGrant(INVALID_CODE).error);`.
 
 ### Code: components, routes, auth, users and lib
 
-#### issue: the "Save page" dialog does not move the focus to the name field when the server refuses the name
-
-- Location: `src/features/pages/components/NewPageForm.tsx`, lines 117–195, `SavePageDialog`
-- Severity: Minor. A rule of the UI is broken in one dialog; nothing is lost.
-- Category: correctness
-- Problem: `architecture.md`, section "UI", says that after a refused save the first field with an error gets the
-  focus. Eight forms do this with an effect on the form state. `SavePageDialog` reads the error of the name but has
-  no such effect, and the file does not import `useEffect`.
-- Impact: a user who saves a new page under a taken or invalid name keeps the focus on "Save"; users of the
-  keyboard and of a screen reader are not led to the error. It is the first copy of a repeated rule that drifted,
-  see the next finding.
-- Evidence: line 12, `import { startTransition, useActionState, useId, useRef, useState, type SubmitEvent } from
-"react";`; against `src/features/pages/components/MoveOrRenamePageDialog.tsx`, lines 76–78,
-  `useEffect(() => { if (state.fieldErrors?.name) nameRef.current?.focus(); }, [state]);`. The test "a taken name
-  shows an error in the open dialog and keeps all values" in `e2e/create-page.spec.ts` checks the message, not the
-  focus; the test of the same case in `e2e/move-or-rename-page.spec.ts` checks the focus.
-- Suggestion (required): add the effect of `MoveOrRenamePageDialog` to `SavePageDialog`, and an assertion on the
-  focus to the test named above.
-- Confidence: Medium. The same three lines as in the other dialogs, and no spec says otherwise; no existing test
-  covers the focus of this dialog, and the fix was not tried.
-- Decision (2026-11-18): as suggested.
-
 #### suggestion: nine dialogs repeat the same frame and its rules by hand
 
 - Location: `src/features/folders/components/NameDialog.tsx` and `DeleteTabDialog.tsx` in the same folder;
   `MoveOrRenamePageDialog.tsx`, `DeletePageDialog.tsx`, `RestorePageDialog.tsx` and `RevertPageDialog.tsx` in
   `src/features/pages/components/`; `src/features/folder-roles/components/GiveRoleDialog.tsx`;
   `src/features/grants/components/RevokeAppDialog.tsx`; `src/features/users/components/CreateUserDialog.tsx`
-- Severity: Minor. Duplicated code, but it carries rules, and the finding above shows a copy that drifted.
+- Severity: Minor. Duplicated code, but it carries rules, and one copy had drifted: the "Save page" dialog did not
+  move the focus to the name field after a refused name, which is fixed.
 - Category: readability
 - Problem: these rules of `architecture.md` are written once per dialog: close only while nothing is pending
   (9 times), `disablePortal` with the same comment (9), the submit button outside the form, disabled while pending
@@ -1018,6 +997,8 @@ PageDeleteFormAction } from "@/features/pages/forms";`.
 - The services of auth and users: a type of errors per write, `Result` everywhere, no password in a log line, and
   pure modules for the wait, the limits and the type of an account.
 - Every form state is the field errors and a message, with at most one documented extra.
+- Every dialog with a form moves the focus to the first field with an error after a refused save, the "Save page"
+  dialog included (`e2e/create-page.spec.ts`).
 - There is no `TODO` or `FIXME` in `src/`, `scripts/` or `prisma/`.
 
 ### Tests: unit and integration
@@ -1055,25 +1036,6 @@ them are fixed.
 
 ### Tests: end-to-end
 
-#### issue: the revert dialog has one locking case in the browser, and two locking rules have none
-
-- Location: `e2e/revert-page.spec.ts`, lines 140–169; `spec/optimistic-locking.md`, sections "Which changes are
-  refused" and "What the browser shows"
-- Severity: Minor. The tests of the actions and of the service cover the codes.
-- Category: tests
-- Problem: unlike edit, move and delete, a revert has no test for a submission without a version, for a rename
-  meanwhile (the dialog again at the new address), for a page deleted meanwhile, or for a page in a tab. Two rules
-  have no test in the browser at all: the role is checked before the version, and a move to a taken name that rests
-  on an older state is refused as changed, not as taken.
-- Impact: the redirect of a revert carries the parameter `revision`, which the other three do not. A refactoring of
-  the shared handling of the notice can break only the revert.
-- Evidence: a search of `e2e/revert-page.spec.ts` for `VERSION_FIELD`, `no longer exists` and `Escape` gives no
-  hit. Below the browser: `src/features/pages/actions.test.ts` and `integration/page-service.test.ts`, "gives
-  page-changed, not name-taken, for an older version and a taken name".
-- Suggestion (optional): add the three cases to `e2e/revert-page.spec.ts` and the taken name on an older version to
-  `e2e/move-or-rename-page.spec.ts`.
-- Confidence: High. The same cases exist for the three other actions, for example in `e2e/delete-page.spec.ts`.
-
 #### issue: the pending state of the forms and dialogs is tested nowhere
 
 - Location: every dialog and form with a pending state, for example
@@ -1094,42 +1056,6 @@ them are fixed.
 - Alternatives: say in `testing.md` that pending states are left untested on purpose.
 - Decision (2026-11-18): as suggested, if `page.route()` can hold a Server Action with this version of Next.js; if it
   cannot, the Alternative: `testing.md` says that pending states are left untested on purpose.
-
-#### suggestion: "changed through MCP meanwhile" is simulated with a database row that MCP could not write
-
-- Location: the tests "names the channel mcp…" in `e2e/edit-page.spec.ts`, lines 488–507,
-  `e2e/move-or-rename-page.spec.ts`, lines 595–617, `e2e/delete-page.spec.ts`, lines 237–259, and
-  `e2e/revert-page.spec.ts`, lines 149–154; the other direction in `e2e/mcp.spec.ts`, lines 889–910
-- Severity: Minor. Each half is proven; only the join is simulated.
-- Category: tests
-- Problem: the tests set the content, the version and the channel by hand, and three of the four write no revision,
-  a state the app never stores. No test runs a real `replace_page_content` while an editor is open in the browser,
-  and none shows a revision of a real MCP call in the history of the browser.
-- Impact: if a write of MCP stopped counting the version up, the tests of the notice "via mcp" would still pass.
-- Evidence: `e2e/edit-page.spec.ts`, lines 493–501: `await getTestDb().page.update({ … version: { increment: 1 },
-lastEditedById: bob.id, lastEditedVia: "mcp" } });`.
-- Suggestion (optional): one test in `e2e/mcp.spec.ts` with a real tool call, then a save in the browser and the
-  history view.
-- Confidence: Medium. The building blocks exist in `e2e/mcp.spec.ts`; the test was not written.
-- Decision (2026-11-18): as suggested.
-
-#### issue: single states of other components have no test
-
-- Location: `src/features/users/components/CreateUserDialog.tsx` and `src/features/mcp/components/McpAddress.tsx`
-  (the copy failed); `src/features/oauth/components/ConsentForm.tsx` (the limit reached between the page and
-  "Approve", and "Returning to the app…"); `src/features/folders/components/NameDialog.tsx` (a tab deleted while its
-  rename dialog is open); Escape in the "Save page" dialog and in the revoke dialog
-- Severity: Minor. Each is small; together they are the untested rest of the dialogs.
-- Category: tests
-- Problem: none of these states is rendered in an end-to-end test, and the components have no unit tests.
-- Impact: the fallback of the copy button and the lock of the consent form can break unnoticed.
-- Evidence: a search of `e2e/` for `could not be copied`, `Copy failed`, `Returning to the app` and `most allowed`
-  gives no hit. "Renaming a tab deleted meanwhile shows the not-found page" is a decision in `folder-roles.md` that
-  only `src/features/folders/service.test.ts` proves.
-- Suggestion (optional): one short test each in the spec of the feature.
-- Confidence: Medium. Whether the browser of the tests refuses the clipboard without a permission was not tried.
-- Decision (2026-11-18): as suggested; the case of a failed copy is dropped if the browser of the tests cannot be made
-  to refuse the clipboard.
 
 #### nit: `mcp.spec.ts` has 1,465 lines, and two specs hold tests that use neither browser nor server
 
@@ -1158,7 +1084,13 @@ lastEditedById: bob.id, lastEditedVia: "mcp" } });`.
   revisions (`e2e/edit-page.spec.ts`); a change to the same role (`e2e/folder-roles.spec.ts`).
 - Optimistic locking: two real browser contexts for save, move or rename and delete, a second tab of the same user,
   a rename meanwhile and a missing version, each with the address, the exact message, the stored content and a
-  second confirm that succeeds. MCP has a first and a second writer and a refusal after an edit in the browser.
+  second confirm that succeeds; the revert has a missing version, a rename and a delete meanwhile, and a move to a
+  name taken meanwhile on an older state is refused as changed. MCP has a first and a second writer and a refusal
+  after an edit in the browser, and a real `replace_page_content` while an editor is open is refused in the browser
+  and shows in the history.
+- Single states: the grant limit reached between the consent page and "Approve", "Returning to the app…", a tab
+  deleted while its rename dialog is open, Escape in the "Save page" and the revoke dialog, and a copy that the
+  browser refuses, for the first password and for an MCP address.
 - Roles: each function is allowed for its lowest role and not found for the next lower one at its address, and a
   crafted form of each function of a Manager is refused for a Writer, as "Remove" of a role is for a Manager; a
   change of a role holds from the next request on; the last Owner is kept. The "Give role" dialog and the roles view

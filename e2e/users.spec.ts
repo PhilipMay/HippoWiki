@@ -248,6 +248,21 @@ test.describe("the admin, creating a user", () => {
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(password);
   });
 
+  test("when the browser refuses the clipboard, the dialog says so and the password stays to copy by hand", async ({
+    page,
+  }) => {
+    // Without the permission to write the clipboard, the browser of the tests refuses it.
+    const password = await createUserInDialog(page, "jane-doe");
+    const created = userCreatedDialog(page);
+
+    await created.getByRole("button", { name: "Copy password" }).click();
+
+    await expect(created.getByRole("alert").filter({ hasText: "could not be copied" })).toHaveText(
+      "The password could not be copied. Select it and copy it yourself.",
+    );
+    await expect(created.getByLabel("First password")).toHaveValue(password);
+  });
+
   test("after a reload the password is gone", async ({ page }) => {
     const password = await createUserInDialog(page, "jane-doe");
 

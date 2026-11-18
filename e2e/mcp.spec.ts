@@ -14,7 +14,7 @@ import {
   getTestDb,
   resetTestDatabase,
 } from "./support/database";
-import { callTool, sendMcp, type ToolResult } from "./support/mcp";
+import { callTool, mcpPath, sendMcp, type ToolResult } from "./support/mcp";
 import { ISSUER } from "./support/oauth";
 import { expect, test } from "./support/test";
 
@@ -974,6 +974,45 @@ test.describe("the write tools", () => {
 
       await expect(page.getByText(/^Last updated /)).toHaveText(new RegExp(`by ${KNOWN_USER.name} via mcp$`));
       await expect(page.getByRole("main")).not.toContainText(/agent app|connected app/i);
+    });
+
+    test("a write through MCP while the editor is open refuses the save in the browser once, and both are in the history", async ({
+      page,
+      request,
+    }) => {
+      const bob = await createUser({ name: "bob", mustChangePassword: false });
+      await createFolderRole({ folder: projects, user: bob, role: "writer" });
+      const { accessToken } = await createGrant({ owner: bob, folder: projects, role: "writer" });
+      const bobsConnection = { address: mcpPath(projects, "writer"), token: accessToken };
+      await createPage({ folder: projects, name: "plan", content: "# Plan\n\nFirst draft", editor: bob });
+
+      await page.goto("/folders/projects/plan.md?action=edit");
+      await page.getByLabel("Content").fill("# Plan\n\nBy alice.");
+      const written = await callTool(request, bobsConnection, "replace_page_content", {
+        page: "plan",
+        version: 1,
+        content: "# Plan\n\nBy an agent.",
+      });
+      expect(written.isError).toBeFalsy();
+      await page.getByRole("button", { name: "Save" }).click();
+
+      await expect(page).toHaveURL("/folders/projects/plan.md?action=edit&notice=changed");
+      await expect(page.getByRole("main").getByRole("alert")).toHaveText(
+        /^This page was changed by bob via mcp at .+ after you opened it\.$/,
+      );
+      await expect(page.getByLabel("Content")).toHaveValue("# Plan\n\nBy an agent.");
+
+      await page.getByLabel("Content").fill("# Plan\n\nBy alice.");
+      await page.getByRole("button", { name: "Save" }).click();
+      await expect(page).toHaveURL("/folders/projects/plan.md");
+
+      await page.goto("/folders/projects/plan.md?view=history");
+      await expect(page.getByRole("list", { name: "Revisions" }).getByRole("link")).toHaveText([
+        new RegExp(`^Revision 3.+ by ${KNOWN_USER.name} via web · Plan$`),
+        /^Revision 2.+ by bob via mcp · Plan$/,
+        /^Revision 1.+ by bob via web · Plan$/,
+      ]);
+      expect(await storedPages()).toMatchObject([{ content: "# Plan\n\nBy alice.", version: 3 }]);
     });
 
     // The stored content sent back changes nothing and returns the version stated.

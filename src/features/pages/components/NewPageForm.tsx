@@ -9,7 +9,7 @@ import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
-import { startTransition, useActionState, useId, useRef, useState, type SubmitEvent } from "react";
+import { startTransition, useActionState, useEffect, useId, useRef, useState, type SubmitEvent } from "react";
 
 import Link from "@/components/Link";
 import PageNameAndPlaceFields, { FOLDER_TARGET } from "@/features/pages/components/PageNameAndPlaceFields";
@@ -134,6 +134,11 @@ function SavePageDialog({
 
   const nameError = state.fieldErrors?.name?.[0];
   const message = state.message ?? state.fieldErrors?.content?.[0];
+
+  // After a refused save the name field gets the focus when it has an error, as in every dialog with a form.
+  useEffect(() => {
+    if (state.fieldErrors?.name) nameRef.current?.focus();
+  }, [state]);
 
   // The form calls the action itself instead of passing it as the form's `action`: React resets a form after its
   // action, and that reset puts the radio buttons back to the initial choice, out of sync with the controlled one.

@@ -329,6 +329,11 @@ How the code is tested. Commands are listed in `README.md`.
 - A test that simulates a crafted request adds hidden fields to the form, or changes the submitted data in the form's
   `formdata` event. It does not change the value of a control that React renders: React writes that value back
   whenever it renders the control again, e.g. when it gets the focus.
+- Playwright cannot read a page while it navigates away. A test of the state a page shows on its way out, such as
+  "Returning to the app…" of the consent page, lets the target answer `204 No Content` with `page.route()`, so the
+  browser stays on the page.
+- The browser of the tests refuses the clipboard unless a test grants `clipboard-write` with
+  `context.grantPermissions()`; a test of a copy that fails grants nothing.
 - `e2e/hydration.spec.ts` checks with JavaScript disabled that the controls of Client Components stay read-only or
   disabled until hydration (see "UI" in `architecture.md`). A new Client Component with such controls adds a case there.
 - The Chromium of the tests does not show the content of a `noscript` element, although its scripts are switched

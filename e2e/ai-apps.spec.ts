@@ -48,6 +48,16 @@ for (const [role, roles] of [
   });
 }
 
+test("the copy button says Copy failed when the browser refuses the clipboard", async ({ page }) => {
+  // Without the permission to write the clipboard, the browser of the tests refuses it.
+  await createFolder({ name: "projects" });
+  await page.goto("/folders/projects?view=mcp");
+
+  await page.getByRole("button", { name: "Copy writer address" }).click();
+
+  await expect(page.getByRole("button", { name: "Copy writer address" })).toHaveText("Copy failed");
+});
+
 test("the copy button puts the full address on the clipboard", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   const folder = await createFolder({ name: "projects" });

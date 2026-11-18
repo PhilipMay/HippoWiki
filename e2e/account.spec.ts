@@ -220,6 +220,19 @@ test("Cancel in the revoke dialog keeps the app", async ({ page }) => {
   expect(await getTestDb().oAuthGrant.count()).toBe(1);
 });
 
+test("the Escape key closes the revoke dialog and keeps the app", async ({ page }) => {
+  const { grant } = await createGrant({ owner: KNOWN_USER, name: "Example connector" });
+  await page.goto(`/account?action=revoke&app=${grant.id}`);
+  await expect(revokeDialog(page)).toBeVisible();
+
+  await page.keyboard.press("Escape");
+
+  await expect(page).toHaveURL("/account");
+  await expect(revokeDialog(page)).toHaveCount(0);
+  await expect(appRows(page)).toHaveCount(1);
+  expect(await getTestDb().oAuthGrant.count()).toBe(1);
+});
+
 test("an app that was revoked in the meantime shows the not-found page", async ({ page }) => {
   const { grant } = await createGrant({ owner: KNOWN_USER, name: "Example connector" });
   await page.goto(`/account?action=revoke&app=${grant.id}`);

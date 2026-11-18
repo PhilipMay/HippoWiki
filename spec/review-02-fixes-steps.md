@@ -93,7 +93,7 @@ Decided by the user on 2026-11-18:
 - [x] Shared helpers of the unit and integration tests
 - [x] Shared helpers of the end-to-end tests
 - [x] End-to-end tests of access, roles and deleted pages
-- [ ] End-to-end tests of locking, MCP and single states
+- [x] End-to-end tests of locking, MCP and single states
 - [ ] End-to-end tests of the pending state
 - [ ] Split of `e2e/mcp.spec.ts`
 - [ ] Actors, guards and one channel

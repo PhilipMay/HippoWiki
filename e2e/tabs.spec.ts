@@ -192,6 +192,21 @@ test("saving the rename dialog with the name the tab got meanwhile stores nothin
   expect(errors).toEqual([]);
 });
 
+test("renaming a tab that was deleted while its rename dialog is open shows the not-found page", async ({ page }) => {
+  const tab = await createTab({ folder: handbook, name: "guides" });
+
+  await page.goto("/folders/handbook/guides?action=rename");
+  const dialog = page.getByRole("dialog", { name: "Rename tab" });
+  await expect(dialog.getByLabel("Name")).toBeEditable();
+  // A Manager deletes the tab while the dialog is open.
+  await getTestDb().tab.delete({ where: { id: tab.id } });
+  await dialog.getByLabel("Name").fill("news");
+  await dialog.getByRole("button", { name: "Save" }).click();
+
+  await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
+  expect(await getTestDb().tab.count()).toBe(0);
+});
+
 test("the rename dialog of a tab keeps Save disabled, and Enter without effect, while the name is unchanged", async ({
   page,
 }) => {
