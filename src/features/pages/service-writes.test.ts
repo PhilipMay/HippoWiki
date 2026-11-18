@@ -336,7 +336,7 @@ describe("updatePageContent", () => {
     expect(dataOf(mocks.revisionCreate)).toMatchObject({ number: 4, revertedTo: null });
   });
 
-  // A save of the stored content, based on the version of the page, leaves the page as it is (R1, R2, R8).
+  // A save of the stored content, based on the version of the page, leaves the page as it is.
   it.each([
     ["in the browser", ACTOR, { channel: "browser" }],
     ["through MCP", MCP_ACTOR, { channel: "mcp", grantId: MCP_ACTOR.connection?.grantId }],
@@ -358,7 +358,7 @@ describe("updatePageContent", () => {
     },
   );
 
-  // The stored content based on another version is refused like every other save (R4).
+  // The stored content based on another version is refused like every other save.
   it("returns page-changed for the stored content when the page has another version", async () => {
     mocks.updateMany.mockResolvedValue({ count: 0 });
     mocks.findFirst.mockResolvedValue(null);
@@ -382,7 +382,7 @@ describe("updatePageContent", () => {
     expect(mocks.info).not.toHaveBeenCalled();
   });
 
-  // Content over a limit is refused before the version is looked at, also when it is the stored content (R4, R7).
+  // Content over a limit is refused before the version is looked at, also when it is the stored content.
   it("returns the field errors of stored content that breaks a limit now, without reading the page", async () => {
     const table = `# Table\n\n| a |\n| - |\n${"| x |\n".repeat(CONTENT_MAX_TABLE_CELLS)}`;
 
@@ -445,7 +445,7 @@ describe("updatePageContent", () => {
     expect(mocks.info).not.toHaveBeenCalled();
   });
 
-  // A change that states no version, or a malformed one, is based on no known state of the page (R6, R14).
+  // A change that states no version, or a malformed one, is based on no known state of the page.
   it.each([null, 0, -1, 1.5, Number.NaN, 2_147_483_648])(
     "writes nothing and returns page-changed for the version %j",
     async (version) => {
@@ -627,7 +627,7 @@ describe("revertPage", () => {
     expect(mocks.warn).toHaveBeenCalledWith({ pageId: PAGE_ID }, "page to revert not found");
   });
 
-  // The limits in force now apply, which a revision stored before a limit existed may break (R16).
+  // The limits in force now apply, which a revision stored before a limit existed may break.
   it("returns the field errors of content that breaks a limit now, and stores nothing", async () => {
     const table = `# Table\n\n| a |\n| - |\n${"| x |\n".repeat(CONTENT_MAX_TABLE_CELLS)}`;
     mocks.findFirst.mockResolvedValue(pageWith(table));

@@ -1,9 +1,10 @@
 import type { Page } from "@playwright/test";
 
 import { KNOWN_ADMIN, KNOWN_USER } from "../prisma/known-users";
-import { ADMIN_STORAGE_STATE, NO_STORAGE_STATE, USER_STORAGE_STATE } from "./support/auth";
+import { ADMIN_STORAGE_STATE, logIn, NO_STORAGE_STATE, USER_STORAGE_STATE } from "./support/auth";
 import { collectErrors } from "./support/browser";
 import { createFolder, createPage, createTab, getTestDb, resetTestDatabase } from "./support/database";
+import { ISSUER } from "./support/oauth";
 import { expect, test } from "./support/test";
 
 const DELETED_PAGE_ID = "9c4d2b7e-1a3f-4c5d-8e6f-7a8b9c0d1e22";
@@ -86,11 +87,8 @@ async function expectLoginPage(page: Page, address?: string) {
 }
 
 /** Opens the login page and logs in as the known normal user. */
-async function logIn(page: Page) {
-  await page.goto("/login");
-  await page.getByLabel("User name").fill(KNOWN_USER.name);
-  await page.getByLabel("Password").fill(KNOWN_USER.password);
-  await page.getByRole("button", { name: "Log in" }).click();
+async function logInAsUser(page: Page) {
+  await logIn(page, KNOWN_USER.name, KNOWN_USER.password);
   await expect(page).toHaveURL("/folders");
 }
 
@@ -222,7 +220,7 @@ test.describe("without a login", () => {
     context,
   }) => {
     await context.addCookies([
-      { name: "better-auth.session_token", value: "unknown-token.unknown-signature", url: "http://localhost:3100" },
+      { name: "better-auth.session_token", value: "unknown-token.unknown-signature", url: ISSUER },
     ]);
 
     const response = await page.goto("/nowhere");
@@ -232,7 +230,7 @@ test.describe("without a login", () => {
   });
 
   test("after the session has ended in the database, the content leads to the login page", async ({ page }) => {
-    await logIn(page);
+    await logInAsUser(page);
     await page.goto("/folders/handbook/overview.md");
     await expect(page.getByRole("heading", { level: 1, name: "Secret overview" })).toBeVisible();
 
@@ -243,7 +241,7 @@ test.describe("without a login", () => {
   });
 
   test("after a logout, the content leads to the login page", async ({ page }) => {
-    await logIn(page);
+    await logInAsUser(page);
 
     await page.getByRole("banner").getByRole("button", { name: "Log out" }).click();
     await expect(page).toHaveURL("/login");
@@ -255,7 +253,7 @@ test.describe("without a login", () => {
   test("a Server Action that is submitted after the session has ended changes nothing and leads to the login page", async ({
     page,
   }) => {
-    await logIn(page);
+    await logInAsUser(page);
     await page.goto("/folders?action=new");
     const dialog = page.getByRole("dialog", { name: "New folder" });
     await dialog.getByLabel("Name").fill("too-late");
@@ -271,7 +269,7 @@ test.describe("without a login", () => {
     page,
     context,
   }) => {
-    await logIn(page);
+    await logInAsUser(page);
     await page.goto("/folders/handbook/overview.md?action=delete");
     const dialog = page.getByRole("dialog", { name: "Delete page" });
     await expect(dialog).toBeVisible();

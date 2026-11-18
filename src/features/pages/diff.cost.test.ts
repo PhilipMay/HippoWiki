@@ -5,7 +5,7 @@ import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 
 // Wall-clock budgets: this file runs in the Vitest project `cost`, never under coverage and never next to other test
 // files. Two completely different revisions at the length limit must be answered quickly, with a diff or with "too
-// different", so that a comparison never ties up the server (R10).
+// different", so that a comparison never ties up the server.
 
 /** The budget of one comparison. */
 const BUDGET_MS = 2_000;

@@ -1,19 +1,10 @@
-import type { Page } from "@playwright/test";
-
-import { collectErrors } from "./support/browser";
+import { collectErrors, expectNotFound } from "./support/browser";
 import { createFolder, createPage, createUser, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
 
 test.beforeEach(async () => {
   await resetTestDatabase();
 });
-
-async function expectNotFound(page: Page, address: string) {
-  const response = await page.goto(address);
-
-  expect(response?.status()).toBe(404);
-  await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
-}
 
 test("the home page shows the folder list", async ({ page }) => {
   await page.goto("/");

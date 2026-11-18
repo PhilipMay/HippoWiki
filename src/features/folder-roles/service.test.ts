@@ -584,7 +584,7 @@ describe("changeRole and removeRole", () => {
     );
   });
 
-  // R5, R10: a change to the role the user has passes the checks of every change and then writes nothing.
+  // A change to the role the user has passes the checks of every change and then writes nothing.
   it.each(["owner", "manager", "writer", "reader"] as const)(
     "writes nothing for a change of another user to the role %s the user has, answered as a change and logged apart",
     async (role) => {
@@ -607,7 +607,7 @@ describe("changeRole and removeRole", () => {
     },
   );
 
-  // R9: the checks come first, so a change to the same role is refused like every other change.
+  // The checks come first, so a change to the same role is refused like every other change.
   it("refuses an admin, a Writer of the folder and a user without a role also for the same role", async () => {
     await expect(changeRole(ADMIN, FOLDER_ID, BOB_ID, "writer")).resolves.toEqual(NOT_ALLOWED);
     expect(mocks.transaction).not.toHaveBeenCalled();

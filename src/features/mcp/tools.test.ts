@@ -585,7 +585,7 @@ describe("the write tools", () => {
       expect(result.structuredContent).toMatchObject({ name: "setup", version: 5 });
     });
 
-    // Unchanged saves, R6: the service returns the page as stored with the version stated, and so does the tool.
+    // The service returns the page as stored with the version stated, and so does the tool.
     it("returns the usual result with the stated version for content without a change", async () => {
       mocks.getPage.mockResolvedValue(PAGE);
       mocks.updatePageContent.mockResolvedValue({ ok: true, value: { ...STORED, version: 4 } });

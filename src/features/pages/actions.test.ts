@@ -228,7 +228,7 @@ describe("updatePageContent", () => {
     expectContentRevalidated();
   });
 
-  // The service refuses a save without a version, so that the editor shows the current page (R14).
+  // The service refuses a save without a version, so that the editor shows the current page.
   it.each([
     ["missing", { content: CONTENT }],
     ["malformed", { content: CONTENT, version: "x" }],
@@ -374,7 +374,7 @@ describe("deletePage", () => {
     expectContentRevalidated();
   });
 
-  // The service refuses a delete without a version, so that the dialog shows the current page (R14).
+  // The service refuses a delete without a version, so that the dialog shows the current page.
   it.each([
     ["missing", {}],
     ["malformed", { version: "six" }],

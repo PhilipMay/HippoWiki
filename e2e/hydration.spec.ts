@@ -1,5 +1,5 @@
 import { KNOWN_USER } from "../prisma/known-users";
-import { ADMIN_STORAGE_STATE, NO_STORAGE_STATE } from "./support/auth";
+import { ADMIN_STORAGE_STATE, NO_STORAGE_STATE, submitLogin } from "./support/auth";
 import {
   createFolder,
   createGrant,
@@ -8,9 +8,9 @@ import {
   createTab,
   createUser,
   resetTestDatabase,
-  TEST_PASSWORD,
 } from "./support/database";
-import { expect, test } from "./support/test";
+import { authorizeUrl, mcpAddress, registerClient } from "./support/oauth";
+import { expect, hydrating, test } from "./support/test";
 
 // Without JavaScript the page never hydrates and shows only the server-rendered HTML: the state in which input could be
 // lost, so every control that needs JavaScript must be locked here.
@@ -42,22 +42,9 @@ test.describe("as a normal user", () => {
     page,
     request,
   }) => {
-    const registered = await request.post("/oauth/register", {
-      data: { redirect_uris: ["http://127.0.0.1:53682/callback"], client_name: "Example connector" },
-    });
-    const { client_id: clientId } = (await registered.json()) as { client_id: string };
+    const clientId = await registerClient(request);
     const projects = await createFolder({ name: "projects" });
-    const query = new URLSearchParams({
-      client_id: clientId,
-      redirect_uri: "http://127.0.0.1:53682/callback",
-      response_type: "code",
-      code_challenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
-      code_challenge_method: "S256",
-      state: "xyz",
-      resource: `http://localhost:3100/mcp/${projects.id}/reader`,
-    });
-
-    const address = `/oauth/authorize?${query.toString()}`;
+    const address = authorizeUrl(clientId, mcpAddress(projects));
 
     await page.goto(address);
 
@@ -112,11 +99,9 @@ test.describe("without a login", () => {
     // The login form needs JavaScript, so a browser with JavaScript logs in and hands its session to one without.
     await createUser({ name: "newcomer" });
     const withJavaScript = await browser.newContext({ javaScriptEnabled: true, storageState: NO_STORAGE_STATE });
-    const loginPage = await withJavaScript.newPage();
+    const loginPage = hydrating(await withJavaScript.newPage());
     await loginPage.goto("/login");
-    await loginPage.getByLabel("User name").fill("newcomer");
-    await loginPage.getByLabel("Password").fill(TEST_PASSWORD);
-    await loginPage.getByRole("button", { name: "Log in" }).click();
+    await submitLogin(loginPage, "newcomer");
     await expect(loginPage).toHaveURL("/change-password");
     const storageState = await withJavaScript.storageState();
     await withJavaScript.close();

@@ -3,7 +3,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 
 import { KNOWN_ADMIN, KNOWN_USER } from "../prisma/known-users";
-import { ADMIN_STORAGE_STATE, AUTH_DIRECTORY, SESSIONS_FILE, USER_STORAGE_STATE } from "./support/auth";
+import { ADMIN_STORAGE_STATE, AUTH_DIRECTORY, SESSIONS_FILE, submitLogin, USER_STORAGE_STATE } from "./support/auth";
 import { getTestDb } from "./support/database";
 import { expect, test as setup } from "./support/test";
 
@@ -15,9 +15,7 @@ const LOGINS = [
 for (const { user, storageState } of LOGINS) {
   setup(`log in as ${user.name}`, async ({ page }) => {
     await page.goto("/login");
-    await page.getByLabel("User name").fill(user.name);
-    await page.getByLabel("Password").fill(user.password);
-    await page.getByRole("button", { name: "Log in" }).click();
+    await submitLogin(page, user.name, user.password);
     // A user lands on the folder list, an admin on the user list.
     await expect(page).toHaveURL(user.type === "admin" ? "/users" : "/folders");
 

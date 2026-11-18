@@ -175,7 +175,7 @@ describe("changeRole and removeRole", () => {
     ]);
   });
 
-  // R5: a change to the role the user has writes nothing; a change to another role updates role and time.
+  // A change to the role the user has writes nothing; a change to another role updates role and time.
   it("keeps the role and its time for a change to the same role, and updates both for another role", async () => {
     const bob = await createBob();
     const folder = await createFolder({ roles: [{ user: actor, role: "owner" }] });

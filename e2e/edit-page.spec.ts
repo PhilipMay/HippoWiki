@@ -5,7 +5,7 @@ import { CONTENT_MAX_LENGTH, CONTENT_MAX_TABLE_CELLS } from "@/features/pages/li
 
 import { KNOWN_USER } from "../prisma/known-users";
 import { ADMIN_STORAGE_STATE, becomeUser, logInElsewhere } from "./support/auth";
-import { collectErrors } from "./support/browser";
+import { by, collectErrors, expectNotFound } from "./support/browser";
 import {
   createFolder,
   createFolderRole,
@@ -15,7 +15,7 @@ import {
   getTestDb,
   resetTestDatabase,
 } from "./support/database";
-import { expect, test } from "./support/test";
+import { expect, hydrating, test } from "./support/test";
 
 let handbook: Awaited<ReturnType<typeof createFolder>>;
 
@@ -34,20 +34,8 @@ function moveOrRenameDialog(page: BrowserPage) {
   return page.getByRole("dialog", { name: "Move or rename page" });
 }
 
-async function expectNotFound(page: BrowserPage, address: string) {
-  const response = await page.goto(address);
-
-  expect(response?.status()).toBe(404);
-  await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
-}
-
 /** The logged-in user of the tests, who makes every change through the GUI. */
 const USER = KNOWN_USER.name;
-
-/** Text that ends with "by <user> via <channel>", as the lists and views show the last editor and the channel. */
-function by(user: string, via: "web" | "mcp" = "web"): RegExp {
-  return new RegExp(`by ${user} via ${via}$`);
-}
 
 test("editing the content shows the new version and keeps the name", async ({ page }) => {
   const errors = collectErrors(page);
@@ -143,7 +131,7 @@ test("changing the heading changes the title and the list entry, but not the nam
   expect(errors).toEqual([]);
 });
 
-// A save without a change stores nothing, not even the derived title (unchanged saves, R1).
+// A save without a change stores nothing, not even the derived title.
 test("a page stored with a different title keeps it on a save without a change and gets the derived title on its next change", async ({
   page,
 }) => {
@@ -274,7 +262,7 @@ test("cancelling an edit returns to the page view and changes nothing", async ({
   expect(await getTestDb().page.findUniqueOrThrow({ where: { id: created.id } })).toEqual(created);
 });
 
-// R11: a page deleted after the editor was opened is refused as before, whatever its version.
+// A page deleted after the editor was opened is refused as before, whatever its version.
 test("saving a page that was deleted in the meantime shows an error and keeps the content", async ({ page }) => {
   const created = await createPage({ folder: handbook, name: "soon-gone", title: "Soon gone" });
 
@@ -373,7 +361,7 @@ test("a page created and saved in the browser has a revision per change, and a s
     { number: 2, content: "# History\n\nSecond version", user: { username: USER }, via: "web" },
   ]);
 
-  // Another user saves without a change: no revision, and the page stays as it is (unchanged saves, R1, R2).
+  // Another user saves without a change: no revision, and the page stays as it is.
   const before = await getTestDb().page.findFirstOrThrow({ where: { name: "history" } });
   const other = await logInElsewhere(browser, "bob");
   await other.page.goto("/folders/handbook/history.md?action=edit");
@@ -456,7 +444,7 @@ test.describe("a page changed after the editor was opened", () => {
     const plan = await createPage({ folder: team, name: "plan", content: "# Plan\n\nFirst draft" });
     const other = await logInElsewhere(browser, "bob");
 
-    // R1: both open the editor; bob saves first.
+    // Both open the editor; bob saves first.
     await page.goto("/folders/team/plan.md?action=edit");
     await other.page.goto("/folders/team/plan.md?action=edit");
     await other.page.getByLabel("Content").fill("# Plan\n\nBob's version");
@@ -466,7 +454,7 @@ test.describe("a page changed after the editor was opened", () => {
     await page.getByLabel("Content").fill("# Plan\n\nAlice's version");
     await page.getByRole("button", { name: "Save" }).click();
 
-    // R5, R9: the editor again, with the content as stored and the message that names bob and the time.
+    // The editor again, with the content as stored and the message that names bob and the time.
     await expect(page).toHaveURL("/folders/team/plan.md?action=edit&notice=changed");
     await expect(page.getByLabel("Content")).toHaveValue("# Plan\n\nBob's version");
     const time = await shownTime(other.page, "/folders/team/plan.md");
@@ -506,10 +494,10 @@ test.describe("a page changed after the editor was opened", () => {
     await expect(changedMessage(page)).toHaveText(/^This page was changed by bob via mcp at .+ after you opened it\.$/);
   });
 
-  // R10: the user's own save in another tab counts like the save of another user.
+  // The user's own save in another tab counts like the save of another user.
   test("refuses the save in a second tab after a save in the first", async ({ page, context }) => {
     await createPage({ folder: team, name: "plan", content: "# Plan\n\nFirst draft" });
-    const second = await context.newPage();
+    const second = hydrating(await context.newPage());
 
     await page.goto("/folders/team/plan.md?action=edit");
     await second.goto("/folders/team/plan.md?action=edit");
@@ -527,7 +515,7 @@ test.describe("a page changed after the editor was opened", () => {
     );
   });
 
-  // R7, R12: a rename counts as a change, and the editor is shown at the new address.
+  // A rename counts as a change, and the editor is shown at the new address.
   test("refuses the save after a rename and shows the editor at the new address", async ({ page, browser }) => {
     const plan = await createPage({ folder: team, name: "plan", content: "# Plan\n\nFirst draft" });
     const other = await logInElsewhere(browser, "bob");
@@ -551,7 +539,7 @@ test.describe("a page changed after the editor was opened", () => {
     await other.context.close();
   });
 
-  // R14: an editor opened before the feature submits no version; its save is refused once.
+  // An editor opened before the feature submits no version; its save is refused once.
   test("refuses a save without a version and shows the current page with the message", async ({ page }) => {
     const plan = await createPage({ folder: team, name: "plan", content: "# Plan\n\nStored", editor: bob });
 
@@ -571,7 +559,7 @@ test.describe("a page changed after the editor was opened", () => {
     expect(await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).toStrictEqual(plan);
   });
 
-  // Unchanged saves, R4: a save without a change is refused like every other save based on an older version.
+  // A save without a change is refused like every other save based on an older version.
   test("refuses a save without a change in an editor opened before another change, and keeps that change", async ({
     page,
     browser,
@@ -646,7 +634,7 @@ test.describe("a save without a change", () => {
     return page.getByRole("article").locator("time");
   }
 
-  // Unchanged saves, R1, R2, R3, R5: the page keeps its last editor, channel, time and version, and its revisions.
+  // The page keeps its last editor, channel, time and version, and its revisions.
   test("leaves the page as it is, in the page view and the lists, and shows no notice", async ({ page }) => {
     const errors = collectErrors(page);
     const bob = await createUser({ name: "bob" });
@@ -693,7 +681,7 @@ test.describe("a save without a change", () => {
     expect(errors).toEqual([]);
   });
 
-  // Unchanged saves, R7: the limits in force are checked also when the content is the stored one.
+  // The limits in force are checked also when the content is the stored one.
   test("of content over the length limit shows the length error and stores nothing", async ({ page }) => {
     const errors = collectErrors(page);
     const content = `# Long page\n\n${"x".repeat(CONTENT_MAX_LENGTH)}`;

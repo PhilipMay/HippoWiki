@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { KNOWN_USER } from "../prisma/known-users";
-import { collectErrors } from "./support/browser";
+import { by, collectErrors, expectNotFound } from "./support/browser";
 import { createFolder, createPage, createTab, createUser, getTestDb, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
 
@@ -27,23 +27,11 @@ function contentsLinks(page: Page) {
   return page.getByRole("list", { name: "Contents" }).getByRole("link");
 }
 
-async function expectNotFound(page: Page, address: string) {
-  const response = await page.goto(address);
-
-  expect(response?.status()).toBe(404);
-  await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
-}
-
 /** The hint below the name field of the name dialogs. */
 const NAME_HINT = "Lowercase letters, digits and single hyphens, e.g. release-notes";
 
 /** The logged-in user of the tests, who makes every change through the GUI. */
 const USER = KNOWN_USER.name;
-
-/** Text that ends with "by <user> via <channel>", as the lists and views show the last editor and the channel. */
-function by(user: string, via: "web" | "mcp" = "web"): RegExp {
-  return new RegExp(`by ${user} via ${via}$`);
-}
 
 test("creating a tab through the dialog shows the new tab", async ({ page }) => {
   const errors = collectErrors(page);

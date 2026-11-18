@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import type { Browser, BrowserContext, Page } from "@playwright/test";
 
 import { TEST_PASSWORD } from "./database";
-import { expect } from "./test";
+import { expect, hydrating } from "./test";
 
 /** The directory of the saved logins; ignored by Git and removed before every run. */
 export const AUTH_DIRECTORY = fileURLToPath(new URL("../.auth/", import.meta.url));
@@ -43,11 +43,21 @@ export async function becomeUser(context: BrowserContext, storageState: string):
  */
 export async function logInElsewhere(browser: Browser, name: string): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser.newContext({ storageState: NO_STORAGE_STATE });
-  const page = await context.newPage();
-  await page.goto("/login");
-  await page.getByLabel("User name").fill(name);
-  await page.getByLabel("Password").fill(TEST_PASSWORD);
-  await page.getByRole("button", { name: "Log in" }).click();
+  const page = hydrating(await context.newPage());
+  await logIn(page, name);
   await expect(page).toHaveURL("/folders");
   return { context, page };
+}
+
+/** Fills the login form of the open page with the user name and the password and submits it. */
+export async function submitLogin(page: Page, name: string, password: string = TEST_PASSWORD): Promise<void> {
+  await page.getByLabel("User name").fill(name);
+  await page.getByLabel("Password").fill(password);
+  await page.getByRole("button", { name: "Log in" }).click();
+}
+
+/** Opens the login page and submits the login form; the test asserts where the login leads. */
+export async function logIn(page: Page, name: string, password: string = TEST_PASSWORD): Promise<void> {
+  await page.goto("/login");
+  await submitLogin(page, name, password);
 }

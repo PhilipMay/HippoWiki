@@ -4,7 +4,7 @@ import { PLACE_FIELD } from "@/features/pages/forms";
 import { CONTENT_MAX_DEPTH } from "@/features/pages/limits";
 
 import { KNOWN_USER } from "../prisma/known-users";
-import { collectErrors } from "./support/browser";
+import { by, collectErrors } from "./support/browser";
 import { createFolder, createPage, createTab, createUser, getTestDb, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
 
@@ -39,11 +39,6 @@ async function openSaveDialog(page: Page, content: string, address = NEW_PAGE) {
 
 /** The logged-in user of the tests, who makes every change through the GUI. */
 const USER = KNOWN_USER.name;
-
-/** Text that ends with "by <user> via <channel>", as the lists and views show the last editor and the channel. */
-function by(user: string, via: "web" | "mcp" = "web"): RegExp {
-  return new RegExp(`by ${user} via ${via}$`);
-}
 
 test("creating a page derives title and name from the title heading and shows the page", async ({ page }) => {
   const errors = collectErrors(page);

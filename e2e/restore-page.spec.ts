@@ -2,7 +2,7 @@ import type { Page } from "@playwright/test";
 
 import { KNOWN_USER } from "../prisma/known-users";
 import { ADMIN_STORAGE_STATE, becomeUser, logInElsewhere } from "./support/auth";
-import { collectErrors } from "./support/browser";
+import { by, collectErrors } from "./support/browser";
 import { createFolder, createPage, createTab, createUser, getTestDb, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
 
@@ -37,11 +37,6 @@ async function openRestoreDialog(page: Page, id: string) {
 
 /** The logged-in user of the tests, who makes every change through the GUI. */
 const USER = KNOWN_USER.name;
-
-/** Text that ends with "by <user> via <channel>", as the lists and views show the last editor and the channel. */
-function by(user: string, via: "web" | "mcp" = "web"): RegExp {
-  return new RegExp(`by ${user} via ${via}$`);
-}
 
 test("restoring a page directly into the folder under its old name leads to it", async ({ page }) => {
   const errors = collectErrors(page);
@@ -210,7 +205,7 @@ test("restoring a page that was restored in the meantime shows an error in the d
   await expect(dialog.getByLabel("Name")).toHaveValue("removed");
 });
 
-// R13: restoring is not checked against a change in the meantime; of two restores at once, the second finds the page
+// Restoring is not checked against a change in the meantime; of two restores at once, the second finds the page
 // restored, as before.
 test("the second of two Managers who restore the same page at once gets an error in the dialog", async ({
   page,

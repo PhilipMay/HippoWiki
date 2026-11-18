@@ -2,8 +2,16 @@ import type { Page } from "@playwright/test";
 
 import { KNOWN_USER } from "../prisma/known-users";
 import { ADMIN_STORAGE_STATE, becomeUser, logInElsewhere, USER_STORAGE_STATE } from "./support/auth";
-import { collectErrors } from "./support/browser";
-import { createFolder, createPage, createTab, createUser, getTestDb, resetTestDatabase } from "./support/database";
+import { collectErrors, expectNotFound } from "./support/browser";
+import {
+  createFolder,
+  createPage,
+  createTab,
+  createUser,
+  getTestDb,
+  resetTestDatabase,
+  setOwnRole,
+} from "./support/database";
 import { expect, test } from "./support/test";
 
 test.beforeEach(async () => {
@@ -12,13 +20,6 @@ test.beforeEach(async () => {
 
 /** The logged-in user of the tests. */
 const ALICE = { id: KNOWN_USER.id };
-
-async function expectNotFound(page: Page, address: string) {
-  const response = await page.goto(address);
-
-  expect(response?.status(), address).toBe(404);
-  await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
-}
 
 /** The items of the folder list, in display order. */
 function listItems(page: Page) {
@@ -167,11 +168,6 @@ test("the folder list and the folder show the own role, for each of the four rol
   }
 });
 
-/** Sets the role of the logged-in user on the folder, as an Owner would while a form of the user is open. */
-async function setOwnRole(folder: { id: string }, role: "reader" | "writer" | "manager" | "owner") {
-  await getTestDb().folderRole.updateMany({ where: { folderId: folder.id, userId: KNOWN_USER.id }, data: { role } });
-}
-
 /** The buttons and links of the main area that a role may or may not offer. */
 const OFFERS = ["New page", "Edit", "Move or rename", "Delete", "Deleted pages", "New tab", "Rename"] as const;
 
@@ -229,7 +225,7 @@ test.describe("what each role may do", () => {
   test("a crafted form of each write of a Reader shows the not-found page and writes nothing", async ({ page }) => {
     const folder = await createFolder({ name: "handbook" });
     const tab = await createTab({ folder, name: "guides" });
-    const intro = await createPage({ folder, name: "intro", title: "Intro" });
+    await createPage({ folder, name: "intro", title: "Intro" });
     await createPage({ tab, name: "setup", title: "Setup" });
     const deleted = await createPage({ folder, name: "old", deletedAt: new Date() });
     const before = {
@@ -306,7 +302,6 @@ test.describe("what each role may do", () => {
     expect(await getTestDb().folder.findMany()).toStrictEqual(before.folders);
     expect(await getTestDb().tab.findMany()).toStrictEqual(before.tabs);
     expect(await getTestDb().page.findMany({ orderBy: { name: "asc" } })).toStrictEqual(before.pages);
-    expect([tab.name, intro.name]).toEqual(["guides", "intro"]);
   });
 
   test("a Writer creates, edits, moves and renames a page, and is offered nothing of a Manager", async ({ page }) => {
@@ -799,7 +794,7 @@ test.describe("changing and removing roles", () => {
     });
   });
 
-  // R5, R10: the select sends no change for the selected role, so the role of bob is set meanwhile, as another Owner
+  // The select sends no change for the selected role, so the role of bob is set meanwhile, as another Owner
   // would set it; the change the Owner then chooses is the role bob has, as a crafted request would send it.
   test("a change to the role a user has keeps the role and its time, and the Owner stays in the roles view", async ({
     page,
@@ -828,7 +823,7 @@ test.describe("changing and removing roles", () => {
     expect(errors).toEqual([]);
   });
 
-  // R9: a change to the same role is checked like every change.
+  // A change to the same role is checked like every change.
   for (const role of ["manager", "writer"] as const) {
     test(`a crafted change of a ${role} to the role a user has changes nothing`, async ({ page }) => {
       const bob = await createUser({ name: "bob" });
@@ -958,7 +953,7 @@ test.describe("the admin overview", () => {
     context,
   }) => {
     const bob = await createUser({ name: "bob" });
-    const dave = await createUser({ name: "dave" });
+    await createUser({ name: "dave" });
     await createFolder({
       name: "project-x",
       editor: await aliceUser(),
@@ -999,6 +994,5 @@ test.describe("the admin overview", () => {
     expect(await getTestDb().folder.count()).toBe(1);
     // No folder ever shows an admin in its roles.
     expect(await getTestDb().folderRole.count({ where: { user: { type: "admin" } } })).toBe(0);
-    expect(dave.type).toBe("user");
   });
 });

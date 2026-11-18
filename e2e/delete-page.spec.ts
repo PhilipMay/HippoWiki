@@ -4,9 +4,9 @@ import { VERSION_FIELD } from "@/features/pages/forms";
 
 import { KNOWN_USER } from "../prisma/known-users";
 import { logInElsewhere } from "./support/auth";
-import { collectErrors } from "./support/browser";
+import { by, collectErrors, expectNotFound } from "./support/browser";
 import { createFolder, createPage, createTab, createUser, getTestDb, resetTestDatabase } from "./support/database";
-import { expect, test } from "./support/test";
+import { expect, hydrating, test } from "./support/test";
 
 let handbook: Awaited<ReturnType<typeof createFolder>>;
 
@@ -20,13 +20,6 @@ function deleteDialog(page: Page) {
   return page.getByRole("dialog", { name: "Delete page" });
 }
 
-async function expectNotFound(page: Page, address: string) {
-  const response = await page.goto(address);
-
-  expect(response?.status()).toBe(404);
-  await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
-}
-
 /** Opens the page at the address, deletes it through its "Delete" button and confirms the dialog. */
 async function deleteThroughDialog(page: Page, address: string) {
   await page.goto(address);
@@ -37,11 +30,6 @@ async function deleteThroughDialog(page: Page, address: string) {
 
 /** The logged-in user of the tests, who makes every change through the GUI. */
 const USER = KNOWN_USER.name;
-
-/** Text that ends with "by <user> via <channel>", as the lists and views show the last editor and the channel. */
-function by(user: string, via: "web" | "mcp" = "web"): RegExp {
-  return new RegExp(`by ${user} via ${via}$`);
-}
 
 test("deleting a page placed directly in a folder leads to the folder and removes it everywhere", async ({ page }) => {
   const errors = collectErrors(page);
@@ -147,7 +135,7 @@ test("the Escape key closes the dialog and keeps the page", async ({ page }) => 
   expect(await getTestDb().page.findUniqueOrThrow({ where: { id: kept.id } })).toEqual(kept);
 });
 
-// R11: a page deleted after the dialog was opened is refused as before, whatever its version.
+// A page deleted after the dialog was opened is refused as before, whatever its version.
 test("deleting a page that was deleted in the meantime shows an error in the dialog", async ({ page }) => {
   const created = await createPage({ folder: handbook, name: "soon-gone", title: "Soon gone" });
 
@@ -205,7 +193,7 @@ test.describe("a page changed after the dialog was opened", () => {
     const plan = await createPage({ folder: team, name: "plan", content: "# Plan\n\nFirst draft" });
     const other = await logInElsewhere(browser, "bob");
 
-    // R3: the dialog is open while bob saves the content.
+    // The dialog is open while bob saves the content.
     await page.goto("/folders/team/plan.md?action=delete");
     await other.page.goto("/folders/team/plan.md?action=edit");
     await other.page.getByLabel("Content").fill("# Plan\n\nBob's version");
@@ -216,7 +204,7 @@ test.describe("a page changed after the dialog was opened", () => {
     const dialog = deleteDialog(page);
     await dialog.getByRole("button", { name: "Delete" }).click();
 
-    // R8, R9: the dialog stays open with the message, and the page is still at its address.
+    // The dialog stays open with the message, and the page is still at its address.
     await expect(page).toHaveURL("/folders/team/plan.md?action=delete&notice=changed");
     await expect(dialog.getByRole("alert")).toHaveText(
       `This page was changed by bob via web at ${time} after you opened it.`,
@@ -258,7 +246,7 @@ test.describe("a page changed after the dialog was opened", () => {
     expect((await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).deletedAt).toBeNull();
   });
 
-  // R12: the dialog is shown again at the page's new address.
+  // The dialog is shown again at the page's new address.
   test("refuses the delete after a rename and shows the dialog at the new address", async ({ page, browser }) => {
     const plan = await createPage({ folder: team, name: "plan" });
     const other = await logInElsewhere(browser, "bob");
@@ -282,10 +270,10 @@ test.describe("a page changed after the dialog was opened", () => {
     await other.context.close();
   });
 
-  // R11: the second of two deletes of the same page finds it deleted, as before.
+  // The second of two deletes of the same page finds it deleted, as before.
   test("the second of two deletes of the same page shows that it no longer exists", async ({ page, context }) => {
     await createPage({ folder: team, name: "plan" });
-    const second = await context.newPage();
+    const second = hydrating(await context.newPage());
 
     await page.goto("/folders/team/plan.md?action=delete");
     await second.goto("/folders/team/plan.md?action=delete");
@@ -296,7 +284,7 @@ test.describe("a page changed after the dialog was opened", () => {
     await expect(deleteDialog(second).getByRole("alert")).toHaveText("This page no longer exists.");
   });
 
-  // R14: a dialog opened before the feature submits no version; its delete is refused once.
+  // A dialog opened before the feature submits no version; its delete is refused once.
   test("refuses a delete without a version, deletes nothing and shows the dialog with the message", async ({
     page,
   }) => {

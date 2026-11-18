@@ -4,7 +4,7 @@ import { CONTENT_MAX_TABLE_CELLS } from "@/features/pages/limits";
 import { CONTENT_TABLE_CELLS_MESSAGE } from "@/features/pages/schema";
 
 import { KNOWN_USER } from "../prisma/known-users";
-import { collectErrors } from "./support/browser";
+import { collectErrors, expectNotFound } from "./support/browser";
 import {
   createFolder,
   createPage,
@@ -12,6 +12,7 @@ import {
   createUser,
   getTestDb,
   resetTestDatabase,
+  setOwnRole,
 } from "./support/database";
 import { expect, test } from "./support/test";
 
@@ -24,18 +25,6 @@ test.beforeEach(async () => {
   await resetTestDatabase();
   handbook = await createFolder({ name: "handbook", roles: [{ user: ALICE, role: "writer" }] });
 });
-
-async function expectNotFound(page: Page, address: string) {
-  const response = await page.goto(address);
-
-  expect(response?.status(), address).toBe(404);
-  await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
-}
-
-/** Gives the logged-in user the role on "handbook". */
-async function setOwnRole(role: "reader" | "writer") {
-  await getTestDb().folderRole.updateMany({ where: { folderId: handbook.id, userId: KNOWN_USER.id }, data: { role } });
-}
 
 /** The "Revert page" dialog. */
 function revertDialog(page: Page) {
@@ -89,7 +78,7 @@ test("a Reader sees Compare but no Revert, gets the not-found page at the revert
   page,
 }) => {
   const intro = await pageWithThreeRevisions();
-  await setOwnRole("reader");
+  await setOwnRole(handbook, "reader");
 
   await page.goto("/folders/handbook/intro.md?view=revision&revision=2");
   await expect(page.getByRole("button", { name: "Compare" })).toBeVisible();
@@ -97,10 +86,10 @@ test("a Reader sees Compare but no Revert, gets the not-found page at the revert
   await expectNotFound(page, "/folders/handbook/intro.md?action=revert&revision=2");
 
   // The dialog was opened as a Writer; the role is lowered before it is submitted.
-  await setOwnRole("writer");
+  await setOwnRole(handbook, "writer");
   await page.goto("/folders/handbook/intro.md?action=revert&revision=2");
   await expect(revertDialog(page).getByRole("button", { name: "Revert" })).toBeEnabled();
-  await setOwnRole("reader");
+  await setOwnRole(handbook, "reader");
   await revertDialog(page).getByRole("button", { name: "Revert" }).click();
 
   await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();

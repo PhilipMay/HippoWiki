@@ -14,13 +14,12 @@ import {
   getTestDb,
   resetTestDatabase,
 } from "./support/database";
+import { callTool, sendMcp, type ToolResult } from "./support/mcp";
+import { ISSUER } from "./support/oauth";
 import { expect, test } from "./support/test";
 
 // An MCP client has no session cookie: it only has the access token of its grant.
 test.use({ storageState: NO_STORAGE_STATE });
-
-/** The public URL of the test server (`HIPPOWIKI_PUBLIC_URL` in `playwright.config.ts`): the addresses are full URLs. */
-const PUBLIC_URL = "http://localhost:3100";
 
 /**
  * The folder "projects", of which the known user is Owner, the path of its Reader address, and the access token of a
@@ -38,41 +37,25 @@ test.beforeEach(async () => {
   ({ accessToken: secret } = await createGrant({ owner: KNOWN_USER, folder: projects }));
 });
 
-/**
- * Sends a JSON-RPC message to an MCP address, by default the Reader address of "projects", with the given bearer
- * token, as a client of the protocol of 2025 does.
- */
+/** Sends a JSON-RPC message to an MCP address, by default the Reader address of "projects", with the given token. */
 function send(
   request: APIRequestContext,
   message: Record<string, unknown>,
   token: string | null = secret,
   to: string = address,
 ): Promise<APIResponse> {
-  return request.post(to, {
-    headers: {
-      accept: "application/json, text/event-stream",
-      ...(token === null ? {} : { authorization: `Bearer ${token}` }),
-    },
-    data: { jsonrpc: "2.0", id: 1, ...message },
-    maxRedirects: 0,
-  });
+  return sendMcp(request, { address: to, token }, message);
 }
 
-/** The result of a tool call. */
-type ToolResult = { content: { type: string; text: string }[]; structuredContent?: unknown; isError?: boolean };
-
 /** Calls a tool, by default at the Reader address of "projects", and returns its result. */
-async function callTool(
+function call(
   request: APIRequestContext,
   name: string,
   args: Record<string, unknown> = {},
   token: string = secret,
   to: string = address,
-) {
-  const response = await send(request, { method: "tools/call", params: { name, arguments: args } }, token, to);
-  expect(response.status()).toBe(200);
-  expect(response.headers()["content-type"]).toBe("application/json");
-  return ((await response.json()) as { result: ToolResult }).result;
+): Promise<ToolResult> {
+  return callTool(request, { address: to, token }, name, args);
 }
 
 test("without a token /mcp answers 401 with a Bearer challenge and nothing of the wiki", async ({ request }) => {
@@ -164,7 +147,7 @@ test("a bearer token reaches no task of an admin: creating a user leads to the l
   ]) {
     // 307 for a read, 303 for a write (`src/proxy.ts`): the bearer token is no login.
     expect([303, 307]).toContain(response.status());
-    expect(new URL(response.headers().location ?? "", PUBLIC_URL).pathname).toBe("/login");
+    expect(new URL(response.headers().location ?? "", ISSUER).pathname).toBe("/login");
   }
   expect(await getTestDb().user.findUnique({ where: { username: "jane-doe" } })).toBeNull();
   expect(await getTestDb().user.count()).toBe(2);
@@ -312,12 +295,12 @@ test("after the folder is renamed the connection lists and reads its pages under
   await createPage({ folder: projects, name: "plan", content: "# Plan" });
   await getTestDb().folder.update({ where: { id: projects.id }, data: { name: "renamed" } });
 
-  const listed = await callTool(request, "list_folder");
-  const read = await callTool(request, "read_page", { page: "plan" });
+  const listed = await call(request, "list_folder");
+  const read = await call(request, "read_page", { page: "plan" });
 
   expect(listed.structuredContent).toMatchObject({
-    folder: { name: "renamed", address: `${PUBLIC_URL}/folders/renamed` },
-    pages: [{ name: "plan", address: `${PUBLIC_URL}/folders/renamed/plan.md` }],
+    folder: { name: "renamed", address: `${ISSUER}/folders/renamed` },
+    pages: [{ name: "plan", address: `${ISSUER}/folders/renamed/plan.md` }],
   });
   expect(read.structuredContent).toMatchObject({ folder: "renamed", title: "Plan" });
 });
@@ -427,17 +410,17 @@ test("list_folder lists the tabs and pages of the folder of the connection, page
   await createTab({ folder: notes, name: "drafts" });
   await createPage({ folder: notes, name: "elsewhere" });
 
-  const result = await callTool(request, "list_folder");
+  const result = await call(request, "list_folder");
   // A folder argument is no argument of the tool: the folder is the one of the connection.
-  const named = await callTool(request, "list_folder", { folder: "notes" });
+  const named = await call(request, "list_folder", { folder: "notes" });
 
   expect(result.isError).toBeUndefined();
   expect(result.structuredContent).toEqual({
-    folder: { name: "projects", address: `${PUBLIC_URL}/folders/projects` },
+    folder: { name: "projects", address: `${ISSUER}/folders/projects` },
     tabs: [
       {
         name: "guides",
-        address: `${PUBLIC_URL}/folders/projects/guides`,
+        address: `${ISSUER}/folders/projects/guides`,
         lastChanged: "2026-03-02T09:00:00.000Z",
         lastEditedBy: "carol",
         lastEditedVia: "mcp",
@@ -448,7 +431,7 @@ test("list_folder lists the tabs and pages of the folder of the connection, page
         name: "overview",
         title: "Overview",
         tab: null,
-        address: `${PUBLIC_URL}/folders/projects/overview.md`,
+        address: `${ISSUER}/folders/projects/overview.md`,
         lastChanged: "2026-03-04T09:00:00.000Z",
         lastEditedBy: "carol",
         lastEditedVia: "web",
@@ -457,7 +440,7 @@ test("list_folder lists the tabs and pages of the folder of the connection, page
         name: "install",
         title: "Install",
         tab: "guides",
-        address: `${PUBLIC_URL}/folders/projects/guides/install.md`,
+        address: `${ISSUER}/folders/projects/guides/install.md`,
         lastChanged: "2026-03-03T09:00:00.000Z",
         lastEditedBy: "bob",
         lastEditedVia: "mcp",
@@ -501,8 +484,8 @@ test("read_page reads a page placed directly in the folder and a page in a tab, 
   });
   await createPage({ tab: guides, name: "install", content: "# Install\n\n1. Download\n2. Run" });
 
-  const direct = await callTool(request, "read_page", { page: "overview" });
-  const inTab = await callTool(request, "read_page", { tab: "guides", page: "install" });
+  const direct = await call(request, "read_page", { page: "overview" });
+  const inTab = await call(request, "read_page", { tab: "guides", page: "install" });
 
   expect(direct.isError).toBeUndefined();
   expect(direct.structuredContent).toEqual({
@@ -511,7 +494,7 @@ test("read_page reads a page placed directly in the folder and a page in a tab, 
     folder: "projects",
     tab: null,
     content: "# Overview\n\nWelcome to the **projects**.",
-    address: `${PUBLIC_URL}/folders/projects/overview.md`,
+    address: `${ISSUER}/folders/projects/overview.md`,
     lastChanged: "2026-03-04T09:00:00.000Z",
     lastEditedBy: KNOWN_USER.name,
     lastEditedVia: "web",
@@ -522,7 +505,7 @@ test("read_page reads a page placed directly in the folder and a page in a tab, 
     title: "Install",
     tab: "guides",
     content: "# Install\n\n1. Download\n2. Run",
-    address: `${PUBLIC_URL}/folders/projects/guides/install.md`,
+    address: `${ISSUER}/folders/projects/guides/install.md`,
     version: 1,
   });
 });
@@ -544,7 +527,7 @@ test("read_page does not find a deleted page, a page of another tab, a page of a
     { page: "other" },
     { page: "Install.md" },
   ]) {
-    const result = await callTool(request, "read_page", args);
+    const result = await call(request, "read_page", args);
 
     expect(result.isError).toBe(true);
     expect(JSON.stringify(result)).not.toContain("Secret text");
@@ -582,7 +565,7 @@ test.describe("the write tools", () => {
 
   /** Calls a tool at the Writer address. */
   function write(request: APIRequestContext, name: string, args: Record<string, unknown>) {
-    return callTool(request, name, args, writer, writerAddress);
+    return call(request, name, args, writer, writerAddress);
   }
 
   /** The last editor and the channel of the pages of "projects" as stored, by name. */
@@ -630,7 +613,7 @@ test.describe("the write tools", () => {
       method: "tools/call",
       params: { name: "create_page", arguments: { content: "# Sneaky" } },
     });
-    expect(JSON.stringify(await answer.json())).toContain("create_page");
+    expect(await answer.json()).toMatchObject({ error: { code: -32602, message: "Tool create_page not found" } });
     expect(await storedPages()).toEqual([]);
   });
 
@@ -647,7 +630,7 @@ test.describe("the write tools", () => {
       name: "release-notes",
       title: "Release Notes",
       tab: null,
-      address: `${PUBLIC_URL}/folders/projects/release-notes.md`,
+      address: `${ISSUER}/folders/projects/release-notes.md`,
       version: 1,
     });
     expect(inTab.structuredContent).toMatchObject({ name: "install", tab: "guides", version: 1 });
@@ -688,7 +671,7 @@ test.describe("the write tools", () => {
   }) => {
     const bob = await createUser({ name: "bob" });
     await createPage({ folder: projects, name: "plan", content: "# Plan\n\nOld.", editor: bob });
-    const { version } = (await callTool(request, "read_page", { page: "plan" })).structuredContent as {
+    const { version } = (await call(request, "read_page", { page: "plan" })).structuredContent as {
       version: number;
     };
 
@@ -748,7 +731,7 @@ test.describe("the write tools", () => {
       name: "roadmap",
       title: "Plan",
       tab: "guides",
-      address: `${PUBLIC_URL}/folders/projects/guides/roadmap.md`,
+      address: `${ISSUER}/folders/projects/guides/roadmap.md`,
       version: 2,
     });
     expect(await storedEditors()).toEqual([
@@ -774,7 +757,7 @@ test.describe("the write tools", () => {
     expect(await storedPages()).toEqual(before);
   });
 
-  // R1, R2, R6, R7, R11: a move to the current name and tab changes nothing and answers as every move.
+  // A move to the current name and tab changes nothing and answers as every move.
   test("move_or_rename_page to the current name and tab keeps the page as it is and returns the version that was sent; based on an older version it is refused", async ({
     request,
   }) => {
@@ -796,7 +779,7 @@ test.describe("the write tools", () => {
         name: "plan",
         title: "Plan",
         tab: "guides",
-        address: `${PUBLIC_URL}/folders/projects/guides/plan.md`,
+        address: `${ISSUER}/folders/projects/guides/plan.md`,
         version: 3,
       });
     }
@@ -850,7 +833,7 @@ test.describe("the write tools", () => {
     request,
   }) => {
     await createPage({ folder: projects, name: "plan", content: "# Plan" });
-    const { version } = (await callTool(request, "read_page", { page: "plan" })).structuredContent as {
+    const { version } = (await call(request, "read_page", { page: "plan" })).structuredContent as {
       version: number;
     };
 
@@ -876,12 +859,12 @@ test.describe("the write tools", () => {
     const bob = await createUser({ name: "bob" });
     await createPage({ folder: projects, name: "plan", content: "# Plan", editor: bob });
 
-    await expect(callTool(request, "read_page", { page: "plan" })).resolves.toMatchObject({
+    await expect(call(request, "read_page", { page: "plan" })).resolves.toMatchObject({
       structuredContent: { lastEditedBy: "bob", lastEditedVia: "web", version: 1 },
     });
     await write(request, "replace_page_content", { page: "plan", version: 1, content: "# Plan\n\nBy an agent." });
 
-    const read = await callTool(request, "read_page", { page: "plan" });
+    const read = await call(request, "read_page", { page: "plan" });
     expect(read.structuredContent).toMatchObject({ lastEditedBy: KNOWN_USER.name, lastEditedVia: "mcp", version: 2 });
     expect(JSON.parse(read.content[0]?.text ?? "")).toEqual(read.structuredContent);
   });
@@ -891,7 +874,7 @@ test.describe("the write tools", () => {
   }) => {
     const bob = await createUser({ name: "bob" });
     const plan = await createPage({ folder: projects, name: "plan", content: "# Plan" });
-    const { version } = (await callTool(request, "read_page", { page: "plan" })).structuredContent as {
+    const { version } = (await call(request, "read_page", { page: "plan" })).structuredContent as {
       version: number;
     };
     // bob saves the page in the browser meanwhile.
@@ -909,7 +892,7 @@ test.describe("the write tools", () => {
     expect(await storedPages()).toMatchObject([{ content: "# Plan\n\nBy bob.", version: 2 }]);
   });
 
-  // Unchanged saves, R4: the stored content based on an older version is refused like every other change.
+  // The stored content based on an older version is refused like every other change.
   test("replace_page_content with the stored content based on an older version is refused as a changed page", async ({
     request,
   }) => {
@@ -928,7 +911,7 @@ test.describe("the write tools", () => {
     expect(await storedPages()).toEqual(before);
   });
 
-  // Unchanged saves, R7: the limits in force are checked also for the stored content.
+  // The limits in force are checked also for the stored content.
   test("replace_page_content with stored content over the length limit is refused and the page stays as it was", async ({
     request,
   }) => {
@@ -993,7 +976,7 @@ test.describe("the write tools", () => {
       await expect(page.getByRole("main")).not.toContainText(/agent app|connected app/i);
     });
 
-    // Unchanged saves, R1, R6: the stored content sent back changes nothing and returns the version stated.
+    // The stored content sent back changes nothing and returns the version stated.
     test("replace_page_content with the stored content keeps the last change and the version; a change on that version is stored", async ({
       page,
       request,
@@ -1003,7 +986,7 @@ test.describe("the write tools", () => {
       await createPage({ folder: projects, name: "plan", content: "# Plan\n\nBy bob.", editor: bob, updatedAt });
       await page.goto("/folders/projects/plan.md");
       const time = await page.getByRole("article").locator("time").textContent();
-      const read = (await callTool(request, "read_page", { page: "plan" })).structuredContent as {
+      const read = (await call(request, "read_page", { page: "plan" })).structuredContent as {
         content: string;
         version: number;
       };
@@ -1019,10 +1002,10 @@ test.describe("the write tools", () => {
         name: "plan",
         title: "Plan",
         tab: null,
-        address: `${PUBLIC_URL}/folders/projects/plan.md`,
+        address: `${ISSUER}/folders/projects/plan.md`,
         version: read.version,
       });
-      await expect(callTool(request, "read_page", { page: "plan" })).resolves.toMatchObject({
+      await expect(call(request, "read_page", { page: "plan" })).resolves.toMatchObject({
         structuredContent: {
           lastEditedBy: "bob",
           lastEditedVia: "web",
@@ -1057,7 +1040,7 @@ test.describe("the tools of a Manager connection", () => {
 
   /** Calls a tool at the Manager address. */
   function manage(request: APIRequestContext, name: string, args: Record<string, unknown> = {}) {
-    return callTool(request, name, args, manager, managerAddress);
+    return call(request, name, args, manager, managerAddress);
   }
 
   /** The tabs and pages that `list_folder` of the Manager connection lists. */
@@ -1097,7 +1080,7 @@ test.describe("the tools of a Manager connection", () => {
       name: "setup",
       title: "Setup",
       tab: "guides",
-      deletedPagesAddress: `${PUBLIC_URL}/deleted-pages/projects`,
+      deletedPagesAddress: `${ISSUER}/deleted-pages/projects`,
       restore: expect.stringMatching(/restored by a Manager or Owner of the folder in the browser/),
     });
     expect((await listed(request)).pages.map(({ name }) => name)).toEqual(["plan"]);
@@ -1144,7 +1127,7 @@ test.describe("the tools of a Manager connection", () => {
 
     expect(result.structuredContent).toEqual({
       name: "meetings",
-      address: `${PUBLIC_URL}/folders/projects/meetings`,
+      address: `${ISSUER}/folders/projects/meetings`,
     });
     expect((await listed(request)).tabs.map(({ name }) => name)).toEqual(["meetings"]);
     await expect(getTestDb().tab.findFirstOrThrow({ where: { name: "meetings" } })).resolves.toMatchObject({
@@ -1177,7 +1160,7 @@ test.describe("the tools of a Manager connection", () => {
 
     expect(result.structuredContent).toEqual({
       name: "archive",
-      address: `${PUBLIC_URL}/folders/projects/archive`,
+      address: `${ISSUER}/folders/projects/archive`,
     });
     const { tabs, pages } = await listed(request);
     expect(tabs.map(({ name }) => name)).toEqual(["archive", "guides"]);
@@ -1186,7 +1169,7 @@ test.describe("the tools of a Manager connection", () => {
       lastEditedVia: "mcp",
     });
     expect(pages).toMatchObject([
-      { name: "notes", tab: "archive", address: `${PUBLIC_URL}/folders/projects/archive/notes.md` },
+      { name: "notes", tab: "archive", address: `${ISSUER}/folders/projects/archive/notes.md` },
     ]);
 
     const before = await stored();
@@ -1217,7 +1200,7 @@ test.describe("the tools of a Manager connection", () => {
     for (const newName of ["guides", " guides "]) {
       const result = await manage(request, "rename_tab", { tab: "guides", newName });
 
-      expect(result.structuredContent).toEqual({ name: "guides", address: `${PUBLIC_URL}/folders/projects/guides` });
+      expect(result.structuredContent).toEqual({ name: "guides", address: `${ISSUER}/folders/projects/guides` });
       expect(JSON.stringify(result)).toBe(JSON.stringify(renamed).replaceAll("archive", "guides"));
     }
     expect(await stored()).toEqual(before);
@@ -1259,7 +1242,7 @@ test.describe("the tools of a Manager connection", () => {
       name: "drafts",
       pageCount: 5,
       pages: [1, 2, 3, 4, 5].map((i) => ({ name: `draft-${i}`, title: `Draft ${i}` })),
-      deletedPagesAddress: `${PUBLIC_URL}/deleted-pages/projects`,
+      deletedPagesAddress: `${ISSUER}/deleted-pages/projects`,
       restore: expect.stringMatching(/restored one by one by a Manager or Owner of the folder in the browser/),
     });
     const { tabs, pages } = await listed(request);

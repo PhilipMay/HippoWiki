@@ -93,7 +93,7 @@ describe("parsePageContentFormData", () => {
     expect(VERSION_FIELD).toBe("version");
   });
 
-  // No version is no error of the form: the service refuses the save, so that the current page is shown (R14).
+  // No version is no error of the form: the service refuses the save, so that the current page is shown.
   it.each(["", "0", "-1", "1.5", "1e3", " 3", "0x10", "abc", "2147483648", "99999999999999999999"])(
     "gives no version and no field error for the version %j",
     (version) => {
@@ -278,7 +278,7 @@ describe("parsePageMoveOrRenameFormData", () => {
     });
   });
 
-  // No version is no error of the form: the service refuses the move, so that the stored page is shown (R14).
+  // No version is no error of the form: the service refuses the move, so that the stored page is shown.
   it.each(["", "0", "1.5", "abc"])("gives no version and no field error for the version %j", (version) => {
     const fields = { name: "release-notes", place: tabId, [VERSION_FIELD]: version };
     expect(parsePageMoveOrRenameFormData(formData(fields))).toEqual({
@@ -367,7 +367,7 @@ describe("parsePageDeleteFormData", () => {
     });
   });
 
-  // No version is no error of the form: the service refuses the delete, so that the dialog is shown again (R14).
+  // No version is no error of the form: the service refuses the delete, so that the dialog is shown again.
   it.each(["", "0", "-2", "1.5", "nine"])("gives no version for the version %j", (version) => {
     expect(parsePageDeleteFormData(formData({ [VERSION_FIELD]: version }))).toEqual({ version: null });
   });

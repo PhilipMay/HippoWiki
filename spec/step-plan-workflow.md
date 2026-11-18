@@ -74,7 +74,9 @@ Goal/Build/Test sections as the other steps, and its Build section covers, in th
 2. Remove the feature from `roadmap.md`.
 3. Check that `README.md` has all the commands a developer needs, and that its summary of what the prototype can do
    covers the feature.
-4. Delete this step file and the requirements file of the feature, if there is one.
+4. Delete this step file and the requirements file of the feature, if there is one. The requirement IDs of that file
+   leave the comments of the code and the tests in the same step: each is replaced by the section of the feature spec
+   that holds the rule now, or dropped with its sentence kept.
 5. Update the spec catalog in `CLAUDE.md`: add new spec files, remove this step file and the requirements file.
 
 The wrap-up step is not ticked off, because its step file is deleted; its commit includes the deletion of the step

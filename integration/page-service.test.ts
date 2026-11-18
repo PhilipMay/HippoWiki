@@ -367,7 +367,7 @@ describe("updatePageContent", () => {
     });
   });
 
-  // R1, R6, R14: a save based on an older version, or on none, changes nothing.
+  // A save based on an older version, or on none, changes nothing.
   it.each([
     ["an older version", 2],
     ["a newer version", 4],
@@ -388,7 +388,7 @@ describe("updatePageContent", () => {
     expect(await storedPage(page.id)).toStrictEqual(page);
   });
 
-  // R7, R12: a rename counts as a change, and the refusal names the page with its new name.
+  // A rename counts as a change, and the refusal names the page with its new name.
   it("refuses a save based on the version from before a rename, with the new name", async () => {
     const bob = await createBob();
     const folder = await createFolder({ name: "docs", roles: owners(user, bob) });
@@ -409,7 +409,7 @@ describe("updatePageContent", () => {
     expect((await storedPage(page.id)).content).toBe("# Old");
   });
 
-  // R11: a page deleted after the editor was opened is missing, whatever the version.
+  // A page deleted after the editor was opened is missing, whatever the version.
   it("gives page-not-found for a page deleted after the version given", async () => {
     const folder = await createFolder({ name: "docs" });
     const page = await createPage({ folder, name: "intro", content: "# Old" });
@@ -490,7 +490,7 @@ describe("moveOrRenamePage", () => {
     });
   });
 
-  // R1, R11: a move to the name and place the page has stores nothing, also with spaces around the name.
+  // A move to the name and place the page has stores nothing, also with spaces around the name.
   it.each([
     ["in a tab", true, "intro"],
     ["directly in the folder", false, "intro"],
@@ -524,7 +524,7 @@ describe("moveOrRenamePage", () => {
     expect(await getTestDb().pageRevision.count({ where: { pageId: page.id } })).toBe(1);
   });
 
-  // R3: a content save based on the version read before the unchanged move is not refused.
+  // A content save based on the version read before the unchanged move is not refused.
   it("keeps the version for a content save based on the version from before an unchanged move", async () => {
     const bob = await createBob();
     const folder = await createFolder({ name: "docs", roles: owners(user, bob) });
@@ -542,7 +542,7 @@ describe("moveOrRenamePage", () => {
     });
   });
 
-  // R6: an unchanged move based on an older version is refused like every other move.
+  // An unchanged move based on an older version is refused like every other move.
   it("refuses a move to the name and place the page has, based on an older version, as page-changed", async () => {
     const folder = await createFolder({ name: "docs" });
     const page = await createPage({ folder, name: "intro", version: 3 });
@@ -573,7 +573,7 @@ describe("moveOrRenamePage", () => {
     expect(await lastEditorOf(page.id)).toBe(user.id);
   });
 
-  // R2, R6, R14: a move based on an older version, or on none, changes nothing.
+  // A move based on an older version, or on none, changes nothing.
   it.each([
     ["an older version", 2],
     ["no version", null],
@@ -595,7 +595,7 @@ describe("moveOrRenamePage", () => {
     expect(await storedPage(page.id)).toStrictEqual(page);
   });
 
-  // R7: a content save counts as a change.
+  // A content save counts as a change.
   it("refuses a move based on the version from before a content save", async () => {
     const bob = await createBob();
     const folder = await createFolder({ name: "docs", roles: owners(user, bob) });
@@ -683,7 +683,7 @@ describe("deletePage", () => {
     expect(stored.version).toBe(4);
   });
 
-  // R3, R6, R14: a delete based on an older version, or on none, deletes nothing.
+  // A delete based on an older version, or on none, deletes nothing.
   it.each([
     ["an older version", 2],
     ["no version", null],
@@ -703,7 +703,7 @@ describe("deletePage", () => {
     expect(await storedPage(page.id)).toStrictEqual(page);
   });
 
-  // R11: a page deleted after the dialog was opened is missing, as before.
+  // A page deleted after the dialog was opened is missing, as before.
   it("gives page-not-found for a page deleted after the version given", async () => {
     const folder = await createFolder({ name: "docs" });
     const page = await createPage({ folder, name: "intro" });
@@ -758,7 +758,7 @@ describe("restorePage", () => {
     );
   });
 
-  // R13: restoring is not checked against a change in the meantime; it counts the version up like every write.
+  // Restoring is not checked against a change in the meantime; it counts the version up like every write.
   it("needs no version and counts the version up", async () => {
     const folder = await createFolder({ name: "docs" });
     const page = await createPage({ folder, name: "old", deletedAt: new Date(), version: 5 });
@@ -1456,7 +1456,7 @@ describe("the revisions of pages", () => {
     expect(revisions.at(-1)).toMatchObject({ content: page.content, title: page.title });
   }
 
-  // R1, R2: creating and saving in the browser and through MCP.
+  // Creating and saving in the browser and through MCP.
   it("records revision 1 on creation and one per content save, with the users and the channels", async () => {
     const bob = await createBob();
     const folder = await createFolder({ roles: [...owners(user), { user: bob, role: "writer" }] });
@@ -1483,7 +1483,7 @@ describe("the revisions of pages", () => {
     await expectNewestRevisionIsThePage(id);
   });
 
-  // R23: a refused save records nothing; every stored change has its revision.
+  // A refused save records nothing; every stored change has its revision.
   it("leaves the revisions as they were when a save is refused for an older version or invalid content", async () => {
     const page = await createPage({ folder: await createFolder(), editor: user, content: "# Intro" });
     const before = await revisionsOf(page.id);
@@ -1507,7 +1507,7 @@ describe("the revisions of pages", () => {
     await expectNewestRevisionIsThePage(page.id);
   });
 
-  // A save without a change records nothing and leaves the page as it is (unchanged saves, R1, R2).
+  // A save without a change records nothing and leaves the page as it is.
   it("records no revision for a save without a change, which leaves the page as it is", async () => {
     const bob = await createBob();
     const folder = await createFolder({ roles: owners(user, bob) });
@@ -1521,7 +1521,7 @@ describe("the revisions of pages", () => {
     expect(await lastEditorOf(page.id)).toBe(user.id);
   });
 
-  // R3: moves, renames, deletes and restores are not part of the history.
+  // Moves, renames, deletes and restores are not part of the history.
   it("are not changed by moving, renaming, deleting and restoring a page, and by deleting its tab", async () => {
     const folder = await createFolder({ roles: owners(user) });
     const [tab, other] = [await createTab({ folder }), await createTab({ folder })];
@@ -1974,7 +1974,7 @@ describe("content saves without a change", () => {
     return { bob: inBrowser(bob), bobId: bob.id, page };
   }
 
-  // R1, R2, R6: the page keeps its last editor, channel, time and version, and its revisions.
+  // The page keeps its last editor, channel, time and version, and its revisions.
   it("leaves the page and its revisions as they are, and returns the page with its version", async () => {
     const { bob, page } = await setUp();
     const before = { page: await stateOf(page.id), revisions: await revisionsOf(page.id) };
@@ -2002,7 +2002,7 @@ describe("content saves without a change", () => {
     expect(await stateOf(page.id)).toEqual(before);
   });
 
-  // R3: the line endings are made uniform first; any other difference is a change.
+  // The line endings are made uniform first; any other difference is a change.
   it("counts content with other line endings as the same, and one more space as a change", async () => {
     const { bob, page } = await setUp();
     const before = { page: await stateOf(page.id), revisions: await revisionsOf(page.id) };
@@ -2023,7 +2023,7 @@ describe("content saves without a change", () => {
     ]);
   });
 
-  // R4: the version is checked like for every save, also when the content is the same.
+  // The version is checked like for every save, also when the content is the same.
   it.each([1, 2, 4, null])("refuses the stored content based on the version %j as page-changed", async (version) => {
     const { bob, page } = await setUp();
     const before = { page: await stateOf(page.id), revisions: await revisionsOf(page.id) };
@@ -2048,7 +2048,7 @@ describe("content saves without a change", () => {
     expect(await stateOf(page.id)).toEqual(before);
   });
 
-  // R7: the limits in force are checked also for the stored content.
+  // The limits in force are checked also for the stored content.
   it("refuses stored content over the length limit as invalid-input and leaves the page as it is", async () => {
     const content = `# Big\n\n${"x".repeat(CONTENT_MAX_LENGTH)}`;
     const { bob, page } = await setUp({ content });

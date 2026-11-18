@@ -1,8 +1,8 @@
 import type { Page } from "@playwright/test";
 
 import { KNOWN_ADMIN, KNOWN_USER } from "../prisma/known-users";
-import { ADMIN_STORAGE_STATE, NO_STORAGE_STATE } from "./support/auth";
-import { collectErrors } from "./support/browser";
+import { ADMIN_STORAGE_STATE, NO_STORAGE_STATE, submitLogin } from "./support/auth";
+import { collectErrors, expectNotFound } from "./support/browser";
 import {
   createFolder,
   createFolderRole,
@@ -10,10 +10,9 @@ import {
   createUser,
   getTestDb,
   resetTestDatabase,
-  TEST_PASSWORD,
 } from "./support/database";
 import { connect, listFolderStatus, mcpAddress, refresh, registerClient } from "./support/oauth";
-import { expect, test } from "./support/test";
+import { expect, hydrating, test } from "./support/test";
 
 /** The folder "projects", of which the known user is Owner, and its MCP address for Reader. */
 let projects: { id: string };
@@ -34,14 +33,6 @@ function appRows(page: Page) {
 
 function revokeDialog(page: Page) {
   return page.getByRole("dialog", { name: "Revoke app" });
-}
-
-async function expectNotFound(page: Page, address: string) {
-  const response = await page.goto(address);
-
-  expect(response?.status()).toBe(404);
-  await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
 }
 
 test("a user without apps sees the user name and that no app is connected; the name in the header leads there", async ({
@@ -66,6 +57,7 @@ test("a user without apps sees the user name and that no app is connected; the n
 
 test("creating a token is not found", async ({ page }) => {
   await expectNotFound(page, "/account?action=create");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(await getTestDb().oAuthGrant.count()).toBe(0);
 });
 
@@ -243,7 +235,10 @@ test.describe("addresses that are not found", () => {
     const { grant } = await createGrant({ owner: KNOWN_USER });
 
     await expectNotFound(page, `/account?action=revoke&token=${grant.id}`);
+
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     await expectNotFound(page, `/account?token=${grant.id}`);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     expect(await getTestDb().oAuthGrant.count()).toBe(1);
   });
 
@@ -252,6 +247,8 @@ test.describe("addresses that are not found", () => {
     const { grant } = await createGrant({ owner: bob, name: "Bob's connector" });
 
     await expectNotFound(page, `/account?action=revoke&app=${grant.id}`);
+
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(page.getByText("Bob's connector")).toHaveCount(0);
     expect(await getTestDb().oAuthGrant.count()).toBe(1);
   });
@@ -260,7 +257,10 @@ test.describe("addresses that are not found", () => {
     const { grant } = await createGrant({ owner: KNOWN_USER });
 
     await expectNotFound(page, `/account?app=${grant.id}`);
+
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     await expectNotFound(page, `/account?action=create&app=${grant.id}`);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
   });
 
   for (const address of [
@@ -274,6 +274,7 @@ test.describe("addresses that are not found", () => {
   ]) {
     test(address, async ({ page }) => {
       await expectNotFound(page, address);
+      await expect(page.getByRole("dialog")).toHaveCount(0);
     });
   }
 });
@@ -283,11 +284,9 @@ test("a user sees only their own apps, also when another user connects one", asy
   const bob = await createUser({ name: "bob", mustChangePassword: false });
   await createFolderRole({ folder: projects, user: bob, role: "reader" });
   const bobContext = await browser.newContext({ storageState: NO_STORAGE_STATE });
-  const bobPage = await bobContext.newPage();
+  const bobPage = hydrating(await bobContext.newPage());
   await bobPage.goto("/login");
-  await bobPage.getByLabel("User name").fill("bob");
-  await bobPage.getByLabel("Password").fill(TEST_PASSWORD);
-  await bobPage.getByRole("button", { name: "Log in" }).click();
+  await submitLogin(bobPage, "bob");
   await expect(bobPage).toHaveURL("/folders");
   const tokens = await connect(bobPage, bobContext.request, await registerClient(request, "Bob's connector"), reader);
   await bobContext.close();
@@ -300,6 +299,7 @@ test("a user sees only their own apps, also when another user connects one", asy
   await expect(appRows(page).nth(0)).toContainText("Alice's connector");
   await expect(page.getByText("Bob's connector")).toHaveCount(0);
   await expectNotFound(page, `/account?action=revoke&app=${bobsGrant.id}`);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(await listFolderStatus(request, tokens.access_token, reader)).toBe(200);
 });
 
@@ -335,6 +335,7 @@ test.describe("an admin", () => {
       "/account?view=all",
     ]) {
       await expectNotFound(page, address);
+      await expect(page.getByRole("dialog")).toHaveCount(0);
     }
     await expect(page.getByText("Alice's connector")).toHaveCount(0);
     expect(await getTestDb().oAuthGrant.count()).toBe(2);

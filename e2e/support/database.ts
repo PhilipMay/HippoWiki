@@ -258,6 +258,14 @@ export async function createFolder({ editor, via = "web", roles, ...data }: Crea
 }
 
 /** Gives the user the role on the folder, directly in the test database. */
+/**
+ * Sets the role of the known user `alice`, as whom the end-to-end tests run, on the folder, as an Owner would while a
+ * form of that user is open.
+ */
+export async function setOwnRole(folder: { id: string }, role: FolderRoleType): Promise<void> {
+  await getTestDb().folderRole.updateMany({ where: { folderId: folder.id, userId: KNOWN_USER.id }, data: { role } });
+}
+
 export async function createFolderRole({
   folder,
   user,

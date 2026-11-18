@@ -1,8 +1,8 @@
-import type { APIRequestContext, Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
 
 import { KNOWN_USER } from "../prisma/known-users";
 import { logInElsewhere } from "./support/auth";
-import { collectErrors } from "./support/browser";
+import { collectErrors, expectNotFound } from "./support/browser";
 import {
   createFolder,
   createGrant,
@@ -12,7 +12,8 @@ import {
   getTestDb,
   resetTestDatabase,
 } from "./support/database";
-import { expect, test } from "./support/test";
+import { callTool, mcpPath } from "./support/mcp";
+import { expect, hydrating, test } from "./support/test";
 
 let handbook: Awaited<ReturnType<typeof createFolder>>;
 
@@ -31,13 +32,6 @@ const GONE_MESSAGE = "This tab no longer exists.";
 /** The "Delete tab" dialog. */
 function deleteDialog(page: Page) {
   return page.getByRole("dialog", { name: "Delete tab" });
-}
-
-async function expectNotFound(page: Page, address: string) {
-  const response = await page.goto(address);
-
-  expect(response?.status()).toBe(404);
-  await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
 }
 
 /** The links of the contents list on a folder address (its pages, then its tabs), in display order. */
@@ -258,7 +252,7 @@ test("the second of two dialogs of the same tab says that the tab no longer exis
 }) => {
   const guides = await createTab({ folder: handbook, name: "guides" });
   await createPage({ tab: guides, name: "setup" });
-  const second = await context.newPage();
+  const second = hydrating(await context.newPage());
 
   await page.goto("/folders/handbook/guides?action=delete");
   await second.goto("/folders/handbook/guides?action=delete");
@@ -339,27 +333,6 @@ test("the folder list shows the same last change of the folder before and after"
   await expect(item).toHaveText(before ?? "");
 });
 
-/** Calls a tool of MCP at the Writer address of the folder, with the access token of a Writer grant. */
-async function callTool(
-  request: APIRequestContext,
-  folder: { id: string },
-  token: string,
-  name: string,
-  args: Record<string, unknown> = {},
-) {
-  const response = await request.post(`/mcp/${folder.id}/writer`, {
-    headers: { accept: "application/json, text/event-stream", authorization: `Bearer ${token}` },
-    data: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } },
-    maxRedirects: 0,
-  });
-  expect(response.status()).toBe(200);
-  return (
-    (await response.json()) as {
-      result: { content: { text: string }[]; structuredContent?: unknown; isError?: boolean };
-    }
-  ).result;
-}
-
 test("after the deletion, a Writer connection of MCP lists neither the tab nor its pages and creates no page in it", async ({
   page,
   request,
@@ -368,14 +341,15 @@ test("after the deletion, a Writer connection of MCP lists neither the tab nor i
   await createPage({ tab: guides, name: "setup" });
   await createPage({ folder: handbook, name: "intro" });
   const { accessToken } = await createGrant({ owner: KNOWN_USER, folder: handbook, role: "writer" });
+  const writerOfHandbook = { address: mcpPath(handbook, "writer"), token: accessToken };
 
   await openDeleteDialog(page, "/folders/handbook/guides");
   await deleteDialog(page).getByRole("button", { name: "Delete" }).click();
   await expect(page).toHaveURL("/folders/handbook");
 
-  const listed = await callTool(request, handbook, accessToken, "list_folder");
+  const listed = await callTool(request, writerOfHandbook, "list_folder");
   expect(listed.structuredContent).toMatchObject({ tabs: [], pages: [{ name: "intro", tab: null }] });
-  const created = await callTool(request, handbook, accessToken, "create_page", {
+  const created = await callTool(request, writerOfHandbook, "create_page", {
     content: "# New",
     tab: "guides",
   });

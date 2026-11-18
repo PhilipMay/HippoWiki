@@ -91,7 +91,7 @@ Decided by the user on 2026-11-18:
 - [x] Tests that assert less than their name says
 - [x] Unit tests of the services cut down
 - [x] Shared helpers of the unit and integration tests
-- [ ] Shared helpers of the end-to-end tests
+- [x] Shared helpers of the end-to-end tests
 - [ ] End-to-end tests of access, roles and deleted pages
 - [ ] End-to-end tests of locking, MCP and single states
 - [ ] End-to-end tests of the pending state

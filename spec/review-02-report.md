@@ -14,9 +14,9 @@
     findings of the tests that are still open are minor.
   - Documents that the features outran: rules stated in full in several documents, and copies of code and
     constants in the specs.
-- Findings: 72 open of 107, 0 Blocker, 0 Major, 58 Minor and 14 Nit (27 `issue:`, 29 `suggestion:`, 12 `nit:` and
+- Findings: 67 open of 107, 0 Blocker, 0 Major, 55 Minor and 12 Nit (24 `issue:`, 29 `suggestion:`, 10 `nit:` and
   4 `question:`).
-- Confidence of the suggestions: 12 High, 46 Medium and 10 Low; the 4 questions have none. A High suggestion can be
+- Confidence of the suggestions: 10 High, 43 Medium and 10 Low; the 4 questions have none. A High suggestion can be
   fixed as written; the others wait for the user, as `issue-report.md` describes.
 - Decisions: on 2026-11-18 the user decided all Medium and Low suggestions. Each of these findings ends with a line
   `Decision`, and is fixed as that line says, without asking again. The 4 questions were decided by the user on the
@@ -1170,60 +1170,6 @@ them are fixed.
 - Decision (2026-11-18): as suggested, if `page.route()` can hold a Server Action with this version of Next.js; if it
   cannot, the Alternative: `testing.md` says that pending states are left untested on purpose.
 
-#### issue: an end-to-end test asserts a wall-clock time
-
-- Location: `e2e/page-history.spec.ts`, lines 364–374, "two completely different revisions at the length limit
-  answer within a few seconds"
-- Severity: Minor. It can fail a run without a defect.
-- Category: tests
-- Problem: the test measures `page.goto()` and the wait for hydration and expects less than five seconds. The time
-  includes the compile of the route by `next dev` when the test runs alone, and the load of the runner. `testing.md`
-  itself says that a budget measured next to other work says nothing about the code.
-- Impact: CI retries twice and fails on a flaky test, so one slow first attempt fails the run.
-- Evidence: `const start = Date.now();` … `expect(Date.now() - start).toBeLessThan(5_000);`. The cap of the diff
-  already has a budget test, `src/features/pages/diff.cost.test.ts`.
-- Suggestion (required): drop the measurement and keep the assertion on "These revisions are too different to
-  compare."; the timeout of `expect` still bounds the wait.
-- Confidence: Medium. The flakiness is reasoned, not observed.
-- Alternatives: keep a budget far above the noise, with a comment.
-- Decision (2026-11-18): as suggested.
-
-#### issue: helpers are copied between the specs, and the copies have drifted
-
-- Location: `expectNotFound()` in 14 specs, `by()` in 8, the MCP `callTool()` in `e2e/mcp.spec.ts` and
-  `e2e/delete-tab.spec.ts`, `setOwnRole()` in `e2e/folder-roles.spec.ts` and `e2e/revert-page.spec.ts`, the login
-  helpers in three specs, and the base address `http://localhost:3100` in 12 places outside one constant
-- Severity: Minor. Duplicated code with the first signs of drift.
-- Category: tests
-- Problem: `e2e/support/` has no helper for the not-found page, for the line "by … via …", for a tool call or for a
-  login, so each spec defines its own. The copies of `expectNotFound()` exist in four variants.
-- Impact: a change of the not-found page or of the line of the last editor means editing up to 14 files, and in the
-  copies without a message a failing loop does not name the address.
-- Evidence: `e2e/folder-roles.spec.ts`, line 19, `expect(response?.status(), address).toBe(404);`, against
-  `e2e/folders.spec.ts`, line 21, `expect(response?.status()).toBe(404);`.
-- Suggestion (optional): move `expectNotFound()` and `by()` to `e2e/support/browser.ts`, the login helpers to
-  `e2e/support/auth.ts`, the tool call to a new module `mcp.ts` in `e2e/support/`, use the constant of
-  `e2e/support/oauth.ts` for the base address, and list the helpers in `testing.md`.
-- Confidence: High. A pure move; the two extras of single specs stay as local assertions.
-
-#### issue: only the `page` of the fixture waits for hydration, second pages and contexts do not
-
-- Location: `e2e/support/test.ts`, lines 16–34; `e2e/support/auth.ts`, `logInElsewhere()`; `e2e/login.spec.ts`,
-  `openLoginFrom()`; about 25 places that open a second page or context; `spec/testing.md`, "Helpers in
-  `e2e/support/`"
-- Severity: Minor. Today the locked fields and buttons of the components make Playwright wait anyway.
-- Category: tests
-- Problem: the wait wraps `goto()` and `reload()` of the fixture page only. Other pages act right after `goto()`.
-  One helper repeats the wait by hand with a CSS selector, because `waitForHydration()` is not exported.
-  `testing.md` says "So no test acts on the locked, server-rendered page", which holds only for the fixture page.
-- Impact: an action that no lock guards, on a second page, can run before hydration: green locally, red in CI.
-- Evidence: `e2e/login.spec.ts`, lines 305–306: "Only the page of the fixture waits for hydration by itself",
-  followed by `page.locator('html[data-hydrated="true"]').waitFor(…)`.
-- Suggestion (optional): export a helper from `e2e/support/test.ts` that wraps `goto()` and `reload()` of any page,
-  use it where second pages are opened, and correct the sentence in `testing.md`.
-- Confidence: Medium. No current action was shown to run unhydrated; the fix is mechanical.
-- Decision (2026-11-18): as suggested.
-
 #### suggestion: "changed through MCP meanwhile" is simulated with a database row that MCP could not write
 
 - Location: the tests "names the channel mcp…" in `e2e/edit-page.spec.ts`, lines 488–507,
@@ -1260,24 +1206,6 @@ lastEditedById: bob.id, lastEditedVia: "mcp" } });`.
 - Decision (2026-11-18): as suggested; the case of a failed copy is dropped if the browser of the tests cannot be made
   to refuse the clipboard.
 
-#### nit: 71 comments in the tests cite requirement IDs of files that no longer exist
-
-- Location: 36 comments in `e2e/` (`edit-page.spec.ts` 11, `move-or-rename-page.spec.ts` 12, `delete-page.spec.ts`
-  6, `mcp.spec.ts` 4, `folder-roles.spec.ts` 2, `restore-page.spec.ts` 1) and 35 in the unit and integration tests
-  (`integration/page-service.test.ts` 19, the unit tests of the pages service in
-  `src/features/pages/service-*.test.ts` 6, six more files)
-- Severity: Nit. Comments only.
-- Category: tests
-- Problem: the IDs `R1` to `R14` point into requirements files, which the wrap-up of a feature deletes; `spec/`
-  holds none now. The same ID means a different rule from feature to feature.
-- Impact: a reader cannot resolve the IDs. They look like traceability and are none.
-- Evidence: `e2e/edit-page.spec.ts`, line 459, "R1: both open the editor; bob saves first.", against
-  `e2e/mcp.spec.ts`, line 777, "R1, R2, R6, R7, R11: a move to the current name and tab …".
-- Suggestion (optional): replace each ID with the section of the feature spec that holds the rule now, or drop the
-  ID and keep the sentence. Add to the wrap-up in `step-plan-workflow.md` that requirement IDs leave the comments
-  when the requirements file is deleted.
-- Confidence: High. Text only; the sentences after the IDs already state the rule.
-
 #### nit: `mcp.spec.ts` has 1,465 lines, and two specs hold tests that use neither browser nor server
 
 - Location: `e2e/mcp.spec.ts`; `e2e/tabs.spec.ts`, lines 586–604, "the database refuses a page whose tab belongs
@@ -1296,23 +1224,6 @@ lastEditedById: bob.id, lastEditedVia: "mcp" } });`.
 - Decision (2026-11-18): as suggested; the database test moves to `integration/db-errors.test.ts` unless a test there
   covers the foreign key already.
 
-#### nit: a few assertions prove nothing, and the selector rule of `testing.md` names no exceptions
-
-- Location: `e2e/folder-roles.spec.ts`, lines 309 and 1002; `e2e/users.spec.ts`, lines 324 and 338;
-  `e2e/mcp.spec.ts`, line 633; `spec/testing.md`, section "End-to-end tests"
-- Severity: Nit
-- Category: tests
-- Problem: two assertions compare local values that nothing can change. Field errors of the user dialog are found
-  by text anywhere in the dialog, not at the field as in `e2e/folders.spec.ts`. One MCP assertion accepts any answer
-  that holds the name of the tool. `testing.md` says elements are located "not by CSS selectors", while about 35
-  calls of `locator()` exist, most for elements without a role.
-- Impact: an error shown at the wrong place of a dialog passes, and the rule cannot be followed to the letter.
-- Evidence: `expect([tab.name, intro.name]).toEqual(["guides", "intro"]);` and `expect(dave.type).toBe("user");`.
-- Suggestion (optional): delete the two assertions, assert the field errors at the field, assert the JSON-RPC error,
-  and name the exceptions in `testing.md` (`time`, the form for `requestSubmit()`, `data-change`).
-- Confidence: Medium. The accessible description of the field joins several helper texts and must be read first.
-- Decision (2026-11-18): as suggested.
-
 #### Reviewed
 
 - The newest rules are proven in the browser and at the server: "Save" of the rename dialogs disabled for the own
@@ -1329,10 +1240,14 @@ lastEditedById: bob.id, lastEditedVia: "mcp" } });`.
 - Parity of browser and MCP: the last editor and the channel after real MCP writes, the revisions MCP writes, the
   lower of the two roles, and a tab deleted in the browser as MCP sees it.
 - Conventions: all 27 specs reset the database in `beforeEach` and import `test` and `expect` from the support
-  module; there is no fixed wait and no `networkidle`; `e2e/hydration.spec.ts` has a case for every component that
-  uses `useHydrated`.
+  module; there is no fixed wait, no `networkidle` and no measured time; `e2e/hydration.spec.ts` has a case for every
+  component that uses `useHydrated`.
+- Shared helpers: the not-found page, the line of the last editor, the login, the MCP tool call and the own role
+  exist once in `e2e/support/`, and the base address is one constant; every page a test opens waits for hydration,
+  the second pages through `hydrating()`. No comment cites a requirement ID. Field errors are asserted at the field,
+  and `testing.md` names the exceptions of the selector rule.
 - `testing.md` matches the configuration of Playwright, the global setup and the helpers in every statement
-  checked, except the two named in the findings above.
+  checked, except the one named in the finding on `access.spec.ts` above.
 - Every route under `src/app` has an end-to-end test except the two error pages.
 
 ### Documentation: the feature specs of the content

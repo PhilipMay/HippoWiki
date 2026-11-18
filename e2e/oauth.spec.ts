@@ -1,7 +1,7 @@
 import type { APIRequestContext } from "@playwright/test";
 
 import { KNOWN_USER } from "../prisma/known-users";
-import { ADMIN_STORAGE_STATE, NO_STORAGE_STATE, USER_STORAGE_STATE } from "./support/auth";
+import { ADMIN_STORAGE_STATE, NO_STORAGE_STATE, submitLogin, USER_STORAGE_STATE } from "./support/auth";
 import { collectErrors } from "./support/browser";
 import {
   createFolder,
@@ -313,10 +313,8 @@ test.describe("the whole flow", () => {
 
     // The connector opens the consent page in the browser of the user, who is not logged in.
     await page.goto(authorizeUrl(clientId, reader));
-    await expect(page).toHaveURL(/^http:\/\/localhost:3100\/login\?next=%2Foauth%2Fauthorize%3Fclient_id%3D/);
-    await page.getByLabel("User name").fill(KNOWN_USER.name);
-    await page.getByLabel("Password").fill(KNOWN_USER.password);
-    await page.getByRole("button", { name: "Log in" }).click();
+    await expect(page).toHaveURL(new RegExp(`^${ISSUER}/login\\?next=%2Foauth%2Fauthorize%3Fclient_id%3D`));
+    await submitLogin(page, KNOWN_USER.name, KNOWN_USER.password);
 
     // The login leads back to the consent page with the whole request.
     await expect(page).toHaveURL(authorizeUrl(clientId, reader));
@@ -404,10 +402,8 @@ test.describe("the whole flow", () => {
     const callback = await awaitCallback(page);
 
     await page.goto(authorizeUrl(clientId, reader));
-    await page.getByLabel("User name").fill("newcomer");
-    await page.getByLabel("Password").fill(TEST_PASSWORD);
-    await page.getByRole("button", { name: "Log in" }).click();
-    await expect(page).toHaveURL(/^http:\/\/localhost:3100\/change-password\?next=%2Foauth%2Fauthorize%3F/);
+    await submitLogin(page, "newcomer");
+    await expect(page).toHaveURL(new RegExp(`^${ISSUER}/change-password\\?next=%2Foauth%2Fauthorize%3F`));
     // Nothing of the request is shown before the password is changed.
     await expect(page.getByText("Example connector")).toHaveCount(0);
     await page.getByLabel("Current password").fill(TEST_PASSWORD);
@@ -435,10 +431,8 @@ test.describe("the whole flow", () => {
     ]);
 
     await page.goto(authorizeUrl(clientId, reader));
-    await expect(page).toHaveURL(/^http:\/\/localhost:3100\/login\?next=%2Foauth%2Fauthorize%3Fclient_id%3D/);
-    await page.getByLabel("User name").fill(KNOWN_USER.name);
-    await page.getByLabel("Password").fill(KNOWN_USER.password);
-    await page.getByRole("button", { name: "Log in" }).click();
+    await expect(page).toHaveURL(new RegExp(`^${ISSUER}/login\\?next=%2Foauth%2Fauthorize%3Fclient_id%3D`));
+    await submitLogin(page, KNOWN_USER.name, KNOWN_USER.password);
 
     await expect(page).toHaveURL(authorizeUrl(clientId, reader));
     await expect(page.getByRole("button", { name: "Approve" })).toBeEnabled();
@@ -467,7 +461,7 @@ test.describe("the consent page, as an admin", () => {
     await expect(main.getByRole("button", { name: "Deny" })).toHaveCount(0);
     // The browser stays here until the admin clicks.
     await expect(page).toHaveURL(address);
-    expect(requests.filter((host) => host !== "localhost:3100")).toEqual([]);
+    expect(requests.filter((host) => host !== new URL(ISSUER).host)).toEqual([]);
     expect(errors).toEqual([]);
 
     await main.getByRole("link", { name: "Return to 127.0.0.1:53682" }).click();
@@ -504,7 +498,7 @@ test.describe("the consent page, as an admin", () => {
       await expect(page.getByRole("main").getByRole("alert")).toHaveText(message);
       await expect(page.getByRole("main").getByRole("link", { name: /^Return to/ })).toHaveCount(0);
       await expect(page).toHaveURL(address);
-      expect(requests.filter((host) => host !== "localhost:3100")).toEqual([]);
+      expect(requests.filter((host) => host !== new URL(ISSUER).host)).toEqual([]);
     });
   }
 });
@@ -572,7 +566,7 @@ test.describe("the consent page, as a logged-in user", () => {
       await expect(page.getByRole("button", { name: "Deny" })).toHaveCount(0);
       // The name of the client is not shown for a request that cannot be trusted.
       await expect(page.getByText("Example connector")).toHaveCount(0);
-      expect(requests.filter((host) => host !== "localhost:3100")).toEqual([]);
+      expect(requests.filter((host) => host !== new URL(ISSUER).host)).toEqual([]);
       expect(errors).toEqual([]);
     });
   }
@@ -613,7 +607,7 @@ test.describe("the consent page, as a logged-in user", () => {
       await expect(main.getByRole("button", { name: "Deny" })).toHaveCount(0);
       // Anyone can register a redirect address: the browser stays here until the user clicks.
       await expect(page).toHaveURL(address);
-      expect(requests.filter((host) => host !== "localhost:3100")).toEqual([]);
+      expect(requests.filter((host) => host !== new URL(ISSUER).host)).toEqual([]);
 
       await main.getByRole("link", { name: "Return to 127.0.0.1:53682" }).click();
 
@@ -810,7 +804,7 @@ test.describe("the consent page, as a logged-in user", () => {
     await expect(page.getByRole("main").getByRole("alert")).toHaveText(/This request is no longer valid/);
     await expect(page).toHaveURL(authorizeUrl(clientId, reader));
     expect(await getTestDb().oAuthCode.count()).toBe(0);
-    expect(requests.filter((host) => host !== "localhost:3100")).toEqual([]);
+    expect(requests.filter((host) => host !== new URL(ISSUER).host)).toEqual([]);
   });
 
   test("the code is bound to the client: another client cannot exchange it", async ({ page, request }) => {

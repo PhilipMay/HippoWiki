@@ -1,10 +1,10 @@
 import type { Page } from "@playwright/test";
 
 import { KNOWN_ADMIN, KNOWN_USER } from "../prisma/known-users";
-import { ADMIN_STORAGE_STATE, becomeUser, NO_STORAGE_STATE, USER_STORAGE_STATE } from "./support/auth";
-import { collectErrors } from "./support/browser";
+import { ADMIN_STORAGE_STATE, becomeUser, NO_STORAGE_STATE, submitLogin, USER_STORAGE_STATE } from "./support/auth";
+import { collectErrors, expectNotFound } from "./support/browser";
 import { createUser, getTestDb, resetTestDatabase } from "./support/database";
-import { expect, test } from "./support/test";
+import { expect, hydrating, test } from "./support/test";
 
 test.beforeEach(async () => {
   await resetTestDatabase();
@@ -13,14 +13,6 @@ test.beforeEach(async () => {
 /** The rows of the user list, in display order. */
 function userRows(page: Page) {
   return page.getByRole("list", { name: "Users" }).getByRole("listitem");
-}
-
-async function expectNotFound(page: Page, address: string) {
-  const response = await page.goto(address);
-
-  expect(response?.status()).toBe(404);
-  await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
-  await expect(page.getByRole("list", { name: "Users" })).toHaveCount(0);
 }
 
 test.describe("the admin", () => {
@@ -79,6 +71,7 @@ test.describe("the admin", () => {
   ]) {
     test(`${address} shows the not-found page`, async ({ page }) => {
       await expectNotFound(page, address);
+      await expect(page.getByRole("list", { name: "Users" })).toHaveCount(0);
     });
   }
 });
@@ -225,11 +218,9 @@ test.describe("the admin, creating a user", () => {
 
     // The new admin, in a browser of their own.
     const adminContext = await browser.newContext({ storageState: NO_STORAGE_STATE });
-    const adminPage = await adminContext.newPage();
+    const adminPage = hydrating(await adminContext.newPage());
     await adminPage.goto("/login");
-    await adminPage.getByLabel("User name").fill("maria");
-    await adminPage.getByLabel("Password").fill(password);
-    await adminPage.getByRole("button", { name: "Log in" }).click();
+    await submitLogin(adminPage, "maria", password);
     await expect(adminPage).toHaveURL("/change-password");
     await adminPage.getByLabel("Current password").fill(password);
     await adminPage.getByLabel(/^New password/).fill("my-own-password");
@@ -322,10 +313,12 @@ test.describe("the admin, creating a user", () => {
 
       const dialog = await submitNewUser(page, name);
 
-      await expect(dialog.getByText(error, { exact: true })).toBeVisible();
+      const field = dialog.getByLabel("User name");
+      await expect(field).toHaveAttribute("aria-invalid", "true");
+      await expect(field).toHaveAccessibleDescription(error);
       await expect(dialog).toBeVisible();
-      await expect(dialog.getByLabel("User name")).toHaveValue(name);
-      await expect(dialog.getByLabel("User name")).toBeFocused();
+      await expect(field).toHaveValue(name);
+      await expect(field).toBeFocused();
       await expect(userCreatedDialog(page)).toHaveCount(0);
       await expect(page).toHaveURL("/users?action=create");
       expect(await getTestDb().user.count()).toBe(2);
@@ -335,7 +328,7 @@ test.describe("the admin, creating a user", () => {
 
   test("a corrected name creates the user after an error", async ({ page }) => {
     const dialog = await submitNewUser(page, "alice");
-    await expect(dialog.getByText("Name is already in use")).toBeVisible();
+    await expect(dialog.getByLabel("User name")).toHaveAccessibleDescription("Name is already in use");
 
     await dialog.getByLabel("User name").fill("alice-2");
     await dialog.getByRole("button", { name: "Create" }).click();
@@ -380,11 +373,9 @@ test.describe("the admin, creating a user", () => {
 
     // The new user, in a browser of their own.
     const userContext = await browser.newContext({ storageState: NO_STORAGE_STATE });
-    const userPage = await userContext.newPage();
+    const userPage = hydrating(await userContext.newPage());
     await userPage.goto("/login");
-    await userPage.getByLabel("User name").fill("jane-doe");
-    await userPage.getByLabel("Password").fill(password);
-    await userPage.getByRole("button", { name: "Log in" }).click();
+    await submitLogin(userPage, "jane-doe", password);
 
     await expect(userPage).toHaveURL("/change-password");
     await userPage.goto("/folders");
@@ -451,12 +442,14 @@ test.describe("a user", () => {
 
   test("gets the not-found page for the New user dialog", async ({ page }) => {
     await expectNotFound(page, "/users?action=create");
+    await expect(page.getByRole("list", { name: "Users" })).toHaveCount(0);
     await expect(page.getByRole("dialog")).toHaveCount(0);
   });
 
   for (const address of ["/users?action=anything", "/users?view=all"]) {
     test(`${address} shows the not-found page`, async ({ page }) => {
       await expectNotFound(page, address);
+      await expect(page.getByRole("list", { name: "Users" })).toHaveCount(0);
     });
   }
 

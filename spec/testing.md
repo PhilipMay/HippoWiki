@@ -242,8 +242,10 @@ How the code is tested. Commands are listed in `README.md`.
   - `test.ts` exports the `test` and `expect` that all specs use; a lint rule forbids importing them from
     `@playwright/test`. After `page.goto()` and `page.reload()` its `page` waits until the page has hydrated, i.e. until
     `HydrationMarker` has set `data-hydrated="true"` on `<html>` (see "UI" in `architecture.md`); not with JavaScript
-    disabled. So no test acts on the locked, server-rendered page, where React could undo a change to the DOM or report
-    a hydration mismatch. This matters most in CI, whose runner hydrates much later than a fast local machine.
+    disabled. Every other page a test opens, in a second tab or a browser context of its own, gets the same wait from
+    `hydrating()`, e.g. `hydrating(await context.newPage())`. So no test acts on the locked, server-rendered page, where
+    React could undo a change to the DOM or report a hydration mismatch. This matters most in CI, whose runner hydrates
+    much later than a fast local machine.
   - `resetTestDatabase()` empties all tables except the migration history and `AuthSecret`, then creates the known
     users with their fixed ids and restores their saved sessions; tests call it in `beforeEach`.
     `emptyTestDatabase()` only empties the tables; the integration tests use it.
@@ -296,12 +298,30 @@ How the code is tested. Commands are listed in `README.md`.
     returns the tokens of the new grant. `awaitCallback()` answers everything at the redirect address of the client,
     a loopback address where nothing listens, with `page.route()`, and returns the parameters of the answer that
     arrives there.
-  - `collectErrors()` records console errors and uncaught exceptions of the browser page; tests assert it stays empty.
+  - `mcp.ts` has the helpers of the MCP tests, in which a test stands in for an MCP client: `sendMcp()` sends a
+    JSON-RPC message to an MCP address with a bearer token, `callTool()` calls a tool there and returns its result, and
+    `mcpPath()` gives the path of the address of a folder and role.
+  - `setOwnRole()` sets the role of the known user `alice` on a folder, as another Owner would while a form of the test
+    is open.
+  - `auth.ts` also has `submitLogin()`, which fills and submits the login form of the open page, and `logIn()`, which
+    opens the login page first; the test asserts where the login leads.
+  - `browser.ts` has `collectErrors()`, which records console errors and uncaught exceptions of the browser page (tests
+    assert it stays empty); `expectNotFound()`, which opens an address and expects the not-found page with the status
+    404, named with the address; and `by()`, the end of a line of a list or view that names the last editor and the
+    channel, "by <user> via <channel>".
+  - The public URL of the test server, the base of every full address, is `ISSUER` of `oauth.ts`.
 - `eslint-plugin-playwright` checks all files in `e2e/`: a Playwright call or `expect` that is not awaited
   (`missing-playwright-await`), `page.waitForTimeout()` (`no-wait-for-timeout`) and checks such as
   `expect(await locator.isVisible())` instead of the retrying `await expect(locator).toBeVisible()`
   (`prefer-web-first-assertions`) are errors.
-- Elements are located by role, label and accessible name, not by CSS selectors.
+- Elements are located by role, label and accessible name, not by CSS selectors. A CSS selector is used only for what
+  has no role or name to find it by:
+  - the `time` element of a line, the `data-change` attribute of the lines of a comparison and the current item of a
+    breadcrumb (`aria-current`);
+  - the `form` of a dialog that a test submits with `requestSubmit()`, and the `option` elements and labels that a
+    test reads or changes as a whole;
+  - elements that must be absent from rendered Markdown or a page, such as `script`, `img` or any element with an
+    address.
   - A required field has an asterisk after its label, so a label is matched by its text or its start, not exactly.
   - Next.js has an element with the role `alert` of its own, its route announcer; the error message of a form is
     located inside `main` or its dialog.
@@ -317,8 +337,8 @@ How the code is tested. Commands are listed in `README.md`.
 - `e2e/access.spec.ts` checks that every kind of address leads to the login page without a login, as a redirect that
   sends nothing of the page, and that the redirect carries the address as the way back. A new route adds its address
   there; a new public address is checked there as well, for not being sent to the login page.
-- `e2e/mcp.spec.ts` calls the MCP addresses of folders with `request` and the access token of a grant from
-  `createGrant()`, for Reader, Writer and Manager connections; `e2e/oauth.spec.ts` covers the discovery, the registration, the
+- `e2e/mcp.spec.ts` calls the MCP addresses of folders with `request`, the helpers of `e2e/support/mcp.ts` and the
+  access token of a grant from `createGrant()`, for Reader, Writer and Manager connections; `e2e/oauth.spec.ts` covers the discovery, the registration, the
   token endpoint and the whole flow from the login over the consent page to a tool call, a refresh and a refresh token
   that is used again. The helpers of `e2e/support/oauth.ts` send a folder address as `resource` (`mcpAddress()`).
 - `e2e/ai-apps.spec.ts` covers the folder view "AI apps" with its addresses per role and the copy button.

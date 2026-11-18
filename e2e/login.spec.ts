@@ -1,10 +1,10 @@
 import type { Browser, Page } from "@playwright/test";
 
 import { KNOWN_ADMIN, KNOWN_USER } from "../prisma/known-users";
-import { NO_STORAGE_STATE } from "./support/auth";
+import { logIn, NO_STORAGE_STATE, submitLogin } from "./support/auth";
 import { collectErrors } from "./support/browser";
 import { createUser, getTestDb, resetTestDatabase, TEST_PASSWORD } from "./support/database";
-import { expect, test } from "./support/test";
+import { expect, hydrating, test } from "./support/test";
 
 /**
  * The client address of the visitor of every test. The test server trusts one reverse proxy
@@ -36,17 +36,9 @@ function formAlert(page: Page) {
   return page.getByRole("main").getByRole("alert");
 }
 
-/** Fills the login form and submits it. */
-async function submitLogin(page: Page, name: string, password: string) {
-  await page.getByLabel("User name").fill(name);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Log in" }).click();
-}
-
 /** Opens the login page and logs in; a user lands on the folder list, an admin on the user list. */
-async function logIn(page: Page, { name, type, password }: { name: string; type: string; password: string }) {
-  await page.goto("/login");
-  await submitLogin(page, name, password);
+async function logInHome(page: Page, { name, type, password }: { name: string; type: string; password: string }) {
+  await logIn(page, name, password);
   await expect(page).toHaveURL(type === "admin" ? "/users" : "/folders");
 }
 
@@ -67,7 +59,7 @@ test("the login page shows the form and no user in the header", async ({ page })
 test("a login leads to the folder list and the header shows the name", async ({ page }) => {
   const errors = collectErrors(page);
 
-  await logIn(page, KNOWN_USER);
+  await logInHome(page, KNOWN_USER);
 
   await expect(page.getByRole("heading", { level: 1, name: "Folders" })).toBeVisible();
   const banner = page.getByRole("banner");
@@ -80,7 +72,7 @@ test("a login leads to the folder list and the header shows the name", async ({ 
 test("an admin who logs in lands on the user list, and the header has no Folders", async ({ page }) => {
   const errors = collectErrors(page);
 
-  await logIn(page, KNOWN_ADMIN);
+  await logInHome(page, KNOWN_ADMIN);
 
   await expect(page.getByRole("heading", { level: 1, name: "Users" })).toBeVisible();
   const banner = page.getByRole("banner");
@@ -109,7 +101,7 @@ test("a user with a way back into the content lands there", async ({ page }) => 
 });
 
 test("an admin who is logged in already and opens the login page goes to the user list", async ({ page }) => {
-  await logIn(page, KNOWN_ADMIN);
+  await logInHome(page, KNOWN_ADMIN);
 
   await page.goto("/login?next=%2Ffolders");
 
@@ -139,7 +131,7 @@ test("a name with spaces around it logs in", async ({ page }) => {
 test("the session cookie is not readable by scripts and lasts 30 days", async ({ page, context }) => {
   const before = Date.now() / 1000;
 
-  await logIn(page, KNOWN_USER);
+  await logInHome(page, KNOWN_USER);
 
   // The cookie is `Secure`, with the prefix that goes with it, in a production build only.
   const production = process.env.HIPPOWIKI_E2E_SERVER === "production";
@@ -300,10 +292,8 @@ async function openLoginFrom(browser: Browser, forwardedFor: string): Promise<Pa
     storageState: NO_STORAGE_STATE,
     extraHTTPHeaders: { "x-forwarded-for": forwardedFor },
   });
-  const page = await context.newPage();
+  const page = hydrating(await context.newPage());
   await page.goto("/login");
-  // Only the page of the fixture waits for hydration by itself (`support/test.ts`).
-  await page.locator('html[data-hydrated="true"]').waitFor({ state: "attached" });
   return page;
 }
 
@@ -394,7 +384,7 @@ test("a user with a first password can log in, and is led to the password change
 
 test("log out leads to the login page and the header shows no name", async ({ page }) => {
   const errors = collectErrors(page);
-  await logIn(page, KNOWN_USER);
+  await logInHome(page, KNOWN_USER);
 
   await page.getByRole("banner").getByRole("button", { name: "Log out" }).click();
 
@@ -409,7 +399,7 @@ test("log out leads to the login page and the header shows no name", async ({ pa
 });
 
 test("a new login after a logout works", async ({ page }) => {
-  await logIn(page, KNOWN_USER);
+  await logInHome(page, KNOWN_USER);
   await page.getByRole("banner").getByRole("button", { name: "Log out" }).click();
   await expect(page).toHaveURL("/login");
 
@@ -420,7 +410,7 @@ test("a new login after a logout works", async ({ page }) => {
 });
 
 test("a logged-in user who opens the login page lands on the folder list", async ({ page }) => {
-  await logIn(page, KNOWN_USER);
+  await logInHome(page, KNOWN_USER);
 
   await page.goto("/login");
 
@@ -432,9 +422,9 @@ test("a user can be logged in in two browsers, and a logout ends only one of the
   page,
   browser,
 }) => {
-  await logIn(page, KNOWN_USER);
+  await logInHome(page, KNOWN_USER);
   const otherContext = await browser.newContext({ storageState: NO_STORAGE_STATE });
-  const otherPage = await otherContext.newPage();
+  const otherPage = hydrating(await otherContext.newPage());
   await otherPage.goto("/login");
   await submitLogin(otherPage, KNOWN_USER.name, KNOWN_USER.password);
   await expect(otherPage).toHaveURL("/folders");
@@ -502,7 +492,7 @@ test("a way back that a crafted request puts into the form leads to the folder l
 });
 
 test("a logged-in user who opens the login page with a way back lands there", async ({ page }) => {
-  await logIn(page, KNOWN_USER);
+  await logInHome(page, KNOWN_USER);
 
   await page.goto("/login?next=%2Faccount");
   await expect(page).toHaveURL("/account");

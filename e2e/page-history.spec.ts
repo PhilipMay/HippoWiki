@@ -3,7 +3,7 @@ import type { Page } from "@playwright/test";
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 
 import { KNOWN_USER } from "../prisma/known-users";
-import { collectErrors } from "./support/browser";
+import { collectErrors, expectNotFound } from "./support/browser";
 import {
   createFolder,
   createPage,
@@ -20,13 +20,6 @@ const ALICE = { id: KNOWN_USER.id };
 test.beforeEach(async () => {
   await resetTestDatabase();
 });
-
-async function expectNotFound(page: Page, address: string) {
-  const response = await page.goto(address);
-
-  expect(response?.status(), address).toBe(404);
-  await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
-}
 
 /** The entries of the list of revisions, in display order. */
 function revisionLinks(page: Page) {
@@ -361,16 +354,15 @@ test.describe("comparing revisions", () => {
     await expect(page.getByRole("list", { name: "Changes" })).toHaveCount(0);
   });
 
-  test("two completely different revisions at the length limit answer within a few seconds", async ({ page }) => {
+  test("two completely different revisions at the length limit are too different to compare", async ({ page }) => {
     const folder = await createFolder({ name: "handbook" });
     const lines = (letter: string) => `# Big\n${`${letter}\n`.repeat((CONTENT_MAX_LENGTH - 6) / 2)}`;
     const big = await createPage({ folder, name: "big", content: lines("a") });
     await createRevisions({ page: big, count: 1, content: () => lines("b") });
 
-    const start = Date.now();
+    // The cap of the diff that bounds the time of the comparison has a budget test of its own (`diff.cost.test.ts`).
     await page.goto("/folders/handbook/big.md?view=compare&from=1&to=2");
     await expect(page.getByText("These revisions are too different to compare.")).toBeVisible();
-    expect(Date.now() - start).toBeLessThan(5_000);
   });
 
   test("a missing or invalid from or to, or a number the page does not have, shows the not-found page", async ({
