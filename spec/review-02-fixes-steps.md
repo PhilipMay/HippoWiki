@@ -89,7 +89,7 @@ Decided by the user on 2026-11-18:
 - [x] Integration tests of access and of rules without a test
 - [x] Integration tests of the rollback and the races of pages
 - [x] Tests that assert less than their name says
-- [ ] Unit tests of the services cut down
+- [x] Unit tests of the services cut down
 - [ ] Shared helpers of the unit and integration tests
 - [ ] Shared helpers of the end-to-end tests
 - [ ] End-to-end tests of access, roles and deleted pages

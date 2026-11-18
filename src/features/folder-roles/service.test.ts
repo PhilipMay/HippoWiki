@@ -50,6 +50,14 @@ vi.mock("@/lib/db", () => ({
 }));
 vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, error: mocks.error } }));
 
+/**
+ * What the first call of the given write stores: the `data` of its argument. The tests assert what a write stores, not
+ * the condition it finds its row with, which the integration tests prove against the database.
+ */
+function dataOf(write: ReturnType<typeof vi.fn>): unknown {
+  return (write.mock.calls[0]?.[0] as { data?: unknown } | undefined)?.data;
+}
+
 beforeEach(() => {
   vi.resetAllMocks();
 });
@@ -116,18 +124,6 @@ describe("the role of an actor of MCP", () => {
     await expect(folderRoleOf(MCP_READER, FOLDER_ID)).resolves.toBe("reader");
   });
 
-  it("reads the tab and the page only in the folder of the connection", async () => {
-    mocks.roleFindFirst.mockResolvedValue(null);
-
-    await expect(roleOnFolderOfTab(MCP, TAB_ID)).resolves.toBeNull();
-    await expect(roleOnFolderOfPage(MCP, PAGE_ID)).resolves.toBeNull();
-
-    expect(mocks.roleFindFirst.mock.calls.map(([query]) => query.where)).toEqual([
-      { userId: ACTOR_ID, folder: { tabs: { some: { id: TAB_ID } }, id: FOLDER_ID } },
-      { userId: ACTOR_ID, folder: { pages: { some: { id: PAGE_ID } }, id: FOLDER_ID } },
-    ]);
-  });
-
   it("is null on every other folder, without asking the database", async () => {
     await expect(folderRoleOf(MCP, OTHER_FOLDER_ID)).resolves.toBeNull();
 
@@ -149,18 +145,13 @@ describe("the role of an actor of MCP", () => {
 
 describe("the role of the actor", () => {
   it.each([
-    ["folderRoleOf", () => folderRoleOf(USER, FOLDER_ID), { id: FOLDER_ID }],
-    ["roleOnFolderOfTab", () => roleOnFolderOfTab(USER, TAB_ID), { tabs: { some: { id: TAB_ID } } }],
-    ["roleOnFolderOfPage", () => roleOnFolderOfPage(USER, PAGE_ID), { pages: { some: { id: PAGE_ID } } }],
-  ] as const)("%s reads the role of the actor on the folder from the database", async (_name, read, folder) => {
+    ["folderRoleOf", () => folderRoleOf(USER, FOLDER_ID)],
+    ["roleOnFolderOfTab", () => roleOnFolderOfTab(USER, TAB_ID)],
+    ["roleOnFolderOfPage", () => roleOnFolderOfPage(USER, PAGE_ID)],
+  ] as const)("%s returns the role of the actor on the folder as stored", async (_name, read) => {
     mocks.roleFindFirst.mockResolvedValue({ role: "manager" });
 
     await expect(read()).resolves.toBe("manager");
-
-    expect(mocks.roleFindFirst).toHaveBeenCalledExactlyOnceWith({
-      where: { userId: ACTOR_ID, folder },
-      select: { role: true },
-    });
   });
 
   it.each([
@@ -178,7 +169,6 @@ describe("the role of the actor", () => {
 
     await expect(folderRoleOf(USER, FOLDER_ID)).resolves.toBe("owner");
     await expect(folderRoleOf(USER, FOLDER_ID)).resolves.toBeNull();
-    expect(mocks.roleFindFirst).toHaveBeenCalledTimes(2);
   });
 
   it.each([
@@ -250,8 +240,6 @@ describe("mayReadFolder and mayReadTab", () => {
     await expect(check(MCP)).resolves.toBe(false);
     await expect(check({ ...ADMIN, channel: "browser" })).resolves.toBe(false);
     await expect(check({ ...MCP, ...ADMIN })).resolves.toBe(false);
-
-    expect(mocks.roleFindFirst).toHaveBeenCalledTimes(2);
   });
 
   it("mayReadFolder reads every other folder through MCP as not readable, without asking the database", async () => {
@@ -322,11 +310,6 @@ describe("listFolderRoles", () => {
       { user: { id: ACTOR_ID, name: "alice" }, role: "owner" },
       { user: { id: FOLDER_ID, name: "bob" }, role: "reader" },
     ]);
-    expect(mocks.roleFindMany).toHaveBeenCalledExactlyOnceWith({
-      where: { folderId: FOLDER_ID },
-      select: { role: true, user: { select: { id: true, username: true } } },
-      orderBy: [{ role: "desc" }, { user: { username: "asc" } }],
-    });
   });
 
   it("returns null for a user without a role on the folder, without reading the roles", async () => {
@@ -359,11 +342,6 @@ describe("listRoleCandidates", () => {
     mocks.userFindMany.mockResolvedValue([{ id: BOB_ID, username: "bob" }]);
 
     await expect(listRoleCandidates(USER, FOLDER_ID)).resolves.toEqual([{ id: BOB_ID, name: "bob" }]);
-    expect(mocks.userFindMany).toHaveBeenCalledExactlyOnceWith({
-      where: { type: "user", folderRoles: { none: { folderId: FOLDER_ID } } },
-      select: { id: true, username: true },
-      orderBy: { username: "asc" },
-    });
   });
 
   it.each(["manager", "writer", "reader"])("returns null for a %s without reading the users", async (role) => {
@@ -398,13 +376,7 @@ describe("giveRole", () => {
       value: { folder: { name: "handbook" }, user: { id: BOB_ID, name: "bob" }, role: "writer" },
     });
 
-    expect(mocks.userFindFirst).toHaveBeenCalledExactlyOnceWith({
-      where: { username: "bob", type: "user" },
-      select: { id: true },
-    });
-    expect(mocks.roleCreate).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ data: { folderId: FOLDER_ID, userId: BOB_ID, role: "writer" } }),
-    );
+    expect(dataOf(mocks.roleCreate)).toEqual({ folderId: FOLDER_ID, userId: BOB_ID, role: "writer" });
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
       { folderId: FOLDER_ID, userId: BOB_ID, oldRole: null, newRole: "writer", ownerId: ACTOR_ID },
       "role given",
@@ -539,8 +511,6 @@ describe("changeRole and removeRole", () => {
     mocks.roleFindFirst.mockResolvedValue({ role: "owner" });
   });
 
-  const WHERE = { folderId_userId: { folderId: FOLDER_ID, userId: BOB_ID } };
-
   it("changes another user's role, logs it and leaves the Owner in the roles view", async () => {
     folderRoles([
       { userId: ACTOR_ID, role: "owner" },
@@ -552,7 +522,7 @@ describe("changeRole and removeRole", () => {
       value: { folder: { name: "handbook" }, actorRole: "owner" },
     });
 
-    expect(mocks.roleUpdate).toHaveBeenCalledExactlyOnceWith({ where: WHERE, data: { role: "manager" } });
+    expect(dataOf(mocks.roleUpdate)).toEqual({ role: "manager" });
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
       { folderId: FOLDER_ID, userId: BOB_ID, oldRole: "writer", newRole: "manager", ownerId: ACTOR_ID },
       "role changed",
@@ -570,7 +540,6 @@ describe("changeRole and removeRole", () => {
       value: { folder: { name: "handbook" }, actorRole: "owner" },
     });
 
-    expect(mocks.roleDelete).toHaveBeenCalledExactlyOnceWith({ where: WHERE });
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
       { folderId: FOLDER_ID, userId: BOB_ID, oldRole: "reader", newRole: null, ownerId: ACTOR_ID },
       "role removed",
@@ -747,17 +716,6 @@ describe("listAllFolderRoles", () => {
       { id: FOLDER_ID, name: "handbook", roles: [{ user: { id: BOB_ID, name: "bob" }, role: "owner" }] },
       { id: TAB_ID, name: "nobody", roles: [] },
     ]);
-    expect(mocks.folderFindMany).toHaveBeenCalledExactlyOnceWith({
-      select: {
-        id: true,
-        name: true,
-        roles: {
-          select: { role: true, user: { select: { id: true, username: true } } },
-          orderBy: [{ role: "desc" }, { user: { username: "asc" } }],
-        },
-      },
-      orderBy: { name: "asc" },
-    });
   });
 
   it("returns null for a user without asking the database", async () => {

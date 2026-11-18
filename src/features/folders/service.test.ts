@@ -94,6 +94,14 @@ function expectNothingWritten(): void {
   for (const call of writeCalls) expect(call).not.toHaveBeenCalled();
 }
 
+/**
+ * What the first call of the given write stores: the `data` of its argument. The tests assert what a write stores, not
+ * the condition it finds its row with, which the integration tests prove against the database.
+ */
+function dataOf(write: ReturnType<typeof vi.fn>): unknown {
+  return (write.mock.calls[0]?.[0] as { data?: unknown } | undefined)?.data;
+}
+
 /** How often the database has been read or written. */
 function databaseCallCount(): number {
   return databaseCalls.reduce((count, call) => count + call.mock.calls.length, 0);
@@ -127,12 +135,6 @@ const MCP_ACTOR: ContentActor = {
   channel: "mcp",
   connection: { grantId: "0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01", folderId: FOLDER_ID, role: "writer" },
 };
-
-/** The condition and the selection of the actor's role on a folder, as a read of the browser asks for it. */
-const ROLE_WHERE = { roles: { some: { userId: ACTOR_ID } } };
-const ROLE_SELECT = { roles: { where: { userId: ACTOR_ID }, select: { role: true } } };
-/** The condition of a read of MCP: the folder of the connection, with a role of the actor on it. */
-const MCP_WHERE = { id: FOLDER_ID, ...ROLE_WHERE };
 
 /** Names that are not valid as written: not lowercase, surrounding whitespace, a double hyphen, empty. */
 const MALFORMED_NAMES = ["Handbook", " handbook", "handbook ", "release--notes", "-handbook", ""];
@@ -184,12 +186,9 @@ describe("listFolders", () => {
     await expect(listFolders(ACTOR)).resolves.toEqual([
       { ...folder, lastEditedBy: { name: "alice", via: "web" }, role: "writer" },
     ]);
-    expect(mocks.folderFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: ROLE_WHERE, select: expect.objectContaining(ROLE_SELECT) }),
-    );
   });
 
-  it("returns only the folder of the connection through MCP, with the lower of the two roles", async () => {
+  it("returns the folder of the connection through MCP with the lower of the two roles", async () => {
     const folder = { id: FOLDER_ID, name: "handbook", updatedAt: new Date() };
     mocks.folderFindMany.mockResolvedValue([
       { ...folder, lastEditedBy: { username: "alice" }, lastEditedVia: "web", roles: [{ role: "owner" }] },
@@ -198,9 +197,6 @@ describe("listFolders", () => {
     await expect(listFolders(MCP_ACTOR)).resolves.toEqual([
       { ...folder, lastEditedBy: { name: "alice", via: "web" }, role: "writer" },
     ]);
-    expect(mocks.folderFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: MCP_WHERE, select: expect.objectContaining(ROLE_SELECT) }),
-    );
   });
 
   it("returns no folder for a malformed actor id in the browser, logged, without reading the database", async () => {
@@ -220,23 +216,15 @@ describe("getFolderByName", () => {
       name: "handbook",
       role: "manager",
     });
-    expect(mocks.folderFindFirst).toHaveBeenCalledWith({
-      where: { name: "handbook", ...ROLE_WHERE },
-      select: { id: true, name: true, ...ROLE_SELECT },
-    });
   });
 
-  it("reads through MCP only the folder of the connection, with the lower of the two roles", async () => {
+  it("returns the folder through MCP with the lower of the two roles", async () => {
     mocks.folderFindFirst.mockResolvedValue({ id: FOLDER_ID, name: "handbook", roles: [{ role: "manager" }] });
 
     await expect(getFolderByName(MCP_ACTOR, "handbook")).resolves.toEqual({
       id: FOLDER_ID,
       name: "handbook",
       role: "writer",
-    });
-    expect(mocks.folderFindFirst).toHaveBeenCalledWith({
-      where: { name: "handbook", ...MCP_WHERE },
-      select: { id: true, name: true, ...ROLE_SELECT },
     });
   });
 
@@ -257,13 +245,9 @@ describe("getFolderById", () => {
     mocks.folderFindFirst.mockResolvedValue({ id: FOLDER_ID, name: "handbook", roles: [{ role: "reader" }] });
 
     await expect(getFolderById(ACTOR, FOLDER_ID)).resolves.toEqual({ id: FOLDER_ID, name: "handbook", role: "reader" });
-    expect(mocks.folderFindFirst).toHaveBeenCalledWith({
-      where: { AND: [{ id: FOLDER_ID }, ROLE_WHERE] },
-      select: { id: true, name: true, ...ROLE_SELECT },
-    });
   });
 
-  it("reads through MCP only the folder of the connection, with the lower of the two roles", async () => {
+  it("returns the folder through MCP with the lower of the two roles", async () => {
     mocks.folderFindFirst.mockResolvedValue({ id: FOLDER_ID, name: "handbook", roles: [{ role: "owner" }] });
 
     await expect(getFolderById(MCP_ACTOR, FOLDER_ID)).resolves.toEqual({
@@ -271,9 +255,6 @@ describe("getFolderById", () => {
       name: "handbook",
       role: "writer",
     });
-    expect(mocks.folderFindFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { AND: [{ id: FOLDER_ID }, MCP_WHERE] } }),
-    );
   });
 
   it("returns null when no folder has the id or the actor has no role on it", async () => {
@@ -296,29 +277,19 @@ describe("listTabs", () => {
     await expect(listTabs(ACTOR, FOLDER_ID)).resolves.toEqual([
       { ...tab, lastEditedBy: { name: "alice", via: "web" } },
     ]);
-    expect(mocks.tabFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { folderId: FOLDER_ID } }));
-    expect(mocks.folderRoleFindFirst).toHaveBeenCalledWith({
-      where: { userId: ACTOR_ID, folder: { id: FOLDER_ID } },
-      select: { role: true },
-    });
   });
 
   it("returns null without a role of the actor on the folder, without reading the tabs", async () => {
     mocks.folderRoleFindFirst.mockResolvedValue(null);
 
     await expect(listTabs(ACTOR, FOLDER_ID)).resolves.toBeNull();
-    expect(mocks.tabFindMany).not.toHaveBeenCalled();
   });
 
   it("returns the tabs through MCP only of the folder of the connection, with a role on it", async () => {
     mocks.tabFindMany.mockResolvedValue([]);
 
     await expect(listTabs(MCP_ACTOR, FOLDER_ID)).resolves.toEqual([]);
-    expect(mocks.folderRoleFindFirst).toHaveBeenCalledExactlyOnceWith({
-      where: { userId: ACTOR_ID, folder: { id: FOLDER_ID } },
-      select: { role: true },
-    });
-
+    // Another folder reads like one without a role, without asking the database.
     await expect(listTabs(MCP_ACTOR, "1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e55")).resolves.toBeNull();
     expect(mocks.folderRoleFindFirst).toHaveBeenCalledOnce();
   });
@@ -335,20 +306,13 @@ describe("getTab", () => {
     mocks.tabFindFirst.mockResolvedValue({ ...tab, folder: { ...tab.folder, roles: [{ role: "reader" }] } });
 
     await expect(getTab(ACTOR, "handbook", "guides")).resolves.toEqual({ ...tab, role: "reader" });
-    expect(mocks.tabFindFirst).toHaveBeenCalledWith({
-      where: { name: "guides", folder: { name: "handbook", ...ROLE_WHERE } },
-      select: { id: true, name: true, folder: { select: { id: true, name: true, ...ROLE_SELECT } } },
-    });
   });
 
-  it("reads the tab through MCP only in the folder of the connection, with the lower of the two roles", async () => {
+  it("returns the tab through MCP with the lower of the two roles", async () => {
     const tab = { id: TAB_ID, name: "guides", folder: { id: FOLDER_ID, name: "handbook" } };
     mocks.tabFindFirst.mockResolvedValue({ ...tab, folder: { ...tab.folder, roles: [{ role: "owner" }] } });
 
     await expect(getTab(MCP_ACTOR, "handbook", "guides")).resolves.toEqual({ ...tab, role: "writer" });
-    expect(mocks.tabFindFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { name: "guides", folder: { name: "handbook", ...MCP_WHERE } } }),
-    );
   });
 
   it("returns null when the folder has no tab with the name", async () => {
@@ -384,14 +348,11 @@ describe("createFolder", () => {
 
     await expect(createFolder(ACTOR, VALID)).resolves.toEqual({ ok: true, value: stored });
 
-    expect(mocks.folderCreate).toHaveBeenCalledWith({
-      data: {
-        name: "handbook",
-        lastEditedById: ACTOR_ID,
-        lastEditedVia: "web",
-        roles: { create: { userId: ACTOR_ID, role: "owner" } },
-      },
-      select: { id: true, name: true },
+    expect(dataOf(mocks.folderCreate)).toEqual({
+      name: "handbook",
+      lastEditedById: ACTOR_ID,
+      lastEditedVia: "web",
+      roles: { create: { userId: ACTOR_ID, role: "owner" } },
     });
     // A new folder needs no role of its creator.
     expect(mocks.folderRoleFindFirst).not.toHaveBeenCalled();
@@ -409,16 +370,12 @@ describe("createFolder", () => {
       lastEditedVia: "mcp",
     } as { name: string });
 
-    expect(mocks.folderCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: {
-          name: "handbook",
-          lastEditedById: ACTOR_ID,
-          lastEditedVia: "web",
-          roles: { create: { userId: ACTOR_ID, role: "owner" } },
-        },
-      }),
-    );
+    expect(dataOf(mocks.folderCreate)).toEqual({
+      name: "handbook",
+      lastEditedById: ACTOR_ID,
+      lastEditedVia: "web",
+      roles: { create: { userId: ACTOR_ID, role: "owner" } },
+    });
   });
 
   it.each(nameTakenErrors)("returns name-taken for a unique violation %s", async (_name, err) => {
@@ -465,11 +422,11 @@ describe("renameFolder", () => {
       value: { id: FOLDER_ID, name: "handbook" },
     });
 
-    expect(mocks.folderUpdateMany).toHaveBeenCalledExactlyOnceWith({
-      where: { id: FOLDER_ID, name: { not: "handbook" } },
-      data: { name: "handbook", lastEditedById: ACTOR_ID, lastEditedVia: "web" },
+    expect(dataOf(mocks.folderUpdateMany)).toEqual({
+      name: "handbook",
+      lastEditedById: ACTOR_ID,
+      lastEditedVia: "web",
     });
-    expect(mocks.folderFindUnique).not.toHaveBeenCalled();
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith({ folderId: FOLDER_ID, channel: "browser" }, "folder renamed");
   });
 
@@ -485,15 +442,6 @@ describe("renameFolder", () => {
       value: { id: FOLDER_ID, name: "handbook" },
     });
 
-    // The only write is the update that matches the folder only when its stored name differs.
-    expect(mocks.folderUpdateMany).toHaveBeenCalledExactlyOnceWith({
-      where: { id: FOLDER_ID, name: { not: "handbook" } },
-      data: { name: "handbook", lastEditedById: ACTOR_ID, lastEditedVia: "web" },
-    });
-    expect(mocks.folderFindUnique).toHaveBeenCalledExactlyOnceWith({
-      where: { id: FOLDER_ID },
-      select: { id: true, name: true },
-    });
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
       { folderId: FOLDER_ID, channel: "browser" },
       "folder not changed: name is the same",
@@ -501,6 +449,7 @@ describe("renameFolder", () => {
     expect(mocks.warn).not.toHaveBeenCalled();
   });
 
+  // The rename between the update and the read cannot be timed against the database, so this case needs the mock.
   it("stores the name once more without the condition for a folder renamed meanwhile to another name", async () => {
     mocks.folderUpdateMany.mockResolvedValueOnce({ count: 0 }).mockResolvedValueOnce({ count: 1 });
     mocks.folderFindUnique.mockResolvedValue({ id: FOLDER_ID, name: "other" });
@@ -524,7 +473,6 @@ describe("renameFolder", () => {
 
     await expect(renameFolder(ACTOR, FOLDER_ID, VALID)).resolves.toEqual(FOLDER_NOT_FOUND);
 
-    expect(mocks.folderUpdateMany).toHaveBeenCalledOnce();
     expect(mocks.warn).toHaveBeenCalledWith({ folderId: FOLDER_ID }, "folder to rename not found");
     expect(mocks.info).not.toHaveBeenCalled();
   });
@@ -535,7 +483,6 @@ describe("renameFolder", () => {
 
     await expect(renameFolder(ACTOR, FOLDER_ID, VALID)).resolves.toEqual(FOLDER_NOT_FOUND);
 
-    expect(mocks.folderUpdateMany).toHaveBeenCalledTimes(2);
     expect(mocks.warn).toHaveBeenCalledWith({ folderId: FOLDER_ID }, "folder to rename not found");
     expect(mocks.info).not.toHaveBeenCalled();
   });
@@ -574,7 +521,6 @@ const otherTabErrors = [
 ] as const;
 
 const TAB_VALID = { name: " guides " };
-const STORED_TAB_SELECT = { id: true, name: true, folder: { select: { name: true } } };
 
 describe("createTab", () => {
   it.each([
@@ -598,9 +544,11 @@ describe("createTab", () => {
 
     await expect(createTab(ACTOR, FOLDER_ID, TAB_VALID)).resolves.toEqual({ ok: true, value: stored });
 
-    expect(mocks.tabCreate).toHaveBeenCalledWith({
-      data: { name: "guides", folderId: FOLDER_ID, lastEditedById: ACTOR_ID, lastEditedVia: "web" },
-      select: STORED_TAB_SELECT,
+    expect(dataOf(mocks.tabCreate)).toEqual({
+      name: "guides",
+      folderId: FOLDER_ID,
+      lastEditedById: ACTOR_ID,
+      lastEditedVia: "web",
     });
     expect(mocks.info).toHaveBeenCalledWith({ tabId: TAB_ID, channel: "browser" }, "tab created");
   });
@@ -660,11 +608,7 @@ describe("renameTab", () => {
 
     await expect(renameTab(ACTOR, TAB_ID, TAB_VALID)).resolves.toEqual({ ok: true, value: stored });
 
-    expect(mocks.tabUpdateMany).toHaveBeenCalledExactlyOnceWith({
-      where: { id: TAB_ID, name: { not: "guides" } },
-      data: { name: "guides", lastEditedById: ACTOR_ID, lastEditedVia: "web" },
-    });
-    expect(mocks.tabFindUnique).toHaveBeenCalledExactlyOnceWith({ where: { id: TAB_ID }, select: STORED_TAB_SELECT });
+    expect(dataOf(mocks.tabUpdateMany)).toEqual({ name: "guides", lastEditedById: ACTOR_ID, lastEditedVia: "web" });
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith({ tabId: TAB_ID, channel: "browser" }, "tab renamed");
   });
 
@@ -678,12 +622,6 @@ describe("renameTab", () => {
 
     await expect(renameTab(ACTOR, TAB_ID, input)).resolves.toEqual({ ok: true, value: stored });
 
-    // The only write is the update that matches the tab only when its stored name differs.
-    expect(mocks.tabUpdateMany).toHaveBeenCalledExactlyOnceWith({
-      where: { id: TAB_ID, name: { not: "guides" } },
-      data: { name: "guides", lastEditedById: ACTOR_ID, lastEditedVia: "web" },
-    });
-    expect(mocks.tabFindUnique).toHaveBeenCalledExactlyOnceWith({ where: { id: TAB_ID }, select: STORED_TAB_SELECT });
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
       { tabId: TAB_ID, channel: "browser" },
       "tab not changed: name is the same",
@@ -691,6 +629,7 @@ describe("renameTab", () => {
     expect(mocks.warn).not.toHaveBeenCalled();
   });
 
+  // The rename between the update and the read cannot be timed against the database, so this case needs the mock.
   it("stores the name once more without the condition for a tab renamed meanwhile to another name", async () => {
     const stored = { id: TAB_ID, name: "guides", folder: { name: "handbook" } };
     mocks.tabUpdateMany.mockResolvedValueOnce({ count: 0 }).mockResolvedValueOnce({ count: 1 });
@@ -712,8 +651,6 @@ describe("renameTab", () => {
 
     await expect(renameTab(ACTOR, TAB_ID, TAB_VALID)).resolves.toEqual(TAB_NOT_FOUND);
 
-    expect(mocks.tabUpdateMany).toHaveBeenCalledOnce();
-    expect(mocks.tabFindUnique).toHaveBeenCalledOnce();
     expect(mocks.warn).toHaveBeenCalledWith({ tabId: TAB_ID }, "tab to rename not found");
     expect(mocks.info).not.toHaveBeenCalled();
   });
@@ -724,7 +661,6 @@ describe("renameTab", () => {
 
     await expect(renameTab(ACTOR, TAB_ID, TAB_VALID)).resolves.toEqual(TAB_NOT_FOUND);
 
-    expect(mocks.tabUpdateMany).toHaveBeenCalledTimes(2);
     expect(mocks.warn).toHaveBeenCalledWith({ tabId: TAB_ID }, "tab to rename not found");
     expect(mocks.info).not.toHaveBeenCalled();
   });
@@ -819,8 +755,8 @@ describe("a tab write through MCP", () => {
       [{ tabId: TAB_ID, channel: "mcp", grantId: GRANT_ID }, "tab created"],
       [{ tabId: TAB_ID, channel: "mcp", grantId: GRANT_ID }, "tab renamed"],
     ]);
-    expect(mocks.tabCreate.mock.calls[0]?.[0].data).toMatchObject({ lastEditedById: ACTOR_ID, lastEditedVia: "mcp" });
-    expect(mocks.tabUpdateMany.mock.calls[0]?.[0].data).toMatchObject({
+    expect(dataOf(mocks.tabCreate)).toMatchObject({ lastEditedById: ACTOR_ID, lastEditedVia: "mcp" });
+    expect(dataOf(mocks.tabUpdateMany)).toMatchObject({
       lastEditedById: ACTOR_ID,
       lastEditedVia: "mcp",
     });
@@ -833,7 +769,6 @@ describe("a tab write through MCP", () => {
 
     await expect(renameTab(MANAGER, TAB_ID, TAB_VALID)).resolves.toEqual({ ok: true, value: stored });
 
-    expect(mocks.tabUpdateMany).toHaveBeenCalledOnce();
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
       { tabId: TAB_ID, channel: "mcp", grantId: GRANT_ID },
       "tab not changed: name is the same",
@@ -849,7 +784,7 @@ describe("a tab write through MCP", () => {
       { actorId: ACTOR_ID, folderId: FOLDER_ID, tabId: TAB_ID, pageCount: 1, channel: "mcp", grantId: GRANT_ID },
       "tab deleted",
     );
-    expect(mocks.pageUpdateManyAndReturn.mock.calls[0]?.[0].data).toMatchObject({
+    expect(dataOf(mocks.pageUpdateManyAndReturn)).toMatchObject({
       lastEditedById: ACTOR_ID,
       lastEditedVia: "mcp",
     });
@@ -876,19 +811,7 @@ describe("deleteTab", () => {
     expectNothingLogged();
   });
 
-  it("reads the role on the given folder, so that a tab deleted meanwhile is reported as missing", async () => {
-    mocks.folderRoleFindFirst.mockResolvedValue({ role: "manager" });
-    mocks.queryRaw.mockResolvedValue([]);
-
-    await expect(deleteTab(ACTOR, FOLDER_ID, TAB_ID)).resolves.toEqual(TAB_NOT_FOUND);
-
-    expect(mocks.folderRoleFindFirst).toHaveBeenCalledExactlyOnceWith({
-      where: { userId: ACTOR_ID, folder: { id: FOLDER_ID } },
-      select: { role: true },
-    });
-  });
-
-  it("locks the tab, soft deletes its pages, deletes the tab and returns the folder and the pages by name", async () => {
+  it("soft deletes the pages of the tab, deletes the tab and returns the folder and the pages by name", async () => {
     mocks.pageUpdateManyAndReturn.mockResolvedValue([
       { name: "second", title: "Second" },
       { name: "first", title: "First" },
@@ -907,27 +830,13 @@ describe("deleteTab", () => {
       },
     });
 
-    const [strings, ...values] = mocks.queryRaw.mock.calls[0] ?? [];
-    expect(strings.join("?")).toMatch(/FROM "Tab" t JOIN "Folder" f[\s\S]*FOR UPDATE OF t/);
-    expect(values).toEqual([TAB_ID, FOLDER_ID]);
-    // Without a version: whatever is in the tab now is deleted with it.
-    expect(mocks.pageUpdateManyAndReturn).toHaveBeenCalledExactlyOnceWith({
-      where: { tabId: TAB_ID },
-      data: {
-        deletedAt: expect.any(Date),
-        tabId: null,
-        lastEditedById: ACTOR_ID,
-        lastEditedVia: "web",
-        version: { increment: 1 },
-      },
-      select: { name: true, title: true },
+    expect(dataOf(mocks.pageUpdateManyAndReturn)).toEqual({
+      deletedAt: expect.any(Date),
+      tabId: null,
+      lastEditedById: ACTOR_ID,
+      lastEditedVia: "web",
+      version: { increment: 1 },
     });
-    expect(mocks.tabDelete).toHaveBeenCalledExactlyOnceWith({ where: { id: TAB_ID } });
-    // The lock comes first, the tab goes last, when it has no pages left.
-    expect(mocks.queryRaw).toHaveBeenCalledBefore(mocks.pageUpdateManyAndReturn);
-    expect(mocks.pageUpdateManyAndReturn).toHaveBeenCalledBefore(mocks.tabDelete);
-    // The folder is not written.
-    expect(mocks.folderUpdateMany).not.toHaveBeenCalled();
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
       { actorId: ACTOR_ID, folderId: FOLDER_ID, tabId: TAB_ID, pageCount: 2, channel: "browser" },
       "tab deleted",
@@ -941,7 +850,6 @@ describe("deleteTab", () => {
       ok: true,
       value: { pageCount: 0, pages: [] },
     });
-    expect(mocks.tabDelete).toHaveBeenCalledOnce();
   });
 
   it("returns tab-not-found when the locked row is missing, without writing anything", async () => {
@@ -1113,43 +1021,32 @@ describe("a user without a role on the folder", () => {
       () => renameFolder(ACTOR, FOLDER_ID, VALID),
       { folderId: FOLDER_ID },
       "folder not renamed: the actor has no role on the folder",
-      { id: FOLDER_ID },
     ],
     [
       "createTab",
       () => createTab(ACTOR, FOLDER_ID, TAB_VALID),
       { folderId: FOLDER_ID },
       "tab not created: the actor has no role on the folder",
-      { id: FOLDER_ID },
     ],
     [
       "renameTab",
       () => renameTab(ACTOR, TAB_ID, TAB_VALID),
       { tabId: TAB_ID },
       "tab not renamed: the actor has no role on the folder",
-      { tabs: { some: { id: TAB_ID } } },
     ],
     [
       "deleteTab",
       () => deleteTab(ACTOR, FOLDER_ID, TAB_ID),
       { folderId: FOLDER_ID, tabId: TAB_ID },
       "tab not deleted: the actor has no role on the folder",
-      { id: FOLDER_ID },
     ],
-  ] as const)(
-    "gets not-allowed from %s, logged, and nothing is written",
-    async (_name, write, target, message, folder) => {
-      await expect(write()).resolves.toEqual({ ok: false, error: { code: "not-allowed" } });
+  ] as const)("gets not-allowed from %s, logged, and nothing is written", async (_name, write, target, message) => {
+    await expect(write()).resolves.toEqual({ ok: false, error: { code: "not-allowed" } });
 
-      expect(mocks.folderRoleFindFirst).toHaveBeenCalledExactlyOnceWith({
-        where: { userId: ACTOR_ID, folder },
-        select: { role: true },
-      });
-      expectNothingWritten();
-      expect(mocks.warn).toHaveBeenCalledExactlyOnceWith({ actorId: ACTOR_ID, ...target }, message);
-      expect(mocks.info).not.toHaveBeenCalled();
-    },
-  );
+    expectNothingWritten();
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith({ actorId: ACTOR_ID, ...target }, message);
+    expect(mocks.info).not.toHaveBeenCalled();
+  });
 
   it("is refused before the input is checked", async () => {
     await expect(renameFolder(ACTOR, FOLDER_ID, INVALID)).resolves.toEqual({

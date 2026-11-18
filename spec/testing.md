@@ -32,16 +32,23 @@ How the code is tested. Commands are listed in `README.md`.
   runs.
 - Schemas, environment parsing and other pure helpers get unit tests.
 - Mocks are set up with `vi.mock` and shared mock functions from `vi.hoisted`, reset in `beforeEach`.
-- Services (`service.test.ts`) get unit tests for the branches the end-to-end tests cannot reach without breaking the
-  shared test database, and for what they cannot tell apart. They mock `@/lib/db` and `@/lib/logger`.
+- Services (`service.test.ts`) get unit tests for what needs a mock: the branches that the database cannot be made to
+  take on purpose, and what the integration tests cannot tell apart. They mock `@/lib/db` and `@/lib/logger`, and
+  assert what the service does, not how it asks the database, so that a refactoring that keeps the behaviour keeps
+  them green.
   - Malformed ids and names never reach the database; invalid input returns `invalid-input` with the field errors and
     writes nothing.
-  - The stored data of every write, such as the derived title of a page.
+  - The stored data of every write (the `data` of its call), such as the derived title of a page.
   - Every database error gives its code: a unique violation `name-taken`, a foreign key violation or a count of 0 a
     not-found code, any other error `failed`.
   - What is logged for each outcome.
-  - The conditions of the reads, such as the ones that pick the place of a page and leave out deleted pages.
-    Assertions that only repeat the `select` and `orderBy` of a query are left out.
+  - What a read returns from the rows it gets, such as the role of the actor and the last editor.
+  - A race between two statements of one write that cannot be timed against the database, such as a rename between
+    the update and the read of a folder.
+- The integration test of the service proves the rest, and a unit test does not repeat it: the condition, the
+  `select` and the order of a query (which rows a read finds, the fields it returns), the condition a write finds its
+  row with (the version, a deleted page, a write without a change), the transaction, and the number and order of the
+  calls. A unit test that asserted one of them is replaced by the integration test of the same rule.
 - Server Actions (`actions.test.ts`) get unit tests as adapters. They mock the service of the feature, `next/cache`,
   `next/navigation` and `@/features/auth/session`; the mocked `redirect` throws like the real one, so code after it
   never runs and tests assert the rejection and its path.

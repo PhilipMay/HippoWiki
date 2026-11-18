@@ -9,20 +9,19 @@
   - Rules that are written several times: the guards of a content write in three services, the frame of a dialog
     in nine components, a write without a change in five shapes, and the same rule in up to five specs. Two copies
     have drifted already.
-  - Tests that would not catch the refactoring this report suggests: the unit tests of the services pin the calls
-    of Prisma, and three rules of access and of the transaction have no test that could fail.
+  - Tests that would not catch the refactoring this report suggests: the unit tests of the services pinned the calls
+    of Prisma, and three rules of access and of the transaction had no test that could fail. Both are fixed; the
+    findings of the tests that are still open are minor.
   - Documents that the features outran: rules stated in full in several documents, and copies of code and
     constants in the specs.
-- Findings: 74 open of 107, 0 Blocker, 1 Major, 59 Minor and 14 Nit (29 `issue:`, 29 `suggestion:`, 12 `nit:` and
+- Findings: 73 open of 107, 0 Blocker, 0 Major, 59 Minor and 14 Nit (28 `issue:`, 29 `suggestion:`, 12 `nit:` and
   4 `question:`).
-- Confidence of the suggestions: 12 High, 47 Medium and 11 Low; the 4 questions have none. A High suggestion can be
+- Confidence of the suggestions: 12 High, 47 Medium and 10 Low; the 4 questions have none. A High suggestion can be
   fixed as written; the others wait for the user, as `issue-report.md` describes.
 - Decisions: on 2026-11-18 the user decided all Medium and Low suggestions. Each of these findings ends with a line
   `Decision`, and is fixed as that line says, without asking again. The 4 questions were decided by the user on the
   same day, in "Decisions on the questions" of `spec/review-02-fixes-steps.md`.
-- To fix first, the one Major finding:
-  1. The unit tests of the services pin the calls of Prisma, not the behaviour (Tests: unit and integration; Low,
-     decided).
+- To fix first: no Major finding is open; the four Major findings of the tests are fixed.
 - Not covered by this review: security, which `review-report.md` covers and whose findings are not repeated here;
   the unit tests of auth, users, OAuth and grants, of which only the names and the copied helpers were looked at;
   the size of the bundles for the browser, because no build was read (one `question:` asks for it); and the
@@ -1026,42 +1025,6 @@ PageDeleteFormAction } from "@/features/pages/forms";`.
 Unit coverage on 2026-11-18 is 78.95 % of the lines and 69.71 % of the branches. The gap is almost only the
 components and the route pages, which have no unit tests on purpose (67 of 138 files, 690 lines); the services are
 between 94 % and 100 %. The findings below are therefore about what is asserted, not about lines.
-
-#### issue: the unit tests of the services pin the calls of Prisma, not the behaviour
-
-- Location: `src/features/pages/service.test.ts`, `src/features/folders/service.test.ts` and
-  `src/features/folder-roles/service.test.ts`
-- Severity: Major. The planned refactoring is what breaks these tests, and they are the only tests of the branches
-  for database errors.
-- Category: tests
-- Problem: the three files hold 72 assertions on the exact arguments of a database mock, 19 inspections of the
-  list of calls and 23 assertions on the number or the order of calls. Beyond that, nearly every test of a write
-  scripts its case through the method the code happens to call. `testing.md` says: "Assertions that only repeat
-  the `select` and `orderBy` of a query are left out." Not coupled are the tests of the actions, the queries and
-  the tools, which mock at the border of the service, and no test asserts the inner types of a result.
-
-  | File                                        | Tests | Exact arguments | Lists of calls | Number or order of calls |
-  | ------------------------------------------- | ----- | --------------- | -------------- | ------------------------ |
-  | `src/features/pages/service.test.ts`        | 135   | 39              | 10             | 8                        |
-  | `src/features/folders/service.test.ts`      | 72    | 25              | 8              | 11                       |
-  | `src/features/folder-roles/service.test.ts` | 57    | 8               | 1              | 4                        |
-
-- Impact: one shape for writes without a change, a switch from `updateMany` to `update`, or a read moved into the
-  transaction turns these tests red, though the integration tests of the same rules stay green. They then have to
-  be rewritten together with the code, which removes the cover of the branches only they have: the mapping of
-  database errors, `failed`, and the log lines.
-- Evidence: lines 915–916 of the pages test: `expect(mocks.updateMany).toHaveBeenCalledWith({ where: { id: PAGE_ID,
-deletedAt: null, version: VERSION, content: { not: CONTENT } },`.
-- Suggestion (required before the refactoring): first add the missing integration cases of this section, so that
-  every rule has a test of its behaviour. Then cut the unit tests down to what needs a mock: a malformed id never
-  reaches the database, an error becomes a code, the log lines, and the data of a write.
-- Confidence: Low. The problem is evident; how far to cut is a decision.
-- Alternatives:
-  - Keep the tests and accept that they are rewritten with the code.
-  - One scripted fake of the client with helpers that say what happens, not which method is called.
-  - Move the mapping of errors to integration tests with triggers, which run slower.
-- Decision (2026-11-18): as suggested: first the missing integration cases of this section, then the unit tests are cut
-  down to what needs a mock.
 
 #### issue: fixtures and builders of mocks are copied between the test files, and the tests of the services mix every concern
 

@@ -68,6 +68,14 @@ function readCount(): number {
   );
 }
 
+/**
+ * What the first call of the given write stores: the `data` of its argument. The tests assert what a write stores, not
+ * the condition it finds its row with, which the integration tests prove against the database.
+ */
+function dataOf(write: ReturnType<typeof vi.fn>): unknown {
+  return (write.mock.calls[0]?.[0] as { data?: unknown } | undefined)?.data;
+}
+
 const databaseWrites = [
   mocks.create,
   mocks.updateMany,
@@ -118,9 +126,6 @@ const MCP_ACTOR: ContentActor = {
   connection: { grantId: "0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01", folderId: FOLDER_ID, role: "writer" },
 };
 
-/** The condition on the folder of a read of the browser: a role of the actor on it. */
-const WITH_ROLE = { roles: { some: { userId: ACTOR_ID } } };
-
 /** Names that are not valid as written: not lowercase, surrounding whitespace, a double hyphen, empty. */
 const MALFORMED_NAMES = ["Overview", " overview", "overview ", "release--notes", "-overview", ""];
 
@@ -136,18 +141,6 @@ function page(name: string, tab: string | null) {
 function places(pages: ReturnType<typeof page>[]): string[] {
   return pages.map(({ name, tab }) => (tab ? `${tab.name}/${name}` : name));
 }
-
-describe("the page lists", () => {
-  // A deleted page keeps its folder, so only `deletedAt: null` keeps it out of the folder's lists.
-  it.each([
-    ["listFolderPages", () => listFolderPages(ACTOR, FOLDER_ID), { folderId: FOLDER_ID, tabId: null, deletedAt: null }],
-    ["listTabPages", () => listTabPages(ACTOR, TAB_ID), { tabId: TAB_ID, deletedAt: null }],
-    ["listAllFolderPages", () => listAllFolderPages(ACTOR, FOLDER_ID), { folderId: FOLDER_ID, deletedAt: null }],
-  ])("%s leaves out deleted pages", async (_name, query, where) => {
-    await query();
-    expect(mocks.findMany).toHaveBeenCalledWith(expect.objectContaining({ where }));
-  });
-});
 
 describe("the lists of a folder or tab", () => {
   it.each([
@@ -179,7 +172,7 @@ describe("listAllFolderPages", () => {
 });
 
 describe("getPage", () => {
-  it("looks for a page without a tab when no tab is given", async () => {
+  it("returns a page placed directly in the folder with the role of the actor and its last editor", async () => {
     const stored = {
       id: "page-id",
       name: "overview",
@@ -199,19 +192,9 @@ describe("getPage", () => {
       ...EDITOR,
       role: "writer",
     });
-    // `tabId: null` keeps a page of the same name in a tab of the folder from being returned.
-    expect(mocks.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { name: "overview", folder: { name: "handbook", ...WITH_ROLE }, deletedAt: null, tabId: null },
-      }),
-    );
-    // The version is read, so that a change of the page can state the version it is based on.
-    expect(mocks.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ select: expect.objectContaining({ version: true }) }),
-    );
   });
 
-  it("looks for the page in the tab with the given name", async () => {
+  it("returns a page in a tab with the role of the actor and its last editor", async () => {
     const stored = {
       id: "page-id",
       name: "overview",
@@ -229,16 +212,6 @@ describe("getPage", () => {
       ...EDITOR,
       role: "reader",
     });
-    expect(mocks.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          name: "overview",
-          folder: { name: "handbook", ...WITH_ROLE },
-          deletedAt: null,
-          tab: { name: "guides" },
-        },
-      }),
-    );
   });
 
   it("returns null when there is no such page", async () => {
@@ -269,35 +242,22 @@ describe("getPage", () => {
 });
 
 describe("listDeletedPages", () => {
-  it("lists only the deleted pages of the folder", async () => {
+  it("returns the deleted pages with their last editor", async () => {
     const deletedAt = new Date("2026-11-12T10:00:00Z");
     mocks.findMany.mockResolvedValue([{ id: PAGE_ID, name: "overview", title: "Overview", deletedAt, ...EDITOR_ROW }]);
 
     await expect(listDeletedPages(ACTOR, FOLDER_ID)).resolves.toEqual([
       { id: PAGE_ID, name: "overview", title: "Overview", deletedAt, ...EDITOR },
     ]);
-    expect(mocks.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { folderId: FOLDER_ID, deletedAt: { not: null } } }),
-    );
   });
 });
 
 describe("getDeletedPage", () => {
-  it("looks for a deleted page with the id in the folder of that name", async () => {
+  it("returns the deleted page with its last editor", async () => {
     const stored = { id: PAGE_ID, deletedAt: new Date(), folder: { id: FOLDER_ID, name: "handbook" } };
     mocks.findFirst.mockResolvedValue({ ...stored, ...EDITOR_ROW });
 
     await expect(getDeletedPage(ACTOR, "handbook", PAGE_ID)).resolves.toEqual({ ...stored, ...EDITOR });
-    expect(mocks.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        // Only a Manager or an Owner reads the deleted pages.
-        where: {
-          id: PAGE_ID,
-          folder: { name: "handbook", roles: { some: { userId: ACTOR_ID, role: { in: ["manager", "owner"] } } } },
-          deletedAt: { not: null },
-        },
-      }),
-    );
   });
 
   it("returns null when there is no such deleted page", async () => {
@@ -324,12 +284,10 @@ describe("getDeletedPage", () => {
 });
 
 describe("listPageRevisions", () => {
-  /** The condition on the folder of a page whose deleted pages the actor may read: Manager or Owner. */
-  const WITH_DELETED_PAGES_ROLE = { roles: { some: { userId: ACTOR_ID, role: { in: ["manager", "owner"] } } } };
   const createdAt = new Date("2026-11-12T10:00:00Z");
   const ROW = { number: 5, title: "Intro", createdAt, user: { username: "mike" }, via: "mcp", revertedTo: 2 };
 
-  it("reads a page that is not deleted with a role on its folder, and a deleted one with Manager or Owner", async () => {
+  it("returns the revisions with who made them, and the number of the newest revision", async () => {
     mocks.findFirst.mockResolvedValue({ revisions: [{ number: 5 }] });
     mocks.revisionFindMany.mockResolvedValue([ROW]);
 
@@ -337,55 +295,12 @@ describe("listPageRevisions", () => {
       newest: 5,
       revisions: [{ number: 5, title: "Intro", createdAt, madeBy: { name: "mike", via: "mcp" }, revertedTo: 2 }],
     });
-    expect(mocks.findFirst).toHaveBeenCalledExactlyOnceWith({
-      where: {
-        id: PAGE_ID,
-        OR: [
-          { deletedAt: null, folder: WITH_ROLE },
-          { deletedAt: { not: null }, folder: WITH_DELETED_PAGES_ROLE },
-        ],
-      },
-      select: { content: true, revisions: { orderBy: { number: "desc" }, take: 1, select: { number: true } } },
-    });
   });
 
-  it("lists at most 100 revisions newest first, without their content", async () => {
-    mocks.findFirst.mockResolvedValue({ revisions: [{ number: 250 }] });
-    mocks.revisionFindMany.mockResolvedValue([]);
-
-    await listPageRevisions(ACTOR, PAGE_ID, { before: null });
-
-    expect(mocks.revisionFindMany).toHaveBeenCalledExactlyOnceWith({
-      where: { pageId: PAGE_ID },
-      orderBy: { number: "desc" },
-      take: 100,
-      select: {
-        number: true,
-        title: true,
-        createdAt: true,
-        user: { select: { username: true } },
-        via: true,
-        revertedTo: true,
-      },
-    });
-  });
-
-  it("lists the revisions before the given number", async () => {
-    mocks.findFirst.mockResolvedValue({ revisions: [{ number: 250 }] });
-    mocks.revisionFindMany.mockResolvedValue([]);
-
-    await listPageRevisions(ACTOR, PAGE_ID, { before: 151 });
-
-    expect(mocks.revisionFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { pageId: PAGE_ID, number: { lt: 151 } } }),
-    );
-  });
-
-  it("returns null and lists nothing for a page that the actor may not read or that does not exist", async () => {
+  it("returns null for a page that the actor may not read or that does not exist", async () => {
     mocks.findFirst.mockResolvedValue(null);
 
     await expect(listPageRevisions(ACTOR, PAGE_ID, { before: null })).resolves.toBeNull();
-    expect(mocks.revisionFindMany).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -426,21 +341,6 @@ describe("getPageRevision", () => {
       newest: 5,
       isCurrent: false,
     });
-    expect(mocks.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ id: PAGE_ID }) }),
-    );
-    expect(mocks.revisionFindUnique).toHaveBeenCalledExactlyOnceWith({
-      where: { pageId_number: { pageId: PAGE_ID, number: 3 } },
-      select: {
-        number: true,
-        title: true,
-        createdAt: true,
-        user: { select: { username: true } },
-        via: true,
-        revertedTo: true,
-        content: true,
-      },
-    });
   });
 
   it("says whether the content of the revision is the content of the page now", async () => {
@@ -457,11 +357,10 @@ describe("getPageRevision", () => {
     await expect(getPageRevision(ACTOR, PAGE_ID, 6)).resolves.toBeNull();
   });
 
-  it("returns null and reads no revision for a page that the actor may not read or that does not exist", async () => {
+  it("returns null for a page that the actor may not read or that does not exist", async () => {
     mocks.findFirst.mockResolvedValue(null);
 
     await expect(getPageRevision(ACTOR, PAGE_ID, 1)).resolves.toBeNull();
-    expect(mocks.revisionFindUnique).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -509,18 +408,6 @@ describe("getRevisionComparison", () => {
       older: revision(2),
       newer: revision(5),
     });
-    expect(mocks.revisionFindMany).toHaveBeenCalledExactlyOnceWith({
-      where: { pageId: PAGE_ID, number: { in: [2, 5] } },
-      select: {
-        number: true,
-        title: true,
-        createdAt: true,
-        user: { select: { username: true } },
-        via: true,
-        revertedTo: true,
-        content: true,
-      },
-    });
   });
 
   it("returns a revision compared with itself on both sides", async () => {
@@ -541,11 +428,10 @@ describe("getRevisionComparison", () => {
     await expect(getRevisionComparison(ACTOR, PAGE_ID, 2, 8)).resolves.toBeNull();
   });
 
-  it("returns null and reads no revision for a page that the actor may not read or that does not exist", async () => {
+  it("returns null for a page that the actor may not read or that does not exist", async () => {
     mocks.findFirst.mockResolvedValue(null);
 
     await expect(getRevisionComparison(ACTOR, PAGE_ID, 1, 2)).resolves.toBeNull();
-    expect(mocks.revisionFindMany).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -595,14 +481,6 @@ describe("directPagesFirst", () => {
 });
 
 const CONTENT = "# My page\n\nText";
-/** What a write reads back of a page: what its address is built from, and its version. */
-const STORED_PAGE_SELECT = {
-  id: true,
-  name: true,
-  version: true,
-  folder: { select: { name: true } },
-  tab: { select: { name: true } },
-};
 
 const NAME_TAKEN = { ok: false, error: { code: "name-taken" } };
 const FAILED = { ok: false, error: { code: "failed" } };
@@ -678,13 +556,13 @@ describe("a write through MCP", () => {
       [{ pageId: PAGE_ID, channel: "mcp", grantId }, "page updated"],
       [{ pageId: PAGE_ID, tabId: null, channel: "mcp", grantId }, "page moved or renamed"],
     ]);
-    expect(mocks.create.mock.calls[0]?.[0].data).toMatchObject({
+    expect(dataOf(mocks.create)).toMatchObject({
       lastEditedById: ACTOR_ID,
       lastEditedVia: "mcp",
       revisions: { create: { number: 1, userId: ACTOR_ID, via: "mcp" } },
     });
-    expect(mocks.updateMany.mock.calls[0]?.[0].data).toMatchObject({ lastEditedById: ACTOR_ID, lastEditedVia: "mcp" });
-    expect(mocks.revisionCreate.mock.calls[0]?.[0].data).toMatchObject({ number: 4, userId: ACTOR_ID, via: "mcp" });
+    expect(dataOf(mocks.updateMany)).toMatchObject({ lastEditedById: ACTOR_ID, lastEditedVia: "mcp" });
+    expect(dataOf(mocks.revisionCreate)).toMatchObject({ number: 4, userId: ACTOR_ID, via: "mcp" });
   });
 
   it("is not allowed for a Reader connection, for another folder and without a role, and writes nothing", async () => {
@@ -722,7 +600,7 @@ describe("a write through MCP", () => {
       { pageId: PAGE_ID, channel: "mcp", grantId: "0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01" },
       "page deleted",
     );
-    expect(mocks.updateMany.mock.calls[0]?.[0].data).toMatchObject({ lastEditedById: ACTOR_ID, lastEditedVia: "mcp" });
+    expect(dataOf(mocks.updateMany)).toMatchObject({ lastEditedById: ACTOR_ID, lastEditedVia: "mcp" });
   });
 
   it("refuses a delete through a Writer connection of an Owner and writes nothing", async () => {
@@ -775,18 +653,15 @@ describe("createPage", () => {
     await expect(createPage(ACTOR, FOLDER_ID, input)).resolves.toEqual({ ok: true, value: stored });
 
     // No version: a new page gets the default of the database, 1.
-    expect(mocks.create).toHaveBeenCalledWith({
-      data: {
-        title: "My page",
-        name: "my-page",
-        content: CONTENT,
-        folderId: FOLDER_ID,
-        tabId: null,
-        lastEditedById: ACTOR_ID,
-        lastEditedVia: "web",
-        revisions: { create: { number: 1, title: "My page", content: CONTENT, userId: ACTOR_ID, via: "web" } },
-      },
-      select: STORED_PAGE_SELECT,
+    expect(dataOf(mocks.create)).toEqual({
+      title: "My page",
+      name: "my-page",
+      content: CONTENT,
+      folderId: FOLDER_ID,
+      tabId: null,
+      lastEditedById: ACTOR_ID,
+      lastEditedVia: "web",
+      revisions: { create: { number: 1, title: "My page", content: CONTENT, userId: ACTOR_ID, via: "web" } },
     });
     expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID, channel: "browser" }, "page created");
   });
@@ -796,9 +671,7 @@ describe("createPage", () => {
 
     await createPage(ACTOR, FOLDER_ID, { ...VALID, content: "# My page\r\n\r\nText" });
 
-    expect(mocks.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ content: CONTENT }) }),
-    );
+    expect(dataOf(mocks.create)).toMatchObject({ content: CONTENT });
   });
 
   it("stores a page in a tab and returns it as stored", async () => {
@@ -807,19 +680,7 @@ describe("createPage", () => {
 
     await expect(createPage(ACTOR, FOLDER_ID, IN_TAB)).resolves.toEqual({ ok: true, value: stored });
 
-    expect(mocks.create).toHaveBeenCalledWith({
-      data: {
-        title: "My page",
-        name: "my-page",
-        content: CONTENT,
-        folderId: FOLDER_ID,
-        tabId: TAB_ID,
-        lastEditedById: ACTOR_ID,
-        lastEditedVia: "web",
-        revisions: { create: { number: 1, title: "My page", content: CONTENT, userId: ACTOR_ID, via: "web" } },
-      },
-      select: STORED_PAGE_SELECT,
-    });
+    expect(dataOf(mocks.create)).toMatchObject({ folderId: FOLDER_ID, tabId: TAB_ID });
   });
 
   it.each(nameTakenErrors)("returns name-taken for a unique violation %s", async (_name, err) => {
@@ -904,58 +765,38 @@ describe("updatePageContent", () => {
     expectDatabaseUntouched();
   });
 
-  it("stores content and derived title only, if the page has the given version, and returns the page as stored", async () => {
+  it("stores content and derived title only, counts the version up, and returns the page as stored", async () => {
     mocks.updateMany.mockResolvedValue({ count: 1 });
     mocks.findUnique.mockResolvedValue(STORED);
 
     const input = { ...VALID, title: "Given title", name: "given-name" };
     await expect(updatePageContent(ACTOR, PAGE_ID, input)).resolves.toEqual({ ok: true, value: STORED });
 
-    // A page with the same content matches no row, so that a save without a change stores nothing.
-    expect(mocks.updateMany).toHaveBeenCalledWith({
-      where: { id: PAGE_ID, deletedAt: null, version: VERSION, content: { not: CONTENT } },
-      data: {
-        title: "My page",
-        content: CONTENT,
-        lastEditedById: ACTOR_ID,
-        lastEditedVia: "web",
-        version: { increment: 1 },
-      },
-    });
-    expect(mocks.findUnique).toHaveBeenCalledWith({
-      where: { id: PAGE_ID, deletedAt: null },
-      select: STORED_PAGE_SELECT,
+    expect(dataOf(mocks.updateMany)).toEqual({
+      title: "My page",
+      content: CONTENT,
+      lastEditedById: ACTOR_ID,
+      lastEditedVia: "web",
+      version: { increment: 1 },
     });
     expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID, channel: "browser" }, "page updated");
   });
 
-  it("records a revision with the next number, the title, the content, the actor and the channel in the same transaction", async () => {
+  it("records a revision with the next number, the title, the content, the actor and the channel", async () => {
     mocks.updateMany.mockResolvedValue({ count: 1 });
     mocks.findUnique.mockResolvedValue(STORED);
 
     await expect(updatePageContent(ACTOR, PAGE_ID, VALID)).resolves.toEqual({ ok: true, value: STORED });
 
-    expect(mocks.transaction).toHaveBeenCalledOnce();
-    expect(mocks.revisionFindFirst).toHaveBeenCalledWith({
-      where: { pageId: PAGE_ID },
-      orderBy: { number: "desc" },
-      select: { number: true },
+    expect(dataOf(mocks.revisionCreate)).toEqual({
+      pageId: PAGE_ID,
+      number: 4,
+      title: "My page",
+      content: CONTENT,
+      userId: ACTOR_ID,
+      via: "web",
+      revertedTo: null,
     });
-    expect(mocks.revisionCreate).toHaveBeenCalledExactlyOnceWith({
-      data: {
-        pageId: PAGE_ID,
-        number: 4,
-        title: "My page",
-        content: CONTENT,
-        userId: ACTOR_ID,
-        via: "web",
-        revertedTo: null,
-      },
-    });
-    // The page is updated before the newest revision is read, so that the row of the page is locked first.
-    expect(mocks.updateMany.mock.invocationCallOrder[0]).toBeLessThan(
-      mocks.revisionFindFirst.mock.invocationCallOrder[0] ?? 0,
-    );
   });
 
   it("records revision 1 for a page without revisions", async () => {
@@ -965,7 +806,7 @@ describe("updatePageContent", () => {
 
     await updatePageContent(ACTOR, PAGE_ID, VALID);
 
-    expect(mocks.revisionCreate.mock.calls[0]?.[0].data).toMatchObject({ number: 1 });
+    expect(dataOf(mocks.revisionCreate)).toMatchObject({ number: 1 });
   });
 
   // A content save is stored once its content differs from the stored content, whatever the newest revision holds.
@@ -976,7 +817,7 @@ describe("updatePageContent", () => {
 
     await updatePageContent(ACTOR, PAGE_ID, VALID);
 
-    expect(mocks.revisionCreate.mock.calls[0]?.[0].data).toMatchObject({ number: 4, revertedTo: null });
+    expect(dataOf(mocks.revisionCreate)).toMatchObject({ number: 4, revertedTo: null });
   });
 
   // A save of the stored content, based on the version of the page, leaves the page as it is (R1, R2, R8).
@@ -992,14 +833,7 @@ describe("updatePageContent", () => {
 
       await expect(updatePageContent(actor, PAGE_ID, VALID)).resolves.toEqual({ ok: true, value: unchanged });
 
-      expect(mocks.findFirst).toHaveBeenCalledExactlyOnceWith({
-        where: { id: PAGE_ID, deletedAt: null, version: VERSION, content: CONTENT },
-        select: STORED_PAGE_SELECT,
-      });
-      expect(mocks.revisionFindFirst).not.toHaveBeenCalled();
       expect(mocks.revisionCreate).not.toHaveBeenCalled();
-      // The page is returned as found in the transaction, not read again after it.
-      expect(mocks.findUnique).not.toHaveBeenCalled();
       expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
         { pageId: PAGE_ID, ...channel },
         "page not changed: content is the same",
@@ -1007,16 +841,6 @@ describe("updatePageContent", () => {
       expect(mocks.warn).not.toHaveBeenCalled();
     },
   );
-
-  // Line endings are made uniform before the comparison, as the content is stored (R3).
-  it("compares the content with uniform line endings", async () => {
-    mocks.updateMany.mockResolvedValue({ count: 0 });
-    mocks.findFirst.mockResolvedValue(STORED);
-
-    await updatePageContent(ACTOR, PAGE_ID, { ...VALID, content: CONTENT.replaceAll("\n", "\r\n") });
-
-    expect(mocks.findFirst.mock.calls[0]?.[0].where).toMatchObject({ content: CONTENT });
-  });
 
   // The stored content based on another version is refused like every other save (R4).
   it("returns page-changed for the stored content when the page has another version", async () => {
@@ -1053,16 +877,6 @@ describe("updatePageContent", () => {
     expectDatabaseUntouched();
   });
 
-  it("records no revision when the update matches no page", async () => {
-    mocks.updateMany.mockResolvedValue({ count: 0 });
-    mocks.findUnique.mockResolvedValue(STORED);
-
-    await updatePageContent(ACTOR, PAGE_ID, VALID);
-
-    expect(mocks.revisionFindFirst).not.toHaveBeenCalled();
-    expect(mocks.revisionCreate).not.toHaveBeenCalled();
-  });
-
   it("returns failed and logs it when the revision cannot be stored", async () => {
     const err = new Error("connection lost");
     mocks.updateMany.mockResolvedValue({ count: 1 });
@@ -1071,7 +885,6 @@ describe("updatePageContent", () => {
     await expect(updatePageContent(ACTOR, PAGE_ID, VALID)).resolves.toEqual(FAILED);
 
     expect(mocks.error).toHaveBeenCalledWith({ err, pageId: PAGE_ID }, "failed to update page");
-    expect(mocks.findUnique).not.toHaveBeenCalled();
     expect(mocks.info).not.toHaveBeenCalled();
   });
 
@@ -1099,10 +912,6 @@ describe("updatePageContent", () => {
       error: { code: "page-changed", page: STORED },
     });
 
-    expect(mocks.findUnique).toHaveBeenCalledWith({
-      where: { id: PAGE_ID, deletedAt: null },
-      select: STORED_PAGE_SELECT,
-    });
     expect(mocks.warn).toHaveBeenCalledWith(
       { pageId: PAGE_ID, version: VERSION },
       "page to update changed after the version the write is based on",
@@ -1206,37 +1015,28 @@ describe("revertPage", () => {
     expect(mocks.revisionCreate).not.toHaveBeenCalled();
   }
 
-  it("stores the content of the revision and records a new revision that names it, in one transaction", async () => {
+  it("stores the content of the revision and records a new revision that names it", async () => {
     mocks.findFirst.mockResolvedValue(pageWith(OLD));
     mocks.updateMany.mockResolvedValue({ count: 1 });
     mocks.findUnique.mockResolvedValue(STORED);
 
     await expect(revertPage(ACTOR, PAGE_ID, VALID)).resolves.toEqual({ ok: true, value: STORED });
 
-    expect(mocks.findFirst).toHaveBeenCalledExactlyOnceWith({
-      where: { id: PAGE_ID, deletedAt: null },
-      select: { content: true, revisions: { where: { number: 2 }, select: { content: true } } },
+    expect(dataOf(mocks.updateMany)).toEqual({
+      title: "Old title",
+      content: OLD,
+      lastEditedById: ACTOR_ID,
+      lastEditedVia: "web",
+      version: { increment: 1 },
     });
-    expect(mocks.updateMany).toHaveBeenCalledExactlyOnceWith({
-      where: { id: PAGE_ID, deletedAt: null, version: VERSION },
-      data: {
-        title: "Old title",
-        content: OLD,
-        lastEditedById: ACTOR_ID,
-        lastEditedVia: "web",
-        version: { increment: 1 },
-      },
-    });
-    expect(mocks.revisionCreate).toHaveBeenCalledExactlyOnceWith({
-      data: {
-        pageId: PAGE_ID,
-        number: 4,
-        title: "Old title",
-        content: OLD,
-        userId: ACTOR_ID,
-        via: "web",
-        revertedTo: 2,
-      },
+    expect(dataOf(mocks.revisionCreate)).toEqual({
+      pageId: PAGE_ID,
+      number: 4,
+      title: "Old title",
+      content: OLD,
+      userId: ACTOR_ID,
+      via: "web",
+      revertedTo: 2,
     });
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
       { pageId: PAGE_ID, revision: 2, channel: "browser" },
@@ -1253,7 +1053,7 @@ describe("revertPage", () => {
 
     await revertPage(ACTOR, PAGE_ID, VALID);
 
-    expect(mocks.revisionCreate.mock.calls[0]?.[0].data).toMatchObject({ number: 4, revertedTo: 2 });
+    expect(dataOf(mocks.revisionCreate)).toMatchObject({ number: 4, revertedTo: 2 });
   });
 
   it("is not allowed for an admin, without a role and for a Reader, before anything else is read", async () => {
@@ -1344,8 +1144,6 @@ describe("revertPage", () => {
       error: { code: "page-changed", page: STORED },
     });
     expect(mocks.revisionCreate).not.toHaveBeenCalled();
-    // A revert always changes the content, so it never looks for a page with the same content.
-    expect(mocks.findFirst).toHaveBeenCalledOnce();
     expect(mocks.warn).toHaveBeenCalledWith(
       { pageId: PAGE_ID, version: VERSION },
       "page to revert changed after the version the write is based on",
@@ -1391,9 +1189,6 @@ describe("moveOrRenamePage", () => {
   const VERSION = 4;
   const VALID = { name: " new-name ", tabId: TAB_ID, version: VERSION };
   const STORED = { id: PAGE_ID, name: "stored-name", folder: { name: "stored-folder" }, tab: null };
-  /** The condition of the update that the page differs from the new name or place, in a tab and in the folder. */
-  const DIFFERS_IN_TAB = [{ name: { not: "new-name" } }, { tabId: null }, { tabId: { not: TAB_ID } }];
-  const DIFFERS_IN_FOLDER = [{ name: { not: "new-name" } }, { tabId: { not: null } }];
 
   it.each([
     ["valid input", VALID],
@@ -1433,20 +1228,12 @@ describe("moveOrRenamePage", () => {
     const input = { ...VALID, content: "No heading", title: "Given title", folderId: crypto.randomUUID() };
     await expect(moveOrRenamePage(ACTOR, PAGE_ID, input)).resolves.toEqual({ ok: true, value: stored });
 
-    expect(mocks.updateMany).toHaveBeenCalledTimes(1);
-    expect(mocks.updateMany).toHaveBeenCalledWith({
-      where: { id: PAGE_ID, deletedAt: null, version: VERSION, OR: DIFFERS_IN_TAB },
-      data: {
-        name: "new-name",
-        tabId: TAB_ID,
-        lastEditedById: ACTOR_ID,
-        lastEditedVia: "web",
-        version: { increment: 1 },
-      },
-    });
-    expect(mocks.findUnique).toHaveBeenCalledWith({
-      where: { id: PAGE_ID, deletedAt: null },
-      select: STORED_PAGE_SELECT,
+    expect(dataOf(mocks.updateMany)).toEqual({
+      name: "new-name",
+      tabId: TAB_ID,
+      lastEditedById: ACTOR_ID,
+      lastEditedVia: "web",
+      version: { increment: 1 },
     });
     expect(mocks.info).toHaveBeenCalledWith(
       { pageId: PAGE_ID, tabId: TAB_ID, channel: "browser" },
@@ -1460,16 +1247,7 @@ describe("moveOrRenamePage", () => {
 
     await moveOrRenamePage(ACTOR, PAGE_ID, { name: "new-name", tabId: null, version: VERSION });
 
-    expect(mocks.updateMany).toHaveBeenCalledWith({
-      where: { id: PAGE_ID, deletedAt: null, version: VERSION, OR: DIFFERS_IN_FOLDER },
-      data: {
-        name: "new-name",
-        tabId: null,
-        lastEditedById: ACTOR_ID,
-        lastEditedVia: "web",
-        version: { increment: 1 },
-      },
-    });
+    expect(dataOf(mocks.updateMany)).toMatchObject({ name: "new-name", tabId: null });
   });
 
   // The update matches no row when name and place are the stored ones; the read in the same version tells it apart.
@@ -1487,21 +1265,6 @@ describe("moveOrRenamePage", () => {
       value: stored,
     });
 
-    expect(mocks.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          id: PAGE_ID,
-          deletedAt: null,
-          version: VERSION,
-          OR: tabId === null ? DIFFERS_IN_FOLDER : DIFFERS_IN_TAB,
-        },
-      }),
-    );
-    expect(mocks.findFirst).toHaveBeenCalledExactlyOnceWith({
-      where: { id: PAGE_ID, deletedAt: null, version: VERSION, name: "new-name", tabId },
-      select: STORED_PAGE_SELECT,
-    });
-    expect(mocks.findUnique).not.toHaveBeenCalled();
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
       { pageId: PAGE_ID, channel: "browser" },
       "page not changed: name and place are the same",
@@ -1567,10 +1330,6 @@ describe("moveOrRenamePage", () => {
       error: { code: "page-changed", page: STORED },
     });
 
-    expect(mocks.findFirst).toHaveBeenCalledExactlyOnceWith({
-      where: { id: PAGE_ID, deletedAt: null, version: VERSION, name: "new-name", tabId: TAB_ID },
-      select: STORED_PAGE_SELECT,
-    });
     expect(mocks.warn).toHaveBeenCalledWith(
       { pageId: PAGE_ID, version: VERSION },
       "page to move or rename changed after the version the write is based on",
@@ -1653,26 +1412,19 @@ describe("deletePage", () => {
     expectDatabaseUntouched();
   });
 
-  it("marks the page as deleted, if it has the given version, forgets its tab and returns the place it was in", async () => {
+  it("marks the page as deleted, forgets its tab, counts the version up and returns the place it was in", async () => {
     const place = { folder: { name: "stored-folder" }, tab: { name: "stored-tab" } };
     mocks.findFirst.mockResolvedValue(place);
     mocks.updateMany.mockResolvedValue({ count: 1 });
 
     await expect(deletePage(ACTOR, PAGE_ID, VALID)).resolves.toEqual({ ok: true, value: place });
 
-    expect(mocks.transaction).toHaveBeenCalledOnce();
-    expect(mocks.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: PAGE_ID, deletedAt: null, version: VERSION } }),
-    );
-    expect(mocks.updateMany).toHaveBeenCalledWith({
-      where: { id: PAGE_ID, deletedAt: null, version: VERSION },
-      data: {
-        deletedAt: expect.any(Date),
-        tabId: null,
-        lastEditedById: ACTOR_ID,
-        lastEditedVia: "web",
-        version: { increment: 1 },
-      },
+    expect(dataOf(mocks.updateMany)).toEqual({
+      deletedAt: expect.any(Date),
+      tabId: null,
+      lastEditedById: ACTOR_ID,
+      lastEditedVia: "web",
+      version: { increment: 1 },
     });
     expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID, channel: "browser" }, "page deleted");
   });
@@ -1799,20 +1551,13 @@ describe("restorePage", () => {
     const input = { ...VALID, content: "No heading", title: "Given title" };
     await expect(restorePage(ACTOR, PAGE_ID, input)).resolves.toEqual({ ok: true, value: stored });
 
-    expect(mocks.updateMany).toHaveBeenCalledWith({
-      where: { id: PAGE_ID, deletedAt: { not: null } },
-      data: {
-        deletedAt: null,
-        name: "new-name",
-        tabId: TAB_ID,
-        lastEditedById: ACTOR_ID,
-        lastEditedVia: "web",
-        version: { increment: 1 },
-      },
-    });
-    expect(mocks.findUnique).toHaveBeenCalledWith({
-      where: { id: PAGE_ID, deletedAt: null },
-      select: STORED_PAGE_SELECT,
+    expect(dataOf(mocks.updateMany)).toEqual({
+      deletedAt: null,
+      name: "new-name",
+      tabId: TAB_ID,
+      lastEditedById: ACTOR_ID,
+      lastEditedVia: "web",
+      version: { increment: 1 },
     });
     expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID, tabId: TAB_ID, channel: "browser" }, "page restored");
   });
@@ -1823,18 +1568,7 @@ describe("restorePage", () => {
 
     await restorePage(ACTOR, PAGE_ID, { name: "new-name", tabId: null });
 
-    expect(mocks.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: {
-          deletedAt: null,
-          name: "new-name",
-          tabId: null,
-          lastEditedById: ACTOR_ID,
-          lastEditedVia: "web",
-          version: { increment: 1 },
-        },
-      }),
-    );
+    expect(dataOf(mocks.updateMany)).toMatchObject({ deletedAt: null, name: "new-name", tabId: null });
   });
 
   it.each(nameTakenErrors)("returns name-taken for a unique violation %s", async (_name, err) => {
@@ -2014,19 +1748,15 @@ describe("an admin", () => {
 
 describe("the role of the actor", () => {
   it.each([
-    ["listFolderPages", () => listFolderPages(ACTOR, FOLDER_ID), { id: FOLDER_ID }],
-    ["listTabPages", () => listTabPages(ACTOR, TAB_ID), { tabs: { some: { id: TAB_ID } } }],
-    ["listAllFolderPages", () => listAllFolderPages(ACTOR, FOLDER_ID), { id: FOLDER_ID }],
-    ["listDeletedPages", () => listDeletedPages(ACTOR, FOLDER_ID), { id: FOLDER_ID }],
-  ] as const)("%s returns null without a role, without reading the pages", async (_name, read, folder) => {
+    ["listFolderPages", () => listFolderPages(ACTOR, FOLDER_ID)],
+    ["listTabPages", () => listTabPages(ACTOR, TAB_ID)],
+    ["listAllFolderPages", () => listAllFolderPages(ACTOR, FOLDER_ID)],
+    ["listDeletedPages", () => listDeletedPages(ACTOR, FOLDER_ID)],
+  ] as const)("%s returns null without a role, without reading the pages", async (_name, read) => {
     mocks.roleFindFirst.mockResolvedValue(null);
 
     await expect(read()).resolves.toBeNull();
 
-    expect(mocks.roleFindFirst).toHaveBeenCalledExactlyOnceWith({
-      where: { userId: ACTOR_ID, folder },
-      select: { role: true },
-    });
     expect(readCount()).toBe(0);
   });
 
@@ -2041,9 +1771,6 @@ describe("the role of the actor", () => {
 
       await expect(read()).resolves.toEqual([]);
       await expect(read()).resolves.toBeNull();
-
-      expect(mocks.roleFindFirst).toHaveBeenCalledTimes(2);
-      expect(mocks.findMany).toHaveBeenCalledOnce();
     },
   );
 
@@ -2061,25 +1788,6 @@ describe("the role of the actor", () => {
     expect(mocks.findMany).not.toHaveBeenCalled();
   });
 
-  it("getPage and getDeletedPage through a Writer connection read only the folder of the connection, with a role on it", async () => {
-    mocks.findFirst.mockResolvedValue(null);
-
-    await getPage(MCP_ACTOR, "handbook", null, "overview");
-    await getDeletedPage(MCP_ACTOR, "handbook", PAGE_ID);
-
-    expect(mocks.findFirst).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({
-        where: expect.objectContaining({ folder: { name: "handbook", id: FOLDER_ID, ...WITH_ROLE } }),
-      }),
-    );
-    // Deleted pages are a function of a Manager, which a Writer connection does not have.
-    expect(mocks.findFirst).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({ where: expect.objectContaining({ folder: { name: "handbook", id: { in: [] } } }) }),
-    );
-  });
-
   it("getPage returns null for a malformed actor id in the browser, logged, without reading the database", async () => {
     await expect(getPage(MALFORMED_ACTOR, "handbook", null, "overview")).resolves.toBeNull();
 
@@ -2091,42 +1799,36 @@ describe("the role of the actor", () => {
     [
       "createPage",
       () => createPage(ACTOR, FOLDER_ID, { name: "my-page", content: CONTENT, tabId: TAB_ID }),
-      { id: FOLDER_ID },
       { folderId: FOLDER_ID },
       "page not created: the actor has no role on the folder",
     ],
     [
       "updatePageContent",
       () => updatePageContent(ACTOR, PAGE_ID, { content: CONTENT, version: 1 }),
-      { pages: { some: { id: PAGE_ID } } },
       { pageId: PAGE_ID },
       "page not saved: the actor has no role on the folder",
     ],
     [
       "moveOrRenamePage",
       () => moveOrRenamePage(ACTOR, PAGE_ID, { name: "new-name", tabId: TAB_ID, version: 1 }),
-      { pages: { some: { id: PAGE_ID } } },
       { pageId: PAGE_ID },
       "page not moved or renamed: the actor has no role on the folder",
     ],
     [
       "deletePage",
       () => deletePage(ACTOR, PAGE_ID, { version: 1 }),
-      { pages: { some: { id: PAGE_ID } } },
       { pageId: PAGE_ID },
       "page not deleted: the actor has no role on the folder",
     ],
     [
       "restorePage",
       () => restorePage(ACTOR, PAGE_ID, { name: "new-name", tabId: TAB_ID }),
-      { pages: { some: { id: PAGE_ID } } },
       { pageId: PAGE_ID },
       "page not restored: the actor has no role on the folder",
     ],
     [
       "revertPage",
       () => revertPage(ACTOR, PAGE_ID, { revision: 2, version: 1 }),
-      { pages: { some: { id: PAGE_ID } } },
       { pageId: PAGE_ID },
       "page not reverted: the actor has no role on the folder",
     ],
@@ -2134,15 +1836,11 @@ describe("the role of the actor", () => {
 
   it.each(refusals)(
     "%s without a role gets not-allowed, logged, and touches no page",
-    async (_name, write, folder, target, message) => {
+    async (_name, write, target, message) => {
       mocks.roleFindFirst.mockResolvedValue(null);
 
       await expect(write()).resolves.toEqual({ ok: false, error: { code: "not-allowed" } });
 
-      expect(mocks.roleFindFirst).toHaveBeenCalledExactlyOnceWith({
-        where: { userId: ACTOR_ID, folder },
-        select: { role: true },
-      });
       for (const call of databaseWrites) expect(call).not.toHaveBeenCalled();
       expect(readCount()).toBe(0);
       expect(mocks.warn).toHaveBeenCalledExactlyOnceWith({ actorId: ACTOR_ID, ...target }, message);
