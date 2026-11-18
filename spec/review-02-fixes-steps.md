@@ -86,7 +86,7 @@ Decided by the user on 2026-11-18:
 - [x] Statements of `architecture.md`
 - [x] Statements of the feature specs
 - [x] `testing.md`, `tech.md`, the README and the roadmap
-- [ ] Integration tests of access and of rules without a test
+- [x] Integration tests of access and of rules without a test
 - [ ] Integration tests of the rollback and the races of pages
 - [ ] Tests that assert less than their name says
 - [ ] Unit tests of the services cut down

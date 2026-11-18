@@ -793,6 +793,36 @@ describe("restorePage", () => {
   });
 });
 
+// The content is neither validated nor touched by these writes (pages.md, "Content and title"), so a page stored before
+// a limit keeps all of them.
+describe("a page whose stored content breaks a limit now", () => {
+  it.each([
+    ["the length limit", `# Intro\n\n${"x".repeat(CONTENT_MAX_LENGTH)}`],
+    ["the table cell limit", `# Intro\n\n| a |\n| - |\n${"| x |\n".repeat(CONTENT_MAX_TABLE_CELLS)}`],
+  ])("is moved, renamed, deleted and restored past %s, with its content as it is", async (_name, content) => {
+    const folder = await createFolder({ name: "docs", roles: owners(user) });
+    const tab = await createTab({ folder, name: "guides" });
+    const page = await createPage({ folder, name: "intro", content, editor: user });
+
+    await expect(
+      pageService.moveOrRenamePage(actor, page.id, { name: "intro", tabId: tab.id, version: 1 }),
+    ).resolves.toMatchObject({ ok: true, value: { tab: { name: "guides" }, version: 2 } });
+    await expect(
+      pageService.moveOrRenamePage(actor, page.id, { name: "start", tabId: tab.id, version: 2 }),
+    ).resolves.toMatchObject({ ok: true, value: { name: "start", version: 3 } });
+    await expect(pageService.deletePage(actor, page.id, { version: 3 })).resolves.toMatchObject({ ok: true });
+    await expect(pageService.restorePage(actor, page.id, { name: "start", tabId: null })).resolves.toMatchObject({
+      ok: true,
+      value: { name: "start", tab: null, version: 5 },
+    });
+
+    expect(await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } })).toMatchObject({
+      content,
+      deletedAt: null,
+    });
+  });
+});
+
 describe("the last editor of pages", () => {
   it("is the actor of each write, which replaces the one before", async () => {
     const [bob, carol] = [await createUser({ name: "bob" }), await createUser({ name: "carol" })];
@@ -1162,6 +1192,35 @@ describe("roles", () => {
     expect(await getTestDb().page.findMany({ orderBy: { name: "asc" } })).toStrictEqual(before);
   });
 
+  // The role is checked before the version and the input (optimistic-locking.md, "Which changes are refused"): a
+  // refusal for the role tells nothing about the stored page, not even with an old version.
+  it.each([
+    ["no role", null],
+    ["the role Reader", "reader"],
+  ] as const)(
+    "refuses a user with %s before an old version and invalid input, and changes nothing",
+    async (_name, role) => {
+      const bob = await createUser({ name: "bob" });
+      const folder = await createFolder({
+        name: "hidden",
+        roles: [...owners(bob), ...(role ? [{ user, role }] : [])],
+      });
+      const page = await createPage({ folder, name: "intro", content: "# Intro", version: 2 });
+      await createRevisions({ page, count: 1 });
+      const before = await getTestDb().page.findMany({ orderBy: { name: "asc" } });
+
+      for (const result of [
+        await pageService.updatePageContent(actor, page.id, { content: "No heading", version: 1 }),
+        await pageService.moveOrRenamePage(actor, page.id, { name: "Not A Name", tabId: null, version: 1 }),
+        await pageService.deletePage(actor, page.id, { version: 1 }),
+        await pageService.revertPage(actor, page.id, { revision: 99, version: 1 }),
+      ]) {
+        expect(result).toEqual(NOT_ALLOWED);
+      }
+      expect(await getTestDb().page.findMany({ orderBy: { name: "asc" } })).toStrictEqual(before);
+    },
+  );
+
   it("reads through MCP the pages of the folder of the connection, with the lower of the two roles", async () => {
     const projects = await createFolder({ name: "projects", roles: [{ user, role: "owner" }] });
     await createPage({ folder: projects, name: "intro" });
@@ -1276,6 +1335,27 @@ describe("writes through MCP", () => {
 
     const stored = await getTestDb().page.findUniqueOrThrow({ where: { id: created.value.id } });
     expect(stored).toMatchObject({ title: "Plan 2", content: "# Plan 2", lastEditedById: user.id, version: 3 });
+  });
+
+  it("give page-changed with the page as stored for a page moved meanwhile, and change nothing", async () => {
+    const folder = await createFolder({ name: "projects", roles: [{ user, role: "writer" }] });
+    const tab = await createTab({ folder, name: "guides" });
+    const page = await createPage({ folder, name: "plan", content: "# Plan" });
+    const mcp = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "writer" });
+    await expect(
+      pageService.moveOrRenamePage(actor, page.id, { name: "roadmap", tabId: tab.id, version: 1 }),
+    ).resolves.toMatchObject({ ok: true });
+    const before = await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } });
+
+    await expect(pageService.updatePageContent(mcp, page.id, { content: "# Plan 2", version: 1 })).resolves.toEqual({
+      ok: false,
+      error: {
+        code: "page-changed",
+        page: { id: page.id, name: "roadmap", version: 2, folder: { name: "projects" }, tab: { name: "guides" } },
+      },
+    });
+
+    expect(await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } })).toStrictEqual(before);
   });
 
   it("give not-allowed and change nothing for a Reader connection, another folder and a lowered role", async () => {
@@ -1499,25 +1579,41 @@ describe("the history of a page", () => {
     expect(await numbers(51)).toEqual(Array.from({ length: 50 }, (_, index) => 50 - index));
     expect((await pageService.listPageRevisions(actor, page.id, { before: 51 }))?.newest).toBe(250);
   });
+});
 
-  it("is read by every role on a page that is not deleted, and only by a Manager or Owner on a deleted page", async () => {
-    const [reader, manager, stranger] = [
-      await createUser({ name: "reader" }),
-      await createUser({ name: "manager" }),
-      await createUser({ name: "stranger" }),
-    ];
-    const folder = await createFolder({
-      roles: [...owners(user), { user: reader, role: "reader" }, { user: manager, role: "manager" }],
+describe("the roles of the reads of the history", () => {
+  /** The three reads of the history, each of the page with the given id and its revisions 1 and 2. */
+  const reads = [
+    ["listPageRevisions", (who: BrowserActor, id: string) => pageService.listPageRevisions(who, id, { before: null })],
+    ["getPageRevision", (who: BrowserActor, id: string) => pageService.getPageRevision(who, id, 1)],
+    ["getRevisionComparison", (who: BrowserActor, id: string) => pageService.getRevisionComparison(who, id, 2, 1)],
+  ] as const;
+  const WHO = ["owner", "manager", "writer", "reader", "stranger", "admin"] as const;
+  /** Who reads the history of a page that is not deleted, and of a deleted page. */
+  const READERS = { live: ["owner", "manager", "writer", "reader"], deleted: ["owner", "manager"] };
+  const cases = reads.flatMap(([name, read]) =>
+    WHO.flatMap((who) =>
+      (["live", "deleted"] as const).map((state) => [name, who, state, READERS[state].includes(who), read] as const),
+    ),
+  );
+
+  it.each(cases)("%s as %s on a %s page", async (_name, who, state, allowed, read) => {
+    const reader = who === "owner" ? user : await createUser({ name: who, type: who === "admin" ? "admin" : "user" });
+    const roles: FolderRoleData[] =
+      who === "owner" || who === "stranger" || who === "admin" ? [] : [{ user: reader, role: who }];
+    const folder = await createFolder({ roles: [...owners(user), ...roles] });
+    const page = await createPage({
+      folder,
+      editor: user,
+      content: "# Intro",
+      ...(state === "deleted" ? { deletedAt: new Date() } : {}),
     });
-    const page = await createPage({ folder, editor: user });
-    const deleted = await createPage({ folder, editor: user, deletedAt: new Date() });
+    await createRevisions({ page, count: 1 });
 
-    const read = (who: User, id: string) => pageService.listPageRevisions(inBrowser(who), id, { before: null });
+    const result = await read(inBrowser(reader), page.id);
 
-    for (const who of [user, reader, manager]) await expect(read(who, page.id)).resolves.not.toBeNull();
-    await expect(read(stranger, page.id)).resolves.toBeNull();
-    for (const who of [user, manager]) await expect(read(who, deleted.id)).resolves.not.toBeNull();
-    for (const who of [reader, stranger]) await expect(read(who, deleted.id)).resolves.toBeNull();
+    if (allowed) expect(result).not.toBeNull();
+    else expect(result).toBeNull();
   });
 });
 
@@ -1558,6 +1654,51 @@ describe("a revision of a page", () => {
       isCurrent: true,
     });
     await expect(pageService.getPageRevision(actor, page.id, 3)).resolves.toBeNull();
+  });
+});
+
+describe("a comparison of two revisions of a page", () => {
+  it("returns exactly the declared fields of both, the older first in either order, and the newest number", async () => {
+    const mike = await createUser({ name: "mike" });
+    const page = await createPage({ folder: await createFolder(), editor: user, content: "# Intro\n\nFirst" });
+    const [, third] = await createRevisions({
+      page,
+      count: 2,
+      content: (number) => `# Start\n\nRevision ${number}`,
+      editor: mike,
+      via: "mcp",
+      revertedTo: (number) => (number === 3 ? 1 : null),
+    });
+    const first = await getTestDb().pageRevision.findUniqueOrThrow({
+      where: { pageId_number: { pageId: page.id, number: 1 } },
+    });
+    const expected = {
+      newest: 3,
+      older: {
+        number: 1,
+        title: "Intro",
+        createdAt: first.createdAt,
+        madeBy: { name: "alice", via: "web" },
+        revertedTo: null,
+        content: "# Intro\n\nFirst",
+      },
+      newer: {
+        number: 3,
+        title: "Start",
+        createdAt: third?.createdAt,
+        madeBy: { name: "mike", via: "mcp" },
+        revertedTo: 1,
+        content: "# Start\n\nRevision 3",
+      },
+    };
+
+    await expect(pageService.getRevisionComparison(actor, page.id, 1, 3)).resolves.toStrictEqual(expected);
+    await expect(pageService.getRevisionComparison(actor, page.id, 3, 1)).resolves.toStrictEqual(expected);
+    await expect(pageService.getRevisionComparison(actor, page.id, 3, 3)).resolves.toStrictEqual({
+      ...expected,
+      older: expected.newer,
+    });
+    await expect(pageService.getRevisionComparison(actor, page.id, 1, 4)).resolves.toBeNull();
   });
 });
 
@@ -1649,6 +1790,27 @@ describe("reverting a page", () => {
     }
   });
 
+  it("is allowed for a Writer", async () => {
+    const writer = await createUser({ name: "writer" });
+    const page = await createPage({
+      folder: await createFolder({ roles: [...owners(user), { user: writer, role: "writer" }] }),
+      editor: user,
+      content: "# Intro\n\nOne",
+    });
+    await createRevisions({ page, count: 1 });
+
+    await expect(
+      pageService.revertPage(inBrowser(writer), page.id, { revision: 1, version: 1 }),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: { id: page.id, version: 2 },
+    });
+    expect(await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } })).toMatchObject({
+      content: "# Intro\n\nOne",
+      lastEditedById: writer.id,
+    });
+  });
+
   it("is not allowed for a Reader and gives page-not-found for a deleted page", async () => {
     const reader = await createUser({ name: "reader" });
     const folder = await createFolder({ roles: [...owners(user), { user: reader, role: "reader" }] });
@@ -1685,7 +1847,7 @@ describe("content saves without a change", () => {
   }
 
   /** Bob, who saves; a folder with Owner roles of alice and bob; a page last changed by alice via mcp. */
-  async function setUp(data: { content?: string; version?: number; deletedAt?: Date } = {}) {
+  async function setUp(data: { content?: string; title?: string; version?: number; deletedAt?: Date } = {}) {
     const bob = await createUser({ name: "bob" });
     const folder = await createFolder({ roles: owners(user, bob) });
     const page = await createPage({
@@ -1713,6 +1875,19 @@ describe("content saves without a change", () => {
     expect(await stateOf(page.id)).toEqual(before.page);
     expect(await revisionsOf(page.id)).toEqual(before.revisions);
     expect(before.page).toMatchObject({ lastEditedById: user.id, lastEditedVia: "mcp", updatedAt: UPDATED_AT });
+  });
+
+  it("keeps the stored title, also one that the content would not give", async () => {
+    const { bob, page } = await setUp({ title: "Stored title" });
+    const before = await stateOf(page.id);
+
+    await expect(pageService.updatePageContent(bob, page.id, { content: CONTENT, version: 3 })).resolves.toMatchObject({
+      ok: true,
+      value: { version: 3 },
+    });
+
+    expect(before.title).toBe("Stored title");
+    expect(await stateOf(page.id)).toEqual(before);
   });
 
   // R3: the line endings are made uniform first; any other difference is a change.

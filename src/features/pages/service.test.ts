@@ -1914,6 +1914,7 @@ const writes = [
     (actor: BrowserActor) => restorePage(actor, PAGE_ID, { name: "new-name", tabId: TAB_ID }),
     mocks.updateMany,
   ],
+  ["revertPage", (actor: BrowserActor) => revertPage(actor, PAGE_ID, { revision: 2, version: 1 }), mocks.updateMany],
 ] as const;
 
 describe("the actor of a write", () => {
@@ -1934,8 +1935,13 @@ describe("the actor of a write", () => {
       [name, "on the editor field", write, call, foreignKeyViolation({ fields: ["lastEditedById"] })] as const,
     ]),
   )("%s returns failed for a foreign key violation %s", async (_name, _kind, write, call, err) => {
-    // `deletePage` reads the page before it writes.
-    mocks.findFirst.mockResolvedValue({ folder: { name: "handbook" }, tab: null });
+    // `deletePage` and `revertPage` read the page before they write: its place, and the revision to go back to.
+    mocks.findFirst.mockResolvedValue({
+      folder: { name: "handbook" },
+      tab: null,
+      content: "# Old",
+      revisions: [{ content: CONTENT }],
+    });
     call.mockRejectedValue(err);
 
     await expect(write(ACTOR)).resolves.toEqual(FAILED);
@@ -1974,6 +1980,7 @@ describe("an admin", () => {
     moveOrRenamePage: "page not moved or renamed: the actor is an admin",
     deletePage: "page not deleted: the actor is an admin",
     restorePage: "page not restored: the actor is an admin",
+    revertPage: "page not reverted: the actor is an admin",
   };
 
   it.each(writes)("gets not-allowed from %s, logged, without touching the database", async (name, write) => {
@@ -1994,6 +2001,7 @@ describe("an admin", () => {
       await moveOrRenamePage(ADMIN, MALFORMED_ID, { name: "", tabId: MALFORMED_ID, version: null }),
       await deletePage(ADMIN, MALFORMED_ID, { version: 1 }),
       await restorePage(ADMIN, MALFORMED_ID, { name: "", tabId: MALFORMED_ID }),
+      await revertPage(ADMIN, MALFORMED_ID, { revision: 0, version: null }),
       await deletePage({ ...ADMIN, id: MALFORMED_ID }, PAGE_ID, { version: 1 }),
     ];
 
@@ -2115,6 +2123,13 @@ describe("the role of the actor", () => {
       { pageId: PAGE_ID },
       "page not restored: the actor has no role on the folder",
     ],
+    [
+      "revertPage",
+      () => revertPage(ACTOR, PAGE_ID, { revision: 2, version: 1 }),
+      { pages: { some: { id: PAGE_ID } } },
+      { pageId: PAGE_ID },
+      "page not reverted: the actor has no role on the folder",
+    ],
   ] as const;
 
   it.each(refusals)(
@@ -2132,6 +2147,35 @@ describe("the role of the actor", () => {
       expect(readCount()).toBe(0);
       expect(mocks.warn).toHaveBeenCalledExactlyOnceWith({ actorId: ACTOR_ID, ...target }, message);
       expect(mocks.info).not.toHaveBeenCalled();
+    },
+  );
+});
+
+// The role is checked before the version and the content (optimistic-locking.md, "Which changes are refused"), so
+// that a refusal for the role never reads the stored page, which a missing or old version would give back.
+describe("the role before the version and the input", () => {
+  const writesWithVersion = [
+    ["updatePageContent", () => updatePageContent(ACTOR, PAGE_ID, { content: "No heading", version: null })],
+    ["moveOrRenamePage", () => moveOrRenamePage(ACTOR, PAGE_ID, { name: "Not A Name", tabId: null, version: null })],
+    ["deletePage", () => deletePage(ACTOR, PAGE_ID, { version: null })],
+    ["revertPage", () => revertPage(ACTOR, PAGE_ID, { revision: 0, version: null })],
+  ] as const;
+  const cases = writesWithVersion.flatMap(([name, write]) =>
+    [
+      ["no role", null],
+      ["the role Reader", { role: "reader" }],
+    ].map(([who, role]) => [name, who, role, write] as const),
+  );
+
+  it.each(cases)(
+    "%s with %s gets not-allowed for invalid input and no version, without reading the page",
+    async (_name, _who, role, write) => {
+      mocks.roleFindFirst.mockResolvedValue(role);
+
+      await expect(write()).resolves.toEqual({ ok: false, error: { code: "not-allowed" } });
+
+      for (const call of databaseWrites) expect(call).not.toHaveBeenCalled();
+      expect(readCount()).toBe(0);
     },
   );
 });
@@ -2176,6 +2220,13 @@ describe("the lowest role of each function", () => {
       "manager",
       { pageId: PAGE_ID },
       "page not restored",
+    ],
+    [
+      "revertPage",
+      () => revertPage(ACTOR, PAGE_ID, { revision: 2, version: 1 }),
+      "writer",
+      { pageId: PAGE_ID },
+      "page not reverted",
     ],
   ] as const;
 

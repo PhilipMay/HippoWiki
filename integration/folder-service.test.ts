@@ -216,6 +216,31 @@ describe("tab writes", () => {
   it("returns not-allowed for a tab that does not exist", async () => {
     await expect(folderService.renameTab(actor, crypto.randomUUID(), { name: "guides" })).resolves.toEqual(NOT_ALLOWED);
   });
+
+  // A rename of a folder or tab is no write of its pages (optimistic-locking.md, "The version of a page").
+  it("leaves the versions of the pages as they are when their folder and their tab are renamed", async () => {
+    const folder = await createFolder({ name: "docs" });
+    const tab = await createTab({ folder, name: "guides" });
+    const pages = [
+      await createPage({ folder, version: 3 }),
+      await createPage({ tab, version: 5 }),
+      await createPage({ folder, version: 2, deletedAt: new Date() }),
+    ];
+    const versions = async () =>
+      (
+        await getTestDb().page.findMany({
+          where: { id: { in: pages.map(({ id }) => id) } },
+          orderBy: { version: "asc" },
+        })
+      ).map(({ version }) => version);
+
+    await expect(folderService.renameFolder(actor, folder.id, { name: "handbook" })).resolves.toMatchObject({
+      ok: true,
+    });
+    await expect(folderService.renameTab(actor, tab.id, { name: "how-to" })).resolves.toMatchObject({ ok: true });
+
+    expect(await versions()).toEqual([2, 3, 5]);
+  });
 });
 
 describe("the last editor of folders", () => {
@@ -982,6 +1007,8 @@ describe("deleting a tab", () => {
     expect(await snapshot()).toStrictEqual(before);
   });
 
+  // The timeout of the test is above the 20 seconds of its transaction and the 10 of its poll, so that a slow run
+  // fails with their message.
   it("never leaves a page created at the same time in a missing tab", async () => {
     const folder = await createFolder({ name: "docs" });
     const tab = await createTab({ folder, name: "guides" });
@@ -1018,7 +1045,7 @@ describe("deleting a tab", () => {
     }
     expect(await db.page.count({ where: { tabId: { not: null } } })).toBe(0);
     expect(await db.tab.count()).toBe(0);
-  });
+  }, 30_000);
 
   it("answers the writes of a page of the deleted tab with page-not-found", async () => {
     const folder = await createFolder({ name: "docs" });

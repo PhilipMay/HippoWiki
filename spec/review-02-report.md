@@ -13,20 +13,19 @@
     of Prisma, and three rules of access and of the transaction have no test that could fail.
   - Documents that the features outran: rules stated in full in several documents, and copies of code and
     constants in the specs.
-- Findings: 82 open of 107, 0 Blocker, 4 Major, 63 Minor and 15 Nit (35 `issue:`, 30 `suggestion:`, 13 `nit:` and
+- Findings: 78 open of 107, 0 Blocker, 3 Major, 61 Minor and 14 Nit (32 `issue:`, 30 `suggestion:`, 12 `nit:` and
   4 `question:`).
-- Confidence of the suggestions: 18 High, 48 Medium and 12 Low; the 4 questions have none. A High suggestion can be
+- Confidence of the suggestions: 14 High, 48 Medium and 12 Low; the 4 questions have none. A High suggestion can be
   fixed as written; the others wait for the user, as `issue-report.md` describes.
 - Decisions: on 2026-11-18 the user decided all Medium and Low suggestions. Each of these findings ends with a line
   `Decision`, and is fixed as that line says, without asking again. The 4 questions were decided by the user on the
   same day, in "Decisions on the questions" of `spec/review-02-fixes-steps.md`.
-- To fix first, the four Major findings:
+- To fix first, the three Major findings:
   1. Tests say that no MCP connection reads deleted pages, but try only a Writer connection; by the code the
      service would answer a Manager connection (Tests: unit and integration; Low, decided).
-  2. The access rules of two reads of the history are asserted by no test (Tests: unit and integration; High).
-  3. That a content save and its revision are one unit, and most races of pages, are proven by no test against the
+  2. That a content save and its revision are one unit, and most races of pages, are proven by no test against the
      real database (Tests: unit and integration; Medium).
-  4. The unit tests of the services pin the calls of Prisma, not the behaviour (Tests: unit and integration; Low,
+  3. The unit tests of the services pin the calls of Prisma, not the behaviour (Tests: unit and integration; Low,
      decided).
 - Not covered by this review: security, which `review-report.md` covers and whose findings are not repeated here;
   the unit tests of auth, users, OAuth and grants, of which only the names and the copied helpers were looked at;
@@ -1100,32 +1099,6 @@ folderId: folder.id, role: "writer" });`; `folder-roles.md`: "The deleted pages 
   MCP offers no tool for the deleted pages; the tests are renamed, one case documents that a Manager connection may read
   them at the level of the service, and the specs say "no tool" instead of "no connection".
 
-#### issue: the access rules of two reads of the history are asserted by no test
-
-- Location: `src/features/pages/service.test.ts`, lines 403–560; `integration/page-service.test.ts`, lines
-  1472–1562; `src/features/pages/service.ts`, lines 447–487, `getRevisionComparison()` and `getPageRevision()`;
-  `spec/testing.md`, section "Integration tests"
-- Severity: Major. These reads take the id of a page, and the service is the only layer that checks the role for
-  it.
-- Category: tests
-- Problem: only `listPageRevisions()` has its condition on the role tested, in the unit test and for every role in
-  the integration test. For `getPageRevision()` the unit test asserts only that the id is in the condition, and
-  the integration test reads as an Owner. `getRevisionComparison()` has no integration test at all, and its unit
-  tests never assert the read of the page. The end-to-end tests reach both reads through routes that find the page
-  with a read that checks the role first.
-- Impact: when the reads of the history are split out of the pages service, one of them can lose the condition on
-  the role or on a deleted page, and no test fails. A user without a role could then read the content of a
-  revision by the id of the page.
-- Evidence: lines 429–431 of the unit test: `expect(mocks.findFirst).toHaveBeenCalledWith(
-expect.objectContaining({ where: expect.objectContaining({ id: PAGE_ID }) }),`. `testing.md` says: "a new read
-  with a condition the database must get right and every new write get a case in the integration test of their
-  service".
-- Suggestion (required): in `integration/page-service.test.ts`, turn the test of the roles into a table over the
-  three reads, the roles with a stranger and an admin, and a live and a deleted page; add a case for the fields
-  and the order of a comparison.
-- Confidence: High. One addition; the paths in the service and the callers were read, and the new cases prove
-  themselves.
-
 #### issue: the unit tests of the services pin the calls of Prisma, not the behaviour
 
 - Location: `src/features/pages/service.test.ts`, `src/features/folders/service.test.ts` and
@@ -1161,53 +1134,6 @@ deletedAt: null, version: VERSION, content: { not: CONTENT } },`.
   - Move the mapping of errors to integration tests with triggers, which run slower.
 - Decision (2026-11-18): as suggested: first the missing integration cases of this section, then the unit tests are cut
   down to what needs a mock.
-
-#### issue: "the role is checked before the version and the content" is tested only with a current version and valid content
-
-- Location: `src/features/pages/service.test.ts`, lines 1990–2004 and 2082–2209;
-  `integration/page-service.test.ts`, lines 1145–1163 and 1206–1224; `spec/optimistic-locking.md`, section "Which
-  changes are refused"
-- Severity: Minor. The order is right today and guarded in part; the missing case is the one that would leak.
-- Category: tests
-- Problem: every test of a refusal for no role and for too low a role passes `version: 1` and valid content. With
-  no version or an old one the code takes another path, which reads the page and answers `page-changed` with its
-  name, folder and tab. Only the admin is tested with no version and invalid input. The folders test has "is
-  refused before the input is checked" for a user without a role; the pages test has no such case.
-- Impact: a shared helper that parses the version or the content first, a likely result of the refactoring, would
-  answer a user without a role with the stored page, and the action would redirect to the real address of the
-  page. No test fails.
-- Evidence: `optimistic-locking.md`: "The role is checked before the version, so a refusal tells nothing to a user
-  without the role for the change."
-- Suggestion (required): add the case for no role and for a Reader, with invalid content and no version, for the
-  four writes with a version, in the unit test and with an old version in the integration test.
-- Confidence: High. The cases are additions, and the order was checked in the four writes of the service.
-
-#### issue: rules that only an end-to-end test covers, or no test
-
-- Location: `integration/page-service.test.ts` and `integration/folder-service.test.ts`, where the tests belong;
-  `spec/pages.md`, sections "Saves without a change" and "Content and title"; `spec/optimistic-locking.md`, section
-  "The version of a page"; `spec/folder-roles.md`, section "Roles"
-- Severity: Minor. Each rule is small, and most hold by construction today.
-- Category: tests
-- Problem:
-  - The stored title is kept by a save without a change: only `e2e/edit-page.spec.ts`.
-  - A page over a limit can be moved, renamed, deleted and restored: the move only in
-    `e2e/move-or-rename-page.spec.ts`, the delete and the restore in no test. The unit tests pass invalid content
-    as an extra field of the input; a mock has no stored content, so they cannot fail for the reason their comment
-    gives.
-  - A Writer may revert: only `e2e/revert-page.spec.ts`; `revertPage()` is missing from the table of functions of
-    the unit test.
-  - The rename of a folder or tab leaves the versions of its pages as they are: no test.
-  - `page-changed` through MCP for a page that was moved meanwhile, and the empty title of `storedResult()`: no
-    test.
-- Impact: a refactoring that sends every write of a page through one helper that validates would block the move,
-  the delete or the restore of a page stored before a limit, and only the end-to-end test of the move would notice.
-- Evidence: lines 1432–1433 of the unit test: "Content and other fields are ignored: no content rule can block a
-  move.", followed by `const input = { ...VALID, content: "No heading", title: "Given title", folderId:
-crypto.randomUUID() };`.
-- Suggestion (required for the limits and the versions, optional for the rest): one integration case each, and
-  `revertPage()` in the tables of the unit test.
-- Confidence: High. All are additions that name their test, and the helpers of the tests create such pages already.
 
 #### issue: tests that assert less than their name says
 
@@ -1267,21 +1193,6 @@ crypto.randomUUID() };`.
   tests; a split of the pages test into reads, history, writes and access.
 - Confidence: Medium. The duplication is counted; where the helpers live and how the file is split is a trade-off.
 - Decision (2026-11-18): as suggested, the split of the pages test included.
-
-#### nit: a race test waits up to 10 and 20 seconds inside a test that times out after 5
-
-- Location: `integration/folder-service.test.ts`, lines 985–1021, "never leaves a page created at the same time in
-  a missing tab"; `vitest.config.ts`
-- Severity: Nit. Only the message of a failure on a slow runner.
-- Category: tests
-- Problem: the test polls with a timeout of 10 seconds and opens a transaction with one of 20, has no timeout of
-  its own, and the project sets only the timeout of hooks. The default for a test of the installed Vitest is 5
-  seconds.
-- Impact: on a slow runner the test ends with a general timeout while its transaction is still open, not with the
-  message of the poll.
-- Evidence: line 1006: `await expect.poll(waitingForLocks, { timeout: 10_000 }).toBeGreaterThanOrEqual(2);`.
-- Suggestion (optional): give the test a timeout above its inner ones.
-- Confidence: High. A fix of one line; the default was read in the installed package.
 
 #### Reviewed
 
@@ -2047,9 +1958,8 @@ documents name.
    the writes of roles, and nothing in the code enforces it; the unit tests of the services are cut after the
    missing integration cases exist. The Decision of each finding holds the rest.
 2. Fix the findings with a High confidence that change no code: the Locations of the first report.
-3. Close the gaps of the tests before any refactoring: the access rules of the reads of the history, the rollback
-   of a content save, the role before the version, the rules that only an end-to-end test covers, and the states
-   of the dialogs that a shared frame would move.
+3. Close the gaps of the tests before any refactoring: the rollback of a content save, and the states of the
+   dialogs that a shared frame would move.
 4. Refactor the code in small steps, each with its checks: the `null` check of the two reads, the shared guards of
    a content write, one shape for a write without a change, the hooks and the frame of the dialogs, then the
    splits of the large files.
