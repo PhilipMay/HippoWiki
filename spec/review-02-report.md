@@ -14,12 +14,12 @@
     findings of the tests that are still open are minor.
   - Documents that the features outran: rules stated in full in several documents, and copies of code and
     constants in the specs.
-- Findings: 44 open of 107, 0 Blocker, 0 Major, 34 Minor and 10 Nit (8 `issue:`, 24 `suggestion:`, 8 `nit:` and
-  4 `question:`).
-- Confidence of the suggestions: 5 High, 31 Medium and 4 Low; the 4 questions have none. A High suggestion can be
+- Findings: 37 open of 107, 0 Blocker, 0 Major, 28 Minor and 9 Nit (7 `issue:`, 20 `suggestion:`, 7 `nit:` and
+  3 `question:`).
+- Confidence of the suggestions: 3 High, 27 Medium and 4 Low; the 3 questions have none. A High suggestion can be
   fixed as written; the others wait for the user, as `issue-report.md` describes.
 - Decisions: on 2026-11-18 the user decided all Medium and Low suggestions. Each of these findings ends with a line
-  `Decision`, and is fixed as that line says, without asking again. The 4 questions were decided by the user on the
+  `Decision`, and is fixed as that line says, without asking again. The questions were decided by the user on the
   same day, in "Decisions on the questions" of `spec/review-02-fixes-steps.md`.
 - To fix first: no Major finding is open; the four Major findings of the tests are fixed.
 - Not covered by this review: security, which `review-report.md` covers and whose findings are not repeated here;
@@ -167,103 +167,6 @@ page, save its content, move or rename it, delete it, and create, rename and del
 service is handled on both sides, no `switch` has a `default`, and the two sides differ only where a spec says so:
 for `not-allowed` the browser shows the not-found page and MCP says that the role does not allow the change.
 
-#### suggestion: the tools decide by the name of a role which tools a connection gets, not by `mayDo()`
-
-- Location: `src/features/mcp/tools.ts`, lines 395–398, `isManager()`, line 405, `tabNotFound()`, lines 822–823 and
-  872–873, `createWikiServer()`, and lines 41–55, `ROLE_ABILITIES`; `src/features/folder-roles/roles.ts`, lines
-  91–99, `MCP_ROLE_ABILITIES`
-- Severity: Minor. The services check again, so nothing is exposed; only the list of tools can drift.
-- Category: readability
-- Problem: `roles.ts` says that services and routes ask `mayDo()` for a function "instead of repeating roles, so
-  that both always agree". The MCP adapter repeats roles. Which role gets which tool now lives in `FUNCTION_ROLES`,
-  in two gates of `createWikiServer()`, in `isManager()` and in two texts for people.
-- Impact: when a function moves to another role, the services follow at once; the list of tools, the hint "create
-  the tab with create_tab" and the instructions stay wrong until someone finds each place.
-- Evidence: line 823, `if (!includesRole(options.actor.connection.role, "writer")) return server;`.
-- Suggestion (optional): register each tool under `mayDo()` with the function that its write checks, and keep the
-  two texts by hand.
-- Confidence: Medium. The list is the same today and the unit tests of the tools cover it.
-- Alternatives: keep the two gates and add a unit test that compares the tools of each role with `FUNCTION_ROLES`.
-- Decision (2026-11-18): as suggested: each tool is registered under `mayDo()` with the function that its write checks;
-  the two texts for people stay hand-written.
-
-#### suggestion: the tools still support a server without a public URL, which the adapter never lets through
-
-- Location: `src/features/mcp/tools.ts`, lines 26–31, `WikiToolsOptions`, and lines 291–294, `addressOf()`;
-  `src/features/mcp/http.ts`, lines 97 and 133–138; `spec/mcp.md`, section "Tools"
-- Severity: Minor. A dead branch, and tests of a state that cannot occur.
-- Category: readability
-- Problem: `handleMcpRequest()` answers 404 before anything else while `HIPPOWIKI_PUBLIC_URL` is not set, so no
-  tool runs without it. The option is still typed `string | undefined`, `addressOf()` still falls back to paths,
-  the adapter reads the variable a second time, four unit tests set it to `undefined`, and `mcp.md` says: "An
-  address is the path of the folder, tab or page; with `HIPPOWIKI_PUBLIC_URL` it is the full URL".
-- Impact: the code and the spec describe a mode that does not exist.
-- Evidence: `src/features/mcp/http.ts`, lines 133–134: `if (publicUrl === undefined) return refusal(404,
-"not_found");`; `src/features/mcp/tools.ts`, line 293: ``return `${publicUrl ?? ""}${path}`;``.
-- Suggestion (optional): type the option as a string, pass the value that was checked, drop the fallback, the four
-  tests and the half sentence of the spec.
-- Confidence: Medium. It removes tests and changes a sentence of a spec.
-- Decision (2026-11-18): as suggested.
-
-#### question: is a malformed name of an existing tab or page refused by the input schema or answered by the tool?
-
-- Location: `src/features/mcp/tools.ts`, lines 77–84, `pageArguments`, lines 96–101 and 121–126, and lines 139–140,
-  `existingTabArgument`
-- Severity: Minor. One kind of argument, two behaviours.
-- Category: error handling
-- Problem: the tab and the page of `read_page`, `replace_page_content`, `move_or_rename_page` and `delete_page`
-  use the name schema: the SDK refuses a malformed name before the tool runs, and spaces around a name are cut
-  off. The tab of `create_page`, the new tab of a move and the tab of `rename_tab` and `delete_tab` use a plain
-  string: a malformed name reaches the tool and gets the message "There is no tab named …", and a name with
-  spaces around it is "not found".
-- Impact: an AI app gets two kinds of error for the same mistake.
-- Evidence: line 78, `tab: nameSchema.nullable().optional()`; line 140,
-  `const existingTabArgument = z.string().describe("The name of the tab, as list_folder returns it");`.
-- Suggestion (optional): one rule for the names of existing items; a plain string everywhere fits the comment at
-  line 139 and the sentence of `mcp.md` that a tab that does not exist is a tool error.
-
-#### suggestion: arguments, messages and hints are repeated next to the helper or constant that holds them
-
-- Location: `src/features/mcp/tools.ts`, lines 76–84 against 148–163 (the arguments of a tab and a page), lines
-  364–369 against 388–393 (the message of a page that is not found), lines 835, 852 and 867 against the constants
-  at 776–780 (the hints), lines 183–253 (three descriptions of outputs twice); `src/features/mcp/http.ts`, lines
-  161 and 171 (the answer `role_too_low`) and lines 85 and 102
-- Severity: Minor. Several places, each small.
-- Category: readability
-- Problem: `pageArguments.tab` is letter for letter `tabArgument`, and the comment that explains why `describe()`
-  comes last stands only at the second copy. `readPage()` writes out the text of `pageNotFound()`, defined 20 lines
-  below. Three tools write the literal of a hint object that a named constant holds, and `replace_page_content`
-  uses the one whose comment says "deletes from the wiki".
-- Impact: a change of a wording needs every copy found, and the hints of three tools are not tied to the
-  constants the other four use.
-- Evidence: line 777, `const WRITES = { readOnlyHint: false, destructiveHint: false, idempotentHint: false,
-openWorldHint: false };`, and line 835, `annotations: { readOnlyHint: false, destructiveHint: false,
-idempotentHint: false, openWorldHint: false },`.
-- Suggestion (optional): one constant for each argument, `pageNotFound()` in `readPage()`, the constants for the
-  hints with one of its own for `replace_page_content`, and a local helper for `role_too_low`. Keep the nine
-  `switch` blocks as they are: they mirror the actions one to one, the type checker proves them complete, and a
-  shared mapper would need a flag per tool.
-- Confidence: High. Each replacement is the same value or text; the unit tests of the tools assert the schemas,
-  the messages and the hints, and those of the adapter the answer 403.
-
-#### suggestion: the descriptions of the tools name the write without a change for one tool of three
-
-- Location: `src/features/mcp/tools.ts`, lines 216–228, `storedPageOutput`, lines 467–470, and the descriptions at
-  lines 861–864 and 909–911
-- Severity: Minor. The descriptions are what an AI app reads.
-- Category: docs
-- Problem: the description of `version` and the comment of `storedResult()` name only content that is the same as
-  before. The same output serves `move_or_rename_page`, which also keeps the version for the own name and place,
-  and neither its description nor that of `rename_tab` names the case. `mcp.md` describes all three.
-- Impact: a model that reads the list of tools learns the rule for one tool.
-- Evidence: line 225, "counted up by a change, kept by content that is the same as before".
-- Suggestion (optional): "kept by content, or a name and place, that is the same as before", and one sentence in
-  each of the two descriptions.
-- Confidence: Medium. The text reaches clients, so the wording is for the user to read.
-- Decision (2026-11-18): as suggested, with these texts: the description of `version` says "counted up by a change, kept
-  when the content, or the name and place, are the same as before", and the descriptions of `move_or_rename_page` and
-  `rename_tab` each get one sentence that a move or a rename to the current name and place changes nothing.
-
 #### suggestion: the log lines of the OAuth and the grant service follow several conventions
 
 - Location: `src/features/oauth/service.ts`, lines 345–399, `checkAuthorizationRequest()`, lines 473–479 and line
@@ -355,27 +258,11 @@ invalidGrant(INVALID_CODE).error);`.
   to `src/features/services.test.ts`. A split of the OAuth service has to respect the lint rule that only a
   `service.ts` imports the database.
 - Confidence: Low. Whether and how to split is a design decision.
+- Status: the half of MCP is fixed: the schemas of the tools are `tool-schemas.ts` and the registration with the
+  descriptions is `server.ts`; the OAuth service is still one file.
 - Decision (2026-11-18): both are split: the schemas of the tools and the registration with the descriptions move to
   modules of their own; the OAuth service is split along its parts, with the lint rule for the database changed, the
   error of an invalid grant unwrapped once and one `refuse()`.
-
-#### nit: two helpers with nearly the same name give two orders, and the tool sorts again what the service sorted
-
-- Location: `src/features/mcp/tools.ts`, lines 306–319, `placedDirectlyFirst()`; `src/features/pages/service.ts`,
-  lines 239–265, `directPagesFirst()`
-- Severity: Nit. Both orders are specified; only the names and the hidden dependency are unclear.
-- Category: readability
-- Problem: the difference is meant: `content-structure.md` orders the list of the browser by name and then by tab,
-  `mcp.md` orders `list_folder` by the folder first and then tab by tab. The tool regroups the order of the
-  service and relies on it and on a stable sort, and neither helper names the other.
-- Impact: a reader takes one for a copy of the other, and a change of the order of the service changes
-  `list_folder` without a failing unit test, because that test mocks the service.
-- Evidence: `src/features/mcp/tools.ts`, lines 307–308: "Within each group the pages keep the order they came in,
-  which is by name."
-- Suggestion (optional): a name that says what the helper does, a sort by tab and then by name, and a word about
-  the other order in both comments.
-- Confidence: Medium. The explicit sort gives the same result today; the tests were not run.
-- Decision (2026-11-18): as suggested.
 
 #### nit: leftovers in the features of OAuth, grants and MCP
 
@@ -401,6 +288,8 @@ invalidGrant(INVALID_CODE).error);`.
   the same way in all four places, share `mediaTypeOf()`, and decide where the version of the server comes from.
 - Confidence: Medium. Dropping `export` is safe by the type checker; removing the two codes breaks a unit test of
   the schema that asserts them; the version needs a decision.
+- Status: the half of MCP is fixed: the server reports the version of `package.json`, and the names of the MCP
+  feature that nothing imports lost their `export`.
 - Decision (2026-11-18): as suggested, all of it: the two codes leave `OAUTH_ERRORS` and the unit test of the schema is
   adjusted, and the MCP server reports the version of `package.json`.
 
@@ -413,7 +302,11 @@ invalidGrant(INVALID_CODE).error);`.
   hands over; the OAuth adapter reads bodies and maps codes to a status and an OAuth error.
 - The bearer token is parsed in one place, `bearerTokenOf()` of the grant service.
 - The texts shared by the tools (`NOT_ALLOWED`, `WRITE_FAILED`, `pageNotFound()`, `tabNotFound()`, `pageChanged()`,
-  `invalidInput()`, `nameTaken()`) hold each message once.
+  `invalidInput()`, `nameTaken()`) hold each message once, and each argument, description of an output and hint is
+  one constant in `tool-schemas.ts` or `server.ts`.
+- The tools of a connection follow `mayDo()`, and a unit test compares the tools of each role with `FUNCTION_ROLES`;
+  the tools take the public URL that the adapter checked, and every name of an existing tab or page is a plain
+  string that the tool answers with its not-found error.
 - The log lines of writes without a change are uniform in both content services, always with the channel.
 - `secret.ts`, `public-address.ts`, `metadata-fetch.ts` and `issuer.ts` are small, with one purpose each, and the
   shape and the hash of a token exist once.
@@ -933,21 +826,6 @@ that several of them state were compared with each other and with the code:
 - Every heading of a section that one of the seven specs cites in another spec exists under that name.
 
 ### Documentation: architecture, testing, catalog and workflows
-
-#### issue: `.env.example` says that without the public URL "only API tokens work", but there are no API tokens
-
-- Location: `.env.example`, lines 27–29, which the README and `container-image.md` point to;
-  `src/features/mcp/http.ts`, lines 133–134
-- Severity: Minor. It is the file an operator copies, and it promises a way in that does not exist.
-- Category: docs
-- Problem: without `HIPPOWIKI_PUBLIC_URL` every address below `/mcp` answers 404, as the README and
-  `container-image.md` say. The comment contradicts them.
-- Impact: an operator leaves the variable unset and expects access with a token.
-- Evidence: "without it only API tokens work."; against `if (publicUrl === undefined) return refusal(404,
-"not_found");`.
-- Suggestion (required): "without it there is no OAuth and no MCP server".
-- Confidence: High. No code accepts an API token, and `e2e/mcp-access.spec.ts` covers the behaviour. The file is no
-  documentation by the rule for changes to documentation only, so the fix runs the full checks.
 
 #### suggestion: the entries of the catalog in `CLAUDE.md` have grown into second copies of the specs
 

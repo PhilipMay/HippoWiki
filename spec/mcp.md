@@ -8,7 +8,9 @@ and never more than the user's current role on the folder, so that a user can gi
 access. A Reader connection reads the folder; a Writer connection also creates pages, replaces their content and moves
 or renames them; a Manager connection also deletes pages and creates, renames and deletes tabs. A user finds the addresses of a folder in its view "AI apps" (see `folder-roles.md`).
 
-Code: `src/features/mcp/` (`tools.ts` with the tools, `http.ts` with the adapter of the route, `queries.ts` and
+Code: `src/features/mcp/` (`server.ts`, which registers the tools of a connection with their descriptions and hints,
+`tools.ts` with the handlers of the tools, `tool-schemas.ts` with their inputs and outputs, `http.ts` with the adapter
+of the route, `queries.ts` and
 `components/` for the view "AI apps"), the route `src/app/mcp/[[...path]]/route.ts` and the exception for it in
 `src/proxy.ts`. The roles of MCP are `MCP_ROLES` and `mcpRolesFor()` in `src/features/folder-roles/roles.ts`, the
 actor of MCP `inMcp()` in `src/features/folder-roles/actors.ts`. The protocol is spoken by the MCP SDK
@@ -92,7 +94,9 @@ and the unit tests next to the code,
 ## Tools
 
 A Reader connection gets the two read tools, a Writer connection also the three write tools of pages, and a Manager
-connection also the four tools of a Manager: nine tools, five and two. A tool that the connection does not get is not
+connection also the four tools of a Manager: nine tools, five and two. A tool is registered only when the role of the
+connection may do the function of the folder that its write checks (`mayDo()` with `FUNCTION_ROLES` in
+`src/features/folder-roles/roles.ts`), so the tools follow the services. A tool that the connection does not get is not
 listed, and a call of it changes nothing.
 
 Read tools, which say so to the client (`readOnlyHint`):
@@ -178,11 +182,15 @@ What holds for all of them:
   of a tab deletion also the number of pages.
 - Every write tool of pages returns the page as stored: its name, title, tab, address and version, which a change
   counts up and a content save without a change and a move to the current name and place keep.
-- An address is the path of the folder, tab or page; with `HIPPOWIKI_PUBLIC_URL` it is the full URL, which a person
-  can open.
+- An address is the full URL of the folder, tab or page, which a person can open.
 - A deleted page is never listed, read or changed; it is answered like a page that does not exist.
 - A page or tab that does not exist is a tool error with a message that says what to do next, not a protocol error, so
   that the model reads it and tries again.
+- The name of an existing tab or page is a plain string in the input of every tool. A name that no item has, one that
+  breaks the name rule or has spaces around it included, gets the not-found error of the tool, which points to
+  `list_folder`; the input schema refuses none of them. The reason: the MCP specification asks for errors of input
+  that a model can act on, and a refusal of the schema is answered by the SDK with a general text that does not say
+  where the names are.
 - A failure of the database is a tool error with a general message. The error itself is logged and not passed on.
 - A result is given twice: as structured data and as the same data in text.
 - The instructions that a client gets when it connects name the folder and the role of the connection, say what the

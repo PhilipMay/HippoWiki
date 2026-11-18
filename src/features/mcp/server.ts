@@ -1,0 +1,251 @@
+// The MCP server of a connection: which tools it gets, and how a client sees them (titles, descriptions, inputs,
+// outputs and hints). A tool is registered only when the role of the connection may do the function of the folder
+// that its write checks (`mayDo()` with `FUNCTION_ROLES`), so the list of tools follows the services when a function
+// moves to another role. The handlers are `tools.ts`, the inputs and outputs `tool-schemas.ts`. No import of `next`
+// or `react`, so the server loads wherever the services load.
+
+import { McpServer } from "@modelcontextprotocol/server";
+
+import { mayDo, ROLE_LABELS, type McpRole } from "@/features/folder-roles/roles";
+import {
+  createPageInput,
+  createTabInput,
+  deletedPageOutput,
+  deletedTabOutput,
+  deletePageInput,
+  deleteTabInput,
+  listFolderOutput,
+  moveOrRenamePageInput,
+  readPageInput,
+  readPageOutput,
+  renameTabInput,
+  replacePageContentInput,
+  storedPageOutput,
+  storedTabOutput,
+} from "@/features/mcp/tool-schemas";
+import {
+  createPage,
+  createTab,
+  deletePage,
+  deleteTab,
+  listFolder,
+  moveOrRenamePage,
+  readPage,
+  renameTab,
+  replacePageContent,
+  type WikiToolsOptions,
+} from "@/features/mcp/tools";
+import { siteName } from "@/lib/site";
+
+import packageJson from "../../../package.json";
+
+/** How the server introduces itself to a client, with the version of the wiki. */
+const SERVER_INFO = { name: "hippowiki", title: siteName, version: packageJson.version };
+
+/**
+ * What a connection of each role may do, as the instructions tell the model. Written by hand for the model; the tools
+ * themselves follow `mayDo()`.
+ */
+const ROLE_ABILITIES: Readonly<Record<McpRole, string>> = {
+  reader: "It reads the folder and cannot change it.",
+  writer:
+    "It reads the folder and changes its pages with create_page, replace_page_content and move_or_rename_page; it " +
+    "creates no tabs. Every change of a page states the version that read_page gave for it, and a change based on " +
+    "an older version is refused.",
+  manager:
+    "It reads the folder and changes its pages like a Writer connection, with create_page, replace_page_content and " +
+    "move_or_rename_page, deletes pages with delete_page, and creates, renames and deletes tabs with create_tab, " +
+    "rename_tab and delete_tab. Every change and every delete of a page states the version that read_page gave for " +
+    "it, and one based on an older version is refused. Deleting a tab deletes all its pages with it. Deleted pages " +
+    "can be neither seen nor restored through this connection: only a Manager or Owner of the folder restores them, " +
+    "in the browser.",
+};
+
+/**
+ * What `initialize` tells the model about the wiki and the connection, in one paragraph: the folder and the role of
+ * the connection, what the role allows, how the folder is organised and which tool to start with.
+ */
+export function instructionsFor(folderName: string, role: McpRole): string {
+  return (
+    `${siteName} is a wiki. This connection works on the folder "${folderName}" with the role ${ROLE_LABELS[role]}. ` +
+    `${ROLE_ABILITIES[role]} The folder holds pages, either directly or grouped in tabs, which are optional ` +
+    "sections of the folder. Every page is written in Markdown and has a name, which is part of its address, and a " +
+    "title, which is its first heading. Tab and page names are lowercase letters, digits and single hyphens. Start " +
+    "with list_folder for the tabs and pages of the folder, then read_page for the content of one page."
+  );
+}
+
+/** What a read tool tells a client about itself: it only reads, and only the wiki. */
+const READ_ONLY = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
+
+/** What a tool tells a client that writes to the wiki and destroys nothing. */
+const WRITES = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false };
+
+/** What a tool tells a client that overwrites the whole content of a page, which loses the content before. */
+const OVERWRITES = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false };
+
+/** What a tool tells a client that deletes from the wiki. */
+const WRITES_AND_DELETES = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false };
+
+/**
+ * A new MCP server with the tools of the wiki for the connection of the request. The SDK asks for one per request, so
+ * it holds nothing between requests.
+ */
+export function createWikiServer(options: WikiToolsOptions): McpServer {
+  const { role } = options.actor.connection;
+  const server = new McpServer(SERVER_INFO, { instructions: instructionsFor(options.folder.name, role) });
+
+  if (mayDo(role, "read")) {
+    server.registerTool(
+      "list_folder",
+      {
+        title: "List the tabs and pages of the folder",
+        description:
+          "Lists the tabs and the pages of the folder of this connection. Every page comes with its name, its title " +
+          "and the tab it is in (null for a page placed directly in the folder); pass these to read_page to read " +
+          "it. Every tab and page also comes with when it was last changed, by whom and how: web in the browser, " +
+          "mcp by an AI app.",
+        outputSchema: listFolderOutput,
+        annotations: READ_ONLY,
+      },
+      () => listFolder(options),
+    );
+
+    server.registerTool(
+      "read_page",
+      {
+        title: "Read a page",
+        description:
+          "Reads one page of the folder of this connection: its title, its Markdown content, its address, when it " +
+          "was last changed, by whom and how (web in the browser, mcp by an AI app), and its version. A page is " +
+          "named by its tab if it is in one, and its own name, as list_folder returns them.",
+        inputSchema: readPageInput,
+        outputSchema: readPageOutput,
+        annotations: READ_ONLY,
+      },
+      (input) => readPage(options, input),
+    );
+  }
+
+  if (mayDo(role, "editPage")) {
+    server.registerTool(
+      "create_page",
+      {
+        title: "Create a page",
+        description:
+          "Creates a new page in the folder of this connection, directly in the folder or in one of its existing " +
+          "tabs, with the given Markdown content, which must start with a title heading. Without a name the page " +
+          "gets the name derived from its title. It creates no tabs. Returns the page with its address and version.",
+        inputSchema: createPageInput,
+        outputSchema: storedPageOutput,
+        annotations: WRITES,
+      },
+      (input) => createPage(options, input),
+    );
+
+    server.registerTool(
+      "replace_page_content",
+      {
+        title: "Replace the content of a page",
+        description:
+          "Replaces the whole content of a page of the folder of this connection with the given Markdown, which " +
+          "must start with a title heading; the title of the page follows it. State the version that read_page " +
+          "gave: if the page has changed since, nothing is changed. Content that is the same as the stored content " +
+          "changes nothing either. Returns the page with its version, which a change counts up and content without " +
+          "a change keeps.",
+        inputSchema: replacePageContentInput,
+        outputSchema: storedPageOutput,
+        annotations: OVERWRITES,
+      },
+      (input) => replacePageContent(options, input),
+    );
+  }
+
+  if (mayDo(role, "moveOrRenamePage")) {
+    server.registerTool(
+      "move_or_rename_page",
+      {
+        title: "Move or rename a page",
+        description:
+          "Moves a page of the folder of this connection to another existing tab of the folder, or directly into " +
+          "the folder, and gives it a new name, which changes its address. State the version that read_page gave: " +
+          "if the page has changed since, nothing is changed. A move to the current name and place changes " +
+          "nothing. Returns the page with its new address and version.",
+        inputSchema: moveOrRenamePageInput,
+        outputSchema: storedPageOutput,
+        annotations: WRITES,
+      },
+      (input) => moveOrRenamePage(options, input),
+    );
+  }
+
+  if (mayDo(role, "deletePage")) {
+    server.registerTool(
+      "delete_page",
+      {
+        title: "Delete a page",
+        description:
+          "Deletes a page of the folder of this connection, as deleting it in the browser does: it goes to the " +
+          "deleted pages of the folder, where a Manager or Owner can restore it in the browser; deleted pages " +
+          "cannot be seen or restored through this connection. State the version that read_page gave: if the page " +
+          "has changed since, nothing is deleted. Returns the deleted page and the address of the deleted pages of " +
+          "the folder.",
+        inputSchema: deletePageInput,
+        outputSchema: deletedPageOutput,
+        annotations: WRITES_AND_DELETES,
+      },
+      (input) => deletePage(options, input),
+    );
+  }
+
+  if (mayDo(role, "editTab")) {
+    server.registerTool(
+      "create_tab",
+      {
+        title: "Create a tab",
+        description:
+          "Creates a new, empty tab in the folder of this connection. create_page and move_or_rename_page can put " +
+          "pages into it at once. Returns the tab with its address.",
+        inputSchema: createTabInput,
+        outputSchema: storedTabOutput,
+        annotations: WRITES,
+      },
+      (input) => createTab(options, input),
+    );
+
+    server.registerTool(
+      "rename_tab",
+      {
+        title: "Rename a tab",
+        description:
+          "Gives a tab of the folder of this connection a new name, which changes its address and the addresses of " +
+          "all pages in it. A rename to the current name changes nothing. Returns the tab with its new address.",
+        inputSchema: renameTabInput,
+        outputSchema: storedTabOutput,
+        annotations: WRITES,
+      },
+      (input) => renameTab(options, input),
+    );
+  }
+
+  if (mayDo(role, "deleteTab")) {
+    server.registerTool(
+      "delete_tab",
+      {
+        title: "Delete a tab with all its pages",
+        description:
+          "Deletes a tab of the folder of this connection together with every page in it, in one call and without " +
+          "a further confirmation. The tab is deleted for good and cannot be restored. Its pages go to the deleted " +
+          "pages of the folder and can only be restored one by one, by a Manager or Owner of the folder in the " +
+          "browser. Use list_folder first to see which pages are in the tab. Returns the number of pages deleted " +
+          "with the tab, the name and title of each, and the address of the deleted pages of the folder.",
+        inputSchema: deleteTabInput,
+        outputSchema: deletedTabOutput,
+        annotations: WRITES_AND_DELETES,
+      },
+      (input) => deleteTab(options, input),
+    );
+  }
+
+  return server;
+}

@@ -2,7 +2,7 @@
 // server: it is to an MCP client what `queries.ts` is to the GUI. It is the place where the actor of a request comes
 // from the bearer token instead of the session: every request is checked with `authenticateAccessToken()` for its
 // address before the SDK sees it. The SDK then speaks the protocol (Streamable HTTP, stateless, with JSON answers and
-// no SSE) and calls the tools of `tools.ts`. The bearer token is the access token of a grant to an OAuth client at
+// no SSE) and calls the tools of the server of `server.ts`. The bearer token is the access token of a grant to an OAuth client at
 // exactly that address, and the 401 says where a client finds the authorization server. Without
 // `HIPPOWIKI_PUBLIC_URL` there is no OAuth and therefore no MCP server: every request answers 404.
 
@@ -15,7 +15,8 @@ import {
   type McpRequestContext,
 } from "@modelcontextprotocol/server";
 
-import { createWikiServer, type WikiToolsOptions } from "@/features/mcp/tools";
+import { createWikiServer } from "@/features/mcp/server";
+import type { WikiToolsOptions } from "@/features/mcp/tools";
 import { inMcp } from "@/features/folder-roles/actors";
 import * as folderService from "@/features/folders/service";
 import { protectedResourceMetadataUrl } from "@/features/oauth/issuer";
@@ -30,7 +31,17 @@ function refusal(status: number, error: string, headers: Record<string, string> 
 }
 
 /** Why a valid access token is refused at its address: the user's role on the folder is too low for it now. */
-export const ROLE_TOO_LOW_MESSAGE = "Your role on the folder does not allow this address.";
+const ROLE_TOO_LOW_MESSAGE = "Your role on the folder does not allow this address.";
+
+/** The answer to a valid access token whose user's role no longer allows its address: 403, without a challenge. */
+function roleTooLow(): Response {
+  return Response.json({ error: "role_too_low", error_description: ROLE_TOO_LOW_MESSAGE }, { status: 403 });
+}
+
+/** Logs an error of the SDK with a request, such as a body that is no JSON-RPC message. */
+function logRefused(err: unknown): void {
+  logger.warn({ err }, "mcp request refused");
+}
 
 /** The value of a `WWW-Authenticate` header with the scheme `Bearer` and the given parameters (RFC 6750). */
 function bearerChallenge(...parameters: string[]): string {
@@ -48,23 +59,20 @@ function hasForeignOrigin(request: Request, publicUrl: string): boolean {
   return origin !== null && origin !== publicUrl;
 }
 
-/** What the tools of a request are built with, apart from the public URL: the actor of MCP and its folder. */
-type Connected = Pick<WikiToolsOptions, "actor" | "folder">;
-
 /**
- * The actor and the folder of a request as the authentication information that the handler of the SDK passes on,
+ * The public URL, the actor and the folder of a request as the authentication information that the handler of the SDK passes on,
  * unread, to the factory of the server: the handler is created once, and this is how each request hands it its
  * connection. The token itself is not passed on, so it stays out of everything the SDK keeps.
  */
-function authInfoOf(connected: Connected): AuthInfo {
+function authInfoOf(connected: WikiToolsOptions): AuthInfo {
   return { token: "", clientId: connected.actor.connection.grantId, scopes: [], extra: { connected } };
 }
 
 /** What `authInfoOf()` handed to the factory. Without it the request was not checked, which never happens. */
-function connectedOf({ authInfo }: McpRequestContext): Connected {
+function connectedOf({ authInfo }: McpRequestContext): WikiToolsOptions {
   const connected = authInfo?.extra?.connected;
   if (!connected) throw new Error("mcp request without a connection");
-  return connected as Connected;
+  return connected as WikiToolsOptions;
 }
 
 let modernHandler: McpHttpHandler | undefined;
@@ -76,15 +84,12 @@ let modernHandler: McpHttpHandler | undefined;
  * `serveLegacy()` instead.
  */
 function getModernHandler(): McpHttpHandler {
-  modernHandler ??= createMcpHandler(
-    (context) => createWikiServer({ publicUrl: getServerEnv().HIPPOWIKI_PUBLIC_URL, ...connectedOf(context) }),
-    {
-      responseMode: "json",
-      legacy: "reject",
-      maxSubscriptions: 0,
-      onerror: (err) => logger.warn({ err }, "mcp request refused"),
-    },
-  );
+  modernHandler ??= createMcpHandler((context) => createWikiServer(connectedOf(context)), {
+    responseMode: "json",
+    legacy: "reject",
+    maxSubscriptions: 0,
+    onerror: logRefused,
+  });
   return modernHandler;
 }
 
@@ -93,13 +98,13 @@ function getModernHandler(): McpHttpHandler {
  * transport of their own for this one request, without a session, with a JSON answer. The handler of the SDK would
  * answer these clients as a stream.
  */
-async function serveLegacy(request: Request, connected: Connected): Promise<Response> {
-  const server = createWikiServer({ publicUrl: getServerEnv().HIPPOWIKI_PUBLIC_URL, ...connected });
+async function serveLegacy(request: Request, connected: WikiToolsOptions): Promise<Response> {
+  const server = createWikiServer(connected);
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,
   });
-  transport.onerror = (err) => logger.warn({ err }, "mcp request refused");
+  transport.onerror = logRefused;
   await server.connect(transport);
   try {
     return await transport.handleRequest(request);
@@ -158,7 +163,7 @@ export async function handleMcpRequest(request: Request, path: readonly string[]
           "WWW-Authenticate": bearerChallenge('error="invalid_token"', ...discovery),
         });
       case "role-too-low":
-        return Response.json({ error: "role_too_low", error_description: ROLE_TOO_LOW_MESSAGE }, { status: 403 });
+        return roleTooLow();
       case "failed":
         return refusal(500, "server_error");
     }
@@ -167,10 +172,8 @@ export async function handleMcpRequest(request: Request, path: readonly string[]
   const actor = inMcp(caller.value.actor, caller.value.connection);
   try {
     const folder = await folderService.getFolderById(actor, actor.connection.folderId);
-    if (!folder) {
-      return Response.json({ error: "role_too_low", error_description: ROLE_TOO_LOW_MESSAGE }, { status: 403 });
-    }
-    const connected: Connected = { actor, folder: { id: folder.id, name: folder.name } };
+    if (!folder) return roleTooLow();
+    const connected: WikiToolsOptions = { publicUrl, actor, folder: { id: folder.id, name: folder.name } };
     return (await isLegacyRequest(request))
       ? await serveLegacy(request, connected)
       : await getModernHandler().fetch(request, { authInfo: authInfoOf(connected) });

@@ -2,9 +2,12 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { McpActor } from "@/features/folder-roles/actors";
-import { createWikiServer, instructionsFor } from "@/features/mcp/tools";
+import { MCP_ROLES, mayDo, type FolderFunction } from "@/features/folder-roles/roles";
+import { createWikiServer, instructionsFor } from "@/features/mcp/server";
 import { analyseMarkdown } from "@/features/pages/markdown";
 import { TITLE_HEADING_MISSING_MESSAGE as TITLE_MISSING } from "@/features/pages/schema";
+
+import packageJson from "../../../package.json";
 
 const mocks = vi.hoisted(() => ({
   listTabs: vi.fn(),
@@ -67,13 +70,12 @@ const MANAGER: McpActor = { ...READER, connection: { ...READER.connection, role:
 /** A JSON-RPC answer of the server. */
 type Answer = { result?: Record<string, unknown>; error?: { code: number; message: string } };
 
-/** The public URL of the wiki and the actor that the tools of the test are built with. */
-let publicUrl: string | undefined;
+/** The actor that the tools of the test are built with. */
 let actor: McpActor;
 
 /** Sends one message to a new server with the tools, as a client of the older protocol does, and returns the answer. */
 async function send(message: Record<string, unknown>): Promise<Answer> {
-  const server = createWikiServer({ publicUrl, actor, folder: FOLDER });
+  const server = createWikiServer({ publicUrl: PUBLIC_URL, actor, folder: FOLDER });
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,
@@ -115,7 +117,6 @@ function expectToolNotFound(answer: Answer, name: string): void {
 
 beforeEach(() => {
   vi.resetAllMocks();
-  publicUrl = PUBLIC_URL;
   actor = READER;
 });
 
@@ -127,7 +128,7 @@ describe("the instructions", () => {
     });
 
     expect(answer.result).toMatchObject({
-      serverInfo: { name: "hippowiki", title: "HippoWiki" },
+      serverInfo: { name: "hippowiki", title: "HippoWiki", version: packageJson.version },
       instructions: instructionsFor("handbook", "reader"),
     });
     const instructions = instructionsFor("handbook", "reader");
@@ -265,16 +266,6 @@ describe("list_folder", () => {
     expect(JSON.parse(result.content[0]?.text ?? "")).toEqual(result.structuredContent);
   });
 
-  it("gives the paths as addresses without a public URL", async () => {
-    mocks.listTabs.mockResolvedValue([]);
-    mocks.listAllFolderPages.mockResolvedValue([]);
-    publicUrl = undefined;
-
-    const result = await callTool("list_folder");
-
-    expect(result.structuredContent).toMatchObject({ folder: { address: "/folders/handbook" } });
-  });
-
   it.each([
     ["tabs", () => mocks.listTabs.mockResolvedValue(null)],
     ["pages", () => mocks.listAllFolderPages.mockResolvedValue(null)],
@@ -368,14 +359,8 @@ describe("read_page", () => {
     expect(mocks.getPage).toHaveBeenCalledExactlyOnceWith(READER, "handbook", "guides", "setup");
   });
 
-  it.each([
-    ["no page", {}],
-    ["a page name with its .md", { page: "setup.md" }],
-    ["a tab in upper case", { tab: "Guides", page: "setup" }],
-    ["an empty tab", { tab: "", page: "setup" }],
-    ["a page name with a path", { page: "../secret" }],
-  ])("answers %s with a tool error and does not reach the service", async (_case, args) => {
-    errorOf(await callTool("read_page", args));
+  it("answers a call without a page with a tool error and does not reach the service", async () => {
+    errorOf(await callTool("read_page", {}));
 
     expect(mocks.getPage).not.toHaveBeenCalled();
   });
@@ -875,15 +860,6 @@ describe("the tools of a Manager connection", () => {
       expect(JSON.parse(result.content[0]?.text ?? "")).toEqual(result.structuredContent);
     });
 
-    it("gives the path of the deleted pages without a public URL", async () => {
-      publicUrl = undefined;
-      mocks.deletePage.mockResolvedValue({ ok: true, value: { folder: { name: "handbook" }, tab: null } });
-
-      const result = await callTool("delete_page", { page: "setup", version: 4 });
-
-      expect(result.structuredContent).toMatchObject({ tab: null, deletedPagesAddress: "/deleted-pages/handbook" });
-    });
-
     it("passes no version on as null, which the service refuses as changed", async () => {
       mocks.deletePage.mockResolvedValue({ ok: false, error: { code: "page-changed", page: PAGE } });
 
@@ -925,15 +901,6 @@ describe("the tools of a Manager connection", () => {
       expect(result.structuredContent).toEqual({
         name: "news",
         address: "https://wiki.example.com/folders/handbook/news",
-      });
-    });
-
-    it("gives the path of the tab without a public URL", async () => {
-      publicUrl = undefined;
-      mocks.createTab.mockResolvedValue({ ok: true, value: { id: "t2", name: "news", folder: { name: "handbook" } } });
-
-      expect((await callTool("create_tab", { name: "news" })).structuredContent).toMatchObject({
-        address: "/folders/handbook/news",
       });
     });
 
@@ -1020,14 +987,13 @@ describe("the tools of a Manager connection", () => {
       expect(JSON.parse(result.content[0]?.text ?? "")).toEqual(result.structuredContent);
     });
 
-    it("deletes an empty tab with the number 0 and no pages, and gives the path without a public URL", async () => {
-      publicUrl = undefined;
+    it("deletes an empty tab with the number 0 and no pages", async () => {
       mocks.deleteTab.mockResolvedValue({ ok: true, value: { folder: FOLDER, pageCount: 0, pages: [] } });
 
       expect((await callTool("delete_tab", { tab: "guides" })).structuredContent).toMatchObject({
         pageCount: 0,
         pages: [],
-        deletedPagesAddress: "/deleted-pages/handbook",
+        deletedPagesAddress: "https://wiki.example.com/deleted-pages/handbook",
       });
     });
 
@@ -1060,6 +1026,139 @@ describe("the tools of a Manager connection", () => {
       expect(errorOf(await callTool("delete_tab", { tab: "guides" }))).toContain(message);
     });
   });
+});
+
+describe("the tools of each role", () => {
+  /** The function of the folder that the service of each tool checks, in the order the tools are listed. */
+  const TOOL_FUNCTIONS: [string, FolderFunction][] = [
+    ["list_folder", "read"],
+    ["read_page", "read"],
+    ["create_page", "editPage"],
+    ["replace_page_content", "editPage"],
+    ["move_or_rename_page", "moveOrRenamePage"],
+    ["delete_page", "deletePage"],
+    ["create_tab", "editTab"],
+    ["rename_tab", "editTab"],
+    ["delete_tab", "deleteTab"],
+  ];
+
+  it.each(MCP_ROLES)("of a %s connection are those whose function the role may do", async (role) => {
+    actor = { ...READER, connection: { ...READER.connection, role } };
+
+    const tools = (await send({ method: "tools/list" })).result?.tools as { name: string }[];
+
+    expect(tools.map((tool) => tool.name)).toEqual(
+      TOOL_FUNCTIONS.filter(([, fn]) => mayDo(role, fn)).map(([name]) => name),
+    );
+  });
+});
+
+describe("the descriptions", () => {
+  type ListedTool = { name: string; description: string; outputSchema?: { properties?: Record<string, unknown> } };
+
+  it("say that the version is kept when the content, or the name and place, are the same as before", async () => {
+    actor = MANAGER;
+
+    const tools = (await send({ method: "tools/list" })).result?.tools as ListedTool[];
+    const byName = Object.fromEntries(tools.map((tool) => [tool.name, tool]));
+
+    for (const name of ["create_page", "replace_page_content", "move_or_rename_page"]) {
+      expect(byName[name]?.outputSchema?.properties?.version).toMatchObject({
+        description:
+          "The version of the page as stored, for the next change: counted up by a change, kept when the content, " +
+          "or the name and place, are the same as before",
+      });
+    }
+    expect(byName.move_or_rename_page?.description).toContain("A move to the current name and place changes nothing.");
+    expect(byName.rename_tab?.description).toContain("A rename to the current name changes nothing.");
+  });
+});
+
+describe("a name of an existing tab or page", () => {
+  const PAGE = {
+    id: "p1",
+    name: "setup",
+    title: "Setup",
+    content: "# Setup",
+    updatedAt: CHANGED,
+    lastEditedBy: EDITOR,
+    version: 4,
+    folder: FOLDER,
+    tab: null,
+    role: "manager",
+  };
+  /** Names that no tab or page can have: with spaces around, in upper case, with the .md, and a path. */
+  const NO_NAMES = [" setup", "setup ", "Setup", "setup.md", "../setup"];
+
+  /** Each tool with an argument that names an existing page or tab, the arguments with that name, and the error. */
+  const CASES: [string, (name: string) => Record<string, unknown>, "page" | "tab", (name: string) => string][] = [
+    ["read_page", (name) => ({ page: name }), "page", (name) => `There is no page named "${name}"`],
+    [
+      "read_page",
+      (name) => ({ tab: name, page: "setup" }),
+      "page",
+      (name) => `There is no page named "setup" in the tab "${name}"`,
+    ],
+    [
+      "replace_page_content",
+      (name) => ({ page: name, version: 4, content: "# X" }),
+      "page",
+      (name) => `There is no page named "${name}"`,
+    ],
+    [
+      "move_or_rename_page",
+      (name) => ({ page: name, version: 4, newTab: null, newName: "moved" }),
+      "page",
+      (name) => `There is no page named "${name}"`,
+    ],
+    ["delete_page", (name) => ({ page: name, version: 4 }), "page", (name) => `There is no page named "${name}"`],
+    [
+      "delete_page",
+      (name) => ({ tab: name, page: "setup", version: 4 }),
+      "page",
+      (name) => `There is no page named "setup" in the tab "${name}"`,
+    ],
+    ["create_page", (name) => ({ content: "# New", tab: name }), "tab", (name) => `There is no tab named "${name}"`],
+    [
+      "move_or_rename_page",
+      (name) => ({ page: "setup", version: 4, newTab: name, newName: "moved" }),
+      "tab",
+      (name) => `There is no tab named "${name}"`,
+    ],
+    ["rename_tab", (name) => ({ tab: name, newName: "news" }), "tab", (name) => `There is no tab named "${name}"`],
+    ["delete_tab", (name) => ({ tab: name }), "tab", (name) => `There is no tab named "${name}"`],
+  ];
+
+  beforeEach(() => {
+    actor = MANAGER;
+    // As the services answer a name that no item has.
+    mocks.getPage.mockResolvedValue(PAGE);
+    mocks.getTab.mockResolvedValue({ id: "tab-1", name: "guides", folder: FOLDER, role: "manager" });
+  });
+
+  it.each(
+    CASES.flatMap(([tool, args, kind, message]) => NO_NAMES.map((name) => [tool, name, args, kind, message] as const)),
+  )(
+    "%s answers %j with the not-found error of the tool, which points to list_folder, and changes nothing",
+    async (tool, name, args, kind, message) => {
+      (kind === "page" ? mocks.getPage : mocks.getTab).mockResolvedValue(null);
+
+      const error = errorOf(await callTool(tool, args(name)));
+
+      expect(error).toContain(message(name));
+      expect(error).toContain("Use list_folder to see the");
+      for (const write of [
+        mocks.createPage,
+        mocks.updatePageContent,
+        mocks.moveOrRenamePage,
+        mocks.deletePage,
+        mocks.renameTab,
+        mocks.deleteTab,
+      ]) {
+        expect(write).not.toHaveBeenCalled();
+      }
+    },
+  );
 });
 
 describe("every tool", () => {

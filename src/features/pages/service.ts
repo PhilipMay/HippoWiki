@@ -230,14 +230,16 @@ export async function listAllFolderPages(actor: ContentActor, folderId: string):
     select: { ...SUMMARY_SELECT, tab: { select: { name: true } } },
     orderBy: [{ name: "asc" }, { tab: { name: "asc" } }],
   });
-  return directPagesFirst(pages.map(withLastEditor));
+  return directPageFirstPerName(pages.map(withLastEditor));
 }
 
 /**
  * Among pages of the same name, moves the page without a tab to the front. The database sorts a missing tab after all
- * tab names; the pages are otherwise left in the order given, by name and then by tab.
+ * tab names; the pages are otherwise left in the order given, by name and then by tab, the order of the list "All
+ * pages" of the browser. The tool `list_folder` sorts by tab and then by name instead (`sortByTabThenName()` in
+ * `src/features/mcp/tools.ts`).
  */
-export function directPagesFirst<Entry extends { name: string; tab: unknown }>(pages: Entry[]): Entry[] {
+export function directPageFirstPerName<Entry extends { name: string; tab: unknown }>(pages: Entry[]): Entry[] {
   const ordered: Entry[] = [];
   for (const page of pages) {
     let position = ordered.length;

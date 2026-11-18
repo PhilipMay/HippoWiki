@@ -101,7 +101,7 @@ Decided by the user on 2026-11-18:
 - [x] Writes of pages
 - [x] The stored page and the derived name
 - [x] The reads of the history in a service of their own
-- [ ] MCP tools
+- [x] MCP tools
 - [ ] OAuth and grants
 - [ ] Actions, forms and schemas
 - [ ] Leftovers and small duplicates

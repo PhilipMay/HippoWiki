@@ -103,7 +103,8 @@ How the code is tested. Commands are listed in `README.md`.
   `Origin` check and 405, and the adapters of the OAuth endpoints (`src/features/oauth/http.test.ts`) for
   404 without the public URL, the metadata fields, the status codes, the error shape, `no-store` and the answer of
   the registration limit. The tests of the MCP adapter and of its tools (`src/features/mcp/tools.test.ts`, which
-  builds the server for a Reader, a Writer and a Manager connection) run the real MCP SDK against mocked services, so a
+  builds the server for a Reader, a Writer and a Manager connection and compares the tools of each role with
+  `FUNCTION_ROLES`) run the real MCP SDK against mocked services, so a
   change of the SDK shows there.
 - The fetch of the metadata documents of OAuth clients (`src/features/oauth/metadata-fetch.ts`) never reaches the
   network in a test. Its own unit test mocks `node:dns/promises` and `node:https` and stands in for the server; the

@@ -33,7 +33,8 @@ How the code is organised and which patterns new code follows. The technology st
     for the actors of the content and the guards of a content write, which the content services share), `users` (the
     accounts), `auth` (login, logout, the session and the login wait, with `session.ts` for who is calling, see "Login
     and sessions"), `grants` (the connected apps, the grants of users to OAuth clients, and the check of an access
-    token), `mcp` (the MCP server: `tools.ts` with its tools, `http.ts`, the adapter of the route of the MCP addresses,
+    token), `mcp` (the MCP server: `server.ts`, which registers the tools a connection gets, `tools.ts` with the handlers of
+    the tools, `tool-schemas.ts` with their inputs and outputs, `http.ts`, the adapter of the route of the MCP addresses,
     see "Reads and writes", and `queries.ts` and `components/` for the folder view "AI apps") and `oauth` (the OAuth authorization server for MCP clients: `service.ts` with the rules of the code
     flow, `http.ts` with the adapters of its public endpoints, `secret.ts` for codes and tokens and their hashes,
     `metadata-fetch.ts` for the metadata documents of clients). Their specs are listed in `CLAUDE.md`.
@@ -57,9 +58,11 @@ How the code is organised and which patterns new code follows. The technology st
   `handleMcpRequest()` in `src/features/mcp/http.ts`, which answers every path that is no folder address
   (`/mcp/<folder-uuid>/<reader|writer|manager>`) with 404, finds the actor and the connection from the bearer token instead of
   the session, reads the folder of the connection and passes the request to the MCP SDK, with the actor of MCP and the
-  folder as the authentication information that the SDK passes on to the factory of the server; the tools in
-  `src/features/mcp/tools.ts` call the services of the folders and pages with that actor. The
-  tools import nothing from `next` or `react`, like a service. The public endpoints of OAuth work the same way: the
+  folder as the authentication information that the SDK passes on to the factory of the server,
+  `createWikiServer()` in `src/features/mcp/server.ts`; the tools in `src/features/mcp/tools.ts` call the services of
+  the folders and pages with that actor. The server registers a tool only when the role of the connection may do the
+  function that its write checks (`mayDo()`), so the tools follow `FUNCTION_ROLES` like the services. The server, the
+  tools and their schemas import nothing from `next` or `react`, like a service. The public endpoints of OAuth work the same way: the
   routes under `src/app/.well-known/` and `src/app/oauth/register` and `src/app/oauth/token` hand the request to a
   function of `src/features/oauth/http.ts`, which calls the OAuth service and answers 404 while
   `HIPPOWIKI_PUBLIC_URL` is not set. The consent page `src/app/oauth/authorize/` is a page like every other, with
@@ -143,7 +146,7 @@ How the code is organised and which patterns new code follows. The technology st
     other folder, so the services need no rule of their own for MCP. A write stores the user as the last editor of the
     item (see "Last editor" there), and its log line names the channel and, for MCP, the grant. It parses the
     actor's id like every other id; a malformed id gives `failed` and is logged as an error, because only a broken
-    caller can cause it. Pure helpers such as `directPagesFirst()` take no actor.
+    caller can cause it. Pure helpers such as `directPageFirstPerName()` take no actor.
   - A route decides which buttons, actions and views to offer with the role that the folder read returns and
     `mayDo()` of `roles.ts`, the same function the services use, so that a route and a service never disagree about a
     role. An action or view beyond the role shows the not-found page before the content is read.

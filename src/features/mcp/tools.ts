@@ -1,257 +1,50 @@
-// The tools of the MCP server: what an AI app can do with the folder of its connection. A Reader connection gets the
-// read tools, a Writer and a Manager connection also the write tools of pages, and a Manager connection the tools that
-// delete pages and create, rename and delete tabs. They follow the rules of the browser, the version check of
-// optimistic locking included. They call the services of the
-// folders and pages with the actor of MCP, which carries the connection: the services give it only the folder of the
-// connection, with the lower of the user's role and the role of the connection, as `queries.ts` does with the channel
-// `browser` for the GUI. The tools know nothing about HTTP, tokens or Next.js: the adapter in `http.ts` finds out who
-// is calling, and with which connection, before a tool runs. No import of `next` or `react`, so the tools load wherever
-// the services load.
+// The handlers of the MCP tools: what an AI app can do with the folder of its connection. They follow the rules of the
+// browser, the version check of optimistic locking included, and call the services of the folders and pages with the
+// actor of MCP, which carries the connection: the services give it only the folder of the connection, with the lower
+// of the user's role and the role of the connection, as `queries.ts` does with the channel `web` for the GUI. Which
+// tools a connection gets, and how a client sees them, is `server.ts`; their inputs and outputs are `tool-schemas.ts`.
+// The tools know nothing about HTTP, tokens or Next.js: the adapter in `http.ts` finds out who is calling, and with
+// which connection, before a tool runs. No import of `next` or `react`, so the tools load wherever the services load.
 
-import { McpServer, type CallToolResult } from "@modelcontextprotocol/server";
-import { z } from "zod";
+import type { CallToolResult } from "@modelcontextprotocol/server";
+import type { z } from "zod";
 
-import { includesRole, ROLE_LABELS, type McpRole } from "@/features/folder-roles/roles";
+import { mayDo } from "@/features/folder-roles/roles";
 import type { McpActor } from "@/features/folder-roles/actors";
 import * as folderService from "@/features/folders/service";
+import type {
+  createPageInput,
+  createTabInput,
+  deletedPageOutput,
+  deletedTabOutput,
+  deletePageInput,
+  deleteTabInput,
+  listFolderOutput,
+  moveOrRenamePageInput,
+  readPageInput,
+  readPageOutput,
+  renameTabInput,
+  replacePageContentInput,
+  storedPageOutput,
+  storedTabOutput,
+} from "@/features/mcp/tool-schemas";
 import { TITLE_HEADING_MISSING_MESSAGE } from "@/features/pages/schema";
 import * as pageService from "@/features/pages/service";
 import { deletedPagesPath, folderPath, pagePath, tabPath } from "@/lib/addresses";
 import { logger } from "@/lib/logger";
-import { nameSchema } from "@/lib/names";
-import { siteName } from "@/lib/site";
 
 /** What the tools need to know about the wiki they serve and the connection they serve it to. */
 export type WikiToolsOptions = {
   /**
-   * The public address of the wiki (`HIPPOWIKI_PUBLIC_URL`), without a trailing slash. With it the tools give out
-   * full URLs that a person can open; without it only the paths.
+   * The public address of the wiki (`HIPPOWIKI_PUBLIC_URL`), without a trailing slash, as the adapter checked it: the
+   * tools give out full URLs that a person can open. Without it there is no MCP server.
    */
-  publicUrl: string | undefined;
+  publicUrl: string;
   /** The actor of MCP: the user of the token of the request and the connection of its grant. */
   actor: McpActor;
   /** The folder of the connection, as the adapter read it for this request; its name is the current one. */
   folder: { id: string; name: string };
 };
-
-/** How the server introduces itself to a client. */
-const SERVER_INFO = { name: "hippowiki", title: siteName, version: "1.0.0" };
-
-/** What a connection of each role may do, as the instructions tell the model. */
-const ROLE_ABILITIES: Readonly<Record<McpRole, string>> = {
-  reader: "It reads the folder and cannot change it.",
-  writer:
-    "It reads the folder and changes its pages with create_page, replace_page_content and move_or_rename_page; it " +
-    "creates no tabs. Every change of a page states the version that read_page gave for it, and a change based on " +
-    "an older version is refused.",
-  manager:
-    "It reads the folder and changes its pages like a Writer connection, with create_page, replace_page_content and " +
-    "move_or_rename_page, deletes pages with delete_page, and creates, renames and deletes tabs with create_tab, " +
-    "rename_tab and delete_tab. Every change and every delete of a page states the version that read_page gave for " +
-    "it, and one based on an older version is refused. Deleting a tab deletes all its pages with it. Deleted pages " +
-    "can be neither seen nor restored through this connection: only a Manager or Owner of the folder restores them, " +
-    "in the browser.",
-};
-
-/**
- * What `initialize` tells the model about the wiki and the connection, in one paragraph: the folder and the role of
- * the connection, what the role allows, how the folder is organised and which tool to start with.
- */
-export function instructionsFor(folderName: string, role: McpRole): string {
-  return (
-    `${siteName} is a wiki. This connection works on the folder "${folderName}" with the role ${ROLE_LABELS[role]}. ` +
-    `${ROLE_ABILITIES[role]} The folder holds pages, either directly or grouped in tabs, which are optional ` +
-    "sections of the folder. Every page is written in Markdown and has a name, which is part of its address, and a " +
-    "title, which is its first heading. Tab and page names are lowercase letters, digits and single hyphens. Start " +
-    "with list_folder for the tabs and pages of the folder, then read_page for the content of one page."
-  );
-}
-
-/** A tab or page name as a tool takes it. The description is all the model learns about the argument. */
-function nameArgument(description: string) {
-  return nameSchema.describe(description);
-}
-
-/** The page a write tool changes: its tab, if it is in one, and its name, as list_folder returns them. */
-const pageArguments = {
-  tab: nameSchema
-    .nullable()
-    .optional()
-    .describe(
-      "The name of the tab the page is in. Leave it out, or pass null, for a page placed directly in the folder.",
-    ),
-  page: nameArgument("The name of the page, without the .md at the end of its address"),
-  version: z
-    .number()
-    .int()
-    .optional()
-    .describe("The version of the page that read_page gave; the change is refused if the page has changed since"),
-};
-
-const createPageInput = z.object({
-  content: z
-    .string()
-    .describe("The whole Markdown content of the new page. It must start with a title heading: # Title"),
-  tab: z
-    .string()
-    .nullable()
-    .optional()
-    .describe(
-      "The name of an existing tab to create the page in. Leave it out, or pass null, to place it directly in the folder.",
-    ),
-  name: z
-    .string()
-    .optional()
-    .describe(
-      "The name of the page in its address: lowercase letters, digits and single hyphens. Leave it out to derive " +
-        "it from the title.",
-    ),
-});
-
-const replacePageContentInput = z.object({
-  ...pageArguments,
-  content: z
-    .string()
-    .describe("The whole new Markdown content of the page. It must start with a title heading: # Title"),
-});
-
-const moveOrRenamePageInput = z.object({
-  ...pageArguments,
-  newTab: z
-    .string()
-    .nullable()
-    .describe(
-      "The name of an existing tab of the folder to move the page to, or null to place it directly in the folder",
-    ),
-  newName: z
-    .string()
-    .describe("The new name of the page: lowercase letters, digits and single hyphens. Pass the old name to keep it."),
-});
-
-const deletePageInput = z.object(pageArguments);
-
-/** A new tab name as a tool takes it: checked by the service, so that a bad name is a tool error with the rule. */
-function newTabNameArgument(description: string) {
-  return z.string().describe(`${description}: lowercase letters, digits and single hyphens, such as meeting-notes`);
-}
-
-/** An existing tab as a tool takes it; a name that no tab has is a tool error that says how to find the tabs. */
-const existingTabArgument = z.string().describe("The name of the tab, as list_folder returns it");
-
-const createTabInput = z.object({ name: newTabNameArgument("The name of the new tab") });
-
-const renameTabInput = z.object({ tab: existingTabArgument, newName: newTabNameArgument("The new name of the tab") });
-
-const deleteTabInput = z.object({ tab: existingTabArgument });
-
-/**
- * The tab a page is in, as a tool takes it. `null` is accepted next to a missing tab, because `list_folder` returns
- * the tab of such a page as `null`. The description comes last: one on the name alone would be lost when the argument
- * may also be `null`.
- */
-const tabArgument = nameSchema
-  .nullable()
-  .optional()
-  .describe(
-    "The name of the tab the page is in. Leave it out, or pass null, for a page placed directly in the folder.",
-  );
-
-const readPageInput = z.object({
-  tab: tabArgument,
-  page: nameArgument("The name of the page, without the .md at the end of its address"),
-});
-
-/** The user name of the last editor, as every tool that names it describes it. */
-const lastEditedByOutput = (item: string) => z.string().describe(`The user name of who changed the ${item} last`);
-
-/** How an item was last changed, as every tool that names it describes it. */
-const lastEditedViaOutput = (item: string) =>
-  z
-    .enum(["web", "mcp"])
-    .describe(
-      `How the ${item} was last changed: web for a change by a person in the browser, mcp for a change by an AI app ` +
-        "through MCP",
-    );
-
-const listFolderOutput = z.object({
-  folder: z.object({ name: z.string(), address: z.string() }),
-  tabs: z.array(
-    z.object({
-      name: z.string(),
-      address: z.string(),
-      lastChanged: z.string().describe("When the tab itself was last changed, as an ISO 8601 time"),
-      lastEditedBy: lastEditedByOutput("tab itself"),
-      lastEditedVia: lastEditedViaOutput("tab itself"),
-    }),
-  ),
-  pages: z
-    .array(
-      z.object({
-        name: z.string(),
-        title: z.string(),
-        tab: z.string().nullable().describe("The tab the page is in, or null for a page placed directly in the folder"),
-        address: z.string(),
-        lastChanged: z.string().describe("When the page was last changed, as an ISO 8601 time"),
-        lastEditedBy: lastEditedByOutput("page"),
-        lastEditedVia: lastEditedViaOutput("page"),
-      }),
-    )
-    .describe("The pages placed directly in the folder first, then the pages in tabs"),
-});
-
-const readPageOutput = z.object({
-  name: z.string(),
-  title: z.string(),
-  folder: z.string(),
-  tab: z.string().nullable(),
-  content: z.string().describe("The Markdown source of the page"),
-  address: z.string().describe("Where a person opens the page in a browser"),
-  lastChanged: z.string().describe("When the page was last changed, as an ISO 8601 time"),
-  lastEditedBy: lastEditedByOutput("page"),
-  lastEditedVia: lastEditedViaOutput("page"),
-  version: z.number().int().describe("The version of the page, counted up by every change"),
-});
-
-const storedPageOutput = z.object({
-  name: z.string(),
-  title: z.string(),
-  tab: z.string().nullable(),
-  address: z.string().describe("Where a person opens the page in a browser"),
-  version: z
-    .number()
-    .int()
-    .describe(
-      "The version of the page as stored, for the next change: counted up by a change, kept by content that is the " +
-        "same as before",
-    ),
-});
-
-const deletedPageOutput = z.object({
-  name: z.string(),
-  title: z.string(),
-  tab: z.string().nullable().describe("The tab the page was in, or null for a page placed directly in the folder"),
-  deletedPagesAddress: z
-    .string()
-    .describe("Where a person sees the deleted pages of the folder in a browser, as a Manager or Owner restores them"),
-  restore: z.string().describe("How the page can be restored"),
-});
-
-const storedTabOutput = z.object({
-  name: z.string(),
-  address: z.string().describe("Where a person opens the tab in a browser"),
-});
-
-const deletedTabOutput = z.object({
-  name: z.string().describe("The name the deleted tab had"),
-  pageCount: z.number().int().describe("How many pages were deleted with the tab"),
-  pages: z
-    .array(z.object({ name: z.string(), title: z.string() }))
-    .describe("Every page deleted with the tab, by name, without a limit"),
-  deletedPagesAddress: z
-    .string()
-    .describe("Where a person sees the deleted pages of the folder in a browser, as a Manager or Owner restores them"),
-  restore: z.string().describe("How the pages can be restored"),
-});
 
 /** The result of a tool that worked: the data for the client, and the same as text for the model. */
 function result(data: Record<string, unknown>): CallToolResult {
@@ -287,9 +80,9 @@ async function run(
   }
 }
 
-/** The address of a path of the wiki: the full URL with a public address, otherwise the path. */
+/** The address of a path of the wiki: the full URL that a person can open. */
 function addressOf({ publicUrl }: WikiToolsOptions, path: string): string {
-  return `${publicUrl ?? ""}${path}`;
+  return `${publicUrl}${path}`;
 }
 
 /** The answer when the folder of the connection cannot be read with the actor any more, e.g. after a role change. */
@@ -302,19 +95,34 @@ function placeOf(folderName: string, tab: string | null): string {
   return tab === null ? `directly in the folder "${folderName}"` : `in the tab "${tab}" of the folder "${folderName}"`;
 }
 
+/** The tool error of a page that does not exist, also a deleted one, with where to find the pages. */
+function pageNotFound(folderName: string, tab: string | null, page: string): CallToolResult {
+  return toolError(
+    `There is no page named "${page}" ${placeOf(folderName, tab)}. Use list_folder to see the pages of the folder ` +
+      "and the tab each one is in.",
+  );
+}
+
+/** Compares two names. Names are lowercase letters, digits and hyphens, so comparing the strings sorts them. */
+function compareNames(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 /**
- * The pages placed directly in the folder first, then the pages in tabs, tab by tab. Within each group the pages keep
- * the order they came in, which is by name.
+ * The order of `list_folder`: the pages placed directly in the folder first, then the pages in tabs, by tab and then
+ * by name. It is sorted here and not taken from the service, whose order is the one of the list "All pages" of the
+ * browser: by name and then by tab (`directPageFirstPerName()` in the pages service).
  */
-function placedDirectlyFirst<Page extends { tab: { name: string } | null }>(pages: Page[]): Page[] {
-  const direct = pages.filter((page) => page.tab === null);
-  const inTabs = pages.filter((page) => page.tab !== null);
-  // Names are lowercase letters, digits and hyphens, so comparing the strings sorts them. The sort is stable.
-  inTabs.sort((a, b) => {
-    const [tabA, tabB] = [a.tab?.name ?? "", b.tab?.name ?? ""];
-    return tabA < tabB ? -1 : tabA > tabB ? 1 : 0;
+function sortByTabThenName<Page extends { name: string; tab: { name: string } | null }>(pages: Page[]): Page[] {
+  return pages.toSorted((a, b) => {
+    if (a.tab === null || b.tab === null) {
+      if (a.tab !== b.tab) return a.tab === null ? -1 : 1;
+    } else {
+      const byTab = compareNames(a.tab.name, b.tab.name);
+      if (byTab !== 0) return byTab;
+    }
+    return compareNames(a.name, b.name);
   });
-  return [...direct, ...inTabs];
 }
 
 /** The tool `list_folder`: the tabs and pages of the folder of the connection, the pages placed directly in it first. */
@@ -322,11 +130,11 @@ export async function listFolder(options: WikiToolsOptions): Promise<CallToolRes
   return run("list_folder", async () => {
     const { actor, folder } = options;
     const tabs = await folderService.listTabs(actor, folder.id);
-    // The service leaves deleted pages out and returns the others by name.
+    // The service leaves deleted pages out.
     const allPages = await pageService.listAllFolderPages(actor, folder.id);
     // `null` when the actor may no longer read the folder.
     if (!tabs || !allPages) return folderGone();
-    const pages = placedDirectlyFirst(allPages);
+    const pages = sortByTabThenName(allPages);
     return result({
       folder: { name: folder.name, address: addressOf(options, folderPath(folder.name)) },
       tabs: tabs.map((tab) => ({
@@ -360,12 +168,7 @@ export async function readPage(
   return run("read_page", async () => {
     const tab = input.tab ?? null;
     const page = await pageService.getPage(options.actor, options.folder.name, tab, input.page);
-    if (!page) {
-      return toolError(
-        `There is no page named "${input.page}" ${placeOf(options.folder.name, tab)}. Use list_folder to see the ` +
-          "pages of the folder and the tab each one is in.",
-      );
-    }
+    if (!page) return pageNotFound(options.folder.name, tab, input.page);
     return result({
       name: page.name,
       title: page.title,
@@ -384,24 +187,14 @@ export async function readPage(
 /** The answer when the role on the folder does not allow a change, e.g. because it was lowered meanwhile. */
 const NOT_ALLOWED = "Your role on the folder does not allow this change, so nothing was changed.";
 
-function pageNotFound(folderName: string, tab: string | null, page: string): CallToolResult {
-  return toolError(
-    `There is no page named "${page}" ${placeOf(folderName, tab)}. Use list_folder to see the pages of the folder ` +
-      "and the tab each one is in.",
-  );
-}
-
-/** Whether the connection is one of a Manager, with the tools that delete pages and change tabs. */
-function isManager({ actor }: WikiToolsOptions): boolean {
-  return includesRole(actor.connection.role, "manager");
-}
-
 /**
- * The tool error of a tab that does not exist, also one deleted meanwhile: a Manager connection learns that it can
- * create the tab, the other connections that tabs are created in the browser.
+ * The tool error of a tab that does not exist, also one deleted meanwhile: a connection that may create tabs learns
+ * that it can create the tab, the other connections that tabs are created in the browser.
  */
 function tabNotFound(options: WikiToolsOptions, tab: string): CallToolResult {
-  const create = isManager(options) ? "or create the tab with create_tab" : "tabs are created in the browser";
+  const create = mayDo(options.actor.connection.role, "editTab")
+    ? "or create the tab with create_tab"
+    : "tabs are created in the browser";
   return toolError(
     `There is no tab named "${tab}" in the folder "${options.folder.name}", so nothing was changed. Use list_folder ` +
       `to see the tabs of the folder; ${create}.`,
@@ -464,8 +257,9 @@ async function pageChanged(options: WikiToolsOptions, stored: pageService.Stored
 }
 
 /**
- * The page as stored by a write, as every write tool returns it, with its title and its version: the new one after a
- * change, the same one after a content save without a change, which stores nothing.
+ * The page as stored by a write, as `create_page`, `replace_page_content` and `move_or_rename_page` return it, with its
+ * title and its version: the new one after a change, the same one after a content save, or a move to the own name and
+ * place, without a change, which stores nothing.
  */
 function storedResult(options: WikiToolsOptions, stored: pageService.StoredPage): CallToolResult {
   const tab = stored.tab?.name ?? null;
@@ -758,170 +552,4 @@ export async function deleteTab(
     },
     WRITE_FAILED,
   );
-}
-
-/** What every read tool tells a client about itself: it only reads, and only the wiki. */
-const READ_ONLY = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
-
-/** What a tool tells a client that writes to the wiki and destroys nothing. */
-const WRITES = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false };
-
-/** What a tool tells a client that deletes from the wiki. */
-const WRITES_AND_DELETES = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false };
-
-/**
- * A new MCP server with the tools of the wiki for the connection of the request. The SDK asks for one per request, so
- * it holds nothing between requests.
- */
-export function createWikiServer(options: WikiToolsOptions): McpServer {
-  const server = new McpServer(SERVER_INFO, {
-    instructions: instructionsFor(options.folder.name, options.actor.connection.role),
-  });
-
-  server.registerTool(
-    "list_folder",
-    {
-      title: "List the tabs and pages of the folder",
-      description:
-        "Lists the tabs and the pages of the folder of this connection. Every page comes with its name, its title " +
-        "and the tab it is in (null for a page placed directly in the folder); pass these to read_page to read it. " +
-        "Every tab and page also comes with when it was last changed, by whom and how: web in the browser, mcp by an " +
-        "AI app.",
-      outputSchema: listFolderOutput,
-      annotations: READ_ONLY,
-    },
-    () => listFolder(options),
-  );
-
-  server.registerTool(
-    "read_page",
-    {
-      title: "Read a page",
-      description:
-        "Reads one page of the folder of this connection: its title, its Markdown content, its address, when it was " +
-        "last changed, by whom and how (web in the browser, mcp by an AI app), and its version. A page is named by its " +
-        "tab if it is in one, and its own name, " +
-        "as list_folder returns them.",
-      inputSchema: readPageInput,
-      outputSchema: readPageOutput,
-      annotations: READ_ONLY,
-    },
-    (input) => readPage(options, input),
-  );
-
-  // The write tools for a connection whose role includes Writer: a Reader connection does not even see them.
-  if (!includesRole(options.actor.connection.role, "writer")) return server;
-
-  server.registerTool(
-    "create_page",
-    {
-      title: "Create a page",
-      description:
-        "Creates a new page in the folder of this connection, directly in the folder or in one of its existing " +
-        "tabs, with the given Markdown content, which must start with a title heading. Without a name the page gets " +
-        "the name derived from its title. It creates no tabs. Returns the page with its address and version.",
-      inputSchema: createPageInput,
-      outputSchema: storedPageOutput,
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-    },
-    (input) => createPage(options, input),
-  );
-
-  server.registerTool(
-    "replace_page_content",
-    {
-      title: "Replace the content of a page",
-      description:
-        "Replaces the whole content of a page of the folder of this connection with the given Markdown, which must " +
-        "start with a title heading; the title of the page follows it. State the version that read_page gave: if " +
-        "the page has changed since, nothing is changed. Content that is the same as the stored content changes " +
-        "nothing either. Returns the page with its version, which a change counts up and content without a " +
-        "change keeps.",
-      inputSchema: replacePageContentInput,
-      outputSchema: storedPageOutput,
-      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
-    },
-    (input) => replacePageContent(options, input),
-  );
-
-  server.registerTool(
-    "move_or_rename_page",
-    {
-      title: "Move or rename a page",
-      description:
-        "Moves a page of the folder of this connection to another existing tab of the folder, or directly into the " +
-        "folder, and gives it a new name, which changes its address. State the version that read_page gave: if the " +
-        "page has changed since, nothing is changed. Returns the page with its new address and version.",
-      inputSchema: moveOrRenamePageInput,
-      outputSchema: storedPageOutput,
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-    },
-    (input) => moveOrRenamePage(options, input),
-  );
-
-  // The tools that delete pages and create, rename and delete tabs only for a Manager connection.
-  if (!isManager(options)) return server;
-
-  server.registerTool(
-    "delete_page",
-    {
-      title: "Delete a page",
-      description:
-        "Deletes a page of the folder of this connection, as deleting it in the browser does: it goes to the deleted " +
-        "pages of the folder, where a Manager or Owner can restore it in the browser; deleted pages cannot be seen " +
-        "or restored through this connection. State the version that read_page gave: if the page has changed since, " +
-        "nothing is deleted. Returns the deleted page and the address of the deleted pages of the folder.",
-      inputSchema: deletePageInput,
-      outputSchema: deletedPageOutput,
-      annotations: WRITES_AND_DELETES,
-    },
-    (input) => deletePage(options, input),
-  );
-
-  server.registerTool(
-    "create_tab",
-    {
-      title: "Create a tab",
-      description:
-        "Creates a new, empty tab in the folder of this connection. create_page and move_or_rename_page can put " +
-        "pages into it at once. Returns the tab with its address.",
-      inputSchema: createTabInput,
-      outputSchema: storedTabOutput,
-      annotations: WRITES,
-    },
-    (input) => createTab(options, input),
-  );
-
-  server.registerTool(
-    "rename_tab",
-    {
-      title: "Rename a tab",
-      description:
-        "Gives a tab of the folder of this connection a new name, which changes its address and the addresses of " +
-        "all pages in it. Returns the tab with its new address.",
-      inputSchema: renameTabInput,
-      outputSchema: storedTabOutput,
-      annotations: WRITES,
-    },
-    (input) => renameTab(options, input),
-  );
-
-  server.registerTool(
-    "delete_tab",
-    {
-      title: "Delete a tab with all its pages",
-      description:
-        "Deletes a tab of the folder of this connection together with every page in it, in one call and without a " +
-        "further confirmation. The tab is deleted for good and cannot be restored. Its pages go to the deleted " +
-        "pages of the folder and can only be restored one by one, by a Manager or Owner of the folder in the " +
-        "browser. Use list_folder first to see which pages are in the tab. Returns the number of pages deleted with " +
-        "the tab, the name and title of each, and the address of the deleted pages of the folder.",
-      inputSchema: deleteTabInput,
-      outputSchema: deletedTabOutput,
-      annotations: WRITES_AND_DELETES,
-    },
-    (input) => deleteTab(options, input),
-  );
-
-  return server;
 }

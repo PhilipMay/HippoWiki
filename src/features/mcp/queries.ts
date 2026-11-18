@@ -6,7 +6,7 @@ import { mcpFolderPath } from "@/lib/addresses";
 import { getServerEnv } from "@/lib/env";
 
 /** An MCP address of a folder as the view "AI apps" shows it: the full address and its role. */
-export type McpAddressEntry = { role: McpRole; address: string };
+type McpAddressEntry = { role: McpRole; address: string };
 
 /**
  * The full MCP addresses of the folder for the roles the user's role allows (`mcpRolesFor()`): the Reader address for
