@@ -13,10 +13,10 @@
     findings of the tests that are still open are minor.
   - Documents that the features outran: rules stated in full in several documents, and copies of code and
     constants in the specs.
-- Findings: 13 open of 107, 0 Blocker, 0 Major, 12 Minor and 1 Nit (5 `issue:`, 7 `suggestion:` and 1 `nit:`); no
-  `question:` is open.
-- Confidence of the suggestions: 1 High, 10 Medium and 2 Low. A High suggestion can be
-  fixed as written; the others wait for the user, as `issue-report.md` describes.
+- Findings: 9 open of 107, 0 Blocker, 0 Major, 9 Minor and 0 Nit (2 `issue:` and 7 `suggestion:`); no `question:`
+  is open.
+- Confidence of the suggestions: 0 High, 8 Medium and 1 Low. A High suggestion can be fixed as written; the others
+  wait for the user, as `issue-report.md` describes.
 - Decisions: on 2026-11-18 the user decided all Medium and Low suggestions. Each of these findings ends with a line
   `Decision`, and is fixed as that line says, without asking again. The questions were decided by the user on the
   same day, in "Decisions on the questions" of `spec/review-02-fixes-steps.md`.
@@ -483,106 +483,10 @@ that several of them state were compared with each other and with the code:
 ### Documentation: the first review report and the other feature specs
 
 `spec/review-report.md` is the report of the security and code review, last rechecked on 2026-11-17. Every one of
-its 103 findings was checked against the code of today: none is fixed, and its counts by label and by severity are
-right. `users-and-login.md`, `connected-apps.md`, `oauth.md` and `container-image.md` were checked against their
+its 103 findings was checked against the code of today: none is fixed. Its Locations, the passages that described
+code that has moved on, its threat model and its "Reviewed" lists were brought in line with the code after the
+fixes of this report. `users-and-login.md`, `connected-apps.md`, `oauth.md` and `container-image.md` were checked against their
 code with less depth than the specs of the content; they match it closely.
-
-#### issue: 17 findings of `review-report.md` cite line ranges or a file that no longer hold the code they describe
-
-- Location: `spec/review-report.md`, section "Findings", the Location of the findings in the table below, and
-  section "Scope and method"
-- Severity: Minor. Each finding can still be found by the name of its function, but the cited lines show other
-  code.
-- Category: docs
-- Problem: the ranges do not match the files as they are. Everything in the OAuth service from
-  `checkAuthorizationRequest()` on was off by one line, and the service is now split into the modules
-  `clients-service.ts`, `authorization-service.ts` and `token-service.ts`, to which the Locations point by file only; `src/features/mcp/tools.ts`,
-  `src/features/pages/service.ts` and `src/features/folders/service.ts` are off by tens to hundreds of lines.
-- Impact: whoever fixes a finding by its Location opens the wrong lines. For the nit on the second statement the
-  cited function no longer holds the statement at all.
-- Evidence:
-
-  | Finding of the first report                                    | Cited                                                                                                       | Now                                                                                                   |
-  | -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-  | nit: `createUser()` and the write actions check the form first | `createPage()` 68–82, `createTab()` 100–110, `giveRole()` 36–50                                             | 70–87, 98–109, 35–47                                                                                  |
-  | issue: Client Components get whole `TabSummary` rows           | `PageView.tsx` 111 and 149–159; `TabSummary` line 58                                                        | 242 and 282–287; line 64                                                                              |
-  | suggestion: the seed resets the admin                          | `prisma/seed.ts` 81–126, upsert 87–94                                                                       | from 82, upsert 88–95                                                                                 |
-  | issue: a repeated parameter counts as missing                  | `oauth/service.ts` 328–401                                                                                  | 329–402                                                                                               |
-  | issue: using a code a second time                              | `exchangeCode()` 570–698                                                                                    | 571–699                                                                                               |
-  | issue: a forged refresh token revokes the grant                | `refreshGrant()` 712–803                                                                                    | 713–804                                                                                               |
-  | nit: `resource` is case-sensitive                              | lines 374, 649 and 776–781                                                                                  | 375, 650 and 777–782                                                                                  |
-  | nit: the grant stays after two refreshes                       | 706–707, 757 and 794–799                                                                                    | 707–708, 758 and 794–800                                                                              |
-  | issue: wiki text reaches the model unmarked                    | `tools.ts` 41–61, 184–186, 279–304 and 543–556                                                              | 41–69, 258–260, 357–383 and 806–820                                                                   |
-  | suggestion: tool calls are not audited by grant                | `channelOf()` in the pages service                                                                          | defined in the service of the folder roles, line 51                                                   |
-  | suggestion: `list_folder` has no paging                        | `tools.ts` 248–273                                                                                          | 322–351                                                                                               |
-  | nit: `tools.listChanged: true`                                 | `tools.ts` 525–528                                                                                          | 786–789                                                                                               |
-  | nit: writes read the page back in a second statement           | `updatePageContent()` 489–494, `moveOrRenamePage()` 547–552, `restorePage()` 667–671, `renameTab()` 384–386 | `saveContentChange()` 787–790, 923–938, 1055–1059, `renameTab()` 453–462 with `writeRename()` 159–169 |
-  | issue: several security events lack the actor                  | `folders/service.ts` 259, 306, 356 and 401; `pages/service.ts` 628; `tools.ts` 212; `oauth/service.ts` 752  | 302, 366, 418 and 480; 644; 286; 753                                                                  |
-  | issue: rejected input at the OAuth endpoints is never logged   | `oauth/service.ts` 580 and 721                                                                              | 581 and 722                                                                                           |
-  | nit: the longest functions mix several steps                   | the OAuth service with 836 lines                                                                            | 837 lines                                                                                             |
-  | suggestion: no lint rule keeps comparisons strict              | `roles.ts` 57 and 84                                                                                        | 59 and 87                                                                                             |
-
-- Suggestion (required): replace the ranges as in the table, and decide at the next recheck whether a Location
-  names only the file and the function, which do not drift.
-- Confidence: High. Every new range was read; the change is to the report only.
-
-#### issue: four open findings of `review-report.md` describe a state of the code that has moved on
-
-- Location: `spec/review-report.md`, section "MCP server", "issue: wiki text reaches the model…" and "issue: one
-  token can make the server do unbounded work…"; section "Content", "nit: writes read the page back in a second
-  statement"; section "Logging, errors and failure handling", "issue: several security events are logged without
-  the actor…"
-- Severity: Minor. The findings stay open; the reasoning of one severity rests on an incomplete list.
-- Category: docs
-- Problem:
-  - Prompt injection: the Severity argues that "a Writer connection cannot delete pages or touch tabs", and the
-    Impact lists the three tools of a Writer. A Manager connection also has `delete_page`, `create_tab`,
-    `rename_tab` and `delete_tab`, so planted text can steer deletes now.
-  - Unbounded work: the batch of 100 writes leaves out 100 deletes of pages or tabs at a Manager address.
-  - The second statement: "`updateMany` and the following read are two statements" no longer describes a content
-    save, which is a transaction of the page and its revision, followed by a read; `revertPage()` takes the same
-    path and is not named.
-  - Logging: the writes of folders and tabs are said to be logged "with neither" the channel nor the actor. Only
-    "folder created" has neither; the renames and "tab created" carry the channel, and "tab deleted" carries both.
-- Impact: the finding on prompt injection is rated Minor on a description that leaves out the tools that destroy,
-  so its severity may be too low; someone who fixes the finding on logging adds a channel that is there.
-- Evidence: `src/features/mcp/tools.ts`, line 873, `if (!isManager(options)) return server;`, followed by the four
-  registrations; `src/features/folders/service.ts`, line 366,
-  `logger.info({ folderId, ...channelOf(actor) }, "folder renamed");`.
-- Suggestion (required): rewrite the four passages, and judge the severity of the finding on prompt injection
-  again.
-- Confidence: Low. The new wording is clear; the new severity is a judgement for the user.
-- Decision (2026-11-18): as suggested; the finding on prompt injection becomes Major, not a Blocker, because deleted
-  pages can be restored. The counts of the first report change with it.
-
-#### issue: the threat model and the "Reviewed" lists of `review-report.md` leave out the page history, the delete of a tab and the tools of a Manager
-
-- Location: `spec/review-report.md`, section "Threat model" ("Assets" and "Entry points"), the "Reviewed" lists of
-  "Access control", "MCP server" and "Content", and section "Scope and method"
-- Severity: Minor. The "Reviewed" lists are the proof of the cover of the report; code they do not name was not
-  visibly reviewed.
-- Category: docs
-- Problem:
-  - The Server Actions of the entry points lack `deleteTab()` and `revertPage()`; the pages behind the login lack
-    the views of the history, of a revision and of a comparison, and the actions revert and delete of a tab.
-  - The assets do not list the revisions of a page, which keep the user of every change.
-  - "Content", "Reviewed", says: "MCP has no tool that deletes, lists deleted pages or restores"; `delete_page`
-    and `delete_tab` exist, and the list of "MCP server" in the same report names them.
-  - "MCP server", "Reviewed", says the tools are those "of a Reader or a Writer only".
-  - "Content", "Reviewed", says "every page has a version that every write counts up"; a save or a move without a
-    change keeps it.
-  - No list has an entry on the revisions, the revert, the comparison or the history of deleted pages, and the
-    files read do not name `page-history.md` or the components of the history.
-- Impact: a reader takes the page history and the delete tools as reviewed against the threat model, when no
-  entry shows it.
-- Evidence: line 1612 of the report: "MCP has no tool that deletes, lists deleted pages or restores".
-- Suggestion (required): add the missing actions, views and the asset, correct the three statements, and then
-  either review the page history and the delete of a tab for security and add their entries, or list them under
-  "Not covered by this review".
-- Confidence: Medium. The corrections are clear; the missing entries need a real review of that code.
-- Alternatives: narrow "Scope and method" to the code the lists name, which is cheaper and leaves a gap.
-- Decision (2026-11-18): as suggested, with the first of the two ways: the page history, the delete of a tab and the
-  tools of a Manager are listed under "Not covered by this review" until a security recheck.
 
 #### suggestion: none of the 98 findings of `review-report.md` that need one has a confidence
 
@@ -600,34 +504,22 @@ code with less depth than the specs of the content; they match it closely.
 - Confidence: Medium. Each level is a judgement per finding.
 - Decision (2026-11-18): the confidences are assigned at the next recheck, as the report says, and not in this cleanup.
 
-#### nit: the first nit of `review-report.md` still names `changeRole()` for an invalid role
-
-- Location: `spec/review-report.md`, section "Access control and the entry points of requests", "nit:
-  `createUser()` and the write actions of folders check the form before the rights…";
-  `src/features/folder-roles/service.ts`, lines 516–521
-- Severity: Nit. The finding holds for the other four actions.
-- Category: docs
-- Problem: the report says `changeRole()` returns "the message for an invalid role" before the role of the actor
-  is checked. The action answers so only for a submission without a user or an intent; a role that is no role
-  goes to the service, which refuses a caller who is no Owner first.
-- Impact: the finding reads as if `changeRole()` needed the same fix as the others.
-- Evidence: the comment in the service: "Checked after the Owner, so that the answer to anyone else does not
-  depend on the input."
-- Suggestion (optional): say that for `changeRole()` only a submission without a user or an intent is answered
-  before the rights.
-- Confidence: Medium. Read on both sides, not sent to a running server.
-- Decision (2026-11-18): as suggested.
-
 #### Reviewed
 
-- The counts of `review-report.md`: 53 `issue:`, 18 `suggestion:`, 27 `nit:` and 5 `question:` make 103; 1 Major,
-  64 Minor and 38 Nit; 20 accepted deviations. All match its summary.
+- The counts of `review-report.md`: 53 `issue:`, 18 `suggestion:`, 27 `nit:` and 5 `question:` make 103; 2 Major,
+  63 Minor and 38 Nit; 20 accepted deviations. All match its summary; the finding on prompt injection is Major, because
+  a Manager connection can be steered to delete pages and tabs, and no Blocker, because deleted pages can be restored.
+- The Locations of `review-report.md` give the line ranges that hold after the fixes of this report, also where a
+  file was split or a function moved; the passages on prompt injection, on unbounded work, on the second statement of
+  a write and on the missing actor of the log describe the code as it is; the first nit says that `changeRole()`
+  answers only a submission without a user or an intent before the rights.
+- The threat model of `review-report.md` names the revisions of a page, `deleteTab()`, `revertPage()` and the views
+  of the history; its "Reviewed" lists no longer say that MCP has no tool that deletes or that every write counts up
+  the version; the page history, the delete of a tab and the tools of a Manager are listed under "Not covered by this
+  review" until a security recheck.
 - No finding of the first report is fixed. Every quoted line of evidence that was looked for is still in the code
   or the spec.
 - No spec now documents as a decision something that the first report lists as "no reason given".
-- The Locations of the first report that name the auth service, `src/lib/`, the users, the grants, the schema and
-  the adapter of OAuth, the MCP adapter, the configuration of Next.js, the container files and the workflows
-  match exactly.
 - `users-and-login.md`: the rules of names and passwords, the list of common passwords, the admin setup, the two
   limits of the login with the numbers derived in "Decisions", the settings of a session and the routes match
   the code.
@@ -665,7 +557,7 @@ documents name.
 1. Decide the open questions that other work depends on. Done on 2026-11-18: no tool offers the deleted pages or
    the writes of roles, and nothing in the code enforces it; the unit tests of the services are cut after the
    missing integration cases exist. The Decision of each finding holds the rest.
-2. Fix the findings with a High confidence that change no code: the Locations of the first report.
+2. Fix the findings with a High confidence that change no code: the Locations of the first report. Done.
 3. Close the gaps of the tests before any refactoring: the states of the dialogs that a shared frame would move.
 4. Refactor the code in small steps, each with its checks: the hooks and the frame of the dialogs, then the
    splits of the large files. Done: the code findings are fixed.
