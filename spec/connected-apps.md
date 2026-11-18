@@ -11,7 +11,7 @@ the access tokens, in `mcp.md`. An admin has no connected apps and cannot get an
 Code: `src/features/grants/` (`schema.ts`, `service.ts` with `authenticateAccessToken()`, `forms.ts`, `queries.ts`,
 `actions.ts`, the list and the dialog in `components/`), the route `src/app/account/` and the link in
 `src/components/AppHeader.tsx`. The model is `OAuthGrant` in `prisma/schema.prisma`. Tests: `e2e/account.spec.ts`,
-`e2e/mcp.spec.ts`, `e2e/oauth.spec.ts`, `integration/grant-service.test.ts`, and the unit tests next to the code,
+`e2e/mcp-access.spec.ts`, `e2e/oauth.spec.ts`, `integration/grant-service.test.ts`, and the unit tests next to the code,
 such as `src/features/grants/service.test.ts`.
 
 ## Connected apps

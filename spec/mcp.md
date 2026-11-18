@@ -14,7 +14,7 @@ Code: `src/features/mcp/` (`tools.ts` with the tools, `http.ts` with the adapter
 actor of MCP `inMcp()` in `src/features/folder-roles/service.ts`. The protocol is spoken by the MCP SDK
 (`@modelcontextprotocol/server`, see `tech.md`).
 
-Tests: `e2e/mcp.spec.ts`, `e2e/oauth.spec.ts` for the access tokens of OAuth, `e2e/ai-apps.spec.ts` for the view "AI
+Tests: `e2e/mcp-access.spec.ts`, `e2e/mcp-read.spec.ts`, `e2e/mcp-write.spec.ts`, `e2e/mcp-manager.spec.ts`, `e2e/oauth.spec.ts` for the access tokens of OAuth, `e2e/ai-apps.spec.ts` for the view "AI
 apps", `integration/grant-service.test.ts`, `integration/page-service.test.ts`, `integration/folder-service.test.ts`,
 and the unit tests next to the code,
 `src/features/mcp/tools.test.ts`, `src/features/mcp/http.test.ts` and `src/features/mcp/queries.test.ts`.

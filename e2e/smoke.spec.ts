@@ -1,6 +1,6 @@
 import { KNOWN_ADMIN, KNOWN_USER } from "../prisma/known-users";
 import { collectErrors } from "./support/browser";
-import { createPage, createUser, getTestDb, resetTestDatabase } from "./support/database";
+import { createUser, getTestDb, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
 
 test.beforeEach(async () => {
@@ -23,15 +23,6 @@ test("health check reports ok", async ({ request }) => {
 
   expect(response.status()).toBe(200);
   expect(await response.json()).toEqual({ status: "ok" });
-});
-
-test("helper creates pages in the test database", async () => {
-  const created = await createPage({ title: "Smoke" });
-
-  expect(created.title).toBe("Smoke");
-  expect(await getTestDb().page.count()).toBe(1);
-  await resetTestDatabase();
-  expect(await getTestDb().page.count()).toBe(0);
 });
 
 test("a reset keeps the known users and the sessions of their saved logins", async () => {

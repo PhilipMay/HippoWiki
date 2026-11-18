@@ -300,7 +300,9 @@ How the code is tested. Commands are listed in `README.md`.
     arrives there.
   - `mcp.ts` has the helpers of the MCP tests, in which a test stands in for an MCP client: `sendMcp()` sends a
     JSON-RPC message to an MCP address with a bearer token, `callTool()` calls a tool there and returns its result, and
-    `mcpPath()` gives the path of the address of a folder and role.
+    `mcpPath()` gives the path of the address of a folder and role. `setUpProjects()` resets the test database and
+    creates the folder "projects" with a Reader grant of `alice`; until the next reset, `send()` and `call()` use that
+    connection unless a test gives another token or address.
   - `setOwnRole()` sets the role of the known user `alice` on a folder, as another Owner would while a form of the test
     is open.
   - `auth.ts` also has `submitLogin()`, which fills and submits the login form of the open page, and `logIn()`, which
@@ -346,8 +348,12 @@ How the code is tested. Commands are listed in `README.md`.
 - `e2e/access.spec.ts` checks that every kind of address leads to the login page without a login, as a redirect that
   sends nothing of the page, and that the redirect carries the address as the way back. A new route adds its address
   there; a new public address is checked there as well, for not being sent to the login page.
-- `e2e/mcp.spec.ts` calls the MCP addresses of folders with `request`, the helpers of `e2e/support/mcp.ts` and the
-  access token of a grant from `createGrant()`, for Reader, Writer and Manager connections; `e2e/oauth.spec.ts` covers the discovery, the registration, the
+- The specs of MCP call the MCP addresses of folders with `request`, the helpers of `e2e/support/mcp.ts` and the
+  access token of a grant from `createGrant()`, for Reader, Writer and Manager connections, each from a test database
+  reset by `setUpProjects()`: `e2e/mcp-access.spec.ts` the tokens, the binding of a connection to its address and the
+  current role behind it, `e2e/mcp-read.spec.ts` the protocol and the read tools, `e2e/mcp-write.spec.ts` the write
+  tools of a Writer with their locking, and `e2e/mcp-manager.spec.ts` the tools of a Manager. A change of a tool runs
+  the spec of its group, a change of the access `e2e/mcp-access.spec.ts`; `e2e/oauth.spec.ts` covers the discovery, the registration, the
   token endpoint and the whole flow from the login over the consent page to a tool call, a refresh and a refresh token
   that is used again. The helpers of `e2e/support/oauth.ts` send a folder address as `resource` (`mcpAddress()`).
 - `e2e/ai-apps.spec.ts` covers the folder view "AI apps" with its addresses per role and the copy button.

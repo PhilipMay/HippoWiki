@@ -13,7 +13,7 @@ components of the roles view, the "Give role" dialog and the admin overview), th
 deleted pages, the overview `src/app/folder-roles/page.tsx`, the model `FolderRole` in `prisma/schema.prisma` and the
 migration `prisma/migrations/20261116103037_init/`.
 
-Tests: `e2e/folder-roles.spec.ts`, `e2e/mcp.spec.ts`, `e2e/ai-apps.spec.ts`, `e2e/access.spec.ts`, `e2e/hydration.spec.ts`,
+Tests: `e2e/folder-roles.spec.ts`, `e2e/mcp-access.spec.ts`, `e2e/ai-apps.spec.ts`, `e2e/access.spec.ts`, `e2e/hydration.spec.ts`,
 `integration/folder-role-service.test.ts`, `integration/folder-service.test.ts`, `integration/page-service.test.ts`,
 `integration/db-errors.test.ts`, and the unit tests next to the code, such as `src/features/folder-roles/roles.test.ts`
 and `src/features/folder-roles/service.test.ts`.

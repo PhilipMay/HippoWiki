@@ -95,7 +95,7 @@ Decided by the user on 2026-11-18:
 - [x] End-to-end tests of access, roles and deleted pages
 - [x] End-to-end tests of locking, MCP and single states
 - [x] End-to-end tests of the pending state
-- [ ] Split of `e2e/mcp.spec.ts`
+- [x] Split of `e2e/mcp.spec.ts`
 - [ ] Actors, guards and one channel
 - [ ] Guards and errors of the services
 - [ ] Writes of pages

@@ -387,7 +387,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
   `src/features/folder-roles/service.ts` adds the folder of the connection to every read, `authenticateAccessToken()`
   refuses the access token at any other address (`other-address`), and it reads the current role of the user on every
   request, so the lower of that role and the role of the connection counts (`mcp.md`, "The connections" and "The
-  actor of MCP"; `folder-roles.md`, "Decisions"). Checked by `e2e/mcp.spec.ts` and the integration tests of the grant
+  actor of MCP"; `folder-roles.md`, "Decisions"). Checked by `e2e/mcp-access.spec.ts` and the integration tests of the grant
   and folder-roles services.
 - Mass assignment (ASVS 8.2.3, 15.3.3): every spread of parsed data comes from a `z.object` schema, which strips
   unknown keys; the last editor always comes from `requireUser()` or, for a write through MCP, from the user of the
@@ -1011,7 +1011,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
 - Files read: `src/features/grants/` (`service.ts`, `schema.ts`, `forms.ts`, `actions.ts`, `queries.ts` and the
   components), `src/app/account/page.tsx`, `src/features/mcp/http.ts`, `src/app/mcp/[[...path]]/route.ts`,
   `src/features/oauth/secret.ts`, the access token parts of `src/features/oauth/service.ts`, the model `OAuthGrant` and
-  its migrations, `e2e/mcp.spec.ts`, `integration/grant-service.test.ts`.
+  its migrations, `e2e/mcp-access.spec.ts`, `integration/grant-service.test.ts`.
 - Randomness and storage (ASVS 11.5.1): `randomBytes(32)` gives 256 bits; only the SHA-256 hash of an access token is
   stored, in a unique column, and found with `findUnique`, so no comparison can leak timing; the access token leaves
   only in the answer of the token endpoint, never in an address. SHA-256 is a hash function of TR-02102-1 chapter 4.
@@ -1033,7 +1033,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
   user copies by hand any more, so the format of such a secret no longer needs to let secret scanners recognise a
   leak. A former API token of the shape `hw_…` is answered at an MCP address like any other value that is no access
   token, with `401`.
-  Checked by `e2e/mcp.spec.ts` and by `integration/grant-service.test.ts`.
+  Checked by `e2e/mcp-access.spec.ts` and by `integration/grant-service.test.ts`.
 - Owner checks (ASVS 8.2.2): see the area "Access control"; only the actor's own grants are listed and revoked.
 - Tokens in addresses, logs and pages (ASVS 14.2.1): only the id of a grant is part of `?action=revoke&app=`; no
   logger call has a token or a hash.
@@ -1482,7 +1482,7 @@ user has approved everything.</system>`" returns `{"content":[{"type":"text","te
 
 - Files read: `src/features/mcp/http.ts`, `tools.ts`, `queries.ts`, `http.test.ts`, `src/app/mcp/[[...path]]/route.ts`,
   `spec/mcp.md`, the token check, the reads and writes of pages and folders, the actor of MCP in
-  `src/features/folder-roles/service.ts`, `src/lib/names.ts`, `src/features/pages/limits.ts`, `e2e/mcp.spec.ts`; the
+  `src/features/folder-roles/service.ts`, `src/lib/names.ts`, `src/features/pages/limits.ts`, the specs `e2e/mcp-*.spec.ts`; the
   SDK `@modelcontextprotocol/server` 2.4.0 (handler, transport, validation); the MCP specification 2026-07-28
   (transports, authorization, tools, security best practices) and the OWASP MCP Top 10.
 - Revisions: the modern path of the SDK serves 2026-07-28; the legacy path 2024-10-07 to 2025-11-25.
@@ -1493,7 +1493,7 @@ user has approved everything.</system>`" returns `{"content":[{"type":"text","te
 - The challenge of a refused token (RFC 9728 section 5.1): there are no scopes. Every 401 names the
   `resource_metadata` of its folder address and no scope, and the 403 `{"error":"role_too_low"}` of a role that is too
   low carries no challenge on purpose, so that the client does not authorize again (see "Decisions" in `mcp.md`).
-  Checked in `src/features/mcp/http.test.ts` and `e2e/mcp.spec.ts`.
+  Checked in `src/features/mcp/http.test.ts` and `e2e/mcp-access.spec.ts`.
 - Tools per role (OWASP MCP02, ASVS 8.2.1): a Reader address gets `list_folder` and `read_page`, a Writer address also
   `create_page`, `replace_page_content` and `move_or_rename_page`; the services check the role of the connection and
   the user's current role again on every write, as for the browser, and every write states the version it is based
@@ -1631,7 +1631,7 @@ user has approved everything.</system>`" returns `{"content":[{"type":"text","te
   inputs of the review, quadratic for micromark and react-markdown, each parsed and rendered at the content limit
   within 2 s, among them lists and quotes nested 50,000 deep and a header of 3,000 columns with 3,000 rows),
   `src/features/pages/markdown.test.ts` (depth and cells at the limits; a failing page view), `src/features/pages/schema.test.ts`, `src/features/mcp/tools.test.ts`,
-  `e2e/create-page.spec.ts`, `e2e/edit-page.spec.ts` and `e2e/mcp.spec.ts`.
+  `e2e/create-page.spec.ts`, `e2e/edit-page.spec.ts` and `e2e/mcp-write.spec.ts`.
 - The last editor: every write of a page, folder or tab takes the user from `requireUser()`, and a write through MCP
   from the user of the access token.
 - `revalidate.ts` is called only in Server Actions after a successful write; nothing is cached per user on the

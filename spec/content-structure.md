@@ -150,7 +150,7 @@ A rename of a folder or a tab to the name it already has changes nothing, in the
 that the time of the last change, the last editor and the channel name only who really changed the item. Code:
 `renameFolder()`, `renameTab()` in `src/features/folders/service.ts`,
 `src/features/folders/components/NameDialog.tsx`. Tests: `src/features/folders/service.test.ts`,
-`integration/folder-service.test.ts`, `e2e/folders.spec.ts`, `e2e/tabs.spec.ts`, `e2e/mcp.spec.ts`,
+`integration/folder-service.test.ts`, `e2e/folders.spec.ts`, `e2e/tabs.spec.ts`, `e2e/mcp-manager.spec.ts`,
 `e2e/hydration.spec.ts`.
 
 - A rename to the name the folder or tab has stored stores nothing: the item keeps its time of the last change, its
@@ -180,7 +180,7 @@ real changes, and an editor or dialog that another user has open on the page is 
 `moveOrRenamePage()` in `src/features/pages/service.ts`,
 `src/features/pages/components/MoveOrRenamePageDialog.tsx`. Tests: `src/features/pages/service-writes.test.ts`,
 `src/features/mcp/tools.test.ts`, `integration/page-service.test.ts`, `e2e/move-or-rename-page.spec.ts`,
-`e2e/mcp.spec.ts`, `e2e/folder-roles.spec.ts`.
+`e2e/mcp-write.spec.ts`, `e2e/folder-roles.spec.ts`.
 
 - A move or rename to the name and the place the page has stored stores nothing: the page keeps its last editor, its
   channel, its time of the last change and its version, and no revision is recorded. The place is the same when it is

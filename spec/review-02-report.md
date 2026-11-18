@@ -14,9 +14,9 @@
     findings of the tests that are still open are minor.
   - Documents that the features outran: rules stated in full in several documents, and copies of code and
     constants in the specs.
-- Findings: 58 open of 107, 0 Blocker, 0 Major, 46 Minor and 12 Nit (16 `issue:`, 28 `suggestion:`, 10 `nit:` and
+- Findings: 57 open of 107, 0 Blocker, 0 Major, 46 Minor and 11 Nit (16 `issue:`, 28 `suggestion:`, 9 `nit:` and
   4 `question:`).
-- Confidence of the suggestions: 6 High, 38 Medium and 10 Low; the 4 questions have none. A High suggestion can be
+- Confidence of the suggestions: 6 High, 38 Medium and 9 Low; the 4 questions have none. A High suggestion can be
   fixed as written; the others wait for the user, as `issue-report.md` describes.
 - Decisions: on 2026-11-18 the user decided all Medium and Low suggestions. Each of these findings ends with a line
   `Decision`, and is fixed as that line says, without asking again. The 4 questions were decided by the user on the
@@ -1036,24 +1036,6 @@ them are fixed.
 
 ### Tests: end-to-end
 
-#### nit: `mcp.spec.ts` has 1,465 lines, and two specs hold tests that use neither browser nor server
-
-- Location: `e2e/mcp.spec.ts`; `e2e/tabs.spec.ts`, lines 586–604, "the database refuses a page whose tab belongs
-  to another folder"; `e2e/smoke.spec.ts`, lines 28–35
-- Severity: Nit. A matter of structure.
-- Category: tests
-- Problem: `mcp.spec.ts` mixes the checks of the token, the binding to the address, the read tools, the write
-  tools, the tools of a Manager and the parity with the browser. The two tests named run in the slowest suite and
-  test a rule of the database.
-- Impact: "the specs the change affects" is hard to pick for MCP.
-- Evidence: the test in `e2e/tabs.spec.ts` takes no `page` and no `request`.
-- Suggestion (optional): split `mcp.spec.ts` by access, read, write and Manager, and move the database test to
-  `integration/db-errors.test.ts`.
-- Confidence: Low. The split is a preference, and whether an integration test already covers that foreign key was
-  not checked.
-- Decision (2026-11-18): as suggested; the database test moves to `integration/db-errors.test.ts` unless a test there
-  covers the foreign key already.
-
 #### Reviewed
 
 - The newest rules are proven in the browser and at the server: "Save" of the rename dialogs disabled for the own
@@ -1097,6 +1079,8 @@ them are fixed.
 - `testing.md` matches the configuration of Playwright, the global setup and the helpers in every statement
   checked.
 - Every route under `src/app` has an end-to-end test except the two error pages.
+- The specs of MCP are split by access, read, write and Manager, and every end-to-end test uses the browser or the
+  server; the foreign key of a page and its tab is proven in `integration/db-errors.test.ts`.
 
 ### Documentation: the feature specs of the content
 
@@ -1249,7 +1233,7 @@ that several of them state were compared with each other and with the code:
 - Evidence: "without it only API tokens work."; against `if (publicUrl === undefined) return refusal(404,
 "not_found");`.
 - Suggestion (required): "without it there is no OAuth and no MCP server".
-- Confidence: High. No code accepts an API token, and `e2e/mcp.spec.ts` covers the behaviour. The file is no
+- Confidence: High. No code accepts an API token, and `e2e/mcp-access.spec.ts` covers the behaviour. The file is no
   documentation by the rule for changes to documentation only, so the fix runs the full checks.
 
 #### suggestion: the entries of the catalog in `CLAUDE.md` have grown into second copies of the specs

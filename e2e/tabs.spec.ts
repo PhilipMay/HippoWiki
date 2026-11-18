@@ -586,26 +586,6 @@ test("saving a page into a tab that no longer exists shows an error and keeps th
   expect(await getTestDb().page.count()).toBe(0);
 });
 
-test("the database refuses a page whose tab belongs to another folder", async () => {
-  const other = await createFolder({ name: "other" });
-  const foreignTab = await createTab({ folder: other, name: "foreign" });
-
-  await expect(
-    getTestDb().page.create({
-      data: {
-        name: "misplaced",
-        title: "Misplaced",
-        content: "# Misplaced",
-        folderId: handbook.id,
-        tabId: foreignTab.id,
-        lastEditedById: foreignTab.lastEditedById,
-        lastEditedVia: "web",
-      },
-    }),
-  ).rejects.toMatchObject({ code: "P2003" });
-  expect(await getTestDb().page.count()).toBe(0);
-});
-
 for (const address of [
   // An unknown or malformed tab, and the tab of another folder.
   "/folders/handbook/no-such-tab",
