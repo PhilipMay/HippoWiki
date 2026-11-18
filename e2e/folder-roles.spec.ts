@@ -248,6 +248,25 @@ test.describe("what each role may do", () => {
     }
   });
 
+  test("an action beyond the role shows the not-found page under the plain title", async ({ page }) => {
+    const folder = await createFolder({ name: "handbook", roles: [{ user: ALICE, role: "reader" }] });
+    const tab = await createTab({ folder, name: "guides" });
+    await createPage({ folder, name: "intro", title: "Intro" });
+    await createPage({ tab, name: "setup", title: "Setup" });
+
+    // The title and the page decide alike, so the not-found page of an action is not titled like the action.
+    for (const address of [
+      "/folders/handbook?action=new",
+      "/folders/handbook?action=rename",
+      "/folders/handbook/guides?action=new",
+      "/folders/handbook/intro.md?action=edit",
+      "/folders/handbook/guides/setup.md?action=revert&revision=1",
+    ]) {
+      await expectNotFound(page, address);
+      await expect(page, address).toHaveTitle("HippoWiki");
+    }
+  });
+
   test("a crafted form of each write of a Reader shows the not-found page and writes nothing", async ({ page }) => {
     const folder = await createFolder({ name: "handbook" });
     const tab = await createTab({ folder, name: "guides" });

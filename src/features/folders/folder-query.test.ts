@@ -1,0 +1,118 @@
+import { describe, expect, it } from "vitest";
+
+import { ROLES, type Role } from "@/features/folder-roles/roles";
+import {
+  folderAddressOf,
+  mayDoFolderAction,
+  mayDoTabAction,
+  tabAddressOf,
+  type FolderAction,
+  type TabAction,
+} from "@/features/folders/folder-query";
+import type { SearchParams } from "@/lib/addresses";
+
+/** Whether each role, from Reader to Owner, has the action, given its lowest role. */
+function expectFrom(may: (role: Role | null) => boolean, lowestRole: Role) {
+  const from = ROLES.indexOf(lowestRole);
+  for (const [index, role] of ROLES.entries()) expect(may(role), role).toBe(index >= from);
+  expect(may(null), "no role").toBe(false);
+}
+
+describe("mayDoFolderAction", () => {
+  it.each<[FolderAction, Role]>([
+    ["new", "writer"],
+    ["new-tab", "manager"],
+    ["rename", "owner"],
+    ["give-role", "owner"],
+  ])("allows %s from %s up", (action, lowestRole) => {
+    expectFrom((role) => mayDoFolderAction(role, action), lowestRole);
+  });
+});
+
+describe("mayDoTabAction", () => {
+  it.each<[TabAction, Role]>([
+    ["new", "writer"],
+    ["rename", "manager"],
+    ["delete", "manager"],
+  ])("allows %s from %s up", (action, lowestRole) => {
+    expectFrom((role) => mayDoTabAction(role, action), lowestRole);
+  });
+});
+
+describe("folderAddressOf", () => {
+  const owner = { name: "handbook", role: "owner" as const };
+
+  it.each<[SearchParams, string]>([
+    [{}, "handbook"],
+    [{ action: "new" }, "New page"],
+    [{ action: "rename" }, "handbook"],
+    [{ action: "new-tab" }, "handbook"],
+    [{ action: "give-role" }, "handbook"],
+    [{ view: "all" }, "All pages – handbook"],
+    [{ view: "roles" }, "Roles – handbook"],
+    [{ view: "mcp" }, "AI apps – handbook"],
+  ])("gives %o the title %s", (searchParams, title) => {
+    expect(folderAddressOf(owner, searchParams, true)?.title).toBe(title);
+  });
+
+  it("reads the action and the view", () => {
+    expect(folderAddressOf(owner, { action: "new-tab" }, true)).toMatchObject({ action: "new-tab", view: null });
+    expect(folderAddressOf(owner, { view: "roles" }, true)).toMatchObject({ action: null, view: "roles" });
+  });
+
+  it.each<SearchParams>([
+    { action: "delete" },
+    { action: "" },
+    { action: ["new", "new"] },
+    { view: "history" },
+    { view: ["all", "all"] },
+    { action: "new", view: "all" },
+  ])("shows the not-found page for %o", (searchParams) => {
+    expect(folderAddressOf(owner, searchParams, true)).toBeNull();
+  });
+
+  it("shows the not-found page for an action beyond the role, but every view to every role", () => {
+    const reader = { name: "handbook", role: "reader" as const };
+    for (const action of ["new", "rename", "new-tab", "give-role"]) {
+      expect(folderAddressOf(reader, { action }, true), action).toBeNull();
+    }
+    for (const view of ["all", "roles", "mcp"]) {
+      expect(folderAddressOf(reader, { view }, true), view).not.toBeNull();
+    }
+  });
+
+  it("shows the not-found page for the view of the AI apps without an MCP server", () => {
+    expect(folderAddressOf(owner, { view: "mcp" }, false)).toBeNull();
+    expect(folderAddressOf(owner, {}, false)?.title).toBe("handbook");
+  });
+});
+
+describe("tabAddressOf", () => {
+  const manager = { name: "guides", folder: { name: "handbook" }, role: "manager" as const };
+
+  it.each<[SearchParams, string]>([
+    [{}, "guides – handbook"],
+    [{ action: "new" }, "New page"],
+    [{ action: "rename" }, "guides – handbook"],
+    [{ action: "delete" }, "guides – handbook"],
+  ])("gives %o the title %s", (searchParams, title) => {
+    expect(tabAddressOf(manager, searchParams)?.title).toBe(title);
+  });
+
+  it.each<SearchParams>([
+    { view: "all" },
+    { view: "" },
+    { action: "give-role" },
+    { action: ["new", "new"] },
+    { action: "new", view: "all" },
+  ])("shows the not-found page for %o", (searchParams) => {
+    expect(tabAddressOf(manager, searchParams)).toBeNull();
+  });
+
+  it("shows the not-found page for an action beyond the role", () => {
+    const writer = { ...manager, role: "writer" as const };
+    expect(tabAddressOf(writer, { action: "new" })).not.toBeNull();
+    expect(tabAddressOf(writer, { action: "rename" })).toBeNull();
+    expect(tabAddressOf(writer, { action: "delete" })).toBeNull();
+  });
+});

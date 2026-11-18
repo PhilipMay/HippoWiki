@@ -14,9 +14,9 @@
     findings of the tests that are still open are minor.
   - Documents that the features outran: rules stated in full in several documents, and copies of code and
     constants in the specs.
-- Findings: 20 open of 107, 0 Blocker, 0 Major, 18 Minor and 2 Nit (6 `issue:`, 12 `suggestion:` and 2 `nit:`); no
+- Findings: 17 open of 107, 0 Blocker, 0 Major, 15 Minor and 2 Nit (5 `issue:`, 10 `suggestion:` and 2 `nit:`); no
   `question:` is open.
-- Confidence of the suggestions: 1 High, 17 Medium and 2 Low. A High suggestion can be
+- Confidence of the suggestions: 1 High, 14 Medium and 2 Low. A High suggestion can be
   fixed as written; the others wait for the user, as `issue-report.md` describes.
 - Decisions: on 2026-11-18 the user decided all Medium and Low suggestions. Each of these findings ends with a line
   `Decision`, and is fixed as that line says, without asking again. The questions were decided by the user on the
@@ -162,48 +162,6 @@ for `not-allowed` the browser shows the not-found page and MCP says that the rol
 - Decision (2026-11-18): as suggested: the frame component, the confirmation dialog for the three deletes and the
   revert, and the two hooks, after the tests of the pending state exist.
 
-#### issue: the title and the page each decide what an address shows, and they disagree in three routes
-
-- Location: `src/app/folders/[folder]/page.tsx`, lines 70–82 against 91–95;
-  `src/app/folders/[folder]/[item]/page.tsx`, lines 54–62 against 73–86;
-  `src/app/folders/[folder]/[item]/[page]/page.tsx`, lines 24–28 against 37–38;
-  `src/features/pages/components/PageView.tsx`, lines 194–199, `pageViewTitle()`
-- Severity: Minor. Only the title in the browser of a not-found page, for a user who may read the item anyway.
-- Category: correctness
-- Problem: each route parses the query and decides "not found" twice, with different rules. The folder route
-  repeats the check for an invalid query and a missing public URL, but not for an action beyond the role. The tab
-  route repeats nothing. `pageViewTitle()` returns the title of the page for an invalid query, and "Edit …" without
-  a look at the role.
-- Impact: a Reader who opens `?action=new`, or anyone with a mistyped query, sees the not-found page under a title
-  such as "New page", and the rule has to be kept in step by hand in two places per route.
-- Evidence: the folder route, line 74, `if (query.action === "new") return { title: pageTitle("New page") };`,
-  against line 95, `if (action !== null && !mayDo(folder.role, ACTION_FUNCTIONS[action])) notFound();`.
-- Suggestion (optional): one function per route that turns the parameters and the query into "not found" or into
-  what to show, the role included, used by the title and by the page.
-- Confidence: Medium. The two rules are in the cited lines; that the title stays on the not-found page was not
-  tried in a browser, and no test checks the title of a not-found page.
-- Decision (2026-11-18): as suggested.
-
-#### suggestion: `PageView.tsx` holds the parser of the query, the table of roles and the titles, without a unit test
-
-- Location: `src/features/pages/components/PageView.tsx`, lines 32–199;
-  `src/features/pages/components/DeletedPageView.tsx`, lines 19–27
-- Severity: Minor. Logic with many branches sits where no unit test lives.
-- Category: tests
-- Problem: about 170 of the 307 lines are pure functions and tables, not the component: `mayDoPageAction()`,
-  `parsePageNotice()`, `parsePageQuery()`, `parseHistoryView()`, `historyViewTitle()`, `changedMessage()` and
-  `pageViewTitle()`. No directory of components has a test file, so they are covered only end to end, while their
-  siblings in `src/lib/addresses.ts` have unit tests. The route of a deleted page imports two of them from
-  `PageView` although it never renders it. Five names are exported and used only in their own file.
-  `architecture.md` says the routes read the notice with `parsePageNotice()`; they call `parsePageQuery()`.
-- Impact: a change of the rules of the query, such as `before` from 2 up or which parameter belongs to which view,
-  has only the end-to-end suite as a net.
-- Evidence: line 118, `return before === null || before < 2 ? "invalid" : { name: "history", before };`.
-- Suggestion (optional): move the pure part to a module of the feature without server-only imports, add a unit
-  test, drop the unused exports and correct the sentence in `architecture.md`.
-- Confidence: Medium. The name of the module and the cut are a choice; nothing changes in behaviour.
-- Decision (2026-11-18): as suggested.
-
 #### suggestion: the handling of a changed page is put together by hand in four forms, two parents and twice in the actions
 
 - Location: `PageForm.tsx`, `MoveOrRenamePageDialog.tsx`, `DeletePageDialog.tsx` and `RevertPageDialog.tsx` in
@@ -222,22 +180,6 @@ for `not-allowed` the browser shows the not-found page and MCP says that the rol
 - Suggestion (optional): one component for the hidden field and the warning, one helper for the key and the
   message, and an address parameter for `showChanged()`.
 - Confidence: Medium. A choice of design; the tests of a changed page in four end-to-end specs cover the behaviour.
-- Decision (2026-11-18): as suggested.
-
-#### suggestion: each route states the role of an action twice, in its table and again at the button
-
-- Location: `src/app/folders/[folder]/page.tsx`, lines 45–50 against 136, 145, 203, 224 and 229;
-  `src/app/folders/[folder]/[item]/page.tsx`, lines 33–37 against 121, 126 and 131;
-  `src/features/pages/components/PageView.tsx`, lines 41–47 against 255, 260 and 269
-- Severity: Minor. Two statements of one rule in the same file.
-- Category: readability
-- Problem: the gate of a dialog uses the table of the route; the button that links to the dialog names the
-  function again. `mayDoPageAction()` exists, but the buttons of `PageView` do not use it.
-- Impact: when one is changed and not the other, a button leads to the not-found page, or a dialog can be opened
-  without a button.
-- Evidence: the folder route, line 48, `"new-tab": "editTab",`, and line 224, `{mayDo(role, "editTab") && (`.
-- Suggestion (optional): build the buttons from the table.
-- Confidence: Medium. Nothing changes in behaviour; `e2e/folder-roles.spec.ts` uses the buttons of each role.
 - Decision (2026-11-18): as suggested.
 
 #### suggestion: the folder route is a switch of five views written inline, while the routes of pages hand over to components
@@ -283,6 +225,12 @@ for `not-allowed` the browser shows the not-found page and MCP says that the rol
 - Apart from the finding of the first review report on the rows of tabs, each Client Component gets only what it
   shows or submits.
 - Every page calls `requireUser()`, or the documented exception, before it reads the query.
+- Each route of the content decides once what its address shows: `folderAddressOf()`, `tabAddressOf()`,
+  `pageAddressOf()` and `deletedPageAddressOf()` of the pure modules `folder-query.ts` and `page-query.ts` turn the
+  item and the query string into the view or action with its title, the role included, for `generateMetadata` and
+  the page alike; their unit tests cover the views, the actions, `before` from 2 up, the parameters of each view, the
+  role of each action and the titles, and `e2e/folders.spec.ts` and `e2e/folder-roles.spec.ts` check that a
+  not-found page keeps the plain title. The buttons ask the same tables of the lowest roles.
 - Links, redirects and the addresses that close a dialog are built with `src/lib/addresses.ts`, with the three
   exceptions named above.
 - The two error pages use the `retry` prop, which is the API of the installed Next.js.

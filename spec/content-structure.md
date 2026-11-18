@@ -6,11 +6,12 @@ restoring pages in `page-deletion.md`, and who sees and does what with a folder 
 described below in "Deleting a tab".
 
 Code: `src/features/folders/` (folders and tabs), `src/features/pages/` (pages), `src/lib/names.ts` (the name rule),
-`src/lib/addresses.ts` (building and parsing addresses), the models `Folder`, `Tab` and `Page` in
+`src/lib/addresses.ts` (building and parsing addresses), `src/features/folders/folder-query.ts` and
+`src/features/pages/page-query.ts` (what an address shows, with its title and the role of each action), the models `Folder`, `Tab` and `Page` in
 `prisma/schema.prisma`, and the routes under `src/app/folders/` and `src/app/deleted-pages/`. Tests:
 `e2e/folders.spec.ts`, `e2e/tabs.spec.ts`, `e2e/all-pages.spec.ts`, `e2e/create-page.spec.ts`,
 `e2e/move-or-rename-page.spec.ts`, `e2e/delete-tab.spec.ts`, `e2e/access.spec.ts`, `src/lib/names.test.ts`,
-`src/lib/addresses.test.ts`,
+`src/lib/addresses.test.ts`, `src/features/folders/folder-query.test.ts`, `src/features/pages/page-query.test.ts`,
 `integration/folder-service.test.ts`, `integration/page-service.test.ts`, `integration/db-errors.test.ts`. The last
 editor and the channel: the writes of `src/features/folders/service.ts` and `src/features/pages/service.ts`,
 the actors in `src/features/folder-roles/actors.ts`, `src/features/users/records.ts` (what the reads return

@@ -9,7 +9,7 @@ described in `pages.md`, moving and renaming in `content-structure.md`, deleting
 Code: the version of a page in `Page` of `prisma/schema.prisma` and the migration
 `prisma/migrations/20261116103037_init/`, the check in `updatePageContent`, `revertPage`, `moveOrRenamePage` and
 `deletePage` of `src/features/pages/service.ts`, with the check of a content save in `storeContentChange`, the version of a form in `src/features/pages/forms.ts`, the notice of
-a page address in `src/lib/addresses.ts` and `src/features/pages/components/PageView.tsx`, the editor and the dialogs
+a page address in `src/lib/addresses.ts` and `src/features/pages/page-query.ts`, the editor and the dialogs
 in `src/features/pages/components/`. Tests: `integration/page-service.test.ts`, the unit tests next to the code
 (`src/features/pages/service-writes.test.ts`, `src/features/pages/service-access.test.ts`,
 `src/features/pages/forms.test.ts`, `src/features/pages/actions.test.ts`,

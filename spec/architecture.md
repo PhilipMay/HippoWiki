@@ -304,14 +304,22 @@ The feature is described in `users-and-login.md`. What every new route, query an
   Routes, Server Actions and links build them with the helpers in `src/lib/addresses.ts` instead of writing paths by
   hand.
 - What an address opens is given in its query string: an action as `?action=<action>`, a view as `?view=<view>`.
-  A route reads them with `parseAction` and `parseView`, passing only the actions and views it has, and calls
-  `notFound()` for `"invalid"`. A route without views calls `parseView` without allowed views.
+  They are read with `parseAction` and `parseView`, passing only the actions and views the address has; an address
+  without views calls `parseView` without allowed views.
+- Each route of the content decides once what its address shows: a pure function of the feature turns the stored
+  item and the query string into `null` or into the action or view with the browser title, the role of the user
+  included (`folderAddressOf()` and `tabAddressOf()` of `src/features/folders/folder-query.ts`, `pageAddressOf()` and
+  `deletedPageAddressOf()` of `src/features/pages/page-query.ts`). The route calls it once in a local `resolve()` for
+  `generateMetadata` and for the page, and shows the not-found page, under the plain title, for `null`. The same
+  modules hold the tables of the lowest role of each action, and the buttons that link to an action ask them too
+  (`mayDoFolderAction()`, `mayDoTabAction()`, `mayDoPageAction()`), so that a button is offered exactly where its
+  address exists.
 - Other search parameters, such as `before` of the history, the revisions of a comparison or the app to revoke, are
   built by a helper of `src/lib/addresses.ts` and read with a parser of the route; an unknown or malformed value shows
   the not-found page. Among them:
   - A page address with an action may carry `?notice=changed` after it, which an action sets when it redirects after
     a change refused as `page-changed` (see `optimistic-locking.md`). The page routes read it with
-    `parsePageQuery()` of `src/features/pages/components/PageView.tsx`, and `pagePath()` builds it.
+    `pageAddressOf()` of `src/features/pages/page-query.ts`, and `pagePath()` builds it.
   - The login and the forced password change take `?next=<path>`, the address to go to afterwards. It is accepted
     only as a path on this site, checked with `safeNextPath()` wherever it is read, and `loginPath(next)` and
     `changePasswordPath(next)` build it. Where a login or a password change leads on, `landingPath(next, user)` turns

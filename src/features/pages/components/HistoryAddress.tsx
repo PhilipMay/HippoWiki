@@ -4,10 +4,10 @@ import type { ReactNode } from "react";
 import PageHistory from "@/features/pages/components/PageHistory";
 import RevisionComparison from "@/features/pages/components/RevisionComparison";
 import RevisionView from "@/features/pages/components/RevisionView";
-import type { PageAddressView } from "@/features/pages/components/PageView";
 import type { HistoryPlace } from "@/features/pages/components/history-place";
 import { getPageRevision, getRevisionComparison, listPageRevisions } from "@/features/pages/queries";
 import type { RevisionDetail } from "@/features/pages/history-service";
+import type { PageAddressView } from "@/features/pages/page-query";
 
 type HistoryAddressProps = {
   pageId: string;
@@ -15,7 +15,7 @@ type HistoryAddressProps = {
   title: string;
   /** Where the page lives: its page address or the address of the deleted page. */
   place: HistoryPlace;
-  /** The view of the history, already checked with `parseHistoryView()`. */
+  /** The view of the history, already checked with `pageAddressOf()` or `deletedPageAddressOf()`. */
   view: PageAddressView;
   /**
    * For the view of a revision: the address of its "Revert page" dialog, `null` where there is no "Revert", and a

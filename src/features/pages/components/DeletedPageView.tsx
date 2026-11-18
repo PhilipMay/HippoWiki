@@ -11,20 +11,11 @@ import { listTabs } from "@/features/folders/queries";
 import { restorePage } from "@/features/pages/actions";
 import MarkdownContent from "@/features/pages/components/MarkdownContent";
 import RestorePageDialog from "@/features/pages/components/RestorePageDialog";
+import type { DeletedPageAction } from "@/features/pages/page-query";
 import type { DeletedPage } from "@/features/pages/service";
 import { editorWithChannel } from "@/features/users/records";
 import { deletedPageHistoryPath, deletedPagePath } from "@/lib/addresses";
 import { formatDateTime } from "@/lib/format";
-
-/** The actions of the address of a deleted page: `restore` opens the "Restore page" dialog. */
-export const DELETED_PAGE_ACTIONS = ["restore"] as const;
-
-type DeletedPageAction = (typeof DELETED_PAGE_ACTIONS)[number];
-
-/** The browser title of a deleted page: it shows that the page is a deleted copy. */
-export function deletedPageViewTitle(page: DeletedPage): string {
-  return `Deleted: ${page.title}`;
-}
 
 type DeletedPageViewProps = {
   page: DeletedPage;

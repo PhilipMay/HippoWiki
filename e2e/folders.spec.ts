@@ -300,6 +300,26 @@ for (const name of ["Bad_Name", "Existing", "existing--folder", "existing.md"]) 
   });
 }
 
+test("an invalid query string shows the not-found page under the plain title", async ({ page }) => {
+  const folder = await createFolder({ name: "existing" });
+  const tab = await createTab({ folder, name: "guides" });
+  await createPage({ folder, name: "intro", title: "Intro" });
+  await createPage({ tab, name: "setup", title: "Setup" });
+
+  // The title and the page decide alike, so an address that shows the not-found page has no title of its own.
+  for (const address of [
+    "/folders/existing?action=new&view=all",
+    "/folders/existing?view=unknown",
+    "/folders/existing/guides?view=all",
+    "/folders/existing/intro.md?view=history&before=1",
+    "/folders/existing/intro.md?action=edit&view=history",
+    "/folders/existing/guides/setup.md?notice=changed",
+  ]) {
+    await expectNotFound(page, address);
+    await expect(page, address).toHaveTitle("HippoWiki");
+  }
+});
+
 for (const address of [
   "/folders?action=rename",
   "/folders?action=delete",

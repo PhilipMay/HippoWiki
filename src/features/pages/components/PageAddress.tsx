@@ -1,12 +1,12 @@
 import { notFound } from "next/navigation";
 
-import { mayDo } from "@/features/folder-roles/roles";
 import { revertPage } from "@/features/pages/actions";
 import HistoryAddress from "@/features/pages/components/HistoryAddress";
 import RevertPageDialog from "@/features/pages/components/RevertPageDialog";
-import PageView, { changedMessage, type PageQuery } from "@/features/pages/components/PageView";
+import PageView, { changedMessage } from "@/features/pages/components/PageView";
 import { pageHistoryPlace } from "@/features/pages/components/history-place";
 import type { RevisionDetail } from "@/features/pages/history-service";
+import { mayDoPageAction, type PageQuery } from "@/features/pages/page-query";
 import type { PageWithPlace } from "@/features/pages/service";
 import { editorWithChannel } from "@/features/users/records";
 import { pageRevertPath } from "@/lib/addresses";
@@ -14,7 +14,7 @@ import { formatDateTime } from "@/lib/format";
 
 type PageAddressProps = {
   page: PageWithPlace;
-  /** What the query string asks for, already checked with `parsePageQuery()` and against the role. */
+  /** What the query string asks for, already checked with `pageAddressOf()`, the role included. */
   query: PageQuery;
 };
 
@@ -34,7 +34,7 @@ export default async function PageAddress({ page, query }: PageAddressProps) {
 
   const revert = (revision: RevisionDetail) => {
     // The action has been checked against the role.
-    const mayRevert = mayDo(page.role, "editPage") && !revision.isCurrent;
+    const mayRevert = mayDoPageAction(page.role, "revert") && !revision.isCurrent;
     if (query.action === "revert" && !mayRevert) notFound();
     const href = mayRevert ? pageRevertPath(place.folderName, place.tabName, page.name, revision.number) : null;
     const dialog = query.action === "revert" && (
