@@ -41,7 +41,7 @@
   checked against the state of `main` on that day. None was fixed or closed by a spec; one is fixed in part, in the
   documentation only (the admin password in the environment). The Locations, Evidence and "Reviewed" lists follow
   that state.
-- Locations corrected: 2026-11-18, after the cleanup of the review of code quality (`review-02-report.md`). No
+- Locations corrected: 2026-11-18, after the cleanup of the review of code quality. No
   finding was rechecked; the line ranges of the Locations, the files they name and the passages that described code
   that has moved on follow the state of `main` on that day, and the threat model names the page history, the delete
   of a tab and the tools of a Manager connection. Whether a Location should name only the file and the function,
