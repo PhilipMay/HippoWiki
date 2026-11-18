@@ -13,10 +13,8 @@ export const OAUTH_ERRORS = [
   "invalid_request",
   "invalid_client",
   "invalid_grant",
-  "unauthorized_client",
   "unsupported_grant_type",
   "unsupported_response_type",
-  "invalid_scope",
   "access_denied",
   "server_error",
   "temporarily_unavailable",
@@ -373,4 +371,20 @@ export function authorizationResponseUrl(redirectUri: string, parameters: Record
     if (value !== null) url.searchParams.set(name, value);
   }
   return url.toString();
+}
+
+/**
+ * The address a client is sent back to with an error of its authorization request: the error, its description, the
+ * `state` of the client and the issuer, in this order (RFC 6749, section 4.1.2.1, and RFC 9207).
+ */
+export function authorizationErrorUrl(
+  redirectUri: string,
+  { error, description, state, iss }: { error: string; description: string; state: string | null; iss: string },
+): string {
+  return authorizationResponseUrl(redirectUri, { error, error_description: description, state, iss });
+}
+
+/** The media type of a `Content-Type` header, without its parameters, in lower case. */
+export function mediaTypeOf(contentType: string | null | undefined): string {
+  return (contentType ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
 }

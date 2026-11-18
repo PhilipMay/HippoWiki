@@ -50,7 +50,7 @@ and the unit tests next to the code,
 
 ## The connections
 
-- Every request needs a bearer token: the access token of a grant. Any other value, a former API token included,
+- Every request needs a bearer token: the access token of a grant. Any other value, a refresh token included,
   counts as no token. The check is `authenticateAccessToken()` of the grant service (see "The check of an access token"
   in `connected-apps.md`). There are no scopes.
 - A connection is bound to exactly the one address, folder and role, its grant was approved for. Its access token is

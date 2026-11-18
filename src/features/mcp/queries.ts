@@ -2,8 +2,7 @@
 // to. The folder and the user's role on it come from the folder query of the route, which has checked the login.
 
 import { mcpRolesFor, type McpRole, type Role } from "@/features/folder-roles/roles";
-import { mcpFolderPath } from "@/lib/addresses";
-import { getServerEnv } from "@/lib/env";
+import { isOAuthOn, mcpResourceOf } from "@/features/oauth/issuer";
 
 /** An MCP address of a folder as the view "AI apps" shows it: the full address and its role. */
 type McpAddressEntry = { role: McpRole; address: string };
@@ -15,10 +14,10 @@ type McpAddressEntry = { role: McpRole; address: string };
  * `HIPPOWIKI_PUBLIC_URL`, when there is no MCP server: then the view does not exist.
  */
 export function listMcpAddresses(folder: { id: string }, role: Role | null): McpAddressEntry[] | null {
-  const publicUrl = getServerEnv().HIPPOWIKI_PUBLIC_URL;
-  if (publicUrl === undefined) return null;
-  return mcpRolesFor(role).map((mcpRole) => ({
-    role: mcpRole,
-    address: `${publicUrl}${mcpFolderPath(folder.id, mcpRole)}`,
-  }));
+  if (!isOAuthOn()) return null;
+  return mcpRolesFor(role).flatMap((mcpRole) => {
+    // The full address that a client sends as its `resource`, as OAuth writes it.
+    const address = mcpResourceOf({ folderId: folder.id, role: mcpRole });
+    return address === null ? [] : [{ role: mcpRole, address }];
+  });
 }

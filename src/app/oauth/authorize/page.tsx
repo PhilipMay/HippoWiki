@@ -19,8 +19,8 @@ export const metadata: Metadata = {
 
 /** Why a request cannot be answered and the browser is not sent anywhere. */
 const UNTRUSTED_MESSAGES = {
-  "invalid-client": "This app is not known to the wiki. Go back to the app and connect again.",
-  "invalid-redirect-uri":
+  "unknown-client": "This app is not known to the wiki. Go back to the app and connect again.",
+  "foreign-redirect-uri":
     "The address this app wants to be sent back to is not one of its own, so the request was stopped here.",
   failed: "The request could not be checked. Please try again.",
 } as const;

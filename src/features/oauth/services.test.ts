@@ -1,15 +1,13 @@
+// The unit tests of the service modules of OAuth (`clients-service.ts`, `authorization-service.ts`, `token-service.ts`
+// and `cleanup-service.ts`, which the others call), which share the mocks of the database and the clock.
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { challengeOf, hashSecret } from "@/features/oauth/secret";
 import { Prisma } from "@/generated/prisma/client";
-import {
-  checkAuthorizationRequest,
-  createCode,
-  exchangeCode,
-  isGrantLimitReached,
-  refreshGrant,
-  registerClient,
-} from "@/features/oauth/service";
+import { checkAuthorizationRequest, createCode, isGrantLimitReached } from "@/features/oauth/authorization-service";
+import { registerClient } from "@/features/oauth/clients-service";
+import { exchangeCode, refreshGrant } from "@/features/oauth/token-service";
 import type { Actor } from "@/features/users/service";
 
 const mocks = vi.hoisted(() => ({
@@ -272,7 +270,7 @@ describe("registerClient", () => {
         skipDuplicates: true,
       });
       expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
-        { clientId: CLIENT_ID, clientAddress: "203.0.113.7" },
+        { clientRowId: CLIENT_ID, clientAddress: "203.0.113.7" },
         "oauth client registered",
       );
     });
@@ -369,7 +367,7 @@ describe("checkAuthorizationRequest", () => {
   ])("reports %s as an invalid client without asking the database", async (_case, params) => {
     await expect(checkAuthorizationRequest(ALICE, params)).resolves.toEqual({
       ok: false,
-      error: { code: "invalid-client" },
+      error: { code: "unknown-client" },
     });
 
     expect(mocks.clientFindFirst).not.toHaveBeenCalled();
@@ -452,11 +450,52 @@ describe("checkAuthorizationRequest", () => {
     await checkAuthorizationRequest(ALICE, { ...PARAMS, response_type: "token", state: "secret-state-of-the-client" });
 
     expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
-      { reason: "unsupported_response_type", clientId: CLIENT_ID },
+      { reason: "unsupported-response-type", clientRowId: CLIENT_ID },
       "authorization request refused",
     );
     expect(logged()).not.toContain("secret-state-of-the-client");
     expect(logged()).not.toContain(PARAMS.code_challenge);
+  });
+
+  it("answers a redirect address that is not one of the client without a redirect, and logs why", async () => {
+    await expect(
+      checkAuthorizationRequest(ALICE, { ...PARAMS, redirect_uri: "https://evil.example/callback" }),
+    ).resolves.toEqual({ ok: false, error: { code: "foreign-redirect-uri" } });
+
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
+      { reason: "foreign-redirect-uri", clientRowId: CLIENT_ID },
+      "authorization request refused",
+    );
+  });
+
+  it.each([
+    ["a state that is too long", { state: "s".repeat(2049) }, "state-too-long", "invalid_request"],
+    ["no response type", { response_type: undefined }, "missing-response-type", "invalid_request"],
+    ["another response type", { response_type: "token" }, "unsupported-response-type", "unsupported_response_type"],
+    ["PKCE with the method plain", { code_challenge_method: "plain" }, "missing-pkce", "invalid_request"],
+    ["no code challenge", { code_challenge: undefined }, "invalid-code-challenge", "invalid_request"],
+    ["no resource", { resource: undefined }, "not-mcp-address", "invalid_target"],
+  ])("logs the refusal of a request with %s with a reason of its own", async (_case, params, reason, error) => {
+    await expect(checkAuthorizationRequest(ALICE, { ...PARAMS, ...params })).resolves.toMatchObject({
+      ok: false,
+      error: { code: "refused", error },
+    });
+
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
+      { reason, clientRowId: CLIENT_ID },
+      "authorization request refused",
+    );
+  });
+
+  it("logs the refusal of an address that the actor may not connect to with its folder and role", async () => {
+    mocks.folderRoleOf.mockResolvedValue(null);
+
+    await checkAuthorizationRequest(ALICE, PARAMS);
+
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
+      { reason: "address-not-allowed", clientRowId: CLIENT_ID, folderId: FOLDER_ID, role: "reader" },
+      "authorization request refused",
+    );
   });
 });
 
@@ -508,7 +547,7 @@ describe("a client from a metadata document", () => {
 
     await expect(checkAuthorizationRequest(ALICE, METADATA_PARAMS)).resolves.toEqual({
       ok: false,
-      error: { code: "invalid-client" },
+      error: { code: "unknown-client" },
     });
 
     expect(mocks.warn).toHaveBeenCalledWith(
@@ -527,7 +566,7 @@ describe("a client from a metadata document", () => {
 
     await expect(checkAuthorizationRequest(ALICE, METADATA_PARAMS)).resolves.toEqual({
       ok: false,
-      error: { code: "invalid-client" },
+      error: { code: "unknown-client" },
     });
 
     expect(mocks.warn).toHaveBeenCalledWith(
@@ -543,7 +582,7 @@ describe("a client from a metadata document", () => {
 
     await expect(checkAuthorizationRequest(ALICE, METADATA_PARAMS)).resolves.toEqual({
       ok: false,
-      error: { code: "invalid-client" },
+      error: { code: "unknown-client" },
     });
   });
 
@@ -580,7 +619,7 @@ describe("a client from a metadata document", () => {
   ])("is not fetched for a URL with %s", async (_case, client_id) => {
     await expect(checkAuthorizationRequest(ALICE, { ...PARAMS, client_id })).resolves.toEqual({
       ok: false,
-      error: { code: "invalid-client" },
+      error: { code: "unknown-client" },
     });
 
     expect(mocks.fetchMetadataDocument).not.toHaveBeenCalled();
@@ -652,7 +691,7 @@ describe("createCode", () => {
     });
     expect(written()).not.toContain(code);
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
-      { userId: ALICE_ID, clientId: CLIENT_ID, ...ADDRESS },
+      { actorId: ALICE_ID, clientRowId: CLIENT_ID, ...ADDRESS },
       "authorization code created",
     );
     expectNotLogged(code);
@@ -675,7 +714,7 @@ describe("createCode", () => {
     expect(mocks.codeCreate).not.toHaveBeenCalled();
     expect(mocks.folderRoleOf).not.toHaveBeenCalled();
     expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
-      { reason: "access_denied", clientId: CLIENT_ID },
+      { reason: "admin", clientRowId: CLIENT_ID },
       "authorization request refused",
     );
   });
@@ -685,7 +724,7 @@ describe("createCode", () => {
 
     await expect(createCode(admin, { ...PARAMS, client_id: "not-a-uuid" }, "90d")).resolves.toEqual({
       ok: false,
-      error: { code: "invalid-client" },
+      error: { code: "unknown-client" },
     });
     expect(mocks.codeCreate).not.toHaveBeenCalled();
   });
@@ -716,7 +755,7 @@ describe("createCode", () => {
     await expect(createCode(ALICE, PARAMS, "90d")).resolves.toEqual({ ok: false, error: { code: "failed" } });
 
     expect(mocks.error).toHaveBeenCalledExactlyOnceWith(
-      { err, userId: ALICE_ID, clientId: CLIENT_ID },
+      { err, actorId: ALICE_ID, clientRowId: CLIENT_ID },
       "failed to create authorization code",
     );
     expect(logged()).not.toContain("hwc_");
@@ -747,7 +786,7 @@ describe("exchangeCode", () => {
     expect(written()).not.toContain(accessToken);
     expect(written()).not.toContain(refreshToken);
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
-      { userId: ALICE_ID, clientId: CLIENT_ID, grantId: stored.id, ...ADDRESS, replaced: 0 },
+      { userId: ALICE_ID, clientRowId: CLIENT_ID, grantId: stored.id, ...ADDRESS, replaced: 0 },
       "grant created",
     );
     expectNotLogged(CODE, accessToken, refreshToken, VERIFIER);
@@ -801,7 +840,7 @@ describe("exchangeCode", () => {
     });
 
     expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
-      { reason, userId: ALICE_ID, clientId: CLIENT_ID },
+      { reason, userId: ALICE_ID, clientRowId: CLIENT_ID },
       "code exchange refused",
     );
     expect(mocks.transaction).not.toHaveBeenCalled();
@@ -817,7 +856,7 @@ describe("exchangeCode", () => {
     expect(mocks.codeDeleteMany).toHaveBeenCalledOnce();
     expect(mocks.transaction).not.toHaveBeenCalled();
     expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
-      { reason: "no-client", userId: ALICE_ID, clientId: CLIENT_ID },
+      { reason: "no-client", userId: ALICE_ID, clientRowId: CLIENT_ID },
       "code exchange refused",
     );
   });
@@ -839,7 +878,7 @@ describe("exchangeCode", () => {
     await expect(exchangeCode(EXCHANGE)).resolves.toEqual({ ok: false, error: { code: "failed" } });
 
     expect(mocks.error).toHaveBeenCalledExactlyOnceWith(
-      { err, userId: ALICE_ID, clientId: CLIENT_ID },
+      { err, userId: ALICE_ID, clientRowId: CLIENT_ID },
       "failed to create grant",
     );
     expect(logged()).not.toContain("hwa_");
@@ -875,7 +914,7 @@ describe("refreshGrant", () => {
     });
     expect(result.value.expiresIn).toBe(3600);
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
-      { grantId: GRANT_ID, userId: ALICE_ID, clientId: CLIENT_ID },
+      { grantId: GRANT_ID, userId: ALICE_ID, clientRowId: CLIENT_ID },
       "grant refreshed",
     );
     expectNotLogged(REFRESH_TOKEN, accessToken, refreshToken);
@@ -935,7 +974,7 @@ describe("refreshGrant", () => {
     expect(mocks.tokenDeleteMany).toHaveBeenCalledExactlyOnceWith({ where: { id: GRANT_ID } });
     expect(mocks.tokenUpdateMany).not.toHaveBeenCalled();
     expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
-      { grantId: GRANT_ID, userId: ALICE_ID, clientId: CLIENT_ID },
+      { grantId: GRANT_ID, userId: ALICE_ID, clientRowId: CLIENT_ID },
       "refresh token used again, grant revoked",
     );
     expectNotLogged(old, REFRESH_TOKEN);
@@ -957,7 +996,7 @@ describe("refreshGrant", () => {
     expect(mocks.tokenDeleteMany).not.toHaveBeenCalled();
     expect(mocks.tokenUpdateMany).not.toHaveBeenCalled();
     expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
-      { reason, grantId: GRANT_ID, userId: ALICE_ID, clientId: CLIENT_ID },
+      { reason, grantId: GRANT_ID, userId: ALICE_ID, clientRowId: CLIENT_ID },
       "refresh refused",
     );
     expectNotLogged(REFRESH_TOKEN);
@@ -992,7 +1031,7 @@ describe("refreshGrant", () => {
 
     expect(mocks.tokenDeleteMany).not.toHaveBeenCalled();
     expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
-      { reason: "refreshed-meanwhile", grantId: GRANT_ID, userId: ALICE_ID, clientId: CLIENT_ID },
+      { reason: "refreshed-meanwhile", grantId: GRANT_ID, userId: ALICE_ID, clientRowId: CLIENT_ID },
       "refresh refused",
     );
   });

@@ -8,7 +8,6 @@ import { revalidatePath } from "next/cache";
 import { notFound, redirect } from "next/navigation";
 
 import { requireUser } from "@/features/auth/session";
-import { issuer } from "@/features/oauth/issuer";
 import type { RevokeAppFormState } from "@/features/grants/forms";
 import { parseGrantId } from "@/features/grants/schema";
 import * as grantService from "@/features/grants/service";
@@ -24,15 +23,13 @@ const REVOKE_FAILED_MESSAGE = "The app could not be revoked. Please try again.";
 export async function revokeGrant(id: string): Promise<RevokeAppFormState> {
   const user = await requireUser();
 
-  // Without a public URL the account page lists no apps, so there is none to revoke.
-  if (issuer() === null) notFound();
   const grantId = parseGrantId(id);
   if (!grantId) notFound();
 
   const result = await grantService.revokeGrant(user, grantId);
   if (!result.ok) {
     switch (result.error.code) {
-      // An admin has no grants, so no app of an admin is found.
+      // An admin has no grants, and while OAuth is off the account page lists no apps: no app is found.
       case "not-allowed":
       case "grant-not-found":
         notFound();

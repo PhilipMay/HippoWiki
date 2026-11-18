@@ -55,6 +55,12 @@ Decided by the user on 2026-11-18:
   without imports.
 - "Are two entries of the roadmap still open as written?": "Bearer token sessions" is merged into "Access for clients
   without OAuth", and the condition of "Exact search-and-replace for MCP" is dropped.
+- "Which of the two shapes of `invalid-client` and `invalid-redirect-uri` gets a name of its own?" (asked in the step
+  "OAuth and grants"): the codes of an authorization request without a description, which no client is told about,
+  become `unknown-client` and `foreign-redirect-uri`; the codes of the registration and the token endpoint keep their
+  names. The integration tests of OAuth change with them.
+- "Does the hint under "New password" keep the lengths?" (asked in the step "Actions, forms and schemas"): yes, the
+  lengths stay in front of the text of the Decision.
 - "Is a change outside a step plan committed?": no. It stays in the working tree, and `CLAUDE.md` says so under "Git
   Handling". The skills in `.claude/skills/` are added to the check of doc references.
 
@@ -102,7 +108,7 @@ Decided by the user on 2026-11-18:
 - [x] The stored page and the derived name
 - [x] The reads of the history in a service of their own
 - [x] MCP tools
-- [ ] OAuth and grants
+- [x] OAuth and grants
 - [ ] Actions, forms and schemas
 - [ ] Leftovers and small duplicates
 - [ ] Lint rules and checks
@@ -783,7 +789,8 @@ Findings of "Code: MCP, connected apps and OAuth":
 - Unit: the reasons of the refusals in the log; one `isOAuthOn()`; the error answer keeps its address in the tests
   of the actions and the queries.
 - Integration: `integration/oauth-service.test.ts`, `integration/oauth-metadata.test.ts` and
-  `integration/grant-service.test.ts` pass, with only their imports changed.
+  `integration/grant-service.test.ts` pass, with only their imports and the renamed codes of an authorization request
+  changed.
 - End-to-end: `oauth`, `account`, `ai-apps` and the specs of MCP.
 - `npm run check:all` passes.
 

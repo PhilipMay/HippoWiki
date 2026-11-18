@@ -11,7 +11,6 @@ class NavigationError extends Error {
 
 const mocks = vi.hoisted(() => ({
   revokeGrant: vi.fn(),
-  issuer: vi.fn(),
   requireUser: vi.fn(),
   revalidatePath: vi.fn(),
   redirect: vi.fn(),
@@ -22,7 +21,6 @@ vi.mock(import("@/features/grants/service"), async (importOriginal) => ({
   ...(await importOriginal()),
   revokeGrant: mocks.revokeGrant,
 }));
-vi.mock("@/features/oauth/issuer", () => ({ issuer: mocks.issuer }));
 vi.mock("@/features/auth/session", () => ({ requireUser: mocks.requireUser }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect, notFound: mocks.notFound }));
@@ -41,7 +39,6 @@ function failure(code: string) {
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.requireUser.mockResolvedValue(ALICE);
-  mocks.issuer.mockReturnValue("https://wiki.example.com");
   mocks.redirect.mockImplementation((path: string) => {
     throw new NavigationError(path);
   });
@@ -80,15 +77,7 @@ describe("revokeGrant", () => {
     expect(mocks.revokeGrant).not.toHaveBeenCalled();
   });
 
-  it("shows the not-found page without a public URL, without reaching the service", async () => {
-    mocks.issuer.mockReturnValue(null);
-
-    await expect(revokeGrant(TOKEN_ID)).rejects.toMatchObject({ target: "not-found" });
-
-    expect(mocks.revokeGrant).not.toHaveBeenCalled();
-    expect(mocks.revalidatePath).not.toHaveBeenCalled();
-  });
-
+  // The service answers not-allowed for an admin and while OAuth is off.
   it("shows the not-found page when the service answers not-allowed", async () => {
     mocks.revokeGrant.mockResolvedValue(failure("not-allowed"));
 

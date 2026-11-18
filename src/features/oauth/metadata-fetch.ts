@@ -16,7 +16,7 @@ import { request } from "node:https";
 import type { LookupFunction } from "node:net";
 
 import { isPublicAddress } from "@/features/oauth/public-address";
-import { parseMetadataUrl } from "@/features/oauth/schema";
+import { mediaTypeOf, parseMetadataUrl } from "@/features/oauth/schema";
 
 /** How long the whole fetch may take: resolving, connecting and reading. */
 export const METADATA_TIMEOUT_MS = 5000;
@@ -40,11 +40,6 @@ function pinnedLookup({ address, family }: ResolvedAddress): LookupFunction {
     if (typeof options === "object" && options.all) callback(null, [{ address, family }]);
     else callback(null, address, family);
   };
-}
-
-/** The media type of a `Content-Type` header, without its parameters, in lower case. */
-function mediaTypeOf(contentType: string | undefined): string {
-  return (contentType ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
 }
 
 /**

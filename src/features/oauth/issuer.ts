@@ -15,6 +15,14 @@ export function issuer(): string | null {
 }
 
 /**
+ * Whether OAuth is on: only with `HIPPOWIKI_PUBLIC_URL`. Without it no app can connect, no grant can be used, and
+ * there is no MCP server. Where the address itself is needed, `issuer()` gives it.
+ */
+export function isOAuthOn(): boolean {
+  return issuer() !== null;
+}
+
+/**
  * The protected resource that a grant to the given MCP address gives access to: the full address
  * `<HIPPOWIKI_PUBLIC_URL>/mcp/<folder-uuid>/<role>`. It is what a client sends as the `resource` parameter
  * (RFC 8707). `null` while OAuth is off.

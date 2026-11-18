@@ -6,21 +6,21 @@ import { connection } from "next/server";
 import { requireUser } from "@/features/auth/session";
 import { authorizeAddress, readAuthorizationParams } from "@/features/oauth/forms";
 import { issuer } from "@/features/oauth/issuer";
-import { authorizationResponseUrl, redirectTargetOf, type AuthorizationParams } from "@/features/oauth/schema";
-import * as oauthService from "@/features/oauth/service";
+import * as authorizationService from "@/features/oauth/authorization-service";
+import { authorizationErrorUrl, redirectTargetOf, type AuthorizationParams } from "@/features/oauth/schema";
 import type { McpRole } from "@/features/folder-roles/roles";
 import type { SearchParams } from "@/lib/addresses";
 import { logger } from "@/lib/logger";
 
 /** What the consent page shows for an authorization request. */
-export type Consent =
+type Consent =
   /** OAuth is off: there is no consent page. */
   | { kind: "not-found" }
   /**
    * The client is unknown or the redirect address is not one of its own: the reason is shown, and the browser is not
    * sent anywhere, because the address cannot be trusted.
    */
-  | { kind: "untrusted"; reason: "invalid-client" | "invalid-redirect-uri" | "failed" }
+  | { kind: "untrusted"; reason: "unknown-client" | "foreign-redirect-uri" | "failed" }
   /**
    * The request is wrong in another way, the user is an admin, who connects no apps, or no app can be connected to
    * its MCP address: the reason is shown, and the client is told at its redirect address only when the user follows
@@ -54,7 +54,7 @@ function refused(
     state,
     error,
     description,
-  }: Pick<oauthService.AuthorizationRequest, "redirectUri" | "state"> & {
+  }: Pick<authorizationService.AuthorizationRequest, "redirectUri" | "state"> & {
     error: string;
     description: string;
   },
@@ -64,7 +64,7 @@ function refused(
     target: redirectTargetOf(redirectUri),
     // Written by the wiki itself, so it can be shown.
     description,
-    redirectTo: authorizationResponseUrl(redirectUri, { error, error_description: description, state, iss: base }),
+    redirectTo: authorizationErrorUrl(redirectUri, { error, description, state, iss: base }),
   };
 }
 
@@ -83,12 +83,12 @@ export async function loadConsent(searchParams: SearchParams): Promise<Consent> 
   if (base === null) return { kind: "not-found" };
 
   const params = readAuthorizationParams(searchParams);
-  const checked = await oauthService.checkAuthorizationRequest(user, params);
+  const checked = await authorizationService.checkAuthorizationRequest(user, params);
   if (!checked.ok) {
     const { error } = checked;
     switch (error.code) {
-      case "invalid-client":
-      case "invalid-redirect-uri":
+      case "unknown-client":
+      case "foreign-redirect-uri":
       case "failed":
         return { kind: "untrusted", reason: error.code };
       case "refused":
@@ -99,12 +99,12 @@ export async function loadConsent(searchParams: SearchParams): Promise<Consent> 
   const { client, redirectUri, address } = checked.value;
   let limitReached: boolean;
   try {
-    limitReached = await oauthService.isGrantLimitReached(user, client.id, {
+    limitReached = await authorizationService.isGrantLimitReached(user, client.id, {
       folderId: address.folder.id,
       role: address.role,
     });
   } catch (err) {
-    logger.error({ err, userId: user.id, clientId: client.id }, "failed to count the grants for the consent page");
+    logger.error({ err, userId: user.id, clientRowId: client.id }, "failed to count the grants for the consent page");
     return { kind: "untrusted", reason: "failed" };
   }
   return {

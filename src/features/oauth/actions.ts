@@ -7,10 +7,10 @@
 
 import { requireUser } from "@/features/auth/session";
 import { readAuthorizationFormData, readLifetime, type ConsentFormState } from "@/features/oauth/forms";
+import { MAX_GRANTS_PER_USER } from "@/features/grants/limits";
+import * as authorizationService from "@/features/oauth/authorization-service";
 import { issuer } from "@/features/oauth/issuer";
-import { authorizationResponseUrl } from "@/features/oauth/schema";
-import * as oauthService from "@/features/oauth/service";
-import { MAX_GRANTS_PER_USER } from "@/features/grants/service";
+import { authorizationErrorUrl, authorizationResponseUrl } from "@/features/oauth/schema";
 
 const NOT_VALID_MESSAGE = "This request is no longer valid. Go back to the app and connect again.";
 const LIFETIME_MESSAGE = "Choose how long the app keeps its access.";
@@ -24,14 +24,7 @@ function refusal(
   base: string,
   error: { redirectUri: string; state: string | null; error: string; description: string },
 ): ConsentFormState {
-  return {
-    redirectTo: authorizationResponseUrl(error.redirectUri, {
-      error: error.error,
-      error_description: error.description,
-      state: error.state,
-      iss: base,
-    }),
-  };
+  return { redirectTo: authorizationErrorUrl(error.redirectUri, { ...error, iss: base }) };
 }
 
 /**
@@ -44,12 +37,16 @@ export async function approve(formData: FormData): Promise<ConsentFormState> {
   const base = issuer();
   if (base === null) return { message: OFF_MESSAGE };
 
-  const result = await oauthService.createCode(user, readAuthorizationFormData(formData), readLifetime(formData));
+  const result = await authorizationService.createCode(
+    user,
+    readAuthorizationFormData(formData),
+    readLifetime(formData),
+  );
   if (!result.ok) {
     const { error } = result;
     switch (error.code) {
-      case "invalid-client":
-      case "invalid-redirect-uri":
+      case "unknown-client":
+      case "foreign-redirect-uri":
         return { message: NOT_VALID_MESSAGE };
       case "refused":
         return refusal(base, error);
@@ -75,12 +72,12 @@ export async function deny(formData: FormData): Promise<ConsentFormState> {
   const base = issuer();
   if (base === null) return { message: OFF_MESSAGE };
 
-  const result = await oauthService.checkAuthorizationRequest(user, readAuthorizationFormData(formData));
+  const result = await authorizationService.checkAuthorizationRequest(user, readAuthorizationFormData(formData));
   if (!result.ok) {
     const { error } = result;
     switch (error.code) {
-      case "invalid-client":
-      case "invalid-redirect-uri":
+      case "unknown-client":
+      case "foreign-redirect-uri":
         return { message: NOT_VALID_MESSAGE };
       case "refused":
         return refusal(base, error);
@@ -91,9 +88,9 @@ export async function deny(formData: FormData): Promise<ConsentFormState> {
 
   const { redirectUri, state } = result.value;
   return {
-    redirectTo: authorizationResponseUrl(redirectUri, {
+    redirectTo: authorizationErrorUrl(redirectUri, {
       error: "access_denied",
-      error_description: "The user denied the request",
+      description: "The user denied the request",
       state,
       iss: base,
     }),

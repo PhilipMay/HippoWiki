@@ -30,7 +30,11 @@ it("the services load without Next.js and React", async () => {
   const grantService = await import("@/features/grants/service");
   // The auth service loads Better Auth with its `nextCookies()` plugin, which must not need Next.js to be loaded.
   const authService = await import("@/features/auth/service");
-  const oauthService = await import("@/features/oauth/service");
+  // The service modules of OAuth, one per part of the code flow.
+  const oauthClientsService = await import("@/features/oauth/clients-service");
+  const oauthAuthorizationService = await import("@/features/oauth/authorization-service");
+  const oauthTokenService = await import("@/features/oauth/token-service");
+  const oauthCleanupService = await import("@/features/oauth/cleanup-service");
   // The MCP server, its tools and their schemas call the services and load wherever they load.
   const mcpServer = await import("@/features/mcp/server");
   const mcpTools = await import("@/features/mcp/tools");
@@ -44,7 +48,10 @@ it("the services load without Next.js and React", async () => {
   expect(userService.ensureAdmin).toBeTypeOf("function");
   expect(grantService.listGrants).toBeTypeOf("function");
   expect(authService.logIn).toBeTypeOf("function");
-  expect(oauthService.exchangeCode).toBeTypeOf("function");
+  expect(oauthClientsService.registerClient).toBeTypeOf("function");
+  expect(oauthAuthorizationService.createCode).toBeTypeOf("function");
+  expect(oauthTokenService.exchangeCode).toBeTypeOf("function");
+  expect(oauthCleanupService.deleteStaleRows).toBeTypeOf("function");
   expect(mcpServer.createWikiServer).toBeTypeOf("function");
   expect(mcpTools.listFolder).toBeTypeOf("function");
   expect(mcpToolSchemas.readPageInput).toBeDefined();

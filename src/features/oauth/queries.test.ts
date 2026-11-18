@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("next/server", () => ({ connection: mocks.connection }));
 vi.mock("@/features/auth/session", () => ({ requireUser: mocks.requireUser }));
-vi.mock("@/features/oauth/service", () => ({
+vi.mock("@/features/oauth/authorization-service", () => ({
   checkAuthorizationRequest: mocks.checkAuthorizationRequest,
   isGrantLimitReached: mocks.isGrantLimitReached,
 }));
@@ -38,7 +38,13 @@ const QUERY = {
   resource: `https://wiki.example.com/mcp/${FOLDER_ID}/writer`,
 };
 const REQUEST = {
-  client: { id: CLIENT_ID, clientId: CLIENT_ID, name: "Example", redirectUris: [REDIRECT_URI], createdAt: new Date() },
+  client: {
+    id: CLIENT_ID,
+    clientRowId: CLIENT_ID,
+    name: "Example",
+    redirectUris: [REDIRECT_URI],
+    createdAt: new Date(),
+  },
   address: { folder: { id: FOLDER_ID, name: "projects" }, role: "writer" },
   redirectUri: REDIRECT_URI,
   codeChallenge: QUERY.code_challenge,
@@ -124,7 +130,7 @@ describe("loadConsent", () => {
     await expect(loadConsent(QUERY)).resolves.toMatchObject({ kind: "consent", limitReached: true });
   });
 
-  it.each(["invalid-client", "invalid-redirect-uri", "failed"])(
+  it.each(["unknown-client", "foreign-redirect-uri", "failed"])(
     "does not send the browser anywhere for the code %s",
     async (code) => {
       mocks.checkAuthorizationRequest.mockResolvedValue({ ok: false, error: { code } });
@@ -211,7 +217,7 @@ describe("loadConsent", () => {
     expect(mocks.checkAuthorizationRequest).toHaveBeenCalledExactlyOnceWith(ADMIN, QUERY);
   });
 
-  it.each(["invalid-client", "invalid-redirect-uri"])(
+  it.each(["unknown-client", "foreign-redirect-uri"])(
     "answers an admin with a request whose check finds %s as today, without sending the browser anywhere",
     async (code) => {
       mocks.requireUser.mockResolvedValue(ADMIN);
@@ -228,7 +234,7 @@ describe("loadConsent", () => {
     await expect(loadConsent(QUERY)).resolves.toEqual({ kind: "untrusted", reason: "failed" });
 
     expect(mocks.error).toHaveBeenCalledExactlyOnceWith(
-      { err, userId: USER.id, clientId: CLIENT_ID },
+      { err, userId: USER.id, clientRowId: CLIENT_ID },
       "failed to count the grants for the consent page",
     );
   });

@@ -19,10 +19,9 @@ import { createWikiServer } from "@/features/mcp/server";
 import type { WikiToolsOptions } from "@/features/mcp/tools";
 import { inMcp } from "@/features/folder-roles/actors";
 import * as folderService from "@/features/folders/service";
-import { protectedResourceMetadataUrl } from "@/features/oauth/issuer";
+import { issuer, protectedResourceMetadataUrl } from "@/features/oauth/issuer";
 import { parseMcpPath } from "@/features/oauth/schema";
 import * as grantService from "@/features/grants/service";
-import { getServerEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";
 
 /** An answer that is not one of the protocol: a status, a short reason as JSON and headers. */
@@ -135,8 +134,9 @@ async function serveLegacy(request: Request, connected: WikiToolsOptions): Promi
  * request so that its name is the current one.
  */
 export async function handleMcpRequest(request: Request, path: readonly string[] | undefined): Promise<Response> {
-  const { HIPPOWIKI_PUBLIC_URL: publicUrl } = getServerEnv();
-  if (publicUrl === undefined) return refusal(404, "not_found");
+  // Without the issuer OAuth is off (`isOAuthOn()`), and so is the MCP server.
+  const publicUrl = issuer();
+  if (publicUrl === null) return refusal(404, "not_found");
 
   const address = parseMcpPath(path);
   const resourceMetadata = address && protectedResourceMetadataUrl(address);

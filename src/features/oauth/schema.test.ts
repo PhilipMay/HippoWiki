@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  authorizationErrorUrl,
   authorizationResponseUrl,
+  mediaTypeOf,
   CLIENT_NAME_MAX_LENGTH,
   clientNameOf,
   clientRegistrationSchema,
@@ -352,22 +354,21 @@ describe("the ids and error codes", () => {
   });
 
   it("knows the error codes of RFC 6749, RFC 7591 and RFC 8707 that it answers with", () => {
-    expect(OAUTH_ERRORS).toEqual(
-      expect.arrayContaining([
+    // Only the codes it sends: there are no scopes, and every client is a public client.
+    expect([...OAUTH_ERRORS].sort()).toEqual(
+      [
         "invalid_request",
         "invalid_client",
         "invalid_grant",
-        "unauthorized_client",
         "unsupported_grant_type",
         "unsupported_response_type",
-        "invalid_scope",
         "access_denied",
         "server_error",
         "temporarily_unavailable",
         "invalid_target",
         "invalid_redirect_uri",
         "invalid_client_metadata",
-      ]),
+      ].sort(),
     );
     // The codes are sent as they are: lower case with underscores.
     for (const error of OAUTH_ERRORS) expect(error).toMatch(/^[a-z_]+$/);
@@ -522,6 +523,46 @@ describe("parseMetadataDocument", () => {
     ],
   ])("refuses %s", (_case, document, reason) => {
     expect(parseMetadataDocument(URL_OF_DOCUMENT, document)).toEqual({ ok: false, reason });
+  });
+});
+
+describe("authorizationErrorUrl", () => {
+  it("adds the error, its description, the state and the issuer, in this order, and leaves out a missing state", () => {
+    expect(
+      authorizationErrorUrl("https://client.example/callback?tenant=a", {
+        error: "access_denied",
+        description: "The user denied the request",
+        state: "s1",
+        iss: "https://wiki.example.com",
+      }),
+    ).toBe(
+      "https://client.example/callback?tenant=a&error=access_denied&error_description=The+user+denied+the+request" +
+        "&state=s1&iss=https%3A%2F%2Fwiki.example.com",
+    );
+    expect(
+      authorizationErrorUrl("https://client.example/callback", {
+        error: "invalid_request",
+        description: "state is too long",
+        state: null,
+        iss: "https://wiki.example.com",
+      }),
+    ).toBe(
+      "https://client.example/callback?error=invalid_request&error_description=state+is+too+long" +
+        "&iss=https%3A%2F%2Fwiki.example.com",
+    );
+  });
+});
+
+describe("mediaTypeOf", () => {
+  it.each([
+    ["application/json", "application/json"],
+    ["Application/JSON; charset=utf-8", "application/json"],
+    [" application/x-www-form-urlencoded ;charset=UTF-8", "application/x-www-form-urlencoded"],
+    ["", ""],
+    [null, ""],
+    [undefined, ""],
+  ])("gives %j as %j", (header, expected) => {
+    expect(mediaTypeOf(header)).toBe(expected);
   });
 });
 

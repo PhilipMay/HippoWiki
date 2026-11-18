@@ -14,9 +14,9 @@
     findings of the tests that are still open are minor.
   - Documents that the features outran: rules stated in full in several documents, and copies of code and
     constants in the specs.
-- Findings: 37 open of 107, 0 Blocker, 0 Major, 28 Minor and 9 Nit (7 `issue:`, 20 `suggestion:`, 7 `nit:` and
-  3 `question:`).
-- Confidence of the suggestions: 3 High, 27 Medium and 4 Low; the 3 questions have none. A High suggestion can be
+- Findings: 31 open of 107, 0 Blocker, 0 Major, 23 Minor and 8 Nit (7 `issue:`, 16 `suggestion:`, 6 `nit:` and
+  2 `question:`).
+- Confidence of the suggestions: 2 High, 25 Medium and 2 Low; the 2 questions have none. A High suggestion can be
   fixed as written; the others wait for the user, as `issue-report.md` describes.
 - Decisions: on 2026-11-18 the user decided all Medium and Low suggestions. Each of these findings ends with a line
   `Decision`, and is fixed as that line says, without asking again. The questions were decided by the user on the
@@ -167,132 +167,6 @@ page, save its content, move or rename it, delete it, and create, rename and del
 service is handled on both sides, no `switch` has a `default`, and the two sides differ only where a spec says so:
 for `not-allowed` the browser shows the not-found page and MCP says that the role does not allow the change.
 
-#### suggestion: the log lines of the OAuth and the grant service follow several conventions
-
-- Location: `src/features/oauth/service.ts`, lines 345–399, `checkAuthorizationRequest()`, lines 473–479 and line
-  630; `src/features/grants/service.ts`, lines 136–162, `revokeGrant()`; `src/features/mcp/http.ts`, line 178
-- Severity: Minor. It makes the log harder to search.
-- Category: readability
-- Problem: `refuse()` in `checkAuthorizationRequest()` logs the OAuth error code as the reason, so five different
-  causes are all logged as `invalid_request`, while the refusals around it name the cause ("unknown-client",
-  "foreign-redirect-uri"). `clientId` means the id of the row in every log line and the `client_id` of the
-  protocol in the type of a client; for a client from a metadata document the two differ. One user is `actorId`
-  in two lines of `revokeGrant()` and `userId` in the next three.
-- Impact: the log does not say why an authorization request was refused, and a search for one field misses lines.
-- Evidence: line 359, `logger.warn({ reason: error, clientId: client.id }, "authorization request refused");`,
-  with lines 363–364, `refuse("invalid_request", "state is too long")` and `refuse("invalid_request",
-"response_type is missing")`.
-- Suggestion (optional): a reason of its own for each refusal, `clientRowId` for the id of the row, and one of
-  `actorId` and `userId` per function.
-- Confidence: Medium. The unit tests of the service must be checked for the changed reasons.
-- Decision (2026-11-18): as suggested.
-
-#### question: the OAuth service returns texts of messages, and one code has two shapes; is that a meant exception?
-
-- Location: `src/features/oauth/service.ts`, lines 103–104, 289–314 and 515–533; `src/features/oauth/http.ts`,
-  lines 128–132
-- Severity: Minor. It is written down nowhere.
-- Category: readability
-- Problem: `architecture.md` says a service returns no messages except the field errors of the schemas. The OAuth
-  service returns the description of an error in three families of errors, while its adapter adds texts of its
-  own, so the texts are split over two layers. `invalid-client` and `invalid-redirect-uri` each exist with and
-  without a description.
-- Impact: a new adapter cannot rely on one rule for where a text comes from.
-- Evidence: line 289, `type UntrustedRequest = { code: "invalid-client" | "invalid-redirect-uri" };`, against line
-  522, `type MissingClient = { code: "invalid-client"; description: string };`.
-- Suggestion (optional): write the exception down in `architecture.md` and `oauth.md`, or move the texts to the
-  adapter; in both cases give the two codes with two shapes names of their own.
-
-#### suggestion: the features of grants and OAuth import each other, and "is OAuth on" is asked in three ways
-
-- Location: `src/features/grants/service.ts`, lines 15–29 and 74–77; `src/features/oauth/service.ts`, line 46;
-  `src/features/oauth/actions.ts`, lines 13–17; `src/features/grants/actions.ts`, lines 27–28;
-  `src/features/mcp/http.ts`, lines 133–138; `src/features/mcp/queries.ts`, lines 18–19
-- Severity: Minor. There is no cycle of modules, but the owner of a rule is unclear.
-- Category: readability
-- Problem: `MAX_GRANTS_PER_USER` is declared in the grant service, which never uses it; only the OAuth service
-  enforces it. The grant service in turn imports the issuer, the hash and the shape of a token from OAuth. Whether
-  OAuth is on is `issuer() === null` in eight places, a private `isOAuthOn()` in the grant service, and a read of
-  the environment in the two files of MCP. The action that revokes a grant checks the issuer before a service
-  that checks the same and leads to the same not-found page.
-- Impact: the next rule about grants has no clear home, and a change of how OAuth is switched on has three
-  spellings to find.
-- Evidence: `src/features/grants/service.ts`, line 29, `export const MAX_GRANTS_PER_USER = 50;`, and
-  `src/features/oauth/service.ts`, line 46, `import { MAX_GRANTS_PER_USER } from "@/features/grants/service";`.
-- Suggestion (optional): move the constant to a pure module, export one `isOAuthOn()` from the issuer module, and
-  drop the check in the action.
-- Confidence: Low. Which feature owns the limit and the check of a token is a design choice.
-- Decision (2026-11-18): as suggested: `MAX_GRANTS_PER_USER` moves to a pure module of the grants, one `isOAuthOn()` is
-  exported from the issuer module and used everywhere, the two files of MCP included, and the check in the action that
-  revokes a grant is dropped.
-
-#### suggestion: the error answer of an authorization request is put together in three places
-
-- Location: `src/features/oauth/actions.ts`, lines 22–35, `refusal()`, and lines 92–100, `deny()`;
-  `src/features/oauth/queries.ts`, lines 49–69, `refused()`
-- Severity: Minor. One shape of the protocol, three copies.
-- Category: readability
-- Problem: the error, its description, the state and the issuer are passed to `authorizationResponseUrl()` in the
-  same order in all three places. The rule that every answer carries `iss` is repeated by hand.
-- Impact: a new parameter of the error answer has to be added three times in two files.
-- Evidence: `src/features/oauth/queries.ts`, line 67: `authorizationResponseUrl(redirectUri, { error,
-error_description: description, state, iss: base })`.
-- Suggestion (optional): one function for the error answer next to `authorizationResponseUrl()` in the schema of
-  OAuth.
-- Confidence: High. One fix; the order of the parameters and so the address stay the same, and the unit tests of
-  the actions and the queries assert the addresses.
-
-#### suggestion: `tools.ts` and the OAuth service each hold several parts that could stand alone
-
-- Location: `src/features/mcp/tools.ts` (937 lines); `src/features/oauth/service.ts` (837 lines)
-- Severity: Minor. Size alone; the parts are kept apart inside the files.
-- Category: readability
-- Problem: `tools.ts` holds the schemas of inputs and outputs, the helpers for results and messages, the nine
-  handlers, and the registration with the descriptions. The OAuth service holds the clients and their
-  registration, the authorization request with the code, the token endpoint, and the clean-up. Inside the token
-  part the error of an invalid grant is unwrapped ten times, and `refuse()` is declared twice.
-- Impact: a change of one description or one rule of a token means scrolling a file of 900 lines.
-- Evidence: `src/features/oauth/service.ts`, line 628: `return refuse("expired-code",
-invalidGrant(INVALID_CODE).error);`.
-- Suggestion (optional): move the schemas of the tools and the registration to modules of their own and add them
-  to `src/features/services.test.ts`. A split of the OAuth service has to respect the lint rule that only a
-  `service.ts` imports the database.
-- Confidence: Low. Whether and how to split is a design decision.
-- Status: the half of MCP is fixed: the schemas of the tools are `tool-schemas.ts` and the registration with the
-  descriptions is `server.ts`; the OAuth service is still one file.
-- Decision (2026-11-18): both are split: the schemas of the tools and the registration with the descriptions move to
-  modules of their own; the OAuth service is split along its parts, with the lint rule for the database changed, the
-  error of an invalid grant unwrapped once and one `refuse()`.
-
-#### nit: leftovers in the features of OAuth, grants and MCP
-
-- Location: `src/features/oauth/schema.ts`, lines 12–28, `OAUTH_ERRORS`; `src/features/oauth/service.ts`, line 541,
-  `newTokens()`; `src/features/grants/service.ts`, lines 95–98, 184–185 and 258; `src/features/oauth/http.ts`, lines
-  87–89, and `src/features/oauth/metadata-fetch.ts`, lines 46–48; `src/features/mcp/tools.ts`, line 39
-- Severity: Nit. None changes behaviour.
-- Category: style
-- Problem:
-  - `OAUTH_ERRORS` lists `unauthorized_client` and `invalid_scope`; nothing sends them, and there are no scopes.
-  - About 25 names of these three features are exported and imported by no other file, tests included, for
-    example the three prefixes of secrets, `clientRowIdSchema`, `MAX_REDIRECT_URIS` and the lifetimes of a code and
-    an access token.
-  - `newTokens()` states no return type, and its parameter hides an imported function of the same name.
-  - A stored role that is no role of MCP is treated in four ways: skipped with an error in the log, folded into
-    another code without one, `failed`, and checked only when a `resource` is sent.
-  - `mediaTypeOf()` exists twice.
-  - A comment of the grant service speaks of "a former API token".
-  - The MCP server reports the version `1.0.0`, the project is at `0.1.0`.
-- Impact: readers take exported names for an interface and unused codes for behaviour.
-- Evidence: `const SERVER_INFO = { name: "hippowiki", title: siteName, version: "1.0.0" };`.
-- Suggestion (optional): drop `export` where nothing imports the name, state the return type, log a broken role
-  the same way in all four places, share `mediaTypeOf()`, and decide where the version of the server comes from.
-- Confidence: Medium. Dropping `export` is safe by the type checker; removing the two codes breaks a unit test of
-  the schema that asserts them; the version needs a decision.
-- Status: the half of MCP is fixed: the server reports the version of `package.json`, and the names of the MCP
-  feature that nothing imports lost their `export`.
-- Decision (2026-11-18): as suggested, all of it: the two codes leave `OAUTH_ERRORS` and the unit test of the schema is
-  adjusted, and the MCP server reports the version of `package.json`.
-
 #### Reviewed
 
 - Parity of the codes is complete for all seven writes that both adapters offer.
@@ -304,6 +178,10 @@ invalidGrant(INVALID_CODE).error);`.
 - The texts shared by the tools (`NOT_ALLOWED`, `WRITE_FAILED`, `pageNotFound()`, `tabNotFound()`, `pageChanged()`,
   `invalidInput()`, `nameTaken()`) hold each message once, and each argument, description of an output and hint is
   one constant in `tool-schemas.ts` or `server.ts`.
+- The OAuth service is split into `clients-service.ts`, `authorization-service.ts`, `token-service.ts` and
+  `cleanup-service.ts`, with `rows.ts` for what they share; each refusal of an authorization request is logged with a
+  reason of its own and `clientRowId`; the error answer to a client is built once, by `authorizationErrorUrl()`; the
+  limit of grants is `src/features/grants/limits.ts`, and whether OAuth is on is `isOAuthOn()` of the issuer module.
 - The tools of a connection follow `mayDo()`, and a unit test compares the tools of each role with `FUNCTION_ROLES`;
   the tools take the public URL that the adapter checked, and every name of an existing tab or page is a plain
   string that the tool answers with its not-found error.
@@ -965,8 +843,9 @@ code with less depth than the specs of the content; they match it closely.
 - Severity: Minor. Each finding can still be found by the name of its function, but the cited lines show other
   code.
 - Category: docs
-- Problem: the ranges do not match the files as they are. Everything in `src/features/oauth/service.ts` from
-  `checkAuthorizationRequest()` on is off by one line; `src/features/mcp/tools.ts`,
+- Problem: the ranges do not match the files as they are. Everything in the OAuth service from
+  `checkAuthorizationRequest()` on was off by one line, and the service is now split into the modules
+  `clients-service.ts`, `authorization-service.ts` and `token-service.ts`, to which the Locations point by file only; `src/features/mcp/tools.ts`,
   `src/features/pages/service.ts` and `src/features/folders/service.ts` are off by tens to hundreds of lines.
 - Impact: whoever fixes a finding by its Location opens the wrong lines. For the nit on the second statement the
   cited function no longer holds the statement at all.

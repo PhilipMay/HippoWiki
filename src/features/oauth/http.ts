@@ -3,9 +3,10 @@
 // while `HIPPOWIKI_PUBLIC_URL` is not set: without a public address there is no OAuth. The consent page, the one
 // endpoint behind the login, has its adapters in `queries.ts` and `actions.ts`.
 
-import { issuer, mcpResourceOf } from "@/features/oauth/issuer";
-import { parseMcpPath, type OAuthError } from "@/features/oauth/schema";
-import * as oauthService from "@/features/oauth/service";
+import { issuer, isOAuthOn, mcpResourceOf } from "@/features/oauth/issuer";
+import * as clientsService from "@/features/oauth/clients-service";
+import { mediaTypeOf, parseMcpPath, type OAuthError } from "@/features/oauth/schema";
+import * as tokenService from "@/features/oauth/token-service";
 import { oauthAuthorizePath, oauthRegisterPath, oauthTokenPath } from "@/lib/addresses";
 import { clientAddressGroup } from "@/lib/client-address";
 import { getServerEnv } from "@/lib/env";
@@ -83,11 +84,6 @@ async function readBody(request: Request): Promise<string | null> {
   }
 }
 
-/** The media type of the body of a request, without its parameters, in lower case. */
-function mediaTypeOf(request: Request): string {
-  return (request.headers.get("content-type") ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
-}
-
 /**
  * Registers a client (dynamic client registration, RFC 7591), at `/oauth/register`: JSON in, and 201 with the client
  * as a public client. Metadata that is refused answers 400, the limit of registrations per client address group and
@@ -97,7 +93,7 @@ function mediaTypeOf(request: Request): string {
  * `HIPPOWIKI_TRUSTED_PROXIES` from `X-Forwarded-For`. The service only gets the group.
  */
 export async function handleRegister(request: Request): Promise<Response> {
-  if (issuer() === null) return notFound();
+  if (!isOAuthOn()) return notFound();
 
   const body = await readBody(request);
   let metadata: unknown;
@@ -117,7 +113,7 @@ export async function handleRegister(request: Request): Promise<Response> {
     );
   }
 
-  const result = await oauthService.registerClient(metadata, group);
+  const result = await clientsService.registerClient(metadata, group);
   if (!result.ok) {
     switch (result.error.code) {
       case "invalid-client-metadata":
@@ -161,7 +157,7 @@ async function readTokenParams(request: Request): Promise<Map<string, string> | 
     return true;
   };
 
-  switch (mediaTypeOf(request)) {
+  switch (mediaTypeOf(request.headers.get("content-type"))) {
     case "application/x-www-form-urlencoded": {
       for (const [name, value] of new URLSearchParams(body)) {
         if (!add(name, value)) return null;
@@ -193,7 +189,7 @@ async function readTokenParams(request: Request): Promise<Map<string, string> | 
  * of RFC 6749 with status 400, `invalid_client` with 401. Every answer has `Cache-Control: no-store`.
  */
 export async function handleToken(request: Request): Promise<Response> {
-  if (issuer() === null) return notFound();
+  if (!isOAuthOn()) return notFound();
 
   const params = await readTokenParams(request);
   if (params === null) {
@@ -204,12 +200,12 @@ export async function handleToken(request: Request): Promise<Response> {
     );
   }
 
-  let result: Awaited<ReturnType<typeof oauthService.exchangeCode>>;
+  let result: Awaited<ReturnType<typeof tokenService.exchangeCode>>;
   switch (params.get("grant_type")) {
     case undefined:
       return oauthError(400, "invalid_request", "grant_type is missing");
     case "authorization_code":
-      result = await oauthService.exchangeCode({
+      result = await tokenService.exchangeCode({
         code: params.get("code"),
         clientId: params.get("client_id"),
         redirectUri: params.get("redirect_uri"),
@@ -218,7 +214,7 @@ export async function handleToken(request: Request): Promise<Response> {
       });
       break;
     case "refresh_token":
-      result = await oauthService.refreshGrant({
+      result = await tokenService.refreshGrant({
         refreshToken: params.get("refresh_token"),
         clientId: params.get("client_id"),
         resource: params.get("resource"),

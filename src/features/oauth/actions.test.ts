@@ -11,11 +11,10 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/features/auth/session", () => ({ requireUser: mocks.requireUser }));
-vi.mock("@/features/oauth/service", () => ({
+vi.mock("@/features/oauth/authorization-service", () => ({
   createCode: mocks.createCode,
   checkAuthorizationRequest: mocks.checkAuthorizationRequest,
 }));
-vi.mock("@/features/grants/service", () => ({ MAX_GRANTS_PER_USER: 50 }));
 vi.mock("@/lib/env", () => ({ getServerEnv: mocks.getServerEnv }));
 
 const USER = { id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002", name: "alice", mustChangePassword: false };
@@ -100,7 +99,7 @@ describe("approve", () => {
   });
 
   it("passes on an empty form as a request without parameters, for the service to refuse", async () => {
-    mocks.createCode.mockResolvedValue({ ok: false, error: { code: "invalid-client" } });
+    mocks.createCode.mockResolvedValue({ ok: false, error: { code: "unknown-client" } });
 
     await approve(new FormData());
 
@@ -108,8 +107,8 @@ describe("approve", () => {
   });
 
   it.each([
-    ["invalid-client", "This request is no longer valid. Go back to the app and connect again."],
-    ["invalid-redirect-uri", "This request is no longer valid. Go back to the app and connect again."],
+    ["unknown-client", "This request is no longer valid. Go back to the app and connect again."],
+    ["foreign-redirect-uri", "This request is no longer valid. Go back to the app and connect again."],
     ["invalid-lifetime", "Choose how long the app keeps its access."],
     [
       "limit-reached",
@@ -186,8 +185,8 @@ describe("deny", () => {
   });
 
   it.each([
-    ["invalid-client", "This request is no longer valid. Go back to the app and connect again."],
-    ["invalid-redirect-uri", "This request is no longer valid. Go back to the app and connect again."],
+    ["unknown-client", "This request is no longer valid. Go back to the app and connect again."],
+    ["foreign-redirect-uri", "This request is no longer valid. Go back to the app and connect again."],
     ["failed", "The answer could not be sent. Please try again."],
   ])("shows the message of the code %s and sends the browser nowhere", async (code, message) => {
     mocks.checkAuthorizationRequest.mockResolvedValue({ ok: false, error: { code } });

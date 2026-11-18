@@ -7,12 +7,12 @@
 // other way round: it finds the actor of a request from the access token of a grant, the only bearer token it
 // accepts. Only hashes of the tokens are stored, and neither a token nor its hash is ever logged.
 //
-// The OAuth service creates, refreshes and replaces the grants (`src/features/oauth/service.ts`).
+// The token service of OAuth creates, refreshes and replaces the grants (`src/features/oauth/token-service.ts`).
 
 import { includesRole, isMcpRole, type McpConnection, type McpRole } from "@/features/folder-roles/roles";
 import { folderRoleOf } from "@/features/folder-roles/service";
 import { parseGrantId } from "@/features/grants/schema";
-import { issuer } from "@/features/oauth/issuer";
+import { isOAuthOn } from "@/features/oauth/issuer";
 import type { McpAddress } from "@/features/oauth/schema";
 import { hashSecret, looksLikeAccessToken } from "@/features/oauth/secret";
 import { parseUserId } from "@/features/users/schema";
@@ -20,13 +20,7 @@ import type { Actor } from "@/features/users/service";
 import { isAdmin, type UserType } from "@/features/users/user-type";
 import { getDb } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import type { Result } from "@/lib/result";
-
-/**
- * How many grants a user may hold, expired ones included. A user holds one grant per app and MCP address, so per
- * folder and role.
- */
-export const MAX_GRANTS_PER_USER = 50;
+import type { Failed, NotAllowed, Result } from "@/lib/result";
 
 /** A connected app as the account page lists it; never a token, a hash or the client. */
 export type GrantSummary = {
@@ -71,11 +65,6 @@ function actorIdOf(actor: Actor): string | null {
   return id;
 }
 
-/** Whether OAuth is on: without `HIPPOWIKI_PUBLIC_URL` no app can connect and no grant can be used. */
-function isOAuthOn(): boolean {
-  return issuer() !== null;
-}
-
 /**
  * The actor's connected apps, newest first. A malformed actor id has none. `null` for an admin, who has no grants, and
  * while OAuth is off, when no grant can be used: then the list does not exist. The grants stay stored and are listed
@@ -93,7 +82,7 @@ export async function listGrants(actor: Actor): Promise<GrantSummary[] | null> {
   return grants.flatMap(({ folder, role, ...grant }) => {
     // The check constraint of the table keeps the role to Reader, Writer and Manager.
     if (!isMcpRole(role)) {
-      logger.error({ grantId: grant.id }, "grant with a role that is no role of MCP");
+      logger.error({ grantId: grant.id, role }, "grant with a role that is no role of MCP");
       return [];
     }
     return [{ ...grant, folderName: folder.name, role }];
@@ -101,10 +90,6 @@ export async function listGrants(actor: Actor): Promise<GrantSummary[] | null> {
 }
 
 type GrantNotFound = { code: "grant-not-found" };
-/** An unexpected database error, or an actor that is malformed; it has been logged. */
-type Failed = { code: "failed" };
-/** The actor is an admin, who has no grants, or OAuth is off; it has been logged. */
-type NotAllowed = { code: "not-allowed" };
 
 /** The request has no `Authorization` header with a bearer token, or its value does not look like an access token. */
 type MissingToken = { code: "missing-token" };
@@ -119,11 +104,12 @@ type BadToken = { code: "invalid-token" };
  */
 type RoleTooLow = { code: "role-too-low" };
 
-export type RevokeGrantError = NotAllowed | GrantNotFound | Failed;
-export type AuthenticateAccessTokenError = MissingToken | BadToken | RoleTooLow | Failed;
+/** `not-allowed`: the actor is an admin, who has no grants, or OAuth is off; it has been logged. */
+type RevokeGrantError = NotAllowed | GrantNotFound | Failed;
+type AuthenticateAccessTokenError = MissingToken | BadToken | RoleTooLow | Failed;
 
 /** Who a request through MCP acts for: the user of the grant, and the connection of the grant. */
-export type McpCaller = { actor: Actor; connection: McpConnection };
+type McpCaller = { actor: Actor; connection: McpConnection };
 
 /**
  * Revokes the actor's connected app with the given id: deletes its grant, which ends its access token and its refresh
@@ -140,26 +126,26 @@ export async function revokeGrant(actor: Actor, id: string): Promise<Result<{ id
     logger.warn({ actorId: actor.id }, "grant not revoked: OAuth is off");
     return { ok: false, error: { code: "not-allowed" } };
   }
-  const userId = actorIdOf(actor);
-  if (!userId) return { ok: false, error: { code: "failed" } };
+  const actorId = actorIdOf(actor);
+  if (!actorId) return { ok: false, error: { code: "failed" } };
 
   const grantId = parseGrantId(id);
   if (!grantId) return { ok: false, error: { code: "grant-not-found" } };
 
   let count: number;
   try {
-    ({ count } = await getDb().oAuthGrant.deleteMany({ where: { id: grantId, userId } }));
+    ({ count } = await getDb().oAuthGrant.deleteMany({ where: { id: grantId, userId: actorId } }));
   } catch (err) {
-    logger.error({ err, userId, grantId }, "failed to revoke grant");
+    logger.error({ err, actorId, grantId }, "failed to revoke grant");
     return { ok: false, error: { code: "failed" } };
   }
 
   if (count === 0) {
-    logger.warn({ userId, grantId }, "grant to revoke not found");
+    logger.warn({ actorId, grantId }, "grant to revoke not found");
     return { ok: false, error: { code: "grant-not-found" } };
   }
 
-  logger.info({ userId, grantId }, "grant revoked");
+  logger.info({ actorId, grantId }, "grant revoked");
   return { ok: true, value: { id: grantId } };
 }
 
@@ -181,8 +167,8 @@ function bearerTokenOf(headers: Headers): string | null {
  * this address and the user's current role on the folder includes the role of the address. It is for the MCP server;
  * the browser uses the session (`src/features/auth/session.ts`). There are no scopes.
  *
- * - `missing-token`: no header, another scheme, or a value that does not look like an access token, a former API
- *   token included; the database is not asked and nothing is logged.
+ * - `missing-token`: no header, another scheme, or a value that does not look like an access token, such as a token
+ *   of another kind; the database is not asked and nothing is logged.
  * - `invalid-token`: an unknown access token, one whose grant or which itself has expired, one whose user still has
  *   the first password, who may do nothing but change it, one whose user is an admin, who has no grants, and one of a
  *   grant to another address, another folder or another role (logged as `other-address`).
@@ -255,6 +241,8 @@ export async function authenticateAccessToken(
   }
   // A connection is bound to the one address it was approved for: its token is no token anywhere else.
   const grantRole = grant.role;
+  // The check constraint of the table keeps the role to Reader, Writer and Manager.
+  if (!isMcpRole(grantRole)) logger.error({ grantId, role: grantRole }, "grant with a role that is no role of MCP");
   if (grant.folderId !== address.folderId || grantRole !== address.role || !isMcpRole(grantRole)) {
     logger.warn({ reason: "other-address", grantId }, "access token refused");
     return { ok: false, error: { code: "invalid-token" } };

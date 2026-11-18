@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   findUnique: vi.fn(),
   updateMany: vi.fn(),
   deleteMany: vi.fn(),
-  issuer: vi.fn(),
+  isOAuthOn: vi.fn(),
   folderRoleOf: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
@@ -27,7 +27,7 @@ vi.mock("@/lib/db", () => ({
   }),
 }));
 vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, error: mocks.error } }));
-vi.mock("@/features/oauth/issuer", () => ({ issuer: mocks.issuer }));
+vi.mock("@/features/oauth/issuer", () => ({ isOAuthOn: mocks.isOAuthOn }));
 vi.mock("@/features/folder-roles/service", () => ({ folderRoleOf: mocks.folderRoleOf }));
 
 /** A value of the shape of a former API token, which is never looked up. */
@@ -103,7 +103,7 @@ function expectNoSecretLogged(): void {
 beforeEach(() => {
   vi.resetAllMocks();
   vi.useFakeTimers({ now: NOW, toFake: ["Date"] });
-  mocks.issuer.mockReturnValue("https://wiki.example.com");
+  mocks.isOAuthOn.mockReturnValue(true);
   mocks.findMany.mockResolvedValue([]);
   mocks.deleteMany.mockResolvedValue({ count: 1 });
   mocks.findUnique.mockResolvedValue(tokenWithUser());
@@ -155,7 +155,7 @@ describe("listGrants", () => {
   });
 
   it("returns null without a public URL, without asking the database", async () => {
-    mocks.issuer.mockReturnValue(null);
+    mocks.isOAuthOn.mockReturnValue(false);
 
     await expect(listGrants(ALICE)).resolves.toBeNull();
 
@@ -183,7 +183,7 @@ describe("revokeGrant", () => {
     expect(mocks.deleteMany).toHaveBeenCalledExactlyOnceWith({
       where: { id: GRANT_ID, userId: ALICE_ID },
     });
-    expect(mocks.info).toHaveBeenCalledExactlyOnceWith({ userId: ALICE_ID, grantId: GRANT_ID }, "grant revoked");
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith({ actorId: ALICE_ID, grantId: GRANT_ID }, "grant revoked");
   });
 
   it("reports a grant that is not the actor's or does not exist as not found, and logs it", async () => {
@@ -192,14 +192,14 @@ describe("revokeGrant", () => {
     await expect(revokeGrant(ALICE, GRANT_ID)).resolves.toEqual({ ok: false, error: { code: "grant-not-found" } });
 
     expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
-      { userId: ALICE_ID, grantId: GRANT_ID },
+      { actorId: ALICE_ID, grantId: GRANT_ID },
       "grant to revoke not found",
     );
     expect(mocks.info).not.toHaveBeenCalled();
   });
 
   it("refuses without a public URL, logged, without a write", async () => {
-    mocks.issuer.mockReturnValue(null);
+    mocks.isOAuthOn.mockReturnValue(false);
 
     await expect(revokeGrant(ALICE, GRANT_ID)).resolves.toEqual({ ok: false, error: { code: "not-allowed" } });
 
@@ -233,7 +233,7 @@ describe("revokeGrant", () => {
     await expect(revokeGrant(ALICE, GRANT_ID)).resolves.toEqual({ ok: false, error: { code: "failed" } });
 
     expect(mocks.error).toHaveBeenCalledExactlyOnceWith(
-      { err, userId: ALICE_ID, grantId: GRANT_ID },
+      { err, actorId: ALICE_ID, grantId: GRANT_ID },
       "failed to revoke grant",
     );
   });

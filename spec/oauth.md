@@ -5,15 +5,18 @@ such as the ones of claude.ai and ChatGPT, gets access to one MCP address of a f
 seeing a password. The user logs in, approves the connector for the folder and the role of that address on a consent
 page and can revoke it on `/account` at any time. There are no scopes: the address says what a connection may do. Only accounts of the type user connect apps; an admin is refused. All clients are public: none has a secret, and each proves itself with PKCE.
 
-Code: `src/features/oauth/` (`schema.ts` with the rules, `secret.ts` for codes and tokens, `service.ts` with the code
-flow, `issuer.ts`, `public-address.ts` and `metadata-fetch.ts` for the metadata documents of clients, `http.ts` with
+Code: `src/features/oauth/` (`schema.ts` with the rules, `secret.ts` for codes and tokens, the service modules of the
+code flow, `clients-service.ts` for the clients, `authorization-service.ts` for the authorization request and its code,
+`token-service.ts` for the token endpoint and `cleanup-service.ts` for the clean-up, with `rows.ts` for what they
+share, `issuer.ts` for the issuer and `isOAuthOn()`, `public-address.ts` and `metadata-fetch.ts` for the metadata
+documents of clients, `http.ts` with
 the adapters of the public endpoints, `queries.ts`, `actions.ts`, `forms.ts` and `components/` for the consent page),
 the routes under `src/app/.well-known/` and `src/app/oauth/`, and the exceptions for them in `src/proxy.ts`. The
 models are `OAuthClient`, `OAuthCode`, `OAuthRegistrationWindow` and `OAuthGrant` in `prisma/schema.prisma`.
 
 Tests: `e2e/oauth.spec.ts`, `e2e/account.spec.ts`, `integration/oauth-service.test.ts`,
 `integration/oauth-metadata.test.ts`, and the unit tests next to the code, such as
-`src/features/oauth/service.test.ts` and `src/features/oauth/metadata-fetch.test.ts`. The helpers of the end-to-end
+`src/features/oauth/services.test.ts` for the service modules and `src/features/oauth/metadata-fetch.test.ts`. The helpers of the end-to-end
 tests are in `e2e/support/oauth.ts`.
 
 ## Switching it on
@@ -76,8 +79,8 @@ The fetch of a metadata document must not be a way to make the server ask an add
 - `/oauth/authorize` is the consent page. It is behind the login: a user without a session logs in first, changes
   the first password if it is still pending, and comes back with the whole request (see "The way back after a login"
   in `users-and-login.md`).
-- If the client is unknown or the redirect address is not one of its own, the page says so and sends the browser
-  nowhere. A redirect address must be the same text as one of the client's; only for `http` on a loopback address
+- If the client is unknown or the redirect address is not one of its own (`unknown-client` and `foreign-redirect-uri`
+  of the authorization service), the page says so and sends the browser nowhere. A redirect address must be the same text as one of the client's; only for `http` on a loopback address
   the port is ignored, because a native client listens on whatever port is free.
 - Every other error is shown on the page with a link "Return to <host>", which carries the error to the redirect
   address of the client; the browser goes there only when the user clicks the link. Before them, a `client_id` longer
@@ -90,6 +93,11 @@ The fetch of a metadata document must not be a way to make the server ask an add
   address. A missing folder, a folder without a role of the user and a role too low are refused alike, with
   `access_denied` and one message that no app can be connected to this address, so that the page tells nothing about
   which folders exist.
+- Every refusal of an authorization request is logged as a warning with a reason of its own, such as
+  `foreign-redirect-uri`, `missing-pkce` or `address-not-allowed`, and the id of the row of the client
+  (`clientRowId`), which for a client from a metadata document is not its `client_id`.
+- The errors that a client is told about carry their description from the service; the service modules of OAuth are
+  the exception to the rule that a service returns no messages (see "Reads and writes" in `architecture.md`).
 - A `scope` that a client sends is ignored and not carried by the consent form.
 - A valid request shows the host of the redirect address more prominently than the name of the client, the
   logged-in user, the name of the folder and the role of the address, what that role allows through MCP, and the

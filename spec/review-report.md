@@ -1010,7 +1010,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
 
 - Files read: `src/features/grants/` (`service.ts`, `schema.ts`, `forms.ts`, `actions.ts`, `queries.ts` and the
   components), `src/app/account/page.tsx`, `src/features/mcp/http.ts`, `src/app/mcp/[[...path]]/route.ts`,
-  `src/features/oauth/secret.ts`, the access token parts of `src/features/oauth/service.ts`, the model `OAuthGrant` and
+  `src/features/oauth/secret.ts`, the access token parts of `src/features/oauth/token-service.ts`, the model `OAuthGrant` and
   its migrations, `e2e/mcp-access.spec.ts`, `integration/grant-service.test.ts`.
 - Randomness and storage (ASVS 11.5.1): `randomBytes(32)` gives 256 bits; only the SHA-256 hash of an access token is
   stored, in a unique column, and found with `findUnique`, so no comparison can leak timing; the access token leaves
@@ -1090,7 +1090,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
 #### issue: a repeated parameter of the authorization request counts as missing instead of refusing the request
 
 - Location: `src/features/oauth/forms.ts`, lines 15–22, `readAuthorizationParams()`, and lines 28–36,
-  `readAuthorizationFormData()`; `src/features/oauth/service.ts`, lines 328–401, `checkAuthorizationRequest()`
+  `readAuthorizationFormData()`; `src/features/oauth/authorization-service.ts`, lines 328–401, `checkAuthorizationRequest()`
 - Severity: Minor
 - Category: correctness
 - Problem: a parameter sent twice is dropped. For `state` "missing" is valid, so two values of `state` give a code
@@ -1140,7 +1140,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
 
 #### issue: using a code a second time does not revoke the tokens issued with it
 
-- Location: `src/features/oauth/service.ts`, lines 570–698, `exchangeCode()`, the delete at lines 595–618;
+- Location: `src/features/oauth/token-service.ts`, lines 570–698, `exchangeCode()`, the delete at lines 595–618;
   `spec/oauth.md`, sections "Codes" and
   "Decisions"
 - Severity: Minor. It needs the code and the PKCE verifier, and the code still works only once.
@@ -1159,7 +1159,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
 
 #### issue: a forged refresh token that names a grant revokes that grant
 
-- Location: `src/features/oauth/service.ts`, lines 712–803, `refreshGrant()`, the reuse at lines 757–766 before the
+- Location: `src/features/oauth/token-service.ts`, lines 712–803, `refreshGrant()`, the reuse at lines 757–766 before the
   check of the client at lines 772–775; `spec/oauth.md`, section "Refresh"
 - Severity: Minor. The worst outcome is that a user has to connect the app again, and it needs the id of the grant.
 - Category: security
@@ -1176,7 +1176,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
 
 #### issue: registrations have a limit per address group but none overall
 
-- Location: `src/features/oauth/service.ts`, lines 117–148, `reserveRegistration()`, and lines 159–202,
+- Location: `src/features/oauth/clients-service.ts`, lines 117–148, `reserveRegistration()`, and lines 159–202,
   `registerClient()`; `spec/oauth.md`, section "Clients"
 - Severity: Minor. It concerns availability.
 - Category: security
@@ -1193,7 +1193,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
 #### suggestion: that metadata documents may come from any host is not written down as a decision, and a failed fetch is repeated on every page load
 
 - Location: `src/features/oauth/metadata-fetch.ts`, lines 55–66, `fetchMetadataDocument()`, and from line 68,
-  `fetchWithin()`; `src/features/oauth/service.ts`, lines 223–268, `findMetadataClient()`, the failure at lines
+  `fetchWithin()`; `src/features/oauth/clients-service.ts`, lines 223–268, `findMetadataClient()`, the failure at lines
   232–236; `spec/oauth.md`, section "Clients"
 - Severity: Minor
 - Category: docs
@@ -1253,7 +1253,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
 #### nit: the comparison of `resource` is case-sensitive in scheme and host
 
 - Location: `src/features/oauth/schema.ts`, lines 57–63, `parseMcpResource()`, reached through `mcpAddressOf()` in
-  `src/features/oauth/issuer.ts` at the authorization (`src/features/oauth/service.ts`, line 374); the exchange (line 649) and the refresh (lines 776–781) compare the text with `mcpResourceOf()`
+  `src/features/oauth/issuer.ts` at the authorization (`src/features/oauth/authorization-service.ts`, line 374); the exchange (line 649) and the refresh (lines 776–781) compare the text with `mcpResourceOf()`
 - Severity: Nit
 - Category: correctness
 - Problem: `HTTP://LOCALHOST:3100/mcp/<folder-uuid>/reader` gets `invalid_target`, because the resource must start with
@@ -1263,7 +1263,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
 
 #### nit: the spec promises that the grant stays after two refreshes at the same time, which holds only if both read before the swap
 
-- Location: `spec/oauth.md`, section "Refresh"; `src/features/oauth/service.ts`, lines 706–707 (the comment), 757 and
+- Location: `spec/oauth.md`, section "Refresh"; `src/features/oauth/token-service.ts`, lines 706–707 (the comment), 757 and
   794–799
 - Severity: Nit
 - Category: docs
@@ -1719,7 +1719,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 
 - Location: `src/features/oauth/actions.ts`, lines 73–101, `deny()`; the writes of `src/features/folders/service.ts`
   (lines 259, 306, 356 and 401) and `src/features/pages/service.ts` (for example line 628); `src/features/mcp/http.ts`,
-  lines 85, 102 and 143; `src/features/mcp/tools.ts`, line 212, `run()`; `src/features/oauth/service.ts`,
+  lines 85, 102 and 143; `src/features/mcp/tools.ts`, line 212, `run()`; `src/features/oauth/token-service.ts`,
   `exchangeCode()` and `refreshGrant()` (line 752); `src/features/grants/service.ts`, line 162, `revokeGrant()`
 - Severity: Minor
 - Category: security
@@ -1745,7 +1745,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 #### issue: rejected input at the public OAuth endpoints is never logged, and the rule not to log it has no reason
 
 - Location: `spec/architecture.md`, section "Reads and writes" ("A malformed id and invalid input are not logged");
-  `src/features/oauth/service.ts`, line 580, `exchangeCode()`, and line 721, `refreshGrant()`;
+  `src/features/oauth/token-service.ts`, line 580, `exchangeCode()`, and line 721, `refreshGrant()`;
   `src/features/oauth/http.ts`, `handleRegister()` and `handleToken()`
 - Severity: Minor
 - Category: docs
@@ -2382,7 +2382,7 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
 
 #### nit: the longest functions of the services mix several steps, and helpers are repeated or unused
 
-- Location: `src/features/oauth/service.ts` (836 lines), `exchangeCode()` (about 129 lines) and `refreshGrant()`
+- Location: `src/features/oauth/token-service.ts`, `exchangeCode()` (about 129 lines) and `refreshGrant()`
   (about 92 lines); `src/features/auth/service.ts`, `reserveAttempt()` (about 82 lines); exports used only by their
   tests, such as `authorizationServerMetadataPath()` in `src/lib/addresses.ts`; six identical `parse*Id()` wrappers of
   `z.guid()`; three copies of `currentTime()`

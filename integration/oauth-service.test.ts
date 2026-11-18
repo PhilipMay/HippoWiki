@@ -3,8 +3,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { challengeOf, hashSecret } from "@/features/oauth/secret";
-import * as oauthService from "@/features/oauth/service";
+import * as authorizationService from "@/features/oauth/authorization-service";
+import * as clientsService from "@/features/oauth/clients-service";
+import type { OAuthClient } from "@/features/oauth/rows";
+import * as tokenService from "@/features/oauth/token-service";
 import { isMcpRole } from "@/features/folder-roles/roles";
+import { MAX_GRANTS_PER_USER } from "@/features/grants/limits";
 import * as grantService from "@/features/grants/service";
 import type { McpAddress } from "@/features/oauth/schema";
 
@@ -21,7 +25,7 @@ const DAY_MS = 24 * HOUR_MS;
 type Actor = { id: string; name: string; type: "admin" | "user" };
 /** An actor with the folder whose MCP address the helpers connect to unless a test names another. */
 type TestActor = Actor & { folder: { id: string } };
-type Client = oauthService.OAuthClient;
+type Client = OAuthClient;
 
 /** The Reader address of the actor's folder, as `isGrantLimitReached()` takes it. */
 const ADDRESS = (actor: TestActor) => ({ folderId: actor.folder.id, role: "reader" as const });
@@ -52,7 +56,7 @@ async function createActor(data: { mustChangePassword?: boolean } = {}): Promise
 
 /** Registers a client and fails the test if that does not succeed. */
 async function register(metadata: Record<string, unknown> = {}): Promise<Client> {
-  const result = await oauthService.registerClient(
+  const result = await clientsService.registerClient(
     {
       redirect_uris: [REDIRECT_URI],
       client_name: "Example",
@@ -83,7 +87,7 @@ function paramsOf(actor: TestActor, client: Client, params: Record<string, strin
  * the Reader address of the actor's folder.
  */
 async function approve(actor: TestActor, client: Client, lifetime = "90d", resource?: string): Promise<string> {
-  const result = await oauthService.createCode(
+  const result = await authorizationService.createCode(
     actor,
     paramsOf(actor, client, resource === undefined ? {} : { resource }),
     lifetime,
@@ -103,8 +107,8 @@ async function grant(
   client: Client,
   lifetime = "90d",
   resource?: string,
-): Promise<oauthService.TokenSet> {
-  const result = await oauthService.exchangeCode(exchangeOf(client, await approve(actor, client, lifetime, resource)));
+): Promise<tokenService.TokenSet> {
+  const result = await tokenService.exchangeCode(exchangeOf(client, await approve(actor, client, lifetime, resource)));
   if (!result.ok) return expect.fail(`code not exchanged: ${result.error.code}`);
   return result.value;
 }
@@ -177,7 +181,7 @@ describe("registerClient", () => {
     ["http on another host", { redirect_uris: ["http://client.example/callback"] }],
     ["a fragment", { redirect_uris: [`${REDIRECT_URI}#fragment`] }],
   ])("refuses %s and stores nothing", async (_case, metadata) => {
-    const result = await oauthService.registerClient({ client_name: "Example", ...metadata }, "shared");
+    const result = await clientsService.registerClient({ client_name: "Example", ...metadata }, "shared");
 
     expect(result).toMatchObject({ ok: false, error: { code: "invalid-redirect-uri" } });
     expect(await getTestDb().oAuthClient.count()).toBe(0);
@@ -186,13 +190,13 @@ describe("registerClient", () => {
 
 describe("the limit of registrations per client address group and hour", () => {
   const METADATA = { redirect_uris: [REDIRECT_URI], client_name: "Example" };
-  const LIMIT = oauthService.MAX_REGISTRATIONS_PER_WINDOW;
+  const LIMIT = clientsService.MAX_REGISTRATIONS_PER_WINDOW;
 
   /** Registers the given number of clients from the group, one after another, and returns how many succeeded. */
   async function registerFrom(group: string, count: number): Promise<number> {
     let registered = 0;
     for (let index = 0; index < count; index += 1) {
-      if ((await oauthService.registerClient(METADATA, group)).ok) registered += 1;
+      if ((await clientsService.registerClient(METADATA, group)).ok) registered += 1;
     }
     return registered;
   }
@@ -204,7 +208,7 @@ describe("the limit of registrations per client address group and hour", () => {
     expect(await registerFrom("203.0.113.7", LIMIT)).toBe(LIMIT);
 
     vi.setSystemTime(start + 20 * MINUTE_MS);
-    await expect(oauthService.registerClient(METADATA, "203.0.113.7")).resolves.toEqual({
+    await expect(clientsService.registerClient(METADATA, "203.0.113.7")).resolves.toEqual({
       ok: false,
       error: { code: "wait", waitMs: 40 * MINUTE_MS },
     });
@@ -218,12 +222,12 @@ describe("the limit of registrations per client address group and hour", () => {
   it("counts every group on its own", async () => {
     await registerFrom("203.0.113.7", LIMIT);
 
-    await expect(oauthService.registerClient(METADATA, "203.0.113.7")).resolves.toMatchObject({
+    await expect(clientsService.registerClient(METADATA, "203.0.113.7")).resolves.toMatchObject({
       ok: false,
       error: { code: "wait" },
     });
     for (const group of ["198.51.100.9", "2001:db8:1:2::/64", "shared"]) {
-      await expect(oauthService.registerClient(METADATA, group)).resolves.toMatchObject({ ok: true });
+      await expect(clientsService.registerClient(METADATA, group)).resolves.toMatchObject({ ok: true });
     }
   });
 
@@ -233,12 +237,12 @@ describe("the limit of registrations per client address group and hour", () => {
     await registerFrom("203.0.113.7", LIMIT);
 
     vi.setSystemTime(start + HOUR_MS - 1);
-    await expect(oauthService.registerClient(METADATA, "203.0.113.7")).resolves.toMatchObject({
+    await expect(clientsService.registerClient(METADATA, "203.0.113.7")).resolves.toMatchObject({
       ok: false,
       error: { code: "wait", waitMs: 1 },
     });
     vi.setSystemTime(start + HOUR_MS);
-    await expect(oauthService.registerClient(METADATA, "203.0.113.7")).resolves.toMatchObject({ ok: true });
+    await expect(clientsService.registerClient(METADATA, "203.0.113.7")).resolves.toMatchObject({ ok: true });
 
     expect(await getTestDb().oAuthRegistrationWindow.findMany()).toEqual([
       { clientAddress: "203.0.113.7", registrations: 1, startedAt: new Date(start + HOUR_MS) },
@@ -247,7 +251,7 @@ describe("the limit of registrations per client address group and hour", () => {
 
   it("cannot be passed by registrations at the same time", async () => {
     const results = await Promise.all(
-      Array.from({ length: LIMIT + 8 }, () => oauthService.registerClient(METADATA, "203.0.113.7")),
+      Array.from({ length: LIMIT + 8 }, () => clientsService.registerClient(METADATA, "203.0.113.7")),
     );
 
     expect(results.filter((result) => result.ok)).toHaveLength(LIMIT);
@@ -263,7 +267,7 @@ describe("the limit of registrations per client address group and hour", () => {
     vi.setSystemTime(start + HOUR_MS);
 
     const results = await Promise.all(
-      Array.from({ length: LIMIT + 5 }, () => oauthService.registerClient(METADATA, "203.0.113.7")),
+      Array.from({ length: LIMIT + 5 }, () => clientsService.registerClient(METADATA, "203.0.113.7")),
     );
 
     expect(results.filter((result) => result.ok)).toHaveLength(LIMIT);
@@ -272,15 +276,15 @@ describe("the limit of registrations per client address group and hour", () => {
 
   it("does not count metadata that is refused", async () => {
     for (let index = 0; index < LIMIT + 5; index += 1) {
-      await oauthService.registerClient({ redirect_uris: ["javascript:alert(1)"] }, "203.0.113.7");
+      await clientsService.registerClient({ redirect_uris: ["javascript:alert(1)"] }, "203.0.113.7");
     }
 
     expect(await getTestDb().oAuthRegistrationWindow.count()).toBe(0);
-    await expect(oauthService.registerClient(METADATA, "203.0.113.7")).resolves.toMatchObject({ ok: true });
+    await expect(clientsService.registerClient(METADATA, "203.0.113.7")).resolves.toMatchObject({ ok: true });
   });
 
   it("counts a group that is no group in the shared group", async () => {
-    await oauthService.registerClient(METADATA, "not-an-address");
+    await clientsService.registerClient(METADATA, "not-an-address");
 
     expect((await getTestDb().oAuthRegistrationWindow.findMany()).map((window) => window.clientAddress)).toEqual([
       "shared",
@@ -290,12 +294,12 @@ describe("the limit of registrations per client address group and hour", () => {
   it("deletes the windows of other groups whose hour is over", async () => {
     const start = Date.now();
     setClock(start);
-    await oauthService.registerClient(METADATA, "203.0.113.7");
+    await clientsService.registerClient(METADATA, "203.0.113.7");
     vi.setSystemTime(start + 30 * MINUTE_MS);
-    await oauthService.registerClient(METADATA, "198.51.100.9");
+    await clientsService.registerClient(METADATA, "198.51.100.9");
 
     vi.setSystemTime(start + HOUR_MS);
-    await oauthService.registerClient(METADATA, "shared");
+    await clientsService.registerClient(METADATA, "shared");
 
     const groups = (await getTestDb().oAuthRegistrationWindow.findMany()).map((window) => window.clientAddress);
     expect(groups.sort()).toEqual(["198.51.100.9", "shared"]);
@@ -307,7 +311,7 @@ describe("checkAuthorizationRequest", () => {
     const [alice, client] = [await createActor(), await register()];
     const folder = await getTestDb().folder.findUniqueOrThrow({ where: { id: alice.folder.id } });
 
-    const result = await oauthService.checkAuthorizationRequest(
+    const result = await authorizationService.checkAuthorizationRequest(
       alice,
       paramsOf(alice, client, { resource: addressOf(folder, "writer") }),
     );
@@ -327,7 +331,10 @@ describe("checkAuthorizationRequest", () => {
   it("accepts a request without a state", async () => {
     const [alice, client] = [await createActor(), await register()];
 
-    const result = await oauthService.checkAuthorizationRequest(alice, paramsOf(alice, client, { state: undefined }));
+    const result = await authorizationService.checkAuthorizationRequest(
+      alice,
+      paramsOf(alice, client, { state: undefined }),
+    );
 
     expect(result).toMatchObject({ ok: true, value: { state: null } });
   });
@@ -335,17 +342,17 @@ describe("checkAuthorizationRequest", () => {
   it("handles a request with any scope like one without", async () => {
     const [alice, client] = [await createActor(), await register()];
 
-    const check = await oauthService.checkAuthorizationRequest(
+    const check = await authorizationService.checkAuthorizationRequest(
       alice,
       paramsOf(alice, client, { scope: "write admin offline_access openid" }),
     );
-    const code = await oauthService.createCode(
+    const code = await authorizationService.createCode(
       alice,
       paramsOf(alice, client, { scope: "write admin offline_access openid" }),
       "90d",
     );
     if (!code.ok) return expect.fail(`code not created: ${code.error.code}`);
-    await oauthService.exchangeCode(exchangeOf(client, code.value.code));
+    await tokenService.exchangeCode(exchangeOf(client, code.value.code));
 
     expect(check.ok).toBe(true);
     const rows = await grantsOf(alice);
@@ -366,11 +373,11 @@ describe("checkAuthorizationRequest", () => {
     const value = resource === "owner" || resource === "Manager" ? addressOf(alice.folder, resource) : resource;
     const params = paramsOf(alice, client, { resource: value });
 
-    await expect(oauthService.checkAuthorizationRequest(alice, params)).resolves.toMatchObject({
+    await expect(authorizationService.checkAuthorizationRequest(alice, params)).resolves.toMatchObject({
       ok: false,
       error: { code: "refused", error: "invalid_target" },
     });
-    await expect(oauthService.createCode(alice, params, "90d")).resolves.toMatchObject({
+    await expect(authorizationService.createCode(alice, params, "90d")).resolves.toMatchObject({
       ok: false,
       error: { code: "refused", error: "invalid_target" },
     });
@@ -392,10 +399,10 @@ describe("checkAuthorizationRequest", () => {
       addressOf(reading, "manager"),
       addressOf(writing, "manager"),
     ]) {
-      answers.push(await oauthService.checkAuthorizationRequest(alice, paramsOf(alice, client, { resource })));
-      await expect(oauthService.createCode(alice, paramsOf(alice, client, { resource }), "90d")).resolves.toEqual(
-        answers.at(-1),
-      );
+      answers.push(await authorizationService.checkAuthorizationRequest(alice, paramsOf(alice, client, { resource })));
+      await expect(
+        authorizationService.createCode(alice, paramsOf(alice, client, { resource }), "90d"),
+      ).resolves.toEqual(answers.at(-1));
     }
 
     for (const answer of answers) {
@@ -455,7 +462,7 @@ describe("checkAuthorizationRequest", () => {
       const folder = await createFolder({ roles: [{ user: alice, role }] });
 
       await expect(
-        oauthService.checkAuthorizationRequest(
+        authorizationService.checkAuthorizationRequest(
           alice,
           paramsOf(alice, client, { resource: addressOf(folder, "manager") }),
         ),
@@ -468,7 +475,7 @@ describe("checkAuthorizationRequest", () => {
     const folder = await createFolder({ roles: [{ user: alice, role: "reader" }] });
 
     await expect(
-      oauthService.createCode(alice, paramsOf(alice, client, { resource: addressOf(folder) }), "90d"),
+      authorizationService.createCode(alice, paramsOf(alice, client, { resource: addressOf(folder) }), "90d"),
     ).resolves.toMatchObject({ ok: true });
   });
 
@@ -478,10 +485,10 @@ describe("checkAuthorizationRequest", () => {
 
     for (const client_id of [client.clientId, crypto.randomUUID(), "not-a-uuid", undefined]) {
       await expect(
-        oauthService.checkAuthorizationRequest(alice, paramsOf(alice, client, { client_id })),
+        authorizationService.checkAuthorizationRequest(alice, paramsOf(alice, client, { client_id })),
       ).resolves.toEqual({
         ok: false,
-        error: { code: "invalid-client" },
+        error: { code: "unknown-client" },
       });
     }
   });
@@ -498,10 +505,10 @@ describe("checkAuthorizationRequest", () => {
     await register({ redirect_uris: ["https://other.example/callback"] });
 
     await expect(
-      oauthService.checkAuthorizationRequest(alice, paramsOf(alice, client, { redirect_uri })),
+      authorizationService.checkAuthorizationRequest(alice, paramsOf(alice, client, { redirect_uri })),
     ).resolves.toEqual({
       ok: false,
-      error: { code: "invalid-redirect-uri" },
+      error: { code: "foreign-redirect-uri" },
     });
   });
 
@@ -509,17 +516,17 @@ describe("checkAuthorizationRequest", () => {
     const [alice, client] = [await createActor(), await register({ redirect_uris: ["http://127.0.0.1/callback"] })];
 
     await expect(
-      oauthService.checkAuthorizationRequest(
+      authorizationService.checkAuthorizationRequest(
         alice,
         paramsOf(alice, client, { redirect_uri: "http://127.0.0.1:51234/callback" }),
       ),
     ).resolves.toMatchObject({ ok: true, value: { redirectUri: "http://127.0.0.1:51234/callback" } });
     for (const redirect_uri of ["http://127.0.0.1:51234/other", "http://localhost:51234/callback"]) {
       await expect(
-        oauthService.checkAuthorizationRequest(alice, paramsOf(alice, client, { redirect_uri })),
+        authorizationService.checkAuthorizationRequest(alice, paramsOf(alice, client, { redirect_uri })),
       ).resolves.toEqual({
         ok: false,
-        error: { code: "invalid-redirect-uri" },
+        error: { code: "foreign-redirect-uri" },
       });
     }
   });
@@ -540,7 +547,7 @@ describe("checkAuthorizationRequest", () => {
   ])("sends %s back to the client as %s, with its state", async (_case, params, error) => {
     const [alice, client] = [await createActor(), await register()];
 
-    const result = await oauthService.checkAuthorizationRequest(alice, paramsOf(alice, client, params));
+    const result = await authorizationService.checkAuthorizationRequest(alice, paramsOf(alice, client, params));
 
     expect(result).toMatchObject({
       ok: false,
@@ -585,16 +592,18 @@ describe("createCode", () => {
     const [alice, client] = [await createActor(), await register()];
 
     for (const [params, code] of [
-      [{ redirect_uri: "https://evil.example/callback" }, "invalid-redirect-uri"],
-      [{ client_id: crypto.randomUUID() }, "invalid-client"],
+      [{ redirect_uri: "https://evil.example/callback" }, "foreign-redirect-uri"],
+      [{ client_id: crypto.randomUUID() }, "unknown-client"],
       [{ code_challenge_method: "plain" }, "refused"],
     ] as const) {
-      await expect(oauthService.createCode(alice, paramsOf(alice, client, params), "90d")).resolves.toMatchObject({
+      await expect(
+        authorizationService.createCode(alice, paramsOf(alice, client, params), "90d"),
+      ).resolves.toMatchObject({
         ok: false,
         error: { code },
       });
     }
-    await expect(oauthService.createCode(alice, paramsOf(alice, client), "7d")).resolves.toEqual({
+    await expect(authorizationService.createCode(alice, paramsOf(alice, client), "7d")).resolves.toEqual({
       ok: false,
       error: { code: "invalid-lifetime" },
     });
@@ -607,7 +616,7 @@ describe("createCode", () => {
     const ghost = { id: crypto.randomUUID(), name: "ghost", type: "user" as const, folder: alice.folder };
 
     // A user that does not exist has no role: no app can be connected for it.
-    await expect(oauthService.createCode(ghost, paramsOf(ghost, client), "90d")).resolves.toMatchObject({
+    await expect(authorizationService.createCode(ghost, paramsOf(ghost, client), "90d")).resolves.toMatchObject({
       ok: false,
       error: { code: "refused", error: "access_denied" },
     });
@@ -621,7 +630,7 @@ describe("exchangeCode", () => {
     setClock(start);
     const code = await approve(alice, client, "30d");
 
-    const result = await oauthService.exchangeCode(exchangeOf(client, code, { resource: addressOf(alice.folder) }));
+    const result = await tokenService.exchangeCode(exchangeOf(client, code, { resource: addressOf(alice.folder) }));
 
     if (!result.ok) return expect.fail(`code not exchanged: ${result.error.code}`);
     const { accessToken, refreshToken, expiresIn } = result.value;
@@ -654,8 +663,8 @@ describe("exchangeCode", () => {
     const [alice, client] = [await createActor(), await register()];
     const code = await approve(alice, client);
 
-    await expect(oauthService.exchangeCode(exchangeOf(client, code))).resolves.toMatchObject({ ok: true });
-    await expect(oauthService.exchangeCode(exchangeOf(client, code))).resolves.toMatchObject(INVALID_GRANT);
+    await expect(tokenService.exchangeCode(exchangeOf(client, code))).resolves.toMatchObject({ ok: true });
+    await expect(tokenService.exchangeCode(exchangeOf(client, code))).resolves.toMatchObject(INVALID_GRANT);
 
     expect(await grantsOf(alice)).toHaveLength(1);
   });
@@ -665,7 +674,7 @@ describe("exchangeCode", () => {
     const code = await approve(alice, client);
 
     const results = await Promise.all(
-      Array.from({ length: 8 }, () => oauthService.exchangeCode(exchangeOf(client, code))),
+      Array.from({ length: 8 }, () => tokenService.exchangeCode(exchangeOf(client, code))),
     );
 
     expect(results.filter((result) => result.ok)).toHaveLength(1);
@@ -684,9 +693,9 @@ describe("exchangeCode", () => {
     const [alice, client] = [await createActor(), await register()];
     const code = await approve(alice, client);
 
-    await expect(oauthService.exchangeCode(exchangeOf(client, code, input))).resolves.toMatchObject({ ok: false });
+    await expect(tokenService.exchangeCode(exchangeOf(client, code, input))).resolves.toMatchObject({ ok: false });
     // The right request comes too late.
-    await expect(oauthService.exchangeCode(exchangeOf(client, code))).resolves.toMatchObject(INVALID_GRANT);
+    await expect(tokenService.exchangeCode(exchangeOf(client, code))).resolves.toMatchObject(INVALID_GRANT);
 
     expect(await getTestDb().oAuthGrant.count()).toBe(0);
     expect(await getTestDb().oAuthCode.count()).toBe(0);
@@ -700,7 +709,7 @@ describe("exchangeCode", () => {
     const code = await approve(alice, client);
     const resource = which === "writer" ? addressOf(alice.folder, "writer") : addressOf({ id: crypto.randomUUID() });
 
-    await expect(oauthService.exchangeCode(exchangeOf(client, code, { resource }))).resolves.toMatchObject({
+    await expect(tokenService.exchangeCode(exchangeOf(client, code, { resource }))).resolves.toMatchObject({
       ok: false,
       error: { code: "invalid-target" },
     });
@@ -711,7 +720,7 @@ describe("exchangeCode", () => {
     const [alice, client, other] = [await createActor(), await register(), await register()];
     const code = await approve(alice, client);
 
-    await expect(oauthService.exchangeCode(exchangeOf(other, code))).resolves.toMatchObject(INVALID_GRANT);
+    await expect(tokenService.exchangeCode(exchangeOf(other, code))).resolves.toMatchObject(INVALID_GRANT);
 
     expect(await getTestDb().oAuthGrant.count()).toBe(0);
   });
@@ -723,9 +732,9 @@ describe("exchangeCode", () => {
     const [early, late] = [await approve(alice, client), await approve(alice, client)];
 
     vi.setSystemTime(start + 10 * MINUTE_MS - 1);
-    await expect(oauthService.exchangeCode(exchangeOf(client, early))).resolves.toMatchObject({ ok: true });
+    await expect(tokenService.exchangeCode(exchangeOf(client, early))).resolves.toMatchObject({ ok: true });
     vi.setSystemTime(start + 10 * MINUTE_MS);
-    await expect(oauthService.exchangeCode(exchangeOf(client, late))).resolves.toMatchObject(INVALID_GRANT);
+    await expect(tokenService.exchangeCode(exchangeOf(client, late))).resolves.toMatchObject(INVALID_GRANT);
   });
 
   it("gives no grant to a user who got the first password back after approving", async () => {
@@ -733,7 +742,7 @@ describe("exchangeCode", () => {
     const code = await approve(alice, client);
     await getTestDb().user.update({ where: { id: alice.id }, data: { mustChangePassword: true } });
 
-    await expect(oauthService.exchangeCode(exchangeOf(client, code))).resolves.toMatchObject(INVALID_GRANT);
+    await expect(tokenService.exchangeCode(exchangeOf(client, code))).resolves.toMatchObject(INVALID_GRANT);
 
     expect(await getTestDb().oAuthGrant.count()).toBe(0);
   });
@@ -742,9 +751,9 @@ describe("exchangeCode", () => {
     const client = await register();
 
     for (const code of ["", "not-a-code", `hwc_${"A".repeat(43)}`]) {
-      await expect(oauthService.exchangeCode(exchangeOf(client, code))).resolves.toMatchObject(INVALID_GRANT);
+      await expect(tokenService.exchangeCode(exchangeOf(client, code))).resolves.toMatchObject(INVALID_GRANT);
     }
-    await expect(oauthService.exchangeCode({ ...exchangeOf(client, ""), code: undefined })).resolves.toMatchObject({
+    await expect(tokenService.exchangeCode({ ...exchangeOf(client, ""), code: undefined })).resolves.toMatchObject({
       ok: false,
       error: { code: "invalid-request" },
     });
@@ -764,7 +773,7 @@ describe("the grants that a new grant replaces", () => {
     expect(await works(first.accessToken)).toBe(false);
     expect(await works(second.accessToken)).toBe(true);
     await expect(
-      oauthService.refreshGrant({ refreshToken: first.refreshToken, clientId: client.clientId }),
+      tokenService.refreshGrant({ refreshToken: first.refreshToken, clientId: client.clientId }),
     ).resolves.toMatchObject(INVALID_GRANT);
   });
 
@@ -842,49 +851,49 @@ describe("the limit of connected apps per user", () => {
   }
 
   it("is 50", () => {
-    expect(grantService.MAX_GRANTS_PER_USER).toBe(50);
+    expect(MAX_GRANTS_PER_USER).toBe(50);
   });
 
   it("refuses the 51st connected app, expired ones included, at the consent and at the exchange", async () => {
     const [alice, client] = [await createActor(), await register()];
-    await fill(alice, grantService.MAX_GRANTS_PER_USER - 1);
+    await fill(alice, MAX_GRANTS_PER_USER - 1);
     const code = await approve(alice, client);
     // A second code, created while there was still room.
     const late = await approve(alice, await register({ client_name: "Late" }));
-    await expect(oauthService.isGrantLimitReached(alice, client.id, ADDRESS(alice))).resolves.toBe(false);
+    await expect(authorizationService.isGrantLimitReached(alice, client.id, ADDRESS(alice))).resolves.toBe(false);
 
-    await expect(oauthService.exchangeCode(exchangeOf(client, code))).resolves.toMatchObject({ ok: true });
+    await expect(tokenService.exchangeCode(exchangeOf(client, code))).resolves.toMatchObject({ ok: true });
 
-    expect(await getTestDb().oAuthGrant.count({ where: { userId: alice.id } })).toBe(grantService.MAX_GRANTS_PER_USER);
+    expect(await getTestDb().oAuthGrant.count({ where: { userId: alice.id } })).toBe(MAX_GRANTS_PER_USER);
     const other = await register({ client_name: "Other" });
-    await expect(oauthService.isGrantLimitReached(alice, other.id, ADDRESS(alice))).resolves.toBe(true);
-    await expect(oauthService.createCode(alice, paramsOf(alice, other), "90d")).resolves.toEqual({
+    await expect(authorizationService.isGrantLimitReached(alice, other.id, ADDRESS(alice))).resolves.toBe(true);
+    await expect(authorizationService.createCode(alice, paramsOf(alice, other), "90d")).resolves.toEqual({
       ok: false,
       error: { code: "limit-reached" },
     });
     // The exchange decides: the code that was created in time is refused as well.
     const lateClient = (await getTestDb().oAuthClient.findFirstOrThrow({ where: { name: "Late" } })).id;
     await expect(
-      oauthService.exchangeCode({
+      tokenService.exchangeCode({
         code: late,
         clientId: lateClient,
         redirectUri: REDIRECT_URI,
         codeVerifier: VERIFIER,
       }),
     ).resolves.toMatchObject(INVALID_GRANT);
-    expect(await getTestDb().oAuthGrant.count({ where: { userId: alice.id } })).toBe(grantService.MAX_GRANTS_PER_USER);
+    expect(await getTestDb().oAuthGrant.count({ where: { userId: alice.id } })).toBe(MAX_GRANTS_PER_USER);
   });
 
   it("does not count the grants that the new one replaces", async () => {
     const [alice, client] = [await createActor(), await register()];
-    await fill(alice, grantService.MAX_GRANTS_PER_USER - 1);
+    await fill(alice, MAX_GRANTS_PER_USER - 1);
     const first = await grant(alice, client);
-    expect(await getTestDb().oAuthGrant.count({ where: { userId: alice.id } })).toBe(grantService.MAX_GRANTS_PER_USER);
+    expect(await getTestDb().oAuthGrant.count({ where: { userId: alice.id } })).toBe(MAX_GRANTS_PER_USER);
 
-    await expect(oauthService.isGrantLimitReached(alice, client.id, ADDRESS(alice))).resolves.toBe(false);
+    await expect(authorizationService.isGrantLimitReached(alice, client.id, ADDRESS(alice))).resolves.toBe(false);
     const second = await grant(alice, client);
 
-    expect(await getTestDb().oAuthGrant.count({ where: { userId: alice.id } })).toBe(grantService.MAX_GRANTS_PER_USER);
+    expect(await getTestDb().oAuthGrant.count({ where: { userId: alice.id } })).toBe(MAX_GRANTS_PER_USER);
     expect(await works(first.accessToken)).toBe(false);
     expect(await works(second.accessToken)).toBe(true);
   });
@@ -893,30 +902,30 @@ describe("the limit of connected apps per user", () => {
     const [alice, client] = [await createActor(), await register()];
     const first = await grant(alice, client);
     const code = await approve(alice, await register({ client_name: "Other" }));
-    await fill(alice, grantService.MAX_GRANTS_PER_USER - 1);
+    await fill(alice, MAX_GRANTS_PER_USER - 1);
     const other = await getTestDb().oAuthClient.findFirstOrThrow({ where: { name: "Other" } });
 
     await expect(
-      oauthService.exchangeCode({ code, clientId: other.id, redirectUri: REDIRECT_URI, codeVerifier: VERIFIER }),
+      tokenService.exchangeCode({ code, clientId: other.id, redirectUri: REDIRECT_URI, codeVerifier: VERIFIER }),
     ).resolves.toMatchObject(INVALID_GRANT);
 
     expect(await works(first.accessToken)).toBe(true);
-    expect(await getTestDb().oAuthGrant.count({ where: { userId: alice.id } })).toBe(grantService.MAX_GRANTS_PER_USER);
+    expect(await getTestDb().oAuthGrant.count({ where: { userId: alice.id } })).toBe(MAX_GRANTS_PER_USER);
   });
 
   it("cannot be passed by exchanges at the same time", async () => {
     const alice = await createActor();
-    await fill(alice, grantService.MAX_GRANTS_PER_USER - 2);
+    await fill(alice, MAX_GRANTS_PER_USER - 2);
     const exchanges = [];
     for (let index = 0; index < 4; index += 1) {
       const client = await register({ client_name: `Client ${index}` });
       exchanges.push(exchangeOf(client, await approve(alice, client)));
     }
 
-    const results = await Promise.all(exchanges.map((exchange) => oauthService.exchangeCode(exchange)));
+    const results = await Promise.all(exchanges.map((exchange) => tokenService.exchangeCode(exchange)));
 
     expect(results.filter((result) => result.ok)).toHaveLength(2);
-    expect(await getTestDb().oAuthGrant.count({ where: { userId: alice.id } })).toBe(grantService.MAX_GRANTS_PER_USER);
+    expect(await getTestDb().oAuthGrant.count({ where: { userId: alice.id } })).toBe(MAX_GRANTS_PER_USER);
   });
 });
 
@@ -927,7 +936,7 @@ describe("refreshGrant", () => {
 
     for (const resource of [addressOf(alice.folder, "writer"), addressOf({ id: crypto.randomUUID() })]) {
       await expect(
-        oauthService.refreshGrant({ refreshToken: tokens.refreshToken, clientId: client.clientId, resource }),
+        tokenService.refreshGrant({ refreshToken: tokens.refreshToken, clientId: client.clientId, resource }),
       ).resolves.toMatchObject({ ok: false, error: { code: "invalid-target" } });
     }
     expect(await grantsOf(alice)).toHaveLength(1);
@@ -941,7 +950,7 @@ describe("refreshGrant", () => {
     const first = await grant(alice, client, "30d");
     vi.setSystemTime(start + 30 * MINUTE_MS);
 
-    const result = await oauthService.refreshGrant({
+    const result = await tokenService.refreshGrant({
       refreshToken: first.refreshToken,
       clientId: client.clientId,
       resource: addressOf(alice.folder),
@@ -970,7 +979,7 @@ describe("refreshGrant", () => {
     let tokens = await grant(alice, client);
 
     for (let round = 0; round < 3; round += 1) {
-      const result = await oauthService.refreshGrant({ refreshToken: tokens.refreshToken, clientId: client.clientId });
+      const result = await tokenService.refreshGrant({ refreshToken: tokens.refreshToken, clientId: client.clientId });
       if (!result.ok) return expect.fail(`not refreshed: ${result.error.code}`);
       tokens = result.value;
     }
@@ -982,18 +991,18 @@ describe("refreshGrant", () => {
   it("revokes the grant when a refresh token is used a second time", async () => {
     const [alice, client] = [await createActor(), await register()];
     const first = await grant(alice, client);
-    const refreshed = await oauthService.refreshGrant({ refreshToken: first.refreshToken, clientId: client.clientId });
+    const refreshed = await tokenService.refreshGrant({ refreshToken: first.refreshToken, clientId: client.clientId });
     if (!refreshed.ok) return expect.fail(`not refreshed: ${refreshed.error.code}`);
 
     await expect(
-      oauthService.refreshGrant({ refreshToken: first.refreshToken, clientId: client.clientId }),
+      tokenService.refreshGrant({ refreshToken: first.refreshToken, clientId: client.clientId }),
     ).resolves.toMatchObject(INVALID_GRANT);
 
     // The grant is gone, with the tokens of whoever refreshed first.
     expect(await grantsOf(alice)).toHaveLength(0);
     expect(await works(refreshed.value.accessToken)).toBe(false);
     await expect(
-      oauthService.refreshGrant({ refreshToken: refreshed.value.refreshToken, clientId: client.clientId }),
+      tokenService.refreshGrant({ refreshToken: refreshed.value.refreshToken, clientId: client.clientId }),
     ).resolves.toMatchObject(INVALID_GRANT);
   });
 
@@ -1003,7 +1012,7 @@ describe("refreshGrant", () => {
     const grantId = (await grantsOf(alice))[0]?.id;
 
     await expect(
-      oauthService.refreshGrant({ refreshToken: `hwr_${grantId}.${"A".repeat(43)}`, clientId: client.clientId }),
+      tokenService.refreshGrant({ refreshToken: `hwr_${grantId}.${"A".repeat(43)}`, clientId: client.clientId }),
     ).resolves.toMatchObject(INVALID_GRANT);
 
     expect(await grantsOf(alice)).toHaveLength(0);
@@ -1014,7 +1023,7 @@ describe("refreshGrant", () => {
     const first = await grant(alice, client);
     const refresh = { refreshToken: first.refreshToken, clientId: client.clientId };
 
-    const results = await Promise.all(Array.from({ length: 6 }, () => oauthService.refreshGrant(refresh)));
+    const results = await Promise.all(Array.from({ length: 6 }, () => tokenService.refreshGrant(refresh)));
 
     const succeeded = results.filter((result) => result.ok);
     expect(succeeded).toHaveLength(1);
@@ -1033,15 +1042,15 @@ describe("refreshGrant", () => {
     const tokens = await grant(alice, client);
 
     await expect(
-      oauthService.refreshGrant({ refreshToken: tokens.refreshToken, clientId: other.clientId }),
+      tokenService.refreshGrant({ refreshToken: tokens.refreshToken, clientId: other.clientId }),
     ).resolves.toMatchObject(INVALID_GRANT);
-    await expect(oauthService.refreshGrant({ refreshToken: tokens.refreshToken })).resolves.toMatchObject({
+    await expect(tokenService.refreshGrant({ refreshToken: tokens.refreshToken })).resolves.toMatchObject({
       ok: false,
       error: { code: "invalid-client" },
     });
 
     await expect(
-      oauthService.refreshGrant({ refreshToken: tokens.refreshToken, clientId: client.clientId }),
+      tokenService.refreshGrant({ refreshToken: tokens.refreshToken, clientId: client.clientId }),
     ).resolves.toMatchObject({ ok: true });
   });
 
@@ -1051,13 +1060,13 @@ describe("refreshGrant", () => {
     await getTestDb().user.update({ where: { id: alice.id }, data: { mustChangePassword: true } });
 
     await expect(
-      oauthService.refreshGrant({ refreshToken: tokens.refreshToken, clientId: client.clientId }),
+      tokenService.refreshGrant({ refreshToken: tokens.refreshToken, clientId: client.clientId }),
     ).resolves.toMatchObject(INVALID_GRANT);
     expect(await works(tokens.accessToken)).toBe(false);
 
     await getTestDb().user.update({ where: { id: alice.id }, data: { mustChangePassword: false } });
     await expect(
-      oauthService.refreshGrant({ refreshToken: tokens.refreshToken, clientId: client.clientId }),
+      tokenService.refreshGrant({ refreshToken: tokens.refreshToken, clientId: client.clientId }),
     ).resolves.toMatchObject({ ok: true });
   });
 });
@@ -1074,7 +1083,7 @@ describe("expiry", () => {
     vi.setSystemTime(start + HOUR_MS);
     expect(await works(tokens.accessToken)).toBe(false);
 
-    const refreshed = await oauthService.refreshGrant({ refreshToken: tokens.refreshToken, clientId: client.clientId });
+    const refreshed = await tokenService.refreshGrant({ refreshToken: tokens.refreshToken, clientId: client.clientId });
     if (!refreshed.ok) return expect.fail(`not refreshed: ${refreshed.error.code}`);
     expect(await works(refreshed.value.accessToken)).toBe(true);
   });
@@ -1087,7 +1096,7 @@ describe("expiry", () => {
 
     // Half an hour before the end the access token of a refresh lasts only that long.
     vi.setSystemTime(start + 30 * DAY_MS - 30 * MINUTE_MS);
-    const last = await oauthService.refreshGrant({ refreshToken: first.refreshToken, clientId: client.clientId });
+    const last = await tokenService.refreshGrant({ refreshToken: first.refreshToken, clientId: client.clientId });
     if (!last.ok) return expect.fail(`not refreshed: ${last.error.code}`);
     expect(last.value.expiresIn).toBe(30 * 60);
     vi.setSystemTime(start + 30 * DAY_MS - 1);
@@ -1096,7 +1105,7 @@ describe("expiry", () => {
     vi.setSystemTime(start + 30 * DAY_MS);
     expect(await works(last.value.accessToken)).toBe(false);
     await expect(
-      oauthService.refreshGrant({ refreshToken: last.value.refreshToken, clientId: client.clientId }),
+      tokenService.refreshGrant({ refreshToken: last.value.refreshToken, clientId: client.clientId }),
     ).resolves.toMatchObject(INVALID_GRANT);
     // An expired grant stays in the list, like an expired token, until it is revoked.
     expect(await grantsOf(alice)).toHaveLength(1);
@@ -1154,7 +1163,7 @@ describe("authenticateAccessToken", () => {
     await expect(grantService.revokeGrant(alice, grantId)).resolves.toMatchObject({ ok: true });
 
     expect(await works(accessToken)).toBe(false);
-    await expect(oauthService.refreshGrant({ refreshToken, clientId: client.clientId })).resolves.toMatchObject(
+    await expect(tokenService.refreshGrant({ refreshToken, clientId: client.clientId })).resolves.toMatchObject(
       INVALID_GRANT,
     );
   });
@@ -1259,7 +1268,7 @@ describe("an admin", () => {
     const maria = await createUser({ name: "maria", type: "admin", mustChangePassword: false });
     const client = await register();
 
-    const result = await oauthService.createCode(
+    const result = await authorizationService.createCode(
       { id: maria.id, name: maria.username, type: maria.type },
       paramsOf(admin, client),
       "90d",

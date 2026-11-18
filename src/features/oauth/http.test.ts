@@ -18,8 +18,8 @@ const mocks = vi.hoisted(() => ({
   error: vi.fn(),
 }));
 
-vi.mock("@/features/oauth/service", () => ({
-  registerClient: mocks.registerClient,
+vi.mock("@/features/oauth/clients-service", () => ({ registerClient: mocks.registerClient }));
+vi.mock("@/features/oauth/token-service", () => ({
   exchangeCode: mocks.exchangeCode,
   refreshGrant: mocks.refreshGrant,
 }));

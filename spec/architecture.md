@@ -33,10 +33,13 @@ How the code is organised and which patterns new code follows. The technology st
     for the actors of the content and the guards of a content write, which the content services share), `users` (the
     accounts), `auth` (login, logout, the session and the login wait, with `session.ts` for who is calling, see "Login
     and sessions"), `grants` (the connected apps, the grants of users to OAuth clients, and the check of an access
-    token), `mcp` (the MCP server: `server.ts`, which registers the tools a connection gets, `tools.ts` with the handlers of
+    token, with `limits.ts` for the limit of connected apps per user), `mcp` (the MCP server: `server.ts`, which registers the tools a connection gets, `tools.ts` with the handlers of
     the tools, `tool-schemas.ts` with their inputs and outputs, `http.ts`, the adapter of the route of the MCP addresses,
-    see "Reads and writes", and `queries.ts` and `components/` for the folder view "AI apps") and `oauth` (the OAuth authorization server for MCP clients: `service.ts` with the rules of the code
-    flow, `http.ts` with the adapters of its public endpoints, `secret.ts` for codes and tokens and their hashes,
+    see "Reads and writes", and `queries.ts` and `components/` for the folder view "AI apps") and `oauth` (the OAuth authorization server for MCP clients: four service modules,
+    `clients-service.ts` for the clients and their registration, `authorization-service.ts` for the authorization
+    request and its code, `token-service.ts` for the token endpoint and `cleanup-service.ts` for the rows that nothing
+    needs any more, with `rows.ts` for what they share, `issuer.ts` for the issuer and whether OAuth is on
+    (`isOAuthOn()`), `http.ts` with the adapters of its public endpoints, `secret.ts` for codes and tokens and their hashes,
     `metadata-fetch.ts` for the metadata documents of clients). Their specs are listed in `CLAUDE.md`.
 - `src/test/`: the helpers of the unit tests, no code of the app (see "Unit tests" in `testing.md`)
 - `src/generated/prisma/`: the generated Prisma client (`npm run db:generate`), not checked in
@@ -64,7 +67,7 @@ How the code is organised and which patterns new code follows. The technology st
   function that its write checks (`mayDo()`), so the tools follow `FUNCTION_ROLES` like the services. The server, the
   tools and their schemas import nothing from `next` or `react`, like a service. The public endpoints of OAuth work the same way: the
   routes under `src/app/.well-known/` and `src/app/oauth/register` and `src/app/oauth/token` hand the request to a
-  function of `src/features/oauth/http.ts`, which calls the OAuth service and answers 404 while
+  function of `src/features/oauth/http.ts`, which calls the service modules of OAuth and answers 404 while
   `HIPPOWIKI_PUBLIC_URL` is not set. The consent page `src/app/oauth/authorize/` is a page like every other, with
   `queries.ts` and `actions.ts` of the OAuth feature; its actions return the address of the client instead of
   redirecting, and its form opens it (see `src/features/oauth/actions.ts`).
@@ -110,7 +113,11 @@ How the code is organised and which patterns new code follows. The technology st
   - It returns no addresses and no messages, except the field errors of the schemas in `invalid-input`. The stored
     item carries what an address is built from: its name and the names of its folder and tab. The services of grants
     and OAuth are the exception for addresses: they build the public MCP address of a folder with
-    `src/features/oauth/issuer.ts`, because OAuth names a connection by it.
+    `src/features/oauth/issuer.ts`, because OAuth names a connection by it. The service modules of OAuth are the
+    exception for messages: an error that a client is told about carries its description (`error_description` of
+    RFC 6749), because the protocol sends it to the client as it is; the adapters add only the texts of their own
+    answers, such as a failed write. An error that no client is told about, such as `unknown-client` and
+    `foreign-redirect-uri` of an authorization request, carries no description.
   - A helper that two services need lives in a pure module of the feature that owns the rule, not in one of the two
     services: `src/features/folder-roles/actors.ts` for the actors and the guards of a content write,
     `src/features/pages/writes.ts` for the data of the soft delete of a page, which the delete of a tab stores for its

@@ -108,7 +108,7 @@ How the code is tested. Commands are listed in `README.md`.
   change of the SDK shows there.
 - The fetch of the metadata documents of OAuth clients (`src/features/oauth/metadata-fetch.ts`) never reaches the
   network in a test. Its own unit test mocks `node:dns/promises` and `node:https` and stands in for the server; the
-  tests of the OAuth service replace the whole module with `vi.mock`.
+  tests of the service modules of OAuth replace the whole module with `vi.mock`.
 - A page whose decisions are worth a test of their own puts them into a function of its `queries.ts`, such as
   `loadConsent()` of the consent page of OAuth, because pages and components have no unit tests.
 - `getDb()`, `getAuth()` and `getServerEnv()` are tested for creating the client, the Better Auth instance and
@@ -164,7 +164,7 @@ How the code is tested. Commands are listed in `README.md`.
     no slot gets free.
   - The grant service (`integration/grant-service.test.ts`): listing and revoking only the own grants, and the check
     of an access token, with the clock set past the expiry and to the minute of the last use.
-  - The OAuth service (`integration/oauth-service.test.ts`): the registration and its limit per client address group and
+  - The service modules of OAuth (`integration/oauth-service.test.ts`): the registration and its limit per client address group and
     hour, the checks of an authorization request, codes that work once, also for exchanges at the same time (sent with
     `Promise.all`), the expiry of codes, access tokens and grants with the clock set, the refresh, a refresh token that
     is used again, two refreshes at the same time, the grants that a new grant replaces, the limit of connected apps,

@@ -22,7 +22,7 @@ such as `src/features/grants/service.test.ts`.
   their SHA-256 hashes are stored, and neither a token nor a hash is ever shown or logged.
 - One app connected to two addresses is two connected apps, each with its own tokens.
 - A user holds at most 50 connected apps, expired ones included (`MAX_GRANTS_PER_USER` in
-  `src/features/grants/service.ts`). A new grant that replaces older grants of the same client at the same address is
+  `src/features/grants/limits.ts`). A new grant that replaces older grants of the same client at the same address is
   counted without them (see "Grants" in `oauth.md`). At the limit the consent page asks the user to revoke an app on the account page
   first and offers no approval; grants made at the same time cannot get past the limit.
 - A grant lasts 30, 90 or 365 days, as the user chose on the consent page. There are no other dates and no grants
@@ -52,7 +52,8 @@ such as `src/features/grants/service.test.ts`.
 ## Without a public URL
 
 - Without `HIPPOWIKI_PUBLIC_URL` there is no OAuth and no MCP server (see `oauth.md` and `mcp.md`): no app can connect
-  and no grant can be used. The grant service then answers the list of every user with nothing and refuses to revoke.
+  and no grant can be used (`isOAuthOn()` in `src/features/oauth/issuer.ts`). The grant service then answers the list
+  of every user with nothing and refuses to revoke, and the action that revokes shows the not-found page.
 - The grants stay stored. Once the variable is set again, they are listed, can be revoked and work again.
 
 ## The check of an access token
@@ -61,8 +62,8 @@ such as `src/features/grants/service.test.ts`.
   the browser to find out which user a request to an MCP address acts for. It reads `Authorization: Bearer <token>`;
   the scheme is matched without regard to case, as RFC 6750 allows. The adapter of the MCP addresses calls it for every
   `POST` from an allowed origin while OAuth is on, with the folder and the role of the address (see `mcp.md`).
-- It accepts only the access token of a grant. Any other value, a refresh token, a code and a former API token
-  included, does not look like an access token.
+- It accepts only the access token of a grant. Any other value, a refresh token and a code included, does not look
+  like an access token.
 - It returns the actor of the grant's user, the same `id`, `name` and type that the session of that user gives, and the
   connection of the grant, its id, folder and role, or one of these codes:
   - `missing-token`: no header, another scheme, or a value that does not look like an access token. The database is
