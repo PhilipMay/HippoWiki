@@ -80,6 +80,7 @@ The specification lives in the `spec/` directory. This catalog should always be 
 - `spec/review-02-report.md`: the report of the review of code quality, tests and documentation (scope and method,
   the criteria, findings per area of the code, the tests and the documents with the decisions of the user, what is
   good, a suggested order of work); it holds only open findings: a fixed finding is deleted
+- `spec/review-02-fixes-steps.md`: the step plan that fixes the findings of `spec/review-02-report.md`
 
 ## Running the Checks
 
