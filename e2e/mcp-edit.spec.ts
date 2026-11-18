@@ -17,7 +17,7 @@ test.use({ storageState: NO_STORAGE_STATE });
 /** The content of the page "plan" that the tests edit. */
 const PLAN = "# Plan\n\nThe release is on 2026-03-01.\n\n- one\n- two\n- three\n";
 
-/** The message of a change based on an older version, or on none, as replace_page_content gives it too (R4). */
+/** The message of a change based on an older version, or on none, as replace_page_content gives it too. */
 const CHANGED = /^The page was changed by bob via web at .+, after the version this change is based on/;
 
 let projects: Awaited<ReturnType<typeof setUpProjects>>["projects"];
@@ -65,7 +65,7 @@ function expectError(result: Awaited<ReturnType<typeof write>>, ...parts: string
   return message;
 }
 
-test("one replacement of a date changes only that date and adds one revision by the user via mcp (R6)", async ({
+test("one replacement of a date changes only that date and adds one revision by the user via mcp", async ({
   request,
 }) => {
   const result = await write(request, {
@@ -96,7 +96,7 @@ test("one replacement of a date changes only that date and adds one revision by 
   ]);
 });
 
-test("three replacements in one call change three places and add one revision (R2)", async ({ request }) => {
+test("three replacements in one call change three places and add one revision", async ({ request }) => {
   const result = await write(request, {
     page: "plan",
     version: 1,
@@ -115,7 +115,7 @@ test("three replacements in one call change three places and add one revision (R
   expect(await storedRevisions()).toHaveLength(2);
 });
 
-test("a call with one matching and one missing replacement leaves the page, its version and its history as they were (R3, R16)", async ({
+test("a call with one matching and one missing replacement leaves the page, its version and its history as they were", async ({
   request,
 }) => {
   const before = await storedPlan();
@@ -134,7 +134,7 @@ test("a call with one matching and one missing replacement leaves the page, its 
   expect(await storedRevisions()).toHaveLength(1);
 });
 
-test("a text that appears twice is refused with the number 2; with replaceAll both places change (R8, R11)", async ({
+test("a text that appears twice is refused with the number 2; with replaceAll both places change", async ({
   request,
 }) => {
   await getTestDb().page.updateMany({
@@ -154,7 +154,7 @@ test("a text that appears twice is refused with the number 2; with replaceAll bo
   expect(await storedPlan()).toMatchObject({ content: "# Plan\n\nAsk Bea, then ask Bea again.\n", version: 2 });
 });
 
-test("a text sent with CRLF line breaks matches; a text that differs only in case is not found (R13)", async ({
+test("a text sent with CRLF line breaks matches; a text that differs only in case is not found", async ({
   request,
 }) => {
   const crlf = await write(request, {
@@ -176,7 +176,7 @@ test("a text sent with CRLF line breaks matches; a text that differs only in cas
   });
 });
 
-test("a replacement that removes the title heading or passes the length limit changes nothing; one in the heading changes the title (R5)", async ({
+test("a replacement that removes the title heading or passes the length limit changes nothing; one in the heading changes the title", async ({
   request,
 }) => {
   const before = await storedPlan();
@@ -203,7 +203,7 @@ test("a replacement that removes the title heading or passes the length limit ch
   expect(await storedPlan()).toMatchObject({ title: "Roadmap", version: 2 });
 });
 
-test("a call based on an older version or on none is refused with the message of a full replacement; a text a browser change removed gets the version error (R4, R18)", async ({
+test("a call based on an older version or on none is refused with the message of a full replacement; a text a browser change removed gets the version error", async ({
   request,
 }) => {
   const edits = [{ oldText: "- two", newText: "- second" }];
@@ -225,7 +225,7 @@ test("a call based on an older version or on none is refused with the message of
   expect(await storedPlan()).toEqual(before);
 });
 
-test("two replacements that cancel each other out keep the version and add no revision (R6)", async ({ request }) => {
+test("two replacements that cancel each other out keep the version and add no revision", async ({ request }) => {
   const before = await storedPlan();
 
   const result = await write(request, {
@@ -242,7 +242,7 @@ test("two replacements that cancel each other out keep the version and add no re
   expect(await storedRevisions()).toHaveLength(1);
 });
 
-test("an unknown page and a deleted page are refused with the error that points to list_folder (R12)", async ({
+test("an unknown page and a deleted page are refused with the error that points to list_folder", async ({
   request,
 }) => {
   await createPage({ folder: projects, name: "removed", content: "# Removed\n\nText", deletedAt: new Date() });
@@ -257,7 +257,7 @@ test("an unknown page and a deleted page are refused with the error that points 
   });
 });
 
-test("a Reader connection does not list the tool and its call changes nothing; a Writer connection of a user lowered to Reader is refused (R1)", async ({
+test("a Reader connection does not list the tool and its call changes nothing; a Writer connection of a user lowered to Reader is refused", async ({
   request,
 }) => {
   const before = await storedPlan();
@@ -293,7 +293,7 @@ test("a Reader connection does not list the tool and its call changes nothing; a
 test.describe("in the browser", () => {
   test.use({ storageState: USER_STORAGE_STATE });
 
-  test("a page edited through MCP names the user via mcp, and reverting to the revision before restores its content (R6)", async ({
+  test("a page edited through MCP names the user via mcp, and reverting to the revision before restores its content", async ({
     page,
     request,
   }) => {

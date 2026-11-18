@@ -7,17 +7,19 @@ more than the user's current role on the folder, so that a user can give an AI a
 user finds the addresses of a folder in its view "AI apps" (see `folder-roles.md`).
 
 Code: `src/features/mcp/` (`server.ts`, which registers the tools of a connection with their descriptions and hints,
-`tools.ts` with the handlers of the tools, `tool-schemas.ts` with their inputs and outputs, `http.ts` with the adapter
-of the route, `queries.ts` and
+`tools.ts` with the handlers of the tools, `tool-schemas.ts` with their inputs and outputs, `edits.ts` with the
+replacements of `edit_page_content`, `http.ts` with the adapter of the route, `queries.ts` and
 `components/` for the view "AI apps"), the route `src/app/mcp/[[...path]]/route.ts` and the exception for it in
 `src/proxy.ts`. The roles of MCP are `MCP_ROLES` and `mcpRolesFor()` in `src/features/folder-roles/roles.ts`, the
 actor of MCP `inMcp()` in `src/features/folder-roles/actors.ts`. The protocol is spoken by the MCP SDK
 (`@modelcontextprotocol/server`, see `tech.md`).
 
-Tests: `e2e/mcp-access.spec.ts`, `e2e/mcp-read.spec.ts`, `e2e/mcp-write.spec.ts`, `e2e/mcp-manager.spec.ts`, `e2e/oauth.spec.ts` for the access tokens of OAuth, `e2e/ai-apps.spec.ts` for the view "AI
+Tests: `e2e/mcp-access.spec.ts`, `e2e/mcp-read.spec.ts`, `e2e/mcp-write.spec.ts`, `e2e/mcp-edit.spec.ts`,
+`e2e/mcp-manager.spec.ts`, `e2e/oauth.spec.ts` for the access tokens of OAuth, `e2e/ai-apps.spec.ts` for the view "AI
 apps", `integration/grant-service.test.ts`, `integration/page-service.test.ts`, `integration/folder-service.test.ts`,
 and the unit tests next to the code,
-`src/features/mcp/tools.test.ts`, `src/features/mcp/http.test.ts` and `src/features/mcp/queries.test.ts`.
+`src/features/mcp/tools.test.ts`, `src/features/mcp/edits.test.ts`, `src/features/mcp/http.test.ts` and
+`src/features/mcp/queries.test.ts`, and the cost test `src/features/mcp/edits.cost.test.ts`.
 
 ## The addresses
 
@@ -87,8 +89,8 @@ and the unit tests next to the code,
 
 ## Tools
 
-A Reader connection gets the two read tools, a Writer connection also the three write tools of pages, and a Manager
-connection also the four tools of a Manager: two, five and nine tools. A tool is registered only when the role of the
+A Reader connection gets the two read tools, a Writer connection also the four write tools of pages, and a Manager
+connection also the four tools of a Manager: two, six and ten tools. A tool is registered only when the role of the
 connection may do the function of the folder that its write checks (`mayDo()` with `FUNCTION_ROLES` in
 `src/features/folder-roles/roles.ts`), so the tools follow the services. A tool that the connection does not get is not
 listed, and a call of it changes nothing.
@@ -104,25 +106,28 @@ Read tools, which say so to the client (`readOnlyHint`):
   address, the last change, the last editor, how it was last changed (`web` or `mcp`) and its version (see
   `optimistic-locking.md`).
 
-Write tools of pages, for a Writer and a Manager connection, each with the hints of a tool that writes:
+Write tools of pages, for a Writer and a Manager connection, each with the hints of a tool that writes; the two tools
+that change the content of a page carry `destructiveHint` as well, because they can remove any text of it:
 
 - `create_page`: a new page with the given content, directly in the folder or in one of its existing tabs, named by
   its tab name. The name is optional; without one the pages service gives the page the name the browser suggests for
   its title, after the same checks as with a name and in the same order (see "Name" in `pages.md`). It
   creates no tab: a Writer connection uses the tabs that exist, a Manager connection creates one with `create_tab`.
 - `replace_page_content`: the whole content of a page, found by its tab and name, based on a version; the title
-  follows the new title heading. The same content changes nothing (see "Saves without a change" in `pages.md`).
+  follows the new title heading. The same content changes nothing (see "Saves without a change" in `pages.md`). It is
+  for rewriting a page; its description points to `edit_page_content` for changing parts of it.
+- `edit_page_content`: parts of the content of a page, found like `replace_page_content`, based on a version. See
+  "Changing parts of a page".
 - `move_or_rename_page`: a page to another tab of the folder, or directly into it, with a new name, based on a
   version. It stays in the folder of the connection. The current name and place change nothing (see "Moving or
   renaming a page to its own name and place" in `content-structure.md`).
-- `create_page` and `replace_page_content` record a revision of the page with the user of the connection and the
+- `create_page`, `replace_page_content` and `edit_page_content` record a revision of the page with the user of the connection and the
   channel `mcp`, like a content change in the browser, so that a user can undo it in the browser from the history of
   the page (see `page-history.md`). No tool reads the history or reverts a page.
 
 Tools of a Manager, for a Manager connection only. They do what the browser does for a Manager (see
 `content-structure.md` and `page-deletion.md`). `delete_page` and `delete_tab` carry the hint of a tool that destroys
-(`destructiveHint`), `create_tab` and `rename_tab` the hints of a tool that writes. `replace_page_content` of the
-Writer carries `destructiveHint` as well, because it overwrites the whole content of a page:
+(`destructiveHint`), `create_tab` and `rename_tab` the hints of a tool that writes:
 
 - `delete_page`: a page by its tab, if it is in one, and its name, based on the version that `read_page` gave, deleted
   as in the browser: it goes to the deleted pages of the folder, with the user of the connection as the user who
@@ -190,10 +195,40 @@ What holds for all of them:
 - A result is given twice: as structured data and as the same data in text.
 - The instructions that a client gets when it connects name the folder and the role of the connection, say what the
   role allows, and say in one paragraph how the folder is organised: tabs and pages. A Reader connection is told that
-  it reads the folder and cannot change it; a Writer connection is told the write tools and that every change states
-  the version; a Manager connection is told, besides that, that it deletes pages and creates, renames and deletes tabs,
+  it reads the folder and cannot change it; a Writer connection is told the write tools, that `edit_page_content` is
+  for changing parts of a page and `replace_page_content` for rewriting it, and that every change states the version;
+  a Manager connection is told, besides that, that it deletes pages and creates, renames and deletes tabs,
   that deleting a tab deletes all its pages with it, and that deleted pages can be neither seen nor restored through
   MCP, only by a Manager or Owner in the browser.
+
+## Changing parts of a page
+
+`edit_page_content` takes a list of replacements, each an exact text to find (`oldText`), the text that replaces it
+(`newText`) and, optionally, `replaceAll`, so that an agent sends only what changes and cannot drop or garble the
+parts of a page it did not mean to touch. The replacements are applied by `src/features/mcp/edits.ts`.
+
+- The version is checked first: a call based on an older version, or on none, is refused with the error of every
+  other change, which names who changed the page last, also when one of its texts is no longer on the page.
+- The line breaks of both texts are made plain first, CRLF and CR to LF, as when content is saved. Matching is then
+  exact: case, spaces and indentation count, and nothing looser is tried.
+- A text to find must appear exactly once in the content, unless the replacement sets `replaceAll`, which changes
+  every place, from the start of the content, each after the one before. Places that overlap count as several, so that
+  such a text is never taken as unique.
+- The replacements are applied in the order given, each to the content as the ones before it left it, so that a
+  replacement can change text that an earlier one inserted. The new text is inserted as it is.
+- A call is all or nothing: when one replacement cannot be applied, nothing is changed, and the tool error names the
+  replacement by its position and the start of its text to find, and says what to do next. A text that is not found
+  gets a plain error that tells the agent to read the page again; a text found more than once gets the number of
+  places and the advice to add surrounding text or to set `replaceAll`.
+- An empty list, an empty text to find and a new text that is the same as its text to find are refused before any
+  replacement is applied, also when the others would match.
+- There is no limit on the number of replacements: the length limit of a page (`CONTENT_MAX_LENGTH` in
+  `src/features/pages/limits.ts`) bounds the result instead, and holds after every replacement.
+- The new content follows the rules of content saved in full and is stored by the same write of the pages service as
+  `replace_page_content`, with the same errors: it starts with a title heading, the title follows it, and content
+  that is the same as before stores nothing and keeps the version. A stored change is one change and one revision.
+- The result is the page as stored, as for the other write tools, with the number of places each replacement changed,
+  in the order given, and without the content.
 
 ## Decisions
 
@@ -266,12 +301,48 @@ What holds for all of them:
   protected resource names it.
 - Admins never use MCP, and MCP gets no admin tools: this is a lasting rule, not a limit of today. Rejected: admin
   tools in MCP. A tool that lists accounts for users would be a user task and could come later.
+- Parts of a page are changed by exact search-and-replace, because guides and benchmarks of edit tools for AI models
+  favour it and positions shift with every change. Rejected: diffs or patches, line numbers and section targets.
+- One call of `edit_page_content` carries a list of replacements, so that several small fixes need one version and
+  make one revision. Rejected: exactly one replacement per call.
+- A call is all or nothing, like every refused write of the wiki. Rejected: saving the replacements that match and
+  warning about the others, which can leave a page half changed.
+- A text to find must appear exactly once, unless the replacement asks for every place, so that an agent never changes
+  a place it did not mean. Rejected: always exactly once, which makes renaming a term tedious; only the first place,
+  which can change the wrong place unnoticed.
+- Each replacement works on the result of the ones before it, as in other edit tools for AI models. Rejected: finding
+  every text in the content as read, which needs a rule for replacements that overlap.
+- `edit_page_content` carries the hint of a tool that destroys content, like `replace_page_content`, because a
+  replacement can remove any text. Rejected: the hint of a tool that only writes, which some clients would confirm
+  less often.
+- Its result gives the counts of the places changed, so that an agent sees what a replacement of every place did, but
+  no content, so that the answer stays short. Rejected: only the page as stored; the whole new content.
+- The tool is called `edit_page_content`, next to `replace_page_content`. Rejected: `replace_in_page`; `edit_page`,
+  which could be read as moving or renaming as well.
+- Matching is exact, but the line breaks of the agent's texts are made plain as the content is, so that a text copied
+  with other line breaks still matches. Rejected: character for character, which never matches a text with CRLF.
+- An empty list, an empty text to find and a replacement that would change nothing are errors, because all three are
+  mistakes of the agent. Rejected: allowing the replacement that changes nothing.
+- No limit of its own on the number of replacements: the length limit of a page bounds the result. It is checked after
+  every replacement, from the number of places before the new content is built, so that a call never builds a content
+  far beyond the limit in memory; a call that goes over the limit and back under it with a later replacement is
+  refused. `src/features/mcp/edits.cost.test.ts` checks that the largest calls that fit into a request stay fast.
+  Rejected: at most 100 replacements per call.
+- A text that is not found gets a plain error, so that the error is predictable and the agent reads the real text.
+  Rejected: a hint that the text appears with other spaces or indentation, which needs a looser second search.
+- Both tool descriptions and the instructions of a connection say which content tool is for what, so that an agent
+  picks the targeted tool for small changes. Rejected: explaining it only in the new tool.
+- The version is checked before the replacements, because a text is most often missing since someone changed the
+  page, and the version error tells the agent who did and to read the page again. Rejected: checking the replacements
+  first.
 
 ## Current limits
 
 - no deleted pages through MCP (see "Tools")
-- no exact search-and-replace in a page: a change replaces the whole content (see "Exact search-and-replace for MCP" in
-  `roadmap.md`)
+- `edit_page_content` changes only exact texts: no diffs or patches, no line numbers or positions, no edits targeted
+  at a heading or section, and no appending or prepending without naming a text
+- no change of several pages in one call
+- no search-and-replace in the browser
 - no connection to several folders at once, or to all folders of a user
 - no page history through MCP: a content change made by an AI agent is undone only in the browser, from the history
   of the page; a move or rename is not part of the history. The page and its history show that a change came through

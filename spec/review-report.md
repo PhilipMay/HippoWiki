@@ -129,7 +129,7 @@
   - `/api/health`;
   - `/mcp` and every address below it, of which only the MCP addresses `/mcp/<folder-uuid>/<reader|writer|manager>`
     answer more than 404; their tools are `list_folder` and `read_page`, for a Writer also `create_page`,
-    `replace_page_content` and `move_or_rename_page`, and for a Manager also `delete_page`, `create_tab`, `rename_tab`
+    `replace_page_content`, `edit_page_content` and `move_or_rename_page`, and for a Manager also `delete_page`, `create_tab`, `rename_tab`
     and `delete_tab` (added after the review);
   - `/.well-known/oauth-authorization-server` and `/.well-known/oauth-protected-resource` with any path below it;
   - `/oauth/register` and `/oauth/token`;

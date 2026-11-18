@@ -163,7 +163,8 @@ To connect an app, such as Claude Code or the connector of claude.ai or ChatGPT:
    apps" on `/account` with its folder and role, where you can revoke it.
 
 A client that cannot connect through OAuth cannot use the MCP server. A Reader connection lists the tabs and pages of
-its folder and reads pages; a Writer connection also creates pages, replaces their content and moves or renames them;
+its folder and reads pages; a Writer connection also creates pages, changes parts of their content by exact
+search-and-replace, replaces their whole content and moves or renames them;
 a Manager connection also deletes pages and creates, renames and deletes tabs. Deleted pages are restored only in the
 browser (`spec/mcp.md`).
 

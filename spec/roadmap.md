@@ -102,8 +102,6 @@ listed first; there is no order across themes.
 - MCP write tools for folders: create folders from AI apps; renaming a folder and its roles stay in the browser,
   because the Owner is never a role of MCP (`mcp.md`, `folder-roles.md`).
 - MCP search tool: search the wiki from AI apps, after full-text search (see "Search") (`mcp.md`).
-- Exact search-and-replace for MCP: a write tool that replaces an exact piece of the content of a page instead of the
-  whole content (`mcp.md`).
 - CORS for other origins: let web applications on other origins call the API.
 - Rate limits and quotas: limits on requests, writes and stored content per user.
 

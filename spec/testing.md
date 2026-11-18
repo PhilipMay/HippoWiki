@@ -86,6 +86,11 @@ How the code is tested. Commands are listed in `README.md`.
 - The comparison of revisions gets unit tests in `src/features/pages/diff.test.ts`. `src/features/pages/diff.cost.test.ts`
   (project `cost`) compares completely different revisions at the content limit, with many short lines and with few
   long ones: each comparison must answer with a diff or "too different" within 2 s, which guards the cap of the diff.
+- The replacements of `edit_page_content` get unit tests in `src/features/mcp/edits.test.ts`.
+  `src/features/mcp/edits.cost.test.ts` (project `cost`) applies the largest calls that fit into the body of an MCP
+  request to a content at the content limit: as many small replacements as fit, and a replacement of every place of a
+  text on every other character. Each must be applied, or refused as too long, within 2 s, because the number of
+  replacements of a call has no limit of its own.
 - `src/features/services.test.ts` checks that the services load without Next.js and React: it mocks `next/cache`,
   `next/headers`, `next/navigation`, `next/server` and `react` with factories that throw, then imports the services.
   An import of one of them, also an indirect one through `schema.ts` or `src/lib/`, fails the test. A new service is
@@ -347,7 +352,7 @@ How the code is tested. Commands are listed in `README.md`.
   access token of a grant from `createGrant()`, for Reader, Writer and Manager connections, each from a test database
   reset by `setUpProjects()`: `e2e/mcp-access.spec.ts` the tokens, the binding of a connection to its address and the
   current role behind it, `e2e/mcp-read.spec.ts` the protocol and the read tools, `e2e/mcp-write.spec.ts` the write
-  tools of a Writer with their locking, and `e2e/mcp-manager.spec.ts` the tools of a Manager. A change of a tool runs
+  tools of a Writer with their locking, `e2e/mcp-edit.spec.ts` the replacements of `edit_page_content`, and `e2e/mcp-manager.spec.ts` the tools of a Manager. A change of a tool runs
   the spec of its group, a change of the access `e2e/mcp-access.spec.ts`; `e2e/oauth.spec.ts` covers the discovery, the registration, the
   token endpoint and the whole flow from the login over the consent page to a tool call, a refresh and a refresh token
   that is used again. The helpers of `e2e/support/oauth.ts` send a folder address as `resource` (`mcpAddress()`).

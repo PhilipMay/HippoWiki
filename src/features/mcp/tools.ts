@@ -378,7 +378,7 @@ function quoted(text: string): string {
 
 /**
  * The tool error of a replacement that cannot be applied: which one, by its position and the start of its text to
- * find, that nothing was changed, and what to do next (R3).
+ * find, that nothing was changed, and what to do next.
  */
 function editNotApplied(failure: Extract<EditsResult, { ok: false }>): CallToolResult {
   const { position, oldText, reason } = failure;
@@ -397,7 +397,7 @@ function editNotApplied(failure: Extract<EditsResult, { ok: false }>): CallToolR
           "differs from it, or leave the replacement out.",
       );
     case "not-found":
-      // A plain error, without a guess at similar text, so that the agent reads the real text again (R16).
+      // A plain error, without a guess at similar text, so that the agent reads the real text again.
       return toolError(
         `${replacement} was not found in the content, as the replacements before it left it, so nothing was ` +
           "changed. The text must match exactly, case, spaces, indentation and line breaks included. Read the page " +
@@ -420,8 +420,8 @@ function editNotApplied(failure: Extract<EditsResult, { ok: false }>): CallToolR
  * The tool `edit_page_content`: exact texts of the content of a page of the folder of the connection replaced by new
  * texts, based on a version, and stored as one change, or nothing at all. The version is checked before the
  * replacements, so that a call based on an older version learns who changed the page, also when one of its texts is
- * gone (R4, R18). The service checks the new content like content saved in full (R5) and stores nothing when it is
- * the same as before (R6).
+ * gone. The service checks the new content like content saved in full and stores nothing when it is
+ * the same as before (see "Changing parts of a page" in `spec/mcp.md`).
  */
 export async function editPageContent(
   options: WikiToolsOptions,

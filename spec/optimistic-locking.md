@@ -69,7 +69,7 @@ This section is the rule of the version for every caller other than the browser,
   rename and delete, the version of the page its change is based on, and is refused in the same cases; a change
   without a version is refused and changes nothing.
 - The MCP write tools follow the rule unchanged: `read_page` gives the version of a page, and
-  `replace_page_content`, `move_or_rename_page` and `delete_page` state it. A change or delete based on an older
+  `replace_page_content`, `edit_page_content`, `move_or_rename_page` and `delete_page` state it. A change or delete based on an older
   version, or on none, is refused with a tool error that names who changed the page last, how (`web` or `mcp`) and
   when, and tells the agent to read the page again; nothing is changed.
 

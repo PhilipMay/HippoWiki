@@ -16,7 +16,7 @@ describe("applyEdits", () => {
     });
   });
 
-  it("applies three replacements in one call and counts one place for each (R2)", () => {
+  it("applies three replacements in one call and counts one place for each", () => {
     const result = applyEdits(CONTENT, [
       { oldText: "- one", newText: "- first" },
       { oldText: "- two", newText: "- second" },
@@ -30,7 +30,7 @@ describe("applyEdits", () => {
     });
   });
 
-  it("finds and changes in a second replacement the text that the first one inserted (R9)", () => {
+  it("finds and changes in a second replacement the text that the first one inserted", () => {
     const result = applyEdits(CONTENT, [
       { oldText: "- two", newText: "- two and a half" },
       { oldText: "and a half", newText: "and three quarters" },
@@ -40,7 +40,7 @@ describe("applyEdits", () => {
     expect(result.ok && result.content).toContain("- two and three quarters\n");
   });
 
-  it("refuses a text that appears twice with the number 2 and the position; replaceAll changes both (R8)", () => {
+  it("refuses a text that appears twice with the number 2 and the position; replaceAll changes both", () => {
     const twice = "# T\n\nfoo and foo\n";
 
     expect(
@@ -75,7 +75,7 @@ describe("applyEdits", () => {
     ["case", "the release is on"],
     ["one space", "The release  is on"],
     ["indentation", "  - two"],
-  ])("does not find a text that differs only in %s, with the plain not-found failure (R13, R16)", (_kind, oldText) => {
+  ])("does not find a text that differs only in %s, with the plain not-found failure", (_kind, oldText) => {
     expect(applyEdits(CONTENT, [{ oldText, newText: "x" }])).toStrictEqual({
       ok: false,
       position: 1,
@@ -87,7 +87,7 @@ describe("applyEdits", () => {
   it.each([
     ["CRLF", "\r\n"],
     ["CR", "\r"],
-  ])("matches texts sent with %s line breaks and inserts them as LF (R13)", (_kind, lineBreak) => {
+  ])("matches texts sent with %s line breaks and inserts them as LF", (_kind, lineBreak) => {
     const result = applyEdits(CONTENT, [
       { oldText: `- one${lineBreak}- two`, newText: `- one${lineBreak}- one and a half${lineBreak}- two` },
     ]);
@@ -105,7 +105,7 @@ describe("applyEdits", () => {
       { oldText: "- one\n- two", newText: "- one\r\n- two" },
       "no-change",
     ],
-  ])("refuses %s before anything is applied, also when the other replacements match (R14)", (_kind, edit, code) => {
+  ])("refuses %s before anything is applied, also when the other replacements match", (_kind, edit, code) => {
     const result = applyEdits(CONTENT, [
       { oldText: "- three", newText: "- 3" },
       edit,
@@ -124,7 +124,7 @@ describe("applyEdits", () => {
     });
   });
 
-  it("names the first replacement that fails, also when a later one fails as well (R3)", () => {
+  it("names the first replacement that fails, also when a later one fails as well", () => {
     const result = applyEdits(CONTENT, [
       { oldText: "- one", newText: "- 1" },
       { oldText: "- four", newText: "- 4" },
@@ -145,7 +145,7 @@ describe("applyEdits", () => {
     });
   });
 
-  it("applies 200 small replacements in one call (R15)", () => {
+  it("applies 200 small replacements in one call", () => {
     const items = Array.from({ length: 200 }, (_, index) => `- item ${index}.\n`).join("");
     const edits = Array.from({ length: 200 }, (_, index) => ({
       oldText: `item ${index}.`,

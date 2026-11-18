@@ -4,7 +4,7 @@ import { applyEdits, type Edit } from "@/features/mcp/edits";
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 
 // Wall-clock budgets: this file runs in the Vitest project `cost`, never under coverage and never next to other test
-// files. A call of `edit_page_content` carries no limit on the number of its replacements (R15), so the largest calls
+// files. A call of `edit_page_content` carries no limit on the number of its replacements, so the largest calls
 // that an MCP request can carry must be applied, or refused, quickly on a content at the length limit, so that a call
 // never ties up the server.
 

@@ -56,7 +56,8 @@ specs point here. A revert always changes the content (see `page-history.md`).
   stored is refused with the error of that limit, also when it is the stored content; a save based on another version
   than the page has, or on none, is refused as changed (see `optimistic-locking.md`); a save of a deleted page as gone.
 - The answer: that of every save. The browser editor leads to the page address without a notice, and
-  `replace_page_content` through MCP returns the page with the version the call stated.
+  `replace_page_content` and `edit_page_content` through MCP return the page with the version the call stated, the
+  second also when its replacements give back the stored content.
 - The log: a line of its own, with the page and the channel, and not "page updated", so that an operator sees which
   saves changed a page.
 

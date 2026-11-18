@@ -1,7 +1,8 @@
 // The replacements of `edit_page_content`: exact texts of the content of a page and the texts that replace them,
 // applied one after the other. A pure, synchronous module without the database, the services, Next.js or React: it
 // builds the new content, or names the first replacement that cannot be applied and why, and the tool stores the
-// result with the pages service, which checks the rules of content such as the title heading (R5).
+// result with the pages service, which checks the rules of content such as the title heading. The rules are
+// "Changing parts of a page" in `spec/mcp.md`.
 
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 
@@ -32,7 +33,7 @@ export type EditsResult =
   | { ok: true; content: string; counts: number[] }
   | { ok: false; position: number; oldText: string; reason: EditFailureReason };
 
-/** Makes the line breaks plain, CRLF and CR to LF, as `contentSchema` in `src/features/pages/schema.ts` does (R13). */
+/** Makes the line breaks plain, CRLF and CR to LF, as `contentSchema` in `src/features/pages/schema.ts` does. */
 function plainLineBreaks(text: string): string {
   return text.replace(/\r\n?/g, "\n");
 }
@@ -59,9 +60,9 @@ function countPlaces(content: string, text: string): number {
 
 /**
  * Applies the replacements to the content, one after the other, each to the content as the ones before it left it
- * (R2, R9), or returns the first one that cannot be applied, so that a call is all or nothing (R3). Matching is exact:
- * case, spaces and indentation count, and nothing looser is tried, so that the agent reads the real text again (R13,
- * R16). There is no limit on the number of replacements (R15): the length limit of the content bounds the result.
+ *, or returns the first one that cannot be applied, so that a call is all or nothing. Matching is exact:
+ * case, spaces and indentation count, and nothing looser is tried, so that the agent reads the real text again.
+ * There is no limit on the number of replacements: the length limit of the content bounds the result.
  */
 export function applyEdits(content: string, edits: readonly Edit[]): EditsResult {
   // A call without replacements is a mistake of the agent, like the two checks below.
@@ -73,7 +74,7 @@ export function applyEdits(content: string, edits: readonly Edit[]): EditsResult
     replaceAll: edit.replaceAll === true,
   }));
 
-  // Checked before anything is applied, so that such a call is refused even when its other replacements match (R14).
+  // Checked before anything is applied, so that such a call is refused even when its other replacements match.
   for (const [index, edit] of plain.entries()) {
     const failed = (reason: EditFailureReason): EditsResult => ({
       ok: false,
@@ -92,15 +93,15 @@ export function applyEdits(content: string, edits: readonly Edit[]): EditsResult
   for (const [index, { oldText, newText, replaceAll }] of plain.entries()) {
     const failed = (reason: EditFailureReason): EditsResult => ({ ok: false, position: index + 1, oldText, reason });
     const first = current.indexOf(oldText);
-    // The agent's text is not, or no longer, in the content: it has to read the page again (R16).
+    // The agent's text is not, or no longer, in the content: it has to read the page again.
     if (first === -1) return failed({ code: "not-found" });
 
     // Every place is counted before the new content is built, so that a call never builds a content far beyond the
-    // limit in memory; the other rules of content are checked by the service (R5).
+    // limit in memory; the other rules of content are checked by the service.
     const places = replaceAll ? countPlaces(current, oldText) : 1;
     if (!replaceAll && countStarts(current, oldText, 2) > 1) {
       // A text of several places, also overlapping ones, names no single place: the agent adds surrounding text or
-      // asks for every place, so that it never changes a place it did not mean (R8).
+      // asks for every place, so that it never changes a place it did not mean.
       return failed({ code: "found-several-times", count: countStarts(current, oldText) });
     }
     // The length after this replacement; a later replacement that would shorten the content again does not help.

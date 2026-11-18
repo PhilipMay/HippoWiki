@@ -19,7 +19,7 @@ model `PageRevision` in `prisma/schema.prisma` and its migration
 ## Revisions
 
 - Every content change of a page is recorded as a revision: creating the page and every content save, in the browser
-  and through MCP (`create_page`, `replace_page_content`), and every revert.
+  and through MCP (`create_page`, `replace_page_content`, `edit_page_content`), and every revert.
 - A revision keeps the content and the title of the page after the change, the time of the change, the user who made
   it and how (`web` or `mcp`), and, for a revert, the number of the revision it went back to. Revisions are numbered
   per page, 1 for the oldest.

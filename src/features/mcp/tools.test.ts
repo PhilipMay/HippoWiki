@@ -448,7 +448,7 @@ describe("the write tools", () => {
         expect(argument.description).toBeTruthy();
     }
     expect(replace?.annotations.destructiveHint).toBe(true);
-    // A replacement can remove any text, so the tool carries the hints of the full replacement (R10).
+    // A replacement can remove any text, so the tool carries the hints of the full replacement.
     expect(edit?.annotations).toStrictEqual(replace?.annotations);
   });
 
@@ -496,7 +496,7 @@ describe("the write tools", () => {
     }
   });
 
-  it("tell a Writer and a Manager connection which content tool is for what, and a Reader connection neither (R17)", () => {
+  it("tell a Writer and a Manager connection which content tool is for what, and a Reader connection neither", () => {
     for (const role of ["writer", "manager"] as const) {
       expect(instructionsFor("handbook", role)).toContain(
         "Use edit_page_content to change parts of a page, such as a sentence or a list item, and " +
@@ -654,7 +654,7 @@ describe("the write tools", () => {
       mocks.getPage.mockResolvedValue({ ...PAGE, content: CONTENT });
     });
 
-    it("stores the content with the replacements applied, based on the given version, and returns the counts and no content (R2, R11)", async () => {
+    it("stores the content with the replacements applied, based on the given version, and returns the counts and no content", async () => {
       mocks.updatePageContent.mockResolvedValue({ ok: true, value: STORED });
 
       const result = await callTool("edit_page_content", {
@@ -700,7 +700,7 @@ describe("the write tools", () => {
       ["missing", undefined],
       ["older than the page as read", 3],
     ])(
-      "refuses a version that is %s with the message of replace_page_content, before the replacements (R4, R18)",
+      "refuses a version that is %s with the message of replace_page_content, before the replacements",
       async (_kind, version) => {
         const message = errorOf(
           await callTool("edit_page_content", {
@@ -753,7 +753,7 @@ describe("the write tools", () => {
         ["would make the content longer than 100,000 characters", "so nothing was changed"],
       ],
     ])(
-      "answers %s with a tool error that names the replacement and what to do, and changes nothing (R3, R8, R14, R16)",
+      "answers %s with a tool error that names the replacement and what to do, and changes nothing",
       async (_kind, edits, parts) => {
         const message = errorOf(await callTool("edit_page_content", { page: "setup", version: 4, edits }));
 
@@ -772,7 +772,7 @@ describe("the write tools", () => {
       expect(message).toContain(`Replacement 1 (oldText ${JSON.stringify(`${oldText.slice(0, 60)}…`)}) was not found`);
     });
 
-    it("answers a page that does not exist with the error that points to list_folder, and changes nothing (R12)", async () => {
+    it("answers a page that does not exist with the error that points to list_folder, and changes nothing", async () => {
       mocks.getPage.mockResolvedValue(null);
 
       const message = errorOf(
@@ -793,7 +793,7 @@ describe("the write tools", () => {
       [{ code: "invalid-input", fieldErrors: { content: [TITLE_MISSING] } }],
       [{ code: "invalid-input", fieldErrors: { content: ["Content must be at most 100,000 characters"] } }],
       [{ code: "failed" }],
-    ])("maps the error %j to the tool error of replace_page_content (R5)", async (error) => {
+    ])("maps the error %j to the tool error of replace_page_content", async (error) => {
       mocks.updatePageContent.mockResolvedValue({ ok: false, error });
 
       const edited = errorOf(
@@ -1289,7 +1289,7 @@ describe("the descriptions", () => {
     expect(byName.rename_tab?.description).toContain("A rename to the current name changes nothing.");
   });
 
-  it("of the two content tools say which one is for what and name the other one (R17)", async () => {
+  it("of the two content tools say which one is for what and name the other one", async () => {
     actor = WRITER;
 
     const tools = (await send({ method: "tools/list" })).result?.tools as ListedTool[];
