@@ -187,6 +187,11 @@ describe("createPage", () => {
     ["tab-not-found", failure("tab-not-found"), TAB_GONE],
     ["invalid-input", failure("invalid-input", SERVICE_FIELD_ERRORS), { fieldErrors: SERVICE_FIELD_ERRORS }],
     ["name-taken", failure("name-taken"), NAME_TAKEN],
+    [
+      "no-suggested-name",
+      failure("no-suggested-name"),
+      { fieldErrors: { name: ["The title suggests no name. Enter a name."] } },
+    ],
     ["failed", failure("failed"), SAVE_FAILED],
   ])("shows the form state of %s", async (_code, result, state) => {
     mocks.createPage.mockResolvedValue(result);

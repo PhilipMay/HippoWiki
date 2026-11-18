@@ -99,7 +99,7 @@ Decided by the user on 2026-11-18:
 - [x] Actors, guards and one channel
 - [x] Guards and errors of the services
 - [x] Writes of pages
-- [ ] The stored page and the derived name
+- [x] The stored page and the derived name
 - [ ] The reads of the history in a service of their own
 - [ ] MCP tools
 - [ ] OAuth and grants

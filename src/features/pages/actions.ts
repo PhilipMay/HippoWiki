@@ -39,6 +39,8 @@ const REVERT_INVALID_MESSAGE =
 const PAGE_GONE_MESSAGE = "This page no longer exists.";
 const FOLDER_GONE_MESSAGE = "This folder no longer exists.";
 const TAB_GONE_MESSAGE = "This tab no longer exists.";
+/** What the name field shows when no name was sent and the title of the content suggests none. */
+const NO_SUGGESTED_NAME_MESSAGE = "The title suggests no name. Enter a name.";
 
 /** The form state that shows "Name is already in use" at the name field. */
 const nameTakenState = { fieldErrors: { name: [NAME_TAKEN_MESSAGE] } };
@@ -99,6 +101,9 @@ export async function createPage(
         return { message: TAB_GONE_MESSAGE };
       case "invalid-input":
         return { fieldErrors: result.error.fieldErrors };
+      // The form always sends a name, so only a caller without one gets this; it is answered at the name all the same.
+      case "no-suggested-name":
+        return { fieldErrors: { name: [NO_SUGGESTED_NAME_MESSAGE] } };
       case "name-taken":
         return nameTakenState;
       case "failed":

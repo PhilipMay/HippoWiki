@@ -14,9 +14,9 @@
     findings of the tests that are still open are minor.
   - Documents that the features outran: rules stated in full in several documents, and copies of code and
     constants in the specs.
-- Findings: 47 open of 107, 0 Blocker, 0 Major, 37 Minor and 10 Nit (8 `issue:`, 27 `suggestion:`, 8 `nit:` and
+- Findings: 45 open of 107, 0 Blocker, 0 Major, 35 Minor and 10 Nit (8 `issue:`, 25 `suggestion:`, 8 `nit:` and
   4 `question:`).
-- Confidence of the suggestions: 5 High, 32 Medium and 6 Low; the 4 questions have none. A High suggestion can be
+- Confidence of the suggestions: 5 High, 31 Medium and 5 Low; the 4 questions have none. A High suggestion can be
   fixed as written; the others wait for the user, as `issue-report.md` describes.
 - Decisions: on 2026-11-18 the user decided all Medium and Low suggestions. Each of these findings ends with a line
   `Decision`, and is fixed as that line says, without asking again. The 4 questions were decided by the user on the
@@ -189,26 +189,6 @@ page, save its content, move or rename it, delete it, and create, rename and del
 service is handled on both sides, no `switch` has a `default`, and the two sides differ only where a spec says so:
 for `not-allowed` the browser shows the not-found page and MCP says that the role does not allow the change.
 
-#### suggestion: the write tools read the page a second time for its title, and return an empty title when that read finds nothing
-
-- Location: `src/features/mcp/tools.ts`, lines 467–481, `storedResult()`; `src/features/pages/service.ts`, lines
-  119–129, `StoredPage`
-- Severity: Minor. The window is small and the write itself is right.
-- Category: correctness
-- Problem: `StoredPage` carries no title, but every write tool of pages returns one. The tool therefore reads the
-  page by its name after the write. If that read returns `null`, because another caller moved, renamed or deleted
-  the page meanwhile or the role was lowered, the tool reports success with `title: ""`. The adapter repairs a gap
-  in the result of the service.
-- Impact: an AI app gets an empty title for a page it just wrote, without an error, and every write of a page
-  through MCP costs one more query.
-- Evidence: lines 473–476: `const page = await pageService.getPage(options.actor, options.folder.name, tab,
-stored.name);` and `title: page?.title ?? "",`.
-- Suggestion (optional): add the title to `StoredPage` and its selection, and build the result from the stored
-  page alone.
-- Confidence: Medium. One fix, but it changes a type that the browser actions and many mocks of the tests use;
-  nothing was run.
-- Decision (2026-11-18): as suggested.
-
 #### suggestion: the tools decide by the name of a role which tools a connection gets, not by `mayDo()`
 
 - Location: `src/features/mcp/tools.ts`, lines 395–398, `isManager()`, line 405, `tabNotFound()`, lines 822–823 and
@@ -380,25 +360,6 @@ error_description: description, state, iss: base })`.
   OAuth.
 - Confidence: High. One fix; the order of the parameters and so the address stay the same, and the unit tests of
   the actions and the queries assert the addresses.
-
-#### suggestion: `create_page` without a name validates the content in the tool before the service does
-
-- Location: `src/features/mcp/tools.ts`, lines 494–515, `createPage()`
-- Severity: Minor. Meant, as the comment says, but a rule outside the service.
-- Category: performance
-- Problem: to derive the name, the tool runs the schema of the content itself, which parses the Markdown; the
-  service then parses the same content again. The order of checks also differs from the order of the service:
-  without a name, an error of the content is reported before the role and the tab are looked at.
-- Impact: every `create_page` without a name pays the parse twice.
-- Evidence: lines 499–501: `const checked = pageContentInputSchema.safeParse({ content: input.content });` and
-  `name = deriveName(checked.data.title);`.
-- Suggestion (optional): let the service accept a missing name and derive it after its own checks, with a code for
-  a title that suggests no name.
-- Confidence: Low. It adds a code to the service and to the browser action.
-- Alternatives: keep the rule in the tool and record the second parse as accepted in `pages.md`.
-- Decision (2026-11-18): as suggested: the service accepts a missing name and derives it after its own checks, with a
-  code of its own for a title that suggests no name; the tool no longer parses the content, so the content is parsed
-  once and the order of the checks is that of the service. `pages.md` and `mcp.md` are brought in line.
 
 #### suggestion: `tools.ts` and the OAuth service each hold several parts that could stand alone
 

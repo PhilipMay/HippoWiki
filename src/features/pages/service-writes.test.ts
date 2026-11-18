@@ -132,6 +132,8 @@ describe("a write through MCP", () => {
 describe("createPage", () => {
   const VALID = { name: " my-page ", content: CONTENT, tabId: null };
   const IN_TAB = { ...VALID, tabId: TAB_ID };
+  /** A taken name of a new page, with the name, given or derived. */
+  const NEW_NAME_TAKEN = { ok: false, error: { ...NAME_TAKEN.error, name: "my-page" } };
 
   it.each([
     ["valid", VALID],
@@ -182,6 +184,40 @@ describe("createPage", () => {
     expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID, channel: "web" }, "page created");
   });
 
+  it("stores a page without a name under the name derived from its title", async () => {
+    const stored = { id: PAGE_ID, name: "release-notes", title: "Release Notes", folder: { name: "f" }, tab: null };
+    mocks.create.mockResolvedValue(stored);
+
+    await expect(createPage(ACTOR, FOLDER_ID, { content: "# Release Notes\n\nText", tabId: null })).resolves.toEqual({
+      ok: true,
+      value: stored,
+    });
+
+    expect(dataOf(mocks.create)).toMatchObject({ name: "release-notes", title: "Release Notes" });
+  });
+
+  it("returns name-taken with the derived name when it is taken", async () => {
+    mocks.create.mockRejectedValue(uniqueViolation({ index: "Page_folderId_name_key" }));
+
+    await expect(createPage(ACTOR, FOLDER_ID, { content: CONTENT, tabId: null })).resolves.toEqual(NEW_NAME_TAKEN);
+  });
+
+  it.each([
+    ["a title in another script", "# 日本語"],
+    ["a title in another alphabet", "# Привет"],
+  ])("returns no-suggested-name without a name for %s, and stores nothing", async (_case, content) => {
+    await expect(createPage(ACTOR, FOLDER_ID, { content, tabId: null })).resolves.toEqual({
+      ok: false,
+      error: { code: "no-suggested-name" },
+    });
+    expectDatabaseUntouched();
+  });
+
+  it("returns the field errors of the content without a name, and derives no name", async () => {
+    await expect(createPage(ACTOR, FOLDER_ID, { content: "Text", tabId: null })).resolves.toEqual(TITLE_MISSING);
+    expectDatabaseUntouched();
+  });
+
   it("stores the content with plain line feeds", async () => {
     mocks.create.mockResolvedValue({ id: PAGE_ID, name: "n", folder: { name: "f" }, tab: null });
 
@@ -202,7 +238,7 @@ describe("createPage", () => {
   it.each(nameTakenErrors)("returns name-taken for a unique violation %s", async (_name, err) => {
     mocks.create.mockRejectedValue(err);
 
-    await expect(createPage(ACTOR, FOLDER_ID, VALID)).resolves.toEqual(NAME_TAKEN);
+    await expect(createPage(ACTOR, FOLDER_ID, VALID)).resolves.toEqual(NEW_NAME_TAKEN);
 
     expect(mocks.warn).toHaveBeenCalledWith(
       { folderId: FOLDER_ID, tabId: null, name: "my-page" },
@@ -214,7 +250,7 @@ describe("createPage", () => {
   it("returns name-taken for a taken name in a tab", async () => {
     mocks.create.mockRejectedValue(uniqueViolation({ index: "Page_tabId_name_key" }));
 
-    await expect(createPage(ACTOR, FOLDER_ID, IN_TAB)).resolves.toEqual(NAME_TAKEN);
+    await expect(createPage(ACTOR, FOLDER_ID, IN_TAB)).resolves.toEqual(NEW_NAME_TAKEN);
 
     expect(mocks.warn).toHaveBeenCalledWith(
       { folderId: FOLDER_ID, tabId: TAB_ID, name: "my-page" },

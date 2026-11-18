@@ -51,6 +51,7 @@ import {
   revisionNumberSchema,
   type PageFieldErrors,
 } from "@/features/pages/schema";
+import { deriveName } from "@/features/pages/derive";
 import { REVISIONS_PER_PAGE } from "@/features/pages/limits";
 import { NEXT_VERSION, softDeleteData } from "@/features/pages/writes";
 import { LAST_EDITOR_SELECT, withLastEditor, type LastEditor } from "@/features/users/records";
@@ -127,12 +128,13 @@ export type DeletedPage = {
 };
 
 /**
- * A page as stored by a write, with the names of its folder and tab, what its address is built from, and its version
- * after the write.
+ * A page as stored by a write, with the names of its folder and tab, what its address is built from, its title and its
+ * version after the write.
  */
 export type StoredPage = {
   id: string;
   name: string;
+  title: string;
   version: number;
   folder: { name: string };
   tab: { name: string } | null;
@@ -181,8 +183,19 @@ type PageChanged = { code: "page-changed"; page: StoredPage };
  */
 type RevisionNotFound = { code: "revision-not-found" };
 
+/** Another page already uses the name of the new page at the place: the given one, or the one derived from its title. */
+type NewPageNameTaken = NameTaken & { name: string };
+/** No name was given, and the title of the content suggests none, e.g. a title in a non-Latin script. */
+type NoSuggestedName = { code: "no-suggested-name" };
+
 export type CreatePageError =
-  NotAllowed | FolderNotFound | TabNotFound | InvalidInput<PageFieldErrors> | NameTaken | Failed;
+  | NotAllowed
+  | FolderNotFound
+  | TabNotFound
+  | InvalidInput<PageFieldErrors>
+  | NoSuggestedName
+  | NewPageNameTaken
+  | Failed;
 export type UpdatePageContentError = NotAllowed | PageNotFound | PageChanged | InvalidInput<PageFieldErrors> | Failed;
 export type MoveOrRenamePageError =
   NotAllowed | PageNotFound | PageChanged | TabNotFound | InvalidInput<NameFieldErrors> | NameTaken | Failed;
@@ -197,6 +210,7 @@ const SUMMARY_SELECT = { id: true, name: true, title: true, updatedAt: true, ...
 const STORED_PAGE_SELECT = {
   id: true,
   name: true,
+  title: true,
   version: true,
   folder: { select: { name: true } },
   tab: { select: { name: true } },
@@ -522,15 +536,38 @@ async function refusedWrite(
 }
 
 /**
+ * The validated input of a new page: the name, the title derived from the content, and the content. With a name, the
+ * name and the content are validated together, so that both report their errors. Without one, the content is
+ * validated and the name derived from its title, as the browser suggests it (`deriveName()`); a title that suggests no
+ * valid name gives `no-suggested-name`. Either way the content is parsed once.
+ */
+async function newPageInput(input: {
+  name?: string;
+  content: string;
+}): Promise<Result<{ name: string; title: string; content: string }, InvalidInput<PageFieldErrors> | NoSuggestedName>> {
+  if (input.name !== undefined) {
+    const parsed = newPageInputSchema.safeParse({ name: input.name, content: input.content });
+    return parsed.success ? { ok: true, value: parsed.data } : invalidInput(parsed.error);
+  }
+  const parsed = pageContentInputSchema.safeParse({ content: input.content });
+  if (!parsed.success) return invalidInput(parsed.error);
+  const name = parseName(deriveName(parsed.data.title));
+  if (!name) return { ok: false, error: { code: "no-suggested-name" } };
+  return { ok: true, value: { name, ...parsed.data } };
+}
+
+/**
  * Creates a page with the given name and content, with the title derived from the content, and returns it as stored.
- * The page is placed in the tab with the id `tabId` or, with `null`, directly in the folder with the given id; the tab
- * must be one of that folder. The actor is the page's last editor, in the browser and through MCP. Revision 1 of the
- * page, with its title and content, the actor and the channel, is stored in the same write.
+ * Without a name, the page gets the name derived from its title, after all other checks but the name; a title that
+ * suggests no name gives `no-suggested-name` and stores nothing. The page is placed in the tab with the id `tabId` or,
+ * with `null`, directly in the folder with the given id; the tab must be one of that folder. The actor is the page's
+ * last editor, in the browser and through MCP. Revision 1 of the page, with its title and content, the actor and the
+ * channel, is stored in the same write.
  */
 export async function createPage(
   actor: ContentActor,
   folderId: string,
-  input: { name: string; content: string; tabId: string | null },
+  input: { name?: string; content: string; tabId: string | null },
 ): Promise<Result<StoredPage, CreatePageError>> {
   const opened = openContentWrite(actor, "page not created");
   if (opened.refused) return opened.refused;
@@ -551,14 +588,17 @@ export async function createPage(
   const tabId = parsePlace(input.tabId);
   if (tabId === undefined) return { ok: false, error: { code: "tab-not-found" } };
 
-  const parsed = newPageInputSchema.safeParse({ name: input.name, content: input.content });
-  if (!parsed.success) return invalidInput(parsed.error);
+  const parsed = await newPageInput(input);
+  if (!parsed.ok) return parsed;
+  const { name, title, content } = parsed.value;
 
   let page: StoredPage;
   try {
     page = await getDb().page.create({
       data: {
-        ...parsed.data,
+        name,
+        title,
+        content,
         tabId,
         folderId: parsedFolderId,
         lastEditedById,
@@ -566,8 +606,8 @@ export async function createPage(
         revisions: {
           create: {
             number: 1,
-            title: parsed.data.title,
-            content: parsed.data.content,
+            title,
+            content,
             userId: lastEditedById,
             via: lastEditedVia,
           },
@@ -579,8 +619,8 @@ export async function createPage(
     // Before the folder and tab keys: a missing actor must not be reported as a missing folder or tab.
     if (isForeignKeyViolation(err, LAST_EDITOR)) return unknownActor(err, actor);
     if (isUniqueViolation(err, PAGE_NAME)) {
-      logger.warn({ folderId: parsedFolderId, tabId, name: parsed.data.name }, "name of new page already in use");
-      return { ok: false, error: { code: "name-taken" } };
+      logger.warn({ folderId: parsedFolderId, tabId, name }, "name of new page already in use");
+      return { ok: false, error: { code: "name-taken", name } };
     }
     if (isForeignKeyViolation(err)) {
       // A missing folder, a missing tab or a tab of another folder: the composite foreign key refuses all of them.

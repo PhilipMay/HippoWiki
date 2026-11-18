@@ -109,7 +109,8 @@ Read tools, which say so to the client (`readOnlyHint`):
 Write tools of pages, for a Writer and a Manager connection, each with the hints of a tool that writes:
 
 - `create_page`: a new page with the given content, directly in the folder or in one of its existing tabs, named by
-  its tab name. The name is optional; without one the page gets the name the browser suggests for its title. It
+  its tab name. The name is optional; without one the pages service gives the page the name the browser suggests for
+  its title, after the same checks as with a name and in the same order (see "Name" in `pages.md`). It
   creates no tab: a Writer connection uses the tabs that exist, a Manager connection creates one with `create_tab`.
 - `replace_page_content`: the whole content of a page, found by its tab and name, based on a version; the title
   follows the new title heading. Content that is the same as the stored content changes nothing: the page keeps its

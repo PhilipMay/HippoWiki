@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { McpActor } from "@/features/folder-roles/actors";
 import { createWikiServer, instructionsFor } from "@/features/mcp/tools";
-import { CONTENT_MAX_DEPTH, CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 import { analyseMarkdown } from "@/features/pages/markdown";
 import { TITLE_HEADING_MISSING_MESSAGE as TITLE_MISSING } from "@/features/pages/schema";
 
@@ -394,7 +393,7 @@ describe("an unknown tool", () => {
 });
 
 describe("the write tools", () => {
-  const STORED = { id: "p1", name: "setup", version: 5, folder: { name: "handbook" }, tab: null };
+  const STORED = { id: "p1", name: "setup", title: "Setup", version: 5, folder: { name: "handbook" }, tab: null };
   const PAGE = {
     id: "p1",
     name: "setup",
@@ -484,17 +483,21 @@ describe("the write tools", () => {
   });
 
   describe("create_page", () => {
-    it("creates a page with the name derived from its title in the folder, and returns it as stored", async () => {
-      mocks.createPage.mockResolvedValue({ ok: true, value: { ...STORED, name: "release-notes", version: 1 } });
-      mocks.getPage.mockResolvedValue({ ...PAGE, name: "release-notes", title: "Release Notes" });
+    // The service derives the name, after its own checks; the tool parses no content.
+    it("creates a page without a name in the folder, and returns it as stored, without reading it again", async () => {
+      mocks.createPage.mockResolvedValue({
+        ok: true,
+        value: { ...STORED, name: "release-notes", title: "Release Notes", version: 1 },
+      });
 
       const result = await callTool("create_page", { content: "# Release Notes\n\nText" });
 
       expect(mocks.createPage).toHaveBeenCalledExactlyOnceWith(WRITER, FOLDER_ID, {
-        name: "release-notes",
         content: "# Release Notes\n\nText",
         tabId: null,
       });
+      expect(analyseMarkdown).not.toHaveBeenCalled();
+      expect(mocks.getPage).not.toHaveBeenCalled();
       expect(result.structuredContent).toEqual({
         name: "release-notes",
         title: "Release Notes",
@@ -517,35 +520,6 @@ describe("the write tools", () => {
       });
     });
 
-    it.each([
-      ["content without a title heading", { content: "Just text" }, "must start with a title heading"],
-      ["a title heading without a letter or digit", { content: "# ...!" }, "must start with a title heading"],
-      ["a title in another script", { content: "# 日本語" }, "The title suggests no name"],
-    ])("answers %s without a name with a tool error and creates nothing", async (_case, args, message) => {
-      expect(errorOf(await callTool("create_page", args))).toContain(message);
-      expect(mocks.createPage).not.toHaveBeenCalled();
-    });
-
-    it("answers content over the length limit without a name with the length error and never parses it", async () => {
-      const content = `# Long\n\n${"a".repeat(CONTENT_MAX_LENGTH)}`;
-
-      expect(errorOf(await callTool("create_page", { content }))).toContain(
-        "The content is not valid: Content must be at most 100,000 characters",
-      );
-      expect(analyseMarkdown).not.toHaveBeenCalled();
-      expect(mocks.createPage).not.toHaveBeenCalled();
-    });
-
-    it("answers content nested too deep without a name with the depth error and creates nothing", async () => {
-      const content = `# Deep\n\n${"- ".repeat(CONTENT_MAX_DEPTH + 1)}a`;
-
-      expect(errorOf(await callTool("create_page", { content }))).toContain(
-        `The content is not valid: Lists and quotes must be nested at most ${CONTENT_MAX_DEPTH} levels deep`,
-      );
-      expect(analyseMarkdown).toHaveBeenCalledOnce();
-      expect(mocks.createPage).not.toHaveBeenCalled();
-    });
-
     it("answers a tab that does not exist with a tool error and creates nothing", async () => {
       mocks.getTab.mockResolvedValue(null);
 
@@ -558,7 +532,12 @@ describe("the write tools", () => {
 
     it.each([
       [{ code: "not-allowed" }, NOT_ALLOWED],
-      [{ code: "name-taken" }, 'A page named "new" already exists directly in the folder "handbook"'],
+      [{ code: "name-taken", name: "new" }, 'A page named "new" already exists directly in the folder "handbook"'],
+      [
+        { code: "no-suggested-name" },
+        "The title suggests no name for the page, so nothing was changed. Give a name of lowercase letters, digits " +
+          "and single hyphens.",
+      ],
       [{ code: "invalid-input", fieldErrors: { name: ["Name is not valid"] } }, "The name is not valid"],
       [{ code: "invalid-input", fieldErrors: { content: ["Content must be at most 10"] } }, "The content is not valid"],
       [{ code: "tab-not-found" }, "There is no tab named"],
@@ -1096,7 +1075,7 @@ describe("every tool", () => {
     tab: null,
     role: "manager",
   };
-  const STORED = { id: "p1", name: "setup", version: 5, folder: { name: "handbook" }, tab: null };
+  const STORED = { id: "p1", name: "setup", title: "Setup", version: 5, folder: { name: "handbook" }, tab: null };
   const TAB = { id: "tab-1", name: "guides", folder: FOLDER, role: "manager" };
   const READ_FAILED = "The wiki could not be read. Please try again later.";
   const WRITE_FAILED = "The change could not be stored. Please try again later.";

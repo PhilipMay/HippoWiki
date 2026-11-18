@@ -252,7 +252,7 @@ describe("createPage", () => {
     expect(stored).toMatchObject({ name: "intro", title: "Intro", content: "# Intro\n\nText", tabId: null });
     expect(result).toStrictEqual({
       ok: true,
-      value: { id: stored.id, name: "intro", version: 1, folder: { name: "docs" }, tab: null },
+      value: { id: stored.id, name: "intro", title: "Intro", version: 1, folder: { name: "docs" }, tab: null },
     });
   });
 
@@ -265,7 +265,14 @@ describe("createPage", () => {
     const stored = await getTestDb().page.findFirstOrThrow({ where: { tabId: tab.id } });
     expect(result).toStrictEqual({
       ok: true,
-      value: { id: stored.id, name: "intro", version: 1, folder: { name: "docs" }, tab: { name: "guides" } },
+      value: {
+        id: stored.id,
+        name: "intro",
+        title: "Intro",
+        version: 1,
+        folder: { name: "docs" },
+        tab: { name: "guides" },
+      },
     });
   });
 
@@ -297,11 +304,66 @@ describe("createPage", () => {
 
     await expect(
       pageService.createPage(actor, folder.id, { name: "direct", content: "# Intro", tabId: null }),
-    ).resolves.toEqual(NAME_TAKEN);
+    ).resolves.toEqual({ ok: false, error: { code: "name-taken", name: "direct" } });
     await expect(
       pageService.createPage(actor, folder.id, { name: "in-tab", content: "# Intro", tabId: tab.id }),
-    ).resolves.toEqual(NAME_TAKEN);
+    ).resolves.toEqual({ ok: false, error: { code: "name-taken", name: "in-tab" } });
     expect(await getTestDb().page.count()).toBe(2);
+  });
+
+  it("stores a page without a name under the name derived from its title", async () => {
+    const folder = await createFolder({ name: "docs" });
+
+    const result = await pageService.createPage(actor, folder.id, { content: "# Release Notes", tabId: null });
+
+    const stored = await getTestDb().page.findFirstOrThrow({ where: { folderId: folder.id } });
+    expect(stored).toMatchObject({ name: "release-notes", title: "Release Notes" });
+    expect(result).toStrictEqual({
+      ok: true,
+      value: {
+        id: stored.id,
+        name: "release-notes",
+        title: "Release Notes",
+        version: 1,
+        folder: { name: "docs" },
+        tab: null,
+      },
+    });
+  });
+
+  it("returns no-suggested-name for a title that suggests no name, and stores nothing", async () => {
+    const folder = await createFolder();
+
+    await expect(pageService.createPage(actor, folder.id, { content: "# 日本語", tabId: null })).resolves.toEqual({
+      ok: false,
+      error: { code: "no-suggested-name" },
+    });
+    expect(await getTestDb().page.count()).toBe(0);
+    expect(await getTestDb().pageRevision.count()).toBe(0);
+  });
+
+  it("returns name-taken with the derived name, and stores nothing", async () => {
+    const folder = await createFolder();
+    await createPage({ folder, name: "intro" });
+
+    await expect(pageService.createPage(actor, folder.id, { content: "# Intro", tabId: null })).resolves.toEqual({
+      ok: false,
+      error: { code: "name-taken", name: "intro" },
+    });
+    expect(await getTestDb().page.count()).toBe(1);
+  });
+
+  it("refuses a user without a role before the content is looked at, also without a name", async () => {
+    const bob = await createBob();
+    const folder = await createFolder({ roles: [{ user: bob, role: "owner" }] });
+
+    await expect(
+      pageService.createPage(actor, folder.id, { content: "No title heading", tabId: null }),
+    ).resolves.toEqual(NOT_ALLOWED);
+    await expect(pageService.createPage(actor, folder.id, { content: "# 日本語", tabId: null })).resolves.toEqual(
+      NOT_ALLOWED,
+    );
+    expect(await getTestDb().page.count()).toBe(0);
   });
 
   it("allows the same name directly in the folder and in a tab", async () => {
@@ -328,7 +390,14 @@ describe("updatePageContent", () => {
       pageService.updatePageContent(actor, page.id, { content: "# New title\n\nText", version: 1 }),
     ).resolves.toStrictEqual({
       ok: true,
-      value: { id: page.id, name: "intro", version: 2, folder: { name: "docs" }, tab: { name: "guides" } },
+      value: {
+        id: page.id,
+        name: "intro",
+        title: "New title",
+        version: 2,
+        folder: { name: "docs" },
+        tab: { name: "guides" },
+      },
     });
 
     expect(await storedPage(page.id)).toMatchObject({
@@ -382,7 +451,14 @@ describe("updatePageContent", () => {
       ok: false,
       error: {
         code: "page-changed",
-        page: { id: page.id, name: "intro", version: 3, folder: { name: "docs" }, tab: { name: "guides" } },
+        page: {
+          id: page.id,
+          name: "intro",
+          title: "Old",
+          version: 3,
+          folder: { name: "docs" },
+          tab: { name: "guides" },
+        },
       },
     });
     expect(await storedPage(page.id)).toStrictEqual(page);
@@ -403,7 +479,7 @@ describe("updatePageContent", () => {
       ok: false,
       error: {
         code: "page-changed",
-        page: { id: page.id, name: "start", version: 2, folder: { name: "docs" }, tab: null },
+        page: { id: page.id, name: "start", title: "Old", version: 2, folder: { name: "docs" }, tab: null },
       },
     });
     expect((await storedPage(page.id)).content).toBe("# Old");
@@ -431,7 +507,14 @@ describe("moveOrRenamePage", () => {
       pageService.moveOrRenamePage(actor, page.id, { name: "intro", tabId: tab.id, version: 1 }),
     ).resolves.toStrictEqual({
       ok: true,
-      value: { id: page.id, name: "intro", version: 2, folder: { name: "docs" }, tab: { name: "guides" } },
+      value: {
+        id: page.id,
+        name: "intro",
+        title: "Intro",
+        version: 2,
+        folder: { name: "docs" },
+        tab: { name: "guides" },
+      },
     });
     expect(await storedPage(page.id)).toMatchObject({
       name: "intro",
@@ -442,7 +525,7 @@ describe("moveOrRenamePage", () => {
       pageService.moveOrRenamePage(actor, page.id, { name: "start", tabId: null, version: 2 }),
     ).resolves.toStrictEqual({
       ok: true,
-      value: { id: page.id, name: "start", version: 3, folder: { name: "docs" }, tab: null },
+      value: { id: page.id, name: "start", title: "Intro", version: 3, folder: { name: "docs" }, tab: null },
     });
     // The content is not touched by a move or rename.
     expect(await storedPage(page.id)).toMatchObject({
@@ -515,6 +598,7 @@ describe("moveOrRenamePage", () => {
       value: {
         id: page.id,
         name: "intro",
+        title: page.title,
         version: 3,
         folder: { name: "docs" },
         tab: inTab ? { name: "guides" } : null,
@@ -553,7 +637,7 @@ describe("moveOrRenamePage", () => {
       ok: false,
       error: {
         code: "page-changed",
-        page: { id: page.id, name: "intro", version: 3, folder: { name: "docs" }, tab: null },
+        page: { id: page.id, name: "intro", title: "Test page", version: 3, folder: { name: "docs" }, tab: null },
       },
     });
     expect(await storedPage(page.id)).toStrictEqual(page);
@@ -589,7 +673,7 @@ describe("moveOrRenamePage", () => {
       ok: false,
       error: {
         code: "page-changed",
-        page: { id: page.id, name: "intro", version: 3, folder: { name: "docs" }, tab: null },
+        page: { id: page.id, name: "intro", title: "Test page", version: 3, folder: { name: "docs" }, tab: null },
       },
     });
     expect(await storedPage(page.id)).toStrictEqual(page);
@@ -697,7 +781,14 @@ describe("deletePage", () => {
       ok: false,
       error: {
         code: "page-changed",
-        page: { id: page.id, name: "intro", version: 3, folder: { name: "docs" }, tab: { name: "guides" } },
+        page: {
+          id: page.id,
+          name: "intro",
+          title: "Test page",
+          version: 3,
+          folder: { name: "docs" },
+          tab: { name: "guides" },
+        },
       },
     });
     expect(await storedPage(page.id)).toStrictEqual(page);
@@ -722,11 +813,18 @@ describe("restorePage", () => {
 
     await expect(pageService.restorePage(actor, direct.id, { name: "first", tabId: null })).resolves.toStrictEqual({
       ok: true,
-      value: { id: direct.id, name: "first", version: 2, folder: { name: "docs" }, tab: null },
+      value: { id: direct.id, name: "first", title: "Test page", version: 2, folder: { name: "docs" }, tab: null },
     });
     await expect(pageService.restorePage(actor, inTab.id, { name: "renamed", tabId: tab.id })).resolves.toStrictEqual({
       ok: true,
-      value: { id: inTab.id, name: "renamed", version: 2, folder: { name: "docs" }, tab: { name: "guides" } },
+      value: {
+        id: inTab.id,
+        name: "renamed",
+        title: "Test page",
+        version: 2,
+        folder: { name: "docs" },
+        tab: { name: "guides" },
+      },
     });
 
     expect(await storedPage(direct.id)).toMatchObject({
@@ -1366,7 +1464,14 @@ describe("writes through MCP", () => {
       ok: false,
       error: {
         code: "page-changed",
-        page: { id: page.id, name: "roadmap", version: 2, folder: { name: "projects" }, tab: { name: "guides" } },
+        page: {
+          id: page.id,
+          name: "roadmap",
+          title: "Plan",
+          version: 2,
+          folder: { name: "projects" },
+          tab: { name: "guides" },
+        },
       },
     });
 
@@ -1981,7 +2086,7 @@ describe("content saves without a change", () => {
 
     await expect(pageService.updatePageContent(bob, page.id, { content: CONTENT, version: 3 })).resolves.toEqual({
       ok: true,
-      value: { id: page.id, name: page.name, version: 3, folder: expect.anything(), tab: null },
+      value: { id: page.id, name: page.name, title: page.title, version: 3, folder: expect.anything(), tab: null },
     });
 
     expect(await stateOf(page.id)).toEqual(before.page);

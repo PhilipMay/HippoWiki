@@ -65,6 +65,9 @@ routes under `src/app/folders/`. Tests: `src/features/pages/derive.test.ts`, `sr
 
 - A new page gets a name suggested from its title in the save dialog (`deriveName()`); the user can change it. A
   title in a non-Latin script suggests no name.
+- `createPage()` of the pages service also takes a new page without a name, as MCP sends it: after all its other
+  checks (the role, the place, the content) it gives the page the same name the save dialog would suggest, and a title
+  that suggests none is refused with the code `no-suggested-name` and stores nothing. The browser always sends a name.
 - The name never changes automatically, also not when the heading changes. Renaming is described in
   `content-structure.md`.
 
@@ -117,8 +120,9 @@ costliest function of a page, and its guards are:
   view of a table is its costliest case: a header of 3,000 columns with 3,000 rows of one cell becomes about 66,000
   cells and takes about 0.3 s on a developer machine and about three times as long on the CI runner.
   `src/features/pages/markdown.cost.test.ts` keeps these inputs below 2 s each, in a run of its own without coverage.
-- The length of the content is checked before any parse, also in the MCP tool `create_page`, which checks the content
-  before it derives a name from it.
+- The length of the content is checked before any parse, also for a new page without a name, whose name the pages
+  service derives from the title only after the content has passed its checks; the content of a new page is parsed
+  once on the server.
 - The depth of lists and quotes and the number of table cells are checked at every save (see "Content and title"),
   so that no page can be saved whose view is deep or large.
 - markdown-it nests blocks only to `maxNesting` (`markdown.ts`), and the page view is built without recursion over the

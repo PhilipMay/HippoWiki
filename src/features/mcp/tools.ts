@@ -14,8 +14,7 @@ import { z } from "zod";
 import { includesRole, ROLE_LABELS, type McpRole } from "@/features/folder-roles/roles";
 import type { McpActor } from "@/features/folder-roles/actors";
 import * as folderService from "@/features/folders/service";
-import { deriveName } from "@/features/pages/derive";
-import { pageContentInputSchema, TITLE_HEADING_MISSING_MESSAGE } from "@/features/pages/schema";
+import { TITLE_HEADING_MISSING_MESSAGE } from "@/features/pages/schema";
 import * as pageService from "@/features/pages/service";
 import { deletedPagesPath, folderPath, pagePath, tabPath } from "@/lib/addresses";
 import { logger } from "@/lib/logger";
@@ -468,12 +467,11 @@ async function pageChanged(options: WikiToolsOptions, stored: pageService.Stored
  * The page as stored by a write, as every write tool returns it, with its title and its version: the new one after a
  * change, the same one after a content save without a change, which stores nothing.
  */
-async function storedResult(options: WikiToolsOptions, stored: pageService.StoredPage): Promise<CallToolResult> {
+function storedResult(options: WikiToolsOptions, stored: pageService.StoredPage): CallToolResult {
   const tab = stored.tab?.name ?? null;
-  const page = await pageService.getPage(options.actor, options.folder.name, tab, stored.name);
   return result({
     name: stored.name,
-    title: page?.title ?? "",
+    title: stored.title,
     tab,
     address: addressOf(options, pagePath(options.folder.name, tab, stored.name)),
     version: stored.version,
@@ -492,24 +490,11 @@ export async function createPage(
     "create_page",
     async () => {
       const { folder } = options;
-      let name = input.name;
-      if (name === undefined) {
-        // The content is checked as the service checks it before a name is derived from its title, so that content
-        // over the length limit is never parsed here.
-        const checked = pageContentInputSchema.safeParse({ content: input.content });
-        if (!checked.success) return invalidInput(z.flattenError(checked.error).fieldErrors);
-        name = deriveName(checked.data.title);
-        if (name === "") {
-          return toolError(
-            "The title suggests no name for the page, so nothing was changed. Give a name of lowercase letters, " +
-              "digits and single hyphens.",
-          );
-        }
-      }
       const place = await tabIdOf(options, input.tab);
       if (place.error) return place.error;
+      // Without a name, the service derives it from the title, after its own checks.
       const created = await pageService.createPage(options.actor, folder.id, {
-        name,
+        ...(input.name === undefined ? {} : { name: input.name }),
         content: input.content,
         tabId: place.tabId,
       });
@@ -523,8 +508,13 @@ export async function createPage(
           return tabNotFound(options, input.tab ?? "");
         case "invalid-input":
           return invalidInput(created.error.fieldErrors);
+        case "no-suggested-name":
+          return toolError(
+            "The title suggests no name for the page, so nothing was changed. Give a name of lowercase letters, " +
+              "digits and single hyphens.",
+          );
         case "name-taken":
-          return nameTaken(folder.name, input.tab ?? null, name);
+          return nameTaken(folder.name, input.tab ?? null, created.error.name);
         case "failed":
           return toolError(WRITE_FAILED);
       }
