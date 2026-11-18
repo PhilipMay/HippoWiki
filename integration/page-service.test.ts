@@ -4,19 +4,12 @@ import { beforeEach, describe, expect, it } from "vitest";
 import * as folderService from "@/features/folders/service";
 import { CONTENT_MAX_LENGTH, CONTENT_MAX_TABLE_CELLS } from "@/features/pages/limits";
 import { CONTENT_TABLE_CELLS_MESSAGE } from "@/features/pages/schema";
+import * as historyService from "@/features/pages/history-service";
 import * as pageService from "@/features/pages/service";
 import { inBrowser, type BrowserActor } from "@/features/folder-roles/actors";
 import type { Page, User } from "@/generated/prisma/client";
 
-import {
-  createFolder,
-  createPage,
-  createRevisions,
-  createTab,
-  createUser,
-  getTestDb,
-  type FolderRoleData,
-} from "../e2e/support/database";
+import { createFolder, createPage, createRevisions, createTab, createUser, getTestDb } from "../e2e/support/database";
 import { KNOWN_USER } from "../prisma/known-users";
 import { createBob, NOT_ALLOWED, owners, revisionsOf, storedPage, UNKNOWN_ACTOR, mcpActorOf } from "./helpers";
 
@@ -1224,9 +1217,9 @@ describe("an admin", () => {
 
     await expect(pageService.listFolderPages(inBrowser(admin), folder.id)).resolves.toBeNull();
     await expect(pageService.listTabPages(inBrowser(admin), tab.id)).resolves.toBeNull();
-    await expect(pageService.listPageRevisions(inBrowser(admin), page.id, { before: null })).resolves.toBeNull();
-    await expect(pageService.getPageRevision(inBrowser(admin), page.id, 1)).resolves.toBeNull();
-    await expect(pageService.getRevisionComparison(inBrowser(admin), page.id, 1, 2)).resolves.toBeNull();
+    await expect(historyService.listPageRevisions(inBrowser(admin), page.id, { before: null })).resolves.toBeNull();
+    await expect(historyService.getPageRevision(inBrowser(admin), page.id, 1)).resolves.toBeNull();
+    await expect(historyService.getRevisionComparison(inBrowser(admin), page.id, 1, 2)).resolves.toBeNull();
     await expect(pageService.listAllFolderPages(inBrowser(admin), folder.id)).resolves.toBeNull();
     await expect(pageService.getPage(inBrowser(admin), "docs", null, "intro")).resolves.toBeNull();
     await expect(pageService.listDeletedPages(inBrowser(admin), folder.id)).resolves.toBeNull();
@@ -1769,159 +1762,6 @@ describe("a content save and its revision", () => {
       version: 2,
       name: restored[0]?.name,
     });
-  });
-});
-
-describe("the history of a page", () => {
-  it("returns exactly the declared fields of a revision, without its content", async () => {
-    const mike = await createUser({ name: "mike" });
-    const page = await createPage({ folder: await createFolder(), editor: user, content: "# Intro" });
-    const [added] = await createRevisions({ page, count: 1, editor: mike, via: "mcp", revertedTo: () => 1 });
-
-    const history = await pageService.listPageRevisions(actor, page.id, { before: null });
-
-    expect(history?.revisions[0]).toStrictEqual({
-      number: 2,
-      title: "Intro",
-      createdAt: added?.createdAt,
-      madeBy: { name: "mike", via: "mcp" },
-      revertedTo: 1,
-    });
-    expect(history?.newest).toBe(2);
-  });
-
-  it("lists at most 100 revisions newest first, and the ones before a number", async () => {
-    const page = await createPage({ folder: await createFolder(), editor: user });
-    await createRevisions({ page, count: 249 });
-
-    const numbers = async (before: number | null) =>
-      (await pageService.listPageRevisions(actor, page.id, { before }))?.revisions.map(({ number }) => number);
-
-    expect(await numbers(null)).toEqual(Array.from({ length: 100 }, (_, index) => 250 - index));
-    expect(await numbers(151)).toEqual(Array.from({ length: 100 }, (_, index) => 150 - index));
-    expect(await numbers(51)).toEqual(Array.from({ length: 50 }, (_, index) => 50 - index));
-    expect((await pageService.listPageRevisions(actor, page.id, { before: 51 }))?.newest).toBe(250);
-  });
-});
-
-describe("the roles of the reads of the history", () => {
-  /** The three reads of the history, each of the page with the given id and its revisions 1 and 2. */
-  const reads = [
-    ["listPageRevisions", (who: BrowserActor, id: string) => pageService.listPageRevisions(who, id, { before: null })],
-    ["getPageRevision", (who: BrowserActor, id: string) => pageService.getPageRevision(who, id, 1)],
-    ["getRevisionComparison", (who: BrowserActor, id: string) => pageService.getRevisionComparison(who, id, 2, 1)],
-  ] as const;
-  const WHO = ["owner", "manager", "writer", "reader", "stranger", "admin"] as const;
-  /** Who reads the history of a page that is not deleted, and of a deleted page. */
-  const READERS = { live: ["owner", "manager", "writer", "reader"], deleted: ["owner", "manager"] };
-  const cases = reads.flatMap(([name, read]) =>
-    WHO.flatMap((who) =>
-      (["live", "deleted"] as const).map((state) => [name, who, state, READERS[state].includes(who), read] as const),
-    ),
-  );
-
-  it.each(cases)("%s as %s on a %s page", async (_name, who, state, allowed, read) => {
-    const reader = who === "owner" ? user : await createUser({ name: who, type: who === "admin" ? "admin" : "user" });
-    const roles: FolderRoleData[] =
-      who === "owner" || who === "stranger" || who === "admin" ? [] : [{ user: reader, role: who }];
-    const folder = await createFolder({ roles: [...owners(user), ...roles] });
-    const page = await createPage({
-      folder,
-      editor: user,
-      content: "# Intro",
-      ...(state === "deleted" ? { deletedAt: new Date() } : {}),
-    });
-    await createRevisions({ page, count: 1 });
-
-    const result = await read(inBrowser(reader), page.id);
-
-    if (allowed) expect(result).not.toBeNull();
-    else expect(result).toBeNull();
-  });
-});
-
-describe("a revision of a page", () => {
-  it("returns exactly the declared fields of an old revision and of the newest one", async () => {
-    const mike = await createUser({ name: "mike" });
-    const page = await createPage({ folder: await createFolder(), editor: user, content: "# Intro\n\nFirst" });
-    const [second] = await createRevisions({
-      page,
-      count: 1,
-      content: () => "# Start\n\nSecond",
-      editor: mike,
-      via: "mcp",
-      revertedTo: () => 1,
-    });
-    const first = await getTestDb().pageRevision.findUniqueOrThrow({
-      where: { pageId_number: { pageId: page.id, number: 1 } },
-    });
-
-    await expect(pageService.getPageRevision(actor, page.id, 1)).resolves.toStrictEqual({
-      number: 1,
-      title: "Intro",
-      createdAt: first.createdAt,
-      madeBy: { name: "alice", via: "web" },
-      revertedTo: null,
-      content: "# Intro\n\nFirst",
-      newest: 2,
-      isCurrent: false,
-    });
-    await expect(pageService.getPageRevision(actor, page.id, 2)).resolves.toStrictEqual({
-      number: 2,
-      title: "Start",
-      createdAt: second?.createdAt,
-      madeBy: { name: "mike", via: "mcp" },
-      revertedTo: 1,
-      content: "# Start\n\nSecond",
-      newest: 2,
-      isCurrent: true,
-    });
-    await expect(pageService.getPageRevision(actor, page.id, 3)).resolves.toBeNull();
-  });
-});
-
-describe("a comparison of two revisions of a page", () => {
-  it("returns exactly the declared fields of both, the older first in either order, and the newest number", async () => {
-    const mike = await createUser({ name: "mike" });
-    const page = await createPage({ folder: await createFolder(), editor: user, content: "# Intro\n\nFirst" });
-    const [, third] = await createRevisions({
-      page,
-      count: 2,
-      content: (number) => `# Start\n\nRevision ${number}`,
-      editor: mike,
-      via: "mcp",
-      revertedTo: (number) => (number === 3 ? 1 : null),
-    });
-    const first = await getTestDb().pageRevision.findUniqueOrThrow({
-      where: { pageId_number: { pageId: page.id, number: 1 } },
-    });
-    const expected = {
-      newest: 3,
-      older: {
-        number: 1,
-        title: "Intro",
-        createdAt: first.createdAt,
-        madeBy: { name: "alice", via: "web" },
-        revertedTo: null,
-        content: "# Intro\n\nFirst",
-      },
-      newer: {
-        number: 3,
-        title: "Start",
-        createdAt: third?.createdAt,
-        madeBy: { name: "mike", via: "mcp" },
-        revertedTo: 1,
-        content: "# Start\n\nRevision 3",
-      },
-    };
-
-    await expect(pageService.getRevisionComparison(actor, page.id, 1, 3)).resolves.toStrictEqual(expected);
-    await expect(pageService.getRevisionComparison(actor, page.id, 3, 1)).resolves.toStrictEqual(expected);
-    await expect(pageService.getRevisionComparison(actor, page.id, 3, 3)).resolves.toStrictEqual({
-      ...expected,
-      older: expected.newer,
-    });
-    await expect(pageService.getRevisionComparison(actor, page.id, 1, 4)).resolves.toBeNull();
   });
 });
 

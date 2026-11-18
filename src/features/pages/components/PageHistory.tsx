@@ -11,7 +11,7 @@ import Link from "@/components/Link";
 import HistoryBreadcrumbs from "@/features/pages/components/HistoryBreadcrumbs";
 import type { HistoryPlace } from "@/features/pages/components/history-place";
 import { REVISIONS_PER_PAGE } from "@/features/pages/limits";
-import type { PageRevisions } from "@/features/pages/service";
+import type { PageRevisions } from "@/features/pages/history-service";
 import { editorWithChannel } from "@/features/users/records";
 import { formatDateTime } from "@/lib/format";
 

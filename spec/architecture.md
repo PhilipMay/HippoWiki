@@ -22,7 +22,9 @@ How the code is organised and which patterns new code follows. The technology st
   account and `isAdmin()` live in `src/features/users/user-type.ts`, which Client Components and
   `src/lib/addresses.ts` import.
   - `schema.ts`: the ids, the Zod schemas and the types of validated input
-  - `service.ts`: every read and write of the feature (see "Reads and writes")
+  - `service.ts`: every read and write of the feature (see "Reads and writes"). A part of a feature that stands on
+    its own may have a service module of its own next to it, named `<part>-service.ts`, such as `history-service.ts`
+    of the pages with the reads of the history of a page. Every rule of a service holds for it as well.
   - `forms.ts`: what only a form needs: the `parse*FormData` functions, the form states, the types of the form
     actions and the names of form fields. It has no server-only imports, so Client Components can use it.
   - `queries.ts` and `actions.ts`: the adapters between the web and the service
@@ -45,8 +47,8 @@ How the code is organised and which patterns new code follows. The technology st
 
 ## Reads and writes
 
-- The layers: a route or component calls `queries.ts` or `actions.ts`, these call `service.ts`, and only `service.ts`
-  calls `getDb()`. Routes and components import a service only for its types. Two modules outside a feature call it
+- The layers: a route or component calls `queries.ts` or `actions.ts`, these call a service module (`service.ts` or
+  a `<part>-service.ts` next to it, see "Layout"), and only a service module calls `getDb()`. Routes and components import a service only for its types. Two modules outside a feature call it
   as well: the health route (`src/app/api/health/route.ts`), which checks the database connection itself, and
   `src/lib/auth.ts`, which hands the client to Better Auth.
 - A caller other than the GUI has an adapter of its own in place of `queries.ts` and `actions.ts`, named `http.ts` in
@@ -63,7 +65,9 @@ How the code is organised and which patterns new code follows. The technology st
   `HIPPOWIKI_PUBLIC_URL` is not set. The consent page `src/app/oauth/authorize/` is a page like every other, with
   `queries.ts` and `actions.ts` of the OAuth feature; its actions return the address of the client instead of
   redirecting, and its form opens it (see `src/features/oauth/actions.ts`).
-- `service.ts` of a feature holds every read and write of the feature. It knows nothing about Next.js, forms or
+- `service.ts` of a feature holds every read and write of the feature, apart from a part that has a service module of
+  its own: the reads of the history of a page are in `src/features/pages/history-service.ts`, while reverting, a
+  content save, stays in the pages service. It knows nothing about Next.js, forms or
   addresses, so that a caller other than the GUI, such as an MCP server, can use the same service.
   - It imports nothing from `next`, `react`, `@/lib/revalidate` or a `forms.ts`, has no `"use server"` and works
     outside a request.
@@ -400,18 +404,20 @@ The feature is described in `users-and-login.md`. What every new route, query an
   - `no-restricted-properties`: `process.env` is not read in `src/`, except in `src/lib/env.ts` and
     `src/lib/logger.ts`. Configuration files, `e2e/` and `scripts/` read it directly.
   - `no-restricted-imports`: the barrel imports `@mui/material` and `@mui/icons-material` are not allowed in `src/`.
-  - `no-console`: server code (`src/features/**/actions.ts`, `src/features/**/queries.ts`,
-    `src/features/**/service.ts`, `src/features/mcp/`, `src/features/oauth/`, `src/app/api/`, `src/app/mcp/`,
+  - `no-console`: server code (`src/features/**/actions.ts`, `src/features/**/queries.ts`, the service modules
+    `src/features/**/service.ts` and `src/features/**/*-service.ts`, `src/features/mcp/`, `src/features/oauth/`, `src/app/api/`, `src/app/mcp/`,
     `src/app/oauth/`, `src/app/.well-known/`, `src/lib/`, `src/proxy.ts`) does not use `console`. The client
     error boundaries `src/app/error.tsx` and `global-error.tsx` log with `console.error`, because the pino logger
     runs only on the server.
   - `@typescript-eslint/no-restricted-imports` keeps the layers apart (see "Reads and writes"). It is a rule of its
     own, so that the Material UI paths in `no-restricted-imports` stay as they are.
-    - `@/lib/db` may only be imported in `src/features/**/service.ts`, `src/lib/**` and `src/app/api/health/**`;
-      everywhere else in `src/` the rule points to the service of the feature.
-    - In `src/app/**` and `src/features/**/components/**`, `@/features/*/service` may only be imported as a type; the
-      rule points to `queries.ts` and `actions.ts`.
-    - `src/features/**/service.ts` imports neither `next`, `next/*`, `react`, `@/lib/revalidate` nor
+    - The service modules are `src/features/**/service.ts` and `src/features/**/*-service.ts` (`SERVICE_FILES` in
+      `eslint.config.mjs`); every rule below that names a service holds for both.
+    - `@/lib/db` may only be imported in a service module, `src/lib/**` and `src/app/api/health/**`; everywhere else
+      in `src/` the rule points to the service of the feature.
+    - In `src/app/**` and `src/features/**/components/**`, `@/features/*/service` and `@/features/*/*-service` may
+      only be imported as a type; the rule points to `queries.ts` and `actions.ts`.
+    - A service module imports neither `next`, `next/*`, `react`, `@/lib/revalidate` nor
       `@/features/*/forms`.
     - `@/lib/auth` may only be imported in `src/features/auth/service.ts` and `src/lib/**`; everywhere else in `src/`
       the rule points to the auth service and to `session.ts`.

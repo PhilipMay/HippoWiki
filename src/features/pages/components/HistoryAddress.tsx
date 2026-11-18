@@ -7,7 +7,7 @@ import RevisionView from "@/features/pages/components/RevisionView";
 import type { PageAddressView } from "@/features/pages/components/PageView";
 import type { HistoryPlace } from "@/features/pages/components/history-place";
 import { getPageRevision, getRevisionComparison, listPageRevisions } from "@/features/pages/queries";
-import type { RevisionDetail } from "@/features/pages/service";
+import type { RevisionDetail } from "@/features/pages/history-service";
 
 type HistoryAddressProps = {
   pageId: string;

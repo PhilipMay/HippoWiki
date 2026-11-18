@@ -2,7 +2,7 @@ import { expect, it, vi } from "vitest";
 
 // A service works outside a request and for callers other than the GUI, so it must load without Next.js and React.
 // The factories throw as soon as one of these modules is imported, also indirectly through `schema.ts` or `src/lib/`.
-// Lint only sees the imports of `service.ts` itself.
+// Lint only sees the imports of a service module itself.
 vi.mock("next/cache", () => {
   throw new Error("a service must not import next/cache");
 });
@@ -22,6 +22,7 @@ vi.mock("react", () => {
 it("the services load without Next.js and React", async () => {
   const folderService = await import("@/features/folders/service");
   const pageService = await import("@/features/pages/service");
+  const historyService = await import("@/features/pages/history-service");
   const folderRoleService = await import("@/features/folder-roles/service");
   // The actors and the guards of a content write, which every content service and adapter imports.
   const actors = await import("@/features/folder-roles/actors");
@@ -35,6 +36,7 @@ it("the services load without Next.js and React", async () => {
 
   expect(folderService.listFolders).toBeTypeOf("function");
   expect(pageService.listFolderPages).toBeTypeOf("function");
+  expect(historyService.listPageRevisions).toBeTypeOf("function");
   expect(folderRoleService.folderRoleOf).toBeTypeOf("function");
   expect(actors.openContentWrite).toBeTypeOf("function");
   expect(userService.ensureAdmin).toBeTypeOf("function");

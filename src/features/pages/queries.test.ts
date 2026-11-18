@@ -27,6 +27,11 @@ const mocks = vi.hoisted(() => ({
   getRevisionComparison: vi.fn(),
 }));
 
+vi.mock("@/features/pages/history-service", () => ({
+  listPageRevisions: mocks.listPageRevisions,
+  getPageRevision: mocks.getPageRevision,
+  getRevisionComparison: mocks.getRevisionComparison,
+}));
 vi.mock("@/features/pages/service", () => ({
   listFolderPages: mocks.listFolderPages,
   listTabPages: mocks.listTabPages,
@@ -34,9 +39,6 @@ vi.mock("@/features/pages/service", () => ({
   getPage: mocks.getPage,
   listDeletedPages: mocks.listDeletedPages,
   getDeletedPage: mocks.getDeletedPage,
-  listPageRevisions: mocks.listPageRevisions,
-  getPageRevision: mocks.getPageRevision,
-  getRevisionComparison: mocks.getRevisionComparison,
 }));
 vi.mock("next/server", () => ({ connection: mocks.connection }));
 vi.mock("@/features/auth/session", () => ({ requireUser: mocks.requireUser }));

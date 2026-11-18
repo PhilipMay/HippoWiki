@@ -1,6 +1,6 @@
 import Typography from "@mui/material/Typography";
 
-import type { RevisionSummary } from "@/features/pages/service";
+import type { RevisionSummary } from "@/features/pages/history-service";
 import { editorWithChannel } from "@/features/users/records";
 import { formatDateTime } from "@/lib/format";
 

@@ -6,12 +6,14 @@ compare two revisions; Writers and up set a page back to an earlier revision in 
 person or by an AI app can so be undone without retyping it. Pages themselves are described in `pages.md`, their
 addresses in `content-structure.md`, deleted pages in `page-deletion.md`.
 
-Code: `src/features/pages/` (`listPageRevisions`, `getPageRevision`, `getRevisionComparison` and `revertPage` in
-`service.ts`, where `createPage` and `updatePageContent` record the revisions; `diff.ts`; the views `PageHistory`,
+Code: `src/features/pages/` (the reads `listPageRevisions`, `getPageRevision` and `getRevisionComparison` in
+`history-service.ts`, a service of its own next to `service.ts`; `revertPage` in `service.ts`, where `createPage` and
+`updatePageContent` record the revisions as well; `diff.ts`; the views `PageHistory`,
 `RevisionView`, `RevisionComparison` and `RevertPageDialog` in `components/`, shared by both kinds of addresses through
 `HistoryAddress.tsx` and `history-place.ts`), the model `PageRevision` in `prisma/schema.prisma` and its migration
 `prisma/migrations/20261117140000_page_revisions/`. Tests: `e2e/page-history.spec.ts`, `e2e/revert-page.spec.ts`,
-`integration/page-service.test.ts`, `src/features/pages/diff.test.ts`, `src/features/pages/diff.cost.test.ts`.
+`integration/page-history-service.test.ts`, `integration/page-service.test.ts`,
+`src/features/pages/history-service.test.ts`, `src/features/pages/diff.test.ts`, `src/features/pages/diff.cost.test.ts`.
 
 ## Revisions
 

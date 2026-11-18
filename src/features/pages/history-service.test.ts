@@ -1,8 +1,8 @@
-// The unit tests of the pages service: the reads of the history of a page. The mocked database and logger are those of
+// The unit tests of the history service: the reads of the history of a page. The mocked database and logger are those of
 // `src/test/pages-service.ts`; the integration tests in `integration/page-service.test.ts` prove the queries.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getPageRevision, getRevisionComparison, listPageRevisions } from "@/features/pages/service";
+import { getPageRevision, getRevisionComparison, listPageRevisions } from "@/features/pages/history-service";
 import { mocks, readCount, resetPagesServiceMocks } from "@/test/pages-service";
 import { PAGE_ID, MALFORMED_ID, ACTOR, MALFORMED_ACTOR } from "@/test/unit";
 

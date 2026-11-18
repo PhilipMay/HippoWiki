@@ -100,7 +100,7 @@ Decided by the user on 2026-11-18:
 - [x] Guards and errors of the services
 - [x] Writes of pages
 - [x] The stored page and the derived name
-- [ ] The reads of the history in a service of their own
+- [x] The reads of the history in a service of their own
 - [ ] MCP tools
 - [ ] OAuth and grants
 - [ ] Actions, forms and schemas
@@ -836,7 +836,8 @@ Findings of "Code: services of the content features" and "Code: components, rout
   are corrected, and `GRANT_ACCESS_TOKEN_HASH` and `OAUTH_CODE_HASH` go together with their cases in
   `integration/db-errors.test.ts`; the unique constraints stay in the schema.
 - "small rules that are written more than once": `mayDo(role, "read")` in all four places, a `withView()`, one
-  extraction of the constraint, `isRevisionNumber()` exported from the schema, and `null` from `listFolders()` for a
+  extraction of the constraint, `isRevisionNumber()` of the schema in the action that reverts (the step "The reads of
+  the history in a service of their own" exported it from the schema for both services), and `null` from `listFolders()` for a
   malformed actor id as the other reads.
 - "comments promise "Client Components can use it"": the three comments are corrected.
 - "unused names, an unused colour, and small twins", one part: `LogoutFormAction`, `LoginInput`,

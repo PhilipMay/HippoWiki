@@ -9,7 +9,7 @@ import HistoryBreadcrumbs from "@/features/pages/components/HistoryBreadcrumbs";
 import RevisionLine from "@/features/pages/components/RevisionLine";
 import type { HistoryPlace } from "@/features/pages/components/history-place";
 import { diffRevisions, type DiffLine } from "@/features/pages/diff";
-import type { RevisionComparison as Comparison } from "@/features/pages/service";
+import type { RevisionComparison as Comparison } from "@/features/pages/history-service";
 
 type RevisionComparisonProps = {
   /** Where the page lives, for the breadcrumb and the links. */

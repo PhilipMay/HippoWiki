@@ -5,6 +5,7 @@ import { cache } from "react";
 
 import { requireUser } from "@/features/auth/session";
 import { inBrowser } from "@/features/folder-roles/actors";
+import * as historyService from "@/features/pages/history-service";
 import * as pageService from "@/features/pages/service";
 
 // Every query starts with `connection()`: without a request-time API, Next.js would prerender the calling route at
@@ -67,10 +68,10 @@ export async function listDeletedPages(folderId: string): Promise<pageService.De
 export async function listPageRevisions(
   pageId: string,
   options: { before: number | null },
-): Promise<pageService.PageRevisions | null> {
+): Promise<historyService.PageRevisions | null> {
   await connection();
   const user = await requireUser();
-  return pageService.listPageRevisions(inBrowser(user), pageId, options);
+  return historyService.listPageRevisions(inBrowser(user), pageId, options);
 }
 
 /**
@@ -78,10 +79,10 @@ export async function listPageRevisions(
  * revision and whether its content is the content of the page now. `null` without the role for the history, or if the
  * page or the revision does not exist.
  */
-export async function getPageRevision(pageId: string, number: number): Promise<pageService.RevisionDetail | null> {
+export async function getPageRevision(pageId: string, number: number): Promise<historyService.RevisionDetail | null> {
   await connection();
   const user = await requireUser();
-  return pageService.getPageRevision(inBrowser(user), pageId, number);
+  return historyService.getPageRevision(inBrowser(user), pageId, number);
 }
 
 /**
@@ -93,10 +94,10 @@ export async function getRevisionComparison(
   pageId: string,
   a: number,
   b: number,
-): Promise<pageService.RevisionComparison | null> {
+): Promise<historyService.RevisionComparison | null> {
   await connection();
   const user = await requireUser();
-  return pageService.getRevisionComparison(inBrowser(user), pageId, a, b);
+  return historyService.getRevisionComparison(inBrowser(user), pageId, a, b);
 }
 
 /**

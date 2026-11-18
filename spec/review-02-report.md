@@ -14,9 +14,9 @@
     findings of the tests that are still open are minor.
   - Documents that the features outran: rules stated in full in several documents, and copies of code and
     constants in the specs.
-- Findings: 45 open of 107, 0 Blocker, 0 Major, 35 Minor and 10 Nit (8 `issue:`, 25 `suggestion:`, 8 `nit:` and
+- Findings: 44 open of 107, 0 Blocker, 0 Major, 34 Minor and 10 Nit (8 `issue:`, 24 `suggestion:`, 8 `nit:` and
   4 `question:`).
-- Confidence of the suggestions: 5 High, 31 Medium and 5 Low; the 4 questions have none. A High suggestion can be
+- Confidence of the suggestions: 5 High, 31 Medium and 4 Low; the 4 questions have none. A High suggestion can be
   fixed as written; the others wait for the user, as `issue-report.md` describes.
 - Decisions: on 2026-11-18 the user decided all Medium and Low suggestions. Each of these findings ends with a line
   `Decision`, and is fixed as that line says, without asking again. The 4 questions were decided by the user on the
@@ -82,27 +82,6 @@ What can go wrong in a cleanup, and what several findings warn about:
 
 ### Code: services of the content features
 
-#### suggestion: the service of the folder roles holds three concerns, and the pages service has one clear seam
-
-- Location: `src/features/folder-roles/service.ts`, lines 31–94 (the actors and the channel), 96–232 (who may read
-  and write content) and 234–572 (the roles); `src/features/pages/service.ts`, lines 361–487 (the reads of the
-  history)
-- Severity: Minor
-- Category: readability
-- Problem: the head of the service names only the roles, but the file also defines `ContentActor`, `inBrowser()`,
-  `inMcp()`, `channelOf()` and `storedChannelOf()`, which every adapter imports and which need no database. The
-  pages service mixes lists, the history, the helpers of writes and six writes in 1,081 lines.
-- Impact: an adapter imports a module of the database for a pure constructor, and "who is the actor" is not where
-  a reader looks for it.
-- Evidence: `src/features/folders/actions.ts`, line 11: `import { inBrowser } from "@/features/folder-roles/service";`.
-- Suggestion (optional): move the actors and the channel to a pure module of the feature. A split of the pages
-  service needs a change of the lint rule that allows the database only in a `service.ts`, and of
-  `architecture.md`; it is worth it only if the file keeps growing.
-- Confidence: Low. A choice of structure; the import paths of many files change.
-- Decision (2026-11-18): the actors and the channel move to the pure module `src/features/folder-roles/actors.ts`, which holds the guards of a content write as well.
-  The reads of the history move out of the pages service, with the lint rule for the database and `architecture.md`
-  changed to allow it.
-
 #### nit: the actions of pages and folders repeat messages, form states and the mapping of a failed parse
 
 - Location: `src/features/folders/actions.ts`, lines 20–26; `src/features/pages/actions.ts`, lines 40–44, 59–62,
@@ -147,20 +126,19 @@ What can go wrong in a cleanup, and what several findings warn about:
 #### nit: small rules that are written more than once
 
 - Location: `src/features/folder-roles/service.ts`, lines 187, 224, 231 and 252; `src/lib/addresses.ts`, lines
-  192–250; `src/lib/db-errors.ts`, lines 76–80 and 114–118; `src/features/pages/service.ts`, line 412,
-  `src/features/pages/schema.ts`, line 48, and `src/features/pages/actions.ts`, line 313;
+  192–250; `src/lib/db-errors.ts`, lines 76–80 and 114–118; `src/features/pages/actions.ts`, `revertPage()`;
   `src/features/folders/service.ts`, line 179
 - Severity: Nit
 - Category: style
 - Problem: "every role may read" is coded in four ways in one file. `?view=` is built by hand six times, while
   `withAction()` exists for actions. The constraint of a database error is extracted twice. A revision number is
-  checked in three places. `listFolders()` returns an empty list for a malformed actor id, where every other read
+  checked with `isRevisionNumber()` of the schema in the services, and by hand in the action that reverts. `listFolders()` returns an empty list for a malformed actor id, where every other read
   returns `null`.
 - Impact: none today; each is a place where two copies can drift.
 - Evidence: line 231, `return (await roleOnFolderOfTab(actor, tabId)) !== null;`, next to line 224,
   `return mayDo(await folderRoleOf(actor, folderId), fn);`.
 - Suggestion (optional): `mayDo(role, "read")` in all four places, a `withView()`, one extraction of the
-  constraint, and `isRevisionNumber()` exported from the schema.
+  constraint, and `isRevisionNumber()` of the schema in the action as well.
 - Confidence: Medium. Each is mechanical and covered by the unit tests of its file; none is needed.
 - Decision (2026-11-18): as suggested.
 

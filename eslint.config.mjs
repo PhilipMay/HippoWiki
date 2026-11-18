@@ -4,10 +4,17 @@ import nextTs from "eslint-config-next/typescript";
 import prettier from "eslint-config-prettier/flat";
 import playwright from "eslint-plugin-playwright";
 
+/**
+ * The service modules of a feature: `service.ts`, and the modules next to it named `<part>-service.ts`, such as
+ * `history-service.ts` of the pages. Every rule of the services holds for both.
+ */
+const SERVICE_FILES = ["src/features/**/service.ts", "src/features/**/*-service.ts"];
+
 /** Only a service reads and writes the database; everything else goes through the service of the feature. */
 const restrictedDb = {
   name: "@/lib/db",
-  message: "Only a service reads and writes the database: use src/features/<feature>/service.ts.",
+  message:
+    "Only a service reads and writes the database: use src/features/<feature>/service.ts or a <part>-service.ts next to it.",
 };
 
 /** Only the auth service uses Better Auth; everything else goes through that service. */
@@ -18,7 +25,7 @@ const restrictedAuth = {
 
 /** Routes and components use a service only for its types. */
 const restrictedService = {
-  group: ["@/features/*/service"],
+  group: ["@/features/*/service", "@/features/*/*-service"],
   allowTypeImports: true,
   message: "Import a service only as a type here: read through queries.ts and write through actions.ts.",
 };
@@ -124,7 +131,7 @@ const eslintConfig = defineConfig([
     files: [
       "src/features/**/actions.ts",
       "src/features/**/queries.ts",
-      "src/features/**/service.ts",
+      ...SERVICE_FILES,
       "src/features/mcp/**",
       "src/features/oauth/**",
       "src/app/api/**",
@@ -138,14 +145,14 @@ const eslintConfig = defineConfig([
       "no-console": "error",
     },
   },
-  // The layers: a route or component calls queries.ts or actions.ts, these call service.ts, and only service.ts
-  // reads and writes the database. Better Auth (@/lib/auth) is used by the auth service and src/lib/ only. A later
-  // config object replaces the options of a rule instead of adding to them, so the five objects below match disjoint
-  // sets of files and each one lists all restrictions of its files.
+  // The layers: a route or component calls queries.ts or actions.ts, these call a service (service.ts or a
+  // <part>-service.ts next to it), and only a service reads and writes the database. Better Auth (@/lib/auth) is used
+  // by the auth service and src/lib/ only. A later config object replaces the options of a rule instead of adding to
+  // them, so the five objects below match disjoint sets of files and each one lists all restrictions of its files.
   {
-    // Everything in src/ that is neither a route nor a component, a service or a module of src/lib/.
+    // Everything in src/ that is neither a route nor a component, a service module or a module of src/lib/.
     files: ["src/**/*.{ts,tsx}"],
-    ignores: ["src/app/**", "src/features/**/components/**", "src/features/**/service.ts", "src/lib/**"],
+    ignores: ["src/app/**", "src/features/**/components/**", ...SERVICE_FILES, "src/lib/**"],
     rules: {
       "@typescript-eslint/no-restricted-imports": ["error", { paths: [restrictedDb, restrictedAuth] }],
     },
@@ -172,7 +179,7 @@ const eslintConfig = defineConfig([
   // other than the GUI. A rule of its own, so that the Material UI paths in `no-restricted-imports` stay as they are.
   {
     // Every service except the auth service, which is the one that uses Better Auth.
-    files: ["src/features/**/service.ts"],
+    files: SERVICE_FILES,
     ignores: ["src/features/auth/service.ts"],
     rules: {
       "@typescript-eslint/no-restricted-imports": [

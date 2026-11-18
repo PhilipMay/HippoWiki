@@ -13,7 +13,7 @@ import HistoryBreadcrumbs from "@/features/pages/components/HistoryBreadcrumbs";
 import MarkdownContent from "@/features/pages/components/MarkdownContent";
 import RevisionLine from "@/features/pages/components/RevisionLine";
 import type { HistoryPlace } from "@/features/pages/components/history-place";
-import type { RevisionDetail } from "@/features/pages/service";
+import type { RevisionDetail } from "@/features/pages/history-service";
 
 type RevisionViewProps = {
   /** Where the page lives, for the breadcrumb and the links. */

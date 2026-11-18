@@ -43,10 +43,11 @@ How the code is tested. Commands are listed in `README.md`.
     editor. The tables of these tests that go over the writes (the actor, an admin, no role, the lowest role of each
     function) are built from it, so a new write is added there once.
   - `src/test/pages-service.ts`: the mocked database and logger of the unit tests of the pages service, which are
-    split by concern into `src/features/pages/service-reads.test.ts`, `service-history.test.ts`,
-    `service-writes.test.ts` and `service-access.test.ts` (the actor, an admin and the roles). Each file mocks
+    split by concern into `src/features/pages/service-reads.test.ts`, `service-writes.test.ts` and
+    `service-access.test.ts` (the actor, an admin and the roles), and of the history service
+    (`src/features/pages/history-service.test.ts`). Each file mocks
     `@/lib/db` and `@/lib/logger` with a factory that imports this module.
-- Services (`service.test.ts`) get unit tests for what needs a mock: the branches that the database cannot be made to
+- Services (`service.test.ts`, and `<part>-service.test.ts` for a service module next to it) get unit tests for what needs a mock: the branches that the database cannot be made to
   take on purpose, and what the integration tests cannot tell apart. They mock `@/lib/db` and `@/lib/logger`, and
   assert what the service does, not how it asks the database, so that a refactoring that keeps the behaviour keeps
   them green.
@@ -170,8 +171,8 @@ How the code is tested. Commands are listed in `README.md`.
     clients with a metadata document, with the fetch replaced: the first fetch, the kept row, the fetch after the cache
     time, a document that is not valid and a fetch that fails.
   - The services of the content on real data, one file per service in `integration/`
-    (`integration/folder-service.test.ts`, `integration/page-service.test.ts` and
-    `integration/folder-role-service.test.ts`):
+    (`integration/folder-service.test.ts`, `integration/page-service.test.ts`,
+    `integration/page-history-service.test.ts` and `integration/folder-role-service.test.ts`):
     - the reads: their conditions (e.g. pages placed directly in a folder versus pages in a tab) and their order, and
       that a read of a single item returns exactly the declared fields (`toStrictEqual`)
     - the writes: what is stored and returned, and the codes the database decides, such as `name-taken` for a taken

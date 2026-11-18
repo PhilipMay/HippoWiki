@@ -40,6 +40,11 @@ export function parsePageVersion(value: unknown): number | null {
 /** The number of a revision of a page: 1 for the oldest, counted up per page, at most the largest value of the column. */
 export const revisionNumberSchema = z.number().int().min(1).max(INTEGER_MAX);
 
+/** Whether the value is the number of a revision; a number that is not one never reaches the database. */
+export function isRevisionNumber(value: number): boolean {
+  return revisionNumberSchema.safeParse(value).success;
+}
+
 /**
  * Returns the number of a revision as an address writes it, or `null` for anything else: only a whole number from 1
  * up, written with digits alone, without a sign, leading zeros, spaces or other characters, and small enough for the
