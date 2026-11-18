@@ -31,6 +31,8 @@ The specification lives in the `spec/` directory. This catalog should always be 
   history 100 at a time, a revision rendered and raw, comparing two revisions with the cap of the diff, reverting from
   Writer up as a content save with its dialog and locking, the read-only history of deleted pages, browser only,
   decisions, limits)
+- `spec/unchanged-saves-requirements.md`: the approved requirements for content saves without a change
+  in the browser and through MCP, which leave the page with its last editor, time and version as it is
 - `spec/page-deletion.md`: the soft delete of pages as built (deleting, also together with their tab, deleted pages are
   invisible, the deleted pages of a folder under `/deleted-pages` with who deleted them and how, their history,
   restoring, decisions, limits)
