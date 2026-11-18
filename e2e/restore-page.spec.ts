@@ -193,6 +193,22 @@ test("the Escape key leads back to the deleted page", async ({ page }) => {
   await expect(restoreDialog(page)).toHaveCount(0);
 });
 
+test("restoring into a tab that no longer exists shows an error and the page stays deleted", async ({ page }) => {
+  const guides = await createTab({ folder: handbook, name: "guides" });
+  const removed = await createDeletedPage();
+
+  const dialog = await openRestoreDialog(page, removed.id);
+  await dialog.getByRole("radio", { name: "Tab guides" }).check();
+  // Deleted by a Manager while the dialog is open.
+  await getTestDb().tab.delete({ where: { id: guides.id } });
+  await dialog.getByRole("button", { name: "Save" }).click();
+
+  await expect(dialog.getByRole("alert")).toHaveText("This tab no longer exists.");
+  await expect(dialog.getByLabel("Name")).toHaveValue("removed");
+  await expect(page).toHaveURL(`/deleted-pages/handbook/${removed.id}?action=restore`);
+  expect(await getTestDb().page.findUniqueOrThrow({ where: { id: removed.id } })).toEqual(removed);
+});
+
 test("restoring a page that was restored in the meantime shows an error in the dialog", async ({ page }) => {
   const removed = await createDeletedPage();
 

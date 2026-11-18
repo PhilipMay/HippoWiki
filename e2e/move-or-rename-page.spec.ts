@@ -463,6 +463,25 @@ test("saving a page that was deleted in the meantime shows an error in the dialo
   expect((await getTestDb().page.findUniqueOrThrow({ where: { id: created.id } })).name).toBe("soon-gone");
 });
 
+test("a page can be renamed to the name of a deleted page", async ({ page }) => {
+  const kept = await createPage({ folder: handbook, name: "kept", title: "Kept page" });
+  const removed = await createPage({ folder: handbook, name: "removed", deletedAt: new Date() });
+
+  await page.goto("/folders/handbook/kept.md?action=move-or-rename");
+  const dialog = dialogOf(page);
+  await dialog.getByLabel("Name").fill("removed");
+  await dialog.getByRole("button", { name: "Save" }).click();
+
+  await expect(page).toHaveURL("/folders/handbook/removed.md");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(["Kept page"]);
+  expect(await getTestDb().page.findUniqueOrThrow({ where: { id: kept.id } })).toMatchObject({
+    name: "removed",
+    tabId: null,
+    deletedAt: null,
+  });
+  expect(await getTestDb().page.findUniqueOrThrow({ where: { id: removed.id } })).toEqual(removed);
+});
+
 test("a folder without tabs offers only the folder itself", async ({ page }) => {
   const plain = await createFolder({ name: "plain" });
   await createPage({ folder: plain, name: "alone", title: "Alone" });

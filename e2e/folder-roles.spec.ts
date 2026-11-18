@@ -5,6 +5,7 @@ import { ADMIN_STORAGE_STATE, becomeUser, logInElsewhere, USER_STORAGE_STATE } f
 import { collectErrors, expectNotFound } from "./support/browser";
 import {
   createFolder,
+  createFolderRole,
   createPage,
   createTab,
   createUser,
@@ -178,6 +179,31 @@ async function expectOffers(page: Page, offered: readonly string[]) {
   }
 }
 
+/**
+ * Opens a form as Owner, lowers the own role on the folder to the given one, submits the form and expects the
+ * not-found page, as a crafted request of a user with that role gets it. The role is set back to Owner first.
+ */
+async function submitAs(
+  page: Page,
+  folder: { id: string },
+  role: "reader" | "writer" | "manager",
+  address: string,
+  fill: () => Promise<void>,
+  submit: () => Promise<void>,
+) {
+  await setOwnRole(folder, "owner");
+  await page.goto(address);
+  await fill();
+  await setOwnRole(folder, role);
+  await submit();
+  await expect(page.getByRole("heading", { level: 1, name: "Page not found" }), address).toBeVisible();
+}
+
+/** Clicks the button of the open dialog with the given name. */
+function clickInDialog(page: Page, name: string) {
+  return () => page.getByRole("dialog").getByRole("button", { name }).click();
+}
+
 test.describe("what each role may do", () => {
   test("a Reader reads the folder, a tab, a page and all pages, and is offered nothing else", async ({ page }) => {
     const errors = collectErrors(page);
@@ -233,19 +259,9 @@ test.describe("what each role may do", () => {
       tabs: await getTestDb().tab.findMany(),
       pages: await getTestDb().page.findMany({ orderBy: { name: "asc" } }),
     };
-    const notFound = page.getByRole("heading", { level: 1, name: "Page not found" });
-
-    /** Opens a form as Owner, lowers the role to Reader, submits it and sets the role back. */
-    async function submitAsReader(address: string, fill: () => Promise<void>, submit: () => Promise<void>) {
-      await setOwnRole(folder, "owner");
-      await page.goto(address);
-      await fill();
-      await setOwnRole(folder, "reader");
-      await submit();
-      await expect(notFound, address).toBeVisible();
-    }
-
-    const save = (name: string) => () => page.getByRole("dialog").getByRole("button", { name }).click();
+    const submitAsReader = (address: string, fill: () => Promise<void>, submit: () => Promise<void>) =>
+      submitAs(page, folder, "reader", address, fill, submit);
+    const save = (name: string) => clickInDialog(page, name);
     await submitAsReader(
       "/folders/handbook?action=new",
       async () => {
@@ -308,6 +324,7 @@ test.describe("what each role may do", () => {
     const errors = collectErrors(page);
     const folder = await createFolder({ name: "handbook", roles: [{ user: ALICE, role: "writer" }] });
     await createTab({ folder, name: "guides" });
+    const deleted = await createPage({ folder, name: "old", deletedAt: new Date() });
 
     await page.goto("/folders/handbook");
     await expectOffers(page, ["New page"]);
@@ -342,25 +359,49 @@ test.describe("what each role may do", () => {
       "/folders/handbook/guides?action=delete",
       "/folders/handbook?action=rename",
       "/deleted-pages/handbook",
+      `/deleted-pages/handbook/${deleted.id}`,
+      `/deleted-pages/handbook/${deleted.id}?action=restore`,
     ]) {
       await expectNotFound(page, address);
     }
   });
 
-  test("a crafted form of a Writer to delete a tab shows the not-found page and deletes nothing", async ({ page }) => {
+  test("a crafted form of each function of a Manager, submitted as a Writer, shows the not-found page and writes nothing", async ({
+    page,
+  }) => {
     const folder = await createFolder({ name: "handbook" });
     const tab = await createTab({ folder, name: "guides" });
-    await createPage({ tab, name: "setup" });
-    const before = { tabs: await getTestDb().tab.findMany(), pages: await getTestDb().page.findMany() };
-    await page.goto("/folders/handbook/guides?action=delete");
-    await expect(page.getByRole("dialog", { name: "Delete tab" })).toBeVisible();
-    await setOwnRole(folder, "writer");
+    await createPage({ folder, name: "intro", title: "Intro" });
+    await createPage({ tab, name: "setup", title: "Setup" });
+    const deleted = await createPage({ folder, name: "old", deletedAt: new Date() });
+    const before = {
+      tabs: await getTestDb().tab.findMany(),
+      pages: await getTestDb().page.findMany({ orderBy: { name: "asc" } }),
+    };
+    const submitAsWriter = (address: string, fill: () => Promise<void>, submit: () => Promise<void>) =>
+      submitAs(page, folder, "writer", address, fill, submit);
+    const save = (name: string) => clickInDialog(page, name);
 
-    await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
+    await submitAsWriter("/folders/handbook/intro.md?action=delete", async () => {}, save("Delete"));
+    await submitAsWriter(
+      `/deleted-pages/handbook/${deleted.id}?action=restore`,
+      () => page.getByRole("dialog").getByRole("radio", { name: "Directly in the folder" }).check(),
+      save("Save"),
+    );
+    await submitAsWriter(
+      "/folders/handbook?action=new-tab",
+      () => page.getByRole("dialog").getByLabel("Name").fill("crafted"),
+      save("Save"),
+    );
+    await submitAsWriter(
+      "/folders/handbook/guides?action=rename",
+      () => page.getByRole("dialog").getByLabel("Name").fill("crafted"),
+      save("Save"),
+    );
+    await submitAsWriter("/folders/handbook/guides?action=delete", async () => {}, save("Delete"));
 
-    await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
     expect(await getTestDb().tab.findMany()).toStrictEqual(before.tabs);
-    expect(await getTestDb().page.findMany()).toStrictEqual(before.pages);
+    expect(await getTestDb().page.findMany({ orderBy: { name: "asc" } })).toStrictEqual(before.pages);
   });
 
   test("a Manager deletes, reads and restores a page, creates, renames and deletes a tab, and does not rename the folder", async ({
@@ -510,6 +551,53 @@ test.describe("giving a role", () => {
     await expect(roleOf(page, "alice")).toHaveValue("owner");
     await expect(roleOf(page, "bob")).toHaveValue("writer");
     expect(errors).toEqual([]);
+  });
+
+  test("the dialog puts the focus on the user once it is open", async ({ page }) => {
+    await createUser({ name: "bob" });
+    await createFolder({ name: "project-x", editor: await aliceUser() });
+
+    await page.goto("/folders/project-x?action=give-role");
+
+    await expect(giveRoleDialog(page).getByLabel("User")).toBeFocused();
+  });
+
+  test("saving without a user shows choose a user at the field and gives no role", async ({ page }) => {
+    await createUser({ name: "bob" });
+    await createFolder({ name: "project-x", editor: await aliceUser() });
+
+    await page.goto("/folders/project-x?action=give-role");
+    const dialog = giveRoleDialog(page);
+    await dialog.getByRole("radio", { name: "Writer" }).check();
+    await dialog.getByRole("button", { name: "Save" }).click();
+
+    const user = dialog.getByLabel("User");
+    await expect(user).toHaveAttribute("aria-invalid", "true");
+    await expect(user).toHaveAccessibleDescription("Choose a user");
+    await expect(user).toBeFocused();
+    await expect(dialog.getByRole("radio", { name: "Writer" })).toBeChecked();
+    await expect(page).toHaveURL("/folders/project-x?action=give-role");
+    expect(await getTestDb().folderRole.count()).toBe(1);
+  });
+
+  test("giving a role to a user who got one meanwhile shows an error at the user and keeps that role", async ({
+    page,
+  }) => {
+    const bob = await createUser({ name: "bob" });
+    const folder = await createFolder({ name: "project-x", editor: await aliceUser() });
+
+    await page.goto("/folders/project-x?action=give-role");
+    const dialog = giveRoleDialog(page);
+    await dialog.getByLabel("User").selectOption("bob");
+    await dialog.getByRole("radio", { name: "Owner" }).check();
+    // Another Owner gives bob a role while the dialog is open.
+    const given = await createFolderRole({ folder, user: bob, role: "reader" });
+    await dialog.getByRole("button", { name: "Save" }).click();
+
+    const user = dialog.getByLabel("User");
+    await expect(user).toHaveAccessibleDescription("This user already has a role on the folder");
+    await expect(user).toBeFocused();
+    expect(await getTestDb().folderRole.findFirstOrThrow({ where: { userId: bob.id } })).toStrictEqual(given);
   });
 
   test("the list of the dialog has no admin and no user who has a role, and Cancel leads to the folder", async ({
@@ -738,6 +826,54 @@ test.describe("changing and removing roles", () => {
     await expect(page.getByText("No folders yet")).toBeVisible();
   });
 
+  for (const intent of ["change", "remove"] as const) {
+    test(`a ${intent} of a role that another Owner removed meanwhile says so and writes nothing`, async ({ page }) => {
+      const bob = await createUser({ name: "bob" });
+      await createFolder({
+        name: "project-x",
+        roles: [
+          { user: ALICE, role: "owner" },
+          { user: bob, role: "reader" },
+        ],
+      });
+
+      await page.goto("/folders/project-x?view=roles");
+      await expect(roleOf(page, "bob")).toBeEnabled();
+      // Another Owner removes the role of bob while the view is open.
+      await getTestDb().folderRole.deleteMany({ where: { userId: bob.id } });
+      if (intent === "change") await roleOf(page, "bob").selectOption("writer");
+      else await page.getByRole("button", { name: "Remove the role of bob" }).click();
+
+      await expect(page.getByRole("main").getByRole("alert")).toHaveText(
+        "This user no longer has a role on the folder.",
+      );
+      await expect(page).toHaveURL("/folders/project-x?view=roles");
+      expect(await getTestDb().folderRole.findMany({ select: { userId: true, role: true } })).toEqual([
+        { userId: KNOWN_USER.id, role: "owner" },
+      ]);
+    });
+  }
+
+  test("cancelling the confirmation of a change of the own role keeps the own role", async ({ page }) => {
+    const bob = await createUser({ name: "bob" });
+    await createFolder({
+      name: "project-x",
+      roles: [
+        { user: ALICE, role: "owner" },
+        { user: bob, role: "owner" },
+      ],
+    });
+    const before = await getTestDb().folderRole.findMany({ orderBy: { id: "asc" } });
+
+    await page.goto("/folders/project-x?view=roles");
+    await roleOf(page, "alice").selectOption("reader");
+    await page.getByRole("dialog", { name: "Change your role" }).getByRole("button", { name: "Cancel" }).click();
+
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(roleOf(page, "alice")).toHaveValue("owner");
+    expect(await getTestDb().folderRole.findMany({ orderBy: { id: "asc" } })).toStrictEqual(before);
+  });
+
   test("the only Owner can neither lower nor remove the own role, and is told why", async ({ page }) => {
     const bob = await createUser({ name: "bob" });
     await createFolder({
@@ -792,6 +928,31 @@ test.describe("changing and removing roles", () => {
     expect(await getTestDb().folderRole.findFirstOrThrow({ where: { userId: bob.id } })).toMatchObject({
       role: "reader",
     });
+  });
+
+  test("a crafted Remove of a Manager removes no role", async ({ page }) => {
+    const bob = await createUser({ name: "bob" });
+    const folder = await createFolder({
+      name: "project-x",
+      roles: [
+        { user: ALICE, role: "owner" },
+        { user: bob, role: "reader" },
+      ],
+    });
+    const bobsRole = await getTestDb().folderRole.findFirstOrThrow({ where: { userId: bob.id } });
+
+    // Opened as Owner; then the role is lowered to Manager, as if the Manager had crafted the request.
+    await page.goto("/folders/project-x?view=roles");
+    await expect(page.getByRole("button", { name: "Remove the role of bob" })).toBeEnabled();
+    await setOwnRole(folder, "manager");
+    await page.getByRole("button", { name: "Remove the role of bob" }).click();
+
+    await expect(page.getByRole("main").getByRole("button")).toHaveCount(0);
+    await expect(page.getByRole("list", { name: "Roles" }).getByRole("listitem")).toHaveText([
+      "aliceManager",
+      "bobReader",
+    ]);
+    expect(await getTestDb().folderRole.findFirstOrThrow({ where: { userId: bob.id } })).toStrictEqual(bobsRole);
   });
 
   // The select sends no change for the selected role, so the role of bob is set meanwhile, as another Owner

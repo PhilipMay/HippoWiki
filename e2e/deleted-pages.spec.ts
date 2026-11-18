@@ -37,11 +37,31 @@ test("a deleted page is missing from the folder contents, the tab and all pages"
   expect(errors).toEqual([]);
 });
 
-test("the old address of a deleted page shows the not-found page", async ({ page }) => {
-  await createPage({ folder: handbook, name: "removed", deletedAt: new Date() });
+/** Every view and action of the address of a page. */
+const VIEWS_AND_ACTIONS = [
+  "",
+  "?action=edit",
+  "?action=move-or-rename",
+  "?action=delete",
+  "?action=revert&revision=1",
+  "?view=history",
+  "?view=revision&revision=1",
+  "?view=revision&revision=1&format=raw",
+  "?view=compare&from=1&to=1",
+];
 
-  await expectNotFound(page, "/folders/handbook/removed.md");
-  await expectNotFound(page, "/folders/handbook/removed.md?action=edit");
+test("every view and action of the old address of a deleted page shows the not-found page", async ({ page }) => {
+  const guides = await createTab({ folder: handbook, name: "guides" });
+  await createPage({ folder: handbook, name: "removed", deletedAt: new Date() });
+  // A page deleted from a tab loses its tab, as the delete stores it.
+  const fromTab = await createPage({ tab: guides, name: "from-tab" });
+  await getTestDb().page.update({ where: { id: fromTab.id }, data: { deletedAt: new Date(), tabId: null } });
+
+  for (const oldAddress of ["/folders/handbook/removed.md", "/folders/handbook/guides/from-tab.md"]) {
+    for (const query of VIEWS_AND_ACTIONS) {
+      await expectNotFound(page, `${oldAddress}${query}`);
+    }
+  }
 });
 
 test("a page with the name of a deleted page can be created directly in the folder", async ({ page }) => {

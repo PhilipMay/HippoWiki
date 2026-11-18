@@ -14,9 +14,9 @@
     findings of the tests that are still open are minor.
   - Documents that the features outran: rules stated in full in several documents, and copies of code and
     constants in the specs.
-- Findings: 67 open of 107, 0 Blocker, 0 Major, 55 Minor and 12 Nit (24 `issue:`, 29 `suggestion:`, 10 `nit:` and
+- Findings: 63 open of 107, 0 Blocker, 0 Major, 51 Minor and 12 Nit (20 `issue:`, 29 `suggestion:`, 10 `nit:` and
   4 `question:`).
-- Confidence of the suggestions: 10 High, 43 Medium and 10 Low; the 4 questions have none. A High suggestion can be
+- Confidence of the suggestions: 7 High, 42 Medium and 10 Low; the 4 questions have none. A High suggestion can be
   fixed as written; the others wait for the user, as `issue-report.md` describes.
 - Decisions: on 2026-11-18 the user decided all Medium and Low suggestions. Each of these findings ends with a line
   `Decision`, and is fixed as that line says, without asking again. The 4 questions were decided by the user on the
@@ -1055,81 +1055,6 @@ them are fixed.
 
 ### Tests: end-to-end
 
-#### issue: `/users` and `/change-password` are missing from the protected addresses of `access.spec.ts`
-
-- Location: `e2e/access.spec.ts`, lines 29–68, `PROTECTED_ADDRESSES`; `spec/testing.md`, section "End-to-end tests"
-- Severity: Minor. Both addresses are tested in their own specs, but more weakly.
-- Category: tests
-- Problem: `testing.md` says that `access.spec.ts` checks "every kind of address" and that "a new route adds its
-  address there". The list holds neither `/users`, nor its dialog, nor `/change-password`. Their own specs only
-  follow the redirect in the browser; they do not check that the answer is a redirect that sends nothing of the page.
-- Impact: a change of the proxy that lets `/users` render before it redirects, with every user name in the HTML,
-  would pass.
-- Evidence: the only hit for `/users` in `e2e/access.spec.ts` is line 323, in the test of the way back of an admin.
-  `e2e/users.spec.ts`, lines 478–483, has `await page.goto("/users"); await expect(page).toHaveURL("/login?next=%2Fusers");`.
-- Suggestion (required): add the user list, the dialog `/users?action=create` and `/change-password` to
-  `PROTECTED_ADDRESSES`. `CONTENT_ADDRESSES` filters on `/folders` and `/deleted-pages`, so the tests of the admin
-  stay as they are.
-- Confidence: High. One fix, no behaviour change; the redirects are already asserted in `e2e/users.spec.ts` and
-  `e2e/change-password.spec.ts`, and the new cases prove themselves.
-
-#### issue: a deleted page is checked on two of the addresses that could show it
-
-- Location: `e2e/deleted-pages.spec.ts`, lines 52–57, "the old address of a deleted page shows the not-found page";
-  `e2e/move-or-rename-page.spec.ts`; `e2e/restore-page.spec.ts`; `spec/page-deletion.md`
-- Severity: Minor. One lookup serves every view today, so the gap opens only when that changes.
-- Category: tests
-- Problem: the old address is checked plain and with `?action=edit`. Not checked: `?view=history`,
-  `?view=revision&revision=1` (also raw), `?view=compare`, `?action=move-or-rename`, `?action=delete`,
-  `?action=revert&revision=1`, and the old address of a page deleted from a tab. Two more rules have no end-to-end
-  test: moving or renaming a page onto the name of a deleted page (only creating is tested), and restoring into a tab
-  that was deleted while the dialog was open.
-- Impact: the history views read revisions through reads of their own in the service. If a refactoring gives them a
-  page lookup of their own, a Reader could read the content of a deleted page as a raw revision, and no browser test
-  would notice. The integration tests of the page service cover the reads, not the routes.
-- Evidence: lines 55–56 hold the only two addresses:
-  `await expectNotFound(page, "/folders/handbook/removed.md");` and the same with `?action=edit`.
-- Suggestion (required for the views, optional for the rest): let the test loop over the views and actions, for a
-  page deleted in the folder and one deleted from a tab. Add "a page can be renamed to the name of a deleted page"
-  and "restoring into a tab that no longer exists shows an error".
-- Confidence: High. The loops over `expectNotFound` are the pattern of the file.
-
-#### issue: the functions of a Manager are refused for a crafted form of a Writer only for "delete tab"
-
-- Location: `e2e/folder-roles.spec.ts`, describe "what each role may do", lines 229–310 and 343–369;
-  `spec/folder-roles.md`, section "Roles"
-- Severity: Minor. `mayDo()` decides centrally and is tested below the browser.
-- Category: tests
-- Problem: delete page, restore page, create tab and rename tab are submitted only as a Reader, two roles below the
-  one that may. "Remove" of a role is not submitted as a Manager. As a Writer, only `/deleted-pages/handbook` is
-  opened, not a deleted page or its restore dialog.
-- Impact: a mistake that lowers one function of a Manager to Writer in an action or a route, not through `mayDo()`,
-  passes the browser tests.
-- Evidence: line 362, `await setOwnRole(folder, "writer");`, is the only submission as a Writer. Below the browser:
-  `integration/page-service.test.ts`, "lets a Writer write pages but neither delete nor restore them, nor see the
-  deleted pages".
-- Suggestion (optional): turn `submitAsReader` into `submitAs(role, …)`, run the four forms of a Manager as a Writer,
-  add the two addresses of a deleted page, and a crafted "Remove" as a Manager.
-- Confidence: High. The helper exists, and the same forms already pass as a Reader.
-
-#### issue: the "Give role" dialog and the roles view have states that no test reaches
-
-- Location: `src/features/folder-roles/components/GiveRoleDialog.tsx`;
-  `src/features/folder-roles/components/FolderRoleList.tsx`; `e2e/folder-roles.spec.ts`
-- Severity: Minor. The service and the actions cover the codes; only the wiring of the components is unproven.
-- Category: tests
-- Problem: no test saves without a user ("Choose a user" at the field, with the focus on it), gives a role to a
-  user who got one meanwhile, changes or removes a role that another Owner removed meanwhile, cancels the
-  confirmation of "Change your role", or checks the focus after the dialog opens. The components have no unit tests.
-- Impact: a refactoring of the dialog can break the simplest error of a user without a failing test.
-- Evidence: a search of `e2e/` for `already has a role on the folder`, `no longer has a role` and `Choose a role`
-  gives no hit; "Choose a user" appears only as the text of an option (line 537). Below the browser:
-  `src/features/folder-roles/actions.test.ts` and `integration/folder-role-service.test.ts`.
-- Suggestion (required): add the five cases to `e2e/folder-roles.spec.ts`; `createFolderRole()` and a delete of the
-  row after the view opened set up the two races.
-- Confidence: Medium. The states were read in the code; the accessible description of the select was not tried.
-- Decision (2026-11-18): as suggested.
-
 #### issue: the revert dialog has one locking case in the browser, and two locking rules have none
 
 - Location: `e2e/revert-page.spec.ts`, lines 140–169; `spec/optimistic-locking.md`, sections "Which changes are
@@ -1234,8 +1159,16 @@ lastEditedById: bob.id, lastEditedVia: "mcp" } });`.
 - Optimistic locking: two real browser contexts for save, move or rename and delete, a second tab of the same user,
   a rename meanwhile and a missing version, each with the address, the exact message, the stored content and a
   second confirm that succeeds. MCP has a first and a second writer and a refusal after an edit in the browser.
-- Roles: each function is allowed for its lowest role and not found for the next lower one at its address; a change
-  of a role holds from the next request on; the last Owner is kept.
+- Roles: each function is allowed for its lowest role and not found for the next lower one at its address, and a
+  crafted form of each function of a Manager is refused for a Writer, as "Remove" of a role is for a Manager; a
+  change of a role holds from the next request on; the last Owner is kept. The "Give role" dialog and the roles view
+  show their errors at the field or in the view: no user chosen, a role given or removed meanwhile, and a cancelled
+  change of the own role.
+- Deleted pages: every view and action of the old address of a deleted page is not found, also for a page deleted
+  from a tab; a page can be renamed to the name of a deleted page, and a restore into a tab deleted meanwhile is
+  refused.
+- Access without a login: `e2e/access.spec.ts` checks every kind of address, the user list and the password change
+  included.
 - Admins never see content: `e2e/access.spec.ts` checks every content route with its views and actions.
 - Parity of browser and MCP: the last editor and the channel after real MCP writes, the revisions MCP writes, the
   lower of the two roles, and a tab deleted in the browser as MCP sees it.
@@ -1247,7 +1180,7 @@ lastEditedById: bob.id, lastEditedVia: "mcp" } });`.
   the second pages through `hydrating()`. No comment cites a requirement ID. Field errors are asserted at the field,
   and `testing.md` names the exceptions of the selector rule.
 - `testing.md` matches the configuration of Playwright, the global setup and the helpers in every statement
-  checked, except the one named in the finding on `access.spec.ts` above.
+  checked.
 - Every route under `src/app` has an end-to-end test except the two error pages.
 
 ### Documentation: the feature specs of the content
