@@ -150,7 +150,7 @@ Writer carries `destructiveHint` as well, because it overwrites the whole conten
   empty tab is deleted as well, with the number 0; a tab that does not exist, also one deleted meanwhile, is a tool
   error.
 
-What a Manager connection cannot do: see, read or restore deleted pages, see the roles of the folder or its Owners,
+What a Manager connection cannot do, because no tool offers it: see, read or restore deleted pages, see the roles of the folder or its Owners,
 rename the folder, or give, change or remove roles. A deleted page is answered like a page that does not exist, as for
 the other roles. The writes of roles are not offered through MCP: no tool calls them, and no tool may, because they
 take a plain actor and nothing in their type keeps the actor of MCP out (see "Reads and writes" in `architecture.md`).

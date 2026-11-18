@@ -108,6 +108,12 @@ function errorOf(result: ToolResult): string {
   return result.content[0]?.text ?? "";
 }
 
+/** Expects the answer of the SDK to a call of a tool that the connection does not have: an error, and no result. */
+function expectToolNotFound(answer: Answer, name: string): void {
+  expect(answer.result).toBeUndefined();
+  expect(answer.error).toEqual({ code: -32602, message: `Tool ${name} not found` });
+}
+
 beforeEach(() => {
   vi.resetAllMocks();
   publicUrl = PUBLIC_URL;
@@ -174,8 +180,7 @@ describe("the read tools", () => {
   it("include no tool that lists folders", async () => {
     const answer = await send({ method: "tools/call", params: { name: "list_folders", arguments: {} } });
 
-    expect(JSON.stringify(answer)).toContain("list_folders");
-    expect(JSON.stringify(answer)).not.toContain('"structuredContent"');
+    expectToolNotFound(answer, "list_folders");
   });
 });
 
@@ -288,16 +293,6 @@ describe("list_folder", () => {
       );
     },
   );
-
-  it("answers a failing database with a tool error that does not pass on the error, and logs it", async () => {
-    const err = new Error("connect ECONNREFUSED 10.0.0.5:5432");
-    mocks.listTabs.mockRejectedValue(err);
-
-    const message = errorOf(await callTool("list_folder"));
-
-    expect(message).toBe("The wiki could not be read. Please try again later.");
-    expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ err, tool: "list_folder" }, "mcp tool failed");
-  });
 });
 
 describe("read_page", () => {
@@ -385,24 +380,16 @@ describe("read_page", () => {
 
     expect(mocks.getPage).not.toHaveBeenCalled();
   });
-
-  it("answers a failing database with a tool error that does not pass on the error, and logs it", async () => {
-    const err = new Error("password authentication failed for user hippowiki");
-    mocks.getPage.mockRejectedValue(err);
-
-    const message = errorOf(await callTool("read_page", { page: "setup" }));
-
-    expect(message).toBe("The wiki could not be read. Please try again later.");
-    expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ err, tool: "read_page" }, "mcp tool failed");
-  });
 });
 
 describe("an unknown tool", () => {
-  it("is not found", async () => {
-    const answer = await send({ method: "tools/call", params: { name: "delete_page", arguments: {} } });
+  it.each([READER, WRITER, MANAGER])("is not found for a connection with the role $connection.role", async (who) => {
+    actor = who;
 
-    expect(JSON.stringify(answer)).toContain("delete_page");
-    expect(mocks.getPage).not.toHaveBeenCalled();
+    const answer = await send({ method: "tools/call", params: { name: "delete_folder", arguments: {} } });
+
+    expectToolNotFound(answer, "delete_folder");
+    for (const mock of Object.values(mocks)) expect(mock).not.toHaveBeenCalled();
   });
 });
 
@@ -484,7 +471,7 @@ describe("the write tools", () => {
     });
 
     expect((list.result?.tools as { name: string }[]).map((tool) => tool.name)).toEqual(["list_folder", "read_page"]);
-    expect(JSON.stringify(call)).toContain("create_page");
+    expectToolNotFound(call, "create_page");
     expect(mocks.createPage).not.toHaveBeenCalled();
   });
 
@@ -745,16 +732,6 @@ describe("the write tools", () => {
         errorOf(await callTool("move_or_rename_page", { page: "setup", version: 4, newTab: null, newName: "taken" })),
       ).toContain(message);
     });
-
-    it("answers a failing database with a tool error that does not pass on the error, and logs it", async () => {
-      const err = new Error("connection lost");
-      mocks.moveOrRenamePage.mockRejectedValue(err);
-
-      expect(
-        errorOf(await callTool("move_or_rename_page", { page: "setup", version: 4, newTab: null, newName: "x" })),
-      ).toBe("The change could not be stored. Please try again later.");
-      expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ err, tool: "move_or_rename_page" }, "mcp tool failed");
-    });
   });
 });
 
@@ -880,8 +857,7 @@ describe("the tools of a Manager connection", () => {
       ["rename_tab", { tab: "guides", newName: "news" }],
       ["delete_tab", { tab: "guides" }],
     ] as const) {
-      const answer = await send({ method: "tools/call", params: { name, arguments: args } });
-      expect(JSON.stringify(answer)).toContain(name);
+      expectToolNotFound(await send({ method: "tools/call", params: { name, arguments: args } }), name);
     }
     expectNoManagerWrite();
   });
@@ -958,16 +934,6 @@ describe("the tools of a Manager connection", () => {
 
       expect(errorOf(await callTool("delete_page", { tab: "guides", page: "setup", version: 4 }))).toContain(message);
     });
-
-    it("answers a failing database with a tool error that does not pass on the error, and logs it", async () => {
-      const err = new Error("connection lost");
-      mocks.deletePage.mockRejectedValue(err);
-
-      expect(errorOf(await callTool("delete_page", { page: "setup", version: 4 }))).toBe(
-        "The change could not be stored. Please try again later.",
-      );
-      expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ err, tool: "delete_page" }, "mcp tool failed");
-    });
   });
 
   describe("create_tab", () => {
@@ -1005,16 +971,6 @@ describe("the tools of a Manager connection", () => {
       mocks.createTab.mockResolvedValue({ ok: false, error });
 
       expect(errorOf(await callTool("create_tab", { name: "News" }))).toContain(message);
-    });
-
-    it("answers a failing database with a tool error that does not pass on the error, and logs it", async () => {
-      const err = new Error("connection lost");
-      mocks.createTab.mockRejectedValue(err);
-
-      expect(errorOf(await callTool("create_tab", { name: "news" }))).toBe(
-        "The change could not be stored. Please try again later.",
-      );
-      expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ err, tool: "create_tab" }, "mcp tool failed");
     });
   });
 
@@ -1054,16 +1010,6 @@ describe("the tools of a Manager connection", () => {
       mocks.renameTab.mockResolvedValue({ ok: false, error });
 
       expect(errorOf(await callTool("rename_tab", { tab: "guides", newName: "news" }))).toContain(message);
-    });
-
-    it("answers a failing database with a tool error that does not pass on the error, and logs it", async () => {
-      const err = new Error("connection lost");
-      mocks.renameTab.mockRejectedValue(err);
-
-      expect(errorOf(await callTool("rename_tab", { tab: "guides", newName: "news" }))).toBe(
-        "The change could not be stored. Please try again later.",
-      );
-      expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ err, tool: "rename_tab" }, "mcp tool failed");
     });
   });
 
@@ -1134,15 +1080,85 @@ describe("the tools of a Manager connection", () => {
 
       expect(errorOf(await callTool("delete_tab", { tab: "guides" }))).toContain(message);
     });
+  });
+});
 
-    it("answers a failing database with a tool error that does not pass on the error, and logs it", async () => {
-      const err = new Error("connection lost");
-      mocks.deleteTab.mockRejectedValue(err);
+describe("every tool", () => {
+  const PAGE = {
+    id: "p1",
+    name: "setup",
+    title: "Setup",
+    content: "# Setup",
+    updatedAt: CHANGED,
+    lastEditedBy: EDITOR,
+    version: 4,
+    folder: FOLDER,
+    tab: null,
+    role: "manager",
+  };
+  const STORED = { id: "p1", name: "setup", version: 5, folder: { name: "handbook" }, tab: null };
+  const TAB = { id: "tab-1", name: "guides", folder: FOLDER, role: "manager" };
+  const READ_FAILED = "The wiki could not be read. Please try again later.";
+  const WRITE_FAILED = "The change could not be stored. Please try again later.";
 
-      expect(errorOf(await callTool("delete_tab", { tab: "guides" }))).toBe(
-        "The change could not be stored. Please try again later.",
-      );
-      expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ err, tool: "delete_tab" }, "mcp tool failed");
-    });
+  /**
+   * Each of the nine tools, called by a Manager connection, which has all of them: its arguments, the service it
+   * calls, and the message of a failure of that service.
+   */
+  const TOOLS = [
+    ["list_folder", {}, mocks.listAllFolderPages, READ_FAILED],
+    ["read_page", { page: "setup" }, mocks.getPage, READ_FAILED],
+    ["create_page", { content: "# New", name: "new" }, mocks.createPage, WRITE_FAILED],
+    [
+      "replace_page_content",
+      { page: "setup", version: 4, content: "# Setup 2" },
+      mocks.updatePageContent,
+      WRITE_FAILED,
+    ],
+    [
+      "move_or_rename_page",
+      { page: "setup", version: 4, newTab: null, newName: "moved" },
+      mocks.moveOrRenamePage,
+      WRITE_FAILED,
+    ],
+    ["delete_page", { page: "setup", version: 4 }, mocks.deletePage, WRITE_FAILED],
+    ["create_tab", { name: "news" }, mocks.createTab, WRITE_FAILED],
+    ["rename_tab", { tab: "guides", newName: "news" }, mocks.renameTab, WRITE_FAILED],
+    ["delete_tab", { tab: "guides" }, mocks.deleteTab, WRITE_FAILED],
+  ] as const;
+
+  beforeEach(() => {
+    actor = MANAGER;
+    mocks.listTabs.mockResolvedValue([]);
+    mocks.listAllFolderPages.mockResolvedValue([]);
+    mocks.getPage.mockResolvedValue(PAGE);
+    mocks.getTab.mockResolvedValue(TAB);
+    mocks.createPage.mockResolvedValue({ ok: true, value: { ...STORED, name: "new", version: 1 } });
+    mocks.updatePageContent.mockResolvedValue({ ok: true, value: STORED });
+    mocks.moveOrRenamePage.mockResolvedValue({ ok: true, value: { ...STORED, name: "moved" } });
+    mocks.deletePage.mockResolvedValue({ ok: true, value: { folder: { name: "handbook" }, tab: null } });
+    mocks.createTab.mockResolvedValue({ ok: true, value: { id: "t2", name: "news", folder: { name: "handbook" } } });
+    mocks.renameTab.mockResolvedValue({ ok: true, value: { id: "tab-1", name: "news", folder: { name: "handbook" } } });
+    mocks.deleteTab.mockResolvedValue({ ok: true, value: { folder: FOLDER, pageCount: 0, pages: [] } });
+  });
+
+  it.each(TOOLS)(
+    "%s answers a failing database with a tool error that does not pass on the error, and logs it",
+    async (name, args, service, message) => {
+      const err = new Error("connect ECONNREFUSED 10.0.0.5:5432");
+      service.mockRejectedValue(err);
+
+      expect(errorOf(await callTool(name, args))).toBe(message);
+      expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ err, tool: name }, "mcp tool failed");
+    },
+  );
+
+  it.each(TOOLS)("%s gives its result twice: as structured content and as its JSON in the text", async (name, args) => {
+    const result = await callTool(name, args);
+
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toBeDefined();
+    expect(result.content).toHaveLength(1);
+    expect(JSON.parse(result.content[0]?.text ?? "")).toEqual(result.structuredContent);
   });
 });

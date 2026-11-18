@@ -13,17 +13,15 @@
     of Prisma, and three rules of access and of the transaction have no test that could fail.
   - Documents that the features outran: rules stated in full in several documents, and copies of code and
     constants in the specs.
-- Findings: 77 open of 107, 0 Blocker, 2 Major, 61 Minor and 14 Nit (31 `issue:`, 30 `suggestion:`, 12 `nit:` and
+- Findings: 74 open of 107, 0 Blocker, 1 Major, 59 Minor and 14 Nit (29 `issue:`, 29 `suggestion:`, 12 `nit:` and
   4 `question:`).
-- Confidence of the suggestions: 14 High, 47 Medium and 12 Low; the 4 questions have none. A High suggestion can be
+- Confidence of the suggestions: 12 High, 47 Medium and 11 Low; the 4 questions have none. A High suggestion can be
   fixed as written; the others wait for the user, as `issue-report.md` describes.
 - Decisions: on 2026-11-18 the user decided all Medium and Low suggestions. Each of these findings ends with a line
   `Decision`, and is fixed as that line says, without asking again. The 4 questions were decided by the user on the
   same day, in "Decisions on the questions" of `spec/review-02-fixes-steps.md`.
-- To fix first, the two Major findings:
-  1. Tests say that no MCP connection reads deleted pages, but try only a Writer connection; by the code the
-     service would answer a Manager connection (Tests: unit and integration; Low, decided).
-  2. The unit tests of the services pin the calls of Prisma, not the behaviour (Tests: unit and integration; Low,
+- To fix first, the one Major finding:
+  1. The unit tests of the services pin the calls of Prisma, not the behaviour (Tests: unit and integration; Low,
      decided).
 - Not covered by this review: security, which `review-report.md` covers and whose findings are not repeated here;
   the unit tests of auth, users, OAuth and grants, of which only the names and the copied helpers were looked at;
@@ -1029,39 +1027,6 @@ Unit coverage on 2026-11-18 is 78.95 % of the lines and 69.71 % of the branches.
 components and the route pages, which have no unit tests on purpose (67 of 138 files, 690 lines); the services are
 between 94 % and 100 %. The findings below are therefore about what is asserted, not about lines.
 
-#### issue: tests say that no MCP connection reads deleted pages, but try only a Writer connection
-
-- Location: `src/features/pages/service.test.ts`, lines 2042–2047 and 2056–2073;
-  `src/features/folder-roles/service.test.ts`, lines 271–287; `integration/page-service.test.ts`, lines 1195–1202;
-  `src/features/pages/service.ts`, lines 322 and 340, `listDeletedPages()` and `getDeletedPage()`;
-  `spec/page-deletion.md`, section "Deleting"; `spec/folder-roles.md`, section "MCP"
-- Severity: Major. A rule about what the token of an AI app may read is asserted on a premise that stopped being
-  true with the Manager connections.
-- Category: tests
-- Problem: all four tests use a connection with the role Writer, where the answer `null` comes from the role, not
-  from the channel. Both reads take `ContentActor`, and for a Manager connection the condition for the function
-  `deletedPages` holds, so by the code the service would return deleted pages to an MCP actor. This was derived
-  from the code and not run. The rule holds today only because no tool calls the reads, which the tests of the
-  tools and `e2e/mcp.spec.ts` prove. Restoring and the reads of the history are closed to MCP by the type
-  `BrowserActor`.
-- Impact: a later tool, or a refactoring that reuses the read for a Manager connection, shows deleted pages
-  through MCP while the tests named after the rule stay green.
-- Evidence: the test name "listDeletedPages through MCP reads nothing, because the role of a connection is at most
-  Writer"; `integration/page-service.test.ts`, line 1198, `const mcp = inMcp(user, { grantId: crypto.randomUUID(),
-folderId: folder.id, role: "writer" });`; `folder-roles.md`: "The deleted pages list, reading a deleted page and
-  restoring one stay in the browser as well, also for a Manager connection."
-- Suggestion (required): decide where the rule lives, then make the tests say it, in one of the two ways under
-  Alternatives.
-- Confidence: Low. The problem is in the cited lines; the fix is a decision of design.
-- Alternatives:
-  - The service holds the rule: both reads take `BrowserActor`, as restoring does, and the four tests get a case
-    with a Manager connection. One changed type, and it fits the wording of three specs.
-  - The list of tools holds the rule: the tests are renamed, a case documents that a Manager connection may read
-    at the level of the service, and the specs say "no tool" instead of "no connection".
-- Decision (2026-11-18): the second Alternative: the list of tools holds the rule, and nothing in the code enforces it.
-  MCP offers no tool for the deleted pages; the tests are renamed, one case documents that a Manager connection may read
-  them at the level of the service, and the specs say "no tool" instead of "no connection".
-
 #### issue: the unit tests of the services pin the calls of Prisma, not the behaviour
 
 - Location: `src/features/pages/service.test.ts`, `src/features/folders/service.test.ts` and
@@ -1098,45 +1063,6 @@ deletedAt: null, version: VERSION, content: { not: CONTENT } },`.
 - Decision (2026-11-18): as suggested: first the missing integration cases of this section, then the unit tests are cut
   down to what needs a mock.
 
-#### issue: tests that assert less than their name says
-
-- Location: `src/features/pages/service.test.ts`, lines 1895–1917, 2186–2200 and 2223–2229;
-  `src/features/mcp/tools.test.ts`, lines 174–179, 400–406, 486–488 and 883–884;
-  `src/features/folders/service.test.ts`, lines 1091–1102; `integration/page-service.test.ts`, lines 1098–1124
-- Severity: Minor. None hides a known defect; each stays green after the change it is named for.
-- Category: tests
-- Problem: a test named for four reads never calls `getPage()`. Four tests of the tools assert only that the answer
-  holds the name of the tool, and "an unknown tool is not found" uses `delete_page`, which is a real tool now and
-  unknown only because the default actor is a Reader. One test of a refusal asserts only that a mock was called
-  once. For an allowed role one test expects only "not `not-allowed`", so `failed` passes. `revertPage()` is
-  missing from the table of writes, so a malformed actor id is untested for it. The integration test of an admin
-  leaves out one list, the move, the revert and the three reads of the history.
-- Impact: the SDK could start to answer an unregistered tool with a normal result that repeats its name, and the
-  four tests would pass.
-- Evidence: `src/features/mcp/tools.test.ts`, lines 404–405: `expect(JSON.stringify(answer)).toContain(
-"delete_page");` and `expect(mocks.getPage).not.toHaveBeenCalled();`.
-- Suggestion (required): assert the error of the answer in the four tests, with a name that no connection has;
-  call `getPage()` or rename the test; expect a real outcome for an allowed role; add `revertPage()` to the table;
-  extend the test of the admin.
-- Confidence: High. Each is a local change of a test, checked against the cited lines.
-
-#### suggestion: small gaps in the parity of the tests of the two adapters
-
-- Location: `src/features/mcp/tools.test.ts`, describes "create_page" and "replace_page_content";
-  `src/features/folder-roles/actions.test.ts`, lines 160–185
-- Severity: Minor. The mapping of the codes itself is complete in both adapters.
-- Category: tests
-- Problem: "answers a failing database with a tool error that does not pass on the error, and logs it" exists for
-  seven of the nine tools, not for the two write tools used most. That a result is given twice, as text and as
-  structured content, is asserted for four tools. The codes `last-owner`, `role-not-found` and `failed` of
-  `changeRole()` are tested for a change, not for a removal.
-- Impact: a write tool that passes the wrong message for a failure, or the error of the database, goes unnoticed
-  for `create_page` and `replace_page_content`.
-- Evidence: a search of the test for `mcp tool failed` gives seven hits, none in the two describes.
-- Suggestion (optional): one table over all nine tools for the failing database and for the result given twice,
-  and the table of errors of `changeRole()` for both intents.
-- Confidence: High. Additions that follow the pattern of the file.
-
 #### issue: fixtures and builders of mocks are copied between the test files, and the tests of the services mix every concern
 
 - Location: the three `service.test.ts` files and the `actions.test.ts` and `queries.test.ts` files of the content
@@ -1149,7 +1075,7 @@ deletedAt: null, version: VERSION, content: { not: CONTENT } },`.
   read of a stored page appears 40 times, the creation of the user "bob" 52 times, and `revisionsOf()` is defined
   twice with different fields. The pages test has 2,230 lines, with the roles spread over four describes.
 - Impact: a new write or role has four tables in two files, and `revertPage()` was forgotten in three already. The
-  premise "at most Writer" of the finding above lives in three copies.
+  premise "the role of a connection is at most Writer" lived in three copies and outlived the Manager connections.
 - Evidence: the counts come from searches over the named files.
 - Suggestion (optional): a module of test helpers for the unit tests, left out of the coverage, with the builders,
   the actors and one table of all content writes; helpers for a stored page and an MCP actor for the integration

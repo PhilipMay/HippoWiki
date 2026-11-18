@@ -273,7 +273,7 @@ describe("a function beyond reading", () => {
     expect(readableFolderWhere(BROWSER, "deletedPages")).toEqual({
       roles: { some: { userId: ACTOR_ID, role: { in: ["manager", "owner"] } } },
     });
-    // The role of a connection is at most Writer: no function of a Manager.
+    // A Writer connection has no function of a Manager.
     expect(readableFolderWhere(MCP, "deletedPages")).toEqual({ id: { in: [] } });
     expect(readableFolderWhere(MCP_READER, "editPage")).toEqual({ id: { in: [] } });
   });

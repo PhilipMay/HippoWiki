@@ -2047,7 +2047,7 @@ describe("the role of the actor", () => {
     },
   );
 
-  it("listDeletedPages through MCP reads nothing, because the role of a connection is at most Writer", async () => {
+  it("listDeletedPages through a Writer connection reads nothing, because a Writer sees no deleted pages", async () => {
     mocks.roleFindFirst.mockResolvedValue({ role: "owner" });
 
     await expect(listDeletedPages(MCP_ACTOR, FOLDER_ID)).resolves.toBeNull();
@@ -2061,7 +2061,7 @@ describe("the role of the actor", () => {
     expect(mocks.findMany).not.toHaveBeenCalled();
   });
 
-  it("getPage and getDeletedPage through MCP read only the folder of the connection, with a role on it", async () => {
+  it("getPage and getDeletedPage through a Writer connection read only the folder of the connection, with a role on it", async () => {
     mocks.findFirst.mockResolvedValue(null);
 
     await getPage(MCP_ACTOR, "handbook", null, "overview");
@@ -2073,7 +2073,7 @@ describe("the role of the actor", () => {
         where: expect.objectContaining({ folder: { name: "handbook", id: FOLDER_ID, ...WITH_ROLE } }),
       }),
     );
-    // Deleted pages are a function of a Manager, which no connection has.
+    // Deleted pages are a function of a Manager, which a Writer connection does not have.
     expect(mocks.findFirst).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({ where: expect.objectContaining({ folder: { name: "handbook", id: { in: [] } } }) }),
@@ -2184,7 +2184,10 @@ describe("the lowest role of each function", () => {
   const ROLES = ["reader", "writer", "manager", "owner"] as const;
   type Role = (typeof ROLES)[number];
 
-  /** Every write, the lowest role that may do it, the id it is checked on and the start of its log line. */
+  /**
+   * Every write, the lowest role that may do it, the id it is checked on, the start of its log line, and the code it
+   * gives when it is allowed and the database answers as in the test below.
+   */
   const functions = [
     [
       "createPage",
@@ -2192,6 +2195,7 @@ describe("the lowest role of each function", () => {
       "writer",
       { folderId: FOLDER_ID },
       "page not created",
+      "failed",
     ],
     [
       "updatePageContent",
@@ -2199,6 +2203,7 @@ describe("the lowest role of each function", () => {
       "writer",
       { pageId: PAGE_ID },
       "page not saved",
+      "page-not-found",
     ],
     [
       "moveOrRenamePage",
@@ -2206,6 +2211,7 @@ describe("the lowest role of each function", () => {
       "writer",
       { pageId: PAGE_ID },
       "page not moved or renamed",
+      "page-not-found",
     ],
     [
       "deletePage",
@@ -2213,6 +2219,7 @@ describe("the lowest role of each function", () => {
       "manager",
       { pageId: PAGE_ID },
       "page not deleted",
+      "page-not-found",
     ],
     [
       "restorePage",
@@ -2220,6 +2227,7 @@ describe("the lowest role of each function", () => {
       "manager",
       { pageId: PAGE_ID },
       "page not restored",
+      "page-not-found",
     ],
     [
       "revertPage",
@@ -2227,14 +2235,17 @@ describe("the lowest role of each function", () => {
       "writer",
       { pageId: PAGE_ID },
       "page not reverted",
+      "page-not-found",
     ],
   ] as const;
 
-  const cases = functions.flatMap(([name, write, lowest, target, what]) =>
-    ROLES.map((role) => [name, role, write, ROLES.indexOf(role) >= ROLES.indexOf(lowest), target, what] as const),
+  const cases = functions.flatMap(([name, write, lowest, target, what, outcome]) =>
+    ROLES.map(
+      (role) => [name, role, write, ROLES.indexOf(role) >= ROLES.indexOf(lowest), target, what, outcome] as const,
+    ),
   );
 
-  it.each(cases)("%s as %s", async (_name, role: Role, write, allowed, target, what) => {
+  it.each(cases)("%s as %s", async (_name, role: Role, write, allowed, target, what, outcome) => {
     mocks.roleFindFirst.mockResolvedValue({ role });
     // A write that is allowed goes on to the database; these answers end it as a missing page.
     mocks.create.mockRejectedValue(new Error("stop"));
@@ -2244,7 +2255,7 @@ describe("the lowest role of each function", () => {
     const result = await write();
 
     if (allowed) {
-      expect(result).not.toEqual({ ok: false, error: { code: "not-allowed" } });
+      expect(result).toEqual({ ok: false, error: { code: outcome } });
       expect(mocks.warn).not.toHaveBeenCalledWith(
         expect.anything(),
         `${what}: the role of the actor does not allow it`,
@@ -2273,9 +2284,18 @@ describe("the lowest role of each function", () => {
 
   it.each(ROLES)("listFolderPages, listTabPages, listAllFolderPages and getPage as %s", async (role) => {
     mocks.roleFindFirst.mockResolvedValue({ role });
+    mocks.findFirst.mockResolvedValue({
+      id: PAGE_ID,
+      name: "overview",
+      version: 1,
+      folder: { id: FOLDER_ID, name: "handbook", roles: [{ role }] },
+      tab: null,
+      ...EDITOR_ROW,
+    });
 
     await expect(listFolderPages(ACTOR, FOLDER_ID)).resolves.toEqual([]);
     await expect(listTabPages(ACTOR, TAB_ID)).resolves.toEqual([]);
     await expect(listAllFolderPages(ACTOR, FOLDER_ID)).resolves.toEqual([]);
+    await expect(getPage(ACTOR, "handbook", null, "overview")).resolves.toMatchObject({ id: PAGE_ID, role });
   });
 });

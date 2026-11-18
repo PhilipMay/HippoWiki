@@ -1093,10 +1093,10 @@ describe("an admin", () => {
     ["getFolderByName", () => getFolderByName(ACTOR, "handbook"), mocks.folderFindFirst, null],
     ["listTabs", () => listTabs(ACTOR, FOLDER_ID), mocks.tabFindMany, []],
     ["getTab", () => getTab(ACTOR, "handbook", "guides"), mocks.tabFindFirst, null],
-  ])("does not change %s for a user", async (_name, read, call, value) => {
+  ])("leaves %s to read the database as usual for a user", async (_name, read, call, value) => {
     call.mockResolvedValue(value);
 
-    await read();
+    await expect(read()).resolves.toEqual(value);
 
     expect(call).toHaveBeenCalledOnce();
   });

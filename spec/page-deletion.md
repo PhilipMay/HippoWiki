@@ -20,8 +20,9 @@ the dialogs and lists in `components/`), routes under `src/app/deleted-pages/`. 
   and confirming again deletes the page (see `optimistic-locking.md`).
 - Pages are deleted through MCP as well, by a Manager connection of an AI app, on their own with `delete_page`, based
   on a version, and together with their tab with `delete_tab`, with the user of the connection as the user who deleted
-  them (see `mcp.md`). Deleted pages, reading one and restoring stay in the browser: no connection sees, reads or
-  restores a deleted page.
+  them (see `mcp.md`). Deleted pages, reading one and restoring stay in the browser: no tool lists, reads or
+  restores a deleted page. Only the list of tools holds this rule: the reads of the service would give a Manager
+  connection the deleted pages, so a new tool must not call them.
 
 ## Deleted pages are invisible
 

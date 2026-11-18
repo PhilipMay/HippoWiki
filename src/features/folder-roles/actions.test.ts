@@ -157,17 +157,27 @@ describe("changeRole", () => {
     });
   });
 
+  const LAST_OWNER = "A folder needs at least one Owner, so the role of its last Owner stays.";
+  const ROLE_GONE = "This user no longer has a role on the folder.";
+  const CHANGE_FAILED = "The role could not be changed. Please try again.";
+
+  // A removal has no role, so it never gets invalid-input.
   it.each([
-    ["last-owner", "A folder needs at least one Owner, so the role of its last Owner stays."],
-    ["role-not-found", "This user no longer has a role on the folder."],
-    ["invalid-input", "Choose a role."],
-    ["failed", "The role could not be changed. Please try again."],
-  ])("returns the message for %s", async (code, message) => {
-    mocks.changeRole.mockResolvedValue({ ok: false, error: { code } });
+    ["change", "last-owner", LAST_OWNER],
+    ["change", "role-not-found", ROLE_GONE],
+    ["change", "invalid-input", "Choose a role."],
+    ["change", "failed", CHANGE_FAILED],
+    ["remove", "last-owner", LAST_OWNER],
+    ["remove", "role-not-found", ROLE_GONE],
+    ["remove", "failed", CHANGE_FAILED],
+  ] as const)("returns the message of a %s for %s", async (intent, code, message) => {
+    const write = intent === "change" ? mocks.changeRole : mocks.removeRole;
+    write.mockResolvedValue({ ok: false, error: { code } });
 
     await expect(
-      changeRole(FOLDER_ID, {}, change({ user: BOB_ID, intent: "change", role: "reader" })),
+      changeRole(FOLDER_ID, {}, change({ user: BOB_ID, intent, ...(intent === "change" ? { role: "reader" } : {}) })),
     ).resolves.toEqual({ message });
+    expect(write).toHaveBeenCalledOnce();
     expectNotRevalidatedOrRedirected();
   });
 

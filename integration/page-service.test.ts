@@ -1126,14 +1126,23 @@ describe("the channel of pages", () => {
 });
 
 describe("an admin", () => {
-  it("reads no page, not even one that exists, and changes nothing", async () => {
+  it("reads no page, page list or history, not even of a page that exists, and changes nothing", async () => {
     const admin = await createUser({ name: "maria", type: "admin" });
     const folder = await createFolder({ name: "docs", editor: user });
+    const tab = await createTab({ folder, name: "guides", editor: user });
     const page = await createPage({ folder, name: "intro", editor: user });
+    await createRevisions({ page, count: 1 });
     const deleted = await createPage({ folder, name: "old", editor: user, deletedAt: new Date() });
     const before = await getTestDb().page.findMany({ orderBy: { name: "asc" } });
+    const revisionsBefore = await getTestDb().pageRevision.findMany({
+      orderBy: [{ pageId: "asc" }, { number: "asc" }],
+    });
 
     await expect(pageService.listFolderPages(inBrowser(admin), folder.id)).resolves.toBeNull();
+    await expect(pageService.listTabPages(inBrowser(admin), tab.id)).resolves.toBeNull();
+    await expect(pageService.listPageRevisions(inBrowser(admin), page.id, { before: null })).resolves.toBeNull();
+    await expect(pageService.getPageRevision(inBrowser(admin), page.id, 1)).resolves.toBeNull();
+    await expect(pageService.getRevisionComparison(inBrowser(admin), page.id, 1, 2)).resolves.toBeNull();
     await expect(pageService.listAllFolderPages(inBrowser(admin), folder.id)).resolves.toBeNull();
     await expect(pageService.getPage(inBrowser(admin), "docs", null, "intro")).resolves.toBeNull();
     await expect(pageService.listDeletedPages(inBrowser(admin), folder.id)).resolves.toBeNull();
@@ -1145,12 +1154,21 @@ describe("an admin", () => {
     await expect(
       pageService.updatePageContent(inBrowser(admin), page.id, { content: "# Changed", version: 1 }),
     ).resolves.toEqual(notAllowed);
+    await expect(
+      pageService.moveOrRenamePage(inBrowser(admin), page.id, { name: "moved", tabId: tab.id, version: 1 }),
+    ).resolves.toEqual(notAllowed);
     await expect(pageService.deletePage(inBrowser(admin), page.id, { version: 1 })).resolves.toEqual(notAllowed);
     await expect(pageService.restorePage(inBrowser(admin), deleted.id, { name: "old", tabId: null })).resolves.toEqual(
       notAllowed,
     );
+    await expect(pageService.revertPage(inBrowser(admin), page.id, { revision: 1, version: 1 })).resolves.toEqual(
+      notAllowed,
+    );
 
     expect(await getTestDb().page.findMany({ orderBy: { name: "asc" } })).toStrictEqual(before);
+    expect(await getTestDb().pageRevision.findMany({ orderBy: [{ pageId: "asc" }, { number: "asc" }] })).toStrictEqual(
+      revisionsBefore,
+    );
   });
 });
 
@@ -1251,13 +1269,24 @@ describe("roles", () => {
     await expect(pageService.getPage(mcp, "hidden", null, "intro")).resolves.toBeNull();
   });
 
-  it("gives an MCP connection no deleted pages, not even one of an Owner", async () => {
+  it("gives a Writer connection no deleted pages, not even one of an Owner", async () => {
     const folder = await createFolder({ name: "projects", roles: [{ user, role: "owner" }] });
     const deleted = await createPage({ folder, name: "old", deletedAt: new Date() });
     const mcp = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "writer" });
 
     await expect(pageService.listDeletedPages(mcp, folder.id)).resolves.toBeNull();
     await expect(pageService.getDeletedPage(mcp, "projects", deleted.id)).resolves.toBeNull();
+  });
+
+  // No tool lists or reads deleted pages (page-deletion.md, "Deleting"); only the list of tools holds that rule, and
+  // the service would answer a Manager connection.
+  it("gives a Manager connection the deleted pages at the level of the service, which no tool calls", async () => {
+    const folder = await createFolder({ name: "projects", roles: [{ user, role: "owner" }] });
+    const deleted = await createPage({ folder, name: "old", deletedAt: new Date() });
+    const mcp = inMcp(user, { grantId: crypto.randomUUID(), folderId: folder.id, role: "manager" });
+
+    await expect(pageService.listDeletedPages(mcp, folder.id)).resolves.toMatchObject([{ id: deleted.id }]);
+    await expect(pageService.getDeletedPage(mcp, "projects", deleted.id)).resolves.toMatchObject({ id: deleted.id });
   });
 });
 

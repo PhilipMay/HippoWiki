@@ -138,8 +138,8 @@ and `src/features/folder-roles/service.test.ts`.
 - A role change takes effect on the next MCP request, like in the browser: a connection whose role is above the
   user's current role is refused until the role is high enough again (see `mcp.md`).
 - The Owner role is never a role of MCP: renaming the folder and giving, changing and removing roles stay in the
-  browser. The deleted pages list, reading a deleted page and restoring one stay in the browser as well, also for a
-  Manager connection.
+  browser. The deleted pages list, reading a deleted page and restoring one stay in the browser as well: no tool
+  offers them, also not to a Manager connection (see `page-deletion.md`).
 
 ## Decisions
 
