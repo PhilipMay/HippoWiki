@@ -189,7 +189,9 @@ finding is brought in line in the same change, so the report and the specs never
 fixed on its own and for one fixed in a step of a plan, where all of it goes into the commit of that step. The checks
 are those of "When a step is done", with "Changes to documentation only" for a fix that changes only documentation.
 
-1. Fix the finding in the code or in the documentation, as its Suggestion describes or as agreed with the user.
+1. Fix the finding in the code or in the documentation. A finding whose Suggestion has the confidence High (see
+   "Confidence levels" in `issue-report.md`) is fixed as its Suggestion describes; a finding with Medium, Low or no
+   confidence is fixed only as agreed with the user.
 2. Update the feature spec that the fix touches, and `architecture.md`, `testing.md` or `tech.md` where a rule or a
    convention changed. A finding that is closed by a documented reason instead of a change (a decision or a current
    limit in a feature spec) gets an entry in "Accepted deviations" of the report, with the ID of the requirement and

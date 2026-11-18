@@ -49,7 +49,9 @@
 - Each finding follows `issue-report.md`. Severities: Blocker (must be fixed), Major (should be fixed, real risk),
   Minor (worth improving), Nit (taste or a tiny point). When in doubt, the lower level, with the reason. Everything
   that lets someone without the right access read, change or delete data, or take over an account or a token, is at
-  least Major. A claim that the review could not show is written as a `question:`.
+  least Major. A claim that the review could not show is written as a `question:`. The confidence of a Suggestion is
+  High, Medium or Low as `issue-report.md` defines it; the findings of the reviews up to 2026-11-17 have none yet and
+  get one at the next recheck.
 
 ## Standards and target level
 

@@ -70,7 +70,9 @@ The specification lives in the `spec/` directory. This catalog should always be 
   and is logged apart, the admin overview `/folder-roles`, the view "AI
   apps", MCP with the lower of the user's role and the role of the connection, decisions, limits)
 - `spec/roadmap.md`: backlog of candidate features, grouped by theme, and things still to check
-- `spec/issue-report.md`: how to report issues found in code and document reviews
+- `spec/issue-report.md`: how to report issues found in code and document reviews (the building blocks, the severity
+  levels, the confidence levels of a suggestion that decide whether a fix is made directly or reviewed first, the
+  checklist)
 - `spec/review-report.md`: the report of the security and code review (scope and method, standards and target level,
   threat model, findings per area, accepted deviations, what is good, checks on the deployment, standards coverage,
   open questions); it holds only open findings: a fixed finding is deleted, and the file is deleted with its last
@@ -122,8 +124,8 @@ and other unordered items; numbered lists only where the order itself matters, s
 
 ## Reporting Review Issues
 
-Report every issue found in a review using the structure, severity levels and checklist in `spec/issue-report.md`.
-This applies to code reviews and to reviews of documents such as the files in `spec/`.
+Report every issue found in a review using the structure, severity levels, confidence levels and checklist in
+`spec/issue-report.md`. This applies to code reviews and to reviews of documents such as the files in `spec/`.
 
 - For code, Location is the file, line range and function.
 - For documents, Location is the file and the heading of the section; Evidence is a short quote of the passage.
