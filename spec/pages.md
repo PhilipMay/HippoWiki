@@ -32,9 +32,31 @@ routes under `src/app/folders/`. Tests: `src/features/pages/derive.test.ts`, `sr
 - The content of a page is validated when it is created or edited, and when it is reverted to an earlier revision,
   with the limits in force at the time of the revert (see `page-history.md`). Moving or renaming neither validates nor
   touches it, so a limit lowered later never blocks them.
-- Every content change is recorded as a revision of the page; a save whose content is the same as that of the newest
-  revision records none (see `page-history.md`).
+- Every content change is recorded as a revision of the page; a save without a change records none and leaves the
+  page itself as it is too (see "Saves without a change" and `page-history.md`).
 - The forms send only what they change; a submitted title is ignored. The service validates again before it writes.
+
+## Saves without a change
+
+- A content save whose content is the same as the stored content of the page, in the browser editor or with
+  `replace_page_content` through MCP, stores nothing: the page keeps its last editor, its channel, the time of its
+  last change and its version, and no revision is recorded. So the last editor and the time name only who really
+  changed the page, as its history does, and an empty save never makes the editor or dialog of another user fail as
+  changed.
+- Content counts as the same when it is equal once its line breaks are made plain, as the content is stored; any other
+  difference, such as a space or an empty line at the end, is a change. Only the content is compared: a page whose
+  stored title differs from the title its content gives keeps it, too.
+- Such a save is checked like every other content save, in the same order: the role first, then the content with the
+  limits in force, then the version it is based on. Content over a limit lowered after the page was stored is refused
+  with the error of that limit, also when it is the stored content; a save based on another version than the page
+  has, or on none, is refused as changed (see `optimistic-locking.md`); a save of a deleted page as gone.
+- The browser and MCP answer as after every save: the editor leads to the page address without a notice, and
+  `replace_page_content` returns the page with the version the call stated (see `mcp.md`).
+- The server log records such a save in a line of its own, with the page and the channel, and not as "page updated",
+  so that an operator sees which saves changed a page.
+- Moving or renaming a page to its own name and place, and renaming a folder or tab to its own name, are no content
+  saves: they still make the user the last editor and, for a page, count its version up. A revert always changes the
+  content.
 
 ## Name
 
@@ -126,6 +148,19 @@ costliest function of a page, and its guards are:
   costs less than giving up the second validation.
 - The depth and the cells are limited at save instead of parsing in a worker thread with a time limit: the parse is
   linear on every input measured, and a limit at save tells the author what to change.
+- A save without a change stores nothing, so that the last editor, the time and the version name only real changes.
+  Rejected: storing the page all the same, which made the user the last editor and refused the save of every other
+  open editor.
+- A save without a change is refused like every other save when it is based on an older version, so that one rule
+  holds for every save and every caller. Rejected: accepting it because it would overwrite nothing.
+- A save without a change is checked against the limits like every other save, so that the editor never accepts
+  content it could not store. Rejected: letting it pass unchecked because it stores nothing.
+- Only content saves are covered, because they are the saves that the history compares with. Rejected for now:
+  covering unchanged moves, renames of pages and renames of folders and tabs as well.
+- The browser and MCP answer as after every save. Rejected: a notice in the browser and an extra field in the MCP
+  result, which a user or an AI app does not need to go on.
+- The log tells a save without a change from a stored one, so that an operator reading it sees which saves changed a
+  page. Rejected: logging both as "page updated"; logging nothing.
 
 ## Current limits
 
@@ -138,7 +173,8 @@ costliest function of a page, and its guards are:
 - raw Markdown editing in a textarea
 - the title comes only from a leading `# Title` heading: no setext headings, no front matter, no live display of the
   derived title while editing an existing page
-- a page stored before titles were derived keeps its stored title until its next save
+- a page stored before titles were derived keeps its stored title until its next change of the content; a save without
+  a change keeps it as well
 - no redirects from the previous address after a page is renamed or moved
 - Markdown images only from the wiki itself: the browser blocks images of other hosts without a message in the page,
   and a `data:` image is shown as its Markdown text

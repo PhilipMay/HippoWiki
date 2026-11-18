@@ -20,6 +20,9 @@ in `src/features/pages/components/`. Tests: `integration/page-service.test.ts`, 
 - Every page has a version: 1 when it is created, counted up by one by every stored change of the page: a content
   save, a revert to an earlier revision, a move or rename, a delete and a restore. It changes in the same write as the time of the last change and the
   last editor (see "Last editor" in `content-structure.md`), and a write that fails changes none of them.
+- A content save without a change, whose content is the same as the stored content, is no stored change and does not
+  count the version up (see "Saves without a change" in `pages.md`). It is checked and refused like every other
+  content save below, also when its content is the same as that of the changed page.
 - Pages stored before the version existed have the version 1.
 - Renaming a folder or a tab, and every change inside a folder or tab, is no change of its pages and leaves their
   versions as they are. Deleting a tab deletes its pages, and their versions count up as with every delete.

@@ -23,8 +23,8 @@ Code: `src/features/pages/` (`listPageRevisions`, `getPageRevision`, `getRevisio
 - A revision is stored in the same write as the content change it records, like the last editor and the version of
   the page: a save that is refused or fails records nothing, and after every stored content change the newest
   revision has the content of the page.
-- A content save whose content is the same as that of the newest revision records no revision. The save itself works
-  as before: it makes the user the last editor and counts the version up (see `optimistic-locking.md`).
+- A content save without a change, whose content is the same as the stored content of the page, stores nothing and
+  records no revision: the page keeps its last editor, time and version (see "Saves without a change" in `pages.md`).
 - Moving, renaming, deleting and restoring a page record no revision, and neither does deleting a tab with its pages.
 - Revisions are kept for as long as the page exists, deleted pages included, with no limit on their number or age. No
   revision is ever changed or removed.
@@ -125,8 +125,8 @@ Code: `src/features/pages/` (`listPageRevisions`, `getPageRevision`, `getRevisio
   offering it everywhere, with a revert to the same content recording nothing.
 - A revert checks the limits in force, so that every stored content is within them. The raw form of the revision can
   still be copied and fixed in the editor. Rejected: reverting past the limits.
-- A save without a change records no revision, so that the history lists only real changes. Rejected: a revision per
-  save.
+- A save without a change records no revision, so that the history lists only real changes, and because such a save
+  changes nothing at all: not the page, its last editor or its version either. Rejected: a revision per save.
 - A revision is stored in the same write as its content change, so that the history and the page never disagree.
   Rejected: storing it afterwards on a best-effort basis.
 - The history of a deleted page is kept and can be read by a Manager and an Owner, who already see the deleted page.

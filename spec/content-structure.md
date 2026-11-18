@@ -203,6 +203,8 @@ hold pages directly and have tabs at the same time.
 - Each of these writes stores its user in the same write that changes the item's time of the last change, so that
   time and name always describe the same change. A write that fails changes neither. The same write counts the
   version of a page up, which the page's later changes are checked against (see `optimistic-locking.md`).
+- A content save without a change, whose content is the same as the stored content of the page, is no edit: it
+  changes neither the last editor nor the time of the last change (see "Saves without a change" in `pages.md`).
 - A change inside a folder or tab is no edit of it: creating, moving, deleting or restoring a page and creating or
   deleting a tab leave the time of the last change and the last editor of the folder and the tab as they are. Renaming a folder
   leaves those of its tabs and pages as they are.

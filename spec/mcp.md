@@ -112,7 +112,9 @@ Write tools of pages, for a Writer and a Manager connection, each with the hints
   its tab name. The name is optional; without one the page gets the name the browser suggests for its title. It
   creates no tab: a Writer connection uses the tabs that exist, a Manager connection creates one with `create_tab`.
 - `replace_page_content`: the whole content of a page, found by its tab and name, based on a version; the title
-  follows the new title heading.
+  follows the new title heading. Content that is the same as the stored content changes nothing: the page keeps its
+  last editor, channel, time and version, and the tool returns the same version that the call stated (see "Saves
+  without a change" in `pages.md`).
 - `move_or_rename_page`: a page to another tab of the folder, or directly into it, with a new name, based on a
   version. It stays in the folder of the connection.
 - `create_page` and `replace_page_content` record a revision of the page with the user of the connection and the
@@ -166,7 +168,8 @@ What holds for all of them:
   records the channel `mcp`, so that the browser shows it as "by <user> via mcp" and the tools as `mcp`; which app or
   connection made it is not recorded. The server log of the change names the channel `mcp` and the grant, and the log
   of a tab deletion also the number of pages.
-- Every write tool of pages returns the page as stored: its name, title, tab, address and new version.
+- Every write tool of pages returns the page as stored: its name, title, tab, address and version, which a change
+  counts up and a content save without a change keeps.
 - An address is the path of the folder, tab or page; with `HIPPOWIKI_PUBLIC_URL` it is the full URL, which a person
   can open.
 - A deleted page is never listed, read or changed; it is answered like a page that does not exist.

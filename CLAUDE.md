@@ -19,8 +19,8 @@ The specification lives in the `spec/` directory. This catalog should always be 
 - `spec/testing.md`: how `npm run check` and `npm run check:all` run their checks side by side, the check of doc
   references, and unit, integration and end-to-end test conventions
 - `spec/pages.md`: the page feature as built (content and title with the limits of length, nesting and table cells,
-  checked also on a revert, suggested name, routes, rendering with markdown-it, the cost of the Markdown parse,
-  decisions, limits)
+  checked also on a revert, saves without a change that leave the page as it is and are logged apart, suggested
+  name, routes, rendering with markdown-it, the cost of the Markdown parse, decisions, limits)
 - `spec/content-structure.md`: the content structure as built (folders, tabs and pages under `/folders`: overview,
   names, addresses, actions and views with the view "AI apps" and the views and the action of the page history, routes,
   changing the structure, deleting a tab for good
@@ -31,10 +31,6 @@ The specification lives in the `spec/` directory. This catalog should always be 
   history 100 at a time, a revision rendered and raw, comparing two revisions with the cap of the diff, reverting from
   Writer up as a content save with its dialog and locking, the read-only history of deleted pages, browser only,
   decisions, limits)
-- `spec/unchanged-saves-requirements.md`: the approved requirements for content saves without a change
-  in the browser and through MCP, which leave the page with its last editor, time and version as it is
-- `spec/unchanged-saves-steps.md`: the step plan for content saves without a change (the service stores nothing and
-  logs it apart, the browser and MCP checks, wrap-up)
 - `spec/page-deletion.md`: the soft delete of pages as built (deleting, also together with their tab, deleted pages are
   invisible, the deleted pages of a folder under `/deleted-pages` with who deleted them and how, their history,
   restoring, decisions, limits)
