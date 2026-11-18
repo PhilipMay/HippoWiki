@@ -611,10 +611,59 @@ describe("changeRole and removeRole", () => {
     );
   });
 
-  it("lets the last Owner stay Owner", async () => {
+  it("lets the last Owner stay Owner, without a write", async () => {
     folderRoles([{ userId: ACTOR_ID, role: "owner" }]);
 
-    await expect(changeRole(USER, FOLDER_ID, ACTOR_ID, "owner")).resolves.toMatchObject({ ok: true });
+    await expect(changeRole(USER, FOLDER_ID, ACTOR_ID, "owner")).resolves.toEqual({
+      ok: true,
+      value: { folder: { name: "handbook" }, actorRole: "owner" },
+    });
+    expect(mocks.roleUpdate).not.toHaveBeenCalled();
+    expect(mocks.warn).not.toHaveBeenCalled();
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+      { folderId: FOLDER_ID, userId: ACTOR_ID, role: "owner", ownerId: ACTOR_ID },
+      "role not changed: the role is the same",
+    );
+  });
+
+  // R5, R10: a change to the role the user has passes the checks of every change and then writes nothing.
+  it.each(["owner", "manager", "writer", "reader"] as const)(
+    "writes nothing for a change of another user to the role %s the user has, answered as a change and logged apart",
+    async (role) => {
+      folderRoles([
+        { userId: ACTOR_ID, role: "owner" },
+        { userId: BOB_ID, role },
+      ]);
+
+      await expect(changeRole(USER, FOLDER_ID, BOB_ID, role)).resolves.toEqual({
+        ok: true,
+        value: { folder: { name: "handbook" }, actorRole: "owner" },
+      });
+
+      expect(mocks.roleUpdate).not.toHaveBeenCalled();
+      expect(mocks.roleDelete).not.toHaveBeenCalled();
+      expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+        { folderId: FOLDER_ID, userId: BOB_ID, role, ownerId: ACTOR_ID },
+        "role not changed: the role is the same",
+      );
+    },
+  );
+
+  // R9: the checks come first, so a change to the same role is refused like every other change.
+  it("refuses an admin, a Writer of the folder and a user without a role also for the same role", async () => {
+    await expect(changeRole(ADMIN, FOLDER_ID, BOB_ID, "writer")).resolves.toEqual(NOT_ALLOWED);
+    expect(mocks.transaction).not.toHaveBeenCalled();
+
+    folderRoles([
+      { userId: ACTOR_ID, role: "writer" },
+      { userId: BOB_ID, role: "writer" },
+    ]);
+    await expect(changeRole(USER, FOLDER_ID, BOB_ID, "writer")).resolves.toEqual(NOT_ALLOWED);
+    folderRoles([{ userId: BOB_ID, role: "writer" }]);
+    await expect(changeRole(USER, FOLDER_ID, BOB_ID, "writer")).resolves.toEqual(NOT_ALLOWED);
+
+    expect(mocks.roleUpdate).not.toHaveBeenCalled();
+    expect(mocks.info).not.toHaveBeenCalled();
   });
 
   it.each(["manager", "writer", "reader"])(

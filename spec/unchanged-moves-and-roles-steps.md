@@ -21,7 +21,7 @@ dialog keeps "Save" disabled while nothing changed. Written from `spec/unchanged
 
 - [x] Unchanged moves and renames of pages store nothing
 - [x] "Save" of the "Move or rename page" dialog is disabled while nothing changed
-- [ ] Changes of a role to the same role store nothing
+- [x] Changes of a role to the same role store nothing
 - [ ] Wrap-up
 
 ## Unchanged moves and renames of pages store nothing

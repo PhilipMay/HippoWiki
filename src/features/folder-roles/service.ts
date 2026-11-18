@@ -412,13 +412,15 @@ type ChangeOutcome =
   | { kind: "not-allowed"; actorRole: Role | null }
   | { kind: "role-not-found" }
   | { kind: "last-owner"; oldRole: Role }
+  | { kind: "unchanged"; role: Role; folderName: string }
   | { kind: "done"; oldRole: Role; folderName: string };
 
 /**
  * Changes the role of the user on the folder to the given role or, with `null`, removes it, as an Owner. The check that
  * the actor is an Owner and the check of the last Owner read the roles of the folder in the same transaction as the
  * write, with the rows locked, so that two Owners who lower each other at the same time cannot leave the folder
- * without one.
+ * without one. A change to the role the user has passes the same checks and then writes nothing, so the role keeps its
+ * time; it is answered like a stored change and logged apart from one.
  */
 async function writeRole(
   actor: Actor,
@@ -450,9 +452,12 @@ async function writeRole(
         return { kind: "last-owner", oldRole: current.role };
       }
       const where = { folderId_userId: { folderId: folder, userId: target } };
+      // The roles are locked, so the role read is still the stored one: the same role needs no write.
+      const unchanged = newRole === current.role;
       if (newRole === null) await tx.folderRole.delete({ where });
-      else await tx.folderRole.update({ where, data: { role: newRole } });
+      else if (!unchanged) await tx.folderRole.update({ where, data: { role: newRole } });
       const { name } = await tx.folder.findUniqueOrThrow({ where: { id: folder }, select: { name: true } });
+      if (unchanged) return { kind: "unchanged", role: current.role, folderName: name };
       return { kind: "done", oldRole: current.role, folderName: name };
     });
   } catch (err) {
@@ -475,6 +480,15 @@ async function writeRole(
         `${what}: the folder would be left without an Owner`,
       );
       return { ok: false, error: { code: "last-owner" } };
+    case "unchanged":
+      logger.info(
+        { folderId: folder, userId: target, role: outcome.role, ownerId },
+        "role not changed: the role is the same",
+      );
+      return {
+        ok: true,
+        value: { folder: { name: outcome.folderName }, actorRole: target === ownerId ? outcome.role : "owner" },
+      };
     case "done":
       logger.info(
         { folderId: folder, userId: target, oldRole: outcome.oldRole, newRole, ownerId },
@@ -490,7 +504,8 @@ async function writeRole(
 /**
  * Changes the role of the user with the given id on the folder with the given id, as an Owner of the folder; the own
  * role and those of other Owners included. Refused with `last-owner` when it would leave the folder without an Owner.
- * Every change, and every refused change of the last Owner, is logged.
+ * Every change, and every refused change of the last Owner, is logged; a change to the role the user has writes
+ * nothing and is logged apart.
  */
 export async function changeRole(
   actor: Actor,

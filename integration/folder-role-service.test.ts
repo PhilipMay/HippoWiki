@@ -174,6 +174,32 @@ describe("changeRole and removeRole", () => {
     ]);
   });
 
+  // R5: a change to the role the user has writes nothing; a change to another role updates role and time.
+  it("keeps the role and its time for a change to the same role, and updates both for another role", async () => {
+    const bob = await createUser({ name: "bob" });
+    const folder = await createFolder({ roles: [{ user: actor, role: "owner" }] });
+    const old = new Date("2026-01-02T03:04:05Z");
+    const where = { folderId_userId: { folderId: folder.id, userId: bob.id } };
+    await getTestDb().folderRole.create({
+      data: { folderId: folder.id, userId: bob.id, role: "writer", updatedAt: old },
+    });
+
+    await expect(folderRoleService.changeRole(actor, folder.id, bob.id, "writer")).resolves.toMatchObject({
+      ok: true,
+      value: { actorRole: "owner" },
+    });
+    await expect(folderRoleService.changeRole(actor, folder.id, actor.id, "owner")).resolves.toMatchObject({
+      ok: true,
+      value: { actorRole: "owner" },
+    });
+    expect(await getTestDb().folderRole.findUniqueOrThrow({ where })).toMatchObject({ role: "writer", updatedAt: old });
+
+    await expect(folderRoleService.changeRole(actor, folder.id, bob.id, "reader")).resolves.toMatchObject({ ok: true });
+    const changed = await getTestDb().folderRole.findUniqueOrThrow({ where });
+    expect(changed.role).toBe("reader");
+    expect(changed.updatedAt.getTime()).toBeGreaterThan(old.getTime());
+  });
+
   it("refuses the last Owner, who stays Owner", async () => {
     const bob = await createUser({ name: "bob" });
     const folder = await createFolder({

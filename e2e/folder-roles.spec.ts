@@ -799,6 +799,64 @@ test.describe("changing and removing roles", () => {
     });
   });
 
+  // R5, R10: the select sends no change for the selected role, so the role of bob is set meanwhile, as another Owner
+  // would set it; the change the Owner then chooses is the role bob has, as a crafted request would send it.
+  test("a change to the role a user has keeps the role and its time, and the Owner stays in the roles view", async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    const bob = await createUser({ name: "bob" });
+    const folder = await createFolder({
+      name: "project-x",
+      editor: await aliceUser(),
+      roles: [
+        { user: ALICE, role: "owner" },
+        { user: bob, role: "reader" },
+      ],
+    });
+    const where = { folderId_userId: { folderId: folder.id, userId: bob.id } };
+
+    await page.goto("/folders/project-x?view=roles");
+    await expect(roleOf(page, "bob")).toBeEnabled();
+    const before = await getTestDb().folderRole.update({ where, data: { role: "manager" } });
+    await roleOf(page, "bob").selectOption("manager");
+
+    await expect(roleOf(page, "bob")).toHaveValue("manager");
+    await expect(page).toHaveURL("/folders/project-x?view=roles");
+    await expect(page.getByRole("main").getByRole("alert")).toHaveCount(0);
+    expect(await getTestDb().folderRole.findUniqueOrThrow({ where })).toStrictEqual(before);
+    expect(errors).toEqual([]);
+  });
+
+  // R9: a change to the same role is checked like every change.
+  for (const role of ["manager", "writer"] as const) {
+    test(`a crafted change of a ${role} to the role a user has changes nothing`, async ({ page }) => {
+      const bob = await createUser({ name: "bob" });
+      const folder = await createFolder({
+        name: "project-x",
+        roles: [
+          { user: ALICE, role: "owner" },
+          { user: bob, role: "reader" },
+        ],
+      });
+      const where = { folderId_userId: { folderId: folder.id, userId: bob.id } };
+
+      // Opened as Owner; bob's role is set meanwhile, then the own role is lowered, as if the request were crafted.
+      await page.goto("/folders/project-x?view=roles");
+      await expect(roleOf(page, "bob")).toBeEnabled();
+      const before = await getTestDb().folderRole.update({ where, data: { role: "writer" } });
+      await setOwnRole(folder, role);
+      await roleOf(page, "bob").selectOption("writer");
+
+      await expect(page.getByRole("main").getByRole("combobox")).toHaveCount(0);
+      await expect(page.getByRole("list", { name: "Roles" }).getByRole("listitem")).toHaveText([
+        `alice${role === "manager" ? "Manager" : "Writer"}`,
+        "bobWriter",
+      ]);
+      expect(await getTestDb().folderRole.findUniqueOrThrow({ where })).toStrictEqual(before);
+    });
+  }
+
   test("a change of a role takes effect with the next request of the user it concerns", async ({ page, browser }) => {
     const bob = await createUser({ name: "bob", mustChangePassword: false });
     const folder = await createFolder({
