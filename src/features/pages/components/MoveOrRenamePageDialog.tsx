@@ -64,6 +64,11 @@ export default function MoveOrRenamePageDialog({
   const hydrated = useHydrated();
 
   const nameError = state.fieldErrors?.name?.[0];
+  // A move to the current name and place would change nothing. The name is trimmed as the server's name schema trims
+  // it, so that the button and the server agree; the comparison is with the name and place the dialog was opened with,
+  // while the server compares with those stored at the moment of the save. While it holds, "Save" is disabled, and with
+  // it the submission by Enter in the name field, because it is the form's default button.
+  const unchanged = name.trim() === initialName && target === (currentTabId ?? FOLDER_TARGET);
 
   // Field errors come back from the Server Action, not from a client event, so the focus moves once the new state
   // arrives. Each submission returns a new state object, so a repeated rejection moves the focus again; the initial
@@ -124,7 +129,7 @@ export default function MoveOrRenamePageDialog({
           Cancel
         </Button>
         {/* Outside the form element, so it is tied to the form by its id. */}
-        <Button type="submit" form={formId} variant="contained" disabled={pending || !hydrated}>
+        <Button type="submit" form={formId} variant="contained" disabled={pending || !hydrated || unchanged}>
           {pending ? "Saving…" : "Save"}
         </Button>
       </DialogActions>

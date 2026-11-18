@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 import { PLACE_FIELD, VERSION_FIELD } from "@/features/pages/forms";
@@ -35,6 +35,16 @@ async function expectNotFound(page: Page, address: string) {
 
   expect(response?.status()).toBe(404);
   await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
+}
+
+/**
+ * Submits the form of the dialog although "Save" is disabled while nothing changed, as a crafted request would, once
+ * the dialog is hydrated and its form submits through its own handler.
+ */
+async function submitUnchanged(dialog: Locator) {
+  await expect(dialog.getByLabel("Name")).toBeEditable();
+  await expect(dialog.getByRole("button", { name: "Save" })).toBeDisabled();
+  await dialog.locator("form").evaluate((form: HTMLFormElement) => form.requestSubmit());
 }
 
 /** The logged-in user of the tests, who makes every change through the GUI. */
@@ -86,6 +96,55 @@ test("the address follows the typed name and the chosen place", async ({ page })
   await expect(name).toHaveAccessibleDescription("Address: /folders/handbook/meetings/summary.md");
   await dialog.getByRole("radio", { name: "Directly in the folder" }).check();
   await expect(name).toHaveAccessibleDescription("Address: /folders/handbook/summary.md");
+});
+
+// R4, R12: the dialog keeps "Save" disabled, and Enter without effect, while name and place are those of the page.
+test("the dialog keeps Save disabled, and Enter without effect, while name and place are unchanged", async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  const kept = await createPage({ tab: guides, name: "kept", title: "Kept page" });
+  // The submissions of the dialog: each save is a POST to the address of the dialog.
+  const saves: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST") saves.push(request.url());
+  });
+
+  await page.goto("/folders/handbook/guides/kept.md?action=move-or-rename");
+  const dialog = dialogOf(page);
+  const field = dialog.getByLabel("Name");
+  const save = dialog.getByRole("button", { name: "Save" });
+  const hint = (address: string) => `Address: ${address}`;
+  await expect(field).toBeEditable();
+  await expect(field).toHaveValue("kept");
+  await expect(save).toBeDisabled();
+  await expect(field).toHaveAccessibleDescription(hint("/folders/handbook/guides/kept.md"));
+
+  await field.fill("other");
+  await expect(save).toBeEnabled();
+  for (const unchanged of ["kept", " kept "]) {
+    await field.fill(unchanged);
+    await expect(save).toBeDisabled();
+    await expect(field).toHaveAccessibleDescription(hint("/folders/handbook/guides/kept.md"));
+  }
+  await dialog.getByRole("radio", { name: "Tab meetings" }).check();
+  await expect(save).toBeEnabled();
+  await expect(field).toHaveAccessibleDescription(hint("/folders/handbook/meetings/kept.md"));
+  await dialog.getByRole("radio", { name: "Tab guides" }).check();
+  await expect(save).toBeDisabled();
+
+  await field.press("Enter");
+  // An empty name differs from the current one, so Save is enabled and the server answers. Once its answer is shown,
+  // a submission of the Enter before would have been sent as well.
+  await field.fill("");
+  await expect(save).toBeEnabled();
+  await save.click();
+  await expect(field).toHaveAccessibleDescription("Name is required");
+  expect(saves).toHaveLength(1);
+  await expect(dialog).toBeVisible();
+  await expect(page).toHaveURL("/folders/handbook/guides/kept.md?action=move-or-rename");
+  expect(await getTestDb().page.findUniqueOrThrow({ where: { id: kept.id } })).toStrictEqual(kept);
+  expect(errors).toEqual([]);
 });
 
 test("renaming a page in the folder shows it at its new address", async ({ page }) => {
@@ -321,7 +380,7 @@ test("saving the dialog unchanged keeps the page where it is", async ({ page }) 
   const kept = await createPage({ tab: guides, name: "kept", title: "Kept page", editor: bob, via: "mcp", version: 3 });
 
   await page.goto("/folders/handbook/guides/kept.md?action=move-or-rename");
-  await dialogOf(page).getByRole("button", { name: "Save" }).click();
+  await submitUnchanged(dialogOf(page));
 
   await expect(page).toHaveURL("/folders/handbook/guides/kept.md");
   await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -384,6 +443,8 @@ test("a crafted move into a tab of another folder is refused", async ({ page }) 
   await page.goto("/folders/handbook/kept.md?action=move-or-rename");
   const dialog = dialogOf(page);
   const save = dialog.getByRole("button", { name: "Save" });
+  // A new name enables "Save".
+  await dialog.getByLabel("Name").fill("moved");
   // Send the tab of another folder as the target, as a crafted request would. It is set in the submitted form data, not
   // in a radio button: React writes a radio button's value back whenever it renders the button again, e.g. on focus.
   await save.evaluate(
@@ -395,7 +456,7 @@ test("a crafted move into a tab of another folder is refused", async ({ page }) 
 
   await expect(dialog.getByRole("alert")).toHaveText("This tab no longer exists.");
   expect(await getTestDb().page.findUniqueOrThrow({ where: { id: kept.id } })).toEqual(kept);
-  await expectNotFound(page, "/folders/other/foreign/kept.md");
+  await expectNotFound(page, "/folders/other/foreign/moved.md");
 });
 
 // R11: a page deleted after the dialog was opened is refused as before, whatever its version.
@@ -519,8 +580,11 @@ test.describe("a page changed after the dialog was opened", () => {
       tabId: null,
     });
 
+    // R13: the dialog shows the page as stored, so nothing is changed until the name or place is.
+    await expect(dialog.getByRole("button", { name: "Save" })).toBeDisabled();
     // Saving the dialog again moves the page.
     await dialog.getByLabel("Name").fill("new-plan");
+    await expect(dialog.getByRole("button", { name: "Save" })).toBeEnabled();
     await dialog.getByRole("radio", { name: "Tab guides" }).check();
     await dialog.getByRole("button", { name: "Save" }).click();
     await expect(page).toHaveURL("/folders/team/guides/new-plan.md");
@@ -565,7 +629,7 @@ test.describe("a page changed after the dialog was opened", () => {
     await other.page.getByLabel("Content").fill("# Plan\n\nBob's version");
 
     await page.goto("/folders/team/plan.md?action=move-or-rename");
-    await dialogOf(page).getByRole("button", { name: "Save" }).click();
+    await submitUnchanged(dialogOf(page));
     await expect(page).toHaveURL("/folders/team/plan.md");
     expect(await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).toStrictEqual(plan);
 
@@ -593,7 +657,7 @@ test.describe("a page changed after the dialog was opened", () => {
       data: { content: "# Plan\n\nBy bob", version: { increment: 1 }, lastEditedById: bob.id, lastEditedVia: "web" },
     });
     const dialog = dialogOf(page);
-    await dialog.getByRole("button", { name: "Save" }).click();
+    await submitUnchanged(dialog);
 
     await expect(page).toHaveURL("/folders/team/guides/plan.md?action=move-or-rename&notice=changed");
     await expect(dialog.getByRole("alert")).toHaveText(
@@ -605,6 +669,14 @@ test.describe("a page changed after the dialog was opened", () => {
       version: 2,
       lastEditedById: bob.id,
     });
+
+    // R13: "Save" stays disabled until the place changes; then saving moves the page.
+    const save = dialog.getByRole("button", { name: "Save" });
+    await expect(save).toBeDisabled();
+    await dialog.getByRole("radio", { name: "Directly in the folder" }).check();
+    await expect(save).toBeEnabled();
+    await save.click();
+    await expect(page).toHaveURL("/folders/team/plan.md");
   });
 
   // R12: the dialog is shown again at the page's new address, with the new name.
@@ -631,6 +703,14 @@ test.describe("a page changed after the dialog was opened", () => {
       /^This page was changed by bob via web at .+ after you opened it\.$/,
     );
     expect((await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).name).toBe("release-plan");
+
+    // R13: "Save" is disabled for the new name until it is changed; then saving renames the page.
+    const save = dialog.getByRole("button", { name: "Save" });
+    await expect(save).toBeDisabled();
+    await dialog.getByLabel("Name").fill("my-plan");
+    await expect(save).toBeEnabled();
+    await save.click();
+    await expect(page).toHaveURL("/folders/team/my-plan.md");
     await other.context.close();
   });
 
@@ -657,5 +737,6 @@ test.describe("a page changed after the dialog was opened", () => {
       /^This page was changed by bob via web at .+ after you opened it\.$/,
     );
     expect(await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).toStrictEqual(plan);
+    await expect(save).toBeDisabled();
   });
 });
