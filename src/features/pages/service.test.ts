@@ -1391,6 +1391,9 @@ describe("moveOrRenamePage", () => {
   const VERSION = 4;
   const VALID = { name: " new-name ", tabId: TAB_ID, version: VERSION };
   const STORED = { id: PAGE_ID, name: "stored-name", folder: { name: "stored-folder" }, tab: null };
+  /** The condition of the update that the page differs from the new name or place, in a tab and in the folder. */
+  const DIFFERS_IN_TAB = [{ name: { not: "new-name" } }, { tabId: null }, { tabId: { not: TAB_ID } }];
+  const DIFFERS_IN_FOLDER = [{ name: { not: "new-name" } }, { tabId: { not: null } }];
 
   it.each([
     ["valid input", VALID],
@@ -1432,7 +1435,7 @@ describe("moveOrRenamePage", () => {
 
     expect(mocks.updateMany).toHaveBeenCalledTimes(1);
     expect(mocks.updateMany).toHaveBeenCalledWith({
-      where: { id: PAGE_ID, deletedAt: null, version: VERSION },
+      where: { id: PAGE_ID, deletedAt: null, version: VERSION, OR: DIFFERS_IN_TAB },
       data: {
         name: "new-name",
         tabId: TAB_ID,
@@ -1458,7 +1461,7 @@ describe("moveOrRenamePage", () => {
     await moveOrRenamePage(ACTOR, PAGE_ID, { name: "new-name", tabId: null, version: VERSION });
 
     expect(mocks.updateMany).toHaveBeenCalledWith({
-      where: { id: PAGE_ID, deletedAt: null, version: VERSION },
+      where: { id: PAGE_ID, deletedAt: null, version: VERSION, OR: DIFFERS_IN_FOLDER },
       data: {
         name: "new-name",
         tabId: null,
@@ -1467,6 +1470,55 @@ describe("moveOrRenamePage", () => {
         version: { increment: 1 },
       },
     });
+  });
+
+  // The update matches no row when name and place are the stored ones; the read in the same version tells it apart.
+  it.each([
+    ["in a tab", TAB_ID, { name: "stored-tab" }],
+    ["directly in the folder", null, null],
+  ])("stores nothing for the stored name and place %s and returns the page as stored", async (_n, tabId, tab) => {
+    const stored = { id: PAGE_ID, name: "new-name", folder: { name: "stored-folder" }, tab };
+    mocks.updateMany.mockResolvedValue({ count: 0 });
+    mocks.findFirst.mockResolvedValue(stored);
+
+    // Surrounding spaces are trimmed before the comparison, as for every name.
+    await expect(moveOrRenamePage(ACTOR, PAGE_ID, { name: " new-name ", tabId, version: VERSION })).resolves.toEqual({
+      ok: true,
+      value: stored,
+    });
+
+    expect(mocks.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: PAGE_ID,
+          deletedAt: null,
+          version: VERSION,
+          OR: tabId === null ? DIFFERS_IN_FOLDER : DIFFERS_IN_TAB,
+        },
+      }),
+    );
+    expect(mocks.findFirst).toHaveBeenCalledExactlyOnceWith({
+      where: { id: PAGE_ID, deletedAt: null, version: VERSION, name: "new-name", tabId },
+      select: STORED_PAGE_SELECT,
+    });
+    expect(mocks.findUnique).not.toHaveBeenCalled();
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+      { pageId: PAGE_ID, channel: "browser" },
+      "page not changed: name and place are the same",
+    );
+    expect(mocks.warn).not.toHaveBeenCalled();
+  });
+
+  it("logs the channel mcp for a move to the stored name and place through MCP", async () => {
+    mocks.updateMany.mockResolvedValue({ count: 0 });
+    mocks.findFirst.mockResolvedValue(STORED);
+
+    await expect(moveOrRenamePage(MCP_ACTOR, PAGE_ID, VALID)).resolves.toEqual({ ok: true, value: STORED });
+
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ pageId: PAGE_ID, channel: "mcp" }),
+      "page not changed: name and place are the same",
+    );
   });
 
   it.each(nameTakenErrors)("returns name-taken for a unique violation %s", async (_name, err) => {
@@ -1503,9 +1555,11 @@ describe("moveOrRenamePage", () => {
     expect(mocks.warn).toHaveBeenCalledWith({ pageId: PAGE_ID }, "page to move or rename not found");
   });
 
-  // A stale version matches no row, so a name taken at the target is never checked: the result is page-changed.
+  // A stale version matches no row, so a name taken at the target is never checked: the result is page-changed. The
+  // same holds for the stored name and place based on a stale version: the read of the unchanged page finds none.
   it("returns page-changed with the page as stored when the update matches no page but the page is stored", async () => {
     mocks.updateMany.mockResolvedValue({ count: 0 });
+    mocks.findFirst.mockResolvedValue(null);
     mocks.findUnique.mockResolvedValue(STORED);
 
     await expect(moveOrRenamePage(ACTOR, PAGE_ID, VALID)).resolves.toEqual({
@@ -1513,10 +1567,41 @@ describe("moveOrRenamePage", () => {
       error: { code: "page-changed", page: STORED },
     });
 
+    expect(mocks.findFirst).toHaveBeenCalledExactlyOnceWith({
+      where: { id: PAGE_ID, deletedAt: null, version: VERSION, name: "new-name", tabId: TAB_ID },
+      select: STORED_PAGE_SELECT,
+    });
     expect(mocks.warn).toHaveBeenCalledWith(
       { pageId: PAGE_ID, version: VERSION },
       "page to move or rename changed after the version the write is based on",
     );
+    expect(mocks.info).not.toHaveBeenCalled();
+  });
+
+  // The checks of every move come before the comparison, so the stored name and place change none of their answers.
+  it("refuses an admin, an actor without a role, a Reader and a malformed tab also for the stored name and place", async () => {
+    const unchanged = { name: "stored-name", tabId: null, version: VERSION };
+    await expect(moveOrRenamePage({ ...ACTOR, type: "admin" }, PAGE_ID, unchanged)).resolves.toEqual({
+      ok: false,
+      error: { code: "not-allowed" },
+    });
+    mocks.roleFindFirst.mockResolvedValue(null);
+    await expect(moveOrRenamePage(ACTOR, PAGE_ID, unchanged)).resolves.toEqual({
+      ok: false,
+      error: { code: "not-allowed" },
+    });
+    mocks.roleFindFirst.mockResolvedValue({ role: "reader" });
+    await expect(moveOrRenamePage(ACTOR, PAGE_ID, unchanged)).resolves.toEqual({
+      ok: false,
+      error: { code: "not-allowed" },
+    });
+    mocks.roleFindFirst.mockResolvedValue({ role: "writer" });
+    await expect(moveOrRenamePage(ACTOR, PAGE_ID, { ...unchanged, tabId: MALFORMED_ID })).resolves.toEqual(
+      TAB_NOT_FOUND,
+    );
+
+    for (const call of databaseWrites) expect(call).not.toHaveBeenCalled();
+    expect(mocks.findFirst).not.toHaveBeenCalled();
     expect(mocks.info).not.toHaveBeenCalled();
   });
 

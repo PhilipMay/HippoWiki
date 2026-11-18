@@ -774,6 +774,78 @@ test.describe("the write tools", () => {
     expect(await storedPages()).toEqual(before);
   });
 
+  // R1, R2, R6, R7, R11: a move to the current name and tab changes nothing and answers as every move.
+  test("move_or_rename_page to the current name and tab keeps the page as it is and returns the version that was sent; based on an older version it is refused", async ({
+    request,
+  }) => {
+    const bob = await createUser({ name: "bob" });
+    const guides = await createTab({ folder: projects, name: "guides" });
+    const plan = await createPage({ tab: guides, name: "plan", content: "# Plan", editor: bob, version: 3 });
+
+    for (const newName of ["plan", " plan "]) {
+      const result = await write(request, "move_or_rename_page", {
+        tab: "guides",
+        page: "plan",
+        version: 3,
+        newTab: "guides",
+        newName,
+      });
+
+      expect(result.isError).toBeUndefined();
+      expect(result.structuredContent).toEqual({
+        name: "plan",
+        title: "Plan",
+        tab: "guides",
+        address: `${PUBLIC_URL}/folders/projects/guides/plan.md`,
+        version: 3,
+      });
+    }
+    expect(await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).toStrictEqual(plan);
+    expect(await storedRevisions()).toHaveLength(1);
+
+    const refused = await write(request, "move_or_rename_page", {
+      tab: "guides",
+      page: "plan",
+      version: 2,
+      newTab: "guides",
+      newName: "plan",
+    });
+    expect(refused.isError).toBe(true);
+    expect(refused.content[0]?.text).toMatch(
+      /^The page was changed by bob via web at .*Read the page again with read_page/,
+    );
+    expect(await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).toStrictEqual(plan);
+  });
+
+  test("move_or_rename_page to the current name and tab from a Writer connection of a user who is now a Reader is refused and changes nothing", async ({
+    request,
+  }) => {
+    const bob = await createUser({ name: "bob", mustChangePassword: false });
+    await createFolderRole({ folder: projects, user: bob, role: "writer" });
+    const plan = await createPage({ folder: projects, name: "plan", content: "# Plan" });
+    const grant = await createGrant({ owner: bob, folder: projects, role: "writer" });
+    await getTestDb().folderRole.update({
+      where: { folderId_userId: { folderId: projects.id, userId: bob.id } },
+      data: { role: "reader" },
+    });
+
+    const refused = await send(
+      request,
+      {
+        method: "tools/call",
+        params: { name: "move_or_rename_page", arguments: { page: "plan", version: 1, newTab: null, newName: "plan" } },
+      },
+      grant.accessToken,
+      writerAddress,
+    );
+    expect(refused.status()).toBe(403);
+    expect(await refused.json()).toEqual({
+      error: "role_too_low",
+      error_description: "Your role on the folder does not allow this address.",
+    });
+    expect(await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).toStrictEqual(plan);
+  });
+
   test("of two changes based on the same version the first is stored and the second is refused with who changed the page, how and when", async ({
     request,
   }) => {

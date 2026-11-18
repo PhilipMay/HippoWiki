@@ -113,15 +113,17 @@ model Page {
   deletedAt      DateTime?      @db.Timestamptz(3)
   /// The user who last edited the page: changes on the same writes as `updatedAt` and `version`, so that all three
   /// describe the same change. Creating, editing, moving or renaming, deleting and restoring the page count as edits;
-  /// for a deleted page it is the user who deleted it.
+  /// a content save, move or rename that changes nothing writes nothing and is no edit. For a deleted page it is the
+  /// user who deleted it.
   lastEditedById String         @db.Uuid
   lastEditedBy   User           @relation("PageLastEditedBy", fields: [lastEditedById], references: [id], onDelete: Restrict)
   /// How the page was last changed (`web` or `mcp`): changes on the same writes as the last editor; for a deleted page
   /// it is how the page was deleted.
   lastEditedVia  ChangeChannel
   /// The state of the page: 1 when it is created, counted up by every later write of the page, in the same write that
-  /// changes `updatedAt` and the last editor. A content save, move, rename or delete states the version it is based on
-  /// and is refused if that is not the stored one.
+  /// changes `updatedAt` and the last editor; a content save, move or rename that changes nothing writes nothing and
+  /// keeps it. A content save, move, rename or delete states the version it is based on and is refused if that is not
+  /// the stored one.
   version        Int            @default(1)
   /// The revisions of the content, one per content change; kept for as long as the page exists.
   revisions      PageRevision[]

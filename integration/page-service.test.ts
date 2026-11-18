@@ -504,6 +504,89 @@ describe("moveOrRenamePage", () => {
     });
   });
 
+  // R1, R11: a move to the name and place the page has stores nothing, also with spaces around the name.
+  it.each([
+    ["in a tab", true, "intro"],
+    ["directly in the folder", false, "intro"],
+    ["with spaces around the name", true, " intro "],
+  ])("stores nothing for the name and place the page has, %s", async (_name, inTab, name) => {
+    const bob = await createUser({ name: "bob" });
+    const folder = await createFolder({ name: "docs", roles: owners(user, bob) });
+    const tab = await createTab({ folder, name: "guides" });
+    const page = await createPage({
+      ...(inTab ? { tab } : { folder }),
+      name: "intro",
+      editor: bob,
+      via: "mcp",
+      version: 3,
+      updatedAt: new Date("2026-01-02T03:04:05Z"),
+    });
+
+    await expect(
+      pageService.moveOrRenamePage(actor, page.id, { name, tabId: inTab ? tab.id : null, version: 3 }),
+    ).resolves.toStrictEqual({
+      ok: true,
+      value: {
+        id: page.id,
+        name: "intro",
+        version: 3,
+        folder: { name: "docs" },
+        tab: inTab ? { name: "guides" } : null,
+      },
+    });
+    expect(await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } })).toStrictEqual(page);
+    expect(await getTestDb().pageRevision.count({ where: { pageId: page.id } })).toBe(1);
+  });
+
+  // R3: a content save based on the version read before the unchanged move is not refused.
+  it("keeps the version for a content save based on the version from before an unchanged move", async () => {
+    const bob = await createUser({ name: "bob" });
+    const folder = await createFolder({ name: "docs", roles: owners(user, bob) });
+    const page = await createPage({ folder, name: "intro", content: "# Old" });
+
+    await expect(
+      pageService.moveOrRenamePage(inBrowser(bob), page.id, { name: "intro", tabId: null, version: 1 }),
+    ).resolves.toMatchObject({ ok: true, value: { version: 1 } });
+    await expect(
+      pageService.updatePageContent(actor, page.id, { content: "# New", version: 1 }),
+    ).resolves.toMatchObject({ ok: true, value: { version: 2 } });
+    expect(await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } })).toMatchObject({
+      content: "# New",
+      lastEditedById: user.id,
+    });
+  });
+
+  // R6: an unchanged move based on an older version is refused like every other move.
+  it("refuses a move to the name and place the page has, based on an older version, as page-changed", async () => {
+    const folder = await createFolder({ name: "docs" });
+    const page = await createPage({ folder, name: "intro", version: 3 });
+
+    await expect(
+      pageService.moveOrRenamePage(actor, page.id, { name: "intro", tabId: null, version: 2 }),
+    ).resolves.toStrictEqual({
+      ok: false,
+      error: {
+        code: "page-changed",
+        page: { id: page.id, name: "intro", version: 3, folder: { name: "docs" }, tab: null },
+      },
+    });
+    expect(await getTestDb().page.findUniqueOrThrow({ where: { id: page.id } })).toStrictEqual(page);
+  });
+
+  it("stores a move that changes only the name or only the place and counts the version up", async () => {
+    const folder = await createFolder({ name: "docs" });
+    const tab = await createTab({ folder, name: "guides" });
+    const page = await createPage({ tab, name: "intro", version: 3 });
+
+    await expect(
+      pageService.moveOrRenamePage(actor, page.id, { name: "start", tabId: tab.id, version: 3 }),
+    ).resolves.toMatchObject({ ok: true, value: { name: "start", version: 4, tab: { name: "guides" } } });
+    await expect(
+      pageService.moveOrRenamePage(actor, page.id, { name: "start", tabId: null, version: 4 }),
+    ).resolves.toMatchObject({ ok: true, value: { name: "start", version: 5, tab: null } });
+    expect(await lastEditorOf(page.id)).toBe(user.id);
+  });
+
   // R2, R6, R14: a move based on an older version, or on none, changes nothing.
   it.each([
     ["an older version", 2],

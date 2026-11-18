@@ -692,6 +692,35 @@ describe("the write tools", () => {
       expect(mocks.moveOrRenamePage).toHaveBeenCalledWith(WRITER, "p1", { name: "setup", tabId: null, version: 4 });
     });
 
+    // The service returns the page as stored when it changes nothing, so the version is the one that was sent.
+    it("answers a move to the current name and tab with the page, its address and the version that was sent", async () => {
+      mocks.moveOrRenamePage.mockResolvedValue({
+        ok: true,
+        value: { ...STORED, version: 4, tab: { name: "guides" } },
+      });
+
+      const result = await callTool("move_or_rename_page", {
+        tab: "guides",
+        page: "setup",
+        version: 4,
+        newTab: "guides",
+        newName: "setup",
+      });
+
+      expect(mocks.moveOrRenamePage).toHaveBeenCalledExactlyOnceWith(WRITER, "p1", {
+        name: "setup",
+        tabId: "tab-1",
+        version: 4,
+      });
+      expect(result.isError).toBeFalsy();
+      expect(result.structuredContent).toMatchObject({
+        name: "setup",
+        tab: "guides",
+        address: "https://wiki.example.com/folders/handbook/guides/setup.md",
+        version: 4,
+      });
+    });
+
     it("answers a target tab that does not exist with a tool error and changes nothing", async () => {
       mocks.getTab.mockResolvedValue(null);
 

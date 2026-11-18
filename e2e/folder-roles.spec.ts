@@ -269,6 +269,17 @@ test.describe("what each role may do", () => {
       () => page.getByRole("dialog").getByLabel("Name").fill("crafted"),
       save("Save"),
     );
+    // A move to the name and place the page has is checked like every move. The form is submitted directly, also
+    // where "Save" is disabled for an unchanged dialog, once the dialog is hydrated.
+    await submitAsReader(
+      "/folders/handbook/intro.md?action=move-or-rename",
+      () => expect(page.getByRole("dialog").getByLabel("Name")).toBeEditable(),
+      () =>
+        page
+          .getByRole("dialog")
+          .locator("form")
+          .evaluate((form: HTMLFormElement) => form.requestSubmit()),
+    );
     await submitAsReader("/folders/handbook/intro.md?action=delete", async () => {}, save("Delete"));
     await submitAsReader(
       "/folders/handbook?action=new-tab",

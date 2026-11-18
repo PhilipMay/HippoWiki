@@ -314,18 +314,22 @@ test("a page whose content is above the content limit can be moved and renamed",
   });
 });
 
+// R1, R7: the page keeps its last editor, channel, time and version, and the browser shows its address.
 test("saving the dialog unchanged keeps the page where it is", async ({ page }) => {
-  const kept = await createPage({ tab: guides, name: "kept", title: "Kept page" });
+  const errors = collectErrors(page);
+  const bob = await createUser({ name: "bob" });
+  const kept = await createPage({ tab: guides, name: "kept", title: "Kept page", editor: bob, via: "mcp", version: 3 });
 
   await page.goto("/folders/handbook/guides/kept.md?action=move-or-rename");
   await dialogOf(page).getByRole("button", { name: "Save" }).click();
 
   await expect(page).toHaveURL("/folders/handbook/guides/kept.md");
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  expect(await getTestDb().page.findUniqueOrThrow({ where: { id: kept.id } })).toMatchObject({
-    name: "kept",
-    tabId: guides.id,
-  });
+  // No notice on the page; the empty alert of the Next.js route announcer lies outside it.
+  await expect(page.getByRole("main").getByRole("alert")).toHaveCount(0);
+  await expect(page.getByText(/^Last updated /)).toHaveText(by("bob", "mcp"));
+  expect(await getTestDb().page.findUniqueOrThrow({ where: { id: kept.id } })).toStrictEqual(kept);
+  expect(errors).toEqual([]);
 });
 
 test("Cancel returns to the page and changes nothing", async ({ page }) => {
@@ -468,6 +472,7 @@ test.describe("a page changed after the dialog was opened", () => {
   /** The folder of these tests, with the logged-in user and bob as Writers, and its tab. */
   let team: Awaited<ReturnType<typeof createFolder>>;
   let bob: Awaited<ReturnType<typeof createUser>>;
+  let teamGuides: Awaited<ReturnType<typeof createTab>>;
 
   test.beforeEach(async () => {
     bob = await createUser({ name: "bob", mustChangePassword: false });
@@ -478,7 +483,7 @@ test.describe("a page changed after the dialog was opened", () => {
         { user: bob, role: "writer" },
       ],
     });
-    await createTab({ folder: team, name: "guides" });
+    teamGuides = await createTab({ folder: team, name: "guides" });
   });
 
   test("refuses the move after a content save and shows the stored name and place with who changed it and when", async ({
@@ -545,6 +550,61 @@ test.describe("a page changed after the dialog was opened", () => {
     await expect(dialog.getByRole("alert")).toHaveText(
       /^This page was changed by bob via mcp at .+ after you opened it\.$/,
     );
+  });
+
+  // R3: an unchanged save of the dialog does not refuse the editor that another user has open.
+  test("an unchanged save of the dialog keeps the editor of another user from being refused", async ({
+    page,
+    browser,
+  }) => {
+    const errors = collectErrors(page);
+    const plan = await createPage({ folder: team, name: "plan", content: "# Plan\n\nFirst draft" });
+    const other = await logInElsewhere(browser, "bob");
+
+    await other.page.goto("/folders/team/plan.md?action=edit");
+    await other.page.getByLabel("Content").fill("# Plan\n\nBob's version");
+
+    await page.goto("/folders/team/plan.md?action=move-or-rename");
+    await dialogOf(page).getByRole("button", { name: "Save" }).click();
+    await expect(page).toHaveURL("/folders/team/plan.md");
+    expect(await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).toStrictEqual(plan);
+
+    await other.page.getByRole("button", { name: "Save" }).click();
+    await expect(other.page).toHaveURL("/folders/team/plan.md");
+    await expect(other.page.getByRole("article").getByText("Bob's version")).toBeVisible();
+    expect(await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).toMatchObject({
+      content: "# Plan\n\nBob's version",
+      lastEditedById: bob.id,
+      version: 2,
+    });
+    expect(errors).toEqual([]);
+    await other.context.close();
+  });
+
+  // R6: an unchanged save based on an older version is refused like every other save.
+  test("refuses an unchanged save after a content save and shows the dialog with who changed the page and when", async ({
+    page,
+  }) => {
+    const plan = await createPage({ tab: teamGuides, name: "plan" });
+
+    await page.goto("/folders/team/guides/plan.md?action=move-or-rename");
+    await getTestDb().page.update({
+      where: { id: plan.id },
+      data: { content: "# Plan\n\nBy bob", version: { increment: 1 }, lastEditedById: bob.id, lastEditedVia: "web" },
+    });
+    const dialog = dialogOf(page);
+    await dialog.getByRole("button", { name: "Save" }).click();
+
+    await expect(page).toHaveURL("/folders/team/guides/plan.md?action=move-or-rename&notice=changed");
+    await expect(dialog.getByRole("alert")).toHaveText(
+      /^This page was changed by bob via web at .+ after you opened it\.$/,
+    );
+    await expect(dialog.getByLabel("Name")).toHaveValue("plan");
+    await expect(dialog.getByRole("radio", { name: "Tab guides" })).toBeChecked();
+    expect(await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).toMatchObject({
+      version: 2,
+      lastEditedById: bob.id,
+    });
   });
 
   // R12: the dialog is shown again at the page's new address, with the new name.

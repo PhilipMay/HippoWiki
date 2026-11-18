@@ -877,7 +877,10 @@ export async function revertPage(
  * neither validated nor touched, so the content limit never blocks a move. A tab of another folder is refused by the
  * composite foreign key and counts as missing, like a deleted page. The write is based on the given version of the
  * page: if the page has another one, or no valid version is given, nothing is stored and the result is
- * `page-changed`, also when the name is taken at the target. It is a write of the browser or of MCP.
+ * `page-changed`, also when the name is taken at the target. A move to the name, once validated and trimmed, and the
+ * place the page has stored passes the same checks and then stores nothing: the page is returned as stored, with its
+ * last editor, time and version, and the move is logged apart from a stored one. It is a write of the browser or of
+ * MCP.
  */
 export async function moveOrRenamePage(
   actor: ContentActor,
@@ -908,12 +911,30 @@ export async function moveOrRenamePage(
   let page: StoredPage | null;
   try {
     if (version === null) return await refusedWrite(pageId, input.version, "page to move or rename");
-    // A deleted page, and one with another version than the given one, match no row; then no name is checked either.
+    const current = { id: pageId, deletedAt: null, version };
+    // A deleted page, one with another version than the given one, and one that has this name and place already, match
+    // no row; then no name is checked either. The comparison is part of the write, so that it holds for the name and
+    // place stored at that moment. `not` never matches a column that is `null`, so a page directly in the folder is
+    // matched apart.
+    const differs: Prisma.PageWhereInput[] = [
+      { name: { not: name } },
+      ...(tabId === null ? [{ tabId: { not: null } }] : [{ tabId: null }, { tabId: { not: tabId } }]),
+    ];
     const { count } = await getDb().page.updateMany({
-      where: { id: pageId, deletedAt: null, version },
+      where: { ...current, OR: differs },
       data: { name, tabId, lastEditedById, lastEditedVia, version: { increment: 1 } },
     });
-    if (count === 0) return await refusedWrite(pageId, version, "page to move or rename");
+    if (count === 0) {
+      // A move to the name and place the page has stored, based on its version, changes nothing; anything else is
+      // refused.
+      const unchanged = await getDb().page.findFirst({
+        where: { ...current, name, tabId },
+        select: STORED_PAGE_SELECT,
+      });
+      if (!unchanged) return await refusedWrite(pageId, version, "page to move or rename");
+      logger.info({ pageId, ...channelOf(actor) }, "page not changed: name and place are the same");
+      return { ok: true, value: unchanged };
+    }
     page = await findStoredPage(pageId);
   } catch (err) {
     // Before the tab key: a missing actor must not be reported as a missing tab.
