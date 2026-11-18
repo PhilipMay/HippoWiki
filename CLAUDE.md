@@ -25,6 +25,8 @@ file itself holds.
 - `spec/mcp.md`: How do AI apps work with a folder through MCP?
 - `spec/mcp-search-and-replace-requirements.md`: What must the MCP tool that replaces exact pieces of a page's content
   do?
+- `spec/mcp-search-and-replace-steps.md`: In which steps is the MCP tool that replaces exact pieces of a page's
+  content built?
 - `spec/oauth.md`: How does an AI app get access through OAuth?
 - `spec/optimistic-locking.md`: How are changes of the same page at the same time told apart?
 - `spec/folder-roles.md`: Who may see and do what with a folder?
