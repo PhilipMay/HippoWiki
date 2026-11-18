@@ -19,7 +19,7 @@ answer as after every save, and the server log tells such a save from a stored o
 ## Checklist
 
 - [x] Leave the page unchanged on a save without a change
-- [ ] Check saves without a change through MCP
+- [x] Check saves without a change through MCP
 - [ ] Wrap-up
 
 ## Leave the page unchanged on a save without a change

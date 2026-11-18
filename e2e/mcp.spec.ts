@@ -1,5 +1,7 @@
 import type { APIRequestContext, APIResponse } from "@playwright/test";
 
+import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
+
 import { KNOWN_ADMIN, KNOWN_USER } from "../prisma/known-users";
 import { NO_STORAGE_STATE, USER_STORAGE_STATE } from "./support/auth";
 import {
@@ -835,6 +837,47 @@ test.describe("the write tools", () => {
     expect(await storedPages()).toMatchObject([{ content: "# Plan\n\nBy bob.", version: 2 }]);
   });
 
+  // Unchanged saves, R4: the stored content based on an older version is refused like every other change.
+  test("replace_page_content with the stored content based on an older version is refused as a changed page", async ({
+    request,
+  }) => {
+    const bob = await createUser({ name: "bob" });
+    await createPage({ folder: projects, name: "plan", content: "# Plan\n\nBy bob.", editor: bob, version: 3 });
+    const before = await storedPages();
+
+    const refused = await write(request, "replace_page_content", {
+      page: "plan",
+      version: 2,
+      content: "# Plan\n\nBy bob.",
+    });
+
+    expect(refused.isError).toBe(true);
+    expect(refused.content[0]?.text).toContain("The page was changed by bob via web at ");
+    expect(await storedPages()).toEqual(before);
+  });
+
+  // Unchanged saves, R7: the limits in force are checked also for the stored content.
+  test("replace_page_content with stored content over the length limit is refused and the page stays as it was", async ({
+    request,
+  }) => {
+    const bob = await createUser({ name: "bob" });
+    const content = `# Plan\n\n${"x".repeat(CONTENT_MAX_LENGTH)}`;
+    const plan = await createPage({
+      folder: projects,
+      name: "plan",
+      content,
+      editor: bob,
+      updatedAt: new Date("2026-01-01T10:00:00Z"),
+      version: 3,
+    });
+
+    const refused = await write(request, "replace_page_content", { page: "plan", version: 3, content });
+
+    expect(refused.isError).toBe(true);
+    expect(refused.content[0]?.text).toContain("The content is not valid");
+    expect(await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).toStrictEqual(plan);
+  });
+
   test("after the user is lowered to Reader a write through the Writer connection is refused and the page stays as it was", async ({
     request,
   }) => {
@@ -876,6 +919,56 @@ test.describe("the write tools", () => {
 
       await expect(page.getByText(/^Last updated /)).toHaveText(new RegExp(`by ${KNOWN_USER.name} via mcp$`));
       await expect(page.getByRole("main")).not.toContainText(/agent app|connected app/i);
+    });
+
+    // Unchanged saves, R1, R6: the stored content sent back changes nothing and returns the version stated.
+    test("replace_page_content with the stored content keeps the last change and the version; a change on that version is stored", async ({
+      page,
+      request,
+    }) => {
+      const bob = await createUser({ name: "bob" });
+      const updatedAt = new Date("2026-01-01T10:00:00Z");
+      await createPage({ folder: projects, name: "plan", content: "# Plan\n\nBy bob.", editor: bob, updatedAt });
+      await page.goto("/folders/projects/plan.md");
+      const time = await page.getByRole("article").locator("time").textContent();
+      const read = (await callTool(request, "read_page", { page: "plan" })).structuredContent as {
+        content: string;
+        version: number;
+      };
+
+      const same = await write(request, "replace_page_content", {
+        page: "plan",
+        version: read.version,
+        content: read.content,
+      });
+
+      expect(same.isError).toBeFalsy();
+      expect(same.structuredContent).toEqual({
+        name: "plan",
+        title: "Plan",
+        tab: null,
+        address: `${PUBLIC_URL}/folders/projects/plan.md`,
+        version: read.version,
+      });
+      await expect(callTool(request, "read_page", { page: "plan" })).resolves.toMatchObject({
+        structuredContent: {
+          lastEditedBy: "bob",
+          lastEditedVia: "web",
+          lastChanged: updatedAt.toISOString(),
+          version: read.version,
+        },
+      });
+      await page.goto("/folders/projects/plan.md");
+      await expect(page.getByText(/^Last updated /)).toHaveText(/by bob via web$/);
+      await expect(page.getByRole("article").locator("time")).toHaveText(time ?? "");
+
+      const changed = await write(request, "replace_page_content", {
+        page: "plan",
+        version: read.version,
+        content: "# Plan\n\nBy an agent.",
+      });
+      expect(changed.structuredContent).toMatchObject({ version: read.version + 1 });
+      expect(await storedPages()).toMatchObject([{ content: "# Plan\n\nBy an agent.", version: read.version + 1 }]);
     });
   });
 });

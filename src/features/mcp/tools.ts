@@ -218,7 +218,13 @@ const storedPageOutput = z.object({
   title: z.string(),
   tab: z.string().nullable(),
   address: z.string().describe("Where a person opens the page in a browser"),
-  version: z.number().int().describe("The version of the page after the change, for the next change"),
+  version: z
+    .number()
+    .int()
+    .describe(
+      "The version of the page as stored, for the next change: counted up by a change, kept by content that is the " +
+        "same as before",
+    ),
 });
 
 const deletedPageOutput = z.object({
@@ -458,7 +464,10 @@ async function pageChanged(options: WikiToolsOptions, stored: pageService.Stored
   );
 }
 
-/** The page as stored by a write, as every write tool returns it, with its title and its new version. */
+/**
+ * The page as stored by a write, as every write tool returns it, with its title and its version: the new one after a
+ * change, the same one after a content save without a change, which stores nothing.
+ */
 async function storedResult(options: WikiToolsOptions, stored: pageService.StoredPage): Promise<CallToolResult> {
   const tab = stored.tab?.name ?? null;
   const page = await pageService.getPage(options.actor, options.folder.name, tab, stored.name);
@@ -835,7 +844,9 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
       description:
         "Replaces the whole content of a page of the folder of this connection with the given Markdown, which must " +
         "start with a title heading; the title of the page follows it. State the version that read_page gave: if " +
-        "the page has changed since, nothing is changed. Returns the page with its new version.",
+        "the page has changed since, nothing is changed. Content that is the same as the stored content changes " +
+        "nothing either. Returns the page with its version, which a change counts up and content without a " +
+        "change keeps.",
       inputSchema: replacePageContentInput,
       outputSchema: storedPageOutput,
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },

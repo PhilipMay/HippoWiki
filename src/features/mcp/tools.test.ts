@@ -598,6 +598,23 @@ describe("the write tools", () => {
       expect(result.structuredContent).toMatchObject({ name: "setup", version: 5 });
     });
 
+    // Unchanged saves, R6: the service returns the page as stored with the version stated, and so does the tool.
+    it("returns the usual result with the stated version for content without a change", async () => {
+      mocks.getPage.mockResolvedValue(PAGE);
+      mocks.updatePageContent.mockResolvedValue({ ok: true, value: { ...STORED, version: 4 } });
+
+      const result = await callTool("replace_page_content", { page: "setup", version: 4, content: "# Setup" });
+
+      expect(result.isError).toBeFalsy();
+      expect(result.structuredContent).toStrictEqual({
+        name: "setup",
+        title: "Setup",
+        tab: null,
+        address: "https://wiki.example.com/folders/handbook/setup.md",
+        version: 4,
+      });
+    });
+
     it("passes no version on as null, which the service refuses as changed", async () => {
       mocks.updatePageContent.mockResolvedValue({ ok: false, error: { code: "page-changed", page: STORED } });
 
