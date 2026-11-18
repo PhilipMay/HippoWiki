@@ -18,7 +18,7 @@ answer as after every save, and the server log tells such a save from a stored o
 
 ## Checklist
 
-- [ ] Leave the page unchanged on a save without a change
+- [x] Leave the page unchanged on a save without a change
 - [ ] Check saves without a change through MCP
 - [ ] Wrap-up
 
@@ -47,6 +47,10 @@ recorded (R1, R2, R3, R4, R5, R7, R8).
   time and version as before, and pass the outcome on, so that `updatePageContent()` logs a save without a change
   with the page and the channel (`channelOf(actor)`) in a line of its own, such as "page not changed: content is the
   same", and "page updated" only for a stored save (R8).
+- A page stored with a title that differs from the title its content gives keeps that title on a save without a
+  change: only the content is compared, so such a save stores nothing (R1). It gets the derived title with its next
+  change of the content. The end-to-end test "a page stored with a different title gets the derived title on its next
+  save" in `e2e/edit-page.spec.ts` is changed to check both (decided with the user while building this step).
 - The order of the checks in `updatePageContent()` stays: role, then the content with the limits in force
   (`pageContentInputSchema`, which also makes the line endings uniform, R3, R7), then the version. Content that is
   over a limit is refused as `invalid-input` also when it is the same as the stored content.
@@ -141,7 +145,9 @@ Move the lasting content of this plan into the other spec files and remove the p
    as "Effect on existing features" in the requirements file lists:
    - `page-history.md`, "Revisions": a content save without a change stores nothing and records no revision; the
      decision "A save without a change records no revision" gets the reason that such a save changes nothing at all.
-   - `pages.md`: the rule on revisions of a save without a change says that the page itself stays unchanged too.
+   - `pages.md`: the rule on revisions of a save without a change says that the page itself stays unchanged too, and
+     the rule that a page stored before titles were derived keeps its stored title until its next save says: until
+     its next change of the content.
    - `optimistic-locking.md`, "The version of a page": a content save without a change does not count the version up;
      "Which changes are refused" holds for it unchanged.
    - `content-structure.md`, "Last editor": a content save without a change changes neither the last editor nor the

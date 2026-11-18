@@ -13,10 +13,13 @@
 // its version up, in the same write that changes `updatedAt`; a new page starts with version 1. The folder and the tab
 // of the page keep their `updatedAt`, last editor and channel.
 //
+// A content save whose content is the same as the stored content of the page is no write: after the same checks as
+// every content save it stores nothing, so the page keeps its last editor, channel, `updatedAt` and version.
+//
 // Every content change records a revision of the page in the same write (`PageRevision`): creating a page records
-// revision 1, a content save records the next one when its content differs from that of the newest revision, and a
-// revert, a content save of the browser, records one that names the revision it went back to. Moving, renaming,
-// deleting and restoring a page record none. The history is read only by the actor of the browser.
+// revision 1, a content save that changes the content records the next one, and a revert, a content save of the
+// browser, records one that names the revision it went back to. Moving, renaming, deleting and restoring a page record
+// none. The history is read only by the actor of the browser.
 
 import { z } from "zod";
 
@@ -646,36 +649,53 @@ export async function createPage(
 type ContentChange = { title: string; content: string; lastEditedById: string; lastEditedVia: ChangeChannel };
 
 /**
+ * What `storeContentChange()` did: stored the change, found the page with the given version and the same content and
+ * stored nothing (with the page as it is stored), or matched no page.
+ */
+type ContentStoreOutcome = { outcome: "stored" } | { outcome: "unchanged"; page: StoredPage } | { outcome: "refused" };
+
+/**
  * Stores the content change in the page with the given id, if it is not deleted and has the given version, counts its
  * version up and records the revision, all in one transaction: the revision has the next number, the title and the
  * content, the actor and the channel, and `revertedTo`, the number of the revision a revert went back to. A change
- * that is no revert records a revision only when its content differs from that of the newest revision; the page is
- * stored all the same, so the actor becomes its last editor. Returns whether the page was stored: `false` when no row
- * matched, and when another write took the number of the revision first, which then changed the page.
+ * that is no revert is stored only when its content differs from the stored content of the page; with the same
+ * content it stores nothing and records no revision, so the page keeps its last editor, time and version
+ * (`unchanged`). A revert is always stored. `refused` when no row matched, and when another write took the number of
+ * the revision first, which then changed the page.
  */
 async function storeContentChange(
   pageId: string,
   version: number,
   change: ContentChange,
   revertedTo: number | null,
-): Promise<boolean> {
+): Promise<ContentStoreOutcome> {
   try {
-    return await getDb().$transaction(async (tx) => {
+    return await getDb().$transaction(async (tx): Promise<ContentStoreOutcome> => {
+      const current = { id: pageId, deletedAt: null, version };
       // `updateMany` reports a missing page as a count of 0 instead of throwing; it sets `updatedAt` as well. A deleted
-      // page, and one with another version than the given one, match no row.
+      // page, one with another version than the given one, and for a content save one with the same content, match no
+      // row.
       const { count } = await tx.page.updateMany({
-        where: { id: pageId, deletedAt: null, version },
+        where: revertedTo === null ? { ...current, content: { not: change.content } } : current,
         data: { ...change, version: { increment: 1 } },
       });
-      if (count === 0) return false;
+      if (count === 0) {
+        if (revertedTo !== null) return { outcome: "refused" };
+        // The page as it is now, in the same transaction: a save of the same content to the version it is based on
+        // changes nothing; anything else is refused.
+        const page = await tx.page.findFirst({
+          where: { ...current, content: change.content },
+          select: STORED_PAGE_SELECT,
+        });
+        return page ? { outcome: "unchanged", page } : { outcome: "refused" };
+      }
       // The update locks the row of the page until the transaction ends, so no other write of the page reads the newest
       // revision before this one is stored, and two writes never take the same number.
       const newest = await tx.pageRevision.findFirst({
         where: { pageId },
         orderBy: { number: "desc" },
-        select: { number: true, content: true },
+        select: { number: true },
       });
-      if (revertedTo === null && newest?.content === change.content) return true;
       await tx.pageRevision.create({
         data: {
           pageId,
@@ -687,10 +707,10 @@ async function storeContentChange(
           revertedTo,
         },
       });
-      return true;
+      return { outcome: "stored" };
     });
   } catch (err) {
-    if (isUniqueViolation(err, PAGE_REVISION_NUMBER)) return false;
+    if (isUniqueViolation(err, PAGE_REVISION_NUMBER)) return { outcome: "refused" };
     throw err;
   }
 }
@@ -698,9 +718,12 @@ async function storeContentChange(
 /**
  * Stores the given content of the page with the given id, with the title derived from it, and returns the page as
  * stored, with the actor as its last editor. Name and place are not touched. A deleted page counts as missing. The
- * write is based on the given version of the page: if the page has another one, or no valid version is given, nothing
- * is stored and the result is `page-changed`. It records a revision in the same write when the content differs from
- * that of the newest revision (`storeContentChange()`). It is a write of the browser or of MCP.
+ * checks come in the order role, content with the limits in force, version: the write is based on the given version of
+ * the page, and if the page has another one, or no valid version is given, nothing is stored and the result is
+ * `page-changed`. It records a revision in the same write. Content that is the same as the stored content, once its
+ * line endings are made uniform, passes the same checks and then stores nothing: the page is returned as stored, with
+ * its last editor, time and version, and the save is logged apart from a stored one (`storeContentChange()`). It is a
+ * write of the browser or of MCP.
  */
 export async function updatePageContent(
   actor: ContentActor,
@@ -720,6 +743,7 @@ export async function updatePageContent(
   const refused = refusedByRole(actor, "page not saved", role, "editPage", { pageId });
   if (refused) return refused;
 
+  // Also content that is the same as the stored content is checked against the limits in force.
   const parsed = pageContentInputSchema.safeParse({ content: input.content });
   if (!parsed.success) return invalidInput(parsed.error);
 
@@ -734,16 +758,20 @@ export async function updatePageContent(
       failure: "failed to update page",
     },
   );
-  if (saved.ok) logger.info({ pageId, ...channelOf(actor) }, "page updated");
-  return saved;
+  if (!saved.ok) return saved;
+  const { page, changed } = saved.value;
+  if (changed) logger.info({ pageId, ...channelOf(actor) }, "page updated");
+  else logger.info({ pageId, ...channelOf(actor) }, "page not changed: content is the same");
+  return { ok: true, value: page };
 }
 
 /**
  * Stores a content change of the page with the given id with `storeContentChange()`, based on the given version, and
- * returns the page as stored: the end of every content save, so that a save in the editor and a revert are stored and
- * refused alike. No valid version, or another one than the page has, stores nothing and gives `page-changed`; a missing
- * or deleted page gives `page-not-found`, logged as `<what> not found`. An unexpected error gives `failed`, logged with
- * `failure`. The caller logs the stored change.
+ * returns the page as stored and whether the change was stored: the end of every content save, so that a save in the
+ * editor and a revert are stored and refused alike. A save of the same content stores nothing and returns the page as
+ * it is, with `changed: false`. No valid version, or another one than the page has, stores nothing and gives
+ * `page-changed`; a missing or deleted page gives `page-not-found`, logged as `<what> not found`. An unexpected error
+ * gives `failed`, logged with `failure`. The caller logs the outcome.
  */
 async function saveContentChange(
   actor: ContentActor,
@@ -751,13 +779,14 @@ async function saveContentChange(
   givenVersion: number | null,
   change: ContentChange,
   { revertedTo, what, failure }: { revertedTo: number | null; what: string; failure: string },
-): Promise<Result<StoredPage, PageNotFound | PageChanged | Failed>> {
+): Promise<Result<{ page: StoredPage; changed: boolean }, PageNotFound | PageChanged | Failed>> {
   const version = parsePageVersion(givenVersion);
   let page: StoredPage | null;
   try {
     if (version === null) return await refusedWrite(pageId, givenVersion, what);
     const stored = await storeContentChange(pageId, version, change, revertedTo);
-    if (!stored) return await refusedWrite(pageId, version, what);
+    if (stored.outcome === "refused") return await refusedWrite(pageId, version, what);
+    if (stored.outcome === "unchanged") return { ok: true, value: { page: stored.page, changed: false } };
     page = await findStoredPage(pageId);
   } catch (err) {
     if (isForeignKeyViolation(err, LAST_EDITOR)) return unknownActor(err, actor);
@@ -768,7 +797,7 @@ async function saveContentChange(
     logger.warn({ pageId }, `${what} not found`);
     return { ok: false, error: { code: "page-not-found" } };
   }
-  return { ok: true, value: page };
+  return { ok: true, value: { page, changed: true } };
 }
 
 /**
@@ -836,8 +865,9 @@ export async function revertPage(
       failure: "failed to revert page",
     },
   );
-  if (saved.ok) logger.info({ pageId, revision, ...channelOf(actor) }, "page reverted");
-  return saved;
+  if (!saved.ok) return saved;
+  logger.info({ pageId, revision, ...channelOf(actor) }, "page reverted");
+  return { ok: true, value: saved.value.page };
 }
 
 /**

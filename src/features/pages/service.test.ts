@@ -98,8 +98,8 @@ beforeEach(() => {
       pageRevision: { findFirst: mocks.revisionFindFirst, create: mocks.revisionCreate },
     }),
   );
-  // The newest revision of a page has other content than the saves of the tests, unless a test says otherwise.
-  mocks.revisionFindFirst.mockResolvedValue({ number: 3, content: "# Older content" });
+  // The newest revision of a page has the number 3, unless a test says otherwise.
+  mocks.revisionFindFirst.mockResolvedValue({ number: 3 });
 });
 
 const FOLDER_ID = "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10";
@@ -911,8 +911,9 @@ describe("updatePageContent", () => {
     const input = { ...VALID, title: "Given title", name: "given-name" };
     await expect(updatePageContent(ACTOR, PAGE_ID, input)).resolves.toEqual({ ok: true, value: STORED });
 
+    // A page with the same content matches no row, so that a save without a change stores nothing.
     expect(mocks.updateMany).toHaveBeenCalledWith({
-      where: { id: PAGE_ID, deletedAt: null, version: VERSION },
+      where: { id: PAGE_ID, deletedAt: null, version: VERSION, content: { not: CONTENT } },
       data: {
         title: "My page",
         content: CONTENT,
@@ -938,7 +939,7 @@ describe("updatePageContent", () => {
     expect(mocks.revisionFindFirst).toHaveBeenCalledWith({
       where: { pageId: PAGE_ID },
       orderBy: { number: "desc" },
-      select: { number: true, content: true },
+      select: { number: true },
     });
     expect(mocks.revisionCreate).toHaveBeenCalledExactlyOnceWith({
       data: {
@@ -967,21 +968,89 @@ describe("updatePageContent", () => {
     expect(mocks.revisionCreate.mock.calls[0]?.[0].data).toMatchObject({ number: 1 });
   });
 
-  // A save without a change still makes the actor the last editor and counts the version up (R14).
-  it("records no revision when the content is that of the newest revision, but stores the page", async () => {
+  // A content save is stored once its content differs from the stored content, whatever the newest revision holds.
+  it("records a revision also when the newest revision has the content of the save", async () => {
     mocks.updateMany.mockResolvedValue({ count: 1 });
     mocks.findUnique.mockResolvedValue(STORED);
-    mocks.revisionFindFirst.mockResolvedValue({ number: 3, content: CONTENT });
+    mocks.revisionFindFirst.mockResolvedValue({ number: 3 });
 
-    await expect(updatePageContent(ACTOR, PAGE_ID, VALID)).resolves.toEqual({ ok: true, value: STORED });
+    await updatePageContent(ACTOR, PAGE_ID, VALID);
 
-    expect(mocks.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ lastEditedById: ACTOR_ID, version: { increment: 1 } }),
-      }),
-    );
+    expect(mocks.revisionCreate.mock.calls[0]?.[0].data).toMatchObject({ number: 4, revertedTo: null });
+  });
+
+  // A save of the stored content, based on the version of the page, leaves the page as it is (R1, R2, R8).
+  it.each([
+    ["in the browser", ACTOR, { channel: "browser" }],
+    ["through MCP", MCP_ACTOR, { channel: "mcp", grantId: MCP_ACTOR.connection?.grantId }],
+  ] as const)(
+    "stores nothing and records no revision for the stored content %s, and logs it apart",
+    async (_name, actor, channel) => {
+      const unchanged = { ...STORED, version: VERSION };
+      mocks.updateMany.mockResolvedValue({ count: 0 });
+      mocks.findFirst.mockResolvedValue(unchanged);
+
+      await expect(updatePageContent(actor, PAGE_ID, VALID)).resolves.toEqual({ ok: true, value: unchanged });
+
+      expect(mocks.findFirst).toHaveBeenCalledExactlyOnceWith({
+        where: { id: PAGE_ID, deletedAt: null, version: VERSION, content: CONTENT },
+        select: STORED_PAGE_SELECT,
+      });
+      expect(mocks.revisionFindFirst).not.toHaveBeenCalled();
+      expect(mocks.revisionCreate).not.toHaveBeenCalled();
+      // The page is returned as found in the transaction, not read again after it.
+      expect(mocks.findUnique).not.toHaveBeenCalled();
+      expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+        { pageId: PAGE_ID, ...channel },
+        "page not changed: content is the same",
+      );
+      expect(mocks.warn).not.toHaveBeenCalled();
+    },
+  );
+
+  // Line endings are made uniform before the comparison, as the content is stored (R3).
+  it("compares the content with uniform line endings", async () => {
+    mocks.updateMany.mockResolvedValue({ count: 0 });
+    mocks.findFirst.mockResolvedValue(STORED);
+
+    await updatePageContent(ACTOR, PAGE_ID, { ...VALID, content: CONTENT.replaceAll("\n", "\r\n") });
+
+    expect(mocks.findFirst.mock.calls[0]?.[0].where).toMatchObject({ content: CONTENT });
+  });
+
+  // The stored content based on another version is refused like every other save (R4).
+  it("returns page-changed for the stored content when the page has another version", async () => {
+    mocks.updateMany.mockResolvedValue({ count: 0 });
+    mocks.findFirst.mockResolvedValue(null);
+    mocks.findUnique.mockResolvedValue(STORED);
+
+    await expect(updatePageContent(ACTOR, PAGE_ID, VALID)).resolves.toEqual({
+      ok: false,
+      error: { code: "page-changed", page: STORED },
+    });
+
     expect(mocks.revisionCreate).not.toHaveBeenCalled();
-    expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID, channel: "browser" }, "page updated");
+    expect(mocks.info).not.toHaveBeenCalled();
+  });
+
+  it("returns page-not-found for the stored content of a deleted page", async () => {
+    mocks.updateMany.mockResolvedValue({ count: 0 });
+    mocks.findFirst.mockResolvedValue(null);
+    mocks.findUnique.mockResolvedValue(null);
+
+    await expect(updatePageContent(ACTOR, PAGE_ID, VALID)).resolves.toEqual(PAGE_NOT_FOUND);
+    expect(mocks.info).not.toHaveBeenCalled();
+  });
+
+  // Content over a limit is refused before the version is looked at, also when it is the stored content (R4, R7).
+  it("returns the field errors of stored content that breaks a limit now, without reading the page", async () => {
+    const table = `# Table\n\n| a |\n| - |\n${"| x |\n".repeat(CONTENT_MAX_TABLE_CELLS)}`;
+
+    await expect(updatePageContent(ACTOR, PAGE_ID, { content: table, version: VERSION })).resolves.toEqual({
+      ok: false,
+      error: { code: "invalid-input", fieldErrors: { content: [CONTENT_TABLE_CELLS_MESSAGE] } },
+    });
+    expectDatabaseUntouched();
   });
 
   it("records no revision when the update matches no page", async () => {
@@ -1275,6 +1344,8 @@ describe("revertPage", () => {
       error: { code: "page-changed", page: STORED },
     });
     expect(mocks.revisionCreate).not.toHaveBeenCalled();
+    // A revert always changes the content, so it never looks for a page with the same content.
+    expect(mocks.findFirst).toHaveBeenCalledOnce();
     expect(mocks.warn).toHaveBeenCalledWith(
       { pageId: PAGE_ID, version: VERSION },
       "page to revert changed after the version the write is based on",

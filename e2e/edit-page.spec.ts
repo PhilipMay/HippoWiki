@@ -143,7 +143,10 @@ test("changing the heading changes the title and the list entry, but not the nam
   expect(errors).toEqual([]);
 });
 
-test("a page stored with a different title gets the derived title on its next save", async ({ page }) => {
+// A save without a change stores nothing, not even the derived title (unchanged saves, R1).
+test("a page stored with a different title keeps it on a save without a change and gets the derived title on its next change", async ({
+  page,
+}) => {
   const created = await createPage({
     folder: handbook,
     name: "stored",
@@ -152,6 +155,14 @@ test("a page stored with a different title gets the derived title on its next sa
   });
 
   await page.goto("/folders/handbook/stored.md?action=edit");
+  await page.getByRole("button", { name: "Save" }).click();
+
+  await expect(page).toHaveURL("/folders/handbook/stored.md");
+  await expect(page).toHaveTitle("Stored title – HippoWiki");
+  expect(await getTestDb().page.findUniqueOrThrow({ where: { id: created.id } })).toStrictEqual(created);
+
+  await page.goto("/folders/handbook/stored.md?action=edit");
+  await page.getByLabel("Content").fill("# Heading title\n\nBody, changed");
   await page.getByRole("button", { name: "Save" }).click();
 
   await expect(page).toHaveURL("/folders/handbook/stored.md");
@@ -331,7 +342,7 @@ test("a folder and a page can be created, and the page edited and renamed", asyn
   expect(errors).toEqual([]);
 });
 
-test("a page created and saved in the browser has a revision per change, and a save without a change adds none", async ({
+test("a page created and saved in the browser has a revision per change, and a save without a change changes nothing", async ({
   page,
   browser,
 }) => {
@@ -362,14 +373,16 @@ test("a page created and saved in the browser has a revision per change, and a s
     { number: 2, content: "# History\n\nSecond version", user: { username: USER }, via: "web" },
   ]);
 
-  // Another user saves without a change: no revision, but that user is now the last editor (R14).
+  // Another user saves without a change: no revision, and the page stays as it is (unchanged saves, R1, R2).
+  const before = await getTestDb().page.findFirstOrThrow({ where: { name: "history" } });
   const other = await logInElsewhere(browser, "bob");
   await other.page.goto("/folders/handbook/history.md?action=edit");
   await other.page.getByRole("button", { name: "Save" }).click();
   await expect(other.page).toHaveURL("/folders/handbook/history.md");
-  await expect(other.page.getByText(/^Last updated /)).toHaveText(by("bob"));
+  await expect(other.page.getByText(/^Last updated /)).toHaveText(by(USER));
   await other.context.close();
   expect(await revisions()).toHaveLength(2);
+  expect(await getTestDb().page.findFirstOrThrow({ where: { name: "history" } })).toStrictEqual(before);
   expect(errors).toEqual([]);
 });
 
@@ -464,10 +477,10 @@ test.describe("a page changed after the editor was opened", () => {
       "# Plan\n\nBob's version",
     );
 
-    // Saving the current content again is no longer refused.
+    // Saving the current content again is no longer refused; as it changes nothing, bob stays the last editor.
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page).toHaveURL("/folders/team/plan.md");
-    await expect(page.getByText(/^Last updated /)).toHaveText(by(USER));
+    await expect(page.getByText(/^Last updated /)).toHaveText(by("bob"));
     expect(errors).toEqual([]);
     await other.context.close();
   });
@@ -558,6 +571,57 @@ test.describe("a page changed after the editor was opened", () => {
     expect(await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).toStrictEqual(plan);
   });
 
+  // Unchanged saves, R4: a save without a change is refused like every other save based on an older version.
+  test("refuses a save without a change in an editor opened before another change, and keeps that change", async ({
+    page,
+    browser,
+  }) => {
+    const errors = collectErrors(page);
+    const plan = await createPage({ folder: team, name: "plan", content: "# Plan\n\nFirst draft" });
+    const other = await logInElsewhere(browser, "bob");
+
+    await page.goto("/folders/team/plan.md?action=edit");
+    await other.page.goto("/folders/team/plan.md?action=edit");
+    await other.page.getByLabel("Content").fill("# Plan\n\nBob's version");
+    await other.page.getByRole("button", { name: "Save" }).click();
+    await expect(other.page).toHaveURL("/folders/team/plan.md");
+    await other.context.close();
+    const stored = await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } });
+
+    await page.getByRole("button", { name: "Save" }).click();
+
+    await expect(page).toHaveURL("/folders/team/plan.md?action=edit&notice=changed");
+    await expect(page.getByLabel("Content")).toHaveValue("# Plan\n\nBob's version");
+    await expect(changedMessage(page)).toHaveText(/^This page was changed by bob via web at .+ after you opened it\.$/);
+    expect(await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).toStrictEqual(stored);
+    expect(errors).toEqual([]);
+  });
+
+  // Unchanged saves: an empty save changes nothing, so it does not refuse the save of another editor.
+  test("stores the change of the second editor after the first saved without a change", async ({ page, browser }) => {
+    const errors = collectErrors(page);
+    const plan = await createPage({ folder: team, name: "plan", content: "# Plan\n\nFirst draft", version: 3 });
+    const other = await logInElsewhere(browser, "bob");
+
+    await page.goto("/folders/team/plan.md?action=edit");
+    await other.page.goto("/folders/team/plan.md?action=edit");
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page).toHaveURL("/folders/team/plan.md");
+
+    await other.page.getByLabel("Content").fill("# Plan\n\nBob's version");
+    await other.page.getByRole("button", { name: "Save" }).click();
+    await expect(other.page).toHaveURL("/folders/team/plan.md");
+    await expect(other.page.getByText(/^Last updated /)).toHaveText(by("bob"));
+    await other.context.close();
+
+    expect(await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).toMatchObject({
+      content: "# Plan\n\nBob's version",
+      version: 4,
+      lastEditedById: bob.id,
+    });
+    expect(errors).toEqual([]);
+  });
+
   test("a notice without an action, an unknown or a repeated notice shows the not-found page", async ({ page }) => {
     await createPage({ folder: team, name: "plan" });
     const tab = await createTab({ folder: team, name: "guides" });
@@ -573,5 +637,77 @@ test.describe("a page changed after the editor was opened", () => {
     ]) {
       await expectNotFound(page, address);
     }
+  });
+});
+
+test.describe("a save without a change", () => {
+  /** The time of the last change, as the page view shows it after "Last updated". */
+  function shownTime(page: BrowserPage) {
+    return page.getByRole("article").locator("time");
+  }
+
+  // Unchanged saves, R1, R2, R3, R5: the page keeps its last editor, channel, time and version, and its revisions.
+  test("leaves the page as it is, in the page view and the lists, and shows no notice", async ({ page }) => {
+    const errors = collectErrors(page);
+    const bob = await createUser({ name: "bob" });
+    const updatedAt = new Date("2026-01-01T10:00:00Z");
+    const tab = await createTab({ folder: handbook, name: "guides", editor: bob, via: "mcp" });
+    const pages = [
+      await createPage({
+        folder: handbook,
+        name: "direct",
+        content: "# Direct\n\nFirst line\nSecond line",
+        editor: bob,
+        via: "mcp",
+        updatedAt,
+        version: 5,
+      }),
+      await createPage({ tab, name: "in-tab", content: "# In tab\n\nText", editor: bob, via: "mcp", updatedAt }),
+    ];
+    const revisions = await getTestDb().pageRevision.findMany({ orderBy: [{ pageId: "asc" }, { number: "asc" }] });
+
+    for (const address of ["/folders/handbook/direct.md", "/folders/handbook/guides/in-tab.md"]) {
+      await page.goto(address);
+      const time = await shownTime(page).textContent();
+      await page.goto(`${address}?action=edit`);
+      await page.getByRole("button", { name: "Save" }).click();
+
+      await expect(page).toHaveURL(address);
+      await expect(page.getByRole("main").getByRole("alert")).toHaveCount(0);
+      await expect(page.getByText(/^Last updated /)).toHaveText(by("bob", "mcp"));
+      await expect(shownTime(page)).toHaveText(time ?? "");
+    }
+
+    await page.goto("/folders/handbook");
+    await expect(
+      page.getByRole("list", { name: "Contents" }).getByRole("listitem").filter({ hasText: "Direct" }),
+    ).toHaveText(by("bob", "mcp"));
+    await page.goto("/folders/handbook/guides");
+    await expect(page.getByRole("list", { name: "Pages" }).getByRole("listitem")).toHaveText([by("bob", "mcp")]);
+    for (const stored of pages) {
+      expect(await getTestDb().page.findUniqueOrThrow({ where: { id: stored.id } })).toStrictEqual(stored);
+    }
+    expect(await getTestDb().pageRevision.findMany({ orderBy: [{ pageId: "asc" }, { number: "asc" }] })).toEqual(
+      revisions,
+    );
+    expect(errors).toEqual([]);
+  });
+
+  // Unchanged saves, R7: the limits in force are checked also when the content is the stored one.
+  test("of content over the length limit shows the length error and stores nothing", async ({ page }) => {
+    const errors = collectErrors(page);
+    const content = `# Long page\n\n${"x".repeat(CONTENT_MAX_LENGTH)}`;
+    const created = await createPage({ folder: handbook, name: "long", content });
+
+    await page.goto("/folders/handbook/long.md?action=edit");
+    const field = page.getByLabel("Content");
+    await expect(field).toHaveValue(content);
+    await page.getByRole("button", { name: "Save" }).click();
+
+    await expect(field).toHaveAttribute("aria-invalid", "true");
+    await expect(field).toHaveAccessibleDescription("Content must be at most 100,000 characters");
+    await expect(page).toHaveURL("/folders/handbook/long.md?action=edit");
+    expect(await getTestDb().page.findUniqueOrThrow({ where: { id: created.id } })).toStrictEqual(created);
+    expect(errors).toEqual([]);
   });
 });

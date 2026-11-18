@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import * as folderService from "@/features/folders/service";
-import { CONTENT_MAX_TABLE_CELLS } from "@/features/pages/limits";
+import { CONTENT_MAX_LENGTH, CONTENT_MAX_TABLE_CELLS } from "@/features/pages/limits";
 import { CONTENT_TABLE_CELLS_MESSAGE } from "@/features/pages/schema";
 import * as pageService from "@/features/pages/service";
 import { inBrowser, inMcp, type BrowserActor } from "@/features/folder-roles/service";
@@ -1338,18 +1338,18 @@ describe("the revisions of pages", () => {
     await expectNewestRevisionIsThePage(page.id);
   });
 
-  // R14: a save without a change records nothing, but makes the actor the last editor.
-  it("records no revision for a save without a change, which still makes the actor the last editor", async () => {
+  // A save without a change records nothing and leaves the page as it is (unchanged saves, R1, R2).
+  it("records no revision for a save without a change, which leaves the page as it is", async () => {
     const bob = await createUser({ name: "bob" });
     const folder = await createFolder({ roles: owners(user, bob) });
     const page = await createPage({ folder, editor: user, content: "# Intro" });
 
     await expect(
       pageService.updatePageContent(inBrowser(bob), page.id, { content: "# Intro", version: 1 }),
-    ).resolves.toMatchObject({ ok: true, value: { version: 2 } });
+    ).resolves.toMatchObject({ ok: true, value: { version: 1 } });
 
     expect(await revisionsOf(page.id)).toHaveLength(1);
-    expect(await lastEditorOf(page.id)).toBe(bob.id);
+    expect(await lastEditorOf(page.id)).toBe(user.id);
   });
 
   // R3: moves, renames, deletes and restores are not part of the history.
@@ -1581,5 +1581,139 @@ describe("reverting a page", () => {
       ok: false,
       error: { code: "page-not-found" },
     });
+  });
+});
+
+describe("content saves without a change", () => {
+  const CONTENT = "# Intro\n\nFirst line\nSecond line";
+  /** When the page was last changed: an hour ago, so that a new write would show. */
+  const UPDATED_AT = new Date(Date.now() - 60 * 60 * 1000);
+
+  /** The fields of the page that a save without a change must leave as they are. */
+  async function stateOf(pageId: string) {
+    const { lastEditedById, lastEditedVia, updatedAt, version, content, title } =
+      await getTestDb().page.findUniqueOrThrow({ where: { id: pageId } });
+    return { lastEditedById, lastEditedVia, updatedAt, version, content, title };
+  }
+
+  /** The revisions of the page with the given id, by number. */
+  async function revisionsOf(pageId: string) {
+    return getTestDb().pageRevision.findMany({ where: { pageId }, orderBy: { number: "asc" } });
+  }
+
+  /** Bob, who saves; a folder with Owner roles of alice and bob; a page last changed by alice via mcp. */
+  async function setUp(data: { content?: string; version?: number; deletedAt?: Date } = {}) {
+    const bob = await createUser({ name: "bob" });
+    const folder = await createFolder({ roles: owners(user, bob) });
+    const page = await createPage({
+      folder,
+      editor: user,
+      via: "mcp",
+      content: CONTENT,
+      updatedAt: UPDATED_AT,
+      version: 3,
+      ...data,
+    });
+    return { bob: inBrowser(bob), bobId: bob.id, page };
+  }
+
+  // R1, R2, R6: the page keeps its last editor, channel, time and version, and its revisions.
+  it("leaves the page and its revisions as they are, and returns the page with its version", async () => {
+    const { bob, page } = await setUp();
+    const before = { page: await stateOf(page.id), revisions: await revisionsOf(page.id) };
+
+    await expect(pageService.updatePageContent(bob, page.id, { content: CONTENT, version: 3 })).resolves.toEqual({
+      ok: true,
+      value: { id: page.id, name: page.name, version: 3, folder: expect.anything(), tab: null },
+    });
+
+    expect(await stateOf(page.id)).toEqual(before.page);
+    expect(await revisionsOf(page.id)).toEqual(before.revisions);
+    expect(before.page).toMatchObject({ lastEditedById: user.id, lastEditedVia: "mcp", updatedAt: UPDATED_AT });
+  });
+
+  // R3: the line endings are made uniform first; any other difference is a change.
+  it("counts content with other line endings as the same, and one more space as a change", async () => {
+    const { bob, page } = await setUp();
+    const before = { page: await stateOf(page.id), revisions: await revisionsOf(page.id) };
+
+    await pageService.updatePageContent(bob, page.id, { content: CONTENT.replaceAll("\n", "\r\n"), version: 3 });
+    expect(await stateOf(page.id)).toEqual(before.page);
+    expect(await revisionsOf(page.id)).toEqual(before.revisions);
+
+    const changed = CONTENT.replace("First line", "First line ");
+    await expect(pageService.updatePageContent(bob, page.id, { content: changed, version: 3 })).resolves.toMatchObject({
+      ok: true,
+      value: { version: 4 },
+    });
+    expect(await stateOf(page.id)).toMatchObject({ content: changed, version: 4, lastEditedVia: "web" });
+    expect((await revisionsOf(page.id)).map(({ number, content }) => [number, content])).toEqual([
+      [1, CONTENT],
+      [2, changed],
+    ]);
+  });
+
+  // R4: the version is checked like for every save, also when the content is the same.
+  it.each([1, 2, 4, null])("refuses the stored content based on the version %j as page-changed", async (version) => {
+    const { bob, page } = await setUp();
+    const before = { page: await stateOf(page.id), revisions: await revisionsOf(page.id) };
+
+    await expect(pageService.updatePageContent(bob, page.id, { content: CONTENT, version })).resolves.toMatchObject({
+      ok: false,
+      error: { code: "page-changed", page: { id: page.id, version: 3 } },
+    });
+
+    expect(await stateOf(page.id)).toEqual(before.page);
+    expect(await revisionsOf(page.id)).toEqual(before.revisions);
+  });
+
+  it("refuses the stored content of a deleted page as page-not-found", async () => {
+    const { bob, page } = await setUp({ deletedAt: new Date() });
+    const before = await stateOf(page.id);
+
+    await expect(pageService.updatePageContent(bob, page.id, { content: CONTENT, version: 3 })).resolves.toEqual({
+      ok: false,
+      error: { code: "page-not-found" },
+    });
+    expect(await stateOf(page.id)).toEqual(before);
+  });
+
+  // R7: the limits in force are checked also for the stored content.
+  it("refuses stored content over the length limit as invalid-input and leaves the page as it is", async () => {
+    const content = `# Big\n\n${"x".repeat(CONTENT_MAX_LENGTH)}`;
+    const { bob, page } = await setUp({ content });
+    const before = await stateOf(page.id);
+
+    await expect(pageService.updatePageContent(bob, page.id, { content, version: 3 })).resolves.toMatchObject({
+      ok: false,
+      error: { code: "invalid-input", fieldErrors: { content: [expect.any(String)] } },
+    });
+    expect(await stateOf(page.id)).toEqual(before);
+  });
+
+  // The scenario of Anna and Bob: an empty save based on an old version is refused; a change after an empty save is not.
+  it("refuses the same content after a stored change, and stores a change after a save without a change", async () => {
+    const { bob, bobId, page } = await setUp();
+    const anna = actor;
+
+    // Anna's change is stored; Bob's empty save, based on the version before it, is refused.
+    await expect(
+      pageService.updatePageContent(anna, page.id, { content: `${CONTENT}\nThird line`, version: 3 }),
+    ).resolves.toMatchObject({ ok: true, value: { version: 4 } });
+    await expect(pageService.updatePageContent(bob, page.id, { content: CONTENT, version: 3 })).resolves.toMatchObject({
+      ok: false,
+      error: { code: "page-changed" },
+    });
+
+    // Anna saves without a change; Bob's change, based on the same version, is stored.
+    await expect(
+      pageService.updatePageContent(anna, page.id, { content: `${CONTENT}\nThird line`, version: 4 }),
+    ).resolves.toMatchObject({ ok: true, value: { version: 4 } });
+    await expect(
+      pageService.updatePageContent(bob, page.id, { content: `${CONTENT}\nBob's line`, version: 4 }),
+    ).resolves.toMatchObject({ ok: true, value: { version: 5 } });
+
+    expect(await stateOf(page.id)).toMatchObject({ content: `${CONTENT}\nBob's line`, lastEditedById: bobId });
+    expect((await revisionsOf(page.id)).map(({ number }) => number)).toEqual([1, 2, 3]);
   });
 });
