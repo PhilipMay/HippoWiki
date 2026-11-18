@@ -76,7 +76,9 @@ export default function ChangePasswordForm({ action, next }: ChangePasswordFormP
         inputRef={newRef}
         error={!!newError}
         helperText={
-          newError ?? `${PASSWORD_MIN_LENGTH} to ${PASSWORD_MAX_LENGTH} characters, not the same as your user name`
+          newError ??
+          `${PASSWORD_MIN_LENGTH} to ${PASSWORD_MAX_LENGTH} characters, not built from your user name or the name of ` +
+            "the wiki, and not a common password"
         }
         autoComplete="new-password"
         slotProps={{ htmlInput: { readOnly: !hydrated } }}

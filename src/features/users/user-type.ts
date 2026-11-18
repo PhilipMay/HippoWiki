@@ -9,6 +9,9 @@ export const USER_TYPES = ["user", "admin"] as const;
 /** The type of an account. */
 export type UserType = (typeof USER_TYPES)[number];
 
+/** The label of each type of an account, as the pages show it. */
+export const USER_TYPE_LABELS: Readonly<Record<UserType, string>> = { user: "User", admin: "Admin" };
+
 /** Whether the text is a type of an account. */
 export function isUserType(value: unknown): value is UserType {
   return typeof value === "string" && (USER_TYPES as readonly string[]).includes(value);

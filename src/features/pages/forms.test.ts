@@ -110,11 +110,11 @@ describe("parsePageContentFormData", () => {
     expect(parsePageContentFormData(file)).toMatchObject({ success: true, data: { version: null } });
   });
 
-  it("rejects a file instead of text", () => {
-    expect(parsePageContentFormData(formData({ content: new Blob(["# Title"]) }))).toMatchObject({
-      success: false,
-      fieldErrors: { content: [expect.any(String)] },
-    });
+  it("counts a file instead of text as an empty content", () => {
+    expect(parsePageContentFormData(formData({ content: new Blob(["# Title"]) }))).toEqual(
+      parsePageContentFormData(formData({ content: "" })),
+    );
+    expect(parsePageContentFormData(formData({ content: new Blob(["# Title"]) }))).toMatchObject({ success: false });
   });
 });
 
@@ -204,11 +204,19 @@ describe("parseNewPageFormData", () => {
     });
   });
 
-  it("rejects files instead of text", () => {
-    const result = parseNewPageFormData(formData({ name: new Blob(["a"]), content: new Blob(["# Title"]) }));
-    expect(result).toMatchObject({
+  it("counts files instead of text as empty fields", () => {
+    expect(parseNewPageFormData(formData({ name: new Blob(["a"]), content: new Blob(["# Title"]) }))).toEqual(
+      parseNewPageFormData(formData({})),
+    );
+    expect(parseNewPageFormData(formData({ name: new Blob(["a"]), content: "# A" }))).toEqual({
       success: false,
-      fieldErrors: { name: [expect.any(String)], content: [expect.any(String)] },
+      fieldErrors: { name: ["Name is required"] },
+      placeInvalid: false,
+    });
+    expect(parseNewPageFormData(formData({ name: "a", content: new Blob(["# A"]) }))).toEqual({
+      success: false,
+      fieldErrors: { content: [TITLE_HEADING_MISSING_MESSAGE] },
+      placeInvalid: false,
     });
   });
 
@@ -250,6 +258,19 @@ describe("parseNewPageFormData", () => {
 });
 
 describe("parsePageMoveOrRenameFormData", () => {
+  it("counts a file instead of a name as an empty name", () => {
+    expect(parsePageMoveOrRenameFormData(formData({ name: new Blob(["release-notes"]), place: "" }))).toEqual({
+      success: false,
+      fieldErrors: { name: ["Name is required"] },
+      placeInvalid: false,
+    });
+    expect(parsePageRestoreFormData(formData({ name: new Blob(["release-notes"]), place: "" }))).toEqual({
+      success: false,
+      fieldErrors: { name: ["Name is required"] },
+      placeInvalid: false,
+    });
+  });
+
   const tabId = crypto.randomUUID();
 
   it("returns the name and the tab id of the place", () => {

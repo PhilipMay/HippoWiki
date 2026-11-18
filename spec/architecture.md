@@ -264,11 +264,19 @@ The feature is described in `users-and-login.md`. What every new route, query an
 - All input (forms, service arguments, environment variables) is validated with Zod. Schemas live in the feature's
   `schema.ts` and have unit tests.
 - A form is parsed by a `parse*FormData` function in the feature's `forms.ts`. It reports all errors of a form
-  together, including the ones only a form has, such as no place chosen or a file instead of text.
+  together, including the ones only a form has, such as no place chosen. A text field is read with `textField()` of
+  `src/lib/forms.ts`, which counts a missing field and a file as empty, so that the schema reports the field as
+  missing; the same module holds the generic types of a parse result (`ParseResult`) and of a form state
+  (`FormState`).
+- A malformed id that is bound to an action is answered as the action answers a missing row of its feature: the
+  actions of folders and pages show the message that the folder, tab or page no longer exists, those of roles and
+  grants the not-found page.
 - The service validates the same input again with the same schemas. This is deliberate: a caller other than a form
   does not pass through `forms.ts`.
 - Ids and names from URLs, forms or callers of a service are parsed (`parsePageId`, `parseFolderId`, `parseTabId`,
-  `parseName`, `parsePageSegment`) before they reach the database; malformed ones are treated like missing rows: a
+  `parseName`, `parsePageSegment`) before they reach the database; a name that must match exactly is parsed with
+  `parseExact()` of `src/lib/names.ts`, whose `nameSchemaWith()` builds the schema of a name with its limits for
+  folders, tabs, pages and user names; malformed ones are treated like missing rows: a
   route shows the not-found page, a write returns its not-found code.
 - Unique and foreign key violations that a user can cause, such as a taken name or a folder that no longer exists,
   are recognised in the service with `isUniqueViolation` and `isForeignKeyViolation` from `src/lib/db-errors.ts` and

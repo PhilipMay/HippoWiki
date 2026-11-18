@@ -14,9 +14,9 @@
     findings of the tests that are still open are minor.
   - Documents that the features outran: rules stated in full in several documents, and copies of code and
     constants in the specs.
-- Findings: 31 open of 107, 0 Blocker, 0 Major, 23 Minor and 8 Nit (7 `issue:`, 16 `suggestion:`, 6 `nit:` and
+- Findings: 27 open of 107, 0 Blocker, 0 Major, 21 Minor and 6 Nit (7 `issue:`, 13 `suggestion:`, 5 `nit:` and
   2 `question:`).
-- Confidence of the suggestions: 2 High, 25 Medium and 2 Low; the 2 questions have none. A High suggestion can be
+- Confidence of the suggestions: 2 High, 21 Medium and 2 Low; the 2 questions have none. A High suggestion can be
   fixed as written; the others wait for the user, as `issue-report.md` describes.
 - Decisions: on 2026-11-18 the user decided all Medium and Low suggestions. Each of these findings ends with a line
   `Decision`, and is fixed as that line says, without asking again. The questions were decided by the user on the
@@ -82,22 +82,6 @@ What can go wrong in a cleanup, and what several findings warn about:
 
 ### Code: services of the content features
 
-#### nit: the actions of pages and folders repeat messages, form states and the mapping of a failed parse
-
-- Location: `src/features/folders/actions.ts`, lines 20–26; `src/features/pages/actions.ts`, lines 40–44, 59–62,
-  81–87, 175–180, 263–269 and 326–330
-- Severity: Nit
-- Category: style
-- Problem: `FOLDER_GONE_MESSAGE`, `TAB_GONE_MESSAGE` and `nameTakenState` are declared in both files. The block
-  that turns a failed parse with an invalid place into a form state is written three times. `revertPage()` repeats
-  the two lines of `showChanged()`. The same comment on `not-allowed` stands 11 times.
-- Impact: a message that is reworded has to be changed twice.
-- Evidence: both files hold `const TAB_GONE_MESSAGE = "This tab no longer exists.";`.
-- Suggestion (optional): export the two messages and the state from one place, add one helper for the errors of
-  the place, and let `showChanged()` take the address.
-- Confidence: Medium. The tests of the actions assert the messages; the home of the shared messages is a choice.
-- Decision (2026-11-18): as suggested.
-
 #### nit: unused names and comments that no longer match the code
 
 - Location: `src/features/folder-roles/service.ts`, line 36, `Channel`; `src/features/folder-roles/roles.ts`, line
@@ -140,6 +124,7 @@ What can go wrong in a cleanup, and what several findings warn about:
 - Suggestion (optional): `mayDo(role, "read")` in all four places, a `withView()`, one extraction of the
   constraint, and `isRevisionNumber()` of the schema in the action as well.
 - Confidence: Medium. Each is mechanical and covered by the unit tests of its file; none is needed.
+- Status: `revertPage()` of the actions checks the revision number with `isRevisionNumber()` of the schema now.
 - Decision (2026-11-18): as suggested.
 
 #### Reviewed
@@ -357,63 +342,6 @@ PageDeleteFormAction } from "@/features/pages/forms";`.
 - Suggestion (optional): look at the chunks of the client for a page with `?action=delete` in a production build;
   if the two libraries are in them, move the names of the fields and the limit to modules without imports.
 
-#### suggestion: messages and labels of the same situation are defined more than once, and two no longer fit
-
-- Location: `src/features/auth/actions.ts`, line 25, and `src/features/users/actions.ts`, line 16, `BUSY_MESSAGE`;
-  `src/features/users/components/CreateUserDialog.tsx`, line 30, and `UserList.tsx` in the same folder, line 12,
-  `TYPE_LABELS`; `src/features/auth/components/ChangePasswordForm.tsx`, line 79
-- Severity: Minor. Copies drift, and two are already inexact.
-- Category: readability
-- Problem: an admin who creates a user while the hashing is busy reads "Too many logins at the moment, please try
-  again", the message of the login, copied. The hint under "New password" says "not the same as your user name",
-  while the rule of the schema is wider: not built only from the user name or the name of the wiki, and no common
-  password. `TYPE_LABELS` exists twice, while the labels of the roles live once in `roles.ts`.
-- Impact: users read a wording that does not fit what they did, and a change of one copy misses the other.
-- Evidence: `src/features/users/actions.ts`, line 16:
-  `const BUSY_MESSAGE = "Too many logins at the moment, please try again";`.
-- Suggestion (optional): a text of its own for `createUser()`, the hint in line with the rule, and `TYPE_LABELS`
-  next to the types of an account.
-- Confidence: Medium. Moving the labels changes nothing; the two texts are seen by users and pinned by unit and
-  end-to-end tests.
-- Decision (2026-11-18): as suggested, with these texts: `createUser()` answers "The server is busy, please try again in
-  a moment", the hint under "New password" says "Not built from your user name or the name of the wiki, and not a common
-  password", and `TYPE_LABELS` moves next to the types of an account.
-
-#### suggestion: the schema of a user name is a second copy of the name rule and of its parser
-
-- Location: `src/features/users/schema.ts`, lines 36–52 and 85–98; `src/lib/names.ts`, lines 13–28;
-  `src/features/auth/schema.ts`, lines 15–19
-- Severity: Minor. Two copies of a rule that addresses depend on.
-- Category: readability
-- Problem: `userNameSchema` repeats `nameSchema` step by step, with only the limits of the length different, and
-  `parseUserName()` is `parseName()` line for line. The rule "count the length of the string, not the code points"
-  is written by hand in two schemas.
-- Impact: a change of the name rule or of its message has two modules.
-- Evidence: both hold `.regex(NAME_PATTERN, "Use lowercase letters, digits and single hyphens")`.
-- Suggestion (optional): export from `names.ts` a builder of the schema with the limits, and a parser for an exact
-  match.
-- Confidence: Medium. The unit tests of both schemas pin the messages; whether a builder keeps the order of the
-  errors was not tried.
-- Decision (2026-11-18): as suggested.
-
-#### suggestion: a text field of a form is read in three ways, with two outcomes for a file
-
-- Location: `src/features/auth/forms.ts`, lines 26–29; `src/features/users/forms.ts`, lines 32–37;
-  `src/features/folders/forms.ts`, lines 13 and 22; `src/features/pages/forms.ts`; `src/lib/names.ts`, lines 30–40
-- Severity: Nit. Only a crafted request sends a file; the cost is the repetition.
-- Category: readability
-- Problem: a file in the field of the name counts as empty for a user and is refused by the type check of Zod for
-  a folder, a tab or a page. The type of a parse result is declared five times. The types of the name form live in
-  `src/lib/names.ts`, though only the folders feature uses them.
-- Impact: a new form copies one of three patterns.
-- Evidence: `src/features/users/forms.ts`, line 35, `name: typeof name === "string" ? name : "",`, against
-  `src/features/folders/forms.ts`, line 13, `folderInputSchema.safeParse({ name: formData.get("name") ?? "" })`.
-- Suggestion (optional): one helper for a text field and one generic type of a parse result and of a form state,
-  in a module of `src/lib/` without server-only imports.
-- Confidence: Medium. The helper changes nothing; one outcome for a file changes what unit tests pin.
-- Decision (2026-11-18): as suggested; the one outcome for a file is that it counts as empty, so the schema reports the
-  field as missing.
-
 #### suggestion: four rules of `architecture.md` are convention only, and a lint rule could hold them
 
 - Location: `eslint.config.mjs`, lines 122–192; `spec/architecture.md`, section "Linting"
@@ -463,6 +391,8 @@ PageDeleteFormAction } from "@/features/pages/forms";`.
 - Suggestion (optional): delete the two types and the unused function or use it, drop the colour, decide on one
   answer for a malformed id, and add a check for unused exports to `npm run check`.
 - Confidence: Medium. High for the two types, which nothing references; the rest are small decisions.
+- Status: the answer to a malformed id is fixed: it is the answer to a missing row of the feature of the action in
+  all four, as "Validation and errors" in `architecture.md` says now.
 - Decision (2026-11-18): as suggested: the two types, `authorizationServerMetadataPath()` and the colour are deleted; a
   malformed id bound to an action is answered as the action answers a missing row of its feature; `knip` is added to
   `npm run check`.

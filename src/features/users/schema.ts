@@ -12,7 +12,7 @@ import {
   USER_NAME_MIN_LENGTH,
 } from "@/features/users/limits";
 import { USER_TYPES } from "@/features/users/user-type";
-import { NAME_PATTERN } from "@/lib/names";
+import { nameSchemaWith, parseExact } from "@/lib/names";
 
 /**
  * The name of the first admin, which the admin setup creates. Only its name: what an account may do is decided by its
@@ -33,22 +33,11 @@ export function parseUserId(id: string): string | null {
  * The name of a user: the name rule of folders, tabs and pages, so that it can be part of an address as it is, with
  * the length limits of the `username` plugin of Better Auth.
  */
-export const userNameSchema = z
-  .string()
-  .trim()
-  // Abort here, so that an empty name reports only this error and not also the other ones.
-  .min(1, { error: "Name is required", abort: true })
-  .min(USER_NAME_MIN_LENGTH, `Name must be at least ${USER_NAME_MIN_LENGTH} characters`)
-  .max(USER_NAME_MAX_LENGTH, `Name must be at most ${USER_NAME_MAX_LENGTH} characters`)
-  .regex(NAME_PATTERN, "Use lowercase letters, digits and single hyphens");
+export const userNameSchema = nameSchemaWith({ minLength: USER_NAME_MIN_LENGTH, maxLength: USER_NAME_MAX_LENGTH });
 
-/**
- * Returns the name if it is a valid user name exactly as given, otherwise `null`. Surrounding whitespace makes a name
- * invalid here, so that every name a caller passes stands for at most one user.
- */
+/** Returns the name if it is a valid user name exactly as given, otherwise `null` (`parseExact()`). */
 export function parseUserName(name: string): string | null {
-  const result = userNameSchema.safeParse(name);
-  return result.success && result.data === name ? result.data : null;
+  return parseExact(userNameSchema, name);
 }
 
 export const USER_TYPE_MESSAGE = "Choose the type of the account";

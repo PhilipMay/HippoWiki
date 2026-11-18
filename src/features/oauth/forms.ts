@@ -4,6 +4,7 @@
 
 import { AUTHORIZATION_PARAMS, type AuthorizationParams } from "@/features/oauth/schema";
 import { oauthAuthorizePath, type SearchParams } from "@/lib/addresses";
+import { textField } from "@/lib/forms";
 
 /** The name of the field of the consent form with the lifetime of the grant. */
 export const LIFETIME_FIELD = "lifetime";
@@ -37,8 +38,7 @@ export function readAuthorizationFormData(formData: FormData): AuthorizationPara
 
 /** The lifetime that the consent form submitted; a missing field and a file count as empty. */
 export function readLifetime(formData: FormData): string {
-  const value = formData.get(LIFETIME_FIELD);
-  return typeof value === "string" ? value : "";
+  return textField(formData, LIFETIME_FIELD);
 }
 
 /**

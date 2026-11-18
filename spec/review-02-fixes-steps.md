@@ -109,7 +109,7 @@ Decided by the user on 2026-11-18:
 - [x] The reads of the history in a service of their own
 - [x] MCP tools
 - [x] OAuth and grants
-- [ ] Actions, forms and schemas
+- [x] Actions, forms and schemas
 - [ ] Leftovers and small duplicates
 - [ ] Lint rules and checks
 - [ ] The query of a page and what a route shows

@@ -76,6 +76,13 @@ test("a user with a first password logs in and lands on the password change", as
   ]) {
     await expect(field).toHaveAttribute("type", "password");
   }
+  // The hint under "New password" names the lengths and the rules of a new password.
+  await expect(
+    page.getByText(
+      "8 to 128 characters, not built from your user name or the name of the wiki, and not a common password",
+      { exact: true },
+    ),
+  ).toBeVisible();
   // The header shows who is logged in and lets the user log out, but has no menu yet.
   const banner = page.getByRole("banner");
   await expect(banner.getByText("newcomer", { exact: true })).toBeVisible();

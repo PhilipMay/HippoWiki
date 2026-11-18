@@ -22,12 +22,9 @@ import { startTransition, useActionState, useEffect, useId, useRef, useState, ty
 import Link from "@/components/Link";
 import { type CreateUserFormAction } from "@/features/users/forms";
 import { USER_NAME_MAX_LENGTH, USER_NAME_MIN_LENGTH } from "@/features/users/limits";
-import { USER_TYPES, type UserType } from "@/features/users/user-type";
+import { USER_TYPE_LABELS, USER_TYPES, type UserType } from "@/features/users/user-type";
 import { focusOnEntered } from "@/lib/focus";
 import { useHydrated } from "@/lib/hydration";
-
-/** The label of each type in the radio group. */
-const TYPE_LABELS: Record<UserType, string> = { user: "User", admin: "Admin" };
 
 type CreateUserDialogProps = {
   /** Server Action that creates the user; it returns the errors to show, or the user with its first password. */
@@ -188,7 +185,7 @@ export default function CreateUserDialog({ action, closeHref }: CreateUserDialog
                         key={value}
                         value={value}
                         control={<Radio slotProps={{ input: index === 0 ? { ref: typeRef } : {} }} />}
-                        label={TYPE_LABELS[value]}
+                        label={USER_TYPE_LABELS[value]}
                       />
                     ))}
                   </RadioGroup>

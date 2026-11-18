@@ -4,11 +4,16 @@
 // `requireUser()` first, which redirects to the login page without a logged-in user: a Server Action is a public
 // endpoint, whatever page shows its form. The call stands outside every `try` block, because the redirect throws. The
 // user it returns is passed to the service write as the actor of the browser, who becomes the last editor.
+//
+// `not-allowed` of a write shows the not-found page: an admin changes no content, and for an admin no content exists;
+// nor does a folder without a role of the user. A malformed id that is bound to an action is answered as a missing row
+// of its kind, with the message that the folder or page no longer exists.
 
 import { notFound, redirect } from "next/navigation";
 
 import { requireUser } from "@/features/auth/session";
 import { inBrowser } from "@/features/folder-roles/actors";
+import { FOLDER_GONE_MESSAGE, NAME_TAKEN_STATE, TAB_GONE_MESSAGE } from "@/features/folders/forms";
 import { parseFolderId } from "@/features/folders/schema";
 import {
   parseNewPageFormData,
@@ -23,10 +28,10 @@ import {
   type PageRestoreFormState,
   type PageRevertFormState,
 } from "@/features/pages/forms";
-import { parsePageId, revisionNumberSchema } from "@/features/pages/schema";
+import { isRevisionNumber, parsePageId } from "@/features/pages/schema";
 import * as pageService from "@/features/pages/service";
 import { CHANGED_NOTICE, folderPath, pagePath, pageRevertPath, tabPath, type PageNotice } from "@/lib/addresses";
-import { NAME_TAKEN_MESSAGE } from "@/lib/names";
+import type { FormState } from "@/lib/forms";
 import { revalidateContent } from "@/lib/revalidate";
 
 const SAVE_FAILED_MESSAGE = "The page could not be saved. Please try again.";
@@ -37,13 +42,22 @@ const REVERT_FAILED_MESSAGE = "The page could not be reverted. Please try again.
 const REVERT_INVALID_MESSAGE =
   "This revision breaks a limit of pages and cannot be restored. Copy its raw form into the editor to fix it:";
 const PAGE_GONE_MESSAGE = "This page no longer exists.";
-const FOLDER_GONE_MESSAGE = "This folder no longer exists.";
-const TAB_GONE_MESSAGE = "This tab no longer exists.";
 /** What the name field shows when no name was sent and the title of the content suggests none. */
 const NO_SUGGESTED_NAME_MESSAGE = "The title suggests no name. Enter a name.";
 
-/** The form state that shows "Name is already in use" at the name field. */
-const nameTakenState = { fieldErrors: { name: [NAME_TAKEN_MESSAGE] } };
+/**
+ * The form state of a form with a name and a place whose parse failed: the errors of its fields, and the message that
+ * the tab no longer exists when the place is no tab id. Both are reported together.
+ */
+function invalidPlaceState<FieldErrors extends object>(input: {
+  fieldErrors: FieldErrors;
+  placeInvalid: boolean;
+}): FormState<FieldErrors> {
+  return {
+    ...(Object.keys(input.fieldErrors).length > 0 && { fieldErrors: input.fieldErrors }),
+    ...(input.placeInvalid && { message: TAB_GONE_MESSAGE }),
+  };
+}
 
 /**
  * The address of a page as stored, optionally with an action and a notice. Actions redirect to it, never to an address
@@ -55,12 +69,12 @@ function addressOf({ name, folder, tab }: pageService.StoredPage, action?: strin
 
 /**
  * Shows the editor or dialog of the action again for a change that was refused because the page was changed after it
- * was opened: at the page's address as stored, which can be a new one, with the notice that says so. The content is
- * revalidated first, so that the address shows the page as stored.
+ * was opened: at the given address of the action at the page's address as stored, which can be a new one, with the
+ * notice that says so. The content is revalidated first, so that the address shows the page as stored.
  */
-function showChanged(page: pageService.StoredPage, action: string): never {
+function showChanged(address: string): never {
   revalidateContent();
-  redirect(addressOf(page, action, CHANGED_NOTICE));
+  redirect(address);
 }
 
 /**
@@ -80,19 +94,12 @@ export async function createPage(
   if (!parsedFolderId) return { message: FOLDER_GONE_MESSAGE };
 
   const input = parseNewPageFormData(formData);
-  if (!input.success) {
-    const hasFieldErrors = Object.keys(input.fieldErrors).length > 0;
-    return {
-      ...(hasFieldErrors && { fieldErrors: input.fieldErrors }),
-      ...(input.placeInvalid && { message: TAB_GONE_MESSAGE }),
-    };
-  }
+  if (!input.success) return invalidPlaceState(input);
   const { name, content, tabId } = input.data;
 
   const result = await pageService.createPage(inBrowser(user), parsedFolderId, { name, content, tabId });
   if (!result.ok) {
     switch (result.error.code) {
-      // An admin changes no content, and for an admin no content exists; nor does a folder without a role of the user.
       case "not-allowed":
         notFound();
       case "folder-not-found":
@@ -105,7 +112,7 @@ export async function createPage(
       case "no-suggested-name":
         return { fieldErrors: { name: [NO_SUGGESTED_NAME_MESSAGE] } };
       case "name-taken":
-        return nameTakenState;
+        return NAME_TAKEN_STATE;
       case "failed":
         return { message: SAVE_FAILED_MESSAGE };
     }
@@ -139,13 +146,12 @@ export async function updatePageContent(
   const result = await pageService.updatePageContent(inBrowser(user), pageId, { content, version });
   if (!result.ok) {
     switch (result.error.code) {
-      // An admin changes no content, and for an admin no content exists; nor does a folder without a role of the user.
       case "not-allowed":
         notFound();
       case "page-not-found":
         return { message: PAGE_GONE_MESSAGE };
       case "page-changed":
-        showChanged(result.error.page, "edit");
+        showChanged(addressOf(result.error.page, "edit", CHANGED_NOTICE));
       case "invalid-input":
         return { fieldErrors: result.error.fieldErrors };
       case "failed":
@@ -177,29 +183,23 @@ export async function moveOrRenamePage(
   if (!pageId) return { message: PAGE_GONE_MESSAGE };
 
   const input = parsePageMoveOrRenameFormData(formData);
-  if (!input.success) {
-    return {
-      ...(input.fieldErrors.name && { fieldErrors: input.fieldErrors }),
-      ...(input.placeInvalid && { message: TAB_GONE_MESSAGE }),
-    };
-  }
+  if (!input.success) return invalidPlaceState(input);
 
   const result = await pageService.moveOrRenamePage(inBrowser(user), pageId, input.data);
   if (!result.ok) {
     switch (result.error.code) {
-      // An admin changes no content, and for an admin no content exists; nor does a folder without a role of the user.
       case "not-allowed":
         notFound();
       case "page-not-found":
         return { message: PAGE_GONE_MESSAGE };
       case "page-changed":
-        showChanged(result.error.page, "move-or-rename");
+        showChanged(addressOf(result.error.page, "move-or-rename", CHANGED_NOTICE));
       case "tab-not-found":
         return { message: TAB_GONE_MESSAGE };
       case "invalid-input":
         return { fieldErrors: result.error.fieldErrors };
       case "name-taken":
-        return nameTakenState;
+        return NAME_TAKEN_STATE;
       case "failed":
         return { message: SAVE_FAILED_MESSAGE };
     }
@@ -230,13 +230,12 @@ export async function deletePage(
   const result = await pageService.deletePage(inBrowser(user), pageId, { version });
   if (!result.ok) {
     switch (result.error.code) {
-      // An admin changes no content, and for an admin no content exists; nor does a folder without a role of the user.
       case "not-allowed":
         notFound();
       case "page-not-found":
         return { message: PAGE_GONE_MESSAGE };
       case "page-changed":
-        showChanged(result.error.page, "delete");
+        showChanged(addressOf(result.error.page, "delete", CHANGED_NOTICE));
       case "failed":
         return { message: DELETE_FAILED_MESSAGE };
     }
@@ -265,18 +264,11 @@ export async function restorePage(
   if (!pageId) return { message: PAGE_GONE_MESSAGE };
 
   const input = parsePageRestoreFormData(formData);
-  if (!input.success) {
-    const hasFieldErrors = Object.keys(input.fieldErrors).length > 0;
-    return {
-      ...(hasFieldErrors && { fieldErrors: input.fieldErrors }),
-      ...(input.placeInvalid && { message: TAB_GONE_MESSAGE }),
-    };
-  }
+  if (!input.success) return invalidPlaceState(input);
 
   const result = await pageService.restorePage(inBrowser(user), pageId, input.data);
   if (!result.ok) {
     switch (result.error.code) {
-      // An admin changes no content, and for an admin no content exists; nor does a folder without a role of the user.
       case "not-allowed":
         notFound();
       case "page-not-found":
@@ -286,7 +278,7 @@ export async function restorePage(
       case "invalid-input":
         return { fieldErrors: result.error.fieldErrors };
       case "name-taken":
-        return nameTakenState;
+        return NAME_TAKEN_STATE;
       case "failed":
         return { message: RESTORE_FAILED_MESSAGE };
     }
@@ -315,13 +307,12 @@ export async function revertPage(
 
   const pageId = parsePageId(id);
   if (!pageId) return { message: PAGE_GONE_MESSAGE };
-  if (!revisionNumberSchema.safeParse(revision).success) notFound();
+  if (!isRevisionNumber(revision)) notFound();
 
   const { version } = parsePageRevertFormData(formData);
   const result = await pageService.revertPage(inBrowser(user), pageId, { revision, version });
   if (!result.ok) {
     switch (result.error.code) {
-      // An admin changes no content, and for an admin no content exists; nor does a folder without a role of the user.
       case "not-allowed":
       // A revert that would change nothing is not offered.
       case "revision-not-found":
@@ -330,8 +321,7 @@ export async function revertPage(
         return { message: PAGE_GONE_MESSAGE };
       case "page-changed": {
         const { folder, tab, name } = result.error.page;
-        revalidateContent();
-        redirect(pageRevertPath(folder.name, tab?.name ?? null, name, revision, CHANGED_NOTICE));
+        showChanged(pageRevertPath(folder.name, tab?.name ?? null, name, revision, CHANGED_NOTICE));
       }
       case "invalid-input":
         return {

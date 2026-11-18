@@ -13,7 +13,7 @@ import * as userService from "@/features/users/service";
 import { usersPath } from "@/lib/addresses";
 import { NAME_TAKEN_MESSAGE } from "@/lib/names";
 
-const BUSY_MESSAGE = "Too many logins at the moment, please try again";
+const BUSY_MESSAGE = "The server is busy, please try again in a moment";
 const CREATE_FAILED_MESSAGE = "The user could not be created. Please try again.";
 
 /**

@@ -15,19 +15,14 @@ import {
   type PageMoveOrRenameInput,
   type PageRestoreInput,
 } from "@/features/pages/schema";
+import { textField, type FormState, type ParseResult } from "@/lib/forms";
 import type { NameFieldErrors } from "@/lib/names";
 
 /** State of a page form between submissions: errors from the last attempt, if any. */
-export type PageFormState = {
-  fieldErrors?: PageFieldErrors;
-  /** An error that is not about a single field, e.g. when the database is unreachable. */
-  message?: string;
-};
+export type PageFormState = FormState<PageFieldErrors>;
 
 /** A Server Action behind a page form; it returns the errors to show, or redirects on success. */
 export type PageFormAction = (prevState: PageFormState, formData: FormData) => Promise<PageFormState>;
-
-type ParseResult<Data, FieldErrors> = { success: true; data: Data } | { success: false; fieldErrors: FieldErrors };
 
 /**
  * Name of the hidden form field that holds the version of the page that the editor or dialog was opened with: the
@@ -48,12 +43,12 @@ function parseVersion(formData: FormData): number | null {
 
 /**
  * Validates the content of a submitted page form, derives the title from it and reads the version of the page. A
- * missing content field counts as empty; submitted `title` and `name` fields are ignored.
+ * missing content field and a file count as empty; submitted `title` and `name` fields are ignored.
  */
 export function parsePageContentFormData(
   formData: FormData,
 ): ParseResult<PageContentInput & { version: number | null }, PageFieldErrors> {
-  const result = pageContentInputSchema.safeParse({ content: formData.get("content") ?? "" });
+  const result = pageContentInputSchema.safeParse({ content: textField(formData, "content") });
   if (result.success) return { success: true, data: { ...result.data, version: parseVersion(formData) } };
   return { success: false, fieldErrors: z.flattenError(result.error).fieldErrors };
 }
@@ -75,7 +70,7 @@ function parsePlace(formData: FormData): { success: true; tabId: string | null }
 
 /**
  * Validates name and content of a submitted new page form, derives the title from the content and reads the place.
- * Missing name and content count as empty; an empty or missing place is the folder itself, a malformed tab id or a file
+ * Missing name and content and a file count as empty; an empty or missing place is the folder itself, a malformed tab id or a file
  * is no place; a submitted `title` field is ignored. On failure, returns the errors of name and content and whether the
  * place is invalid; all are reported together.
  */
@@ -83,8 +78,8 @@ export function parseNewPageFormData(
   formData: FormData,
 ): { success: true; data: NewPageInput } | { success: false; fieldErrors: PageFieldErrors; placeInvalid: boolean } {
   const result = newPageInputSchema.safeParse({
-    name: formData.get("name") ?? "",
-    content: formData.get("content") ?? "",
+    name: textField(formData, "name"),
+    content: textField(formData, "content"),
   });
   const place = parsePlace(formData);
   if (result.success && place.success) return { success: true, data: { ...result.data, tabId: place.tabId } };
@@ -95,12 +90,11 @@ export function parseNewPageFormData(
   };
 }
 
-/** State of the "Move or rename page" form between submissions: errors from the last attempt, if any. */
-export type PageMoveOrRenameFormState = {
-  fieldErrors?: NameFieldErrors;
-  /** An error that is not about the name, e.g. when the chosen tab or the page no longer exists. */
-  message?: string;
-};
+/**
+ * State of the "Move or rename page" form between submissions: errors from the last attempt, if any; the message is
+ * one that is not about the name, e.g. when the chosen tab or the page no longer exists.
+ */
+export type PageMoveOrRenameFormState = FormState<NameFieldErrors>;
 
 /** A Server Action behind the "Move or rename page" form; it returns the errors to show, or redirects on success. */
 export type PageMoveOrRenameFormAction = (
@@ -110,7 +104,7 @@ export type PageMoveOrRenameFormAction = (
 
 /**
  * Validates the name and reads the place and the version of the page of a submitted "Move or rename page" form. A
- * missing name counts as empty; an empty or missing place is the folder itself, a malformed tab id or a file is no
+ * missing name and a file count as empty; an empty or missing place is the folder itself, a malformed tab id or a file is no
  * place; a missing or malformed version is `null`, which is no error of the form. Other fields, the content in
  * particular, are ignored, so no content rule can block a save. On failure, returns the errors of the name field and
  * whether the place is invalid; both are reported together.
@@ -120,7 +114,7 @@ export function parsePageMoveOrRenameFormData(
 ):
   | { success: true; data: PageMoveOrRenameInput & { version: number | null } }
   | { success: false; fieldErrors: NameFieldErrors; placeInvalid: boolean } {
-  const name = pageNameInputSchema.safeParse({ name: formData.get("name") ?? "" });
+  const name = pageNameInputSchema.safeParse({ name: textField(formData, "name") });
   const place = parsePlace(formData);
   if (name.success && place.success) {
     return { success: true, data: { name: name.data.name, tabId: place.tabId, version: parseVersion(formData) } };
@@ -172,11 +166,7 @@ export const CHOOSE_PLACE_MESSAGE = "Choose a place";
 export type PageRestoreFieldErrors = { name?: string[]; place?: string[] };
 
 /** State of the "Restore page" form between submissions: errors from the last attempt, if any. */
-export type PageRestoreFormState = {
-  fieldErrors?: PageRestoreFieldErrors;
-  /** An error that is not about a single field, e.g. when the chosen tab or the page no longer exists. */
-  message?: string;
-};
+export type PageRestoreFormState = FormState<PageRestoreFieldErrors>;
 
 /** A Server Action behind the "Restore page" form; it returns the errors to show, or redirects on success. */
 export type PageRestoreFormAction = (
@@ -186,7 +176,7 @@ export type PageRestoreFormAction = (
 
 /**
  * Validates the name and reads the place of a submitted "Restore page" form. The name is checked as for moving or
- * renaming; a missing name counts as empty. No place is preselected, so a missing place is reported as "Choose a place"
+ * renaming; a missing name and a file count as empty. No place is preselected, so a missing place is reported as "Choose a place"
  * at the place field; an empty place is the folder itself, a malformed tab id or a file is no place. Other fields are
  * ignored. On failure, returns the errors of name and place and whether the place is invalid; all are reported
  * together.
@@ -196,7 +186,7 @@ export function parsePageRestoreFormData(
 ):
   | { success: true; data: PageRestoreInput }
   | { success: false; fieldErrors: PageRestoreFieldErrors; placeInvalid: boolean } {
-  const name = pageNameInputSchema.safeParse({ name: formData.get("name") ?? "" });
+  const name = pageNameInputSchema.safeParse({ name: textField(formData, "name") });
   const placeMissing = formData.get(PLACE_FIELD) === null;
   const place = parsePlace(formData);
   if (name.success && !placeMissing && place.success) {

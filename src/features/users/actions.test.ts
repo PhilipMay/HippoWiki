@@ -77,7 +77,7 @@ describe("createUser", () => {
     ["invalid-input", { name: ["Reported by the service"] }, { fieldErrors: { name: ["Reported by the service"] } }],
     ["invalid-input", { type: ["Reported by the service"] }, { fieldErrors: { type: ["Reported by the service"] } }],
     ["name-taken", undefined, { fieldErrors: { name: ["Name is already in use"] } }],
-    ["busy", undefined, { message: "Too many logins at the moment, please try again" }],
+    ["busy", undefined, { message: "The server is busy, please try again in a moment" }],
     ["failed", undefined, { message: "The user could not be created. Please try again." }],
   ])("shows the form state of the code %s, without revalidating", async (code, fieldErrors, state) => {
     mocks.createUser.mockResolvedValue(failure(code, fieldErrors));

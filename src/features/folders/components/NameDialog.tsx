@@ -15,7 +15,8 @@ import { useActionState, useEffect, useId, useRef, useState } from "react";
 import Link from "@/components/Link";
 import { focusOnEntered } from "@/lib/focus";
 import { useHydrated } from "@/lib/hydration";
-import { NAME_MAX_LENGTH, type NameFormAction } from "@/lib/names";
+import type { NameFormAction } from "@/features/folders/forms";
+import { NAME_MAX_LENGTH } from "@/lib/names";
 
 type NameDialogProps = {
   /** Heading of the dialog, e.g. "New folder". */

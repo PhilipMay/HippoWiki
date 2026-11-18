@@ -4,26 +4,32 @@
 // calls `requireUser()` first, which redirects to the login page without a logged-in user: a Server Action is a
 // public endpoint, whatever page shows its form. The call stands outside every `try` block, because the redirect
 // throws. The user it returns is passed to the service write as the actor of the browser, who becomes the last editor.
+//
+// `not-allowed` of a write shows the not-found page: an admin changes no content, and for an admin no content exists;
+// nor does a folder without a role of the user. A malformed id that is bound to an action is answered as a missing row
+// of its kind, with the message that the folder or tab no longer exists.
 
 import { notFound, redirect } from "next/navigation";
 
 import { requireUser } from "@/features/auth/session";
 import { inBrowser } from "@/features/folder-roles/actors";
-import { parseFolderFormData, parseTabFormData, type TabDeleteFormState } from "@/features/folders/forms";
+import {
+  FOLDER_GONE_MESSAGE,
+  NAME_TAKEN_STATE,
+  parseFolderFormData,
+  parseTabFormData,
+  TAB_GONE_MESSAGE,
+  type NameFormState,
+  type TabDeleteFormState,
+} from "@/features/folders/forms";
 import { parseFolderId, parseTabId } from "@/features/folders/schema";
 import * as folderService from "@/features/folders/service";
 import { folderPath, tabPath } from "@/lib/addresses";
-import { NAME_TAKEN_MESSAGE, type NameFormState } from "@/lib/names";
 import { revalidateContent } from "@/lib/revalidate";
 
 const SAVE_FAILED_MESSAGE = "The folder could not be saved. Please try again.";
-const FOLDER_GONE_MESSAGE = "This folder no longer exists.";
 const TAB_SAVE_FAILED_MESSAGE = "The tab could not be saved. Please try again.";
-const TAB_GONE_MESSAGE = "This tab no longer exists.";
 const TAB_DELETE_FAILED_MESSAGE = "The tab could not be deleted. Please try again.";
-
-/** The form state that shows "Name is already in use" at the name field. */
-const nameTakenState: NameFormState = { fieldErrors: { name: [NAME_TAKEN_MESSAGE] } };
 
 /**
  * Creates a folder from the submitted name and redirects to its address. Returns the errors to show in the form if
@@ -38,13 +44,12 @@ export async function createFolder(_prevState: NameFormState, formData: FormData
   const result = await folderService.createFolder(inBrowser(user), input.data);
   if (!result.ok) {
     switch (result.error.code) {
-      // An admin changes no content, and for an admin no content exists; nor does a folder without a role of the user.
       case "not-allowed":
         notFound();
       case "invalid-input":
         return { fieldErrors: result.error.fieldErrors };
       case "name-taken":
-        return nameTakenState;
+        return NAME_TAKEN_STATE;
       case "failed":
         return { message: SAVE_FAILED_MESSAGE };
     }
@@ -72,7 +77,6 @@ export async function renameFolder(id: string, _prevState: NameFormState, formDa
   const result = await folderService.renameFolder(inBrowser(user), folderId, input.data);
   if (!result.ok) {
     switch (result.error.code) {
-      // An admin changes no content, and for an admin no content exists; nor does a folder without a role of the user.
       case "not-allowed":
         notFound();
       case "folder-not-found":
@@ -80,7 +84,7 @@ export async function renameFolder(id: string, _prevState: NameFormState, formDa
       case "invalid-input":
         return { fieldErrors: result.error.fieldErrors };
       case "name-taken":
-        return nameTakenState;
+        return NAME_TAKEN_STATE;
       case "failed":
         return { message: SAVE_FAILED_MESSAGE };
     }
@@ -111,7 +115,6 @@ export async function createTab(
   const result = await folderService.createTab(inBrowser(user), parsedFolderId, input.data);
   if (!result.ok) {
     switch (result.error.code) {
-      // An admin changes no content, and for an admin no content exists; nor does a folder without a role of the user.
       case "not-allowed":
         notFound();
       case "folder-not-found":
@@ -119,7 +122,7 @@ export async function createTab(
       case "invalid-input":
         return { fieldErrors: result.error.fieldErrors };
       case "name-taken":
-        return nameTakenState;
+        return NAME_TAKEN_STATE;
       case "failed":
         return { message: TAB_SAVE_FAILED_MESSAGE };
     }
@@ -146,7 +149,6 @@ export async function renameTab(id: string, _prevState: NameFormState, formData:
   const result = await folderService.renameTab(inBrowser(user), tabId, input.data);
   if (!result.ok) {
     switch (result.error.code) {
-      // An admin changes no content, and for an admin no content exists; nor does a folder without a role of the user.
       case "not-allowed":
         notFound();
       case "tab-not-found":
@@ -154,7 +156,7 @@ export async function renameTab(id: string, _prevState: NameFormState, formData:
       case "invalid-input":
         return { fieldErrors: result.error.fieldErrors };
       case "name-taken":
-        return nameTakenState;
+        return NAME_TAKEN_STATE;
       case "failed":
         return { message: TAB_SAVE_FAILED_MESSAGE };
     }
@@ -183,7 +185,6 @@ export async function deleteTab(folderId: string, id: string): Promise<TabDelete
   const result = await folderService.deleteTab(inBrowser(user), parsedFolderId, tabId);
   if (!result.ok) {
     switch (result.error.code) {
-      // An admin changes no content, and for an admin no content exists; nor does a folder without a role of the user.
       case "not-allowed":
         notFound();
       case "tab-not-found":

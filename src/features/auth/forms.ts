@@ -3,15 +3,15 @@
 
 import type { PasswordChangeFieldErrors, PasswordChangeInput } from "@/features/auth/schema";
 import { NEXT_PARAM, safeNextPath } from "@/lib/addresses";
+import { textField, type FormState, type ParseResult } from "@/lib/forms";
 
 export type LoginFieldErrors = { name?: string[]; password?: string[] };
 
-/** State of the login form between submissions: errors from the last attempt, if any. */
-export type LoginFormState = {
-  fieldErrors?: LoginFieldErrors;
-  /** An error that is not about one field, e.g. a wrong password, which is never told apart from an unknown name. */
-  message?: string;
-};
+/**
+ * State of the login form between submissions: errors from the last attempt, if any. Its message is one that is not
+ * about one field, e.g. a wrong password, which is never told apart from an unknown name.
+ */
+export type LoginFormState = FormState<LoginFieldErrors>;
 
 /** The Server Action behind the login form; it returns the errors to show, or redirects on success. */
 export type LoginFormAction = (prevState: LoginFormState, formData: FormData) => Promise<LoginFormState>;
@@ -19,22 +19,13 @@ export type LoginFormAction = (prevState: LoginFormState, formData: FormData) =>
 /** The Server Action behind the "Log out" button; it redirects to the login page. */
 export type LogoutFormAction = () => Promise<void>;
 
-export type ParseLoginResult =
-  { success: true; data: { name: string; password: string } } | { success: false; fieldErrors: LoginFieldErrors };
-
-/** The text of a form field; a missing field and a file count as empty. */
-function textOf(formData: FormData, field: string): string {
-  const value = formData.get(field);
-  return typeof value === "string" ? value : "";
-}
-
 /**
  * The address to go to after the login or the password change, from the hidden field of the form: a path on this
  * site, or the folder list for a missing field and for anything `safeNextPath()` refuses. It is checked here again,
  * because a crafted request can submit any value. It is not part of the input of the service.
  */
 export function readNextPath(formData: FormData): string {
-  return safeNextPath(textOf(formData, NEXT_PARAM));
+  return safeNextPath(textField(formData, NEXT_PARAM));
 }
 
 /**
@@ -42,9 +33,11 @@ export function readNextPath(formData: FormData): string {
  * belong to a user is decided by the service, which answers everything else like a wrong password. The password is
  * passed on as it is, with its spaces.
  */
-export function parseLoginFormData(formData: FormData): ParseLoginResult {
-  const name = textOf(formData, "name");
-  const password = textOf(formData, "password");
+export function parseLoginFormData(
+  formData: FormData,
+): ParseResult<{ name: string; password: string }, LoginFieldErrors> {
+  const name = textField(formData, "name");
+  const password = textField(formData, "password");
 
   const fieldErrors: LoginFieldErrors = {};
   if (name.trim() === "") fieldErrors.name = ["User name is required"];
@@ -54,11 +47,7 @@ export function parseLoginFormData(formData: FormData): ParseLoginResult {
 }
 
 /** State of the password change form between submissions: errors from the last attempt, if any. */
-export type PasswordChangeFormState = {
-  fieldErrors?: PasswordChangeFieldErrors;
-  /** An error that is not about one field, e.g. when the database is unreachable. */
-  message?: string;
-};
+export type PasswordChangeFormState = FormState<PasswordChangeFieldErrors>;
 
 /** The Server Action behind the password change form; it returns the errors to show, or redirects on success. */
 export type PasswordChangeFormAction = (
@@ -72,8 +61,8 @@ export type PasswordChangeFormAction = (
  */
 export function readPasswordChangeFormData(formData: FormData): PasswordChangeInput {
   return {
-    currentPassword: textOf(formData, "currentPassword"),
-    newPassword: textOf(formData, "newPassword"),
-    repeatPassword: textOf(formData, "repeatPassword"),
+    currentPassword: textField(formData, "currentPassword"),
+    newPassword: textField(formData, "newPassword"),
+    repeatPassword: textField(formData, "repeatPassword"),
   };
 }

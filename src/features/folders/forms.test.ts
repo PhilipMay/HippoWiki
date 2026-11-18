@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseFolderFormData, parseTabFormData } from "@/features/folders/forms";
 
-function formData(fields: Record<string, string>): FormData {
+function formData(fields: Record<string, string | Blob>): FormData {
   const data = new FormData();
   for (const [name, value] of Object.entries(fields)) data.set(name, value);
   return data;
@@ -23,10 +23,12 @@ describe("parseFolderFormData", () => {
     });
   });
 
-  it("reports a missing or empty name", () => {
+  it("reports a missing or empty name, and a file, as required", () => {
     const required = { success: false, fieldErrors: { name: ["Name is required"] } };
     expect(parseFolderFormData(formData({}))).toEqual(required);
     expect(parseFolderFormData(formData({ name: "  " }))).toEqual(required);
+    expect(parseFolderFormData(formData({ name: new File(["handbook"], "name.txt") }))).toEqual(required);
+    expect(parseTabFormData(formData({ name: new File(["guides"], "name.txt") }))).toEqual(required);
   });
 
   it("reports an invalid name", () => {
