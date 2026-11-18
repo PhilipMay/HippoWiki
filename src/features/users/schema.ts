@@ -21,7 +21,7 @@ import { nameSchemaWith, parseExact } from "@/lib/names";
 export const ADMIN_NAME = "admin";
 
 /** A user id: a UUID, like the ids of folders, tabs and pages. */
-export const userIdSchema = z.guid();
+const userIdSchema = z.guid();
 
 /** Returns the id if it is a well-formed user id, otherwise `null`, so that malformed ids never reach the database. */
 export function parseUserId(id: string): string | null {
@@ -40,13 +40,13 @@ export function parseUserName(name: string): string | null {
   return parseExact(userNameSchema, name);
 }
 
-export const USER_TYPE_MESSAGE = "Choose the type of the account";
+const USER_TYPE_MESSAGE = "Choose the type of the account";
 
 /**
  * The type of a new account. It has no default: a request without a type or with an unknown one is refused, so that
  * a broken or crafted request is noticed instead of creating a user of a type nobody chose.
  */
-export const userTypeSchema = z.enum(USER_TYPES, { error: USER_TYPE_MESSAGE });
+const userTypeSchema = z.enum(USER_TYPES, { error: USER_TYPE_MESSAGE });
 
 /** Input for creating a user: the name and the type. */
 export const userInputSchema = z.object({ name: userNameSchema, type: userTypeSchema });
@@ -60,12 +60,12 @@ export type UserFieldErrors = { name?: string[]; type?: string[] };
  * The context words: words that an attacker who targets this wiki tries first, together with the user name. A password
  * built only from them and from digits and symbols is refused (see `isBuiltFromContextWords`).
  */
-export const PASSWORD_CONTEXT_WORDS = ["hippowiki", "hippo", "wiki", "admin"] as const;
+const PASSWORD_CONTEXT_WORDS = ["hippowiki", "hippo", "wiki", "admin"] as const;
 
-export const PASSWORD_IS_CONTEXT_WORD_MESSAGE =
+const PASSWORD_IS_CONTEXT_WORD_MESSAGE =
   "Password must not be built only from the user name or the name of the wiki, digits and symbols";
 
-export const PASSWORD_IS_COMMON_MESSAGE = "Password is too common, choose another one";
+const PASSWORD_IS_COMMON_MESSAGE = "Password is too common, choose another one";
 
 /**
  * A password: 8 to 128 characters, counted as Better Auth counts them (the length of the string). Any characters are
@@ -113,7 +113,7 @@ export function passwordSchemaFor(userName: string) {
     .refine((password) => !isCommonPassword(password), PASSWORD_IS_COMMON_MESSAGE);
 }
 
-export const PASSWORD_IS_PLACEHOLDER_MESSAGE = "Password must not be a placeholder such as <first password>";
+const PASSWORD_IS_PLACEHOLDER_MESSAGE = "Password must not be a placeholder such as <first password>";
 
 /**
  * The first password of the admin from `HIPPOWIKI_ADMIN_PASSWORD`: the password rules of the admin, and not a

@@ -8,7 +8,7 @@ import Link from "@/components/Link";
 import { logOut } from "@/features/auth/actions";
 import { getCurrentUser } from "@/features/auth/session";
 import { isAdmin } from "@/features/users/user-type";
-import { accountPath, folderRolesOverviewPath, foldersPath, usersPath } from "@/lib/addresses";
+import { accountPath, folderRolesOverviewPath, foldersPath, homePath, usersPath } from "@/lib/addresses";
 import { siteName } from "@/lib/site";
 
 /**
@@ -26,7 +26,7 @@ export default async function AppHeader() {
         <Typography
           variant="h6"
           component={Link}
-          href="/"
+          href={homePath()}
           sx={{ color: "inherit", textDecoration: "none", fontWeight: 500 }}
         >
           {siteName}

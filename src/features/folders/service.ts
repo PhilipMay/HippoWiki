@@ -90,7 +90,7 @@ export type RenameTabError = NotAllowed | TabNotFound | InvalidName | NameTaken 
 export type DeleteTabError = NotAllowed | TabNotFound | Failed;
 
 /** A page deleted together with its tab: its name and its title. */
-export type PageDeletedWithTab = { name: string; title: string };
+type PageDeletedWithTab = { name: string; title: string };
 
 /**
  * What a tab deletion leaves: the folder of the tab as stored, the number of pages deleted with the tab, and these

@@ -89,7 +89,7 @@ Node.js is managed with nvm; every shell session needs `nvm use` first (it reads
 ```bash
 source ~/.nvm/nvm.sh && nvm use
 npm install
-npm run check   # format:check, docs:check, lint, typecheck, test, side by side
+npm run check   # format:check, docs:check, knip, lint, typecheck, test, side by side
 npm run check:all  # check, test:integration and build side by side
 npm run test:coverage  # unit test coverage, report in coverage/
 npm run test:cost  # tests with a time budget, on their own and without coverage
@@ -133,3 +133,5 @@ describes. When a finding of a review report is fixed, follow "Fixing a finding 
 - After the last step of a step plan, push as described in `spec/step-plan-workflow.md`.
 - After the requirements of a feature are approved, commit as described in `spec/requirements-workflow.md`; do not
   push.
+- A change outside a step plan, a finding of a review report fixed on its own included, is not committed: it stays in
+  the working tree for the user.

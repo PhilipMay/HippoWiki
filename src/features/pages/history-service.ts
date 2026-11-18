@@ -37,7 +37,7 @@ export type PageRevisions = { newest: number; revisions: RevisionSummary[] };
 export type RevisionDetail = RevisionSummary & { content: string; newest: number; isCurrent: boolean };
 
 /** A revision of a page with its content, as a comparison shows it. */
-export type RevisionWithContent = RevisionSummary & { content: string };
+type RevisionWithContent = RevisionSummary & { content: string };
 
 /** Two revisions of a page to compare, the older first, and the number of the newest revision of the page. */
 export type RevisionComparison = { newest: number; older: RevisionWithContent; newer: RevisionWithContent };

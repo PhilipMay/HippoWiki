@@ -1,5 +1,6 @@
-// Checks that the file references in `spec/*.md`, `README.md` and `CLAUDE.md` point to files that exist, so that a
-// renamed or deleted file cannot leave a spec pointing nowhere. Run by `npm run docs:check`, part of `npm run check`.
+// Checks that the file references in `spec/*.md`, `README.md`, `CLAUDE.md` and the skills in `.claude/skills/` point to
+// files that exist, so that a renamed or deleted file cannot leave a spec or a skill pointing nowhere. Run by
+// `npm run docs:check`, part of `npm run check`.
 //
 // A reference is a code span (`...`) outside a fenced code block that
 // - starts with a top-level file or directory of the repository (`src/`, `scripts/image.sh smoke`, `Containerfile`),
@@ -8,8 +9,9 @@
 //   This catches a reference to a Markdown file in a directory that does not exist at all.
 //
 // Skipped: spans with a placeholder or a glob (`<`, `*`), paths that Git ignores (`coverage/`, `build/`,
-// `src/generated/`), also as a directory whether or not it exists (`e2e/.auth`), and the step plans `spec/*-steps.md`, which name files that do not exist yet. A bare file name
-// such as `wait.ts` is not checked: the sentence around it names its directory.
+// `src/generated/`), also as a directory whether or not it exists (`e2e/.auth`), and the step plans `spec/*-steps.md`,
+// which name files that do not exist yet. A bare file name such as `wait.ts` is not checked: the sentence around it
+// names its directory.
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -22,6 +24,10 @@ const documents = [
     .map((name) => path.join("spec", name)),
   "README.md",
   "CLAUDE.md",
+  ...readdirSync(path.join(".claude", "skills"), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => path.join(".claude", "skills", entry.name, "SKILL.md"))
+    .filter((file) => existsSync(file)),
 ];
 
 /** Returns the paths among `paths` that Git ignores. */

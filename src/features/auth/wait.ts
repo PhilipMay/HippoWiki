@@ -4,11 +4,11 @@
 // addresses do not get many guesses. A pure helper, no server-only imports.
 
 /** After this many failed logins in a row for a user name from one client address group, the next one has to wait. */
-export const FAILURES_BEFORE_WAIT = 5;
+const FAILURES_BEFORE_WAIT = 5;
 /** The wait after the fifth failure. */
-export const FIRST_WAIT_MS = 60_000;
+const FIRST_WAIT_MS = 60_000;
 /** The longest wait. */
-export const MAX_WAIT_MS = 15 * 60_000;
+const MAX_WAIT_MS = 15 * 60_000;
 /**
  * How long the failed logins of a user name from a client address group are kept after the last of them. The longest
  * wait is 15 minutes, so no older row still makes a login wait; failures in a row are failures with less than this

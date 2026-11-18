@@ -122,8 +122,8 @@ step.
 
 - These commands pass, in this order. A step that changes only documentation runs `npm run check` instead of both
   (see "Changes to documentation only" below).
-  1. `npm run check:all`: `npm run check` (the format check, the doc references, lint, the type check, the unit tests
-     and the cost tests), `npm run test:integration` and `npm run build`, run side by side by `scripts/check.ts`, with
+  1. `npm run check:all`: `npm run check` (the format check, the doc references, the unused exports of knip, lint,
+     the type check, the unit tests and the cost tests), `npm run test:integration` and `npm run build`, run side by side by `scripts/check.ts`, with
      the cost tests last and alone. Every check runs also when another one fails, so one run shows all failures.
   2. The end-to-end tests, only after `npm run check:all` is done and never at the same time, also not next to
      `npm run test:integration` alone: the integration and end-to-end tests use the same test database container and

@@ -82,7 +82,7 @@ export function grantExpiresAt(lifetime: GrantLifetime, now: Date): Date {
 export const grantLifetimeSchema = z.enum(GRANT_LIFETIMES, { error: "Choose how long the app may connect" });
 
 /** The id of a row of a client: a UUID, like every other id. It is the `client_id` of a registered client. */
-export const clientRowIdSchema = z.guid();
+const clientRowIdSchema = z.guid();
 
 /** Returns the id if it is a well-formed id of a client row, otherwise `null`. */
 export function parseClientRowId(id: string): string | null {
@@ -94,13 +94,13 @@ export function parseClientRowId(id: string): string | null {
 export const URL_MAX_LENGTH = 2048;
 
 /** How many redirect addresses a client may have. */
-export const MAX_REDIRECT_URIS = 10;
+const MAX_REDIRECT_URIS = 10;
 
 /** The longest name of a client; a longer one is cut. */
 export const CLIENT_NAME_MAX_LENGTH = 50;
 
 /** The name of a client that gave none. */
-export const DEFAULT_CLIENT_NAME = "Connected app";
+const DEFAULT_CLIENT_NAME = "Connected app";
 
 /** The hosts that are the own machine of the user: a native client listens there for its code. */
 const LOOPBACK_HOSTS = ["localhost", "127.0.0.1", "[::1]"];
@@ -220,7 +220,7 @@ export function clientNameOf(value: unknown): string {
 }
 
 /** The redirect addresses of a client: 1 to 10, each one allowed, each one only once. */
-export const redirectUrisSchema = z
+const redirectUrisSchema = z
   .array(z.unknown(), { error: "redirect_uris must be a list of addresses" })
   .min(1, "redirect_uris needs at least one address")
   .max(MAX_REDIRECT_URIS, `redirect_uris may have at most ${MAX_REDIRECT_URIS} addresses`)
@@ -245,9 +245,6 @@ export const clientRegistrationSchema = z.object({
   redirect_uris: redirectUrisSchema,
   client_name: z.unknown().optional().transform(clientNameOf),
 });
-
-/** A validated registration. */
-export type ClientRegistration = z.output<typeof clientRegistrationSchema>;
 
 /** A PKCE challenge of the method `S256`: the SHA-256 of the verifier in base64url, 43 characters. */
 const CODE_CHALLENGE = /^[A-Za-z0-9_-]{43}$/;
@@ -309,11 +306,11 @@ export function parseMetadataUrl(value: string): string | null {
 }
 
 /** How long a fetched metadata document is used when its response does not say: an hour. */
-export const METADATA_DEFAULT_CACHE_SECONDS = 60 * 60;
+const METADATA_DEFAULT_CACHE_SECONDS = 60 * 60;
 /** The shortest time a fetched metadata document is used, whatever its response says: five minutes. */
-export const METADATA_MIN_CACHE_SECONDS = 5 * 60;
+const METADATA_MIN_CACHE_SECONDS = 5 * 60;
 /** The longest time a fetched metadata document is used, whatever its response says: a day. */
-export const METADATA_MAX_CACHE_SECONDS = 24 * 60 * 60;
+const METADATA_MAX_CACHE_SECONDS = 24 * 60 * 60;
 
 /**
  * How many seconds a fetched metadata document is used before it is fetched again, from the `Cache-Control` header of
@@ -334,7 +331,7 @@ export function metadataCacheSeconds(cacheControl: string | null | undefined): n
 }
 
 /** A metadata document that passed the checks: what is stored of it. */
-export type ClientMetadata = { name: string; redirectUris: string[] };
+type ClientMetadata = { name: string; redirectUris: string[] };
 
 /** A metadata document, or why it was refused. */
 export type ParseMetadataResult = { ok: true; metadata: ClientMetadata } | { ok: false; reason: string };

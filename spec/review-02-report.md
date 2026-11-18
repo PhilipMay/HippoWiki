@@ -14,9 +14,9 @@
     findings of the tests that are still open are minor.
   - Documents that the features outran: rules stated in full in several documents, and copies of code and
     constants in the specs.
-- Findings: 23 open of 107, 0 Blocker, 0 Major, 19 Minor and 4 Nit (6 `issue:`, 13 `suggestion:`, 3 `nit:` and
-  1 `question:`).
-- Confidence of the suggestions: 1 High, 19 Medium and 2 Low; the question has none. A High suggestion can be
+- Findings: 20 open of 107, 0 Blocker, 0 Major, 18 Minor and 2 Nit (6 `issue:`, 12 `suggestion:` and 2 `nit:`); no
+  `question:` is open.
+- Confidence of the suggestions: 1 High, 17 Medium and 2 Low. A High suggestion can be
   fixed as written; the others wait for the user, as `issue-report.md` describes.
 - Decisions: on 2026-11-18 the user decided all Medium and Low suggestions. Each of these findings ends with a line
   `Decision`, and is fixed as that line says, without asking again. The questions were decided by the user on the
@@ -258,63 +258,6 @@ for `not-allowed` the browser shows the not-found page and MCP says that the rol
 - Confidence: Medium. A choice of structure without a change of behaviour.
 - Decision (2026-11-18): as suggested.
 
-#### suggestion: four rules of `architecture.md` are convention only, and a lint rule could hold them
-
-- Location: `eslint.config.mjs`, lines 122–192; `spec/architecture.md`, section "Linting"
-- Severity: Minor. The rules hold today; nothing keeps them true.
-- Category: readability
-- Problem: ESLint enforces the groups of imports, the environment, the database only in services, services as
-  types in routes and components, and no `next` or `react` in a `service.ts`. Convention only are:
-  - `no-console`, which is a list of globs that leaves out the session module, every forms and schema module,
-    every page and layout and the shared components;
-  - "the MCP tools import nothing from `next` or `react`", because the lint rule matches only a `service.ts`;
-  - addresses only from `src/lib/addresses.ts`: `src/lib/revalidate.ts` repeats two roots, and the header and the
-    auth actions write `"/"`;
-  - `select`, never `include`, in a service.
-- Impact: a new server module of a kind that no glob names, or a new address written by hand, passes the checks.
-- Evidence: `eslint.config.mjs`, line 175, `files: ["src/features/**/service.ts"],`; `src/lib/revalidate.ts`, line
-  9, `revalidatePath("/folders", "layout");`.
-- Suggestion (optional): turn `no-console` round, on for `src/` and off for the two error pages; add the MCP tools
-  and the pure modules of OAuth to the rule of the services; a syntax rule against `include`; helpers for the
-  roots that the revalidation uses.
-- Confidence: Medium. The gaps are as cited; none of the rules was run against the code.
-- Decision (2026-11-18): as suggested, all four rules.
-
-#### nit: unused names, an unused colour, and small twins
-
-- Location: `src/features/auth/forms.ts`, lines 19–20, `LogoutFormAction`; `src/features/auth/schema.ts`, lines
-  22–23, `LoginInput`; `src/lib/addresses.ts`, lines 155–158, `authorizationServerMetadataPath()`;
-  `src/lib/theme.ts`, line 11; `src/features/mcp/queries.ts`, lines 17–24; `src/features/users/records.ts`;
-  `src/app/error.tsx` and `src/app/global-error.tsx`
-- Severity: Nit. Nothing breaks.
-- Category: readability
-- Problem:
-  - `LogoutFormAction` and `LoginInput` are used nowhere; `authorizationServerMetadataPath()` only by its test;
-    the secondary colour of the theme by no component.
-  - A search for exports that no other file imports gives about 150 names in `src/`. Most are types of results and
-    constants that only the tests of their file import; no check of the project reports an unused export.
-  - `listMcpAddresses()` builds the full MCP address a second time, as `mcpResourceOf()` does, and reads the
-    environment itself.
-  - Copying to the clipboard has two shapes of state and two ways to show a failure.
-  - `records.ts` of the users holds two things without a link: the rows of Better Auth, and the wording of the
-    last editor, which nine components import from the users feature.
-  - A malformed id bound to an action is "not found" in the actions of roles and grants and a message "no longer
-    exists" in those of folders and pages.
-  - The field `user` carries a user name in "Give role" and a user id in the list of roles.
-- Impact: none at run time; a reader takes dead names for an interface.
-- Evidence: `export type LogoutFormAction = () => Promise<void>;`; the header passes `logOut` to the form
-  directly.
-- Suggestion (optional): delete the two types and the unused function or use it, drop the colour, decide on one
-  answer for a malformed id, and add a check for unused exports to `npm run check`.
-- Confidence: Medium. High for the two types, which nothing references; the rest are small decisions.
-- Status: the answer to a malformed id is fixed: it is the answer to a missing row of the feature of the action in
-  all four, as "Validation and errors" in `architecture.md` says now. `LogoutFormAction`, `LoginInput`,
-  `authorizationServerMetadataPath()` with its test and the secondary colour are deleted, and `listMcpAddresses()`
-  builds its addresses with `mcpResourceOf()`. Open: the check for unused exports.
-- Decision (2026-11-18): as suggested: the two types, `authorizationServerMetadataPath()` and the colour are deleted; a
-  malformed id bound to an action is answered as the action answers a missing row of its feature; `knip` is added to
-  `npm run check`.
-
 #### nit: the time, the empty state and the label of a page are typed again in every list
 
 - Location: the `<time>` element in ten components, for example `src/features/pages/components/PageListItem.tsx`
@@ -351,6 +294,10 @@ for `not-allowed` the browser shows the not-found page and MCP says that the rol
 - Every dialog with a form moves the focus to the first field with an error after a refused save, the "Save page"
   dialog included (`e2e/create-page.spec.ts`).
 - There is no `TODO` or `FIXME` in `src/`, `scripts/` or `prisma/`.
+- The conventions that were habits are checks now: `no-console` holds for all of `src/` but the two error pages, the
+  MCP server and the pure modules of OAuth hold the rules of a service, a service reads with `select` only, the
+  roots and `/` come from `src/lib/addresses.ts`, and `npm run knip` reports unused files and exports in
+  `npm run check`; the check of doc references reads the skills too.
 
 ### Tests: unit and integration
 
@@ -644,21 +591,6 @@ that several of them state were compared with each other and with the code:
 - Decision (2026-11-18): as suggested: a list of terms at the top of `architecture.md` and "caller other than the
   browser" throughout; the terms for connected apps are chosen to fit the names the UI shows, the view "AI apps" and the
   page of the connected apps.
-
-#### question: is a change outside a step plan committed?
-
-- Location: `CLAUDE.md`, section "Git Handling"; `spec/step-plan-workflow.md`, section "Fixing a finding of the
-  review report"; `scripts/check-doc-references.ts`
-- Severity: Nit
-- Category: docs
-- Problem: `CLAUDE.md` names commits only for step plans, their steps and requirements, and forbids asking. For a
-  finding with a High confidence, fixed on its own "without asking the user", nothing says whether it is committed
-  or left in the working tree. The check of doc references does not cover the skills in `.claude/skills/`, which
-  name two workflow files; a rename of one would break two skills unnoticed.
-- Impact: an agent that fixes a finding on its own has no rule for the end of its work.
-- Evidence: "Do not ask whether something should be committed or pushed, and do not offer to do so."
-- Suggestion (optional): one line under "Git Handling" for a change outside a step plan, and the skills in the
-  list of documents of the check.
 
 #### Reviewed
 

@@ -5,7 +5,7 @@ import { analyseMarkdown } from "@/features/pages/markdown";
 import { nameSchema } from "@/lib/names";
 
 /** A page id: a UUID in its canonical 8-4-4-4-12 hex form, as PostgreSQL generates it. */
-export const pageIdSchema = z.guid();
+const pageIdSchema = z.guid();
 
 /**
  * Returns the id if it is a well-formed page id, otherwise `null`. Malformed ids must not reach the database, because
@@ -26,7 +26,7 @@ const PAGE_VERSION_MAX = INTEGER_MAX;
  * The version of a page that a change is based on: an integer of at least 1, as the page had it when its editor or
  * dialog was opened.
  */
-export const pageVersionSchema = z.number().int().min(1).max(PAGE_VERSION_MAX);
+const pageVersionSchema = z.number().int().min(1).max(PAGE_VERSION_MAX);
 
 /**
  * Returns the value if it is a version of a page, otherwise `null`. A change with `null` is based on no known state of
@@ -38,7 +38,7 @@ export function parsePageVersion(value: unknown): number | null {
 }
 
 /** The number of a revision of a page: 1 for the oldest, counted up per page, at most the largest value of the column. */
-export const revisionNumberSchema = z.number().int().min(1).max(INTEGER_MAX);
+const revisionNumberSchema = z.number().int().min(1).max(INTEGER_MAX);
 
 /** Whether the value is the number of a revision; a number that is not one never reaches the database. */
 export function isRevisionNumber(value: number): boolean {

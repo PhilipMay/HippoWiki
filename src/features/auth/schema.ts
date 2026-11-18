@@ -21,8 +21,8 @@ export const loginInputSchema = z.object({
     .refine((password) => password.length <= PASSWORD_MAX_LENGTH),
 });
 
-export const NEW_PASSWORD_IS_CURRENT_MESSAGE = "New password must differ from the current one";
-export const PASSWORDS_DIFFER_MESSAGE = "The two new passwords do not match";
+const NEW_PASSWORD_IS_CURRENT_MESSAGE = "New password must differ from the current one";
+const PASSWORDS_DIFFER_MESSAGE = "The two new passwords do not match";
 
 /**
  * The input of a password change for the user with the given name: the current password, the new one and its

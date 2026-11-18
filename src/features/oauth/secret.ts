@@ -16,13 +16,13 @@ export function generateSecret(prefix: string): string {
 }
 
 /** The start of an authorization code. */
-export const CODE_PREFIX = "hwc_";
+const CODE_PREFIX = "hwc_";
 
 /** The start of an access token of a grant. */
-export const ACCESS_TOKEN_PREFIX = "hwa_";
+const ACCESS_TOKEN_PREFIX = "hwa_";
 
 /** The start of a refresh token of a grant. */
-export const REFRESH_TOKEN_PREFIX = "hwr_";
+const REFRESH_TOKEN_PREFIX = "hwr_";
 
 const CODE_PATTERN = new RegExp(`^${CODE_PREFIX}${SECRET_PATTERN}$`);
 const ACCESS_TOKEN_PATTERN = new RegExp(`^${ACCESS_TOKEN_PREFIX}${SECRET_PATTERN}$`);

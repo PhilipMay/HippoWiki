@@ -427,11 +427,11 @@ The feature is described in `users-and-login.md`. What every new route, query an
   - `no-restricted-properties`: `process.env` is not read in `src/`, except in `src/lib/env.ts` and
     `src/lib/logger.ts`. Configuration files, `e2e/` and `scripts/` read it directly.
   - `no-restricted-imports`: the barrel imports `@mui/material` and `@mui/icons-material` are not allowed in `src/`.
-  - `no-console`: server code (`src/features/**/actions.ts`, `src/features/**/queries.ts`, the service modules
-    `src/features/**/service.ts` and `src/features/**/*-service.ts`, `src/features/mcp/`, `src/features/oauth/`, `src/app/api/`, `src/app/mcp/`,
-    `src/app/oauth/`, `src/app/.well-known/`, `src/lib/`, `src/proxy.ts`) does not use `console`. The client
-    error boundaries `src/app/error.tsx` and `global-error.tsx` log with `console.error`, because the pino logger
-    runs only on the server.
+  - `no-console`: no file of `src/` uses `console`; server code logs with the pino logger. The client error
+    boundaries `src/app/error.tsx` and `global-error.tsx` are the exception: they log with `console.error`, because
+    the pino logger runs only on the server.
+  - `no-restricted-syntax` in the service modules: a read uses `select`, never `include`, so that a service names
+    every column it reads.
   - `@typescript-eslint/no-restricted-imports` keeps the layers apart (see "Reads and writes"). It is a rule of its
     own, so that the Material UI paths in `no-restricted-imports` stay as they are.
     - The service modules are `src/features/**/service.ts` and `src/features/**/*-service.ts` (`SERVICE_FILES` in
@@ -441,9 +441,15 @@ The feature is described in `users-and-login.md`. What every new route, query an
     - In `src/app/**` and `src/features/**/components/**`, `@/features/*/service` and `@/features/*/*-service` may
       only be imported as a type; the rule points to `queries.ts` and `actions.ts`.
     - A service module imports neither `next`, `next/*`, `react`, `@/lib/revalidate` nor
-      `@/features/*/forms`.
+      `@/features/*/forms`. The same holds for the modules that load wherever the services load
+      (`LIKE_SERVICE_FILES` in `eslint.config.mjs`): the MCP server, its tools and their schemas, and the pure
+      modules of OAuth, which also import no `@/lib/db`.
     - `@/lib/auth` may only be imported in `src/features/auth/service.ts` and `src/lib/**`; everywhere else in `src/`
       the rule points to the auth service and to `session.ts`.
     - A later config object replaces the options of a rule instead of adding to them. The config objects of this rule
       therefore match disjoint sets of files, and each one lists all restrictions of its files.
 - The rules for the end-to-end tests are described in `testing.md`.
+- `npm run knip` reports unused files, exports and dependencies (see "Unused code" in `testing.md`): a name is
+  exported only when another file, a test included, imports it.
+- Addresses, the roots included, come from `src/lib/addresses.ts`: `homePath()` for `/`, `foldersPath()` and
+  `deletedPagesRootPath()` for the roots that `src/lib/revalidate.ts` revalidates.

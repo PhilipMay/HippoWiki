@@ -33,7 +33,7 @@ import { formatDateTime } from "@/lib/format";
  * The actions of a page address: `edit` opens the edit form, `move-or-rename` the "Move or rename page" dialog,
  * `delete` the "Delete page" dialog and `revert` the "Revert page" dialog over the revision `revision`.
  */
-export const PAGE_ACTIONS = ["edit", "move-or-rename", "delete", "revert"] as const;
+const PAGE_ACTIONS = ["edit", "move-or-rename", "delete", "revert"] as const;
 
 export type PageAction = (typeof PAGE_ACTIONS)[number];
 
@@ -59,7 +59,7 @@ export function mayDoPageAction(role: Role | null, action: PageAction | null): b
  * it is known and the address has an action as well, and `"invalid"` for anything else, a notice without an action
  * included. Routes show the not-found page for `"invalid"`.
  */
-export function parsePageNotice(
+function parsePageNotice(
   searchParams: SearchParams,
   action: PageAction | null | "invalid",
 ): PageNotice | null | "invalid" {
@@ -71,7 +71,7 @@ export function parsePageNotice(
  * The views of a page address: `history` lists the revisions of the page, `revision` shows one of them, rendered or
  * with `format=raw` as its Markdown source, and `compare` compares two of them.
  */
-export const PAGE_VIEWS = ["history", "revision", "compare"] as const;
+const PAGE_VIEWS = ["history", "revision", "compare"] as const;
 
 /** The forms of a revision besides the rendered one, in the query string `format=<format>`. */
 const REVISION_FORMATS = ["raw"] as const;

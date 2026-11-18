@@ -60,6 +60,7 @@ const lintAndTypes = Promise.all([
 const parallel: Promise<Result | Result[]>[] = [
   run({ name: "format:check", command: "npm run --silent format:check" }),
   run({ name: "docs:check", command: "npm run --silent docs:check" }),
+  run({ name: "knip", command: "npm run --silent knip" }),
   run({ name: "test:unit", command: "npm run --silent test:unit" }),
   lintAndTypes,
 ];

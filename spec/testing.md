@@ -117,8 +117,17 @@ How the code is tested. Commands are listed in `README.md`.
 
 ## Doc references
 
-- `npm run docs:check` (`scripts/check-doc-references.ts`) checks that the files named in `spec/*.md`, `README.md` and
-  `CLAUDE.md` exist. It is part of `npm run check` and of the `lint` workflow.
+- `npm run docs:check` (`scripts/check-doc-references.ts`) checks that the files named in `spec/*.md`, `README.md`,
+  `CLAUDE.md` and the skills in `.claude/skills/` exist. It is part of `npm run check` and of the `lint` workflow.
+
+## Unused code
+
+- `npm run knip` reports unused files, exports and dependencies, with the plugins of knip for Next.js, Vitest,
+  Playwright, Prisma and ESLint. A test that imports a name counts as a use. It is part of `npm run check` and of the
+  `lint` workflow.
+- What it reports is deleted, loses its `export`, or is named in `knip.jsonc` with the reason why knip cannot see its
+  use; that file holds the setup project of Playwright, the script that makes the list of common passwords, and
+  Podman.
 - A code span counts as a reference when it starts with a top-level file or directory of the repository (checked by its
   first word, so a command such as `scripts/image.sh smoke` passes) or ends in `.md` (a bare name such as `pages.md`
   is also looked up in `spec/`). Bare file names such as `wait.ts`, spans with a placeholder or a glob (`<`, `*`) and
@@ -371,7 +380,8 @@ How the code is tested. Commands are listed in `README.md`.
 - GitHub Actions runs the checks in seven workflows in `.github/workflows/`, each named like its file, so a failure
   shows at a glance which kind of check broke:
   - `format_check`: `npm run format:check`
-  - `lint`: `npm run build`, `npm run typecheck`, `npm run lint`, `npm run docs:check`, as separate steps in this order
+  - `lint`: `npm run build`, `npm run typecheck`, `npm run lint`, `npm run docs:check`, `npm run knip`, as separate
+    steps in this order
   - `unit_tests`: `npm run test:coverage`, then `npm run test:cost`, also when the first step failed
   - `integration_tests`: `npm run test:integration`, using the Podman preinstalled on the runner
   - `end_to_end_tests`: `npm run test:e2e`, against the development server

@@ -16,7 +16,7 @@ export const SHARED_CLIENT_ADDRESS = "shared";
  * Why a request fell into `SHARED_CLIENT_ADDRESS` although a header was to be read: `X-Forwarded-For` is missing or
  * empty, it has fewer entries than there are trusted proxies, or the entry of the last trusted proxy is not an address.
  */
-export type ClientAddressFallback = "missing-header" | "too-few-entries" | "not-an-address";
+type ClientAddressFallback = "missing-header" | "too-few-entries" | "not-an-address";
 
 /** The group of a request, and why it is `SHARED_CLIENT_ADDRESS` when it fell back to it (`null` otherwise). */
 export type ClientAddress = { group: string; fallback: ClientAddressFallback | null };

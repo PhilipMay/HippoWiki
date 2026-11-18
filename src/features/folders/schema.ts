@@ -3,7 +3,7 @@ import { z } from "zod";
 import { nameSchema } from "@/lib/names";
 
 /** A folder id: a UUID in its canonical 8-4-4-4-12 hex form, as PostgreSQL generates it. */
-export const folderIdSchema = z.guid();
+const folderIdSchema = z.guid();
 
 /**
  * Returns the id if it is a well-formed folder id, otherwise `null`. Malformed ids must not reach the database,
@@ -21,7 +21,7 @@ export const folderInputSchema = z.object({ name: nameSchema });
 export type FolderInput = z.output<typeof folderInputSchema>;
 
 /** A tab id: a UUID, like a folder id. */
-export const tabIdSchema = z.guid();
+const tabIdSchema = z.guid();
 
 /** Returns the id if it is a well-formed tab id, otherwise `null`, so that malformed ids never reach the database. */
 export function parseTabId(id: string): string | null {

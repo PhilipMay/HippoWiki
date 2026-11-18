@@ -13,8 +13,8 @@ export const ISSUER = "http://localhost:3100";
 export const REDIRECT_URI = "http://127.0.0.1:53682/callback";
 
 /** The PKCE verifier of the client of the tests, and its challenge (`S256`). */
-export const VERIFIER = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
-export const CHALLENGE = createHash("sha256").update(VERIFIER).digest("base64url");
+const VERIFIER = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+const CHALLENGE = createHash("sha256").update(VERIFIER).digest("base64url");
 
 /** The `state` of the client of the tests, with characters that have to be encoded. */
 export const STATE = "state/of the client&more";

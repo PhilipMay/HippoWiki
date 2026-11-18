@@ -8,6 +8,9 @@ import type { McpRole } from "@/features/folder-roles/roles";
 import { isAdmin, type UserType } from "@/features/users/user-type";
 import { parseName } from "@/lib/names";
 
+/** The home page of the wiki, which leads on to the start page of the account. */
+const HOME_PATH = "/";
+
 /** The fixed prefix of all content addresses. */
 const FOLDERS_PATH = "/folders";
 
@@ -87,7 +90,7 @@ function isContentPath(path: string): boolean {
 export function landingPath(next: string, user: { type: UserType }): string {
   if (!isAdmin(user)) return next;
   const { pathname } = new URL(next, NEXT_BASE);
-  return pathname === "/" || isContentPath(pathname) ? USERS_PATH : next;
+  return pathname === HOME_PATH || isContentPath(pathname) ? USERS_PATH : next;
 }
 
 /** The address of the login page, optionally with the address to go to after the login. */
@@ -182,9 +185,19 @@ function withView(path: string, view: string, parameters: Record<string, string 
   return `${path}?view=${view}${rest.join("")}`;
 }
 
-/** The address of the folder list, optionally with an action. */
+/** The address of the home page, `/`, the root of every address. */
+export function homePath(): string {
+  return HOME_PATH;
+}
+
+/** The address of the folder list, optionally with an action; the root of every content address. */
 export function foldersPath(action?: string): string {
   return withAction(FOLDERS_PATH, action);
+}
+
+/** The root of the addresses of deleted pages, which has no page of its own. */
+export function deletedPagesRootPath(): string {
+  return DELETED_PAGES_PATH;
 }
 
 /** The address of a folder, optionally with an action. */

@@ -111,7 +111,7 @@ Decided by the user on 2026-11-18:
 - [x] OAuth and grants
 - [x] Actions, forms and schemas
 - [x] Leftovers and small duplicates
-- [ ] Lint rules and checks
+- [x] Lint rules and checks
 - [ ] The query of a page and what a route shows
 - [ ] Views of the folder routes and pieces of the lists
 - [ ] Dialogs

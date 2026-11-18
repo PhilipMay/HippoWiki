@@ -1,0 +1,14 @@
+// The configuration of knip, which reports unused files, exports and dependencies (`npm run knip`, part of
+// `npm run check`). Its plugins for Next.js, Vitest, Playwright, Prisma and ESLint find the entries of the project;
+// only what they cannot know is named here, each with its reason.
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    // The setup project of Playwright, which `playwright.config.ts` names by a pattern that the plugin does not read.
+    "e2e/auth.setup.ts",
+    // Run by hand to make the list of common passwords again (see README.md), so no script of package.json names it.
+    "scripts/common-passwords.ts",
+  ],
+  // The test database runs in a container of Podman, which the machine provides; it is no package.
+  "ignoreBinaries": ["podman"],
+}

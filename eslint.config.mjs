@@ -10,6 +10,23 @@ import playwright from "eslint-plugin-playwright";
  */
 const SERVICE_FILES = ["src/features/**/service.ts", "src/features/**/*-service.ts"];
 
+/**
+ * The modules outside the services that load wherever the services load, so that they hold the same rules: the MCP
+ * server with its tools and their schemas, which callers other than the browser use, and the pure modules of OAuth,
+ * which its service modules share.
+ */
+const LIKE_SERVICE_FILES = [
+  "src/features/mcp/server.ts",
+  "src/features/mcp/tools.ts",
+  "src/features/mcp/tool-schemas.ts",
+  "src/features/oauth/issuer.ts",
+  "src/features/oauth/metadata-fetch.ts",
+  "src/features/oauth/public-address.ts",
+  "src/features/oauth/rows.ts",
+  "src/features/oauth/schema.ts",
+  "src/features/oauth/secret.ts",
+];
+
 /** Only a service reads and writes the database; everything else goes through the service of the feature. */
 const restrictedDb = {
   name: "@/lib/db",
@@ -127,32 +144,28 @@ const eslintConfig = defineConfig([
     },
   },
   {
-    // Server code logs through the pino logger from @/lib/logger.
-    files: [
-      "src/features/**/actions.ts",
-      "src/features/**/queries.ts",
-      ...SERVICE_FILES,
-      "src/features/mcp/**",
-      "src/features/oauth/**",
-      "src/app/api/**",
-      "src/app/mcp/**",
-      "src/app/oauth/**",
-      "src/app/.well-known/**",
-      "src/lib/**",
-      "src/proxy.ts",
-    ],
+    // Server code logs through the pino logger from @/lib/logger, and the browser has no log to read.
+    files: ["src/**/*.{ts,tsx}"],
     rules: {
       "no-console": "error",
+    },
+  },
+  {
+    // The two error pages are the exception: they log an error in the browser, where no logger runs.
+    files: ["src/app/error.tsx", "src/app/global-error.tsx"],
+    rules: {
+      "no-console": "off",
     },
   },
   // The layers: a route or component calls queries.ts or actions.ts, these call a service (service.ts or a
   // <part>-service.ts next to it), and only a service reads and writes the database. Better Auth (@/lib/auth) is used
   // by the auth service and src/lib/ only. A later config object replaces the options of a rule instead of adding to
-  // them, so the five objects below match disjoint sets of files and each one lists all restrictions of its files.
+  // them, so the six objects below match disjoint sets of files and each one lists all restrictions of its files.
   {
-    // Everything in src/ that is neither a route nor a component, a service module or a module of src/lib/.
+    // Everything in src/ that is neither a route nor a component, a service module, a module like a service or a
+    // module of src/lib/.
     files: ["src/**/*.{ts,tsx}"],
-    ignores: ["src/app/**", "src/features/**/components/**", ...SERVICE_FILES, "src/lib/**"],
+    ignores: ["src/app/**", "src/features/**/components/**", ...SERVICE_FILES, ...LIKE_SERVICE_FILES, "src/lib/**"],
     rules: {
       "@typescript-eslint/no-restricted-imports": ["error", { paths: [restrictedDb, restrictedAuth] }],
     },
@@ -194,6 +207,29 @@ const eslintConfig = defineConfig([
       "@typescript-eslint/no-restricted-imports": [
         "error",
         { paths: restrictedInServices, patterns: restrictedPatternsInServices },
+      ],
+    },
+  },
+  {
+    // The modules like a service: the rules of a service, and no database, which only a service reads and writes.
+    files: LIKE_SERVICE_FILES,
+    rules: {
+      "@typescript-eslint/no-restricted-imports": [
+        "error",
+        { paths: [...restrictedInServices, restrictedDb, restrictedAuth], patterns: restrictedPatternsInServices },
+      ],
+    },
+  },
+  {
+    // A service reads with `select`, so that it names every column it reads and returns no more than its type says.
+    files: SERVICE_FILES,
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "Property[key.name='include']",
+          message: "A service reads with select, never include: name the columns it needs.",
+        },
       ],
     },
   },

@@ -23,7 +23,7 @@ export const changeRoleInputSchema = z.object({ role: roleSchema });
 
 export type ChangeRoleFieldErrors = { role?: string[] };
 
-export const USER_REQUIRED_MESSAGE = "Choose a user";
+const USER_REQUIRED_MESSAGE = "Choose a user";
 
 /** Input for giving a role: the name of the user who gets it, and the role. */
 export const giveRoleInputSchema = z.object({

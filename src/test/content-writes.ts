@@ -32,7 +32,7 @@ export type ContentWrite = {
 /** The content of a valid page, whose derived title is "My page". */
 export const CONTENT = "# My page\n\nText";
 
-export const CONTENT_WRITES: readonly ContentWrite[] = [
+const CONTENT_WRITES: readonly ContentWrite[] = [
   {
     name: "createPage",
     service: "pages",

@@ -10,8 +10,10 @@ import {
   deletedPagePath,
   deletedPageRevisionPath,
   deletedPagesPath,
+  deletedPagesRootPath,
   folderMcpPath,
   folderPath,
+  homePath,
   folderRolesOverviewPath,
   folderRolesPath,
   foldersPath,
@@ -114,6 +116,13 @@ describe("paths", () => {
     expect(oauthRegisterPath()).toBe("/oauth/register");
     const id = "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10";
     expect(protectedResourceMetadataPath(id, "writer")).toBe(`/.well-known/oauth-protected-resource/mcp/${id}/writer`);
+  });
+
+  it("builds the roots of the addresses: the home page, the folders and the deleted pages", () => {
+    expect(homePath()).toBe("/");
+    expect(foldersPath()).toBe("/folders");
+    expect(deletedPagesRootPath()).toBe("/deleted-pages");
+    expect(deletedPagesPath("handbook").startsWith(`${deletedPagesRootPath()}/`)).toBe(true);
   });
 
   it("builds the address of the own account", () => {

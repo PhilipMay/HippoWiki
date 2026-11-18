@@ -18,7 +18,7 @@ export function mcpPath(folder: { id: string }, role: "reader" | "writer" | "man
 }
 
 /** Sends a JSON-RPC message over the connection, as a client of the protocol of 2025 does. */
-export function sendMcp(
+function sendMcp(
   request: APIRequestContext,
   { address, token }: McpConnection,
   message: Record<string, unknown>,

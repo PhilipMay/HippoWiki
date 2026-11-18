@@ -19,7 +19,7 @@ import { formatDateTime } from "@/lib/format";
 /** The actions of the address of a deleted page: `restore` opens the "Restore page" dialog. */
 export const DELETED_PAGE_ACTIONS = ["restore"] as const;
 
-export type DeletedPageAction = (typeof DELETED_PAGE_ACTIONS)[number];
+type DeletedPageAction = (typeof DELETED_PAGE_ACTIONS)[number];
 
 /** The browser title of a deleted page: it shows that the page is a deleted copy. */
 export function deletedPageViewTitle(page: DeletedPage): string {

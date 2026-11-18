@@ -15,7 +15,7 @@ import {
 } from "@/features/auth/forms";
 import * as authService from "@/features/auth/service";
 import { requireSession } from "@/features/auth/session";
-import { changePasswordPath, landingPath, loginPath } from "@/lib/addresses";
+import { changePasswordPath, homePath, landingPath, loginPath } from "@/lib/addresses";
 import { clientAddressGroup } from "@/lib/client-address";
 import { logClientAddressProbe } from "@/lib/client-address-probe";
 import { getServerEnv } from "@/lib/env";
@@ -41,7 +41,7 @@ const CHANGE_FAILED_MESSAGE = "The password could not be changed. Please try aga
  * browser has cached of the pages must not be shown again.
  */
 function revalidateEverything(): void {
-  revalidatePath("/", "layout");
+  revalidatePath(homePath(), "layout");
 }
 
 /**

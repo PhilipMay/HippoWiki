@@ -153,7 +153,7 @@ export function parsePageRevertFormData(formData: FormData): { version: number |
 }
 
 /** Shown at the place field of the "Restore page" form when no place is chosen. */
-export const CHOOSE_PLACE_MESSAGE = "Choose a place";
+const CHOOSE_PLACE_MESSAGE = "Choose a place";
 
 export type PageRestoreFieldErrors = { name?: string[]; place?: string[] };
 

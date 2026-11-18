@@ -3,7 +3,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
-export const TEST_DB_CONTAINER = "hippowiki-test-db";
+const TEST_DB_CONTAINER = "hippowiki-test-db";
 const TEST_DB_IMAGE = readPostgresImage();
 const TEST_DB_PORT = 5433;
 export const TEST_DATABASE_NAME = "hippowiki_test";

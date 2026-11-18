@@ -4,7 +4,7 @@
 import { z } from "zod";
 
 /** A grant id: a UUID, like the ids of users, folders, tabs and pages. */
-export const grantIdSchema = z.guid();
+const grantIdSchema = z.guid();
 
 /** Returns the id if it is a well-formed grant id, otherwise `null`, so that malformed ids never reach the database. */
 export function parseGrantId(id: string): string | null {
