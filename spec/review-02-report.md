@@ -14,9 +14,9 @@
     findings of the tests that are still open are minor.
   - Documents that the features outran: rules stated in full in several documents, and copies of code and
     constants in the specs.
-- Findings: 55 open of 107, 0 Blocker, 0 Major, 44 Minor and 11 Nit (14 `issue:`, 28 `suggestion:`, 9 `nit:` and
+- Findings: 50 open of 107, 0 Blocker, 0 Major, 40 Minor and 10 Nit (10 `issue:`, 28 `suggestion:`, 8 `nit:` and
   4 `question:`).
-- Confidence of the suggestions: 6 High, 36 Medium and 9 Low; the 4 questions have none. A High suggestion can be
+- Confidence of the suggestions: 5 High, 33 Medium and 8 Low; the 4 questions have none. A High suggestion can be
   fixed as written; the others wait for the user, as `issue-report.md` describes.
 - Decisions: on 2026-11-18 the user decided all Medium and Low suggestions. Each of these findings ends with a line
   `Decision`, and is fixed as that line says, without asking again. The 4 questions were decided by the user on the
@@ -81,29 +81,6 @@ What can go wrong in a cleanup, and what several findings warn about:
 ## Findings
 
 ### Code: services of the content features
-
-#### issue: two reads spread the condition for readable folders without checking it for `null`
-
-- Location: `src/features/folders/service.ts`, lines 214–225, `getFolderByName()`, and lines 248–261, `getTab()`;
-  `src/features/folder-roles/service.ts`, lines 183–191, `readableFolderWhere()`
-- Severity: Minor. The reads are right today; the restriction rests on two functions that return `null` for the same
-  actors.
-- Category: security
-- Problem: `readableFolderWhere()` returns a condition or `null`. `getFolderByName()` and `getTab()` spread the
-  result into the `where` without a check, and a spread of `null` adds nothing, so the condition on the role would
-  be gone. It is safe only because `readerOf()` is checked just before and returns `null` in the same cases.
-  `getFolderById()` and `getPage()` check both values, and `getFolderById()` joins the condition with `AND`, which
-  MCP needs: its condition holds the id of the folder of the connection.
-- Impact: a later change of when `readableFolderWhere()` returns `null`, or a new read that copies the spread, makes
-  a folder readable without a role, with no error of the type checker.
-- Evidence: line 220, `where: { name: folderName, ...readableFolderWhere(actor) },`; line 255,
-  `where: { name, folder: { name: folder, ...readableFolderWhere(actor) } },`; against lines 198–202,
-  `if (!reader || !readable || !folderId) return null;` and `where: { AND: [{ id: folderId }, readable] },`.
-- Suggestion (required): read the condition into a constant in both functions and return `null` when it is `null`,
-  as `getFolderById()` does.
-- Confidence: High. One fix; the `where` that reaches Prisma stays the same, so the tests of both reads in
-  `src/features/folders/service.test.ts` pass unchanged, and `integration/folder-service.test.ts`, "reads no folder
-  and no tab without a role of the actor", covers the behaviour.
 
 #### issue: "a write that stored nothing" has five shapes inside the services and none in their results
 
@@ -185,63 +162,6 @@ folderName }` for roles (next to `"done"`, where folders say `"stored"`), `{ out
 - Decision (2026-11-18): the pages service exports a function that builds the data of a soft delete, and `deleteTab()`
   uses it inside its own transaction. No transaction is passed between services.
 
-#### issue: the check for the Owner exists twice inside the service of the folder roles, and its writes follow other conventions
-
-- Location: `src/features/folder-roles/service.ts`, lines 318–336, `ownerOf()`; lines 431–436, 446–447, 469–473 and
-  490, `writeRole()`; lines 251–259, `listFolderRoles()`; lines 268–276, `listRoleCandidates()`; lines 349–372,
-  `giveRole()`
-- Severity: Minor
-- Category: readability
-- Problem: the opening "an admin, a malformed id, not an Owner", with its three log messages, stands in `ownerOf()`
-  and again inline in `writeRole()`. Three functions pass the unparsed folder id to Prisma, which is well-formed
-  only because `folderRoleOf()` returned a role before. `writeRole()` returns the literal `"owner"` for the role of
-  the actor, not the role it read, which repeats "only an Owner manages roles" outside `FUNCTION_ROLES`.
-- Impact: a change of the refusal, or of the role that manages roles, has several places in one file.
-- Evidence: lines 329, 436 and 470 all hold `the actor is not an Owner of the folder`; line 254,
-  `where: { folderId },`; line 490, `actorRole: target === ownerId ? outcome.role : "owner"`.
-- Suggestion (optional): let `writeRole()` start with the shared check and keep only the check inside the
-  transaction; parse the folder id once per function; carry the role of the actor in `ChangeOutcome`.
-- Confidence: Medium. The unit tests pin the log lines; the order "Owner before input" must stay.
-- Decision (2026-11-18): as suggested.
-
-#### issue: a database error in the lookup before a write is thrown, not returned as `failed`
-
-- Location: `src/features/folders/service.ts`, lines 325, 389, 441 and 511; `src/features/pages/service.ts`, lines
-  596, 742, 826, 899, 983 and 1041; `src/features/folder-roles/service.ts`, lines 326 and 360–362
-- Severity: Minor. It needs a database error exactly at the lookup.
-- Category: error handling
-- Problem: `architecture.md` says that every other database error of a write is logged with the ids and returned
-  as `failed`. The lookup of the role in every write, and of the user in `giveRole()`, stands outside every `try`.
-  `revertPage()` catches its read before the write and returns `failed`, so the services do not agree with each
-  other either. No unit test covers a lookup that fails.
-- Impact: a short failure of the database at the lookup replaces the form with the error page, instead of the
-  message "could not be saved" with the typed values kept, and the error is not logged with the ids.
-- Evidence: line 742 of the pages service, `const role = await roleOnFolderOfPage(actor, pageId);`, without a
-  `try`; against lines 834–842, `} catch (err) { logger.error({ err, pageId }, "failed to revert page");`.
-- Suggestion (optional): decide one rule and write it down: either the lookup counts as a read and throws, or the
-  writes catch it and return `failed`.
-- Confidence: Low. It needs a decision, and the effect on the form was read, not tried.
-- Decision (2026-11-18): the writes catch it: the lookup moves inside the `try` of every write, is logged with the ids
-  and returns `failed`, as `revertPage()` does and `architecture.md` says.
-
-#### issue: the error types and the helper for `invalid-input` are declared per service, and one `invalid-input` has no `fieldErrors`
-
-- Location: `src/features/folders/service.ts`, lines 73–81 and 101–103; `src/features/pages/service.ts`, lines
-  162–183 and 489–494; `src/features/folder-roles/service.ts`, lines 279–287, 355 and 399; `src/lib/result.ts`
-- Severity: Minor
-- Category: readability
-- Problem: `NotAllowed`, `Failed`, `NameTaken`, `FolderNotFound` and `TabNotFound` are declared two or three times
-  in the content features, `Failed` seven times in `src/`. `invalid-input` is `InvalidName` in folders, a generic
-  `InvalidInput` in pages, another in roles, and `InvalidRole = { code: "invalid-input" }` without `fieldErrors`,
-  though `architecture.md` defines the code "with `fieldErrors`".
-- Impact: a caller that handles `invalid-input` in general cannot rely on `fieldErrors`.
-- Evidence: line 399 of the folder roles service, `type InvalidRole = { code: "invalid-input" };`.
-- Suggestion (optional): move the shared types and the generic `invalidInput()` to `src/lib/result.ts`, and give
-  `changeRole()` a code of its own or `fieldErrors` for the role.
-- Confidence: Medium. Moving types changes nothing at run time; the shape of `InvalidRole` touches the action.
-- Decision (2026-11-18): the shared types and the generic `invalidInput()` move to `src/lib/result.ts`; `changeRole()`
-  returns `invalid-input` with `fieldErrors` for the role, built by `invalidInput()`.
-
 #### suggestion: the service of the folder roles holds three concerns, and the pages service has one clear seam
 
 - Location: `src/features/folder-roles/service.ts`, lines 31–94 (the actors and the channel), 96–232 (who may read
@@ -278,25 +198,6 @@ folderName }` for roles (next to `"done"`, where folders say `"stored"`), `{ out
   the place, and let `showChanged()` take the address.
 - Confidence: Medium. The tests of the actions assert the messages; the home of the shared messages is a choice.
 - Decision (2026-11-18): as suggested.
-
-#### nit: the log lines of the role writes name the actor and the outcome in another way than the content writes
-
-- Location: `src/features/folder-roles/service.ts`, lines 310, 431, 436, 475 and 484–487;
-  `src/features/folders/service.ts`, line 302
-- Severity: Nit
-- Category: style
-- Problem: in one file the acting user is `actorId` in a refusal and `ownerId` everywhere else. "role not changed:"
-  starts both a refusal, as a warning, and a change to the same role, as information; the content services use
-  "not renamed:" for a refusal and "not changed:" for a write without a change. "folder created" is the only line
-  of a successful content write without the channel.
-- Impact: a search of the log by actor or by the start of the message misses lines or mixes two outcomes.
-- Evidence: line 431, `const what = newRole === null ? "role not removed" : "role not changed";`; line 486,
-  `"role not changed: the role is the same",`.
-- Suggestion (optional): `actorId` in every line, another wording for the change to the same role, and the channel
-  in "folder created".
-- Confidence: Medium. The unit tests pin the lines; the wording is a choice.
-- Decision (2026-11-18): as suggested: `actorId` in every line, "role unchanged: the role is the same" for a change to
-  the same role, and the channel in "folder created".
 
 #### nit: unused names and comments that no longer match the code
 
@@ -1499,7 +1400,7 @@ documents name.
    missing integration cases exist. The Decision of each finding holds the rest.
 2. Fix the findings with a High confidence that change no code: the Locations of the first report.
 3. Close the gaps of the tests before any refactoring: the states of the dialogs that a shared frame would move.
-4. Refactor the code in small steps, each with its checks: the `null` check of the two reads, one shape for a write without a change, the hooks and the frame of the dialogs, then the
+4. Refactor the code in small steps, each with its checks: one shape for a write without a change, the hooks and the frame of the dialogs, then the
    splits of the large files.
 5. Restructure the documents last: one owner per rule in the feature specs, the sections of `architecture.md`,
    and the form of the catalog in `CLAUDE.md`.

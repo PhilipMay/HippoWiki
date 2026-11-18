@@ -8,6 +8,7 @@ import type { Actor } from "@/features/users/service";
 import { isAdmin } from "@/features/users/user-type";
 import type { ChangeChannel } from "@/generated/prisma/client";
 import { logger } from "@/lib/logger";
+import type { Failed, NotAllowed, Result } from "@/lib/result";
 
 /**
  * Where a read or a write of the content comes from: `web` for the browser, `mcp` for MCP. The content stores the same
@@ -54,11 +55,6 @@ export function isMcpActor(actor: Actor | ContentActor): actor is McpActor {
 export function channelOf(actor: ContentActor): { channel: "web" } | { channel: "mcp"; grantId: string } {
   return actor.channel === "mcp" ? { channel: "mcp", grantId: actor.connection.grantId } : { channel: "web" };
 }
-
-/** The actor is an admin, who changes no content, or has no role on the folder that allows the write; it is logged. */
-type NotAllowed = { code: "not-allowed" };
-/** An unexpected database error, or an actor that is malformed or does not exist; it has been logged. */
-type Failed = { code: "failed" };
 
 /**
  * The result of a write by an admin, who changes no content, or by a user whose role does not allow it; it is logged
@@ -124,4 +120,22 @@ export function openContentWrite(
   const lastEditedById = editorIdOf(actor);
   if (!lastEditedById) return { refused: { ok: false, error: { code: "failed" } } };
   return { editor: { lastEditedById, lastEditedVia: actor.channel } };
+}
+
+/**
+ * Reads what a write needs before it writes, such as the role of the actor or the user who gets a role. A database
+ * error is logged with the given ids under the message of the failed write and gives `failed`, as every other database
+ * error of a write does, so that a short failure of the database is answered like one of the write itself.
+ */
+export async function lookUp<Value>(
+  read: () => Promise<Value>,
+  ids: Record<string, string>,
+  failure: string,
+): Promise<Result<Value, Failed>> {
+  try {
+    return { ok: true, value: await read() };
+  } catch (err) {
+    logger.error({ err, ...ids }, failure);
+    return { ok: false, error: { code: "failed" } };
+  }
 }

@@ -15,11 +15,10 @@
 // the channel as the last editor of the pages it deletes with the tab. A rename to the name the folder or tab has stored
 // changes nothing: it is no edit, so it keeps `updatedAt`, the last editor and the channel.
 
-import { z } from "zod";
-
 import type { Role } from "@/features/folder-roles/roles";
 import {
   channelOf,
+  lookUp,
   openContentWrite,
   refusedByRole,
   unknownActor,
@@ -42,7 +41,16 @@ import { getDb } from "@/lib/db";
 import { FOLDER_NAME, isForeignKeyViolation, isUniqueViolation, LAST_EDITOR, TAB_NAME } from "@/lib/db-errors";
 import { logger } from "@/lib/logger";
 import { parseName, type NameFieldErrors } from "@/lib/names";
-import type { Result } from "@/lib/result";
+import {
+  invalidInput,
+  type Failed,
+  type FolderNotFound,
+  type InvalidInput,
+  type NameTaken,
+  type NotAllowed,
+  type Result,
+  type TabNotFound,
+} from "@/lib/result";
 
 /**
  * What the list of folders shows of a folder: when and by whom it was last changed, and the role of the actor on it;
@@ -71,16 +79,8 @@ export type TabWithFolder = { id: string; name: string; folder: { id: string; na
 /** A tab as stored by a write, with the name of its folder: what its address is built from. */
 export type StoredTab = { id: string; name: string; folder: { name: string } };
 
-/** The input of a write is invalid; `fieldErrors` holds the messages of the schema per field. */
-type InvalidName = { code: "invalid-input"; fieldErrors: NameFieldErrors };
-/** Another item already uses the name where it must be unique. */
-type NameTaken = { code: "name-taken" };
-type FolderNotFound = { code: "folder-not-found" };
-type TabNotFound = { code: "tab-not-found" };
-/** An unexpected database error, or an actor that is malformed or does not exist; it has been logged. */
-type Failed = { code: "failed" };
-/** The actor is an admin, who changes no content, or has no role on the folder; it has been logged. */
-type NotAllowed = { code: "not-allowed" };
+/** The name of a write is invalid; `fieldErrors` holds the messages of the schema. */
+type InvalidName = InvalidInput<NameFieldErrors>;
 
 export type CreateFolderError = NotAllowed | InvalidName | NameTaken | Failed;
 export type RenameFolderError = NotAllowed | FolderNotFound | InvalidName | NameTaken | Failed;
@@ -99,10 +99,6 @@ export type DeletedTab = { folder: Folder; pageCount: number; pages: PageDeleted
 
 const SUMMARY_SELECT = { id: true, name: true, updatedAt: true, ...LAST_EDITOR_SELECT } as const;
 const STORED_TAB_SELECT = { id: true, name: true, folder: { select: { name: true } } } as const;
-
-function invalidName(error: z.ZodError<{ name: string }>): { ok: false; error: InvalidName } {
-  return { ok: false, error: { code: "invalid-input", fieldErrors: z.flattenError(error).fieldErrors } };
-}
 
 /** What the write of a rename did: stored the name, found the name already stored, or found no item. */
 type Written<T> = { kind: "stored" } | { kind: "unchanged"; item: T } | { kind: "not-found" };
@@ -170,11 +166,12 @@ export async function getFolderById(actor: ContentActor, id: string): Promise<Fo
  */
 export async function getFolderByName(actor: ContentActor, name: string): Promise<FolderWithRole | null> {
   const reader = readerOf(actor);
-  if (!reader) return null;
+  const readable = readableFolderWhere(actor);
+  if (!reader || !readable) return null;
   const folderName = parseName(name);
   if (!folderName) return null;
   const folder = await getDb().folder.findFirst({
-    where: { name: folderName, ...readableFolderWhere(actor) },
+    where: { name: folderName, ...readable },
     select: { id: true, name: true, roles: roleSelection(reader) },
   });
   if (!folder) return null;
@@ -204,12 +201,13 @@ export async function listTabs(actor: ContentActor, folderId: string): Promise<T
  */
 export async function getTab(actor: ContentActor, folderName: string, tabName: string): Promise<TabWithFolder | null> {
   const reader = readerOf(actor);
-  if (!reader) return null;
+  const readable = readableFolderWhere(actor);
+  if (!reader || !readable) return null;
   const folder = parseName(folderName);
   const name = parseName(tabName);
   if (!folder || !name) return null;
   const tab = await getDb().tab.findFirst({
-    where: { name, folder: { name: folder, ...readableFolderWhere(actor) } },
+    where: { name, folder: { name: folder, ...readable } },
     select: { id: true, name: true, folder: { select: { id: true, name: true, roles: roleSelection(reader) } } },
   });
   if (!tab) return null;
@@ -230,7 +228,7 @@ export async function createFolder(
   const { lastEditedById, lastEditedVia } = opened.editor;
 
   const parsed = folderInputSchema.safeParse(input);
-  if (!parsed.success) return invalidName(parsed.error);
+  if (!parsed.success) return invalidInput(parsed.error);
 
   let folder: Folder;
   try {
@@ -255,7 +253,7 @@ export async function createFolder(
     return { ok: false, error: { code: "failed" } };
   }
 
-  logger.info({ folderId: folder.id }, "folder created");
+  logger.info({ folderId: folder.id, ...channelOf(actor) }, "folder created");
   return { ok: true, value: folder };
 }
 
@@ -277,13 +275,13 @@ export async function renameFolder(
   if (!folderId) return { ok: false, error: { code: "folder-not-found" } };
 
   // Only an Owner renames the folder, because a rename changes every address in it.
-  const refused = refusedByRole(actor, "folder not renamed", await folderRoleOf(actor, folderId), "renameFolder", {
-    folderId,
-  });
+  const role = await lookUp(() => folderRoleOf(actor, folderId), { folderId }, "failed to rename folder");
+  if (!role.ok) return role;
+  const refused = refusedByRole(actor, "folder not renamed", role.value, "renameFolder", { folderId });
   if (refused) return refused;
 
   const parsed = folderInputSchema.safeParse(input);
-  if (!parsed.success) return invalidName(parsed.error);
+  if (!parsed.success) return invalidInput(parsed.error);
   const { name } = parsed.data;
 
   let written: Written<Folder>;
@@ -340,13 +338,17 @@ export async function createTab(
   const parsedFolderId = parseFolderId(folderId);
   if (!parsedFolderId) return { ok: false, error: { code: "folder-not-found" } };
 
-  const refused = refusedByRole(actor, "tab not created", await folderRoleOf(actor, parsedFolderId), "editTab", {
-    folderId: parsedFolderId,
-  });
+  const role = await lookUp(
+    () => folderRoleOf(actor, parsedFolderId),
+    { folderId: parsedFolderId },
+    "failed to create tab",
+  );
+  if (!role.ok) return role;
+  const refused = refusedByRole(actor, "tab not created", role.value, "editTab", { folderId: parsedFolderId });
   if (refused) return refused;
 
   const parsed = tabInputSchema.safeParse(input);
-  if (!parsed.success) return invalidName(parsed.error);
+  if (!parsed.success) return invalidInput(parsed.error);
 
   let tab: StoredTab;
   try {
@@ -391,11 +393,13 @@ export async function renameTab(
   if (!tabId) return { ok: false, error: { code: "tab-not-found" } };
 
   // A tab that does not exist has no role either, so that nothing tells whether a tab of this id exists.
-  const refused = refusedByRole(actor, "tab not renamed", await roleOnFolderOfTab(actor, tabId), "editTab", { tabId });
+  const role = await lookUp(() => roleOnFolderOfTab(actor, tabId), { tabId }, "failed to rename tab");
+  if (!role.ok) return role;
+  const refused = refusedByRole(actor, "tab not renamed", role.value, "editTab", { tabId });
   if (refused) return refused;
 
   const parsed = tabInputSchema.safeParse(input);
-  if (!parsed.success) return invalidName(parsed.error);
+  if (!parsed.success) return invalidInput(parsed.error);
   const { name } = parsed.data;
 
   let written: Written<StoredTab>;
@@ -460,7 +464,13 @@ export async function deleteTab(
   const tabId = parseTabId(id);
   if (!parsedFolderId || !tabId) return { ok: false, error: { code: "tab-not-found" } };
 
-  const refused = refusedByRole(actor, "tab not deleted", await folderRoleOf(actor, parsedFolderId), "deleteTab", {
+  const role = await lookUp(
+    () => folderRoleOf(actor, parsedFolderId),
+    { folderId: parsedFolderId, tabId },
+    "failed to delete tab",
+  );
+  if (!role.ok) return role;
+  const refused = refusedByRole(actor, "tab not deleted", role.value, "deleteTab", {
     folderId: parsedFolderId,
     tabId,
   });

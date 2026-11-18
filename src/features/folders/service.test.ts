@@ -333,7 +333,7 @@ describe("createFolder", () => {
     });
     // A new folder needs no role of its creator.
     expect(mocks.folderRoleFindFirst).not.toHaveBeenCalled();
-    expect(mocks.info).toHaveBeenCalledWith({ folderId: FOLDER_ID }, "folder created");
+    expect(mocks.info).toHaveBeenCalledWith({ folderId: FOLDER_ID, channel: "web" }, "folder created");
   });
 
   it("stores only the name of the input", async () => {
@@ -897,6 +897,20 @@ describe("the actor of a write", () => {
     expect(mocks.warn).not.toHaveBeenCalled();
     expect(mocks.info).not.toHaveBeenCalled();
   });
+
+  it.each(WRITES_WITH_ROLE)(
+    "$name returns failed for an error of the database while the role is read, logged with the ids",
+    async ({ name, call, target, failure }) => {
+      const err = new Error("connection lost");
+      mocks.folderRoleFindFirst.mockRejectedValue(err);
+
+      await expect(call(ACTOR)).resolves.toEqual(FAILED);
+
+      expect(STORING_CALL[name]).not.toHaveBeenCalled();
+      expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ err, ...target }, failure);
+      expect(mocks.info).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("an admin", () => {

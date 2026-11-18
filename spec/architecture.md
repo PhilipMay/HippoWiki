@@ -75,8 +75,10 @@ How the code is organised and which patterns new code follows. The technology st
     included: for an admin without asking the database, for a user without the needed role after the lookup of the
     role and before anything else is read. Database errors are thrown.
   - Writes return a `Result` from `src/lib/result.ts`: `{ ok: true, value }` with the item as stored, or
-    `{ ok: false, error }` with a code. Each write declares the codes it can return in a union type next to it, such
-    as `CreatePageError`, and the lint rule for exhaustive switches (see "Linting") makes every adapter handle each
+    `{ ok: false, error }` with a code. The errors that several services share (`NotAllowed`, `Failed`,
+    `InvalidInput`, `NameTaken`, `FolderNotFound`, `TabNotFound`) and `invalidInput()`, which builds `invalid-input`
+    with the `fieldErrors` of a schema, are declared there as well. Each write declares the codes it can return in a
+    union type next to it, such as `CreatePageError`, and the lint rule for exhaustive switches (see "Linting") makes every adapter handle each
     one.
   - A write checks, in this order: the actor (an admin gets `not-allowed` for content), the id of the actor, the ids
     of its arguments, the role of the actor on the folder, its input, the version of the row, and then writes. The
@@ -258,7 +260,9 @@ The feature is described in `users-and-login.md`. What every new route, query an
   index or constraint, as the `pg` driver adapter reports it: `isForeignKeyViolation(err, LAST_EDITOR)` tells a
   violation of the key of the last editor, which only a broken caller can cause and which gives `failed`, from one of
   a folder or tab key. A write checks the key of the last editor first. Any other database error in a
-  write is logged with `{ err }` and the ids and returned as `failed`, which the action shows as a failed save.
+  write is logged with `{ err }` and the ids and returned as `failed`, which the action shows as a failed save. This
+  holds also for the reads a write makes before it writes, such as the role of the actor or the user who gets a role:
+  `lookUp()` of `src/features/folder-roles/actors.ts` logs such an error under the message of the failed write.
 - The server environment is read through `getServerEnv()` from `src/lib/env.ts`, never directly from `process.env`.
   `HIPPOWIKI_ADMIN_PASSWORD` is not part of it: only the admin setup script reads it.
 - A password and its hash are never logged. A password is checked for its length with a refinement on the length of

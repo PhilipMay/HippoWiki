@@ -340,7 +340,7 @@ describe("giveRole", () => {
 
     expect(dataOf(mocks.roleCreate)).toEqual({ folderId: FOLDER_ID, userId: BOB_ID, role: "writer" });
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
-      { folderId: FOLDER_ID, userId: BOB_ID, oldRole: null, newRole: "writer", ownerId: ACTOR_ID },
+      { folderId: FOLDER_ID, userId: BOB_ID, oldRole: null, newRole: "writer", actorId: ACTOR_ID },
       "role given",
     );
   });
@@ -437,6 +437,24 @@ describe("giveRole", () => {
     expect(mocks.error).toHaveBeenCalledOnce();
   });
 
+  it.each([
+    ["the role of the actor", () => mocks.roleFindFirst],
+    ["the user who gets the role", () => mocks.userFindFirst],
+  ])("returns failed for an error of the database while %s is read, logged, and gives nothing", async (_, read) => {
+    const err = new Error("connection lost");
+    read().mockRejectedValue(err);
+
+    await expect(giveRole(USER, FOLDER_ID, { user: "bob", role: "writer" })).resolves.toEqual({
+      ok: false,
+      error: { code: "failed" },
+    });
+    expect(mocks.error).toHaveBeenCalledExactlyOnceWith(
+      { err, folderId: FOLDER_ID, actorId: ACTOR_ID },
+      "failed to give role",
+    );
+    expect(mocks.roleCreate).not.toHaveBeenCalled();
+  });
+
   it("returns failed for any other error, logged", async () => {
     const err = new Error("connection lost");
     mocks.roleCreate.mockRejectedValue(err);
@@ -446,7 +464,7 @@ describe("giveRole", () => {
       error: { code: "failed" },
     });
     expect(mocks.error).toHaveBeenCalledWith(
-      { err, folderId: FOLDER_ID, userId: BOB_ID, ownerId: ACTOR_ID },
+      { err, folderId: FOLDER_ID, userId: BOB_ID, actorId: ACTOR_ID },
       "failed to give role",
     );
   });
@@ -486,7 +504,7 @@ describe("changeRole and removeRole", () => {
 
     expect(dataOf(mocks.roleUpdate)).toEqual({ role: "manager" });
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
-      { folderId: FOLDER_ID, userId: BOB_ID, oldRole: "writer", newRole: "manager", ownerId: ACTOR_ID },
+      { folderId: FOLDER_ID, userId: BOB_ID, oldRole: "writer", newRole: "manager", actorId: ACTOR_ID },
       "role changed",
     );
   });
@@ -503,7 +521,7 @@ describe("changeRole and removeRole", () => {
     });
 
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
-      { folderId: FOLDER_ID, userId: BOB_ID, oldRole: "reader", newRole: null, ownerId: ACTOR_ID },
+      { folderId: FOLDER_ID, userId: BOB_ID, oldRole: "reader", newRole: null, actorId: ACTOR_ID },
       "role removed",
     );
   });
@@ -537,7 +555,7 @@ describe("changeRole and removeRole", () => {
     expect(mocks.roleUpdate).not.toHaveBeenCalled();
     expect(mocks.roleDelete).not.toHaveBeenCalled();
     expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
-      { folderId: FOLDER_ID, userId: ACTOR_ID, oldRole: "owner", newRole, ownerId: ACTOR_ID },
+      { folderId: FOLDER_ID, userId: ACTOR_ID, oldRole: "owner", newRole, actorId: ACTOR_ID },
       `${what}: the folder would be left without an Owner`,
     );
   });
@@ -552,8 +570,8 @@ describe("changeRole and removeRole", () => {
     expect(mocks.roleUpdate).not.toHaveBeenCalled();
     expect(mocks.warn).not.toHaveBeenCalled();
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
-      { folderId: FOLDER_ID, userId: ACTOR_ID, role: "owner", ownerId: ACTOR_ID },
-      "role not changed: the role is the same",
+      { folderId: FOLDER_ID, userId: ACTOR_ID, role: "owner", actorId: ACTOR_ID },
+      "role unchanged: the role is the same",
     );
   });
 
@@ -574,8 +592,8 @@ describe("changeRole and removeRole", () => {
       expect(mocks.roleUpdate).not.toHaveBeenCalled();
       expect(mocks.roleDelete).not.toHaveBeenCalled();
       expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
-        { folderId: FOLDER_ID, userId: BOB_ID, role, ownerId: ACTOR_ID },
-        "role not changed: the role is the same",
+        { folderId: FOLDER_ID, userId: BOB_ID, role, actorId: ACTOR_ID },
+        "role unchanged: the role is the same",
       );
     },
   );
@@ -648,10 +666,26 @@ describe("changeRole and removeRole", () => {
   it("returns invalid-input for an unknown role to an Owner, and not-allowed to anyone else", async () => {
     await expect(changeRole(USER, FOLDER_ID, BOB_ID, "admin")).resolves.toEqual({
       ok: false,
-      error: { code: "invalid-input" },
+      error: { code: "invalid-input", fieldErrors: { role: ["Choose a role"] } },
     });
     mocks.roleFindFirst.mockResolvedValue({ role: "manager" });
     await expect(changeRole(USER, FOLDER_ID, BOB_ID, "admin")).resolves.toEqual(NOT_ALLOWED);
+    expect(mocks.transaction).not.toHaveBeenCalled();
+  });
+
+  it("returns failed for an error of the database while the role of the actor is read, logged, and writes nothing", async () => {
+    const err = new Error("connection lost");
+    mocks.roleFindFirst.mockRejectedValue(err);
+
+    await expect(changeRole(USER, FOLDER_ID, BOB_ID, "reader")).resolves.toEqual({
+      ok: false,
+      error: { code: "failed" },
+    });
+    await expect(removeRole(USER, FOLDER_ID, BOB_ID)).resolves.toEqual({ ok: false, error: { code: "failed" } });
+    expect(mocks.error.mock.calls).toStrictEqual([
+      [{ err, folderId: FOLDER_ID, actorId: ACTOR_ID }, "failed to change role"],
+      [{ err, folderId: FOLDER_ID, actorId: ACTOR_ID }, "failed to change role"],
+    ]);
     expect(mocks.transaction).not.toHaveBeenCalled();
   });
 
@@ -661,7 +695,7 @@ describe("changeRole and removeRole", () => {
 
     await expect(removeRole(USER, FOLDER_ID, BOB_ID)).resolves.toEqual({ ok: false, error: { code: "failed" } });
     expect(mocks.error).toHaveBeenCalledWith(
-      { err, folderId: FOLDER_ID, userId: BOB_ID, ownerId: ACTOR_ID },
+      { err, folderId: FOLDER_ID, userId: BOB_ID, actorId: ACTOR_ID },
       "failed to change role",
     );
   });

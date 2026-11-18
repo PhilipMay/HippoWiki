@@ -222,6 +222,20 @@ describe("the role of the actor", () => {
       expect(mocks.info).not.toHaveBeenCalled();
     },
   );
+
+  it.each(WRITES.filter((write) => write.lowest !== null))(
+    "$name gets failed for an error of the database while the role is read, logged with the ids, and writes nothing",
+    async ({ call, target, failure }) => {
+      const err = new Error("connection lost");
+      mocks.roleFindFirst.mockRejectedValue(err);
+
+      await expect(call(ACTOR)).resolves.toEqual({ ok: false, error: { code: "failed" } });
+
+      for (const write of databaseWrites) expect(write).not.toHaveBeenCalled();
+      expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ err, ...target }, failure);
+      expect(mocks.info).not.toHaveBeenCalled();
+    },
+  );
 });
 
 // The role is checked before the version and the content (optimistic-locking.md, "Which changes are refused"), so

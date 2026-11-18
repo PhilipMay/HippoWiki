@@ -1013,6 +1013,35 @@ test.describe("changing and removing roles", () => {
     });
   }
 
+  test("a crafted change to a value that is no role shows choose a role and changes nothing", async ({ page }) => {
+    const bob = await createUser({ name: "bob" });
+    const folder = await createFolder({
+      name: "project-x",
+      roles: [
+        { user: ALICE, role: "owner" },
+        { user: bob, role: "reader" },
+      ],
+    });
+    const before = await getTestDb().folderRole.findFirstOrThrow({ where: { folderId: folder.id, userId: bob.id } });
+
+    // The select offers only the roles, so the value that is no role is added to it, as a crafted request sends it.
+    await page.goto("/folders/project-x?view=roles");
+    await expect(roleOf(page, "bob")).toBeEnabled();
+    await roleOf(page, "bob").evaluate((select) => {
+      const option = document.createElement("option");
+      option.value = "admin";
+      option.textContent = "Admin";
+      select.append(option);
+    });
+    await roleOf(page, "bob").selectOption("admin");
+
+    await expect(page.getByRole("main").getByRole("alert")).toHaveText("Choose a role");
+    await expect(page).toHaveURL("/folders/project-x?view=roles");
+    expect(
+      await getTestDb().folderRole.findFirstOrThrow({ where: { folderId: folder.id, userId: bob.id } }),
+    ).toStrictEqual(before);
+  });
+
   test("a change of a role takes effect with the next request of the user it concerns", async ({ page, browser }) => {
     const bob = await createUser({ name: "bob", mustChangePassword: false });
     const folder = await createFolder({

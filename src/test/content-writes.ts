@@ -25,6 +25,8 @@ export type ContentWrite = {
   what: string;
   /** The foreign key of the last editor that the write stores, which a missing actor violates. */
   editorKey: string;
+  /** The log message of a failed write, such as "failed to create page"; also for a lookup that fails before it. */
+  failure: string;
 };
 
 /** The content of a valid page, whose derived title is "My page". */
@@ -39,6 +41,7 @@ export const CONTENT_WRITES: readonly ContentWrite[] = [
     target: { folderId: FOLDER_ID },
     what: "page not created",
     editorKey: "Page_lastEditedById_fkey",
+    failure: "failed to create page",
   },
   {
     name: "updatePageContent",
@@ -48,6 +51,7 @@ export const CONTENT_WRITES: readonly ContentWrite[] = [
     target: { pageId: PAGE_ID },
     what: "page not saved",
     editorKey: "Page_lastEditedById_fkey",
+    failure: "failed to update page",
   },
   {
     name: "moveOrRenamePage",
@@ -57,6 +61,7 @@ export const CONTENT_WRITES: readonly ContentWrite[] = [
     target: { pageId: PAGE_ID },
     what: "page not moved or renamed",
     editorKey: "Page_lastEditedById_fkey",
+    failure: "failed to move or rename page",
   },
   {
     name: "deletePage",
@@ -66,6 +71,7 @@ export const CONTENT_WRITES: readonly ContentWrite[] = [
     target: { pageId: PAGE_ID },
     what: "page not deleted",
     editorKey: "Page_lastEditedById_fkey",
+    failure: "failed to delete page",
   },
   {
     name: "restorePage",
@@ -75,6 +81,7 @@ export const CONTENT_WRITES: readonly ContentWrite[] = [
     target: { pageId: PAGE_ID },
     what: "page not restored",
     editorKey: "Page_lastEditedById_fkey",
+    failure: "failed to restore page",
   },
   {
     name: "revertPage",
@@ -84,6 +91,7 @@ export const CONTENT_WRITES: readonly ContentWrite[] = [
     target: { pageId: PAGE_ID },
     what: "page not reverted",
     editorKey: "Page_lastEditedById_fkey",
+    failure: "failed to revert page",
   },
   {
     name: "createFolder",
@@ -93,6 +101,7 @@ export const CONTENT_WRITES: readonly ContentWrite[] = [
     target: {},
     what: "folder not created",
     editorKey: "Folder_lastEditedById_fkey",
+    failure: "failed to create folder",
   },
   {
     name: "renameFolder",
@@ -102,6 +111,7 @@ export const CONTENT_WRITES: readonly ContentWrite[] = [
     target: { folderId: FOLDER_ID },
     what: "folder not renamed",
     editorKey: "Folder_lastEditedById_fkey",
+    failure: "failed to rename folder",
   },
   {
     name: "createTab",
@@ -111,6 +121,7 @@ export const CONTENT_WRITES: readonly ContentWrite[] = [
     target: { folderId: FOLDER_ID },
     what: "tab not created",
     editorKey: "Tab_lastEditedById_fkey",
+    failure: "failed to create tab",
   },
   {
     name: "renameTab",
@@ -120,6 +131,7 @@ export const CONTENT_WRITES: readonly ContentWrite[] = [
     target: { tabId: TAB_ID },
     what: "tab not renamed",
     editorKey: "Tab_lastEditedById_fkey",
+    failure: "failed to rename tab",
   },
   {
     name: "deleteTab",
@@ -129,6 +141,7 @@ export const CONTENT_WRITES: readonly ContentWrite[] = [
     target: { folderId: FOLDER_ID, tabId: TAB_ID },
     what: "tab not deleted",
     editorKey: "Page_lastEditedById_fkey",
+    failure: "failed to delete tab",
   },
 ];
 

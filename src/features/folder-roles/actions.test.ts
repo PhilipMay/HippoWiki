@@ -156,7 +156,6 @@ describe("changeRole", () => {
   it.each([
     ["change", "last-owner", LAST_OWNER],
     ["change", "role-not-found", ROLE_GONE],
-    ["change", "invalid-input", "Choose a role."],
     ["change", "failed", CHANGE_FAILED],
     ["remove", "last-owner", LAST_OWNER],
     ["remove", "role-not-found", ROLE_GONE],
@@ -169,6 +168,19 @@ describe("changeRole", () => {
       changeRole(FOLDER_ID, {}, change({ user: BOB_ID, intent, ...(intent === "change" ? { role: "reader" } : {}) })),
     ).resolves.toEqual({ message });
     expect(write).toHaveBeenCalledOnce();
+    expectNotRevalidatedOrRedirected();
+  });
+
+  it("shows the field error of the role when the service answers invalid-input", async () => {
+    mocks.changeRole.mockResolvedValue({
+      ok: false,
+      error: { code: "invalid-input", fieldErrors: { role: ["Choose a role"] } },
+    });
+
+    await expect(changeRole(FOLDER_ID, {}, change({ user: BOB_ID, intent: "change", role: "admin" }))).resolves.toEqual(
+      { message: "Choose a role" },
+    );
+    expect(mocks.changeRole).toHaveBeenCalledExactlyOnceWith(USER, FOLDER_ID, BOB_ID, "admin");
     expectNotRevalidatedOrRedirected();
   });
 

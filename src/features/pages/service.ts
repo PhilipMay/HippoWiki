@@ -21,11 +21,10 @@
 // browser, records one that names the revision it went back to. Moving, renaming, deleting and restoring a page record
 // none. The history is read only by the actor of the browser.
 
-import { z } from "zod";
-
 import type { Role } from "@/features/folder-roles/roles";
 import {
   channelOf,
+  lookUp,
   openContentWrite,
   refusedByRole,
   unknownActor,
@@ -65,7 +64,16 @@ import {
 } from "@/lib/db-errors";
 import { logger } from "@/lib/logger";
 import { parseName, type NameFieldErrors } from "@/lib/names";
-import type { Result } from "@/lib/result";
+import {
+  invalidInput,
+  type Failed,
+  type FolderNotFound,
+  type InvalidInput,
+  type NameTaken,
+  type NotAllowed,
+  type Result,
+  type TabNotFound,
+} from "@/lib/result";
 
 /** What the lists show of a page: no content, and when and by whom it was last changed. */
 export type PageSummary = { id: string; name: string; title: string; updatedAt: Date; lastEditedBy: LastEditor };
@@ -159,13 +167,6 @@ export type RevisionWithContent = RevisionSummary & { content: string };
 /** Two revisions of a page to compare, the older first, and the number of the newest revision of the page. */
 export type RevisionComparison = { newest: number; older: RevisionWithContent; newer: RevisionWithContent };
 
-/** The input of a write is invalid; `fieldErrors` holds the messages of the schema per field. */
-type InvalidInput<FieldErrors> = { code: "invalid-input"; fieldErrors: FieldErrors };
-/** Another page already uses the name at the place. */
-type NameTaken = { code: "name-taken" };
-type FolderNotFound = { code: "folder-not-found" };
-/** The tab does not exist, is no tab of the page's folder or its id is malformed. */
-type TabNotFound = { code: "tab-not-found" };
 /** The page does not exist or is not in the state the write needs: deleted for a restore, not deleted otherwise. */
 type PageNotFound = { code: "page-not-found" };
 /**
@@ -178,10 +179,6 @@ type PageChanged = { code: "page-changed"; page: StoredPage };
  * so that a revert to it would change nothing.
  */
 type RevisionNotFound = { code: "revision-not-found" };
-/** An unexpected database error, or an actor that is malformed or does not exist; it has been logged. */
-type Failed = { code: "failed" };
-/** The actor is an admin, who changes no content, or has no role on the folder; it has been logged. */
-type NotAllowed = { code: "not-allowed" };
 
 export type CreatePageError =
   NotAllowed | FolderNotFound | TabNotFound | InvalidInput<PageFieldErrors> | NameTaken | Failed;
@@ -487,13 +484,6 @@ export async function getPageRevision(actor: BrowserActor, id: string, number: n
   return { ...withMadeBy(revision), newest: page.newest, isCurrent: revision.content === page.content };
 }
 
-function invalidInput<Input>(error: z.ZodError<Input>): {
-  ok: false;
-  error: InvalidInput<z.core.$ZodFlattenedError<Input>["fieldErrors"]>;
-} {
-  return { ok: false, error: { code: "invalid-input", fieldErrors: z.flattenError(error).fieldErrors } };
-}
-
 /**
  * The tab of a place: the id of a tab, `null` for the folder itself, or `undefined` if the id is malformed, so that
  * it never reaches the database.
@@ -548,9 +538,13 @@ export async function createPage(
   const parsedFolderId = parseFolderId(folderId);
   if (!parsedFolderId) return { ok: false, error: { code: "folder-not-found" } };
 
-  const refused = refusedByRole(actor, "page not created", await folderRoleOf(actor, parsedFolderId), "editPage", {
-    folderId: parsedFolderId,
-  });
+  const role = await lookUp(
+    () => folderRoleOf(actor, parsedFolderId),
+    { folderId: parsedFolderId },
+    "failed to create page",
+  );
+  if (!role.ok) return role;
+  const refused = refusedByRole(actor, "page not created", role.value, "editPage", { folderId: parsedFolderId });
   if (refused) return refused;
 
   const tabId = parsePlace(input.tabId);
@@ -693,8 +687,9 @@ export async function updatePageContent(
   if (!pageId) return { ok: false, error: { code: "page-not-found" } };
 
   // A page that does not exist has no role either, so that nothing tells whether a page of this id exists.
-  const role = await roleOnFolderOfPage(actor, pageId);
-  const refused = refusedByRole(actor, "page not saved", role, "editPage", { pageId });
+  const role = await lookUp(() => roleOnFolderOfPage(actor, pageId), { pageId }, "failed to update page");
+  if (!role.ok) return role;
+  const refused = refusedByRole(actor, "page not saved", role.value, "editPage", { pageId });
   if (refused) return refused;
 
   // Also content that is the same as the stored content is checked against the limits in force.
@@ -776,8 +771,9 @@ export async function revertPage(
   if (!pageId) return { ok: false, error: { code: "page-not-found" } };
 
   // A page that does not exist has no role either, so that nothing tells whether a page of this id exists.
-  const role = await roleOnFolderOfPage(actor, pageId);
-  const refused = refusedByRole(actor, "page not reverted", role, "editPage", { pageId });
+  const role = await lookUp(() => roleOnFolderOfPage(actor, pageId), { pageId }, "failed to revert page");
+  if (!role.ok) return role;
+  const refused = refusedByRole(actor, "page not reverted", role.value, "editPage", { pageId });
   if (refused) return refused;
 
   const { revision } = input;
@@ -848,8 +844,9 @@ export async function moveOrRenamePage(
   if (!pageId) return { ok: false, error: { code: "page-not-found" } };
 
   // A page that does not exist has no role either, so that nothing tells whether a page of this id exists.
-  const role = await roleOnFolderOfPage(actor, pageId);
-  const refused = refusedByRole(actor, "page not moved or renamed", role, "moveOrRenamePage", { pageId });
+  const role = await lookUp(() => roleOnFolderOfPage(actor, pageId), { pageId }, "failed to move or rename page");
+  if (!role.ok) return role;
+  const refused = refusedByRole(actor, "page not moved or renamed", role.value, "moveOrRenamePage", { pageId });
   if (refused) return refused;
 
   const tabId = parsePlace(input.tabId);
@@ -931,8 +928,9 @@ export async function deletePage(
   if (!pageId) return { ok: false, error: { code: "page-not-found" } };
 
   // A page that does not exist has no role either, so that nothing tells whether a page of this id exists.
-  const role = await roleOnFolderOfPage(actor, pageId);
-  const refused = refusedByRole(actor, "page not deleted", role, "deletePage", { pageId });
+  const role = await lookUp(() => roleOnFolderOfPage(actor, pageId), { pageId }, "failed to delete page");
+  if (!role.ok) return role;
+  const refused = refusedByRole(actor, "page not deleted", role.value, "deletePage", { pageId });
   if (refused) return refused;
   const version = parsePageVersion(input.version);
 
@@ -988,8 +986,9 @@ export async function restorePage(
   if (!pageId) return { ok: false, error: { code: "page-not-found" } };
 
   // A page that does not exist has no role either, so that nothing tells whether a page of this id exists.
-  const role = await roleOnFolderOfPage(actor, pageId);
-  const refused = refusedByRole(actor, "page not restored", role, "deletedPages", { pageId });
+  const role = await lookUp(() => roleOnFolderOfPage(actor, pageId), { pageId }, "failed to restore page");
+  if (!role.ok) return role;
+  const refused = refusedByRole(actor, "page not restored", role.value, "deletedPages", { pageId });
   if (refused) return refused;
 
   const tabId = parsePlace(input.tabId);

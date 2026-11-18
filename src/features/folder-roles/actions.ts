@@ -99,8 +99,9 @@ export async function changeRole(
       // Only an Owner changes roles: for anyone else the controls do not exist.
       case "not-allowed":
         notFound();
+      // Only a crafted request sends no role of the list.
       case "invalid-input":
-        return { message: INVALID_ROLE_MESSAGE };
+        return { message: result.error.fieldErrors.role?.[0] ?? INVALID_ROLE_MESSAGE };
       case "role-not-found":
         return { message: ROLE_GONE_MESSAGE };
       case "last-owner":

@@ -103,8 +103,11 @@ and `src/features/folder-roles/service.test.ts`.
   then stores nothing: the role keeps its time. It is answered like every change, so the Owner stays in the roles view
   without an error. A change to the same role by anyone but an Owner is refused as for any other role.
 - Every role given, changed and removed is logged with the folder, the user, the old and the new role and the Owner
-  who made the change; so is a refused change of the last Owner. A change to the same role is logged in a line of its
-  own, with the folder, the user, the role and the Owner, not as a change.
+  who made the change, as `actorId` like every write; so is a refused change of the last Owner. A change to the same
+  role is logged in a line of its own, "role unchanged", with the folder, the user, the role and the Owner, not as a
+  change.
+- A change to a value that is no role is answered with `invalid-input` and the field error of the role, after the
+  check of the Owner.
 
 ## The admin overview
 

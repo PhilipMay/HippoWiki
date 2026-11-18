@@ -6,11 +6,14 @@
 //
 // Every user with a role on a folder sees who has which role on it; an admin sees the roles of no folder here.
 
-import { z } from "zod";
-
 import { includesRole, mayDo, rolesFor, type FolderFunction, type Role } from "@/features/folder-roles/roles";
-import { editorIdOf, isMcpActor, notAllowed, type ContentActor } from "@/features/folder-roles/actors";
-import { giveRoleInputSchema, parseRole, type GiveRoleFieldErrors } from "@/features/folder-roles/schema";
+import { editorIdOf, isMcpActor, lookUp, notAllowed, type ContentActor } from "@/features/folder-roles/actors";
+import {
+  changeRoleInputSchema,
+  giveRoleInputSchema,
+  type ChangeRoleFieldErrors,
+  type GiveRoleFieldErrors,
+} from "@/features/folder-roles/schema";
 import { parseFolderId, parseTabId } from "@/features/folders/schema";
 import { parsePageId } from "@/features/pages/schema";
 import { parseUserId, parseUserName } from "@/features/users/schema";
@@ -20,7 +23,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { getDb } from "@/lib/db";
 import { FOLDER_ROLE_USER, isAdminRoleViolation, isUniqueViolation } from "@/lib/db-errors";
 import { logger } from "@/lib/logger";
-import type { Result } from "@/lib/result";
+import { invalidInput, type Failed, type InvalidInput, type NotAllowed, type Result } from "@/lib/result";
 
 /**
  * The role that counts for the actor on the folder with the given id, from the user's role on it: for an actor of the
@@ -188,9 +191,10 @@ const ROLE_LIST_ORDER = [
  * whom the folder does not exist.
  */
 export async function listFolderRoles(actor: Actor, folderId: string): Promise<FolderRoleEntry[] | null> {
-  if (!(await folderRoleOf(actor, folderId))) return null;
+  const folder = parseFolderId(folderId);
+  if (!folder || !(await folderRoleOf(actor, folder))) return null;
   const roles = await getDb().folderRole.findMany({
-    where: { folderId },
+    where: { folderId: folder },
     select: { role: true, user: { select: { id: true, username: true } } },
     orderBy: ROLE_LIST_ORDER,
   });
@@ -205,27 +209,24 @@ export type RoleCandidate = { id: string; name: string };
  * role. Never an admin, who never gets a role. `null` for anyone but an Owner of the folder.
  */
 export async function listRoleCandidates(actor: Actor, folderId: string): Promise<RoleCandidate[] | null> {
-  if (!mayDo(await folderRoleOf(actor, folderId), "manageRoles")) return null;
+  const folder = parseFolderId(folderId);
+  if (!folder || !mayDo(await folderRoleOf(actor, folder), "manageRoles")) return null;
   const users = await getDb().user.findMany({
-    where: { type: "user", folderRoles: { none: { folderId } } },
+    where: { type: "user", folderRoles: { none: { folderId: folder } } },
     select: { id: true, username: true },
     orderBy: { username: "asc" },
   });
   return users.map(({ id, username }) => ({ id, name: username }));
 }
 
-/** The actor is an admin or not an Owner of the folder; it has been logged. */
-type NotAllowed = { code: "not-allowed" };
 /** The input is invalid; `fieldErrors` holds the messages of the schema per field. */
-type InvalidInput = { code: "invalid-input"; fieldErrors: GiveRoleFieldErrors };
+type InvalidGiveRole = InvalidInput<GiveRoleFieldErrors>;
 /** No account of the type user has the name: it does not exist or is an admin, who never gets a role. */
 type UserNotFound = { code: "user-not-found" };
 /** The user already has a role on the folder. */
 type RoleTaken = { code: "role-taken" };
-/** An unexpected database error, or an actor that is malformed; it has been logged. */
-type Failed = { code: "failed" };
 
-export type GiveRoleError = NotAllowed | InvalidInput | UserNotFound | RoleTaken | Failed;
+export type GiveRoleError = NotAllowed | InvalidGiveRole | UserNotFound | RoleTaken | Failed;
 
 /** A role as stored by a write, with the name of its folder: what the address after the write is built from. */
 export type StoredRole = { folder: { name: string }; user: { id: string; name: string }; role: Role };
@@ -240,28 +241,32 @@ function storedRole(row: { role: Role; folder: { name: string }; user: { id: str
   return { folder: { name: row.folder.name }, user: { id: row.user.id, name: row.user.username }, role: row.role };
 }
 
+/** An Owner of a folder, as a write of a role starts with: the parsed ids of the actor and of the folder. */
+type Owner = { actorId: string; folderId: string };
+
 /**
- * The id of the actor of a write of a role, if the actor is an Owner of the folder with the given id; otherwise the
- * refusal, which is logged: an admin, who changes no role, and every other role.
+ * The actor of a write of a role and the folder, if the actor is an Owner of the folder with the given id; otherwise
+ * the refusal, which is logged: an admin, who changes no role, a malformed actor id, a malformed folder id and every
+ * other role. A database error while the role is read gives `failed`, logged with `failure`.
  */
 async function ownerOf(
   actor: Actor,
   folderId: string,
   what: string,
-): Promise<{ ownerId: string; refused?: never } | { refused: { ok: false; error: NotAllowed | Failed } }> {
+  failure: string,
+): Promise<{ owner: Owner; refused?: never } | { refused: { ok: false; error: NotAllowed | Failed } }> {
   if (isAdmin(actor)) return { refused: notAllowed(actor, `${what}: the actor is an admin`) };
-  const ownerId = roleHolderId(actor);
-  if (!ownerId) return { refused: { ok: false, error: { code: "failed" } } };
-  const role = await folderRoleOf(actor, folderId);
-  if (!mayDo(role, "manageRoles")) {
-    return {
-      refused: notAllowed(actor, `${what}: the actor is not an Owner of the folder`, {
-        folderId,
-        ...(role ? { role } : {}),
-      }),
-    };
+  const actorId = editorIdOf(actor);
+  if (!actorId) return { refused: { ok: false, error: { code: "failed" } } };
+  const notOwner = `${what}: the actor is not an Owner of the folder`;
+  const folder = parseFolderId(folderId);
+  if (!folder) return { refused: notAllowed(actor, notOwner, { folderId }) };
+  const role = await lookUp(() => folderRoleOf(actor, folder), { folderId: folder, actorId }, failure);
+  if (!role.ok) return { refused: role };
+  if (!mayDo(role.value, "manageRoles")) {
+    return { refused: notAllowed(actor, notOwner, { folderId: folder, ...(role.value ? { role: role.value } : {}) }) };
   }
-  return { ownerId };
+  return { owner: { actorId, folderId: folder } };
 }
 
 /**
@@ -275,48 +280,59 @@ export async function giveRole(
   folderId: string,
   input: { user: string; role: string },
 ): Promise<Result<StoredRole, GiveRoleError>> {
-  const owner = await ownerOf(actor, folderId, "role not given");
-  if (owner.refused) return owner.refused;
-  const { ownerId } = owner;
+  const opened = await ownerOf(actor, folderId, "role not given", "failed to give role");
+  if (opened.refused) return opened.refused;
+  const { actorId, folderId: folder } = opened.owner;
 
   const parsed = giveRoleInputSchema.safeParse(input);
-  if (!parsed.success) {
-    return { ok: false, error: { code: "invalid-input", fieldErrors: z.flattenError(parsed.error).fieldErrors } };
-  }
+  if (!parsed.success) return invalidInput(parsed.error);
   const { role } = parsed.data;
 
   const userName = parseUserName(parsed.data.user);
-  const user = userName
-    ? await getDb().user.findFirst({ where: { username: userName, type: "user" }, select: { id: true } })
-    : null;
+  const found = await lookUp(
+    async () =>
+      userName
+        ? await getDb().user.findFirst({ where: { username: userName, type: "user" }, select: { id: true } })
+        : null,
+    { folderId: folder, actorId },
+    "failed to give role",
+  );
+  if (!found.ok) return found;
+  const user = found.value;
   if (!user) {
-    logger.warn({ folderId, ownerId }, "role not given: no user of the type user has the name");
+    logger.warn({ folderId: folder, actorId }, "role not given: no user of the type user has the name");
     return { ok: false, error: { code: "user-not-found" } };
   }
 
   let stored: StoredRole;
   try {
     stored = storedRole(
-      await getDb().folderRole.create({ data: { folderId, userId: user.id, role }, select: STORED_ROLE_SELECT }),
+      await getDb().folderRole.create({
+        data: { folderId: folder, userId: user.id, role },
+        select: STORED_ROLE_SELECT,
+      }),
     );
   } catch (err) {
     if (isUniqueViolation(err, FOLDER_ROLE_USER)) {
-      logger.warn({ folderId, userId: user.id, ownerId }, "role not given: the user already has a role on the folder");
+      logger.warn(
+        { folderId: folder, userId: user.id, actorId },
+        "role not given: the user already has a role on the folder",
+      );
       return { ok: false, error: { code: "role-taken" } };
     }
     if (isAdminRoleViolation(err)) {
       // The user was looked up as a user just before, and the type of an account never changes.
       logger.error(
-        { err, folderId, userId: user.id, ownerId },
+        { err, folderId: folder, userId: user.id, actorId },
         "role not given: the database refused a role of an admin",
       );
       return { ok: false, error: { code: "user-not-found" } };
     }
-    logger.error({ err, folderId, userId: user.id, ownerId }, "failed to give role");
+    logger.error({ err, folderId: folder, userId: user.id, actorId }, "failed to give role");
     return { ok: false, error: { code: "failed" } };
   }
 
-  logger.info({ folderId, userId: user.id, oldRole: null, newRole: role, ownerId }, "role given");
+  logger.info({ folderId: folder, userId: user.id, oldRole: null, newRole: role, actorId }, "role given");
   return { ok: true, value: stored };
 }
 
@@ -324,8 +340,8 @@ export async function giveRole(
 type RoleNotFound = { code: "role-not-found" };
 /** The change would leave the folder without an Owner; it has been logged. */
 type LastOwner = { code: "last-owner" };
-/** The new role is no role. */
-type InvalidRole = { code: "invalid-input" };
+/** The new role is no role; `fieldErrors` holds the message of the schema for the role. */
+type InvalidRole = InvalidInput<ChangeRoleFieldErrors>;
 
 export type RemoveRoleError = NotAllowed | RoleNotFound | LastOwner | Failed;
 export type ChangeRoleError = RemoveRoleError | InvalidRole;
@@ -336,33 +352,33 @@ export type ChangeRoleError = RemoveRoleError | InvalidRole;
  */
 export type RoleChange = { folder: { name: string }; actorRole: Role | null };
 
-/** The outcome of the transaction of a change or removal, before it is logged and returned. */
+/**
+ * The outcome of the transaction of a change or removal, before it is logged and returned. `actorRole` is the role of
+ * the actor on the folder afterwards.
+ */
 type ChangeOutcome =
   | { kind: "not-allowed"; actorRole: Role | null }
   | { kind: "role-not-found" }
   | { kind: "last-owner"; oldRole: Role }
-  | { kind: "unchanged"; role: Role; folderName: string }
-  | { kind: "done"; oldRole: Role; folderName: string };
+  | { kind: "unchanged"; role: Role; folderName: string; actorRole: Role | null }
+  | { kind: "done"; oldRole: Role; folderName: string; actorRole: Role | null };
 
 /**
- * Changes the role of the user on the folder to the given role or, with `null`, removes it, as an Owner. The check that
- * the actor is an Owner and the check of the last Owner read the roles of the folder in the same transaction as the
- * write, with the rows locked, so that two Owners who lower each other at the same time cannot leave the folder
- * without one. A change to the role the user has passes the same checks and then writes nothing, so the role keeps its
- * time; it is answered like a stored change and logged apart from one.
+ * Changes the role of the user on the folder to the given role or, with `null`, removes it, as an Owner. The write
+ * starts with the check that the actor is an Owner (`ownerOf()`); the check that the actor is still an Owner and the
+ * check of the last Owner then read the roles of the folder again, in the same transaction as the write, with the rows
+ * locked, so that two Owners who lower each other at the same time cannot leave the folder without one. A change to
+ * the role the user has passes the same checks and then writes nothing, so the role keeps its time; it is answered
+ * like a stored change and logged apart from one.
  */
 async function writeRole(
+  owner: Owner,
   actor: Actor,
-  folderId: string,
   userId: string,
   newRole: Role | null,
+  what: string,
 ): Promise<Result<RoleChange, RemoveRoleError>> {
-  const what = newRole === null ? "role not removed" : "role not changed";
-  if (isAdmin(actor)) return notAllowed(actor, `${what}: the actor is an admin`);
-  const ownerId = roleHolderId(actor);
-  if (!ownerId) return { ok: false, error: { code: "failed" } };
-  const folder = parseFolderId(folderId);
-  if (!folder) return notAllowed(actor, `${what}: the actor is not an Owner of the folder`, { folderId });
+  const { actorId, folderId: folder } = owner;
   const target = parseUserId(userId);
 
   let outcome: ChangeOutcome;
@@ -372,7 +388,7 @@ async function writeRole(
       // the roles as this one left them.
       const roles = await tx.$queryRaw<{ userId: string; role: Role }[]>`
         SELECT "userId", "role" FROM "FolderRole" WHERE "folderId" = ${folder}::uuid FOR UPDATE`;
-      const actorRole = roles.find((row) => row.userId === ownerId)?.role ?? null;
+      const actorRole = roles.find((row) => row.userId === actorId)?.role ?? null;
       if (!mayDo(actorRole, "manageRoles")) return { kind: "not-allowed", actorRole };
       const current = target ? roles.find((row) => row.userId === target) : undefined;
       if (!target || !current) return { kind: "role-not-found" };
@@ -386,11 +402,12 @@ async function writeRole(
       if (newRole === null) await tx.folderRole.delete({ where });
       else if (!unchanged) await tx.folderRole.update({ where, data: { role: newRole } });
       const { name } = await tx.folder.findUniqueOrThrow({ where: { id: folder }, select: { name: true } });
-      if (unchanged) return { kind: "unchanged", role: current.role, folderName: name };
-      return { kind: "done", oldRole: current.role, folderName: name };
+      const actorRoleAfter = target === actorId ? newRole : actorRole;
+      if (unchanged) return { kind: "unchanged", role: current.role, folderName: name, actorRole: actorRoleAfter };
+      return { kind: "done", oldRole: current.role, folderName: name, actorRole: actorRoleAfter };
     });
   } catch (err) {
-    logger.error({ err, folderId: folder, userId: target, ownerId }, "failed to change role");
+    logger.error({ err, folderId: folder, userId: target, actorId }, "failed to change role");
     return { ok: false, error: { code: "failed" } };
   }
 
@@ -401,32 +418,26 @@ async function writeRole(
         ...(outcome.actorRole ? { role: outcome.actorRole } : {}),
       });
     case "role-not-found":
-      logger.warn({ folderId: folder, userId, ownerId }, `${what}: the user has no role on the folder`);
+      logger.warn({ folderId: folder, userId, actorId }, `${what}: the user has no role on the folder`);
       return { ok: false, error: { code: "role-not-found" } };
     case "last-owner":
       logger.warn(
-        { folderId: folder, userId: target, oldRole: outcome.oldRole, newRole, ownerId },
+        { folderId: folder, userId: target, oldRole: outcome.oldRole, newRole, actorId },
         `${what}: the folder would be left without an Owner`,
       );
       return { ok: false, error: { code: "last-owner" } };
     case "unchanged":
       logger.info(
-        { folderId: folder, userId: target, role: outcome.role, ownerId },
-        "role not changed: the role is the same",
+        { folderId: folder, userId: target, role: outcome.role, actorId },
+        "role unchanged: the role is the same",
       );
-      return {
-        ok: true,
-        value: { folder: { name: outcome.folderName }, actorRole: target === ownerId ? outcome.role : "owner" },
-      };
+      return { ok: true, value: { folder: { name: outcome.folderName }, actorRole: outcome.actorRole } };
     case "done":
       logger.info(
-        { folderId: folder, userId: target, oldRole: outcome.oldRole, newRole, ownerId },
+        { folderId: folder, userId: target, oldRole: outcome.oldRole, newRole, actorId },
         newRole === null ? "role removed" : "role changed",
       );
-      return {
-        ok: true,
-        value: { folder: { name: outcome.folderName }, actorRole: target === ownerId ? newRole : "owner" },
-      };
+      return { ok: true, value: { folder: { name: outcome.folderName }, actorRole: outcome.actorRole } };
   }
 }
 
@@ -442,13 +453,13 @@ export async function changeRole(
   userId: string,
   role: string,
 ): Promise<Result<RoleChange, ChangeRoleError>> {
-  const newRole = parseRole(role);
-  if (!newRole) {
-    // Checked after the Owner, so that the answer to anyone else does not depend on the input.
-    const refused = await refuseNonOwner(actor, folderId, "role not changed");
-    return refused ?? { ok: false, error: { code: "invalid-input" } };
-  }
-  return writeRole(actor, folderId, userId, newRole);
+  const what = "role not changed";
+  // The Owner is checked before the role, so that the answer to anyone else does not depend on the input.
+  const opened = await ownerOf(actor, folderId, what, "failed to change role");
+  if (opened.refused) return opened.refused;
+  const parsed = changeRoleInputSchema.safeParse({ role });
+  if (!parsed.success) return invalidInput(parsed.error);
+  return writeRole(opened.owner, actor, userId, parsed.data.role, what);
 }
 
 /**
@@ -461,17 +472,10 @@ export async function removeRole(
   folderId: string,
   userId: string,
 ): Promise<Result<RoleChange, RemoveRoleError>> {
-  return writeRole(actor, folderId, userId, null);
-}
-
-/** The refusal of anyone but an Owner of the folder, logged, or `null` for an Owner. */
-async function refuseNonOwner(
-  actor: Actor,
-  folderId: string,
-  what: string,
-): Promise<{ ok: false; error: NotAllowed | Failed } | null> {
-  const owner = await ownerOf(actor, folderId, what);
-  return owner.refused ?? null;
+  const what = "role not removed";
+  const opened = await ownerOf(actor, folderId, what, "failed to change role");
+  if (opened.refused) return opened.refused;
+  return writeRole(opened.owner, actor, userId, null, what);
 }
 
 /** A folder as the overview of the roles shows it to an admin: its name and who has which role on it. */

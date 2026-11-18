@@ -97,7 +97,7 @@ Decided by the user on 2026-11-18:
 - [x] End-to-end tests of the pending state
 - [x] Split of `e2e/mcp.spec.ts`
 - [x] Actors, guards and one channel
-- [ ] Guards and errors of the services
+- [x] Guards and errors of the services
 - [ ] Writes of pages
 - [ ] The stored page and the derived name
 - [ ] The reads of the history in a service of their own
