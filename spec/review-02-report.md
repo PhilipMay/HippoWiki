@@ -11,14 +11,14 @@
     have drifted already.
   - Tests that would not catch the refactoring this report suggests: the unit tests of the services pin the calls
     of Prisma, and three rules of access and of the transaction have no test that could fail.
-  - Documents that the features outran: rules stated in full in several documents, and descriptions of the tests,
-    the stack and the features that no longer match them.
-- Findings: 87 open of 107, 0 Blocker, 4 Major, 68 Minor and 15 Nit (39 `issue:`, 30 `suggestion:`, 13 `nit:` and
-  5 `question:`).
-- Confidence of the suggestions: 20 High, 49 Medium and 13 Low; the 5 questions have none. A High suggestion can be
+  - Documents that the features outran: rules stated in full in several documents, and copies of code and
+    constants in the specs.
+- Findings: 82 open of 107, 0 Blocker, 4 Major, 63 Minor and 15 Nit (35 `issue:`, 30 `suggestion:`, 13 `nit:` and
+  4 `question:`).
+- Confidence of the suggestions: 18 High, 48 Medium and 12 Low; the 4 questions have none. A High suggestion can be
   fixed as written; the others wait for the user, as `issue-report.md` describes.
 - Decisions: on 2026-11-18 the user decided all Medium and Low suggestions. Each of these findings ends with a line
-  `Decision`, and is fixed as that line says, without asking again. The 5 questions were decided by the user on the
+  `Decision`, and is fixed as that line says, without asking again. The 4 questions were decided by the user on the
   same day, in "Decisions on the questions" of `spec/review-02-fixes-steps.md`.
 - To fix first, the four Major findings:
   1. Tests say that no MCP connection reads deleted pages, but try only a Writer connection; by the code the
@@ -1305,27 +1305,6 @@ crypto.randomUUID() };`.
 
 ### Tests: end-to-end
 
-#### issue: `testing.md` says the production run covers `error.tsx` and `global-error.tsx`, but no test renders them
-
-- Location: `spec/testing.md`, section "End-to-end tests"; `src/app/error.tsx`; `src/app/global-error.tsx`
-- Severity: Minor. The error pages are the fallback of every failure, but they hold no logic of the wiki.
-- Category: tests
-- Problem: no spec makes a route fail, so neither error page is rendered in a run, with or without
-  `HIPPOWIKI_E2E_SERVER=production`. Neither has a unit test. The sentence in `testing.md` promises a cover that does
-  not exist.
-- Impact: a broken error page, for example after an upgrade of Next.js, shows only in production during an outage,
-  and the spec gives a false assurance to whoever plans the refactoring.
-- Evidence: `testing.md` says: "This run covers what only exists in a production build: prerendering and the route
-  cache, the minified client bundles, `error.tsx` and `global-error.tsx` (hidden by the development error overlay)".
-  A search of `e2e/` for `went wrong`, `global-error` and `Try again` gives no hit.
-- Suggestion (required): bring the spec and the tests in line, in one of the two ways under Alternatives.
-- Confidence: Low. It needs a decision on whether a test may break a read of the shared test database.
-- Alternatives:
-  - Correct `testing.md`: the error pages are covered by no test, and why.
-  - Add a test for the production run that makes one read fail and checks the page and "Try again". It must restore
-    the database even when it fails, or every later spec fails with it.
-- Decision (2026-11-18): the first Alternative: `testing.md` says that the error pages are covered by no test, and why.
-
 #### issue: `/users` and `/change-password` are missing from the protected addresses of `access.spec.ts`
 
 - Location: `e2e/access.spec.ts`, lines 29–68, `PROTECTED_ADDRESSES`; `spec/testing.md`, section "End-to-end tests"
@@ -1602,7 +1581,7 @@ lastEditedById: bob.id, lastEditedVia: "mcp" } });`.
   module; there is no fixed wait and no `networkidle`; `e2e/hydration.spec.ts` has a case for every component that
   uses `useHydrated`.
 - `testing.md` matches the configuration of Playwright, the global setup and the helpers in every statement
-  checked, except the three named in the findings above.
+  checked, except the two named in the findings above.
 - Every route under `src/app` has an end-to-end test except the two error pages.
 
 ### Documentation: the feature specs of the content
@@ -1744,65 +1723,6 @@ that several of them state were compared with each other and with the code:
 
 ### Documentation: architecture, testing, catalog and workflows
 
-#### issue: `testing.md` does not match the integration tests it describes
-
-- Location: `spec/testing.md`, sections "Unit tests" and "Integration tests"; `integration/db-errors.test.ts`;
-  `integration/folder-role-service.test.ts`
-- Severity: Minor. The document is the convention that a new test is written from.
-- Category: docs
-- Problem: the list of unique constraints "recognised by its constant" leaves out `PAGE_REVISION_NUMBER` and
-  `FOLDER_ROLE_USER`, and the tested trigger against roles of admins. "One file per service" names two files and
-  not the integration test of the folder roles. The helper `createRevisions()` and the direct writes of the tests
-  are not named. How races and rollbacks are tested, with a trigger that raises, a held row lock and rounds of
-  `Promise.all`, is described for auth and OAuth and not for the content. The bullets on `npm run check`, on
-  `npm run check:all` and on the coverage stand under "Unit tests".
-- Impact: a new unique constraint or service gets no integration test, because the list looks complete.
-- Evidence: "(`FOLDER_NAME`, `TAB_NAME`, `PAGE_NAME`, `GRANT_ACCESS_TOKEN_HASH`, `OAUTH_CLIENT_METADATA_URL`,
-  `OAUTH_CODE_HASH`)"; `integration/db-errors.test.ts` tests nine constants.
-- Suggestion (required): point to `src/lib/db-errors.ts` in place of the list, write "one file per service in
-  `integration/`", add the helper and one bullet on races and rollbacks, and move the bullets on the commands to a
-  section of their own.
-- Confidence: High. Both sides were read, and a pointer removes the copy that went stale.
-
-#### issue: `tech.md` and `architecture.md` describe a search that does not exist, and `tech.md` leaves out the Markdown parser
-
-- Location: `spec/tech.md`, sections "Core", "Data & Backend", "Tooling" and "Later Aspects";
-  `spec/architecture.md`, section "Database"; `package.json`
-- Severity: Minor
-- Category: docs
-- Problem: `architecture.md` says "search uses PostgreSQL full-text search directly", and `tech.md` "for search
-  use Postgres full-text search". No search exists in `src/` or `prisma/`; it is an entry of the roadmap.
-  `tech.md` lists `diff` but not `markdown-it` and its footnote plugin, "the only Markdown parser of the wiki"
-  according to `pages.md`. "Later Aspects" repeats five entries of the roadmap, one of them decided since.
-  "Podman: instead of Docker for development" is too narrow: Podman also builds the image and runs in CI.
-- Impact: an agent asked about the search looks for code that is not there, and one that chooses a Markdown
-  library does not see that one is set.
-- Evidence: `package.json` holds `"markdown-it": "^15.0.3"`; `tech.md` does not name it.
-- Suggestion (required for the search and the parser, optional for the rest): say in `architecture.md` that the
-  search is not built, add the parser to `tech.md`, and reduce "Later Aspects" to a pointer to the roadmap.
-- Confidence: Medium. The facts were checked; removing "Later Aspects" drops text the author may want to keep.
-- Decision (2026-11-18): as suggested, the optional part included: "Later Aspects" becomes a pointer to `roadmap.md`,
-  and the line on Podman is corrected.
-
-#### issue: the README names 8 of 11 feature specs and no page history
-
-- Location: `README.md`, sections "What the prototype can do" and "Getting started";
-  `spec/step-plan-workflow.md`, section "Wrap-up step"
-- Severity: Minor
-- Category: docs
-- Problem: the list of specs leaves out `spec/page-history.md`, `spec/folder-roles.md` and
-  `spec/optimistic-locking.md`, and the text names neither the history nor that a save on an outdated page is
-  refused. The wrap-up asks only to check "that `README.md` has all the commands a developer needs", so nothing
-  keeps these paragraphs up to date. "Getting started" uses `npm run db:migrate`, which can create a migration,
-  where the other two places use `npm run db:deploy`.
-- Impact: a reader of the README does not learn about a main feature, and the list gets older with every feature.
-- Evidence: "What is built is described in `spec/`: `spec/content-structure.md`, `spec/pages.md`,
-  `spec/page-deletion.md`, `spec/users-and-login.md`, `spec/connected-apps.md`, `spec/mcp.md`, `spec/oauth.md` and
-  `spec/container-image.md`."
-- Suggestion (required): replace the list with a pointer to the catalog in `CLAUDE.md`, add one sentence on the
-  history, use `npm run db:deploy`, and extend the item of the wrap-up to the summary of the features.
-- Confidence: High. The three specs exist and are in the catalog.
-
 #### issue: `.env.example` says that without the public URL "only API tokens work", but there are no API tokens
 
 - Location: `.env.example`, lines 27–29, which the README and `container-image.md` point to;
@@ -1909,20 +1829,6 @@ that several of them state were compared with each other and with the code:
 - Decision (2026-11-18): as suggested: a list of terms at the top of `architecture.md` and "caller other than the
   browser" throughout; the terms for connected apps are chosen to fit the names the UI shows, the view "AI apps" and the
   page of the connected apps.
-
-#### question: are two entries of the roadmap still open as written?
-
-- Location: `spec/roadmap.md`, section "API and Integrations"
-- Severity: Minor
-- Category: docs
-- Problem: "Bearer token sessions" names `users-and-login.md`, which speaks of a bearer token only for the MCP
-  addresses, and OAuth access tokens already give clients other than a browser such access; the entry "Access for
-  clients without OAuth" stands right below it. "Exact search-and-replace for MCP" is planned "after MCP per
-  folder and role", which is built. No other entry of the roadmap describes something that is built.
-- Impact: a requirements conversation started from the first entry would design something that exists in part.
-- Evidence: "Bearer token sessions: sessions for clients other than a browser, sent in the `Authorization`
-  header".
-- Suggestion (optional): merge the first entry into the one below it and drop the condition of the second.
 
 #### question: is a change outside a step plan committed?
 
@@ -2140,7 +2046,7 @@ documents name.
 1. Decide the open questions that other work depends on. Done on 2026-11-18: no tool offers the deleted pages or
    the writes of roles, and nothing in the code enforces it; the unit tests of the services are cut after the
    missing integration cases exist. The Decision of each finding holds the rest.
-2. Fix the findings with a High confidence that change no code: the wrong statements of `testing.md`, the README and the Locations of the first report.
+2. Fix the findings with a High confidence that change no code: the Locations of the first report.
 3. Close the gaps of the tests before any refactoring: the access rules of the reads of the history, the rollback
    of a content save, the role before the version, the rules that only an end-to-end test covers, and the states
    of the dialogs that a shared frame would move.

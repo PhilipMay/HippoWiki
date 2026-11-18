@@ -85,7 +85,7 @@ Decided by the user on 2026-11-18:
 - [x] Rules of the checks and of a review
 - [x] Statements of `architecture.md`
 - [x] Statements of the feature specs
-- [ ] `testing.md`, `tech.md`, the README and the roadmap
+- [x] `testing.md`, `tech.md`, the README and the roadmap
 - [ ] Integration tests of access and of rules without a test
 - [ ] Integration tests of the rollback and the races of pages
 - [ ] Tests that assert less than their name says

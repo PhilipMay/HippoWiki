@@ -72,7 +72,8 @@ Goal/Build/Test sections as the other steps, and its Build section covers, in th
    move the rules and decisions of the requirements file that still hold into it; update `architecture.md`,
    `testing.md` or `tech.md` where conventions changed.
 2. Remove the feature from `roadmap.md`.
-3. Check that `README.md` has all the commands a developer needs.
+3. Check that `README.md` has all the commands a developer needs, and that its summary of what the prototype can do
+   covers the feature.
 4. Delete this step file and the requirements file of the feature, if there is one.
 5. Update the spec catalog in `CLAUDE.md`: add new spec files, remove this step file and the requirements file.
 

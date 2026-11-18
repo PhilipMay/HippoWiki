@@ -21,9 +21,10 @@ which the user has a role (Reader, Writer, Manager or Owner) and sees and revoke
 page; admins create the accounts and choose their type, and the Owners of a folder give the roles on it. AI assistants work with one
 folder each through an MCP server, as a Reader, a Writer or a Manager, connected through OAuth (see "MCP server").
 
-What is built is described in `spec/`: `spec/content-structure.md`, `spec/pages.md`, `spec/page-deletion.md`,
-`spec/users-and-login.md`, `spec/connected-apps.md`, `spec/mcp.md`, `spec/oauth.md` and `spec/container-image.md`.
-`CLAUDE.md` lists all spec files.
+Every content change of a page is kept in its history, where two revisions can be compared and a page can be reverted
+to an earlier one, and a change based on an outdated state of a page is refused instead of overwriting a newer one.
+
+What is built is described in the feature specs in `spec/`; the catalog in `CLAUDE.md` lists all spec files.
 
 ## Prerequisites
 
@@ -38,7 +39,7 @@ nvm use
 cp .env.example .env   # once; .env stays on your machine
 npm install            # also generates the Prisma client
 npm run db:up
-npm run db:migrate     # apply the migrations to the development database
+npm run db:deploy      # apply the migrations to the development database
 npm run db:seed        # insert a sample folder with two sample pages and the known users
 npm run dev
 ```

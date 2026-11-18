@@ -323,8 +323,8 @@ The feature is described in `users-and-login.md`. What every new route, query an
   service and a content save of a page with its revision. A check that must hold until the write, such as that a folder keeps an Owner, reads its rows with
   `SELECT ... FOR UPDATE` in the same transaction (`changeRole()` and `removeRole()` of the folder-roles service). A conditional write inside it that finds its row changed throws an error that only the caller knows, which
   rolls the transaction back, and the caller reads again.
-- Prisma is used for CRUD. The `fullTextSearchPostgres` preview feature is not enabled; search uses PostgreSQL
-  full-text search directly.
+- Prisma is used for CRUD. The `fullTextSearchPostgres` preview feature is not enabled. There is no search yet; it is
+  an entry of `roadmap.md`.
 - The `partialIndexes` preview feature is enabled for partial unique indexes (`where` in `@@unique`), such as the one
   on the names of pages placed directly in a folder.
 - The development database is PostgreSQL 18 in the Podman container `hippowiki-db`, managed with `scripts/db.sh`

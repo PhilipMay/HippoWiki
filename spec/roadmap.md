@@ -96,15 +96,14 @@ listed first; there is no order across themes.
 
 ## API and Integrations
 
-- Bearer token sessions: sessions for clients other than a browser, sent in the `Authorization` header
-  (`users-and-login.md`).
 - Access for clients without OAuth: scripts, CI jobs and MCP clients that cannot do OAuth with a browser get access
-  again, for example through the OAuth device flow or client credentials (`connected-apps.md`, `oauth.md`).
+  again, for example through the OAuth device flow or client credentials, or a bearer token sent in the
+  `Authorization` header (`connected-apps.md`, `oauth.md`, `users-and-login.md`).
 - MCP write tools for folders: create folders from AI assistants; renaming a folder and its roles stay in the browser,
   because the Owner is never a role of MCP (`mcp.md`, `folder-roles.md`).
 - MCP search tool: search the wiki from AI assistants, after full-text search (see "Search") (`mcp.md`).
 - Exact search-and-replace for MCP: a write tool that replaces an exact piece of the content of a page instead of the
-  whole content, after MCP per folder and role (`mcp.md`).
+  whole content (`mcp.md`).
 - CORS for other origins: let web applications on other origins call the API.
 - Rate limits and quotas: limits on requests, writes and stored content per user.
 

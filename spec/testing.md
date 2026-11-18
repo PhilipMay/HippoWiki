@@ -2,6 +2,25 @@
 
 How the code is tested. Commands are listed in `README.md`.
 
+## Checks and coverage
+
+- What `npm run check` and `npm run check:all` hold, when a change runs them and what never runs next to the
+  end-to-end tests is stated in "When a step is done" in `step-plan-workflow.md`. `npm run check` stays fast and needs
+  no Podman. `scripts/check.ts` runs the checks side by side and prints the output of each one as a block when it is
+  done. Only what would clash waits: `next typegen` runs first, because lint and the type check read the route types
+  it writes, the build of `npm run check:all` waits for lint and the type check, because it writes the route types
+  again, and the cost tests run last and alone. `npm run check` alone writes nothing but the route types;
+  `npm run check:all` also writes `.next/` and starts the test database container.
+- `npm run test:coverage` measures the coverage of the unit tests with `@vitest/coverage-v8` (configured in
+  `vitest.config.ts`). It covers all `.ts` and `.tsx` files in `src/` except the tests and `src/generated/`, so files
+  that no unit test loads show up with 0%. It prints a table, writes an HTML report to `coverage/index.html` and a
+  summary to `coverage/coverage-summary.json` (all in `coverage/`, ignored by Git and ESLint), also when a test fails
+  (`reportOnFailure`). It is not part of `npm run check` and has no thresholds: much of the code, such as the UI, is
+  covered by the end-to-end tests instead.
+- `scripts/coverage-summary.ts` (`npx tsx scripts/coverage-summary.ts`) turns `coverage/coverage-summary.json` into
+  Markdown tables, the totals and a collapsed table per file: appended to the GitHub job summary when
+  `GITHUB_STEP_SUMMARY` is set, printed otherwise.
+
 ## Unit tests
 
 - Vitest project `unit` (`vitest.config.ts`); unit tests sit next to the code as `*.test.ts`. `npm run test:coverage`
@@ -72,22 +91,6 @@ How the code is tested. Commands are listed in `README.md`.
 - `getDb()`, `getAuth()` and `getServerEnv()` are tested for creating the client, the Better Auth instance and
   validating the environment on first use only, not on import. These tests load the module anew for every case
   (`vi.resetModules()` and a dynamic import), because the modules keep their result.
-- What `npm run check` and `npm run check:all` hold, when a change runs them and what never runs next to the
-  end-to-end tests is stated in "When a step is done" in `step-plan-workflow.md`. `npm run check` stays fast and needs
-  no Podman. `scripts/check.ts` runs the checks side by side and prints the output of each one as a block when it is
-  done. Only what would clash waits: `next typegen` runs first, because lint and the type check read the route types
-  it writes, the build of `npm run check:all` waits for lint and the type check, because it writes the route types
-  again, and the cost tests run last and alone. `npm run check` alone writes nothing but the route types;
-  `npm run check:all` also writes `.next/` and starts the test database container.
-- `npm run test:coverage` measures the coverage of the unit tests with `@vitest/coverage-v8` (configured in
-  `vitest.config.ts`). It covers all `.ts` and `.tsx` files in `src/` except the tests and `src/generated/`, so files
-  that no unit test loads show up with 0%. It prints a table, writes an HTML report to `coverage/index.html` and a
-  summary to `coverage/coverage-summary.json` (all in `coverage/`, ignored by Git and ESLint), also when a test fails
-  (`reportOnFailure`). It is not part of `npm run check` and has no thresholds: much of the code, such as the UI, is
-  covered by the end-to-end tests instead.
-- `scripts/coverage-summary.ts` (`npx tsx scripts/coverage-summary.ts`) turns `coverage/coverage-summary.json` into
-  Markdown tables, the totals and a collapsed table per file: appended to the GitHub job summary when
-  `GITHUB_STEP_SUMMARY` is set, printed otherwise.
 
 ## Doc references
 
@@ -116,14 +119,14 @@ How the code is tested. Commands are listed in `README.md`.
   mocked: the tests call the services, which work outside a request. The test files run one after another
   (`fileParallelism: false`).
 - Rows are created with the helpers of `e2e/support/database.ts` (`createFolder()`, `createTab()`, `createPage()`,
-  `createUser()`).
+  `createRevisions()`, `createFolderRole()`, `createUser()`, `createGrant()`). A state that no helper sets up, such as
+  another version, channel or revision of a stored row, is written directly with the client of `getTestDb()`.
 - They cover what the unit tests can only mock:
-  - `db-errors.ts` against the errors that Prisma and its `pg` adapter really report: every unique constraint of the
-    schema is recognised by its constant (`FOLDER_NAME`, `TAB_NAME`, `PAGE_NAME`,
-    `GRANT_ACCESS_TOKEN_HASH`, `OAUTH_CLIENT_METADATA_URL`, `OAUTH_CODE_HASH`) and by no other,
-    every foreign key violation by `isForeignKeyViolation()`. The services use the same constants, so a Prisma
-    upgrade that changes the error shape or the index names fails here. `USER_NAME` stands for the two unique indexes
-    of `User`, on the user name and on the email.
+  - `src/lib/db-errors.ts` against the errors that Prisma and its `pg` adapter really report
+    (`integration/db-errors.test.ts`): every unique constraint that the module names is recognised by its constant
+    and by no other, every foreign key violation by `isForeignKeyViolation()`, and the refusal of the trigger against
+    roles of admins is recognised as such. The services use the same constants, so a Prisma upgrade that changes the
+    error shape or the index names fails here.
   - The users service (`integration/user-service.test.ts`) with real hashes: the admin setup, the user list and the
     creation of users, whose returned password must log in.
   - The auth service (`integration/auth-service.test.ts`) through the real Better Auth instance: that Better Auth
@@ -141,12 +144,18 @@ How the code is tested. Commands are listed in `README.md`.
     what is deleted with a client and a user, and the clean-up. `integration/oauth-metadata.test.ts` does the same for
     clients with a metadata document, with the fetch replaced: the first fetch, the kept row, the fetch after the cache
     time, a document that is not valid and a fetch that fails.
-  - The services of the content on real data, one file per service (`integration/folder-service.test.ts`,
-    `integration/page-service.test.ts`):
+  - The services of the content on real data, one file per service in `integration/`
+    (`integration/folder-service.test.ts`, `integration/page-service.test.ts` and
+    `integration/folder-role-service.test.ts`):
     - the reads: their conditions (e.g. pages placed directly in a folder versus pages in a tab) and their order, and
       that a read of a single item returns exactly the declared fields (`toStrictEqual`)
     - the writes: what is stored and returned, and the codes the database decides, such as `name-taken` for a taken
       name and `tab-not-found` for a tab of another folder
+- Races and rollbacks are tested against the database, with real concurrency. Writes at the same time are sent with
+  `Promise.all`, several of them or in rounds where a single pair could pass by chance. Where a race needs both writes
+  to wait for the same row, a transaction of the test holds it with `SELECT ... FOR UPDATE` until both wait for the
+  lock. A rollback is shown with a trigger that the test creates to raise an error inside the write and drops in
+  `finally`, comparing the whole rows before and after (the delete of a tab in `integration/folder-service.test.ts`).
 - A new unique constraint gets a constant in `db-errors.ts` and a case in `integration/db-errors.test.ts`; a new
   read with a condition the database must get right and every new write get a case in the integration test of their
   service.
@@ -162,8 +171,10 @@ How the code is tested. Commands are listed in `README.md`.
 - By default it starts the development server (`next dev`), which starts fast. With `HIPPOWIKI_E2E_SERVER=production`
   (`npm run test:e2e:production`) it runs `next build` followed by `next start` instead, both with the same build
   directory and `DATABASE_URL`. This run covers what only exists in a production build: prerendering and the route
-  cache, the minified client bundles, `error.tsx` and `global-error.tsx` (hidden by the development error overlay)
-  and rendering without the double rendering of StrictMode. The build needs no running database, because no route is
+  cache, the minified client bundles and rendering without the double rendering of StrictMode.
+- The error pages `error.tsx` and `global-error.tsx` are covered by no test, in neither run: to render them, a test
+  would have to make a read of the shared test database fail, and every later spec would fail with it if the test
+  could not restore the database. The build needs no running database, because no route is
   prerendered; the global setup starts the test database only after the server.
 - All tests share the test database and run one after another.
 - The test server has a public URL (`HIPPOWIKI_PUBLIC_URL=http://localhost:3100` in `playwright.config.ts`), so
@@ -235,7 +246,7 @@ How the code is tested. Commands are listed in `README.md`.
     can be set.
     Like the forms, it derives the title from the content; the content defaults to `# <title>`, so
     `createPage({ title: "Older page" })` works. A title given together with content is stored as is, to set up a page
-    that was stored before titles were derived. With `deletedAt` it creates a deleted page, which has no tab, so it
+    whose stored title differs from its content. With `deletedAt` it creates a deleted page, which has no tab, so it
     cannot be combined with `tab`. Like a page after the migration of the page history, it also inserts revision 1
     with the content, title, editor and channel of the page, made at its `updatedAt`.
   - `createRevisions()` adds revisions to a page given as `page`, numbered on from its newest revision: `count` of
