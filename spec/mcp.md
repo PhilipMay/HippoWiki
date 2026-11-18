@@ -136,6 +136,9 @@ Tools of a Manager, for a Manager connection only. They do what the browser does
 - `rename_tab`: a tab by its current name with a new name, under the rules of the browser; like in the browser, a
   rename is not checked against changes meanwhile. An unknown tab, a name that breaks the rule and the name of another
   tab are tool errors. The result names the tab and its new address; the pages in it have new addresses as well.
+  With the current name of the tab, also with surrounding spaces, it changes nothing: the tab keeps its time of the
+  last change, its last editor and its channel, and the result is the usual one for the current name (see "Renaming to
+  the same name" in `content-structure.md`).
 - `delete_tab`: a tab by its name, deleted for good together with all its pages in one call, all or nothing, as in
   the browser and without a further confirmation. Its description says before the call that every page in the tab is
   deleted with it, that the tab cannot be restored and that its pages can only be restored one by one by a Manager or

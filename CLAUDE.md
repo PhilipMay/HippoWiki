@@ -11,11 +11,6 @@ The specification lives in the `spec/` directory. This catalog should always be 
   step plan (starting and resuming, what may change, the commit on approval without a push, the rounds of questions,
   the checks for contradictions and feasibility, how requirements are written, the template); the result is one file
   `spec/<feature>-requirements.md`, listed here while it exists
-- `spec/unchanged-renames-requirements.md`: the requirements of renaming a folder or a tab to its own name without a
-  change (nothing stored in the browser and through MCP, the same answer as a rename, a log line of its own, "Save"
-  disabled in the rename dialogs while the name is unchanged); approved
-- `spec/unchanged-renames-steps.md`: the step plan of unchanged renames (storing nothing for a rename of a folder or a
-  tab to its own name, "Save" disabled in the rename dialogs while the name is unchanged, wrap-up)
 - `spec/step-plan-workflow.md`: how features are planned in step files, when a step is done, what to do when it
   cannot be finished, how a feature is wrapped up, what a feature spec holds, and how a finding of the review report is
   fixed and deleted
@@ -24,11 +19,13 @@ The specification lives in the `spec/` directory. This catalog should always be 
 - `spec/testing.md`: how `npm run check` and `npm run check:all` run their checks side by side, the check of doc
   references, and unit, integration and end-to-end test conventions
 - `spec/pages.md`: the page feature as built (content and title with the limits of length, nesting and table cells,
-  checked also on a revert, saves without a change that leave the page as it is and are logged apart, suggested
+  checked also on a revert, saves without a change that leave the page as it is and are logged apart, renames of
+  folders and tabs to their own name that store nothing, suggested
   name, routes, rendering with markdown-it, the cost of the Markdown parse, decisions, limits)
 - `spec/content-structure.md`: the content structure as built (folders, tabs and pages under `/folders`: overview,
   names, addresses, actions and views with the view "AI apps" and the views and the action of the page history, routes,
-  changing the structure, deleting a tab for good
+  changing the structure, renaming a folder or tab to its own name, which stores nothing and keeps "Save" of the rename
+  dialogs disabled, deleting a tab for good
   with its pages soft deleted, only users see content, the last editor with the channel `web` or `mcp` of the last
   change, lists with the column "Via", decisions, limits)
 - `spec/page-history.md`: the page history as built (a revision of every content change from the browser and MCP in
@@ -56,8 +53,8 @@ The specification lives in the `spec/` directory. This catalog should always be 
   role, off without the public URL, stateless with JSON answers, connections bound to one address and checked against
   the current role with the answers 404, 401 and 403, the actor of MCP, the read tools with the last editor and the
   channel, the write tools of a Writer, which record revisions, no tool for the history,
-  the tools of a Manager that delete pages and create, rename and delete tabs, the version, the instructions per
-  connection, decisions, limits)
+  the tools of a Manager that delete pages and create, rename and delete tabs, a rename of a tab to its own name that
+  changes nothing, the version, the instructions per connection, decisions, limits)
 - `spec/oauth.md`: OAuth for MCP clients as built (switching it on with the public URL, discovery with the metadata per
   folder address, clients by metadata document and by registration with its limit, the safe fetch of metadata
   documents, the authorization request with the folder address as `resource` and the consent page with folder and

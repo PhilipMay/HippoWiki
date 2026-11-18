@@ -142,6 +142,34 @@ hold pages directly and have tabs at the same time.
   wins.
 - After every write, all addresses under `/folders` and `/deleted-pages` show the new state.
 
+## Renaming to the same name
+
+A rename of a folder or a tab to the name it already has changes nothing, in the browser and through `rename_tab`, so
+that the time of the last change, the last editor and the channel name only who really changed the item. Code:
+`renameFolder()`, `renameTab()` in `src/features/folders/service.ts`,
+`src/features/folders/components/NameDialog.tsx`. Tests: `src/features/folders/service.test.ts`,
+`integration/folder-service.test.ts`, `e2e/folders.spec.ts`, `e2e/tabs.spec.ts`, `e2e/mcp.spec.ts`,
+`e2e/hydration.spec.ts`.
+
+- A rename to the name the folder or tab has stored stores nothing: the item keeps its time of the last change, its
+  last editor and its channel. A name counts as the same when it equals the stored name once its surrounding spaces
+  are removed, as the name is checked before it is stored (" guides " for the tab `guides`).
+- It is checked like every rename, in the same order: the admin, the role, the name rule, and only then the comparison.
+  Whoever may not rename, a folder or tab that does not exist and an invalid name are refused as with any other name.
+- The comparison is with the name stored at the moment of the save, not with the name the item had when the dialog was
+  opened. A tab renamed from `guides` to `news` while a "Rename tab" dialog for it was open, and then saved in that
+  dialog as `news`, stores nothing and leads to the tab `news`.
+- It is answered as every rename is: the browser leads to the address of the item without a notice, and `rename_tab`
+  returns its usual result with the tab and its address.
+- The server log records it in a line of its own, with the item and the channel, not as a rename.
+- In the "Rename folder" and the "Rename tab" dialog, "Save" is disabled while the name in the field, without its
+  surrounding spaces, is the name the item had when the dialog was opened, and Enter in the field submits nothing
+  then. The dialog shows no extra text about it; the field keeps its hint about the name rule. An empty field differs
+  from the current name, so "Save" is enabled and the server answers that a name is required. The "New folder" and
+  "New tab" dialogs keep "Save" enabled for every name.
+- Moving or renaming a page to its own name and place is not covered: it makes the user its last editor and counts the
+  version of the page up, like every move or rename of a page.
+
 ## Deleting a tab
 
 - A Manager or an Owner of the folder deletes a tab from the tab address with "Delete" (`?action=delete`), after a
@@ -205,6 +233,8 @@ hold pages directly and have tabs at the same time.
   version of a page up, which the page's later changes are checked against (see `optimistic-locking.md`).
 - A content save without a change, whose content is the same as the stored content of the page, is no edit: it
   changes neither the last editor nor the time of the last change (see "Saves without a change" in `pages.md`).
+- A rename of a folder or a tab to the name it already has is no edit either: it changes neither the last editor, nor
+  the channel, nor the time of the last change (see "Renaming to the same name").
 - A change inside a folder or tab is no edit of it: creating, moving, deleting or restoring a page and creating or
   deleting a tab leave the time of the last change and the last editor of the folder and the tab as they are. Renaming a folder
   leaves those of its tabs and pages as they are.
@@ -297,6 +327,21 @@ hold pages directly and have tabs at the same time.
   Rejected: a soft delete of folders, a list of deleted folders and restoring them.
 - Pages and tabs stay in their folder: they are moved only within it, as a lasting rule. Rejected: moving a page or a
   tab to another folder.
+- Only folders and tabs are left unchanged by a rename to their own name. Rejected for now: moves and renames of pages
+  to their own name and place, which touch the version of a page and optimistic locking.
+- "Save" of a rename dialog compares the name without its surrounding spaces, as the server does, so that the button
+  and the server always agree. Rejected: comparing the exact text of the field.
+- A rename to the same name is answered as every rename is, as unchanged content saves of pages are. Rejected: a notice
+  in the browser and a note in the result of `rename_tab`; a tool error for `rename_tab`.
+- A rename to the same name is logged in a line of its own, as unchanged content saves of pages are. Rejected: no log
+  line; logging it as a rename.
+- A rename to the same name is checked in the order of every rename, the comparison last, as unchanged content saves of
+  pages are, so that it never tells someone without the role the current name. Rejected: comparing first.
+- The rename dialog compares with the name it was opened with, the server with the stored name. Rejected: refusing a
+  save after a rename meanwhile with a notice, which needs a version for folders and tabs.
+- The rename dialog shows no extra text while "Save" is disabled. Rejected: a hint such as "Enter a new name to save".
+- Enter submits nothing while "Save" is disabled, so that the keyboard and the button behave the same. Rejected: Enter
+  sending the unchanged name.
 
 ## Current limits
 
