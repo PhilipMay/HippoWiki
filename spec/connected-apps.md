@@ -29,8 +29,6 @@ such as `src/features/grants/service.test.ts`.
   that never end. An expired grant stays in the list, marked as expired, until it is revoked, and counts towards the
   limit.
 - Deleting a user, the client or the folder deletes its grants.
-- The grants that named the plain `/mcp` before the folder addresses came were removed on that update; their users
-  connect again to a folder address.
 
 ## The own apps only
 

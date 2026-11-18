@@ -63,7 +63,7 @@ The specification lives in the `spec/` directory. This catalog should always be 
   secrets, routes, decisions, limits)
 - `spec/optimistic-locking.md`: optimistic locking for pages as built (the version of a page and what counts it up,
   which leaves out saves and moves without a change, which content saves, reverts, moves, renames and deletes are refused, what the browser shows then, the rule for callers
-  other than the browser and the MCP write tools, restoring unchecked, editors and dialogs open over a deployment, decisions, limits)
+  other than the browser and the MCP write tools, restoring unchecked, decisions, limits)
 - `spec/folder-roles.md`: folder roles as built (the roles Reader, Writer, Manager and Owner per user and folder and
   what each may do in the browser, deleting a tab from Manager up, admins never have a role, what a user sees and does, creating folders, the roles
   view, giving, changing and removing roles with the last Owner kept, a change to the same role that stores nothing

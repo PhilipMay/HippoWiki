@@ -77,7 +77,7 @@ Code: `Containerfile`, `.containerignore`, `scripts/image.sh`, `scripts/image-mi
 - `image-start.sh` runs it on every start of a container, after the migration and before the server.
 - If the database has no account named `admin`, it creates it as an admin with the password from
   `HIPPOWIKI_ADMIN_PASSWORD`, as a first password with a pending password change. If the account exists, it does
-  nothing, its type included, and does not read the variable; changing the variable later does not change the
+  nothing, its type included, and does not look at the password; changing the variable later does not change the
   password. Two containers that start together create one admin. Other admins are created in the "New user" dialog.
 - When the admin has to be created and `HIPPOWIKI_ADMIN_PASSWORD` is missing, empty or not a valid password, it
   creates nothing and fails, and the container exits without serving. The same holds when the database is not
@@ -99,7 +99,7 @@ Code: `Containerfile`, `.containerignore`, `scripts/image.sh`, `scripts/image-mi
   Prisma and the server with node-postgres, and the two may read parameters such as `sslmode` or `schema` differently.
 - The URL is read when the container runs, never when the image is built.
 - `HIPPOWIKI_ADMIN_PASSWORD`: the first password of the admin account, 8 to 128 characters, any characters. Only the
-  admin setup reads it, and only while the database has no admin; the server never reads it. A container that starts
+  admin setup reads it, and it looks at the password only while the database has no admin; the server never reads it. A container that starts
   against a database with an admin does not need it.
 - The operator chooses this password, for example with `openssl rand -base64 24`, and never uses a value from
   `.env.example` or the README: those are public. `.env.example` leaves the variable empty, and the README writes
@@ -109,7 +109,8 @@ Code: `Containerfile`, `.containerignore`, `scripts/image.sh`, `scripts/image-mi
 - `HIPPOWIKI_LOG_CLIENT_ADDRESS` is optional, `true` or `false`, default `false`; any other value stops the server with
   an error like a wrong `DATABASE_URL`. It is read when the server runs, not when the image is built. With `true` the
   server logs one `info` line `client address probe` for every request that passes the proxy of Next.js (with
-  `"source":"proxy"`, the method and the path; not for `/login` and `/api/health`) and for every submitted login (with
+  `"source":"proxy"`, the method and the path; not for the public addresses that pass by the proxy, the `matcher` in
+  `src/proxy.ts`) and for every submitted login (with
   `"source":"login"`). The line holds only the headers `X-Forwarded-For`, `X-Real-Ip`, `Forwarded`,
   `X-Forwarded-Proto`, `X-Forwarded-Host`, `X-Forwarded-Port` and `Host`, each cut to 200 characters, never cookies,
   `Authorization` or the body (`src/lib/client-address-probe.ts`).

@@ -58,9 +58,9 @@ the dialogs and lists in `components/`), routes under `src/app/deleted-pages/`. 
 - Restoring checks the name like moving a page (`content-structure.md`); the content is neither validated nor
   touched. It leads to the page's new address.
 - Restoring is not checked against a change in the meantime (see `optimistic-locking.md`).
-- Deleting and restoring a page each make the logged-in user its last editor, with the channel `web` (see "Last
-  editor" in `content-structure.md`): a restored page shows the user who restored it "via web", also when it was
-  deleted through MCP.
+- Restoring makes the logged-in user the last editor of the page, with the channel `web` (see "Last editor" in
+  `content-structure.md`): a restored page shows the user who restored it "via web", also when it was deleted through
+  MCP.
 
 ## Decisions
 
@@ -76,10 +76,8 @@ the dialogs and lists in `components/`), routes under `src/app/deleted-pages/`. 
   deleted pages instead of writing to them.
 - A deleted page is restored only into its own folder, as a lasting rule, like pages are moved only within their
   folder (see `content-structure.md`). Rejected: restoring a page into another folder.
-- Pages deleted before the last editor was recorded show the admin as the user who deleted them, like all content
-  stored before (see "Decisions" in `content-structure.md`); a page that an admin deleted before the account types
-  came keeps that admin's name. Pages deleted before the channel was recorded show `web`, also when an AI app deleted
-  them.
+- Pages deleted before the channel was recorded show `web`, also when an AI app deleted them (see "Decisions" in
+  `content-structure.md`).
 
 ## Current limits
 

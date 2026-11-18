@@ -17,11 +17,13 @@ routes under `src/app/folders/`. Tests: `src/features/pages/derive.test.ts`, `sr
 - A page's content is Markdown, edited as raw text. It must start with a title heading, `# Title`, after optional
   blank lines; content without one is refused. Nothing else counts as a title heading: not a setext heading, not a
   `##` heading, and not a heading after any other block. The exact rule is in `titleFromContent()`.
-- The title is the text of that heading, as plain text. It is never entered directly and is derived again on every
-  save, so changing the heading changes the title. Titles need not be unique.
-- The content is stored with plain line breaks: CRLF and CR become LF before it is checked. Its length limit counts
-  the content with plain line breaks, as the editor counts it, so content that fits the editor is never refused for
-  its length. Content with a NUL character is refused with a field error, because the database cannot store it.
+- The title is the text of that heading, as plain text, cut to 200 characters (`TITLE_MAX_LENGTH` in
+  `src/features/pages/limits.ts`). A heading whose text has no letter or digit, such as `# ...`, counts as no title
+  heading. The title is never entered directly and is derived again on every save, so changing the heading changes
+  the title. Titles need not be unique.
+- The content is stored with plain line breaks: CRLF and CR become LF before it is checked. It may be at most 100,000
+  characters long (`CONTENT_MAX_LENGTH` in `src/features/pages/limits.ts`), counted with plain line breaks, as the
+  editor counts it, so content that fits the editor is never refused for its length. Content with a NUL character is refused with a field error, because the database cannot store it.
 - The Markdown of the content has two limits besides its length, both in `src/features/pages/limits.ts` and checked
   at every save, in the browser and through MCP, with a field error at the content:
   - lists and quotes nested at most 20 deep, a list or quote inside another counting one level more: far more than a
@@ -83,7 +85,6 @@ given as `?action=<action>` (see `content-structure.md`).
   `optimistic-locking.md`).
 - `?action=move-or-rename`: see `content-structure.md`. `?action=delete`: see `page-deletion.md`.
 - `?view=history`, `?view=revision`, `?view=compare` and `?action=revert`: see `page-history.md`.
-- `GET /api/health`: `{ "status": "ok" }` while the database is reachable, status 503 and a logged error otherwise.
 
 ## Rendering
 
@@ -167,7 +168,8 @@ costliest function of a page, and its guards are:
 ## Current limits
 
 - every user with a role on a folder reads all its pages; there are no roles per page (see `folder-roles.md`)
-- only the last editor of a page is stored, not who created it; recording who created it is not planned
+- the page itself stores only its last editor; its history keeps the user of every content change, so revision 1
+  names who created it (see `page-history.md`)
 - a deleted page cannot be removed for good, which is not planned, and is restored only into its own folder, as a
   lasting rule (see `page-deletion.md`)
 - a page has one content in one language; the same page in several languages is not planned
@@ -175,8 +177,6 @@ costliest function of a page, and its guards are:
 - raw Markdown editing in a textarea
 - the title comes only from a leading `# Title` heading: no setext headings, no front matter, no live display of the
   derived title while editing an existing page
-- a page stored before titles were derived keeps its stored title until its next change of the content; a save without
-  a change keeps it as well
 - no redirects from the previous address after a page is renamed or moved
 - Markdown images only from the wiki itself: the browser blocks images of other hosts without a message in the page,
   and a `data:` image is shown as its Markdown text

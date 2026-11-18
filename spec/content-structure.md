@@ -39,7 +39,8 @@ hold pages directly and have tabs at the same time.
 ## Names
 
 - Folders, tabs and pages each have a name, which is also their part of the address. The rule is in
-  `src/lib/names.ts`: lowercase letters and digits in groups joined by single hyphens, and so never a dot.
+  `src/lib/names.ts`: lowercase letters and digits in groups joined by single hyphens, and so never a dot, at most 80
+  characters long (`NAME_MAX_LENGTH`).
 - No name is reserved: all content lives under `/folders`, and actions are in the query string.
 - Names are unique only where they meet, each guaranteed by a unique index in the database:
   - folder names across the wiki
@@ -54,7 +55,7 @@ hold pages directly and have tabs at the same time.
 ## Addresses
 
 - All content lives under the fixed prefix `/folders`; deleted pages live under `/deleted-pages` (see
-  `page-deletion.md`). The rest of the root belongs to the app (`/api` today).
+  `page-deletion.md`). The rest of the root belongs to the other routes of the app (see `src/app/`).
 - The addresses:
   - `/folders`: the list of folders
   - `/folders/<folder>`: a folder
@@ -110,7 +111,8 @@ hold pages directly and have tabs at the same time.
 
 ## Routes
 
-- `/` redirects to `/folders`; the app bar links to `/folders`.
+- `/` redirects a user to `/folders` and an admin to `/users`; the app bar links a user to `/folders` (see
+  `users-and-login.md`).
 - `/folders`: the folders with a role of the user, with their last update and the own role, and a "New folder"
   button; without any folder a hint that the user can create one or ask an Owner of a folder for a role.
 - `/folders/<folder>`: the folder with the own role, the buttons the role includes ("Rename" for an Owner, "All pages"
@@ -268,9 +270,8 @@ real changes, and an editor or dialog that another user has open on the page is 
 - A change inside a folder or tab is no edit of it: creating, moving, deleting or restoring a page and creating or
   deleting a tab leave the time of the last change and the last editor of the folder and the tab as they are. Renaming a folder
   leaves those of its tabs and pages as they are.
-- The user is the one who is logged in. Every content write takes the acting user; a write by a user that does not
+- The user is the one who is logged in, through MCP the user of the connection. Every content write takes the acting user; a write by a user that does not
   exist fails and writes nothing.
-- Content that an admin edited before the account types came keeps showing that admin's name as its last editor.
 - With the last editor, every folder, tab and page stores how it was last changed, its channel: `web` for a change in
   the browser, `mcp` for a change by an AI app through MCP. These are the only two values. The channel is set on
   exactly the writes that set the last editor, in the same write, so that time, name and channel always describe the
@@ -306,12 +307,9 @@ real changes, and an editor or dialog that another user has open on the page is 
 - The last editor changes on exactly the writes that change the time of the last change, in the same write, so that a
   reader sees who made the change whose time is shown. Counting a change inside a folder or tab as an edit of it was
   rejected: the folder or tab itself did not change.
-- The content stored before the last editor was recorded got the admin (the user named `admin`) as its last editor. No
-  editor was rejected, because it would make the editor optional, which every read and view would then have to
-  handle, for content that only an old installation has. An "unknown" placeholder user was rejected, because it would
-  be an account that nobody owns and that the user list would show. Migrating content without an admin fails and is
-  rolled back.
-- The last editor is required, so that every item always has one.
+- The last editor is required, so that every item always has one. Rejected: an optional editor, which every read and
+  view would have to handle, and an "unknown" placeholder user, which would be an account that nobody owns and that
+  the user list would show.
 - The channel is stored and shown so that readers can tell changes by AI apps from changes in the browser, and know
   what to check. Rejected: showing which AI app made a change, because the name of an app is chosen by the app itself
   and may be long or misleading, and two values are enough to tell AI changes apart.

@@ -132,7 +132,7 @@ and `src/lib/client-address.test.ts`.
   `src/lib/addresses.ts`; the login page, the password change and both actions check the value again.
 - An admin sees no content, so for an admin a way back to `/` or to an address under `/folders` or `/deleted-pages`,
   judged by its path, leads to `/users` instead of the not-found page; every other way back stays. The rule is
-  `landingPath()` in `src/lib/addresses.ts`, used by the login, the password change, both of their pages and `/`.
+  `landingPath()` in `src/lib/addresses.ts`, used by the login, the password change and both of their pages.
 - The folder list is where a login leads anyway, so it is left out of the address.
 - `requireUser()` redirects without a way back, unless its caller passes one: only the consent page of OAuth does
   (see `oauth.md`). A request with a session cookie that is no longer valid therefore leads to `/folders` after the

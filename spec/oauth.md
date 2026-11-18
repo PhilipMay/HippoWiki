@@ -80,7 +80,9 @@ The fetch of a metadata document must not be a way to make the server ask an add
   nowhere. A redirect address must be the same text as one of the client's; only for `http` on a loopback address
   the port is ignored, because a native client listens on whatever port is free.
 - Every other error is shown on the page with a link "Return to <host>", which carries the error to the redirect
-  address of the client; the browser goes there only when the user clicks the link. These checks are, in this order:
+  address of the client; the browser goes there only when the user clicks the link. Before them, a `client_id` longer
+  than the limit of `URL_MAX_LENGTH` in `src/features/oauth/schema.ts` counts as an unknown client, and a `state` longer
+  than it is refused with `invalid_request` and not sent back. The other checks are, in this order:
   `response_type` must be `code`; PKCE must be `S256` with a valid challenge; `resource` (RFC 8707) must be exactly
   the full MCP address of a folder, `<HIPPOWIKI_PUBLIC_URL>/mcp/<folder-uuid>/<reader|writer|manager>`, otherwise
   `invalid_target` (a missing `resource`, the plain `/mcp`, the role Owner and anything else); then the

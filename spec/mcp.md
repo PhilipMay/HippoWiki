@@ -6,7 +6,7 @@ folder and with one role, at an address of its own per folder and role, `/mcp/<f
 OAuth (see `oauth.md`) and sends the access token of its grant. The role of the address is the most the app may do,
 and never more than the user's current role on the folder, so that a user can give an AI agent less than their own
 access. A Reader connection reads the folder; a Writer connection also creates pages, replaces their content and moves
-or renames them; a Manager connection also deletes pages and creates, renames and deletes tabs. A user finds the addresses of a folder in its view "AI apps" (see `content-structure.md`).
+or renames them; a Manager connection also deletes pages and creates, renames and deletes tabs. A user finds the addresses of a folder in its view "AI apps" (see `folder-roles.md`).
 
 Code: `src/features/mcp/` (`tools.ts` with the tools, `http.ts` with the adapter of the route, `queries.ts` and
 `components/` for the view "AI apps"), the route `src/app/mcp/[[...path]]/route.ts` and the exception for it in
@@ -125,7 +125,8 @@ Write tools of pages, for a Writer and a Manager connection, each with the hints
 
 Tools of a Manager, for a Manager connection only. They do what the browser does for a Manager (see
 `content-structure.md` and `page-deletion.md`). `delete_page` and `delete_tab` carry the hint of a tool that destroys
-(`destructiveHint`), `create_tab` and `rename_tab` the hints of a tool that writes:
+(`destructiveHint`), `create_tab` and `rename_tab` the hints of a tool that writes. `replace_page_content` of the
+Writer carries `destructiveHint` as well, because it overwrites the whole content of a page:
 
 - `delete_page`: a page by its tab, if it is in one, and its name, based on the version that `read_page` gave, deleted
   as in the browser: it goes to the deleted pages of the folder, with the user of the connection as the user who
@@ -196,7 +197,7 @@ What holds for all of them:
 
 - A connection is bound to one address, so that a reduced role is a real limit: a token given to a reading agent can
   never write. Rejected: one connection that works at every address the user may use.
-- The plain `/mcp` was removed, so that there is one kind of MCP address. Rejected: keeping `/mcp` as a reader of every
+- There is no plain `/mcp` address, so that there is one kind of MCP address. Rejected: `/mcp` as a reader of every
   folder with a role.
 - The address names the folder by its id, so that a connection survives a rename. The folder therefore shows its
   addresses in the view "AI apps", because the id appears in no browser address. Rejected: only the README.
@@ -209,9 +210,8 @@ What holds for all of them:
   Rejected: 404 for every refusal.
 - The tools work on the folder of the connection without naming it, so that an agent cannot even try another folder.
   Rejected: the tools with a folder name and only one folder that answers.
-- The write tools were built before page history, and the version check kept a change by an AI agent from
-  overwriting a newer change until then. Since the page history, a content change through MCP is recorded and can be
-  reverted in the browser. Rejected: page history first.
+- A content change through MCP is recorded in the history of the page, so that a user can revert it in the browser,
+  and the version check keeps it from overwriting a newer change.
 - The history and reverting stay in the browser: no tool reads the history or reverts a page, so that undoing an AI
   app's change is the user's decision. Rejected: tools for the history and for reverting.
 - The name of a new page is optional for an agent and is then the name the browser would suggest, so that an agent

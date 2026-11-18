@@ -7,8 +7,8 @@ who changed it last, how and when. The rule lives in the page service, so that e
 described in `pages.md`, moving and renaming in `content-structure.md`, deleting and restoring in `page-deletion.md`.
 
 Code: the version of a page in `Page` of `prisma/schema.prisma` and the migration
-`prisma/migrations/20261116103037_init/`, the check in `updatePageContent`, `moveOrRenamePage` and
-`deletePage` of `src/features/pages/service.ts`, the version of a form in `src/features/pages/forms.ts`, the notice of
+`prisma/migrations/20261116103037_init/`, the check in `updatePageContent`, `revertPage`, `moveOrRenamePage` and
+`deletePage` of `src/features/pages/service.ts`, with the check of a content save in `storeContentChange`, the version of a form in `src/features/pages/forms.ts`, the notice of
 a page address in `src/lib/addresses.ts` and `src/features/pages/components/PageView.tsx`, the editor and the dialogs
 in `src/features/pages/components/`. Tests: `integration/page-service.test.ts`, the unit tests next to the code
 (`src/features/pages/service.test.ts`, `src/features/pages/forms.test.ts`, `src/features/pages/actions.test.ts`,
@@ -27,7 +27,6 @@ in `src/features/pages/components/`. Tests: `integration/page-service.test.ts`, 
   name and place" in `content-structure.md`). It is checked and refused like every other move below, so an unchanged
   move based on an older version is refused as changed, and it refuses no editor or dialog that another user has open
   on the page.
-- Pages stored before the version existed have the version 1.
 - Renaming a folder or a tab, and every change inside a folder or tab, is no change of its pages and leaves their
   versions as they are. Deleting a tab deletes its pages, and their versions count up as with every delete.
 
@@ -79,11 +78,6 @@ in `src/features/pages/components/`. Tests: `integration/page-service.test.ts`, 
   version up like every write. Of two restores of the same page at once, the second finds the page no longer deleted
   and shows that it no longer exists among the deleted pages, as before.
 
-## Editors and dialogs open over a deployment
-
-- An editor or dialog that was opened before this feature was deployed submits no version. Its next change is refused
-  once and shows the current page with the message; the change after that succeeds.
-
 ## Decisions
 
 - The feature protected the browser first and set the rule for the MCP write tools, which then needed no rule of
@@ -114,10 +108,8 @@ in `src/features/pages/components/`. Tests: `integration/page-service.test.ts`, 
   for the notice, which is more code for a message that may show again on a reload.
 - A caller other than the browser must always state the version, so that an AI assistant cannot skip the check and
   overwrite a page it read minutes ago. Rejected: an optional version, with "the last save wins" without it.
-- A browser change without a version is refused as well, so that one rule holds for every caller. It costs a user at
-  most one reload for an editor or dialog left open over the deployment. Rejected: accepting it as before, which would
-  weaken the rule for the browser for good or need a later change to remove the exception; accepting it for one
-  release only.
+- A browser change without a version is refused as well, so that one rule holds for every caller. Rejected:
+  accepting it, which would weaken the rule for the browser.
 - Restoring is not checked: nothing changes a deleted page, and two restores at once are already told apart. Rejected:
   checking restore as well, for the very rare delete, restore and delete again while the dialog is open.
 - The pages deleted with their tab are deleted without checking their versions: the deletion takes whatever is in the

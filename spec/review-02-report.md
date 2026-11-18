@@ -11,11 +11,11 @@
     have drifted already.
   - Tests that would not catch the refactoring this report suggests: the unit tests of the services pin the calls
     of Prisma, and three rules of access and of the transaction have no test that could fail.
-  - Documents that the features outran: statements of the feature specs that the code contradicts, and rules
-    stated in full in several documents.
-- Findings: 99 open of 107, 0 Blocker, 4 Major, 74 Minor and 21 Nit (45 `issue:`, 30 `suggestion:`, 19 `nit:` and
+  - Documents that the features outran: rules stated in full in several documents, and descriptions of the tests,
+    the stack and the features that no longer match them.
+- Findings: 87 open of 107, 0 Blocker, 4 Major, 68 Minor and 15 Nit (39 `issue:`, 30 `suggestion:`, 13 `nit:` and
   5 `question:`).
-- Confidence of the suggestions: 30 High, 51 Medium and 13 Low; the 5 questions have none. A High suggestion can be
+- Confidence of the suggestions: 20 High, 49 Medium and 13 Low; the 5 questions have none. A High suggestion can be
   fixed as written; the others wait for the user, as `issue-report.md` describes.
 - Decisions: on 2026-11-18 the user decided all Medium and Low suggestions. Each of these findings ends with a line
   `Decision`, and is fixed as that line says, without asking again. The 5 questions were decided by the user on the
@@ -1611,122 +1611,18 @@ The seven specs of the content (`pages.md`, `content-structure.md`, `page-histor
 `optimistic-locking.md`, `folder-roles.md`, `mcp.md`) were read sentence by sentence against the code. The rules
 that several of them state were compared with each other and with the code:
 
-| Rule                                                 | Stated in                                                                                  | The specs agree                              | The code agrees       |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------ | -------------------------------------------- | --------------------- |
-| A content save without a change stores nothing       | `pages.md`, `page-history.md`, `optimistic-locking.md`, `content-structure.md`, `mcp.md`   | Yes; two copies leave out the channel        | Yes                   |
-| A rename of a folder or tab to its own name          | `content-structure.md`, `pages.md`, `mcp.md`                                               | Yes                                          | Yes                   |
-| A move or rename of a page to its own name and place | `content-structure.md`, `pages.md`, `optimistic-locking.md`, `mcp.md`                      | Yes                                          | Yes                   |
-| A change to the same role                            | `folder-roles.md`                                                                          | One place                                    | Yes                   |
-| Who may delete a tab                                 | `folder-roles.md`, `content-structure.md`, `mcp.md`                                        | Yes                                          | Yes                   |
-| What the roles of MCP may do                         | `mcp.md`, `folder-roles.md`, `content-structure.md`, `page-deletion.md`, `architecture.md` | Yes                                          | The seven specs yes   |
-| The last editor and the channel                      | all seven                                                                                  | In part: see the two findings on the channel | The stored values yes |
-| Who is stored for a page                             | `pages.md`, `content-structure.md`, `page-history.md`                                      | No: `pages.md` differs                       | The other two yes     |
-| Deleting a tab counts the versions up, unchecked     | `content-structure.md`, `optimistic-locking.md`, `page-deletion.md`                        | Yes                                          | Yes                   |
-| Restoring is unchecked and stores the channel `web`  | `page-deletion.md`, `optimistic-locking.md`                                                | Yes                                          | Yes                   |
-
-#### issue: `pages.md` says only the last editor of a page is stored, but revision 1 stores who created it
-
-- Location: `spec/pages.md`, section "Current limits"; `spec/page-history.md`, section "Revisions";
-  `src/features/pages/service.ts`, lines 616–624
-- Severity: Minor. False about which data of users is kept, but in a list of limits, and the spec that owns the
-  rule is right.
-- Category: docs
-- Problem: the limit says no creator is recorded. Every new page gets revision 1 with the user who created it,
-  kept for as long as the page exists.
-- Impact: someone who answers from `pages.md` what the wiki stores about users answers wrongly.
-- Evidence: "only the last editor of a page is stored, not who created it; recording who created it is not
-  planned"; against `revisions: { create: { number: 1, …, userId: lastEditedById, via: lastEditedVia } }`.
-- Suggestion (required): "the page itself stores only its last editor; its history keeps the user of every content
-  change, so revision 1 names who created it (see `page-history.md`)".
-- Confidence: High. The code and both other specs were read; one change of wording, covered by `npm run check`.
-
-#### issue: `page-deletion.md` says every delete stores the channel `web`, but a delete through MCP stores `mcp`
-
-- Location: `spec/page-deletion.md`, section "Restoring", last bullet; `spec/content-structure.md`, section "Last
-  editor"; `src/features/pages/service.ts`, lines 969–977
-- Severity: Minor. Wrong about a stored value; the same spec states it right two sections above.
-- Category: docs
-- Problem: the sentence covers deleting and restoring together. Only restoring is for the browser alone;
-  `deletePage()` takes either actor and stores its channel.
-- Impact: a reader concludes that a deleted page never shows "via mcp".
-- Evidence: "Deleting and restoring a page each make the logged-in user its last editor, with the channel `web`";
-  against `const lastEditedVia = storedChannelOf(actor);` in `deletePage()`.
-- Suggestion (required): "Restoring makes the logged-in user the last editor of the page, with the channel `web`",
-  and in `content-structure.md`: "The user is the one who is logged in, through MCP the user of the connection."
-- Confidence: High. Both paths of the code were read; one fix.
-
-#### issue: `mcp.md` names `delete_page` and `delete_tab` as the tools with `destructiveHint`, but `replace_page_content` carries it too
-
-- Location: `spec/mcp.md`, section "Tools"; `src/features/mcp/tools.ts`, line 852
-- Severity: Minor. Clients use the hint to decide whether to ask the user before a call.
-- Category: docs
-- Problem: the spec gives the three write tools of pages "the hints of a tool that writes" and keeps the hint of a
-  tool that destroys for the two deletes. The code marks `replace_page_content` as destructive, and a unit test
-  asserts it.
-- Impact: someone who brings the code in line with the spec removes a warning that is meant.
-- Evidence: "`delete_page` and `delete_tab` carry the hint of a tool that destroys (`destructiveHint`)"; against
-  `annotations: { readOnlyHint: false, destructiveHint: true, … }`.
-- Suggestion (required): add that `replace_page_content` carries the hint as well, because it overwrites the whole
-  content.
-- Confidence: High. The code and its test agree; one fix.
-
-#### issue: `content-structure.md` sends `/` and the app bar to `/folders` for everyone, but an admin goes to `/users`
-
-- Location: `spec/content-structure.md`, section "Routes", first bullet; `src/app/page.tsx`, line 12;
-  `src/components/AppHeader.tsx`, lines 38–42
-- Severity: Minor. A wrong statement about a route; `users-and-login.md` has it right.
-- Category: docs
-- Problem: the bullet has no condition. The home page branches on the type of the account, and the header hides
-  "Folders" from an admin.
-- Impact: the bullet contradicts "Only users see content" of the same spec.
-- Evidence: "`/` redirects to `/folders`; the app bar links to `/folders`."; against
-  `redirect(isAdmin(user) ? usersPath() : foldersPath());`.
-- Suggestion (required): "`/` redirects a user to `/folders` and an admin to `/users`; the app bar links a user to
-  `/folders` (see `users-and-login.md`)."
-- Confidence: High. Both files were read; one fix.
-
-#### issue: the length limits that a user meets are not stated: 100,000 characters of content, 80 of a name, 200 of a title
-
-- Location: `spec/pages.md`, sections "Content and title" and "The cost of the Markdown parse";
-  `spec/content-structure.md`, section "Names"; `src/features/pages/limits.ts`; `src/lib/names.ts`
-- Severity: Minor. `step-plan-workflow.md` asks for the numbers a user meets in the spec, next to a pointer; the
-  limits of nesting and of table cells follow this, the lengths do not.
-- Category: docs
-- Problem: the specs state 20 levels and 10,000 cells, but "the content limit" appears six times without its
-  number. No spec says that a title is cut to 200 characters, or that a heading without a letter or digit counts
-  as no title.
-- Impact: a user or the author of an AI app learns the limits only from an error message.
-- Evidence: "Its length limit counts the content with plain line breaks"; against
-  `export const CONTENT_MAX_LENGTH = 100_000;`.
-- Suggestion (required): state the three numbers once each, with the constant, and the cut of the title.
-- Confidence: High. The constants were read, and the additions follow the rule of the workflow.
-
-#### issue: specs describe states from before a feature, and tell how features came about
-
-- Location: `spec/content-structure.md`, sections "Last editor" and "Decisions"; `spec/optimistic-locking.md`,
-  sections "The version of a page", "Editors and dialogs open over a deployment" and "Decisions";
-  `spec/pages.md`, section "Current limits"; `spec/mcp.md`, section "Decisions"; `spec/page-deletion.md`, section
-  "Decisions"; `spec/connected-apps.md`, section "Decisions"; `spec/architecture.md`, section "Database"
-- Severity: Minor. A claim that matters to an operator, a migration that fails without an admin, has no code
-  behind it.
-- Category: docs
-- Problem: the first migration creates the last editor, the version, the title and the types of an account
-  together with the tables and moves no data. The states these sentences describe cannot arise from the migrations
-  of the repository. Other sentences tell a history: "The plain `/mcp` was removed…", "The write tools were built
-  before page history…", "It replaced the migrations that led there…". The sentences on the channel and on the
-  first revision are different: their migrations exist, and they are true.
-- Impact: an operator expects a migration to assign the admin or to fail, and a reader cannot tell a lasting rule
-  from a note about a transition.
-- Evidence: `content-structure.md`: "Migrating content without an admin fails and is rolled back."; the migration
-  `init` in `prisma/migrations/` holds `"lastEditedById" UUID NOT NULL,` inside the `CREATE TABLE` of the pages and
-  no statement that moves data.
-- Suggestion (required): delete the sentences about states before the last editor, the version, the types of an
-  account and derived titles, and write the told decisions as rules, for example "There is no plain `/mcp`
-  address, so that there is one kind of MCP address."
-- Confidence: Medium. The migrations were read; whether an installation older than the first migration exists and
-  needs the notes was not checked.
-- Alternatives: keep the notes about transitions in one place for upgrades.
-- Decision (2026-11-18): as suggested.
+| Rule                                                 | Stated in                                                                                  | The specs agree                         | The code agrees       |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------- | --------------------- |
+| A content save without a change stores nothing       | `pages.md`, `page-history.md`, `optimistic-locking.md`, `content-structure.md`, `mcp.md`   | Yes; two copies leave out the channel   | Yes                   |
+| A rename of a folder or tab to its own name          | `content-structure.md`, `pages.md`, `mcp.md`                                               | Yes                                     | Yes                   |
+| A move or rename of a page to its own name and place | `content-structure.md`, `pages.md`, `optimistic-locking.md`, `mcp.md`                      | Yes                                     | Yes                   |
+| A change to the same role                            | `folder-roles.md`                                                                          | One place                               | Yes                   |
+| Who may delete a tab                                 | `folder-roles.md`, `content-structure.md`, `mcp.md`                                        | Yes                                     | Yes                   |
+| What the roles of MCP may do                         | `mcp.md`, `folder-roles.md`, `content-structure.md`, `page-deletion.md`, `architecture.md` | Yes                                     | The seven specs yes   |
+| The last editor and the channel                      | all seven                                                                                  | In part: see the finding on the channel | The stored values yes |
+| Who is stored for a page                             | `pages.md`, `content-structure.md`, `page-history.md`                                      | Yes                                     | Yes                   |
+| Deleting a tab counts the versions up, unchecked     | `content-structure.md`, `optimistic-locking.md`, `page-deletion.md`                        | Yes                                     | Yes                   |
+| Restoring is unchecked and stores the channel `web`  | `page-deletion.md`, `optimistic-locking.md`                                                | Yes                                     | Yes                   |
 
 #### issue: "the channel" has two sets of values, and the specs call one of them "the only two values"
 
@@ -1830,34 +1726,6 @@ that several of them state were compared with each other and with the code:
 - Confidence: Medium. Beyond the single items, a new structure is a matter of taste.
 - Decision (2026-11-18): as suggested.
 
-#### nit: `pages.md` lists the health endpoint among its routes
-
-- Location: `spec/pages.md`, section "Routes", last bullet; `spec/container-image.md`
-- Severity: Nit. Misplaced and a copy, not wrong.
-- Category: docs
-- Problem: `/api/health` is no route of the pages, and `container-image.md` describes it.
-- Impact: a third copy to keep in step.
-- Evidence: "`GET /api/health`: `{ "status": "ok" }` while the database is reachable, status 503 and a logged
-  error otherwise."
-- Suggestion (optional): delete the bullet.
-- Confidence: High. One fix.
-
-#### nit: three pointers lead one step past their target
-
-- Location: `spec/mcp.md`, the introduction; `spec/optimistic-locking.md`, the paragraph on the code;
-  `spec/content-structure.md`, section "Addresses"
-- Severity: Nit
-- Category: docs
-- Problem: `mcp.md` points to `content-structure.md` for the view "AI apps", which `folder-roles.md` describes.
-  `optimistic-locking.md` names three functions for the check and leaves out `revertPage()` and
-  `storeContentChange()`, where the check of a content save lives. `content-structure.md` says "The rest of the
-  root belongs to the app (`/api` today)", while the app has seven more roots.
-- Impact: a reader follows two hops or reads an example that is out of date.
-- Evidence: "its view "AI apps" (see `content-structure.md`)".
-- Suggestion (optional): point `mcp.md` to `folder-roles.md`, name the two functions, and drop the example or
-  point to `src/app/`.
-- Confidence: High. Each target was opened.
-
 #### Reviewed
 
 - `page-history.md`: every rule matches the service and the components of the history: 100 revisions at a time,
@@ -1869,9 +1737,9 @@ that several of them state were compared with each other and with the code:
   the view "AI apps" match the code.
 - `mcp.md`: the addresses, the endpoint, the order of the answers 404, 405, 403, 401, 403 and 500, the actor, the
   list of tools per role and the instructions match the code.
-- `content-structure.md`: "Overview", "Names" apart from the missing length, "Actions and views", both sections on
+- `content-structure.md`: "Overview", "Names", "Actions and views", both sections on
   changes that change nothing, "Deleting a tab" and "Lists and order" match the code.
-- `page-deletion.md` and `pages.md` match the code apart from the findings above.
+- `page-deletion.md` and `pages.md` match the code.
 - Every heading of a section that one of the seven specs cites in another spec exists under that name.
 
 ### Documentation: architecture, testing, catalog and workflows
@@ -2225,63 +2093,6 @@ code with less depth than the specs of the content; they match it closely.
 - Confidence: Medium. Read on both sides, not sent to a running server.
 - Decision (2026-11-18): as suggested.
 
-#### nit: `container-image.md` says the probe of the client address is skipped only for `/login` and `/api/health`
-
-- Location: `spec/container-image.md`, section "Configuration", `HIPPOWIKI_LOG_CLIENT_ADDRESS`; `src/proxy.ts`,
-  lines 61–63
-- Severity: Nit. The probe does its job for the login; the list of exceptions is incomplete.
-- Category: docs
-- Problem: the probe runs only in the proxy and in the login action. The matcher of the proxy also lets the MCP
-  addresses, the two public endpoints of OAuth, both addresses below `/.well-known/` and the static files pass
-  without it.
-- Impact: an operator who checks the reverse proxy for the limit of registrations waits for lines of the probe
-  that never come.
-- Evidence: "(with `"source":"proxy"`, the method and the path; not for `/login` and `/api/health`)".
-- Suggestion (required): "not for the public addresses that pass by the proxy (the `matcher` in `src/proxy.ts`)".
-- Confidence: High. The only two callers of the probe were read.
-
-#### nit: `users-and-login.md` says `/` uses `landingPath()`
-
-- Location: `spec/users-and-login.md`, section "The way back after a login"; `src/app/page.tsx`, line 12
-- Severity: Nit. A wrong pointer, the same behaviour.
-- Category: docs
-- Problem: the spec says the rule is "used by the login, the password change, both of their pages and `/`". The
-  home page redirects by the type of the account without it.
-- Impact: someone who changes `landingPath()` expects `/` to follow.
-- Evidence: `redirect(isAdmin(user) ? usersPath() : foldersPath());`; `landingPath()` is called only by the login
-  page, the page of the password change and the auth actions.
-- Suggestion (required): drop "and `/`".
-- Confidence: High. All callers were listed.
-
-#### nit: `container-image.md` says the admin setup "does not read the variable" when the admin exists
-
-- Location: `spec/container-image.md`, sections "Admin setup" and "Configuration"; `scripts/admin.ts`, line 16
-- Severity: Nit. The effect is as described; the wording about the code is wrong, and it differs from
-  `users-and-login.md`, which says "does not look at the password".
-- Category: docs
-- Problem: the script reads the variable on every run and passes it on; the service returns before it looks at
-  it.
-- Impact: none at run time; two specs describe one thing in two ways.
-- Evidence: `const result = await userService.ensureAdmin(process.env[VARIABLE]);`.
-- Suggestion (optional): the wording of `users-and-login.md` in both places.
-- Confidence: High. One wording, no change of behaviour.
-
-#### nit: `oauth.md` lists the checks of an authorization request "in this order" without the checks of the length that come first
-
-- Location: `spec/oauth.md`, section "The authorization request and the consent page";
-  `src/features/oauth/service.ts`, lines 334–336 and 357–363
-- Severity: Nit. Only a value that is too long is affected.
-- Category: docs
-- Problem: the list of the spec starts with `response_type`. Before it, a `state` of more than 2048 characters is
-  refused and not sent back, and a `client_id` of more than 2048 counts as an unknown client.
-- Impact: the developer of a client cannot explain an `invalid_request` without `state` from the spec.
-- Evidence: `if (params.state !== undefined && state === null) return refuse("invalid_request", "state is too
-long");`.
-- Suggestion (optional): one sentence before the list that points to the limit in the schema of OAuth.
-- Confidence: Medium. The nit of the first report on `oauth.md` argues against more constants in the spec.
-- Decision (2026-11-18): as suggested; the sentence points to the limit in the schema of OAuth and does not restate the
-  number.
-
 #### Reviewed
 
 - The counts of `review-report.md`: 53 `issue:`, 18 `suggestion:`, 27 `nit:` and 5 `question:` make 103; 1 Major,
@@ -2329,7 +2140,7 @@ documents name.
 1. Decide the open questions that other work depends on. Done on 2026-11-18: no tool offers the deleted pages or
    the writes of roles, and nothing in the code enforces it; the unit tests of the services are cut after the
    missing integration cases exist. The Decision of each finding holds the rest.
-2. Fix the findings with a High confidence that change no code: the wrong statements of the feature specs, `testing.md`, the README and the Locations of the first report.
+2. Fix the findings with a High confidence that change no code: the wrong statements of `testing.md`, the README and the Locations of the first report.
 3. Close the gaps of the tests before any refactoring: the access rules of the reads of the history, the rollback
    of a content save, the role before the version, the rules that only an end-to-end test covers, and the states
    of the dialogs that a shared frame would move.
