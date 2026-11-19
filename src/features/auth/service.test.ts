@@ -1,7 +1,7 @@
 import { APIError } from "better-auth/api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { changeFirstPassword, getSessionUser, logIn, logOut } from "@/features/auth/service";
+import { changeFirstPassword, changeOwnPassword, getSessionUser, logIn, logOut } from "@/features/auth/service";
 import { PasswordHashBusyError } from "@/lib/password-hash";
 
 const mocks = vi.hoisted(() => ({
@@ -1548,5 +1548,162 @@ describe("changeFirstPassword", () => {
 
     expect(logged()).not.toContain(FIRST_PASSWORD);
     expect(logged()).not.toContain(NEW_PASSWORD);
+  });
+});
+
+describe("changeOwnPassword", () => {
+  // Values that no log message contains by chance.
+  const CURRENT_PASSWORD = "current-secret-1";
+  const NEW_PASSWORD = "replacement-secret-2";
+  const INPUT = { currentPassword: CURRENT_PASSWORD, newPassword: NEW_PASSWORD, repeatPassword: NEW_PASSWORD };
+  const NEW_SESSION_HEADERS = new Headers({ "set-cookie": "better-auth.session_token=new-token.signature" });
+
+  beforeEach(() => {
+    mocks.getSession.mockResolvedValue({ session: {}, user: AUTH_USER });
+    mocks.changePassword.mockResolvedValue({ headers: NEW_SESSION_HEADERS, response: { token: "new-token" } });
+  });
+
+  it("changes the password through Better Auth, ends the other sessions and logs the user", async () => {
+    const result = await changeOwnPassword(INPUT, REQUEST_HEADERS, CLIENT_ADDRESS);
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        user: { id: USER_ID, name: "alice", type: "user", mustChangePassword: false },
+        headers: NEW_SESSION_HEADERS,
+      },
+    });
+    expect(mocks.changePassword).toHaveBeenCalledExactlyOnceWith({
+      body: { currentPassword: CURRENT_PASSWORD, newPassword: NEW_PASSWORD, revokeOtherSessions: true },
+      headers: REQUEST_HEADERS,
+      returnHeaders: true,
+    });
+    // The flag of the forced change is not touched.
+    expect(mocks.userUpdateMany).not.toHaveBeenCalled();
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith({ userId: USER_ID, name: "alice" }, "password changed");
+    expect(mocks.warn).not.toHaveBeenCalled();
+    expect(mocks.error).not.toHaveBeenCalled();
+    expect(logged()).not.toContain(CURRENT_PASSWORD);
+    expect(logged()).not.toContain(NEW_PASSWORD);
+  });
+
+  it("counts the change as a login of the name before the check, and forgets the counts after a right password", async () => {
+    await changeOwnPassword(INPUT, REQUEST_HEADERS, CLIENT_ADDRESS);
+
+    expect(mocks.attemptCreateMany).toHaveBeenCalledExactlyOnceWith(firstAttempt("alice"));
+    expect(mocks.windowCreateMany).toHaveBeenCalledExactlyOnceWith(firstWindow("alice"));
+    expect(mocks.attemptCreateMany.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.changePassword.mock.invocationCallOrder[0] ?? 0,
+    );
+    expect(mocks.attemptDeleteMany).toHaveBeenCalledExactlyOnceWith({
+      where: { username: "alice", clientAddress: CLIENT_ADDRESS },
+    });
+    expect(mocks.windowDeleteMany).toHaveBeenCalledExactlyOnceWith({ where: { username: "alice" } });
+  });
+
+  it("answers not-logged-in without a session and changes nothing", async () => {
+    mocks.getSession.mockResolvedValue(null);
+
+    const result = await changeOwnPassword(INPUT, new Headers(), CLIENT_ADDRESS);
+
+    expect(result).toEqual({ ok: false, error: { code: "not-logged-in" } });
+    expect(mocks.changePassword).not.toHaveBeenCalled();
+    expect(mocks.attemptFindUnique).not.toHaveBeenCalled();
+  });
+
+  it("answers first-password-pending for a user with a pending first password and changes nothing", async () => {
+    mocks.getSession.mockResolvedValue({ session: {}, user: { ...AUTH_USER, mustChangePassword: true } });
+
+    const result = await changeOwnPassword(INPUT, REQUEST_HEADERS, CLIENT_ADDRESS);
+
+    expect(result).toEqual({ ok: false, error: { code: "first-password-pending" } });
+    expect(mocks.changePassword).not.toHaveBeenCalled();
+    expect(mocks.attemptFindUnique).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      "a common new password",
+      { ...INPUT, newPassword: "password123", repeatPassword: "password123" },
+      { newPassword: ["Password is too common, choose another one"] },
+    ],
+    [
+      "a new password that is the current one",
+      { ...INPUT, newPassword: CURRENT_PASSWORD, repeatPassword: CURRENT_PASSWORD },
+      { newPassword: ["New password must differ from the current one"] },
+    ],
+    [
+      "a repetition that differs",
+      { ...INPUT, repeatPassword: "another password" },
+      { repeatPassword: ["The two new passwords do not match"] },
+    ],
+  ])("answers invalid-input for %s, without counting and without a change", async (_case, input, fieldErrors) => {
+    const result = await changeOwnPassword(input, REQUEST_HEADERS, CLIENT_ADDRESS);
+
+    expect(result).toEqual({ ok: false, error: { code: "invalid-input", fieldErrors } });
+    expect(mocks.attemptFindUnique).not.toHaveBeenCalled();
+    expect(mocks.changePassword).not.toHaveBeenCalled();
+    expectNothingLogged();
+  });
+
+  it("answers wait during a wait, without reaching Better Auth", async () => {
+    mocks.attemptFindUnique.mockResolvedValue({ failures: 5, lastFailedAt: NOW });
+
+    const result = await changeOwnPassword(INPUT, REQUEST_HEADERS, CLIENT_ADDRESS);
+
+    expect(result).toEqual({ ok: false, error: { code: "wait", waitMs: MINUTE } });
+    expect(mocks.changePassword).not.toHaveBeenCalled();
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
+      { userId: USER_ID, name: "alice", clientAddress: CLIENT_ADDRESS, waitMs: MINUTE },
+      "password not changed: waiting after failed logins",
+    );
+  });
+
+  it("answers wrong-password for a wrong current password, keeps the count and logs it like a failed login", async () => {
+    mocks.changePassword.mockRejectedValue(new APIError("BAD_REQUEST", { code: "INVALID_PASSWORD" }));
+
+    const result = await changeOwnPassword(INPUT, REQUEST_HEADERS, CLIENT_ADDRESS);
+
+    expect(result).toEqual({ ok: false, error: { code: "wrong-password" } });
+    expect(mocks.attemptDeleteMany).not.toHaveBeenCalled();
+    expect(mocks.attemptUpdateMany).not.toHaveBeenCalled();
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
+      { userId: USER_ID, name: "alice", clientAddress: CLIENT_ADDRESS },
+      "password not changed: wrong current password",
+    );
+    expect(mocks.info).not.toHaveBeenCalled();
+    expect(logged()).not.toContain(CURRENT_PASSWORD);
+  });
+
+  it("answers busy when the hashing is busy, changes nothing and takes the count back", async () => {
+    mocks.changePassword.mockRejectedValue(new PasswordHashBusyError());
+
+    const result = await changeOwnPassword(INPUT, REQUEST_HEADERS, CLIENT_ADDRESS);
+
+    expect(result).toEqual({ ok: false, error: { code: "busy" } });
+    expect(mocks.attemptDeleteMany).toHaveBeenCalledExactlyOnceWith({
+      where: { username: "alice", clientAddress: CLIENT_ADDRESS, failures: 1, lastFailedAt: NOW },
+    });
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
+      { userId: USER_ID },
+      "too many password hashes are running, password not changed",
+    );
+    expect(mocks.info).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["Better Auth fails", () => mocks.changePassword.mockRejectedValue(new Error("connection refused"))],
+    ["the session cannot be read", () => mocks.getSession.mockRejectedValue(new Error("connection refused"))],
+  ])("answers failed when %s and logs it", async (_case, arrange) => {
+    arrange();
+
+    const result = await changeOwnPassword(INPUT, REQUEST_HEADERS, CLIENT_ADDRESS);
+
+    expect(result).toEqual({ ok: false, error: { code: "failed" } });
+    expect(mocks.error).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ err: expect.objectContaining({ message: "connection refused" }) as Error }),
+      "failed to change the password",
+    );
+    expect(mocks.info).not.toHaveBeenCalled();
   });
 });

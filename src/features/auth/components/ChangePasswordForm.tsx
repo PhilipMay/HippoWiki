@@ -3,11 +3,10 @@
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
 import Stack from "@mui/material/Stack";
-import TextField from "@mui/material/TextField";
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState } from "react";
 
+import PasswordChangeFields from "@/features/auth/components/PasswordChangeFields";
 import { type PasswordChangeFormAction } from "@/features/auth/forms";
-import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/features/users/limits";
 import { NEXT_PARAM } from "@/lib/addresses";
 import { useHydrated } from "@/lib/hydration";
 
@@ -21,93 +20,15 @@ type ChangePasswordFormProps = {
 /** The form of the forced password change: the current password, the new one and its repetition. */
 export default function ChangePasswordForm({ action, next }: ChangePasswordFormProps) {
   const [state, formAction, pending] = useActionState(action, {});
-  // Controlled fields keep what was entered when the action returns errors, so that only the field with the error has
-  // to be typed again; React resets uncontrolled fields after a submission.
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [repeatPassword, setRepeatPassword] = useState("");
-  // A refused current password (wrong, or during a wait) empties all three, so that it is not submitted again by
-  // mistake. Adjusted while rendering the new state, once per state, as React advises instead of an effect.
-  const [shownState, setShownState] = useState(state);
-  if (state !== shownState) {
-    setShownState(state);
-    if (state.passwordRefused) {
-      setCurrentPassword("");
-      setNewPassword("");
-      setRepeatPassword("");
-    }
-  }
-  // Input before hydration could be lost, so the fields are read-only and the button is disabled until then.
+  // The button is disabled until hydration, like the fields are read-only.
   const hydrated = useHydrated();
-
-  const currentRef = useRef<HTMLInputElement>(null);
-  const newRef = useRef<HTMLInputElement>(null);
-  const repeatRef = useRef<HTMLInputElement>(null);
-
-  const currentError = state.fieldErrors?.currentPassword?.[0];
-  const newError = state.fieldErrors?.newPassword?.[0];
-  const repeatError = state.fieldErrors?.repeatPassword?.[0];
-
-  // Field errors come back from the Server Action, so the focus moves once the new state arrives: to the first field
-  // with an error. Message-only states leave the focus where it is.
-  useEffect(() => {
-    if (state.fieldErrors?.currentPassword) currentRef.current?.focus();
-    else if (state.fieldErrors?.newPassword) newRef.current?.focus();
-    else if (state.fieldErrors?.repeatPassword) repeatRef.current?.focus();
-  }, [state]);
 
   return (
     // `noValidate`: the server validates, and its errors are shown at the field instead of browser bubbles.
     <Stack component="form" action={formAction} noValidate spacing={3}>
       {state.message && <Alert severity="error">{state.message}</Alert>}
       <input type="hidden" name={NEXT_PARAM} value={next} />
-      <TextField
-        name="currentPassword"
-        label="Current password"
-        type="password"
-        value={currentPassword}
-        onChange={(event) => setCurrentPassword(event.target.value)}
-        autoFocus
-        required
-        fullWidth
-        inputRef={currentRef}
-        error={!!currentError}
-        helperText={currentError}
-        autoComplete="current-password"
-        slotProps={{ htmlInput: { readOnly: !hydrated } }}
-      />
-      <TextField
-        name="newPassword"
-        label="New password"
-        type="password"
-        value={newPassword}
-        onChange={(event) => setNewPassword(event.target.value)}
-        required
-        fullWidth
-        inputRef={newRef}
-        error={!!newError}
-        helperText={
-          newError ??
-          `${PASSWORD_MIN_LENGTH} to ${PASSWORD_MAX_LENGTH} characters, not built from your user name or the name of ` +
-            "the wiki, and not a common password"
-        }
-        autoComplete="new-password"
-        slotProps={{ htmlInput: { readOnly: !hydrated } }}
-      />
-      <TextField
-        name="repeatPassword"
-        label="Repeat new password"
-        type="password"
-        value={repeatPassword}
-        onChange={(event) => setRepeatPassword(event.target.value)}
-        required
-        fullWidth
-        inputRef={repeatRef}
-        error={!!repeatError}
-        helperText={repeatError}
-        autoComplete="new-password"
-        slotProps={{ htmlInput: { readOnly: !hydrated } }}
-      />
+      <PasswordChangeFields state={state} autoFocus />
       <Stack direction="row" spacing={2}>
         <Button type="submit" variant="contained" disabled={pending || !hydrated}>
           {pending ? "Saving…" : "Change password"}

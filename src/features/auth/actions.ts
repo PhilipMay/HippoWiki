@@ -1,6 +1,6 @@
 "use server";
 
-// Login and logout for forms: thin adapters that translate between a form and the auth service.
+// Login, logout and the password changes for forms: thin adapters that translate between a form and the auth service.
 
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
@@ -15,8 +15,16 @@ import {
   type PasswordChangeFormState,
 } from "@/features/auth/forms";
 import * as authService from "@/features/auth/service";
-import { requireSession } from "@/features/auth/session";
-import { changePasswordPath, homePath, landingPath, loginPath } from "@/lib/addresses";
+import { requireSession, requireUser } from "@/features/auth/session";
+import {
+  accountNoticePath,
+  accountPath,
+  changePasswordPath,
+  homePath,
+  landingPath,
+  loginPath,
+  PASSWORD_CHANGED_NOTICE,
+} from "@/lib/addresses";
 
 const INVALID_CREDENTIALS_MESSAGE = "Invalid user name or password";
 const BUSY_MESSAGE = "Too many logins at the moment, please try again";
@@ -134,6 +142,52 @@ export async function changeFirstPassword(
 
   revalidateEverything();
   redirect(landingPath(next, result.value.user));
+}
+
+/**
+ * Changes the own password of the logged-in user to the submitted one, ends the other sessions of the user and leads
+ * to the account with the notice of the change; the browser stays logged in with a new session. Returns the errors to
+ * show in the dialog if a rule is broken, the current password is wrong or has to wait, or the password cannot be
+ * changed.
+ */
+export async function changeOwnPassword(
+  _prevState: PasswordChangeFormState,
+  formData: FormData,
+): Promise<PasswordChangeFormState> {
+  await requireUser();
+
+  const requestHeaders = await headers();
+  // Better Auth ends all sessions of the user and sets the cookie of a new one on the response of this action.
+  const result = await authService.changeOwnPassword(
+    readPasswordChangeFormData(formData),
+    requestHeaders,
+    requestClientAddressGroup(requestHeaders, "password-change"),
+  );
+  if (!result.ok) {
+    switch (result.error.code) {
+      case "invalid-input":
+        return { fieldErrors: result.error.fieldErrors };
+      case "wrong-password":
+        return { fieldErrors: { currentPassword: [WRONG_PASSWORD_MESSAGE] }, passwordRefused: true };
+      case "wait":
+        return {
+          fieldErrors: { currentPassword: [wrongPasswordsWaitMessage(result.error.waitMs)] },
+          passwordRefused: true,
+        };
+      // The session ended, or the first password came back, since `requireUser()`: the same ways as there.
+      case "not-logged-in":
+        redirect(loginPath());
+      case "first-password-pending":
+        redirect(changePasswordPath());
+      case "busy":
+        return { message: BUSY_MESSAGE };
+      case "failed":
+        return { message: CHANGE_FAILED_MESSAGE };
+    }
+  }
+
+  revalidatePath(accountPath());
+  redirect(accountNoticePath(PASSWORD_CHANGED_NOTICE));
 }
 
 /** Ends the session of the browser and leads to the login page. */

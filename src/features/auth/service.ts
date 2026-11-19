@@ -71,8 +71,8 @@ export type LogInError = InvalidCredentials | Wait | Busy | Failed;
 export type LogOutError = Failed;
 
 /**
- * A first password that was replaced: the user, now without a pending change, and the response headers that set the
- * cookie of the new session. Better Auth ends all sessions of the user and starts a new one for the request.
+ * A password that was changed: the user, without a pending change, and the response headers that set the cookie of the
+ * new session. Better Auth ends all sessions of the user and starts a new one for the request.
  */
 export type PasswordChanged = { user: SessionUser; headers: Headers };
 
@@ -86,6 +86,12 @@ type NotRequired = { code: "not-required" };
 
 export type ChangeFirstPasswordError =
   InvalidPasswordChange | WrongPassword | NotLoggedIn | NotRequired | Wait | Busy | Failed;
+
+/** The user still has the first password: the forced password change comes first. */
+type FirstPasswordPending = { code: "first-password-pending" };
+
+export type ChangeOwnPasswordError =
+  InvalidPasswordChange | WrongPassword | NotLoggedIn | FirstPasswordPending | Wait | Busy | Failed;
 
 /**
  * The HTTP status codes with which Better Auth refuses a sign-in because of what was submitted: a malformed body, an
@@ -638,4 +644,33 @@ export async function changeFirstPassword(
 
   logger.info({ userId }, "first password changed");
   return { ok: true, value: { user: { ...user, mustChangePassword: false }, headers: changed.value } };
+}
+
+/**
+ * Changes the own password of the user of the session, at any time after the forced password change, and ends all
+ * other sessions of the user; the request gets a new session. A user who still has the first password is refused
+ * with `first-password-pending`: the forced change comes first. The password is changed and counted as
+ * `changeCountedPassword()` describes, with the client address group of the request (`clientAddressGroup`, as for
+ * `logIn()`). Nothing changes unless the password is changed.
+ */
+export async function changeOwnPassword(
+  input: PasswordChangeInput,
+  headers: Headers,
+  clientAddressGroup: string,
+): Promise<Result<PasswordChanged, ChangeOwnPasswordError>> {
+  let user: SessionUser | null;
+  try {
+    user = await getSessionUser(headers);
+  } catch (err) {
+    logger.error({ err }, "failed to change the password");
+    return { ok: false, error: { code: "failed" } };
+  }
+  if (!user) return { ok: false, error: { code: "not-logged-in" } };
+  if (user.mustChangePassword) return { ok: false, error: { code: "first-password-pending" } };
+
+  const changed = await changeCountedPassword(user, input, headers, clientAddressGroup, "password");
+  if (!changed.ok) return changed;
+
+  logger.info({ userId: user.id, name: user.name }, "password changed");
+  return { ok: true, value: { user, headers: changed.value } };
 }

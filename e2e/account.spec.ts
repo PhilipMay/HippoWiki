@@ -46,6 +46,10 @@ test("a user without apps sees the user name and that no app is connected; the n
   await expect(page).toHaveURL("/account");
   await expect(page).toHaveTitle("Account – HippoWiki");
   await expect(page.getByRole("heading", { level: 1, name: KNOWN_USER.name })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Change password" })).toHaveAttribute(
+    "href",
+    "/account?action=change-password",
+  );
   await expect(page.getByRole("heading", { level: 2, name: "Connected apps" })).toBeVisible();
   await expect(page.getByText("No app is connected yet.", { exact: true })).toBeVisible();
   await expect(page.getByRole("list", { name: "Connected apps" })).toHaveCount(0);
@@ -319,7 +323,7 @@ test("a user sees only their own apps, also when another user connects one", asy
 test.describe("an admin", () => {
   test.use({ storageState: ADMIN_STORAGE_STATE });
 
-  test("sees the user name only: no list of apps", async ({ page }) => {
+  test("sees the user name and the button to change the password, but no list of apps", async ({ page }) => {
     const errors = collectErrors(page);
 
     await page.goto("/users");
@@ -327,6 +331,10 @@ test.describe("an admin", () => {
 
     await expect(page).toHaveURL("/account");
     await expect(page.getByRole("heading", { level: 1, name: KNOWN_ADMIN.name })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Change password" })).toHaveAttribute(
+      "href",
+      "/account?action=change-password",
+    );
     await expect(page.getByRole("heading", { level: 2, name: "Connected apps" })).toHaveCount(0);
     await expect(page.getByRole("list", { name: "Connected apps" })).toHaveCount(0);
     await expect(page.getByText(/token|connected/i)).toHaveCount(0);

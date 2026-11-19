@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   CHANGED_NOTICE,
+  accountNoticePath,
   accountPath,
   allPagesPath,
   changePasswordPath,
@@ -30,6 +31,7 @@ import {
   pagePath,
   pageRevertPath,
   pageRevisionPath,
+  parseAccountNotice,
   parseAction,
   parseChoice,
   parsePageSegment,
@@ -129,6 +131,8 @@ describe("paths", () => {
   it("builds the address of the own account", () => {
     expect(accountPath()).toBe("/account");
     expect(accountPath("revoke")).toBe("/account?action=revoke");
+    expect(accountPath("change-password")).toBe("/account?action=change-password");
+    expect(accountNoticePath("password-changed")).toBe("/account?notice=password-changed");
   });
 
   it("builds the address of the history of a page, with the revisions before a number", () => {
@@ -244,6 +248,26 @@ describe("parseChoice", () => {
     expect(parseChoice({ view: "all" }, "view", ["all"])).toBe("all");
     expect(parseChoice({ action: "all" }, "view", ["all"])).toBeNull();
     expect(parseChoice({ view: "some" }, "view", ["all"])).toBe("invalid");
+  });
+});
+
+describe("parseAccountNotice", () => {
+  it("returns null without a notice", () => {
+    expect(parseAccountNotice({})).toBeNull();
+    expect(parseAccountNotice({ action: "change-password" })).toBeNull();
+  });
+
+  it("reads a known notice without an action", () => {
+    expect(parseAccountNotice({ notice: "password-changed" })).toBe("password-changed");
+  });
+
+  it.each([
+    ["an unknown notice", { notice: "anything" }],
+    ["an empty notice", { notice: "" }],
+    ["a repeated notice", { notice: ["password-changed", "password-changed"] }],
+    ["a notice with an action", { notice: "password-changed", action: "change-password" }],
+  ])("finds %s invalid", (_case, query) => {
+    expect(parseAccountNotice(query)).toBe("invalid");
   });
 });
 

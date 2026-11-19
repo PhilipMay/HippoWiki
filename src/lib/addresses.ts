@@ -122,6 +122,33 @@ export function accountPath(action?: string): string {
   return withAction(ACCOUNT_PATH, action);
 }
 
+/** The notice of the own account after the own password was changed and the other browsers were logged out. */
+export const PASSWORD_CHANGED_NOTICE = "password-changed";
+
+/**
+ * The notices of the own account, in its query string `?notice=<notice>`. A notice reports what an action of the
+ * account did; it comes only without an action, is shown once and changes nothing.
+ */
+const ACCOUNT_NOTICES = [PASSWORD_CHANGED_NOTICE] as const;
+
+export type AccountNotice = (typeof ACCOUNT_NOTICES)[number];
+
+/** The address of the own account with a notice. */
+export function accountNoticePath(notice: AccountNotice): string {
+  return `${ACCOUNT_PATH}?notice=${notice}`;
+}
+
+/**
+ * Reads the notice of an address of the own account: `null` without a notice, the notice if it is known and the
+ * address has no action, and `"invalid"` for anything else, such as an unknown or repeated notice, or one with an
+ * action.
+ */
+export function parseAccountNotice(searchParams: SearchParams): AccountNotice | null | "invalid" {
+  const notice = parseChoice(searchParams, "notice", ACCOUNT_NOTICES);
+  if (notice !== null && searchParams.action !== undefined) return "invalid";
+  return notice;
+}
+
 /** The address of the dialog that revokes the connected app with the given id. */
 export function revokeAppPath(id: string): string {
   return `${accountPath("revoke")}&app=${id}`;

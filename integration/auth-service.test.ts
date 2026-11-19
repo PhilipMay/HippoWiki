@@ -1084,3 +1084,77 @@ describe("changeFirstPassword", () => {
     );
   });
 });
+
+describe("changeOwnPassword", () => {
+  const NEW_PASSWORD = "my-new-password";
+
+  /** The three passwords of a change from the password of `createUser()` to the given one. */
+  function changeTo(newPassword: string, currentPassword = TEST_PASSWORD) {
+    return { currentPassword, newPassword, repeatPassword: newPassword };
+  }
+
+  it("ends the other session of the user and returns the cookie of a new session that is valid", async () => {
+    const alice = await createUser({ name: "alice", mustChangePassword: false });
+    await createBob();
+    const request = await logInAs("alice");
+    const other = await logInAs("alice");
+    const bob = await logInAs("bob");
+
+    const result = await authService.changeOwnPassword(changeTo(NEW_PASSWORD), request.headers, SHARED);
+
+    if (!result.ok) return expect.fail(`change failed with ${result.error.code}`);
+    expect(await authService.getSessionUser(withCookies(result.value.headers))).toStrictEqual({
+      id: alice.id,
+      name: "alice",
+      type: "user",
+      mustChangePassword: false,
+    });
+    expect(await authService.getSessionUser(other.headers)).toBeNull();
+    expect(await getTestDb().session.count({ where: { userId: alice.id } })).toBe(1);
+    expect(await authService.getSessionUser(bob.headers)).toStrictEqual(bob.user);
+  });
+
+  it("refuses the old password afterwards and logs in with the new one", async () => {
+    await createUser({ name: "alice", mustChangePassword: false });
+    const { headers } = await logInAs("alice");
+
+    const result = await authService.changeOwnPassword(changeTo(NEW_PASSWORD), headers, SHARED);
+
+    expect(result.ok).toBe(true);
+    expect(await authService.logIn({ name: "alice", password: TEST_PASSWORD }, new Headers(), SHARED)).toEqual(
+      INVALID_CREDENTIALS,
+    );
+    expect((await logInAs("alice", NEW_PASSWORD)).user.name).toBe("alice");
+  });
+
+  it("changes nothing for a wrong current password, and counts it with the logins of the name", async () => {
+    await createUser({ name: "alice", mustChangePassword: false });
+    const request = await logInAs("alice");
+    const other = await logInAs("alice");
+    const account = await getTestDb().account.findFirstOrThrow({ where: { user: { username: "alice" } } });
+
+    const results = [];
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      results.push(
+        await authService.changeOwnPassword(changeTo(NEW_PASSWORD, WRONG_PASSWORD), request.headers, SHARED),
+      );
+    }
+    const login = await authService.logIn({ name: "alice", password: TEST_PASSWORD }, new Headers(), SHARED);
+
+    expect(results).toEqual(Array(5).fill({ ok: false, error: { code: "wrong-password" } }));
+    expect(login).toMatchObject({ ok: false, error: { code: "wait" } });
+    expect(await getTestDb().account.findFirstOrThrow({ where: { id: account.id } })).toStrictEqual(account);
+    expect(await authService.getSessionUser(request.headers)).toStrictEqual(request.user);
+    expect(await authService.getSessionUser(other.headers)).toStrictEqual(other.user);
+  });
+
+  it("is refused for a user with a pending first password", async () => {
+    await createUser({ name: "alice" });
+    const { headers } = await logInAs("alice");
+
+    expect(await authService.changeOwnPassword(changeTo(NEW_PASSWORD), headers, SHARED)).toEqual({
+      ok: false,
+      error: { code: "first-password-pending" },
+    });
+  });
+});

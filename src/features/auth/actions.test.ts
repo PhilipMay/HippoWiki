@@ -1,13 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { changeFirstPassword, logIn, logOut } from "@/features/auth/actions";
+import { changeFirstPassword, changeOwnPassword, logIn, logOut } from "@/features/auth/actions";
 import { RedirectError } from "@/test/unit";
 
 const mocks = vi.hoisted(() => ({
   logIn: vi.fn(),
   logOut: vi.fn(),
   changeFirstPassword: vi.fn(),
+  changeOwnPassword: vi.fn(),
   requireSession: vi.fn(),
+  requireUser: vi.fn(),
   headers: vi.fn(),
   revalidatePath: vi.fn(),
   redirect: vi.fn(),
@@ -22,8 +24,12 @@ vi.mock("@/features/auth/service", () => ({
   logIn: mocks.logIn,
   logOut: mocks.logOut,
   changeFirstPassword: mocks.changeFirstPassword,
+  changeOwnPassword: mocks.changeOwnPassword,
 }));
-vi.mock("@/features/auth/session", () => ({ requireSession: mocks.requireSession }));
+vi.mock("@/features/auth/session", () => ({
+  requireSession: mocks.requireSession,
+  requireUser: mocks.requireUser,
+}));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("next/headers", () => ({ headers: mocks.headers }));
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
@@ -454,5 +460,86 @@ describe("changeFirstPassword", () => {
       REQUEST_HEADERS,
       "shared",
     );
+  });
+});
+
+describe("changeOwnPassword", () => {
+  const FORM = {
+    currentPassword: " current password ",
+    newPassword: "my new password",
+    repeatPassword: "my new password",
+  };
+
+  beforeEach(() => {
+    mocks.requireUser.mockResolvedValue(USER);
+  });
+
+  it("changes the password with the form, the headers and the group of the request, and leads to the notice", async () => {
+    mocks.changeOwnPassword.mockResolvedValue({ ok: true, value: { user: USER, headers: new Headers() } });
+
+    await expect(changeOwnPassword({}, formData(FORM))).rejects.toMatchObject({
+      path: "/account?notice=password-changed",
+    });
+
+    expect(mocks.changeOwnPassword).toHaveBeenCalledExactlyOnceWith(FORM, REQUEST_HEADERS, "shared");
+    expect(mocks.revalidatePath).toHaveBeenCalledExactlyOnceWith("/account");
+    expect(mocks.logClientAddressProbe).toHaveBeenCalledExactlyOnceWith(REQUEST_HEADERS, {
+      source: "password-change",
+    });
+  });
+
+  it("passes the client address group of the request", async () => {
+    trustProxies(1);
+    mocks.headers.mockResolvedValue(new Headers({ "x-forwarded-for": "198.51.100.9, 203.0.113.7" }));
+    mocks.changeOwnPassword.mockResolvedValue({ ok: false, error: { code: "wrong-password" } });
+
+    await changeOwnPassword({}, formData(FORM));
+
+    expect(mocks.changeOwnPassword.mock.calls[0]?.[2]).toBe("203.0.113.7");
+  });
+
+  it.each([
+    [
+      "invalid-input",
+      { fieldErrors: { newPassword: ["Reported by the service"] } },
+      { fieldErrors: { newPassword: ["Reported by the service"] } },
+    ],
+    ["wrong-password", {}, { fieldErrors: { currentPassword: ["Current password is wrong"] }, passwordRefused: true }],
+    [
+      "wait",
+      { waitMs: 4 * 60_000 },
+      {
+        fieldErrors: { currentPassword: ["Too many wrong passwords. Please try again in 4 minutes."] },
+        passwordRefused: true,
+      },
+    ],
+    ["busy", {}, { message: "Too many logins at the moment, please try again" }],
+    ["failed", {}, { message: "The password could not be changed. Please try again." }],
+  ])("shows the form state of the code %s, without revalidating or redirecting", async (code, details, state) => {
+    mocks.changeOwnPassword.mockResolvedValue({ ok: false, error: { code, ...details } });
+
+    await expect(changeOwnPassword({}, formData(FORM))).resolves.toEqual(state);
+
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+    expect(mocks.redirect).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["not-logged-in", "/login"],
+    ["first-password-pending", "/change-password"],
+  ])("leads away for the code %s, to %s, without revalidating", async (code, path) => {
+    mocks.changeOwnPassword.mockResolvedValue({ ok: false, error: { code } });
+
+    await expect(changeOwnPassword({}, formData(FORM))).rejects.toMatchObject({ path });
+
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it("does not reach the service without a user", async () => {
+    mocks.requireUser.mockRejectedValue(new RedirectError("/login"));
+
+    await expect(changeOwnPassword({}, formData(FORM))).rejects.toMatchObject({ path: "/login" });
+
+    expect(mocks.changeOwnPassword).not.toHaveBeenCalled();
   });
 });
