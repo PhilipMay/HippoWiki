@@ -348,6 +348,8 @@ test("a form that is submitted in a second tab after the change leads to the fol
 
   await expect(otherTab).toHaveURL("/folders");
   await page.getByRole("banner").getByRole("button", { name: "Log out" }).click();
+  // The login page sends a logged-in user on, so the next login waits until the logout is done.
+  await expect(page).toHaveURL("/login");
   await logIn(page, "newcomer", NEW_PASSWORD);
   await expect(page).toHaveURL("/folders");
 });

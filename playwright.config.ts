@@ -23,9 +23,8 @@ const production = process.env.HIPPOWIKI_E2E_SERVER === "production";
 
 // The number of workers, from HIPPOWIKI_E2E_WORKERS (see e2e/support/workers.ts). Read when the configuration loads, so
 // that an invalid value stops the run before any server or database starts. Each worker has its own database and its
-// own server; the production run still has one worker.
-const configuredWorkers = workerCount();
-const workers = production ? 1 : configuredWorkers;
+// own server.
+const workers = workerCount();
 const workerNumbers = Array.from({ length: workers }, (_, index) => index + 1);
 
 export default defineConfig({
@@ -59,14 +58,18 @@ export default defineConfig({
       dependencies: ["setup"],
     },
   ],
-  // One server per worker, on its port, with its own build directory and database. Playwright starts them one after
-  // another, each once the one before is ready.
+  // One server per worker, on its port, with its own database. Playwright starts them one after another, each once the
+  // one before is ready. Each development server has its own build directory. The production run builds once: the
+  // server of worker 1 runs the build before it starts, and the others start on that build directory when it is done.
   webServer: workerNumbers.map((worker) => {
     const port = workerPort(worker);
+    const builds = production && worker === 1;
     return {
       // The build and the server both get `env`. The build needs no running database, because no route is
       // prerendered.
-      command: production ? `npx next build && npx next start --port ${port}` : `npx next dev --port ${port}`,
+      command: production
+        ? `${builds ? "npx next build && " : ""}npx next start --port ${port}`
+        : `npx next dev --port ${port}`,
       // The server starts before the global setup starts the test database, so readiness must not depend on it. It is
       // checked on the port: a `url` check would follow the redirect from `/` to `/folders`, which needs the database.
       port,
@@ -84,8 +87,8 @@ export default defineConfig({
       // Never attach to a server that was started by someone else and may use another database: a taken port fails
       // the run.
       reuseExistingServer: false,
-      // The production server starts only after the build.
-      timeout: production ? 300_000 : 120_000,
+      // The first production server starts only after the build.
+      timeout: builds ? 300_000 : 120_000,
     };
   }),
 });
