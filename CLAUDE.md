@@ -28,6 +28,7 @@ file itself holds.
 - `spec/folder-roles.md`: Who may see and do what with a folder?
 - `spec/roadmap.md`: Which features may come later, and what is still to check?
 - `spec/issue-report.md`: How is an issue of a review of code or documents reported?
+- `spec/task-list-layout-steps.md`: In which steps are task lists laid out like other lists in the page view?
 - `spec/review-report.md`: Which findings of the security and code review are open? A fixed finding is deleted, and
   the file with its last finding.
 
