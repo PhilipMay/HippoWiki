@@ -3,7 +3,7 @@
 // and the page decide in one place what an address shows. No server-only imports.
 
 import { mayDo, type FolderFunction, type Role } from "@/features/folder-roles/roles";
-import { parseAction, parseView, type SearchParams } from "@/lib/addresses";
+import { hasSearchWords, parseAction, parseSearchWords, parseView, type SearchParams } from "@/lib/addresses";
 
 /**
  * The actions of a folder address: `new` opens the editor for a new page, with the folder itself as the preselected
@@ -31,10 +31,11 @@ export function mayDoFolderAction(role: Role | null, action: FolderAction): bool
 
 /**
  * The views of a folder address: `all` lists all pages of the folder, each with its tab, `roles` who has which role on
- * the folder, and `mcp` the MCP addresses of the folder that the user may connect an AI app to. Every role may see all
- * three; `mcp` exists only with `HIPPOWIKI_PUBLIC_URL`.
+ * the folder, `mcp` the MCP addresses of the folder that the user may connect an AI app to, and `search` the results
+ * of a search in the whole folder for the words in `q`. Every role may see all four; `mcp` exists only with
+ * `HIPPOWIKI_PUBLIC_URL`.
  */
-const FOLDER_VIEWS = ["all", "roles", "mcp"] as const;
+const FOLDER_VIEWS = ["all", "roles", "mcp", "search"] as const;
 
 export type FolderView = (typeof FOLDER_VIEWS)[number];
 
@@ -48,6 +49,8 @@ function folderTitle(name: string, action: FolderAction | null, view: FolderView
       return `Roles – ${name}`;
     case "mcp":
       return `AI apps – ${name}`;
+    case "search":
+      return `Search – ${name}`;
     case null:
       return name;
   }
@@ -55,21 +58,24 @@ function folderTitle(name: string, action: FolderAction | null, view: FolderView
 
 /**
  * What a folder address shows, and its browser title: `null` for an unknown, empty or repeated action or view, an
- * action together with a view (a view has no actions), an action beyond the role of the user, and the view `mcp`
- * without an MCP server (`hasMcp`), which all answer like an unknown address. The route uses it for the title and for
- * the page, so that both decide alike.
+ * action together with a view (a view has no actions), an action beyond the role of the user, the view `mcp` without
+ * an MCP server (`hasMcp`), the view `search` without the words `q` once and with more than spaces, and `q` without
+ * the view `search`, which all answer like an unknown address. `words` are the words of the view `search` as typed,
+ * `null` otherwise. The route uses it for the title and for the page, so that both decide alike.
  */
 export function folderAddressOf(
   folder: { name: string; role: Role | null },
   searchParams: SearchParams,
   hasMcp: boolean,
-): { action: FolderAction | null; view: FolderView | null; title: string } | null {
+): { action: FolderAction | null; view: FolderView | null; words: string | null; title: string } | null {
   const action = parseAction(searchParams, FOLDER_ACTIONS);
   const view = parseView(searchParams, FOLDER_VIEWS);
   if (action === "invalid" || view === "invalid" || (action !== null && view !== null)) return null;
   if (action !== null && !mayDoFolderAction(folder.role, action)) return null;
   if (view === "mcp" && !hasMcp) return null;
-  return { action, view, title: folderTitle(folder.name, action, view) };
+  const words = view === "search" ? parseSearchWords(searchParams) : null;
+  if (view === "search" ? words === null : hasSearchWords(searchParams)) return null;
+  return { action, view, words, title: folderTitle(folder.name, action, view) };
 }
 
 /**
@@ -96,15 +102,16 @@ export function mayDoTabAction(role: Role | null, action: TabAction): boolean {
 }
 
 /**
- * What a tab address shows, and its browser title: `null` for any view (a tab has none), an unknown, empty or repeated
- * action, and an action beyond the role of the user, which all answer like an unknown address. The route uses it for
+ * What a tab address shows, and its browser title: `null` for any view (a tab has none), the words of a search, which
+ * belong to the folder address, an unknown, empty or repeated action, and an action beyond the role of the user, which
+ * all answer like an unknown address. The route uses it for
  * the title and for the page, so that both decide alike.
  */
 export function tabAddressOf(
   tab: { name: string; folder: { name: string }; role: Role | null },
   searchParams: SearchParams,
 ): { action: TabAction | null; title: string } | null {
-  if (parseView(searchParams) !== null) return null;
+  if (parseView(searchParams) !== null || hasSearchWords(searchParams)) return null;
   const action = parseAction(searchParams, TAB_ACTIONS);
   if (action === "invalid" || (action !== null && !mayDoTabAction(tab.role, action))) return null;
   return { action, title: action === "new" ? "New page" : `${tab.name} – ${tab.folder.name}` };

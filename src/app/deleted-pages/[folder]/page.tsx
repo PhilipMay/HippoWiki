@@ -9,14 +9,14 @@ import FolderBreadcrumbs from "@/features/folders/components/FolderBreadcrumbs";
 import { getFolderByName } from "@/features/folders/queries";
 import DeletedPagesList from "@/features/pages/components/DeletedPagesList";
 import { listDeletedPages } from "@/features/pages/queries";
-import { parseAction, parseView, type SearchParams } from "@/lib/addresses";
+import { hasSearchWords, parseAction, parseView, type SearchParams } from "@/lib/addresses";
 import { pageTitle } from "@/lib/site";
 
 type Props = PageProps<"/deleted-pages/[folder]">;
 
-/** The list of deleted pages has neither actions nor views. */
+/** The list of deleted pages has neither actions nor views, and deleted pages are never searched. */
 function hasQuery(searchParams: SearchParams): boolean {
-  return parseAction(searchParams, []) !== null || parseView(searchParams) !== null;
+  return parseAction(searchParams, []) !== null || parseView(searchParams) !== null || hasSearchWords(searchParams);
 }
 
 export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {

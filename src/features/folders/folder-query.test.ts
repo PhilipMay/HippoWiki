@@ -51,6 +51,7 @@ describe("folderAddressOf", () => {
     [{ view: "all" }, "All pages – handbook"],
     [{ view: "roles" }, "Roles – handbook"],
     [{ view: "mcp" }, "AI apps – handbook"],
+    [{ view: "search", q: "backup server" }, "Search – handbook"],
   ])("gives %o the title %s", (searchParams, title) => {
     expect(folderAddressOf(owner, searchParams, true)?.title).toBe(title);
   });
@@ -67,8 +68,31 @@ describe("folderAddressOf", () => {
     { view: "history" },
     { view: ["all", "all"] },
     { action: "new", view: "all" },
+    { view: "search" },
+    { view: "search", q: "" },
+    { view: "search", q: "   " },
+    { view: "search", q: ["backup", "backup"] },
+    { view: "search", q: "backup", action: "new" },
+    { view: "search", q: "backup", action: "rename" },
+    { q: "backup" },
+    { q: "" },
+    { view: "all", q: "backup" },
+    { view: "roles", q: "backup" },
+    { action: "new", q: "backup" },
   ])("shows the not-found page for %o", (searchParams) => {
     expect(folderAddressOf(owner, searchParams, true)).toBeNull();
+  });
+
+  it("reads the words of the view search as typed, and none for the other views", () => {
+    expect(folderAddressOf(owner, { view: "search", q: "  backup  -old " }, true)).toMatchObject({
+      action: null,
+      view: "search",
+      words: "  backup  -old ",
+    });
+    // A search that is too long is no address error: the view tells the user.
+    expect(folderAddressOf(owner, { view: "search", q: "x".repeat(500) }, true)?.words).toHaveLength(500);
+    expect(folderAddressOf(owner, { view: "all" }, true)?.words).toBeNull();
+    expect(folderAddressOf(owner, {}, true)?.words).toBeNull();
   });
 
   it("shows the not-found page for an action beyond the role, but every view to every role", () => {
@@ -79,6 +103,7 @@ describe("folderAddressOf", () => {
     for (const view of ["all", "roles", "mcp"]) {
       expect(folderAddressOf(reader, { view }, true), view).not.toBeNull();
     }
+    expect(folderAddressOf(reader, { view: "search", q: "backup" }, true)).not.toBeNull();
   });
 
   it("shows the not-found page for the view of the AI apps without an MCP server", () => {
@@ -105,6 +130,10 @@ describe("tabAddressOf", () => {
     { action: "give-role" },
     { action: ["new", "new"] },
     { action: "new", view: "all" },
+    { view: "search", q: "backup" },
+    { q: "backup" },
+    { q: "" },
+    { action: "rename", q: "backup" },
   ])("shows the not-found page for %o", (searchParams) => {
     expect(tabAddressOf(manager, searchParams)).toBeNull();
   });

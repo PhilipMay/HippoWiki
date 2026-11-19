@@ -124,6 +124,12 @@ describe("pageAddressOf", () => {
     { view: "compare", from: "1", to: "2", format: "raw" },
     { action: "edit", revision: "2" },
     { action: "revert", revision: "2", format: "raw" },
+    // The words of a search belong to the folder address.
+    { q: "backup" },
+    { q: "" },
+    { view: "search", q: "backup" },
+    { view: "history", q: "backup" },
+    { action: "edit", q: "backup" },
   ])("shows the not-found page for %o", (searchParams) => {
     expect(pageAddressOf(owner, searchParams)).toBeNull();
   });
@@ -160,6 +166,9 @@ describe("deletedPageAddressOf", () => {
     { action: "restore", view: "history" },
     { revision: "2" },
     { view: "history", before: "1" },
+    { q: "backup" },
+    { view: "search", q: "backup" },
+    { action: "restore", q: "backup" },
   ])("shows the not-found page for %o", (searchParams) => {
     expect(deletedPageAddressOf(deleted, searchParams)).toBeNull();
   });

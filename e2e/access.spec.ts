@@ -43,6 +43,7 @@ const PROTECTED_ADDRESSES = [
   ["a tab with the dialog to delete it", "/folders/handbook/guides?action=delete"],
   ["the give role dialog of a folder", "/folders/handbook?action=give-role"],
   ["the view AI apps of a folder", "/folders/handbook?view=mcp"],
+  ["the results of a search in a folder", "/folders/handbook?view=search&q=backup"],
   ["the overview of the folder roles", "/folder-roles"],
   ["the user list", "/users"],
   ["the user list with the dialog of a new user", "/users?action=create"],

@@ -10,6 +10,7 @@ import AiAppsView from "@/features/mcp/components/AiAppsView";
 import { listMcpAddresses } from "@/features/mcp/queries";
 import AllPagesView from "@/features/pages/components/AllPagesView";
 import NewPageView from "@/features/pages/components/NewPageView";
+import SearchView from "@/features/search/components/SearchView";
 import { pageTitle } from "@/lib/site";
 
 type Props = PageProps<"/folders/[folder]">;
@@ -36,7 +37,7 @@ export default async function FolderPage(props: Props) {
   const user = await requireUser();
 
   // An action that the role does not include answers like an unknown one, before the content is read.
-  const { folder, mcpAddresses, action, view } = (await resolve(props)) ?? notFound();
+  const { folder, mcpAddresses, action, view, words } = (await resolve(props)) ?? notFound();
 
   if (action === "new") return <NewPageView folder={folder} tab={null} />;
   switch (view) {
@@ -47,6 +48,9 @@ export default async function FolderPage(props: Props) {
     case "mcp":
       // `resolve()` finds the view only with an MCP server.
       return <AiAppsView folderName={folder.name} addresses={mcpAddresses ?? notFound()} />;
+    case "search":
+      // `resolve()` finds the view only with words.
+      return <SearchView folder={folder} words={words ?? notFound()} />;
     case null:
       return <FolderView folder={folder} action={action} hasMcp={mcpAddresses !== null} />;
   }

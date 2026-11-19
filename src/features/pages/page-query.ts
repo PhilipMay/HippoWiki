@@ -5,7 +5,15 @@
 
 import { mayDo, type FolderFunction, type Role } from "@/features/folder-roles/roles";
 import { parseRevisionNumber } from "@/features/pages/schema";
-import { PAGE_NOTICES, parseAction, parseChoice, parseView, type PageNotice, type SearchParams } from "@/lib/addresses";
+import {
+  hasSearchWords,
+  PAGE_NOTICES,
+  parseAction,
+  parseChoice,
+  parseView,
+  type PageNotice,
+  type SearchParams,
+} from "@/lib/addresses";
 
 /**
  * The actions of a page address: `edit` opens the edit form, `move-or-rename` the "Move or rename page" dialog,
@@ -130,11 +138,14 @@ function parseHistoryView(
 /**
  * Reads what the query string of a page address asks for: at most one action, with its notice, or one view, with its
  * parameters. `"invalid"` for an unknown, empty or repeated action, notice or view, an action together with a view, a
- * parameter of a view or action that the address does not have, and a missing or malformed parameter: `before` of the
+ * parameter of a view or action that the address does not have, the words of a search (`q`, which belongs to the
+ * folder address), and a missing or malformed parameter: `before` of the
  * history must be a revision number from 2 up, `revision` of the view `revision` and of the action `revert`, `from` and
  * `to` revision numbers and `format` only `raw` (whether the page has the revisions, the history reads check).
  */
 function parsePageQuery(searchParams: SearchParams): PageQuery | "invalid" {
+  // The words of a search belong to the folder address.
+  if (hasSearchWords(searchParams)) return "invalid";
   const action = parseAction(searchParams, PAGE_ACTIONS);
   const notice = parsePageNotice(searchParams, action);
   const view = parseHistoryView(searchParams, action === "revert" ? ["revision"] : []);
@@ -188,13 +199,15 @@ export type DeletedPageAction = (typeof DELETED_PAGE_ACTIONS)[number];
 /**
  * What the address of a deleted page shows, and its browser title: the action of the address or a view of the history,
  * with the same parameters as at a page address. `null` for an action or view that a deleted page does not have, both
- * together, and a parameter that belongs to neither; a deleted page has no "Revert". The title shows that the page is
+ * together, a parameter that belongs to neither, and the words of a search; a deleted page has no "Revert". The title shows that the page is
  * a deleted copy.
  */
 export function deletedPageAddressOf(
   page: { title: string },
   searchParams: SearchParams,
 ): { action: DeletedPageAction | null; view: PageAddressView | null; title: string } | null {
+  // Deleted pages are never searched.
+  if (hasSearchWords(searchParams)) return null;
   const action = parseAction(searchParams, DELETED_PAGE_ACTIONS);
   const view = parseHistoryView(searchParams);
   if (action === "invalid" || view === "invalid" || (action !== null && view !== null)) return null;

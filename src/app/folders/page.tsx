@@ -10,7 +10,7 @@ import { createFolder } from "@/features/folders/actions";
 import FolderList from "@/features/folders/components/FolderList";
 import NameDialog from "@/features/folders/components/NameDialog";
 import { listFolders } from "@/features/folders/queries";
-import { foldersPath, parseAction, parseView } from "@/lib/addresses";
+import { foldersPath, hasSearchWords, parseAction, parseView } from "@/lib/addresses";
 import { pageTitle } from "@/lib/site";
 
 export const metadata: Metadata = {
@@ -26,8 +26,8 @@ export default async function FoldersPage({ searchParams }: PageProps<"/folders"
 
   const query = await searchParams;
   const action = parseAction(query, ACTIONS);
-  // The folder list has no views.
-  if (action === "invalid" || parseView(query) !== null) notFound();
+  // The folder list has no views, and no search: a search covers one folder.
+  if (action === "invalid" || parseView(query) !== null || hasSearchWords(query)) notFound();
 
   // `null` for an admin, who sees no content, and for a malformed id of the user.
   const folders = (await listFolders()) ?? notFound();

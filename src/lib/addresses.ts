@@ -264,6 +264,34 @@ export function folderMcpPath(folder: string): string {
   return withView(`${FOLDERS_PATH}/${folder}`, "mcp");
 }
 
+/** The search parameter of the results view of a folder with the words of the search. */
+const SEARCH_WORDS_PARAM = "q";
+
+/**
+ * The address of the results of a search in a folder: the folder address with the view `search` and the words as
+ * typed, encoded, in `q`.
+ */
+export function searchPath(folder: string, words: string): string {
+  return withView(`${FOLDERS_PATH}/${folder}`, "search", { [SEARCH_WORDS_PARAM]: encodeURIComponent(words) });
+}
+
+/**
+ * Whether the query string holds the words of a search, in any form. They belong only to the view `search` of a folder
+ * address; every other address shows the not-found page for them.
+ */
+export function hasSearchWords(searchParams: SearchParams): boolean {
+  return searchParams[SEARCH_WORDS_PARAM] !== undefined;
+}
+
+/**
+ * Reads the words of a search from the query string, as typed: `null` unless `q` is given once and holds more than
+ * spaces.
+ */
+export function parseSearchWords(searchParams: SearchParams): string | null {
+  const words = searchParams[SEARCH_WORDS_PARAM];
+  return typeof words === "string" && words.trim() !== "" ? words : null;
+}
+
 /** The address of a tab of a folder, optionally with an action. */
 export function tabPath(folder: string, tab: string, action?: string): string {
   return withAction(`${FOLDERS_PATH}/${folder}/${tab}`, action);

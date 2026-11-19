@@ -88,7 +88,7 @@ export async function indexOutdatedPages(): Promise<Result<{ pages: number }, Fa
 }
 
 /** A page that a search found: what the lists show of it, with its tab and a piece of its text around the match. */
-type SearchResult = {
+export type SearchResult = {
   id: string;
   name: string;
   title: string;

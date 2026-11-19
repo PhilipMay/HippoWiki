@@ -14,6 +14,7 @@ import {
   deletedPagesRootPath,
   folderMcpPath,
   folderPath,
+  hasSearchWords,
   homePath,
   folderRolesOverviewPath,
   folderRolesPath,
@@ -35,10 +36,12 @@ import {
   parseAction,
   parseChoice,
   parsePageSegment,
+  parseSearchWords,
   parseView,
   protectedResourceMetadataPath,
   revokeAppPath,
   safeNextPath,
+  searchPath,
   tabPath,
 } from "@/lib/addresses";
 
@@ -63,6 +66,14 @@ describe("paths", () => {
 
   it("builds the address of the roles of a folder", () => {
     expect(folderRolesPath("handbook")).toBe("/folders/handbook?view=roles");
+  });
+
+  it("builds the address of the results of a search in a folder, with the words encoded as typed", () => {
+    expect(searchPath("handbook", "backup")).toBe("/folders/handbook?view=search&q=backup");
+    expect(searchPath("handbook", ' "backup server" -old & more ')).toBe(
+      "/folders/handbook?view=search&q=%20%22backup%20server%22%20-old%20%26%20more%20",
+    );
+    expect(searchPath("handbook", "Häuser #1 ?")).toBe("/folders/handbook?view=search&q=H%C3%A4user%20%231%20%3F");
   });
 
   it("builds the address of a tab", () => {
@@ -430,5 +441,22 @@ describe("landingPath", () => {
     "/oauth/authorize?client_id=abc&state=x%2Fy",
   ])("keeps every way back %j of a user", (next) => {
     expect(landingPath(next, USER)).toBe(next);
+  });
+});
+
+describe("the words of a search", () => {
+  it("tells whether the query string holds them in any form", () => {
+    expect(hasSearchWords({})).toBe(false);
+    expect(hasSearchWords({ view: "search" })).toBe(false);
+    expect(hasSearchWords({ q: "" })).toBe(true);
+    expect(hasSearchWords({ q: ["a", "b"] })).toBe(true);
+  });
+
+  it("reads them as typed when given once with more than spaces", () => {
+    expect(parseSearchWords({ q: " backup  server " })).toBe(" backup  server ");
+    expect(parseSearchWords({})).toBeNull();
+    expect(parseSearchWords({ q: "" })).toBeNull();
+    expect(parseSearchWords({ q: " \t " })).toBeNull();
+    expect(parseSearchWords({ q: ["backup", "backup"] })).toBeNull();
   });
 });
