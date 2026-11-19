@@ -138,6 +138,17 @@ written in without anybody choosing a language.
   - Acceptance: a search that runs longer than 5 seconds shows a message that the search is too broad and asks for
     more precise words; the search tool of AI apps answers it as a tool error with the same advice; the wiki stays
     usable for other users meanwhile.
+- R32: A search in a folder of 3,000 pages of about 20,000 characters each must finish within 2 seconds, with and
+  without a typo or a part of a word; the time limit of R22 is for searches beyond that.
+  - Acceptance: in such a folder, a search for a correctly spelled word, one for a word with a typo and one for a part
+    of a word each finish within 2 seconds; matching typos does not make a search for a correctly spelled word slower
+    than that.
+- R33: At most 3 searches must run at the same time in the whole wiki, in the browser and for AI apps together; a
+  further search must be answered at once with the message "Too many searches are running. Try again in a few
+  seconds." and must run nothing.
+  - Acceptance: while 3 searches run, a fourth shows the message above the field at once, and the search tool of AI
+    apps answers it as a tool error with the same text; the other pages of the wiki load normally meanwhile; once a
+    search has ended, the next search runs.
 - R25: The words of a search must be at most 200 characters and 10 words long; longer words must be refused with the
   message "Search at most 200 characters and 10 words", and no search runs.
   - Acceptance: 201 characters or 11 words show the message above the field, also when given in the address of the
@@ -187,12 +198,14 @@ written in without anybody choosing a language.
 ## Scope
 
 - In: search in one folder in the browser and through MCP; automatic language of each page; parts of words and typos
-  in titles, names and content; one list of the 100 best results; a time limit for every search.
+  in titles, names and content; one list of the 100 best results; a time limit for every search; a time of at most
+  2 seconds for searches in a folder of 3,000 pages; at most 3 searches at the same time.
 - Not in: search across several folders or the whole wiki; suggestions while typing; opening a page directly from
   the search field; narrowing the results to a tab; a choice of the order of the results; paging through more than
   100 results; inflections of Irish and of languages the database cannot stem; search for admins; search in
   revisions of pages; search in the deleted pages of a folder, for any role; logging the words of a search; rate
-  limits of searches, which stay the job of the reverse proxy (see "Rate limits and quotas" in `roadmap.md`).
+  limits of searches per user or app, which stay the job of the reverse proxy (see "Rate limits and quotas" in
+  `roadmap.md`).
 
 ## Effect on existing features
 
@@ -233,8 +246,20 @@ written in without anybody choosing a language.
 - Parts of words and typos are matched in the content too, with a time limit for every search. A measurement on
   3,000 pages of about 18,000 characters showed the cost: a typo search in the content took about 6 s, a search for
   a part of a word about 0.4 s, and the save of a page of 100,000 characters went from about 18 ms to about 38 ms.
-  Searches in large folders of long pages may therefore stop as too broad. Rejected: parts of words in the content
-  with typos in titles and names only, and titles and names only.
+  A second measurement, on 3,000 pages of about 20,000 characters, showed that comparing a word with the whole text
+  of each page costs about 6.5 s for every search, also one without a typo, because every word of a search is also
+  checked for typos. Typos are therefore matched against the words that occur in the pages of the folder, which took
+  about 1 ms, and not against the whole text of each page. This list of words shows nothing that a user of the
+  folder could not read, because every role reads every page of its folder, and it is kept current in the same save
+  as the page (R30). Rejected: parts of words in the content with typos in titles and names only, titles and names
+  only, and typos compared with the whole text of each page, which would make almost every search in such a folder
+  stop as too broad.
+- A search in a folder of 3,000 pages of about 20,000 characters finishes within 2 seconds, with and without a typo.
+  Rejected: 1 second, and no promised time with the time limit of R22 alone.
+- At most 3 searches run at the same time in the whole wiki, because each search may hold a connection to the
+  database for up to 5 seconds, and enough broad searches at once would make every page of the wiki wait. A further
+  search is turned away at once instead of waiting. Rejected: 2 at a time, which turns searches away more often on a
+  busy wiki, and 5, which leaves too few connections for loading pages.
 - Irish pages are found by exact words and word starts, because the language detector of the plan does not know
   Irish. Rejected: looking for another detector, which would be a native package of about 100 MB or one without a
   mature Node.js package.
@@ -242,8 +267,8 @@ written in without anybody choosing a language.
   the hint view for an empty field.
 - One list of at most the 100 best results, without paging: a broader search needs more precise words. Rejected: 20
   or 50 results per page with paging up to 500.
-- A search stops after 5 seconds. Rejected: 2 seconds, at which typo searches in large folders would often stop,
-  and 10 seconds of waiting.
+- A search stops after 5 seconds, which bounds the searches that take longer than R32 promises. Rejected: 2
+  seconds, the time R32 promises, which would leave no room for larger folders, and 10 seconds of waiting.
 - The search field is shown on every view of the folder, its tabs and pages, and hidden while an action is open.
   Rejected: the field also during an action, where a search would discard unsaved text.
 - A typo or a part of a word shows the text around the closest word; a match in the title or name alone the start of
