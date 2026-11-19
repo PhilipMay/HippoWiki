@@ -11,6 +11,7 @@ import Link from "@/components/Link";
 import Time from "@/components/Time";
 import HistoryBreadcrumbs from "@/features/pages/components/HistoryBreadcrumbs";
 import type { HistoryPlace } from "@/features/pages/components/history-place";
+import SearchField from "@/features/search/components/SearchField";
 import { REVISIONS_PER_PAGE } from "@/features/pages/limits";
 import type { PageRevisions } from "@/features/pages/history-service";
 import { editorWithChannel } from "@/features/users/records";
@@ -44,6 +45,7 @@ export default function PageHistory({ place, title, history, before }: PageHisto
 
   return (
     <Stack spacing={3}>
+      {place.searchFolderName !== null && <SearchField folderName={place.searchFolderName} />}
       <HistoryBreadcrumbs place={place} current="History" />
       <Stack spacing={1}>
         <Typography variant="h4" component="h1" sx={{ overflowWrap: "anywhere" }}>

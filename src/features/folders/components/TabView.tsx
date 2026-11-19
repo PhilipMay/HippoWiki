@@ -12,6 +12,7 @@ import { mayDoTabAction, type TabAction } from "@/features/folders/folder-query"
 import type { TabWithFolder } from "@/features/folders/service";
 import PageList from "@/features/pages/components/PageList";
 import { listTabPages } from "@/features/pages/queries";
+import SearchField from "@/features/search/components/SearchField";
 import { folderPath, tabPath } from "@/lib/addresses";
 
 type TabViewProps = {
@@ -28,6 +29,8 @@ export default async function TabView({ tab, action }: TabViewProps) {
 
   return (
     <Stack spacing={3}>
+      {/* The search field is left out while a dialog is open, so that a search never discards what was entered. */}
+      {action === null && <SearchField folderName={folder.name} />}
       <FolderBreadcrumbs folderName={folder.name} current={tab.name} />
       {/* Only what the role includes is offered. */}
       <HeadingWithActions title={tab.name}>

@@ -13,6 +13,7 @@ import HistoryBreadcrumbs from "@/features/pages/components/HistoryBreadcrumbs";
 import MarkdownContent from "@/features/pages/components/MarkdownContent";
 import RevisionLine from "@/features/pages/components/RevisionLine";
 import type { HistoryPlace } from "@/features/pages/components/history-place";
+import SearchField from "@/features/search/components/SearchField";
 import type { RevisionDetail } from "@/features/pages/history-service";
 
 type RevisionViewProps = {
@@ -78,6 +79,8 @@ export default function RevisionView({ place, revision, raw, revertHref = null, 
 
   return (
     <Stack spacing={2}>
+      {/* Left out under the "Revert page" dialog, so that a search never discards what was entered. */}
+      {place.searchFolderName !== null && !children && <SearchField folderName={place.searchFolderName} />}
       <HistoryBreadcrumbs place={place} current={`Revision ${revision.number}`} />
       <Paper component="article" variant="outlined" sx={{ p: { xs: 2, sm: 4 } }}>
         <Stack spacing={2} sx={{ mb: 3 }}>

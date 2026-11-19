@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 
 import FolderBreadcrumbs from "@/features/folders/components/FolderBreadcrumbs";
 import SearchResultList from "@/features/search/components/SearchResultList";
+import SearchField from "@/features/search/components/SearchField";
 import { SEARCH_MAX_CHARACTERS, SEARCH_MAX_WORDS } from "@/features/search/limits";
 import { searchPages } from "@/features/search/queries";
 import type { SearchError } from "@/features/search/service";
@@ -35,6 +36,8 @@ export default async function SearchView({ folder, words }: { folder: { id: stri
   return (
     <Stack spacing={3}>
       {message !== null && <Alert severity="warning">{message}</Alert>}
+      {/* Started anew with every search, so that back and forward show the words of their address. */}
+      <SearchField key={words} folderName={folder.name} words={words} />
       <FolderBreadcrumbs folderName={folder.name} current="Search" />
       <Typography variant="h4" component="h1">
         Search

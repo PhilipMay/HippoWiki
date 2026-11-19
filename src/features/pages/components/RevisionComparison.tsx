@@ -8,6 +8,7 @@ import Link from "@/components/Link";
 import HistoryBreadcrumbs from "@/features/pages/components/HistoryBreadcrumbs";
 import RevisionLine from "@/features/pages/components/RevisionLine";
 import type { HistoryPlace } from "@/features/pages/components/history-place";
+import SearchField from "@/features/search/components/SearchField";
 import { diffRevisions, type DiffLine } from "@/features/pages/diff";
 import type { RevisionComparison as Comparison } from "@/features/pages/history-service";
 
@@ -47,6 +48,7 @@ export default function RevisionComparison({ place, comparison }: RevisionCompar
 
   return (
     <Stack spacing={3}>
+      {place.searchFolderName !== null && <SearchField folderName={place.searchFolderName} />}
       <HistoryBreadcrumbs place={place} current={`Revisions ${older.number} and ${newer.number}`} />
       <Stack spacing={1}>
         <Typography variant="h4" component="h1" sx={{ overflowWrap: "anywhere" }}>

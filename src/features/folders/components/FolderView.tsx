@@ -14,6 +14,7 @@ import GiveRoleDialog from "@/features/folder-roles/components/GiveRoleDialog";
 import { listRoleCandidates } from "@/features/folder-roles/queries";
 import { mayDo, ROLE_LABELS, type Role } from "@/features/folder-roles/roles";
 import { listFolderPages } from "@/features/pages/queries";
+import SearchField from "@/features/search/components/SearchField";
 import { allPagesPath, deletedPagesPath, folderMcpPath, folderPath, folderRolesPath } from "@/lib/addresses";
 
 type FolderViewProps = {
@@ -37,6 +38,8 @@ export default async function FolderView({ folder, action, hasMcp }: FolderViewP
 
   return (
     <Stack spacing={3}>
+      {/* The search field is left out while a dialog is open, so that a search never discards what was entered. */}
+      {action === null && <SearchField folderName={folder.name} />}
       {/* Only what the role includes is offered. */}
       <HeadingWithActions title={folder.name} subtitle={role && `Your role: ${ROLE_LABELS[role]}`}>
         {mayDoFolderAction(role, "rename") && (

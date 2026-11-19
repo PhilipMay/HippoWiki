@@ -21,6 +21,11 @@ export type HistoryPlace = {
   tabName: string | null;
   /** Whether the page is deleted: its breadcrumb leads through the deleted pages of its folder. */
   deleted: boolean;
+  /**
+   * The folder that the search field of the views searches, or `null` for a deleted page, whose addresses offer no
+   * search: deleted pages are never searched.
+   */
+  searchFolderName: string | null;
   /** The page as its breadcrumb names it: its name with `.md`, or without it for a deleted page. */
   pageLabel: string;
   /** The address of the page as it is now, or of the deleted page. */
@@ -41,6 +46,7 @@ export function pageHistoryPlace(page: PageWithPlace): HistoryPlace {
     folderName: folder,
     tabName: tab,
     deleted: false,
+    searchFolderName: folder,
     pageLabel: pageLabel(page.name),
     pageHref: pagePath(folder, tab, page.name),
     historyHref: (before) => pageHistoryPath(folder, tab, page.name, before),
@@ -56,6 +62,7 @@ export function deletedPageHistoryPlace(page: DeletedPage): HistoryPlace {
     folderName: folder,
     tabName: null,
     deleted: true,
+    searchFolderName: null,
     pageLabel: page.name,
     pageHref: deletedPagePath(folder, page.id),
     historyHref: (before) => deletedPageHistoryPath(folder, page.id, before),

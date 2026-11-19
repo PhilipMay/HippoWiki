@@ -5,6 +5,7 @@ import FolderBreadcrumbs from "@/features/folders/components/FolderBreadcrumbs";
 import { MCP_ROLE_ABILITIES, ROLE_LABELS } from "@/features/folder-roles/roles";
 import McpAddress from "@/features/mcp/components/McpAddress";
 import type { McpAddressEntry } from "@/features/mcp/queries";
+import SearchField from "@/features/search/components/SearchField";
 
 type AiAppsViewProps = {
   folderName: string;
@@ -16,6 +17,7 @@ type AiAppsViewProps = {
 export default function AiAppsView({ folderName, addresses }: AiAppsViewProps) {
   return (
     <Stack spacing={3}>
+      <SearchField folderName={folderName} />
       <FolderBreadcrumbs folderName={folderName} current="AI apps" />
       <Typography variant="h4" component="h1">
         AI apps

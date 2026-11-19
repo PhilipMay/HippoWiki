@@ -111,7 +111,7 @@ What the steps found out that the wrap-up moves into the other specs.
 - [x] Pieces of text, limits and log
 - [x] Search at size
 - [x] Results view
-- [ ] Search field
+- [x] Search field
 - [ ] Search tool for AI apps
 - [ ] Wrap-up
 

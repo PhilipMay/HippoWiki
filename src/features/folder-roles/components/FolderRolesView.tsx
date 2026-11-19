@@ -10,6 +10,7 @@ import { changeRole } from "@/features/folder-roles/actions";
 import FolderRoleList from "@/features/folder-roles/components/FolderRoleList";
 import { listFolderRoles } from "@/features/folder-roles/queries";
 import type { Role } from "@/features/folder-roles/roles";
+import SearchField from "@/features/search/components/SearchField";
 import { folderPath } from "@/lib/addresses";
 
 type FolderRolesViewProps = {
@@ -28,6 +29,7 @@ export default async function FolderRolesView({ folder, userId }: FolderRolesVie
 
   return (
     <Stack spacing={3}>
+      <SearchField folderName={folder.name} />
       <FolderBreadcrumbs folderName={folder.name} current="Roles" />
       <Typography variant="h4" component="h1">
         Roles

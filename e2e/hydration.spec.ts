@@ -119,6 +119,17 @@ test.describe("without a login", () => {
   });
 });
 
+test("the search field is read-only until hydration", async ({ page }) => {
+  await createFolder({ name: "locked-folder" });
+
+  await page.goto("/folders/locked-folder");
+  await expect(page.getByRole("searchbox", { name: "Search this folder" })).not.toBeEditable();
+
+  await page.goto("/folders/locked-folder?view=search&q=backup%20server");
+  await expect(page.getByRole("searchbox", { name: "Search this folder" })).toHaveValue("backup server");
+  await expect(page.getByRole("searchbox", { name: "Search this folder" })).not.toBeEditable();
+});
+
 test("the new page form is locked until hydration", async ({ page }) => {
   await createFolder({ name: "locked-folder" });
 

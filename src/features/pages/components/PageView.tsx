@@ -18,6 +18,7 @@ import type { PageWithPlace } from "@/features/pages/service";
 import { editorWithChannel } from "@/features/users/records";
 import { changedPageForm } from "@/features/pages/changed-page";
 import { mayDoPageAction, type PageAction } from "@/features/pages/page-query";
+import SearchField from "@/features/search/components/SearchField";
 import { pageHistoryPath, pageLabel, pagePath, type PageNotice } from "@/lib/addresses";
 
 type PageViewProps = {
@@ -62,6 +63,8 @@ export default async function PageView({ page, action, notice }: PageViewProps) 
 
   return (
     <Stack spacing={2}>
+      {/* The search field is left out while a dialog is open, so that a search never discards what was entered. */}
+      {action === null && <SearchField folderName={folderName} />}
       <FolderBreadcrumbs folderName={folderName} tabName={tabName} current={pageLabel(page.name)} />
       <Paper component="article" variant="outlined" sx={{ p: { xs: 2, sm: 4 } }}>
         <Stack spacing={1} sx={{ mb: 3 }}>

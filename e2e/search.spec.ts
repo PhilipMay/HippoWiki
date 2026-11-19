@@ -7,9 +7,11 @@ import {
   createFolder,
   createFolderRole,
   createPage,
+  createRevisions,
   createTab,
   createUser,
   resetTestDatabase,
+  setOwnRole,
 } from "./support/database";
 import { holdSearchWords, waitForHeldSearches } from "./support/search";
 import { expect, test } from "./support/test";
@@ -39,6 +41,38 @@ function resultTitles(page: Page) {
 /** The alert at the top of the results view. */
 function alert(page: Page) {
   return page.getByRole("main").getByRole("alert");
+}
+
+/** The search field of the open page. */
+function searchField(page: Page) {
+  return page
+    .getByRole("search", { name: "Search this folder" })
+    .getByRole("searchbox", { name: "Search this folder" });
+}
+
+/** Expects the alert of the results view above the search field. */
+async function expectAlertAboveField(page: Page) {
+  await expect(page.getByRole("main").locator("[role=alert], [role=search]")).toHaveCount(2);
+  await expect(page.getByRole("main").locator("[role=alert], [role=search]").first()).toHaveAttribute("role", "alert");
+}
+
+/** Collects the requests of the page for the results of a search. */
+function searchRequests(page: Page): string[] {
+  const requests: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("view=search")) requests.push(request.url());
+  });
+  return requests;
+}
+
+/**
+ * Sends a request of its own from the page and waits for its answer, so that every request that the input before it
+ * started has been sent by then.
+ */
+async function afterPendingRequests(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    await fetch("/api/health");
+  });
 }
 
 /** The text of a search that takes longer than its time limit, and of a search beyond the running ones. */
@@ -229,6 +263,7 @@ test.describe("the limits of a search", () => {
         const started = Date.now();
         await page.goto(results(words));
         await expect(alert(page)).toHaveText(TOO_LONG);
+        await expectAlertAboveField(page);
         await expect(resultList(page)).toHaveCount(0);
         // The table of the words is held, so a search that ran would wait for it.
         expect(Date.now() - started).toBeLessThan(3_000);
@@ -255,6 +290,7 @@ test.describe("the limits of a search", () => {
     try {
       await page.goto(results("gateway"));
       await expect(alert(page)).toHaveText(TOO_BROAD);
+      await expectAlertAboveField(page);
       await expect(resultList(page)).toHaveCount(0);
     } finally {
       await release();
@@ -279,6 +315,7 @@ test.describe("the limits of a search", () => {
       const started = Date.now();
       await page.goto(results("the gateway"));
       await expect(alert(page)).toHaveText(BUSY);
+      await expectAlertAboveField(page);
       expect(Date.now() - started).toBeLessThan(3_000);
       await page.goto("/folders/handbook/gateway.md");
       await expect(page.getByRole("heading", { level: 1 })).toHaveText("Gateway");
@@ -303,4 +340,213 @@ test("the results of a search hold only the pages of the folder", async ({ page 
 
   await page.goto(results("gateway"));
   await expect(resultTitles(page)).toHaveText(["Here"]);
+});
+
+test.describe("the search field", () => {
+  /** Sets up a tab, a page placed directly in the folder, a page in the tab with two revisions, and a deleted page. */
+  async function setUpFolder() {
+    const guides = await createTab({ folder: handbook, name: "guides" });
+    await createPage({ folder: handbook, name: "overview", content: "# Overview\n\nThe start." });
+    const setup = await createPage({ tab: guides, name: "setup", content: "# Setup\n\nThe first steps." });
+    await createRevisions({ page: setup, count: 1 });
+    const deleted = await createPage({ folder: handbook, name: "old", content: "# Old", deletedAt: new Date() });
+    return { deleted };
+  }
+
+  /** Every address of the folder, its tab and its pages with a view and without an action. */
+  const VIEWS = [
+    "/folders/handbook",
+    "/folders/handbook?view=all",
+    "/folders/handbook?view=roles",
+    "/folders/handbook?view=mcp",
+    "/folders/handbook?view=search&q=setup",
+    "/folders/handbook/guides",
+    "/folders/handbook/overview.md",
+    "/folders/handbook/guides/setup.md",
+    "/folders/handbook/guides/setup.md?view=history",
+    "/folders/handbook/guides/setup.md?view=revision&revision=1",
+    "/folders/handbook/guides/setup.md?view=revision&revision=1&format=raw",
+    "/folders/handbook/guides/setup.md?view=compare&from=1&to=2",
+  ];
+
+  for (const role of ["reader", "writer", "manager", "owner"] as const) {
+    test(`shows on every address of the folder, its tab and its pages to a ${role}`, async ({ page }) => {
+      test.setTimeout(60_000);
+      await setUpFolder();
+      await setOwnRole(handbook, role);
+
+      for (const address of VIEWS) {
+        await page.goto(address);
+        await expect(searchField(page), address).toBeVisible();
+        await expect(searchField(page), address).toBeEditable();
+      }
+    });
+  }
+
+  test("does not show while an action is open, outside the folders and on the deleted pages", async ({ page }) => {
+    test.setTimeout(60_000);
+    const { deleted } = await setUpFolder();
+
+    for (const address of [
+      "/folders/handbook?action=new",
+      "/folders/handbook?action=rename",
+      "/folders/handbook?action=new-tab",
+      "/folders/handbook?action=give-role",
+      "/folders/handbook/guides?action=new",
+      "/folders/handbook/guides?action=rename",
+      "/folders/handbook/guides?action=delete",
+      "/folders/handbook/overview.md?action=edit",
+      "/folders/handbook/overview.md?action=move-or-rename",
+      "/folders/handbook/overview.md?action=delete",
+      "/folders/handbook/guides/setup.md?action=revert&revision=1",
+      "/folders",
+      "/deleted-pages/handbook",
+      `/deleted-pages/handbook/${deleted.id}`,
+      `/deleted-pages/handbook/${deleted.id}?view=history`,
+      `/deleted-pages/handbook/${deleted.id}?view=revision&revision=1`,
+      "/users",
+      "/account",
+    ]) {
+      await page.goto(address);
+      await expect(page.getByRole("heading", { level: 1 }).or(page.getByRole("dialog")).first(), address).toBeVisible();
+      await expect(page.getByRole("search"), address).toHaveCount(0);
+    }
+  });
+
+  test("typing sends nothing and shows no list; Enter opens the results", async ({ page }) => {
+    const errors = collectErrors(page);
+    await createPage({ folder: handbook, name: "backup", content: "# Backup\n\nThe backup of the server." });
+    await page.goto("/folders/handbook");
+    const requests = searchRequests(page);
+
+    await searchField(page).fill("backup");
+    await searchField(page).pressSequentially(" server", { delay: 50 });
+    await afterPendingRequests(page);
+    expect(requests).toEqual([]);
+    await expect(page.getByRole("listbox")).toHaveCount(0);
+    await expect(page).toHaveURL("/folders/handbook");
+
+    await searchField(page).press("Enter");
+    await expect(page).toHaveURL(results("backup server"));
+    await expect(resultTitles(page)).toHaveText(["Backup"]);
+    expect(errors).toEqual([]);
+  });
+
+  test("Enter in an empty field or one of spaces only keeps the address and sends nothing", async ({ page }) => {
+    await page.goto("/folders/handbook");
+    const requests = searchRequests(page);
+
+    await searchField(page).press("Enter");
+    await searchField(page).fill("   ");
+    await searchField(page).press("Enter");
+    await afterPendingRequests(page);
+
+    await expect(page).toHaveURL("/folders/handbook");
+    expect(requests).toEqual([]);
+  });
+
+  test("holds the words of the results, and changed words open their results", async ({ page }) => {
+    await createPage({ folder: handbook, name: "backup", content: "# Backup server\n\nThe backup of the server." });
+    await createPage({ folder: handbook, name: "restore", content: "# Restore\n\nHow to restore the server." });
+
+    await page.goto(results("backup server"));
+    await expect(searchField(page)).toHaveValue("backup server");
+
+    await searchField(page).fill("restore");
+    await searchField(page).press("Enter");
+    await expect(page).toHaveURL(results("restore"));
+    await expect(searchField(page)).toHaveValue("restore");
+    await expect(resultTitles(page)).toHaveText(["Restore"]);
+
+    await page.goBack();
+    await expect(page).toHaveURL(results("backup server"));
+    await expect(searchField(page)).toHaveValue("backup server");
+  });
+
+  test("a search for the exact title of a page opens the results, not the page", async ({ page }) => {
+    await createPage({ folder: handbook, name: "backup-server", content: "# Backup server" });
+    await createPage({ folder: handbook, name: "notes", content: "# Notes\n\nThe backup server of the office." });
+    await page.goto("/folders/handbook");
+
+    await searchField(page).fill("Backup server");
+    await searchField(page).press("Enter");
+
+    await expect(page).toHaveURL(results("Backup server"));
+    await expect(resultTitles(page)).toHaveText(["Backup server", "Notes"]);
+  });
+
+  test("a search started on a page in a tab covers the whole folder", async ({ page }) => {
+    const meetings = await createTab({ folder: handbook, name: "meetings" });
+    const guides = await createTab({ folder: handbook, name: "guides" });
+    await createPage({ tab: meetings, name: "weekly", content: "# Weekly\n\nThe gateway is down." });
+    await createPage({ tab: guides, name: "network", content: "# Network\n\nThe gateway of the office." });
+    await createPage({ folder: handbook, name: "overview", content: "# Overview\n\nAbout the gateway." });
+
+    await page.goto("/folders/handbook/meetings/weekly.md");
+    await searchField(page).fill("gateway");
+    await searchField(page).press("Enter");
+
+    await expect(page).toHaveURL(results("gateway"));
+    await expect(resultTitles(page)).toHaveCount(3);
+    await expect(resultList(page)).toContainText("meetings / weekly.md");
+    await expect(resultList(page)).toContainText("guides / network.md");
+    await expect(resultList(page)).toContainText(/overview\.md/);
+  });
+});
+
+test.describe("the scenarios of search", () => {
+  test("Anna finds the page about the configuration of the database", async ({ page }) => {
+    await createPage({
+      folder: handbook,
+      name: "datenbank-backup",
+      content:
+        "# Datenbank-Backup\n\nJede Nacht wird die Datenbank gesichert. Die Konfiguration der Sicherung steht im Abschnitt über den Server.",
+    });
+    await createPage({
+      folder: handbook,
+      name: "konfiguration-der-datenbank",
+      content:
+        "# Konfiguration der Datenbank\n\nDie Datenbank läuft auf dem zweiten Server. Hier steht, welche Einstellungen sie braucht und warum.",
+    });
+    await page.goto("/folders/handbook");
+
+    await searchField(page).fill("datenbank konfig");
+    await searchField(page).press("Enter");
+
+    await expect(resultTitles(page).first()).toHaveText("Konfiguration der Datenbank");
+    await resultTitles(page).first().click();
+    await expect(page).toHaveURL("/folders/handbook/konfiguration-der-datenbank.md");
+  });
+
+  test("Ben finds the pages about houses in every tab, with their pieces of text", async ({ page }) => {
+    const meetings = await createTab({ folder: handbook, name: "meetings" });
+    const plans = await createTab({ folder: handbook, name: "plans" });
+    await createPage({
+      tab: meetings,
+      name: "kickoff",
+      content:
+        "# Kickoff\n\nIn der Besprechung ging es um das neue Haus am See. Die Arbeiten beginnen im Sommer und dauern drei Wochen.",
+    });
+    await createPage({
+      tab: plans,
+      name: "neubau",
+      content:
+        "# Neubau\n\nDie Häuser der Siedlung bekommen neue Fenster. Der Architekt stellt die Pläne in der nächsten Woche vor.",
+    });
+    await createPage({
+      folder: handbook,
+      name: "budget",
+      content:
+        "# Budget\n\nDas Budget für das nächste Jahr wird im Herbst beschlossen, nach der Prüfung aller Rechnungen.",
+    });
+
+    await page.goto("/folders/handbook/meetings/kickoff.md");
+    await searchField(page).fill("Häuser");
+    await searchField(page).press("Enter");
+
+    const items = resultList(page).getByRole("listitem");
+    await expect(items).toHaveCount(2);
+    await expect(items.filter({ hasText: "Kickoff" }).locator("mark")).toHaveText(["Haus"]);
+    await expect(items.filter({ hasText: "Neubau" }).locator("mark")).toHaveText(["Häuser"]);
+  });
 });
