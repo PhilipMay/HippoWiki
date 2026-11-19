@@ -276,8 +276,8 @@ What HippoWiki can take from it, _Inference_:
 - The mapping from a language to its configuration, the check against `pg_ts_config` and the fallback to `simple`
   are a worked pattern for a language per page. The `CASE` inside `to_tsquery` is not: HippoWiki needs a form that
   keeps the index (see "Several European languages, detected automatically").
-- The permission filter in TypeScript is not needed: the readable folders of a HippoWiki user are a plain subquery, so
-  paging and totals can stay in the database for every user.
+- The permission filter in TypeScript is not needed: the readable folders of a HippoWiki user are a plain list of
+  folder ids, so paging and totals can stay in the database for every user.
 - Weights give `ts_filter` a second use: the title part of one vector, as this plan proposes for quick search. The GIN
   index still finds the candidates on the whole vector, and `ts_filter` rechecks them.
 - An index written after the save, never failing it, is the opposite of the trigger this plan proposes. The choice
@@ -709,14 +709,120 @@ The projects that filter inside the query rank, count and page correctly:
   of pages a reader cannot open; its plan is one vocabulary per distinct set of groups
   ([search spec](https://github.com/requarks/wiki/blob/scarlett/dev/specs/search.md)).
 
-_Inference_, the rules this gives for HippoWiki, in its own terms:
+### The rule: a search sees exactly the pages the user could open
 
-- Folder roles are per folder, not per page (`spec/folder-roles.md`). The query filters on
-  `"folderId" IN (SELECT "folderId" FROM "FolderRole" WHERE "userId" = $user)`, read live like every role check, so a
-  removed role takes effect with the next search. There is no index state that can go stale.
-- An admin gets no results without asking the database, like every read of content (`spec/content-structure.md`).
-- Through MCP, the search covers only the folder of the connection, with the role check of the adapter that runs
-  first (`spec/mcp.md`). A folder argument does not exist.
+Folder roles are per folder, not per page: any role, Reader or higher, reads every page of its folder, and a folder
+without a role reads like one that does not exist (`spec/folder-roles.md`). For search this gives one rule: a result,
+and everything derived from results, comes only from pages that the same actor could open at the same moment in the
+same channel. Nothing may tell a user that a folder they have no role on holds a matching page, not a title, a
+snippet, a count, a suggestion, an error or a noticeably different answer time.
+
+#### One source for the readable folders
+
+The folders service already answers "which folders may this actor read": `readableFolderWhere(actor, fn)` in
+`src/features/folder-roles/service.ts` returns the Prisma condition on a folder, used by `listFolders()` for the
+folder list. It already holds every rule that search needs:
+
+- an admin gets `null`, and so reads no content at all;
+- in the browser, a role of the user on the folder that allows the function, here `read`, which every role allows;
+- through MCP, additionally only the folder of the connection, and only if the role of the connection allows the
+  function.
+
+_Inference_: the search must take its folders from this function and from nowhere else, so that the browser, MCP and
+any later caller cannot drift apart. The search SQL is raw SQL (see "The vector, its upkeep and Prisma"), so it
+cannot take the Prisma condition directly. Two ways:
+
+- Resolve first, as Outline does: `folder.findMany({ where: readableFolderWhere(actor), select: { id: true } })` gives
+  the ids, and the search SQL filters on `p."folderId" = ANY($folderIds::uuid[])`. The rules stay in one place, and an
+  empty list answers "no results" without running the search. It costs one small query, and the list is as long as
+  the folders the user has a role on.
+- Repeat the condition as a subquery on `"FolderRole"` inside the search SQL. That is one statement, but the rules of
+  admins, MCP and functions are then written twice, once in Prisma and once in SQL, and must be kept equal by tests.
+
+The recommendation is the first. The role check and the search are then two statements, as they are for every read
+of the pages service today (`roleOnFolderOfPage()` and then the read). A role removed between the two takes effect
+with the next request, which is the rule of `spec/folder-roles.md`.
+
+The search function itself, in the pages service, takes the actor, never a user id or a list of folders from its
+caller. The raw SQL sits in a module of its own that takes the folder ids as a required, non-empty parameter, so
+that no query without the filter can be written by accident. Only the pages service calls it; a test checks that the
+SQL contains the filter.
+
+#### Where the filter sits in the query
+
+The filter is a condition of the same `WHERE` that matches, ranks, counts and pages, so rank, total, `LIMIT` and
+`OFFSET` all see only readable pages. Post-filtering is out: it leaves pages of results short and totals that count
+hidden pages, which is what Docmost does and what Wiki.js gave up (see above).
+
+A test on 2026-11-19 against `postgres:18.6`, 200,000 pages in 1,000 folders, a user with a role on three of them,
+and a word on every page:
+
+- Without an index on the folder, PostgreSQL scanned the table and threw away about 6,000 rows to find 20.
+- With a partial B-tree index on `"folderId"` `WHERE "deletedAt" IS NULL`, it read the 600 pages of the three
+  folders through that index and checked the vector only on them (0.06 ms). For a rare word it still started from the
+  folder index, since that was the smaller set.
+
+_Inference_:
+
+- `Page` has no plain index on `"folderId"` today, only the partial unique index on folder and name for pages without
+  a tab. Search should add `@@index([folderId], where: …)` with the `partialIndexes` feature already in use.
+- PostgreSQL then picks the smaller side per query: the folder index for a user with few folders, the GIN index for a
+  rare word. A user with a role on few folders of a big wiki pays for their own pages only.
+- The time of a search can still grow with matches in folders the user cannot read, when the GIN index drives the
+  plan. The difference is small next to network noise and does not name a page; the statement timeout of "Security
+  and limits" bounds it. This is accepted, and named here so that it is a decision.
+- Ranking must not use numbers from outside the readable pages. `ts_rank` and `ts_rank_cd` look only at the row
+  itself, so they are safe. A BM25 extension computes term statistics over the whole table, and pg_textsearch says
+  that rows hidden by row-level security still count (see "BM25 extensions and external engines stay out of the
+  baseline"). How rare a word is in the hidden folders would then shift the order of the visible results.
+
+#### Everything derived from results is under the same filter
+
+- The total and any count per folder or per tab come from the same filtered query, never from a separate count of
+  all matches.
+- Snippets are computed only for the returned rows, which are already filtered.
+- Quick search uses the same function with a smaller limit. It offers pages, never words: a completion built from the
+  vocabulary of the wiki (`ts_stat` over all pages) would leak words of folders without a role, as Wiki.js explains.
+- "Did you mean" and the retry of a query that found nothing, if they come, run under the same filter and suggest
+  only from readable pages.
+- A result links to the page by folder, tab and page name, and shows the last editor and the time of the last change,
+  all of a readable page. The name of a user is visible on `/users` anyway.
+- No search result is cached across requests or users: no `"use cache"`, no shared cache of the route, so that a role
+  removed or a page deleted takes effect with the next search. The project uses no such cache today.
+- Logged search terms are content written by the user, not by the folder. If queries are logged at all, the log line
+  holds the actor and the number of results, not the folders the results came from.
+
+#### Filtering by folder or tab
+
+The results page can be narrowed to one folder, or to one tab of it, and a search started in a folder may start
+narrowed to it.
+
+- The folder or tab of the request is checked like every other read: `mayReadFolder()` or `mayReadTab()`. A folder
+  without a role, a folder that does not exist and a malformed id answer the same, with the not-found page or an empty
+  answer, so that nothing tells whether the folder exists.
+- The requested folder narrows the list of readable folders; it never widens it. The search SQL still gets only ids
+  from `readableFolderWhere()`.
+- A tab filter is a second condition, `p."tabId" = $tab`, after the tab was checked to be in a readable folder.
+
+#### MCP
+
+- An AI app searches only the folder of its connection. `readableFolderWhere()` already narrows the list to that one
+  folder, and to none if the role of the connection may not read. The tool therefore has no folder argument; a tab
+  argument is checked like in the browser.
+- The role of the connection is the lower of the user's role and the role of the address, checked live on every
+  request (`spec/mcp.md`). A user whose role was lowered below the connection's role is refused before the tool runs.
+- Other folders of the same user stay invisible through MCP, also when the user has a role on them. This is the rule
+  of `spec/folder-roles.md`, not a limit of search.
+
+#### Admins
+
+- An admin reads no content, so `readableFolderWhere()` returns `null` and the search answers nothing without asking
+  the database, like every read of content (`spec/content-structure.md`).
+- _Inference_: the search box is not offered to admins at all, as the folder list under `/folders` is not, so that
+  an admin is never shown an empty search that looks like an empty wiki.
+
+#### Deleted pages and revisions
+
 - Deleted pages are filtered with `"deletedAt" IS NULL` in every search, through MCP for every role. They stay in the
   table, so a restored page is searchable again at once without a reindex. A search in the deleted pages of a folder
   for a Manager or Owner, in the browser only, would go beyond what Confluence offers
@@ -724,10 +830,25 @@ _Inference_, the rules this gives for HippoWiki, in its own terms:
   baseline.
 - Revisions are not searched. No surveyed project indexes old versions. `PageRevision` keeps the title and content of
   each revision, so a search over the history would be a separate index of its own.
-- Counts, snippets, quick-search suggestions and "did you mean" are all computed under the same filter. No vocabulary
-  is built across folders.
 - A partial GIN index `WHERE "deletedAt" IS NULL` keeps deleted pages out of the index. A composite index on folder
-  and vector, as in Outline, would need the `btree_gin` extension and pays off only at larger sizes.
+  and vector, as in Outline, would need the `btree_gin` extension; the plain B-tree index on the folder above gives
+  most of its effect without one.
+
+#### Tests of the filter
+
+Leaking results is the worst failure search can have, so the filter gets tests of its own, beyond the search tests:
+
+- Integration tests against the database container, with a user who has a role on folder X and none on folder Y, and
+  the same word on pages in both: the results, the total, the counts, the snippets and quick search hold only pages
+  of X; a filter on Y answers like a folder that does not exist; after the role on X is removed, the next search finds
+  nothing; after a role on Y is given, the next search finds its pages.
+- The same for every role, Reader to Owner, since every role reads.
+- An admin finds nothing, and the database is not asked.
+- MCP: a connection on X does not find pages of Z, although the user has a role on Z; a Reader connection of a user who
+  became a Writer still finds pages of X; a connection whose role is above the user's current role is refused.
+- Deleted pages of X are not found, through either channel and for every role; restored, they are found again.
+- A test that the raw search SQL cannot run without folder ids, and one that its `WHERE` holds the folder filter.
+- End-to-end tests in the browser and through MCP for a user with and without a role on a folder.
 
 ## Two tiers of search for people
 
@@ -905,8 +1026,10 @@ setweight(searchText, 'D')` with the page's configuration, plus title and name w
   with ties broken by the time of the last change.
 - Snippets: `ts_headline` with the page's configuration over `searchText` for the returned rows only, with sentinel
   markers, as a list of parts.
-- Permissions: readable folders as a subquery in the same SQL, admins answered without a query, MCP limited to the
-  folder of the connection, deleted pages never, revisions not.
+- Permissions: readable folder ids resolved first through `readableFolderWhere()` and passed to the search SQL as a
+  required filter, with a partial B-tree index on the folder of a page, admins answered without a query, MCP limited to
+  the folder of the connection, deleted pages never, revisions not (see "The rule: a search sees exactly the pages
+  the user could open").
 - Browser: quick search in the app bar on the title part of the vector, a results page with folder and tab filters
   and two sort orders, and the address left to the requirements.
 - MCP: `search_pages` as described above, for every role.
@@ -938,7 +1061,8 @@ WHERE ((p."searchLanguage" = 'german' AND p."searchVector" @@ to_tsquery('german
     OR (p."searchLanguage" = 'english' AND p."searchVector" @@ to_tsquery('english', $1))
     OR (p."searchLanguage" = 'simple' AND p."searchVector" @@ to_tsquery('simple', $1)))
   AND p."deletedAt" IS NULL
-  AND p."folderId" IN (SELECT r."folderId" FROM "FolderRole" r WHERE r."userId" = $2)
+  -- $2: the ids of readableFolderWhere(actor), resolved before; never empty, an empty list returns without a query
+  AND p."folderId" = ANY($2::uuid[])
 ORDER BY rank DESC, p."updatedAt" DESC, p.id
 LIMIT $3 OFFSET $4;
 ```
