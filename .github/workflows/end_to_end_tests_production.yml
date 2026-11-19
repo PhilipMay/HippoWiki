@@ -24,7 +24,9 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      # Only the browser, without its system packages (`--with-deps`): the runner has the libraries of Chromium already,
+      # and the packages that apt would add (fonts) are not needed by the tests, but took up to 8 minutes to download.
+      - run: npx playwright install chromium
       # Podman is preinstalled on the runner; e2e/support/container.ts starts and removes the test database container.
       # Runs the tests against `next build` and `next start` instead of `next dev` (see playwright.config.ts).
       # One worker instead of the local default of four. The runner has 4 CPU cores, and each worker has its own server

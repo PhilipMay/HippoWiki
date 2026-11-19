@@ -463,6 +463,11 @@ Current limits:
   release is never cancelled.
 - All workflows but `container_image` install Node.js from `.nvmrc` and run `npm ci`; `container_image` builds
   Node.js into the image instead. The workflows that need a container use the Podman preinstalled on the runner.
+- The end-to-end workflows install Chromium with `npx playwright install chromium`, without `--with-deps`. The runner
+  already has every library Chromium needs; `--with-deps` only added fonts and upgrades through apt, which no test
+  relies on (the tests take no screenshots), and that download from the Ubuntu mirror took between seconds and 8
+  minutes. If a new runner image lacks a library, Chromium fails at its start with a message that names it, and the
+  option comes back.
 - No workflow sets `DATABASE_URL`. `prisma generate` during `npm ci` does not need it, and the build needs no
   database, because every query calls `connection()` and no route is prerendered. No workflow sets
   `HIPPOWIKI_ADMIN_PASSWORD` either: the tests create their users themselves, and the smoke test of the container
