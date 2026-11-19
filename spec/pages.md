@@ -97,6 +97,9 @@ given as `?action=<action>` (see `content-structure.md`).
   lists, footnotes and links from bare addresses. What differs from GitHub: strikethrough only with `~~`, not with a
   single `~`; links from bare addresses as linkify-it finds them, which also links a bare domain with a known
   top-level domain such as `example.com`; no inline footnotes (`^[text]`), as on GitHub.
+- Task lists are indented and nested like other lists. In a bullet list, the checkbox of a task item sits in place of
+  the bullet, and a plain item of the same list keeps its bullet; a task item of an ordered list keeps its number, with
+  the checkbox in front of the text. The checkboxes cannot be ticked in the page view.
 - Raw HTML is shown as text and never rendered.
 - A link or image becomes one only with a relative address or an address of `http`, `https`, `mailto`, `irc`, `ircs`
   or `xmpp` (`SAFE_PROTOCOLS` in `markdown.ts`); with any other address, such as `javascript:`, `vbscript:` or
@@ -142,6 +145,8 @@ The title and the rendering:
 - The page view is converted from the tokens by code of its own instead of the HTML that markdown-it renders: no
   `dangerouslySetInnerHTML`, and the elements are the Material UI components of the rest of the app.
 - Task lists are a rule of its own in `markdown.ts`, because the common plugins for them are no longer maintained.
+- Task lists are laid out as on GitHub, with the checkbox in the indent of the list. Rejected: a task list flush with
+  the text, which lost the indent of nested task lists and pushed the bullets of plain items out of the content.
 
 The cost of the parse:
 
@@ -191,6 +196,7 @@ Saves without a change:
 - Markdown images only from the wiki itself: the browser blocks images of other hosts without a message in the page,
   and a `data:` image is shown as its Markdown text
 - no math, heading ids or syntax highlighting in the page view
+- in a loose task list (blank lines between its items), the checkbox shows on a line above the text of its item
 - a page stored before the limits on depth and table cells that goes past them can be viewed, moved and deleted, but
   saved only once it is within them; its view drops the levels past what markdown-it nests and fills table rows only
   up to about 65,000 empty cells
