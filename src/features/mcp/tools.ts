@@ -219,6 +219,14 @@ async function tabIdOf(
   return found ? { tabId: found.id } : { error: tabNotFound(options, tab) };
 }
 
+/**
+ * A field message of the forms as a sentence: the forms show it without a full stop, so a message that does not end
+ * with `.`, `!` or `?` gets one, and a tool error that quotes several messages reads as separate sentences.
+ */
+function asSentence(message: string): string {
+  return /[.!?]$/.test(message) ? message : `${message}.`;
+}
+
 /** The tool error of input that the service refused, with what to do next. */
 function invalidInput(fieldErrors: { name?: string[]; content?: string[] }): CallToolResult {
   const messages: string[] = [];
@@ -226,12 +234,12 @@ function invalidInput(fieldErrors: { name?: string[]; content?: string[] }): Cal
     messages.push(
       fieldErrors.content.includes(TITLE_HEADING_MISSING_MESSAGE)
         ? "The content must start with a title heading, such as # Title. Add one and try again."
-        : `The content is not valid: ${fieldErrors.content.join(" ")}`,
+        : `The content is not valid: ${fieldErrors.content.map(asSentence).join(" ")}`,
     );
   }
   if (fieldErrors.name?.length) {
     messages.push(
-      `The name is not valid: ${fieldErrors.name.join(" ")} A name has lowercase letters, digits and single ` +
+      `The name is not valid: ${fieldErrors.name.map(asSentence).join(" ")} A name has lowercase letters, digits and single ` +
         "hyphens, such as release-notes.",
     );
   }

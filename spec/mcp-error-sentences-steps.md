@@ -18,7 +18,7 @@ message ends.
 
 ## Checklist
 
-- [ ] Field messages as sentences in tool errors
+- [x] Field messages as sentences in tool errors
 - [ ] Wrap-up
 
 ## Field messages as sentences in tool errors

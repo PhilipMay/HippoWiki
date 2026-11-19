@@ -183,7 +183,9 @@ test.describe("the write tools", () => {
     });
 
     expect(refused.isError).toBe(true);
-    expect(refused.content[0]?.text).toContain("Lists and quotes must be nested at most 20 levels deep");
+    expect(refused.content[0]?.text).toContain(
+      "Lists and quotes must be nested at most 20 levels deep. Nothing was changed.",
+    );
     expect(await storedPages()).toEqual(before);
     expect(before).toMatchObject([{ name: "plan", version: 1 }]);
   });

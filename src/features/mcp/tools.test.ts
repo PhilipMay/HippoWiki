@@ -6,7 +6,11 @@ import { MCP_ROLES, mayDo, type FolderFunction } from "@/features/folder-roles/r
 import { createWikiServer, instructionsFor } from "@/features/mcp/server";
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 import { analyseMarkdown } from "@/features/pages/markdown";
-import { TITLE_HEADING_MISSING_MESSAGE as TITLE_MISSING } from "@/features/pages/schema";
+import {
+  CONTENT_DEPTH_MESSAGE,
+  CONTENT_TABLE_CELLS_MESSAGE,
+  TITLE_HEADING_MISSING_MESSAGE as TITLE_MISSING,
+} from "@/features/pages/schema";
 import { NAME_MAX_LENGTH } from "@/lib/name-limits";
 
 import packageJson from "../../../package.json";
@@ -641,6 +645,41 @@ describe("the write tools", () => {
         message,
       );
     });
+
+    // The field messages of the forms end without a full stop; the tool error makes each one a sentence.
+    describe("an error of refused content", () => {
+      async function contentError(content: string[]): Promise<string> {
+        mocks.updatePageContent.mockResolvedValue({
+          ok: false,
+          error: { code: "invalid-input", fieldErrors: { content } },
+        });
+        return errorOf(await callTool("replace_page_content", { page: "setup", version: 4, content: "x" }));
+      }
+
+      it("ends a single field message with a full stop", async () => {
+        expect(await contentError([CONTENT_DEPTH_MESSAGE])).toBe(
+          `The content is not valid: ${CONTENT_DEPTH_MESSAGE}. Nothing was changed.`,
+        );
+      });
+
+      it("ends every field message with a full stop, in the order of the field errors", async () => {
+        expect(await contentError([CONTENT_DEPTH_MESSAGE, CONTENT_TABLE_CELLS_MESSAGE])).toBe(
+          `The content is not valid: ${CONTENT_DEPTH_MESSAGE}. ${CONTENT_TABLE_CELLS_MESSAGE}. Nothing was changed.`,
+        );
+      });
+
+      it("adds no second full stop to a field message that already ends with one", async () => {
+        expect(await contentError(["Content is not valid."])).toBe(
+          "The content is not valid: Content is not valid. Nothing was changed.",
+        );
+      });
+
+      it("keeps the error of content without a title heading", async () => {
+        expect(await contentError([TITLE_MISSING])).toBe(
+          "The content must start with a title heading, such as # Title. Add one and try again. Nothing was changed.",
+        );
+      });
+    });
   });
 
   describe("edit_page_content", () => {
@@ -1124,7 +1163,7 @@ describe("the tools of a Manager connection", () => {
       [{ code: "folder-not-found" }, "The folder of this connection cannot be read any more."],
       [
         { code: "invalid-input", fieldErrors: { name: ["Name is not valid"] } },
-        "The name is not valid: Name is not valid A name has lowercase letters, digits and single hyphens",
+        "The name is not valid: Name is not valid. A name has lowercase letters, digits and single hyphens",
       ],
       [{ code: "name-taken" }, 'A tab named "News" already exists in the folder "handbook", so nothing was changed.'],
       [{ code: "failed" }, "The change could not be stored."],
