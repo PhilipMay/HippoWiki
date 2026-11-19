@@ -149,6 +149,38 @@ export async function revokeGrant(actor: Actor, id: string): Promise<Result<{ id
   return { ok: true, value: { id: grantId } };
 }
 
+/** `not-allowed`: the actor is an admin, who has no grants, or OAuth is off; it has been logged. */
+type RevokeAllGrantsError = NotAllowed | Failed;
+
+/**
+ * Revokes all connected apps of the actor in one write: deletes their grants, which ends their access tokens and
+ * their refresh tokens at once, and returns how many there were. It refuses an admin and refuses while OAuth is off,
+ * like `revokeGrant()`.
+ */
+export async function revokeAllGrants(actor: Actor): Promise<Result<{ count: number }, RevokeAllGrantsError>> {
+  if (isAdmin(actor)) {
+    logger.warn({ actorId: actor.id }, "grants not revoked: the actor is an admin");
+    return { ok: false, error: { code: "not-allowed" } };
+  }
+  if (!isOAuthOn()) {
+    logger.warn({ actorId: actor.id }, "grants not revoked: OAuth is off");
+    return { ok: false, error: { code: "not-allowed" } };
+  }
+  const actorId = actorIdOf(actor);
+  if (!actorId) return { ok: false, error: { code: "failed" } };
+
+  let count: number;
+  try {
+    ({ count } = await getDb().oAuthGrant.deleteMany({ where: { userId: actorId } }));
+  } catch (err) {
+    logger.error({ err, actorId }, "failed to revoke all grants");
+    return { ok: false, error: { code: "failed" } };
+  }
+
+  logger.info({ actorId, count }, "all grants revoked");
+  return { ok: true, value: { count } };
+}
+
 /** How often the last use of a grant is written at most, so that a burst of requests does not write on every one. */
 export const LAST_USE_INTERVAL_MS = 60 * 1000;
 

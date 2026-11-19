@@ -2,7 +2,8 @@ import type { Page } from "@playwright/test";
 
 import { logIn, logInElsewhere, NO_STORAGE_STATE, submitLogin } from "./support/auth";
 import { collectErrors, expectNotFound } from "./support/browser";
-import { createUser, getTestDb, resetTestDatabase, TEST_PASSWORD } from "./support/database";
+import { createGrant, createUser, getTestDb, resetTestDatabase, TEST_PASSWORD } from "./support/database";
+import { listFolderStatus, mcpAddress } from "./support/oauth";
 import { expect, hydrating, test } from "./support/test";
 
 // The users of these tests are their own, created by `createUser()` with the password change done, and log in
@@ -255,6 +256,82 @@ test.describe("wrong current passwords", () => {
     await visitor.close();
     expect(errors).toEqual([]);
   });
+});
+
+test.describe("disconnecting the apps", () => {
+  const DISCONNECTED_NOTICE =
+    "Your password was changed, your other browsers were logged out, and all your apps were disconnected.";
+
+  function choice(page: Page) {
+    return changeDialog(page).getByRole("checkbox", { name: "Also disconnect all my apps" });
+  }
+
+  /** A user of its own, logged in, with two connected apps; returns the user and the apps. */
+  async function userWithTwoApps(page: Page) {
+    const user = await logInAsNew(page);
+    const apps = [
+      await createGrant({ owner: user, name: "First connector" }),
+      await createGrant({ owner: user, name: "Second connector" }),
+    ];
+    return { user, apps };
+  }
+
+  test("ticked, it disconnects every app: they leave the list and their tokens are refused", async ({
+    page,
+    request,
+  }) => {
+    const errors = collectErrors(page);
+    const { apps } = await userWithTwoApps(page);
+    await page.goto("/account?action=change-password");
+    await expect(choice(page)).not.toBeChecked();
+
+    await choice(page).check();
+    await submitChange(page, {});
+
+    await expect(page.getByText(DISCONNECTED_NOTICE)).toBeVisible();
+    await expect(page.getByText("No app is connected yet.", { exact: true })).toBeVisible();
+    for (const { accessToken, folder } of apps) {
+      expect(await listFolderStatus(request, accessToken, mcpAddress(folder))).toBe(401);
+    }
+    expect(errors).toEqual([]);
+  });
+
+  test("not ticked, every app stays and works", async ({ page, request }) => {
+    const errors = collectErrors(page);
+    const { apps } = await userWithTwoApps(page);
+    await page.goto("/account?action=change-password");
+
+    await submitChange(page, {});
+
+    await expect(page.getByText(CHANGED_NOTICE)).toBeVisible();
+    await expect(page.getByRole("list", { name: "Connected apps" }).getByRole("listitem")).toHaveCount(2);
+    for (const { accessToken, folder } of apps) {
+      expect(await listFolderStatus(request, accessToken, mcpAddress(folder))).toBe(200);
+    }
+    expect(errors).toEqual([]);
+  });
+
+  test("the choice stays ticked after an error of the form", async ({ page }) => {
+    await userWithTwoApps(page);
+    await page.goto("/account?action=change-password");
+
+    await choice(page).check();
+    await submitChange(page, { repeat: "another-password" });
+
+    await expect(changeDialog(page).getByText("The two new passwords do not match", { exact: true })).toBeVisible();
+    await expect(choice(page)).toBeChecked();
+  });
+
+  for (const type of ["user", "admin"] as const) {
+    test(`a${type === "admin" ? "n admin" : " user without apps"} sees no such choice`, async ({ page }) => {
+      await logInAsNew(page, type);
+
+      await page.goto("/account?action=change-password");
+
+      await expect(changeDialog(page).getByLabel("Current password")).toBeVisible();
+      await expect(changeDialog(page).getByRole("checkbox")).toHaveCount(0);
+    });
+  }
 });
 
 test.describe("addresses that are not found", () => {

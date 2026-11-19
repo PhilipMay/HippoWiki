@@ -27,7 +27,7 @@ IDs, so that the wrap-up changes only documentation.
 - [x] Log lines of login and logout
 - [x] Counting wrong passwords at the forced password change
 - [x] Own password change on the account page
-- [ ] Disconnecting the apps at a password change
+- [x] Disconnecting the apps at a password change
 - [ ] Logging out other browsers
 - [ ] Password on the consent page
 - [ ] Wrap-up

@@ -9,6 +9,7 @@ import { redirect } from "next/navigation";
 import { requestClientAddressGroup } from "@/features/auth/client-address";
 import {
   parseLoginFormData,
+  readDisconnectApps,
   readNextPath,
   readPasswordChangeFormData,
   type LoginFormState,
@@ -19,11 +20,14 @@ import { requireSession, requireUser } from "@/features/auth/session";
 import {
   accountNoticePath,
   accountPath,
+  APPS_DISCONNECTED_NOTICE,
+  APPS_NOT_DISCONNECTED_NOTICE,
   changePasswordPath,
   homePath,
   landingPath,
   loginPath,
   PASSWORD_CHANGED_NOTICE,
+  type AccountNotice,
 } from "@/lib/addresses";
 
 const INVALID_CREDENTIALS_MESSAGE = "Invalid user name or password";
@@ -144,11 +148,18 @@ export async function changeFirstPassword(
   redirect(landingPath(next, result.value.user));
 }
 
+/** The notice of the account after an own password change, by what was done with the connected apps. */
+const OWN_CHANGE_NOTICES: Record<authService.AppsAtPasswordChange["status"], AccountNotice> = {
+  kept: PASSWORD_CHANGED_NOTICE,
+  disconnected: APPS_DISCONNECTED_NOTICE,
+  failed: APPS_NOT_DISCONNECTED_NOTICE,
+};
+
 /**
- * Changes the own password of the logged-in user to the submitted one, ends the other sessions of the user and leads
- * to the account with the notice of the change; the browser stays logged in with a new session. Returns the errors to
- * show in the dialog if a rule is broken, the current password is wrong or has to wait, or the password cannot be
- * changed.
+ * Changes the own password of the logged-in user to the submitted one, ends the other sessions of the user, and
+ * disconnects all connected apps as well if the form says so. Leads to the account with the notice that names what
+ * happened; the browser stays logged in with a new session. Returns the errors to show in the dialog if a rule is
+ * broken, the current password is wrong or has to wait, or the password cannot be changed.
  */
 export async function changeOwnPassword(
   _prevState: PasswordChangeFormState,
@@ -162,6 +173,7 @@ export async function changeOwnPassword(
     readPasswordChangeFormData(formData),
     requestHeaders,
     requestClientAddressGroup(requestHeaders, "password-change"),
+    readDisconnectApps(formData),
   );
   if (!result.ok) {
     switch (result.error.code) {
@@ -187,7 +199,7 @@ export async function changeOwnPassword(
   }
 
   revalidatePath(accountPath());
-  redirect(accountNoticePath(PASSWORD_CHANGED_NOTICE));
+  redirect(accountNoticePath(OWN_CHANGE_NOTICES[result.value.apps.status]));
 }
 
 /** Ends the session of the browser and leads to the login page. */

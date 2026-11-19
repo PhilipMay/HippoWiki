@@ -39,9 +39,22 @@ function AccountHeading({ name }: { name: string }) {
   );
 }
 
-/** What each notice of the account reports. */
-const NOTICE_MESSAGES: Record<AccountNotice, string> = {
-  "password-changed": "Your password was changed, and your other browsers were logged out.",
+/** What each notice of the account reports, and whether it asks the user to do something. */
+const NOTICES: Record<AccountNotice, { message: string; severity: "success" | "warning" }> = {
+  "password-changed": {
+    message: "Your password was changed, and your other browsers were logged out.",
+    severity: "success",
+  },
+  "password-changed-apps-disconnected": {
+    message: "Your password was changed, your other browsers were logged out, and all your apps were disconnected.",
+    severity: "success",
+  },
+  "password-changed-apps-not-disconnected": {
+    message:
+      "Your password was changed and your other browsers were logged out, but your apps could not be disconnected. " +
+      "Please revoke them in the list below.",
+    severity: "warning",
+  },
 };
 
 /** The buttons of the account that every account has: they open the dialogs of the account. */
@@ -62,7 +75,8 @@ const ACTIONS = ["revoke", "change-password"] as const;
 
 /**
  * The own account of the logged-in user: the user name, the button "Change password", and the apps the user
- * connected through OAuth. `?action=change-password` opens the dialog of the password change for every account.
+ * connected through OAuth. `?action=change-password` opens the dialog of the password change for every account; a user
+ * with apps can choose there to disconnect them all.
  * `?action=revoke` needs the parameter `app` with the id of one of the user's apps; every other address with an app,
  * the parameter `token`, an unknown action or a view is not found. `?notice=<notice>` reports what an action did, only
  * without an action. An admin has no apps, and while `HIPPOWIKI_PUBLIC_URL` is not set no app can connect or be used:
@@ -86,9 +100,20 @@ export default async function AccountPage({ searchParams }: PageProps<"/account"
   const top = (
     <>
       <AccountHeading name={user.name} />
-      {notice && <NoticeAlert param="notice">{NOTICE_MESSAGES[notice]}</NoticeAlert>}
+      {notice && (
+        <NoticeAlert param="notice" severity={NOTICES[notice].severity}>
+          {NOTICES[notice].message}
+        </NoticeAlert>
+      )}
       <AccountButtons />
-      {action === "change-password" && <ChangeOwnPasswordDialog action={changeOwnPassword} closeHref={accountPath()} />}
+      {action === "change-password" && (
+        <ChangeOwnPasswordDialog
+          action={changeOwnPassword}
+          closeHref={accountPath()}
+          // The list the page reads anyway: `null` for an admin and while OAuth is off.
+          offerDisconnectApps={(apps?.length ?? 0) > 0}
+        />
+      )}
     </>
   );
 

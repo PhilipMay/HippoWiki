@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { parseLoginFormData, readNextPath, readPasswordChangeFormData } from "@/features/auth/forms";
+import {
+  parseLoginFormData,
+  readDisconnectApps,
+  readNextPath,
+  readPasswordChangeFormData,
+} from "@/features/auth/forms";
 
 function formData(fields: Record<string, string | File>): FormData {
   const data = new FormData();
@@ -119,5 +124,32 @@ describe("readNextPath", () => {
     ["a file instead of text", { next: new File(["/account"], "next.txt") }],
   ])("returns the folder list for %s", (_case, fields: Record<string, string | File>) => {
     expect(readNextPath(formData(fields))).toBe("/folders");
+  });
+});
+
+describe("readDisconnectApps", () => {
+  it("is on for a ticked checkbox", () => {
+    const data = new FormData();
+    data.set("disconnectApps", "on");
+
+    expect(readDisconnectApps(data)).toBe(true);
+  });
+
+  it.each([
+    ["a missing field", undefined],
+    ["an empty value", ""],
+    ["another value", "true"],
+  ])("is off for %s", (_case, value) => {
+    const data = new FormData();
+    if (value !== undefined) data.set("disconnectApps", value);
+
+    expect(readDisconnectApps(data)).toBe(false);
+  });
+
+  it("is off for a file", () => {
+    const data = new FormData();
+    data.set("disconnectApps", new File(["on"], "on"));
+
+    expect(readDisconnectApps(data)).toBe(false);
   });
 });

@@ -125,11 +125,20 @@ export function accountPath(action?: string): string {
 /** The notice of the own account after the own password was changed and the other browsers were logged out. */
 export const PASSWORD_CHANGED_NOTICE = "password-changed";
 
+/** The notice of the own account after the own password was changed and all connected apps were disconnected too. */
+export const APPS_DISCONNECTED_NOTICE = "password-changed-apps-disconnected";
+
+/**
+ * The notice of the own account after the own password was changed, but the connected apps that the user chose to
+ * disconnect could not be: the user is asked to revoke them in the list.
+ */
+export const APPS_NOT_DISCONNECTED_NOTICE = "password-changed-apps-not-disconnected";
+
 /**
  * The notices of the own account, in its query string `?notice=<notice>`. A notice reports what an action of the
  * account did; it comes only without an action, is shown once and changes nothing.
  */
-const ACCOUNT_NOTICES = [PASSWORD_CHANGED_NOTICE] as const;
+const ACCOUNT_NOTICES = [PASSWORD_CHANGED_NOTICE, APPS_DISCONNECTED_NOTICE, APPS_NOT_DISCONNECTED_NOTICE] as const;
 
 export type AccountNotice = (typeof ACCOUNT_NOTICES)[number];
 

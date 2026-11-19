@@ -30,7 +30,9 @@ import {
   waitAfterFailures,
   waitForWindow,
 } from "@/features/auth/wait";
-import { isUserType, type UserType } from "@/features/users/user-type";
+import * as grantService from "@/features/grants/service";
+import { isOAuthOn } from "@/features/oauth/issuer";
+import { isAdmin, isUserType, type UserType } from "@/features/users/user-type";
 import { getAuth } from "@/lib/auth";
 import { isClientAddressGroup, SHARED_CLIENT_ADDRESS } from "@/lib/client-address";
 import { getDb } from "@/lib/db";
@@ -89,6 +91,16 @@ export type ChangeFirstPasswordError =
 
 /** The user still has the first password: the forced password change comes first. */
 type FirstPasswordPending = { code: "first-password-pending" };
+
+/**
+ * What an own password change did with the connected apps of the user: kept them, disconnected `count` of them, or
+ * failed to disconnect them after the password was changed.
+ */
+export type AppsAtPasswordChange =
+  { status: "kept" } | { status: "disconnected"; count: number } | { status: "failed" };
+
+/** An own password change: the user and the headers of the new session, and what was done with the apps. */
+export type OwnPasswordChanged = PasswordChanged & { apps: AppsAtPasswordChange };
 
 export type ChangeOwnPasswordError =
   InvalidPasswordChange | WrongPassword | NotLoggedIn | FirstPasswordPending | Wait | Busy | Failed;
@@ -647,17 +659,41 @@ export async function changeFirstPassword(
 }
 
 /**
+ * Disconnects all connected apps of the user after an own password change, if the user chose to: for an admin and
+ * while OAuth is off there are no apps and the dialog shows no such choice, so the choice is ignored and logged. A
+ * failure is logged and reported in the result: the password stays changed.
+ */
+async function disconnectAppsAfterChange(user: SessionUser, disconnectApps: boolean): Promise<AppsAtPasswordChange> {
+  if (!disconnectApps) return { status: "kept" };
+  if (isAdmin(user) || !isOAuthOn()) {
+    logger.warn({ userId: user.id }, "choice to disconnect the apps ignored: the account has no apps");
+    return { status: "kept" };
+  }
+  const revoked = await grantService.revokeAllGrants(user);
+  if (!revoked.ok) {
+    logger.error({ userId: user.id }, "password changed, but the apps could not be disconnected");
+    return { status: "failed" };
+  }
+  return { status: "disconnected", count: revoked.value.count };
+}
+
+/**
  * Changes the own password of the user of the session, at any time after the forced password change, and ends all
  * other sessions of the user; the request gets a new session. A user who still has the first password is refused
  * with `first-password-pending`: the forced change comes first. The password is changed and counted as
  * `changeCountedPassword()` describes, with the client address group of the request (`clientAddressGroup`, as for
- * `logIn()`). Nothing changes unless the password is changed.
+ * `logIn()`).
+ *
+ * With `disconnectApps`, all connected apps of the user are disconnected as well, but only once the password is
+ * changed and the sessions are ended, so that the apps are never lost without a change. When that fails, the change
+ * stands and the result says so. Nothing changes unless the password is changed.
  */
 export async function changeOwnPassword(
   input: PasswordChangeInput,
   headers: Headers,
   clientAddressGroup: string,
-): Promise<Result<PasswordChanged, ChangeOwnPasswordError>> {
+  disconnectApps: boolean,
+): Promise<Result<OwnPasswordChanged, ChangeOwnPasswordError>> {
   let user: SessionUser | null;
   try {
     user = await getSessionUser(headers);
@@ -671,6 +707,15 @@ export async function changeOwnPassword(
   const changed = await changeCountedPassword(user, input, headers, clientAddressGroup, "password");
   if (!changed.ok) return changed;
 
-  logger.info({ userId: user.id, name: user.name }, "password changed");
-  return { ok: true, value: { user, headers: changed.value } };
+  const apps = await disconnectAppsAfterChange(user, disconnectApps);
+  logger.info(
+    {
+      userId: user.id,
+      name: user.name,
+      appsDisconnected: apps.status === "disconnected",
+      disconnectedApps: apps.status === "disconnected" ? apps.count : 0,
+    },
+    "password changed",
+  );
+  return { ok: true, value: { user, headers: changed.value, apps } };
 }

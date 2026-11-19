@@ -4,7 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import * as authService from "@/features/auth/service";
 import { isMcpRole } from "@/features/folder-roles/roles";
 import * as grantService from "@/features/grants/service";
-import { hashSecret } from "@/features/oauth/secret";
+import { generateRefreshToken, hashSecret } from "@/features/oauth/secret";
+import * as tokenService from "@/features/oauth/token-service";
 import type { McpAddress } from "@/features/oauth/schema";
 import type { Actor } from "@/features/users/service";
 
@@ -107,6 +108,41 @@ describe("revokeGrant", () => {
       error: { code: "grant-not-found" },
     });
     expect(await getTestDb().oAuthGrant.count()).toBe(1);
+  });
+});
+
+describe("revokeAllGrants", () => {
+  /** A grant of the owner with an access token and a refresh token, as the token endpoint gives them. */
+  async function grantWithTokens(owner: Actor) {
+    const id = crypto.randomUUID();
+    const refreshToken = generateRefreshToken(id);
+    const created = await createGrant({ owner, id, refreshTokenHash: hashSecret(refreshToken) });
+    return { ...created, refreshToken };
+  }
+
+  it("deletes every grant of the actor and none of another user, and their tokens are refused afterwards", async () => {
+    const [alice, bob] = [await createActor(), await createActor()];
+    const alices = [await grantWithTokens(alice), await grantWithTokens(alice)];
+    const bobs = await grantWithTokens(bob);
+
+    await expect(grantService.revokeAllGrants(alice)).resolves.toEqual({ ok: true, value: { count: 2 } });
+
+    expect(await getTestDb().oAuthGrant.findMany({ select: { id: true } })).toEqual([{ id: bobs.grant.id }]);
+    for (const { accessToken, refreshToken, client } of alices) {
+      await expect(authenticate(accessToken)).resolves.toMatchObject({ ok: false, error: { code: "invalid-token" } });
+      await expect(tokenService.refreshGrant({ refreshToken, clientId: client.id })).resolves.toMatchObject({
+        ok: false,
+        error: { code: "invalid-grant" },
+      });
+    }
+    await expect(authenticate(bobs.accessToken)).resolves.toMatchObject({ ok: true });
+    await expect(
+      tokenService.refreshGrant({ refreshToken: bobs.refreshToken, clientId: bobs.client.id }),
+    ).resolves.toMatchObject({ ok: true });
+  });
+
+  it("returns 0 for an actor without grants", async () => {
+    await expect(grantService.revokeAllGrants(await createActor())).resolves.toEqual({ ok: true, value: { count: 0 } });
   });
 });
 

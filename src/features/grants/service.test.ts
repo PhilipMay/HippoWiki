@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { hashSecret } from "@/features/oauth/secret";
-import { authenticateAccessToken, LAST_USE_INTERVAL_MS, listGrants, revokeGrant } from "@/features/grants/service";
+import {
+  authenticateAccessToken,
+  LAST_USE_INTERVAL_MS,
+  listGrants,
+  revokeAllGrants,
+  revokeGrant,
+} from "@/features/grants/service";
 import type { Actor } from "@/features/users/service";
 
 const mocks = vi.hoisted(() => ({
@@ -173,6 +179,64 @@ describe("listGrants", () => {
     mocks.findMany.mockRejectedValue(new Error("connection lost"));
 
     await expect(listGrants(ALICE)).rejects.toThrow("connection lost");
+  });
+});
+
+describe("revokeAllGrants", () => {
+  it("deletes all grants of the actor and none of another user in one write, returns their number and logs it", async () => {
+    mocks.deleteMany.mockResolvedValue({ count: 3 });
+
+    await expect(revokeAllGrants(ALICE)).resolves.toEqual({ ok: true, value: { count: 3 } });
+
+    expect(mocks.deleteMany).toHaveBeenCalledExactlyOnceWith({ where: { userId: ALICE_ID } });
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith({ actorId: ALICE_ID, count: 3 }, "all grants revoked");
+  });
+
+  it("returns 0 for an actor without grants", async () => {
+    mocks.deleteMany.mockResolvedValue({ count: 0 });
+
+    await expect(revokeAllGrants(ALICE)).resolves.toEqual({ ok: true, value: { count: 0 } });
+  });
+
+  it("refuses an admin, logged, without a write", async () => {
+    await expect(revokeAllGrants({ ...ALICE, type: "admin" })).resolves.toEqual({
+      ok: false,
+      error: { code: "not-allowed" },
+    });
+
+    expectDatabaseUntouched();
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
+      { actorId: ALICE_ID },
+      "grants not revoked: the actor is an admin",
+    );
+  });
+
+  it("refuses without a public URL, logged, without a write", async () => {
+    mocks.isOAuthOn.mockReturnValue(false);
+
+    await expect(revokeAllGrants(ALICE)).resolves.toEqual({ ok: false, error: { code: "not-allowed" } });
+
+    expectDatabaseUntouched();
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith({ actorId: ALICE_ID }, "grants not revoked: OAuth is off");
+  });
+
+  it("refuses a malformed actor id before it asks the database, and logs it", async () => {
+    await expect(revokeAllGrants({ id: "not-a-uuid", name: "alice", type: "user" })).resolves.toEqual({
+      ok: false,
+      error: { code: "failed" },
+    });
+
+    expect(mocks.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("reports failed for a database error, and logs it", async () => {
+    const err = new Error("connection lost");
+    mocks.deleteMany.mockRejectedValue(err);
+
+    await expect(revokeAllGrants(ALICE)).resolves.toEqual({ ok: false, error: { code: "failed" } });
+
+    expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ err, actorId: ALICE_ID }, "failed to revoke all grants");
+    expect(mocks.info).not.toHaveBeenCalled();
   });
 });
 

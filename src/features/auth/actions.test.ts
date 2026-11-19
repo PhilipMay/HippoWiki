@@ -475,17 +475,42 @@ describe("changeOwnPassword", () => {
   });
 
   it("changes the password with the form, the headers and the group of the request, and leads to the notice", async () => {
-    mocks.changeOwnPassword.mockResolvedValue({ ok: true, value: { user: USER, headers: new Headers() } });
+    mocks.changeOwnPassword.mockResolvedValue({
+      ok: true,
+      value: { user: USER, headers: new Headers(), apps: { status: "kept" } },
+    });
 
     await expect(changeOwnPassword({}, formData(FORM))).rejects.toMatchObject({
       path: "/account?notice=password-changed",
     });
 
-    expect(mocks.changeOwnPassword).toHaveBeenCalledExactlyOnceWith(FORM, REQUEST_HEADERS, "shared");
+    expect(mocks.changeOwnPassword).toHaveBeenCalledExactlyOnceWith(FORM, REQUEST_HEADERS, "shared", false);
     expect(mocks.revalidatePath).toHaveBeenCalledExactlyOnceWith("/account");
     expect(mocks.logClientAddressProbe).toHaveBeenCalledExactlyOnceWith(REQUEST_HEADERS, {
       source: "password-change",
     });
+  });
+
+  it.each([
+    [{ status: "kept" }, "/account?notice=password-changed"],
+    [{ status: "disconnected", count: 2 }, "/account?notice=password-changed-apps-disconnected"],
+    [{ status: "failed" }, "/account?notice=password-changed-apps-not-disconnected"],
+  ])("leads to the notice that fits the apps %j", async (apps, path) => {
+    mocks.changeOwnPassword.mockResolvedValue({ ok: true, value: { user: USER, headers: new Headers(), apps } });
+
+    await expect(changeOwnPassword({}, formData({ ...FORM, disconnectApps: "on" }))).rejects.toMatchObject({ path });
+  });
+
+  it.each([
+    ["ticked", { disconnectApps: "on" }, true],
+    ["not ticked", {}, false],
+    ["sent with another value", { disconnectApps: "true" }, false],
+  ])("passes the choice to disconnect the apps, %s, to the service", async (_case, extra, choice) => {
+    mocks.changeOwnPassword.mockResolvedValue({ ok: false, error: { code: "wrong-password" } });
+
+    await changeOwnPassword({}, formData({ ...FORM, ...extra }));
+
+    expect(mocks.changeOwnPassword).toHaveBeenCalledExactlyOnceWith(FORM, REQUEST_HEADERS, "shared", choice);
   });
 
   it("passes the client address group of the request", async () => {

@@ -67,3 +67,14 @@ export function readPasswordChangeFormData(formData: FormData): PasswordChangeIn
     repeatPassword: textField(formData, "repeatPassword"),
   };
 }
+
+/** The name of the checkbox of the own password change that disconnects all connected apps as well. */
+export const DISCONNECT_APPS_FIELD = "disconnectApps";
+
+/**
+ * Reads the choice of the own password change to disconnect all connected apps as well: on only for the value of a
+ * ticked checkbox, `on`; off for a missing field and for anything else.
+ */
+export function readDisconnectApps(formData: FormData): boolean {
+  return formData.get(DISCONNECT_APPS_FIELD) === "on";
+}

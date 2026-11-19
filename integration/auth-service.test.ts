@@ -1100,7 +1100,7 @@ describe("changeOwnPassword", () => {
     const other = await logInAs("alice");
     const bob = await logInAs("bob");
 
-    const result = await authService.changeOwnPassword(changeTo(NEW_PASSWORD), request.headers, SHARED);
+    const result = await authService.changeOwnPassword(changeTo(NEW_PASSWORD), request.headers, SHARED, false);
 
     if (!result.ok) return expect.fail(`change failed with ${result.error.code}`);
     expect(await authService.getSessionUser(withCookies(result.value.headers))).toStrictEqual({
@@ -1118,7 +1118,7 @@ describe("changeOwnPassword", () => {
     await createUser({ name: "alice", mustChangePassword: false });
     const { headers } = await logInAs("alice");
 
-    const result = await authService.changeOwnPassword(changeTo(NEW_PASSWORD), headers, SHARED);
+    const result = await authService.changeOwnPassword(changeTo(NEW_PASSWORD), headers, SHARED, false);
 
     expect(result.ok).toBe(true);
     expect(await authService.logIn({ name: "alice", password: TEST_PASSWORD }, new Headers(), SHARED)).toEqual(
@@ -1136,7 +1136,7 @@ describe("changeOwnPassword", () => {
     const results = [];
     for (let attempt = 0; attempt < 5; attempt += 1) {
       results.push(
-        await authService.changeOwnPassword(changeTo(NEW_PASSWORD, WRONG_PASSWORD), request.headers, SHARED),
+        await authService.changeOwnPassword(changeTo(NEW_PASSWORD, WRONG_PASSWORD), request.headers, SHARED, false),
       );
     }
     const login = await authService.logIn({ name: "alice", password: TEST_PASSWORD }, new Headers(), SHARED);
@@ -1152,7 +1152,7 @@ describe("changeOwnPassword", () => {
     await createUser({ name: "alice" });
     const { headers } = await logInAs("alice");
 
-    expect(await authService.changeOwnPassword(changeTo(NEW_PASSWORD), headers, SHARED)).toEqual({
+    expect(await authService.changeOwnPassword(changeTo(NEW_PASSWORD), headers, SHARED, false)).toEqual({
       ok: false,
       error: { code: "first-password-pending" },
     });
