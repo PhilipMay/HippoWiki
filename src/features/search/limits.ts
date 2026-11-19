@@ -12,3 +12,15 @@ export const SEARCH_MAX_WORDS = 10;
  * word matches only as a whole word, so that it does not match a large part of all words.
  */
 export const SEARCH_PART_MIN_LETTERS = 3;
+
+/** The most pages a search returns, the best first; a search that matches more says so. */
+export const SEARCH_MAX_RESULTS = 100;
+
+/**
+ * The words of a folder found for one search word as a part of a word or with a typo, the closest first. It bounds the
+ * size of the query of the pages.
+ */
+export const SEARCH_FOUND_WORDS_CAP = 20;
+
+/** The similarity of `pg_trgm` from which a word of a folder counts as the search word with a typo. */
+export const SEARCH_SIMILARITY_THRESHOLD = 0.4;

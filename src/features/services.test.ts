@@ -45,6 +45,7 @@ it("the services load without Next.js and React", async () => {
   expect(pageService.listFolderPages).toBeTypeOf("function");
   expect(historyService.listPageRevisions).toBeTypeOf("function");
   expect(searchService.indexOutdatedPages).toBeTypeOf("function");
+  expect(searchService.searchPages).toBeTypeOf("function");
   expect(folderRoleService.folderRoleOf).toBeTypeOf("function");
   expect(actors.openContentWrite).toBeTypeOf("function");
   expect(userService.ensureAdmin).toBeTypeOf("function");

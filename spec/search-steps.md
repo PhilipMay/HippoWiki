@@ -43,9 +43,10 @@ What the steps build together. A step that proves one of these points wrong upda
     configuration of the page.
 - A table holds the words of the pages of each folder that are not deleted, each with the number of pages that hold
   it. The same trigger keeps it current in the write of the page. It has a trigram index of `pg_trgm`.
-- A search first looks the words of the search up in this table: the words of the folder that start with a search
-  word, that contain it, or that are close to it. Then one query matches the pages of the folder through their search
-  vectors, with the search words and the words found for them, so that no search compares a word with the whole text
+- A search first looks the words of the search up in this table: the words of the folder that contain a search word,
+  or that are close to it. Then one query matches the pages of the folder through their search vectors, with the
+  search words, each also by its start through the prefix operator of the text search query, which the index of the
+  vectors serves without a cap, and the words found for them, so that no search compares a word with the whole text
   of every page.
 - A match is strong when every word matches exactly, by an inflection or by its start, and weak when a word matches
   only as a part of a word or with a typo. The order of R13 follows from that and from where the words match.
@@ -95,7 +96,7 @@ What the steps found out that the wrap-up moves into the other specs.
 - [x] Search index with every write
 - [x] Existing pages at the start of the server
 - [x] Search words
-- [ ] Matching and order
+- [x] Matching and order
 - [ ] Pieces of text, limits and log
 - [ ] Search at size
 - [ ] Results view
@@ -323,8 +324,9 @@ only to an actor who may read the folder. Covers R2, R5, R6, R7, R8, R9, R13, R1
   - the folder is a required argument of the function that builds the query, and "not deleted" is part of that query,
     so that no search without the two can be written;
   - it takes no tab.
-- The words found for each search word of 3 letters or more, from the words of the folder: those that start with it,
-  those that contain it, and those close to it by the similarity of `pg_trgm`. The closest ones up to a cap; the cap
+- The words found for each search word of 3 letters or more, from the words of the folder: those that contain it, and
+  those close to it by the similarity of `pg_trgm`; the start of a word is matched by the prefix operator of the query
+  (see "Design"). The closest ones up to a cap; the cap
   and the threshold of the similarity live in `limits.ts` and are set with the tests of this step and of "Search at
   size". A word of 1 or 2 letters gets none.
 - The query of the pages:
@@ -332,8 +334,8 @@ only to an actor who may read the folder. Covers R2, R5, R6, R7, R8, R9, R13, R1
     `$queryRaw`, never spliced into the SQL;
   - it is parsed with the configuration of each language that the pages of the folder have, one branch per language,
     each for the pages of that language, so that the index is used and an excluded word excludes in every language;
-  - the strong form holds each word with the words that start with it, the weak form also those that contain it or
-    are close to it.
+  - the strong form holds each word exactly, by an inflection and by its start, the weak form also the words that
+    contain it or are close to it.
 - The order, decided in the database:
   1. pages whose title is exactly the words of the search, compared without case and surrounding spaces;
   2. pages that match the strong form in their title or name;
