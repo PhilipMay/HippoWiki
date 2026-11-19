@@ -77,9 +77,10 @@ function connectedOf({ authInfo }: McpRequestContext): WikiToolsOptions {
 let modernHandler: McpHttpHandler | undefined;
 
 /**
- * The handler of the SDK for clients of the current protocol. It is created on first use, because the SDK prints a
- * note when it is, and answers everything as JSON: `subscriptions/listen`, the one request the SDK would always
- * answer as a stream, is refused by allowing no subscriptions. Clients of the older protocol are served by
+ * The handler of the SDK for the current clients, which speak the protocol revision 2026-07-28 and send the
+ * per-request `_meta` envelope. It is created on first use, because the SDK prints a note when it is, and answers
+ * everything as JSON: `subscriptions/listen`, the one request the SDK would always answer as a stream, is refused by
+ * allowing no subscriptions. The older clients, which send no per-request `_meta` envelope, are served by
  * `serveLegacy()` instead.
  */
 function getModernHandler(): McpHttpHandler {
@@ -93,9 +94,10 @@ function getModernHandler(): McpHttpHandler {
 }
 
 /**
- * Serves a request of a client that speaks the protocol of 2025, which opens with `initialize`: a server and a
- * transport of their own for this one request, without a session, with a JSON answer. The handler of the SDK would
- * answer these clients as a stream.
+ * Serves a request of an older client, one of the older protocol revisions that the SDK serves, which sends no
+ * per-request `_meta` envelope (`isLegacyRequest()` of the SDK decides it), whether or not it opens with `initialize`:
+ * a server and a transport of their own for this one request, without a session, with a JSON answer. The handler of
+ * the SDK would answer these clients as a stream.
  */
 async function serveLegacy(request: Request, connected: WikiToolsOptions): Promise<Response> {
   const server = createWikiServer(connected);

@@ -42,7 +42,7 @@ can be traced afterwards. The requirements are `spec/mcp-untrusted-content-requi
 
 - [x] Mark page text as user data
 - [x] Log every tool call
-- [ ] Document prompt injection and the protocol revisions
+- [x] Document prompt injection and the protocol revisions
 - [ ] Wrap-up
 
 ## Mark page text as user data
