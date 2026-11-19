@@ -42,6 +42,10 @@ How the code is tested. Commands are listed in `README.md`.
     service, each with valid input, its lowest role, the ids and the start of its log lines and the key of its last
     editor. The tables of these tests that go over the writes (the actor, an admin, no role, the lowest role of each
     function) are built from it, so a new write is added there once.
+  - `src/test/slow-markdown.ts`: `SLOW_INPUTS`, the content at the content limit that is slow for other Markdown
+    parsers, for the cost tests of the parse and of the search text.
+  - `src/test/language-samples.ts`: a page of the same content in each language that search tells apart, for the
+    tests of the language of a page and of search.
   - `src/test/pages-service.ts`: the mocked database and logger of the unit tests of the pages service, which are
     split by concern into `src/features/pages/service-reads.test.ts`, `service-writes.test.ts` and
     `service-access.test.ts` (the actor, an admin and the roles), and of the history service
@@ -79,10 +83,10 @@ How the code is tested. Commands are listed in `README.md`.
 - The form parsers get unit tests in `forms.test.ts`, the ids in `schema.test.ts`.
 - The Markdown parser gets unit tests in `src/features/pages/markdown.test.ts`, which also renders the page view
   (`MarkdownContent`) with `renderToString()` of `react-dom/server`. `src/features/pages/markdown.cost.test.ts`
-  (project `cost`) holds the inputs that are slow for other parsers, each at the content limit; they guard the cost of
-  the parse and the page view: each must be parsed and rendered within 2 s, so
-  that an update of markdown-it or a change of the renderer cannot bring a slow parse back unnoticed. A new input that
-  turns out to be slow is added there.
+  (project `cost`) parses and renders the inputs that are slow for other parsers, each at the content limit, from
+  `src/test/slow-markdown.ts`; they guard the cost of the parse and the page view: each must be parsed and rendered
+  within 2 s, so that an update of markdown-it or a change of the renderer cannot bring a slow parse back unnoticed. A
+  new input that turns out to be slow is added there.
 - The comparison of revisions gets unit tests in `src/features/pages/diff.test.ts`. `src/features/pages/diff.cost.test.ts`
   (project `cost`) compares completely different revisions at the content limit, with many short lines and with few
   long ones: each comparison must answer with a diff or "too different" within 2 s, which guards the cap of the diff.

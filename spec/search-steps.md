@@ -72,11 +72,18 @@ What the steps found out that the wrap-up moves into the other specs.
   database, and that right lets a user create the trusted extension `pg_trgm`. So only an installation from before
   search whose user lost that right later stops for `pg_trgm`; a new installation either passes or stops at the init
   migration.
+- The language detector is eld 2.1.1 (Apache-2.0) with its smallest database, `eld/extrasmall`: it tells every sample
+  of `src/test/language-samples.ts` apart, and takes about 33 MB of heap once loaded, against about 50 MB for `small`
+  and 125 MB for `large`. It is loaded on the first derivation, which takes about 50 ms.
+- Prose of fewer than 80 letters gets `simple`: from 60 letters on, no window of any sample was given a wrong
+  language, only an unreliable one; below that a short line such as "Notizen. TODO morgen" counted as reliably Dutch.
+- Deriving the text and the language of content at the content limit takes at most about 200 ms, for the slow inputs of
+  the Markdown parse.
 
 ## Checklist
 
 - [x] Database check and `pg_trgm`
-- [ ] Search text and language of a page
+- [x] Search text and language of a page
 - [ ] Search index with every write
 - [ ] Existing pages at the start of the server
 - [ ] Search words
