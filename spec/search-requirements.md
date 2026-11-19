@@ -71,11 +71,14 @@ written in without anybody choosing a language.
   - Acceptance: of two pages that both hold the word, the one with the word in its title is listed first.
 - R13: The results must always be ordered by how well a page matches: a page whose title is exactly the words first,
   then pages with the words in their title, then pages with the words only in their content, then pages found only
-  by a typo or a part of a word, those in their title before those in their content; among equal matches the page
-  changed last comes first. There is no other order to choose.
+  by a typo or a part of a word, those in their title before those in their content. A page counts by the weakest
+  match of its words (R16). Within each of these groups, a page where the words occur more often and closer together
+  comes first, and among pages that match equally well the page changed last comes first. There is no other order to
+  choose.
   - Acceptance: the exact title comes first, R7 holds, a page found only by a typo comes after every page that holds
-    the exact words, two pages that match equally are listed newest first, and the results view offers no choice of
-    order.
+    the exact words, a page that matches one word exactly and another only by a typo is listed with the typo matches,
+    of two pages that hold the word only in their content the one that holds it more often comes first, two pages
+    that match equally are listed newest first, and the results view offers no choice of order.
 - R14: Each result must show the title of the page as a link to it, its tab if it is in one, a short piece of its
   text around the match with the matched words highlighted, the time of its last change, and its last editor with the
   channel, as in the other lists of the wiki ("by mike via mcp").
@@ -91,13 +94,16 @@ written in without anybody choosing a language.
 
 ### Search words
 
-- R16: The search words must follow one syntax, in the browser and for AI apps: every word must match; words in
-  quotes must stand together as a phrase; a word with a leading `-` excludes the pages that hold it; `or` between two
-  words means that either may match; the start of a word also finds the whole word.
+- R16: The search words must follow one syntax, in the browser and for AI apps: every word must match, each in its
+  own way: exactly, by an inflection (R8), by its start, as a part of a word or with a typo (R9); words in quotes must
+  stand together as a phrase; a word with a leading `-` excludes the pages that hold it; `or` between two words means
+  that either may match; the start of a word of at least 3 letters also finds the whole word. A word of 1 or 2 letters
+  matches only as a whole word: not by its start, not as a part of a word and not with a typo.
   - Acceptance: "backup server" finds only pages with both words; "\"backup server\"" finds only pages where the two
     words follow each other; "backup -server" finds pages with "backup" and without "server"; "backup or restore"
-    finds pages with either word; "konfig" finds "Konfiguration"; quotes, `-` and `or` typed in odd places never cause
-    an error, and are then read as plain words.
+    finds pages with either word; "konfig" and "kon" find "Konfiguration", "ko" does not; "Häuser konfiguraton" finds
+    a German page that holds "Haus" and "Konfiguration"; quotes, `-` and `or` typed in odd places never cause an
+    error, and are then read as plain words.
 - R17: Text in code blocks and inline code, and the addresses of links, must be searched like the rest of a page.
   - Acceptance: a command that occurs only in a code block finds its page; a domain that occurs only as the address
     of a link finds the page that links to it.
@@ -150,10 +156,11 @@ written in without anybody choosing a language.
     apps answers it as a tool error with the same text; the other pages of the wiki load normally meanwhile; once a
     search has ended, the next search runs.
 - R25: The words of a search must be at most 200 characters and 10 words long; longer words must be refused with the
-  message "Search at most 200 characters and 10 words", and no search runs.
+  message "Search at most 200 characters and 10 words", and no search runs. Each word counts once, also inside quotes
+  and with a leading `-`; `or` between two words does not count.
   - Acceptance: 201 characters or 11 words show the message above the field, also when given in the address of the
-    results view, and no search runs; 200 characters and 10 words are searched; the search tool of AI apps refuses
-    them as a tool error with the same limits.
+    results view, and no search runs; 200 characters and 10 words are searched; "\"backup server\" -old or new"
+    counts as 4 words; the search tool of AI apps refuses them as a tool error with the same limits.
 
 ### AI apps
 
@@ -177,19 +184,23 @@ written in without anybody choosing a language.
 ### Operation
 
 - R11: The database of HippoWiki must offer the extension `pg_trgm` and a character type that knows UTF-8, such as
-  `en_US.utf8` or `C.UTF-8`; on a database with the character type `C`, the migrations must stop with a message that
-  names the fix.
+  `en_US.utf8` or `C.UTF-8`; on a database with the character type `C`, and on one without `pg_trgm` where the
+  database user may not create it, the migrations must stop with a message that names the fix.
   - Acceptance: the migrations create `pg_trgm` where the database user may; on a database with the character type
-    `C` they stop before changing anything and name a UTF-8 locale such as `C.UTF-8` or `en_US.utf8`; the stock
-    database image passes.
+    `C` they stop before changing anything and name a UTF-8 locale such as `C.UTF-8` or `en_US.utf8`; on a database
+    without `pg_trgm` where the user may not create it, they stop before changing anything and say that the operator
+    must create `pg_trgm` or give the user the right to create it, and the server does not start; the stock database
+    image passes.
 - R28: Each search must be logged with the user, the channel, the folder, the number of results, the time it took and
   the length of the words, but never with the words themselves.
   - Acceptance: the log line of a search holds these fields and no word of the search, in the browser and through
     MCP.
 - R29: The pages that exist when search is installed must be found right after the update, without a step of the
-  operator.
-  - Acceptance: after the update of an installation with pages, a search finds them by title, name and content, with
-    the inflections of their language.
+  operator: the server makes them searchable before it serves its first request. The same holds after an update that
+  changes how the language of a page is told.
+  - Acceptance: after the update of an installation with pages, the first search finds them by title, name and
+    content, with the inflections of their language; the first start after such an update takes longer once, and the
+    starts after it do not.
 - R30: A page must be found by its current state right after every change: a new page, a change of its content or
   title, a move, a rename and a restore.
   - Acceptance: a word added to a page finds it with the next search, and a removed word no longer does; a renamed
@@ -216,7 +227,12 @@ written in without anybody choosing a language.
   tools whose results and descriptions carry the note of "Prompt injection", and "no search tool" leaves its current
   limits.
 - Container image: "The migrations need no database extensions" in `container-image.md` becomes a need for `pg_trgm`
-  and a database with a UTF-8 character type.
+  and a database with a UTF-8 character type. The first start after the update of search, and after an update that
+  changes how the language of a page is told, takes longer once, because the server makes the pages searchable before
+  it serves.
+- Deployment checks: the checks of the reverse proxy in "Things to Check" of `roadmap.md` and in "Checks on the
+  deployment" of `review-report.md` name keeping the search words, `q` of the results address, out of its access
+  log.
 - Pages: "no search" leaves the current limits of `pages.md` and `content-structure.md`.
 - Architecture: "There is no search yet" in "Database" of `architecture.md` no longer holds.
 - Roadmap: "Full-text search" and "MCP search tool" leave `roadmap.md`; "Semantic search" stays.
@@ -290,5 +306,24 @@ written in without anybody choosing a language.
 - The language of a page is detected, never chosen: a choice in the browser is wrong as soon as someone forgets it.
 - Parts of words and typos are matched with `pg_trgm`, a trusted extension of PostgreSQL, set by the user as a
   constraint; see `search-plan.md`.
+- Each word of a search may match in its own way, and a page counts by its weakest word, so that "Häuser
+  konfiguraton" finds a page with "Haus" and "Konfiguration". Rejected: all words of a search matching in one way,
+  which finds fewer pages.
+- Within each group of the order, the page where the words occur more often and closer together comes first, then
+  the page changed last. Rejected: the page changed last only.
+- The start of a word counts from 3 letters; a word of 1 or 2 letters matches only as a whole word, so that a short
+  word does not match a large part of all words and stays within R32. Rejected: 2 letters, and any length.
+- Each word counts once towards the 10 words, also inside quotes and with a leading `-`; `or` does not count.
+  Rejected: a phrase counting as one word, and counting `or`.
+- The pages are made searchable before the server serves, at the first start after the update of search and after
+  an update that changes how the language of a page is told, so that every search is complete from the first
+  request. Rejected: filling the pages in the background, while pages not yet done would be found by their exact
+  words only or not at all.
+- A database without `pg_trgm` where the user of HippoWiki may not create it stops the migrations with a message
+  that names the fix. Rejected: the plain error of the database, which names the missing right but not the fix.
+- The words of a search stand in the address of the results (R4), so they reach the access log of the reverse proxy
+  and the history of the browser, although HippoWiki itself never logs them (R28); HippoWiki never sends its
+  addresses to other sites. This is accepted, and the checks of the deployment name keeping them out of the access
+  log. Rejected: accepting it without a note for operators.
 
 ## Open questions
