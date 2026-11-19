@@ -27,6 +27,8 @@ import type {
   readPageOutput,
   renameTabInput,
   replacePageContentInput,
+  searchPagesInput,
+  searchPagesOutput,
   storedPageOutput,
   storedTabOutput,
 } from "@/features/mcp/tool-schemas";
@@ -35,6 +37,14 @@ import { NAME_RULE, USER_TEXT_NOTE } from "@/features/mcp/tool-schemas";
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 import { TITLE_HEADING_MISSING_MESSAGE } from "@/features/pages/schema";
 import * as pageService from "@/features/pages/service";
+import {
+  SEARCH_MAX_CHARACTERS,
+  SEARCH_MAX_RESULTS,
+  SEARCH_MAX_WORDS,
+  SEARCH_TOOL_DEFAULT_RESULTS,
+  SEARCH_TOOL_MAX_RESULTS,
+} from "@/features/search/limits";
+import * as searchService from "@/features/search/service";
 import { deletedPagesPath, folderPath, pagePath, tabPath } from "@/lib/addresses";
 import { logger } from "@/lib/logger";
 import { NAME_MAX_LENGTH } from "@/lib/name-limits";
@@ -244,6 +254,82 @@ export async function readPage(
         lastEditedVia: page.lastEditedBy.via,
         version: page.version,
       }) satisfies z.infer<typeof readPageOutput>,
+    );
+  });
+}
+
+/** Whether the value is a whole number from `min` to `max`. */
+function isWholeNumber(value: number, min: number, max: number): boolean {
+  return Number.isInteger(value) && value >= min && value <= max;
+}
+
+/**
+ * The tool error of a search that returned no results for a reason of its own. The texts of a search that is too
+ * long, too broad or refused as busy are those of the browser; none holds a title or text of a page.
+ */
+function searchError(error: searchService.SearchError): CallToolResult {
+  switch (error.code) {
+    case "no-words":
+      return toolError("The query has no words to search for. Give at least one word with a letter or a digit.");
+    case "too-long":
+      return toolError(
+        `Search at most ${SEARCH_MAX_CHARACTERS} characters and ${SEARCH_MAX_WORDS} words. Each word counts once, ` +
+          "also inside quotes and with a leading -; or between two words does not count.",
+      );
+    case "too-broad":
+      return toolError("This search is too broad and took too long. Use more precise words.");
+    case "busy":
+      return toolError("Too many searches are running. Try again in a few seconds.");
+  }
+}
+
+/**
+ * The tool `search_pages`: the pages of the folder of the connection that match the words of the query, the best
+ * first, with a piece of their text, `limit` at a time from `offset` on, up to the `SEARCH_MAX_RESULTS` best ones. It
+ * takes no tab: a search always covers the whole folder. Deleted pages are never found. The query is never logged:
+ * people search for names and incidents.
+ */
+export async function searchPages(
+  options: WikiToolsOptions,
+  input: z.infer<typeof searchPagesInput>,
+): Promise<CallToolResult> {
+  return run(options, "search_pages", input, async () => {
+    const limit = input.limit ?? SEARCH_TOOL_DEFAULT_RESULTS;
+    const offset = input.offset ?? 0;
+    if (!isWholeNumber(limit, 1, SEARCH_TOOL_MAX_RESULTS)) {
+      return toolError(
+        `Ask for at most ${SEARCH_TOOL_MAX_RESULTS} results at a time: limit is a whole number from 1 to ` +
+          `${SEARCH_TOOL_MAX_RESULTS}. Use offset for the next results.`,
+      );
+    }
+    if (!isWholeNumber(offset, 0, SEARCH_MAX_RESULTS - 1)) {
+      return toolError(
+        `The offset is a whole number from 0 to ${SEARCH_MAX_RESULTS - 1}: only the ${SEARCH_MAX_RESULTS} best ` +
+          "results can be reached. Use more precise words to find other pages.",
+      );
+    }
+    const { actor, folder } = options;
+    const found = await searchService.searchPages(actor, folder.id, input.query, { offset, limit });
+    // `null` when the actor may no longer read the folder.
+    if (!found) return folderGone();
+    if (!found.ok) return searchError(found.error);
+    const { results, total, more } = found.value;
+    const next = offset + results.length;
+    return result(
+      withNote({
+        results: results.map((page) => ({
+          title: page.title,
+          name: page.name,
+          tab: page.tab?.name ?? null,
+          address: addressOf(options, pagePath(folder.name, page.tab?.name ?? null, page.name)),
+          excerpt: page.excerpt.map((part) => part.text).join(""),
+          lastChanged: page.updatedAt.toISOString(),
+          lastEditedBy: page.lastEditedBy.name,
+          lastEditedVia: page.lastEditedBy.via,
+        })),
+        nextOffset: results.length > 0 && next < total ? next : null,
+        more,
+      }) satisfies z.infer<typeof searchPagesOutput>,
     );
   });
 }

@@ -76,10 +76,12 @@ test("a request of the current protocol is answered as JSON as well", async ({ r
   expect(response.status()).toBe(200);
   expect(response.headers()["content-type"]).toBe("application/json");
   const { result } = (await response.json()) as { result: { tools: { name: string }[] } };
-  expect(result.tools.map((tool) => tool.name)).toEqual(["list_folder", "read_page"]);
+  expect(result.tools.map((tool) => tool.name)).toEqual(["list_folder", "read_page", "search_pages"]);
 });
 
-test("a Reader connection offers only the two read tools, list_folder and read_page", async ({ request }) => {
+test("a Reader connection offers only the three read tools, list_folder, read_page and search_pages", async ({
+  request,
+}) => {
   const response = await send(request, { method: "tools/list" });
 
   expect(response.status()).toBe(200);
@@ -87,7 +89,7 @@ test("a Reader connection offers only the two read tools, list_folder and read_p
   const { result } = (await response.json()) as {
     result: { tools: { name: string; description: string; annotations: { readOnlyHint: boolean } }[] };
   };
-  expect(result.tools.map((tool) => tool.name)).toEqual(["list_folder", "read_page"]);
+  expect(result.tools.map((tool) => tool.name)).toEqual(["list_folder", "read_page", "search_pages"]);
   // Only tools of the content: none for accounts, which are managed only in the browser by an admin. The note on page
   // text names the users who write it, not their accounts, so it is left out of the match.
   for (const tool of result.tools) {

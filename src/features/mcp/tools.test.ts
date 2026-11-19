@@ -23,6 +23,7 @@ const LENGTH_LIMIT = `at most ${NAME_MAX_LENGTH} characters`;
 const USER_TEXT_TOOLS = [
   "list_folder",
   "read_page",
+  "search_pages",
   "create_page",
   "replace_page_content",
   "edit_page_content",
@@ -45,6 +46,7 @@ const mocks = vi.hoisted(() => ({
   createTab: vi.fn(),
   renameTab: vi.fn(),
   deleteTab: vi.fn(),
+  searchPages: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
@@ -65,6 +67,7 @@ vi.mock("@/features/pages/service", () => ({
   moveOrRenamePage: mocks.moveOrRenamePage,
   deletePage: mocks.deletePage,
 }));
+vi.mock("@/features/search/service", () => ({ searchPages: mocks.searchPages }));
 vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, error: mocks.error } }));
 // The real parse, watched, to see whether the content was parsed.
 vi.mock("@/features/pages/markdown", async (importOriginal) => {
@@ -158,7 +161,7 @@ describe("the instructions", () => {
     const instructions = instructionsFor("handbook", "reader");
     expect(instructions).toContain('the folder "handbook" with the role Reader');
     expect(instructions).toContain("It reads the folder and cannot change it.");
-    for (const word of ["tabs", "pages", "Markdown", "list_folder", "read_page"]) {
+    for (const word of ["tabs", "pages", "Markdown", "list_folder", "search_pages", "read_page"]) {
       expect(instructions).toContain(word);
     }
     expect(instructions).not.toContain("list_folders");
@@ -197,7 +200,7 @@ describe("the instructions", () => {
 });
 
 describe("the read tools", () => {
-  it("are list_folder without arguments and read_page with an optional tab and a page, each one only reading", async () => {
+  it("are list_folder without arguments, read_page with an optional tab and a page, and search_pages with a query, each one only reading", async () => {
     const answer = await send({ method: "tools/list" });
 
     const tools = answer.result?.tools as {
@@ -206,7 +209,7 @@ describe("the read tools", () => {
       inputSchema: { properties?: Record<string, { description?: string }>; required?: string[] };
       annotations: Record<string, boolean>;
     }[];
-    expect(tools.map((tool) => tool.name)).toEqual(["list_folder", "read_page"]);
+    expect(tools.map((tool) => tool.name)).toEqual(["list_folder", "read_page", "search_pages"]);
     for (const tool of tools) {
       expect(tool.description.length).toBeGreaterThan(40);
       expect(tool.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false });
@@ -218,6 +221,9 @@ describe("the read tools", () => {
     // The tab is optional: a page placed directly in a folder has none.
     expect(tools[1]?.inputSchema.required).toEqual(["page"]);
     expect(Object.keys(tools[1]?.inputSchema.properties ?? {})).toEqual(["tab", "page"]);
+    // A search takes no folder and no tab: it covers the whole folder of the connection.
+    expect(Object.keys(tools[2]?.inputSchema.properties ?? {})).toEqual(["query", "limit", "offset"]);
+    expect(tools[2]?.inputSchema.required).toEqual(["query"]);
   });
 
   it("include no tool that lists folders", async () => {
@@ -423,6 +429,190 @@ describe("read_page", () => {
   });
 });
 
+describe("search_pages", () => {
+  /** A page that a search found, as the search service returns it. */
+  function found(name: string, tab: string | null = null) {
+    return {
+      id: `id-${name}`,
+      name,
+      title: `Title of ${name}`,
+      tab: tab === null ? null : { name: tab },
+      updatedAt: CHANGED,
+      lastEditedBy: { name: "mike", via: "mcp" as const },
+      excerpt: [
+        { text: "The ", match: false },
+        { text: "backup", match: true },
+        { text: " of <b>the</b> server", match: false },
+      ],
+    };
+  }
+
+  /** The results of a search with the given pages of the given number of best pages. */
+  function results(pages: ReturnType<typeof found>[], total = pages.length, more = false) {
+    return { ok: true, value: { results: pages, total, more } };
+  }
+
+  it.each(MCP_ROLES)(
+    "searches the folder of a %s connection with the query, 10 results from the first",
+    async (role) => {
+      actor = { ...READER, connection: { ...READER.connection, role } };
+      mocks.searchPages.mockResolvedValue(results([found("backup")]));
+
+      await callTool("search_pages", { query: ' "backup server" -old ' });
+
+      expect(mocks.searchPages).toHaveBeenCalledExactlyOnceWith(actor, FOLDER_ID, ' "backup server" -old ', {
+        offset: 0,
+        limit: 10,
+      });
+    },
+  );
+
+  it("gives each result its title, name, tab, address, piece of text as plain text, last change and last editor", async () => {
+    mocks.searchPages.mockResolvedValue(results([found("backup", "guides"), found("overview")]));
+
+    const result = await callTool("search_pages", { query: "backup" });
+
+    expect(result.structuredContent).toEqual({
+      note: USER_TEXT_NOTE,
+      results: [
+        {
+          title: "Title of backup",
+          name: "backup",
+          tab: "guides",
+          address: `${PUBLIC_URL}/folders/handbook/guides/backup.md`,
+          excerpt: "The backup of <b>the</b> server",
+          lastChanged: CHANGED.toISOString(),
+          lastEditedBy: "mike",
+          lastEditedVia: "mcp",
+        },
+        {
+          title: "Title of overview",
+          name: "overview",
+          tab: null,
+          address: `${PUBLIC_URL}/folders/handbook/overview.md`,
+          excerpt: "The backup of <b>the</b> server",
+          lastChanged: CHANGED.toISOString(),
+          lastEditedBy: "mike",
+          lastEditedVia: "mcp",
+        },
+      ],
+      nextOffset: null,
+      more: false,
+    });
+  });
+
+  it("gives the offset of the next results while the best results go on, and says when more pages match", async () => {
+    const pages = Array.from({ length: 10 }, (_, index) => found(`page-${index}`));
+    mocks.searchPages.mockResolvedValue(results(pages, 100, true));
+
+    const first = (await callTool("search_pages", { query: "backup" })).structuredContent;
+    expect(first).toMatchObject({ nextOffset: 10, more: true });
+
+    const last = (await callTool("search_pages", { query: "backup", offset: 90, limit: 10 })).structuredContent;
+    expect(mocks.searchPages).toHaveBeenLastCalledWith(READER, FOLDER_ID, "backup", { offset: 90, limit: 10 });
+    expect(last).toMatchObject({ nextOffset: null, more: true });
+  });
+
+  it("gives no next offset after the last result and for a window past the results", async () => {
+    mocks.searchPages.mockResolvedValue(results([found("a"), found("b")], 12));
+    expect((await callTool("search_pages", { query: "backup", offset: 10 })).structuredContent).toMatchObject({
+      nextOffset: null,
+    });
+
+    mocks.searchPages.mockResolvedValue(results([], 12));
+    expect((await callTool("search_pages", { query: "backup", offset: 20 })).structuredContent).toMatchObject({
+      results: [],
+      nextOffset: null,
+    });
+  });
+
+  it("takes up to 25 results at a time, and answers more, fewer than 1 or a broken number with a tool error that names 25", async () => {
+    mocks.searchPages.mockResolvedValue(results([]));
+
+    await callTool("search_pages", { query: "backup", limit: 25 });
+    expect(mocks.searchPages).toHaveBeenLastCalledWith(READER, FOLDER_ID, "backup", { offset: 0, limit: 25 });
+    mocks.searchPages.mockClear();
+
+    for (const limit of [30, 26, 0, -1, 2.5]) {
+      expect(errorOf(await callTool("search_pages", { query: "backup", limit })), String(limit)).toBe(
+        "Ask for at most 25 results at a time: limit is a whole number from 1 to 25. Use offset for the next results.",
+      );
+    }
+    expect(mocks.searchPages).not.toHaveBeenCalled();
+  });
+
+  it("reaches no result past the 100th: an offset beyond the 100 best results is a tool error", async () => {
+    mocks.searchPages.mockResolvedValue(results([]));
+
+    await callTool("search_pages", { query: "backup", offset: 99 });
+    expect(mocks.searchPages).toHaveBeenLastCalledWith(READER, FOLDER_ID, "backup", { offset: 99, limit: 10 });
+    mocks.searchPages.mockClear();
+
+    for (const offset of [100, 150, -1, 1.5]) {
+      expect(errorOf(await callTool("search_pages", { query: "backup", offset })), String(offset)).toBe(
+        "The offset is a whole number from 0 to 99: only the 100 best results can be reached. Use more precise " +
+          "words to find other pages.",
+      );
+    }
+    expect(mocks.searchPages).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["no-words", "The query has no words to search for. Give at least one word with a letter or a digit."],
+    [
+      "too-long",
+      "Search at most 200 characters and 10 words. Each word counts once, also inside quotes and with a leading -; " +
+        "or between two words does not count.",
+    ],
+    ["too-broad", "This search is too broad and took too long. Use more precise words."],
+    ["busy", "Too many searches are running. Try again in a few seconds."],
+  ])("answers the outcome %s with a tool error without the note", async (code, message) => {
+    mocks.searchPages.mockResolvedValue({ ok: false, error: { code } });
+
+    const text = errorOf(await callTool("search_pages", { query: "backup" }));
+
+    expect(text).toBe(message);
+    expect(text).not.toContain(USER_TEXT_NOTE);
+  });
+
+  it("answers a folder that the connection can no longer read with a tool error", async () => {
+    mocks.searchPages.mockResolvedValue(null);
+
+    expect(errorOf(await callTool("search_pages", { query: "backup" }))).toBe(
+      "The folder of this connection cannot be read any more. The user's role on it may have changed.",
+    );
+  });
+
+  it("logs no word of the query", async () => {
+    mocks.searchPages.mockResolvedValue({ ok: false, error: { code: "too-broad" } });
+
+    await callTool("search_pages", { query: "confidential incident of mike" });
+
+    const logged = JSON.stringify([...mocks.info.mock.calls, ...mocks.warn.mock.calls, ...mocks.error.mock.calls]);
+    for (const word of ["confidential", "incident", "mike"]) expect(logged).not.toContain(word);
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ tool: "search_pages", names: {}, outcome: "tool-error" }),
+      "mcp tool called",
+    );
+  });
+
+  it("describes every argument, how the words match, that read_page reads the results, and ends with the note", async () => {
+    const tools = (await send({ method: "tools/list" })).result?.tools as {
+      name: string;
+      description: string;
+      inputSchema: { properties?: Record<string, { description?: string }> };
+    }[];
+    const search = tools.find((tool) => tool.name === "search_pages");
+
+    expect(search?.description).toContain("Every word must match");
+    for (const words of ["in quotes", "-word", "or", "read_page"]) expect(search?.description).toContain(words);
+    expect(search?.description.endsWith(USER_TEXT_NOTE)).toBe(true);
+    expect(search?.inputSchema.properties?.limit?.description).toContain("at most 25");
+    expect(search?.inputSchema.properties?.limit?.description).toContain("10 without it");
+    expect(search?.inputSchema.properties?.query?.description).toContain("at most 200 characters and 10 words");
+  });
+});
+
 describe("an unknown tool", () => {
   it.each([READER, WRITER, MANAGER])("is not found for a connection with the role $connection.role", async (who) => {
     actor = who;
@@ -470,12 +660,13 @@ describe("the write tools", () => {
     expect(tools.map((tool) => tool.name)).toEqual([
       "list_folder",
       "read_page",
+      "search_pages",
       "create_page",
       "replace_page_content",
       "edit_page_content",
       "move_or_rename_page",
     ]);
-    const [create, replace, edit, move] = tools.slice(2);
+    const [create, replace, edit, move] = tools.slice(3);
     expect(Object.keys(create?.inputSchema.properties ?? {})).toEqual(["content", "tab", "name"]);
     expect(create?.inputSchema.required).toEqual(["content"]);
     expect(Object.keys(replace?.inputSchema.properties ?? {})).toEqual(["tab", "page", "version", "content"]);
@@ -486,7 +677,7 @@ describe("the write tools", () => {
     expect(move?.inputSchema.required).toEqual(["page", "newTab", "newName"]);
     expect(create?.inputSchema.properties?.name?.description).toContain(LENGTH_LIMIT);
     expect(move?.inputSchema.properties?.newName?.description).toContain(LENGTH_LIMIT);
-    for (const tool of tools.slice(2)) {
+    for (const tool of tools.slice(3)) {
       expect(tool.description.length).toBeGreaterThan(40);
       expect(tool.annotations).toMatchObject({ readOnlyHint: false, openWorldHint: false });
       for (const argument of Object.values(tool.inputSchema.properties ?? {}))
@@ -502,9 +693,10 @@ describe("the write tools", () => {
 
     const answer = await send({ method: "tools/list" });
 
-    expect((answer.result?.tools as { name: string }[]).map((tool) => tool.name).slice(0, 6)).toEqual([
+    expect((answer.result?.tools as { name: string }[]).map((tool) => tool.name).slice(0, 7)).toEqual([
       "list_folder",
       "read_page",
+      "search_pages",
       "create_page",
       "replace_page_content",
       "edit_page_content",
@@ -525,7 +717,11 @@ describe("the write tools", () => {
       params: { name: "edit_page_content", arguments: { page: "setup", version: 4, edits: [] } },
     });
 
-    expect((list.result?.tools as { name: string }[]).map((tool) => tool.name)).toEqual(["list_folder", "read_page"]);
+    expect((list.result?.tools as { name: string }[]).map((tool) => tool.name)).toEqual([
+      "list_folder",
+      "read_page",
+      "search_pages",
+    ]);
     expectToolNotFound(call, "create_page");
     expectToolNotFound(edit, "edit_page_content");
     expect(mocks.createPage).not.toHaveBeenCalled();
@@ -1035,7 +1231,7 @@ describe("the tools of a Manager connection", () => {
   it("are registered for a Manager connection after the write tools, with inputs, output schemas and hints", async () => {
     const tools = await listedTools();
 
-    expect(tools.map((tool) => tool.name).slice(6)).toEqual(MANAGER_TOOLS);
+    expect(tools.map((tool) => tool.name).slice(7)).toEqual(MANAGER_TOOLS);
     const byName = Object.fromEntries(tools.map((tool) => [tool.name, tool]));
     expect(Object.keys(byName.delete_page?.inputSchema.properties ?? {})).toEqual(["tab", "page", "version"]);
     expect(byName.delete_page?.inputSchema.required).toEqual(["page"]);
@@ -1062,9 +1258,9 @@ describe("the tools of a Manager connection", () => {
   });
 
   it.each([
-    ["Manager", MANAGER, 10],
-    ["Writer", WRITER, 6],
-    ["Reader", READER, 2],
+    ["Manager", MANAGER, 11],
+    ["Writer", WRITER, 7],
+    ["Reader", READER, 3],
   ])("give a %s connection %i tools", async (_role, other, count) => {
     actor = other;
 
@@ -1333,6 +1529,7 @@ describe("the tools of each role", () => {
   const TOOL_FUNCTIONS: [string, FolderFunction][] = [
     ["list_folder", "read"],
     ["read_page", "read"],
+    ["search_pages", "read"],
     ["create_page", "editPage"],
     ["replace_page_content", "editPage"],
     ["edit_page_content", "editPage"],
@@ -1522,12 +1719,13 @@ describe("every tool", () => {
   const WRITE_FAILED = "The change could not be stored. Please try again later.";
 
   /**
-   * Each of the ten tools, called by a Manager connection, which has all of them: its arguments, the service it
+   * Each of the eleven tools, called by a Manager connection, which has all of them: its arguments, the service it
    * calls, and the message of a failure of that service.
    */
   const TOOLS = [
     ["list_folder", {}, mocks.listAllFolderPages, READ_FAILED],
     ["read_page", { page: "setup" }, mocks.getPage, READ_FAILED],
+    ["search_pages", { query: "Setup" }, mocks.searchPages, READ_FAILED],
     ["create_page", { content: "# New", name: "new" }, mocks.createPage, WRITE_FAILED],
     [
       "replace_page_content",
@@ -1557,6 +1755,8 @@ describe("every tool", () => {
   const NAMES: Record<(typeof TOOLS)[number][0], Record<string, string | null>> = {
     list_folder: {},
     read_page: { page: "setup" },
+    // The query is never logged.
+    search_pages: {},
     create_page: { name: "new" },
     replace_page_content: { page: "setup" },
     edit_page_content: { page: "setup" },
@@ -1592,6 +1792,14 @@ describe("every tool", () => {
     mocks.createTab.mockResolvedValue({ ok: true, value: { id: "t2", name: "news", folder: { name: "handbook" } } });
     mocks.renameTab.mockResolvedValue({ ok: true, value: { id: "tab-1", name: "news", folder: { name: "handbook" } } });
     mocks.deleteTab.mockResolvedValue({ ok: true, value: { folder: FOLDER, pageCount: 0, pages: [] } });
+    mocks.searchPages.mockResolvedValue({
+      ok: true,
+      value: {
+        results: [{ ...PAGE, excerpt: [{ text: "Setup", match: true }] }],
+        total: 1,
+        more: false,
+      },
+    });
   });
 
   it.each(TOOLS)(

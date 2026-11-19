@@ -282,7 +282,7 @@ test.describe("the tools of a Manager connection", () => {
     expect(await stored()).toEqual(before);
   });
 
-  test("the tool list of a Manager connection has ten tools, the destructive hint on the content changes and the deletes and none for deleted pages, roles or the folder", async ({
+  test("the tool list of a Manager connection has eleven tools, the destructive hint on the content changes and the deletes and none for deleted pages, roles or the folder", async ({
     request,
   }) => {
     const answer = await send(request, { method: "tools/list" }, manager, managerAddress);
@@ -295,6 +295,7 @@ test.describe("the tools of a Manager connection", () => {
     expect(tools.map(({ name }) => name)).toEqual([
       "list_folder",
       "read_page",
+      "search_pages",
       "create_page",
       "replace_page_content",
       "edit_page_content",

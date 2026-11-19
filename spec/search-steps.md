@@ -112,7 +112,7 @@ What the steps found out that the wrap-up moves into the other specs.
 - [x] Search at size
 - [x] Results view
 - [x] Search field
-- [ ] Search tool for AI apps
+- [x] Search tool for AI apps
 - [ ] Wrap-up
 
 ## Database check and `pg_trgm`

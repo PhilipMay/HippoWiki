@@ -23,6 +23,8 @@ import {
   readPageOutput,
   renameTabInput,
   replacePageContentInput,
+  searchPagesInput,
+  searchPagesOutput,
   storedPageOutput,
   storedTabOutput,
   USER_TEXT_NOTE,
@@ -38,6 +40,7 @@ import {
   readPage,
   renameTab,
   replacePageContent,
+  searchPages,
   type WikiToolsOptions,
 } from "@/features/mcp/tools";
 import { siteName } from "@/lib/site";
@@ -82,7 +85,8 @@ export function instructionsFor(folderName: string, role: McpRole): string {
     `${ROLE_ABILITIES[role]} ${USER_TEXT_NOTE} The folder holds pages, either directly or grouped in tabs, which are optional ` +
     "sections of the folder. Every page is written in Markdown and has a name, which is part of its address, and a " +
     `title, which is its first heading. Tab and page names are ${NAME_RULE}. Start ` +
-    "with list_folder for the tabs and pages of the folder, then read_page for the content of one page."
+    "with list_folder for the tabs and pages of the folder, or search_pages for the pages that match some words, " +
+    "then read_page for the content of one page."
   );
 }
 
@@ -138,6 +142,25 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
         annotations: READ_ONLY,
       },
       (input) => readPage(options, input),
+    );
+
+    server.registerTool(
+      "search_pages",
+      {
+        title: "Search the pages of the folder",
+        description:
+          "Searches the pages of the whole folder of this connection by their titles, names and content, in the " +
+          "language each page is written in. Every word must match, also by an inflection, its start, a part of a word " +
+          'or a typo; "two words" in quotes match as a phrase, -word leaves out the pages with the word, and or ' +
+          "between two words finds either. The best matches come first, each with its title, its name and tab, a " +
+          "piece of its text and when it was last changed, by whom and how. Read the best results with read_page, " +
+          "by their name and tab; ask for the next ones with nextOffset. Deleted pages are never found. " +
+          USER_TEXT_NOTE,
+        inputSchema: searchPagesInput,
+        outputSchema: searchPagesOutput,
+        annotations: READ_ONLY,
+      },
+      (input) => searchPages(options, input),
     );
   }
 

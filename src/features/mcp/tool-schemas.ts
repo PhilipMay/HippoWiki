@@ -5,6 +5,13 @@
 
 import { z } from "zod";
 
+import {
+  SEARCH_MAX_CHARACTERS,
+  SEARCH_MAX_RESULTS,
+  SEARCH_MAX_WORDS,
+  SEARCH_TOOL_DEFAULT_RESULTS,
+  SEARCH_TOOL_MAX_RESULTS,
+} from "@/features/search/limits";
 import { NAME_MAX_LENGTH } from "@/lib/name-limits";
 
 /**
@@ -57,6 +64,33 @@ function newTabNameArgument(description: string) {
 const pageArguments = { tab: TAB_ARGUMENT, page: PAGE_ARGUMENT, version: VERSION_ARGUMENT };
 
 export const readPageInput = z.object({ tab: TAB_ARGUMENT, page: PAGE_ARGUMENT });
+
+/**
+ * The words, the number of results and the offset of a search. The numbers are plain numbers, so that a number the
+ * tool cannot answer, such as more than `SEARCH_TOOL_MAX_RESULTS`, is a tool error that names the limit.
+ */
+export const searchPagesInput = z.object({
+  query: z
+    .string()
+    .describe(
+      `The words to search for, at most ${SEARCH_MAX_CHARACTERS} characters and ${SEARCH_MAX_WORDS} words: every ` +
+        'word must match; "two words" in quotes match as a phrase, -word leaves out the pages with the word, and or ' +
+        "between two words finds either",
+    ),
+  limit: z
+    .number()
+    .optional()
+    .describe(
+      `How many results to return, at most ${SEARCH_TOOL_MAX_RESULTS}; ${SEARCH_TOOL_DEFAULT_RESULTS} without it`,
+    ),
+  offset: z
+    .number()
+    .optional()
+    .describe(
+      `How many of the best results to skip, as nextOffset of the call before gave it; 0 without it. Only the ` +
+        `${SEARCH_MAX_RESULTS} best results can be reached.`,
+    ),
+});
 
 export const createPageInput = z.object({
   content: z
@@ -189,6 +223,34 @@ export const listFolderOutput = z.object({
       }),
     )
     .describe("The pages placed directly in the folder first, then the pages in tabs"),
+});
+
+export const searchPagesOutput = z.object({
+  note: NOTE_OUTPUT,
+  results: z
+    .array(
+      z.object({
+        title: z.string(),
+        name: z.string().describe("The name of the page, as read_page takes it"),
+        tab: pageTabOutput("is"),
+        address: addressOutput("page"),
+        excerpt: z.string().describe("A short piece of the text of the page around the match, as plain text"),
+        lastChanged: lastChangedOutput("page"),
+        lastEditedBy: lastEditedByOutput("page"),
+        lastEditedVia: lastEditedViaOutput("page"),
+      }),
+    )
+    .describe("The pages that match, the best match first"),
+  nextOffset: z
+    .number()
+    .nullable()
+    .describe(`The offset of the next results, or null when there are none among the ${SEARCH_MAX_RESULTS} best`),
+  more: z
+    .boolean()
+    .describe(
+      `Whether more than ${SEARCH_MAX_RESULTS} pages match: then only the best ${SEARCH_MAX_RESULTS} can be reached, ` +
+        "and more precise words find the others",
+    ),
 });
 
 export const readPageOutput = z.object({

@@ -30,3 +30,9 @@ export const SEARCH_TIME_LIMIT_MS = 5_000;
 
 /** The most searches that run at the same time in one server process, in the browser and through MCP together. */
 export const SEARCH_MAX_RUNNING = 3;
+
+/** The results of one call of the search tool of AI apps without a number of its own. */
+export const SEARCH_TOOL_DEFAULT_RESULTS = 10;
+
+/** The most results of one call of the search tool of AI apps; each result fills the context of the app. */
+export const SEARCH_TOOL_MAX_RESULTS = 25;
