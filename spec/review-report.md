@@ -8,9 +8,9 @@
   tests cover the security rules of the specs well. The weak points are availability (unbounded bodies and batches, a lockout per name in the default
   configuration), the password policy, the trust that the OAuth
   server gives to clients nobody verified, and documentation that ASVS Level 2 asks for.
-- Findings: 100 in all, 0 Blocker, 1 Major, 61 Minor and 38 Nit (51 `issue:`, 18 `suggestion:`, 27 `nit:` and 4
-  `question:`). Accepted deviations: 20. Of the 96 Suggestions with a confidence (a `question:` has none), 12 are High,
-  49 Medium and 35 Low.
+- Findings: 99 in all, 0 Blocker, 1 Major, 61 Minor and 37 Nit (51 `issue:`, 17 `suggestion:`, 27 `nit:` and 4
+  `question:`). Accepted deviations: 20. Of the 95 Suggestions with a confidence (a `question:` has none), 12 are High,
+  49 Medium and 34 Low.
 - To fix first:
   1. Wiki text reaches the model with nothing that marks it as data written by users, and a Manager connection can be
      steered to delete pages and tabs (MCP server; OWASP MCP06, LLM01).
@@ -233,7 +233,7 @@ the threat.
 | T      | Prompt injection: wiki content written by one user steers the agent of another, to read or to write         | MCP server                                       |
 | T      | A write tool overwrites a change made after the version it is based on                                      | Content                                          |
 | T      | A request from a browser of another site (foreign `Origin`)                                                 | MCP server; Browser security                     |
-| R      | Tool calls not logged with the grant that made them                                                         | Logging, errors and failure handling             |
+| R      | Tool calls not logged with the grant that made them                                                         | MCP server                                       |
 | I      | Deleted pages listed or read; error answers with internal details; tokens in answers or logs                | MCP server; Logging, errors and failure handling |
 | D      | Large request bodies, batches or large answers tie up the server                                            | MCP server                                       |
 | E      | A Reader connection reaches a write tool; a connection reaches another folder or goes past the current role | Connected apps; MCP server                       |
@@ -1005,14 +1005,15 @@ finding of the review report" in `step-plan-workflow.md` describes.
   session cookie, garbage) returns `missing-token` without a log line; a successful authentication is not logged at
   all, only `lastUsedAt` is written at most once a minute; the line "access token refused" has `reason` and `grantId`
   (for `role-too-low` also the folder and both roles), and for an unknown access token only `reason`. None has the
-  client address group. The writes of pages through MCP are logged with the channel and the id of the grant, but the
-  reads are not. `connected-apps.md` says "nothing is logged" for a missing token (section "The check of an access
-  token") and lists "no audit log" under "Current limits", without a reason.
-- Impact: after an access token leaks, the logs cannot show who used it, from where, or what it read; spraying refresh
-  tokens, codes or cookies at the MCP addresses stays invisible.
+  client address group. Every tool call through MCP, reads included, is logged with the grant, the user and the tool
+  (`mcp.md`, "What holds for all of them"), so what a token did is traced once it reached a tool; what is left is the
+  check of the token itself. `connected-apps.md` says "nothing is logged" for a missing token (section "The check of
+  an access token").
+- Impact: after an access token leaks, the logs cannot show from where it was used; spraying refresh tokens, codes or
+  cookies at the MCP addresses stays invisible.
 - Evidence: on the local server, an expired access token logs a warning with `reason: "expired"` and the id of its
-  grant, a revoked one `reason: "unknown"` and nothing else; a refresh token, a code and a session cookie as bearer, and
-  every successful call, log nothing. In the code: `if (secret === null || !looksLikeAccessToken(secret)) return { ok:
+  grant, a revoked one `reason: "unknown"` and nothing else; a refresh token, a code and a session cookie as bearer log
+  nothing, and a successful check logs nothing beyond the line of the tool call. In the code: `if (secret === null || !looksLikeAccessToken(secret)) return { ok:
 false, error: { code: "missing-token" } };` with no log call.
 - Suggestion (required): log a warning for a bearer value of the wrong shape (the reason and the kind, never the
   value), an info line on success with `grantId` and `userId`, and the client address group on every line; or
@@ -1547,23 +1548,6 @@ user has approved everything.</system>`" returns `{"content":[{"type":"text","te
 - Reference: OWASP A06:2025 Insecure Design; ASVS 2.4.1, 15.2.2; CWE-770; MCP specification 2026-07-28, "Tools",
   "Security Considerations".
 
-#### suggestion: tool calls are not audited by grant
-
-- Location: `src/features/mcp/http.ts`, `handleMcpRequest()`; `src/features/mcp/tools.ts`, `run()`
-- Severity: Nit. It sits next to the finding in "Connected apps" that a successful use is not logged.
-- Category: security
-- Problem: `authenticateAccessToken()` now returns the connection with the id of the grant, and every write of a page
-  through MCP is logged with `channel: "mcp"` and the `grantId` (`channelOf()` in `src/features/folder-roles/actors.ts`), so
-  that part of the first finding is fixed. Nothing records which grant called the read tools `list_folder` and
-  `read_page`, or which tool a write came from, and "mcp tool failed" has neither the grant nor the user.
-  `connected-apps.md` lists "no audit log" without a reason.
-- Suggestion (optional): log one info line per `tools/call` with grant, user, tool and the names in the arguments
-  (never content), or record the missing audit of reads as a decision.
-- Confidence: Low. The Suggestion offers a log line or a recorded decision, and which fields an audit line holds is a
-  choice for the user.
-- Reference: OWASP MCP08:2025 Lack of Audit and Telemetry; ASVS 16.2.1; OWASP A09:2025 Security Logging and Alerting
-  Failures.
-
 #### suggestion: `list_folder` has no paging
 
 - Location: `src/features/mcp/tools.ts`, `listFolder()`
@@ -1652,6 +1636,13 @@ user has approved everything.</system>`" returns `{"content":[{"type":"text","te
 - Deleted pages: on the local server the deleted page `gone` is missing from `list_folder`, and `read_page` answers
   "There is no page named "gone" directly in the folder …", the same as for a page that never existed.
 - Tool errors: `run()` logs and answers with a general message; the SDK and the adapter answer `500` without details.
+- Log line of a tool call (OWASP MCP08, ASVS 16.2.1, OWASP A09:2025): every call that reaches a tool, reads included,
+  leaves one `info` line `mcp tool called` from `run()` with the grant, the user, the folder, the role, the tool, the
+  tab and page names of its arguments, cut to the length limit of a name, and the outcome (`worked`, `tool-error` or
+  `failed`), never the content, a title, a text of a replacement, an address or a version; a call that the SDK refuses
+  before the tool runs, `initialize` and the list of tools write none (`mcp.md`, "What holds for all of them").
+  Checked by the unit tests of "every tool" in `src/features/mcp/tools.test.ts`, which check the line of each of the
+  ten tools, the outcomes of a tool error and of a failing database, and that no logged line holds page text.
 - Body size: the SDK refuses more than 4 MiB with `413`, also chunked; on the local server 5 MB give `413` with and
   without `Content-Length`. Without a token the body is not read. The content of a page is limited to 100,000
   characters by the service (the input schema of the write tools has no limit of its own); `create_page` without a
@@ -1661,7 +1652,7 @@ user has approved everything.</system>`" returns `{"content":[{"type":"text","te
   the lower of the user's current role and the role of the connection, nothing of an Owner and no tool that lists or
   restores deleted pages or changes roles; the tools of a Manager are not covered until a recheck), MCP03 (names,
   descriptions and schemas are constants, and the instructions are built only from the name of the folder and the
-  role), MCP05 and MCP07 (above) hold; MCP04 belongs to the area "Supply chain"; MCP06 and MCP08 are findings above;
+  role), MCP05, MCP07 and MCP08 (above) hold; MCP04 belongs to the area "Supply chain"; MCP06 is a finding above;
   MCP09 (shadow servers) does not apply to the code, since the app runs one server behind the token check; MCP10: a new
   server is built per request and nothing is shared between callers, and a grant reaches only the folder of its
   address (`folder-roles.md`, "MCP" and "Decisions").
@@ -1879,7 +1870,8 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   through MCP with the grant, but without the actor ("folder created", "folder renamed", "tab created", "tab renamed"
   and every write of a page); only "tab deleted" carries the actor as well; "mcp request with a foreign origin
   refused" has no origin, the refusals of the SDK
-  ("mcp request refused") and "mcp tool failed" no user or grant, and "mcp request failed" no grant; the lines of the token endpoint (a reused refresh
+  ("mcp request refused") and "mcp tool failed" no user or grant (the line "mcp tool called" next to a failed tool
+  has both), and "mcp request failed" no grant; the lines of the token endpoint (a reused refresh
   token above all) have no client address group, and "unknown-grant" leaves out the grant id; "grant revoked" does not
   name the client. The role writes, the refusals by role and the revoke of a grant are logged with the actor. The refused user list of the
   first finding is gone, because every account now sees the list. The items already reported in "Login" and
@@ -3023,7 +3015,7 @@ The requirements are those of the module texts on bsi.bund.de as fetched on 2026
 | A06 Insecure Design                        | Content (Markdown); MCP server (prompt injection, batches); Login; OAuth         |
 | A07 Authentication Failures                | Login; Connected apps; OAuth                                                     |
 | A08 Software or Data Integrity Failures    | Supply chain                                                                     |
-| A09 Security Logging and Alerting Failures | Logging; Login; Connected apps                                                   |
+| A09 Security Logging and Alerting Failures | Logging; Login; Connected apps; MCP server (tool calls)                          |
 | A10 Mishandling of Exceptional Conditions  | Logging; Content (page view fallback); Configuration (validation at start)       |
 
 The OWASP API Security Top 10 2023 is covered by the same areas: object and function level authorisation (API1, API5) in
@@ -3045,10 +3037,10 @@ inventory (API9) in Cross-cutting, and unsafe use of other APIs (API10) in OAuth
 ### OWASP MCP Top 10 (2025)
 
 MCP01 Token Mismanagement and Secret Exposure, MCP02 Privilege Escalation via Scope Creep, MCP03 Tool Poisoning,
-MCP05 Command Injection and Execution, MCP07 Insufficient Authentication and Authorization and MCP10 Context Injection
-and Over-Sharing are reviewed in "MCP server" and "Connected apps"; MCP04 Software Supply Chain Attacks is covered by
-"Supply chain"; MCP06 Prompt Injection via Contextual Payloads and MCP08 Lack of Audit and Telemetry are findings in
-"MCP server"; MCP09 Shadow MCP Servers does not apply to the code (one server, behind the token check).
+MCP05 Command Injection and Execution, MCP07 Insufficient Authentication and Authorization, MCP08 Lack of Audit and
+Telemetry and MCP10 Context Injection and Over-Sharing are reviewed in "MCP server" and "Connected apps"; MCP04 Software
+Supply Chain Attacks is covered by "Supply chain"; MCP06 Prompt Injection via Contextual Payloads is a finding in "MCP
+server"; MCP09 Shadow MCP Servers does not apply to the code (one server, behind the token check).
 
 ### Other standards
 

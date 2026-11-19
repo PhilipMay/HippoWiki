@@ -431,6 +431,8 @@ describe("an unknown tool", () => {
 
     expectToolNotFound(answer, "delete_folder");
     for (const mock of Object.values(mocks)) expect(mock).not.toHaveBeenCalled();
+    // The call never reaches a tool, so it writes no line of a tool call.
+    expect(mocks.info).not.toHaveBeenCalledWith(expect.anything(), "mcp tool called");
   });
 });
 
@@ -1551,6 +1553,32 @@ describe("every tool", () => {
     ["delete_tab", { tab: "guides" }, mocks.deleteTab, WRITE_FAILED],
   ] as const;
 
+  /** The tab and page names of the arguments of each tool in `TOOLS`, as the log line of its call gives them. */
+  const NAMES: Record<(typeof TOOLS)[number][0], Record<string, string | null>> = {
+    list_folder: {},
+    read_page: { page: "setup" },
+    create_page: { name: "new" },
+    replace_page_content: { page: "setup" },
+    edit_page_content: { page: "setup" },
+    move_or_rename_page: { page: "setup", newTab: null, newName: "moved" },
+    delete_page: { page: "setup" },
+    create_tab: { name: "news" },
+    rename_tab: { tab: "guides", newName: "news" },
+    delete_tab: { tab: "guides" },
+  };
+
+  /** The fields of the log line of a call of the tool by the Manager connection, without the outcome. */
+  function calledLine(name: (typeof TOOLS)[number][0]) {
+    return {
+      grantId: MANAGER.connection.grantId,
+      userId: MANAGER.id,
+      folderId: FOLDER_ID,
+      role: "manager",
+      tool: name,
+      names: NAMES[name],
+    };
+  }
+
   beforeEach(() => {
     actor = MANAGER;
     mocks.listTabs.mockResolvedValue([]);
@@ -1574,6 +1602,7 @@ describe("every tool", () => {
 
       expect(errorOf(await callTool(name, args))).toBe(message);
       expect(mocks.error).toHaveBeenCalledExactlyOnceWith({ err, tool: name }, "mcp tool failed");
+      expect(mocks.info).toHaveBeenCalledExactlyOnceWith({ ...calledLine(name), outcome: "failed" }, "mcp tool called");
     },
   );
 
@@ -1619,5 +1648,51 @@ describe("every tool", () => {
     expect(
       errorOf(await callTool("replace_page_content", { page: "setup", version: 3, content: "# Setup 2" })),
     ).not.toContain(USER_TEXT_NOTE);
+  });
+
+  it.each(TOOLS)(
+    "%s logs one line with the grant, the user, the folder, the role, the tool, the names of its arguments and the outcome",
+    async (name, args) => {
+      await callTool(name, args);
+
+      expect(mocks.info).toHaveBeenCalledExactlyOnceWith({ ...calledLine(name), outcome: "worked" }, "mcp tool called");
+    },
+  );
+
+  it("logs a tool error as the outcome tool-error", async () => {
+    mocks.getPage.mockResolvedValue(null);
+
+    errorOf(await callTool("read_page", { page: "setup" }));
+
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+      { ...calledLine("read_page"), outcome: "tool-error" },
+      "mcp tool called",
+    );
+  });
+
+  it.each(TOOLS)("%s logs no content, title, text of a replacement, address or version", async (name, args) => {
+    await callTool(name, args);
+
+    // The titles and content of the page, the content and the texts of the replacements of the calls all hold "Setup"
+    // or "# New".
+    const logged = JSON.stringify([...mocks.info.mock.calls, ...mocks.warn.mock.calls, ...mocks.error.mock.calls]);
+    for (const text of ["Setup", "# New", "oldText", "newText", "https://", "version"]) {
+      expect(logged).not.toContain(text);
+    }
+  });
+
+  it("logs a page name longer than the length limit of a name cut to it", async () => {
+    mocks.getPage.mockResolvedValue(null);
+    const long = "a".repeat(NAME_MAX_LENGTH + 50);
+
+    await callTool("read_page", { tab: long, page: long });
+
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        names: { tab: "a".repeat(NAME_MAX_LENGTH), page: "a".repeat(NAME_MAX_LENGTH) },
+        outcome: "tool-error",
+      }),
+      "mcp tool called",
+    );
   });
 });

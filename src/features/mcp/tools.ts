@@ -37,6 +37,7 @@ import { TITLE_HEADING_MISSING_MESSAGE } from "@/features/pages/schema";
 import * as pageService from "@/features/pages/service";
 import { deletedPagesPath, folderPath, pagePath, tabPath } from "@/lib/addresses";
 import { logger } from "@/lib/logger";
+import { NAME_MAX_LENGTH } from "@/lib/name-limits";
 
 /** What the tools need to know about the wiki they serve and the connection they serve it to. */
 export type WikiToolsOptions = {
@@ -78,21 +79,65 @@ function toolError(message: string): CallToolResult {
 const READ_FAILED = "The wiki could not be read. Please try again later.";
 const WRITE_FAILED = "The change could not be stored. Please try again later.";
 
+/** The keys of the arguments of a tool that name a tab or a page, as the log line of a call gives them. */
+const NAME_KEYS = ["tab", "page", "name", "newTab", "newName"] as const;
+
+/** The tab and page names of the arguments of a call, `null` for "directly in the folder". */
+type LoggedNames = Partial<Record<(typeof NAME_KEYS)[number], string | null>>;
+
 /**
- * Runs a tool. An unexpected error, such as a database that cannot be reached, is logged and answered with a general
- * message: the SDK would otherwise pass the message of the error on to the client.
+ * The tab and page names of the arguments of a call, and nothing else of them: never content, replacements, a title, an
+ * address or a version. A name is the agent's own input, which the input schema does not check, so one longer than the
+ * length limit of a name is cut to it, and a line stays short.
+ */
+function namesOf(input: Record<string, unknown>): LoggedNames {
+  const names: LoggedNames = {};
+  for (const key of NAME_KEYS) {
+    const value = input[key];
+    if (value === null) names[key] = null;
+    else if (typeof value === "string") names[key] = value.slice(0, NAME_MAX_LENGTH);
+  }
+  return names;
+}
+
+/**
+ * Runs a tool and logs the call. An unexpected error, such as a database that cannot be reached, is logged and
+ * answered with a general message: the SDK would otherwise pass the message of the error on to the client. Every call
+ * that reaches a tool leaves one line `mcp tool called`, so that what an agent did can be traced to the grant, the user
+ * and the folder of its connection (see "What holds for all of them" in `spec/mcp.md`). A call that the SDK refuses
+ * before the tool runs never reaches this function.
  */
 async function run(
+  options: WikiToolsOptions,
   tool: string,
+  input: Record<string, unknown>,
   work: () => Promise<CallToolResult>,
   failed: string = READ_FAILED,
 ): Promise<CallToolResult> {
+  let answer: CallToolResult;
+  let outcome: "worked" | "tool-error" | "failed";
   try {
-    return await work();
+    answer = await work();
+    outcome = answer.isError ? "tool-error" : "worked";
   } catch (err) {
     logger.error({ err, tool }, "mcp tool failed");
-    return toolError(failed);
+    answer = toolError(failed);
+    outcome = "failed";
   }
+  const { actor, folder } = options;
+  logger.info(
+    {
+      grantId: actor.connection.grantId,
+      userId: actor.id,
+      folderId: folder.id,
+      role: actor.connection.role,
+      tool,
+      names: namesOf(input),
+      outcome,
+    },
+    "mcp tool called",
+  );
+  return answer;
 }
 
 /** The address of a path of the wiki: the full URL that a person can open. */
@@ -142,7 +187,7 @@ function sortByTabThenName<Page extends { name: string; tab: { name: string } | 
 
 /** The tool `list_folder`: the tabs and pages of the folder of the connection, the pages placed directly in it first. */
 export async function listFolder(options: WikiToolsOptions): Promise<CallToolResult> {
-  return run("list_folder", async () => {
+  return run(options, "list_folder", {}, async () => {
     const { actor, folder } = options;
     const tabs = await folderService.listTabs(actor, folder.id);
     // The service leaves deleted pages out.
@@ -182,7 +227,7 @@ export async function readPage(
   options: WikiToolsOptions,
   input: z.infer<typeof readPageInput>,
 ): Promise<CallToolResult> {
-  return run("read_page", async () => {
+  return run(options, "read_page", input, async () => {
     const tab = input.tab ?? null;
     const page = await pageService.getPage(options.actor, options.folder.name, tab, input.page);
     if (!page) return pageNotFound(options.folder.name, tab, input.page);
@@ -312,7 +357,9 @@ export async function createPage(
   input: z.infer<typeof createPageInput>,
 ): Promise<CallToolResult> {
   return run(
+    options,
     "create_page",
+    input,
     async () => {
       const { folder } = options;
       const place = await tabIdOf(options, input.tab);
@@ -353,7 +400,9 @@ export async function replacePageContent(
   input: z.infer<typeof replacePageContentInput>,
 ): Promise<CallToolResult> {
   return run(
+    options,
     "replace_page_content",
+    input,
     async () => {
       const tab = input.tab ?? null;
       const page = await pageService.getPage(options.actor, options.folder.name, tab, input.page);
@@ -450,7 +499,9 @@ export async function editPageContent(
   input: z.infer<typeof editPageContentInput>,
 ): Promise<CallToolResult> {
   return run(
+    options,
     "edit_page_content",
+    input,
     async () => {
       const tab = input.tab ?? null;
       const page = await pageService.getPage(options.actor, options.folder.name, tab, input.page);
@@ -482,7 +533,9 @@ export async function moveOrRenamePage(
   input: z.infer<typeof moveOrRenamePageInput>,
 ): Promise<CallToolResult> {
   return run(
+    options,
     "move_or_rename_page",
+    input,
     async () => {
       const tab = input.tab ?? null;
       const page = await pageService.getPage(options.actor, options.folder.name, tab, input.page);
@@ -530,7 +583,9 @@ export async function deletePage(
   input: z.infer<typeof deletePageInput>,
 ): Promise<CallToolResult> {
   return run(
+    options,
     "delete_page",
+    input,
     async () => {
       const tab = input.tab ?? null;
       const page = await pageService.getPage(options.actor, options.folder.name, tab, input.page);
@@ -583,7 +638,9 @@ export async function createTab(
   input: z.infer<typeof createTabInput>,
 ): Promise<CallToolResult> {
   return run(
+    options,
     "create_tab",
+    input,
     async () => {
       const created = await folderService.createTab(options.actor, options.folder.id, { name: input.name });
       if (created.ok) return storedTabResult(options, created.value);
@@ -613,7 +670,9 @@ export async function renameTab(
   input: z.infer<typeof renameTabInput>,
 ): Promise<CallToolResult> {
   return run(
+    options,
     "rename_tab",
+    input,
     async () => {
       const tab = await folderService.getTab(options.actor, options.folder.name, input.tab);
       if (!tab) return tabNotFound(options, input.tab);
@@ -652,7 +711,9 @@ export async function deleteTab(
   input: z.infer<typeof deleteTabInput>,
 ): Promise<CallToolResult> {
   return run(
+    options,
     "delete_tab",
+    input,
     async () => {
       const tab = await folderService.getTab(options.actor, options.folder.name, input.tab);
       if (!tab) return tabNotFound(options, input.tab);

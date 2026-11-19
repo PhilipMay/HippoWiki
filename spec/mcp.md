@@ -183,6 +183,12 @@ What holds for all of them:
   records the channel `mcp`, so that the browser shows it as "by <user> via mcp" and the tools as `mcp`; which app or
   connection made it is not recorded. The server log of the change names the channel `mcp` and the grant, and the log
   of a tab deletion also the number of pages.
+- Every call that reaches a tool is logged with one line at the level `info` (`run()` in
+  `src/features/mcp/tools.ts`), so that what an agent did, reads included, can be traced afterwards: the grant, the
+  user, the folder and the role of the connection, the tool, the tab and page names of its arguments (cut to the
+  length limit of a name) and the outcome: worked, a tool error, or failed. It never holds the content, a title, a
+  text of a replacement, an address or a version. Requests that reach no tool are not logged there: `initialize`, the
+  list of tools, and calls that the SDK refuses before the tool runs, such as an unknown tool or invalid arguments.
 - Every write tool of pages returns the page as stored: its name, title, tab, address and version, which a change
   counts up and a content save without a change and a move to the current name and place keep.
 - An address is the full URL of the folder, tab or page, which a person can open.

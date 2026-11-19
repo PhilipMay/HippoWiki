@@ -41,7 +41,7 @@ can be traced afterwards. The requirements are `spec/mcp-untrusted-content-requi
 ## Checklist
 
 - [x] Mark page text as user data
-- [ ] Log every tool call
+- [x] Log every tool call
 - [ ] Document prompt injection and the protocol revisions
 - [ ] Wrap-up
 

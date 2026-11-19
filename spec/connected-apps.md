@@ -154,4 +154,7 @@ change and of logging out other browsers are in `src/features/auth/components/`.
 - no renaming of an app and no warning before a grant expires
 - expired grants are not deleted by themselves
 - an admin cannot see or revoke the apps of users
-- no CORS, no rate limits of requests with an access token and no audit log
+- no CORS and no rate limits of requests with an access token
+- no audit log: the tool calls through MCP are logged with the grant (see "What holds for all of them" in `mcp.md`),
+  but the check of an access token and the other uses of an account are not recorded as an audit log (see "Audit log"
+  in `roadmap.md`)
