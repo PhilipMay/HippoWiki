@@ -23,6 +23,8 @@ file itself holds.
 - `spec/users-and-login.md`: How do accounts, passwords, the login and sessions work?
 - `spec/connected-apps.md`: Which AI apps has a user connected, and how is an access token checked?
 - `spec/mcp.md`: How do AI apps work with a folder through MCP?
+- `spec/mcp-untrusted-content-requirements.md`: What must change so that AI apps treat page text as user data, and
+  how are their tool calls traced?
 - `spec/oauth.md`: How does an AI app get access through OAuth?
 - `spec/optimistic-locking.md`: How are changes of the same page at the same time told apart?
 - `spec/folder-roles.md`: Who may see and do what with a folder?
