@@ -8,11 +8,12 @@ export default defineConfig({
   test: {
     projects: [
       {
-        // Unit tests next to the code; they mock the database and run in `npm run check`.
+        // Unit tests next to the code; they mock the database and run in `npm run check`. The pure helpers of the
+        // end-to-end tests in `e2e/support/` have unit tests as well.
         test: {
           name: "unit",
           environment: "node",
-          include: ["src/**/*.test.ts"],
+          include: ["src/**/*.test.ts", "e2e/support/**/*.test.ts"],
           exclude: ["src/**/*.cost.test.ts"],
         },
       },

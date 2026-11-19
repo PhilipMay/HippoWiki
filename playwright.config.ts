@@ -39,6 +39,8 @@ export default defineConfig({
     { name: "setup", testMatch: /auth\.setup\.ts$/ },
     {
       name: "chromium",
+      // Only the specs: the unit tests of the helpers in e2e/support/ are run by Vitest.
+      testMatch: /\.spec\.ts$/,
       // Every test starts logged in as the known normal user. A spec that needs the admin or no user sets its own
       // storage state with `test.use()`.
       use: { ...devices["Desktop Chrome"], storageState: USER_STORAGE_STATE },

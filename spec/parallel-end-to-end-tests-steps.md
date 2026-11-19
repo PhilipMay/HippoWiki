@@ -21,7 +21,7 @@ requirements are in `spec/parallel-end-to-end-tests-requirements.md`.
 ## Checklist
 
 - [x] Measure the times before
-- [ ] Worker settings
+- [x] Worker settings
 - [ ] A database and a development server per worker
 - [ ] A production run built once
 - [ ] Refuse more workers than servers
