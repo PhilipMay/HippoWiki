@@ -771,3 +771,74 @@ export async function changeOwnPassword(
   );
   return { ok: true, value: { user, headers: changed.value, apps } };
 }
+
+/** The password of the session user was checked and is right. */
+export type PasswordVerified = { user: SessionUser };
+
+export type VerifyPasswordError = WrongPassword | NotLoggedIn | Wait | Busy | Failed;
+
+/** The log messages of a check of the own password that has to wait, per limit. */
+const CHECK_WAIT_LOG_MESSAGES: Record<WaitLimit, string> = {
+  failures: "password check refused: waiting after failed logins",
+  window: "password check refused: too many logins for the name within the hour",
+};
+
+/**
+ * Checks the password of the user of the session, such as before the approval of an app on the consent page. The
+ * check is counted like a login of the name of the user from the client address group of the request
+ * (`countedPasswordCheck()`, `clientAddressGroup` as for `logIn()`): a wrong password counts as a failed login and is
+ * logged like one, a right one like a successful login, and during a wait the password is not checked. An empty
+ * password is answered `wrong-password` without a hash and without being counted, because nothing was entered.
+ */
+export async function verifyPassword(
+  password: string,
+  headers: Headers,
+  clientAddressGroup: string,
+): Promise<Result<PasswordVerified, VerifyPasswordError>> {
+  let session: RequestSession | null;
+  try {
+    session = await getRequestSession(headers);
+  } catch (err) {
+    logger.error({ err }, "failed to check the password");
+    return { ok: false, error: { code: "failed" } };
+  }
+  if (!session) return { ok: false, error: { code: "not-logged-in" } };
+  const { user } = session;
+  const { id: userId, name } = user;
+  if (password === "") return { ok: false, error: { code: "wrong-password" } };
+  const clientAddress = countedGroup(clientAddressGroup, { userId, name }, "password check");
+
+  const checked = await countedPasswordCheck(name, clientAddress, async (): Promise<PasswordCheck<null>> => {
+    try {
+      const auth = await getAuth();
+      await auth.api.verifyPassword({ body: { password }, headers });
+      return { right: true, value: null };
+    } catch (err) {
+      if (isAPIError(err) && err.statusCode === 400 && WRONG_PASSWORD_CODES.includes(err.body?.code ?? "")) {
+        return { right: false };
+      }
+      throw err;
+    }
+  });
+
+  switch (checked.status) {
+    case "right":
+      return { ok: true, value: { user } };
+    case "wait":
+      logger.warn({ userId, name, clientAddress, waitMs: checked.waitMs }, CHECK_WAIT_LOG_MESSAGES[checked.limit]);
+      return { ok: false, error: { code: "wait", waitMs: checked.waitMs } };
+    case "wrong":
+      logger.warn({ userId, name, clientAddress }, "password check refused: wrong password");
+      return { ok: false, error: { code: "wrong-password" } };
+    case "not-checked": {
+      const { err } = checked;
+      if (err instanceof PasswordHashBusyError) {
+        logger.warn({ userId }, "too many password hashes are running, password not checked");
+        return { ok: false, error: { code: "busy" } };
+      }
+      if (isAPIError(err) && err.statusCode === 401) return { ok: false, error: { code: "not-logged-in" } };
+      logger.error({ err, userId }, "failed to check the password");
+      return { ok: false, error: { code: "failed" } };
+    }
+  }
+}

@@ -1189,3 +1189,37 @@ describe("logOutOtherSessions", () => {
     });
   });
 });
+
+describe("verifyPassword", () => {
+  it("accepts the password of the session user and refuses another, also the password of another user", async () => {
+    await createUser({ name: "alice", mustChangePassword: false });
+    await createUser({ name: "bob", mustChangePassword: false, password: "password-of-bob" });
+    const { headers, user } = await logInAs("alice");
+
+    expect(await authService.verifyPassword(TEST_PASSWORD, headers, SHARED)).toEqual({ ok: true, value: { user } });
+    expect(await authService.verifyPassword("password-of-bob", headers, SHARED)).toEqual({
+      ok: false,
+      error: { code: "wrong-password" },
+    });
+    expect(await authService.verifyPassword(WRONG_PASSWORD, new Headers(), SHARED)).toEqual({
+      ok: false,
+      error: { code: "not-logged-in" },
+    });
+  });
+
+  it("makes the next login of the name from the group wait after 5 wrong passwords", async () => {
+    await createUser({ name: "alice", mustChangePassword: false });
+    const { headers } = await logInAs("alice");
+
+    const results = [];
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      results.push(await authService.verifyPassword(WRONG_PASSWORD, headers, SHARED));
+    }
+    const check = await authService.verifyPassword(TEST_PASSWORD, headers, SHARED);
+    const login = await authService.logIn({ name: "alice", password: TEST_PASSWORD }, new Headers(), SHARED);
+
+    expect(results).toEqual(Array(5).fill({ ok: false, error: { code: "wrong-password" } }));
+    expect(check).toMatchObject({ ok: false, error: { code: "wait" } });
+    expect(login).toMatchObject({ ok: false, error: { code: "wait" } });
+  });
+});

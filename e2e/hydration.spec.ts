@@ -53,6 +53,7 @@ test.describe("as a normal user", () => {
     for (const label of ["30 days", "90 days", "365 days"]) {
       await expect(main.getByLabel(label)).toBeDisabled();
     }
+    await expect(main.getByLabel("Your password")).toHaveAttribute("readonly");
     await expect(main.getByRole("button", { name: "Approve" })).toBeDisabled();
     await expect(main.getByRole("button", { name: "Deny" })).toBeDisabled();
     // The answer to the app cannot be sent by a plain form: forms stay on this site. The note is in a `noscript`

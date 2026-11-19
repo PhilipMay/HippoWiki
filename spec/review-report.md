@@ -8,7 +8,7 @@
   tests cover the security rules of the specs well. The weak points are availability (unbounded bodies and batches, a lockout per name in the default
   configuration), the password policy, the trust that the OAuth
   server gives to clients nobody verified, and documentation that ASVS Level 2 asks for.
-- Findings: 101 in all, 0 Blocker, 1 Major, 62 Minor and 38 Nit (51 `issue:`, 18 `suggestion:`, 27 `nit:` and 5
+- Findings: 100 in all, 0 Blocker, 1 Major, 61 Minor and 38 Nit (51 `issue:`, 18 `suggestion:`, 27 `nit:` and 4
   `question:`). Accepted deviations: 20. Of the 96 Suggestions with a confidence (a `question:` has none), 12 are High,
   49 Medium and 35 Low.
 - To fix first:
@@ -955,7 +955,8 @@ finding of the review report" in `step-plan-workflow.md` describes.
   login after the logout. Users cannot be deleted; `Session` and `OAuthGrant` cascade on a deleted user.
 - The forced change blocks everything: every query and action calls `requireUser()`, only `/change-password` uses
   `requireSession()`, and access tokens and grants check `mustChangePassword`.
-- Better Auth (ASVS 6.3.4): only `signInUsername`, `signOut`, `getSession` and `changePassword` are called; no route
+- Better Auth (ASVS 6.3.4): only `signInUsername`, `signOut`, `getSession`, `changePassword` and `verifyPassword` are
+  called; no route
   handler is mounted, sign-up is off, and a lint rule keeps `@/lib/auth` to the auth service. No login path the specs
   do not describe.
 - Admin setup (ASVS 6.3.2, CWE-798): it creates the admin only when there is none, never overwrites it, never logs the
@@ -965,7 +966,8 @@ finding of the review report" in `step-plan-workflow.md` describes.
   6.2.10); there are no password hints or secret questions (ASVS 6.4.2); every session is checked against the database
   on the server (ASVS 7.2.1) with a random reference token (ASVS 7.2.2); the absolute lifetime of 30 days is documented
   (ASVS 7.3.2); every page that needs a login shows "Log out" in the header (ASVS 7.4.4); the only change of an
-  authentication attribute, the password, needs the current password (ASVS 7.5.1; see the question in "Connected apps");
+  authentication attribute, the password, needs the current password, and so does the approval of an app (ASVS 7.5.1;
+  see "Connected apps");
   there is no reset of a forgotten password, which `users-and-login.md` lists as a limit, so ASVS 6.4.3 has nothing to
   check.
 - Own password change and the other sessions (ASVS 6.2.2, 7.4.3, 7.5.2): every account changes its own password at
@@ -1043,23 +1045,6 @@ false, error: { code: "missing-token" } };` with no log call.
   user, and offers a documented decision instead, so the user has to choose.
 - Reference: OWASP A07:2025 Authentication Failures; ASVS 7.4.5, 7.4.2; CWE-613.
 
-#### question: approving an OAuth grant needs no new authentication
-
-- Location: `src/features/oauth/actions.ts`, `approve()`
-- Severity: Minor. It needs a stolen session first; the question is whether the step from a session to a credential of
-  its own should cost more.
-- Category: security
-- Problem: the approval needs only the session. A grant lives as long as chosen, up to 365 days, and does not end with
-  the session that created it, so whoever holds a stolen session cookie for a moment can turn it into access that
-  outlives a logout and the 30 days of the session. ASVS 7.5.1 asks for a new authentication before changes to what
-  the account uses to authenticate; a new credential is such a change in effect.
-- Impact: a short session theft (a shared computer, a leaked cookie) becomes access for up to a year, with the role
-  Writer write access to a folder, visible only on `/account`.
-- Evidence: `const user = await requireUser();` and then `authorizationService.createCode()`.
-- Suggestion (optional): ask for the password again before a grant is approved (or for grants longer than 30 days),
-  or document that the session alone is enough as a decision with its reason.
-- Reference: OWASP A07:2025 Authentication Failures; ASVS 7.5.1; CWE-306.
-
 #### nit: a bearer value of the wrong shape is answered without `error="invalid_token"`
 
 - Location: `src/features/grants/service.ts`, `authenticateAccessToken()` and `bearerTokenOf()`;
@@ -1117,6 +1102,12 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
 - A removed user, folder or client: grants are deleted with each of them (`onDelete: Cascade`).
 - Lifetimes: only 30, 90 or 365 days, and `expiresAt` cannot be empty, so there is no grant without an end.
 - Two `Authorization` headers: Node.js keeps the first and drops the others, so the value is never ambiguous.
+- A new authentication before an approval (ASVS 7.5.1, CWE-306): "Approve" on the consent page needs the password of
+  the user every time, whatever lifetime is chosen; anything but the right password creates no code and no grant. A
+  wrong password counts as a failed login of the name from the client address group, and during a wait the password
+  is not checked. A stolen session alone can therefore not be turned into a grant that outlives it. Fixed after the
+  review and checked by the unit tests of `approve()` and `verifyPassword()`, `integration/auth-service.test.ts` and
+  `e2e/oauth.spec.ts`.
 - Standards cross-check: the limit of grants per user is counted under a lock of the user row (ASVS 2.3.4); access
   tokens are reference tokens, not self-contained, so ASVS 9.1 does not apply; their type and purpose (ASVS 9.2.2) and
   their audience (ASVS 9.2.3) are checked by the separate prefixes and hash columns and by accepting them only at the
@@ -2969,37 +2960,37 @@ Level 3 requirements are named only where they were cheap to meet: 3.4.7, 3.4.8,
 The requirements are those of the module texts on bsi.bund.de as fetched on 2026-11-14. Requirements marked
 "ENTFALLEN" there are left out.
 
-| Requirement                                                       | Covered in                                                                             |
-| ----------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `CON.10.A1` authentication, limits on failed logins, notification | Login (common passwords reviewed; findings on the notification and the lockout)        |
-| `CON.10.A2` access control                                        | Access control                                                                         |
-| `CON.10.A3` session management                                    | Login                                                                                  |
-| `CON.10.A4` controlled inclusion of content, redirects            | Access control; OAuth (redirects to the client); Content                               |
-| `CON.10.A5` upload functions                                      | not applicable: no uploads                                                             |
-| `CON.10.A6` protection against automated use                      | Login; OAuth; MCP server                                                               |
-| `CON.10.A7` protection of confidential data                       | Browser security; Login; Cross-cutting                                                 |
-| `CON.10.A8` input validation and output encoding                  | Content; Access control                                                                |
-| `CON.10.A9` protection against SQL injection                      | Cross-cutting (parameterised queries)                                                  |
-| `CON.10.A10` restrictive release of security information          | Logging; Browser security; Configuration                                               |
-| `CON.10.A11` software architecture                                | Cross-cutting (finding on the security overview)                                       |
-| `CON.10.A12` verification of essential changes                    | Login (current password at the change); Connected apps (question on re-authentication) |
-| `CON.10.A13` error handling                                       | Logging                                                                                |
-| `CON.10.A14` secure HTTP configuration                            | Browser security                                                                       |
-| `CON.10.A15` prevention of CSRF                                   | Browser security; Cross-cutting (tests)                                                |
-| `CON.10.A16` multi-factor authentication                          | Login (finding on the missing reason)                                                  |
-| `CON.10.A17` prevention of resource blocking (high)               | Login; Content; MCP server; OAuth                                                      |
-| `CON.10.A18` cryptographic protection of confidential data (high) | Cross-cutting; Configuration (no TLS to the database)                                  |
-| `APP.3.1.A1` authentication                                       | Login; Connected apps; OAuth                                                           |
-| `APP.3.1.A4` controlled inclusion of files and content            | Content; OAuth (metadata fetch)                                                        |
-| `APP.3.1.A7` protection against automated use                     | Login; OAuth; MCP server                                                               |
-| `APP.3.1.A8` system architecture                                  | Cross-cutting                                                                          |
-| `APP.3.1.A9` procurement                                          | not applicable: the app is developed, not procured                                     |
-| `APP.3.1.A11` secure connection of backend systems                | Configuration (database role, no TLS to the database)                                  |
-| `APP.3.1.A12` secure configuration                                | Configuration                                                                          |
-| `APP.3.1.A14` protection of confidential data                     | Browser security; Login; Cross-cutting                                                 |
-| `APP.3.1.A21` secure HTTP configuration                           | Browser security                                                                       |
-| `APP.3.1.A22` penetration test and revision                       | this review; a penetration test of the deployment is a deployment check                |
-| `APP.3.1.A20` web application firewall (high)                     | a deployment decision; not required by the target level                                |
+| Requirement                                                       | Covered in                                                                           |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `CON.10.A1` authentication, limits on failed logins, notification | Login (common passwords reviewed; findings on the notification and the lockout)      |
+| `CON.10.A2` access control                                        | Access control                                                                       |
+| `CON.10.A3` session management                                    | Login                                                                                |
+| `CON.10.A4` controlled inclusion of content, redirects            | Access control; OAuth (redirects to the client); Content                             |
+| `CON.10.A5` upload functions                                      | not applicable: no uploads                                                           |
+| `CON.10.A6` protection against automated use                      | Login; OAuth; MCP server                                                             |
+| `CON.10.A7` protection of confidential data                       | Browser security; Login; Cross-cutting                                               |
+| `CON.10.A8` input validation and output encoding                  | Content; Access control                                                              |
+| `CON.10.A9` protection against SQL injection                      | Cross-cutting (parameterised queries)                                                |
+| `CON.10.A10` restrictive release of security information          | Logging; Browser security; Configuration                                             |
+| `CON.10.A11` software architecture                                | Cross-cutting (finding on the security overview)                                     |
+| `CON.10.A12` verification of essential changes                    | Login (current password at the change); Connected apps (password before an approval) |
+| `CON.10.A13` error handling                                       | Logging                                                                              |
+| `CON.10.A14` secure HTTP configuration                            | Browser security                                                                     |
+| `CON.10.A15` prevention of CSRF                                   | Browser security; Cross-cutting (tests)                                              |
+| `CON.10.A16` multi-factor authentication                          | Login (finding on the missing reason)                                                |
+| `CON.10.A17` prevention of resource blocking (high)               | Login; Content; MCP server; OAuth                                                    |
+| `CON.10.A18` cryptographic protection of confidential data (high) | Cross-cutting; Configuration (no TLS to the database)                                |
+| `APP.3.1.A1` authentication                                       | Login; Connected apps; OAuth                                                         |
+| `APP.3.1.A4` controlled inclusion of files and content            | Content; OAuth (metadata fetch)                                                      |
+| `APP.3.1.A7` protection against automated use                     | Login; OAuth; MCP server                                                             |
+| `APP.3.1.A8` system architecture                                  | Cross-cutting                                                                        |
+| `APP.3.1.A9` procurement                                          | not applicable: the app is developed, not procured                                   |
+| `APP.3.1.A11` secure connection of backend systems                | Configuration (database role, no TLS to the database)                                |
+| `APP.3.1.A12` secure configuration                                | Configuration                                                                        |
+| `APP.3.1.A14` protection of confidential data                     | Browser security; Login; Cross-cutting                                               |
+| `APP.3.1.A21` secure HTTP configuration                           | Browser security                                                                     |
+| `APP.3.1.A22` penetration test and revision                       | this review; a penetration test of the deployment is a deployment check              |
+| `APP.3.1.A20` web application firewall (high)                     | a deployment decision; not required by the target level                              |
 
 ### BSI IT-Grundschutz: SYS.1.6 and OPS.1.1.5, as far as they concern the code or the repository
 
@@ -3046,7 +3037,7 @@ inventory (API9) in Cross-cutting, and unsafe use of other APIs (API10) in OAuth
 - Covered: CWE-79 (Content), CWE-89 (Cross-cutting), CWE-352 (Browser security), CWE-862, CWE-863, CWE-284 and CWE-639
   (Access control, Connected apps), CWE-22 (Content: names are `[a-z0-9-]` only, no file paths from input), CWE-78 and
   CWE-77 (Configuration: no command built from input), CWE-94 (Content: no `eval`), CWE-20 (Access control, Content),
-  CWE-200 (Access control, Logging), CWE-306 (Connected apps, question on re-authentication), CWE-918 (OAuth), CWE-770
+  CWE-200 (Access control, Logging), CWE-306 (Connected apps, password before an approval), CWE-918 (OAuth), CWE-770
   (Content, Login, MCP server, OAuth), CWE-502 (Cross-cutting: JSON only, no revivers).
 - Not applicable: CWE-787, CWE-416, CWE-125, CWE-120, CWE-476, CWE-121 and CWE-122 (memory safety; the app runs in a
   managed runtime), CWE-434 (no uploads).

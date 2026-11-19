@@ -124,11 +124,13 @@ test("the consent form locks its choices and both buttons while it sends the ans
   const callback = await awaitCallback(page);
   await page.goto(authorizeUrl(clientId, mcpAddress(handbook)));
   const main = page.getByRole("main");
+  await main.getByLabel("Your password").fill(KNOWN_USER.password);
 
   await submitHeld(page, main.getByRole("button", { name: "Approve" }), async () => {
     await expect(main.getByRole("button", { name: "Approve" })).toBeDisabled();
     await expect(main.getByRole("button", { name: "Deny" })).toBeDisabled();
     await expect(main.getByRole("radio", { name: "90 days" })).toBeDisabled();
+    await expect(main.getByLabel("Your password")).toHaveAttribute("readonly");
   });
 
   expect(await callback()).toHaveProperty("code");

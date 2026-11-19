@@ -1,8 +1,9 @@
 // A diagnostic for the setup of a reverse proxy: with `HIPPOWIKI_LOG_CLIENT_ADDRESS=true` every request that passes
-// the proxy of Next.js, and every Server Action that counts a password (the login and the password changes), logs the
-// headers that say where the request came from. Next.js never shows the application the address of the connecting
-// peer, so these headers are all it can know about the client. The log shows whether the reverse proxy writes them,
-// whether a client can forge them and whether the container network keeps the real source address.
+// the proxy of Next.js, and every Server Action that counts a password (the login, the password changes and the
+// approval of an app), logs the headers that say where the request came from. Next.js never shows the application
+// the address of the connecting peer, so these headers are all it can know about the client. The log shows whether
+// the reverse proxy writes them, whether a client can forge them and whether the container network keeps the real
+// source address.
 
 import { getServerEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";
@@ -26,8 +27,11 @@ export const MAX_PROBE_VALUE_LENGTH = 200;
 
 export type ProbeHeaders = Record<(typeof PROBE_HEADERS)[number], string | null>;
 
-/** The Server Actions that read the client address of their request: the login and the password changes. */
-export type ActionProbeSource = "login" | "password-change";
+/**
+ * The Server Actions that read the client address of their request: the login, the password changes and the approval
+ * of an app on the consent page.
+ */
+export type ActionProbeSource = "login" | "password-change" | "consent";
 
 /** Where the probe was taken: in the proxy of Next.js, with the method and the path, or in a Server Action. */
 export type ProbeSource = { source: "proxy"; method: string; path: string } | { source: ActionProbeSource };

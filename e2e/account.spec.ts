@@ -10,6 +10,7 @@ import {
   createUser,
   getTestDb,
   resetTestDatabase,
+  TEST_PASSWORD,
 } from "./support/database";
 import { connect, listFolderStatus, mcpAddress, refresh, registerClient } from "./support/oauth";
 import { expect, hydrating, test } from "./support/test";
@@ -305,7 +306,13 @@ test("a user sees only their own apps, also when another user connects one", asy
   await bobPage.goto("/login");
   await submitLogin(bobPage, "bob");
   await expect(bobPage).toHaveURL("/folders");
-  const tokens = await connect(bobPage, bobContext.request, await registerClient(request, "Bob's connector"), reader);
+  const tokens = await connect(
+    bobPage,
+    bobContext.request,
+    await registerClient(request, "Bob's connector"),
+    reader,
+    TEST_PASSWORD,
+  );
   await bobContext.close();
   const bobsGrant = await getTestDb().oAuthGrant.findFirstOrThrow({ where: { userId: bob.id } });
   await createGrant({ owner: KNOWN_USER, name: "Alice's connector" });

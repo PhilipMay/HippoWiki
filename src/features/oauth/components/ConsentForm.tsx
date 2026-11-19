@@ -9,10 +9,11 @@ import MuiLink from "@mui/material/Link";
 import Radio from "@mui/material/Radio";
 import RadioGroup from "@mui/material/RadioGroup";
 import Stack from "@mui/material/Stack";
+import TextField from "@mui/material/TextField";
 import { useId, useRef, useState, useTransition } from "react";
 
 import Link from "@/components/Link";
-import { LIFETIME_FIELD, type ConsentFormAction, type ConsentFormState } from "@/features/oauth/forms";
+import { LIFETIME_FIELD, PASSWORD_FIELD, type ConsentFormAction, type ConsentFormState } from "@/features/oauth/forms";
 import {
   AUTHORIZATION_PARAMS,
   DEFAULT_GRANT_LIFETIME,
@@ -21,6 +22,7 @@ import {
   type AuthorizationParams,
 } from "@/features/oauth/schema";
 import { accountPath } from "@/lib/addresses";
+import { useFocusOnFirstError } from "@/lib/form-hooks";
 import { useHydrated } from "@/lib/hydration";
 
 type ConsentFormProps = {
@@ -35,13 +37,19 @@ type ConsentFormProps = {
 };
 
 /**
- * The form of the consent page: how long the app keeps its access, and "Approve" and "Deny". Both call their Server
- * Action and then open the address it returns, the redirect address of the app. A plain form could not do that: the
- * Content Security Policy keeps forms on this site (`form-action 'self'`), so the page needs JavaScript.
+ * The form of the consent page: how long the app keeps its access, the password of the user, and "Approve" and
+ * "Deny". "Approve" needs the password, "Deny" does not. Both call their Server Action and then open the address it
+ * returns, the redirect address of the app. A plain form could not do that: the Content Security Policy keeps forms on
+ * this site (`form-action 'self'`), so the page needs JavaScript.
  */
 export default function ConsentForm({ params, limitReached, approveAction, denyAction }: ConsentFormProps) {
   const [state, setState] = useState<ConsentFormState>({});
   const [lifetime, setLifetime] = useState<string>(DEFAULT_GRANT_LIFETIME);
+  const [password, setPassword] = useState("");
+  const passwordRef = useRef<HTMLInputElement>(null);
+  const passwordError = state.fieldErrors?.password?.[0];
+  // A refused password is focused, emptied by `answer`; the chosen lifetime stays.
+  useFocusOnFirstError(state, [["password", passwordRef]]);
   const [pending, startTransition] = useTransition();
   const formRef = useRef<HTMLFormElement>(null);
   const lifetimeLabelId = useId();
@@ -55,9 +63,13 @@ export default function ConsentForm({ params, limitReached, approveAction, denyA
     const form = formRef.current;
     if (!form) return;
     const formData = new FormData(form);
+    // Only "Approve" needs the password; it is not sent with "Deny".
+    if (action === denyAction) formData.delete(PASSWORD_FIELD);
     startTransition(async () => {
       const next = await action(formData);
       setState(next);
+      // A refused password is not submitted again by mistake.
+      if (next.fieldErrors?.password) setPassword("");
       // A full page load to the app; `assign` keeps the consent page in the history, as a redirect would not, but
       // the code it carried works only once.
       if (next.redirectTo !== undefined) window.location.assign(next.redirectTo);
@@ -105,6 +117,22 @@ export default function ConsentForm({ params, limitReached, approveAction, denyA
             ))}
           </RadioGroup>
         </FormControl>
+      )}
+      {!limitReached && (
+        <TextField
+          name={PASSWORD_FIELD}
+          label="Your password"
+          type="password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          required
+          fullWidth
+          inputRef={passwordRef}
+          error={!!passwordError}
+          helperText={passwordError ?? "Needed to approve, not to deny"}
+          autoComplete="current-password"
+          slotProps={{ htmlInput: { readOnly: locked } }}
+        />
       )}
       <Stack direction="row" spacing={2}>
         {!limitReached && (

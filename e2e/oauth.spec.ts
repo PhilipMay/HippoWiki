@@ -13,6 +13,7 @@ import {
   TEST_PASSWORD,
 } from "./support/database";
 import {
+  approve,
   authorizeUrl,
   awaitCallback,
   connect,
@@ -333,7 +334,7 @@ test.describe("the whole flow", () => {
     expect(await getTestDb().oAuthCode.count()).toBe(0);
     expect(errors).toEqual([]);
 
-    await page.getByRole("button", { name: "Approve" }).click();
+    await approve(page);
 
     // The client gets the code with its state and the issuer.
     const answer = await callback();
@@ -413,7 +414,7 @@ test.describe("the whole flow", () => {
 
     await expect(page).toHaveURL(authorizeUrl(clientId, reader));
     await expect(page.getByRole("main").getByText("newcomer", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Approve" }).click();
+    await approve(page, "my-own-password");
 
     const { code } = await callback();
     expect((await exchange(request, clientId, code ?? "", reader)).status()).toBe(200);
@@ -516,7 +517,7 @@ test.describe("the consent page, as a logged-in user", () => {
     // Other apps are connected in another tab while the page is open.
     for (let index = 0; index < 50; index += 1) await createGrant({ owner: KNOWN_USER, folder: projects });
 
-    await page.getByRole("button", { name: "Approve" }).click();
+    await approve(page);
 
     await expect(page.getByRole("main").getByRole("alert")).toHaveText(
       "You already have 50 connected apps, the most allowed. Revoke an app on your account page first.",
@@ -537,7 +538,7 @@ test.describe("the consent page, as a logged-in user", () => {
     });
     await page.goto(authorizeUrl(clientId, reader));
 
-    await page.getByRole("button", { name: "Approve" }).click();
+    await approve(page);
 
     const main = page.getByRole("main");
     await expect(main.getByRole("alert")).toHaveText("Returning to the app…");
@@ -548,13 +549,14 @@ test.describe("the consent page, as a logged-in user", () => {
     expect(await getTestDb().oAuthCode.count()).toBe(1);
   });
 
-  test("deny sends the client access_denied with its state and the issuer, and grants nothing", async ({
+  test("deny, without a password, sends the client access_denied with its state and the issuer, and grants nothing", async ({
     page,
     request,
   }) => {
     const clientId = await registerClient(request);
     const callback = await awaitCallback(page);
     await page.goto(authorizeUrl(clientId, reader));
+    await expect(page.getByRole("main").getByLabel("Your password")).toHaveValue("");
 
     await page.getByRole("button", { name: "Deny" }).click();
 
@@ -574,7 +576,7 @@ test.describe("the consent page, as a logged-in user", () => {
     await page.goto(authorizeUrl(clientId, reader));
 
     await page.getByRole("radio", { name: "30 days" }).check();
-    await page.getByRole("button", { name: "Approve" }).click();
+    await approve(page);
     const { code } = await callback();
     expect((await exchange(request, clientId, code ?? "", reader)).status()).toBe(200);
 
@@ -681,7 +683,7 @@ test.describe("the consent page, as a logged-in user", () => {
     await expect(main.getByText(/scope|\bread the wiki\b/i)).toHaveCount(0);
     expect(errors).toEqual([]);
 
-    await page.getByRole("button", { name: "Approve" }).click();
+    await approve(page);
     const { code } = await callback();
     expect((await exchange(request, clientId, code ?? "", mcpAddress(projects, "writer"))).status()).toBe(200);
     expect(await getTestDb().oAuthGrant.findFirstOrThrow()).toMatchObject({ folderId: projects.id, role: "writer" });
@@ -705,7 +707,7 @@ test.describe("the consent page, as a logged-in user", () => {
       await expect(main.getByText(/delete pages, and create, rename and delete tabs/)).toBeVisible();
       expect(errors).toEqual([]);
 
-      await page.getByRole("button", { name: "Approve" }).click();
+      await approve(page);
       const { code } = await callback();
       const response = await exchange(request, clientId, code ?? "", manager);
       expect(response.status()).toBe(200);
@@ -756,7 +758,7 @@ test.describe("the consent page, as a logged-in user", () => {
     const clientId = await registerClient(request);
     const callback = await awaitCallback(page);
     await page.goto(authorizeUrl(clientId, reader, { scope: "write admin openid" }));
-    await page.getByRole("button", { name: "Approve" }).click();
+    await approve(page);
     const { code } = await callback();
 
     const response = await exchange(request, clientId, code ?? "", reader);
@@ -841,7 +843,7 @@ test.describe("the consent page, as a logged-in user", () => {
         });
       });
 
-    await page.getByRole("button", { name: "Approve" }).click();
+    await approve(page);
 
     await expect(page.getByRole("main").getByRole("alert")).toHaveText(/This request is no longer valid/);
     await expect(page).toHaveURL(authorizeUrl(clientId, reader));
@@ -854,7 +856,7 @@ test.describe("the consent page, as a logged-in user", () => {
     const other = await registerClient(request, "Other connector");
     const callback = await awaitCallback(page);
     await page.goto(authorizeUrl(clientId, reader));
-    await page.getByRole("button", { name: "Approve" }).click();
+    await approve(page);
     const { code } = await callback();
 
     const stolen = await exchange(request, other, code ?? "", reader);
@@ -864,5 +866,72 @@ test.describe("the consent page, as a logged-in user", () => {
     // The failed exchange used the code up.
     expect((await exchange(request, clientId, code ?? "", reader)).status()).toBe(400);
     expect(await getTestDb().oAuthGrant.count()).toBe(0);
+  });
+});
+
+test.describe("the password before an approval", () => {
+  test.use({ storageState: USER_STORAGE_STATE });
+
+  test("an approval without the password or with a wrong one grants nothing and keeps the lifetime; the right one connects", async ({
+    page,
+    request,
+  }) => {
+    const errors = collectErrors(page);
+    const clientId = await registerClient(request);
+    const callback = await awaitCallback(page);
+    await page.goto(authorizeUrl(clientId, reader));
+    const main = page.getByRole("main");
+    const password = main.getByLabel("Your password");
+    await expect(password).toHaveAttribute("type", "password");
+    await expect(password).toHaveAttribute("autocomplete", "current-password");
+    await page.getByRole("radio", { name: "30 days" }).check();
+
+    await page.getByRole("button", { name: "Approve" }).click();
+    await expect(main.getByText("Wrong password", { exact: true })).toBeVisible();
+    await expect(password).toBeFocused();
+
+    await approve(page, "wrong-password");
+    await expect(password).toHaveValue("");
+    await expect(main.getByText("Wrong password", { exact: true })).toBeVisible();
+    await expect(page.getByRole("radio", { name: "30 days" })).toBeChecked();
+    expect(await getTestDb().oAuthCode.count()).toBe(0);
+    expect(await getTestDb().oAuthGrant.count()).toBe(0);
+
+    await approve(page);
+    const { code } = await callback();
+    const response = await exchange(request, clientId, code ?? "", reader);
+    expect(response.status()).toBe(200);
+    const grant = await getTestDb().oAuthGrant.findFirstOrThrow();
+    expect(Math.round((grant.expiresAt.getTime() - grant.createdAt.getTime()) / (24 * 60 * 60 * 1000))).toBe(30);
+    expect(errors).toEqual([]);
+  });
+
+  test.describe("from one client address group", () => {
+    // The client address of the tests, after the one trusted proxy of the end-to-end server (`playwright.config.ts`).
+    test.use({ extraHTTPHeaders: { "x-forwarded-for": "192.0.2.40" } });
+
+    test("after 5 wrong passwords the next approval waits without checking the password, and grants nothing", async ({
+      page,
+      request,
+    }) => {
+      const clientId = await registerClient(request);
+      await page.goto(authorizeUrl(clientId, reader));
+      const main = page.getByRole("main");
+      const password = main.getByLabel("Your password");
+
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        await approve(page, "wrong-password");
+        // The answer empties the field that was just filled: only then is the next approval sent.
+        await expect(password).toHaveValue("");
+        await expect(main.getByText("Wrong password", { exact: true })).toBeVisible();
+      }
+      await approve(page);
+
+      await expect(
+        main.getByText("Too many wrong passwords. Please try again in 1 minute.", { exact: true }),
+      ).toBeVisible();
+      expect(await getTestDb().oAuthCode.count()).toBe(0);
+      expect(await getTestDb().oAuthGrant.count()).toBe(0);
+    });
   });
 });

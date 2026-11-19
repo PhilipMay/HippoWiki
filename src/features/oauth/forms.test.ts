@@ -5,6 +5,7 @@ import {
   readAuthorizationFormData,
   readAuthorizationParams,
   readLifetime,
+  readPassword,
 } from "@/features/oauth/forms";
 
 const PARAMS = {
@@ -96,5 +97,16 @@ describe("authorizeAddress", () => {
 
   it("is the plain address without search parameters", () => {
     expect(authorizeAddress({})).toBe("/oauth/authorize");
+  });
+});
+
+describe("readPassword", () => {
+  it("reads the password as it is, with its spaces", () => {
+    expect(readPassword(formData({ password: "  my password " }))).toBe("  my password ");
+  });
+
+  it("reads a missing field and a file as empty", () => {
+    expect(readPassword(formData({}))).toBe("");
+    expect(readPassword(formData({ password: new File(["x"], "x") }))).toBe("");
   });
 });

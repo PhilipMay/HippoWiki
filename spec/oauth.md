@@ -105,6 +105,12 @@ The fetch of a metadata document must not be a way to make the server ask an add
   lifetime of the grant to choose (see `connected-apps.md`).
 - "Approve" sends the client a code; "Deny" sends it `access_denied`. Both check the request again from the
   submitted values. Every answer to the client carries its `state` and `iss`, the issuer (RFC 9207).
+- "Approve" needs the password of the logged-in user, before every approval and whatever lifetime is chosen; "Deny"
+  does not. Anything but the right password creates no code and no grant, and the chosen lifetime stays. The check is
+  counted like a login of the user name from the client address group of the request, with the waits of "Failed
+  logins" in `users-and-login.md`: a wrong password counts as a failed login, a right one like a successful login,
+  and during a wait the approval is refused with the wording "Too many wrong passwords", without checking the
+  password. So a stolen session alone cannot be turned into a grant that outlives it.
 - Every connect asks again; no consent is remembered.
 - An admin connects no apps (see "No apps for admins" in `connected-apps.md`). For an otherwise valid request the page
   tells an admin that admin accounts cannot connect apps, instead of the consent form, with the link "Return to

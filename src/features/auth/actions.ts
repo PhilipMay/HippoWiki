@@ -18,6 +18,7 @@ import {
 } from "@/features/auth/forms";
 import * as authService from "@/features/auth/service";
 import { requireSession, requireUser } from "@/features/auth/session";
+import { loginWaitMessage, wrongPasswordsWaitMessage } from "@/features/auth/wait-messages";
 import {
   accountNoticePath,
   accountPath,
@@ -35,27 +36,6 @@ import {
 const INVALID_CREDENTIALS_MESSAGE = "Invalid user name or password";
 const BUSY_MESSAGE = "Too many logins at the moment, please try again";
 
-/** The minutes of a wait that are left, rounded up and at least 1, with their unit: "1 minute", "4 minutes". */
-function waitMinutes(waitMs: number): string {
-  const minutes = Math.max(1, Math.ceil(waitMs / 60_000));
-  return `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
-}
-
-/**
- * The message of the wait after failed logins, with the minutes that are left. It is the same for known and unknown
- * user names.
- */
-function waitMessage(waitMs: number): string {
-  return `Too many failed logins. Please try again in ${waitMinutes(waitMs)}.`;
-}
-
-/**
- * The message of the wait at a check of the own password, such as a password change: its own wording, because it is
- * not a login, but the same wait.
- */
-function wrongPasswordsWaitMessage(waitMs: number): string {
-  return `Too many wrong passwords. Please try again in ${waitMinutes(waitMs)}.`;
-}
 const LOGIN_FAILED_MESSAGE = "The login failed. Please try again.";
 const WRONG_PASSWORD_MESSAGE = "Current password is wrong";
 const CHANGE_FAILED_MESSAGE = "The password could not be changed. Please try again.";
@@ -88,7 +68,7 @@ export async function logIn(_prevState: LoginFormState, formData: FormData): Pro
       case "invalid-credentials":
         return { message: INVALID_CREDENTIALS_MESSAGE };
       case "wait":
-        return { message: waitMessage(result.error.waitMs) };
+        return { message: loginWaitMessage(result.error.waitMs) };
       case "busy":
         return { message: BUSY_MESSAGE };
       case "failed":

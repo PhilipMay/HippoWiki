@@ -36,6 +36,14 @@ export function readAuthorizationFormData(formData: FormData): AuthorizationPara
   return params;
 }
 
+/** The name of the field of the consent form with the password of the user. */
+export const PASSWORD_FIELD = "password";
+
+/** The password that the consent form submitted, as it is, with its spaces; a missing field and a file count as empty. */
+export function readPassword(formData: FormData): string {
+  return textField(formData, PASSWORD_FIELD);
+}
+
 /** The lifetime that the consent form submitted; a missing field and a file count as empty. */
 export function readLifetime(formData: FormData): string {
   return textField(formData, LIFETIME_FIELD);
@@ -63,6 +71,8 @@ export type ConsentFormState = {
   redirectTo?: string;
   /** An error that is shown instead, e.g. when the request is no longer valid. */
   message?: string;
+  /** The error of the password, e.g. a wrong one: nothing was approved. */
+  fieldErrors?: { password?: string[] };
 };
 
 /** A Server Action behind the consent form: "Approve" or "Deny". It returns where to go, or the error to show. */

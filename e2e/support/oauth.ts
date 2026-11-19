@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 
 import type { APIRequestContext, Page } from "@playwright/test";
 
+import { KNOWN_USER } from "../../prisma/known-users";
 import { expect } from "./test";
 
 /** The public URL of the test server (`HIPPOWIKI_PUBLIC_URL` in `playwright.config.ts`): the issuer. */
@@ -118,18 +119,29 @@ export async function listFolderStatus(
 }
 
 /**
- * Approves the client on its consent page for the MCP address `resource` as the logged-in user and returns the tokens
- * of the new grant.
+ * Enters the password of the logged-in user on the open consent page and clicks "Approve": every approval needs the
+ * password. The password is the one of the known user unless another is given, such as `TEST_PASSWORD` for a user of
+ * `createUser()`.
+ */
+export async function approve(page: Page, password: string = KNOWN_USER.password): Promise<void> {
+  await page.getByRole("main").getByLabel("Your password").fill(password);
+  await page.getByRole("button", { name: "Approve" }).click();
+}
+
+/**
+ * Approves the client on its consent page for the MCP address `resource` as the logged-in user, with the given
+ * password (`approve()`), and returns the tokens of the new grant.
  */
 export async function connect(
   page: Page,
   request: APIRequestContext,
   clientId: string,
   resource: string,
+  password: string = KNOWN_USER.password,
 ): Promise<Tokens> {
   const callback = await awaitCallback(page);
   await page.goto(authorizeUrl(clientId, resource));
-  await page.getByRole("button", { name: "Approve" }).click();
+  await approve(page, password);
   const { code } = await callback();
   const response = await exchange(request, clientId, code ?? "", resource);
   expect(response.status()).toBe(200);

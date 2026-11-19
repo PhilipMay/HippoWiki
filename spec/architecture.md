@@ -261,8 +261,9 @@ The feature is described in `users-and-login.md`. What every new route, query an
   request with a cookie that is no longer valid still comes back to it after the login.
 - `requireSession()` only asks for a session; only the password change page and its action use it. `getCurrentUser()`
   returns the user or `null` without redirecting, for the header and the login page; it is wrapped in React `cache()`.
-- These three functions and the actions of the auth feature are the only code that reads the headers of the request
-  for the session.
+- These three functions, the actions of the auth feature and `verifyOwnPassword()` of
+  `src/features/auth/password-check.ts`, which the consent page of OAuth calls to check the password, are the only
+  code that reads the headers of the request for the session.
 - A caller other than the browser, such as the MCP server, finds its actor with
   `authenticateAccessToken(headers, address)` of the grant service, from the access token of a grant in the
   `Authorization` header (see `connected-apps.md`). It returns the same `Actor`, type included, as the session of the
@@ -270,7 +271,8 @@ The feature is described in `users-and-login.md`. What every new route, query an
   of another address included, and for a role on the folder that is too low for the address. The adapter of the MCP
   addresses calls it for every `POST` from an allowed origin while OAuth is on; `src/proxy.ts` does not look at the
   header.
-- The login action and the action of the password change also read the client address of the request, through
+- The actions of the login and of the password changes, and "Approve" on the consent page through
+  `verifyOwnPassword()` of `src/features/auth/password-check.ts`, also read the client address of the request, with
   `requestClientAddressGroup()` of `src/features/auth/client-address.ts`, which uses `clientAddressGroup()` from
   `src/lib/client-address.ts` and `HIPPOWIKI_TRUSTED_PROXIES`, because `/login` does not pass `src/proxy.ts`; they
   pass the group to the auth service. The adapter of `/oauth/register` (`handleRegister()` in

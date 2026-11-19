@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
   createCode: vi.fn(),
   checkAuthorizationRequest: vi.fn(),
   getServerEnv: vi.fn(),
+  verifyOwnPassword: vi.fn(),
+  redirect: vi.fn(),
 }));
 
 vi.mock("@/features/auth/session", () => ({ requireUser: mocks.requireUser }));
@@ -16,6 +18,8 @@ vi.mock("@/features/oauth/authorization-service", () => ({
   checkAuthorizationRequest: mocks.checkAuthorizationRequest,
 }));
 vi.mock("@/lib/env", () => ({ getServerEnv: mocks.getServerEnv }));
+vi.mock("@/features/auth/password-check", () => ({ verifyOwnPassword: mocks.verifyOwnPassword }));
+vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
 
 const USER = { id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002", name: "alice", mustChangePassword: false };
 const CLIENT_ID = "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10";
@@ -64,6 +68,10 @@ beforeEach(() => {
   mocks.requireUser.mockResolvedValue(USER);
   mocks.createCode.mockResolvedValue({ ok: true, value: { code: CODE, request: REQUEST } });
   mocks.checkAuthorizationRequest.mockResolvedValue({ ok: true, value: REQUEST });
+  mocks.verifyOwnPassword.mockResolvedValue({ ok: true, value: { user: USER } });
+  mocks.redirect.mockImplementation((path: string) => {
+    throw new RedirectError(path);
+  });
 });
 
 describe("approve", () => {
@@ -158,6 +166,70 @@ describe("approve", () => {
     });
 
     expect(mocks.createCode).not.toHaveBeenCalled();
+  });
+});
+
+describe("the password before an approval", () => {
+  const PASSWORD = " the password of alice ";
+
+  it("checks the submitted password, as it is, before the code is created", async () => {
+    await approve(formData({ ...PARAMS, lifetime: "30d", password: PASSWORD }));
+
+    expect(mocks.verifyOwnPassword).toHaveBeenCalledExactlyOnceWith(PASSWORD, "consent");
+    expect(mocks.verifyOwnPassword.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.createCode.mock.invocationCallOrder[0] ?? 0,
+    );
+  });
+
+  it("passes on a missing password as empty, for the service to refuse", async () => {
+    mocks.verifyOwnPassword.mockResolvedValue({ ok: false, error: { code: "wrong-password" } });
+
+    const state = await approve(formData({ ...PARAMS, lifetime: "30d" }));
+
+    expect(mocks.verifyOwnPassword).toHaveBeenCalledExactlyOnceWith("", "consent");
+    expect(state).toEqual({ fieldErrors: { password: ["Wrong password"] } });
+    expect(mocks.createCode).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["wrong-password", {}, { fieldErrors: { password: ["Wrong password"] } }],
+    [
+      "wait",
+      { waitMs: 60_000 },
+      { fieldErrors: { password: ["Too many wrong passwords. Please try again in 1 minute."] } },
+    ],
+    ["busy", {}, { message: "Too many logins at the moment, please try again" }],
+    ["failed", {}, { message: "The password could not be checked. Please try again." }],
+  ])("creates no code for %s and returns its state", async (code, details, expected) => {
+    mocks.verifyOwnPassword.mockResolvedValue({ ok: false, error: { code, ...details } });
+
+    const state = await approve(formData({ ...PARAMS, lifetime: "30d", password: PASSWORD }));
+
+    expect(state).toEqual(expected);
+    expect(mocks.createCode).not.toHaveBeenCalled();
+  });
+
+  it("leads to the login page when the session ended meanwhile, without a code", async () => {
+    mocks.verifyOwnPassword.mockResolvedValue({ ok: false, error: { code: "not-logged-in" } });
+
+    await expect(approve(formData({ ...PARAMS, password: PASSWORD }))).rejects.toMatchObject({ path: "/login" });
+
+    expect(mocks.createCode).not.toHaveBeenCalled();
+  });
+
+  it("is not asked while OAuth is off", async () => {
+    mocks.getServerEnv.mockReturnValue({});
+
+    await approve(formData({ ...PARAMS, password: PASSWORD }));
+
+    expect(mocks.verifyOwnPassword).not.toHaveBeenCalled();
+  });
+
+  it("is not needed to deny", async () => {
+    const state = await deny(formData(PARAMS));
+
+    expect(mocks.verifyOwnPassword).not.toHaveBeenCalled();
+    expect(answerOf(state)).toMatchObject({ error: "access_denied" });
   });
 });
 

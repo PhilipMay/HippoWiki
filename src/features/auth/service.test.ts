@@ -8,6 +8,7 @@ import {
   logIn,
   logOut,
   logOutOtherSessions,
+  verifyPassword,
 } from "@/features/auth/service";
 import { PasswordHashBusyError } from "@/lib/password-hash";
 
@@ -17,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   signOut: vi.fn(),
   getSession: vi.fn(),
   changePassword: vi.fn(),
+  verifyPassword: vi.fn(),
   userUpdateMany: vi.fn(),
   sessionDeleteMany: vi.fn(),
   attemptFindUnique: vi.fn(),
@@ -185,6 +187,7 @@ beforeEach(() => {
       signOut: mocks.signOut,
       getSession: mocks.getSession,
       changePassword: mocks.changePassword,
+      verifyPassword: mocks.verifyPassword,
     },
   });
   mocks.signInUsername.mockResolvedValue({
@@ -1840,5 +1843,115 @@ describe("logOutOtherSessions", () => {
       "failed to end the other sessions",
     );
     expect(mocks.info).not.toHaveBeenCalled();
+  });
+});
+
+describe("verifyPassword", () => {
+  // A value that no log message contains by chance.
+  const SECRET = "the-secret-of-alice";
+
+  beforeEach(() => {
+    mocks.getSession.mockResolvedValue({ session: { id: "session-1" }, user: AUTH_USER });
+    mocks.verifyPassword.mockResolvedValue({ status: true });
+  });
+
+  it("checks the password through Better Auth, counted, and forgets the counts for a right one", async () => {
+    const result = await verifyPassword(SECRET, REQUEST_HEADERS, CLIENT_ADDRESS);
+
+    expect(result).toEqual({
+      ok: true,
+      value: { user: { id: USER_ID, name: "alice", type: "user", mustChangePassword: false } },
+    });
+    expect(mocks.verifyPassword).toHaveBeenCalledExactlyOnceWith({
+      body: { password: SECRET },
+      headers: REQUEST_HEADERS,
+    });
+    expect(mocks.attemptCreateMany).toHaveBeenCalledExactlyOnceWith(firstAttempt("alice"));
+    expect(mocks.attemptCreateMany.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.verifyPassword.mock.invocationCallOrder[0] ?? 0,
+    );
+    expect(mocks.attemptDeleteMany).toHaveBeenCalledExactlyOnceWith({
+      where: { username: "alice", clientAddress: CLIENT_ADDRESS },
+    });
+    expectNothingLogged();
+  });
+
+  it("answers wrong-password for a wrong one, keeps the count and logs it like a failed login", async () => {
+    mocks.verifyPassword.mockRejectedValue(new APIError("BAD_REQUEST", { code: "INVALID_PASSWORD" }));
+
+    const result = await verifyPassword(SECRET, REQUEST_HEADERS, CLIENT_ADDRESS);
+
+    expect(result).toEqual({ ok: false, error: { code: "wrong-password" } });
+    expect(mocks.attemptDeleteMany).not.toHaveBeenCalled();
+    expect(mocks.attemptUpdateMany).not.toHaveBeenCalled();
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
+      { userId: USER_ID, name: "alice", clientAddress: CLIENT_ADDRESS },
+      "password check refused: wrong password",
+    );
+    expect(logged()).not.toContain(SECRET);
+  });
+
+  it("answers wrong-password for an empty password, without a hash and without a count", async () => {
+    const result = await verifyPassword("", REQUEST_HEADERS, CLIENT_ADDRESS);
+
+    expect(result).toEqual({ ok: false, error: { code: "wrong-password" } });
+    expect(mocks.verifyPassword).not.toHaveBeenCalled();
+    expect(mocks.attemptFindUnique).not.toHaveBeenCalled();
+  });
+
+  it("answers wait during a wait, without checking the password, and logs it like a login that waits", async () => {
+    mocks.attemptFindUnique.mockResolvedValue({ failures: 5, lastFailedAt: NOW });
+
+    const result = await verifyPassword(SECRET, REQUEST_HEADERS, CLIENT_ADDRESS);
+
+    expect(result).toEqual({ ok: false, error: { code: "wait", waitMs: MINUTE } });
+    expect(mocks.verifyPassword).not.toHaveBeenCalled();
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
+      { userId: USER_ID, name: "alice", clientAddress: CLIENT_ADDRESS, waitMs: MINUTE },
+      "password check refused: waiting after failed logins",
+    );
+  });
+
+  it.each([
+    ["busy", new PasswordHashBusyError(), "busy"],
+    ["failed", new Error("connection refused"), "failed"],
+  ])("answers %s and takes the count back when the password was not checked", async (_case, err, code) => {
+    mocks.verifyPassword.mockRejectedValue(err);
+
+    const result = await verifyPassword(SECRET, REQUEST_HEADERS, CLIENT_ADDRESS);
+
+    expect(result).toEqual({ ok: false, error: { code } });
+    expect(mocks.attemptDeleteMany).toHaveBeenCalledExactlyOnceWith({
+      where: { username: "alice", clientAddress: CLIENT_ADDRESS, failures: 1, lastFailedAt: NOW },
+    });
+  });
+
+  it("answers not-logged-in without a session, and failed when the session cannot be read", async () => {
+    mocks.getSession.mockResolvedValueOnce(null);
+    await expect(verifyPassword(SECRET, new Headers(), CLIENT_ADDRESS)).resolves.toEqual({
+      ok: false,
+      error: { code: "not-logged-in" },
+    });
+
+    mocks.getSession.mockRejectedValueOnce(new Error("connection refused"));
+    await expect(verifyPassword(SECRET, REQUEST_HEADERS, CLIENT_ADDRESS)).resolves.toEqual({
+      ok: false,
+      error: { code: "failed" },
+    });
+    expect(mocks.verifyPassword).not.toHaveBeenCalled();
+  });
+
+  it("counts an invalid group in the shared group and logs it", async () => {
+    mocks.verifyPassword.mockRejectedValue(new APIError("BAD_REQUEST", { code: "INVALID_PASSWORD" }));
+
+    await verifyPassword(SECRET, REQUEST_HEADERS, "not a group");
+
+    expect(mocks.error).toHaveBeenCalledExactlyOnceWith(
+      { userId: USER_ID, name: "alice" },
+      "password check with an invalid client address group, counted in the shared group",
+    );
+    expect(mocks.attemptCreateMany).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ data: [expect.objectContaining({ clientAddress: "shared" })] }),
+    );
   });
 });

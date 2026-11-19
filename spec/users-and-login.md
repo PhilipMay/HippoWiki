@@ -143,9 +143,9 @@ and `src/lib/client-address.test.ts`.
 ## Failed logins
 
 Two limits hold back the guessing of passwords; their numbers are defined in `src/features/auth/wait.ts`. A login is
-refused while either of them asks for a wait. The current password of the forced password change is counted the same
-way, as a login of the name of the session user from the client address group of the request (see "Forced password
-change"):
+refused while either of them asks for a wait. The current password of a password change and the password on the
+consent page of OAuth are counted the same way, as a login of the name of the session user from the client address
+group of the request (see "Forced password change" and `oauth.md`):
 
 - Per user name and client address group: after 5 failed logins in a row for a name from one group, the next login
   for that name from that group has to wait 1 minute. Each further failure doubles the wait, up to 15 minutes.
@@ -177,9 +177,9 @@ What a user and an operator can rely on:
 
 The client address group (`clientAddressGroup()` in `src/lib/client-address.ts`):
 
-- The login action and the action of the password change read it from the headers of the request, in the same way
-  (`src/features/auth/client-address.ts`), because `/login` does not pass `src/proxy.ts`, and pass it to the auth
-  service as a plain argument.
+- The actions of the login, of the password changes and of "Approve" on the consent page read it from the headers of
+  the request, in the same way (`src/features/auth/client-address.ts`), because `/login` does not pass
+  `src/proxy.ts`, and pass it to the auth service as a plain argument.
 - With `HIPPOWIKI_TRUSTED_PROXIES=0`, the default, no header is read and every login is in the group `shared`: the
   wait then counts per user name alone.
 - With `HIPPOWIKI_TRUSTED_PROXIES=n`, the group comes from the n-th entry from the right of `X-Forwarded-For`, the
