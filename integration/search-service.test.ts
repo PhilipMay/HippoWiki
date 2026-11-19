@@ -1,11 +1,12 @@
 // The search service against the test database: which pages a search of a folder finds, for whom, and in which order,
 // with pages written through the pages service, so that the vectors and the words of the folder are those of a save.
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { inBrowser, type BrowserActor, type ContentActor } from "@/features/folder-roles/actors";
 import type { Role } from "@/features/folder-roles/roles";
 import * as pageService from "@/features/pages/service";
-import { SEARCH_MAX_RESULTS } from "@/features/search/limits";
+import type { ExcerptPart } from "@/features/search/excerpt";
+import { SEARCH_MAX_RESULTS, SEARCH_MAX_RUNNING, SEARCH_TIME_LIMIT_MS } from "@/features/search/limits";
 import { searchPages, type SearchResults } from "@/features/search/service";
 import type { Folder, User } from "@/generated/prisma/client";
 import { samplePage } from "@/test/language-samples";
@@ -110,6 +111,7 @@ describe("the folder and the deletion of the pages", () => {
           tab: { name: "ops" },
           updatedAt: stored.updatedAt,
           lastEditedBy: { name: "alice", via: "web" },
+          excerpt: [{ text: "Nightly dumps.", match: false }],
         },
       ],
       total: 1,
@@ -454,5 +456,178 @@ describe("a search after a write", () => {
     expect(moved.ok).toBe(true);
 
     expect((await search("gateway")).results.map(({ tab }) => tab)).toEqual([{ name: "archive" }]);
+  });
+});
+
+/** The marked words of the piece of text of a result. */
+function marks(excerpt: ExcerptPart[]): string[] {
+  return excerpt.filter(({ match }) => match).map(({ text }) => text);
+}
+
+/** The piece of text of a result as plain text. */
+function plain(excerpt: ExcerptPart[]): string {
+  return excerpt.map(({ text }) => text).join("");
+}
+
+describe("the piece of text of a result", () => {
+  it('shows the text around "Konfiguration" for "Konfiguraton", marked', async () => {
+    await newPage("# Notizen\n\nAm Anfang steht etwas anderes. Die Konfiguration liegt im Ordner etc.");
+
+    const [result] = (await search("Konfiguraton")).results;
+    expect(marks(result?.excerpt ?? [])).toEqual(["Konfiguration"]);
+    expect(plain(result?.excerpt ?? [])).toContain("Die Konfiguration liegt im Ordner");
+  });
+
+  it('shows the text around "Datenbank" for "bank", marked', async () => {
+    await newPage("# Notizen\n\nDie Datenbank läuft auf dem zweiten Server.");
+
+    const [result] = (await search("bank")).results;
+    expect(marks(result?.excerpt ?? [])).toEqual(["Datenbank"]);
+  });
+
+  it("shows the start of the text without a mark for a page found only by its title", async () => {
+    await newPage("# Firewall\n\nThe rules of the edge are kept here, one per line, with the reason for each rule.");
+
+    const [result] = (await search("firewall")).results;
+    expect(result?.excerpt).toEqual([
+      { text: expect.stringMatching(/^The rules of the edge/) as string, match: false },
+    ]);
+  });
+
+  it("shows the text around an exact match", async () => {
+    const filler = "Other words fill the page here. ".repeat(20);
+    await newPage(`# Notes\n\n${filler}The gateway is restarted every night. ${filler}`);
+
+    const [result] = (await search("gateway")).results;
+    expect(marks(result?.excerpt ?? [])).toEqual(["gateway"]);
+    expect(plain(result?.excerpt ?? [])).toContain("The gateway is restarted");
+    expect(plain(result?.excerpt ?? []).length).toBeLessThan(filler.length);
+  });
+
+  it("marks the words that matched, also an inflection", async () => {
+    await newPage(
+      "# Unser Garten\n\nDie Häuser stehen am Ende der Straße. Im Garten wachsen Blumen, und im Winter heizen wir mit Holz.",
+    );
+
+    const [result] = (await search("Haus")).results;
+    expect(marks(result?.excerpt ?? [])).toEqual(["Häuser"]);
+  });
+
+  it("keeps text that looks like HTML as plain text", async () => {
+    await newPage("# Notes\n\nThe <script>alert(1)</script> of the <b>gateway</b> is never run on the page.");
+
+    const [result] = (await search("gateway")).results;
+    expect(plain(result?.excerpt ?? [])).toContain("The <script>alert(1)</script> of the <b>gateway</b> is never run");
+    expect(marks(result?.excerpt ?? [])).toEqual(["gateway"]);
+  });
+});
+
+describe("the limits of a search", () => {
+  /** Holds the table of the words of the folders in a transaction of the test until the returned function is called. */
+  async function holdWords(): Promise<{ release: () => Promise<void> }> {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let locked!: () => void;
+    const isLocked = new Promise<void>((resolve) => {
+      locked = resolve;
+    });
+    const transaction = getTestDb().$transaction(
+      async (tx) => {
+        await tx.$executeRaw`LOCK TABLE "SearchWord" IN ACCESS EXCLUSIVE MODE`;
+        locked();
+        await held;
+      },
+      { timeout: 30_000 },
+    );
+    await isLocked;
+    return {
+      release: async () => {
+        release();
+        await transaction;
+      },
+    };
+  }
+
+  /** Waits until the given number of statements wait for the lock on the table of the words. */
+  async function waitingSearches(count: number): Promise<void> {
+    await vi.waitFor(
+      async () => {
+        const [row] = await getTestDb().$queryRaw<{ waiting: number }[]>`
+          SELECT count(*)::integer AS waiting FROM pg_stat_activity
+          WHERE wait_event_type = 'Lock' AND query LIKE '%SearchWord%'`;
+        expect(row?.waiting).toBe(count);
+      },
+      { timeout: 4_000, interval: 50 },
+    );
+  }
+
+  it(
+    "answers a search that takes longer than the time limit as too broad, and runs the next one",
+    async () => {
+      await newPage("# Notes\n\nThe gateway.");
+      const { release } = await holdWords();
+      const started = performance.now();
+      try {
+        expect(await searchPages(actor, folder.id, "gateway")).toEqual({ ok: false, error: { code: "too-broad" } });
+        const elapsed = performance.now() - started;
+        expect(elapsed).toBeGreaterThanOrEqual(SEARCH_TIME_LIMIT_MS - 100);
+        expect(elapsed).toBeLessThan(SEARCH_TIME_LIMIT_MS + 2_000);
+      } finally {
+        await release();
+      }
+      expect(await titles("gateway")).toEqual(["Notes"]);
+    },
+    SEARCH_TIME_LIMIT_MS + 15_000,
+  );
+
+  it(
+    "answers a search beyond the running ones as busy at once, while the other reads answer",
+    async () => {
+      await newPage("# Notes\n\nThe gateway.");
+      const { release } = await holdWords();
+      let running: Promise<unknown>[] = [];
+      try {
+        running = Array.from({ length: SEARCH_MAX_RUNNING }, () => searchPages(actor, folder.id, "gateway"));
+        await waitingSearches(SEARCH_MAX_RUNNING);
+
+        const started = performance.now();
+        expect(await searchPages(actor, folder.id, "gateway")).toEqual({ ok: false, error: { code: "busy" } });
+        expect(performance.now() - started).toBeLessThan(500);
+        expect((await pageService.listFolderPages(actor, folder.id))?.map(({ title }) => title)).toEqual(["Notes"]);
+        // Words that are no search are answered as such, without a slot.
+        expect(await searchPages(actor, folder.id, "x".repeat(201))).toEqual({
+          ok: false,
+          error: { code: "too-long" },
+        });
+      } finally {
+        await release();
+      }
+      for (const result of await Promise.all(running)) {
+        expect(result).toMatchObject({ ok: true, value: { total: 1 } });
+      }
+      expect(await titles("gateway")).toEqual(["Notes"]);
+    },
+    SEARCH_TIME_LIMIT_MS + 15_000,
+  );
+
+  it("runs nothing for 201 characters and 11 words", async () => {
+    await newPage("# Notes\n\nThe gateway.");
+    const { release } = await holdWords();
+    try {
+      // The table of the words is held, so a search that ran would wait for it.
+      const started = performance.now();
+      expect(await searchPages(actor, folder.id, "gateway ".repeat(25) + "g")).toEqual({
+        ok: false,
+        error: { code: "too-long" },
+      });
+      expect(
+        await searchPages(actor, folder.id, Array.from({ length: 11 }, (_, index) => `gateway${index}`).join(" ")),
+      ).toEqual({ ok: false, error: { code: "too-long" } });
+      expect(performance.now() - started).toBeLessThan(500);
+    } finally {
+      await release();
+    }
   });
 });

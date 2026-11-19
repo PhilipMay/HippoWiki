@@ -1,6 +1,6 @@
 // Recognises the database errors that a service answers with a code of its own instead of as a failed write: the
-// violations of the unique constraints and foreign keys that a user can cause, and the refusals of the triggers. The
-// services call it; the adapters only map the codes.
+// violations of the unique constraints and foreign keys that a user can cause, the refusals of the triggers, and a
+// statement stopped by its time limit. The services call it; the adapters only map the codes.
 
 import { Prisma } from "@/generated/prisma/client";
 
@@ -129,4 +129,17 @@ export function isAdminRoleViolation(err: unknown): boolean {
   const adapterError = err.meta?.driverAdapterError as { cause?: { code?: string; message?: string } } | undefined;
   const cause = adapterError?.cause;
   return cause?.code === CHECK_VIOLATION && cause.message === ADMIN_ROLE_MESSAGE;
+}
+
+/** The SQLSTATE of a `query_canceled`, which PostgreSQL raises for a statement stopped by `statement_timeout`. */
+const QUERY_CANCELED = "57014";
+
+/**
+ * Whether the error is a statement that PostgreSQL stopped, as it stops one that runs longer than its
+ * `statement_timeout`. Only the PostgreSQL error in `meta.driverAdapterError.cause` is read, as for the triggers.
+ */
+export function isStatementTimeout(err: unknown): boolean {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError)) return false;
+  const adapterError = err.meta?.driverAdapterError as { cause?: { code?: string } } | undefined;
+  return adapterError?.cause?.code === QUERY_CANCELED;
 }

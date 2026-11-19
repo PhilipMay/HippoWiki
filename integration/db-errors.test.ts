@@ -8,6 +8,7 @@ import {
   FOLDER_ROLE_USER,
   isAdminRoleViolation,
   isForeignKeyViolation,
+  isStatementTimeout,
   isUniqueViolation,
   LAST_EDITOR,
   OAUTH_CLIENT_METADATA_URL,
@@ -466,5 +467,33 @@ describe("foreign key violations of the last editor", () => {
     expectForeignKeyViolation(await errorOf(getTestDb().user.delete({ where: { id: user.id } })), {
       ofLastEditor: true,
     });
+  });
+});
+
+describe("a statement stopped by its time limit", () => {
+  /** The error of a statement that runs longer than the time limit of its transaction. */
+  async function stoppedStatement(): Promise<unknown> {
+    try {
+      await getTestDb().$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT set_config('statement_timeout', '50', true)`;
+        await tx.$queryRaw`SELECT pg_sleep(2)`;
+      });
+    } catch (err) {
+      return err;
+    }
+    throw new Error("the statement was not stopped");
+  }
+
+  it("is recognised by isStatementTimeout()", async () => {
+    expect(isStatementTimeout(await stoppedStatement())).toBe(true);
+  });
+
+  it("is told apart from other errors", async () => {
+    const folder = await createFolder();
+    const taken = await getTestDb()
+      .folder.create({ data: { name: folder.name, lastEditedById: folder.lastEditedById, lastEditedVia: "web" } })
+      .catch((err: unknown) => err);
+    expect(isStatementTimeout(taken)).toBe(false);
+    expect(isStatementTimeout(new Error("canceling statement due to statement timeout"))).toBe(false);
   });
 });

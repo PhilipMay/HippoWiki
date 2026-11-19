@@ -24,3 +24,9 @@ export const SEARCH_FOUND_WORDS_CAP = 20;
 
 /** The similarity of `pg_trgm` from which a word of a folder counts as the search word with a typo. */
 export const SEARCH_SIMILARITY_THRESHOLD = 0.4;
+
+/** How long a search may take, all its statements together, before the database stops it as too broad. */
+export const SEARCH_TIME_LIMIT_MS = 5_000;
+
+/** The most searches that run at the same time in one server process, in the browser and through MCP together. */
+export const SEARCH_MAX_RUNNING = 3;

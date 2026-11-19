@@ -89,6 +89,11 @@ What the steps found out that the wrap-up moves into the other specs.
   save uses, and esbuild into `search-index.mjs` (about 2.3 MB), which `image-search-index.sh` runs at every start
   after the admin setup. A start with nothing to derive reads one empty batch and logs that no page was derived.
 
+- `ts_headline()` drops what the parser of PostgreSQL reads as an HTML tag from the piece of text, so the piece is cut
+  from the search text with a control character in place of every `<`, which the parts of the piece get back.
+- The time limit of a search is `statement_timeout`, set before each statement of its transaction to what is left of
+  the 5 seconds; `transaction_timeout` of PostgreSQL 17 and later was not used, because it ends the connection.
+
 ## Checklist
 
 - [x] Database check and `pg_trgm`
@@ -97,7 +102,7 @@ What the steps found out that the wrap-up moves into the other specs.
 - [x] Existing pages at the start of the server
 - [x] Search words
 - [x] Matching and order
-- [ ] Pieces of text, limits and log
+- [x] Pieces of text, limits and log
 - [ ] Search at size
 - [ ] Results view
 - [ ] Search field
