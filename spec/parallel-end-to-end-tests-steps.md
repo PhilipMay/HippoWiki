@@ -20,7 +20,7 @@ requirements are in `spec/parallel-end-to-end-tests-requirements.md`.
 
 ## Checklist
 
-- [ ] Measure the times before
+- [x] Measure the times before
 - [ ] Worker settings
 - [ ] A database and a development server per worker
 - [ ] A production run built once
@@ -42,10 +42,15 @@ the second session can check them:
 The times of the complete suite, filled in by the steps "Measure the times before" (R5) and "Stability and the times
 after", and moved into `testing.md` by the wrap-up.
 
-- Local, `npm run test:e2e`: before …; after …
-- Local, `npm run test:e2e:production`: before …; after …
-- CI, `end_to_end_tests`: before …; after …
-- CI, `end_to_end_tests_production`: before …; after …
+The local values are of a Mac16,7 (14 CPU cores, 48 GB memory, Podman machine with 7 CPUs and 4 GB), 777 tests; the CI
+values are the medians of the last five successful runs on `main`, on `ubuntu-24.04` (4 CPU cores, 16 GB). The CI
+values were read through the public GitHub API, because `gh` was not installed.
+
+- Local, `npm run test:e2e`: before 6.4 min reported by Playwright, 6 min 25 s wall time; after …
+- Local, `npm run test:e2e:production`: before 3.8 min reported by Playwright, 3 min 50 s wall time, build included;
+  after …
+- CI, `end_to_end_tests`: before 18 min 41 s for the job, 11 min 29 s for the step of the tests; after …
+- CI, `end_to_end_tests_production`: before 7 min 36 s for the job, 5 min 1 s for the step of the tests; after …
 
 ## Measure the times before
 
