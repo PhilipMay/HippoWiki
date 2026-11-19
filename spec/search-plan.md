@@ -8,8 +8,14 @@ Wiki.js all ended up with a weighted `tsvector` column and a GIN index in Postgr
 optional, because an external engine brings version lock-in, a sync pipeline and reindex downtime. For HippoWiki the
 plan is:
 
-- Full-text search in PostgreSQL 18 with built-in features only, so that the promise "the migrations need no database
-  extensions" (`spec/container-image.md`) holds and any managed PostgreSQL works.
+- Full-text search in PostgreSQL 18 with built-in features, plus the trusted contrib extension `pg_trgm` and no other
+  extension. `pg_trgm` ships in the stock `postgres` image and on Amazon RDS, and a database user without superuser
+  rights can create it. The promise "the migrations need no database extensions" (`spec/container-image.md`) becomes
+  "the migrations need `pg_trgm` and no other extension".
+- Trigram matching with `pg_trgm` on the title and the name of a page, beside the full-text match. It finds a word
+  inside a compound ("bank" finds "Datenbank-Übersicht"), a title with a typo ("Konfiguraton" finds "Konfiguration")
+  and a half-typed word whatever the stemmer makes of it. It needs a database whose character type knows UTF-8, such
+  as the `en_US.utf8` of the stock image.
 - One vector per page, built from the title, the name and the Markdown stripped to plain text. A trigger keeps it up
   to date in the same transaction as the save.
 - The language of each page detected automatically at save, in TypeScript with the pure JavaScript detector eld, and
@@ -23,14 +29,15 @@ plan is:
   other results that carry page text.
 
 The weak points are language quality and ranking cost. Languages without a Snowball stemmer, such as Polish or Czech,
-get no stemming, mixed-language pages are stemmed in their main language only, and without `pg_trgm` there is no
-match inside a compound word. Ranking gets expensive when a very common term matches most pages. Both are bounded at
+get no stemming, mixed-language pages are stemmed in their main language only, and a word inside a compound or with
+a typo is found in titles and names only, not in the content. Ranking gets expensive when a very common term matches most pages. Both are bounded at
 the size of a team wiki, and both have known upgrade paths. Semantic search with pgvector can be added later as a
 second ranked list, combined by Reciprocal Rank Fusion, if the search SQL is one module from the start.
 
 This plan is research input to the requirements of search (see `spec/requirements-workflow.md`), not the requirements
 themselves. A statement with a link was checked against that source on 2026-11-19. _Inference_ marks a conclusion of
-this plan, and _Gap_ marks something the research could not verify.
+this plan, _Decision_ a choice the user has made for the requirements, and _Gap_ something the research could not
+verify.
 
 ## Comparable projects keep search inside the database they already run
 
@@ -282,12 +289,12 @@ What HippoWiki can take from it, _Inference_:
   index still finds the candidates on the whole vector, and `ts_filter` rechecks them.
 - An index written after the save, never failing it, is the opposite of the trigger this plan proposes. The choice
   between a stale vector and a refused save is open in the requirements.
-- HippoWiki's suggestions cannot use trigram indexes without `pg_trgm`. An `ILIKE` on titles without an index reads
-  every page of the readable folders, which is cheap at thousands of pages and not at hundreds of thousands.
+- Suggestions by title and path with `ILIKE` and trigram indexes are what `pg_trgm` gives HippoWiki too (see
+  "pg_trgm on titles and names, unaccent stays out").
 - The MCP tool is a template for `search_pages` in HippoWiki: a lower limit than the browser, `nextOffset`, Markdown
   bold in the snippet, and a description that sends the AI app to the page instead of the snippet.
 
-## PostgreSQL covers the baseline without any extension
+## Built-in full-text search covers most of the baseline
 
 ### The vector, its upkeep and Prisma
 
@@ -466,8 +473,8 @@ them:
   browser and is wrong as soon as someone forgets it.
 - A language per page, detected automatically at save, needs no setting and stems every page with its own language.
   This is the recommendation; the next section describes it.
-- `pg_trgm` on title and name gives infix and typo-tolerant matching for compounds, but it costs an extension (see
-  below).
+- `pg_trgm` on title and name gives infix and typo-tolerant matching for compounds. It is the one extension chosen
+  (see "pg_trgm on titles and names, unaccent stays out").
 
 ### Several European languages, detected automatically
 
@@ -626,7 +633,8 @@ A page gets one language, the one the detector finds for most of its text. _Infe
 - Prefix and stemming disagree while a word is half typed: `connecti` stays `connecti` in `english` and does not match
   the stored `connect`. For quick search, the title and the name can also go into the vector as `simple` with their
   own weight (`B`), so that the prefix of an unstemmed title word always matches; titles are short, so this costs
-  little. The results page keeps the stemmed query.
+  little. The trigram match on title and name covers the same case (see "pg_trgm on titles and names, unaccent stays
+  out"). The results page keeps the stemmed query.
 - Every page is re-detected by the rebuild command of `scripts/admin.ts` when the detector, its database or the
   mapping changes. A revision restore is a write of the content and re-detects.
 - No language is shown or chosen in the browser in the first version. The stored language can later be shown on the
@@ -636,7 +644,7 @@ A page gets one language, the one the detector finds for most of its text. _Infe
   that a German query finds a German inflection, that an English word on a German page is found, that `-word`
   excludes on pages of every language, and that the search uses the index; a cost test with all branches.
 
-### unaccent and pg_trgm would break the "no extensions" promise
+### pg_trgm on titles and names, unaccent stays out
 
 `pg_trgm` adds `similarity`, `word_similarity` and GIN or GiST indexes for `LIKE` and `ILIKE`. It is marked trusted, so
 a database owner without superuser rights can install it
@@ -646,20 +654,74 @@ Amazon RDS lists `pg_trgm` 1.6 and `unaccent` 1.1
 `unaccent` used inside an index needs an IMMUTABLE wrapper (Docmost's `f_unaccent`), or it can serve as a dictionary of
 a text search configuration of its own (_Inference_, not checked against the documentation).
 
-_Gap_: whether `unaccent` is trusted, and which extensions Azure, Neon and Supabase allow, were not verified.
+A test on 2026-11-19 against `postgres:18.6`:
 
-_Inference_: both are wanted, but neither is needed for a first version.
+- `pg_available_extension_versions` lists `pg_trgm` 1.6 and `unaccent` 1.1, both trusted.
+- The image creates its database with the libc locale `en_US.utf8`. There, `show_trgm('Häuser')` keeps the trigrams
+  across the "ä", `'Datenbank-Übersicht' ILIKE '%übersicht%'` is true, and
+  `word_similarity('Konfiguraton', 'Konfiguration der Datenbank')` is 0.77, above the default threshold of 0.6. A
+  database with the libc locale `C.UTF-8` behaves the same.
+- Under the character type `C`, `pg_trgm` treats every letter outside ASCII as a word break: "Häuser" becomes the words
+  "h" and "user". This holds with the libc provider, and also with the ICU provider (`und`) and the builtin provider
+  (`C.UTF-8`) when `LC_CTYPE` is `C`. With libc `C`, the `ILIKE` above is false, and
+  `to_tsvector('simple', 'ÄRGER')` keeps `'Ärger'` in capitals, so even the built-in full-text search breaks there.
+  With ICU or builtin, the full-text search lowers the words correctly.
+- The Snowball `german` stemmer folds umlauts itself: `to_tsvector('german', 'Übersicht')` gives `'ubersicht'`.
 
-- HippoWiki's `spec/container-image.md` promises that the migrations need no database extensions.
-- An extension created by a migration fails on a managed database that does not offer it.
-- For German, folding umlauts changes meaning, so `unaccent` is not clearly better for the main language of the wiki.
+_Decision_: `pg_trgm` is part of the plan, on the title and the name of a page. `unaccent` is not.
+
+_Inference_, how `pg_trgm` fits:
+
+- What is indexed: the title and the name, each with a partial GIN index `gin_trgm_ops` `WHERE "deletedAt" IS NULL`.
+  `pg_trgm` lowers the text and treats a hyphen as a word break, so the name needs no rewriting. The content gets no
+  trigram index in the first version: the index of a page of up to 100,000 characters is several times its text and
+  is rewritten on every save. _Gap_: its size and write cost were not measured. A measurement in the step plan decides
+  whether the content follows later.
+- What matches: a page matches when the full-text query matches it, or when its title or name matches every word of
+  the query by trigram. A word matches as a substring (`ILIKE '%word%'`, with `%`, `_` and `\` escaped) or by word
+  similarity (`word <% title`). A word shorter than three characters has no trigram, so it matches only through the
+  full-text query. A `-word` excludes on both sides, and a phrase matches only through the full-text query.
+- Ranking: a full-text hit keeps its `ts_rank_cd`, a hit by trigram alone is ranked by `word_similarity`, scaled below
+  a full-text hit in the title, and the exact-title boost stays on top. Tests set the weights.
+- Quick search: substring and similarity on title and name do not depend on the stemmer, so `connecti` finds
+  "Connection guide". This makes the copy of title and name as `simple` at weight `B` unnecessary; the step plan
+  decides whether to drop it.
+- Permissions: the trigram conditions sit in the same `WHERE` as the folder filter and `"deletedAt" IS NULL`, so
+  everything derived from results stays under the filter. `word_similarity` looks only at the row itself, so, unlike
+  BM25, nothing in other folders shifts the order.
+- Limits: `pg_trgm.word_similarity_threshold` is set with `SET LOCAL` in the transaction of the search, next to
+  `statement_timeout`. Its value lives in the limits module.
+- Installing: the migration runs `CREATE EXTENSION IF NOT EXISTS pg_trgm`. A trusted extension needs the `CREATE`
+  privilege on the database, so either the user of HippoWiki has it, or the operator creates the extension beforehand.
+  `spec/container-image.md` then names `pg_trgm` and that privilege. _Gap_: whether `IF NOT EXISTS` passes without the
+  privilege when the extension already exists was not tested.
+- Character type: a database with the character type `C` breaks `pg_trgm` for every letter outside ASCII, and with
+  libc it also breaks the lowercasing of full-text search. HippoWiki should therefore check `datctype` of its database
+  and refuse `C`, with a message that names the fix: a UTF-8 locale such as `C.UTF-8` or `en_US.utf8`. Whether the
+  check runs in the migration or at the start is for the step plan. The stock image and the test container of
+  `scripts/db.sh` use `en_US.utf8`.
+- Prisma: the indexes can be declared in `prisma/schema.prisma` as
+  `@@index([title(ops: raw("gin_trgm_ops"))], type: Gin, where: …)` if Prisma 7.10 allows an operator class together
+  with a partial index; otherwise they are written by hand in the migration. _Gap_: not checked.
+
+`unaccent` stays out:
+
+- For German, folding umlauts changes meaning ("Maße" against "Masse"), so it is not clearly better for the main
+  language of the wiki.
+- The `german` stemmer already folds umlauts in its stems. Neither it nor `unaccent` makes "ae" find "ä": `unaccent`
+  turns "ä" into "a", and the trigrams of "Haeuser" and "Häuser" share too little for the similarity threshold
+  (_Inference_ from how trigrams are built, not measured).
+- It can follow later through the same trigger and the rebuild command, as a dictionary of a configuration of its own.
+
+_Gap_: which extensions Azure, Neon and Supabase allow was not verified.
 
 ### BM25 extensions and external engines stay out of the baseline
 
 | Option                    | What it needs                 | License          | Fit for HippoWiki     |
 | ------------------------- | ----------------------------- | ---------------- | --------------------- |
 | Built-in tsvector and GIN | nothing                       | PostgreSQL       | baseline              |
-| pg_trgm, unaccent         | trusted contrib extensions    | PostgreSQL       | optional, a decision  |
+| pg_trgm                   | trusted contrib extension     | PostgreSQL       | titles and names      |
+| unaccent                  | trusted contrib extension     | PostgreSQL       | no, maybe later       |
 | pg_textsearch (BM25)      | preload library, restart      | PostgreSQL       | later, if the DB fits |
 | ParadeDB pg_search (BM25) | custom image or Neon          | AGPL-3.0         | no                    |
 | VectorChord-bm25          | custom image, pg_tokenizer    | AGPL-3.0 or ELv2 | no                    |
@@ -885,8 +947,9 @@ _Inference_, for HippoWiki:
 
 - Quick search sits in the app bar and opens with Ctrl or Cmd+K. It is built on MUI `Autocomplete` (freeSolo), which
   implements the combobox pattern.
-- Quick search matches title and name by prefix through the weight-`A` part of the same vector, lists the current
-  folder first, and shows at most about ten pages with their folder and tab. Enter without a chosen option opens the
+- Quick search matches title and name by prefix through the weight-`A` part of the same vector, and by substring and
+  similarity through the trigram indexes, so that a half-typed word, a part of a compound and a typo all find the
+  page. It lists the current folder first, and shows at most about ten pages with their folder and tab. Enter without a chosen option opens the
   results page.
 - The results page shows title, folder, tab, snippet, time of the last change, last editor and channel ("by mike via
   mcp", as in the lists).
@@ -999,7 +1062,8 @@ _Inference_, what to prepare now:
 - Keep the stored plain text of a page. Chunks for embeddings (one per heading section) can later be derived from it
   into a table of their own with page, position, heading, text and embedding.
 - pgvector is not in the stock `postgres` image pinned in `scripts/Containerfile`. Semantic search therefore brings
-  the same extension decision as `pg_trgm`, plus an embedding model and its hosting (_Gap_: not researched).
+  an extension that, unlike `pg_trgm`, needs a database image of its own or a managed database that offers it, plus an
+  embedding model and its hosting (_Gap_: not researched).
 
 ## Recommended design for HippoWiki
 
@@ -1018,26 +1082,36 @@ setweight(searchText, 'D')` with the page's configuration, plus title and name w
   pages, and a command of `scripts/admin.ts` re-detects the languages and rebuilds the vectors when the detector or the
   mapping changes. Moves and deletes change no text and do not touch the vector; a rename, and a restore under another
   name, rebuild it.
-- Index: a partial GIN index on `searchVector` `WHERE "deletedAt" IS NULL`. No extension.
+- Index: a partial GIN index on `searchVector` `WHERE "deletedAt" IS NULL`, and a partial GIN index `gin_trgm_ops`
+  each on the title and the name.
+- Database: `pg_trgm` created by the migration, the only extension, and a check that refuses a database with the
+  character type `C` (see "pg_trgm on titles and names, unaccent stays out").
 - Query: a parser of its own that produces quoted operands with AND, OR, NOT, phrases and prefixes. The text is bound
   as a parameter and parsed with each configuration of the fixed list, one branch per language, each restricted to
-  the pages of that language.
+  the pages of that language. A second condition, joined with OR, matches a page whose title or name holds every
+  word by substring or by word similarity.
 - Ranking: `ts_rank_cd` with the default weights and the query of the page's own language, plus an exact-title boost,
-  with ties broken by the time of the last change.
+  with ties broken by the time of the last change. A hit by trigram alone ranks by `word_similarity`, below a
+  full-text hit in the title.
 - Snippets: `ts_headline` with the page's configuration over `searchText` for the returned rows only, with sentinel
   markers, as a list of parts.
 - Permissions: readable folder ids resolved first through `readableFolderWhere()` and passed to the search SQL as a
   required filter, with a partial B-tree index on the folder of a page, admins answered without a query, MCP limited to
   the folder of the connection, deleted pages never, revisions not (see "The rule: a search sees exactly the pages
   the user could open").
-- Browser: quick search in the app bar on the title part of the vector, a results page with folder and tab filters
+- Browser: quick search in the app bar on the title part of the vector and the trigram indexes, a results page with folder and tab filters
   and two sort orders, and the address left to the requirements.
 - MCP: `search_pages` as described above, for every role.
-- Limits: query length, number of terms, minimum prefix, page size, offset cap and statement timeout. Every limit
+- Limits: query length, number of terms, minimum prefix, page size, offset cap, statement timeout and the threshold of
+  word similarity. Every limit
   sits in one module, like `src/features/pages/limits.ts`, and has a cost test of the largest query and the largest
   page.
 - Tests: unit tests of the parser and the snippet splitting. Integration tests against the database container for
-  ranking, permissions, deleted pages, the 1 MB guard and German and English examples. End-to-end tests of quick
+  ranking, permissions, deleted pages, the 1 MB guard and German and English examples, and for the trigram match: a
+  part of a compound and a typo in a title are found, umlauts match inside a word, a word of two characters is not
+  matched by trigram, `-word` excludes a trigram hit, a trigram hit in a folder without a role is never found, and
+  the search uses the trigram indexes. A test that the check refuses a database with the character type `C`.
+  End-to-end tests of quick
   search, the results page and the MCP tool for each role.
 
 A sketch of the core SQL, to be checked during the step plan:
@@ -1055,11 +1129,17 @@ SELECT p.id,
        ts_rank_cd(p."searchVector",
                   CASE p."searchLanguage" WHEN 'german' THEN to_tsquery('german', $1)
                                           WHEN 'english' THEN to_tsquery('english', $1)
-                                          ELSE to_tsquery('simple', $1) END) AS rank
+                                          ELSE to_tsquery('simple', $1) END)
+         -- a hit by trigram alone has a text rank of 0 and ranks by similarity, scaled down
+         + 0.1 * word_similarity($5, p.title) AS rank
 FROM "Page" p
 WHERE ((p."searchLanguage" = 'german' AND p."searchVector" @@ to_tsquery('german', $1))
     OR (p."searchLanguage" = 'english' AND p."searchVector" @@ to_tsquery('english', $1))
-    OR (p."searchLanguage" = 'simple' AND p."searchVector" @@ to_tsquery('simple', $1)))
+    OR (p."searchLanguage" = 'simple' AND p."searchVector" @@ to_tsquery('simple', $1))
+    -- trigram: one block per query word of three or more characters, generated in code; $6 is the word with
+    -- % _ and \ escaped; exclusions with -word are left out of this sketch
+    OR (p.title ILIKE '%' || $6 || '%' OR $6 <% p.title
+        OR p.name ILIKE '%' || $6 || '%' OR $6 <% p.name))
   AND p."deletedAt" IS NULL
   -- $2: the ids of readableFolderWhere(actor), resolved before; never empty, an empty list returns without a query
   AND p."folderId" = ANY($2::uuid[])
@@ -1077,9 +1157,9 @@ LIMIT $3 OFFSET $4;
   Writer override it per page later?
 - Mixed pages: is one language per page enough, or are paragraphs in another language detected on their own, with
   the exclusion problem that brings?
-- Extensions: does HippoWiki keep "no database extensions", or does it allow the trusted `pg_trgm`, and maybe
-  `unaccent`, for infix and typo-tolerant title search, with a check of what common managed PostgreSQL offerings
-  allow?
+- Trigram: is the content also matched by trigram, after a measurement of the index size and the write cost, or only
+  the title and the name? Which threshold of word similarity? Does HippoWiki refuse to start on a database with the
+  character type `C`, or only warn?
 - Scope: wiki-wide search across all folders with a role, search in one folder, or both? Does a search started inside
   a folder default to that folder or rank it first?
 - Address: a route of its own such as `/search`, a view of the folder, or both?
@@ -1104,8 +1184,11 @@ LIMIT $3 OFFSET $4;
   not confirmed.
 - No recent benchmark of `ts_rank` and `ts_headline` at 10k to 1M pages on PostgreSQL 16 to 18 was found. The changes
   to text search in PostgreSQL 18 were not checked.
-- Which extensions Azure, Neon and Supabase offer, whether `unaccent` is trusted, and the managed availability of
-  pg_textsearch were not verified on provider pages.
+- Which extensions Azure, Neon and Supabase offer, among them `pg_trgm`, and the managed availability of pg_textsearch
+  were not verified on provider pages.
+- Whether Prisma 7.10 declares a GIN index with `gin_trgm_ops` and a `where` together, and whether
+  `CREATE EXTENSION IF NOT EXISTS` passes for a user without the `CREATE` privilege when the extension exists, were
+  not tested.
 - The XWiki and DokuWiki documentation refused automated fetches. Their permission handling and query syntax are not
   covered.
 - No measured comparison of `simple`, `german` and Hunspell on wiki text exists in the sources. The trick of joining
@@ -1124,10 +1207,10 @@ handling of deleted pages and the parsing of hostile input in exactly one SQL pa
 The failures documented in the surveyed projects (filtering after paging, raw `to_tsquery`, HTML from `ts_headline`,
 vectors that block saves) all happened on top of an engine that worked. HippoWiki's existing rules already point the
 way: roles read live per request, a soft delete with `deletedAt`, a 100,000-character content limit, page text marked
-for AI apps, and a cost test for every expensive path. The real choice left for the requirements is language quality
-against the promise of no database extensions. Stemming each page in its detected language improves the quality
-within that promise, since the Snowball configurations are built in; a trigram layer for compounds and typos can
-follow later through the same trigger and the rebuild command.
+for AI apps, and a cost test for every expensive path. Stemming each page in its detected language improves the quality with
+the Snowball configurations that are built in, and the trusted `pg_trgm` on titles and names adds parts of compounds
+and typos at the cost of one extension and a database with a UTF-8 character type. Trigrams on the content, and
+`unaccent`, can follow later through the same trigger and the rebuild command.
 
 ## Sources
 
