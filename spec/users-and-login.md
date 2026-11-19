@@ -6,8 +6,8 @@ sees no content, a user works with the folders, tabs and pages and manages no ac
 the first start; admins create all other accounts, and every account sets its own password at the first login. What a
 user sees and does with a folder depends on the user's role on it (see `folder-roles.md`).
 
-Code: `src/features/users/` (the accounts), `src/features/auth/` (login, logout, the session, the login wait and the
-forced password change), `src/lib/auth.ts` (the Better Auth instance), `src/lib/client-address.ts`,
+Code: `src/features/users/` (the accounts), `src/features/auth/` (login, logout, the session, the login wait, the
+password changes, logging out other browsers and the check of the own password for the consent page), `src/lib/auth.ts` (the Better Auth instance), `src/lib/client-address.ts`,
 `src/lib/password-hash.ts`, `src/proxy.ts`, `scripts/admin.ts`, `scripts/common-passwords.ts` and the routes
 `src/app/login/`, `src/app/change-password/` and `src/app/users/`. The models are `User`, `Account`, `Session`,
 `Verification`, `AuthSecret`, `LoginAttempt` and `LoginWindow` in `prisma/schema.prisma`; the first four have the shape
@@ -15,7 +15,8 @@ that Better Auth and its `username` plugin expect. The admin setup in the contai
 
 The connected apps of a user and the own account page `/account` are described in `connected-apps.md`.
 
-Tests: `e2e/login.spec.ts`, `e2e/change-password.spec.ts`, `e2e/users.spec.ts`, `e2e/access.spec.ts`,
+Tests: `e2e/login.spec.ts`, `e2e/change-password.spec.ts`, `e2e/own-password-change.spec.ts`,
+`e2e/log-out-other-browsers.spec.ts`, `e2e/users.spec.ts`, `e2e/access.spec.ts`,
 `integration/auth-service.test.ts`, `integration/user-service.test.ts`, and the unit tests next to the code, such as
 `src/features/auth/service.test.ts`, `src/features/auth/wait.test.ts`, `src/features/users/schema.test.ts`,
 `src/features/users/user-type.test.ts`, `src/features/users/common-passwords.test.ts`, `src/lib/addresses.test.ts`
@@ -103,7 +104,9 @@ and `src/lib/client-address.test.ts`.
 - The header shows "Folders" for a user, "Users" for every account, "Folder roles" for an admin, the name of the
   logged-in user, which links to the own account `/account`, and "Log out", a plain form that works without
   JavaScript. An admin has no "Folders".
-  Logging out ends the session of the browser and leads to the login page; the other sessions of the user stay.
+  Logging out ends the session of the browser and leads to the login page; the other sessions of the user stay. The
+  own account `/account` has "Change password" and "Log out other browsers" for every account (see "Own password
+  change" and "Logging out other browsers").
 - After a login and a logout every route is revalidated, so that the header and cached pages follow the new session.
 - Better Auth is called only on the server. Its route handler is not mounted, so there is no `/api/auth/...` and no
   public endpoint to sign up or to sign in past the login wait.
@@ -157,7 +160,9 @@ group of the request (see "Forced password change" and `oauth.md`):
 What a user and an operator can rely on:
 
 - A login during a wait is refused with the longer of the two waits, without checking the password and without being
-  counted. The log line says which limit asked for the wait.
+  counted. The log line says which limit asked for the wait. A password change and an approval on the consent page
+  that have to wait are refused the same way, with the wording "Too many wrong passwords" instead of "Too many failed
+  logins", because they are not logins.
 - Every other login is counted in both limits before its password is checked, or in neither. Logins at the same time
   therefore get no more guesses than logins one after another: 5 per group, one more after each wait, and 20 per name
   and hour. The others are refused with the wait, whatever their password.
@@ -234,6 +239,39 @@ the authentication guide of Next.js describes:
 - After the change a user lands on `/folders` and an admin on `/users`, or on the address the login was asked for (see
   "The way back after a login"). Who has no pending change and opens `/change-password` is led there too.
 
+## Own password change
+
+- Every account changes its own password at any time after the forced password change, in the dialog "Change
+  password" of `/account` at `?action=change-password`, with the current password, the new one and its repetition, by
+  the password rules above. A user whose first password is still pending is led to the forced change first.
+- The change ends all other sessions of the account and starts a new one for the browser that made it: the other
+  browsers are logged out at their next request, and this one stays logged in.
+- The current password is counted like a login of the user name from the client address group of the request (see
+  "Failed logins"); a new password that breaks a rule is refused before the current password is checked, and is not
+  counted. A refused current password, wrong or during a wait, empties the password fields.
+- A user with at least one connected app can choose "Also disconnect all my apps", not ticked when the dialog opens. An
+  admin, a user without apps and every user while OAuth is off see no such choice; one that is sent anyway is ignored
+  and logged as a warning.
+- The apps are disconnected only once the password is changed and the other sessions are ended, so that they are
+  never lost without a change. When disconnecting them fails, the change stands, the failure is logged, and `/account`
+  asks the user to revoke the apps in the list.
+- After the change `/account` says that the password was changed and the other browsers were logged out, and, when
+  chosen, whether the apps were disconnected. The notice is shown once: a reload shows no message.
+- While the password hashing is busy, the change is answered as busy and changes nothing.
+- The change is logged as an info line with the user id, the user name, whether the apps were disconnected and how
+  many; never a password.
+
+## Logging out other browsers
+
+- "Log out other browsers" on `/account` opens a confirmation at `?action=log-out-others`. Confirming ends all other
+  sessions of the account without changing the password; the current browser stays logged in, and no password is
+  asked. Closing the dialog ends nothing.
+- After it `/account` says that the other browsers were logged out, also when there was no other session. The notice
+  is shown once.
+- When the sessions cannot be ended, the dialog stays open with an error that says that the other browsers may still
+  be logged in; nothing claims success, and the failure is logged.
+- It is logged as an info line with the user id, the user name and how many sessions were ended.
+
 ## User list and creating users
 
 - Every account sees the user list, at `/users`, from the header entry "Users": every account, admins included, by
@@ -260,7 +298,11 @@ the authentication guide of Next.js describes:
 - `/change-password`: the forced password change. It needs a session; without a pending change it leads on as a login
   does. `?next=<path>` is the address the change leads to.
 - `/users`: the user list, for every account, with the action `create` for the "New user" dialog, for admins only.
-- None of the three has views, and only `/users` has an action; any other action or view shows the not-found page.
+- `/account`: the own account (see `connected-apps.md`). Its actions `change-password` and `log-out-others` open the
+  dialogs of "Own password change" and "Logging out other browsers" for every account, and `?notice=<notice>` reports
+  once what one of them did; a notice with an action or an unknown one shows the not-found page.
+- None of the first three has views, and only `/users` has an action; any other action or view shows the not-found
+  page.
 
 ## Decisions
 
@@ -338,6 +380,39 @@ the authentication guide of Next.js describes:
   for its HTTP handler and for links in mails, and HippoWiki has neither.
 - A logout that fails throws and shows the error page, because the button has no place for a message and a session
   that could not be ended must not look ended.
+- A change of the own password always ends the other sessions; disconnecting the apps is the user's choice, because a
+  routine change should not force every app to be connected again. The choice is not ticked and is shown only to a
+  user with apps, so that a routine change keeps the apps and nobody sees a choice that does nothing. Rejected: ticked
+  by default, and shown to every user.
+- The password change and the logout of other browsers are dialogs of `/account` at addresses of their own, like
+  "Revoke app", so that the page stays short and the dialogs can be linked. Rejected: a form always shown on the page,
+  and a page of its own.
+- Wrong passwords at both password changes and on the consent page count against the waits of the login, so that a
+  stolen session gives no more guesses than the login page does, and a right one counts like a successful login, so
+  that the three forms behave alike. Rejected: also ending the session after 5 wrong passwords, a count of its own,
+  and letting only the login forget the count.
+- Because of that, someone who guesses the password of a user at the login also makes the user's own password change
+  wait, with `HIPPOWIKI_TRUSTED_PROXIES=0` from anywhere, up to 15 minutes or the rest of the hour. This is accepted:
+  the guesser does not know the password, the sessions of the user keep working, and logging out the other browsers
+  needs no password. Rejected: letting a session pass the waits of the login, which needs a count per session.
+- A wait at a password change and on the consent page has its own wording, "Too many wrong passwords", because it is
+  not a login. Rejected: the wording of the login.
+- Logging out the other browsers asks for a confirmation but not for the password, because ending sessions only
+  protects the account. Rejected: ending them at one click, and asking for the password.
+- After a change or a logout of the other browsers, `/account` says what happened, once. Rejected: leading to the start
+  page like the forced change, and closing the dialog without a message.
+- When disconnecting the apps fails after the password was changed, the change stands and the user is told to revoke
+  the apps, because a changed password and logged-out browsers are the more urgent part. Rejected: disconnecting the
+  apps first, which could lose them without a change.
+- A failure to log out the other browsers is shown in the dialog, not on the error page as a failed logout: the current
+  browser is still logged in and can try again, and the message does not claim that anything ended. Rejected: the
+  error page.
+- The other sessions are deleted by the auth service in one write that leaves out the current session, not with
+  `revokeOtherSessions` of Better Auth: that returns no number, deletes the sessions one by one, and Better Auth was
+  found to swallow a failed delete at the logout, so a failure could look like success.
+- The password changes and the logout of other browsers are logged with the user and the counts, so that an operator
+  can follow what happened to an account; the line of a login names the user and the group, and the line of a logout
+  the user.
 - The seed and the tests have a known admin and a known user (`prisma/known-users.ts`), both with the password change
   already done. The seed upserts them by name, because an admin that `npm run admin:setup` created has another id, and
   sets the type only when it creates one. The sample content has the known user as its last editor.
@@ -375,5 +450,6 @@ the authentication guide of Next.js describes:
 - no audit log
 - no browser client of Better Auth, and its HTTP handler is not mounted
 - no switch for session cookies without `Secure`: a production build needs HTTPS in front of it, or `localhost`
-- the password change is not atomic: Better Auth ends the sessions, stores the password and starts the new session in
-  separate statements, and the flag is cleared after them
+- a password change is not atomic: Better Auth ends the sessions, stores the password and starts the new session in
+  separate statements; after them the forced change clears the flag, and the own change disconnects the apps when
+  chosen

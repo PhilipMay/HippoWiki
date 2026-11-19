@@ -1,18 +1,21 @@
 # HippoWiki – Connected Apps
 
 The connected apps as built: every account of the type user sees the AI apps it connected through OAuth on the own
-account page `/account`, and revokes them there. A connected app is a grant:
+account page `/account`, and revokes them there, one by one or all at once with a change of the own password. A connected app is a grant:
 it stands for its user at one MCP address of a folder, limited to the folder and the role of that address and never
 more than the user's current role on the folder, until it expires or is revoked. How a grant comes about, and how its
 access token and refresh token work, is described in `oauth.md`; the MCP server at the folder addresses, which accepts
 the access tokens, in `mcp.md`. An admin has no connected apps and cannot get any. Users and the login are described in
 `users-and-login.md`.
 
-Code: `src/features/grants/` (`schema.ts`, `service.ts` with `authenticateAccessToken()`, `forms.ts`, `queries.ts`,
-`actions.ts`, the list and the dialog in `components/`), the route `src/app/account/` and the link in
-`src/components/AppHeader.tsx`. The model is `OAuthGrant` in `prisma/schema.prisma`. Tests: `e2e/account.spec.ts`,
-`e2e/mcp-access.spec.ts`, `e2e/oauth.spec.ts`, `integration/grant-service.test.ts`, and the unit tests next to the code,
-such as `src/features/grants/service.test.ts`.
+Code: `src/features/grants/` (`schema.ts`, `service.ts` with `authenticateAccessToken()` and `revokeAllGrants()`,
+`forms.ts`, `queries.ts`, `actions.ts`, the list and the dialog in `components/`), the route `src/app/account/`, the
+notice `src/components/NoticeAlert.tsx` and the link in `src/components/AppHeader.tsx`; the dialogs of the password
+change and of logging out other browsers are in `src/features/auth/components/`. The model is `OAuthGrant` in
+`prisma/schema.prisma`. Tests: `e2e/account.spec.ts`, `e2e/own-password-change.spec.ts`,
+`e2e/log-out-other-browsers.spec.ts`, `e2e/mcp-access.spec.ts`, `e2e/oauth.spec.ts`,
+`integration/grant-service.test.ts`, and the unit tests next to the code, such as
+`src/features/grants/service.test.ts`.
 
 ## Connected apps
 
@@ -86,17 +89,23 @@ such as `src/features/grants/service.test.ts`.
 
 ## Own account page
 
-- `/account` shows the user name and the list of "Connected apps", each with its folder and role; it speaks of apps,
-  not of tokens. Without apps it says only that no app is connected yet: how to connect one is in the README and in
+- `/account` shows the user name, the buttons "Change password" and "Log out other browsers" of every account (see
+  "Own password change" and "Logging out other browsers" in `users-and-login.md`), and the list of "Connected apps",
+  each with its folder and role; it speaks of apps, not of tokens. Without apps it says only that no app is connected yet: how to connect one is in the README and in
   the view "AI apps" of a folder. The user name in the
   header links there, except while the first password is still to change, because the address would only lead to the
   password change.
-- `?action=revoke&app=<id>` opens the "Revoke app" dialog of an app of the user. Any other action, a view, the
-  parameter `token`, an `app` without `revoke` and an id that is malformed, unknown or another user's show the
-  not-found page.
+- `?action=revoke&app=<id>` opens the "Revoke app" dialog of an app of the user. `?action=change-password` and
+  `?action=log-out-others` open the dialogs of the password change and of logging out other browsers; in the first, a
+  user with at least one app can choose to disconnect all of them. Any other action, a view, the parameter `token`, an
+  `app` without `revoke` and an id that is malformed, unknown or another user's show the not-found page.
+- `?notice=<notice>` reports once what the password change or the logout of other browsers did: the notice is removed
+  from the address once the page has loaded, so that a reload shows no message. A notice reports only and changes
+  nothing; one with an action, an unknown one and a repeated one show the not-found page.
 - Like every other page, `/account` needs a login.
-- `/account` of an admin, and of every user while `HIPPOWIKI_PUBLIC_URL` is not set, shows the user name only, with
-  no list; every action and every `app` shows the not-found page.
+- `/account` of an admin, and of every user while `HIPPOWIKI_PUBLIC_URL` is not set, shows the user name and the two
+  buttons, with no list; `revoke` and every `app` show the not-found page, and the password change offers no choice
+  to disconnect apps.
 
 ## Decisions
 

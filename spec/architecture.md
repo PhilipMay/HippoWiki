@@ -197,6 +197,10 @@ the callers other than the browser.
   - `logIn()` and `logOut()` call neither `requireUser()` nor `requireSession()`, because they are what makes and ends
     a session, and `changeFirstPassword()` calls `requireSession()`, because `requireUser()` would send the user back
     to the password change.
+  - `changeOwnPassword()` and `logOutOtherBrowsers()` of the auth feature call `requireUser()` like every action, but
+    read the client address group (the first) and redirect to `/account` with a notice of what they did instead of
+    to an item; `approve()` of the OAuth feature checks the password through `verifyOwnPassword()` of the auth feature
+    before it calls its service.
   - The actions of users, grants and auth revalidate their own paths instead of calling `revalidateContent()`,
     because they change no content.
 

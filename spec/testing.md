@@ -254,6 +254,12 @@ How the code is tested. Commands are listed in `README.md`.
   - A test in which a second user works at the same time logs that user in with `logInElsewhere(browser, name)` of
     `e2e/support/auth.ts`, in a browser context of its own; the user is created with `createUser()` and
     `mustChangePassword: false`, and the test closes the context.
+  - A test that changes a password or ends the sessions of an account uses an account of its own, created with
+    `createUser()` and `mustChangePassword: false`, and logs in through the login page in a spec without a saved
+    state, so that the saved sessions of the known users stay valid for the other specs.
+  - Every approval on the consent page enters the password of its user first, with `approve(page, password)` or
+    `connect(..., password)` of `e2e/support/oauth.ts`; the password is the one of the known user unless another is
+    given.
 - Helpers in `e2e/support/`:
   - `test.ts` exports the `test` and `expect` that all specs use; a lint rule forbids importing them from
     `@playwright/test`. After `page.goto()` and `page.reload()` its `page` waits until the page has hydrated, i.e. until

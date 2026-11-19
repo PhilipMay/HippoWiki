@@ -50,8 +50,6 @@ listed first; there is no order across themes.
 
 ## Users and Accounts
 
-- Own password change: change the own password at any time, not only the first one, on the own account page
-  `/account` (`users-and-login.md`, `connected-apps.md`).
 - Password reset by an admin: a new first password for an account that lost theirs (`users-and-login.md`).
 - Admin password command: reset a lost admin password with a command of `scripts/admin.ts` instead of a change in
   the database (`users-and-login.md`).
@@ -75,7 +73,8 @@ listed first; there is no order across themes.
 ## Login and Sessions
 
 - Ending sessions on password reset and deactivation: end all sessions of a user whose password is reset or who is
-  deactivated, as a password change does already.
+  deactivated, as a change of the own password does already, and let an admin end the sessions of another account
+  (`users-and-login.md`, "Current limits").
 - Audit log: record logins, changes of folder roles and password changes and resets (`users-and-login.md`,
   `folder-roles.md`).
 - Unlock command: a command of `scripts/admin.ts` that deletes the rows of `LoginAttempt` and `LoginWindow` of a user
@@ -89,7 +88,6 @@ listed first; there is no order across themes.
 - Login budget for known clients: a budget of its own for clients that have logged in before, so that the right
   password from such a client is not refused while the hour window of its name is full. The candidate is a signed
   device cookie that a successful login sets; see "Current limits" in `users-and-login.md`.
-- Ending all sessions at once: a user logs out of all browsers at once.
 - TOTP: a second factor with one-time codes from an authenticator app (`users-and-login.md`).
 - Passkeys (WebAuthn): login with a passkey (`users-and-login.md`).
 - Sign-in with Google or GitHub: login through another provider (`users-and-login.md`).

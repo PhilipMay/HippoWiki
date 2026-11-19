@@ -204,6 +204,10 @@ The fetch of a metadata document must not be a way to make the server ask an add
   real login on the wiki, would make the wiki an open redirect for phishing. RFC 9700 section 4.11.2 allows informing
   the user instead, and the MCP specification asks the authorization server to prevent open redirects. "Deny" is a
   click of the user and answers the client at once.
+- "Approve" asks for the password before every approval, because connecting an app is rare, a grant outlives the
+  session that approved it, and the rule is the same for every lifetime; wrong passwords there count against the waits
+  of the login (see "Decisions" in `users-and-login.md`). Rejected: only for grants longer than 30 days, and skipping
+  it when the password was entered a few minutes before.
 - The actions of the consent page return the address of the client, and the form opens it, instead of redirecting:
   Next.js passes the address of a redirect to another site in a header that it splits at `;`, which a redirect
   address may contain.

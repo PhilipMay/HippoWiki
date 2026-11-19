@@ -18,7 +18,9 @@ restore the pages from the deleted pages of their folder. Folders cannot be dele
 The wiki can only be used after a login. Every account is either an admin, who manages the accounts, sees no content
 and only an overview of who has which role on which folder, or a user, who creates folders, works with the folders on
 which the user has a role (Reader, Writer, Manager or Owner) and sees and revokes the connected apps on the own account
-page; admins create the accounts and choose their type, and the Owners of a folder give the roles on it. AI apps work with one
+page; admins create the accounts and choose their type, and the Owners of a folder give the roles on it. Every account
+changes its own password and logs out its other browsers on the own account page, and a user enters the password
+before approving an AI app. AI apps work with one
 folder each through an MCP server, as a Reader, a Writer or a Manager, connected through OAuth (see "MCP server").
 
 Every content change of a page is kept in its history, where two revisions can be compared and a page can be reverted
@@ -114,8 +116,8 @@ The application accesses the database with [Prisma](https://www.prisma.io/) 7. T
 
 ## Users
 
-The account types, the login, the wait after failed logins, the forced password change of a first password and the
-user list are described in `spec/users-and-login.md`. The first admin account, named `admin`, is created by the seed or
+The account types, the login, the wait after failed logins, the forced password change of a first password, the own
+password change, logging out other browsers and the user list are described in `spec/users-and-login.md`. The first admin account, named `admin`, is created by the seed or
 by the admin setup; further accounts of either type are created by an admin in the "New user" dialog of `/users`:
 
 - `npm run db:seed` inserts two known users for development (`prisma/known-users.ts`), with the password change
