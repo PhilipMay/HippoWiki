@@ -24,7 +24,7 @@ list keep their numbers.
 
 ## Checklist
 
-- [ ] Indent task lists like other lists
+- [x] Indent task lists like other lists
 - [ ] Wrap-up
 
 ## Indent task lists like other lists

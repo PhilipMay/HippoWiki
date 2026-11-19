@@ -115,6 +115,22 @@ describe("GitHub Flavored Markdown", () => {
     expect(html).not.toContain("[x]");
   });
 
+  it("renders a nested task list inside the task item of its parent", () => {
+    const html = render("- [ ] parent\n    - [ ] child");
+    expect(html).toMatch(
+      /<li class="task-list-item"><input [^>]*>parent<ul class="contains-task-list"><li class="task-list-item"><input [^>]*>child<\/li><\/ul><\/li>/,
+    );
+    expect(html.match(/<input type="checkbox" disabled=""/g)).toHaveLength(2);
+  });
+
+  it("renders an ordered task list", () => {
+    const html = render("1. [ ] first\n2. [x] second");
+    expect(html).toContain('<ol class="contains-task-list">');
+    expect(html.match(/<li class="task-list-item">/g)).toHaveLength(2);
+    expect(html).toMatch(/<input type="checkbox" disabled=""\/>first/);
+    expect(html).toMatch(/<input type="checkbox" disabled="" checked=""\/>second/);
+  });
+
   it("renders footnotes at the end with ids of the prefix user-content-", () => {
     const html = render("# Notes\n\nText[^note] and again[^note], then[^2].\n\n[^note]: The note.\n[^2]: Second.");
     expect(html).toContain('href="#user-content-fn-1" id="user-content-fnref-1"');

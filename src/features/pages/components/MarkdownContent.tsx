@@ -32,9 +32,13 @@ export default function MarkdownContent({ children }: { children: string }) {
         "& li > ul, & li > ol": { mb: 0 },
         "& li": { typography: "body1", mb: 0.5 },
         "& li > p": { mb: 0.5 },
-        "& ul.contains-task-list": { pl: 0 },
-        "& li.task-list-item": { listStyle: "none" },
-        "& li.task-list-item input": { mr: 1 },
+        // Task lists keep the indent of other lists. In a bullet list, the checkbox takes the place of the bullet: its
+        // negative margin equals its width and right margin, so the text starts where the text of a plain item does.
+        // A task item of an ordered list keeps its number, with the checkbox in front of the text. Without a vertical
+        // margin, the checkbox keeps a task item as high as a plain item.
+        "& li.task-list-item > input": { width: 16, height: 16, my: 0, mr: 1, verticalAlign: "-0.2em" },
+        "& ul > li.task-list-item": { listStyle: "none" },
+        "& ul > li.task-list-item > input": { ml: -3 },
         "& code": {
           fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
           fontSize: "0.875em",

@@ -1,3 +1,5 @@
+import type { Locator } from "@playwright/test";
+
 import { collectErrors, expectNotFound } from "./support/browser";
 import { createFolder, createPage, createUser, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
@@ -124,6 +126,73 @@ test("page view shows the content's heading instead of the stored title", async 
   await page.getByRole("link", { name: "Edit" }).click();
   await expect(page).toHaveURL("/folders/handbook/stored.md?action=edit");
   await expect(page.getByLabel("Content")).toHaveValue("# Content heading\n\nBody text");
+  expect(errors).toEqual([]);
+});
+
+/** The left edge of a visible element, in pixels of the page. */
+async function left(locator: Locator): Promise<number> {
+  const box = await locator.boundingBox();
+  expect(box).not.toBeNull();
+  return box?.x ?? 0;
+}
+
+test("task lists are indented and nested like other lists", async ({ page }) => {
+  const errors = collectErrors(page);
+  const folder = await createFolder({ name: "handbook" });
+  await createPage({
+    folder,
+    name: "tasks",
+    content: [
+      "# Task lists",
+      "",
+      "## Nested",
+      "",
+      "- [ ] Parent task",
+      "    - [x] Child task",
+      "",
+      "## Mixed",
+      "",
+      "- [x] Mixed task",
+      "- Mixed plain",
+      "",
+      "## Ordered",
+      "",
+      "1. [ ] First step",
+      "2. [x] Second step",
+    ].join("\n"),
+  });
+
+  await page.goto("/folders/handbook/tasks.md");
+
+  const article = page.getByRole("article");
+  const checkboxes = article.getByRole("checkbox");
+  await expect(checkboxes).toHaveCount(5);
+  // The checked item of each list is checked, the others are not.
+  const checked = [false, true, true, false, true];
+  for (const [index, isChecked] of checked.entries()) {
+    await expect(checkboxes.nth(index)).toBeChecked({ checked: isChecked });
+  }
+
+  // The nested task list is indented under its parent by at least the indent of a list.
+  const indent = await article
+    .locator("ul.contains-task-list")
+    .first()
+    .evaluate((list) => Number.parseFloat(getComputedStyle(list).paddingLeft));
+  expect(indent).toBeGreaterThan(0);
+  expect((await left(checkboxes.nth(1))) - (await left(checkboxes.nth(0)))).toBeGreaterThanOrEqual(indent);
+
+  // The checkboxes sit in the indent of their lists, never left of the content.
+  const titleLeft = await left(article.getByRole("heading", { level: 1, name: "Task lists" }));
+  for (const checkbox of await checkboxes.all()) {
+    expect(await left(checkbox)).toBeGreaterThanOrEqual(titleLeft);
+  }
+
+  // A plain item of a task list keeps its bullet; a task item of an ordered list keeps its number.
+  const items = article.getByRole("listitem");
+  await expect(items.filter({ hasText: /^Mixed plain$/ })).toHaveCSS("list-style-type", "disc");
+  await expect(items.filter({ hasText: /^Mixed task$/ })).toHaveCSS("list-style-type", "none");
+  await expect(items.filter({ hasText: /^First step$/ })).toHaveCSS("list-style-type", "decimal");
+  await expect(items.filter({ hasText: /^Second step$/ })).toHaveCSS("list-style-type", "decimal");
   expect(errors).toEqual([]);
 });
 
