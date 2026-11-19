@@ -289,6 +289,9 @@ parts of a page it did not mean to touch. The replacements are applied by `src/f
   browser. The tools import nothing from Next.js or React, like a service (`src/features/services.test.ts`).
 - A missing page or tab is a tool error, because the model drives the tools and can recover; a protocol error would
   only reach the program around the model.
+- The field messages of the forms stay without a full stop, as the fields of the browser show them, and the error of
+  refused content or a refused name ends each one with a full stop, so that a tool error reads as sentences. Rejected:
+  full stops in the field messages, which would change the browser.
 - The `Origin` check is a second line of defence against a page that makes its host name resolve to the address of
   the wiki (DNS rebinding). The first line is the token: the MCP addresses read no cookie, so a page of another site
   has nothing to send along. The check compares with the public URL only: such a page sends its own host name as

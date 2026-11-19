@@ -26,7 +26,6 @@ file itself holds.
 - `spec/oauth.md`: How does an AI app get access through OAuth?
 - `spec/optimistic-locking.md`: How are changes of the same page at the same time told apart?
 - `spec/folder-roles.md`: Who may see and do what with a folder?
-- `spec/mcp-error-sentences-steps.md`: How is the error of refused input of an MCP tool made whole sentences?
 - `spec/roadmap.md`: Which features may come later, and what is still to check?
 - `spec/issue-report.md`: How is an issue of a review of code or documents reported?
 - `spec/review-report.md`: Which findings of the security and code review are open? A fixed finding is deleted, and
