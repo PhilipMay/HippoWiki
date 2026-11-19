@@ -27,7 +27,11 @@ jobs:
       - run: npx playwright install --with-deps chromium
       # Podman is preinstalled on the runner; e2e/support/container.ts starts and removes the test database container.
       # Runs the tests against `next build` and `next start` instead of `next dev` (see playwright.config.ts).
+      # Three workers instead of the local default of four: the runner has 4 CPU cores and 16 GB, and each worker has its
+      # own server (see playwright.config.ts).
       - run: npm run test:e2e:production
+        env:
+          HIPPOWIKI_E2E_WORKERS: 3
       - uses: actions/upload-artifact@v7
         # Also when the tests fail, but not when the run was cancelled.
         if: ${{ !cancelled() }}

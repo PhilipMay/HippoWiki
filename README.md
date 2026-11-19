@@ -186,14 +186,21 @@ npm run test:e2e              # run all end-to-end tests against the development
 npm run test:e2e -- e2e/<name>.spec.ts   # run only the given specs, one path per spec
 npm run test:e2e:production   # run them against a production build (next build, next start)
 npm run test:e2e:ui           # open the Playwright UI to run and debug tests
+HIPPOWIKI_E2E_WORKERS=1 npm run test:e2e:ui   # the same with one worker and one server, to debug a test
 npx playwright show-report   # open the HTML report of the last run
 ```
 
 - Each run starts its own throwaway PostgreSQL container `hippowiki-test-db` (port 5433) and removes it afterwards, also
   when tests fail or the run is stopped with Ctrl+C. The development database is never touched and does not need to
   run.
-- Playwright starts its own server on port 3100, so the tests can run next to `npm run dev`.
-  `npm run test:e2e:production` builds the app first and takes longer.
+- The tests run with several workers at the same time, 4 by default. Each worker has its own copy of the test database
+  and its own server, worker 1 on port 3100 and each further one on the next port, up to 3107, so the tests can run
+  next to `npm run dev`. Every run starts the servers of all workers, also a run of one spec.
+- `HIPPOWIKI_E2E_WORKERS` sets the number of workers for one run, a whole number from 1 to 8; any other value stops the
+  run. With 1, the tests run one after another against one server on port 3100, as for debugging a test. The number of
+  workers is set with this variable, not with Playwright's `--workers`, which may only ask for fewer. CI runs with 3.
+- `npm run test:e2e:production` builds the app once first and takes longer; each worker then gets its own server on
+  that build.
 - Every test starts logged in as `alice`, with a session that the setup project `e2e/auth.setup.ts` saves once per
   run. `npx playwright test` runs the setup project by itself, also for a single spec. The Playwright UI
   (`npm run test:e2e:ui`) does not: run `auth.setup.ts` there once first, or enable the `setup` project in the project

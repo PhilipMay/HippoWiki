@@ -25,7 +25,7 @@ requirements are in `spec/parallel-end-to-end-tests-requirements.md`.
 - [x] A database and a development server per worker
 - [x] A production run built once
 - [x] Refuse more workers than servers
-- [ ] Three workers in CI
+- [x] Three workers in CI
 - [ ] Stability and the times after
 - [ ] Wrap-up
 
