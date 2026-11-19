@@ -25,6 +25,8 @@ file itself holds.
 - `spec/mcp.md`: How do AI apps work with a folder through MCP?
 - `spec/mcp-untrusted-content-requirements.md`: What must change so that AI apps treat page text as user data, and
   how are their tool calls traced?
+- `spec/mcp-untrusted-content-steps.md`: In which steps are page text marked as user data for AI apps, tool calls
+  logged and prompt injection documented?
 - `spec/oauth.md`: How does an AI app get access through OAuth?
 - `spec/optimistic-locking.md`: How are changes of the same page at the same time told apart?
 - `spec/folder-roles.md`: Who may see and do what with a folder?
