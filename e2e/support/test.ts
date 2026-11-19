@@ -1,5 +1,7 @@
 import { test as base, type Page } from "@playwright/test";
 
+import { workerUrl } from "./workers";
+
 export { expect } from "@playwright/test";
 
 /** Waits until the app has hydrated the page; `HydrationMarker` in the root layout sets the mark. */
@@ -31,10 +33,16 @@ export function hydrating(page: Page): Page {
 }
 
 /**
- * The Playwright `test` for all specs. Its `page` waits after `goto()` and `reload()` until the page has hydrated (see
- * `hydrating()`); with JavaScript disabled there is no wait.
+ * The Playwright `test` for all specs. Its `baseURL` is the address of the server of its worker, so that `page`,
+ * `request` and every browser context the test opens use the server and the database of that worker (see
+ * ./workers.ts). Its `page` waits after `goto()` and `reload()` until the page has hydrated (see `hydrating()`); with
+ * JavaScript disabled there is no wait.
  */
 export const test = base.extend({
+  // `parallelIndex` counts the workers from 0, the servers are counted from 1.
+  baseURL: async ({}, provide, testInfo) => {
+    await provide(workerUrl(testInfo.parallelIndex + 1));
+  },
   // The fixture callback is called `provide`, not `use`: the React lint rules would take `use` for the React hook.
   page: async ({ page, javaScriptEnabled }, provide) => {
     await provide(javaScriptEnabled === false ? page : hydrating(page));

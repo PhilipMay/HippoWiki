@@ -9,7 +9,7 @@ const WORKERS_VARIABLE = "HIPPOWIKI_E2E_WORKERS";
 const DEFAULT_WORKERS = 4;
 
 /** The largest number of workers: one server per worker on the ports 3100 to 3107. */
-const MAX_WORKERS = 8;
+export const MAX_WORKERS = 8;
 
 /** The port of the server of worker 1; each further worker uses the next one. */
 const FIRST_PORT = 3100;

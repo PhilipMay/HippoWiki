@@ -6,9 +6,13 @@ import type { APIRequestContext, Page } from "@playwright/test";
 
 import { KNOWN_USER } from "../../prisma/known-users";
 import { expect } from "./test";
+import { processWorker, workerUrl } from "./workers";
 
-/** The public URL of the test server (`HIPPOWIKI_PUBLIC_URL` in `playwright.config.ts`): the issuer. */
-export const ISSUER = "http://localhost:3100";
+/**
+ * The public URL of the server of the worker of the process (`HIPPOWIKI_PUBLIC_URL` in `playwright.config.ts`): the
+ * issuer. Worker 1 outside a worker, where no test runs.
+ */
+export const ISSUER = workerUrl(processWorker() ?? 1);
 
 /** The redirect address of the client of the tests: on a loopback address, where nothing listens. */
 export const REDIRECT_URI = "http://127.0.0.1:53682/callback";

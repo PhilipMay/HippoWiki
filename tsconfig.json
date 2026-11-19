@@ -32,8 +32,24 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
     "**/*.mts",
-    ".next-e2e/types/**/*.ts",
-    ".next-e2e/dev/types/**/*.ts"
+    ".next-e2e/worker-1/types/**/*.ts",
+    ".next-e2e/worker-1/dev/types/**/*.ts",
+    ".next-e2e/worker-2/types/**/*.ts",
+    ".next-e2e/worker-2/dev/types/**/*.ts",
+    ".next-e2e/worker-3/types/**/*.ts",
+    ".next-e2e/worker-3/dev/types/**/*.ts",
+    ".next-e2e/worker-4/types/**/*.ts",
+    ".next-e2e/worker-4/dev/types/**/*.ts",
+    ".next-e2e/worker-5/types/**/*.ts",
+    ".next-e2e/worker-5/dev/types/**/*.ts",
+    ".next-e2e/worker-6/types/**/*.ts",
+    ".next-e2e/worker-6/dev/types/**/*.ts",
+    ".next-e2e/worker-7/types/**/*.ts",
+    ".next-e2e/worker-7/dev/types/**/*.ts",
+    ".next-e2e/worker-8/types/**/*.ts",
+    ".next-e2e/worker-8/dev/types/**/*.ts",
+    ".next-e2e/production/types/**/*.ts",
+    ".next-e2e/production/dev/types/**/*.ts"
   ],
   "exclude": ["node_modules"]
 }

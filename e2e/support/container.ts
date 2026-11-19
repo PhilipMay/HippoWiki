@@ -1,5 +1,7 @@
 // The throwaway PostgreSQL container of the end-to-end tests. The global setup creates it before each run and the
-// global teardown removes it, so no database is left running after the tests. Its data lives in memory only.
+// global teardown removes it, so no database is left running after the tests. Its data lives in memory only. It holds
+// the database `hippowiki_test`, which the integration tests use, and one copy of it for each worker of the
+// end-to-end tests (see ./workers.ts), so that no worker sees the data of another.
 import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
@@ -11,8 +13,13 @@ const TEST_DB_USER = "hippowiki_test";
 const TEST_DB_PASSWORD = "hippowiki_test";
 const READY_TIMEOUT_MS = 60_000;
 
+/** URL of the database with the given name in the test container. */
+export function testContainerDatabaseUrl(name: string): string {
+  return `postgresql://${TEST_DB_USER}:${TEST_DB_PASSWORD}@localhost:${TEST_DB_PORT}/${name}`;
+}
+
 /** URL of the test database in the test container. */
-export const TEST_DATABASE_URL = `postgresql://${TEST_DB_USER}:${TEST_DB_PASSWORD}@localhost:${TEST_DB_PORT}/${TEST_DATABASE_NAME}`;
+export const TEST_DATABASE_URL = testContainerDatabaseUrl(TEST_DATABASE_NAME);
 
 /**
  * Reads the PostgreSQL image from scripts/Containerfile, the one place it is pinned, so that the tests run against the
@@ -50,6 +57,29 @@ function isReady(): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Creates the databases with the given names as copies of `hippowiki_test`, with its schema and its rows. PostgreSQL
+ * copies a database only while nobody is connected to it, so the caller closes its connections first.
+ */
+export function copyTestDatabase(names: readonly string[]): void {
+  for (const name of names) {
+    podman([
+      "exec",
+      TEST_DB_CONTAINER,
+      "psql",
+      "--quiet",
+      "--set",
+      "ON_ERROR_STOP=1",
+      "-U",
+      TEST_DB_USER,
+      "-d",
+      "postgres",
+      "-c",
+      `CREATE DATABASE "${name}" TEMPLATE "${TEST_DATABASE_NAME}"`,
+    ]);
   }
 }
 

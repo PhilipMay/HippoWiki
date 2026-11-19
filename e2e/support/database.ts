@@ -1,6 +1,9 @@
 // Access to the end-to-end test database. It lives in its own throwaway container (see ./container.ts), so the tests
-// never touch the development database.
+// never touch the development database. Each worker of the end-to-end tests has its own database and server (see
+// ./workers.ts); the helpers here use the database of the worker of the process, and `hippowiki_test` outside a
+// worker, i.e. in the global setup and in the integration tests.
 import { execFileSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { setTimeout } from "node:timers/promises";
 
@@ -28,7 +31,8 @@ import { hashPassword } from "@/lib/password-hash";
 
 import { KNOWN_USER, KNOWN_USERS } from "../../prisma/known-users";
 import { SESSIONS_FILE } from "./auth";
-import { TEST_DATABASE_NAME, TEST_DATABASE_URL } from "./container";
+import { TEST_DATABASE_NAME, testContainerDatabaseUrl } from "./container";
+import { MAX_WORKERS, processWorker, workerDatabaseName } from "./workers";
 
 /** Host, port and database of a PostgreSQL URL, e.g. "localhost:5432/hippowiki". */
 function databaseLocation(url: string): string {
@@ -36,13 +40,29 @@ function databaseLocation(url: string): string {
   return `${hostname}:${port || "5432"}${pathname}`;
 }
 
-/** URL of the test database. It never points to the database of DATABASE_URL, so tests cannot touch it. */
-export function testDatabaseUrl(): string {
+/** The test database of the process: the one of its worker in an end-to-end test, `hippowiki_test` otherwise. */
+function processDatabaseName(): string {
+  const worker = processWorker();
+  return worker === undefined ? TEST_DATABASE_NAME : workerDatabaseName(worker);
+}
+
+/** The names of all databases that the tests may empty: `hippowiki_test` and the databases of the workers. */
+const TEST_DATABASE_NAMES = [
+  TEST_DATABASE_NAME,
+  ...Array.from({ length: MAX_WORKERS }, (_, index) => workerDatabaseName(index + 1)),
+];
+
+/**
+ * URL of the test database with the given name, by default the one of the process. It never points to the database of
+ * DATABASE_URL, so tests cannot touch it.
+ */
+export function testDatabaseUrl(name: string = processDatabaseName()): string {
+  const url = testContainerDatabaseUrl(name);
   const devUrl = process.env.DATABASE_URL;
-  if (devUrl && databaseLocation(devUrl) === databaseLocation(TEST_DATABASE_URL)) {
-    throw new Error(`DATABASE_URL must not point to the test database ${TEST_DATABASE_NAME}`);
+  if (devUrl && databaseLocation(devUrl) === databaseLocation(url)) {
+    throw new Error(`DATABASE_URL must not point to the test database ${name}`);
   }
-  return TEST_DATABASE_URL;
+  return url;
 }
 
 /** Applies all migrations to the test database. */
@@ -108,16 +128,19 @@ function postgresErrorCode(error: unknown): string | undefined {
 }
 
 /**
- * Deletes all rows from all tables of the test database, except the migration history and the secret of the session
- * cookies. The integration tests use it before every test; the end-to-end tests use `resetTestDatabase()`.
+ * Deletes all rows from all tables of the test database of the process, except the migration history and the secret
+ * of the session cookies. The integration tests use it before every test; the end-to-end tests use
+ * `resetTestDatabase()`.
  */
 export async function emptyTestDatabase(): Promise<void> {
   const db = getTestDb();
   const [row] = await db.$queryRaw<{ current_database: string }[]>`
     SELECT current_database()`;
   const current = row?.current_database;
-  if (current !== TEST_DATABASE_NAME) {
-    throw new Error(`Refusing to empty database ${current}; only ${TEST_DATABASE_NAME} may be reset.`);
+  if (current === undefined || !TEST_DATABASE_NAMES.includes(current)) {
+    throw new Error(
+      `Refusing to empty database ${current}; only ${TEST_DATABASE_NAME} and the databases of the workers may be reset.`,
+    );
   }
   const tables = await db.$queryRaw<{ tablename: string }[]>`
     SELECT tablename FROM pg_tables WHERE schemaname = 'public'`;
@@ -141,6 +164,15 @@ export async function emptyTestDatabase(): Promise<void> {
       await setTimeout(attempt * TRUNCATE_RETRY_DELAY_MS);
     }
   }
+}
+
+/**
+ * Stores a new random secret of the session cookies in the test database, as the server would on its first request.
+ * The global setup stores it before it copies the database for the workers, so that every worker database has the same
+ * secret and the logins that the setup project saves are valid on the server of every worker.
+ */
+export async function storeAuthSecret(): Promise<void> {
+  await getTestDb().authSecret.create({ data: { secret: randomBytes(32).toString("hex") } });
 }
 
 /** A row of `Session` as the setup project saved it: JSON has no dates, so they are strings. */

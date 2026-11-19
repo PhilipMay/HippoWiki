@@ -22,7 +22,7 @@ requirements are in `spec/parallel-end-to-end-tests-requirements.md`.
 
 - [x] Measure the times before
 - [x] Worker settings
-- [ ] A database and a development server per worker
+- [x] A database and a development server per worker
 - [ ] A production run built once
 - [ ] Refuse more workers than servers
 - [ ] Three workers in CI
@@ -128,14 +128,17 @@ own database and its own development server, with one result and one report (R1,
 
 - The test database container stays one container with the database `hippowiki_test`, which the integration tests use
   as they do today. The global setup of the end-to-end tests:
-  - applies the migrations to `hippowiki_test` and stores one new random secret in `AuthSecret` there;
+  - applies the migrations to `hippowiki_test`, stores one new random secret in `AuthSecret` there and resets it
+    (`resetTestDatabase()`), as it resets the one database today;
   - creates the database of each worker as a copy of it (`CREATE DATABASE hippowiki_test_<n> TEMPLATE hippowiki_test`),
-    so every worker database has the schema and the same secret, and the saved logins are valid on every server;
-  - resets each worker database (`resetTestDatabase()` for that database), as it resets the one database today.
+    so every worker database starts reset, with the schema and the same secret, and the saved logins are valid on every
+    server. (Changed while building: the reset before the copy replaces a reset of each worker database, so the global
+    setup, which runs in the main process, needs no helper that names a worker.)
 - `e2e/support/database.ts`: `getTestDb()`, `testDatabaseUrl()` and `resetTestDatabase()` use the database of the
-  worker of the process. The global setup, which runs in the main process, names the worker explicitly. The check that
-  the test database is never the database of `DATABASE_URL` holds for every worker database. `emptyTestDatabase()`
-  refuses every database but `hippowiki_test` and the worker databases.
+  worker of the process, and `hippowiki_test` outside a worker; `testDatabaseUrl()` also takes the name of a database,
+  for the servers of `playwright.config.ts`. The check that the test database is never the database of `DATABASE_URL`
+  holds for every worker database. `emptyTestDatabase()` refuses every database but `hippowiki_test` and the worker
+  databases.
 - `playwright.config.ts`:
   - reads the number of workers from `e2e/support/workers.ts` when it loads, so an invalid value stops the run before
     any server starts (R9);
