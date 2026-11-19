@@ -1206,7 +1206,7 @@ describe("changeFirstPassword", () => {
   });
 
   it("changes the password through Better Auth, ends the other sessions and then clears the flag", async () => {
-    const result = await changeFirstPassword(INPUT, REQUEST_HEADERS);
+    const result = await changeFirstPassword(INPUT, REQUEST_HEADERS, CLIENT_ADDRESS);
 
     expect(result).toEqual({
       ok: true,
@@ -1233,7 +1233,7 @@ describe("changeFirstPassword", () => {
   it("passes the passwords on as they are, with their spaces", async () => {
     const spaced = { currentPassword: "  first  ", newPassword: "  my own  ", repeatPassword: "  my own  " };
 
-    await changeFirstPassword(spaced, REQUEST_HEADERS);
+    await changeFirstPassword(spaced, REQUEST_HEADERS, CLIENT_ADDRESS);
 
     expect(mocks.changePassword).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
@@ -1245,7 +1245,7 @@ describe("changeFirstPassword", () => {
   it("answers not-logged-in without a session and changes nothing", async () => {
     mocks.getSession.mockResolvedValue(null);
 
-    const result = await changeFirstPassword(INPUT, new Headers());
+    const result = await changeFirstPassword(INPUT, new Headers(), CLIENT_ADDRESS);
 
     expect(result).toEqual({ ok: false, error: { code: "not-logged-in" } });
     expect(mocks.changePassword).not.toHaveBeenCalled();
@@ -1255,7 +1255,7 @@ describe("changeFirstPassword", () => {
   it("answers not-required for a user without a pending change and changes nothing", async () => {
     mocks.getSession.mockResolvedValue({ session: {}, user: AUTH_USER });
 
-    const result = await changeFirstPassword(INPUT, REQUEST_HEADERS);
+    const result = await changeFirstPassword(INPUT, REQUEST_HEADERS, CLIENT_ADDRESS);
 
     expect(result).toEqual({ ok: false, error: { code: "not-required" } });
     expect(mocks.changePassword).not.toHaveBeenCalled();
@@ -1301,7 +1301,7 @@ describe("changeFirstPassword", () => {
       user: { ...AUTH_USER, name: "alexander", username: "alexander", mustChangePassword: true },
     });
 
-    const result = await changeFirstPassword(input, REQUEST_HEADERS);
+    const result = await changeFirstPassword(input, REQUEST_HEADERS, CLIENT_ADDRESS);
 
     expect(result).toEqual({ ok: false, error: { code: "invalid-input", fieldErrors } });
     expect(mocks.getAuth).toHaveBeenCalledOnce();
@@ -1322,21 +1322,26 @@ describe("changeFirstPassword", () => {
   ])("answers wrong-password for %s and leaves the flag", async (_case, err) => {
     mocks.changePassword.mockRejectedValue(err);
 
-    const result = await changeFirstPassword(INPUT, REQUEST_HEADERS);
+    const result = await changeFirstPassword(INPUT, REQUEST_HEADERS, CLIENT_ADDRESS);
 
     expect(result).toEqual({ ok: false, error: { code: "wrong-password" } });
     expect(mocks.userUpdateMany).not.toHaveBeenCalled();
     expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
-      { userId: USER_ID },
+      { userId: USER_ID, name: "alice", clientAddress: CLIENT_ADDRESS },
       "first password not changed: wrong current password",
     );
     expect(mocks.error).not.toHaveBeenCalled();
+    // The count stays: it is neither taken back nor forgotten.
+    expect(mocks.attemptCreateMany).toHaveBeenCalledExactlyOnceWith(firstAttempt("alice"));
+    expect(mocks.attemptUpdateMany).not.toHaveBeenCalled();
+    expect(mocks.attemptDeleteMany).not.toHaveBeenCalled();
+    expect(mocks.windowDeleteMany).not.toHaveBeenCalled();
   });
 
   it("answers not-logged-in when the session ends before Better Auth changes the password", async () => {
     mocks.changePassword.mockRejectedValue(new APIError("UNAUTHORIZED", { code: "UNAUTHORIZED" }));
 
-    const result = await changeFirstPassword(INPUT, REQUEST_HEADERS);
+    const result = await changeFirstPassword(INPUT, REQUEST_HEADERS, CLIENT_ADDRESS);
 
     expect(result).toEqual({ ok: false, error: { code: "not-logged-in" } });
     expect(mocks.userUpdateMany).not.toHaveBeenCalled();
@@ -1345,7 +1350,7 @@ describe("changeFirstPassword", () => {
   it("answers busy when the password hashing has no free slot, and leaves the flag", async () => {
     mocks.changePassword.mockRejectedValue(new PasswordHashBusyError());
 
-    const result = await changeFirstPassword(INPUT, REQUEST_HEADERS);
+    const result = await changeFirstPassword(INPUT, REQUEST_HEADERS, CLIENT_ADDRESS);
 
     expect(result).toEqual({ ok: false, error: { code: "busy" } });
     expect(mocks.userUpdateMany).not.toHaveBeenCalled();
@@ -1365,7 +1370,7 @@ describe("changeFirstPassword", () => {
   ])("answers failed for %s, logs it and leaves the flag", async (_case, err) => {
     mocks.changePassword.mockRejectedValue(err);
 
-    const result = await changeFirstPassword(INPUT, REQUEST_HEADERS);
+    const result = await changeFirstPassword(INPUT, REQUEST_HEADERS, CLIENT_ADDRESS);
 
     expect(result).toEqual({ ok: false, error: { code: "failed" } });
     expect(mocks.userUpdateMany).not.toHaveBeenCalled();
@@ -1379,7 +1384,7 @@ describe("changeFirstPassword", () => {
     const err = new Error("connection refused");
     mocks.getSession.mockRejectedValue(err);
 
-    const result = await changeFirstPassword(INPUT, REQUEST_HEADERS);
+    const result = await changeFirstPassword(INPUT, REQUEST_HEADERS, CLIENT_ADDRESS);
 
     expect(result).toEqual({ ok: false, error: { code: "failed" } });
     expect(mocks.changePassword).not.toHaveBeenCalled();
@@ -1390,7 +1395,7 @@ describe("changeFirstPassword", () => {
     const err = new Error("connection refused");
     mocks.userUpdateMany.mockRejectedValue(err);
 
-    const result = await changeFirstPassword(INPUT, REQUEST_HEADERS);
+    const result = await changeFirstPassword(INPUT, REQUEST_HEADERS, CLIENT_ADDRESS);
 
     expect(result).toEqual({ ok: false, error: { code: "failed" } });
     expect(mocks.changePassword).toHaveBeenCalledOnce();
@@ -1403,12 +1408,127 @@ describe("changeFirstPassword", () => {
   it("answers failed when no user with the pending change is found any more", async () => {
     mocks.userUpdateMany.mockResolvedValue({ count: 0 });
 
-    const result = await changeFirstPassword(INPUT, REQUEST_HEADERS);
+    const result = await changeFirstPassword(INPUT, REQUEST_HEADERS, CLIENT_ADDRESS);
 
     expect(result).toEqual({ ok: false, error: { code: "failed" } });
     expect(mocks.error).toHaveBeenCalledExactlyOnceWith(
       { userId: USER_ID },
       "first password changed, but the user with the pending change was not found",
+    );
+  });
+
+  describe("the counting of the current password", () => {
+    it("counts the change as a login of the name of the user before Better Auth checks the password", async () => {
+      await changeFirstPassword(INPUT, REQUEST_HEADERS, CLIENT_ADDRESS);
+
+      expect(mocks.attemptCreateMany).toHaveBeenCalledExactlyOnceWith(firstAttempt("alice"));
+      expect(mocks.windowCreateMany).toHaveBeenCalledExactlyOnceWith(firstWindow("alice"));
+      const changed = mocks.changePassword.mock.invocationCallOrder[0] ?? -Infinity;
+      expect(mocks.attemptCreateMany.mock.invocationCallOrder[0]).toBeLessThan(changed);
+      expect(mocks.windowCreateMany.mock.invocationCallOrder[0]).toBeLessThan(changed);
+    });
+
+    it("forgets the counts of the name and group, and the window of the name, after a right current password", async () => {
+      await changeFirstPassword(INPUT, REQUEST_HEADERS, CLIENT_ADDRESS);
+
+      expect(mocks.attemptDeleteMany).toHaveBeenCalledExactlyOnceWith({
+        where: { username: "alice", clientAddress: CLIENT_ADDRESS },
+      });
+      expect(mocks.windowDeleteMany).toHaveBeenCalledExactlyOnceWith({ where: { username: "alice" } });
+    });
+
+    it.each([
+      [
+        "after failed logins",
+        { failures: 5, lastFailedAt: NOW },
+        null,
+        "first password not changed: waiting after failed logins",
+      ],
+      [
+        "within the hour",
+        null,
+        { attempts: 20, startedAt: new Date(NOW.getTime() - 59 * MINUTE) },
+        "first password not changed: too many logins for the name within the hour",
+      ],
+    ])("answers wait %s without reaching Better Auth and without counting", async (_case, count, window, message) => {
+      mocks.attemptFindUnique.mockResolvedValue(count);
+      mocks.windowFindUnique.mockResolvedValue(window);
+
+      const result = await changeFirstPassword(INPUT, REQUEST_HEADERS, CLIENT_ADDRESS);
+
+      expect(result).toEqual({ ok: false, error: { code: "wait", waitMs: MINUTE } });
+      expect(mocks.changePassword).not.toHaveBeenCalled();
+      expect(mocks.userUpdateMany).not.toHaveBeenCalled();
+      expect(mocks.attemptCreateMany).not.toHaveBeenCalled();
+      expect(mocks.attemptUpdateMany).not.toHaveBeenCalled();
+      expect(mocks.windowCreateMany).not.toHaveBeenCalled();
+      expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
+        { userId: USER_ID, name: "alice", clientAddress: CLIENT_ADDRESS, waitMs: MINUTE },
+        message,
+      );
+    });
+
+    it.each([
+      ["the hashing is busy", new PasswordHashBusyError(), "busy"],
+      ["something fails", new Error("connection refused"), "failed"],
+      ["the session ends meanwhile", new APIError("UNAUTHORIZED", { code: "UNAUTHORIZED" }), "not-logged-in"],
+    ])("takes the counts back when %s", async (_case, err, code) => {
+      mocks.changePassword.mockRejectedValue(err);
+
+      const result = await changeFirstPassword(INPUT, REQUEST_HEADERS, CLIENT_ADDRESS);
+
+      expect(result).toEqual({ ok: false, error: { code } });
+      expect(mocks.attemptDeleteMany).toHaveBeenCalledExactlyOnceWith({
+        where: { username: "alice", clientAddress: CLIENT_ADDRESS, failures: 1, lastFailedAt: NOW },
+      });
+      expect(mocks.windowDeleteMany).toHaveBeenCalledExactlyOnceWith({
+        where: { username: "alice", startedAt: NOW, attempts: 1 },
+      });
+    });
+
+    it("answers failed without checking the password when the change cannot be counted", async () => {
+      const err = new Error("connection refused");
+      mocks.attemptFindUnique.mockRejectedValue(err);
+
+      const result = await changeFirstPassword(INPUT, REQUEST_HEADERS, CLIENT_ADDRESS);
+
+      expect(result).toEqual({ ok: false, error: { code: "failed" } });
+      expect(mocks.changePassword).not.toHaveBeenCalled();
+      expect(mocks.error).toHaveBeenCalledExactlyOnceWith(
+        { err, userId: USER_ID },
+        "failed to change the first password",
+      );
+    });
+
+    it("does not count input that breaks a rule of the new password", async () => {
+      await changeFirstPassword({ ...INPUT, repeatPassword: "another password" }, REQUEST_HEADERS, CLIENT_ADDRESS);
+
+      expect(mocks.attemptFindUnique).not.toHaveBeenCalled();
+      expect(mocks.windowFindUnique).not.toHaveBeenCalled();
+      expect(mocks.changePassword).not.toHaveBeenCalled();
+    });
+
+    it.each(["", "Shared", "203.0.113.7:443"])(
+      "counts a group that the client address module would not write (%j) in the shared group and logs it",
+      async (group) => {
+        mocks.changePassword.mockRejectedValue(new APIError("BAD_REQUEST", { code: "INVALID_PASSWORD" }));
+
+        await changeFirstPassword(INPUT, REQUEST_HEADERS, group);
+
+        expect(mocks.attemptFindUnique).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({
+            where: { username_clientAddress: { username: "alice", clientAddress: "shared" } },
+          }),
+        );
+        expect(mocks.error).toHaveBeenCalledExactlyOnceWith(
+          { userId: USER_ID, name: "alice" },
+          "first password change with an invalid client address group, counted in the shared group",
+        );
+        expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
+          { userId: USER_ID, name: "alice", clientAddress: "shared" },
+          "first password not changed: wrong current password",
+        );
+      },
     );
   });
 
@@ -1424,7 +1544,7 @@ describe("changeFirstPassword", () => {
   ])("logs neither password when %s", async (_case, arrange) => {
     arrange();
 
-    await changeFirstPassword(INPUT, REQUEST_HEADERS);
+    await changeFirstPassword(INPUT, REQUEST_HEADERS, CLIENT_ADDRESS);
 
     expect(logged()).not.toContain(FIRST_PASSWORD);
     expect(logged()).not.toContain(NEW_PASSWORD);

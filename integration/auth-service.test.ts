@@ -857,7 +857,7 @@ describe("changeFirstPassword", () => {
     const alice = await createUser({ name: "alice" });
     const { headers } = await logInAs("alice");
 
-    const result = await authService.changeFirstPassword(changeTo(NEW_PASSWORD), headers);
+    const result = await authService.changeFirstPassword(changeTo(NEW_PASSWORD), headers, SHARED);
 
     expect(result).toMatchObject({
       ok: true,
@@ -884,7 +884,7 @@ describe("changeFirstPassword", () => {
     const other = await logInAs("alice");
     const bob = await logInAs("bob");
 
-    const result = await authService.changeFirstPassword(changeTo(NEW_PASSWORD), request.headers);
+    const result = await authService.changeFirstPassword(changeTo(NEW_PASSWORD), request.headers, SHARED);
 
     if (!result.ok) return expect.fail(`change failed with ${result.error.code}`);
     // Better Auth ends all sessions of the user and starts a new one, whose cookie is in the response headers.
@@ -954,7 +954,7 @@ describe("changeFirstPassword", () => {
     const other = await logInAs("alexander");
     const before = await storedState("alexander");
 
-    const result = await authService.changeFirstPassword(input, request.headers);
+    const result = await authService.changeFirstPassword(input, request.headers, SHARED);
 
     expect(result).toEqual({ ok: false, error });
     expect(await storedState("alexander")).toStrictEqual(before);
@@ -970,7 +970,7 @@ describe("changeFirstPassword", () => {
     const before = await storedState("alice");
     vi.mocked(hashPassword).mockRejectedValueOnce(new PasswordHashBusyError());
 
-    const result = await authService.changeFirstPassword(changeTo(NEW_PASSWORD), headers);
+    const result = await authService.changeFirstPassword(changeTo(NEW_PASSWORD), headers, SHARED);
 
     expect(result).toEqual({ ok: false, error: { code: "busy" } });
     expect(await storedState("alice")).toStrictEqual(before);
@@ -982,11 +982,11 @@ describe("changeFirstPassword", () => {
     const { headers } = await logInAs("alice");
     const before = await storedState("alice");
 
-    expect(await authService.changeFirstPassword(changeTo(NEW_PASSWORD), new Headers())).toEqual({
+    expect(await authService.changeFirstPassword(changeTo(NEW_PASSWORD), new Headers(), SHARED)).toEqual({
       ok: false,
       error: { code: "not-logged-in" },
     });
-    expect(await authService.changeFirstPassword(changeTo(NEW_PASSWORD), headers)).toEqual({
+    expect(await authService.changeFirstPassword(changeTo(NEW_PASSWORD), headers, SHARED)).toEqual({
       ok: false,
       error: { code: "not-required" },
     });
@@ -996,16 +996,78 @@ describe("changeFirstPassword", () => {
   it("cannot be used a second time", async () => {
     await createUser({ name: "alice" });
     const { headers } = await logInAs("alice");
-    const first = await authService.changeFirstPassword(changeTo(NEW_PASSWORD), headers);
+    const first = await authService.changeFirstPassword(changeTo(NEW_PASSWORD), headers, SHARED);
     if (!first.ok) return expect.fail(`change failed with ${first.error.code}`);
 
     const second = await authService.changeFirstPassword(
       changeTo("yet-another-password", NEW_PASSWORD),
       withCookies(first.value.headers),
+      SHARED,
     );
 
     expect(second).toEqual({ ok: false, error: { code: "not-required" } });
     expect((await logInAs("alice", NEW_PASSWORD)).user.name).toBe("alice");
+  });
+
+  describe("the counting of wrong current passwords", () => {
+    /** Tries the given number of changes with a wrong current password and returns their results. */
+    async function failChanges(headers: Headers, count: number) {
+      const results = [];
+      for (let attempt = 0; attempt < count; attempt += 1) {
+        results.push(await authService.changeFirstPassword(changeTo(NEW_PASSWORD, WRONG_PASSWORD), headers, SHARED));
+      }
+      return results;
+    }
+
+    it("refuses the change after 5 wrong current passwords without checking it, and makes the login wait as well", async () => {
+      await createUser({ name: "alice" });
+      const { headers } = await logInAs("alice");
+
+      const failed = await failChanges(headers, 5);
+      vi.mocked(verifyPassword).mockClear();
+      const refused = await authService.changeFirstPassword(changeTo(NEW_PASSWORD), headers, SHARED);
+      const login = await authService.logIn({ name: "alice", password: TEST_PASSWORD }, new Headers(), SHARED);
+
+      expect(failed).toEqual(Array(5).fill({ ok: false, error: { code: "wrong-password" } }));
+      expect(refused).toMatchObject({ ok: false, error: { code: "wait" } });
+      expect(login).toMatchObject({ ok: false, error: { code: "wait" } });
+      // Neither the refused change nor the refused login computed a hash.
+      expect(verifyPassword).not.toHaveBeenCalled();
+      expect((await getTestDb().user.findUniqueOrThrow({ where: { username: "alice" } })).mustChangePassword).toBe(
+        true,
+      );
+    });
+
+    it("forgets 4 wrong current passwords after a right one: 5 more failures are needed before a wait", async () => {
+      await createUser({ name: "alice" });
+      const { headers } = await logInAs("alice");
+      await failChanges(headers, 4);
+      const changed = await authService.changeFirstPassword(changeTo(NEW_PASSWORD), headers, SHARED);
+      if (!changed.ok) return expect.fail(`change failed with ${changed.error.code}`);
+
+      const failed = [];
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        failed.push(await authService.logIn({ name: "alice", password: WRONG_PASSWORD }, new Headers(), SHARED));
+      }
+      const next = await authService.logIn({ name: "alice", password: NEW_PASSWORD }, new Headers(), SHARED);
+
+      expect(failed).toEqual(Array(5).fill(INVALID_CREDENTIALS));
+      expect(next).toMatchObject({ ok: false, error: { code: "wait" } });
+    });
+
+    it("counts wrong current passwords in the hour of the name", async () => {
+      await createUser({ name: "alice" });
+      const { headers } = await logInAs("alice");
+
+      await failChanges(headers, 3);
+
+      expect(await getTestDb().loginWindow.findUniqueOrThrow({ where: { username: "alice" } })).toMatchObject({
+        attempts: 3,
+      });
+      expect(await getTestDb().loginAttempt.findUniqueOrThrow({ where: attemptKey("alice") })).toMatchObject({
+        failures: 3,
+      });
+    });
   });
 
   it("accepts a new password of 128 characters with spaces and non-Latin letters", async () => {
@@ -1013,7 +1075,7 @@ describe("changeFirstPassword", () => {
     await createUser({ name: "alice" });
     const { headers } = await logInAs("alice");
 
-    const result = await authService.changeFirstPassword(changeTo(password), headers);
+    const result = await authService.changeFirstPassword(changeTo(password), headers, SHARED);
 
     expect(result.ok).toBe(true);
     expect((await logInAs("alice", password)).user.mustChangePassword).toBe(false);

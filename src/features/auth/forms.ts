@@ -43,8 +43,12 @@ export function parseLoginFormData(
   return { success: true, data: { name, password } };
 }
 
-/** State of the password change form between submissions: errors from the last attempt, if any. */
-export type PasswordChangeFormState = FormState<PasswordChangeFieldErrors>;
+/**
+ * State of the password change form between submissions: errors from the last attempt, if any. `passwordRefused` is
+ * set when the current password was wrong or had to wait: the form then empties the passwords, so that a refused
+ * password is not submitted again by mistake.
+ */
+export type PasswordChangeFormState = FormState<PasswordChangeFieldErrors> & { passwordRefused?: boolean };
 
 /** The Server Action behind the password change form; it returns the errors to show, or redirects on success. */
 export type PasswordChangeFormAction = (

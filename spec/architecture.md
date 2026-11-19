@@ -270,9 +270,10 @@ The feature is described in `users-and-login.md`. What every new route, query an
   of another address included, and for a role on the folder that is too low for the address. The adapter of the MCP
   addresses calls it for every `POST` from an allowed origin while OAuth is on; `src/proxy.ts` does not look at the
   header.
-- The login action also reads the client address of the request, with `clientAddressGroup()` from
-  `src/lib/client-address.ts` and `HIPPOWIKI_TRUSTED_PROXIES`, because `/login` does not pass `src/proxy.ts`; it
-  passes the group to the auth service. The adapter of `/oauth/register` (`handleRegister()` in
+- The login action and the action of the password change also read the client address of the request, through
+  `requestClientAddressGroup()` of `src/features/auth/client-address.ts`, which uses `clientAddressGroup()` from
+  `src/lib/client-address.ts` and `HIPPOWIKI_TRUSTED_PROXIES`, because `/login` does not pass `src/proxy.ts`; they
+  pass the group to the auth service. The adapter of `/oauth/register` (`handleRegister()` in
   `src/features/oauth/http.ts`) is the second reader: it reads the group the same way, for the limit on registrations
   per client address group, and passes it to the OAuth service. No other code reads a forwarding header for anything
   but the diagnostic `client-address-probe.ts`. `src/lib/auth.ts` is imported only by the auth service and by `src/lib/`.

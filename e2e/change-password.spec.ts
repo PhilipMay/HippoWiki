@@ -126,7 +126,7 @@ test("log out works while the password change is pending", async ({ page }) => {
 
 test.describe("a rule that the new password breaks", () => {
   // Each case breaks one rule: its error shows at its field, which gets the focus, and the user stays on the form.
-  for (const { what, name, input, field, error } of [
+  for (const { what, name, input, field, error, emptied } of [
     {
       what: "a new password of 7 characters",
       name: "newcomer",
@@ -182,6 +182,7 @@ test.describe("a rule that the new password breaks", () => {
       input: { current: "wrong-password" },
       field: "Current password",
       error: "Current password is wrong",
+      emptied: true,
     },
     {
       what: "a missing current password",
@@ -201,8 +202,19 @@ test.describe("a rule that the new password breaks", () => {
       await expect(page.getByText(error, { exact: true })).toBeVisible();
       await expect(page.getByLabel(new RegExp(`^${field}`))).toBeFocused();
       await expectChangePasswordPage(page);
-      // What was entered stays in the form, so that only the field with the error has to be typed again.
-      await expect(newPasswordField(page)).toHaveValue(input.next ?? NEW_PASSWORD);
+      if (emptied) {
+        // A refused current password empties the passwords, so that it is not submitted again by mistake.
+        for (const field of [
+          page.getByLabel("Current password"),
+          newPasswordField(page),
+          page.getByLabel("Repeat new password"),
+        ]) {
+          await expect(field).toHaveValue("");
+        }
+      } else {
+        // What was entered stays in the form, so that only the field with the error has to be typed again.
+        await expect(newPasswordField(page)).toHaveValue(input.next ?? NEW_PASSWORD);
+      }
       // Nothing was changed: the first password still logs in and the change is still pending.
       expect(await getTestDb().account.findFirstOrThrow({ where: { userId: user.id } })).toStrictEqual(before);
       expect((await getTestDb().user.findUniqueOrThrow({ where: { id: user.id } })).mustChangePassword).toBe(true);
@@ -232,6 +244,40 @@ test.describe("a rule that the new password breaks", () => {
     await page.getByRole("button", { name: "Change password" }).click();
 
     await expect(page).toHaveURL("/folders");
+  });
+});
+
+test.describe("wrong current passwords", () => {
+  // The client address of the tests, after the one trusted proxy of the end-to-end server (`playwright.config.ts`).
+  test.use({ extraHTTPHeaders: { "x-forwarded-for": "192.0.2.20" } });
+
+  test("count like failed logins: after 5 the change waits, and so does the login of the name", async ({ page }) => {
+    const errors = collectErrors(page);
+    const user = await logInWithFirstPassword(page);
+    const before = await getTestDb().account.findFirstOrThrow({ where: { userId: user.id } });
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await submitChange(page, { current: "wrong-password" });
+      // The answer empties the field that was just filled: only then is the next change submitted.
+      await expect(page.getByLabel("Current password")).toHaveValue("");
+      await expect(page.getByText("Current password is wrong", { exact: true })).toBeVisible();
+    }
+    await submitChange(page, {});
+
+    await expect(
+      page.getByText("Too many wrong passwords. Please try again in 1 minute.", { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByLabel("Current password")).toBeFocused();
+    await expect(page.getByLabel("Current password")).toHaveValue("");
+    await expectChangePasswordPage(page);
+    expect(await getTestDb().account.findFirstOrThrow({ where: { userId: user.id } })).toStrictEqual(before);
+
+    await page.getByRole("banner").getByRole("button", { name: "Log out" }).click();
+    await expect(page).toHaveURL("/login");
+    await submitLogin(page, user.name, TEST_PASSWORD);
+    await expect(page.getByText("Too many failed logins. Please try again in 1 minute.")).toBeVisible();
+    await expect(page).toHaveURL("/login");
+    expect(errors).toEqual([]);
   });
 });
 

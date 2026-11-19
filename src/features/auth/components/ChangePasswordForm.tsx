@@ -26,6 +26,17 @@ export default function ChangePasswordForm({ action, next }: ChangePasswordFormP
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [repeatPassword, setRepeatPassword] = useState("");
+  // A refused current password (wrong, or during a wait) empties all three, so that it is not submitted again by
+  // mistake. Adjusted while rendering the new state, once per state, as React advises instead of an effect.
+  const [shownState, setShownState] = useState(state);
+  if (state !== shownState) {
+    setShownState(state);
+    if (state.passwordRefused) {
+      setCurrentPassword("");
+      setNewPassword("");
+      setRepeatPassword("");
+    }
+  }
   // Input before hydration could be lost, so the fields are read-only and the button is disabled until then.
   const hydrated = useHydrated();
 

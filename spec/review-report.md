@@ -8,9 +8,9 @@
   tests cover the security rules of the specs well. The weak points are availability (unbounded bodies and batches, a lockout per name in the default
   configuration), the password policy, the trust that the OAuth
   server gives to clients nobody verified, and documentation that ASVS Level 2 asks for.
-- Findings: 102 in all, 0 Blocker, 2 Major, 62 Minor and 38 Nit (52 `issue:`, 18 `suggestion:`, 27 `nit:` and 5
-  `question:`). Accepted deviations: 20. Of the 97 Suggestions with a confidence (a `question:` has none), 12 are High,
-  49 Medium and 36 Low.
+- Findings: 101 in all, 0 Blocker, 2 Major, 61 Minor and 38 Nit (51 `issue:`, 18 `suggestion:`, 27 `nit:` and 5
+  `question:`). Accepted deviations: 20. Of the 96 Suggestions with a confidence (a `question:` has none), 12 are High,
+  49 Medium and 35 Low.
 - To fix first:
   1. After the first password change, a user cannot change the password or end sessions, and the admin cannot end
      them either (Login; ASVS 6.2.2, 7.4.3, 7.4.5).
@@ -794,26 +794,6 @@ finding of the review report" in `step-plan-workflow.md` describes.
   at once when the queue is long is a trade-off.
 - Reference: OWASP A06:2025 Insecure Design; ASVS 15.2.2, 2.4.1; CWE-770; `CON.10.A17`.
 
-#### issue: wrong current passwords at the password change are not limited
-
-- Location: `src/features/auth/service.ts`, `changeFirstPassword()`, the branch of a wrong current password
-  (`WRONG_PASSWORD_CODES`)
-- Severity: Minor. It needs a valid session of a user whose change is pending, and the generated first password is
-  random; only a weak `HIPPOWIKI_ADMIN_PASSWORD` is at risk.
-- Category: security
-- Problem: a wrong current password is answered "Current password is wrong" without being counted, as often as the
-  caller likes, and each try costs two Argon2id hashes (Better Auth hashes the new password before it checks the
-  current one).
-- Impact: with a stolen session of a pending user, the first password can be guessed without limit; it is also a cheap
-  way to load the hash queue.
-- Evidence: on the local server, 8 tries with a wrong current password give 8 times
-  `{"fieldErrors":{"currentPassword":["Current password is wrong"]}}`, never a wait.
-- Suggestion (required): count wrong current passwords with the same wait as the login, and end the session after
-  several failures.
-- Confidence: Low. It needs a decision on what the count is kept for (the user, or the name and group as at the
-  login) and after how many failures the session ends.
-- Reference: OWASP A07:2025 Authentication Failures; ASVS 6.3.1, 2.4.1; CWE-307.
-
 #### issue: the session rules document no inactivity timeout and no number of sessions per user
 
 - Location: `spec/users-and-login.md`, section "Sessions"; `src/lib/auth.ts`, `createAuth()`, the `session` options
@@ -995,6 +975,14 @@ finding of the review report" in `step-plan-workflow.md` describes.
   authentication attribute, the password, needs the current password (ASVS 7.5.1; see the question in "Connected apps");
   there is no reset of a forgotten password, which `users-and-login.md` lists as a limit, so ASVS 6.4.3 has nothing to
   check.
+- Wrong current passwords at the forced password change (ASVS 6.3.1, 2.4.1, CWE-307): counted like failed logins of
+  the name of the session user from the client address group of the request, with the waits of the login; a right
+  one counts like a successful login, and during a wait the change is refused without checking the password. Input
+  that breaks a rule of the new password is refused before and not counted. The session is not ended after several
+  failures: the requirements of the own password change decided that the waits of the login are enough. Fixed after
+  the review and checked by the unit tests of `changeFirstPassword()`, the integration tests in
+  `integration/auth-service.test.ts` (5 wrong current passwords make the change and the login wait) and
+  `e2e/change-password.spec.ts`.
 - Log lines of login and logout (ASVS 16.3.1, 16.2.1): the line of a successful login names the user id, the user
   name and the client address group, and the line of a logout the user id of the session, read before Better Auth
   ends it; a logout whose session cannot be read fails like one that cannot end it. Fixed after the review and checked

@@ -5,12 +5,13 @@
 // that set or clear the cookie. In a Server Action Better Auth has already applied them (`nextCookies()`); any other
 // caller passes them on itself. The service never logs a password.
 //
-// The service also counts the logins per submitted user name, in the database: the failed ones in a row per name and
-// client address group, after too many of which the next login for the name from that group waits, and all of them
-// per name within the hour, from all groups together, of which only 20 are checked (see `wait.ts`). A login is counted
-// in both before its password is checked, so that logins at the same time get no more guesses than logins one after
-// another. The caller passes the client address group (`src/lib/client-address.ts`); the service knows nothing about
-// the headers it comes from.
+// The service also counts every check of a password per user name, in the database: the login, and the current
+// password of a password change, which counts as a login of the name of the session user. The failed ones are counted
+// in a row per name and client address group, after too many of which the next check for the name from that group
+// waits, and all of them per name within the hour, from all groups together, of which only 20 are checked (see
+// `wait.ts`). A check is counted in both before its password is checked, so that checks at the same time get no more
+// guesses than checks one after another; all of them go through `countedPasswordCheck()`. The caller passes the client
+// address group (`src/lib/client-address.ts`); the service knows nothing about the headers it comes from.
 
 import { isAPIError } from "better-auth/api";
 import { z } from "zod";
@@ -56,7 +57,10 @@ export type LoggedOut = { headers: Headers };
 
 /** The name is unknown or the password is wrong; the two are never told apart. */
 type InvalidCredentials = { code: "invalid-credentials" };
-/** Too many logins for the name have failed; the password was not checked. `waitMs` is the time that is left. */
+/**
+ * Too many checks of a password for the name have failed, or too many were made within the hour; the password was not
+ * checked. `waitMs` is the time that is left.
+ */
 type Wait = { code: "wait"; waitMs: number };
 /** Too many password hashes are running; the password was not checked. */
 type Busy = { code: "busy" };
@@ -81,7 +85,7 @@ type NotLoggedIn = { code: "not-logged-in" };
 type NotRequired = { code: "not-required" };
 
 export type ChangeFirstPasswordError =
-  InvalidPasswordChange | WrongPassword | NotLoggedIn | NotRequired | Busy | Failed;
+  InvalidPasswordChange | WrongPassword | NotLoggedIn | NotRequired | Wait | Busy | Failed;
 
 /**
  * The HTTP status codes with which Better Auth refuses a sign-in because of what was submitted: a malformed body, an
@@ -345,6 +349,76 @@ const WAIT_LOG_MESSAGES: Record<WaitLimit, string> = {
 };
 
 /**
+ * The client address group to count a check of a password in: the given one if `client-address.ts` would write it,
+ * otherwise the shared group, with an error in the log. The service trusts no caller: such a value could be any text.
+ */
+function countedGroup(clientAddressGroup: string, logContext: Record<string, string>, what: string): string {
+  if (isClientAddressGroup(clientAddressGroup)) return clientAddressGroup;
+  logger.error(logContext, `${what} with an invalid client address group, counted in the shared group`);
+  return SHARED_CLIENT_ADDRESS;
+}
+
+/**
+ * What a check of a password found: the right password, with what the check returned, or a wrong one. A check that
+ * cannot tell, because the hashing is busy or something failed, throws instead.
+ */
+type PasswordCheck<T> = { right: true; value: T } | { right: false };
+
+/** What a counted check of a password came to. */
+type CountedPasswordCheck<T> =
+  | { status: "right"; value: T }
+  | { status: "wrong" }
+  /** The check has to wait `waitMs` milliseconds for `limit`; it was neither run nor counted. */
+  | { status: "wait"; waitMs: number; limit: WaitLimit }
+  /** The password was not checked: it could not be counted, or the check threw and its count was taken back. */
+  | { status: "not-checked"; err: unknown };
+
+/**
+ * Runs a check of a password for the name, counted like a login from the client address group, as every check of a
+ * password in the service is:
+ *
+ * - During a wait it returns the wait and its limit, without running the check and without counting it.
+ * - Otherwise it counts the check as a failure before the password is checked (`reserveAttempt()`), so that checks at
+ *   the same time cannot get past the wait. If it cannot be counted, the password is not checked.
+ * - A counted check deletes the old counts of all names (`deleteOldCounts()`), after and outside the transaction of
+ *   the count.
+ * - A wrong password keeps the count. A right one forgets the failed checks of its name and group, and the window of
+ *   the name (`clearFailures()`). A check that throws, because the hashing was busy or something failed, takes its
+ *   counts back (`releaseAttempt()`), so that a wait that was over does not start again.
+ *
+ * The caller logs the outcome; this function logs only its own database errors.
+ */
+async function countedPasswordCheck<T>(
+  name: string,
+  clientAddress: string,
+  check: () => Promise<PasswordCheck<T>>,
+): Promise<CountedPasswordCheck<T>> {
+  let attempt: ReserveResult;
+  try {
+    attempt = await reserveAttempt(name, clientAddress);
+  } catch (err) {
+    return { status: "not-checked", err };
+  }
+  if (!attempt.reserved) return { status: "wait", waitMs: attempt.waitMs, limit: attempt.limit };
+  // From here on the check is counted as a failure, unless the password is right or its count is taken back.
+  const { reservation } = attempt;
+  // Only a counted check cleans up, so that checks that are refused at once cost no more than a read.
+  await deleteOldCounts();
+
+  let checked: PasswordCheck<T>;
+  try {
+    checked = await check();
+  } catch (err) {
+    // The password was not found wrong, so the check is not a failure.
+    await releaseAttempt(name, clientAddress, reservation);
+    return { status: "not-checked", err };
+  }
+  if (!checked.right) return { status: "wrong" };
+  await clearFailures(name, clientAddress);
+  return { status: "right", value: checked.value };
+}
+
+/**
  * Logs in with a user name and a password and starts a session. An unknown name and a wrong password give the same
  * code and count the same way, so nobody can find out which names exist.
  *
@@ -356,14 +430,11 @@ const WAIT_LOG_MESSAGES: Record<WaitLimit, string> = {
  *   every login after 20 logins for the name within the hour, from all groups together (`wait.ts`). During a wait
  *   the login is refused with the code `wait` and the longer of the two waits, without checking the password and
  *   without counting the attempt; the log line names the limit that asked for the wait.
- * - Every other login is counted as a failure before its password is checked (`reserveAttempt()`), so logins at the
- *   same time cannot get past the wait. If it cannot be counted, the password is not checked.
+ * - Every other login is counted as a failure before its password is checked, so logins at the same time cannot get
+ *   past the wait; a successful login forgets the failed ones of its name and group, and the window of the name, and a
+ *   login that was not checked takes its counts back (`countedPasswordCheck()`).
  * - A password of more than 128 characters cannot belong to a user either: it counts as a failed login, without a
  *   hash.
- * - A successful login forgets the failed ones of its name and group, and the window of the name.
- * - A counted login deletes the old counts of all names (`deleteOldCounts()`), after and outside the transaction of
- *   the count: failures that are more than a day old, and windows whose hour is over. A login that was not checked,
- *   because the hashing was busy or something failed, takes its counts back.
  */
 export async function logIn(
   input: { name: string; password: string },
@@ -374,63 +445,46 @@ export async function logIn(
   if (!parsedName.success) return { ok: false, error: { code: "invalid-credentials" } };
   const name = parsedName.data;
 
-  // The service trusts no caller: a group that `client-address.ts` would not write could be any text.
-  let clientAddress = clientAddressGroup;
-  if (!isClientAddressGroup(clientAddress)) {
-    logger.error({ name }, "login with an invalid client address group, counted in the shared group");
-    clientAddress = SHARED_CLIENT_ADDRESS;
-  }
+  const clientAddress = countedGroup(clientAddressGroup, { name }, "login");
 
-  let attempt: ReserveResult;
-  try {
-    attempt = await reserveAttempt(name, clientAddress);
-  } catch (err) {
-    logger.error({ err, name, clientAddress }, "login failed");
-    return { ok: false, error: { code: "failed" } };
-  }
-  if (!attempt.reserved) {
-    logger.warn({ name, clientAddress, waitMs: attempt.waitMs }, WAIT_LOG_MESSAGES[attempt.limit]);
-    return { ok: false, error: { code: "wait", waitMs: attempt.waitMs } };
-  }
-  // From here on the login is counted as a failure, unless it succeeds or its count is taken back.
-  const { reservation } = attempt;
-  // Only a counted login cleans up, so that logins that are refused at once cost no more than a read.
-  await deleteOldCounts();
+  const checked = await countedPasswordCheck(name, clientAddress, async (): Promise<PasswordCheck<LoggedIn | null>> => {
+    const parsedPassword = loginInputSchema.shape.password.safeParse(input.password);
+    if (!parsedPassword.success) return { right: false };
+    try {
+      const auth = await getAuth();
+      const { headers: responseHeaders, response } = await auth.api.signInUsername({
+        body: { username: name, password: parsedPassword.data },
+        headers,
+        returnHeaders: true,
+      });
+      const user = toSessionUser(response.user);
+      // The session it started is refused by every check of a session, like the user.
+      return { right: true, value: user && { user, headers: responseHeaders } };
+    } catch (err) {
+      if (isAPIError(err) && REFUSED_STATUS_CODES.includes(err.statusCode)) return { right: false };
+      throw err;
+    }
+  });
 
-  const parsedPassword = loginInputSchema.shape.password.safeParse(input.password);
-  if (!parsedPassword.success) {
-    logger.warn({ name, clientAddress }, "login refused: unknown name or wrong password");
-    return { ok: false, error: { code: "invalid-credentials" } };
-  }
-
-  let loggedIn: LoggedIn;
-  try {
-    const auth = await getAuth();
-    const { headers: responseHeaders, response } = await auth.api.signInUsername({
-      body: { username: name, password: parsedPassword.data },
-      headers,
-      returnHeaders: true,
-    });
-    const user = toSessionUser(response.user);
-    // The session it started is refused by every check of a session, like the user.
-    if (!user) return { ok: false, error: { code: "failed" } };
-    loggedIn = { user, headers: responseHeaders };
-  } catch (err) {
-    if (isAPIError(err) && REFUSED_STATUS_CODES.includes(err.statusCode)) {
+  switch (checked.status) {
+    case "wait":
+      logger.warn({ name, clientAddress, waitMs: checked.waitMs }, WAIT_LOG_MESSAGES[checked.limit]);
+      return { ok: false, error: { code: "wait", waitMs: checked.waitMs } };
+    case "wrong":
       logger.warn({ name, clientAddress }, "login refused: unknown name or wrong password");
       return { ok: false, error: { code: "invalid-credentials" } };
-    }
-    // The password was not found wrong, so the attempt is not a failed login.
-    await releaseAttempt(name, clientAddress, reservation);
-    if (err instanceof PasswordHashBusyError) {
-      logger.warn({ name, clientAddress }, "too many password hashes are running, login not checked");
-      return { ok: false, error: { code: "busy" } };
-    }
-    logger.error({ err, name, clientAddress }, "login failed");
-    return { ok: false, error: { code: "failed" } };
+    case "not-checked":
+      if (checked.err instanceof PasswordHashBusyError) {
+        logger.warn({ name, clientAddress }, "too many password hashes are running, login not checked");
+        return { ok: false, error: { code: "busy" } };
+      }
+      logger.error({ err: checked.err, name, clientAddress }, "login failed");
+      return { ok: false, error: { code: "failed" } };
+    case "right":
+      break;
   }
-
-  await clearFailures(name, clientAddress);
+  const loggedIn = checked.value;
+  if (!loggedIn) return { ok: false, error: { code: "failed" } };
   logger.info({ userId: loggedIn.user.id, name, clientAddress }, "user logged in");
   return { ok: true, value: loggedIn };
 }
@@ -467,15 +521,92 @@ export async function getSessionUser(headers: Headers): Promise<SessionUser | nu
 /** The error codes with which Better Auth refuses a password change because of the current password. */
 const WRONG_PASSWORD_CODES: readonly string[] = ["INVALID_PASSWORD", "PASSWORD_TOO_LONG"];
 
+/** The log messages of a password change that has to wait, per limit, after the name of the password changed. */
+const CHANGE_WAIT_LOG_MESSAGES: Record<WaitLimit, string> = {
+  failures: "not changed: waiting after failed logins",
+  window: "not changed: too many logins for the name within the hour",
+};
+
+type ChangePasswordError = InvalidPasswordChange | WrongPassword | NotLoggedIn | Wait | Busy | Failed;
+
+/**
+ * Changes the password of the session user through Better Auth, which checks the current password, stores the new one,
+ * ends all sessions of the user and starts a new one for the request; returns the response headers that set its
+ * cookie. `label` names the password in the log lines, such as "first password".
+ *
+ * The input is validated first: input that breaks a rule of the new password is answered with its field errors,
+ * without checking the current password and without counting it. Then the current password is counted like a login of
+ * the name of the user from the client address group (`countedPasswordCheck()`): a wrong one counts as a failed login,
+ * a right one like a successful one, and during a wait the change is refused with `wait` without checking it.
+ */
+async function changeCountedPassword(
+  user: SessionUser,
+  input: PasswordChangeInput,
+  headers: Headers,
+  clientAddressGroup: string,
+  label: string,
+): Promise<Result<Headers, ChangePasswordError>> {
+  const { id: userId, name } = user;
+  const parsed = passwordChangeInputSchema(name).safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: { code: "invalid-input", fieldErrors: z.flattenError(parsed.error).fieldErrors } };
+  }
+  const { currentPassword, newPassword } = parsed.data;
+  const clientAddress = countedGroup(clientAddressGroup, { userId, name }, `${label} change`);
+
+  const checked = await countedPasswordCheck(name, clientAddress, async (): Promise<PasswordCheck<Headers>> => {
+    try {
+      const auth = await getAuth();
+      const { headers: responseHeaders } = await auth.api.changePassword({
+        body: { currentPassword, newPassword, revokeOtherSessions: true },
+        headers,
+        returnHeaders: true,
+      });
+      return { right: true, value: responseHeaders };
+    } catch (err) {
+      if (isAPIError(err) && err.statusCode === 400 && WRONG_PASSWORD_CODES.includes(err.body?.code ?? "")) {
+        return { right: false };
+      }
+      throw err;
+    }
+  });
+
+  switch (checked.status) {
+    case "right":
+      return { ok: true, value: checked.value };
+    case "wait":
+      logger.warn(
+        { userId, name, clientAddress, waitMs: checked.waitMs },
+        `${label} ${CHANGE_WAIT_LOG_MESSAGES[checked.limit]}`,
+      );
+      return { ok: false, error: { code: "wait", waitMs: checked.waitMs } };
+    case "wrong":
+      logger.warn({ userId, name, clientAddress }, `${label} not changed: wrong current password`);
+      return { ok: false, error: { code: "wrong-password" } };
+    case "not-checked": {
+      const { err } = checked;
+      if (err instanceof PasswordHashBusyError) {
+        logger.warn({ userId }, `too many password hashes are running, ${label} not changed`);
+        return { ok: false, error: { code: "busy" } };
+      }
+      if (isAPIError(err) && err.statusCode === 401) return { ok: false, error: { code: "not-logged-in" } };
+      logger.error({ err, userId }, `failed to change the ${label}`);
+      return { ok: false, error: { code: "failed" } };
+    }
+  }
+}
+
 /**
  * Replaces the first password of the user of the session by a password of their own and clears the pending password
- * change. It needs a session whose user still has `mustChangePassword` set. Better Auth checks the current password,
- * stores the new one and ends the other sessions of the user. The flag is cleared only after the password has
- * changed: if that fails, the user changes the password once more.
+ * change. It needs a session whose user still has `mustChangePassword` set. The password is changed and counted as
+ * `changeCountedPassword()` describes, with the client address group of the request (`clientAddressGroup`, as for
+ * `logIn()`). The flag is cleared only after the password has changed: if that fails, the user changes the password
+ * once more.
  */
 export async function changeFirstPassword(
   input: PasswordChangeInput,
   headers: Headers,
+  clientAddressGroup: string,
 ): Promise<Result<PasswordChanged, ChangeFirstPasswordError>> {
   let user: SessionUser | null;
   try {
@@ -488,33 +619,8 @@ export async function changeFirstPassword(
   if (!user.mustChangePassword) return { ok: false, error: { code: "not-required" } };
   const userId = user.id;
 
-  const parsed = passwordChangeInputSchema(user.name).safeParse(input);
-  if (!parsed.success) {
-    return { ok: false, error: { code: "invalid-input", fieldErrors: z.flattenError(parsed.error).fieldErrors } };
-  }
-  const { currentPassword, newPassword } = parsed.data;
-
-  let responseHeaders: Headers;
-  try {
-    const auth = await getAuth();
-    ({ headers: responseHeaders } = await auth.api.changePassword({
-      body: { currentPassword, newPassword, revokeOtherSessions: true },
-      headers,
-      returnHeaders: true,
-    }));
-  } catch (err) {
-    if (err instanceof PasswordHashBusyError) {
-      logger.warn({ userId }, "too many password hashes are running, first password not changed");
-      return { ok: false, error: { code: "busy" } };
-    }
-    if (isAPIError(err) && err.statusCode === 401) return { ok: false, error: { code: "not-logged-in" } };
-    if (isAPIError(err) && err.statusCode === 400 && WRONG_PASSWORD_CODES.includes(err.body?.code ?? "")) {
-      logger.warn({ userId }, "first password not changed: wrong current password");
-      return { ok: false, error: { code: "wrong-password" } };
-    }
-    logger.error({ err, userId }, "failed to change the first password");
-    return { ok: false, error: { code: "failed" } };
-  }
+  const changed = await changeCountedPassword(user, input, headers, clientAddressGroup, "first password");
+  if (!changed.ok) return changed;
 
   try {
     const { count } = await getDb().user.updateMany({
@@ -531,5 +637,5 @@ export async function changeFirstPassword(
   }
 
   logger.info({ userId }, "first password changed");
-  return { ok: true, value: { user: { ...user, mustChangePassword: false }, headers: responseHeaders } };
+  return { ok: true, value: { user: { ...user, mustChangePassword: false }, headers: changed.value } };
 }

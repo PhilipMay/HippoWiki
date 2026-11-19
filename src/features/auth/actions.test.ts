@@ -130,8 +130,8 @@ describe("logIn", () => {
 
         expect(await groupFor(new Headers(requestHeaders))).toBe("shared");
         expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
-          { reason },
-          "no client address in X-Forwarded-For, the login counts in the shared group",
+          { source: "login", reason },
+          "no client address in X-Forwarded-For, counted in the shared group",
         );
         expect(JSON.stringify(mocks.warn.mock.calls)).not.toContain("secret-looking-value");
       },
@@ -142,8 +142,8 @@ describe("logIn", () => {
 
       expect(await groupFor(new Headers({ "x-forwarded-for": "203.0.113.7" }))).toBe("shared");
       expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
-        { reason: "too-few-entries" },
-        "no client address in X-Forwarded-For, the login counts in the shared group",
+        { source: "login", reason: "too-few-entries" },
+        "no client address in X-Forwarded-For, counted in the shared group",
       );
     });
   });
@@ -316,7 +316,7 @@ describe("changeFirstPassword", () => {
 
     await expect(changeFirstPassword({}, formData(FORM))).rejects.toMatchObject({ path: "/folders" });
 
-    expect(mocks.changeFirstPassword).toHaveBeenCalledExactlyOnceWith(FORM, REQUEST_HEADERS);
+    expect(mocks.changeFirstPassword).toHaveBeenCalledExactlyOnceWith(FORM, REQUEST_HEADERS, "shared");
     expect(mocks.revalidatePath).toHaveBeenCalledExactlyOnceWith("/", "layout");
   });
 
@@ -326,7 +326,7 @@ describe("changeFirstPassword", () => {
       { fieldErrors: { newPassword: ["Reported by the service"] } },
       { fieldErrors: { newPassword: ["Reported by the service"] } },
     ],
-    ["wrong-password", {}, { fieldErrors: { currentPassword: ["Current password is wrong"] } }],
+    ["wrong-password", {}, { fieldErrors: { currentPassword: ["Current password is wrong"] }, passwordRefused: true }],
     ["busy", {}, { message: "Too many logins at the moment, please try again" }],
     ["failed", {}, { message: "The password could not be changed. Please try again." }],
   ])("shows the form state of the code %s, without revalidating or redirecting", async (code, details, state) => {
@@ -336,6 +336,35 @@ describe("changeFirstPassword", () => {
 
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
     expect(mocks.redirect).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [1, "1 minute"],
+    [60_001, "2 minutes"],
+    [15 * 60_000, "15 minutes"],
+  ])("shows the wait of %i ms as %s at the current password and empties the passwords", async (waitMs, minutes) => {
+    mocks.changeFirstPassword.mockResolvedValue({ ok: false, error: { code: "wait", waitMs } });
+
+    await expect(changeFirstPassword({}, formData(FORM))).resolves.toEqual({
+      fieldErrors: { currentPassword: [`Too many wrong passwords. Please try again in ${minutes}.`] },
+      passwordRefused: true,
+    });
+
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+    expect(mocks.redirect).not.toHaveBeenCalled();
+  });
+
+  it("passes the client address group of the request to the service, after the probe", async () => {
+    trustProxies(1);
+    mocks.headers.mockResolvedValue(new Headers({ "x-forwarded-for": "198.51.100.9, 203.0.113.7" }));
+    mocks.changeFirstPassword.mockResolvedValue({ ok: false, error: { code: "wrong-password" } });
+
+    await changeFirstPassword({}, formData(FORM));
+
+    expect(mocks.changeFirstPassword.mock.calls[0]?.[2]).toBe("203.0.113.7");
+    expect(mocks.logClientAddressProbe).toHaveBeenCalledExactlyOnceWith(expect.any(Headers), {
+      source: "password-change",
+    });
   });
 
   it.each([
@@ -355,7 +384,7 @@ describe("changeFirstPassword", () => {
 
     await expect(changeFirstPassword({}, formData({ ...FORM, next }))).rejects.toMatchObject({ path: next });
 
-    expect(mocks.changeFirstPassword).toHaveBeenCalledExactlyOnceWith(FORM, REQUEST_HEADERS);
+    expect(mocks.changeFirstPassword).toHaveBeenCalledExactlyOnceWith(FORM, REQUEST_HEADERS, "shared");
     expect(mocks.revalidatePath).toHaveBeenCalledExactlyOnceWith("/", "layout");
   });
 
@@ -423,6 +452,7 @@ describe("changeFirstPassword", () => {
     expect(mocks.changeFirstPassword).toHaveBeenCalledExactlyOnceWith(
       { currentPassword: "", newPassword: "", repeatPassword: "" },
       REQUEST_HEADERS,
+      "shared",
     );
   });
 });

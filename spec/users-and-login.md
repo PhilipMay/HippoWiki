@@ -143,7 +143,9 @@ and `src/lib/client-address.test.ts`.
 ## Failed logins
 
 Two limits hold back the guessing of passwords; their numbers are defined in `src/features/auth/wait.ts`. A login is
-refused while either of them asks for a wait:
+refused while either of them asks for a wait. The current password of the forced password change is counted the same
+way, as a login of the name of the session user from the client address group of the request (see "Forced password
+change"):
 
 - Per user name and client address group: after 5 failed logins in a row for a name from one group, the next login
   for that name from that group has to wait 1 minute. Each further failure doubles the wait, up to 15 minutes.
@@ -175,8 +177,9 @@ What a user and an operator can rely on:
 
 The client address group (`clientAddressGroup()` in `src/lib/client-address.ts`):
 
-- The login action reads it from the headers of the request, because `/login` does not pass `src/proxy.ts`, and passes
-  it to the auth service as a plain argument.
+- The login action and the action of the password change read it from the headers of the request, in the same way
+  (`src/features/auth/client-address.ts`), because `/login` does not pass `src/proxy.ts`, and pass it to the auth
+  service as a plain argument.
 - With `HIPPOWIKI_TRUSTED_PROXIES=0`, the default, no header is read and every login is in the group `shared`: the
   wait then counts per user name alone.
 - With `HIPPOWIKI_TRUSTED_PROXIES=n`, the group comes from the n-th entry from the right of `X-Forwarded-For`, the
@@ -220,6 +223,10 @@ the authentication guide of Next.js describes:
   possible. The header shows the name and "Log out", but no menu, and the name is no link, because the own account
   would only lead to the password change.
 - The form asks for the current password, the new one and its repetition, by the password rules above.
+- A wrong current password counts as a failed login of the user name from the client address group of the request,
+  and a right one like a successful login (see "Failed logins"). During a wait the change is refused at the current
+  password with its own wording, "Too many wrong passwords", without checking it. A new password that breaks a rule is
+  refused before the current password is checked, and is not counted.
 - The change ends all sessions of the user and starts a new one for the browser that made the change, so the other
   browsers of the user are logged out.
 - The pending change is cleared only after the password has changed. If that fails, the user changes the password once
@@ -275,7 +282,7 @@ the authentication guide of Next.js describes:
 - The client address comes from a number of trusted reverse proxies (`HIPPOWIKI_TRUSTED_PROXIES`), not from a list of
   their addresses: Next.js never shows the application the address of the connecting peer, so a list could not be
   checked anyway. Without the setting, no header is read.
-- The login action reads the client address and the service takes the group as a plain argument, as it takes the
+- The actions read the client address and the service takes the group as a plain argument, as it takes the
   `Headers`: the service stays free of forwarding headers and of the configuration of the deployment.
 - New passwords are checked against a bundled list of common passwords instead of an online service such as Have I
   Been Pwned: no request leaves the server, the check works offline and in every deployment, and the list is drawn

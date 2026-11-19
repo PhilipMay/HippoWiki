@@ -110,8 +110,8 @@ Code: `Containerfile`, `.containerignore`, `scripts/image.sh`, `scripts/image-mi
   an error like a wrong `DATABASE_URL`. It is read when the server runs, not when the image is built. With `true` the
   server logs one `info` line `client address probe` for every request that passes the proxy of Next.js (with
   `"source":"proxy"`, the method and the path; not for the public addresses that pass by the proxy, the `matcher` in
-  `src/proxy.ts`) and for every submitted login (with
-  `"source":"login"`). The line holds only the headers `X-Forwarded-For`, `X-Real-Ip`, `Forwarded`,
+  `src/proxy.ts`), for every submitted login (with `"source":"login"`) and for every submitted password change (with
+  `"source":"password-change"`). The line holds only the headers `X-Forwarded-For`, `X-Real-Ip`, `Forwarded`,
   `X-Forwarded-Proto`, `X-Forwarded-Host`, `X-Forwarded-Port` and `Host`, each cut to 200 characters, never cookies,
   `Authorization` or the body (`src/lib/client-address-probe.ts`).
   - It is meant for checking a reverse proxy in front of the container: whether a request from a known address arrives

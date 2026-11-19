@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { requestClientAddressGroup } from "@/features/auth/client-address";
 import {
   parseLoginFormData,
   readNextPath,
@@ -16,21 +17,30 @@ import {
 import * as authService from "@/features/auth/service";
 import { requireSession } from "@/features/auth/session";
 import { changePasswordPath, homePath, landingPath, loginPath } from "@/lib/addresses";
-import { clientAddressGroup } from "@/lib/client-address";
-import { logClientAddressProbe } from "@/lib/client-address-probe";
-import { getServerEnv } from "@/lib/env";
-import { logger } from "@/lib/logger";
 
 const INVALID_CREDENTIALS_MESSAGE = "Invalid user name or password";
 const BUSY_MESSAGE = "Too many logins at the moment, please try again";
 
+/** The minutes of a wait that are left, rounded up and at least 1, with their unit: "1 minute", "4 minutes". */
+function waitMinutes(waitMs: number): string {
+  const minutes = Math.max(1, Math.ceil(waitMs / 60_000));
+  return `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+}
+
 /**
- * The message of the wait after failed logins, with the minutes that are left, rounded up. It is the same for known
- * and unknown user names.
+ * The message of the wait after failed logins, with the minutes that are left. It is the same for known and unknown
+ * user names.
  */
 function waitMessage(waitMs: number): string {
-  const minutes = Math.max(1, Math.ceil(waitMs / 60_000));
-  return `Too many failed logins. Please try again in ${minutes} ${minutes === 1 ? "minute" : "minutes"}.`;
+  return `Too many failed logins. Please try again in ${waitMinutes(waitMs)}.`;
+}
+
+/**
+ * The message of the wait at a check of the own password, such as a password change: its own wording, because it is
+ * not a login, but the same wait.
+ */
+function wrongPasswordsWaitMessage(waitMs: number): string {
+  return `Too many wrong passwords. Please try again in ${waitMinutes(waitMs)}.`;
 }
 const LOGIN_FAILED_MESSAGE = "The login failed. Please try again.";
 const WRONG_PASSWORD_MESSAGE = "Current password is wrong";
@@ -53,16 +63,9 @@ export async function logIn(_prevState: LoginFormState, formData: FormData): Pro
   if (!input.success) return { fieldErrors: input.fieldErrors };
 
   const requestHeaders = await headers();
-  // Shows whether a Server Action sees the same forwarding headers as the proxy of Next.js.
-  logClientAddressProbe(requestHeaders, { source: "login" });
-
   // `/login` does not pass the proxy of Next.js, so the action reads the client address itself; the service only gets
   // the group.
-  const { group, fallback } = clientAddressGroup(requestHeaders, getServerEnv().HIPPOWIKI_TRUSTED_PROXIES);
-  if (fallback) {
-    // The value of the header is not logged; `HIPPOWIKI_LOG_CLIENT_ADDRESS` shows it.
-    logger.warn({ reason: fallback }, "no client address in X-Forwarded-For, the login counts in the shared group");
-  }
+  const group = requestClientAddressGroup(requestHeaders, "login");
 
   // Better Auth sets the session cookie on the response of this action (`nextCookies()` in `src/lib/auth.ts`).
   const result = await authService.logIn(input.data, requestHeaders, group);
@@ -99,14 +102,24 @@ export async function changeFirstPassword(
   const user = await requireSession();
   const next = readNextPath(formData);
 
+  const requestHeaders = await headers();
   // Better Auth ends all sessions of the user and sets the cookie of a new one on the response of this action.
-  const result = await authService.changeFirstPassword(readPasswordChangeFormData(formData), await headers());
+  const result = await authService.changeFirstPassword(
+    readPasswordChangeFormData(formData),
+    requestHeaders,
+    requestClientAddressGroup(requestHeaders, "password-change"),
+  );
   if (!result.ok) {
     switch (result.error.code) {
       case "invalid-input":
         return { fieldErrors: result.error.fieldErrors };
       case "wrong-password":
-        return { fieldErrors: { currentPassword: [WRONG_PASSWORD_MESSAGE] } };
+        return { fieldErrors: { currentPassword: [WRONG_PASSWORD_MESSAGE] }, passwordRefused: true };
+      case "wait":
+        return {
+          fieldErrors: { currentPassword: [wrongPasswordsWaitMessage(result.error.waitMs)] },
+          passwordRefused: true,
+        };
       case "not-logged-in":
         redirect(loginPath(next));
       // The change is done already, e.g. in another tab: there is nothing left to do here.
