@@ -29,6 +29,7 @@ file itself holds.
 - `spec/roadmap.md`: Which features may come later, and what is still to check?
 - `spec/issue-report.md`: How is an issue of a review of code or documents reported?
 - `spec/parallel-end-to-end-tests-requirements.md`: What must running the end-to-end tests in parallel do?
+- `spec/parallel-end-to-end-tests-steps.md`: In which steps are the end-to-end tests made to run in parallel?
 - `spec/review-report.md`: Which findings of the security and code review are open? A fixed finding is deleted, and
   the file with its last finding.
 
