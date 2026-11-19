@@ -79,12 +79,17 @@ What the steps found out that the wrap-up moves into the other specs.
   language, only an unreliable one; below that a short line such as "Notizen. TODO morgen" counted as reliably Dutch.
 - Deriving the text and the language of content at the content limit takes at most about 200 ms, for the slow inputs of
   the Markdown parse.
+- The vector is built by a row trigger before the write; the words of the folders by statement triggers after it,
+  with transition tables: the changes of all rows of a statement, such as the pages deleted with their tab, are summed
+  and applied in one ordered statement, because row triggers would lock the words of one page after the other and
+  could wait for each other in a circle. Prisma expresses every index, the GIN index on the vector included; only the
+  check constraints, the functions and the triggers are written by hand.
 
 ## Checklist
 
 - [x] Database check and `pg_trgm`
 - [x] Search text and language of a page
-- [ ] Search index with every write
+- [x] Search index with every write
 - [ ] Existing pages at the start of the server
 - [ ] Search words
 - [ ] Matching and order

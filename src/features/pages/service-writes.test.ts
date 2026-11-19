@@ -12,6 +12,7 @@ import {
 } from "@/features/pages/service";
 import type { ContentActor } from "@/features/folder-roles/actors";
 import { CONTENT_MAX_TABLE_CELLS } from "@/features/pages/limits";
+import { SEARCH_INDEX_VERSION } from "@/features/search/index-data";
 import { CONTENT_TABLE_CELLS_MESSAGE } from "@/features/pages/schema";
 import {
   mocks,
@@ -41,6 +42,7 @@ import {
   ACTOR,
   MCP_ACTOR,
 } from "@/test/unit";
+import { samplePage } from "@/test/language-samples";
 import { CONTENT } from "@/test/content-writes";
 
 vi.mock("@/lib/db", async () => ({ getDb: (await import("@/test/pages-service")).pagesDb }));
@@ -179,9 +181,27 @@ describe("createPage", () => {
       tabId: null,
       lastEditedById: ACTOR_ID,
       lastEditedVia: "web",
+      // What search reads of the content: its text without the title heading, and `simple` for prose too short to
+      // tell its language.
+      searchText: "Text",
+      searchLanguage: "simple",
+      searchIndexVersion: SEARCH_INDEX_VERSION,
       revisions: { create: { number: 1, title: "My page", content: CONTENT, userId: ACTOR_ID, via: "web" } },
     });
     expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID, channel: "web" }, "page created");
+  });
+
+  it("stores the search text and the language of the content of a new page", async () => {
+    mocks.create.mockResolvedValue({ id: PAGE_ID, name: "n", folder: { name: "f" }, tab: null });
+    const content = samplePage("german");
+
+    await createPage(ACTOR, FOLDER_ID, { content, tabId: null });
+
+    expect(dataOf(mocks.create)).toMatchObject({
+      searchText: content.split("\n\n")[1]?.trim(),
+      searchLanguage: "german",
+      searchIndexVersion: SEARCH_INDEX_VERSION,
+    });
   });
 
   it("stores a page without a name under the name derived from its title", async () => {
@@ -329,9 +349,26 @@ describe("updatePageContent", () => {
       content: CONTENT,
       lastEditedById: ACTOR_ID,
       lastEditedVia: "web",
+      searchText: "Text",
+      searchLanguage: "simple",
+      searchIndexVersion: SEARCH_INDEX_VERSION,
       version: { increment: 1 },
     });
     expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID, channel: "web" }, "page updated");
+  });
+
+  it("stores the search text and the language of the saved content", async () => {
+    mocks.updateMany.mockResolvedValue({ count: 1 });
+    mocks.findUnique.mockResolvedValue(STORED);
+    const content = samplePage("french");
+
+    await updatePageContent(ACTOR, PAGE_ID, { ...VALID, content });
+
+    expect(dataOf(mocks.updateMany)).toMatchObject({
+      searchText: content.split("\n\n")[1]?.trim(),
+      searchLanguage: "french",
+      searchIndexVersion: SEARCH_INDEX_VERSION,
+    });
   });
 
   it("records a revision with the next number, the title, the content, the actor and the channel", async () => {
@@ -584,6 +621,9 @@ describe("revertPage", () => {
       content: OLD,
       lastEditedById: ACTOR_ID,
       lastEditedVia: "web",
+      searchText: "Old text",
+      searchLanguage: "simple",
+      searchIndexVersion: SEARCH_INDEX_VERSION,
       version: { increment: 1 },
     });
     expect(dataOf(mocks.revisionCreate)).toEqual({

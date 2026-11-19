@@ -3,6 +3,7 @@
 // its pages and the role of the known user are upserted by fixed keys, so running it again changes nothing. The known users are upserted by their names: running it
 // again gives them their known passwords back and leaves their types as they are, because a type never changes.
 import { titleFromContent } from "../src/features/pages/derive";
+import { searchIndexData } from "../src/features/search/index-data";
 import type { ChangeChannel } from "../src/generated/prisma/client";
 import { CREDENTIAL_PROVIDER_ID, newUserData } from "../src/features/users/records";
 import { getDb } from "../src/lib/db";
@@ -118,8 +119,16 @@ async function main() {
       // Like the page form, the title comes from the content's first heading.
       const title = titleFromContent(content);
       if (title === null) throw new Error(`Sample page ${name} has no title heading`);
-      // Placed directly in the sample folder.
-      const data = { title, name, content, folderId: folder.id, lastEditedById, lastEditedVia };
+      // Placed directly in the sample folder, with what search reads of the content, like a save.
+      const data = {
+        title,
+        name,
+        content,
+        ...(await searchIndexData(content)),
+        folderId: folder.id,
+        lastEditedById,
+        lastEditedVia,
+      };
       const revision = { title, content, userId: lastEditedById, via: lastEditedVia };
       // Like every content change, the sample content is recorded as a revision: revision 1 of a new page, and the
       // next one of a page whose content was changed since it was seeded.

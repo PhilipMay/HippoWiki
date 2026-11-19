@@ -20,6 +20,10 @@
 // revision 1, a content save that changes the content records the next one, and a revert, a content save of the
 // browser, records one that names the revision it went back to. Moving, renaming, deleting and restoring a page record
 // none. The history is read by `history-service.ts`, only for the actor of the browser.
+//
+// Every write that stores content also stores what search reads of it, in the same write (`searchIndexData()` of
+// `src/features/search/index-data.ts`): a new page, a content save and a revert. A trigger of the database builds the
+// vector and the words of the folder from it, and sees a move, a rename, a delete and a restore by itself.
 
 import type { Role } from "@/features/folder-roles/roles";
 import {
@@ -53,6 +57,7 @@ import {
 } from "@/features/pages/schema";
 import { deriveName } from "@/features/pages/derive";
 import { NEXT_VERSION, softDeleteData } from "@/features/pages/writes";
+import { searchIndexData } from "@/features/search/index-data";
 import { LAST_EDITOR_SELECT, withLastEditor, type LastEditor } from "@/features/users/records";
 import type { ChangeChannel, Prisma } from "@/generated/prisma/client";
 import { getDb } from "@/lib/db";
@@ -414,7 +419,7 @@ async function newPageInput(input: {
  * suggests no name gives `no-suggested-name` and stores nothing. The page is placed in the tab with the id `tabId` or,
  * with `null`, directly in the folder with the given id; the tab must be one of that folder. The actor is the page's
  * last editor, in the browser and through MCP. Revision 1 of the page, with its title and content, the actor and the
- * channel, is stored in the same write.
+ * channel, and what search reads of the content are stored in the same write.
  */
 export async function createPage(
   actor: ContentActor,
@@ -446,11 +451,13 @@ export async function createPage(
 
   let page: StoredPage;
   try {
+    const search = await searchIndexData(content);
     page = await getDb().page.create({
       data: {
         name,
         title,
         content,
+        ...search,
         tabId,
         folderId: parsedFolderId,
         lastEditedById,
@@ -507,8 +514,8 @@ function atVersion(pageId: string, version: number): { id: string; deletedAt: nu
 }
 
 /**
- * Stores the content change in the page with the given id, if it is not deleted and has the given version, counts its
- * version up and records the revision, all in one transaction: the revision has the next number, the title and the
+ * Stores the content change in the page with the given id, with what search reads of its content, if it is not
+ * deleted and has the given version, counts its version up and records the revision, all in one transaction: the revision has the next number, the title and the
  * content, the actor and the channel, and `revertedTo`, the number of the revision a revert went back to. A change
  * that is no revert is stored only when its content differs from the stored content of the page; with the same
  * content it stores nothing and records no revision, so the page keeps its last editor, time and version
@@ -522,6 +529,8 @@ async function storeContentChange(
   revertedTo: number | null,
 ): Promise<PageWrite> {
   try {
+    // Before the transaction, which it does not need: it reads no row.
+    const search = await searchIndexData(change.content);
     return await getDb().$transaction(async (tx): Promise<PageWrite> => {
       const current = atVersion(pageId, version);
       // `updateMany` reports a missing page as a count of 0 instead of throwing; it sets `updatedAt` as well. A deleted
@@ -529,7 +538,7 @@ async function storeContentChange(
       // row.
       const { count } = await tx.page.updateMany({
         where: revertedTo === null ? { ...current, content: { not: change.content } } : current,
-        data: { ...change, ...NEXT_VERSION },
+        data: { ...change, ...search, ...NEXT_VERSION },
       });
       if (count === 0) {
         if (revertedTo !== null) return { kind: "refused" };
