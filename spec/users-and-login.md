@@ -351,9 +351,11 @@ the authentication guide of Next.js describes:
   admin who creates a new account
 - no password reset by an admin for other accounts, so a lost first password cannot be replaced
 - no filter of the user list
-- no change of the own password after the forced password change
-- a password change does not end the connected apps of the user; only revoking and expiry do (see
-  `connected-apps.md`)
+- a password change ends the connected apps of the user only when the user chooses so at the change of the own
+  password; the forced password change never does (see `connected-apps.md`)
+- an admin cannot end the sessions or the connected apps of another account; for now the only way is a change
+  directly in the database
+- no list of the own sessions: a user can only log out all other browsers at once
 - no deactivating or deleting of users; deactivating, when it comes, must also stop the user's connected apps and decide
   what happens to a folder whose last Owner it concerns (see `folder-roles.md`). A user who has edited content or has
   a role cannot be deleted for good at all, because the keys from content to its last editor, from a page revision to

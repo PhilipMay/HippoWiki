@@ -133,6 +133,8 @@ describe("paths", () => {
     expect(accountPath("revoke")).toBe("/account?action=revoke");
     expect(accountPath("change-password")).toBe("/account?action=change-password");
     expect(accountNoticePath("password-changed")).toBe("/account?notice=password-changed");
+    expect(accountPath("log-out-others")).toBe("/account?action=log-out-others");
+    expect(accountNoticePath("other-browsers-logged-out")).toBe("/account?notice=other-browsers-logged-out");
   });
 
   it("builds the address of the history of a page, with the revisions before a number", () => {

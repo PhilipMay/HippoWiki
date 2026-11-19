@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { changeFirstPassword, changeOwnPassword, logIn, logOut } from "@/features/auth/actions";
+import { changeFirstPassword, changeOwnPassword, logIn, logOut, logOutOtherBrowsers } from "@/features/auth/actions";
 import { RedirectError } from "@/test/unit";
 
 const mocks = vi.hoisted(() => ({
@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   logOut: vi.fn(),
   changeFirstPassword: vi.fn(),
   changeOwnPassword: vi.fn(),
+  logOutOtherSessions: vi.fn(),
   requireSession: vi.fn(),
   requireUser: vi.fn(),
   headers: vi.fn(),
@@ -25,6 +26,7 @@ vi.mock("@/features/auth/service", () => ({
   logOut: mocks.logOut,
   changeFirstPassword: mocks.changeFirstPassword,
   changeOwnPassword: mocks.changeOwnPassword,
+  logOutOtherSessions: mocks.logOutOtherSessions,
 }));
 vi.mock("@/features/auth/session", () => ({
   requireSession: mocks.requireSession,
@@ -566,5 +568,47 @@ describe("changeOwnPassword", () => {
     await expect(changeOwnPassword({}, formData(FORM))).rejects.toMatchObject({ path: "/login" });
 
     expect(mocks.changeOwnPassword).not.toHaveBeenCalled();
+  });
+});
+
+describe("logOutOtherBrowsers", () => {
+  beforeEach(() => {
+    mocks.requireUser.mockResolvedValue(USER);
+  });
+
+  it.each([2, 0])("ends the other sessions (%i) and leads to the notice, also without another one", async (count) => {
+    mocks.logOutOtherSessions.mockResolvedValue({ ok: true, value: { count } });
+
+    await expect(logOutOtherBrowsers()).rejects.toMatchObject({
+      path: "/account?notice=other-browsers-logged-out",
+    });
+
+    expect(mocks.logOutOtherSessions).toHaveBeenCalledExactlyOnceWith(REQUEST_HEADERS);
+    expect(mocks.revalidatePath).toHaveBeenCalledExactlyOnceWith("/account");
+  });
+
+  it("returns the message that the other browsers may still be logged in when it fails, without a redirect", async () => {
+    mocks.logOutOtherSessions.mockResolvedValue({ ok: false, error: { code: "failed" } });
+
+    await expect(logOutOtherBrowsers()).resolves.toEqual({
+      message: "The other browsers could not be logged out and may still be logged in. Please try again.",
+    });
+
+    expect(mocks.redirect).not.toHaveBeenCalled();
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it("leads to the login page when the session ended meanwhile", async () => {
+    mocks.logOutOtherSessions.mockResolvedValue({ ok: false, error: { code: "not-logged-in" } });
+
+    await expect(logOutOtherBrowsers()).rejects.toMatchObject({ path: "/login" });
+  });
+
+  it("does not reach the service without a user", async () => {
+    mocks.requireUser.mockRejectedValue(new RedirectError("/login"));
+
+    await expect(logOutOtherBrowsers()).rejects.toMatchObject({ path: "/login" });
+
+    expect(mocks.logOutOtherSessions).not.toHaveBeenCalled();
   });
 });

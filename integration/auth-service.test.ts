@@ -1158,3 +1158,34 @@ describe("changeOwnPassword", () => {
     });
   });
 });
+
+describe("logOutOtherSessions", () => {
+  it("ends the other sessions of the user, keeps the current one and those of other users, and returns their number", async () => {
+    const alice = await createUser({ name: "alice", mustChangePassword: false });
+    await createBob();
+    const current = await logInAs("alice");
+    const others = [await logInAs("alice"), await logInAs("alice")];
+    const bob = await logInAs("bob");
+
+    const result = await authService.logOutOtherSessions(current.headers);
+
+    expect(result).toEqual({ ok: true, value: { count: 2 } });
+    expect(await authService.getSessionUser(current.headers)).toStrictEqual(current.user);
+    for (const other of others) expect(await authService.getSessionUser(other.headers)).toBeNull();
+    expect(await authService.getSessionUser(bob.headers)).toStrictEqual(bob.user);
+    expect(await getTestDb().session.count({ where: { userId: alice.id } })).toBe(1);
+    // The password stays.
+    expect((await logInAs("alice")).user.name).toBe("alice");
+  });
+
+  it("returns 0 without another session, and is refused without a session", async () => {
+    await createUser({ name: "alice", mustChangePassword: false });
+    const { headers } = await logInAs("alice");
+
+    expect(await authService.logOutOtherSessions(headers)).toEqual({ ok: true, value: { count: 0 } });
+    expect(await authService.logOutOtherSessions(new Headers())).toEqual({
+      ok: false,
+      error: { code: "not-logged-in" },
+    });
+  });
+});

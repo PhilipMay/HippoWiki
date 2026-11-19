@@ -1,7 +1,14 @@
 import { APIError } from "better-auth/api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { changeFirstPassword, changeOwnPassword, getSessionUser, logIn, logOut } from "@/features/auth/service";
+import {
+  changeFirstPassword,
+  changeOwnPassword,
+  getSessionUser,
+  logIn,
+  logOut,
+  logOutOtherSessions,
+} from "@/features/auth/service";
 import { PasswordHashBusyError } from "@/lib/password-hash";
 
 const mocks = vi.hoisted(() => ({
@@ -11,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   changePassword: vi.fn(),
   userUpdateMany: vi.fn(),
+  sessionDeleteMany: vi.fn(),
   attemptFindUnique: vi.fn(),
   attemptCreateMany: vi.fn(),
   attemptUpdateMany: vi.fn(),
@@ -55,6 +63,7 @@ const db = vi.hoisted(() => {
         "username" in args.where ? mocks.windowDeleteMany(args) : mocks.windowDeleteOld(args),
     },
     user: { updateMany: mocks.userUpdateMany },
+    session: { deleteMany: mocks.sessionDeleteMany },
     $transaction: mocks.transaction,
   };
 });
@@ -1775,6 +1784,60 @@ describe("changeOwnPassword", () => {
     expect(mocks.error).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ err: expect.objectContaining({ message: "connection refused" }) as Error }),
       "failed to change the password",
+    );
+    expect(mocks.info).not.toHaveBeenCalled();
+  });
+});
+
+describe("logOutOtherSessions", () => {
+  const SESSION_ID = "4b1d2c3e-5f60-4a7b-8c9d-0e1f2a3b4c5d";
+
+  beforeEach(() => {
+    mocks.getSession.mockResolvedValue({ session: { id: SESSION_ID, token: "token" }, user: AUTH_USER });
+    mocks.sessionDeleteMany.mockResolvedValue({ count: 2 });
+  });
+
+  it("deletes the other sessions of the user in one write that leaves out the current one, and returns their number", async () => {
+    const result = await logOutOtherSessions(REQUEST_HEADERS);
+
+    expect(result).toEqual({ ok: true, value: { count: 2 } });
+    expect(mocks.getSession).toHaveBeenCalledExactlyOnceWith({ headers: REQUEST_HEADERS });
+    expect(mocks.sessionDeleteMany).toHaveBeenCalledExactlyOnceWith({
+      where: { userId: USER_ID, id: { not: SESSION_ID } },
+    });
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+      { userId: USER_ID, name: "alice", count: 2 },
+      "other sessions ended",
+    );
+  });
+
+  it("returns 0 when there was no other session", async () => {
+    mocks.sessionDeleteMany.mockResolvedValue({ count: 0 });
+
+    await expect(logOutOtherSessions(REQUEST_HEADERS)).resolves.toEqual({ ok: true, value: { count: 0 } });
+  });
+
+  it("deletes nothing without a session", async () => {
+    mocks.getSession.mockResolvedValue(null);
+
+    const result = await logOutOtherSessions(new Headers());
+
+    expect(result).toEqual({ ok: false, error: { code: "not-logged-in" } });
+    expect(mocks.sessionDeleteMany).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["the delete fails", () => mocks.sessionDeleteMany.mockRejectedValue(new Error("connection refused"))],
+    ["the session cannot be read", () => mocks.getSession.mockRejectedValue(new Error("connection refused"))],
+  ])("answers failed when %s, logs it and claims nothing", async (_case, arrange) => {
+    arrange();
+
+    const result = await logOutOtherSessions(REQUEST_HEADERS);
+
+    expect(result).toEqual({ ok: false, error: { code: "failed" } });
+    expect(mocks.error).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ err: expect.objectContaining({ message: "connection refused" }) as Error }),
+      "failed to end the other sessions",
     );
     expect(mocks.info).not.toHaveBeenCalled();
   });

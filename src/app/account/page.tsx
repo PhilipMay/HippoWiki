@@ -6,8 +6,9 @@ import { notFound } from "next/navigation";
 
 import Link from "@/components/Link";
 import NoticeAlert from "@/components/NoticeAlert";
-import { changeOwnPassword } from "@/features/auth/actions";
+import { changeOwnPassword, logOutOtherBrowsers } from "@/features/auth/actions";
 import ChangeOwnPasswordDialog from "@/features/auth/components/ChangeOwnPasswordDialog";
+import LogOutOtherBrowsersDialog from "@/features/auth/components/LogOutOtherBrowsersDialog";
 import { requireUser } from "@/features/auth/session";
 import { revokeGrant } from "@/features/grants/actions";
 import RevokeAppDialog from "@/features/grants/components/RevokeAppDialog";
@@ -55,6 +56,10 @@ const NOTICES: Record<AccountNotice, { message: string; severity: "success" | "w
       "Please revoke them in the list below.",
     severity: "warning",
   },
+  "other-browsers-logged-out": {
+    message: "Your other browsers were logged out.",
+    severity: "success",
+  },
 };
 
 /** The buttons of the account that every account has: they open the dialogs of the account. */
@@ -64,19 +69,24 @@ function AccountButtons() {
       <Button component={Link} href={accountPath("change-password")} variant="outlined">
         Change password
       </Button>
+      <Button component={Link} href={accountPath("log-out-others")} variant="outlined">
+        Log out other browsers
+      </Button>
     </Stack>
   );
 }
 
 /**
- * The actions of the account: `revoke` opens the "Revoke app" dialog, `change-password` the "Change password" dialog.
+ * The actions of the account: `revoke` opens the "Revoke app" dialog, `change-password` the "Change password" dialog
+ * and `log-out-others` the "Log out other browsers" dialog.
  */
-const ACTIONS = ["revoke", "change-password"] as const;
+const ACTIONS = ["revoke", "change-password", "log-out-others"] as const;
 
 /**
- * The own account of the logged-in user: the user name, the button "Change password", and the apps the user
- * connected through OAuth. `?action=change-password` opens the dialog of the password change for every account; a user
- * with apps can choose there to disconnect them all.
+ * The own account of the logged-in user: the user name, the buttons "Change password" and "Log out other browsers",
+ * and the apps the user connected through OAuth. `?action=change-password` opens the dialog of the password change
+ * and `?action=log-out-others` the one that ends the other sessions, for every account; a user with apps can choose in
+ * the first to disconnect them all.
  * `?action=revoke` needs the parameter `app` with the id of one of the user's apps; every other address with an app,
  * the parameter `token`, an unknown action or a view is not found. `?notice=<notice>` reports what an action did, only
  * without an action. An admin has no apps, and while `HIPPOWIKI_PUBLIC_URL` is not set no app can connect or be used:
@@ -113,6 +123,9 @@ export default async function AccountPage({ searchParams }: PageProps<"/account"
           // The list the page reads anyway: `null` for an admin and while OAuth is off.
           offerDisconnectApps={(apps?.length ?? 0) > 0}
         />
+      )}
+      {action === "log-out-others" && (
+        <LogOutOtherBrowsersDialog action={logOutOtherBrowsers} closeHref={accountPath()} />
       )}
     </>
   );

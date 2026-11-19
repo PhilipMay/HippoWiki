@@ -8,13 +8,11 @@
   tests cover the security rules of the specs well. The weak points are availability (unbounded bodies and batches, a lockout per name in the default
   configuration), the password policy, the trust that the OAuth
   server gives to clients nobody verified, and documentation that ASVS Level 2 asks for.
-- Findings: 101 in all, 0 Blocker, 2 Major, 61 Minor and 38 Nit (51 `issue:`, 18 `suggestion:`, 27 `nit:` and 5
+- Findings: 101 in all, 0 Blocker, 1 Major, 62 Minor and 38 Nit (51 `issue:`, 18 `suggestion:`, 27 `nit:` and 5
   `question:`). Accepted deviations: 20. Of the 96 Suggestions with a confidence (a `question:` has none), 12 are High,
   49 Medium and 35 Low.
 - To fix first:
-  1. After the first password change, a user cannot change the password or end sessions, and the admin cannot end
-     them either (Login; ASVS 6.2.2, 7.4.3, 7.4.5).
-  2. Wiki text reaches the model with nothing that marks it as data written by users, and a Manager connection can be
+  1. Wiki text reaches the model with nothing that marks it as data written by users, and a Manager connection can be
      steered to delete pages and tabs (MCP server; OWASP MCP06, LLM01).
 - Not covered by this review: everything under "Checks on the deployment" (the reverse proxy and its TLS, the host,
   the network, backups, log storage and the settings of the GitHub repository); a scan of the image for
@@ -668,28 +666,23 @@ finding of the review report" in `step-plan-workflow.md` describes.
 
 ### Login, passwords, sessions and users
 
-#### issue: after the first password change, a user cannot change the password or end sessions, and the admin cannot end them either
+#### issue: the admin cannot end the sessions of another account
 
-- Location: `src/features/auth/service.ts`, `changeFirstPassword()`, the check of `mustChangePassword`;
-  `spec/users-and-login.md`, section "Current limits"
-- Severity: Major. ASVS 6.2.2 is Level 1; a user or admin who suspects a leaked password or a stolen session has no way
-  to react but a change in the database.
+- Location: `src/features/users/` (no such action); `spec/users-and-login.md`, section "Current limits"
+- Severity: Minor. Every account can now change its own password and log out its other browsers at any time; only
+  an account that its owner can no longer use, because someone else changed its password, needs the admin, and then a
+  change in the database.
 - Category: security
-- Problem: once the forced change is done, `changeFirstPassword()` refuses with `not-required`, and there is no other
-  password change. A user cannot list or end other sessions, the admin cannot end the sessions of a user, and there is
-  no option to end other sessions or the connected apps after a change. "Current limits" lists "no change of the own
-  password after the forced password change" and "a password change does not end the connected apps of the user",
-  both without a reason.
-- Impact: a leaked password stays valid for good, a stolen session cookie for up to 30 days, and a connected app that
-  someone approved with it, possibly with the role Writer, for the lifetime of its grant.
-- Evidence: `if (!user.mustChangePassword) return { ok: false, error: { code: "not-required" } };`
-- Suggestion (required): allow a change at any time on `/account`, with the current password and the same rules,
-  through `changePassword` of Better Auth with `revokeOtherSessions: true`, and offer to revoke the connected apps; add "end
-  all other sessions" for a user and "end all sessions of a user" for the admin. Until then, document it as a decision
-  with its reason and the steps for an operator.
-- Confidence: Low. It needs product decisions: a change form on `/account`, whether the connected apps are revoked,
-  and new controls for the user and the admin, or the limit documented as a decision.
-- Reference: OWASP A07:2025 Authentication Failures; ASVS 6.2.2, 7.4.3, 7.4.5, 7.5.2; `CON.10.A12`.
+- Problem: the admin cannot end the sessions of a user, neither those of one user nor all of them. "Current limits"
+  lists it, without the steps for an operator.
+- Impact: after a takeover of an account whose password was changed by the attacker, the sessions of the attacker stay
+  valid for up to 30 days unless an operator deletes them in the database.
+- Evidence: the actions of `/users` are the list and "New user"; no service function ends the sessions of another
+  account.
+- Suggestion (required): add "end all sessions of a user" for the admin on `/users`, or document the limit as a
+  decision with its reason and the steps for an operator.
+- Confidence: Low. It needs a product decision: a new control for the admin, or the limit documented as a decision.
+- Reference: OWASP A07:2025 Authentication Failures; ASVS 7.4.5; `CON.10.A12`.
 
 #### issue: in the default configuration a single client can lock any known user, the admin included, out of the login
 
@@ -975,6 +968,15 @@ finding of the review report" in `step-plan-workflow.md` describes.
   authentication attribute, the password, needs the current password (ASVS 7.5.1; see the question in "Connected apps");
   there is no reset of a forgotten password, which `users-and-login.md` lists as a limit, so ASVS 6.4.3 has nothing to
   check.
+- Own password change and the other sessions (ASVS 6.2.2, 7.4.3, 7.5.2): every account changes its own password at
+  any time on `/account`, with the current password and the rules of the forced change, through `changePassword` of
+  Better Auth with `revokeOtherSessions: true`, so the change ends all other sessions; a user can disconnect all
+  connected apps with it. "Log out other browsers" on `/account` ends all other sessions without a change of the
+  password, after a confirmation; it asks for no password, a decision of the requirements, because ending sessions
+  only protects the account. A list of the own sessions is not offered, a current limit of `users-and-login.md`, so
+  ASVS 7.5.2 is met for ending the sessions, not for viewing them. Fixed after the review and checked by the unit and
+  integration tests of `changeOwnPassword()` and `logOutOtherSessions()` and by `e2e/own-password-change.spec.ts` and
+  `e2e/log-out-other-browsers.spec.ts`. The admin part is the finding above.
 - Wrong current passwords at the forced password change (ASVS 6.3.1, 2.4.1, CWE-307): counted like failed logins of
   the name of the session user from the client address group of the request, with the waits of the login; a right
   one counts like a successful login, and during a wait the change is refused without checking the password. Input

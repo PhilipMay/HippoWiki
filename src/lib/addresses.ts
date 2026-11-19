@@ -134,11 +134,19 @@ export const APPS_DISCONNECTED_NOTICE = "password-changed-apps-disconnected";
  */
 export const APPS_NOT_DISCONNECTED_NOTICE = "password-changed-apps-not-disconnected";
 
+/** The notice of the own account after the other browsers were logged out. */
+export const OTHER_BROWSERS_LOGGED_OUT_NOTICE = "other-browsers-logged-out";
+
 /**
  * The notices of the own account, in its query string `?notice=<notice>`. A notice reports what an action of the
  * account did; it comes only without an action, is shown once and changes nothing.
  */
-const ACCOUNT_NOTICES = [PASSWORD_CHANGED_NOTICE, APPS_DISCONNECTED_NOTICE, APPS_NOT_DISCONNECTED_NOTICE] as const;
+const ACCOUNT_NOTICES = [
+  PASSWORD_CHANGED_NOTICE,
+  APPS_DISCONNECTED_NOTICE,
+  APPS_NOT_DISCONNECTED_NOTICE,
+  OTHER_BROWSERS_LOGGED_OUT_NOTICE,
+] as const;
 
 export type AccountNotice = (typeof ACCOUNT_NOTICES)[number];
 

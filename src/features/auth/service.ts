@@ -526,14 +526,66 @@ export async function logOut(headers: Headers): Promise<Result<LoggedOut, LogOut
   }
 }
 
+/** The session of a request: its id and its user. */
+type RequestSession = { sessionId: string; user: SessionUser };
+
+/**
+ * The session of the request with its user, or `null` without a valid session, as for `getSessionUser()`. Throws when
+ * the session cannot be read.
+ */
+async function getRequestSession(headers: Headers): Promise<RequestSession | null> {
+  const auth = await getAuth();
+  const session = await auth.api.getSession({ headers });
+  const user = session && toSessionUser(session.user);
+  return session && user ? { sessionId: session.session.id, user } : null;
+}
+
 /**
  * The user of the session of the request, or `null` without a valid session: no session cookie, one that the server
  * does not know, or a session that has ended. It reads the session from the database and does not extend it.
  */
 export async function getSessionUser(headers: Headers): Promise<SessionUser | null> {
-  const auth = await getAuth();
-  const session = await auth.api.getSession({ headers });
-  return session ? toSessionUser(session.user) : null;
+  return (await getRequestSession(headers))?.user ?? null;
+}
+
+/** The other sessions of the user that were ended. */
+export type OtherSessionsEnded = { count: number };
+
+export type LogOutOtherSessionsError = NotLoggedIn | Failed;
+
+/**
+ * Ends all other sessions of the user of the request, without changing the password; the session of the request
+ * stays. Returns how many sessions were ended, 0 when there was no other one. The password is not asked: ending
+ * sessions only protects the account.
+ *
+ * The sessions are deleted here, in one write that leaves out the session of the request, and not with
+ * `revokeOtherSessions` of Better Auth: that returns no number, deletes the sessions one by one, and Better Auth was
+ * found to swallow a failed delete at the logout, so a failure could look like success. Every check of a session reads
+ * the database, so a deleted session is refused at its next request.
+ */
+export async function logOutOtherSessions(
+  headers: Headers,
+): Promise<Result<OtherSessionsEnded, LogOutOtherSessionsError>> {
+  let session: RequestSession | null;
+  try {
+    session = await getRequestSession(headers);
+  } catch (err) {
+    logger.error({ err }, "failed to end the other sessions");
+    return { ok: false, error: { code: "failed" } };
+  }
+  if (!session) return { ok: false, error: { code: "not-logged-in" } };
+  const { sessionId, user } = session;
+
+  let count: number;
+  try {
+    ({ count } = await getDb().session.deleteMany({ where: { userId: user.id, id: { not: sessionId } } }));
+  } catch (err) {
+    logger.error({ err, userId: user.id }, "failed to end the other sessions");
+    return { ok: false, error: { code: "failed" } };
+  }
+
+  logger.info({ userId: user.id, name: user.name, count }, "other sessions ended");
+  return { ok: true, value: { count } };
 }
 
 /** The error codes with which Better Auth refuses a password change because of the current password. */

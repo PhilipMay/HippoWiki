@@ -9,6 +9,7 @@ import { redirect } from "next/navigation";
 import { requestClientAddressGroup } from "@/features/auth/client-address";
 import {
   parseLoginFormData,
+  type LogOutOthersFormState,
   readDisconnectApps,
   readNextPath,
   readPasswordChangeFormData,
@@ -22,6 +23,7 @@ import {
   accountPath,
   APPS_DISCONNECTED_NOTICE,
   APPS_NOT_DISCONNECTED_NOTICE,
+  OTHER_BROWSERS_LOGGED_OUT_NOTICE,
   changePasswordPath,
   homePath,
   landingPath,
@@ -200,6 +202,33 @@ export async function changeOwnPassword(
 
   revalidatePath(accountPath());
   redirect(accountNoticePath(OWN_CHANGE_NOTICES[result.value.apps.status]));
+}
+
+const LOG_OUT_OTHERS_FAILED_MESSAGE =
+  "The other browsers could not be logged out and may still be logged in. Please try again.";
+
+/**
+ * Ends all other sessions of the logged-in user, without changing the password, and leads to the account with the
+ * notice that the other browsers were logged out, also when there was no other one. The browser stays logged in.
+ * Returns the error to show in the dialog if the sessions could not be ended: the current browser is still logged in
+ * and can try again, and nothing claims success. It takes no parameters: the form of the dialog has no fields.
+ */
+export async function logOutOtherBrowsers(): Promise<LogOutOthersFormState> {
+  await requireUser();
+
+  const result = await authService.logOutOtherSessions(await headers());
+  if (!result.ok) {
+    switch (result.error.code) {
+      // The session ended since `requireUser()`.
+      case "not-logged-in":
+        redirect(loginPath());
+      case "failed":
+        return { message: LOG_OUT_OTHERS_FAILED_MESSAGE };
+    }
+  }
+
+  revalidatePath(accountPath());
+  redirect(accountNoticePath(OTHER_BROWSERS_LOGGED_OUT_NOTICE));
 }
 
 /** Ends the session of the browser and leads to the login page. */

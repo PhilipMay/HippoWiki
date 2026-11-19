@@ -78,3 +78,12 @@ export const DISCONNECT_APPS_FIELD = "disconnectApps";
 export function readDisconnectApps(formData: FormData): boolean {
   return formData.get(DISCONNECT_APPS_FIELD) === "on";
 }
+
+/** State of the "Log out other browsers" form: why the other browsers could not be logged out. */
+export type LogOutOthersFormState = { message?: string };
+
+/** The Server Action behind the "Log out other browsers" form; it returns the error to show, or redirects on success. */
+export type LogOutOthersFormAction = (
+  prevState: LogOutOthersFormState,
+  formData: FormData,
+) => Promise<LogOutOthersFormState>;

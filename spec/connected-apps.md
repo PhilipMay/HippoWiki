@@ -139,10 +139,10 @@ such as `src/features/grants/service.test.ts`.
 - no access for scripts, CI jobs and AI apps that cannot do OAuth with a browser: no device flow and no client
   credentials (see `roadmap.md`)
 - only the MCP server accepts an access token; there is no other API
-- a password change does not end the grants of a user; only revoking and expiry do
+- a password change ends the grants of a user only when the user chooses so at the change of the own password; the
+  forced password change never does, and otherwise only revoking and expiry do
 - deactivating a user does not exist yet; when it comes, it must stop the user's grants as well (see `roadmap.md`)
 - no renaming of an app and no warning before a grant expires
 - expired grants are not deleted by themselves
 - an admin cannot see or revoke the apps of users
 - no CORS, no rate limits of requests with an access token and no audit log
-- no change of the own password on `/account` (see "Own password change" in `roadmap.md`)
