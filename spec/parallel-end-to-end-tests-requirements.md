@@ -41,9 +41,9 @@ they are.
 ### Number of workers
 
 - R4: The number of workers must have a default, which the environment variable `HIPPOWIKI_E2E_WORKERS` can change for
-  one run, e.g. `HIPPOWIKI_E2E_WORKERS=1 npm run test:e2e`. The default is 4 workers locally and 3 in CI, where both
+  one run, e.g. `HIPPOWIKI_E2E_WORKERS=1 npm run test:e2e`. The default is 4 workers locally and 1 in CI, where both
   end-to-end workflows set the variable.
-  - Acceptance: a run without the variable uses 4 workers locally; both CI workflows run with 3; a run with the
+  - Acceptance: a run without the variable uses 4 workers locally; both CI workflows run with 1; a run with the
     variable uses the given number.
 - R9: The number of workers must be a whole number from 1 to 8. Worker 1 uses the port 3100, and each further worker the
   next port, up to 3107. Any other value of the variable, such as `0`, `9`, `two` or `2.5`, must stop the run before
@@ -119,6 +119,10 @@ they are.
 - The speedup is measured and written down, with no hard target.
 - 4 workers locally and 3 in CI, fixed now rather than measured first; the CI runner has 4 CPU cores and 16 GB, so a
   development run with 3 compiling servers may be heavy there, which the stability check (R8) shows.
+- Changed by the stability check: CI runs both end-to-end workflows with 1 worker. With 3 workers, the development run
+  in CI took longer than with 1 (14.0 instead of 11.5 minutes) and had two flaky tests, because each of the 3
+  development servers compiles every route itself on the 4 CPU cores of the runner. The production run, which was
+  faster with 3, runs with 1 as well, so that both CI runs stay as they were before the feature.
 - A run of a few specs uses the same default as the complete suite, so that the rules of a step plan stay as they
   are; the cost is a few seconds and some memory for the servers that start in every run.
 - The variable is called `HIPPOWIKI_E2E_WORKERS`, like `HIPPOWIKI_E2E_SERVER`, which chooses the run. Rejected:

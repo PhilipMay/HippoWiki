@@ -198,7 +198,7 @@ npx playwright show-report   # open the HTML report of the last run
   next to `npm run dev`. Every run starts the servers of all workers, also a run of one spec.
 - `HIPPOWIKI_E2E_WORKERS` sets the number of workers for one run, a whole number from 1 to 8; any other value stops the
   run. With 1, the tests run one after another against one server on port 3100, as for debugging a test. The number of
-  workers is set with this variable, not with Playwright's `--workers`, which may only ask for fewer. CI runs with 3.
+  workers is set with this variable, not with Playwright's `--workers`, which may only ask for fewer. CI runs with 1.
 - `npm run test:e2e:production` builds the app once first and takes longer; each worker then gets its own server on
   that build.
 - Every test starts logged in as `alice`, with a session that the setup project `e2e/auth.setup.ts` saves once per

@@ -12,7 +12,8 @@ requirements are in `spec/parallel-end-to-end-tests-requirements.md`.
 - In: several workers in one Playwright run, for the run against the development server (`npm run test:e2e`) and the
   run against a production build (`npm run test:e2e:production`), locally and in both CI workflows; one database per
   worker in the one test database container, one server per worker on the ports 3100 to 3107; the variable
-  `HIPPOWIKI_E2E_WORKERS` with the default 4, which both CI workflows set to 3; the checks of an invalid number and of
+  `HIPPOWIKI_E2E_WORKERS` with the default 4, which both CI workflows set to 1 (changed from 3 by the step "Stability
+  and the times after"); the checks of an invalid number and of
   `--workers`; the times of the complete suite before and after.
 - Not in: shards, in CI or locally; running the integration tests in parallel; tests running in parallel within one
   spec file (`fullyParallel` stays off: the files are spread over the workers, the tests of a file run in order);
@@ -26,7 +27,7 @@ requirements are in `spec/parallel-end-to-end-tests-requirements.md`.
 - [x] A production run built once
 - [x] Refuse more workers than servers
 - [x] Three workers in CI
-- [ ] Stability and the times after
+- [x] Stability and the times after
 - [ ] Wrap-up
 
 ## Sessions
@@ -46,11 +47,18 @@ The local values are of a Mac16,7 (14 CPU cores, 48 GB memory, Podman machine wi
 values are the medians of the last five successful runs on `main`, on `ubuntu-24.04` (4 CPU cores, 16 GB). The CI
 values were read through the public GitHub API, because `gh` was not installed.
 
-- Local, `npm run test:e2e`: before 6.4 min reported by Playwright, 6 min 25 s wall time; after …
+- Local, `npm run test:e2e`: before 6.4 min reported by Playwright, 6 min 25 s wall time; after, with 4 workers, the
+  median of three runs (2.4, 2.2 and 2.3 min; 145, 134 and 140 s): 2.3 min reported by Playwright, 2 min 20 s wall time.
 - Local, `npm run test:e2e:production`: before 3.8 min reported by Playwright, 3 min 50 s wall time, build included;
-  after …
-- CI, `end_to_end_tests`: before 18 min 41 s for the job, 11 min 29 s for the step of the tests; after …
-- CI, `end_to_end_tests_production`: before 7 min 36 s for the job, 5 min 1 s for the step of the tests; after …
+  after, with 4 workers, the median of three runs (1.6, 1.4 and 1.4 min; 99, 87 and 85 s): 1.4 min reported by
+  Playwright, 1 min 27 s wall time, build included.
+- CI, `end_to_end_tests`: before 18 min 41 s for the job, 11 min 29 s for the step of the tests; after, with 3
+  workers, one run of the push of the stop point: 15 min 56 s for the job, 14 min 1 s for the step of the tests, 14.0 min
+  reported by Playwright, failed with 2 flaky tests. CI therefore runs with 1 worker, as before.
+- CI, `end_to_end_tests_production`: before 7 min 36 s for the job, 5 min 1 s for the step of the tests; after, with 3
+  workers, one run of the push of the stop point: 13 min 48 s for the job, of which 5 min 55 s for the installation of
+  the browser (usually about half a minute), 3 min 30 s for the step of the tests, 3.5 min reported by Playwright,
+  passed. CI runs with 1 worker as well.
 
 ## Measure the times before
 
@@ -272,6 +280,13 @@ Both parallel runs are stable, locally and in CI, and the times after the change
   in CI). Write down the time of the job and of the step that runs the tests. If a workflow failed, the cause is fixed
   in this step, and the fix is named in its report; the CI check then follows after the push of the wrap-up and is left
   as a manual check for the user.
+- Changed while building, approved by the user: the push of the stop point ran `end_to_end_tests` with 3 workers, and
+  it failed with two flaky tests (`e2e/account.spec.ts` and `e2e/deleted-pages.spec.ts`): a click on a link did not
+  lead to the next page within 5 seconds, on the first visit of that route on the server of the worker, because the 3
+  development servers each compile every route themselves on the 4 CPU cores of the runner. The run also took longer
+  than with one worker. The fix: both CI workflows set `HIPPOWIKI_E2E_WORKERS` to 1, the production run as well, so
+  that both CI runs stay as they were before; R4 of the requirements file is changed to match. The CI check with 1
+  worker follows the push of the wrap-up and is a manual check for the user.
 - Run the complete suite of `npm run test:e2e` three times in a row and then that of `npm run test:e2e:production`
   three times in a row, with the default number of workers, in the background with a long enough timeout. Each run must
   pass; a test that fails once is a flaky test, and the step follows "When a step cannot be finished" unless the cause
