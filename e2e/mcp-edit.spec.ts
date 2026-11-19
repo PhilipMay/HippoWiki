@@ -2,6 +2,7 @@
 // change and one revision or not at all, against the real database, and what the browser shows of such a change.
 import type { APIRequestContext } from "@playwright/test";
 
+import { USER_TEXT_NOTE } from "@/features/mcp/tool-schemas";
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 
 import { KNOWN_USER } from "../prisma/known-users";
@@ -76,6 +77,7 @@ test("one replacement of a date changes only that date and adds one revision by 
 
   expect(result.isError).toBeUndefined();
   expect(result.structuredContent).toStrictEqual({
+    note: USER_TEXT_NOTE,
     name: "plan",
     title: "Plan",
     tab: null,

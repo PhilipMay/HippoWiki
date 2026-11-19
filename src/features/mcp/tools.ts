@@ -31,7 +31,7 @@ import type {
   storedTabOutput,
 } from "@/features/mcp/tool-schemas";
 import { applyEdits, type EditsResult } from "@/features/mcp/edits";
-import { NAME_RULE } from "@/features/mcp/tool-schemas";
+import { NAME_RULE, USER_TEXT_NOTE } from "@/features/mcp/tool-schemas";
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 import { TITLE_HEADING_MISSING_MESSAGE } from "@/features/pages/schema";
 import * as pageService from "@/features/pages/service";
@@ -57,8 +57,18 @@ function result(data: Record<string, unknown>): CallToolResult {
 }
 
 /**
+ * The data of a result that carries titles or content of pages, with the field `note` first: it comes first both in
+ * the structured data and in the JSON of the text, so that the model reads it before the page text. Titles and
+ * content stay as the service returned them.
+ */
+function withNote<Data extends Record<string, unknown>>(data: Data): { note: typeof USER_TEXT_NOTE } & Data {
+  return { note: USER_TEXT_NOTE, ...data };
+}
+
+/**
  * The result of a tool that could not do what was asked, e.g. because a page does not exist. It is a tool error
- * and not a protocol error, so the model reads the message and can try again with other arguments.
+ * and not a protocol error, so the model reads the message and can try again with other arguments. It carries no
+ * note, because its message holds no title or content written by another user.
  */
 function toolError(message: string): CallToolResult {
   return { content: [{ type: "text", text: message }], isError: true };
@@ -140,25 +150,27 @@ export async function listFolder(options: WikiToolsOptions): Promise<CallToolRes
     // `null` when the actor may no longer read the folder.
     if (!tabs || !allPages) return folderGone();
     const pages = sortByTabThenName(allPages);
-    return result({
-      folder: { name: folder.name, address: addressOf(options, folderPath(folder.name)) },
-      tabs: tabs.map((tab) => ({
-        name: tab.name,
-        address: addressOf(options, tabPath(folder.name, tab.name)),
-        lastChanged: tab.updatedAt.toISOString(),
-        lastEditedBy: tab.lastEditedBy.name,
-        lastEditedVia: tab.lastEditedBy.via,
-      })),
-      pages: pages.map((page) => ({
-        name: page.name,
-        title: page.title,
-        tab: page.tab?.name ?? null,
-        address: addressOf(options, pagePath(folder.name, page.tab?.name ?? null, page.name)),
-        lastChanged: page.updatedAt.toISOString(),
-        lastEditedBy: page.lastEditedBy.name,
-        lastEditedVia: page.lastEditedBy.via,
-      })),
-    } satisfies z.infer<typeof listFolderOutput>);
+    return result(
+      withNote({
+        folder: { name: folder.name, address: addressOf(options, folderPath(folder.name)) },
+        tabs: tabs.map((tab) => ({
+          name: tab.name,
+          address: addressOf(options, tabPath(folder.name, tab.name)),
+          lastChanged: tab.updatedAt.toISOString(),
+          lastEditedBy: tab.lastEditedBy.name,
+          lastEditedVia: tab.lastEditedBy.via,
+        })),
+        pages: pages.map((page) => ({
+          name: page.name,
+          title: page.title,
+          tab: page.tab?.name ?? null,
+          address: addressOf(options, pagePath(folder.name, page.tab?.name ?? null, page.name)),
+          lastChanged: page.updatedAt.toISOString(),
+          lastEditedBy: page.lastEditedBy.name,
+          lastEditedVia: page.lastEditedBy.via,
+        })),
+      }) satisfies z.infer<typeof listFolderOutput>,
+    );
   });
 }
 
@@ -174,18 +186,20 @@ export async function readPage(
     const tab = input.tab ?? null;
     const page = await pageService.getPage(options.actor, options.folder.name, tab, input.page);
     if (!page) return pageNotFound(options.folder.name, tab, input.page);
-    return result({
-      name: page.name,
-      title: page.title,
-      folder: page.folder.name,
-      tab: page.tab?.name ?? null,
-      content: page.content,
-      address: addressOf(options, pagePath(page.folder.name, page.tab?.name ?? null, page.name)),
-      lastChanged: page.updatedAt.toISOString(),
-      lastEditedBy: page.lastEditedBy.name,
-      lastEditedVia: page.lastEditedBy.via,
-      version: page.version,
-    } satisfies z.infer<typeof readPageOutput>);
+    return result(
+      withNote({
+        name: page.name,
+        title: page.title,
+        folder: page.folder.name,
+        tab: page.tab?.name ?? null,
+        content: page.content,
+        address: addressOf(options, pagePath(page.folder.name, page.tab?.name ?? null, page.name)),
+        lastChanged: page.updatedAt.toISOString(),
+        lastEditedBy: page.lastEditedBy.name,
+        lastEditedVia: page.lastEditedBy.via,
+        version: page.version,
+      }) satisfies z.infer<typeof readPageOutput>,
+    );
   });
 }
 
@@ -271,18 +285,18 @@ async function pageChanged(options: WikiToolsOptions, stored: pageService.Stored
 
 /**
  * The page as stored by a write, as `create_page`, `replace_page_content`, `edit_page_content` and
- * `move_or_rename_page` return it, with its title and its version: the new one after a change, the same one after a
+ * `move_or_rename_page` return it, with the note first, its title and its version: the new one after a change, the same one after a
  * content save, or a move to the own name and place, without a change, which stores nothing.
  */
 function storedPageData(options: WikiToolsOptions, stored: pageService.StoredPage): z.infer<typeof storedPageOutput> {
   const tab = stored.tab?.name ?? null;
-  return {
+  return withNote({
     name: stored.name,
     title: stored.title,
     tab,
     address: addressOf(options, pagePath(options.folder.name, tab, stored.name)),
     version: stored.version,
-  };
+  });
 }
 
 function storedResult(options: WikiToolsOptions, stored: pageService.StoredPage): CallToolResult {
@@ -523,13 +537,15 @@ export async function deletePage(
       if (!page) return pageNotFound(options.folder.name, tab, input.page);
       const deleted = await pageService.deletePage(options.actor, page.id, { version: input.version ?? null });
       if (deleted.ok) {
-        return result({
-          name: page.name,
-          title: page.title,
-          tab: deleted.value.tab?.name ?? null,
-          deletedPagesAddress: addressOf(options, deletedPagesPath(deleted.value.folder.name)),
-          restore: RESTORE_PAGE,
-        } satisfies z.infer<typeof deletedPageOutput>);
+        return result(
+          withNote({
+            name: page.name,
+            title: page.title,
+            tab: deleted.value.tab?.name ?? null,
+            deletedPagesAddress: addressOf(options, deletedPagesPath(deleted.value.folder.name)),
+            restore: RESTORE_PAGE,
+          }) satisfies z.infer<typeof deletedPageOutput>,
+        );
       }
       switch (deleted.error.code) {
         case "not-allowed":
@@ -642,13 +658,15 @@ export async function deleteTab(
       if (!tab) return tabNotFound(options, input.tab);
       const deleted = await folderService.deleteTab(options.actor, options.folder.id, tab.id);
       if (deleted.ok) {
-        return result({
-          name: tab.name,
-          pageCount: deleted.value.pageCount,
-          pages: deleted.value.pages.map(({ name, title }) => ({ name, title })),
-          deletedPagesAddress: addressOf(options, deletedPagesPath(deleted.value.folder.name)),
-          restore: RESTORE_TAB_PAGES,
-        } satisfies z.infer<typeof deletedTabOutput>);
+        return result(
+          withNote({
+            name: tab.name,
+            pageCount: deleted.value.pageCount,
+            pages: deleted.value.pages.map(({ name, title }) => ({ name, title })),
+            deletedPagesAddress: addressOf(options, deletedPagesPath(deleted.value.folder.name)),
+            restore: RESTORE_TAB_PAGES,
+          }) satisfies z.infer<typeof deletedTabOutput>,
+        );
       }
       switch (deleted.error.code) {
         case "not-allowed":

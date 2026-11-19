@@ -3,6 +3,7 @@
 // `mcp-edit.spec.ts`; here it is only listed.
 import type { APIRequestContext } from "@playwright/test";
 
+import { USER_TEXT_NOTE } from "@/features/mcp/tool-schemas";
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 
 import { KNOWN_USER } from "../prisma/known-users";
@@ -101,6 +102,7 @@ test.describe("the write tools", () => {
 
     expect(created.isError).toBeUndefined();
     expect(created.structuredContent).toEqual({
+      note: USER_TEXT_NOTE,
       name: "release-notes",
       title: "Release Notes",
       tab: null,
@@ -204,6 +206,7 @@ test.describe("the write tools", () => {
       newName: "roadmap",
     });
     expect(moved.structuredContent).toEqual({
+      note: USER_TEXT_NOTE,
       name: "roadmap",
       title: "Plan",
       tab: "guides",
@@ -252,6 +255,7 @@ test.describe("the write tools", () => {
 
       expect(result.isError).toBeUndefined();
       expect(result.structuredContent).toEqual({
+        note: USER_TEXT_NOTE,
         name: "plan",
         title: "Plan",
         tab: "guides",
@@ -514,6 +518,7 @@ test.describe("the write tools", () => {
 
       expect(same.isError).toBeFalsy();
       expect(same.structuredContent).toEqual({
+        note: USER_TEXT_NOTE,
         name: "plan",
         title: "Plan",
         tab: null,

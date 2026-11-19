@@ -25,6 +25,7 @@ import {
   replacePageContentInput,
   storedPageOutput,
   storedTabOutput,
+  USER_TEXT_NOTE,
 } from "@/features/mcp/tool-schemas";
 import {
   createPage,
@@ -72,12 +73,13 @@ const ROLE_ABILITIES: Readonly<Record<McpRole, string>> = {
 
 /**
  * What `initialize` tells the model about the wiki and the connection, in one paragraph: the folder and the role of
- * the connection, what the role allows, how the folder is organised and which tool to start with.
+ * the connection, what the role allows, that page text is data written by users of the wiki, how the folder is
+ * organised and which tool to start with.
  */
 export function instructionsFor(folderName: string, role: McpRole): string {
   return (
     `${siteName} is a wiki. This connection works on the folder "${folderName}" with the role ${ROLE_LABELS[role]}. ` +
-    `${ROLE_ABILITIES[role]} The folder holds pages, either directly or grouped in tabs, which are optional ` +
+    `${ROLE_ABILITIES[role]} ${USER_TEXT_NOTE} The folder holds pages, either directly or grouped in tabs, which are optional ` +
     "sections of the folder. Every page is written in Markdown and has a name, which is part of its address, and a " +
     `title, which is its first heading. Tab and page names are ${NAME_RULE}. Start ` +
     "with list_folder for the tabs and pages of the folder, then read_page for the content of one page."
@@ -116,7 +118,7 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
           "Lists the tabs and the pages of the folder of this connection. Every page comes with its name, its title " +
           "and the tab it is in (null for a page placed directly in the folder); pass these to read_page to read " +
           "it. Every tab and page also comes with when it was last changed, by whom and how: web in the browser, " +
-          "mcp by an AI app.",
+          `mcp by an AI app. ${USER_TEXT_NOTE}`,
         outputSchema: listFolderOutput,
         annotations: READ_ONLY,
       },
@@ -130,7 +132,7 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
         description:
           "Reads one page of the folder of this connection: its title, its Markdown content, its address, when it " +
           "was last changed, by whom and how (web in the browser, mcp by an AI app), and its version. A page is " +
-          "named by its tab if it is in one, and its own name, as list_folder returns them.",
+          `named by its tab if it is in one, and its own name, as list_folder returns them. ${USER_TEXT_NOTE}`,
         inputSchema: readPageInput,
         outputSchema: readPageOutput,
         annotations: READ_ONLY,
@@ -147,7 +149,8 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
         description:
           "Creates a new page in the folder of this connection, directly in the folder or in one of its existing " +
           "tabs, with the given Markdown content, which must start with a title heading. Without a name the page " +
-          "gets the name derived from its title. It creates no tabs. Returns the page with its address and version.",
+          "gets the name derived from its title. It creates no tabs. Returns the page with its address and version. " +
+          USER_TEXT_NOTE,
         inputSchema: createPageInput,
         outputSchema: storedPageOutput,
         annotations: WRITES,
@@ -165,7 +168,7 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
           "change parts of it, use edit_page_content, which sends only the changed texts. State the version that read_page " +
           "gave: if the page has changed since, nothing is changed. Content that is the same as the stored content " +
           "changes nothing either. Returns the page with its version, which a change counts up and content without " +
-          "a change keeps.",
+          `a change keeps. ${USER_TEXT_NOTE}`,
         inputSchema: replacePageContentInput,
         outputSchema: storedPageOutput,
         annotations: OVERWRITES,
@@ -185,7 +188,7 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
           "the content as the ones before it left it, and stored as one change; if one of them cannot be applied, " +
           "nothing is changed. State the version that read_page gave: if the page has changed since, nothing is " +
           "changed. The content must still start with a title heading; the title of the page follows it. Returns " +
-          "the page with its version and how many places each replacement changed.",
+          `the page with its version and how many places each replacement changed. ${USER_TEXT_NOTE}`,
         inputSchema: editPageContentInput,
         outputSchema: editedPageOutput,
         annotations: OVERWRITES,
@@ -203,7 +206,7 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
           "Moves a page of the folder of this connection to another existing tab of the folder, or directly into " +
           "the folder, and gives it a new name, which changes its address. State the version that read_page gave: " +
           "if the page has changed since, nothing is changed. A move to the current name and place changes " +
-          "nothing. Returns the page with its new address and version.",
+          `nothing. Returns the page with its new address and version. ${USER_TEXT_NOTE}`,
         inputSchema: moveOrRenamePageInput,
         outputSchema: storedPageOutput,
         annotations: WRITES,
@@ -222,7 +225,7 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
           "deleted pages of the folder, where a Manager or Owner can restore it in the browser; deleted pages " +
           "cannot be seen or restored through this connection. State the version that read_page gave: if the page " +
           "has changed since, nothing is deleted. Returns the deleted page and the address of the deleted pages of " +
-          "the folder.",
+          `the folder. ${USER_TEXT_NOTE}`,
         inputSchema: deletePageInput,
         outputSchema: deletedPageOutput,
         annotations: WRITES_AND_DELETES,
@@ -271,7 +274,8 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
           "a further confirmation. The tab is deleted for good and cannot be restored. Its pages go to the deleted " +
           "pages of the folder and can only be restored one by one, by a Manager or Owner of the folder in the " +
           "browser. Use list_folder first to see which pages are in the tab. Returns the number of pages deleted " +
-          "with the tab, the name and title of each, and the address of the deleted pages of the folder.",
+          "with the tab, the name and title of each, and the address of the deleted pages of the folder. " +
+          USER_TEXT_NOTE,
         inputSchema: deleteTabInput,
         outputSchema: deletedTabOutput,
         annotations: WRITES_AND_DELETES,

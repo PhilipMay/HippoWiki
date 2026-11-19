@@ -2,6 +2,8 @@
 // their changes.
 import type { APIRequestContext } from "@playwright/test";
 
+import { USER_TEXT_NOTE } from "@/features/mcp/tool-schemas";
+
 import { KNOWN_USER } from "../prisma/known-users";
 import { NO_STORAGE_STATE, USER_STORAGE_STATE } from "./support/auth";
 import { createGrant, createPage, createTab, createUser, getTestDb } from "./support/database";
@@ -73,6 +75,7 @@ test.describe("the tools of a Manager connection", () => {
 
     expect(result.isError).toBeFalsy();
     expect(result.structuredContent).toEqual({
+      note: USER_TEXT_NOTE,
       name: "setup",
       title: "Setup",
       tab: "guides",
@@ -235,6 +238,7 @@ test.describe("the tools of a Manager connection", () => {
 
     expect(result.isError).toBeFalsy();
     expect(result.structuredContent).toEqual({
+      note: USER_TEXT_NOTE,
       name: "drafts",
       pageCount: 5,
       pages: [1, 2, 3, 4, 5].map((i) => ({ name: `draft-${i}`, title: `Draft ${i}` })),
