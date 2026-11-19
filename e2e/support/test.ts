@@ -4,9 +4,43 @@ import { checkRunWorkers, workerCount, workerUrl } from "./workers";
 
 export { expect } from "@playwright/test";
 
-/** Waits until the app has hydrated the page; `HydrationMarker` in the root layout sets the mark. */
+/**
+ * How often a page may load itself again while a test waits for it to hydrate. No page of the app reloads itself; the
+ * development server reloads a page when its hot module replacement asks for it, and a reload loop of it never ends.
+ */
+const MAX_RELOADS_WHILE_HYDRATING = 5;
+
+/**
+ * Waits until the app has hydrated the page; `HydrationMarker` in the root layout sets the mark. A page that loads
+ * itself again more than `MAX_RELOADS_WHILE_HYDRATING` times meanwhile fails the wait at once, with a message that
+ * names the reload loop of the development server, instead of waiting until the test times out (see "End-to-end
+ * tests" in `spec/testing.md`).
+ */
 async function waitForHydration(page: Page) {
-  await page.locator('html[data-hydrated="true"]').waitFor({ state: "attached" });
+  const hydrated = page.locator('html[data-hydrated="true"]').waitFor({ state: "attached" });
+  // The wait goes on when the loop fails it first, until the page closes at the end of the test.
+  hydrated.catch(() => {});
+  let reloads = 0;
+  let onReload = () => {};
+  const looping = new Promise<never>((_, reject) => {
+    onReload = () => {
+      reloads += 1;
+      if (reloads <= MAX_RELOADS_WHILE_HYDRATING) return;
+      reject(
+        new Error(
+          `The page ${page.url()} loaded itself ${reloads} times while the test waited for it to hydrate. This is the ` +
+            "reload loop of the hot module replacement of the development server, not a failure of the app; see " +
+            '"End-to-end tests" in spec/testing.md.',
+        ),
+      );
+    };
+  });
+  page.on("domcontentloaded", onReload);
+  try {
+    await Promise.race([hydrated, looping]);
+  } finally {
+    page.off("domcontentloaded", onReload);
+  }
 }
 
 /**

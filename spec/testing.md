@@ -287,6 +287,13 @@ How the code is tested. Commands are listed in `README.md`.
     `hydrating()`, e.g. `hydrating(await context.newPage())`. So no test acts on the locked, server-rendered page, where
     React could undo a change to the DOM or report a hydration mismatch. This matters most in CI, whose runner hydrates
     much later than a fast local machine.
+  - The wait fails at once when the page loads itself again more than 5 times meanwhile (`MAX_RELOADS_WHILE_HYDRATING`
+    in `test.ts`). No page of the app reloads itself, but the hot module replacement of the development server
+    (`next dev` with Turbopack) can: now and then, when the first page that a worker's server renders for a browser
+    overlaps a compile, the server answers every subscription of the page to its entry chunk with a `restart`, and the
+    page reloads until the test times out. The production run has no hot module replacement. Without the check the
+    test fails after 30 seconds while waiting for `data-hydrated`; with it, its error names the reload loop, so that the
+    failure is told apart from one of the app.
   - `resetTestDatabase()` empties all tables of the database of its worker except the migration history and
     `AuthSecret`, then creates the known users with their fixed ids and restores their saved sessions; tests call it in
     `beforeEach`. `emptyTestDatabase()` only empties the tables, and only of `hippowiki_test` or a worker database; the
