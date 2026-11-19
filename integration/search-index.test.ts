@@ -6,11 +6,13 @@ import { inBrowser, type BrowserActor } from "@/features/folder-roles/actors";
 import * as folderService from "@/features/folders/service";
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 import * as pageService from "@/features/pages/service";
+import { SEARCH_INDEX_VERSION } from "@/features/search/index-data";
+import { indexOutdatedPages } from "@/features/search/service";
 import type { Folder, User } from "@/generated/prisma/client";
 
-import { createFolder, createTab, createUser, getTestDb } from "../e2e/support/database";
+import { createFolder, createPage, createTab, createUser, getTestDb } from "../e2e/support/database";
 import { KNOWN_USER } from "../prisma/known-users";
-import { owners, storedPage } from "./helpers";
+import { createBob, owners, storedPage } from "./helpers";
 
 let user: User;
 let actor: BrowserActor;
@@ -239,5 +241,113 @@ describe("the words and the vector of a page", () => {
     }
 
     expect({ words: await wordsOf(), vector: await vectorOf(id) }).toEqual(before);
+  });
+});
+
+describe("the pages stored before search", () => {
+  /** The search columns of a page that was stored before search. */
+  const BEFORE_SEARCH = { searchText: null, searchLanguage: null, searchIndexVersion: 0 };
+
+  /** What a derivation must leave as it is: the time of the last change, the last editor, the channel, the version. */
+  async function editOf(pageId: string) {
+    const { updatedAt, lastEditedById, lastEditedVia, version } = await storedPage(pageId);
+    return { updatedAt, lastEditedById, lastEditedVia, version };
+  }
+
+  it("get their text, language, vector and words, and keep their last change, last editor and version", async () => {
+    const bob = await createBob();
+    const updatedAt = new Date("2026-01-02T03:04:05.000Z");
+    const page = await createPage({
+      folder,
+      editor: bob,
+      via: "mcp",
+      name: "haus-und-hof",
+      content:
+        "# Haus der Datenbank\n\nJede Nacht schreibt der Server eine vollständige Sicherung der Datenbank in den " +
+        "Speicher des zweiten Rechenzentrums, und die Sicherungen werden dreißig Tage lang aufbewahrt.",
+      version: 7,
+      updatedAt,
+      ...BEFORE_SEARCH,
+    });
+    expect(await vectorOf(page.id)).toBeNull();
+    expect(await wordsOf()).toEqual({});
+    const edit = await editOf(page.id);
+
+    expect(await indexOutdatedPages()).toEqual({ ok: true, value: { pages: 1 } });
+
+    const stored = await storedPage(page.id);
+    expect(stored).toMatchObject({ searchLanguage: "german", searchIndexVersion: SEARCH_INDEX_VERSION });
+    expect(stored.searchText).toContain("Rechenzentrums");
+    expect(await editOf(page.id)).toEqual({ ...edit, updatedAt, version: 7 });
+    expect(await matches(page.id, "german", "Häuser")).toBe(true);
+    expect(await matches(page.id, "german", "hof")).toBe(true);
+    expect(await wordsOf()).toMatchObject({ haus: 1, hof: 1, datenbank: 1, rechenzentrums: 1 });
+    expect(await wordsOf()).toEqual(await recountedWordsOf());
+  });
+
+  it("derive a deleted page, which counts for no word", async () => {
+    const page = await createPage({ folder, content: "# Gone\n\nforgotten", deletedAt: new Date(), ...BEFORE_SEARCH });
+
+    expect(await indexOutdatedPages()).toEqual({ ok: true, value: { pages: 1 } });
+
+    expect(await storedPage(page.id)).toMatchObject({
+      searchText: "forgotten",
+      searchIndexVersion: SEARCH_INDEX_VERSION,
+    });
+    expect(await vectorOf(page.id)).not.toBeNull();
+    expect(await wordsOf()).toEqual({});
+  });
+
+  it("are not derived again by a second run", async () => {
+    const page = await createPage({ folder, content: "# Once\n\nderived", ...BEFORE_SEARCH });
+    expect(await indexOutdatedPages()).toEqual({ ok: true, value: { pages: 1 } });
+    const before = { page: await storedPage(page.id), words: await wordsOf(), vector: await vectorOf(page.id) };
+
+    expect(await indexOutdatedPages()).toEqual({ ok: true, value: { pages: 0 } });
+
+    expect({ page: await storedPage(page.id), words: await wordsOf(), vector: await vectorOf(page.id) }).toEqual(
+      before,
+    );
+  });
+
+  it("are all derived again, once, after the version of the derivation changed", async () => {
+    await createPage({ folder, name: "first", content: "# First\n\none" });
+    await createPage({ folder, name: "second", content: "# Second\n\ntwo", deletedAt: new Date() });
+    await createPage({ folder, name: "third", content: "# Third\n\nthree", ...BEFORE_SEARCH });
+    // As stored by the code of an older version.
+    await getTestDb().page.updateMany({ data: { searchIndexVersion: SEARCH_INDEX_VERSION - 1 } });
+
+    expect(await indexOutdatedPages()).toEqual({ ok: true, value: { pages: 3 } });
+    expect(await indexOutdatedPages()).toEqual({ ok: true, value: { pages: 0 } });
+
+    expect(await getTestDb().page.count({ where: { searchIndexVersion: SEARCH_INDEX_VERSION } })).toBe(3);
+    expect(await wordsOf()).toEqual({ first: 1, one: 1, third: 1, three: 1 });
+  });
+
+  it("are derived in batches", async () => {
+    await Promise.all(
+      Array.from({ length: 120 }, (_, index) =>
+        createPage({ folder, content: `# Page ${index}\n\nword`, ...BEFORE_SEARCH }),
+      ),
+    );
+
+    expect(await indexOutdatedPages()).toEqual({ ok: true, value: { pages: 120 } });
+
+    expect(await wordsOf()).toMatchObject({ page: 120, word: 120 });
+  });
+
+  it("do no harm when two runs derive them at the same time", async () => {
+    await Promise.all(
+      Array.from({ length: 60 }, (_, index) =>
+        createPage({ folder, content: `# Page ${index}\n\nword`, ...BEFORE_SEARCH }),
+      ),
+    );
+
+    const results = await Promise.all([indexOutdatedPages(), indexOutdatedPages()]);
+
+    expect(results.map((result) => result.ok)).toEqual([true, true]);
+    expect(results.reduce((sum, result) => sum + (result.ok ? result.value.pages : 0), 0)).toBe(60);
+    expect(await wordsOf()).toMatchObject({ page: 60, word: 60 });
+    expect(await wordsOf()).toEqual(await recountedWordsOf());
   });
 });

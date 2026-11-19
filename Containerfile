@@ -1,5 +1,6 @@
 # The container image of HippoWiki. On every start it applies the pending database migrations, creates the admin
-# account if there is none, and then serves the wiki (scripts/image-start.sh). Built with `npm run image:build` (scripts/image.sh). Only plain instructions are used (no
+# account if there is none, makes the pages searchable that are not yet, and then serves the wiki
+# (scripts/image-start.sh). Built with `npm run image:build` (scripts/image.sh). Only plain instructions are used (no
 # heredocs, no RUN --mount), because the Podman of the CI runner is older than the one of the development machine.
 
 # The only stage that names the Node.js image, so its version stands in one place. The major version must be the one
@@ -28,6 +29,10 @@ RUN if [ -e .next/standalone/.env ]; then \
 # The admin setup (scripts/admin.ts) as one file, build/admin.mjs. It imports @prisma/client, pg, pino, pino-pretty
 # and @node-rs/argon2 from the node_modules of the standalone output; everything else is part of the file.
 RUN npm run build:admin
+# The search index of the existing pages (scripts/search-index.ts) as one file, build/search-index.mjs, with the
+# language detector in it. Like the admin setup, it imports @prisma/client, pg, pino and pino-pretty from the
+# node_modules of the standalone output.
+RUN npm run build:search-index
 
 # What `prisma migrate deploy` needs, apart from the node_modules of the standalone output: the Prisma CLI and dotenv,
 # which prisma.config.ts imports. Both are development dependencies, so the standalone output does not contain them.
@@ -63,12 +68,13 @@ COPY --from=migrate-tools /migrate/node_modules ./migrate/node_modules
 COPY prisma.config.ts ./migrate/
 COPY prisma/schema.prisma ./migrate/prisma/
 COPY prisma/migrations ./migrate/prisma/migrations
-# The admin setup, next to the node_modules of the standalone output.
+# The admin setup and the search index, next to the node_modules of the standalone output.
 COPY --from=build /src/build/admin.mjs ./admin.mjs
+COPY --from=build /src/build/search-index.mjs ./search-index.mjs
 # The password hashing with its native build for the platform of the image, whatever the standalone output contains
 # of it: Next.js only traces what the server imports.
 COPY --from=deps /src/node_modules/@node-rs ./node_modules/@node-rs
-COPY scripts/image-admin.sh scripts/image-migrate.sh scripts/image-start.sh ./
+COPY scripts/image-admin.sh scripts/image-migrate.sh scripts/image-search-index.sh scripts/image-start.sh ./
 # The cache of Next.js is the only place below /app that `node` can write to.
 RUN mkdir -p .next/cache && chown -R node:node .next/cache
 USER node

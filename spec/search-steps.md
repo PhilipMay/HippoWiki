@@ -84,13 +84,16 @@ What the steps found out that the wrap-up moves into the other specs.
   and applied in one ordered statement, because row triggers would lock the words of one page after the other and
   could wait for each other in a circle. Prisma expresses every index, the GIN index on the vector included; only the
   check constraints, the functions and the triggers are written by hand.
+- The detector reaches the image twice: Next.js bundles it into the server chunks of the standalone output, which a
+  save uses, and esbuild into `search-index.mjs` (about 2.3 MB), which `image-search-index.sh` runs at every start
+  after the admin setup. A start with nothing to derive reads one empty batch and logs that no page was derived.
 
 ## Checklist
 
 - [x] Database check and `pg_trgm`
 - [x] Search text and language of a page
 - [x] Search index with every write
-- [ ] Existing pages at the start of the server
+- [x] Existing pages at the start of the server
 - [ ] Search words
 - [ ] Matching and order
 - [ ] Pieces of text, limits and log

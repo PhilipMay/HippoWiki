@@ -39,6 +39,8 @@
     "db:studio": "prisma studio",
     "admin:setup": "tsx --env-file-if-exists=.env scripts/admin.ts",
     "build:admin": "esbuild scripts/admin.ts --bundle --platform=node --format=esm --outfile=build/admin.mjs --external:@prisma/client --external:pg --external:pino --external:pino-pretty --external:@node-rs/argon2",
+    "search:index": "tsx --env-file-if-exists=.env scripts/search-index.ts",
+    "build:search-index": "esbuild scripts/search-index.ts --bundle --platform=node --format=esm --outfile=build/search-index.mjs --external:@prisma/client --external:pg --external:pino --external:pino-pretty",
     "image:build": "bash scripts/image.sh build",
     "image:smoke": "bash scripts/image.sh smoke"
   },

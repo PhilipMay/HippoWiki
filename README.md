@@ -112,17 +112,22 @@ Without them the migrations stop with a message that names the fix, before anyth
 migration stays recorded as failed: after the fix, mark it as rolled back with
 `npx prisma migrate resolve --rolled-back 20261119100000_search_database_check`, then apply the migrations again.
 
+Every write of a page makes it searchable. The pages stored before search, and all pages after a change of how their
+text or language is derived, are made searchable by `npm run search:index`: run it after `npm run db:migrate` or
+`npm run db:deploy` on a database with pages. The container image runs it at every start, before it serves.
+
 The application accesses the database with [Prisma](https://www.prisma.io/) 7. The schema is in
 `prisma/schema.prisma`, the migrations are in `prisma/migrations/` and the connection is configured in
 `prisma.config.ts`. The generated client is written to `src/generated/prisma/` and is not checked in.
 
-| Command               | Description                                                                                 |
-| --------------------- | ------------------------------------------------------------------------------------------- |
-| `npm run db:generate` | Regenerate the Prisma client; needed after every change to the schema                       |
-| `npm run db:migrate`  | Create and apply a migration from schema changes, e.g. `npm run db:migrate -- --name add-x` |
-| `npm run db:deploy`   | Apply all pending migrations without creating new ones                                      |
-| `npm run db:seed`     | Insert the sample folder, its pages and the known users from `prisma/seed.ts`               |
-| `npm run db:studio`   | Open Prisma Studio to browse and edit the data                                              |
+| Command                | Description                                                                                 |
+| ---------------------- | ------------------------------------------------------------------------------------------- |
+| `npm run db:generate`  | Regenerate the Prisma client; needed after every change to the schema                       |
+| `npm run db:migrate`   | Create and apply a migration from schema changes, e.g. `npm run db:migrate -- --name add-x` |
+| `npm run db:deploy`    | Apply all pending migrations without creating new ones                                      |
+| `npm run db:seed`      | Insert the sample folder, its pages and the known users from `prisma/seed.ts`               |
+| `npm run db:studio`    | Open Prisma Studio to browse and edit the data                                              |
+| `npm run search:index` | Make the pages searchable that were stored before search or by an older derivation          |
 
 ## Users
 
@@ -281,31 +286,32 @@ first, with a token that has the `read:packages` scope.
 
 ## Commands
 
-| Command                       | Description                                                                   |
-| ----------------------------- | ----------------------------------------------------------------------------- |
-| `npm run dev`                 | Start the development server                                                  |
-| `npm run build`               | Create a production build                                                     |
-| `npm run start`               | Serve the production build                                                    |
-| `npm run lint`                | Lint with ESLint                                                              |
-| `npm run format`              | Format all files with Prettier                                                |
-| `npm run format:check`        | Check formatting without changing files                                       |
-| `npm run docs:check`          | Check that the file references in the docs and skills point to existing files |
-| `npm run knip`                | Report unused files, exports and dependencies with knip                       |
-| `npm run typecheck`           | Generate the Next.js route types and run the type checker                     |
-| `npm run test`                | Run the unit tests with Vitest, then the cost tests                           |
-| `npm run test:unit`           | Run the unit tests with Vitest                                                |
-| `npm run test:coverage`       | Run the unit tests and measure their coverage (report in `coverage/`)         |
-| `npm run test:cost`           | Run the tests with a time budget, on their own and without coverage           |
-| `npm run check`               | Run `format:check`, `docs:check`, `knip`, `lint`, `typecheck` and `test`      |
-| `npm run check:all`           | Run `check`, `test:integration` and `build` side by side                      |
-| `npm run test:integration`    | Run the integration tests against a throwaway test database                   |
-| `npm run test:e2e`            | Run the end-to-end tests with Playwright                                      |
-| `npm run test:e2e:ui`         | Run the end-to-end tests in the Playwright UI                                 |
-| `npm run test:e2e:production` | Run the end-to-end tests against a production build                           |
-| `npm run admin:setup`         | Create the admin account from `HIPPOWIKI_ADMIN_PASSWORD`                      |
-| `npm run build:admin`         | Bundle the admin setup into `build/admin.mjs` for the container image         |
-| `npm run image:build`         | Build the container image `hippowiki:local` with Podman                       |
-| `npm run image:smoke`         | Check the built image against a throwaway database                            |
+| Command                       | Description                                                                                         |
+| ----------------------------- | --------------------------------------------------------------------------------------------------- |
+| `npm run dev`                 | Start the development server                                                                        |
+| `npm run build`               | Create a production build                                                                           |
+| `npm run start`               | Serve the production build                                                                          |
+| `npm run lint`                | Lint with ESLint                                                                                    |
+| `npm run format`              | Format all files with Prettier                                                                      |
+| `npm run format:check`        | Check formatting without changing files                                                             |
+| `npm run docs:check`          | Check that the file references in the docs and skills point to existing files                       |
+| `npm run knip`                | Report unused files, exports and dependencies with knip                                             |
+| `npm run typecheck`           | Generate the Next.js route types and run the type checker                                           |
+| `npm run test`                | Run the unit tests with Vitest, then the cost tests                                                 |
+| `npm run test:unit`           | Run the unit tests with Vitest                                                                      |
+| `npm run test:coverage`       | Run the unit tests and measure their coverage (report in `coverage/`)                               |
+| `npm run test:cost`           | Run the tests with a time budget, on their own and without coverage                                 |
+| `npm run check`               | Run `format:check`, `docs:check`, `knip`, `lint`, `typecheck` and `test`                            |
+| `npm run check:all`           | Run `check`, `test:integration` and `build` side by side                                            |
+| `npm run test:integration`    | Run the integration tests against a throwaway test database                                         |
+| `npm run test:e2e`            | Run the end-to-end tests with Playwright                                                            |
+| `npm run test:e2e:ui`         | Run the end-to-end tests in the Playwright UI                                                       |
+| `npm run test:e2e:production` | Run the end-to-end tests against a production build                                                 |
+| `npm run admin:setup`         | Create the admin account from `HIPPOWIKI_ADMIN_PASSWORD`                                            |
+| `npm run build:admin`         | Bundle the admin setup into `build/admin.mjs` for the container image                               |
+| `npm run build:search-index`  | Bundle the search index of the existing pages into `build/search-index.mjs` for the container image |
+| `npm run image:build`         | Build the container image `hippowiki:local` with Podman                                             |
+| `npm run image:smoke`         | Check the built image against a throwaway database                                                  |
 
 `src/features/users/common-passwords.ts`, the list of common passwords that new passwords are checked against, is
 generated. To make it again, download the source file that `scripts/common-passwords.ts` names (`SOURCE_URL`, pinned

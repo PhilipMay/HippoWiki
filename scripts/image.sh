@@ -4,7 +4,7 @@
 #   build   builds the image as hippowiki:local for the platform of this machine. IMAGE_VERSION and IMAGE_REVISION,
 #           when set, become the labels org.opencontainers.image.version and org.opencontainers.image.revision.
 #   smoke   runs the image of `build` against a throwaway, empty database and checks that it installs itself,
-#           creates the admin account and serves the wiki, behind its login. It removes everything it started, also when a check fails.
+#           creates the admin account, makes existing pages searchable and serves the wiki, behind its login. It removes everything it started, also when a check fails.
 #   check-tag <tag>          succeeds when <tag> is a valid image tag other than `latest`
 #   reference <owner> <tag>  checks <tag> and prints ghcr.io/<owner in lower case>/hippowiki:<tag>
 # The release workflow (.github/workflows/container_image.yml) calls all four commands.
@@ -22,11 +22,19 @@ SMOKE_DB="hippowiki-smoke-db"
 SMOKE_APP="hippowiki-smoke-app"
 SMOKE_MIGRATE="hippowiki-smoke-migrate"
 SMOKE_ADMIN="hippowiki-smoke-admin"
+SMOKE_SEARCH_INDEX="hippowiki-smoke-search-index"
 SMOKE_URL="http://127.0.0.1:3200"
 SMOKE_DB_NAME="hippowiki_smoke"
 SMOKE_DB_USER="hippowiki_smoke"
 SMOKE_DB_PASSWORD="hippowiki_smoke"
 SMOKE_DATABASE_URL="postgresql://${SMOKE_DB_USER}:${SMOKE_DB_PASSWORD}@127.0.0.1:5432/${SMOKE_DB_NAME}"
+# A second database in the same container, with the character type C, on which search cannot work.
+SMOKE_C_DB_NAME="hippowiki_smoke_c"
+SMOKE_C_DATABASE_URL="postgresql://${SMOKE_DB_USER}:${SMOKE_DB_PASSWORD}@127.0.0.1:5432/${SMOKE_C_DB_NAME}"
+# The folder and the pages that the smoke test stores as they were before search.
+SMOKE_FOLDER_ID="5e1f0a2b-3c4d-4e5f-8a6b-7c8d9e0f1a01"
+SMOKE_PAGE_ID="5e1f0a2b-3c4d-4e5f-8a6b-7c8d9e0f1a02"
+SMOKE_DELETED_PAGE_ID="5e1f0a2b-3c4d-4e5f-8a6b-7c8d9e0f1a03"
 # The first password of the admin account that the first container creates.
 SMOKE_ADMIN_PASSWORD="smoke-admin-password"
 READY_TIMEOUT_SECONDS=60
@@ -271,7 +279,35 @@ smoke_users() {
   smoke_sql 'SELECT u.id, u.username, u."mustChangePassword", u."updatedAt", a.password FROM "User" u JOIN "Account" a ON a."userId" = u.id ORDER BY u.username'
 }
 
+# The pages with what a derivation for search must keep and what it writes, to compare them before and after a start.
+smoke_pages() {
+  smoke_sql 'SELECT id, "updatedAt", version, "lastEditedById", "searchIndexVersion", "searchLanguage", md5(coalesce("searchText", $$$$)), md5(coalesce("searchVector"::text, $$$$)) FROM "Page" ORDER BY id'
+}
+
+# The words of the folders for search.
+smoke_words() {
+  smoke_sql 'SELECT "folderId", word, pages FROM "SearchWord" ORDER BY "folderId", word'
+}
+
+# Stores a folder with a page and a deleted page as they were before search: without search text, with the version 0
+# of the derivation. The admin is their last editor, the only user the smoke test has.
+smoke_store_pages_before_search() {
+  local content="# Sicherung der Datenbank
+
+Jede Nacht um zwei Uhr schreibt der Server eine vollständige Sicherung der Datenbank in den Speicher des zweiten Rechenzentrums. Die Sicherungen werden dreißig Tage lang aufbewahrt."
+  smoke_sql "INSERT INTO \"Folder\" (id, name, \"updatedAt\", \"lastEditedById\", \"lastEditedVia\")
+    SELECT '${SMOKE_FOLDER_ID}', 'smoke', '2026-01-02 03:04:05+00', id, 'web' FROM \"User\" WHERE username = 'admin'" >/dev/null
+  smoke_sql "INSERT INTO \"Page\" (id, title, name, content, \"folderId\", \"updatedAt\", \"deletedAt\", \"lastEditedById\", \"lastEditedVia\", version)
+    SELECT '${SMOKE_PAGE_ID}', 'Sicherung der Datenbank', 'sicherung', \$\$${content}\$\$, '${SMOKE_FOLDER_ID}', '2026-01-02 03:04:05+00', NULL, id, 'web', 3 FROM \"User\" WHERE username = 'admin'" >/dev/null
+  smoke_sql "INSERT INTO \"Page\" (id, title, name, content, \"folderId\", \"updatedAt\", \"deletedAt\", \"lastEditedById\", \"lastEditedVia\", version)
+    SELECT '${SMOKE_DELETED_PAGE_ID}', 'Gone', 'gone', \$\$# Gone
+
+forgotten\$\$, '${SMOKE_FOLDER_ID}', '2026-01-02 03:04:05+00', '2026-01-03 00:00:00+00', id, 'web', 2 FROM \"User\" WHERE username = 'admin'" >/dev/null
+}
+
 # The checks of the smoke test, in this order:
+# - A container against a database with the character type C exits with a non-zero code and the message of the check
+#   of the migrations, which names a UTF-8 locale, instead of serving.
 # - Against the empty database, a container without HIPPOWIKI_ADMIN_PASSWORD and one with a password of 7 characters
 #   exit with a non-zero code and the message of the admin setup instead of serving; they create no user.
 # - A container with a password serves /api/health, and the admin exists with a pending password change and an
@@ -282,8 +318,11 @@ smoke_users() {
 #   because the container has no HIPPOWIKI_PUBLIC_URL.
 # - /api/health answers on 127.0.0.1 inside the container; the server does not run as root; there is no .env file;
 #   the user node can write only the cache of Next.js.
-# - A second container without HIPPOWIKI_ADMIN_PASSWORD serves, applies no migration and leaves the admin as it was.
-# - ./image-migrate.sh and ./image-admin.sh (with another password) exit with 0 and change nothing.
+# - A second container without HIPPOWIKI_ADMIN_PASSWORD serves, applies no migration and leaves the admin as it was;
+#   it derives the pages stored before it with the version 0 of the derivation, a deleted one included, and keeps their
+#   time of the last change, last editor and version.
+# - ./image-migrate.sh, ./image-admin.sh (with another password) and ./image-search-index.sh exit with 0 and change
+#   nothing, and so does a third container.
 # A wrong database password would not make it fail: in the pod the application reaches PostgreSQL over 127.0.0.1, and
 # the PostgreSQL image accepts loopback connections without a password.
 cmd_smoke() {
@@ -296,6 +335,13 @@ cmd_smoke() {
   podman pod rm --force --ignore "$SMOKE_POD" >/dev/null
   podman pod create --name "$SMOKE_POD" --publish 127.0.0.1:3200:3000 >/dev/null
   smoke_start_db
+
+  # Search cannot work on a database with the character type C: the migrations stop at their check before anything of
+  # search exists, with a message that names the fix, and the container does not serve.
+  smoke_sql "CREATE DATABASE ${SMOKE_C_DB_NAME} TEMPLATE template0 ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C'" >/dev/null
+  smoke_require_failed_start "against a database with the character type C" \
+    "a UTF-8 locale such as C.UTF-8 or en_US.utf8" \
+    --env DATABASE_URL="$SMOKE_C_DATABASE_URL" --env HIPPOWIKI_ADMIN_PASSWORD="$SMOKE_ADMIN_PASSWORD"
 
   # Without a valid password for the admin account, a container against the empty database must not serve. It applies
   # the migrations first, so the table of the users exists afterwards and must be empty.
@@ -394,8 +440,13 @@ cmd_smoke() {
   fi
   echo "ok: $(wc -l <<<"$migrations" | tr -d ' ') migrations applied"
 
+  # Pages stored before search, as after the update of an installation with pages.
+  smoke_store_pages_before_search
+  local pages_before
+  pages_before="$(smoke_pages)"
+
   # A second container against the migrated database applies nothing and serves as well. It needs no password for
-  # the admin account, because the admin exists.
+  # the admin account, because the admin exists. It makes the pages searchable before it serves.
   podman rm --force "$SMOKE_APP" >/dev/null
   smoke_start_app
   smoke_require_status /login
@@ -408,6 +459,27 @@ cmd_smoke() {
     smoke_fail "the second start changed the admin account."
   fi
   echo "ok: the second start, without HIPPOWIKI_ADMIN_PASSWORD, left the admin account as it was"
+  local pages
+  pages="$(smoke_pages)"
+  if [[ "$(smoke_sql "SELECT count(*) FROM \"Page\" WHERE \"searchIndexVersion\" = 0 OR \"searchVector\" IS NULL")" != "0" ]]; then
+    smoke_fail "the second start left pages without their search index."
+  fi
+  if [[ "$(smoke_sql "SELECT \"searchLanguage\" FROM \"Page\" WHERE id = '${SMOKE_PAGE_ID}'")" != "german" ]]; then
+    smoke_fail "the second start did not give the German page the language german."
+  fi
+  if [[ "$(smoke_sql "SELECT \"searchVector\" @@ plainto_tsquery('german', 'Datenbanken') FROM \"Page\" WHERE id = '${SMOKE_PAGE_ID}'")" != "t" ]]; then
+    smoke_fail "the German page is not found by an inflection of its words."
+  fi
+  if [[ "$(smoke_sql "SELECT pages FROM \"SearchWord\" WHERE word = 'sicherung'")" != "1" || -n "$(smoke_sql "SELECT 1 FROM \"SearchWord\" WHERE word = 'forgotten'")" ]]; then
+    smoke_fail "the words of the folder are not those of the page that is not deleted."
+  fi
+  # The derivation is no change of a page: the time of the last change, the last editor and the version stay.
+  if [[ "$(cut -d'|' -f1-4 <<<"$pages")" != "$(cut -d'|' -f1-4 <<<"$pages_before")" ]]; then
+    smoke_fail "the second start changed the time of the last change, the last editor or the version of a page."
+  fi
+  echo "ok: the second start made the pages stored before search searchable, and kept their last change"
+  local words
+  words="$(smoke_words)"
 
   # The command that only migrates applies nothing against the migrated database and exits without an error.
   if ! podman run --rm --pod "$SMOKE_POD" --name "$SMOKE_MIGRATE" --env DATABASE_URL="$SMOKE_DATABASE_URL" \
@@ -428,6 +500,33 @@ cmd_smoke() {
     smoke_fail "./image-admin.sh changed the admin account."
   fi
   echo "ok: ./image-admin.sh exits with 0 and leaves the admin account as it was"
+
+  # The command that only makes the pages searchable derives no page when every page is derived.
+  local output
+  if ! output="$(podman run --rm --pod "$SMOKE_POD" --name "$SMOKE_SEARCH_INDEX" --env DATABASE_URL="$SMOKE_DATABASE_URL" \
+    "$IMAGE" ./image-search-index.sh 2>&1)"; then
+    echo "$output" >&2
+    smoke_fail "./image-search-index.sh failed against the derived database."
+  fi
+  if [[ "$output" != *"no page derived"* ]]; then
+    echo "$output" >&2
+    smoke_fail "./image-search-index.sh did not report that no page was derived."
+  fi
+  if [[ "$(smoke_pages)" != "$pages" || "$(smoke_words)" != "$words" ]]; then
+    smoke_fail "./image-search-index.sh changed the pages or the words of the folders."
+  fi
+  echo "ok: ./image-search-index.sh exits with 0 and derives no page"
+
+  # A third start derives nothing either.
+  podman rm --force "$SMOKE_APP" >/dev/null
+  smoke_start_app
+  if [[ "$(smoke_pages)" != "$pages" || "$(smoke_words)" != "$words" ]]; then
+    smoke_fail "the third start changed the pages or the words of the folders."
+  fi
+  if [[ "$(podman logs "$SMOKE_APP" 2>&1)" != *"no page derived"* ]]; then
+    smoke_fail "the third start did not report that no page was derived."
+  fi
+  echo "ok: the third start derives no page"
 
   echo "Smoke test passed."
 }
