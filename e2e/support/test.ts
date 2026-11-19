@@ -1,6 +1,6 @@
 import { test as base, type Page } from "@playwright/test";
 
-import { workerUrl } from "./workers";
+import { checkRunWorkers, workerCount, workerUrl } from "./workers";
 
 export { expect } from "@playwright/test";
 
@@ -39,9 +39,12 @@ export function hydrating(page: Page): Page {
  * JavaScript disabled there is no wait.
  */
 export const test = base.extend({
-  // `parallelIndex` counts the workers from 0, the servers are counted from 1.
+  // `parallelIndex` counts the workers from 0, the servers are counted from 1. A worker without a server fails, as the
+  // global setup does for a run with more workers than servers.
   baseURL: async ({}, provide, testInfo) => {
-    await provide(workerUrl(testInfo.parallelIndex + 1));
+    const worker = testInfo.parallelIndex + 1;
+    checkRunWorkers(worker, workerCount());
+    await provide(workerUrl(worker));
   },
   // The fixture callback is called `provide`, not `use`: the React lint rules would take `use` for the React hook.
   page: async ({ page, javaScriptEnabled }, provide) => {

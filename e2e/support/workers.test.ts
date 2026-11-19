@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  checkRunWorkers,
   PRODUCTION_DIST_DIR,
   processWorker,
   workerCount,
@@ -26,6 +27,22 @@ describe("workerCount", () => {
   it.each(["0", "9", "two", "2.5", "-1", " 3", "3 ", ""])("refuses the value %j", (value) => {
     expect(() => workerCount({ HIPPOWIKI_E2E_WORKERS: value })).toThrow(
       `HIPPOWIKI_E2E_WORKERS must be a whole number from 1 to 8, but is ${JSON.stringify(value)}.`,
+    );
+  });
+});
+
+describe("checkRunWorkers", () => {
+  it.each([
+    [2, 2],
+    [1, 2],
+  ])("accepts %i workers when the variable sets %i", (runWorkers, configured) => {
+    expect(() => checkRunWorkers(runWorkers, configured)).not.toThrow();
+  });
+
+  it("refuses more workers than the variable sets, and names the variable", () => {
+    expect(() => checkRunWorkers(3, 2)).toThrow(
+      "The run uses 3 workers, but there are servers for only 2. The number of workers is set with " +
+        "HIPPOWIKI_E2E_WORKERS, not with --workers: e.g. HIPPOWIKI_E2E_WORKERS=3 npm run test:e2e.",
     );
   });
 });

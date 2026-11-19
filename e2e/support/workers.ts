@@ -34,6 +34,20 @@ export function workerCount(env: Environment = process.env): number {
   return Number(value);
 }
 
+/**
+ * Checks that the run has no more workers than `HIPPOWIKI_E2E_WORKERS` sets, because only that many servers and
+ * databases are started; fewer workers are fine. Playwright's own `--workers` cannot start more of them, so a larger
+ * number throws an error that says how to set the number of workers.
+ */
+export function checkRunWorkers(runWorkers: number, configuredWorkers: number): void {
+  if (runWorkers > configuredWorkers) {
+    throw new Error(
+      `The run uses ${runWorkers} workers, but there are servers for only ${configuredWorkers}. The number of workers is ` +
+        `set with ${WORKERS_VARIABLE}, not with --workers: e.g. ${WORKERS_VARIABLE}=${runWorkers} npm run test:e2e.`,
+    );
+  }
+}
+
 /** The port of the server of the worker, counted from 1. */
 export function workerPort(worker: number): number {
   return FIRST_PORT + worker - 1;
