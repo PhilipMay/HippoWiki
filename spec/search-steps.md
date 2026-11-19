@@ -60,9 +60,22 @@ The plan has two stop points:
 - after "Existing pages at the start of the server": every page is indexed and stays indexed, and nothing searches yet;
 - after "Search at size": the search service is complete and measured, and nothing in the browser or MCP uses it yet.
 
+## Notes for the wrap-up
+
+What the steps found out that the wrap-up moves into the other specs.
+
+- A migration that stops at the check stays recorded as failed in `_prisma_migrations` (P3018), and
+  `prisma migrate deploy` applies nothing more until it is marked with
+  `prisma migrate resolve --rolled-back 20261119100000_search_database_check` (P3009); each message of the check names
+  that step, also for the container image (`/app/migrate`).
+- The init migration creates the schema `public` if it is missing, which needs the right to create objects in the
+  database, and that right lets a user create the trusted extension `pg_trgm`. So only an installation from before
+  search whose user lost that right later stops for `pg_trgm`; a new installation either passes or stops at the init
+  migration.
+
 ## Checklist
 
-- [ ] Database check and `pg_trgm`
+- [x] Database check and `pg_trgm`
 - [ ] Search text and language of a page
 - [ ] Search index with every write
 - [ ] Existing pages at the start of the server

@@ -102,6 +102,16 @@ The development database is PostgreSQL 18 in the Podman container `hippowiki-db`
 | `npm run db:psql`  | Open `psql`; pass arguments after `--`, e.g. `npm run db:psql -- -c "select 1"` |
 | `npm run db:logs`  | Show the container logs; follow them with `npm run db:logs -- -f`               |
 
+Search needs two things of the database, which the stock `postgres` image and the development database have:
+
+- the encoding UTF8 and a UTF-8 character type, such as `en_US.utf8` or `C.UTF-8`, not `C` or `POSIX`;
+- the extension `pg_trgm` of the PostgreSQL contrib extensions; the migrations create it when the database user may
+  create objects in the database, and otherwise the operator creates it once with `CREATE EXTENSION pg_trgm;`.
+
+Without them the migrations stop with a message that names the fix, before anything of search is created. The stopped
+migration stays recorded as failed: after the fix, mark it as rolled back with
+`npx prisma migrate resolve --rolled-back 20261119100000_search_database_check`, then apply the migrations again.
+
 The application accesses the database with [Prisma](https://www.prisma.io/) 7. The schema is in
 `prisma/schema.prisma`, the migrations are in `prisma/migrations/` and the connection is configured in
 `prisma.config.ts`. The generated client is written to `src/generated/prisma/` and is not checked in.
