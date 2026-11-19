@@ -24,7 +24,7 @@ IDs, so that the wrap-up changes only documentation.
 
 ## Checklist
 
-- [ ] Log lines of login and logout
+- [x] Log lines of login and logout
 - [ ] Counting wrong passwords at the forced password change
 - [ ] Own password change on the account page
 - [ ] Disconnecting the apps at a password change

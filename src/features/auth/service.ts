@@ -431,16 +431,22 @@ export async function logIn(
   }
 
   await clearFailures(name, clientAddress);
-  logger.info({ userId: loggedIn.user.id }, "user logged in");
+  logger.info({ userId: loggedIn.user.id, name, clientAddress }, "user logged in");
   return { ok: true, value: loggedIn };
 }
 
-/** Ends the session of the request; the other sessions of the user stay. Without a session it changes nothing. */
+/**
+ * Ends the session of the request; the other sessions of the user stay. Without a session it changes nothing. The log
+ * line names the user of the session, which is read before, because the sign-out of Better Auth returns no user; a
+ * logout whose session cannot be read fails like one that cannot end it, so that it never looks done.
+ */
 export async function logOut(headers: Headers): Promise<Result<LoggedOut, LogOutError>> {
   try {
+    const user = await getSessionUser(headers);
     const auth = await getAuth();
     const { headers: responseHeaders } = await auth.api.signOut({ headers, returnHeaders: true });
-    logger.info("session ended");
+    if (user) logger.info({ userId: user.id }, "session ended");
+    else logger.info("session ended");
     return { ok: true, value: { headers: responseHeaders } };
   } catch (err) {
     logger.error({ err }, "logout failed");

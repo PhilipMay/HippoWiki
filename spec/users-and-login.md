@@ -189,7 +189,8 @@ The client address group (`clientAddressGroup()` in `src/lib/client-address.ts`)
   that many addresses; an IPv4-mapped IPv6 address counts as its IPv4 address.
 - The service trusts no caller: a value that is not a group as `client-address.ts` writes them counts in `shared`, and
   an error is logged.
-- Every log line of a login has the group next to the name.
+- Every log line of a login has the group next to the name, and the line of a successful login names the user as
+  well. The line of a logout names the user of the session that ended.
 
 ## Authenticated access only
 

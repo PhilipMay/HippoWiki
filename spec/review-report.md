@@ -8,8 +8,8 @@
   tests cover the security rules of the specs well. The weak points are availability (unbounded bodies and batches, a lockout per name in the default
   configuration), the password policy, the trust that the OAuth
   server gives to clients nobody verified, and documentation that ASVS Level 2 asks for.
-- Findings: 103 in all, 0 Blocker, 2 Major, 63 Minor and 38 Nit (53 `issue:`, 18 `suggestion:`, 27 `nit:` and 5
-  `question:`). Accepted deviations: 20. Of the 98 Suggestions with a confidence (a `question:` has none), 13 are High,
+- Findings: 102 in all, 0 Blocker, 2 Major, 62 Minor and 38 Nit (52 `issue:`, 18 `suggestion:`, 27 `nit:` and 5
+  `question:`). Accepted deviations: 20. Of the 97 Suggestions with a confidence (a `question:` has none), 12 are High,
   49 Medium and 36 Low.
 - To fix first:
   1. After the first password change, a user cannot change the password or end sessions, and the admin cannot end
@@ -863,23 +863,6 @@ finding of the review report" in `step-plan-workflow.md` describes.
 - Confidence: Low. Accepting the risk or adding TOTP is a decision for the user.
 - Reference: OWASP A07:2025 Authentication Failures; ASVS 6.3.3; `CON.10.A16`, `CON.10.A1`.
 
-#### issue: the log line of a successful login has no name or group, and the logout line names no user
-
-- Location: `src/features/auth/service.ts`, `logIn()`, the line "user logged in", and `logOut()`, the line "session
-  ended"
-- Severity: Minor
-- Category: error handling
-- Problem: `users-and-login.md` says "Every log line of a login has the group next to the name". The line of a
-  successful login has only `userId`, and "session ended" has no field at all.
-- Impact: a successful login after many failures cannot be tied to its group, and a logout to nobody.
-- Evidence: the log of the local server shows `INFO: user logged in` with only `userId`, and `INFO: session ended`
-  with nothing.
-- Suggestion (required): log `userId`, `name` and the group at a login, and the `userId` of the session at a logout,
-  read with `getSessionUser()` before `signOut()`, which returns no user.
-- Confidence: High. One fix in `logIn()` and `logOut()`, the name and the group are at hand in `logIn()` already, and
-  the unit tests in `src/features/auth/service.test.ts` that expect these two log lines show it.
-- Reference: OWASP A09:2025 Security Logging and Alerting Failures; ASVS 16.3.1, 16.2.1.
-
 #### issue: every session stores a client address from an unchecked `X-Forwarded-For`, and the user agent, which no spec mentions
 
 - Location: `src/lib/auth.ts`, `createAuth()`, the `advanced` options (no `ipAddress`)
@@ -1012,6 +995,10 @@ finding of the review report" in `step-plan-workflow.md` describes.
   authentication attribute, the password, needs the current password (ASVS 7.5.1; see the question in "Connected apps");
   there is no reset of a forgotten password, which `users-and-login.md` lists as a limit, so ASVS 6.4.3 has nothing to
   check.
+- Log lines of login and logout (ASVS 16.3.1, 16.2.1): the line of a successful login names the user id, the user
+  name and the client address group, and the line of a logout the user id of the session, read before Better Auth
+  ends it; a logout whose session cannot be read fails like one that cannot end it. Fixed after the review and checked
+  by the unit tests of `logIn()` and `logOut()` in `src/features/auth/service.test.ts`.
 
 ### Connected apps
 

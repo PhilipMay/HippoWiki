@@ -201,7 +201,11 @@ describe("logIn", () => {
       headers: REQUEST_HEADERS,
       returnHeaders: true,
     });
-    expect(mocks.info).toHaveBeenCalledExactlyOnceWith({ userId: USER_ID }, "user logged in");
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+      { userId: USER_ID, name: "alice", clientAddress: CLIENT_ADDRESS },
+      "user logged in",
+    );
+    expect(logged()).not.toContain(PASSWORD);
     expect(mocks.warn).not.toHaveBeenCalled();
     expect(mocks.error).not.toHaveBeenCalled();
   });
@@ -1067,12 +1071,38 @@ describe("the deleting of old rows", () => {
 });
 
 describe("logOut", () => {
-  it("signs out the session of the request and returns the response headers", async () => {
+  it("signs out the session of the request, returns the response headers and logs the user", async () => {
+    mocks.getSession.mockResolvedValue({ session: { token: "token" }, user: AUTH_USER });
+
     const result = await logOut(REQUEST_HEADERS);
 
     expect(result).toEqual({ ok: true, value: { headers: RESPONSE_HEADERS } });
+    expect(mocks.getSession).toHaveBeenCalledExactlyOnceWith({ headers: REQUEST_HEADERS });
     expect(mocks.signOut).toHaveBeenCalledExactlyOnceWith({ headers: REQUEST_HEADERS, returnHeaders: true });
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith({ userId: USER_ID }, "session ended");
+  });
+
+  it("logs the line without a user when the request has no session", async () => {
+    mocks.getSession.mockResolvedValue(null);
+
+    const result = await logOut(new Headers());
+
+    expect(result).toEqual({ ok: true, value: { headers: RESPONSE_HEADERS } });
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith("session ended");
+  });
+
+  it("answers failed and ends nothing when the session cannot be read", async () => {
+    mocks.getSession.mockRejectedValue(new Error("connection refused"));
+
+    const result = await logOut(REQUEST_HEADERS);
+
+    expect(result).toEqual({ ok: false, error: { code: "failed" } });
+    expect(mocks.signOut).not.toHaveBeenCalled();
+    expect(mocks.info).not.toHaveBeenCalled();
+    expect(mocks.error).toHaveBeenCalledExactlyOnceWith(
+      { err: expect.objectContaining({ message: "connection refused" }) as Error },
+      "logout failed",
+    );
   });
 
   it.each([
