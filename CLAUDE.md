@@ -30,6 +30,8 @@ file itself holds.
 - `spec/issue-report.md`: How is an issue of a review of code or documents reported?
 - `spec/review-report.md`: Which findings of the security and code review are open? A fixed finding is deleted, and
   the file with its last finding.
+- `spec/list-layout-review.md`: Which findings of the review of the list layout in the page view are open? A fixed
+  finding is deleted, and the file with its last finding.
 
 ## Running the Checks
 
