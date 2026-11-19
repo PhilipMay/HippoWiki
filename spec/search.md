@@ -2,8 +2,8 @@
 
 Search in one folder as built: users find the pages of a folder whose title they roughly know and the pages that are
 about a topic, in the browser and through MCP, in the language each page is written in, by parts of words and with
-typos, without anybody choosing a language. The research behind the decisions is `search-plan.md`; folders, tabs and
-their addresses are described in `content-structure.md`, the tools of MCP in `mcp.md`.
+typos, without anybody choosing a language. Folders, tabs and their addresses are described in `content-structure.md`,
+the tools of MCP in `mcp.md`.
 
 Code: `src/features/search/`:
 
@@ -320,8 +320,7 @@ The read tool `search_pages` is given to every connection: Reader, Writer and Ma
   Rejected: parts of words in the content with typos in titles and names only; titles and names only; and typos
   compared with the whole text, which would make almost every search in such a folder stop as too broad.
 
-- No trigram index on the whole text of the pages, no `unaccent`, no BM25 extension and no external search engine (see
-  `search-plan.md`).
+- No trigram index on the whole text of the pages, no `unaccent`, no BM25 extension and no external search engine.
 - A search in a folder of 3,000 pages finishes within 2 seconds. Rejected: 1 second, and no promised time with the
   time limit alone.
 - A search stops after 5 seconds, which bounds the searches that take longer than that promise. Rejected: 2 seconds,

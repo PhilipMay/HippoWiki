@@ -26,8 +26,6 @@ file itself holds.
 - `spec/oauth.md`: How does an AI app get access through OAuth?
 - `spec/optimistic-locking.md`: How are changes of the same page at the same time told apart?
 - `spec/folder-roles.md`: Who may see and do what with a folder?
-- `spec/search-plan.md`: How do comparable projects implement full-text search, and what does that mean for search
-  in HippoWiki?
 - `spec/search.md`: How are the pages of a folder searched, in the browser and through MCP?
 - `spec/roadmap.md`: Which features may come later, and what is still to check?
 - `spec/issue-report.md`: How is an issue of a review of code or documents reported?
