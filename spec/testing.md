@@ -213,18 +213,17 @@ How the code is tested. Commands are listed in `README.md`.
 - Each run uses a throwaway PostgreSQL container `hippowiki-test-db` (port 5433, database `hippowiki_test`, data in
   memory only). The global setup starts it and applies the migrations; the global teardown removes it, so nothing is
   left running.
-- Playwright starts the application itself on port 3100 with the build directory `.next-e2e` and `DATABASE_URL`
-  pointing to the test database. The development database is never touched and does not need to run.
-- By default it starts the development server (`next dev`), which starts fast. With `HIPPOWIKI_E2E_SERVER=production`
-  (`npm run test:e2e:production`) it runs `next build` followed by `next start` instead, both with the same build
-  directory and `DATABASE_URL`. This run covers what only exists in a production build: prerendering and the route
-  cache, the minified client bundles and rendering without the double rendering of StrictMode.
+- The tests run with several workers at the same time, each with its own test database and its own server (see
+  "Workers" below). The development database is never touched and does not need to run.
+- By default the servers are development servers (`next dev`), which start fast. With
+  `HIPPOWIKI_E2E_SERVER=production` (`npm run test:e2e:production`) the app is built once with `next build`, and each
+  worker gets a `next start` on that build. This run covers what only exists in a production build: prerendering and
+  the route cache, the minified client bundles and rendering without the double rendering of StrictMode.
 - The error pages `error.tsx` and `global-error.tsx` are covered by no test, in neither run: to render them, a test
-  would have to make a read of the shared test database fail, and every later spec would fail with it if the test
-  could not restore the database. The build needs no running database, because no route is
-  prerendered; the global setup starts the test database only after the server.
-- All tests share the test database and run one after another.
-- The test server has a public URL (`HIPPOWIKI_PUBLIC_URL=http://localhost:3100` in `playwright.config.ts`), so
+  would have to make a read of the test database of its worker fail, and every later spec of that worker would fail
+  with it if the test could not restore the database. The build needs no running database, because no route is
+  prerendered; the global setup starts the test database only after the servers.
+- Each test server has a public URL (`HIPPOWIKI_PUBLIC_URL`, the address of the server, in `playwright.config.ts`), so
   OAuth is on and the MCP server gives out full addresses. That OAuth is off without the variable is covered by the
   unit tests of the adapters and by the smoke test of the container image.
 - The test server trusts one reverse proxy (`HIPPOWIKI_TRUSTED_PROXIES=1` in `playwright.config.ts`), so a test
@@ -235,7 +234,7 @@ How the code is tested. Commands are listed in `README.md`.
   the alert already shows the expected text from an earlier attempt. A login that is still being counted when the next
   test resets the database runs into the `TRUNCATE` of the reset, because its transaction writes two tables. The reset
   survives that on its own (see `emptyTestDatabase()` below), but the wait keeps a test from depending on it.
-- The tests log in once and reuse the session:
+- The tests log in once per run and reuse the session in every worker:
   - The Playwright project `setup` (`e2e/auth.setup.ts`) logs in on the login page as the known admin and the known
     user of `prisma/known-users.ts`, each of its type, and saves one browser state each in `e2e/.auth/` (ignored by Git and by
     `.containerignore`), together with the rows of the two sessions. The global setup removes the files of an earlier
@@ -246,8 +245,9 @@ How the code is tested. Commands are listed in `README.md`.
   - A crafted request of the other type is tested with `becomeUser(context, storageState)` of `e2e/support/auth.ts`:
     the test opens a form with one saved login, replaces the cookies of the browser by the other saved login, and
     submits it, e.g. a content form with the login of the admin or the "New user" form with the login of a user.
-  - `resetTestDatabase()` puts the known users and the saved session rows back, so the saved cookies stay valid
-    after every reset. It never empties `AuthSecret`: the running server keeps the secret that signed them.
+  - `resetTestDatabase()` puts the known users and the saved session rows back into the database of its worker, so the
+    saved cookies are valid on the server of every worker and stay valid after every reset. It never empties
+    `AuthSecret`: the running server keeps the secret that signed them, and every worker database has the same one.
   - The Playwright UI does not run the setup project by itself (see `README.md`).
   - A test that needs a user with a first password creates one with `createUser()` and logs in through the login
     page, in a spec or a browser context without a saved state.
@@ -268,9 +268,10 @@ How the code is tested. Commands are listed in `README.md`.
     `hydrating()`, e.g. `hydrating(await context.newPage())`. So no test acts on the locked, server-rendered page, where
     React could undo a change to the DOM or report a hydration mismatch. This matters most in CI, whose runner hydrates
     much later than a fast local machine.
-  - `resetTestDatabase()` empties all tables except the migration history and `AuthSecret`, then creates the known
-    users with their fixed ids and restores their saved sessions; tests call it in `beforeEach`.
-    `emptyTestDatabase()` only empties the tables; the integration tests use it.
+  - `resetTestDatabase()` empties all tables of the database of its worker except the migration history and
+    `AuthSecret`, then creates the known users with their fixed ids and restores their saved sessions; tests call it in
+    `beforeEach`. `emptyTestDatabase()` only empties the tables, and only of `hippowiki_test` or a worker database; the
+    integration tests use it.
   - The `TRUNCATE` of `emptyTestDatabase()` waits for its locks only a short time and is tried again a few times
     (`TRUNCATE_LOCK_TIMEOUT` and `TRUNCATE_ATTEMPTS` in `e2e/support/database.ts`). A login of the server that is
     still running writes `LoginAttempt` and `LoginWindow` in one transaction, while the `TRUNCATE` locks the tables one
@@ -298,7 +299,7 @@ How the code is tested. Commands are listed in `README.md`.
     - `createUser()` creates a user whose first password is still to change, unless `mustChangePassword` is false.
   - Tests that open an address give the folder, tab and page fixed names, e.g.
     `createPage({ folder, name: "overview" })` for `/folders/<folder>/overview.md`.
-  - `getTestDb()` returns a Prisma client for the test database, e.g. to check what an action stored.
+  - `getTestDb()` returns a Prisma client for the test database of the worker, e.g. to check what an action stored.
   - `oauth.ts` has the helpers of the OAuth tests, in which a test stands in for the client: `registerClient()`,
     `authorizeUrl()`, `exchange()`, `refresh()`, and `connect()`, which approves a client on its consent page and
     returns the tokens of the new grant. `awaitCallback()` answers everything at the redirect address of the client,
@@ -318,7 +319,7 @@ How the code is tested. Commands are listed in `README.md`.
     404, named with the address; `by()`, the end of a line of a list or view that names the last editor and the
     channel, "by <user> via <channel>"; and `holdServerAction()`, which holds the next request of a Server Action of
     the page with `page.route()` until the test releases it.
-  - The public URL of the test server, the base of every full address, is `ISSUER` of `oauth.ts`.
+  - The public URL of the server of the worker, the base of every full address, is `ISSUER` of `oauth.ts`.
 - `eslint-plugin-playwright` checks all files in `e2e/`: a Playwright call or `expect` that is not awaited
   (`missing-playwright-await`), `page.waitForTimeout()` (`no-wait-for-timeout`) and checks such as
   `expect(await locator.isVisible())` instead of the retrying `await expect(locator).toBeVisible()`
@@ -370,6 +371,80 @@ How the code is tested. Commands are listed in `README.md`.
   page at all. A change to the headers changes this spec and the smoke test of the container image.
 - Every feature step adds end-to-end tests for its behaviour, including error and empty states.
 
+### Workers
+
+The end-to-end tests run with several workers in one Playwright run, so that the complete suite takes much less time
+than one after another. Code: `e2e/support/workers.ts` (the number of workers and what belongs to each, with the unit
+tests in `e2e/support/workers.test.ts`), `playwright.config.ts`, `e2e/global-setup.ts`, `e2e/support/database.ts`,
+`e2e/support/container.ts` and `e2e/support/test.ts`.
+
+- Each worker has its own database and its own server, so no worker sees or resets the data of another. The global
+  setup prepares `hippowiki_test` (migrations, one new `AuthSecret`, a reset) and copies it into one database per
+  worker, `hippowiki_test_<n>`, so every worker database starts reset, with the same schema and the same secret. The
+  integration tests keep using `hippowiki_test`.
+- Worker 1 has its server on port 3100 and each further worker the next port, up to 3107. Each development server has
+  its own build directory below `.next-e2e/`; the production run builds once into `.next-e2e/production`, and all its
+  servers start on that build.
+- The spec files are spread over the workers as they become free; the tests of one file run one after another in one
+  worker (`fullyParallel` is off). A run ends with one result and one HTML report, whatever the number of workers.
+- `HIPPOWIKI_E2E_WORKERS` sets the number of workers for one run: a whole number from 1 to 8, 4 without the variable.
+  Any other value stops the run before any server or database starts, with a message that names the variable, the
+  value and the range. CI sets 1 for both end-to-end workflows (see "Continuous integration").
+- The number of workers is set with the variable, not with Playwright's `--workers`: it also decides how many servers
+  and databases start. `--workers` may ask for fewer workers; more stop the run before any test with a message that
+  names the variable.
+- Every run starts the servers of all workers, also a run of one spec or of `--last-failed`, so the rules of a step plan
+  for which specs run do not depend on the number of workers.
+- With one worker a run behaves as before the workers: one database copy, one server on port 3100, all tests one after
+  another. This is the way to debug a test, e.g. `HIPPOWIKI_E2E_WORKERS=1 npm run test:e2e:ui`.
+- The `baseURL` of every test, and `ISSUER` of `e2e/support/oauth.ts`, is the address of the server of its worker; a
+  worker without a server fails.
+- A port of a server that is already taken fails the run before any test, with the message of Playwright, which names
+  the port. A server that someone else started is never used (`reuseExistingServer: false`).
+- A run leaves every file that Git tracks as it was. `next dev` adds the types directories of its build directory to
+  `tsconfig.json` unless they are listed there, so `tsconfig.json` lists those of the eight worker directories and of
+  `.next-e2e/production`.
+- Nothing of a run is left running after it ends, also when it fails: no server and no container.
+
+Times of the complete suite, before (one worker) and after (4 workers locally). Locally on a Mac16,7 (14 CPU cores,
+48 GB memory, Podman machine with 7 CPUs and 4 GB), 777 tests, the median of three runs; in CI on `ubuntu-24.04` (4 CPU
+cores, 16 GB), one run with 3 workers against the median of five runs before:
+
+- `npm run test:e2e`, locally: 6.4 min before, 2.3 min after, as reported by Playwright (6 min 25 s and 2 min 20 s
+  wall time).
+- `npm run test:e2e:production`, locally: 3.8 min before, 1.4 min after, the build included (3 min 50 s and 1 min 27 s
+  wall time).
+- `end_to_end_tests`, CI: the step of the tests took 11 min 29 s with one worker and 14 min 1 s with 3, which also had
+  two flaky tests.
+- `end_to_end_tests_production`, CI: the step of the tests took 5 min 1 s with one worker and 3 min 30 s with 3.
+
+Decisions:
+
+- Several workers in one run, not shards: the workers take the next spec file when they are free, which balances the
+  load better than shards split by file, and there is one command and one report. Shards in CI were rejected: they
+  cost more runner minutes and a job to merge the reports.
+- Both runs are parallel, so the local default run and the complete suite of a step plan get faster too, at the cost
+  of one development server per worker, each compiling the routes itself.
+- The speedup is measured and written down, with no fixed target.
+- The default of 4 workers was fixed, not measured first. A run of a few specs uses the same number as the complete
+  suite, so the rules of a step plan stay as they are; the cost is a few seconds and some memory for the servers.
+- CI runs both end-to-end workflows with 1 worker. With 3 workers on the 4 CPU cores of the runner, the development
+  servers each compiled every route themselves, and the run took longer than with one and had flaky tests: a click
+  that did not lead to the next page within 5 seconds on the first visit of a route. The production run, which was
+  faster with 3, runs with 1 as well, so both CI runs stay as they were before the workers.
+- The variable is called `HIPPOWIKI_E2E_WORKERS`, like `HIPPOWIKI_E2E_SERVER`, which chooses the run; `E2E_WORKERS`,
+  without the prefix of the project, was rejected.
+- An invalid number stops the run instead of falling back to the default, so a typo is not hidden; the limit of 8
+  keeps a typo such as `40` from starting 40 servers.
+- A taken port fails the run instead of a search for free ports, so the ports of a run stay fixed.
+- The build directories are listed in `tsconfig.json`, so a run changes no tracked file and the working tree stays
+  clean after the tests.
+
+Current limits:
+
+- The parallel run pays off only locally: CI runs with one worker (see "Decisions").
+- Every run starts the servers of all workers, also for one spec.
+
 ## Continuous integration
 
 - GitHub Actions runs the checks in seven workflows in `.github/workflows/`, each named like its file, so a failure
@@ -392,8 +467,9 @@ How the code is tested. Commands are listed in `README.md`.
   database, because every query calls `connection()` and no route is prerendered. No workflow sets
   `HIPPOWIKI_ADMIN_PASSWORD` either: the tests create their users themselves, and the smoke test of the container
   image passes its own value.
-- The end-to-end tests start and remove their throwaway container `hippowiki-test-db` as they do locally. With `CI`
-  set, Playwright retries a failed test, fails the run if a test passed only on a retry, and rejects `test.only`
+- The end-to-end tests start and remove their throwaway container `hippowiki-test-db` as they do locally. Both
+  end-to-end workflows set `HIPPOWIKI_E2E_WORKERS` to 1 for the step of the tests, so they run with one worker and one
+  server (see "Workers" in "End-to-end tests"). With `CI` set, Playwright retries a failed test, fails the run if a test passed only on a retry, and rejects `test.only`
   (`playwright.config.ts`).
 - The end-to-end workflows upload the Playwright HTML report, and the unit test workflow the coverage report with its
   tables of `scripts/coverage-summary.ts` in the job summary, also when the tests fail.

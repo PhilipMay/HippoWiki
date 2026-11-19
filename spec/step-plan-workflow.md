@@ -147,8 +147,8 @@ The complete end-to-end suite:
   changed more, and on CI, which runs it on every push (see `testing.md`).
 - A step that changes something every page depends on runs it right away (see the list below), whether or not it is
   the last such step.
-- It takes about five minutes: run it with a timeout long enough or in the background, so that it is not cut off and
-  run again.
+- It takes about two and a half minutes with the default of 4 workers (see "Workers" in `testing.md`): run it with a
+  timeout long enough or in the background, so that it is not cut off and run again.
 
 The end-to-end specs a step affects:
 

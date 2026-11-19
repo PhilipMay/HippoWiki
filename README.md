@@ -199,8 +199,7 @@ npx playwright show-report   # open the HTML report of the last run
 - `HIPPOWIKI_E2E_WORKERS` sets the number of workers for one run, a whole number from 1 to 8; any other value stops the
   run. With 1, the tests run one after another against one server on port 3100, as for debugging a test. The number of
   workers is set with this variable, not with Playwright's `--workers`, which may only ask for fewer. CI runs with 1.
-- `npm run test:e2e:production` builds the app once first and takes longer; each worker then gets its own server on
-  that build.
+- `npm run test:e2e:production` builds the app once first; each worker then gets its own server on that build.
 - Every test starts logged in as `alice`, with a session that the setup project `e2e/auth.setup.ts` saves once per
   run. `npx playwright test` runs the setup project by itself, also for a single spec. The Playwright UI
   (`npm run test:e2e:ui`) does not: run `auth.setup.ts` there once first, or enable the `setup` project in the project
