@@ -116,6 +116,12 @@ listed first; there is no order across themes.
 - Prometheus metrics: metrics of the application for Prometheus (`tech.md`).
 - Database monitoring: metrics of PostgreSQL through a Prometheus exporter.
 - Grafana dashboards: dashboards for the metrics of the application and the database.
+- License check in CI: a check that fails when a dependency, also a transitive one, has a strong copyleft license
+  such as GPL or AGPL, which the MIT license of the project does not allow, for example
+  `npx license-checker --production --failOn "GPL;AGPL"`. The weak copyleft licenses in use today stay allowed:
+  LGPL-3.0 of libvips through `sharp` of Next.js, EPL-2.0 of `elkjs` through the Prisma CLI, and MPL-2.0 of tools
+  that are not shipped. The published image then also carries the license texts of the packages it ships and points
+  to the source of the copyleft ones.
 
 ## Container Image
 
