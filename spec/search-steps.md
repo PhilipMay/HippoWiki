@@ -94,7 +94,7 @@ What the steps found out that the wrap-up moves into the other specs.
 - [x] Search text and language of a page
 - [x] Search index with every write
 - [x] Existing pages at the start of the server
-- [ ] Search words
+- [x] Search words
 - [ ] Matching and order
 - [ ] Pieces of text, limits and log
 - [ ] Search at size
@@ -283,14 +283,16 @@ of R16 and the counting of R25.
 
 ### Build
 
-- `src/features/search/limits.ts` with every number of search in one place: 200 characters, 10 words, 3 letters for
-  the start and the parts of a word, 100 results, 5 seconds, 3 searches at a time, and 10 and 25 results for a call
-  of the search tool. The later steps add theirs.
+- `src/features/search/limits.ts` with every number of search in one place: 200 characters, 10 words and 3 letters
+  for the start and the parts of a word in this step. Each later number (100 results, 5 seconds, 3 searches at a time,
+  and 10 and 25 results for a call of the search tool) joins it in the step that first uses it, because knip reports
+  an export that nothing imports.
 - `src/features/search/words.ts`, a pure module without server-only imports:
   - words separated by spaces must all match; words in quotes are a phrase; a word with a leading `-` is excluded;
     `or` between two words or phrases, in any case, means either;
   - a quote without its partner, a `-` alone or before a phrase, `or` at the start, at the end or twice in a row, and
-    a search of excluded words only are read as plain words, never as an error;
+    a search of excluded words only are read as plain words, never as an error; `or` next to an excluded word, as in
+    `-old or new`, connects nothing;
   - what has no letter and no digit is dropped;
   - a word of 1 or 2 letters is marked to match only as a whole word;
   - the count: each word once, also inside quotes and with a leading `-`; `or` between two words does not count. More
