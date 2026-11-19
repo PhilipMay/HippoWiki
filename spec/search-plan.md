@@ -1,5 +1,7 @@
 # HippoWiki – Search Plan
 
+Search as built is described in `search.md`. This plan stays as the research behind its decisions.
+
 Comparable projects all make the same choice: the search that ships by default lives in the database the product
 already has, and a separate search engine is something large installations opt into. Outline, Docmost and the current
 Wiki.js all ended up with a weighted `tsvector` column and a GIN index in PostgreSQL. They build their own

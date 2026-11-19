@@ -9,7 +9,9 @@ How the code is tested. Commands are listed in `README.md`.
   no Podman. `scripts/check.ts` runs the checks side by side and prints the output of each one as a block when it is
   done. Only what would clash waits: `next typegen` runs first, because lint and the type check read the route types
   it writes, the build of `npm run check:all` waits for lint and the type check, because it writes the route types
-  again, and the cost tests run last and alone. `npm run check` alone writes nothing but the route types;
+  again, and the cost tests run last and alone; in `npm run check:all` the integration tests with a time budget
+  follow them, after the integration tests and the build, alone as well. `npm run check` alone writes nothing but the
+  route types;
   `npm run check:all` also writes `.next/` and starts the test database container.
 - `npm run test:coverage` measures the coverage of the unit tests with `@vitest/coverage-v8` (configured in
   `vitest.config.ts`). It covers all `.ts` and `.tsx` files in `src/` except the tests and `src/generated/`, so files
@@ -207,6 +209,19 @@ How the code is tested. Commands are listed in `README.md`.
   - `integration/folder-service.test.ts`, "deleting a tab": the rollback of the delete of a tab, and a page created,
     moved or restored into a tab while it is deleted never stays in the missing tab.
   - `integration/folder-role-service.test.ts`: two Owners who lower each other at once keep one Owner.
+- Search is tested against the database in three files:
+  - `integration/search-database.test.ts`: the check of the migrations, against throwaway databases of the test
+    container with the character type `C` and with a user who may not create extensions;
+  - `integration/search-index.test.ts`: the vector and the words of the folders after every kind of write, writes at
+    the same time in one folder, and the derivation of the pages stored before search;
+  - `integration/search-service.test.ts`: the matches, the order, the pieces of text and the limits of a search. A
+    search that runs into the time limit, and searches beyond the 3 at the same time, are made by a transaction of the
+    test that holds the table of the words of the folders (`LOCK TABLE "SearchWord"`).
+- Vitest project `integration-cost`: integration tests with a wall-clock budget, `integration/*.cost.test.ts`, left
+  out of the project `integration` and run with `npm run test:integration:cost`, on their own, like the cost tests.
+  `integration/search-size.cost.test.ts` fills one folder with 3,000 pages of about 20,000 characters, in several
+  languages and with the vocabulary of real text, and keeps the times of search and of a save into the full folder
+  within their budgets (see "Limits" in `search.md`).
 - A new unique constraint gets a constant in `db-errors.ts` and a case in `integration/db-errors.test.ts`; a new
   read with a condition the database must get right and every new write get a case in the integration test of their
   service.
@@ -314,6 +329,9 @@ How the code is tested. Commands are listed in `README.md`.
     `mcpPath()` gives the path of the address of a folder and role. `setUpProjects()` resets the test database and
     creates the folder "projects" with a Reader grant of `alice`; until the next reset, `send()` and `call()` use that
     connection unless a test gives another token or address.
+  - `search.ts` has `holdSearchWords()`, which holds the table of the words of the folders in a transaction of the
+    test until it is released, so that every search of the worker waits for it until its time limit, and
+    `waitForHeldSearches()`, which waits until a number of searches wait for it.
   - `setOwnRole()` sets the role of the known user `alice` on a folder, as another Owner would while a form of the test
     is open.
   - `auth.ts` also has `submitLogin()`, which fills and submits the login form of the open page, and `logIn()`, which
@@ -363,11 +381,15 @@ How the code is tested. Commands are listed in `README.md`.
   access token of a grant from `createGrant()`, for Reader, Writer and Manager connections, each from a test database
   reset by `setUpProjects()`: `e2e/mcp-access.spec.ts` the tokens, the binding of a connection to its address and the
   current role behind it, `e2e/mcp-read.spec.ts` the protocol and the read tools, `e2e/mcp-write.spec.ts` the write
-  tools of a Writer with their locking, `e2e/mcp-edit.spec.ts` the replacements of `edit_page_content`, and `e2e/mcp-manager.spec.ts` the tools of a Manager. A change of a tool runs
+  tools of a Writer with their locking, `e2e/mcp-edit.spec.ts` the replacements of `edit_page_content`, `e2e/mcp-manager.spec.ts` the tools of a Manager, and `e2e/mcp-search.spec.ts` the search tool. A change of a tool runs
   the spec of its group, a change of the access `e2e/mcp-access.spec.ts`; `e2e/oauth.spec.ts` covers the discovery, the registration, the
   token endpoint and the whole flow from the login over the consent page to a tool call, a refresh and a refresh token
   that is used again. The helpers of `e2e/support/oauth.ts` send a folder address as `resource` (`mcpAddress()`).
 - `e2e/ai-apps.spec.ts` covers the folder view "AI apps" with its addresses per role and the copy button.
+- `e2e/search.spec.ts` covers the results view and its address, the search field on every view of a folder and where
+  it is left out, and the messages of the limits. Chromium waits with a request for an address until a request for
+  the same address that is still running has ended, so the searches that a test runs at the same time each have words
+  of their own.
 - `e2e/security-headers.spec.ts` checks the security headers of `next.config.ts` (see "Security headers" in
   `architecture.md`) with their exact values, and that no `X-Powered-By` is sent: on the login page, the redirect to
   it, `/api/health`, a page with a login and a `/_next/static/` file. It also checks that an image of another host in
@@ -456,7 +478,7 @@ Current limits:
   - `format_check`: the format check
   - `lint`: the build, the type check, lint, the doc references and knip
   - `unit_tests`: the unit tests with coverage and the cost tests
-  - `integration_tests`: the integration tests
+  - `integration_tests`: the integration tests, then the integration tests with a time budget
   - `end_to_end_tests`: the end-to-end tests against the development server
   - `end_to_end_tests_production`: the end-to-end tests against a production build
   - `container_image`: the build and the smoke test of the container image, and for a published release its push to

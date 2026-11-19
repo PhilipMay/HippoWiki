@@ -16,6 +16,10 @@
 - ORM: Prisma
   - use Prisma for CRUD - "fullTextSearchPostgres" preview feature is not used.
   - the "partialIndexes" preview feature is used for partial unique indexes
+- Search: the full-text search of PostgreSQL with its text search configurations, and the trusted contrib extension
+  `pg_trgm` for parts of words and typos; no other extension and no external search engine (see `search.md`)
+- Language of a page for search: the language detector eld (`eld`, Apache-2.0) with its smallest database,
+  `eld/extrasmall`, loaded on the server only (see `search.md`)
 - Authentication: Better Auth with its `username` plugin, called only on the server; its password hashing is
   replaced
 - Password hashing: Argon2id with `@node-rs/argon2`, a native package with prebuilt builds

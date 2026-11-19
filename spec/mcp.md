@@ -95,8 +95,8 @@ and the unit tests next to the code,
 
 ## Tools
 
-A Reader connection gets the two read tools, a Writer connection also the four write tools of pages, and a Manager
-connection also the four tools of a Manager: two, six and ten tools. A tool is registered only when the role of the
+A Reader connection gets the three read tools, a Writer connection also the four write tools of pages, and a Manager
+connection also the four tools of a Manager: three, seven and eleven tools. A tool is registered only when the role of the
 connection may do the function of the folder that its write checks (`mayDo()` with `FUNCTION_ROLES` in
 `src/features/folder-roles/roles.ts`), so the tools follow the services. A tool that the connection does not get is not
 listed, and a call of it changes nothing.
@@ -111,6 +111,12 @@ Read tools, which say so to the client (`readOnlyHint`):
 - `read_page`: one page of the folder by its tab, if it is in one, and its name: the title, the Markdown content, the
   address, the last change, the last editor, how it was last changed (`web` or `mcp`) and its version (see
   `optimistic-locking.md`).
+- `search_pages`: the pages of the whole folder that match the words of `query`, the best match first, each with its
+  title, its name and tab as `read_page` takes them, its address, a piece of its text, its last change, its last
+  editor and how it was last changed. It returns 10 results unless `limit` asks for another number, at most 25, from
+  `offset` on, up to the 100 best results, and gives the offset of the next results. It takes no folder and no tab,
+  and never finds a deleted page. Its syntax, its limits and its tool errors are those of search in the browser (see
+  "Search through MCP" in `search.md`).
 
 Write tools of pages, for a Writer and a Manager connection, each with the hints of a tool that writes; the two tools
 that change the content of a page carry `destructiveHint` as well, because they can remove any text of it:
@@ -193,7 +199,7 @@ What holds for all of them:
   `src/features/mcp/tools.ts`), so that what an agent did, reads included, can be traced afterwards: the grant, the
   user, the folder and the role of the connection, the tool, the tab and page names of its arguments (cut to the
   length limit of a name) and the outcome: worked, a tool error, or failed. It never holds the content, a title, a
-  text of a replacement, an address or a version. Requests that reach no tool are not logged there: `initialize`, the
+  text of a replacement, an address, a version or the words of a search. Requests that reach no tool are not logged there: `initialize`, the
   list of tools, and calls that the SDK refuses before the tool runs, such as an unknown tool or invalid arguments.
 - Every write tool of pages returns the page as stored: its name, title, tab, address and version, which a change
   counts up and a content save without a change and a move to the current name and place keep.
@@ -259,7 +265,7 @@ What the server does:
   `src/features/mcp/tool-schemas.ts`):
   - in the instructions of every connection, for every role, after what the role allows;
   - at the end of the descriptions of the tools whose results carry titles or content of pages: `list_folder`,
-    `read_page`, `create_page`, `replace_page_content`, `edit_page_content`, `move_or_rename_page`, `delete_page` and
+    `read_page`, `search_pages`, `create_page`, `replace_page_content`, `edit_page_content`, `move_or_rename_page`, `delete_page` and
     `delete_tab`;
   - as the field `note`, the first field of the results of these tools, in the structured data and in the JSON of the
     text, and named in their output schemas, so that the model reads it before the page text whichever of the two a
@@ -432,7 +438,6 @@ of the history.
 - no page history through MCP: a content change made by an AI agent is undone only in the browser, from the history
   of the page; a move or rename is not part of the history. The page and its history show that a change came through
   MCP, but not which app made it
-- no search tool
 - no resources and no prompts of the protocol, only tools
 - no SSE, no sessions, no notifications and no subscriptions
 - no rate limits of MCP requests

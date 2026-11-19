@@ -15,6 +15,10 @@ The prototype manages wiki pages written in Markdown, organises them in folders 
 PostgreSQL: create, view, edit, move and rename pages, create and rename folders and tabs, delete pages and tabs and
 restore the pages from the deleted pages of their folder. Folders cannot be deleted yet.
 
+Every folder can be searched from a search field on its pages: titles, names and content, in the language each page is
+written in, by parts of words and with typos, with phrases, excluded words and `or`. AI apps search their folder
+through MCP as well (`spec/search.md`).
+
 The wiki can only be used after a login. Every account is either an admin, who manages the accounts, sees no content
 and only an overview of who has which role on which folder, or a user, who creates folders, works with the folders on
 which the user has a role (Reader, Writer, Manager or Owner) and sees and revokes the connected apps on the own account
@@ -180,7 +184,7 @@ To connect an app, such as Claude Code or the connector of claude.ai or ChatGPT:
    apps" on `/account` with its folder and role, where you can revoke it.
 
 A client that cannot connect through OAuth cannot use the MCP server. A Reader connection lists the tabs and pages of
-its folder and reads pages; a Writer connection also creates pages, changes parts of their content by exact
+its folder, searches its pages and reads them; a Writer connection also creates pages, changes parts of their content by exact
 search-and-replace, replaces their whole content and moves or renames them;
 a Manager connection also deletes pages and creates, renames and deletes tabs. Deleted pages are restored only in the
 browser (`spec/mcp.md`).

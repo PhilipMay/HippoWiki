@@ -100,11 +100,14 @@ hold pages directly and have tabs at the same time.
   | page         | `revert`         | the "Revert page" dialog over a revision of the page     |
   | deleted page | `restore`        | the "Restore page" dialog                                |
 
-- A folder address has three views, which this list is the one place to name:
+- A folder address has four views, which this list is the one place to name:
   - `?view=all`: all pages of the folder, with their tab (see "Lists and order");
   - `?view=roles`: who has which role on the folder (see "The roles view" in `folder-roles.md`);
   - `?view=mcp`: the MCP addresses of the folder for AI apps, which exists only while `HIPPOWIKI_PUBLIC_URL` is set
-    (see "The view "AI apps"" in `folder-roles.md` and `mcp.md`).
+    (see "The view "AI apps"" in `folder-roles.md` and `mcp.md`);
+  - `?view=search&q=<words>`: the results of a search in the whole folder for the words in `q` (see `search.md`). `q`
+    belongs only to this view, which needs it once and with more than spaces; `q` on any other address under
+    `/folders` and `/deleted-pages` shows the not-found page.
 - A page address and the address of a deleted page have the views of the history of the page: `?view=history`, the
   revisions of the page, `?view=revision&revision=<n>`, one revision, and `?view=compare&from=<n>&to=<n>`, a
   comparison of two revisions. The action `revert` needs `&revision=<n>`. These parameters belong only to their view
@@ -293,7 +296,8 @@ This section is the rule for deleting a tab, in the browser and through `delete_
 - The list of all pages of a folder is ordered by name and then by tab; among pages of the same name, the one placed
   directly in the folder comes first.
 - Deleted pages are missing from all of these lists.
-- Lists show names and metadata only, never page content.
+- Lists show names and metadata only, never page content. The one exception is the results of a search, which show a
+  piece of the text of each page around the match (see "Results" in `search.md`).
 - Every list shows the time of the last change of each item, its last editor and the channel: the folder list, the
   contents of a folder (its pages and its tabs), the pages of a tab and the list of all pages of a folder. The list of
   all pages shows the channel in a column "Via" right after "Updated by".
@@ -389,6 +393,6 @@ Deleting tabs and folders:
   message that the tab no longer exists.
 - No redirects from old addresses after a rename or move.
 - No history of folders and tabs, and moves and renames of pages are not part of the history of a page (see
-  `page-history.md`). No links between pages, no search.
+  `page-history.md`). No links between pages.
 - Changes of the same folder or tab at the same time are not told apart: the last save wins. Pages are protected (see
   `optimistic-locking.md`).

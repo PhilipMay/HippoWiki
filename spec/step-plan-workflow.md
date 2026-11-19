@@ -23,7 +23,7 @@ implements it.
 - A whole step plan is implemented in one session, step by step, started with a prompt such as:
 
   ```text
-  Implement spec/search-steps.md
+  Implement spec/<feature>-steps.md
   ```
 
 - In that session, work through the steps one after the other, in checklist order, starting with the first step that

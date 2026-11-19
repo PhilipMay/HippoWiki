@@ -58,6 +58,7 @@ The documents use one name for each of these things:
   | `auth`         | login, logout, the session and the login wait       | `session.ts`: who is calling (see "Login and sessions")                                                                                                                                                          |
   | `grants`       | the connected apps and the check of an access token | `limits.ts`: the limit of connected apps per user                                                                                                                                                                |
   | `mcp`          | the MCP server and the folder view "AI apps"        | `server.ts` (the tools a connection gets), `tools.ts` (their handlers), `tool-schemas.ts` (their inputs and outputs), `edits.ts` (the replacements of `edit_page_content`), `http.ts`                            |
+  | `search`       | search in a folder, in the browser and through MCP  | `text.ts` and `language.ts` (what search derives of a page), `index-data.ts` (what a write stores), `words.ts` (the parser of the search words), `query-text.ts`, `excerpt.ts`, `slots.ts`, `limits.ts`          |
   | `oauth`        | the OAuth authorization server for AI apps          | `clients-service.ts`, `authorization-service.ts`, `token-service.ts`, `cleanup-service.ts`, `rows.ts` (what they share), `issuer.ts` (the issuer and `isOAuthOn()`), `secret.ts`, `metadata-fetch.ts`, `http.ts` |
 
 - `src/test/`: the helpers of the unit tests, no code of the app (see "Unit tests" in `testing.md`)
@@ -99,6 +100,10 @@ the callers other than the browser.
 - Reads return rows, a list or `null`. A malformed id or name counts as a missing row (see "Validation and errors"):
   a list is empty, a single item is `null`. A read that the actor may not do returns `null`, a list included. Database
   errors are thrown.
+- The one read with outcomes of its own is `searchPages()` of the search service. It returns a `Result`, with a code
+  for words that are no search (`no-words`, `too-long`), a search that the database stopped after its time limit
+  (`too-broad`) and one refused because enough searches were running (`busy`), because the browser and MCP tell the
+  user why there are no results. Like every read, it returns `null` for what the actor may not read.
 - Writes return a `Result` from `src/lib/result.ts`: `{ ok: true, value }` with the item as stored, or
   `{ ok: false, error }` with a code. The errors that several services share and `invalidInput()`, which builds
   `invalid-input` with the `fieldErrors` of a schema, are declared there as well. Each write declares the codes it can
@@ -405,8 +410,13 @@ The feature is described in `users-and-login.md`. What every new route, query an
   folder keeps an Owner, reads its rows with `SELECT ... FOR UPDATE` in the same transaction (`changeRole()` and
   `removeRole()` of the folder-roles service). A conditional write inside it that finds its row changed throws an
   error that only the caller knows, which rolls the transaction back, and the caller reads again.
-- Prisma is used for CRUD. The `fullTextSearchPostgres` preview feature is not enabled. There is no search yet; it is
-  an entry of `roadmap.md`.
+- Prisma is used for CRUD. The `fullTextSearchPostgres` preview feature is not enabled. Search reads the database with
+  tagged `$queryRaw` in its service, every value a bound parameter, because Prisma cannot express the queries of text
+  search. The pages service stores what search derives of a page with the page itself. The database builds the
+  vector of the page and keeps the words of the folders current in triggers, so that every write of a page, also one
+  of a test helper or the seed, keeps search current. The triggers, their functions and the check constraints of
+  search are hand-written in `prisma/migrations/20261119110000_search_index/`; Prisma expresses every index, the GIN
+  index on the vector included (see `search.md`).
 - The `partialIndexes` preview feature is enabled for partial unique indexes (`where` in `@@unique`), such as the one
   on the names of pages placed directly in a folder.
 - The development database and its commands are described in `README.md`. Its image is pinned in
@@ -422,8 +432,8 @@ The feature is described in `users-and-login.md`. What every new route, query an
 - Components are Server Components unless they need interaction; then they are small Client Components.
 - A route holds only `requireUser()`, its `resolve()` (see "Addresses and actions"), the gate and a switch over what
   the address shows; each view is a Server Component of its feature that reads its own data through `queries.ts`,
-  such as `FolderView`, `TabView` and `FolderRolesView`, `AllPagesView`, `NewPageView` and `PageView`, and `AiAppsView`
-  of MCP.
+  such as `FolderView`, `TabView` and `FolderRolesView`, `AllPagesView`, `NewPageView` and `PageView`, `AiAppsView`
+  of MCP and `SearchView` of search.
 - A page is labelled as its address names it, with `pageLabel()` of `src/lib/addresses.ts`.
 - A Client Component imports a value only from a module that pulls in nothing it does not use: the names of form
   fields of pages from `src/features/pages/fields.ts` and the limit of a name from `src/lib/name-limits.ts`, both

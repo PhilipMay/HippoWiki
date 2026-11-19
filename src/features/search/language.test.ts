@@ -9,7 +9,7 @@ function languageOf(content: string): Promise<SearchLanguage> {
   return detectLanguage(pageText(content).prose);
 }
 
-/** The languages of R8 of `search-requirements.md`, each with its configuration. */
+/** The languages whose inflections search finds ("Languages" in `spec/search.md`), each with its configuration. */
 const STEMMED = SEARCH_LANGUAGES.filter((language) => language !== "simple");
 
 describe("the language of a page", () => {

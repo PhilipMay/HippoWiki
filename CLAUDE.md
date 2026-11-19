@@ -28,8 +28,7 @@ file itself holds.
 - `spec/folder-roles.md`: Who may see and do what with a folder?
 - `spec/search-plan.md`: How do comparable projects implement full-text search, and what does that mean for search
   in HippoWiki?
-- `spec/search-requirements.md`: Which requirements does search in a folder have, in the browser and through MCP?
-- `spec/search-steps.md`: In which steps is search in a folder built, in the browser and through MCP?
+- `spec/search.md`: How are the pages of a folder searched, in the browser and through MCP?
 - `spec/roadmap.md`: Which features may come later, and what is still to check?
 - `spec/issue-report.md`: How is an issue of a review of code or documents reported?
 - `spec/review-report.md`: Which findings of the security and code review are open? A fixed finding is deleted, and

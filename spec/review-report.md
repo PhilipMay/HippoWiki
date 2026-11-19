@@ -2825,6 +2825,8 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
 - `HIPPOWIKI_ADMIN_PASSWORD` is removed from the environment once the admin exists, and `npm run db:seed` is never run
   against a production database (Login).
 - The reverse proxy and its access logs do not record the `Authorization` header (Connected apps).
+- The reverse proxy and its access logs do not record the words of a search, `q` of the address of the results
+  `/folders/<folder>?view=search&q=<words>`, which HippoWiki itself never logs (see "Limits" in `search.md`).
 - The reverse proxy caps the request bodies of `/oauth/token` and `/oauth/register` (OAuth).
 - Outgoing connections of the container are allowed only to `443/tcp` on the public internet, so that no cloud
   metadata service or internal network is reachable behind `public-address.ts` (OAuth).

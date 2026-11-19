@@ -39,8 +39,6 @@ listed first; there is no order across themes.
 
 ## Search
 
-- Full-text search: PostgreSQL full-text search over titles and content, in English, German and more languages
-  (`tech.md`).
 - Semantic search: search by meaning with pgvector (`tech.md`).
 
 ## Attachments
@@ -99,7 +97,6 @@ listed first; there is no order across themes.
   `Authorization` header (`connected-apps.md`, `oauth.md`, `users-and-login.md`).
 - MCP write tools for folders: create folders from AI apps; renaming a folder and its roles stay in the browser,
   because the Owner is never a role of MCP (`mcp.md`, `folder-roles.md`).
-- MCP search tool: search the wiki from AI apps, after full-text search (see "Search") (`mcp.md`).
 - CORS for other origins: let web applications on other origins call the API.
 - Rate limits and quotas: limits on requests, writes and stored content per user.
 
@@ -140,6 +137,9 @@ All from "Current limits" in `container-image.md`:
 - Login limit on the deployment: with `HIPPOWIKI_TRUSTED_PROXIES=1` behind Traefik, a failed login from a known
   address outside the network of the server is logged with that address as `clientAddress`
   (`users-and-login.md`, `container-image.md`).
+- Search words on the deployment: the access log of the reverse proxy does not record the words of a search, `q` of
+  the address of the results `/folders/<folder>?view=search&q=<words>`, because HippoWiki itself never logs them and
+  people search for names and incidents (`search.md`, "Checks on the deployment" of `review-report.md`).
 - Forged headers on the deployment: the same failed login with a forged `X-Forwarded-For` and `X-Real-Ip` is logged
   with the same address as before.
 - Server port on the deployment: the port of the server is reachable only through Traefik and not directly
@@ -174,8 +174,8 @@ All from "Current limits" in `container-image.md`:
     unknown hosts refused; `X-Forwarded-For`, `X-Forwarded-Host` and `X-Forwarded-Proto` of clients replaced; body
     limits, timeouts and rate limits for `/login`, `/oauth/register`, `/oauth/token` and the MCP addresses under
     `/mcp/`; no CORS headers, no
-    change of the CSP, no shared cache; no `Authorization` header in its access logs; `/api/health` only for the
-    health checker.
+    change of the CSP, no shared cache; no `Authorization` header and no search words, `q` of the results address, in
+    its access logs; `/api/health` only for the health checker.
   - The configuration: `HIPPOWIKI_TRUSTED_PROXIES` set to the real number of proxies, `HIPPOWIKI_PUBLIC_URL` set, no
     `next dev` reachable, no `NODE_TLS_REJECT_UNAUTHORIZED=0`, no proxy for outgoing requests, no `--inspect`,
     `HIPPOWIKI_LOG_CLIENT_ADDRESS=false`, none of the `BETTER_AUTH_*` variables set.

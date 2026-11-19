@@ -140,8 +140,8 @@ The title and the rendering:
   - Rendering in the browser before a save would leave pages saved through MCP, or another client without a browser,
     without a render, and the stored HTML would not be derived from the Markdown.
   - Rendering in the browser on every view would put the page text only behind JavaScript, slow down the first
-    display, and keep public pages out of search engines. The server parses the content anyway (the title, and later
-    links and search).
+    display, and keep public pages out of search engines. The server parses the content anyway (the title, the text
+    and the language of search, and later links).
 - The page view is converted from the tokens by code of its own instead of the HTML that markdown-it renders: no
   `dangerouslySetInnerHTML`, and the elements are the Material UI components of the rest of the app.
 - Task lists are a rule of its own in `markdown.ts`, because the common plugins for them are no longer maintained.
@@ -188,7 +188,7 @@ Saves without a change:
 - a deleted page cannot be removed for good, which is not planned, and is restored only into its own folder, as a
   lasting rule (see `page-deletion.md`)
 - a page has one content in one language; the same page in several languages is not planned
-- no search, no `[[wiki links]]`, no attachments
+- no `[[wiki links]]`, no attachments
 - raw Markdown editing in a textarea
 - the title comes only from a leading `# Title` heading: no setext headings, no front matter, no live display of the
   derived title while editing an existing page

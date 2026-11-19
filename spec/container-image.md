@@ -1,12 +1,13 @@
 # HippoWiki – Container Image
 
 The container image of HippoWiki as built: one image that applies the database migrations when it starts, creates
-the admin account if there is none, and then serves the wiki, for a first pre-production environment outside the
+the admin account if there is none, makes the pages searchable that are not yet, and then serves the wiki, for a first pre-production environment outside the
 development machine. A first installation needs only the image, an empty PostgreSQL database, its address and a first
 password for the admin.
 
 Code: `Containerfile`, `.containerignore`, `scripts/image.sh`, `scripts/image-migrate.sh`, `scripts/image-admin.sh`,
-`scripts/image-start.sh`, `scripts/admin.ts` and `.github/workflows/container_image.yml`. Test: the smoke test of
+`scripts/image-search-index.sh`, `scripts/image-start.sh`, `scripts/admin.ts`, `scripts/search-index.ts` and
+`.github/workflows/container_image.yml`. Test: the smoke test of
 `scripts/image.sh` (see "Smoke test").
 
 ## Image
@@ -21,11 +22,12 @@ Code: `Containerfile`, `.containerignore`, `scripts/image.sh`, `scripts/image-mi
   to a minor version (`node:26.13-slim`). Dependabot keeps the minor version up to date and ignores major updates,
   because the major version changes together with `.nvmrc`.
 - The stages, described in the comments of the `Containerfile`: `base` (the Node.js image, the only stage that names
-  it), `deps` (`npm ci`), `build` (the standalone output of Next.js and the bundled admin setup `build/admin.mjs`; it
-  needs no database), `migrate-tools` (the Prisma CLI and `dotenv` for the migration) and `app`, the last and default
+  it), `deps` (`npm ci`), `build` (the standalone output of Next.js, the bundled admin setup `build/admin.mjs` and the
+  bundled search index `build/search-index.mjs`; it needs no database), `migrate-tools` (the Prisma CLI and `dotenv` for the migration) and `app`, the last and default
   stage.
 - The `app` stage holds the standalone server in `/app`, the migration tools in `/app/migrate`, the admin setup
-  `admin.mjs` with the password hashing built for the platform of the image, and the three start scripts. The seed
+  `admin.mjs` with the password hashing built for the platform of the image, the search index `search-index.mjs` and the
+  four start scripts. The seed
   script is left out, and no further system packages are installed.
 - Every file of the image belongs to root, and the server runs as the user `node`, so it cannot change its own code;
   only `/app/.next/cache` belongs to `node`, so that the server can write its cache.
@@ -58,7 +60,7 @@ Code: `Containerfile`, `.containerignore`, `scripts/image.sh`, `scripts/image-mi
 ## Start and database setup
 
 - `image-start.sh` runs `image-migrate.sh` (`prisma migrate deploy`) on every start of a container, then
-  `image-admin.sh` (see "Admin setup"), then starts the server.
+  `image-admin.sh` (see "Admin setup"), then `image-search-index.sh` (see "Search index"), then starts the server.
 - An empty database gets its tables this way. Every later start applies only the migrations that are not applied yet,
   and none when there are none. A new version of the image therefore updates the database when it starts.
 - When the migration fails, the script exits with a non-zero code and the server does not start.
@@ -87,6 +89,25 @@ Code: `Containerfile`, `.containerignore`, `scripts/image.sh`, `scripts/image-mi
   `scripts/admin.ts`.
 - To run it on its own, in a running container or in a one-off container after the migration, see the comment of
   `scripts/image-admin.sh`.
+
+## Search index
+
+- The search index makes the pages searchable that were stored before search, or by an older version of the
+  derivation of their search text and language, and does nothing when there are none (see "Operation" in
+  `search.md`). In the image it is the bundle `search-index.mjs` of `scripts/search-index.ts`, about 2.3 MB with the
+  language detector, started by `image-search-index.sh`.
+- `image-start.sh` runs it on every start of a container, after the admin setup and before the server, so that the
+  first search finds every page. The first start after the update of search, and after an update that changes the
+  derivation, takes longer once; a start with nothing to derive reads one empty batch and logs that no page was
+  derived.
+- When it fails, the container exits without serving. Two containers that start together may derive the same pages,
+  which does no harm.
+- It exits with 0 when every page is derived and with 1 otherwise. It changes neither the time of the last change nor
+  the last editor or the version of a page.
+- The language detector holds about 33 MB of heap once it is loaded, in the search index and in the server, which
+  loads it on the first save of a page. Next.js bundles it into the server chunks of the standalone output.
+- To run it on its own, in a running container or in a one-off container after the migration, see the comment of
+  `scripts/image-search-index.sh`.
 
 ## Configuration
 
@@ -150,8 +171,16 @@ Code: `Containerfile`, `.containerignore`, `scripts/image.sh`, `scripts/image-mi
 - There is no variable for the secret that signs the session cookies: the server generates it on first use and
   stores it in the database (table `AuthSecret`). It therefore survives a new container, and all sessions with it.
 - The database is PostgreSQL in the version pinned in `scripts/Containerfile`. The database and its user are created
-  outside HippoWiki. The user must be allowed to create tables, because the migrations run with it. The migrations
-  need no database extensions.
+  outside HippoWiki. The user must be allowed to create tables, because the migrations run with it. The database
+  needs the encoding UTF8 with a UTF-8 character type, such as `C.UTF-8` or `en_US.utf8`, and the extension `pg_trgm`
+  of the PostgreSQL contrib extensions; the stock `postgres` image has both. The migrations create `pg_trgm` where
+  the user may, which a user with the right to create objects in the database may; otherwise the operator creates it
+  once with `CREATE EXTENSION pg_trgm;`.
+- Without them the migrations stop before anything of search is created, with a message that names the fix, and the
+  container exits without serving (see "Operation" in `search.md`). The stopped migration stays recorded as failed;
+  after the fix it is marked with
+  `prisma migrate resolve --rolled-back 20261119100000_search_database_check`, in a one-off container from
+  `/app/migrate`, as the message says, and the next start applies the migrations.
 
 ## Health
 
@@ -164,10 +193,16 @@ Code: `Containerfile`, `.containerignore`, `scripts/image.sh`, `scripts/image-mi
 
 - `npm run image:smoke` (`scripts/image.sh smoke`) checks the image of `npm run image:build` against a throwaway, empty
   database, the same way locally and in CI. The list of its checks is at the top of `cmd_smoke` in `scripts/image.sh`.
-- It checks what this spec promises: that a container without a valid admin password does not serve, that a first
-  start installs the database, creates the admin and serves the wiki behind its login with the security headers, that
-  the server does not run as root and cannot change its own files, and that later starts and the commands
-  `./image-migrate.sh` and `./image-admin.sh` change nothing.
+- It checks what this spec promises:
+  - a container against a database with the character type `C` does not serve, and its output names the fix;
+  - a container without a valid admin password does not serve;
+  - a first start installs the database, creates the admin and serves the wiki behind its login with the security
+    headers;
+  - the server does not run as root and cannot change its own files;
+  - pages stored before search, as after the update of an installation with pages, are searchable after the next
+    start, with the inflections of their language, and keep their last change;
+  - later starts and the commands `./image-migrate.sh`, `./image-admin.sh` and `./image-search-index.sh` change
+    nothing.
 - It runs in a pod of its own whose names and port differ from the development database, the test database,
   `npm run dev` and the end-to-end server, so it can run next to them. It removes everything it started, also when a
   check fails.
