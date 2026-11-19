@@ -396,6 +396,30 @@ of the history.
 - The version is checked before the replacements, because a text is most often missing since someone changed the
   page, and the version error tells the agent who did and to read the page again. Rejected: checking the replacements
   first.
+- Against prompt injection the server marks page text as data and documents what it does and what is left to the
+  client, and does not limit what a connection can do: the limits of a connection (one folder, the lower of the two
+  roles, no roles, deleted pages restorable in the browser) stay the protection, and real damage needs a client that
+  follows planted text. Rejected: capping batches and adding a rate limit per grant in the same change; recording
+  prompt injection only as an accepted risk.
+- Page text is marked in three places, the instructions, the descriptions and the results, so that a client that
+  drops the instructions still shows the model the note. Rejected: the instructions and descriptions only; the content
+  as an embedded resource of its own, which clients show differently.
+- The note is a field `note` at the start of the result data, so that it reaches the model whether a client passes on
+  the text or the structured data. Rejected: a separate text block before the data, which a client that passes on only
+  the structured data drops; both, which shows the model the note twice.
+- The note is one short sentence, the same in all three places. Rejected: a second sentence that tells the model to
+  tell the user when a page asks for something, which makes every result longer.
+- Every result that carries titles or content is marked, because a planted title reaches the model through
+  `list_folder` as well. Rejected: `read_page` only.
+- Links and images in page text are left as they are, and "Prompt injection" names what the client is expected to do
+  with them. Rejected: a warning about links and images in every note.
+- Tool errors carry no note, because they hold no text that other users wrote. Rejected: the sentence at the end of
+  every tool error.
+- The log line of a tool call holds what traces the call to a grant and a tool, at the level `info`. Rejected: the
+  client address group, which puts more personal data into the log; the duration of the call.
+- Only a call that reaches a tool is logged, where the tools run. Rejected: also the calls that the SDK refuses first,
+  which needs the adapter to read the request before the SDK; every MCP request, which is noisy because clients list
+  the tools often.
 
 ## Current limits
 
