@@ -1,13 +1,15 @@
 // Runs the checks side by side instead of one after another, and prints the output of each check as one block when it
 // is done, so the outputs do not mix. `npm run check` runs the format check, the doc references, lint, the type check
-// and the unit tests; `npm run check:all` (`--all`) adds the integration tests and the build. The exit code is 1 when
+// and the unit tests; `npm run check:all` (`--all`) adds the integration tests, the build and the integration cost
+// tests. The exit code is 1 when
 // any check failed; every check still runs, so one run shows all failures.
 //
 // What must not overlap:
 // - `next typegen` writes `.next/types`, which lint and the type check read (`tsconfig.json` includes it), so it runs
 //   first and alone.
 // - `next build` writes `.next/types` again, so it starts only after lint and the type check are done.
-// - The cost tests measure wall-clock time, so they run last and alone (see `spec/testing.md`).
+// - The cost tests measure wall-clock time, so they run last and alone (see `spec/testing.md`); the integration cost
+//   tests of `npm run check:all` after them, alone as well.
 // - The integration tests use the test database container of the end-to-end tests, so `npm run check:all` never runs
 //   at the same time as `npm run test:e2e`.
 import { spawn } from "node:child_process";
@@ -70,8 +72,9 @@ if (all) {
 }
 results.push(...(await Promise.all(parallel)).flat());
 
-// Alone last: the tests with a wall-clock budget.
+// Alone last: the tests with a wall-clock budget, then those against the test database.
 results.push(await run({ name: "test:cost", command: "npm run --silent test:cost" }));
+if (all) results.push(await run({ name: "test:integration:cost", command: "npm run --silent test:integration:cost" }));
 
 const failed = results.filter(({ ok }) => !ok).map(({ name }) => name);
 const total = ((performance.now() - started) / 1000).toFixed(1);

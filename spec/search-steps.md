@@ -88,11 +88,17 @@ What the steps found out that the wrap-up moves into the other specs.
 - The detector reaches the image twice: Next.js bundles it into the server chunks of the standalone output, which a
   save uses, and esbuild into `search-index.mjs` (about 2.3 MB), which `image-search-index.sh` runs at every start
   after the admin setup. A start with nothing to derive reads one empty batch and logs that no page was derived.
-
 - `ts_headline()` drops what the parser of PostgreSQL reads as an HTML tag from the piece of text, so the piece is cut
   from the search text with a control character in place of every `<`, which the parts of the piece get back.
 - The time limit of a search is `statement_timeout`, set before each statement of its transaction to what is left of
   the 5 seconds; `transaction_timeout` of PostgreSQL 17 and later was not used, because it ends the connection.
+- Measured by `integration/search-size.cost.test.ts` on the development machine (Mac16,7, Podman machine with 7 CPUs),
+  three runs: in a folder of 3,000 pages of about 20,000 characters, 100 of them at the content limit, in all 22
+  configurations and with a vocabulary of 200,000 words drawn by Zipf's law, a search took 0.3 to 0.6 s (a correct
+  word about 0.43 s, a typo 0.55 s, a part of a word 0.38 s, two words 0.33 s, a phrase 0.57 s, a word that most pages
+  hold 0.41 s, a search over every language 0.56 s), a search whose 100 results are pages at the content limit about
+  0.9 s, and a new page at the content limit about 0.15 s, the save of new content into it about 0.09 s. Filling the
+  folder through the triggers took about 28 s. The caps, the threshold and the query needed no change.
 
 ## Checklist
 
@@ -103,7 +109,7 @@ What the steps found out that the wrap-up moves into the other specs.
 - [x] Search words
 - [x] Matching and order
 - [x] Pieces of text, limits and log
-- [ ] Search at size
+- [x] Search at size
 - [ ] Results view
 - [ ] Search field
 - [ ] Search tool for AI apps

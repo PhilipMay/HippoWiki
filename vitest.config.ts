@@ -32,12 +32,30 @@ export default defineConfig({
           name: "integration",
           environment: "node",
           include: ["integration/**/*.test.ts"],
+          exclude: ["integration/**/*.cost.test.ts"],
           globalSetup: ["integration/global-setup.ts"],
-          setupFiles: ["integration/setup.ts"],
+          setupFiles: ["integration/setup.ts", "integration/empty-before-each.ts"],
           // All test files share one database, so they run one after another.
           fileParallelism: false,
           // Starting the container and applying the migrations takes a while on a cold machine.
           hookTimeout: 120_000,
+        },
+      },
+      {
+        // Wall-clock budgets against the test database (`npm run test:integration:cost`), such as a search in a full
+        // folder. Never next to other tests, so the time measures the database and the code alone; the tables are
+        // filled once per file, not emptied before every test.
+        test: {
+          name: "integration-cost",
+          environment: "node",
+          include: ["integration/**/*.cost.test.ts"],
+          globalSetup: ["integration/global-setup.ts"],
+          setupFiles: ["integration/setup.ts"],
+          fileParallelism: false,
+          // Filling a folder of thousands of pages takes minutes on a slow machine.
+          hookTimeout: 600_000,
+          // The budgets are asserted by the tests themselves; this only ends a test that hangs.
+          testTimeout: 60_000,
         },
       },
     ],

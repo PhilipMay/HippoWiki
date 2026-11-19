@@ -1,9 +1,11 @@
-// Runs before every integration test file. The application code reads and writes the test database through the
-// client of e2e/support/database.ts, so `getDb()` never sees DATABASE_URL and never touches the development database.
+// Runs before every integration test file, of the integration tests and of the integration cost tests. The application
+// code reads and writes the test database through the client of e2e/support/database.ts, so `getDb()` never sees
+// DATABASE_URL and never touches the development database. The integration tests also empty the tables before every
+// test (`empty-before-each.ts`); the cost tests fill theirs once.
 import { config } from "dotenv";
-import { afterAll, beforeEach, vi } from "vitest";
+import { afterAll, vi } from "vitest";
 
-import { disconnectTestDb, emptyTestDatabase } from "../e2e/support/database";
+import { disconnectTestDb } from "../e2e/support/database";
 
 // Only read so that `testDatabaseUrl()` can refuse a DATABASE_URL that points to the test database.
 config({ quiet: true });
@@ -29,11 +31,6 @@ vi.mock(import("@/lib/env"), async (importOriginal) => {
       HIPPOWIKI_PUBLIC_URL: "https://wiki.example.com",
     }),
   };
-});
-
-// The integration tests start from empty tables; the known users of the end-to-end tests are not created here.
-beforeEach(async () => {
-  await emptyTestDatabase();
 });
 
 afterAll(async () => {

@@ -45,11 +45,12 @@ Node.js is managed with nvm; every shell session needs `nvm use` first (it reads
 source ~/.nvm/nvm.sh && nvm use
 npm install
 npm run check   # format:check, docs:check, knip, lint, typecheck, test, side by side
-npm run check:all  # check, test:integration and build side by side
+npm run check:all  # check, test:integration and build side by side, then test:integration:cost
 npm run test:coverage  # unit test coverage, report in coverage/
 npm run test:cost  # tests with a time budget, on their own and without coverage
 npm run build
 npm run test:integration  # integration tests against a throwaway database container, needs only Podman
+npm run test:integration:cost  # integration tests with a time budget, on their own, needs only Podman
 npm run test:e2e  # end-to-end tests in a throwaway database container, needs only Podman
 npm run test:e2e:production  # the same end-to-end tests against a production build (next build, next start)
 ```
