@@ -34,6 +34,8 @@ model Folder {
   oauthCodes     OAuthCode[]
   /// The words of the pages of the folder, for search.
   searchWords    SearchWord[]
+  /// The wiki links of the pages of the folder.
+  pageLinks      PageLink[]
 }
 
 /// The role of a user on a folder (`src/features/folder-roles/roles.ts`): what the user may see and do with the folder
@@ -143,6 +145,11 @@ model Page {
   /// The search vector of the title, the name and `searchText` with the configuration of the page, which a trigger
   /// of the migration builds on every write of them; never written by the application.
   searchVector       Unsupported("tsvector")?
+  /// The wiki links of the content, stored by every write of the content (`src/features/pages/links-service.ts`).
+  links              PageLink[]
+  /// The version of the code that derived `links` (`LINK_INDEX_VERSION` of `src/features/pages/wiki-links.ts`); 0 for
+  /// a page that was never derived. The server derives every page whose version differs before it serves.
+  linkIndexVersion   Int                      @default(0)
 
   // Pages in a tab: unique within the tab. Deleted pages have no tab, so they are not covered.
   @@unique([tabId, name])
@@ -170,6 +177,30 @@ model SearchWord {
   @@id([folderId, word])
   // Parts of words and typos, with `pg_trgm`.
   @@index([word(ops: raw("gin_trgm_ops"))], type: Gin)
+}
+
+/// A wiki link of a page: one row per distinct valid target of its content (`src/features/pages/wiki-links.ts`), so that
+/// the pages that link to a page, for its backlinks and for the update of the links when it is renamed, are one indexed
+/// read. Derived data, stored in the same write as the content of the page (`src/features/pages/links-service.ts`),
+/// for deleted pages too, so that a restore needs nothing; the reads leave deleted pages out. A target names a page of
+/// the folder of the linking page by its name and place, whether such a page exists or not.
+model PageLink {
+  id       String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// The page that holds the link. Pages are never removed, only soft deleted.
+  pageId   String  @db.Uuid
+  page     Page    @relation(fields: [pageId], references: [id], onDelete: Restrict)
+  /// The folder of the linking page, which is the folder of the target.
+  folderId String  @db.Uuid
+  folder   Folder  @relation(fields: [folderId], references: [id], onDelete: Restrict)
+  /// The name of the tab of the target, or `null` for a page placed directly in the folder.
+  tabName  String?
+  /// The name of the page of the target.
+  pageName String
+
+  // The links of a page, which a write of its content replaces.
+  @@index([pageId])
+  // The pages that link to a name and place of a folder.
+  @@index([folderId, tabName, pageName])
 }
 
 /// A revision of a page: its content and title after a content change, stored in the same write as the change

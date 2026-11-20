@@ -265,6 +265,15 @@ export const readPageOutput = z.object({
   lastEditedBy: lastEditedByOutput("page"),
   lastEditedVia: lastEditedViaOutput("page"),
   version: z.number().int().describe("The version of the page, counted up by every change"),
+  linkedFrom: z
+    .array(
+      z.object({
+        name: z.string().describe("The name of the page, as read_page takes it"),
+        tab: pageTabOutput("is"),
+        title: z.string(),
+      }),
+    )
+    .describe("The other pages of the folder that hold a wiki link to this page, sorted by title"),
 });
 
 export const storedPageOutput = z.object({

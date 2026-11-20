@@ -22,7 +22,8 @@
 // none. The history is read by `history-service.ts`, only for the actor of the browser.
 //
 // Every write that stores content also stores what search reads of it, in the same write (`searchIndexData()` of
-// `src/features/search/index-data.ts`): a new page, a content save and a revert. A trigger of the database builds the
+// `src/features/search/index-data.ts`), and the wiki links of the content (`src/features/pages/links-service.ts`): a
+// new page, a content save and a revert. A trigger of the database builds the
 // vector and the words of the folder from it, and sees a move, a rename, a delete and a restore by itself.
 
 import type { Role } from "@/features/folder-roles/roles";
@@ -56,8 +57,9 @@ import {
   type PageFieldErrors,
 } from "@/features/pages/schema";
 import { deriveName } from "@/features/pages/derive";
+import { LINK_INDEX_DATA, storeLinks } from "@/features/pages/links-service";
 import { wikiLinkTargetText } from "@/features/pages/wiki-link-target";
-import { wikiLinksOf } from "@/features/pages/wiki-links";
+import { linkRowsOf, wikiLinksOf } from "@/features/pages/wiki-links";
 import { NEXT_VERSION, softDeleteData } from "@/features/pages/writes";
 import { searchIndexData } from "@/features/search/index-data";
 import { LAST_EDITOR_SELECT, withLastEditor, type LastEditor } from "@/features/users/records";
@@ -512,6 +514,8 @@ export async function createPage(
         title,
         content,
         ...search,
+        ...LINK_INDEX_DATA,
+        links: { createMany: { data: linkRowsOf(content, parsedFolderId) } },
         tabId,
         folderId: parsedFolderId,
         lastEditedById,
@@ -592,7 +596,7 @@ async function storeContentChange(
       // row.
       const { count } = await tx.page.updateMany({
         where: revertedTo === null ? { ...current, content: { not: change.content } } : current,
-        data: { ...change, ...search, ...NEXT_VERSION },
+        data: { ...change, ...search, ...LINK_INDEX_DATA, ...NEXT_VERSION },
       });
       if (count === 0) {
         if (revertedTo !== null) return { kind: "refused" };
@@ -611,6 +615,8 @@ async function storeContentChange(
         orderBy: { number: "desc" },
         select: { number: true },
       });
+      // The links of the content as it is stored: a revert stores those of the old content as they are.
+      await storeLinks(tx, pageId, change.content);
       await tx.pageRevision.create({
         data: {
           pageId,

@@ -47,6 +47,7 @@ const mocks = vi.hoisted(() => ({
   renameTab: vi.fn(),
   deleteTab: vi.fn(),
   searchPages: vi.fn(),
+  listLinkingPages: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
@@ -68,6 +69,7 @@ vi.mock("@/features/pages/service", () => ({
   deletePage: mocks.deletePage,
 }));
 vi.mock("@/features/search/service", () => ({ searchPages: mocks.searchPages }));
+vi.mock("@/features/pages/links-service", () => ({ listLinkingPages: mocks.listLinkingPages }));
 vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, error: mocks.error } }));
 // The real parse, watched, to see whether the content was parsed.
 vi.mock("@/features/pages/markdown", async (importOriginal) => {
@@ -145,6 +147,7 @@ function expectToolNotFound(answer: Answer, name: string): void {
 beforeEach(() => {
   vi.resetAllMocks();
   actor = READER;
+  mocks.listLinkingPages.mockResolvedValue([]);
 });
 
 describe("the instructions", () => {
@@ -382,8 +385,36 @@ describe("read_page", () => {
       lastEditedBy: "alice",
       lastEditedVia: "mcp",
       version: 4,
+      linkedFrom: [],
     });
     expect(JSON.parse(result.content[0]?.text ?? "")).toEqual(result.structuredContent);
+  });
+
+  it("returns the pages that link to the page with their name, tab and title (R17)", async () => {
+    mocks.getPage.mockResolvedValue(PAGE);
+    mocks.listLinkingPages.mockResolvedValue([
+      { id: "p2", name: "first-week", title: "First week", tab: null },
+      { id: "p3", name: "onboarding", title: "Onboarding", tab: { name: "guides" } },
+    ]);
+
+    const result = await callTool("read_page", { tab: "guides", page: "setup" });
+
+    expect(mocks.listLinkingPages).toHaveBeenCalledExactlyOnceWith(READER, "p1");
+    const linkedFrom = [
+      { name: "first-week", tab: null, title: "First week" },
+      { name: "onboarding", tab: "guides", title: "Onboarding" },
+    ];
+    expect(result.structuredContent).toMatchObject({ linkedFrom });
+    expect(JSON.parse(result.content[0]?.text ?? "")).toMatchObject({ linkedFrom });
+  });
+
+  it("answers a page deleted between the two reads like a missing one", async () => {
+    mocks.getPage.mockResolvedValue(PAGE);
+    mocks.listLinkingPages.mockResolvedValue(null);
+
+    expect(errorOf(await callTool("read_page", { tab: "guides", page: "setup" }))).toContain(
+      'There is no page named "setup" in the tab "guides"',
+    );
   });
 
   it("passes on a title and content that look like instructions unchanged, after the note", async () => {

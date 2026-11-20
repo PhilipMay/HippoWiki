@@ -359,3 +359,40 @@ test.describe("wiki links in the page view", () => {
     ).toHaveAttribute("href", "/folders/handbook/setup.md");
   });
 });
+
+test.describe("Linked from (R12)", () => {
+  /** The section "Linked from" of the page view. */
+  function linkedFrom(page: BrowserPage) {
+    return page.getByRole("region", { name: "Linked from" });
+  }
+
+  test("lists the pages that link to a page by title, leading to them, and loses a deleted one", async ({ page }) => {
+    const errors = collectErrors(page);
+    const guides = await createTab({ folder: handbook, name: "guides" });
+    await createPage({ tab: guides, name: "setup", content: "# Setup guide\n\n[[guides/setup]]" });
+    await createPage({ tab: guides, name: "onboarding", content: "# Onboarding\n\n[[guides/setup|the setup]]" });
+    await createPage({ folder: handbook, name: "first-week", content: "# First week\n\n[[guides/setup]]" });
+
+    await page.goto("/folders/handbook/guides/setup.md");
+    await expect(linkedFrom(page).getByRole("link")).toHaveText(["First week", "Onboarding"]);
+    await expect(linkedFrom(page).getByRole("listitem")).toHaveText(["First week", "Onboarding in guides"]);
+    await linkedFrom(page).getByRole("link", { name: "Onboarding" }).click();
+    await expect(page).toHaveURL("/folders/handbook/guides/onboarding.md");
+
+    await page.goto("/folders/handbook/first-week.md?action=delete");
+    await page.getByRole("dialog", { name: "Delete page" }).getByRole("button", { name: "Delete" }).click();
+    await expect(page).toHaveURL("/folders/handbook");
+    await page.goto("/folders/handbook/guides/setup.md");
+    await expect(linkedFrom(page).getByRole("link")).toHaveText(["Onboarding"]);
+    expect(errors).toEqual([]);
+  });
+
+  test("says that no page links here, also to a Reader", async ({ page }) => {
+    await createPage({ folder: handbook, name: "alone", content: "# Alone\n\n[[alone]]" });
+    await setOwnRole(handbook, "reader");
+
+    await page.goto("/folders/handbook/alone.md");
+    await expect(linkedFrom(page)).toContainText("No page links here.");
+    await expect(linkedFrom(page).getByRole("link")).toHaveCount(0);
+  });
+});

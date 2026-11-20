@@ -6,6 +6,7 @@ import { cache } from "react";
 import { requireUser } from "@/features/auth/session";
 import { inBrowser } from "@/features/folder-roles/actors";
 import * as historyService from "@/features/pages/history-service";
+import * as linksService from "@/features/pages/links-service";
 import * as pageService from "@/features/pages/service";
 
 // Every query starts with `connection()`: without a request-time API, Next.js would prerender the calling route at
@@ -64,6 +65,13 @@ export async function resolveWikiLinks(
   await connection();
   const user = await requireUser();
   return pageService.resolveWikiLinks(inBrowser(user), folderId, content);
+}
+
+/** The other pages of the folder that link to the page, sorted by title; deleted pages are left out. */
+export async function listLinkingPages(pageId: string): Promise<linksService.LinkingPage[] | null> {
+  await connection();
+  const user = await requireUser();
+  return linksService.listLinkingPages(inBrowser(user), pageId);
 }
 
 /** The deleted pages of the folder with id, name, title and time of deletion, without their content, newest first. */

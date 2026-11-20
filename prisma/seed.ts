@@ -4,6 +4,7 @@
 // again gives them their known passwords back and leaves their types as they are, because a type never changes.
 import { titleFromContent } from "../src/features/pages/derive";
 import { searchIndexData } from "../src/features/search/index-data";
+import { LINK_INDEX_VERSION, linkRowsOf } from "../src/features/pages/wiki-links";
 import type { ChangeChannel } from "../src/generated/prisma/client";
 import { CREDENTIAL_PROVIDER_ID, newUserData } from "../src/features/users/records";
 import { getDb } from "../src/lib/db";
@@ -130,12 +131,24 @@ async function main() {
         lastEditedVia,
       };
       const revision = { title, content, userId: lastEditedById, via: lastEditedVia };
+      // The wiki links of the content, like a save; an update replaces those of the content before.
+      const links = linkRowsOf(content, folder.id);
       // Like every content change, the sample content is recorded as a revision: revision 1 of a new page, and the
       // next one of a page whose content was changed since it was seeded.
       await db.page.upsert({
         where: { id },
-        create: { id, ...data, revisions: { create: { number: 1, ...revision } } },
-        update: data,
+        create: {
+          id,
+          ...data,
+          linkIndexVersion: LINK_INDEX_VERSION,
+          links: { createMany: { data: links } },
+          revisions: { create: { number: 1, ...revision } },
+        },
+        update: {
+          ...data,
+          linkIndexVersion: LINK_INDEX_VERSION,
+          links: { deleteMany: {}, createMany: { data: links } },
+        },
       });
       const newest = await db.pageRevision.findFirst({
         where: { pageId: id },

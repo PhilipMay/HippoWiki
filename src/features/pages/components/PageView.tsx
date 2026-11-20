@@ -14,8 +14,9 @@ import { deletePage, moveOrRenamePage, updatePageContent } from "@/features/page
 import DeletePageDialog from "@/features/pages/components/DeletePageDialog";
 import MarkdownContent from "@/features/pages/components/MarkdownContent";
 import MoveOrRenamePageDialog from "@/features/pages/components/MoveOrRenamePageDialog";
+import LinkedFrom from "@/features/pages/components/LinkedFrom";
 import PageForm from "@/features/pages/components/PageForm";
-import { resolveWikiLinks } from "@/features/pages/queries";
+import { listLinkingPages, resolveWikiLinks } from "@/features/pages/queries";
 import type { PageWithPlace } from "@/features/pages/service";
 import { editorWithChannel } from "@/features/users/records";
 import { changedPageForm } from "@/features/pages/changed-page";
@@ -63,6 +64,7 @@ export default async function PageView({ page, action, notice }: PageViewProps) 
   // Only the "Move or rename page" dialog needs the tabs of the folder.
   const tabs = action === "move-or-rename" ? ((await listTabs(page.folder.id)) ?? notFound()) : [];
   const resolution = (await resolveWikiLinks(page.folder.id, page.content)) ?? notFound();
+  const linkingPages = (await listLinkingPages(page.id)) ?? notFound();
   const links = { folderName, mayCreatePages: mayDoFolderAction(page.role, "new"), resolution };
 
   return (
@@ -104,6 +106,7 @@ export default async function PageView({ page, action, notice }: PageViewProps) 
         <Divider sx={{ mb: 3 }} />
         <MarkdownContent links={links}>{page.content}</MarkdownContent>
       </Paper>
+      <LinkedFrom folderName={folderName} pages={linkingPages} />
       {action === "move-or-rename" && (
         <MoveOrRenamePageDialog
           key={formKey}

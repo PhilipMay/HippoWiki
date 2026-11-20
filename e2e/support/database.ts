@@ -11,6 +11,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 
 import { generateAccessToken, hashSecret } from "@/features/oauth/secret";
 import { titleFromContent } from "@/features/pages/derive";
+import { LINK_INDEX_VERSION, linkRowsOf } from "@/features/pages/wiki-links";
 import { searchIndexData } from "@/features/search/index-data";
 import { newUserData, type NewUser } from "@/features/users/records";
 import {
@@ -366,8 +367,9 @@ type CreatePageData = Partial<
  * it cannot be combined with `tab`. Like a page after the migration of the page history, the page gets revision 1
  * with its content, title, last editor and channel, made at its `updatedAt`; `createRevisions()` adds more. Like a
  * save, the page stores what search reads of its content (`searchIndexData()`), so that the trigger of the database
- * indexes it; the search columns can be given, e.g. `searchText: null`, `searchLanguage: null` and
- * `searchIndexVersion: 0` for a page stored before search.
+ * indexes it, and the wiki links of its content; the search columns can be given, e.g. `searchText: null`,
+ * `searchLanguage: null` and `searchIndexVersion: 0` for a page stored before search, and `linkIndexVersion: 0` for a
+ * page stored before the index of links, together with `links: {}` for no rows.
  */
 export async function createPage({ folder, tab, editor, via = "web", ...data }: CreatePageData = {}): Promise<Page> {
   if (tab && data.deletedAt) throw new Error("A deleted page has no tab: give a folder instead");
@@ -380,6 +382,8 @@ export async function createPage({ folder, tab, editor, via = "web", ...data }: 
     data: {
       name: `test-page-${crypto.randomUUID()}`,
       ...(await searchIndexData(content)),
+      linkIndexVersion: LINK_INDEX_VERSION,
+      links: { createMany: { data: linkRowsOf(content, folderId) } },
       ...data,
       title,
       content,
@@ -412,8 +416,8 @@ type CreateRevisionsData = {
 
 /**
  * Adds revisions to a page directly in the test database, numbered on from its newest revision, and gives the page
- * the content and title of the last one, with what search reads of that content, like the content saves that recorded
- * them would have. The version, the last editor and `updatedAt` of the page stay as they are. Returns the added
+ * the content and title of the last one, with what search reads of that content and its wiki links, like the content
+ * saves that recorded them would have. The version, the last editor and `updatedAt` of the page stay as they are. Returns the added
  * revisions, oldest first.
  */
 export async function createRevisions({
@@ -452,6 +456,8 @@ export async function createRevisions({
       content: last.content,
       title: last.title,
       ...(await searchIndexData(last.content)),
+      linkIndexVersion: LINK_INDEX_VERSION,
+      links: { deleteMany: {}, createMany: { data: linkRowsOf(last.content, page.folderId) } },
       updatedAt: page.updatedAt,
     },
   });

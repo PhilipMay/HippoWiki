@@ -20,6 +20,9 @@ export const mocks = {
   revisionFindUnique: vi.fn(),
   roleFindFirst: vi.fn(),
   tabFindMany: vi.fn(),
+  findUniqueOrThrow: vi.fn(),
+  linkDeleteMany: vi.fn(),
+  linkCreateMany: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
@@ -54,12 +57,15 @@ export function resetPagesServiceMocks(): void {
   vi.resetAllMocks();
   mocks.findMany.mockResolvedValue([]);
   mocks.tabFindMany.mockResolvedValue([]);
+  // The folder of a page whose links a content change stores.
+  mocks.findUniqueOrThrow.mockResolvedValue({ folderId: "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10" });
   // The actor is Owner of every folder, unless a test says otherwise.
   mocks.roleFindFirst.mockResolvedValue({ role: "owner" });
   // An interactive transaction runs its callback with a client of its own.
   mocks.transaction.mockImplementation((run: (tx: unknown) => Promise<unknown>) =>
     run({
-      page: { findFirst: mocks.findFirst, updateMany: mocks.updateMany },
+      page: { findFirst: mocks.findFirst, findUniqueOrThrow: mocks.findUniqueOrThrow, updateMany: mocks.updateMany },
+      pageLink: { deleteMany: mocks.linkDeleteMany, createMany: mocks.linkCreateMany },
       pageRevision: { findFirst: mocks.revisionFindFirst, create: mocks.revisionCreate },
     }),
   );

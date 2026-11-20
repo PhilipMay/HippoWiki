@@ -289,12 +289,12 @@ smoke_words() {
   smoke_sql 'SELECT "folderId", word, pages FROM "SearchWord" ORDER BY "folderId", word'
 }
 
-# Stores a folder with a page and a deleted page as they were before search: without search text, with the version 0
-# of the derivation. The admin is their last editor, the only user the smoke test has.
+# Stores a folder with a page and a deleted page as they were before search and the index of wiki links: without search
+# text and links, with the version 0 of both derivations. The page links to itself. The admin is their last editor, the only user the smoke test has.
 smoke_store_pages_before_search() {
   local content="# Sicherung der Datenbank
 
-Jede Nacht um zwei Uhr schreibt der Server eine vollständige Sicherung der Datenbank in den Speicher des zweiten Rechenzentrums. Die Sicherungen werden dreißig Tage lang aufbewahrt."
+Jede Nacht um zwei Uhr schreibt der Server eine vollständige Sicherung der Datenbank in den Speicher des zweiten Rechenzentrums. Die Sicherungen werden dreißig Tage lang aufbewahrt. Siehe [[sicherung]]."
   smoke_sql "INSERT INTO \"Folder\" (id, name, \"updatedAt\", \"lastEditedById\", \"lastEditedVia\")
     SELECT '${SMOKE_FOLDER_ID}', 'smoke', '2026-01-02 03:04:05+00', id, 'web' FROM \"User\" WHERE username = 'admin'" >/dev/null
   smoke_sql "INSERT INTO \"Page\" (id, title, name, content, \"folderId\", \"updatedAt\", \"deletedAt\", \"lastEditedById\", \"lastEditedVia\", version)
@@ -319,8 +319,8 @@ forgotten\$\$, '${SMOKE_FOLDER_ID}', '2026-01-02 03:04:05+00', '2026-01-03 00:00
 # - /api/health answers on 127.0.0.1 inside the container; the server does not run as root; there is no .env file;
 #   the user node can write only the cache of Next.js.
 # - A second container without HIPPOWIKI_ADMIN_PASSWORD serves, applies no migration and leaves the admin as it was;
-#   it derives the pages stored before it with the version 0 of the derivation, a deleted one included, and keeps their
-#   time of the last change, last editor and version.
+#   it derives the search index and the wiki links of the pages stored before it with the version 0 of the
+#   derivations, a deleted one included, and keeps their time of the last change, last editor and version.
 # - ./image-migrate.sh, ./image-admin.sh (with another password) and ./image-search-index.sh exit with 0 and change
 #   nothing, and so does a third container.
 # A wrong database password would not make it fail: in the pod the application reaches PostgreSQL over 127.0.0.1, and
@@ -464,6 +464,10 @@ cmd_smoke() {
   if [[ "$(smoke_sql "SELECT count(*) FROM \"Page\" WHERE \"searchIndexVersion\" = 0 OR \"searchVector\" IS NULL")" != "0" ]]; then
     smoke_fail "the second start left pages without their search index."
   fi
+  if [[ "$(smoke_sql "SELECT count(*) FROM \"Page\" WHERE \"linkIndexVersion\" = 0")" != "0" ||
+    "$(smoke_sql "SELECT count(*) FROM \"PageLink\" WHERE \"pageId\" = '${SMOKE_PAGE_ID}' AND \"pageName\" = 'sicherung'")" != "1" ]]; then
+    smoke_fail "the second start left pages without their wiki links."
+  fi
   if [[ "$(smoke_sql "SELECT \"searchLanguage\" FROM \"Page\" WHERE id = '${SMOKE_PAGE_ID}'")" != "german" ]]; then
     smoke_fail "the second start did not give the German page the language german."
   fi
@@ -477,7 +481,7 @@ cmd_smoke() {
   if [[ "$(cut -d'|' -f1-4 <<<"$pages")" != "$(cut -d'|' -f1-4 <<<"$pages_before")" ]]; then
     smoke_fail "the second start changed the time of the last change, the last editor or the version of a page."
   fi
-  echo "ok: the second start made the pages stored before search searchable, and kept their last change"
+  echo "ok: the second start made the pages stored before search searchable, derived their wiki links, and kept their last change"
   local words
   words="$(smoke_words)"
 
@@ -508,7 +512,7 @@ cmd_smoke() {
     echo "$output" >&2
     smoke_fail "./image-search-index.sh failed against the derived database."
   fi
-  if [[ "$output" != *"no page derived"* ]]; then
+  if [[ "$output" != *"Search index up to date, no page derived"* || "$output" != *"Wiki links up to date, no page derived"* ]]; then
     echo "$output" >&2
     smoke_fail "./image-search-index.sh did not report that no page was derived."
   fi

@@ -232,6 +232,7 @@ test("read_page reads a page placed directly in the folder and a page in a tab, 
     lastEditedBy: KNOWN_USER.name,
     lastEditedVia: "web",
     version: 3,
+    linkedFrom: [],
   });
   expect(inTab.structuredContent).toMatchObject({
     name: "install",
@@ -240,6 +241,23 @@ test("read_page reads a page placed directly in the folder and a page in a tab, 
     content: "# Install\n\n1. Download\n2. Run",
     address: `${ISSUER}/folders/projects/guides/install.md`,
     version: 1,
+  });
+});
+
+test("read_page returns the pages that link to the page, with their tab and name (R17)", async ({ request }) => {
+  const guides = await createTab({ folder: projects, name: "guides" });
+  await createPage({ tab: guides, name: "setup", content: "# Setup guide" });
+  await createPage({ tab: guides, name: "onboarding", content: "# Onboarding\n\n[[guides/setup]]" });
+  await createPage({ folder: projects, name: "first-week", content: "# First week\n\n[[guides/setup|the setup]]" });
+  await createPage({ folder: projects, name: "unrelated", content: "# Unrelated\n\n[[setup]]" });
+
+  const result = await call(request, "read_page", { tab: "guides", page: "setup" });
+
+  expect(result.structuredContent).toMatchObject({
+    linkedFrom: [
+      { name: "first-week", tab: null, title: "First week" },
+      { name: "onboarding", tab: "guides", title: "Onboarding" },
+    ],
   });
 });
 

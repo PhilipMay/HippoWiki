@@ -2,7 +2,14 @@
 // stores, and where the target of each link stands in the content. Pure, without server-only imports.
 
 import { isWikiLink, parseMarkdown } from "@/features/pages/markdown";
-import type { WikiLinkTarget } from "@/features/pages/wiki-link-target";
+import { wikiLinkTargetText, type WikiLinkTarget } from "@/features/pages/wiki-link-target";
+
+/**
+ * The version of how the links of a page are derived for the index of links (`PageLink`). Count it up with every change
+ * of the parse or of `linkTargetsOf()` that changes what they derive: the server then derives every page whose stored
+ * version differs again before it serves.
+ */
+export const LINK_INDEX_VERSION = 1;
 
 /** A wiki link of the content. */
 export type WikiLink = {
@@ -59,4 +66,24 @@ export function wikiLinksOf(content: string): WikiLink[] {
     }
   }
   return links;
+}
+
+/**
+ * The targets of the content that the index of links stores: each valid target once, in the order of its first link. A
+ * target that breaks the name rule names no page and is left out; a link of the page to itself is kept.
+ */
+export function linkTargetsOf(content: string): WikiLinkTarget[] {
+  const targets = new Map<string, WikiLinkTarget>();
+  for (const { page } of wikiLinksOf(content)) {
+    if (page && !targets.has(wikiLinkTargetText(page))) targets.set(wikiLinkTargetText(page), page);
+  }
+  return [...targets.values()];
+}
+
+/** The rows of the index of links of a page of the given folder with the given content, without the page. */
+export function linkRowsOf(
+  content: string,
+  folderId: string,
+): { folderId: string; tabName: string | null; pageName: string }[] {
+  return linkTargetsOf(content).map(({ tab, name }) => ({ folderId, tabName: tab, pageName: name }));
 }

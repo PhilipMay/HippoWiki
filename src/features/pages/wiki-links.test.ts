@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { wikiLinksOf } from "@/features/pages/wiki-links";
+import { linkRowsOf, linkTargetsOf, wikiLinksOf } from "@/features/pages/wiki-links";
 
 /** The targets of the wiki links of the content, as written. */
 function targets(content: string): string[] {
@@ -153,5 +153,23 @@ describe("wikiLinksOf", () => {
       const content = "[[a]] [[a]] [[a]]";
       expect(wikiLinksOf(content).map((link) => link.position)).toEqual([2, 8, 14]);
     });
+  });
+});
+
+describe("linkTargetsOf", () => {
+  it("gives each valid target once, in the order of its first link, a link of the page to itself included", () => {
+    const content = "# Setup\n\n[[guides/setup]] [[faq]] [[guides/setup|again]] [[Setup Guide]] `[[code]]` [[setup]]";
+    expect(linkTargetsOf(content)).toEqual([
+      { tab: "guides", name: "setup" },
+      { tab: null, name: "faq" },
+      { tab: null, name: "setup" },
+    ]);
+  });
+
+  it("gives the rows of the index of links of a folder", () => {
+    expect(linkRowsOf("[[a]] [[t/b]]", "folder")).toEqual([
+      { folderId: "folder", tabName: null, pageName: "a" },
+      { folderId: "folder", tabName: "t", pageName: "b" },
+    ]);
   });
 });

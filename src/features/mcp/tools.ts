@@ -35,6 +35,7 @@ import type {
 import { applyEdits, type EditsResult } from "@/features/mcp/edits";
 import { NAME_RULE, USER_TEXT_NOTE } from "@/features/mcp/tool-schemas";
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
+import * as linksService from "@/features/pages/links-service";
 import { TITLE_HEADING_MISSING_MESSAGE } from "@/features/pages/schema";
 import * as pageService from "@/features/pages/service";
 import {
@@ -241,6 +242,9 @@ export async function readPage(
     const tab = input.tab ?? null;
     const page = await pageService.getPage(options.actor, options.folder.name, tab, input.page);
     if (!page) return pageNotFound(options.folder.name, tab, input.page);
+    // `null` when the page was deleted since, or the actor may no longer read the folder.
+    const linking = await linksService.listLinkingPages(options.actor, page.id);
+    if (!linking) return pageNotFound(options.folder.name, tab, input.page);
     return result(
       withNote({
         name: page.name,
@@ -253,6 +257,11 @@ export async function readPage(
         lastEditedBy: page.lastEditedBy.name,
         lastEditedVia: page.lastEditedBy.via,
         version: page.version,
+        linkedFrom: linking.map((linked) => ({
+          name: linked.name,
+          tab: linked.tab?.name ?? null,
+          title: linked.title,
+        })),
       }) satisfies z.infer<typeof readPageOutput>,
     );
   });

@@ -13,6 +13,7 @@ import {
 import type { ContentActor } from "@/features/folder-roles/actors";
 import { CONTENT_MAX_TABLE_CELLS } from "@/features/pages/limits";
 import { SEARCH_INDEX_VERSION } from "@/features/search/index-data";
+import { LINK_INDEX_VERSION } from "@/features/pages/wiki-links";
 import { CONTENT_TABLE_CELLS_MESSAGE } from "@/features/pages/schema";
 import {
   mocks,
@@ -186,9 +187,29 @@ describe("createPage", () => {
       searchText: "Text",
       searchLanguage: "simple",
       searchIndexVersion: SEARCH_INDEX_VERSION,
+      // The wiki links of the content: none here.
+      linkIndexVersion: LINK_INDEX_VERSION,
+      links: { createMany: { data: [] } },
       revisions: { create: { number: 1, title: "My page", content: CONTENT, userId: ACTOR_ID, via: "web" } },
     });
     expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID, channel: "web" }, "page created");
+  });
+
+  it("stores the wiki links of the content of a new page", async () => {
+    mocks.create.mockResolvedValue({ id: PAGE_ID, name: "n", folder: { name: "f" }, tab: null });
+
+    await createPage(ACTOR, FOLDER_ID, { content: "# T\n\n[[setup]] [[guides/setup]] [[setup]]", tabId: null });
+
+    expect(dataOf(mocks.create)).toMatchObject({
+      links: {
+        createMany: {
+          data: [
+            { folderId: FOLDER_ID, tabName: null, pageName: "setup" },
+            { folderId: FOLDER_ID, tabName: "guides", pageName: "setup" },
+          ],
+        },
+      },
+    });
   });
 
   it("stores the search text and the language of the content of a new page", async () => {
@@ -352,9 +373,22 @@ describe("updatePageContent", () => {
       searchText: "Text",
       searchLanguage: "simple",
       searchIndexVersion: SEARCH_INDEX_VERSION,
+      linkIndexVersion: LINK_INDEX_VERSION,
       version: { increment: 1 },
     });
     expect(mocks.info).toHaveBeenCalledWith({ pageId: PAGE_ID, channel: "web" }, "page updated");
+  });
+
+  it("replaces the wiki links of the page with those of the saved content, in the transaction of the save", async () => {
+    mocks.updateMany.mockResolvedValue({ count: 1 });
+    mocks.findUnique.mockResolvedValue(STORED);
+
+    await updatePageContent(ACTOR, PAGE_ID, { ...VALID, content: "# My page\n\n[[faq]]" });
+
+    expect(mocks.linkDeleteMany).toHaveBeenCalledExactlyOnceWith({ where: { pageId: PAGE_ID } });
+    expect(mocks.linkCreateMany).toHaveBeenCalledExactlyOnceWith({
+      data: [{ folderId: FOLDER_ID, tabName: null, pageName: "faq", pageId: PAGE_ID }],
+    });
   });
 
   it("stores the search text and the language of the saved content", async () => {
@@ -624,6 +658,7 @@ describe("revertPage", () => {
       searchText: "Old text",
       searchLanguage: "simple",
       searchIndexVersion: SEARCH_INDEX_VERSION,
+      linkIndexVersion: LINK_INDEX_VERSION,
       version: { increment: 1 },
     });
     expect(dataOf(mocks.revisionCreate)).toEqual({

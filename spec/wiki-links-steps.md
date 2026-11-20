@@ -37,7 +37,7 @@ write, and a page shows which pages link to it, in the browser and through `read
 - [x] Wiki link syntax and plain text
 - [x] New page with a preset name
 - [x] Rendering and missing links
-- [ ] Link index and backlinks
+- [x] Link index and backlinks
 - [ ] Link updates on a page move or rename
 - [ ] Link updates on a tab rename
 - [ ] Wiki links in live preview
