@@ -10,9 +10,12 @@ type RevisionLineProps = {
   newest: number;
 };
 
+/** The mark of a revision that an update of the wiki links of the page recorded after a move or rename. */
+export const LINKS_UPDATED_MARK = "Links updated after a move or rename";
+
 /**
  * The revision line: "Revision 5 of 12 · <time> by mike via mcp", with "Reverted to revision N" for a revision that a
- * revert recorded.
+ * revert recorded, and `LINKS_UPDATED_MARK` for one that an update of links recorded.
  */
 export default function RevisionLine({ revision, newest }: RevisionLineProps) {
   return (
@@ -20,6 +23,7 @@ export default function RevisionLine({ revision, newest }: RevisionLineProps) {
       Revision {revision.number} of {newest} · <Time date={revision.createdAt} /> by{" "}
       {editorWithChannel(revision.madeBy)}
       {revision.revertedTo !== null && ` · Reverted to revision ${revision.revertedTo}`}
+      {revision.linksUpdated && ` · ${LINKS_UPDATED_MARK}`}
     </Typography>
   );
 }

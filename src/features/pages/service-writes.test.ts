@@ -73,7 +73,7 @@ describe("a write through MCP", () => {
     expect(mocks.info.mock.calls).toEqual([
       [{ pageId: PAGE_ID, channel: "mcp", grantId }, "page created"],
       [{ pageId: PAGE_ID, channel: "mcp", grantId }, "page updated"],
-      [{ pageId: PAGE_ID, tabId: null, channel: "mcp", grantId }, "page moved or renamed"],
+      [{ pageId: PAGE_ID, tabId: null, linkingPages: 0, channel: "mcp", grantId }, "page moved or renamed"],
     ]);
     expect(dataOf(mocks.create)).toMatchObject({
       lastEditedById: ACTOR_ID,
@@ -822,6 +822,41 @@ describe("moveOrRenamePage", () => {
   const VALID = { name: " new-name ", tabId: TAB_ID, version: VERSION };
   const STORED = { id: PAGE_ID, name: "stored-name", folder: { name: "stored-folder" }, tab: null };
 
+  it("returns the pages whose links the move updated, and updates the links of the old name and place", async () => {
+    mocks.findFirst.mockResolvedValue({ name: "old-name", tab: { name: "guides" } });
+    mocks.updateMany.mockResolvedValue({ count: 1 });
+    mocks.findUnique.mockResolvedValue(STORED);
+    mocks.linkFindMany.mockResolvedValue([{ pageId: PAGE_ID }]);
+    mocks.queryRaw.mockResolvedValue([{ id: PAGE_ID, title: "Old", content: "# Old\n\n[[guides/old-name]]" }]);
+    const updated = { id: PAGE_ID, name: "new-name", title: "Old", tab: null };
+    mocks.update.mockResolvedValue(updated);
+
+    await expect(moveOrRenamePage(ACTOR, PAGE_ID, VALID)).resolves.toEqual({
+      ok: true,
+      value: { ...STORED, updatedPages: [updated] },
+    });
+    expect(mocks.linkFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ tabName: "guides", pageName: "old-name" }) }),
+    );
+    expect(mocks.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ content: "# Old\n\n[[new-name]]" }) }),
+    );
+    expect(mocks.info).toHaveBeenCalledWith(
+      { pageId: PAGE_ID, tabId: TAB_ID, linkingPages: 1, channel: "web" },
+      "page moved or renamed",
+    );
+  });
+
+  it("fails as a whole when the update of the links fails", async () => {
+    const err = new Error("connection lost");
+    mocks.findFirst.mockResolvedValue({ name: "old-name", tab: null });
+    mocks.updateMany.mockResolvedValue({ count: 1 });
+    mocks.linkFindMany.mockRejectedValue(err);
+
+    await expect(moveOrRenamePage(ACTOR, PAGE_ID, VALID)).resolves.toEqual(FAILED);
+    expect(mocks.error).toHaveBeenCalledWith({ err, pageId: PAGE_ID, tabId: TAB_ID }, "failed to move or rename page");
+  });
+
   it.each([
     ["valid input", VALID],
     ["the folder as place", { name: "new-name", tabId: null, version: VERSION }],
@@ -858,7 +893,10 @@ describe("moveOrRenamePage", () => {
 
     // Content and other fields are ignored: no content rule can block a move.
     const input = { ...VALID, content: "No heading", title: "Given title", folderId: crypto.randomUUID() };
-    await expect(moveOrRenamePage(ACTOR, PAGE_ID, input)).resolves.toEqual({ ok: true, value: stored });
+    await expect(moveOrRenamePage(ACTOR, PAGE_ID, input)).resolves.toEqual({
+      ok: true,
+      value: { ...stored, updatedPages: [] },
+    });
 
     expect(dataOf(mocks.updateMany)).toEqual({
       name: "new-name",
@@ -868,7 +906,7 @@ describe("moveOrRenamePage", () => {
       version: { increment: 1 },
     });
     expect(mocks.info).toHaveBeenCalledWith(
-      { pageId: PAGE_ID, tabId: TAB_ID, channel: "web" },
+      { pageId: PAGE_ID, tabId: TAB_ID, linkingPages: 0, channel: "web" },
       "page moved or renamed",
     );
   });
@@ -894,7 +932,7 @@ describe("moveOrRenamePage", () => {
     // Surrounding spaces are trimmed before the comparison, as for every name.
     await expect(moveOrRenamePage(ACTOR, PAGE_ID, { name: " new-name ", tabId, version: VERSION })).resolves.toEqual({
       ok: true,
-      value: stored,
+      value: { ...stored, updatedPages: [] },
     });
 
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
@@ -908,7 +946,10 @@ describe("moveOrRenamePage", () => {
     mocks.updateMany.mockResolvedValue({ count: 0 });
     mocks.findFirst.mockResolvedValue(STORED);
 
-    await expect(moveOrRenamePage(MCP_ACTOR, PAGE_ID, VALID)).resolves.toEqual({ ok: true, value: STORED });
+    await expect(moveOrRenamePage(MCP_ACTOR, PAGE_ID, VALID)).resolves.toEqual({
+      ok: true,
+      value: { ...STORED, updatedPages: [] },
+    });
 
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ pageId: PAGE_ID, channel: "mcp" }),

@@ -42,6 +42,6 @@ export function revisionsOf(pageId: string) {
   return getTestDb().pageRevision.findMany({
     where: { pageId },
     orderBy: { number: "asc" },
-    select: { number: true, title: true, content: true, userId: true, via: true, revertedTo: true },
+    select: { number: true, title: true, content: true, userId: true, via: true, revertedTo: true, linksUpdated: true },
   });
 }

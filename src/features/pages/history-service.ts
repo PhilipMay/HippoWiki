@@ -17,7 +17,8 @@ import { getDb } from "@/lib/db";
 
 /**
  * A revision of a page as the history lists it, without its content: its number, the title of the page after the
- * change, when and by whom and how it was made, and the number of the revision a revert went back to, or `null`.
+ * change, when and by whom and how it was made, the number of the revision a revert went back to, or `null`, and
+ * whether an update of its links after a move or rename recorded it.
  */
 export type RevisionSummary = {
   number: number;
@@ -25,6 +26,7 @@ export type RevisionSummary = {
   createdAt: Date;
   madeBy: LastEditor;
   revertedTo: number | null;
+  linksUpdated: boolean;
 };
 
 /** One page of the history of a page: its revisions newest first, and the number of its newest revision. */
@@ -49,6 +51,7 @@ const REVISION_SUMMARY_SELECT = {
   user: { select: { username: true } },
   via: true,
   revertedTo: true,
+  linksUpdated: true,
 } as const;
 
 /** The row of a revision with its user and channel as `LastEditor`, like the last editor of a page. */

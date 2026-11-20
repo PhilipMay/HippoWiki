@@ -57,9 +57,16 @@ import {
   type PageFieldErrors,
 } from "@/features/pages/schema";
 import { deriveName } from "@/features/pages/derive";
-import { LINK_INDEX_DATA, storeLinks } from "@/features/pages/links-service";
+import {
+  LINK_INDEX_DATA,
+  LINKS_TRANSACTION,
+  lockFolderLinks,
+  storeLinks,
+  updateLinks,
+  type LinkingPage,
+} from "@/features/pages/links-service";
 import { wikiLinkTargetText } from "@/features/pages/wiki-link-target";
-import { linkRowsOf, wikiLinksOf } from "@/features/pages/wiki-links";
+import { linkRowsOf, pageMoved, wikiLinksOf } from "@/features/pages/wiki-links";
 import { NEXT_VERSION, softDeleteData } from "@/features/pages/writes";
 import { searchIndexData } from "@/features/search/index-data";
 import { LAST_EDITOR_SELECT, withLastEditor, type LastEditor } from "@/features/users/records";
@@ -508,30 +515,33 @@ export async function createPage(
   let page: StoredPage;
   try {
     const search = await searchIndexData(content);
-    page = await getDb().page.create({
-      data: {
-        name,
-        title,
-        content,
-        ...search,
-        ...LINK_INDEX_DATA,
-        links: { createMany: { data: linkRowsOf(content, parsedFolderId) } },
-        tabId,
-        folderId: parsedFolderId,
-        lastEditedById,
-        lastEditedVia,
-        revisions: {
-          create: {
-            number: 1,
-            title,
-            content,
-            userId: lastEditedById,
-            via: lastEditedVia,
+    page = await getDb().$transaction(async (tx) => {
+      await lockFolderLinks(tx, parsedFolderId, "shared");
+      return tx.page.create({
+        data: {
+          name,
+          title,
+          content,
+          ...search,
+          ...LINK_INDEX_DATA,
+          links: { createMany: { data: linkRowsOf(content, parsedFolderId) } },
+          tabId,
+          folderId: parsedFolderId,
+          lastEditedById,
+          lastEditedVia,
+          revisions: {
+            create: {
+              number: 1,
+              title,
+              content,
+              userId: lastEditedById,
+              via: lastEditedVia,
+            },
           },
         },
-      },
-      select: STORED_PAGE_SELECT,
-    });
+        select: STORED_PAGE_SELECT,
+      });
+    }, LINKS_TRANSACTION);
   } catch (err) {
     // Before the folder and tab keys: a missing actor must not be reported as a missing folder or tab.
     if (isForeignKeyViolation(err, LAST_EDITOR)) return unknownActor(err, actor);
@@ -590,6 +600,10 @@ async function storeContentChange(
     // Before the transaction, which it does not need: it reads no row.
     const search = await searchIndexData(change.content);
     return await getDb().$transaction(async (tx): Promise<PageWrite> => {
+      // The folder of the page, whose links the change adds and removes; a page never changes its folder.
+      const located = await tx.page.findUnique({ where: { id: pageId }, select: PAGE_FOLDER_AND_TAB });
+      if (!located) return { kind: "refused" };
+      await lockFolderLinks(tx, located.folderId, "shared");
       const current = atVersion(pageId, version);
       // `updateMany` reports a missing page as a count of 0 instead of throwing; it sets `updatedAt` as well. A deleted
       // page, one with another version than the given one, and for a content save one with the same content, match no
@@ -616,7 +630,7 @@ async function storeContentChange(
         select: { number: true },
       });
       // The links of the content as it is stored: a revert stores those of the old content as they are.
-      await storeLinks(tx, pageId, change.content);
+      await storeLinks(tx, pageId, located.folderId, change.content);
       await tx.pageRevision.create({
         data: {
           pageId,
@@ -629,7 +643,7 @@ async function storeContentChange(
         },
       });
       return { kind: "stored" };
-    });
+    }, LINKS_TRANSACTION);
   } catch (err) {
     if (isUniqueViolation(err, PAGE_REVISION_NUMBER)) {
       // The row lock of the update orders the numbers, so only a write outside this rule can have taken the number.
@@ -798,33 +812,69 @@ export async function revertPage(
   return { ok: true, value: saved.value.page };
 }
 
+/** The folder and the tab of a page, read in the transaction of a write of it. */
+const PAGE_FOLDER_AND_TAB = { folderId: true, tab: { select: { name: true } } } as const;
+
+/** What the store of a move or rename did: a `PageWrite`, and for a stored one the pages whose links it updated. */
+type MoveWrite = { kind: "stored"; updatedPages: LinkingPage[] } | Exclude<PageWrite, { kind: "stored" }>;
+
 /**
  * Stores the name and the place of a move or rename in the page with the given id, if it is not deleted and has the
- * given version, and counts its version up. A deleted page, one with another version than the given one, and one that
- * has this name and place already, match no row; then no name is checked either. The comparison is part of the write,
- * so that it holds for the name and place stored at that moment. A page with the given version and this name and place
- * stores nothing (`unchanged`); anything else that matched no row is `refused`.
+ * given version, counts its version up, and updates the wiki links to its old name and place in every page of the
+ * folder that is not deleted, the page itself included (`updateLinks()`), all in one transaction that holds the
+ * exclusive lock of the links of the folder: a move that is refused or fails changes no page. A deleted page, one with
+ * another version than the given one, and one that has this name and place already, match no row; then no name is
+ * checked either. The comparison is part of the write, so that it holds for the name and place stored at that moment.
+ * A page with the given version and this name and place stores nothing (`unchanged`); anything else that matched no
+ * row is `refused`.
  */
 async function storeMoveOrRename(
   pageId: string,
   version: number,
   change: { name: string; tabId: string | null; lastEditedById: string; lastEditedVia: ChangeChannel },
-): Promise<PageWrite> {
-  const { name, tabId } = change;
+): Promise<MoveWrite> {
+  const { name, tabId, lastEditedById, lastEditedVia } = change;
   const current = atVersion(pageId, version);
   // `not` never matches a column that is `null`, so a page directly in the folder is matched apart.
   const differs: Prisma.PageWhereInput[] = [
     { name: { not: name } },
     ...(tabId === null ? [{ tabId: { not: null } }] : [{ tabId: null }, { tabId: { not: tabId } }]),
   ];
-  const { count } = await getDb().page.updateMany({
-    where: { ...current, OR: differs },
-    data: { ...change, ...NEXT_VERSION },
-  });
-  if (count > 0) return { kind: "stored" };
-  const unchanged = await getDb().page.findFirst({ where: { ...current, name, tabId }, select: STORED_PAGE_SELECT });
-  return unchanged ? { kind: "unchanged", page: unchanged } : { kind: "refused" };
+  return getDb().$transaction(async (tx): Promise<MoveWrite> => {
+    // The folder of the page, whose links the move updates; a page never changes its folder.
+    const located = await tx.page.findUnique({ where: { id: pageId }, select: PAGE_FOLDER_AND_TAB });
+    if (!located) return { kind: "refused" };
+    await lockFolderLinks(tx, located.folderId, "exclusive");
+    // The name and place before the move, which the links name.
+    const before = await tx.page.findFirst({
+      where: { ...current, OR: differs },
+      select: { name: true, tab: { select: { name: true } } },
+    });
+    const { count } = await tx.page.updateMany({
+      where: { ...current, OR: differs },
+      data: { ...change, ...NEXT_VERSION },
+    });
+    if (count === 0) {
+      const unchanged = await tx.page.findFirst({ where: { ...current, name, tabId }, select: STORED_PAGE_SELECT });
+      return unchanged ? { kind: "unchanged", page: unchanged } : { kind: "refused" };
+    }
+    // The update matched the page that `before` read, under the lock; without it there is nothing to update.
+    if (!before) return { kind: "stored", updatedPages: [] };
+    const after = await tx.page.findUnique({ where: { id: pageId }, select: PAGE_FOLDER_AND_TAB });
+    const from = { tab: before.tab?.name ?? null, name: before.name };
+    const updatedPages = await updateLinks(
+      tx,
+      located.folderId,
+      { tabName: from.tab, pageName: from.name },
+      pageMoved(from, { tab: after?.tab?.name ?? null, name }),
+      { lastEditedById, lastEditedVia },
+    );
+    return { kind: "stored", updatedPages };
+  }, LINKS_TRANSACTION);
 }
+
+/** A page as stored by a move or rename, with the pages whose wiki links to it were updated, itself included. */
+export type MovedPage = StoredPage & { updatedPages: LinkingPage[] };
 
 /**
  * Stores the given name and place of the page with the given id in one update, with the actor as its last editor, and
@@ -835,14 +885,15 @@ async function storeMoveOrRename(
  * page: if the page has another one, or no valid version is given, nothing is stored and the result is
  * `page-changed`, also when the name is taken at the target. A move to the name, once validated and trimmed, and the
  * place the page has stored passes the same checks and then stores nothing: the page is returned as stored, with its
- * last editor, time and version, and the move is logged apart from a stored one. It is a write of the browser or of
- * MCP.
+ * last editor, time and version, and the move is logged apart from a stored one. A stored move updates the wiki links
+ * to the old name and place in the pages of the folder in the same write and returns those pages; their content limits
+ * are not checked. It is a write of the browser or of MCP.
  */
 export async function moveOrRenamePage(
   actor: ContentActor,
   id: string,
   input: { name: string; tabId: string | null; version: number | null },
-): Promise<Result<StoredPage, MoveOrRenamePageError>> {
+): Promise<Result<MovedPage, MoveOrRenamePageError>> {
   const opened = openContentWrite(actor, "page not moved or renamed");
   if (opened.refused) return opened.refused;
   const { lastEditedById, lastEditedVia } = opened.editor;
@@ -864,7 +915,7 @@ export async function moveOrRenamePage(
   const { name } = parsed.data;
   const version = parsePageVersion(input.version);
 
-  let written: PageWrite;
+  let written: MoveWrite;
   let page: StoredPage | null;
   try {
     if (version === null) return await refusedWrite(pageId, input.version, "page to move or rename");
@@ -892,10 +943,11 @@ export async function moveOrRenamePage(
 
   if (written.kind === "unchanged") {
     logger.info({ pageId, ...channelOf(actor) }, "page not changed: name and place are the same");
-  } else {
-    logger.info({ pageId, tabId, ...channelOf(actor) }, "page moved or renamed");
+    return { ok: true, value: { ...page, updatedPages: [] } };
   }
-  return { ok: true, value: page };
+  const { updatedPages } = written;
+  logger.info({ pageId, tabId, linkingPages: updatedPages.length, ...channelOf(actor) }, "page moved or renamed");
+  return { ok: true, value: { ...page, updatedPages } };
 }
 
 /**

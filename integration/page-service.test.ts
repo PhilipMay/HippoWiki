@@ -507,6 +507,7 @@ describe("moveOrRenamePage", () => {
         version: 2,
         folder: { name: "docs" },
         tab: { name: "guides" },
+        updatedPages: [],
       },
     });
     expect(await storedPage(page.id)).toMatchObject({
@@ -518,7 +519,15 @@ describe("moveOrRenamePage", () => {
       pageService.moveOrRenamePage(actor, page.id, { name: "start", tabId: null, version: 2 }),
     ).resolves.toStrictEqual({
       ok: true,
-      value: { id: page.id, name: "start", title: "Intro", version: 3, folder: { name: "docs" }, tab: null },
+      value: {
+        id: page.id,
+        name: "start",
+        title: "Intro",
+        version: 3,
+        folder: { name: "docs" },
+        tab: null,
+        updatedPages: [],
+      },
     });
     // The content is not touched by a move or rename.
     expect(await storedPage(page.id)).toMatchObject({
@@ -595,6 +604,7 @@ describe("moveOrRenamePage", () => {
         version: 3,
         folder: { name: "docs" },
         tab: inTab ? { name: "guides" } : null,
+        updatedPages: [],
       },
     });
     expect(await storedPage(page.id)).toStrictEqual(page);
@@ -1567,7 +1577,15 @@ describe("the revisions of pages", () => {
     await pageService.updatePageContent(viaMcp, id, { content: "# Start\n\nThrough MCP", version: 2 });
 
     expect(await revisionsOf(id)).toEqual([
-      { number: 1, title: "Intro", content: "# Intro", userId: user.id, via: "web", revertedTo: null },
+      {
+        number: 1,
+        title: "Intro",
+        content: "# Intro",
+        userId: user.id,
+        via: "web",
+        revertedTo: null,
+        linksUpdated: false,
+      },
       {
         number: 2,
         title: "Intro",
@@ -1575,8 +1593,17 @@ describe("the revisions of pages", () => {
         userId: user.id,
         via: "web",
         revertedTo: null,
+        linksUpdated: false,
       },
-      { number: 3, title: "Start", content: "# Start\n\nThrough MCP", userId: bob.id, via: "mcp", revertedTo: null },
+      {
+        number: 3,
+        title: "Start",
+        content: "# Start\n\nThrough MCP",
+        userId: bob.id,
+        via: "mcp",
+        revertedTo: null,
+        linksUpdated: false,
+      },
     ]);
     await expectNewestRevisionIsThePage(id);
   });
@@ -1798,6 +1825,7 @@ describe("reverting a page", () => {
       userId: bob.id,
       via: "web",
       revertedTo: 2,
+      linksUpdated: false,
     });
     const stored = await storedPage(page.id);
     expect(stored).toMatchObject({

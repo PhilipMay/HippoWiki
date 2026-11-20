@@ -205,28 +205,31 @@ model PageLink {
 
 /// A revision of a page: its content and title after a content change, stored in the same write as the change
 /// (`src/features/pages/service.ts`). Creating a page records revision 1, every content save that changes the content
-/// the next one, and a revert one that names the revision it went back to; moving, renaming, deleting and restoring a
-/// page record none. A revision is never changed or deleted.
+/// the next one, a revert one that names the revision it went back to, and an update of its wiki links after a move or
+/// rename one that is marked as such; moving, renaming, deleting and restoring a page record none of their own. A revision is never changed or deleted.
 model PageRevision {
-  id         String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id           String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   /// The page of the revision. Pages are never removed, only soft deleted, so the revisions stay with them.
-  pageId     String        @db.Uuid
-  page       Page          @relation(fields: [pageId], references: [id], onDelete: Restrict)
+  pageId       String        @db.Uuid
+  page         Page          @relation(fields: [pageId], references: [id], onDelete: Restrict)
   /// The number of the revision: 1 for the oldest, counted up per page; unique per page.
-  number     Int
+  number       Int
   /// The title of the page after the change, derived from the content like that of the page.
-  title      String
+  title        String
   /// The Markdown source of the page after the change.
-  content    String
+  content      String
   /// When the change was made.
-  createdAt  DateTime      @default(now()) @db.Timestamptz(3)
+  createdAt    DateTime      @default(now()) @db.Timestamptz(3)
   /// The user who made the change, like the last editor of the page; users are not deleted.
-  userId     String        @db.Uuid
-  user       User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  userId       String        @db.Uuid
+  user         User          @relation(fields: [userId], references: [id], onDelete: Restrict)
   /// How the change was made (`web` or `mcp`).
-  via        ChangeChannel
+  via          ChangeChannel
   /// The number of the revision a revert went back to; `null` for every revision that no revert recorded.
-  revertedTo Int?
+  revertedTo   Int?
+  /// Whether the revision was recorded by the update of the wiki links of the page after a move or rename of a page or
+  /// a rename of a tab (`updateLinks()` of `src/features/pages/links-service.ts`), by the user who moved or renamed.
+  linksUpdated Boolean       @default(false)
 
   // The order of the history and the uniqueness of the number per page.
   @@unique([pageId, number])

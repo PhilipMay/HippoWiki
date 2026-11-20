@@ -16,7 +16,7 @@ import MarkdownContent from "@/features/pages/components/MarkdownContent";
 import MoveOrRenamePageDialog from "@/features/pages/components/MoveOrRenamePageDialog";
 import LinkedFrom from "@/features/pages/components/LinkedFrom";
 import PageForm from "@/features/pages/components/PageForm";
-import { listLinkingPages, resolveWikiLinks } from "@/features/pages/queries";
+import { countPagesLinkingTo, listLinkingPages, resolveWikiLinks } from "@/features/pages/queries";
 import type { PageWithPlace } from "@/features/pages/service";
 import { editorWithChannel } from "@/features/users/records";
 import { changedPageForm } from "@/features/pages/changed-page";
@@ -63,6 +63,8 @@ export default async function PageView({ page, action, notice }: PageViewProps) 
 
   // Only the "Move or rename page" dialog needs the tabs of the folder.
   const tabs = action === "move-or-rename" ? ((await listTabs(page.folder.id)) ?? notFound()) : [];
+  // The pages whose links the move or rename will update, as the folder holds them when the dialog is rendered.
+  const linkingCount = action === "move-or-rename" ? ((await countPagesLinkingTo(page.id)) ?? notFound()) : 0;
   const resolution = (await resolveWikiLinks(page.folder.id, page.content)) ?? notFound();
   const linkingPages = (await listLinkingPages(page.id)) ?? notFound();
   const links = { folderName, mayCreatePages: mayDoFolderAction(page.role, "new"), resolution };
@@ -115,6 +117,7 @@ export default async function PageView({ page, action, notice }: PageViewProps) 
           tabs={tabs}
           currentTabId={page.tab?.id ?? null}
           initialName={page.name}
+          linkingPages={linkingCount}
           version={page.version}
           changedMessage={message}
           closeHref={address}

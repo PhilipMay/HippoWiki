@@ -1137,7 +1137,7 @@ describe("the write tools", () => {
     it("moves the page into a tab of the folder with a new name, based on the given version", async () => {
       mocks.moveOrRenamePage.mockResolvedValue({
         ok: true,
-        value: { ...STORED, name: "install", tab: { name: "guides" } },
+        value: { ...STORED, name: "install", tab: { name: "guides" }, updatedPages: [] },
       });
 
       const result = await callTool("move_or_rename_page", {
@@ -1159,8 +1159,36 @@ describe("the write tools", () => {
       });
     });
 
+    it("names the pages whose links the move updated, with their name, tab and title (R9)", async () => {
+      mocks.moveOrRenamePage.mockResolvedValue({
+        ok: true,
+        value: {
+          ...STORED,
+          name: "install",
+          updatedPages: [
+            { id: "p2", name: "first-week", title: "First week", tab: null },
+            { id: "p3", name: "onboarding", title: "Onboarding", tab: { name: "guides" } },
+          ],
+        },
+      });
+
+      const result = await callTool("move_or_rename_page", {
+        page: "setup",
+        version: 4,
+        newTab: null,
+        newName: "install",
+      });
+
+      const updatedPages = [
+        { name: "first-week", tab: null, title: "First week" },
+        { name: "onboarding", tab: "guides", title: "Onboarding" },
+      ];
+      expect(result.structuredContent).toMatchObject({ name: "install", updatedPages });
+      expect(JSON.parse(result.content[0]?.text ?? "")).toMatchObject({ updatedPages });
+    });
+
     it("moves the page directly into the folder for a new tab of null", async () => {
-      mocks.moveOrRenamePage.mockResolvedValue({ ok: true, value: STORED });
+      mocks.moveOrRenamePage.mockResolvedValue({ ok: true, value: { ...STORED, updatedPages: [] } });
 
       await callTool("move_or_rename_page", {
         tab: "guides",
@@ -1178,7 +1206,7 @@ describe("the write tools", () => {
     it("answers a move to the current name and tab with the page, its address and the version that was sent", async () => {
       mocks.moveOrRenamePage.mockResolvedValue({
         ok: true,
-        value: { ...STORED, version: 4, tab: { name: "guides" } },
+        value: { ...STORED, version: 4, tab: { name: "guides" }, updatedPages: [] },
       });
 
       const result = await callTool("move_or_rename_page", {
@@ -1832,7 +1860,7 @@ describe("every tool", () => {
     mocks.getTab.mockResolvedValue(TAB);
     mocks.createPage.mockResolvedValue({ ok: true, value: { ...STORED, name: "new", version: 1 } });
     mocks.updatePageContent.mockResolvedValue({ ok: true, value: STORED });
-    mocks.moveOrRenamePage.mockResolvedValue({ ok: true, value: { ...STORED, name: "moved" } });
+    mocks.moveOrRenamePage.mockResolvedValue({ ok: true, value: { ...STORED, name: "moved", updatedPages: [] } });
     mocks.deletePage.mockResolvedValue({ ok: true, value: { folder: { name: "handbook" }, tab: null } });
     mocks.createTab.mockResolvedValue({ ok: true, value: { id: "t2", name: "news", folder: { name: "handbook" } } });
     mocks.renameTab.mockResolvedValue({ ok: true, value: { id: "tab-1", name: "news", folder: { name: "handbook" } } });

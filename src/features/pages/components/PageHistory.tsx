@@ -10,6 +10,7 @@ import Typography from "@mui/material/Typography";
 import Link from "@/components/Link";
 import Time from "@/components/Time";
 import HistoryBreadcrumbs from "@/features/pages/components/HistoryBreadcrumbs";
+import { LINKS_UPDATED_MARK } from "@/features/pages/components/RevisionLine";
 import type { HistoryPlace } from "@/features/pages/components/history-place";
 import SearchField from "@/features/search/components/SearchField";
 import { REVISIONS_PER_PAGE } from "@/features/pages/limits";
@@ -68,6 +69,7 @@ export default function PageHistory({ place, title, history, before }: PageHisto
                     <>
                       <Time date={revision.createdAt} /> by {editorWithChannel(revision.madeBy)} · {revision.title}
                       {revision.revertedTo !== null && ` · Reverted to revision ${revision.revertedTo}`}
+                      {revision.linksUpdated && ` · ${LINKS_UPDATED_MARK}`}
                     </>
                   }
                   slotProps={{ secondary: { sx: { overflowWrap: "anywhere" } } }}

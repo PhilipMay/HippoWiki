@@ -74,6 +74,13 @@ export async function listLinkingPages(pageId: string): Promise<linksService.Lin
   return linksService.listLinkingPages(inBrowser(user), pageId);
 }
 
+/** How many pages, the page itself included, hold a wiki link to the page and would be updated by its move. */
+export async function countPagesLinkingTo(pageId: string): Promise<number | null> {
+  await connection();
+  const user = await requireUser();
+  return linksService.countPagesLinkingTo(inBrowser(user), pageId);
+}
+
 /** The deleted pages of the folder with id, name, title and time of deletion, without their content, newest first. */
 export async function listDeletedPages(folderId: string): Promise<pageService.DeletedPageSummary[] | null> {
   await connection();

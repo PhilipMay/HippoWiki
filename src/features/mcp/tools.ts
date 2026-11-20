@@ -22,6 +22,7 @@ import type {
   editedPageOutput,
   editPageContentInput,
   listFolderOutput,
+  movedPageOutput,
   moveOrRenamePageInput,
   readPageInput,
   readPageOutput,
@@ -31,6 +32,7 @@ import type {
   searchPagesOutput,
   storedPageOutput,
   storedTabOutput,
+  updatedPagesOutput,
 } from "@/features/mcp/tool-schemas";
 import { applyEdits, type EditsResult } from "@/features/mcp/edits";
 import { NAME_RULE, USER_TEXT_NOTE } from "@/features/mcp/tool-schemas";
@@ -439,6 +441,11 @@ function storedPageData(options: WikiToolsOptions, stored: pageService.StoredPag
   });
 }
 
+/** The pages whose wiki links a move or rename updated, as the tools return them. */
+function updatedPagesData(pages: linksService.LinkingPage[]): z.infer<typeof updatedPagesOutput> {
+  return pages.map((page) => ({ name: page.name, tab: page.tab?.name ?? null, title: page.title }));
+}
+
 function storedResult(options: WikiToolsOptions, stored: pageService.StoredPage): CallToolResult {
   return result(storedPageData(options, stored));
 }
@@ -642,7 +649,12 @@ export async function moveOrRenamePage(
         tabId: place.tabId,
         version: input.version ?? null,
       });
-      if (moved.ok) return storedResult(options, moved.value);
+      if (moved.ok) {
+        return result({
+          ...storedPageData(options, moved.value),
+          updatedPages: updatedPagesData(moved.value.updatedPages),
+        } satisfies z.infer<typeof movedPageOutput>);
+      }
       switch (moved.error.code) {
         case "not-allowed":
           return toolError(NOT_ALLOWED);

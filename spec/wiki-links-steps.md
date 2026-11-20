@@ -38,7 +38,7 @@ write, and a page shows which pages link to it, in the browser and through `read
 - [x] New page with a preset name
 - [x] Rendering and missing links
 - [x] Link index and backlinks
-- [ ] Link updates on a page move or rename
+- [x] Link updates on a page move or rename
 - [ ] Link updates on a tab rename
 - [ ] Wiki links in live preview
 - [ ] The `[[` picker

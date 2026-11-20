@@ -87,3 +87,33 @@ export function linkRowsOf(
 ): { folderId: string; tabName: string | null; pageName: string }[] {
   return linkTargetsOf(content).map(({ tab, name }) => ({ folderId, tabName: tab, pageName: name }));
 }
+
+/** How a move, a rename or a tab rename changes a target: the new target, or `null` for a target it leaves alone. */
+export type TargetChange = (target: WikiLinkTarget) => WikiLinkTarget | null;
+
+/** The change of the targets that name the page at `from`, which is now at `to`. */
+export function pageMoved(from: WikiLinkTarget, to: WikiLinkTarget): TargetChange {
+  return (target) => (target.tab === from.tab && target.name === from.name ? to : null);
+}
+
+/** The change of the targets in the tab `from`, which is now named `to`. */
+export function tabRenamed(from: string, to: string): TargetChange {
+  return (target) => (target.tab === from ? { tab: to, name: target.name } : null);
+}
+
+/**
+ * The content with the target of every wiki link that the change names replaced by the new target, at the positions
+ * of the parse: only the target, so that the label, a `\|` before it in a table, the code and every other target stay
+ * as they were. The result is not checked against the limits of the content.
+ */
+export function rewriteWikiLinks(content: string, change: TargetChange): string {
+  let rewritten = "";
+  let at = 0;
+  for (const { page, position, target } of wikiLinksOf(content)) {
+    const changed = page && position !== null ? change(page) : null;
+    if (changed === null || position === null) continue;
+    rewritten += content.slice(at, position) + wikiLinkTargetText(changed);
+    at = position + target.length;
+  }
+  return rewritten + content.slice(at);
+}

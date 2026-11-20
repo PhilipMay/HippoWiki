@@ -217,6 +217,41 @@ test.describe("the write tools", () => {
     expect(await storedPages()).toEqual(before);
   });
 
+  test("move_or_rename_page changes the links to the page and lists the pages it updated (R9)", async ({ request }) => {
+    const guides = await createTab({ folder: projects, name: "guides" });
+    await createPage({ tab: guides, name: "setup", content: "# Setup guide" });
+    await createPage({ tab: guides, name: "onboarding", content: "# Onboarding\n\n[[guides/setup|the setup]]" });
+    await createPage({ folder: projects, name: "first-week", content: "# First week\n\n[[guides/setup]]" });
+    await createPage({ folder: projects, name: "unrelated", content: "# Unrelated\n\n[[setup]]" });
+
+    const moved = await write(request, "move_or_rename_page", {
+      tab: "guides",
+      page: "setup",
+      version: 1,
+      newTab: "guides",
+      newName: "install",
+    });
+
+    expect(moved.structuredContent).toMatchObject({
+      name: "install",
+      updatedPages: [
+        { name: "first-week", tab: null, title: "First week" },
+        { name: "onboarding", tab: "guides", title: "Onboarding" },
+      ],
+    });
+    expect(await storedPages()).toMatchObject([
+      { name: "first-week", content: "# First week\n\n[[guides/install]]", version: 2 },
+      { name: "install" },
+      { name: "onboarding", content: "# Onboarding\n\n[[guides/install|the setup]]", version: 2 },
+      { name: "unrelated", content: "# Unrelated\n\n[[setup]]", version: 1 },
+    ]);
+    const revisions = await storedRevisions();
+    expect(revisions.filter((revision) => revision.number === 2)).toEqual([
+      expect.objectContaining({ page: { name: "first-week" }, userId: KNOWN_USER.id, via: "mcp" }),
+      expect.objectContaining({ page: { name: "onboarding" }, userId: KNOWN_USER.id, via: "mcp" }),
+    ]);
+  });
+
   test("move_or_rename_page puts the page at its new place; a taken name and a missing tab change nothing", async ({
     request,
   }) => {
@@ -237,6 +272,7 @@ test.describe("the write tools", () => {
       tab: "guides",
       address: `${ISSUER}/folders/projects/guides/roadmap.md`,
       version: 2,
+      updatedPages: [],
     });
     expect(await storedEditors()).toEqual([
       { name: "roadmap", lastEditedById: KNOWN_USER.id, lastEditedVia: "mcp" },
@@ -286,6 +322,7 @@ test.describe("the write tools", () => {
         tab: "guides",
         address: `${ISSUER}/folders/projects/guides/plan.md`,
         version: 3,
+        updatedPages: [],
       });
     }
     expect(await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).toStrictEqual(plan);

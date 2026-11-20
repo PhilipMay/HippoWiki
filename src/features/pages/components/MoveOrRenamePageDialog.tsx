@@ -1,5 +1,6 @@
 "use client";
 
+import Typography from "@mui/material/Typography";
 import { useActionState, useId, useRef, useState } from "react";
 
 import ActionDialog, { DialogForm, DialogFormActions } from "@/components/ActionDialog";
@@ -8,6 +9,12 @@ import PageVersionField from "@/features/pages/components/PageVersionField";
 import type { PageMoveOrRenameFormAction } from "@/features/pages/forms";
 import { useFocusOnFirstError, useSubmitInTransition } from "@/lib/form-hooks";
 import { useHydrated } from "@/lib/hydration";
+
+/** What a move or rename does to the links to the page: how many pages it updates, or that no page links to it. */
+function linkUpdateNote(pages: number): string {
+  if (pages === 0) return "No page links to this page.";
+  return pages === 1 ? "Links in 1 page will be updated." : `Links in ${pages} pages will be updated.`;
+}
 
 type MoveOrRenamePageDialogProps = {
   /** Server Action that stores name and place of the page; it returns the errors to show, or redirects on success. */
@@ -20,6 +27,8 @@ type MoveOrRenamePageDialogProps = {
   currentTabId: string | null;
   /** The current name of the page, which the name field starts with. */
   initialName: string;
+  /** How many pages, the page itself included, hold wiki links to the page, which a move or rename updates. */
+  linkingPages: number;
   /** The version of the page the dialog was rendered with, which the save is based on. */
   version: number;
   /** The message that the page was changed after the dialog was opened, after a refused save. */
@@ -39,6 +48,7 @@ export default function MoveOrRenamePageDialog({
   tabs,
   currentTabId,
   initialName,
+  linkingPages,
   version,
   changedMessage,
   closeHref,
@@ -83,6 +93,9 @@ export default function MoveOrRenamePageDialog({
           nameRef={nameRef}
           locked={!hydrated}
         />
+        <Typography variant="body2" color="text.secondary">
+          {linkUpdateNote(linkingPages)}
+        </Typography>
       </DialogForm>
       <DialogFormActions
         closeHref={closeHref}

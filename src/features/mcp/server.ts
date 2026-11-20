@@ -25,6 +25,7 @@ import {
   replacePageContentInput,
   searchPagesInput,
   searchPagesOutput,
+  movedPageOutput,
   storedPageOutput,
   storedTabOutput,
   USER_TEXT_NOTE,
@@ -236,9 +237,11 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
           "Moves a page of the folder of this connection to another existing tab of the folder, or directly into " +
           "the folder, and gives it a new name, which changes its address. State the version that read_page gave: " +
           "if the page has changed since, nothing is changed. A move to the current name and place changes " +
-          `nothing. Returns the page with its new address and version. ${USER_TEXT_NOTE}`,
+          "nothing. The wiki links to the page in every page of the folder, the page itself included, are changed to " +
+          "its new name and place in the same change. Returns the page with its new address and version, and the " +
+          `pages whose links were updated. ${USER_TEXT_NOTE}`,
         inputSchema: moveOrRenamePageInput,
-        outputSchema: storedPageOutput,
+        outputSchema: movedPageOutput,
         annotations: WRITES,
       },
       (input) => moveOrRenamePage(options, input),

@@ -5,9 +5,12 @@
 
 import type { ContentActor } from "@/features/folder-roles/actors";
 import { readableFolderWhere } from "@/features/folder-roles/service";
+import { titleFromContent } from "@/features/pages/derive";
 import { parsePageId } from "@/features/pages/schema";
-import { LINK_INDEX_VERSION, linkRowsOf } from "@/features/pages/wiki-links";
-import type { Prisma } from "@/generated/prisma/client";
+import { LINK_INDEX_VERSION, linkRowsOf, rewriteWikiLinks, type TargetChange } from "@/features/pages/wiki-links";
+import { NEXT_VERSION } from "@/features/pages/writes";
+import { pageText } from "@/features/search/text";
+import type { ChangeChannel, Prisma } from "@/generated/prisma/client";
 import { getDb } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import type { Failed, Result } from "@/lib/result";
@@ -19,11 +22,42 @@ export type LinkingPage = { id: string; name: string; title: string; tab: { name
 export const LINK_INDEX_DATA = { linkIndexVersion: LINK_INDEX_VERSION } as const;
 
 /**
+ * The options of a transaction that takes the lock of the links of a folder: a content write may wait for a rename that
+ * updates many pages, and a rename for the saves that run, longer than the 5 s that Prisma gives a transaction by
+ * default.
+ */
+export const LINKS_TRANSACTION = { maxWait: 10_000, timeout: 60_000 } as const;
+
+/**
+ * Takes the lock of the links of the folder until the end of the transaction: shared for a write of the content of a
+ * page, which adds and removes links, and exclusive for a move or rename of a page and a rename of a tab, which update
+ * the links to them. So an update of links waits for the content saves of the folder that are running, sees every
+ * link stored before it, and no save adds a link to the old name and place while it runs. It is an advisory lock of
+ * PostgreSQL on a number derived from the id of the folder; two folders that share the number only wait for each
+ * other.
+ */
+export async function lockFolderLinks(
+  tx: Prisma.TransactionClient,
+  folderId: string,
+  mode: "shared" | "exclusive",
+): Promise<void> {
+  if (mode === "shared") {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock_shared(hashtextextended(${folderId}::text, 0))`;
+  } else {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${folderId}::text, 0))`;
+  }
+}
+
+/**
  * Replaces the rows of the index of links of the page with those of its content, in the transaction of the write of the
  * content. The write of the page stores `LINK_INDEX_DATA` with it.
  */
-export async function storeLinks(tx: Prisma.TransactionClient, pageId: string, content: string): Promise<void> {
-  const { folderId } = await tx.page.findUniqueOrThrow({ where: { id: pageId }, select: { folderId: true } });
+export async function storeLinks(
+  tx: Prisma.TransactionClient,
+  pageId: string,
+  folderId: string,
+  content: string,
+): Promise<void> {
   await tx.pageLink.deleteMany({ where: { pageId } });
   const rows = linkRowsOf(content, folderId);
   if (rows.length > 0) await tx.pageLink.createMany({ data: rows.map((row) => ({ ...row, pageId })) });
@@ -94,9 +128,7 @@ export async function indexOutdatedLinks(): Promise<Result<{ pages: number }, Fa
             data: { ...LINK_INDEX_DATA, updatedAt: page.updatedAt },
           });
           if (count === 0) return 0;
-          await tx.pageLink.deleteMany({ where: { pageId: page.id } });
-          const rows = linkRowsOf(page.content, page.folderId);
-          if (rows.length > 0) await tx.pageLink.createMany({ data: rows.map((row) => ({ ...row, pageId: page.id })) });
+          await storeLinks(tx, page.id, page.folderId, page.content);
           return 1;
         });
         pages += derived;
@@ -113,4 +145,100 @@ export async function indexOutdatedLinks(): Promise<Result<{ pages: number }, Fa
     pages === 0 ? "wiki links up to date, no page derived" : "wiki links of the pages derived",
   );
   return { ok: true, value: { pages } };
+}
+
+/** Where the targets that an update of links changes are in the index: a name and place, or every name of a tab. */
+export type LinkPlace = { tabName: string | null; pageName?: string };
+
+/** Who updates the links: the user and the channel of the move or rename, stored with every updated page. */
+type LinkEditor = { lastEditedById: string; lastEditedVia: ChangeChannel };
+
+/**
+ * Updates the wiki links that the change names in every page of the folder that is not deleted and holds one, from the
+ * index, inside the transaction of the move or rename, which holds the exclusive lock of the folder (`lockFolderLinks`).
+ * Each updated page gets its new content, the title and the search text derived from it (its language stays, because
+ * targets are no prose), its links, the next version and the editor as its last editor, and a revision by the editor,
+ * marked as a link update. The content limits are not checked: a page may grow past them. Deleted pages are neither
+ * read nor changed. Returns the updated pages, sorted by title and then by name.
+ */
+export async function updateLinks(
+  tx: Prisma.TransactionClient,
+  folderId: string,
+  place: LinkPlace,
+  change: TargetChange,
+  editor: LinkEditor,
+): Promise<LinkingPage[]> {
+  const rows = await tx.pageLink.findMany({
+    where: { folderId, ...place, page: { deletedAt: null } },
+    select: { pageId: true },
+    distinct: ["pageId"],
+  });
+  if (rows.length === 0) return [];
+  // The rows of the pages are locked in the order of their ids, so that a delete of one of them waits, and a page that a
+  // delete got to first is left out.
+  const pages = await tx.$queryRaw<{ id: string; title: string; content: string }[]>`
+    SELECT id, title, content FROM "Page"
+    WHERE id = ANY(${rows.map((row) => row.pageId)}::uuid[]) AND "deletedAt" IS NULL
+    ORDER BY id
+    FOR UPDATE`;
+  const updated: LinkingPage[] = [];
+  for (const page of pages) {
+    const content = rewriteWikiLinks(page.content, change);
+    if (content === page.content) continue;
+    const title = titleFromContent(content) ?? page.title;
+    const stored = await tx.page.update({
+      where: { id: page.id },
+      data: {
+        content,
+        title,
+        searchText: pageText(content).searchText,
+        ...LINK_INDEX_DATA,
+        ...editor,
+        ...NEXT_VERSION,
+      },
+      select: { id: true, name: true, title: true, tab: { select: { name: true } } },
+    });
+    await storeLinks(tx, page.id, folderId, content);
+    // The row of the page is locked, so no other write takes the number of the revision.
+    const newest = await tx.pageRevision.findFirst({
+      where: { pageId: page.id },
+      orderBy: { number: "desc" },
+      select: { number: true },
+    });
+    await tx.pageRevision.create({
+      data: {
+        pageId: page.id,
+        number: (newest?.number ?? 0) + 1,
+        title,
+        content,
+        userId: editor.lastEditedById,
+        via: editor.lastEditedVia,
+        linksUpdated: true,
+      },
+    });
+    updated.push(stored);
+  }
+  return updated.sort((a, b) => a.title.localeCompare(b.title) || a.name.localeCompare(b.name));
+}
+
+/**
+ * How many pages of the folder that are not deleted hold a wiki link to the name and place of the page with the given
+ * id, the page itself included: the pages that a move or rename of it updates, as they are now. `null` for an admin,
+ * for a page of a folder without a role of the actor, and for a malformed id and a page that does not exist or is
+ * deleted.
+ */
+export async function countPagesLinkingTo(actor: ContentActor, pageId: string): Promise<number | null> {
+  const readable = readableFolderWhere(actor);
+  if (!readable) return null;
+  const id = parsePageId(pageId);
+  if (!id) return null;
+  const page = await getDb().page.findFirst({
+    where: { id, deletedAt: null, folder: readable },
+    select: { folderId: true, name: true, tab: { select: { name: true } } },
+  });
+  if (!page) return null;
+  // A page has at most one row per target, so the rows of one target count its pages.
+  return getDb().pageLink.count({
+    where: { folderId: page.folderId, tabName: page.tab?.name ?? null, pageName: page.name, page: { deletedAt: null } },
+  });
 }

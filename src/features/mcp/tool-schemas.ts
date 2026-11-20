@@ -291,6 +291,23 @@ export const storedPageOutput = z.object({
     ),
 });
 
+/** The pages whose wiki links a move or rename updated, as `move_or_rename_page` and `rename_tab` return them. */
+export const updatedPagesOutput = z
+  .array(
+    z.object({
+      name: z.string().describe("The name of the page, as read_page takes it"),
+      tab: pageTabOutput("is"),
+      title: z.string(),
+    }),
+  )
+  .describe(
+    "The pages of the folder whose wiki links to the old name and place were changed to the new one, each with a new " +
+      "version; a page that links to itself is among them",
+  );
+
+/** The page as stored by `move_or_rename_page`, with the pages whose wiki links it updated. */
+export const movedPageOutput = storedPageOutput.extend({ updatedPages: updatedPagesOutput });
+
 /** The page as stored by `edit_page_content`, with the places each replacement changed, and without the content. */
 export const editedPageOutput = storedPageOutput.extend({
   replaced: z

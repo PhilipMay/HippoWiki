@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { linkRowsOf, linkTargetsOf, wikiLinksOf } from "@/features/pages/wiki-links";
+import {
+  linkRowsOf,
+  linkTargetsOf,
+  pageMoved,
+  rewriteWikiLinks,
+  tabRenamed,
+  wikiLinksOf,
+} from "@/features/pages/wiki-links";
 
 /** The targets of the wiki links of the content, as written. */
 function targets(content: string): string[] {
@@ -171,5 +178,55 @@ describe("linkTargetsOf", () => {
       { folderId: "folder", tabName: null, pageName: "a" },
       { folderId: "folder", tabName: "t", pageName: "b" },
     ]);
+  });
+});
+
+describe("rewriteWikiLinks", () => {
+  const renamed = pageMoved({ tab: "guides", name: "setup" }, { tab: "guides", name: "install" });
+
+  it("changes only the target and keeps the label as written (R7)", () => {
+    expect(rewriteWikiLinks("# T\n\nSee [[guides/setup|the setup]] and [[guides/setup]].", renamed)).toBe(
+      "# T\n\nSee [[guides/install|the setup]] and [[guides/install]].",
+    );
+  });
+
+  it("changes several links in one line, a link in a heading and a link of the page to itself", () => {
+    const content = "# About [[guides/setup]]\n\n[[guides/setup]][[guides/setup|x]] [[setup]] [[guides/setup-two]]";
+    expect(rewriteWikiLinks(content, renamed)).toBe(
+      "# About [[guides/install]]\n\n[[guides/install]][[guides/install|x]] [[setup]] [[guides/setup-two]]",
+    );
+  });
+
+  it("keeps \\| in tables, code, escapes, other targets and invalid targets (R31)", () => {
+    const content =
+      "| a | b |\n| - | - |\n| [[guides/setup\\|Setup]] | `[[guides/setup]]` |\n\n" +
+      "```\n[[guides/setup]]\n```\n\n\\[[guides/setup]] [[Guides/Setup]] [[guides/faq]] ![[guides/setup]]";
+    expect(rewriteWikiLinks(content, renamed)).toBe(
+      "| a | b |\n| - | - |\n| [[guides/install\\|Setup]] | `[[guides/setup]]` |\n\n" +
+        "```\n[[guides/setup]]\n```\n\n\\[[guides/setup]] [[Guides/Setup]] [[guides/faq]] ![[guides/install]]",
+    );
+  });
+
+  it("moves a link into another tab or directly into the folder", () => {
+    expect(
+      rewriteWikiLinks("[[guides/setup]]", pageMoved({ tab: "guides", name: "setup" }, { tab: null, name: "setup" })),
+    ).toBe("[[setup]]");
+    expect(rewriteWikiLinks("[[setup]]", pageMoved({ tab: null, name: "setup" }, { tab: "docs", name: "setup" }))).toBe(
+      "[[docs/setup]]",
+    );
+  });
+
+  it("changes every link into a renamed tab, whatever the page (R11)", () => {
+    expect(rewriteWikiLinks("[[guides/setup|the setup]] [[guides/faq]] [[setup]]", tabRenamed("guides", "docs"))).toBe(
+      "[[docs/setup|the setup]] [[docs/faq]] [[setup]]",
+    );
+  });
+
+  it("keeps line breaks as CRLF", () => {
+    expect(rewriteWikiLinks("# T\r\n\r\n[[guides/setup]]\r\n", renamed)).toBe("# T\r\n\r\n[[guides/install]]\r\n");
+  });
+
+  it("returns content without such links as it is", () => {
+    expect(rewriteWikiLinks("# T\n\nNo links.", renamed)).toBe("# T\n\nNo links.");
   });
 });

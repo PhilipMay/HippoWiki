@@ -43,6 +43,7 @@ describe("the history of a page", () => {
       createdAt: added?.createdAt,
       madeBy: { name: "mike", via: "mcp" },
       revertedTo: 1,
+      linksUpdated: false,
     });
     expect(history?.newest).toBe(2);
   });
@@ -122,6 +123,7 @@ describe("a revision of a page", () => {
       createdAt: first.createdAt,
       madeBy: { name: "alice", via: "web" },
       revertedTo: null,
+      linksUpdated: false,
       content: "# Intro\n\nFirst",
       newest: 2,
       isCurrent: false,
@@ -132,6 +134,7 @@ describe("a revision of a page", () => {
       createdAt: second?.createdAt,
       madeBy: { name: "mike", via: "mcp" },
       revertedTo: 1,
+      linksUpdated: false,
       content: "# Start\n\nSecond",
       newest: 2,
       isCurrent: true,
@@ -163,6 +166,7 @@ describe("a comparison of two revisions of a page", () => {
         createdAt: first.createdAt,
         madeBy: { name: "alice", via: "web" },
         revertedTo: null,
+        linksUpdated: false,
         content: "# Intro\n\nFirst",
       },
       newer: {
@@ -171,6 +175,7 @@ describe("a comparison of two revisions of a page", () => {
         createdAt: third?.createdAt,
         madeBy: { name: "mike", via: "mcp" },
         revertedTo: 1,
+        linksUpdated: false,
         content: "# Start\n\nRevision 3",
       },
     };
