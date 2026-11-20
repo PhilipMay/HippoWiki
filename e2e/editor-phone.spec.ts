@@ -2,7 +2,7 @@ import { devices, type Locator, type Page } from "@playwright/test";
 
 import { collectErrors } from "./support/browser";
 import { contentEditor, editorReady, expectContent, shownLines } from "./support/editor";
-import { createFolder, createPage, getTestDb, resetTestDatabase } from "./support/database";
+import { createFolder, createPage, createTab, getTestDb, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
 
 // The editor at phone size with a touch screen: Pixel 7 in portrait, without its browser type, which the
@@ -117,4 +117,19 @@ test("a tap on a link shows its Markdown and opens no new tab", async ({ page, c
   expect(opened).toEqual([]);
   expect(context.pages()).toHaveLength(1);
   await expectContent(page, CONTENT);
+});
+
+test("a tap on an entry of the picker on [[ inserts its link", async ({ page }) => {
+  const guides = await createTab({ folder: handbook, name: "guides" });
+  await createPage({ tab: guides, name: "setup", content: "# Setup guide" });
+  await createPage({ folder: handbook, name: "phone", content: "# Phone\n\n" });
+  await page.goto("/folders/handbook/phone.md?action=edit");
+  const editor = await editorReady(page);
+  await editor.press("ControlOrMeta+End");
+  await editor.pressSequentially("See [[set");
+
+  const entry = page.getByRole("listbox").getByRole("option", { name: /Setup guide/ });
+  await expectReachable(page, entry);
+  await entry.tap();
+  await expectContent(page, "# Phone\n\nSee [[guides/setup]]");
 });

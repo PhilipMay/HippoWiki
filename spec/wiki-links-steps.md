@@ -41,7 +41,7 @@ write, and a page shows which pages link to it, in the browser and through `read
 - [x] Link updates on a page move or rename
 - [x] Link updates on a tab rename
 - [x] Wiki links in live preview
-- [ ] The `[[` picker
+- [x] The `[[` picker
 - [ ] Spec tests
 - [ ] Wrap-up
 
@@ -393,7 +393,7 @@ Requirements: R3.
 
 - `@codemirror/autocomplete`, already installed with `@codemirror/lang-markdown`, becomes a dependency of its own in
   `package.json`, at its latest stable version that `@codemirror/lang-markdown` accepts.
-- A completion source in the editor modules that opens after `[[`, lists the pages of the page list of the previous
+- A completion source in the editor modules (`src/features/pages/editor/wiki-link-picker.ts`) that opens after `[[`, lists the pages of the page list of the previous
   step with their title and place, and filters them by title and name as the user types on. Choosing a page replaces
   `[[` and the typed text with `[[name]]` or `[[tab/name]]`, without a label, as one change that one undo reverts.
   Without a match the list says "No page found"; Esc closes it and leaves the text as typed.

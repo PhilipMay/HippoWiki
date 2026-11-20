@@ -119,3 +119,52 @@ test("the editor of a new page shows wiki links against the pages of the folder"
   await editor.fill("# New\n\n[[guides/setup]]\n\nlast");
   await expect.poll(async () => (await shownLines(page))[2]).toBe("Setup guide");
 });
+
+test.describe("the picker on [[ (R3)", () => {
+  test("typing [[ and part of a title lists the matching pages; choosing one inserts its link, one undo reverts it", async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    await createPage({ folder: handbook, name: "first-week", content: "# First week" });
+    const editor = await editAtEnd(page, "# Onboarding\n\n");
+
+    await editor.pressSequentially("See [[");
+    const options = page.getByRole("listbox").getByRole("option");
+    await expect(options).toHaveCount(3);
+    await expect(options.nth(0)).toContainText("First week");
+    await expect(options.nth(0)).toContainText("Directly in the folder");
+
+    await editor.pressSequentially("guide");
+    await expect(options).toHaveCount(1);
+    await expect(options.first()).toContainText("Setup guide");
+    await expect(options.first()).toContainText("Tab guides");
+    await page.keyboard.press("Enter");
+    await expectContent(page, "# Onboarding\n\nSee [[guides/setup]]");
+    await expect(page.getByRole("listbox")).toBeHidden();
+
+    await page.keyboard.press("ControlOrMeta+z");
+    await expectContent(page, "# Onboarding\n\nSee [[guide");
+    expect(errors).toEqual([]);
+  });
+
+  test('says "No page found" without a match, and Esc leaves the text as typed', async ({ page }) => {
+    const editor = await editAtEnd(page, "# Onboarding\n\n");
+    await editor.pressSequentially("[[nothing");
+    await expect(page.getByRole("listbox").getByRole("option")).toHaveText(["No page found"]);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("listbox")).toBeHidden();
+    await expectContent(page, "# Onboarding\n\n[[nothing");
+
+    // Esc then Tab still leaves the editor while no picker is open.
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Tab");
+    await expect(editor).not.toBeFocused();
+    await expectContent(page, "# Onboarding\n\n[[nothing");
+  });
+
+  test("Enter continues a list while no picker is open", async ({ page }) => {
+    const editor = await editAtEnd(page, "# Onboarding\n\n- [[guides/setup]]");
+    await editor.press("Enter");
+    await expectContent(page, "# Onboarding\n\n- [[guides/setup]]\n- ");
+  });
+});

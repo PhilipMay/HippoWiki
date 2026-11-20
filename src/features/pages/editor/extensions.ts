@@ -19,6 +19,7 @@ import { GFM } from "@lezer/markdown";
 import { formatKeymap } from "@/features/pages/editor/commands";
 import { contentLimit } from "@/features/pages/editor/content-limit";
 import { indentExtensions, indentKeymap } from "@/features/pages/editor/indent";
+import { wikiLinkPicker } from "@/features/pages/editor/wiki-link-picker";
 import { editorPageList, wikiLinkSyntax, type EditorPageList } from "@/features/pages/editor/wiki-links";
 import { theme as appTheme } from "@/lib/theme";
 
@@ -140,12 +141,14 @@ const theme = EditorView.theme({
 
 /**
  * The extensions of the editor state. The editor never changes the content on its own: no autoformatting, no closing
- * brackets, no trimming; pasting stays the plain-text paste of CodeMirror.
+ * brackets, no trimming; pasting stays the plain-text paste of CodeMirror; the picker on `[[` inserts a link only when
+ * the user chooses a page.
  */
 export function editorExtensions({ newPage, labelId, descriptionId, pageList }: EditorOptions): Extension[] {
   return [
     language(),
     pageList ? editorPageList.of(pageList) : [],
+    wikiLinkPicker(),
     contentLimit(),
     syntaxHighlighting(highlightStyle),
     history(),
