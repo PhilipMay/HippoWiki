@@ -11,8 +11,10 @@ import Stack from "@mui/material/Stack";
 import { useActionState, useId, useRef, useState } from "react";
 
 import Link from "@/components/Link";
+import DiscardChangesDialog from "@/features/pages/components/DiscardChangesDialog";
 import MarkdownEditor from "@/features/pages/components/MarkdownEditor";
 import PageNameAndPlaceFields, { FOLDER_TARGET } from "@/features/pages/components/PageNameAndPlaceFields";
+import { useUnsavedChangesGuard } from "@/features/pages/components/useUnsavedChangesGuard";
 import { deriveName, titleFromContent } from "@/features/pages/derive";
 import type { EditorHandle } from "@/features/pages/editor/mount";
 import type { PageFormAction } from "@/features/pages/forms";
@@ -53,6 +55,9 @@ export default function NewPageForm({ action, folderName, tabs, tab }: NewPageFo
   const [dialogKey, setDialogKey] = useState(0);
   // The content is read-only and "Save" is disabled until the editor is ready, also after hydration.
   const [ready, setReady] = useState(false);
+  // Whether anything was written; the save of the "Save page" dialog leaves through the router and never asks.
+  const [dirty, setDirty] = useState(false);
+  const guard = useUnsavedChangesGuard(dirty);
   // The form of the "Save page" dialog, which submits the hidden field of the editor.
   const formId = useId();
 
@@ -79,6 +84,7 @@ export default function NewPageForm({ action, folderName, tabs, tab }: NewPageFo
         editorRef={editorRef}
         contentRef={contentRef}
         onReady={() => setReady(true)}
+        onDirtyChange={setDirty}
       />
       <Stack direction="row" spacing={2}>
         <Button type="button" variant="contained" onClick={save} disabled={!ready}>
@@ -98,6 +104,11 @@ export default function NewPageForm({ action, folderName, tabs, tab }: NewPageFo
         title={title}
         formId={formId}
         onClose={() => setOpen(false)}
+      />
+      <DiscardChangesDialog
+        open={guard.heldHref !== null}
+        onKeepEditing={guard.keepEditing}
+        onDiscard={guard.discard}
       />
     </Stack>
   );

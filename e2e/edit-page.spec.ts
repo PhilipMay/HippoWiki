@@ -260,6 +260,7 @@ test("cancelling an edit returns to the page view and changes nothing", async ({
   await page.goto("/folders/handbook/unchanged.md?action=edit");
   await fillContent(page, "# Never saved");
   await page.getByRole("link", { name: "Cancel" }).click();
+  await page.getByRole("dialog", { name: "Discard changes?" }).getByRole("button", { name: "Discard" }).click();
 
   await expect(page).toHaveURL("/folders/handbook/unchanged.md");
   await expect(page).toHaveTitle("Unchanged – HippoWiki");

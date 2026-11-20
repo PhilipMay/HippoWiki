@@ -36,6 +36,11 @@ type MountOptions = EditorOptions & {
   mode: EditorMode;
   /** Called with the editor after every change of the document, without a React render. */
   onChange(handle: EditorHandle): void;
+  /**
+   * Called when the content starts or stops to differ from the content the editor was opened with, such as after an
+   * undo back to it (R35); not on every change.
+   */
+  onDirtyChange(dirty: boolean): void;
 };
 
 /** The `aria-invalid` attribute of the content element, `"false"` as on the textarea before it. */
@@ -49,9 +54,17 @@ function modeExtensions(mode: EditorMode) {
 }
 
 /** Creates the editor in `parent`, with the cursor at the start of the content as the textarea had it. */
-export function mountEditor({ parent, initialContent, mode, onChange, ...options }: MountOptions): EditorHandle {
+export function mountEditor({
+  parent,
+  initialContent,
+  mode,
+  onChange,
+  onDirtyChange,
+  ...options
+}: MountOptions): EditorHandle {
   const invalid = new Compartment();
   const modes = new Compartment();
+  let dirty = false;
   const state = EditorState.create({
     doc: initialContent,
     extensions: [
@@ -59,10 +72,18 @@ export function mountEditor({ parent, initialContent, mode, onChange, ...options
       invalid.of(invalidAttribute(false)),
       modes.of(modeExtensions(mode)),
       EditorView.updateListener.of((update) => {
-        if (update.docChanged) onChange(handle);
+        if (!update.docChanged) return;
+        onChange(handle);
+        // `Text.eq` compares the documents without building a string of the content.
+        const changed = !update.state.doc.eq(initialDoc);
+        if (changed !== dirty) {
+          dirty = changed;
+          onDirtyChange(changed);
+        }
       }),
     ],
   });
+  const initialDoc = state.doc;
   const view = new EditorView({ state, parent });
 
   const handle: EditorHandle = {

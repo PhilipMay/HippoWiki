@@ -269,6 +269,7 @@ test("cancel on the form returns to the folder and creates nothing", async ({ pa
   await page.goto(NEW_PAGE);
   await fillContent(page, "# Never saved");
   await page.getByRole("link", { name: "Cancel" }).click();
+  await page.getByRole("dialog", { name: "Discard changes?" }).getByRole("button", { name: "Discard" }).click();
 
   await expect(page).toHaveURL("/folders/handbook");
   await expect(page.getByText("This folder is empty")).toBeVisible();

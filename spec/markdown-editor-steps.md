@@ -31,7 +31,7 @@ names the IDs it covers.
 - [x] Live preview of inline elements and the mode switch
 - [x] Live preview of blocks
 - [x] Tables in live preview
-- [ ] Leaving with unsaved changes
+- [x] Leaving with unsaved changes
 - [ ] Phones and speed
 - [ ] Spec tests
 - [ ] Wrap-up

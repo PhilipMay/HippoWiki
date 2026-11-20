@@ -45,6 +45,8 @@ type MarkdownEditorProps = {
   contentRef?: RefObject<HTMLElement | null>;
   /** Called once the editor is ready; until then the form keeps "Save" disabled. */
   onReady(): void;
+  /** Called when the content starts or stops to differ from the content the editor was opened with. */
+  onDirtyChange(dirty: boolean): void;
 };
 
 /**
@@ -62,6 +64,7 @@ export default function MarkdownEditor({
   editorRef,
   contentRef,
   onReady,
+  onDirtyChange,
 }: MarkdownEditorProps) {
   const [editor, setEditor] = useState<EditorHandle | null>(null);
   // Live preview until the editor starts in the mode last chosen in this browser (R18).
@@ -90,6 +93,7 @@ export default function MarkdownEditor({
       newPage,
       labelId,
       descriptionId,
+      onDirtyChange,
       onChange: (changed) => {
         field.value = changed.content();
         const next = counterOf(changed.length());

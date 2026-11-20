@@ -6,8 +6,10 @@ import Stack from "@mui/material/Stack";
 import { useActionState, useRef, useState } from "react";
 
 import Link from "@/components/Link";
+import DiscardChangesDialog from "@/features/pages/components/DiscardChangesDialog";
 import MarkdownEditor from "@/features/pages/components/MarkdownEditor";
 import PageVersionField from "@/features/pages/components/PageVersionField";
+import { useUnsavedChangesGuard } from "@/features/pages/components/useUnsavedChangesGuard";
 import type { PageFormAction } from "@/features/pages/forms";
 import { useFocusOnFirstError } from "@/lib/form-hooks";
 
@@ -34,6 +36,10 @@ export default function PageForm({ action, initialContent, version, changedMessa
   // The content is read-only and "Save" is disabled until the editor is ready, also after hydration.
   const [ready, setReady] = useState(false);
 
+  // Whether the content differs from the content the editor was opened with; a save in progress never asks.
+  const [dirty, setDirty] = useState(false);
+  const guard = useUnsavedChangesGuard(dirty && !pending);
+
   const contentRef = useRef<HTMLElement>(null);
 
   const contentError = state.fieldErrors?.content?.[0];
@@ -52,6 +58,7 @@ export default function PageForm({ action, initialContent, version, changedMessa
         error={contentError}
         contentRef={contentRef}
         onReady={() => setReady(true)}
+        onDirtyChange={setDirty}
       />
       <Stack direction="row" spacing={2}>
         <Button type="submit" variant="contained" disabled={pending || !ready}>
@@ -61,6 +68,11 @@ export default function PageForm({ action, initialContent, version, changedMessa
           Cancel
         </Button>
       </Stack>
+      <DiscardChangesDialog
+        open={guard.heldHref !== null}
+        onKeepEditing={guard.keepEditing}
+        onDiscard={guard.discard}
+      />
     </Stack>
   );
 }
