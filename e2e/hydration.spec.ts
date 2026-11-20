@@ -9,6 +9,7 @@ import {
   createUser,
   resetTestDatabase,
 } from "./support/database";
+import { contentEditor } from "./support/editor";
 import { authorizeUrl, mcpAddress, registerClient } from "./support/oauth";
 import { expect, hydrating, test } from "./support/test";
 
@@ -135,7 +136,8 @@ test("the new page form is locked until hydration", async ({ page }) => {
 
   await page.goto("/folders/locked-folder?action=new");
 
-  await expect(page.getByLabel("Content")).not.toBeEditable();
+  await expect(contentEditor(page)).toHaveValue("");
+  await expect(contentEditor(page)).not.toBeEditable();
   await expect(page.getByRole("button", { name: "Save" })).toBeDisabled();
   await expect(page.getByRole("link", { name: "Cancel" })).toHaveAttribute("href", "/folders/locked-folder");
 });
@@ -146,8 +148,9 @@ test("the edit form is prefilled and locked until hydration", async ({ page }) =
 
   await page.goto("/folders/locked-folder/locked-page.md?action=edit");
 
-  await expect(page.getByLabel("Content")).toHaveValue("# Locked page\n\nSome content");
-  await expect(page.getByLabel("Content")).not.toBeEditable();
+  // Without JavaScript the content shows as text in the read-only field in the place of the editor.
+  await expect(contentEditor(page)).toHaveValue("# Locked page\n\nSome content");
+  await expect(contentEditor(page)).not.toBeEditable();
   await expect(page.getByRole("button", { name: "Save" })).toBeDisabled();
   await expect(page.getByRole("link", { name: "Cancel" })).toHaveAttribute(
     "href",

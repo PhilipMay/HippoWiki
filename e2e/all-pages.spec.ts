@@ -3,6 +3,7 @@ import type { Page } from "@playwright/test";
 import { KNOWN_USER } from "../prisma/known-users";
 import { collectErrors, expectNotFound } from "./support/browser";
 import { createFolder, createPage, createTab, createUser, resetTestDatabase } from "./support/database";
+import { fillContent } from "./support/editor";
 import { expect, test } from "./support/test";
 
 let handbook: Awaited<ReturnType<typeof createFolder>>;
@@ -144,7 +145,7 @@ test("the list of all pages shows who changed each page last and how", async ({ 
   await createPage({ tab: guides, name: "in-tab", content: "# In tab", editor: bob, via: "mcp" });
 
   await page.goto("/folders/docs/guides/in-tab.md?action=edit");
-  await page.getByLabel("Content").fill("# In tab\n\nChanged");
+  await fillContent(page, "# In tab\n\nChanged");
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page).toHaveURL("/folders/docs/guides/in-tab.md");
 

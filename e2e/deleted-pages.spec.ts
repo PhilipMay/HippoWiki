@@ -3,6 +3,7 @@ import type { Page } from "@playwright/test";
 import { KNOWN_USER } from "../prisma/known-users";
 import { by, collectErrors, expectNotFound } from "./support/browser";
 import { createFolder, createPage, createTab, createUser, getTestDb, resetTestDatabase } from "./support/database";
+import { fillContent } from "./support/editor";
 import { expect, test } from "./support/test";
 
 let handbook: Awaited<ReturnType<typeof createFolder>>;
@@ -69,7 +70,7 @@ test("a page with the name of a deleted page can be created directly in the fold
   await createPage({ folder: handbook, name: "overview", title: "Old overview", deletedAt: new Date() });
 
   await page.goto("/folders/handbook?action=new");
-  await page.getByLabel("Content").fill("# Overview\n\nNew text");
+  await fillContent(page, "# Overview\n\nNew text");
   await page.getByRole("button", { name: "Save" }).click();
   const dialog = page.getByRole("dialog", { name: "Save page" });
   await expect(dialog.getByLabel("Name")).toHaveValue("overview");

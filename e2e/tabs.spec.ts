@@ -3,6 +3,7 @@ import type { Page } from "@playwright/test";
 import { KNOWN_USER } from "../prisma/known-users";
 import { by, collectErrors, expectNotFound } from "./support/browser";
 import { createFolder, createPage, createTab, createUser, getTestDb, resetTestDatabase } from "./support/database";
+import { expectContent, fillContent } from "./support/editor";
 import { expect, test } from "./support/test";
 
 let handbook: Awaited<ReturnType<typeof createFolder>>;
@@ -378,7 +379,7 @@ test("a page can be created in a tab, viewed, edited and renamed", async ({ page
   await expect(page).toHaveURL("/folders/handbook/guides?action=new");
   await expect(page).toHaveTitle("New page – HippoWiki");
   await expect(page.getByRole("link", { name: "Cancel" })).toHaveAttribute("href", "/folders/handbook/guides");
-  await page.getByLabel("Content").fill("# Setup guide\n\nFirst version");
+  await fillContent(page, "# Setup guide\n\nFirst version");
   await page.getByRole("button", { name: "Save" }).click();
   const saveDialog = page.getByRole("dialog", { name: "Save page" });
   await expect(saveDialog.getByLabel("Name")).toHaveAccessibleDescription(
@@ -400,7 +401,7 @@ test("a page can be created in a tab, viewed, edited and renamed", async ({ page
   await page.getByRole("link", { name: "Edit" }).click();
   await expect(page).toHaveURL("/folders/handbook/guides/setup-guide.md?action=edit");
   await expect(page).toHaveTitle("Edit Setup guide – HippoWiki");
-  await page.getByLabel("Content").fill("# Setup guide, edited\n\nSecond version");
+  await fillContent(page, "# Setup guide, edited\n\nSecond version");
   await page.getByRole("button", { name: "Save" }).click();
 
   await expect(page).toHaveURL("/folders/handbook/guides/setup-guide.md");
@@ -454,7 +455,7 @@ test("a page created on the folder address is placed directly in the folder, als
   await createTab({ folder: handbook, name: "guides" });
 
   await page.goto("/folders/handbook?action=new");
-  await page.getByLabel("Content").fill("# Direct page");
+  await fillContent(page, "# Direct page");
   await page.getByRole("button", { name: "Save" }).click();
   await page.getByRole("dialog", { name: "Save page" }).getByRole("button", { name: "Save" }).click();
 
@@ -473,7 +474,7 @@ test("overview.md can exist directly in a folder and in two of its tabs, but onl
 
   // The name is taken in the folder and in the other tab, but free in this tab.
   await page.goto("/folders/handbook/meetings?action=new");
-  await page.getByLabel("Content").fill("# Overview\n\nMeetings overview");
+  await fillContent(page, "# Overview\n\nMeetings overview");
   await page.getByRole("button", { name: "Save" }).click();
   const dialog = page.getByRole("dialog", { name: "Save page" });
   await expect(dialog.getByLabel("Name")).toHaveValue("overview");
@@ -490,7 +491,7 @@ test("overview.md can exist directly in a folder and in two of its tabs, but onl
 
   // A second overview in the same tab is refused.
   await page.goto("/folders/handbook/meetings?action=new");
-  await page.getByLabel("Content").fill("# Overview\n\nA second one");
+  await fillContent(page, "# Overview\n\nA second one");
   await page.getByRole("button", { name: "Save" }).click();
   await dialog.getByRole("button", { name: "Save" }).click();
   await expect(dialog.getByLabel("Name")).toHaveAccessibleDescription("Name is already in use");
@@ -500,7 +501,7 @@ test("overview.md can exist directly in a folder and in two of its tabs, but onl
 
   // And so is a second overview placed directly in the folder.
   await page.goto("/folders/handbook?action=new");
-  await page.getByLabel("Content").fill("# Overview\n\nA second one");
+  await fillContent(page, "# Overview\n\nA second one");
   await page.getByRole("button", { name: "Save" }).click();
   await dialog.getByRole("button", { name: "Save" }).click();
   await expect(dialog.getByLabel("Name")).toHaveAccessibleDescription("Name is already in use");
@@ -546,7 +547,7 @@ test("a tab guides and a page guides.md in the same folder each have their own a
 
   // The page is created through the form, so the name check against the tab name is exercised as well.
   await page.goto("/folders/handbook?action=new");
-  await page.getByLabel("Content").fill("# Guides\n\nThe page named like the tab");
+  await fillContent(page, "# Guides\n\nThe page named like the tab");
   await page.getByRole("button", { name: "Save" }).click();
   const dialog = page.getByRole("dialog", { name: "Save page" });
   await expect(dialog.getByLabel("Name")).toHaveValue("guides");
@@ -574,7 +575,7 @@ test("saving a page into a tab that no longer exists shows an error and keeps th
   const tab = await createTab({ folder: handbook, name: "guides" });
 
   await page.goto("/folders/handbook/guides?action=new");
-  await page.getByLabel("Content").fill("# Orphan\n\nContent that must not get lost");
+  await fillContent(page, "# Orphan\n\nContent that must not get lost");
   await page.getByRole("button", { name: "Save" }).click();
   const dialog = page.getByRole("dialog", { name: "Save page" });
   await getTestDb().tab.delete({ where: { id: tab.id } });
@@ -582,7 +583,7 @@ test("saving a page into a tab that no longer exists shows an error and keeps th
 
   await expect(dialog.getByRole("alert")).toHaveText("This tab no longer exists.");
   await expect(dialog.getByLabel("Name")).toHaveValue("orphan");
-  await expect(page.getByLabel("Content")).toHaveValue("# Orphan\n\nContent that must not get lost");
+  await expectContent(page, "# Orphan\n\nContent that must not get lost");
   expect(await getTestDb().page.count()).toBe(0);
 });
 

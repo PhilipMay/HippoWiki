@@ -6,6 +6,7 @@ import type { Locator, Page } from "@playwright/test";
 import { KNOWN_USER } from "../prisma/known-users";
 import { holdServerAction } from "./support/browser";
 import { createFolder, createPage, createUser, getTestDb, resetTestDatabase } from "./support/database";
+import { fillContent } from "./support/editor";
 import { authorizeUrl, awaitCallback, mcpAddress, registerClient } from "./support/oauth";
 import { expect, test } from "./support/test";
 
@@ -72,7 +73,7 @@ test("a confirmation dialog disables its buttons, shows Deleting… and ignores 
 test("the editor of a page disables Save and shows Saving… while it saves", async ({ page }) => {
   await createPage({ folder: handbook, name: "intro", content: "# Intro" });
   await page.goto("/folders/handbook/intro.md?action=edit");
-  await page.getByLabel("Content").fill("# Intro\n\nMore");
+  await fillContent(page, "# Intro\n\nMore");
 
   await submitHeld(page, page.getByRole("button", { name: "Save" }), async () => {
     await expect(page.getByRole("button", { name: "Saving…" })).toBeDisabled();
@@ -86,7 +87,7 @@ test('the "Save page" dialog disables its buttons, shows Saving… and ignores E
   page,
 }) => {
   await page.goto("/folders/handbook?action=new");
-  await page.getByLabel("Content").fill("# Overview");
+  await fillContent(page, "# Overview");
   await page.getByRole("button", { name: "Save" }).click();
   const dialog = page.getByRole("dialog", { name: "Save page" });
   await expect(dialog.getByLabel("Name")).toHaveValue("overview");

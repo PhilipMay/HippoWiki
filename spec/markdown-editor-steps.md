@@ -24,7 +24,7 @@ names the IDs it covers.
 
 ## Checklist
 
-- [ ] Editor in source mode
+- [x] Editor in source mode
 - [ ] Editing comforts
 - [ ] Content limit and counter
 - [ ] Toolbar

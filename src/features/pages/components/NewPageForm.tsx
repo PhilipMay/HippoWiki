@@ -8,19 +8,18 @@ import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
 import Stack from "@mui/material/Stack";
-import TextField from "@mui/material/TextField";
 import { useActionState, useId, useRef, useState } from "react";
 
 import Link from "@/components/Link";
+import MarkdownEditor from "@/features/pages/components/MarkdownEditor";
 import PageNameAndPlaceFields, { FOLDER_TARGET } from "@/features/pages/components/PageNameAndPlaceFields";
 import { deriveName, titleFromContent } from "@/features/pages/derive";
+import type { EditorHandle } from "@/features/pages/editor/mount";
 import type { PageFormAction } from "@/features/pages/forms";
-import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 import { TITLE_HEADING_MISSING_MESSAGE } from "@/features/pages/schema";
 import { folderPath, tabPath } from "@/lib/addresses";
 import { focusOnEntered } from "@/lib/focus";
 import { useFocusOnFirstError, useSubmitInTransition } from "@/lib/form-hooks";
-import { useHydrated } from "@/lib/hydration";
 
 type NewPageFormProps = {
   /** Server Action that creates the page in the chosen place; it returns the errors to show, or redirects on success. */
@@ -42,7 +41,8 @@ type NewPageFormProps = {
  * place the editor was opened for preselected.
  */
 export default function NewPageForm({ action, folderName, tabs, tab }: NewPageFormProps) {
-  const [content, setContent] = useState("");
+  const editorRef = useRef<EditorHandle>(null);
+  const contentRef = useRef<HTMLElement>(null);
   const [open, setOpen] = useState(false);
   // The title derived when "Save" was last pressed; the dialog suggests the name from it. The title is not submitted,
   // the server derives it again from the content.
@@ -51,13 +51,16 @@ export default function NewPageForm({ action, folderName, tabs, tab }: NewPageFo
   // A new key for every opening remounts the dialog, so that the name is derived again, the place starts with the one
   // the editor was opened for and errors of an earlier attempt are gone.
   const [dialogKey, setDialogKey] = useState(0);
-  // Input before hydration could be lost, so the content is read-only and "Save" is disabled until then.
-  const hydrated = useHydrated();
+  // The content is read-only and "Save" is disabled until the editor is ready, also after hydration.
+  const [ready, setReady] = useState(false);
+  // The form of the "Save page" dialog, which submits the hidden field of the editor.
+  const formId = useId();
 
   const save = () => {
-    const derived = titleFromContent(content);
+    const derived = titleFromContent(editorRef.current?.content() ?? "");
     if (derived === null) {
       setContentError(TITLE_HEADING_MISSING_MESSAGE);
+      contentRef.current?.focus();
       return;
     }
     setContentError(null);
@@ -68,23 +71,17 @@ export default function NewPageForm({ action, folderName, tabs, tab }: NewPageFo
 
   return (
     <Stack spacing={3}>
-      <TextField
-        label="Content"
-        value={content}
-        onChange={(event) => setContent(event.target.value)}
-        multiline
-        minRows={16}
-        autoFocus
-        fullWidth
-        error={!!contentError}
-        helperText={contentError ?? "Markdown (GitHub Flavored Markdown), starting with the title heading: # Title"}
-        slotProps={{
-          htmlInput: { maxLength: CONTENT_MAX_LENGTH, spellCheck: false, readOnly: !hydrated },
-          input: { sx: { fontFamily: "monospace", fontSize: "0.875rem", lineHeight: 1.6 } },
-        }}
+      <MarkdownEditor
+        initialContent=""
+        newPage
+        error={contentError}
+        form={formId}
+        editorRef={editorRef}
+        contentRef={contentRef}
+        onReady={() => setReady(true)}
       />
       <Stack direction="row" spacing={2}>
-        <Button type="button" variant="contained" onClick={save} disabled={!hydrated}>
+        <Button type="button" variant="contained" onClick={save} disabled={!ready}>
           Save
         </Button>
         <Button component={Link} href={tab === null ? folderPath(folderName) : tabPath(folderName, tab.name)}>
@@ -99,7 +96,7 @@ export default function NewPageForm({ action, folderName, tabs, tab }: NewPageFo
         tabs={tabs}
         initialTabId={tab?.id ?? null}
         title={title}
-        content={content}
+        formId={formId}
         onClose={() => setOpen(false)}
       />
     </Stack>
@@ -112,29 +109,19 @@ type SavePageDialogProps = Omit<NewPageFormProps, "tab"> & {
   open: boolean;
   /** The title derived from the content, used to suggest the name; the server derives it again on save. */
   title: string;
-  /** The Markdown content of the new page, submitted with the name and the place. */
-  content: string;
+  /** The id of the form, which the hidden field `content` of the editor is tied to. */
+  formId: string;
   onClose: () => void;
 };
 
 /** Dialog "Save page" that asks for the name and the place and creates the page. */
-function SavePageDialog({
-  open,
-  action,
-  folderName,
-  tabs,
-  initialTabId,
-  title,
-  content,
-  onClose,
-}: SavePageDialogProps) {
+function SavePageDialog({ open, action, folderName, tabs, initialTabId, title, formId, onClose }: SavePageDialogProps) {
   const [state, formAction, pending] = useActionState(action, {});
   // Controlled name and place keep the input when the action returns errors.
   const [name, setName] = useState(() => deriveName(title));
   const [place, setPlace] = useState(initialTabId ?? FOLDER_TARGET);
   const nameRef = useRef<HTMLInputElement>(null);
   const titleId = useId();
-  const formId = useId();
 
   const nameError = state.fieldErrors?.name?.[0];
   const message = state.message ?? state.fieldErrors?.content?.[0];
@@ -160,8 +147,8 @@ function SavePageDialog({
     >
       <DialogTitle id={titleId}>Save page</DialogTitle>
       <DialogContent>
-        {/* The dialog renders in a portal, outside the content field's tree, so the content is submitted in a hidden
-            field. `noValidate`: the server validates, and its errors are shown at the fields. */}
+        {/* The content is submitted by the hidden field of the editor, which is tied to this form by its id.
+            `noValidate`: the server validates, and its errors are shown at the fields. */}
         <Box component="form" id={formId} onSubmit={submit} noValidate>
           <Stack spacing={3} sx={{ pt: 1 }}>
             {message && <Alert severity="error">{message}</Alert>}
@@ -177,7 +164,6 @@ function SavePageDialog({
               nameRef={nameRef}
               locked={false}
             />
-            <input type="hidden" name="content" value={content} />
           </Stack>
         </Box>
       </DialogContent>

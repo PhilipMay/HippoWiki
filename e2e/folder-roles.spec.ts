@@ -13,6 +13,7 @@ import {
   resetTestDatabase,
   setOwnRole,
 } from "./support/database";
+import { fillContent } from "./support/editor";
 import { expect, test } from "./support/test";
 
 test.beforeEach(async () => {
@@ -114,7 +115,7 @@ test.describe("without a role on a folder", () => {
   test("a crafted form to create a page shows the not-found page and writes nothing", async ({ page }) => {
     const folder = await createFolder({ name: "handbook" });
     await page.goto("/folders/handbook?action=new");
-    await page.getByLabel("Content").fill("# Secret");
+    await fillContent(page, "# Secret");
     await page.getByRole("button", { name: "Save" }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
@@ -284,7 +285,7 @@ test.describe("what each role may do", () => {
     await submitAsReader(
       "/folders/handbook?action=new",
       async () => {
-        await page.getByLabel("Content").fill("# Crafted");
+        await fillContent(page, "# Crafted");
         await page.getByRole("button", { name: "Save" }).click();
         await expect(page.getByRole("dialog")).toBeVisible();
       },
@@ -292,7 +293,7 @@ test.describe("what each role may do", () => {
     );
     await submitAsReader(
       "/folders/handbook/intro.md?action=edit",
-      () => page.getByLabel("Content").fill("# Crafted"),
+      () => fillContent(page, "# Crafted"),
       () => page.getByRole("button", { name: "Save" }).click(),
     );
     await submitAsReader(
@@ -349,7 +350,7 @@ test.describe("what each role may do", () => {
     await expectOffers(page, ["New page"]);
     await page.getByRole("link", { name: "New page" }).click();
     await expect(page).toHaveURL("/folders/handbook?action=new");
-    await page.getByLabel("Content", { exact: true }).fill("# Draft\n\nText");
+    await fillContent(page, "# Draft\n\nText");
     await page.getByRole("button", { name: "Save" }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Save" }).click();
     await expect(page).toHaveURL("/folders/handbook/draft.md");
@@ -357,7 +358,7 @@ test.describe("what each role may do", () => {
 
     await page.getByRole("main").getByRole("link", { name: "Edit" }).click();
     await expect(page).toHaveURL("/folders/handbook/draft.md?action=edit");
-    await page.getByLabel("Content", { exact: true }).fill("# Draft\n\nEdited");
+    await fillContent(page, "# Draft\n\nEdited");
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page.getByRole("article").getByText("Edited")).toBeVisible();
 

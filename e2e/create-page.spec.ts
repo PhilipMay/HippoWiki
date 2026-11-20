@@ -6,6 +6,7 @@ import { CONTENT_MAX_DEPTH } from "@/features/pages/limits";
 import { KNOWN_USER } from "../prisma/known-users";
 import { by, collectErrors } from "./support/browser";
 import { createFolder, createPage, createTab, createUser, getTestDb, resetTestDatabase } from "./support/database";
+import { contentEditor, expectContent, fillContent } from "./support/editor";
 import { expect, test } from "./support/test";
 
 const TITLE_HEADING_MISSING = "Content must start with a title heading: # Title";
@@ -30,7 +31,7 @@ function saveDialog(page: Page) {
  */
 async function openSaveDialog(page: Page, content: string, address = NEW_PAGE) {
   await page.goto(address);
-  await page.getByLabel("Content").fill(content);
+  await fillContent(page, content);
   await page.getByRole("button", { name: "Save" }).click();
   const dialog = saveDialog(page);
   await expect(dialog).toBeVisible();
@@ -53,7 +54,7 @@ test("creating a page derives title and name from the title heading and shows th
   await expect(page.getByRole("heading", { level: 1, name: "New page" })).toBeVisible();
   await expect(page.getByLabel("Title")).toHaveCount(0);
   await expect(page.getByLabel("Name")).toHaveCount(0);
-  await page.getByLabel("Content").fill(content);
+  await fillContent(page, content);
   await page.getByRole("button", { name: "Save" }).click();
 
   const dialog = saveDialog(page);
@@ -89,22 +90,23 @@ for (const { name, content } of [
   test(`${name} shows the error at the content field and opens no dialog`, async ({ page }) => {
     const errors = collectErrors(page);
     await page.goto(NEW_PAGE);
-    const field = page.getByLabel("Content");
-    await field.fill(content);
+    const field = contentEditor(page);
+    await fillContent(page, content);
     await page.getByRole("button", { name: "Save" }).click();
 
     await expect(field).toHaveAttribute("aria-invalid", "true");
     await expect(field).toHaveAccessibleDescription(TITLE_HEADING_MISSING);
     await expect(saveDialog(page)).toHaveCount(0);
     await expect(page).toHaveURL(NEW_PAGE);
-    await expect(field).toHaveValue(content);
+    await expectContent(page, content);
     expect(await getTestDb().page.count()).toBe(0);
 
     // Adding a title heading removes the error and opens the dialog.
-    await field.fill(`# Fixed\n\n${content}`);
+    await fillContent(page, `# Fixed\n\n${content}`);
     await page.getByRole("button", { name: "Save" }).click();
     await expect(saveDialog(page).getByLabel("Name")).toHaveValue("fixed");
-    await expect(field).toHaveAttribute("aria-invalid", "false");
+    // Behind the open dialog the editor is hidden from assistive technology.
+    await expect(contentEditor(page, { includeHidden: true })).toHaveAttribute("aria-invalid", "false");
     expect(errors).toEqual([]);
   });
 }
@@ -178,7 +180,7 @@ test("a taken name shows an error in the open dialog and keeps all values", asyn
   expect(await getTestDb().page.count()).toBe(1);
 
   await dialog.getByRole("button", { name: "Cancel" }).click();
-  await expect(page.getByLabel("Content")).toHaveValue("# Taken\n\nContent that must not get lost");
+  await expectContent(page, "# Taken\n\nContent that must not get lost");
   expect(errors).toEqual([]);
 });
 
@@ -245,11 +247,10 @@ test("cancel in the dialog keeps the content, creates nothing and derives again 
 
   await expect(dialog).toBeHidden();
   await expect(page).toHaveURL(NEW_PAGE);
-  const content = page.getByLabel("Content");
-  await expect(content).toHaveValue("# First draft\n\nBody");
+  await expectContent(page, "# First draft\n\nBody");
   expect(await getTestDb().page.count()).toBe(0);
 
-  await content.fill("# Second draft\n\nBody");
+  await fillContent(page, "# Second draft\n\nBody");
   await page.getByRole("button", { name: "Save" }).click();
   await expect(dialog.getByLabel("Name")).toHaveValue("second-draft");
 });
@@ -260,13 +261,13 @@ test("the Escape key closes the dialog, keeps the content and creates nothing", 
 
   await expect(dialog).toBeHidden();
   await expect(page).toHaveURL(NEW_PAGE);
-  await expect(page.getByLabel("Content")).toHaveValue("# First draft\n\nBody");
+  await expectContent(page, "# First draft\n\nBody");
   expect(await getTestDb().page.count()).toBe(0);
 });
 
 test("cancel on the form returns to the folder and creates nothing", async ({ page }) => {
   await page.goto(NEW_PAGE);
-  await page.getByLabel("Content").fill("# Never saved");
+  await fillContent(page, "# Never saved");
   await page.getByRole("link", { name: "Cancel" }).click();
 
   await expect(page).toHaveURL("/folders/handbook");
@@ -311,7 +312,7 @@ test("a crafted request whose place is a tab of another folder shows an error an
   expect(await getTestDb().page.count()).toBe(0);
 
   await dialog.getByRole("button", { name: "Cancel" }).click();
-  await expect(page.getByLabel("Content")).toHaveValue("# Crafted\n\nContent that must not get lost");
+  await expectContent(page, "# Crafted\n\nContent that must not get lost");
   expect(errors).toEqual([]);
 });
 
@@ -335,7 +336,7 @@ test("lists nested one level too deep are refused with the error and the typed c
   expect(await getTestDb().page.count()).toBe(0);
 
   await dialog.getByRole("button", { name: "Cancel" }).click();
-  await expect(page.getByLabel("Content")).toHaveValue(content);
+  await expectContent(page, content);
   expect(errors).toEqual([]);
 });
 

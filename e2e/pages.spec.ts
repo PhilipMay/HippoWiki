@@ -2,6 +2,7 @@ import type { Locator } from "@playwright/test";
 
 import { collectErrors, expectNotFound } from "./support/browser";
 import { createFolder, createPage, createUser, resetTestDatabase } from "./support/database";
+import { expectContent } from "./support/editor";
 import { expect, test } from "./support/test";
 
 test.beforeEach(async () => {
@@ -125,7 +126,7 @@ test("page view shows the content's heading instead of the stored title", async 
 
   await page.getByRole("link", { name: "Edit" }).click();
   await expect(page).toHaveURL("/folders/handbook/stored.md?action=edit");
-  await expect(page.getByLabel("Content")).toHaveValue("# Content heading\n\nBody text");
+  await expectContent(page, "# Content heading\n\nBody text");
   expect(errors).toEqual([]);
 });
 

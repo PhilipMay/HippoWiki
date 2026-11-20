@@ -12,6 +12,7 @@ import {
   resetTestDatabase,
   TEST_PASSWORD,
 } from "./support/database";
+import { expectContent } from "./support/editor";
 import { expect, hydrating, test } from "./support/test";
 
 // The users of these tests log in themselves, with a first password.
@@ -378,7 +379,7 @@ test("a user with a first password reaches the address that asked for the login 
   await submitChange(page, {});
 
   await expect(page).toHaveURL("/folders/handbook/overview.md?action=edit");
-  await expect(page.getByLabel("Content")).toHaveValue("# Secret overview\n\nSecret text");
+  await expectContent(page, "# Secret overview\n\nSecret text");
   expect(errors).toEqual([]);
 });
 

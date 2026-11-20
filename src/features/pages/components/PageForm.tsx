@@ -3,15 +3,13 @@
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
 import Stack from "@mui/material/Stack";
-import TextField from "@mui/material/TextField";
 import { useActionState, useRef, useState } from "react";
 
 import Link from "@/components/Link";
-import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
+import MarkdownEditor from "@/features/pages/components/MarkdownEditor";
 import PageVersionField from "@/features/pages/components/PageVersionField";
 import type { PageFormAction } from "@/features/pages/forms";
 import { useFocusOnFirstError } from "@/lib/form-hooks";
-import { useHydrated } from "@/lib/hydration";
 
 type PageFormProps = {
   /** Server Action that stores the content; it returns the errors to show, or redirects on success. */
@@ -33,13 +31,10 @@ type PageFormProps = {
  */
 export default function PageForm({ action, initialContent, version, changedMessage, cancelHref }: PageFormProps) {
   const [state, formAction, pending] = useActionState(action, {});
-  // A controlled field keeps the entered content when the action returns errors; React resets only uncontrolled
-  // fields after a submission.
-  const [content, setContent] = useState(initialContent);
-  // Input before hydration could be lost, so the content is read-only and "Save" is disabled until then.
-  const hydrated = useHydrated();
+  // The content is read-only and "Save" is disabled until the editor is ready, also after hydration.
+  const [ready, setReady] = useState(false);
 
-  const contentRef = useRef<HTMLTextAreaElement>(null);
+  const contentRef = useRef<HTMLElement>(null);
 
   const contentError = state.fieldErrors?.content?.[0];
 
@@ -50,25 +45,16 @@ export default function PageForm({ action, initialContent, version, changedMessa
     <Stack component="form" action={formAction} noValidate spacing={3}>
       <PageVersionField version={version} changedMessage={changedMessage} />
       {state.message && <Alert severity="error">{state.message}</Alert>}
-      <TextField
-        name="content"
-        label="Content"
-        value={content}
-        onChange={(event) => setContent(event.target.value)}
-        multiline
-        minRows={16}
-        autoFocus
-        fullWidth
-        inputRef={contentRef}
-        error={!!contentError}
-        helperText={contentError ?? "Markdown (GitHub Flavored Markdown), starting with the title heading: # Title"}
-        slotProps={{
-          htmlInput: { maxLength: CONTENT_MAX_LENGTH, spellCheck: false, readOnly: !hydrated },
-          input: { sx: { fontFamily: "monospace", fontSize: "0.875rem", lineHeight: 1.6 } },
-        }}
+      {/* The editor keeps the entered content when the action returns errors; its hidden field is submitted. */}
+      <MarkdownEditor
+        initialContent={initialContent}
+        newPage={false}
+        error={contentError}
+        contentRef={contentRef}
+        onReady={() => setReady(true)}
       />
       <Stack direction="row" spacing={2}>
-        <Button type="submit" variant="contained" disabled={pending || !hydrated}>
+        <Button type="submit" variant="contained" disabled={pending || !ready}>
           {pending ? "Saving…" : "Save"}
         </Button>
         <Button component={Link} href={cancelHref}>

@@ -9,6 +9,7 @@ import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 import { KNOWN_USER } from "../prisma/known-users";
 import { NO_STORAGE_STATE, USER_STORAGE_STATE } from "./support/auth";
 import { createFolderRole, createGrant, createPage, createTab, createUser, getTestDb } from "./support/database";
+import { expectContent, fillContent } from "./support/editor";
 import { call, callTool, mcpPath, send, setUpProjects } from "./support/mcp";
 import { ISSUER } from "./support/oauth";
 import { expect, test } from "./support/test";
@@ -467,7 +468,7 @@ test.describe("the write tools", () => {
       await createPage({ folder: projects, name: "plan", content: "# Plan\n\nFirst draft", editor: bob });
 
       await page.goto("/folders/projects/plan.md?action=edit");
-      await page.getByLabel("Content").fill("# Plan\n\nBy alice.");
+      await fillContent(page, "# Plan\n\nBy alice.");
       const written = await callTool(request, bobsConnection, "replace_page_content", {
         page: "plan",
         version: 1,
@@ -480,9 +481,9 @@ test.describe("the write tools", () => {
       await expect(page.getByRole("main").getByRole("alert")).toHaveText(
         /^This page was changed by bob via mcp at .+ after you opened it\.$/,
       );
-      await expect(page.getByLabel("Content")).toHaveValue("# Plan\n\nBy an agent.");
+      await expectContent(page, "# Plan\n\nBy an agent.");
 
-      await page.getByLabel("Content").fill("# Plan\n\nBy alice.");
+      await fillContent(page, "# Plan\n\nBy alice.");
       await page.getByRole("button", { name: "Save" }).click();
       await expect(page).toHaveURL("/folders/projects/plan.md");
 

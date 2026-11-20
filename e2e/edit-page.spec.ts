@@ -15,6 +15,7 @@ import {
   getTestDb,
   resetTestDatabase,
 } from "./support/database";
+import { contentEditor, editorReady, expectContent, fillContent } from "./support/editor";
 import { expect, hydrating, test } from "./support/test";
 
 let handbook: Awaited<ReturnType<typeof createFolder>>;
@@ -56,8 +57,8 @@ test("editing the content shows the new version and keeps the name", async ({ pa
   await expect(page.getByRole("heading", { level: 1, name: "Edit page" })).toBeVisible();
   await expect(page.getByLabel("Title")).toHaveCount(0);
   await expect(page.getByLabel("Name")).toHaveCount(0);
-  await expect(page.getByLabel("Content")).toHaveValue("# Original title\n\nOriginal content");
-  await page.getByLabel("Content").fill("# Edited title\n\n## New section\n\n- Changed item");
+  await expectContent(page, "# Original title\n\nOriginal content");
+  await fillContent(page, "# Edited title\n\n## New section\n\n- Changed item");
   await page.getByRole("button", { name: "Save" }).click();
 
   await expect(page).toHaveURL("/folders/handbook/original-name.md");
@@ -89,14 +90,12 @@ test("the edit form starts with the cursor at the start of the content", async (
   const errors = collectErrors(page);
   await createPage({ folder: handbook, name: "focused", content: "# Focused page\n\nSome content" });
 
+  // The cursor is checked by typing: a character typed right away lands at the start of the content. Each address
+  // opens the editor anew with the stored content.
   async function expectCursorAtContentStart() {
-    const content = page.getByLabel("Content");
-    await expect(content).toBeFocused();
-    const selection = await content.evaluate((field: HTMLTextAreaElement) => [
-      field.selectionStart,
-      field.selectionEnd,
-    ]);
-    expect(selection).toEqual([0, 0]);
+    await expect(await editorReady(page)).toBeFocused();
+    await page.keyboard.type("X");
+    await expectContent(page, "X# Focused page\n\nSome content");
   }
 
   await page.goto("/folders/handbook/focused.md");
@@ -114,7 +113,7 @@ test("changing the heading changes the title and the list entry, but not the nam
   const edited = await createPage({ folder: handbook, name: "stable-name", content: "# Before\n\nBody" });
 
   await page.goto("/folders/handbook/stable-name.md?action=edit");
-  await page.getByLabel("Content").fill("# After the *change*\n\nBody");
+  await fillContent(page, "# After the *change*\n\nBody");
   await page.getByRole("button", { name: "Save" }).click();
 
   await expect(page).toHaveURL("/folders/handbook/stable-name.md");
@@ -150,7 +149,7 @@ test("a page stored with a different title keeps it on a save without a change a
   expect(await getTestDb().page.findUniqueOrThrow({ where: { id: created.id } })).toStrictEqual(created);
 
   await page.goto("/folders/handbook/stored.md?action=edit");
-  await page.getByLabel("Content").fill("# Heading title\n\nBody, changed");
+  await fillContent(page, "# Heading title\n\nBody, changed");
   await page.getByRole("button", { name: "Save" }).click();
 
   await expect(page).toHaveURL("/folders/handbook/stored.md");
@@ -163,15 +162,15 @@ test("removing the title heading shows an error at the content field and keeps t
   const created = await createPage({ folder: handbook, name: "valid", title: "Valid title" });
 
   await page.goto("/folders/handbook/valid.md?action=edit");
-  await page.getByLabel("Content").fill("Intro first\n\n# Valid title\n\nNew content that must not get lost");
+  await fillContent(page, "Intro first\n\n# Valid title\n\nNew content that must not get lost");
   await page.getByRole("button", { name: "Save" }).click();
 
-  const content = page.getByLabel("Content");
+  const content = contentEditor(page);
   await expect(content).toHaveAttribute("aria-invalid", "true");
   await expect(content).toHaveAccessibleDescription("Content must start with a title heading: # Title");
   await expect(content).toBeFocused();
   await expect(page).toHaveURL("/folders/handbook/valid.md?action=edit");
-  await expect(content).toHaveValue("Intro first\n\n# Valid title\n\nNew content that must not get lost");
+  await expectContent(page, "Intro first\n\n# Valid title\n\nNew content that must not get lost");
   expect(await getTestDb().page.findUniqueOrThrow({ where: { id: created.id } })).toEqual(created);
   expect(errors).toEqual([]);
 });
@@ -181,12 +180,18 @@ test("content above the limit shows an error at the content field and stores not
   const created = await createPage({ folder: handbook, name: "long", title: "Long page" });
 
   await page.goto("/folders/handbook/long.md?action=edit");
-  // Remove the field's limit, as a crafted request would, to submit content that is too long.
-  const content = page.getByLabel("Content");
-  await content.evaluate((field: HTMLTextAreaElement) => field.removeAttribute("maxlength"));
-  await content.fill(`# Long page\n\n${"x".repeat(CONTENT_MAX_LENGTH)}`);
-  await page.getByRole("button", { name: "Save" }).click();
+  await fillContent(page, "# Long page\n\nShort");
+  const save = page.getByRole("button", { name: "Save" });
+  // The editor accepts no more than the limit, so the content that is too long is set in the submitted form data, as
+  // a crafted request would send it.
+  await save.evaluate(
+    (button: HTMLButtonElement, value) =>
+      button.form?.addEventListener("formdata", (event) => event.formData.set("content", value)),
+    `# Long page\n\n${"x".repeat(CONTENT_MAX_LENGTH)}`,
+  );
+  await save.click();
 
+  const content = contentEditor(page);
   await expect(content).toHaveAttribute("aria-invalid", "true");
   await expect(content).toHaveAccessibleDescription("Content must be at most 100,000 characters");
   await expect(content).toBeFocused();
@@ -202,8 +207,8 @@ test("a table with too many cells shows an error at the content field and keeps 
   const value = `# Table page\n\n${table}`;
 
   await page.goto("/folders/handbook/table.md?action=edit");
-  const content = page.getByLabel("Content");
-  await content.fill(value);
+  const content = contentEditor(page);
+  await fillContent(page, value);
   await page.getByRole("button", { name: "Save" }).click();
 
   await expect(content).toHaveAttribute("aria-invalid", "true");
@@ -212,7 +217,7 @@ test("a table with too many cells shows an error at the content field and keeps 
       "cells that fill a row up to the columns of its header",
   );
   await expect(page).toHaveURL("/folders/handbook/table.md?action=edit");
-  await expect(content).toHaveValue(value);
+  await expectContent(page, value);
   expect(await getTestDb().page.findUniqueOrThrow({ where: { id: created.id } })).toEqual(created);
   expect(errors).toEqual([]);
 });
@@ -223,7 +228,7 @@ test("a form submission with extra title and name fields stores the derived titl
   const created = await createPage({ folder: handbook, name: "crafted", title: "Original" });
 
   await page.goto("/folders/handbook/crafted.md?action=edit");
-  await page.getByLabel("Content").fill("# From content");
+  await fillContent(page, "# From content");
   const save = page.getByRole("button", { name: "Save" });
   // Add fields to the form, as a crafted request would.
   await save.evaluate((button: HTMLButtonElement) => {
@@ -253,7 +258,7 @@ test("cancelling an edit returns to the page view and changes nothing", async ({
   });
 
   await page.goto("/folders/handbook/unchanged.md?action=edit");
-  await page.getByLabel("Content").fill("# Never saved");
+  await fillContent(page, "# Never saved");
   await page.getByRole("link", { name: "Cancel" }).click();
 
   await expect(page).toHaveURL("/folders/handbook/unchanged.md");
@@ -269,13 +274,13 @@ test("saving a page that was deleted in the meantime shows an error and keeps th
   await page.goto("/folders/handbook/soon-gone.md?action=edit");
   // Deleted by another user while the form is open.
   await getTestDb().page.update({ where: { id: created.id }, data: { deletedAt: new Date() } });
-  await page.getByLabel("Content").fill("# Soon gone\n\nTyped after the page was removed");
+  await fillContent(page, "# Soon gone\n\nTyped after the page was removed");
   await page.getByRole("button", { name: "Save" }).click();
 
   await expect(page.getByRole("main").getByRole("alert")).toHaveText("This page no longer exists.");
-  await expect(page.getByLabel("Content")).not.toBeFocused();
+  await expect(contentEditor(page)).not.toBeFocused();
   await expect(page).toHaveURL("/folders/handbook/soon-gone.md?action=edit");
-  await expect(page.getByLabel("Content")).toHaveValue("# Soon gone\n\nTyped after the page was removed");
+  await expectContent(page, "# Soon gone\n\nTyped after the page was removed");
   expect((await getTestDb().page.findUniqueOrThrow({ where: { id: created.id } })).content).toBe(created.content);
 });
 
@@ -301,7 +306,7 @@ test("a folder and a page can be created, and the page edited and renamed", asyn
   await expect(page.getByText("This folder is empty")).toBeVisible();
 
   await page.getByRole("link", { name: "New page" }).click();
-  await page.getByLabel("Content").fill("# Lifecycle page\n\nFirst version");
+  await fillContent(page, "# Lifecycle page\n\nFirst version");
   await page.getByRole("button", { name: "Save" }).click();
   await page.getByRole("dialog", { name: "Save page" }).getByRole("button", { name: "Save" }).click();
   await expect(page).toHaveURL("/folders/lifecycle/lifecycle-page.md");
@@ -312,7 +317,7 @@ test("a folder and a page can be created, and the page edited and renamed", asyn
 
   await page.getByRole("link", { name: /^Lifecycle page/ }).click();
   await page.getByRole("link", { name: "Edit" }).click();
-  await page.getByLabel("Content").fill("# Lifecycle page, edited\n\nSecond version");
+  await fillContent(page, "# Lifecycle page, edited\n\nSecond version");
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page).toHaveURL("/folders/lifecycle/lifecycle-page.md");
   await expect(page).toHaveTitle("Lifecycle page, edited – HippoWiki");
@@ -346,13 +351,13 @@ test("a page created and saved in the browser has a revision per change, and a s
     });
 
   await page.goto("/folders/handbook?action=new");
-  await page.getByLabel("Content").fill("# History\n\nFirst version");
+  await fillContent(page, "# History\n\nFirst version");
   await page.getByRole("button", { name: "Save" }).click();
   await page.getByRole("dialog", { name: "Save page" }).getByRole("button", { name: "Save" }).click();
   await expect(page).toHaveURL("/folders/handbook/history.md");
 
   await page.goto("/folders/handbook/history.md?action=edit");
-  await page.getByLabel("Content").fill("# History\n\nSecond version");
+  await fillContent(page, "# History\n\nSecond version");
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page).toHaveURL("/folders/handbook/history.md");
 
@@ -382,7 +387,7 @@ test("editing a page makes the logged-in user its last editor in the page view a
   await page.goto("/folders/handbook/edited.md");
   await expect(page.getByText(/^Last updated /)).toHaveText(/^Last updated .+ by bob via mcp$/);
   await page.goto("/folders/handbook/edited.md?action=edit");
-  await page.getByLabel("Content").fill("# Edited\n\nNew text");
+  await fillContent(page, "# Edited\n\nNew text");
   await page.getByRole("button", { name: "Save" }).click();
 
   await expect(page).toHaveURL("/folders/handbook/edited.md");
@@ -399,7 +404,7 @@ test("a submission of the edit form with the login of an admin changes nothing a
   const edited = await createPage({ folder: handbook, name: "overview", content: "# Overview\n\nOld text" });
   // The user opens the form; then the browser gets the login of an admin, as if the admin had crafted the request.
   await page.goto("/folders/handbook/overview.md?action=edit");
-  await page.getByLabel("Content").fill("# Changed\n\nNew text");
+  await fillContent(page, "# Changed\n\nNew text");
   await becomeUser(context, ADMIN_STORAGE_STATE);
 
   await page.getByRole("button", { name: "Save" }).click();
@@ -447,16 +452,16 @@ test.describe("a page changed after the editor was opened", () => {
     // Both open the editor; bob saves first.
     await page.goto("/folders/team/plan.md?action=edit");
     await other.page.goto("/folders/team/plan.md?action=edit");
-    await other.page.getByLabel("Content").fill("# Plan\n\nBob's version");
+    await fillContent(other.page, "# Plan\n\nBob's version");
     await other.page.getByRole("button", { name: "Save" }).click();
     await expect(other.page).toHaveURL("/folders/team/plan.md");
 
-    await page.getByLabel("Content").fill("# Plan\n\nAlice's version");
+    await fillContent(page, "# Plan\n\nAlice's version");
     await page.getByRole("button", { name: "Save" }).click();
 
     // The editor again, with the content as stored and the message that names bob and the time.
     await expect(page).toHaveURL("/folders/team/plan.md?action=edit&notice=changed");
-    await expect(page.getByLabel("Content")).toHaveValue("# Plan\n\nBob's version");
+    await expectContent(page, "# Plan\n\nBob's version");
     const time = await shownTime(other.page, "/folders/team/plan.md");
     await expect(changedMessage(page)).toHaveText(
       `This page was changed by bob via web at ${time} after you opened it.`,
@@ -487,7 +492,7 @@ test.describe("a page changed after the editor was opened", () => {
         lastEditedVia: "mcp",
       },
     });
-    await page.getByLabel("Content").fill("# Plan\n\nAlice's version");
+    await fillContent(page, "# Plan\n\nAlice's version");
     await page.getByRole("button", { name: "Save" }).click();
 
     await expect(page).toHaveURL("/folders/team/plan.md?action=edit&notice=changed");
@@ -501,15 +506,15 @@ test.describe("a page changed after the editor was opened", () => {
 
     await page.goto("/folders/team/plan.md?action=edit");
     await second.goto("/folders/team/plan.md?action=edit");
-    await page.getByLabel("Content").fill("# Plan\n\nFrom the first tab");
+    await fillContent(page, "# Plan\n\nFrom the first tab");
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page).toHaveURL("/folders/team/plan.md");
 
-    await second.getByLabel("Content").fill("# Plan\n\nFrom the second tab");
+    await fillContent(second, "# Plan\n\nFrom the second tab");
     await second.getByRole("button", { name: "Save" }).click();
 
     await expect(second).toHaveURL("/folders/team/plan.md?action=edit&notice=changed");
-    await expect(second.getByLabel("Content")).toHaveValue("# Plan\n\nFrom the first tab");
+    await expectContent(second, "# Plan\n\nFrom the first tab");
     await expect(changedMessage(second)).toHaveText(
       new RegExp(`^This page was changed by ${USER} via web at .+ after you opened it\\.$`),
     );
@@ -527,11 +532,11 @@ test.describe("a page changed after the editor was opened", () => {
     await dialog.getByRole("button", { name: "Save" }).click();
     await expect(other.page).toHaveURL("/folders/team/release-plan.md");
 
-    await page.getByLabel("Content").fill("# Plan\n\nAlice's version");
+    await fillContent(page, "# Plan\n\nAlice's version");
     await page.getByRole("button", { name: "Save" }).click();
 
     await expect(page).toHaveURL("/folders/team/release-plan.md?action=edit&notice=changed");
-    await expect(page.getByLabel("Content")).toHaveValue("# Plan\n\nFirst draft");
+    await expectContent(page, "# Plan\n\nFirst draft");
     await expect(changedMessage(page)).toHaveText(/^This page was changed by bob via web at .+ after you opened it\.$/);
     expect((await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).content).toBe(
       "# Plan\n\nFirst draft",
@@ -544,7 +549,7 @@ test.describe("a page changed after the editor was opened", () => {
     const plan = await createPage({ folder: team, name: "plan", content: "# Plan\n\nStored", editor: bob });
 
     await page.goto("/folders/team/plan.md?action=edit");
-    await page.getByLabel("Content").fill("# Plan\n\nTyped");
+    await fillContent(page, "# Plan\n\nTyped");
     const save = page.getByRole("button", { name: "Save" });
     await save.evaluate(
       (button: HTMLButtonElement, field) =>
@@ -554,7 +559,7 @@ test.describe("a page changed after the editor was opened", () => {
     await save.click();
 
     await expect(page).toHaveURL("/folders/team/plan.md?action=edit&notice=changed");
-    await expect(page.getByLabel("Content")).toHaveValue("# Plan\n\nStored");
+    await expectContent(page, "# Plan\n\nStored");
     await expect(changedMessage(page)).toHaveText(/^This page was changed by bob via web at .+ after you opened it\.$/);
     expect(await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).toStrictEqual(plan);
   });
@@ -570,7 +575,7 @@ test.describe("a page changed after the editor was opened", () => {
 
     await page.goto("/folders/team/plan.md?action=edit");
     await other.page.goto("/folders/team/plan.md?action=edit");
-    await other.page.getByLabel("Content").fill("# Plan\n\nBob's version");
+    await fillContent(other.page, "# Plan\n\nBob's version");
     await other.page.getByRole("button", { name: "Save" }).click();
     await expect(other.page).toHaveURL("/folders/team/plan.md");
     await other.context.close();
@@ -579,7 +584,7 @@ test.describe("a page changed after the editor was opened", () => {
     await page.getByRole("button", { name: "Save" }).click();
 
     await expect(page).toHaveURL("/folders/team/plan.md?action=edit&notice=changed");
-    await expect(page.getByLabel("Content")).toHaveValue("# Plan\n\nBob's version");
+    await expectContent(page, "# Plan\n\nBob's version");
     await expect(changedMessage(page)).toHaveText(/^This page was changed by bob via web at .+ after you opened it\.$/);
     expect(await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).toStrictEqual(stored);
     expect(errors).toEqual([]);
@@ -596,7 +601,7 @@ test.describe("a page changed after the editor was opened", () => {
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page).toHaveURL("/folders/team/plan.md");
 
-    await other.page.getByLabel("Content").fill("# Plan\n\nBob's version");
+    await fillContent(other.page, "# Plan\n\nBob's version");
     await other.page.getByRole("button", { name: "Save" }).click();
     await expect(other.page).toHaveURL("/folders/team/plan.md");
     await expect(other.page.getByText(/^Last updated /)).toHaveText(by("bob"));
@@ -688,8 +693,8 @@ test.describe("a save without a change", () => {
     const created = await createPage({ folder: handbook, name: "long", content });
 
     await page.goto("/folders/handbook/long.md?action=edit");
-    const field = page.getByLabel("Content");
-    await expect(field).toHaveValue(content);
+    const field = await editorReady(page);
+    await expectContent(page, content);
     await page.getByRole("button", { name: "Save" }).click();
 
     await expect(field).toHaveAttribute("aria-invalid", "true");

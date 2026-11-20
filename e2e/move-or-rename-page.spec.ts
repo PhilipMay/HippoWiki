@@ -7,6 +7,7 @@ import { KNOWN_USER } from "../prisma/known-users";
 import { logInElsewhere } from "./support/auth";
 import { by, collectErrors, expectNotFound } from "./support/browser";
 import { createFolder, createPage, createTab, createUser, getTestDb, resetTestDatabase } from "./support/database";
+import { fillContent } from "./support/editor";
 import { expect, test } from "./support/test";
 
 let handbook: Awaited<ReturnType<typeof createFolder>>;
@@ -565,7 +566,7 @@ test.describe("a page changed after the dialog was opened", () => {
     // The dialog is open while bob saves the content.
     await page.goto("/folders/team/plan.md?action=move-or-rename");
     await other.page.goto("/folders/team/plan.md?action=edit");
-    await other.page.getByLabel("Content").fill("# Plan\n\nBob's version");
+    await fillContent(other.page, "# Plan\n\nBob's version");
     await other.page.getByRole("button", { name: "Save" }).click();
     await expect(other.page).toHaveURL("/folders/team/plan.md");
     const time = (await other.page.getByRole("article").locator("time").textContent()) ?? "";
@@ -658,7 +659,7 @@ test.describe("a page changed after the dialog was opened", () => {
     const other = await logInElsewhere(browser, "bob");
 
     await other.page.goto("/folders/team/plan.md?action=edit");
-    await other.page.getByLabel("Content").fill("# Plan\n\nBob's version");
+    await fillContent(other.page, "# Plan\n\nBob's version");
 
     await page.goto("/folders/team/plan.md?action=move-or-rename");
     await submitUnchanged(dialogOf(page));

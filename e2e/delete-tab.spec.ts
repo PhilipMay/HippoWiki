@@ -12,6 +12,7 @@ import {
   getTestDb,
   resetTestDatabase,
 } from "./support/database";
+import { editorReady, fillContent } from "./support/editor";
 import { callTool, mcpPath } from "./support/mcp";
 import { expect, hydrating, test } from "./support/test";
 
@@ -294,14 +295,14 @@ test("a Writer whose editor was open on a page of the deleted tab gets the messa
   const plan = await createPage({ tab: guides, name: "plan", content: "# Plan\n\nFirst draft" });
   const other = await logInElsewhere(browser, "bob");
   await other.page.goto("/folders/team/guides/plan.md?action=edit");
-  await expect(other.page.getByLabel("Content")).toBeVisible();
+  await editorReady(other.page);
 
   await openDeleteDialog(page, "/folders/team/guides");
   await deleteDialog(page).getByRole("button", { name: "Delete" }).click();
   await expect(page).toHaveURL("/folders/team");
   const deleted = await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } });
 
-  await other.page.getByLabel("Content").fill("# Plan\n\nBob's version");
+  await fillContent(other.page, "# Plan\n\nBob's version");
   await other.page.getByRole("button", { name: "Save" }).click();
 
   await expect(other.page.getByRole("main").getByRole("alert")).toHaveText("This page no longer exists.");
