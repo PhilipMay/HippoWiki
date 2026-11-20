@@ -12,6 +12,8 @@ export type EditorHandle = {
   contentElement: HTMLElement;
   /** The content as it is now, with plain line breaks, exactly as the server stores it (R5). */
   content(): string;
+  /** The length of the content, counted as the server counts it: every line break is one character (R27). */
+  length(): number;
   focus(): void;
   /** Marks the content as invalid for screen readers, after a field error of a save (R37). */
   setInvalid(invalid: boolean): void;
@@ -50,6 +52,7 @@ export function mountEditor({ parent, initialContent, onChange, ...options }: Mo
   const handle: EditorHandle = {
     contentElement: view.contentDOM,
     content: () => view.state.doc.toString(),
+    length: () => view.state.doc.length,
     focus: () => view.focus(),
     setInvalid: (value) =>
       view.dispatch({

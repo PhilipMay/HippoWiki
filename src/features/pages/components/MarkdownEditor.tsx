@@ -8,10 +8,19 @@ import { useEffect, useEffectEvent, useId, useRef, useState, type RefObject } fr
 import { flushSync } from "react-dom";
 
 import type { EditorHandle } from "@/features/pages/editor/mount";
+import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 
 /** The helper text below the editor, which a field error replaces (R36, R37). */
 const HELPER_TEXT =
   "Markdown (GitHub Flavored Markdown), starting with the title heading: # Title. Press Esc, then Tab, to leave the editor.";
+
+/** The length from which the counter below the editor shows, 90 % of the content limit (R28). */
+const COUNTER_FROM = CONTENT_MAX_LENGTH * 0.9;
+
+/** The counter of the length of the content, or `null` below `COUNTER_FROM`, where it is not shown. */
+function counterOf(length: number): number | null {
+  return length >= COUNTER_FROM ? length : null;
+}
 
 /** The minimum height of the editor and of the read-only field before it, in lines (R41). */
 const MIN_LINES = 16;
@@ -53,6 +62,10 @@ export default function MarkdownEditor({
   onReady,
 }: MarkdownEditorProps) {
   const [editor, setEditor] = useState<EditorHandle | null>(null);
+  // The length shown by the counter. It is set only when it changes from 90,000 characters on, or the counter hides, so
+  // that typing below that causes no React render.
+  const [counter, setCounter] = useState<number | null>(() => counterOf(initialContent.length));
+  const counterRef = useRef(counter);
   const labelId = useId();
   const descriptionId = useId();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -73,6 +86,11 @@ export default function MarkdownEditor({
       descriptionId,
       onChange: (changed) => {
         field.value = changed.content();
+        const next = counterOf(changed.length());
+        if (next !== counterRef.current) {
+          counterRef.current = next;
+          setCounter(next);
+        }
       },
     });
     // The read-only field is removed in the same task in which the editor is created, so that the two never carry the
@@ -152,7 +170,14 @@ export default function MarkdownEditor({
         )}
         <div ref={containerRef} />
       </Box>
-      <FormHelperText id={descriptionId}>{error ?? HELPER_TEXT}</FormHelperText>
+      <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2 }}>
+        <FormHelperText id={descriptionId}>{error ?? HELPER_TEXT}</FormHelperText>
+        {counter !== null && (
+          <FormHelperText sx={{ flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>
+            {counter.toLocaleString("en-US")} / {CONTENT_MAX_LENGTH.toLocaleString("en-US")}
+          </FormHelperText>
+        )}
+      </Box>
       {/* Its value is set only by the editor: a `defaultValue` would be written back by React on every render, such as
           the one after a refused save, and "Save" is disabled until the editor is ready. */}
       <input ref={fieldRef} type="hidden" name="content" form={form} />

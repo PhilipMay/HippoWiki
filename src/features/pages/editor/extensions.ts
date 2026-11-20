@@ -16,6 +16,7 @@ import { EditorView, keymap, placeholder } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 import { GFM } from "@lezer/markdown";
 
+import { contentLimit } from "@/features/pages/editor/content-limit";
 import { indentExtensions, indentKeymap } from "@/features/pages/editor/indent";
 import { theme as appTheme } from "@/lib/theme";
 
@@ -135,6 +136,7 @@ const theme = EditorView.theme({
 export function editorExtensions({ newPage, labelId, descriptionId }: EditorOptions): Extension[] {
   return [
     language(),
+    contentLimit(),
     syntaxHighlighting(highlightStyle),
     history(),
     markupKeymap,
