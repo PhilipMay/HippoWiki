@@ -4,7 +4,7 @@
 import type { APIRequestContext } from "@playwright/test";
 
 import { USER_TEXT_NOTE } from "@/features/mcp/tool-schemas";
-import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
+import { CONTENT_MAX_LENGTH, CONTENT_MAX_WIKI_LINKS } from "@/features/pages/limits";
 
 import { KNOWN_USER } from "../prisma/known-users";
 import { NO_STORAGE_STATE, USER_STORAGE_STATE } from "./support/auth";
@@ -191,6 +191,30 @@ test.describe("the write tools", () => {
     );
     expect(await storedPages()).toEqual(before);
     expect(before).toMatchObject([{ name: "plan", version: 1 }]);
+  });
+
+  test("create_page, replace_page_content and edit_page_content with 5,001 wiki links are refused and change nothing (R26)", async ({
+    request,
+  }) => {
+    await createPage({ folder: projects, name: "plan", content: "# Plan\n\nOld." });
+    const before = await storedPages();
+    const links = "[[setup]] ".repeat(CONTENT_MAX_WIKI_LINKS + 1);
+
+    const refusals = [
+      await write(request, "create_page", { content: `# Links\n\n${links}`, name: "links" }),
+      await write(request, "replace_page_content", { page: "plan", version: 1, content: `# Plan\n\n${links}` }),
+      await write(request, "edit_page_content", {
+        page: "plan",
+        version: 1,
+        edits: [{ oldText: "Old.", newText: links }],
+      }),
+    ];
+
+    for (const refused of refusals) {
+      expect(refused.isError).toBe(true);
+      expect(refused.content[0]?.text).toContain("A page may hold at most 5,000 wiki links.");
+    }
+    expect(await storedPages()).toEqual(before);
   });
 
   test("move_or_rename_page puts the page at its new place; a taken name and a missing tab change nothing", async ({

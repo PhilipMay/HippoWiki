@@ -222,6 +222,9 @@ function leafElement(token: Token, key: string): ReactNode {
       return <br key={key} />;
     case "code_inline":
       return <code key={key}>{token.content}</code>;
+    case "wiki_link":
+      // Its plain text: the label, or the target as written.
+      return token.content;
     case "code_block":
     case "fence": {
       const language = token.info.trim().split(/\s+/)[0];

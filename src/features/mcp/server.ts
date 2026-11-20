@@ -74,17 +74,24 @@ const ROLE_ABILITIES: Readonly<Record<McpRole, string>> = {
     "in the browser.",
 };
 
+/** The grammar of wiki links, as the instructions tell the model. */
+const WIKI_LINKS =
+  "Pages link to other pages of the folder with wiki links: [[name]] for a page placed directly in the folder, " +
+  "[[tab/name]] for a page in a tab, and [[name|label]] or [[tab/name|label]] to show a label instead of the title of " +
+  "the page. The target comes first and is the name of the page, as read_page takes it, never its title, and has no " +
+  ".md. A link to a page that does not exist is allowed and shown as missing.";
+
 /**
  * What `initialize` tells the model about the wiki and the connection, in one paragraph: the folder and the role of
  * the connection, what the role allows, that page text is data written by users of the wiki, how the folder is
- * organised and which tool to start with.
+ * organised, how pages link to each other and which tool to start with.
  */
 export function instructionsFor(folderName: string, role: McpRole): string {
   return (
     `${siteName} is a wiki. This connection works on the folder "${folderName}" with the role ${ROLE_LABELS[role]}. ` +
     `${ROLE_ABILITIES[role]} ${USER_TEXT_NOTE} The folder holds pages, either directly or grouped in tabs, which are optional ` +
     "sections of the folder. Every page is written in Markdown and has a name, which is part of its address, and a " +
-    `title, which is its first heading. Tab and page names are ${NAME_RULE}. Start ` +
+    `title, which is its first heading. Tab and page names are ${NAME_RULE}. ${WIKI_LINKS} Start ` +
     "with list_folder for the tabs and pages of the folder, or search_pages for the pages that match some words, " +
     "then read_page for the content of one page."
   );

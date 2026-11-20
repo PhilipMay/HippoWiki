@@ -1,7 +1,7 @@
 import type { Dialog, Page } from "@playwright/test";
 
 import { collectErrors } from "./support/browser";
-import { editorReady, expectContent, fillContent } from "./support/editor";
+import { contentEditor, editorReady, expectContent, fillContent } from "./support/editor";
 import { createFolder, createPage, getTestDb, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
 
@@ -129,6 +129,8 @@ for (const { what, address, cancelTo, link } of EDITORS) {
 
       await page.goBack();
       await expect(page).toHaveURL(cancelTo);
+      // The address changes before the page it leads to replaces the editor, whose question is removed with it.
+      await expect(contentEditor(page)).toHaveCount(0);
       await closeTab(page);
       expect(dialogs).toEqual([]);
     });

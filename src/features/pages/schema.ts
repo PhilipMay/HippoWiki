@@ -1,6 +1,11 @@
 import { z } from "zod";
 
-import { CONTENT_MAX_DEPTH, CONTENT_MAX_LENGTH, CONTENT_MAX_TABLE_CELLS } from "@/features/pages/limits";
+import {
+  CONTENT_MAX_DEPTH,
+  CONTENT_MAX_LENGTH,
+  CONTENT_MAX_TABLE_CELLS,
+  CONTENT_MAX_WIKI_LINKS,
+} from "@/features/pages/limits";
 import { analyseMarkdown } from "@/features/pages/markdown";
 import { nameSchema } from "@/lib/names";
 
@@ -85,17 +90,21 @@ export const CONTENT_TABLE_CELLS_MESSAGE =
   `Tables must have at most ${CONTENT_MAX_TABLE_CELLS.toLocaleString("en-US")} cells in all, counting the empty ` +
   "cells that fill a row up to the columns of its header";
 
+/** Shown at the content field when the content has more than `CONTENT_MAX_WIKI_LINKS` wiki links. */
+export const CONTENT_WIKI_LINKS_MESSAGE = `A page may hold at most ${CONTENT_MAX_WIKI_LINKS.toLocaleString("en-US")} wiki links.`;
+
 /**
  * Adds the title derived from the content to validated input, or reports at the content field what is wrong with it:
- * a missing title heading, lists and quotes nested too deep, too many table cells. Title, depth and cells come from
- * one parse. A submitted title is never part of the input; the content is the only source of the title.
+ * a missing title heading, lists and quotes nested too deep, too many table cells, too many wiki links. Title, depth,
+ * cells and wiki links come from one parse. A submitted title is never part of the input; the content is the only source of the title.
  */
 function withDerivedTitle<Input extends { content: string }>(input: Input, ctx: z.RefinementCtx) {
-  const { title, depth, cells } = analyseMarkdown(input.content);
+  const { title, depth, cells, wikiLinks } = analyseMarkdown(input.content);
   const messages: string[] = [];
   if (title === null) messages.push(TITLE_HEADING_MISSING_MESSAGE);
   if (depth > CONTENT_MAX_DEPTH) messages.push(CONTENT_DEPTH_MESSAGE);
   if (cells > CONTENT_MAX_TABLE_CELLS) messages.push(CONTENT_TABLE_CELLS_MESSAGE);
+  if (wikiLinks > CONTENT_MAX_WIKI_LINKS) messages.push(CONTENT_WIKI_LINKS_MESSAGE);
   for (const message of messages) ctx.addIssue({ code: "custom", message, path: ["content"] });
   if (title === null || messages.length > 0) return z.NEVER;
   return { ...input, title };

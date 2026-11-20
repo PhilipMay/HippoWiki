@@ -17,7 +17,7 @@ import {
 import { getDb } from "@/lib/db";
 import { getServerEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";
-import { NAME_PATTERN } from "@/lib/names";
+import { NAME_PATTERN } from "@/lib/name-limits";
 import { hashPassword, verifyPassword } from "@/lib/password-hash";
 
 /** A session lasts 30 days from the login and is not extended by use. */

@@ -10,7 +10,7 @@ import { pageText } from "@/features/search/text";
  * `text.ts` or `language.ts` that changes what they derive, such as another database of the detector: the server then
  * derives every page whose stored version differs again before it serves.
  */
-export const SEARCH_INDEX_VERSION = 1;
+export const SEARCH_INDEX_VERSION = 2;
 
 /** The search columns of a page. */
 export type SearchIndexData = {

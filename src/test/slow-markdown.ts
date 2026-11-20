@@ -46,4 +46,12 @@ export const SLOW_INPUTS: Readonly<Record<string, string>> = {
   "quotes nested 50,000 deep": repeated("> "),
   "a table header of 3,000 columns with 3,000 rows of one cell": `|${"a|".repeat(3_000)}\n|${"-|".repeat(3_000)}\n${"a\n".repeat(3_000)}`,
   "many footnotes": manyFootnotes(),
+  // Inputs for the rule of wiki links, which looks for the end of a link after every `[[`.
+  "[[ with ]] at the end": `${repeated("[[").slice(2)}]]`,
+  "[[a|": repeated("[[a|"),
+  "[[a| with ]] at the end": `${repeated("[[a|").slice(4)}]]`,
+  "[[a]]": repeated("[[a]]"),
+  "[[ between code spans": repeated("`a` [[ "),
+  "[[a on every line with ]] at the end": `${repeated("[[a\n").slice(4)}]]`,
+  "[[a]] in table cells": `| a |\n| - |\n${repeated("| [[a]] \\| [[b|c]] |\n")}`.slice(0, CONTENT_MAX_LENGTH),
 };

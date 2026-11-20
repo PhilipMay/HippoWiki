@@ -84,3 +84,17 @@ describe("the prose of a page", () => {
     expect(pageText("# Title\n\nA\u0001B\n").prose).toBe("Title\nA B");
   });
 });
+
+describe("the text of a wiki link (R23)", () => {
+  it("is its label in the search text and the prose", () => {
+    const { searchText, prose } = pageText("# Links\n\nRead [[setup|the setup]] first.");
+    expect(searchText).toBe("Read the setup first.");
+    expect(prose).toBe("Links\nRead the setup first.");
+  });
+
+  it("is its target as written in the search text only, without a label", () => {
+    const { searchText, prose } = pageText("# Links\n\nRead [[guides/setup]] first.");
+    expect(searchText).toBe("Read guides/setup first.");
+    expect(prose).toBe("Links\nRead   first.");
+  });
+});

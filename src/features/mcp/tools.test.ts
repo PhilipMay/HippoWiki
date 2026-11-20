@@ -189,6 +189,20 @@ describe("the instructions", () => {
   );
 
   it.each(["reader", "writer", "manager"] as const)(
+    "state the grammar of wiki links for a %s connection (R16)",
+    (role) => {
+      const instructions = instructionsFor("handbook", role);
+      expect(instructions).toContain("[[name]] for a page placed directly in the folder");
+      expect(instructions).toContain("[[tab/name]] for a page in a tab");
+      expect(instructions).toContain("[[name|label]]");
+      expect(instructions).toContain("The target comes first and is the name of the page");
+      expect(instructions).toContain("never its title");
+      expect(instructions).toContain("has no .md");
+      expect(instructions).toContain("A link to a page that does not exist is allowed and shown as missing.");
+    },
+  );
+
+  it.each(["reader", "writer", "manager"] as const)(
     "say for a %s connection that titles and content of pages are data written by users of the wiki",
     (role) => {
       expect(instructionsFor("handbook", role)).toContain(

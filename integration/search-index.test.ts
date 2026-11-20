@@ -7,7 +7,7 @@ import * as folderService from "@/features/folders/service";
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 import * as pageService from "@/features/pages/service";
 import { SEARCH_INDEX_VERSION } from "@/features/search/index-data";
-import { indexOutdatedPages } from "@/features/search/service";
+import { indexOutdatedPages, searchPages } from "@/features/search/service";
 import type { Folder, User } from "@/generated/prisma/client";
 
 import { createFolder, createPage, createTab, createUser, getTestDb } from "../e2e/support/database";
@@ -96,6 +96,14 @@ describe("the words and the vector of a page", () => {
     expect((await storedPage(id)).searchLanguage).toBe("german");
     expect(await matches(id, "german", "Häuser")).toBe(true);
     expect(await matches(id, "german", "Datenbanken")).toBe(true);
+  });
+
+  it("hold the label of a wiki link, so that a search for it finds the page (R23)", async () => {
+    const id = await newPage("# Links\n\nRead [[setup|the setup]] and [[guides/install]].");
+
+    expect(await wordsOf()).toMatchObject({ the: 1, setup: 1 });
+    const result = await searchPages(actor, folder.id, "the setup");
+    expect(result?.ok && result.value.results.map((page) => page.id)).toEqual([id]);
   });
 
   it("change with the content: an added word joins the words and a removed one leaves them", async () => {

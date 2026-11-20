@@ -1,7 +1,7 @@
 // The text of a page that search stores and the prose its language is detected from, both from the tokens of the one
 // Markdown parser (`src/features/pages/markdown.ts`). Pure: no database and no server-only imports.
 
-import { parseMarkdown, titleFromTokens, type Token } from "@/features/pages/markdown";
+import { isWikiLink, parseMarkdown, titleFromTokens, type Token } from "@/features/pages/markdown";
 
 /** What search derives of the text of a page. */
 export type PageText = {
@@ -27,7 +27,9 @@ type BlockText = { search: string; prose: string };
 
 /**
  * The text of the inline tokens of a block: text, inline code and the alt text of images, with the addresses of links
- * and images between spaces; line breaks become spaces. Walks with a stack of its own like `plainText()`, so that
+ * and images between spaces, and the label of a wiki link or, without a label, its target as written; line breaks
+ * become spaces. The prose takes the label of a wiki link like the text of a link, but not a target, which is a name
+ * like an address: so an update of the links on a rename changes the search text but never the language. Walks with a stack of its own like `plainText()`, so that
  * nested images cannot deepen the call stack.
  */
 function inlineText(tokens: readonly Token[]): BlockText {
@@ -46,6 +48,12 @@ function inlineText(tokens: readonly Token[]): BlockText {
       case "code_inline":
         search += token.content;
         prose += " ";
+        break;
+      case "wiki_link":
+        if (isWikiLink(token)) {
+          search += token.content;
+          prose += token.meta.label ?? " ";
+        }
         break;
       case "softbreak":
       case "hardbreak":

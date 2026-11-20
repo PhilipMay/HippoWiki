@@ -3,8 +3,13 @@ import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import MarkdownContent from "@/features/pages/components/MarkdownContent";
-import { CONTENT_MAX_DEPTH, CONTENT_MAX_LENGTH, CONTENT_MAX_TABLE_CELLS } from "@/features/pages/limits";
-import { analyseMarkdown } from "@/features/pages/markdown";
+import {
+  CONTENT_MAX_DEPTH,
+  CONTENT_MAX_LENGTH,
+  CONTENT_MAX_TABLE_CELLS,
+  CONTENT_MAX_WIKI_LINKS,
+} from "@/features/pages/limits";
+import { analyseMarkdown, parseMarkdown, type Token, type WikiLinkMeta } from "@/features/pages/markdown";
 
 /** The page view of the content as HTML, as the server renders it. */
 function render(content: string): string {
@@ -169,8 +174,9 @@ describe("analyseMarkdown", () => {
       title: "Title",
       depth: 0,
       cells: 0,
+      wikiLinks: 0,
     });
-    expect(analyseMarkdown("No title")).toEqual({ title: null, depth: 0, cells: 0 });
+    expect(analyseMarkdown("No title")).toEqual({ title: null, depth: 0, cells: 0, wikiLinks: 0 });
   });
 
   it("counts one level for a list or quote that is not inside another", () => {
@@ -211,5 +217,59 @@ describe("analyseMarkdown", () => {
     expect(
       analyseMarkdown(`|${"a|".repeat(3_000)}\n|${"-|".repeat(3_000)}\n${"a\n".repeat(3_000)}`).cells,
     ).toBeGreaterThan(CONTENT_MAX_TABLE_CELLS);
+  });
+
+  it("counts the wiki links in every block, but none in code or the alt text of an image", () => {
+    const content = "# [[a]]\n\n[[b]] [[c|C]]\n\n- [[d]]\n\n| [[e]] |\n| - |\n\n`[[f]]` ![[[g]]](/a.png)";
+    expect(analyseMarkdown(content).wikiLinks).toBe(5);
+    expect(analyseMarkdown(`# T\n\n${"[[a]]".repeat(CONTENT_MAX_WIKI_LINKS + 1)}`).wikiLinks).toBe(
+      CONTENT_MAX_WIKI_LINKS + 1,
+    );
+  });
+});
+
+/** The inline tokens of the first block of the content. */
+function inlineTokens(content: string): Token[] {
+  return parseMarkdown(content).find((token) => token.type === "inline")?.children ?? [];
+}
+
+describe("wiki links", () => {
+  it("are tokens wiki_link with the target, the page, the label and their plain text", () => {
+    const [link, text, labelled] = inlineTokens("[[guides/setup]] [[setup|Setup guide]]");
+    expect(link).toMatchObject({ type: "wiki_link", content: "guides/setup" });
+    expect(link?.meta).toEqual({
+      target: "guides/setup",
+      page: { tab: "guides", name: "setup" },
+      label: null,
+      offset: 2,
+      position: 2,
+    } satisfies WikiLinkMeta);
+    expect(text).toMatchObject({ type: "text", content: " " });
+    expect(labelled).toMatchObject({ type: "wiki_link", content: "Setup guide" });
+    expect((labelled?.meta as WikiLinkMeta).page).toEqual({ tab: null, name: "setup" });
+  });
+
+  it("make ![[setup]] the text ! and a wiki link", () => {
+    expect(inlineTokens("![[setup]]").map((token) => token.type)).toEqual(["text", "wiki_link"]);
+  });
+
+  it("keep a wiki link inside the text of a Markdown link, which then stays text", () => {
+    const tokens = inlineTokens("[see [[setup]]](https://example.com)");
+    expect(tokens.slice(0, 3).map((token) => [token.type, token.content])).toEqual([
+      ["text", "[see "],
+      ["wiki_link", "setup"],
+      ["text", "]("],
+    ]);
+  });
+
+  it("stand next to a footnote reference", () => {
+    const tokens = inlineTokens("[[setup]][^1]\n\n[^1]: Note");
+    expect(tokens.map((token) => token.type)).toEqual(["wiki_link", "footnote_ref"]);
+  });
+
+  it("show their plain text in the page view until they are rendered as links", () => {
+    const html = render("# T\n\n[[setup]] and [[guides/setup|<b>the setup</b>]]");
+    expect(html).toContain(">setup<!-- --> and <!-- -->&lt;b&gt;the setup&lt;/b&gt;</p>");
+    expect(html).not.toContain("[[");
   });
 });

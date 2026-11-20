@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { CONTENT_MAX_DEPTH, CONTENT_MAX_LENGTH, CONTENT_MAX_TABLE_CELLS } from "@/features/pages/limits";
+import {
+  CONTENT_MAX_DEPTH,
+  CONTENT_MAX_LENGTH,
+  CONTENT_MAX_TABLE_CELLS,
+  CONTENT_MAX_WIKI_LINKS,
+} from "@/features/pages/limits";
 import {
   CONTENT_DEPTH_MESSAGE,
   CONTENT_NUL_MESSAGE,
   CONTENT_TABLE_CELLS_MESSAGE,
+  CONTENT_WIKI_LINKS_MESSAGE,
   newPageInputSchema,
   pageContentInputSchema,
   parsePageId,
@@ -146,6 +152,23 @@ describe("the limits of the Markdown of a page", () => {
       content: [CONTENT_TABLE_CELLS_MESSAGE],
     });
     expect(CONTENT_TABLE_CELLS_MESSAGE).toContain(CONTENT_MAX_TABLE_CELLS.toLocaleString("en-US"));
+  });
+
+  it("accepts 5,000 wiki links (R26)", () => {
+    const content = `# Links\n\n${"[[a]] ".repeat(CONTENT_MAX_WIKI_LINKS)}`;
+    expect(pageContentInputSchema.safeParse({ content }).success).toBe(true);
+    expect(newPageInputSchema.safeParse({ name: "links", content }).success).toBe(true);
+  });
+
+  it("refuses 5,001 wiki links at the content field (R26)", () => {
+    const content = `# Links\n\n${"[[a]] ".repeat(CONTENT_MAX_WIKI_LINKS + 1)}`;
+    expect(fieldErrorsOf(pageContentInputSchema.safeParse({ content }))).toEqual({
+      content: [CONTENT_WIKI_LINKS_MESSAGE],
+    });
+    expect(fieldErrorsOf(newPageInputSchema.safeParse({ name: "links", content }))).toEqual({
+      content: [CONTENT_WIKI_LINKS_MESSAGE],
+    });
+    expect(CONTENT_WIKI_LINKS_MESSAGE).toBe("A page may hold at most 5,000 wiki links.");
   });
 
   it("reports every limit and the missing title together", () => {

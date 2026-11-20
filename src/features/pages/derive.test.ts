@@ -101,6 +101,15 @@ describe("titleFromContent", () => {
   });
 });
 
+describe("the title and the suggested name of a heading with a wiki link (R23)", () => {
+  it("take the label, or the target as written without a label", () => {
+    expect(titleFromContent("# About [[setup|the setup]]")).toBe("About the setup");
+    expect(titleFromContent("# About [[guides/setup]]")).toBe("About guides/setup");
+    expect(deriveName("About the setup")).toBe("about-the-setup");
+    expect(deriveName("About guides/setup")).toBe("about-guides-setup");
+  });
+});
+
 describe("deriveName", () => {
   it("spells out German umlauts and ß", () => {
     expect(deriveName("Übersicht Größen")).toBe("uebersicht-groessen");
