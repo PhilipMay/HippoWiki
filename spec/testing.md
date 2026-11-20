@@ -99,7 +99,9 @@ How the code is tested. Commands are listed in `README.md`.
   `src/test/editor-content.ts` within 2 s; for every input of `src/test/slow-markdown.ts` it builds the decorations and
   the tables on the parsed tree within 2 s, since the parser of the editor itself is slow on some of them (see "Current
   limits" in `markdown-editor.md`), and a typed character in the middle of each, with the parse and the decorations of
-  one screen, within 50 ms on average.
+  one screen, within 50 ms on average. Lists nested 50,000 deep have a budget of 150 ms for a typed character: they
+  are one line, which every typed character changes, so the parser parses all of it again, which takes about 60 ms
+  on a runner of GitHub Actions.
 - The comparison of revisions gets unit tests in `src/features/pages/diff.test.ts`. `src/features/pages/diff.cost.test.ts`
   (project `cost`) compares completely different revisions at the content limit, with many short lines and with few
   long ones: each comparison must answer with a diff or "too different" within 2 s, which guards the cap of the diff.

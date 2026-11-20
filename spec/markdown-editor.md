@@ -261,6 +261,8 @@ Tests:
 - The parser of the editor, `@lezer/markdown`, is slow on some content built to slow a parser down, such as tens of
   thousands of `[a](` in one paragraph or lists nested 50,000 deep: one parse takes one to several seconds, and the
   editor parses the content twice while it opens, so such a page opens slowly in the editor. The page view, which
-  markdown-it renders, is not affected, and typing in such a page stays fluid. The cost test holds the code of live
-  preview to its budget on these inputs and the whole editor on a page of real content.
+  markdown-it renders, is not affected. Typing stays fluid in such a page, except in lists nested 50,000 deep: they
+  are one line, so every typed character makes the parser parse all of it again, which takes tens of milliseconds
+  per character. The cost test holds the code of live preview to its budget on these inputs and the whole editor on a
+  page of real content.
 - Selecting text by touch on a phone is checked by hand only; the end-to-end tests select with the keys of the cursor.
