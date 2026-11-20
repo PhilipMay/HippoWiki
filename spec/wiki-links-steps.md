@@ -42,7 +42,7 @@ write, and a page shows which pages link to it, in the browser and through `read
 - [x] Link updates on a tab rename
 - [x] Wiki links in live preview
 - [x] The `[[` picker
-- [ ] Spec tests
+- [x] Spec tests
 - [ ] Wrap-up
 
 ## Wiki link syntax and plain text
