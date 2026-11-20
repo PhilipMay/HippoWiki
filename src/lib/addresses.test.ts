@@ -43,6 +43,8 @@ import {
   safeNextPath,
   searchPath,
   tabPath,
+  newPagePath,
+  parseNewPageName,
 } from "@/lib/addresses";
 
 describe("paths", () => {
@@ -79,6 +81,22 @@ describe("paths", () => {
   it("builds the address of a tab", () => {
     expect(tabPath("handbook", "guides")).toBe("/folders/handbook/guides");
     expect(tabPath("handbook", "guides", "new")).toBe("/folders/handbook/guides?action=new");
+  });
+
+  it("builds the address of the editor of a new page, with and without a preset name", () => {
+    expect(newPagePath("handbook", null)).toBe("/folders/handbook?action=new");
+    expect(newPagePath("handbook", null, "faq")).toBe("/folders/handbook?action=new&name=faq");
+    expect(newPagePath("handbook", "guides")).toBe("/folders/handbook/guides?action=new");
+    expect(newPagePath("handbook", "guides", "faq")).toBe("/folders/handbook/guides?action=new&name=faq");
+  });
+
+  it("reads the preset name of a new page", () => {
+    expect(parseNewPageName({})).toBeNull();
+    expect(parseNewPageName({ name: "faq" })).toBe("faq");
+    for (const name of ["", " faq", "FAQ", "faq.md", "a/b", "x".repeat(81)]) {
+      expect(parseNewPageName({ name }), name).toBe("invalid");
+    }
+    expect(parseNewPageName({ name: ["faq", "faq"] })).toBe("invalid");
   });
 
   it("builds the address of a page placed directly in a folder", () => {

@@ -35,7 +35,7 @@ write, and a page shows which pages link to it, in the browser and through `read
 ## Checklist
 
 - [x] Wiki link syntax and plain text
-- [ ] New page with a preset name
+- [x] New page with a preset name
 - [ ] Rendering and missing links
 - [ ] Link index and backlinks
 - [ ] Link updates on a page move or rename

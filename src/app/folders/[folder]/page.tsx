@@ -37,9 +37,9 @@ export default async function FolderPage(props: Props) {
   const user = await requireUser();
 
   // An action that the role does not include answers like an unknown one, before the content is read.
-  const { folder, mcpAddresses, action, view, words } = (await resolve(props)) ?? notFound();
+  const { folder, mcpAddresses, action, view, words, name } = (await resolve(props)) ?? notFound();
 
-  if (action === "new") return <NewPageView folder={folder} tab={null} />;
+  if (action === "new") return <NewPageView folder={folder} tab={null} presetName={name} />;
   switch (view) {
     case "all":
       return <AllPagesView folder={folder} />;

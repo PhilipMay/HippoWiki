@@ -3,7 +3,15 @@
 // and the page decide in one place what an address shows. No server-only imports.
 
 import { mayDo, type FolderFunction, type Role } from "@/features/folder-roles/roles";
-import { hasSearchWords, parseAction, parseSearchWords, parseView, type SearchParams } from "@/lib/addresses";
+import {
+  hasNewPageName,
+  hasSearchWords,
+  parseAction,
+  parseNewPageName,
+  parseSearchWords,
+  parseView,
+  type SearchParams,
+} from "@/lib/addresses";
 
 /**
  * The actions of a folder address: `new` opens the editor for a new page, with the folder itself as the preselected
@@ -57,17 +65,34 @@ function folderTitle(name: string, action: FolderAction | null, view: FolderView
 }
 
 /**
+ * The name that the "Save page" dialog of a new page proposes (`name` of the query string, see `newPagePath()`): `null`
+ * without one, and `"invalid"` for one that is malformed, empty or repeated or comes without the action `new`.
+ */
+function presetNameOf(searchParams: SearchParams, action: string | null): string | null | "invalid" {
+  if (action !== "new") return hasNewPageName(searchParams) ? "invalid" : null;
+  return parseNewPageName(searchParams);
+}
+
+/**
  * What a folder address shows, and its browser title: `null` for an unknown, empty or repeated action or view, an
  * action together with a view (a view has no actions), an action beyond the role of the user, the view `mcp` without
- * an MCP server (`hasMcp`), the view `search` without the words `q` once and with more than spaces, and `q` without
- * the view `search`, which all answer like an unknown address. `words` are the words of the view `search` as typed,
- * `null` otherwise. The route uses it for the title and for the page, so that both decide alike.
+ * an MCP server (`hasMcp`), the view `search` without the words `q` once and with more than spaces, `q` without the
+ * view `search`, and a preset `name` that is malformed or comes without the action `new`, which all answer like an
+ * unknown address. `words` are the words of the view `search` as typed, `null` otherwise; `name` is the name the
+ * editor of a new page proposes, `null` otherwise. The route uses it for the title and for the page, so that both
+ * decide alike.
  */
 export function folderAddressOf(
   folder: { name: string; role: Role | null },
   searchParams: SearchParams,
   hasMcp: boolean,
-): { action: FolderAction | null; view: FolderView | null; words: string | null; title: string } | null {
+): {
+  action: FolderAction | null;
+  view: FolderView | null;
+  words: string | null;
+  name: string | null;
+  title: string;
+} | null {
   const action = parseAction(searchParams, FOLDER_ACTIONS);
   const view = parseView(searchParams, FOLDER_VIEWS);
   if (action === "invalid" || view === "invalid" || (action !== null && view !== null)) return null;
@@ -75,7 +100,9 @@ export function folderAddressOf(
   if (view === "mcp" && !hasMcp) return null;
   const words = view === "search" ? parseSearchWords(searchParams) : null;
   if (view === "search" ? words === null : hasSearchWords(searchParams)) return null;
-  return { action, view, words, title: folderTitle(folder.name, action, view) };
+  const name = presetNameOf(searchParams, action);
+  if (name === "invalid") return null;
+  return { action, view, words, name, title: folderTitle(folder.name, action, view) };
 }
 
 /**
@@ -103,16 +130,19 @@ export function mayDoTabAction(role: Role | null, action: TabAction): boolean {
 
 /**
  * What a tab address shows, and its browser title: `null` for any view (a tab has none), the words of a search, which
- * belong to the folder address, an unknown, empty or repeated action, and an action beyond the role of the user, which
- * all answer like an unknown address. The route uses it for
- * the title and for the page, so that both decide alike.
+ * belong to the folder address, an unknown, empty or repeated action, an action beyond the role of the user, and a
+ * preset `name` that is malformed or comes without the action `new`, which all answer like an unknown address. `name`
+ * is the name the editor of a new page proposes, `null` otherwise. The route uses it for the title and for the page, so
+ * that both decide alike.
  */
 export function tabAddressOf(
   tab: { name: string; folder: { name: string }; role: Role | null },
   searchParams: SearchParams,
-): { action: TabAction | null; title: string } | null {
+): { action: TabAction | null; name: string | null; title: string } | null {
   if (parseView(searchParams) !== null || hasSearchWords(searchParams)) return null;
   const action = parseAction(searchParams, TAB_ACTIONS);
   if (action === "invalid" || (action !== null && !mayDoTabAction(tab.role, action))) return null;
-  return { action, title: action === "new" ? "New page" : `${tab.name} – ${tab.folder.name}` };
+  const name = presetNameOf(searchParams, action);
+  if (name === "invalid") return null;
+  return { action, name, title: action === "new" ? "New page" : `${tab.name} – ${tab.folder.name}` };
 }

@@ -297,6 +297,34 @@ export function tabPath(folder: string, tab: string, action?: string): string {
   return withAction(`${FOLDERS_PATH}/${folder}/${tab}`, action);
 }
 
+/** The search parameter of the editor of a new page with the name that its "Save page" dialog proposes. */
+const NEW_PAGE_NAME_PARAM = "name";
+
+/**
+ * The address of the editor of a new page: the folder or, with a tab, the tab address with the action `new`, and with
+ * a name, the name that the "Save page" dialog proposes instead of the one derived from the title. The name must
+ * follow the name rule, which needs no encoding.
+ */
+export function newPagePath(folder: string, tab: string | null, name?: string): string {
+  const path = tab === null ? folderPath(folder, "new") : tabPath(folder, tab, "new");
+  return name === undefined ? path : `${path}&${NEW_PAGE_NAME_PARAM}=${name}`;
+}
+
+/** Whether the query string holds a preset name of a new page, in any form. */
+export function hasNewPageName(searchParams: SearchParams): boolean {
+  return searchParams[NEW_PAGE_NAME_PARAM] !== undefined;
+}
+
+/**
+ * Reads the preset name of a new page from the query string: `null` without one, the name if it is given once and
+ * follows the name rule exactly, and `"invalid"` for anything else, such as an empty, malformed or repeated name.
+ */
+export function parseNewPageName(searchParams: SearchParams): string | null | "invalid" {
+  const name = searchParams[NEW_PAGE_NAME_PARAM];
+  if (name === undefined) return null;
+  return (typeof name === "string" && parseName(name)) || "invalid";
+}
+
 /**
  * The notice of a page address whose editor or dialog is shown again because a change of the page was refused: the
  * page was changed after the editor or dialog was opened.

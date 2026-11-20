@@ -45,7 +45,7 @@ export default async function FolderItemPage(props: Props) {
   const resolved = (await resolve(props)) ?? notFound();
   if (resolved.kind === "page") return <PageAddress page={resolved.page} query={resolved.query} />;
 
-  const { tab, action } = resolved;
-  if (action === "new") return <NewPageView folder={tab.folder} tab={tab} />;
+  const { tab, action, name } = resolved;
+  if (action === "new") return <NewPageView folder={tab.folder} tab={tab} presetName={name} />;
   return <TabView tab={tab} action={action} />;
 }

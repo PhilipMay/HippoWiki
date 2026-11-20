@@ -4,7 +4,7 @@ import { PLACE_FIELD } from "@/features/pages/fields";
 import { CONTENT_MAX_DEPTH } from "@/features/pages/limits";
 
 import { KNOWN_USER } from "../prisma/known-users";
-import { by, collectErrors } from "./support/browser";
+import { by, collectErrors, expectNotFound } from "./support/browser";
 import { createFolder, createPage, createTab, createUser, getTestDb, resetTestDatabase } from "./support/database";
 import { contentEditor, expectContent, fillContent } from "./support/editor";
 import { expect, test } from "./support/test";
@@ -368,6 +368,49 @@ test.describe("the place of the new page", () => {
     );
     expect(errors).toEqual([]);
   });
+
+  test("a preset name is proposed in the dialog with the place of the address, and saving creates the page there", async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    const dialog = await openSaveDialog(
+      page,
+      "# Frequently asked questions",
+      "/folders/handbook/guides?action=new&name=faq",
+    );
+    await expect(dialog.getByLabel("Name")).toHaveValue("faq");
+    await expect(dialog.getByRole("radio", { name: "Tab guides" })).toBeChecked();
+    await expect(dialog.getByLabel("Name")).toHaveAccessibleDescription("Address: /folders/handbook/guides/faq.md");
+    await dialog.getByRole("button", { name: "Save" }).click();
+
+    await expect(page).toHaveURL("/folders/handbook/guides/faq.md");
+    expect(await getTestDb().page.findFirstOrThrow({ where: { name: "faq" } })).toMatchObject({
+      tabId: guides.id,
+      title: "Frequently asked questions",
+    });
+
+    // The name and the place can still be changed.
+    const other = await openSaveDialog(page, "# Other", "/folders/handbook?action=new&name=faq-two");
+    await expect(other.getByLabel("Name")).toHaveValue("faq-two");
+    await expect(other.getByRole("radio", { name: "Directly in the folder" })).toBeChecked();
+    await other.getByLabel("Name").fill("changed");
+    await other.getByRole("radio", { name: "Tab meetings" }).check();
+    await other.getByRole("button", { name: "Save" }).click();
+    await expect(page).toHaveURL("/folders/handbook/meetings/changed.md");
+    expect(errors).toEqual([]);
+  });
+
+  for (const query of [
+    "action=new&name=FAQ",
+    "action=new&name=",
+    "action=new&name=faq&name=faq",
+    "name=faq",
+    "action=rename&name=faq",
+  ]) {
+    test(`/folders/handbook/guides?${query} shows the not-found page`, async ({ page }) => {
+      await expectNotFound(page, `/folders/handbook/guides?${query}`);
+    });
+  }
 
   test("choosing a tab on the folder address creates the page in that tab", async ({ page }) => {
     const errors = collectErrors(page);

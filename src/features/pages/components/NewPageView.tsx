@@ -10,10 +10,15 @@ type NewPageViewProps = {
   folder: { id: string; name: string };
   /** The tab the editor was opened for, or `null` for the folder itself: the place the "Save page" dialog preselects. */
   tab: { id: string; name: string } | null;
+  /** The name the "Save page" dialog proposes instead of the one derived from the title, or `null` for none. */
+  presetName: string | null;
 };
 
-/** The editor for a new page, opened with `?action=new` at a folder or a tab address. */
-export default async function NewPageView({ folder, tab }: NewPageViewProps) {
+/**
+ * The editor for a new page, opened with `?action=new` at a folder or a tab address, and with `name` from a link to a
+ * page that does not exist yet.
+ */
+export default async function NewPageView({ folder, tab, presetName }: NewPageViewProps) {
   const tabs = (await listTabs(folder.id)) ?? notFound();
 
   return (
@@ -26,6 +31,7 @@ export default async function NewPageView({ folder, tab }: NewPageViewProps) {
         folderName={folder.name}
         tabs={tabs}
         tab={tab && { id: tab.id, name: tab.name }}
+        presetName={presetName}
       />
     </Stack>
   );

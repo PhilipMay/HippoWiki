@@ -106,6 +106,28 @@ describe("folderAddressOf", () => {
     expect(folderAddressOf(reader, { view: "search", q: "backup" }, true)).not.toBeNull();
   });
 
+  it("reads the preset name of a new page, and none without one", () => {
+    expect(folderAddressOf(owner, { action: "new", name: "faq" }, true)).toMatchObject({
+      action: "new",
+      name: "faq",
+      title: "New page",
+    });
+    expect(folderAddressOf(owner, { action: "new" }, true)?.name).toBeNull();
+    expect(folderAddressOf(owner, {}, true)?.name).toBeNull();
+  });
+
+  it.each<SearchParams>([
+    { action: "new", name: "FAQ" },
+    { action: "new", name: "faq.md" },
+    { action: "new", name: "" },
+    { action: "new", name: ["faq", "faq"] },
+    { action: "rename", name: "faq" },
+    { view: "all", name: "faq" },
+    { name: "faq" },
+  ])("shows the not-found page for the preset name in %o", (searchParams) => {
+    expect(folderAddressOf(owner, searchParams, true)).toBeNull();
+  });
+
   it("shows the not-found page for the view of the AI apps without an MCP server", () => {
     expect(folderAddressOf(owner, { view: "mcp" }, false)).toBeNull();
     expect(folderAddressOf(owner, {}, false)?.title).toBe("handbook");
@@ -135,6 +157,22 @@ describe("tabAddressOf", () => {
     { q: "" },
     { action: "rename", q: "backup" },
   ])("shows the not-found page for %o", (searchParams) => {
+    expect(tabAddressOf(manager, searchParams)).toBeNull();
+  });
+
+  it("reads the preset name of a new page, and none without one", () => {
+    expect(tabAddressOf(manager, { action: "new", name: "faq" })).toMatchObject({ action: "new", name: "faq" });
+    expect(tabAddressOf(manager, { action: "new" })?.name).toBeNull();
+    expect(tabAddressOf(manager, {})?.name).toBeNull();
+  });
+
+  it.each<SearchParams>([
+    { action: "new", name: "Faq" },
+    { action: "new", name: "" },
+    { action: "new", name: ["faq", "faq"] },
+    { action: "delete", name: "faq" },
+    { name: "faq" },
+  ])("shows the not-found page for the preset name in %o", (searchParams) => {
     expect(tabAddressOf(manager, searchParams)).toBeNull();
   });
 

@@ -35,14 +35,16 @@ type NewPageFormProps = {
    * preselects it.
    */
   tab: { id: string; name: string } | null;
+  /** The name the dialog proposes instead of the one derived from the title, or `null` for none. */
+  presetName: string | null;
 };
 
 /**
  * Form for a new page that asks only for the Markdown content, which must start with a title heading (`# Title`).
- * "Save" derives the title and opens a dialog that asks for the name, prefilled from the title, and the place, with the
- * place the editor was opened for preselected.
+ * "Save" derives the title and opens a dialog that asks for the name, prefilled with the preset name or else from the
+ * title, and the place, with the place the editor was opened for preselected.
  */
-export default function NewPageForm({ action, folderName, tabs, tab }: NewPageFormProps) {
+export default function NewPageForm({ action, folderName, tabs, tab, presetName }: NewPageFormProps) {
   const editorRef = useRef<EditorHandle>(null);
   const contentRef = useRef<HTMLElement>(null);
   const [open, setOpen] = useState(false);
@@ -101,6 +103,7 @@ export default function NewPageForm({ action, folderName, tabs, tab }: NewPageFo
         folderName={folderName}
         tabs={tabs}
         initialTabId={tab?.id ?? null}
+        presetName={presetName}
         title={title}
         formId={formId}
         onClose={() => setOpen(false)}
@@ -126,10 +129,20 @@ type SavePageDialogProps = Omit<NewPageFormProps, "tab"> & {
 };
 
 /** Dialog "Save page" that asks for the name and the place and creates the page. */
-function SavePageDialog({ open, action, folderName, tabs, initialTabId, title, formId, onClose }: SavePageDialogProps) {
+function SavePageDialog({
+  open,
+  action,
+  folderName,
+  tabs,
+  initialTabId,
+  presetName,
+  title,
+  formId,
+  onClose,
+}: SavePageDialogProps) {
   const [state, formAction, pending] = useActionState(action, {});
   // Controlled name and place keep the input when the action returns errors.
-  const [name, setName] = useState(() => deriveName(title));
+  const [name, setName] = useState(() => presetName ?? deriveName(title));
   const [place, setPlace] = useState(initialTabId ?? FOLDER_TARGET);
   const nameRef = useRef<HTMLInputElement>(null);
   const titleId = useId();
