@@ -14,7 +14,20 @@ import { SLOW_INPUTS } from "@/test/slow-markdown";
 // never next to other test files. The view plugin of live preview needs a view, so the tests build its decorations
 // with the pure function it calls, for the ranges the view would ask for.
 
-const OPTIONS = { newPage: false, labelId: "label", descriptionId: "description" };
+/** A folder of 1,000 pages, half of them in the tab `guides`, which the wiki links of the inputs are resolved against. */
+const PAGE_LIST = {
+  pages: Array.from({ length: 1_000 }, (_unused, index) => {
+    const tab = index % 2 === 0 ? null : "guides";
+    const name = index < 2 ? "setup" : `page-${index}`;
+    return { tab, name, title: `Page ${index}`, address: `/folders/f/${tab ?? ""}/${name}.md` };
+  }),
+  places: [
+    { tab: null, newPageAddress: "/folders/f?action=new&name=" },
+    { tab: "guides", newPageAddress: "/folders/f/guides?action=new&name=" },
+  ],
+};
+
+const OPTIONS = { newPage: false, labelId: "label", descriptionId: "description", pageList: PAGE_LIST };
 
 /** How many lines around the cursor count as one screen of the editor, the margin of the viewport included. */
 const SCREEN_LINES = 60;

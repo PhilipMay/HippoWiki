@@ -33,3 +33,13 @@ export function parseWikiLinkTarget(text: string): WikiLinkTarget | null {
 export function wikiLinkTargetText(target: WikiLinkTarget): string {
   return target.tab === null ? target.name : `${target.tab}/${target.name}`;
 }
+
+/**
+ * Why a wiki link leads to no page, the hints of the page view and of live preview: the page does not exist, the target
+ * breaks the name rule, or it names a tab that does not exist.
+ */
+export const MISSING_WIKI_LINK_HINTS = {
+  missing: "Page does not exist",
+  invalid: "Not a valid page name",
+  noTab: "Tab does not exist",
+} as const;

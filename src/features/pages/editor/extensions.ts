@@ -19,6 +19,7 @@ import { GFM } from "@lezer/markdown";
 import { formatKeymap } from "@/features/pages/editor/commands";
 import { contentLimit } from "@/features/pages/editor/content-limit";
 import { indentExtensions, indentKeymap } from "@/features/pages/editor/indent";
+import { editorPageList, wikiLinkSyntax, type EditorPageList } from "@/features/pages/editor/wiki-links";
 import { theme as appTheme } from "@/lib/theme";
 
 /** What the extensions of an editor depend on. */
@@ -29,6 +30,11 @@ export type EditorOptions = {
   labelId: string;
   /** The id of the helper text or the field error below the editor, which describes the content element. */
   descriptionId: string;
+  /**
+   * The pages and places of the folder as of opening the editor, which wiki links are resolved against; without it, a
+   * wiki link shows as missing and opens nothing.
+   */
+  pageList?: EditorPageList;
 };
 
 /** The placeholder of the empty editor of a new page, a hint at the title heading that is never saved. */
@@ -36,7 +42,7 @@ export const NEW_PAGE_PLACEHOLDER = "# Title";
 
 /**
  * The language of the editor: CommonMark with the GitHub Flavored Markdown extensions (tables, strikethrough, task
- * lists, autolinks), without the subscript, superscript and emoji syntax of `markdownLanguage`, so that the editor's
+ * lists, autolinks) and wiki links, without the subscript, superscript and emoji syntax of `markdownLanguage`, so that the editor's
  * parse stays close to the markdown-it rules of the page view. No languages are loaded for fenced code. The
  * completion of HTML tags and the paste of an address as a link are off, because both change the text on their own
  *. The keymap of Enter is the editor's own (`markupKeymap`).
@@ -44,7 +50,7 @@ export const NEW_PAGE_PLACEHOLDER = "# Title";
 function language(): Extension {
   return markdown({
     base: commonmarkLanguage,
-    extensions: GFM,
+    extensions: [GFM, wikiLinkSyntax],
     completeHTMLTags: false,
     pasteURLAsLink: false,
     addKeymap: false,
@@ -136,9 +142,10 @@ const theme = EditorView.theme({
  * The extensions of the editor state. The editor never changes the content on its own: no autoformatting, no closing
  * brackets, no trimming; pasting stays the plain-text paste of CodeMirror.
  */
-export function editorExtensions({ newPage, labelId, descriptionId }: EditorOptions): Extension[] {
+export function editorExtensions({ newPage, labelId, descriptionId, pageList }: EditorOptions): Extension[] {
   return [
     language(),
+    pageList ? editorPageList.of(pageList) : [],
     contentLimit(),
     syntaxHighlighting(highlightStyle),
     history(),

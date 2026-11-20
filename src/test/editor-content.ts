@@ -1,5 +1,5 @@
-// A page at the content limit with every kind of block that live preview shows: headings, inline elements, lists,
-// task lists, quotes, code blocks and tables. The cost test of live preview
+// A page at the content limit with every kind of block that live preview shows: headings, inline elements, wiki links,
+// lists, task lists, quotes, code blocks and tables. The cost test of live preview
 // (`src/features/pages/editor/live-preview.cost.test.ts`) uses it, and it is the page of the manual check of the
 // editor's speed. No test itself.
 
@@ -12,6 +12,7 @@ function section(index: number): string {
     "",
     `Some **bold**, *italic*, ~~struck~~ and \`inline code\` text with a [link](https://example.com/${index}), an`,
     "autolink <https://example.org> and a bare address www.example.net in a paragraph that wraps.",
+    `Wiki links to [[guides/setup]], [[setup|the setup]], [[page-${index}]] and [[Not Valid]].`,
     "",
     "- first item",
     "- second item with **bold**",
@@ -33,7 +34,7 @@ function section(index: number): string {
     "| Name | Count | Note |",
     "| :--- | ----: | :--: |",
     `| a | ${index} | **bold** |`,
-    "| b | 2 | `code` |",
+    "| b | 2 | `code` [[setup\\|Setup]] |",
     "| c | 3 | [link](https://example.com) |",
     "",
     "---",
@@ -52,5 +53,7 @@ function editorPage(): string {
   return page + "x".repeat(CONTENT_MAX_LENGTH - page.length);
 }
 
-/** A page of exactly the content limit with headings, lists, task lists, quotes, code blocks and tables. */
+/**
+ * A page of exactly the content limit with headings, wiki links, lists, task lists, quotes, code blocks and tables.
+ */
 export const EDITOR_PAGE = editorPage();

@@ -16,7 +16,8 @@ import MarkdownContent from "@/features/pages/components/MarkdownContent";
 import MoveOrRenamePageDialog from "@/features/pages/components/MoveOrRenamePageDialog";
 import LinkedFrom from "@/features/pages/components/LinkedFrom";
 import PageForm from "@/features/pages/components/PageForm";
-import { countPagesLinkingTo, listLinkingPages, resolveWikiLinks } from "@/features/pages/queries";
+import { buildEditorPageList } from "@/features/pages/editor-page-list";
+import { countPagesLinkingTo, listAllFolderPages, listLinkingPages, resolveWikiLinks } from "@/features/pages/queries";
 import type { PageWithPlace } from "@/features/pages/service";
 import { editorWithChannel } from "@/features/users/records";
 import { changedPageForm } from "@/features/pages/changed-page";
@@ -44,6 +45,9 @@ export default async function PageView({ page, action, notice }: PageViewProps) 
   const { key: formKey, changedMessage: message } = changedPageForm(page, notice);
 
   if (action === "edit") {
+    // The pages and tabs of the folder as of opening the editor, which its live preview resolves wiki links against.
+    const [pages, tabs] = await Promise.all([listAllFolderPages(page.folder.id), listTabs(page.folder.id)]);
+    if (!pages || !tabs) notFound();
     return (
       <Stack spacing={3}>
         <Typography variant="h4" component="h1">
@@ -56,6 +60,7 @@ export default async function PageView({ page, action, notice }: PageViewProps) 
           version={page.version}
           changedMessage={message}
           cancelHref={address}
+          pageList={buildEditorPageList(folderName, pages, tabs)}
         />
       </Stack>
     );

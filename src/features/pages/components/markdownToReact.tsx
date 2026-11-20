@@ -21,7 +21,7 @@ import {
   type Token,
 } from "@/features/pages/markdown";
 import type { WikiLinkResolution } from "@/features/pages/service";
-import { wikiLinkTargetText } from "@/features/pages/wiki-link-target";
+import { MISSING_WIKI_LINK_HINTS, wikiLinkTargetText } from "@/features/pages/wiki-link-target";
 import { newPagePath, pagePath } from "@/lib/addresses";
 
 /**
@@ -35,9 +35,9 @@ export type WikiLinkContext = { folderName: string; mayCreatePages: boolean; res
  * users as its description, from an element of the page view that only describes (`WikiLinkHints`).
  */
 const WIKI_LINK_HINTS = {
-  missing: { id: "wiki-link-hint-missing", text: "Page does not exist" },
-  invalid: { id: "wiki-link-hint-invalid", text: "Not a valid page name" },
-  noTab: { id: "wiki-link-hint-no-tab", text: "Tab does not exist" },
+  missing: { id: "wiki-link-hint-missing", text: MISSING_WIKI_LINK_HINTS.missing },
+  invalid: { id: "wiki-link-hint-invalid", text: MISSING_WIKI_LINK_HINTS.invalid },
+  noTab: { id: "wiki-link-hint-no-tab", text: MISSING_WIKI_LINK_HINTS.noTab },
 } as const;
 
 type WikiLinkHint = keyof typeof WIKI_LINK_HINTS;

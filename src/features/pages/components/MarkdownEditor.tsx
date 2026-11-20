@@ -10,6 +10,7 @@ import { flushSync } from "react-dom";
 import EditorToolbar from "@/features/pages/components/EditorToolbar";
 import { readMode, storeMode, type EditorMode } from "@/features/pages/editor/mode";
 import type { EditorHandle } from "@/features/pages/editor/mount";
+import type { EditorPageList } from "@/features/pages/editor/wiki-links";
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 
 /** The helper text below the editor, which a field error replaces. */
@@ -32,6 +33,8 @@ type MarkdownEditorProps = {
   initialContent: string;
   /** Whether the editor writes a new page: only then the empty editor shows the placeholder `# Title`. */
   newPage: boolean;
+  /** The pages and places of the folder as of opening, for the wiki links of live preview. */
+  pageList: EditorPageList;
   /** The field error of the last save, which replaces the helper text, or nothing. */
   error?: string | null;
   /**
@@ -59,6 +62,7 @@ type MarkdownEditorProps = {
 export default function MarkdownEditor({
   initialContent,
   newPage,
+  pageList,
   error,
   form,
   editorRef,
@@ -79,7 +83,8 @@ export default function MarkdownEditor({
   const fieldRef = useRef<HTMLInputElement>(null);
   const readOnlyRef = useRef<HTMLTextAreaElement>(null);
 
-  // The options are read once, when the editor is created: a new page and the ids never change for a mounted form.
+  // The options are read once, when the editor is created: a new page, the page list and the ids never change for a
+  // mounted form.
   const create = useEffectEvent((mount: typeof import("@/features/pages/editor/mount").mountEditor) => {
     const parent = containerRef.current;
     const field = fieldRef.current;
@@ -91,6 +96,7 @@ export default function MarkdownEditor({
       initialContent,
       mode: startMode,
       newPage,
+      pageList,
       labelId,
       descriptionId,
       onDirtyChange,

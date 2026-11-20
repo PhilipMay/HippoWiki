@@ -10,6 +10,7 @@ import DiscardChangesDialog from "@/features/pages/components/DiscardChangesDial
 import MarkdownEditor from "@/features/pages/components/MarkdownEditor";
 import PageVersionField from "@/features/pages/components/PageVersionField";
 import { useUnsavedChangesGuard } from "@/features/pages/components/useUnsavedChangesGuard";
+import type { EditorPageList } from "@/features/pages/editor/wiki-links";
 import type { PageFormAction } from "@/features/pages/forms";
 import { useFocusOnFirstError } from "@/lib/form-hooks";
 
@@ -24,6 +25,8 @@ type PageFormProps = {
   changedMessage?: string;
   /** Where "Cancel" leads. */
   cancelHref: string;
+  /** The pages and places of the folder, for the wiki links of the editor. */
+  pageList: EditorPageList;
 };
 
 /**
@@ -31,7 +34,14 @@ type PageFormProps = {
  * page is saved. The name is not part of the form; a page is moved or renamed in its own dialog. New pages use
  * `NewPageForm`.
  */
-export default function PageForm({ action, initialContent, version, changedMessage, cancelHref }: PageFormProps) {
+export default function PageForm({
+  action,
+  initialContent,
+  version,
+  changedMessage,
+  cancelHref,
+  pageList,
+}: PageFormProps) {
   const [state, formAction, pending] = useActionState(action, {});
   // The content is read-only and "Save" is disabled until the editor is ready, also after hydration.
   const [ready, setReady] = useState(false);
@@ -55,6 +65,7 @@ export default function PageForm({ action, initialContent, version, changedMessa
       <MarkdownEditor
         initialContent={initialContent}
         newPage={false}
+        pageList={pageList}
         error={contentError}
         contentRef={contentRef}
         onReady={() => setReady(true)}

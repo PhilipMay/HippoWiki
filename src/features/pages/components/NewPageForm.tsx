@@ -17,6 +17,7 @@ import PageNameAndPlaceFields, { FOLDER_TARGET } from "@/features/pages/componen
 import { useUnsavedChangesGuard } from "@/features/pages/components/useUnsavedChangesGuard";
 import { deriveName, titleFromContent } from "@/features/pages/derive";
 import type { EditorHandle } from "@/features/pages/editor/mount";
+import type { EditorPageList } from "@/features/pages/editor/wiki-links";
 import type { PageFormAction } from "@/features/pages/forms";
 import { TITLE_HEADING_MISSING_MESSAGE } from "@/features/pages/schema";
 import { folderPath, tabPath } from "@/lib/addresses";
@@ -37,6 +38,8 @@ type NewPageFormProps = {
   tab: { id: string; name: string } | null;
   /** The name the dialog proposes instead of the one derived from the title, or `null` for none. */
   presetName: string | null;
+  /** The pages and places of the folder, for the wiki links of the editor. */
+  pageList: EditorPageList;
 };
 
 /**
@@ -44,7 +47,7 @@ type NewPageFormProps = {
  * "Save" derives the title and opens a dialog that asks for the name, prefilled with the preset name or else from the
  * title, and the place, with the place the editor was opened for preselected.
  */
-export default function NewPageForm({ action, folderName, tabs, tab, presetName }: NewPageFormProps) {
+export default function NewPageForm({ action, folderName, tabs, tab, presetName, pageList }: NewPageFormProps) {
   const editorRef = useRef<EditorHandle>(null);
   const contentRef = useRef<HTMLElement>(null);
   const [open, setOpen] = useState(false);
@@ -81,6 +84,7 @@ export default function NewPageForm({ action, folderName, tabs, tab, presetName 
       <MarkdownEditor
         initialContent=""
         newPage
+        pageList={pageList}
         error={contentError}
         form={formId}
         editorRef={editorRef}
@@ -117,7 +121,7 @@ export default function NewPageForm({ action, folderName, tabs, tab, presetName 
   );
 }
 
-type SavePageDialogProps = Omit<NewPageFormProps, "tab"> & {
+type SavePageDialogProps = Omit<NewPageFormProps, "tab" | "pageList"> & {
   /** The id of the tab the editor was opened for, or `null` for the folder itself; the dialog preselects this place. */
   initialTabId: string | null;
   open: boolean;

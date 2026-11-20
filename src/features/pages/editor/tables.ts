@@ -5,11 +5,16 @@ import { syntaxTree } from "@codemirror/language";
 import { EditorSelection, EditorState, StateField, type Range, type Transaction } from "@codemirror/state";
 import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemirror/view";
 
+import { editorPageList, insideLink, readWikiLink, showWikiLink } from "@/features/pages/editor/wiki-links";
+
 /** The alignment of a column, from the delimiter row. */
 type Alignment = "left" | "center" | "right" | null;
 
-/** A piece of the text of a cell, with the classes of the inline elements it lies in. */
-type Segment = { text: string; classes: string[] };
+/**
+ * A piece of the text of a cell, with the classes of the inline elements it lies in, and the hint of a wiki link that
+ * leads to no page.
+ */
+type Segment = { text: string; classes: string[]; title?: string };
 
 /** A cell: its text, where that text starts relative to the start of the table, and its formatted pieces. */
 type TableCell = { text: string; offset: number; segments: Segment[] };
@@ -30,8 +35,8 @@ const INLINE: Record<string, { className: string; marks: string[] }> = {
 
 /**
  * The formatted pieces of the text from `from` to `to` of `node`: bold, italic, strikethrough, inline code and the text
- * of links as in live preview, without their marks; an escape shows the character it escapes; everything else stays
- * its text. `marks` are the names of the marks of `node`, which are left out.
+ * of links as in live preview, without their marks; a wiki link shows as in live preview, with `\|` read as `|`; an
+ * escape shows the character it escapes; everything else stays its text. `marks` are the names of the marks of `node`, which are left out.
  */
 function segmentsOf(
   state: EditorState,
@@ -60,6 +65,19 @@ function segmentsOf(
       }
     } else if (inline) {
       segments.push(...segmentsOf(state, child, child.from, child.to, [...classes, inline.className], inline.marks));
+    } else if (child.name === "WikiLink" && !insideLink(child)) {
+      const link = readWikiLink(state, child, true);
+      if (link) {
+        const shown = showWikiLink(state.facet(editorPageList), link);
+        const className = shown.exists ? "cm-lp-link" : "cm-lp-missing-link";
+        segments.push({
+          text: shown.text,
+          classes: [...classes, className],
+          ...(shown.hint ? { title: shown.hint } : {}),
+        });
+      } else {
+        text(child.from, child.to);
+      }
     } else if (child.name === "Escape") {
       segments.push({ text: state.sliceDoc(child.from + 1, child.to), classes });
     } else if (child.firstChild) {
@@ -155,6 +173,7 @@ class TableWidget extends WidgetType {
         } else {
           const span = document.createElement("span");
           span.className = segment.classes.join(" ");
+          if (segment.title) span.title = segment.title;
           span.textContent = segment.text;
           element.append(span);
         }

@@ -5,6 +5,8 @@ import { notFound } from "next/navigation";
 import { listTabs } from "@/features/folders/queries";
 import { createPage } from "@/features/pages/actions";
 import NewPageForm from "@/features/pages/components/NewPageForm";
+import { buildEditorPageList } from "@/features/pages/editor-page-list";
+import { listAllFolderPages } from "@/features/pages/queries";
 
 type NewPageViewProps = {
   folder: { id: string; name: string };
@@ -19,7 +21,8 @@ type NewPageViewProps = {
  * page that does not exist yet.
  */
 export default async function NewPageView({ folder, tab, presetName }: NewPageViewProps) {
-  const tabs = (await listTabs(folder.id)) ?? notFound();
+  const [tabs, pages] = await Promise.all([listTabs(folder.id), listAllFolderPages(folder.id)]);
+  if (!tabs || !pages) notFound();
 
   return (
     <Stack spacing={3}>
@@ -32,6 +35,7 @@ export default async function NewPageView({ folder, tab, presetName }: NewPageVi
         tabs={tabs}
         tab={tab && { id: tab.id, name: tab.name }}
         presetName={presetName}
+        pageList={buildEditorPageList(folder.name, pages, tabs)}
       />
     </Stack>
   );

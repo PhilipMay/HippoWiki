@@ -9,6 +9,7 @@ import { Decoration, WidgetType, type DecorationSet, type EditorView } from "@co
 
 import { linkDestination } from "@/features/pages/editor/link-address";
 import { touched } from "@/features/pages/editor/tables";
+import { editorPageList, insideLink, readWikiLink, showWikiLink } from "@/features/pages/editor/wiki-links";
 import { isSafeAddress } from "@/features/pages/safe-address";
 
 /** The classes of live preview, which the theme of `preview-plugin.ts` styles. */
@@ -19,6 +20,8 @@ const PREVIEW_CLASS = {
   strikethrough: "cm-lp-strikethrough",
   code: "cm-lp-code",
   link: "cm-lp-link",
+  /** A wiki link to a page that does not exist, or that cannot be created as written. */
+  missingLink: "cm-lp-missing-link",
   /** A line whose text is hidden and whose height is reduced, such as the underline of a setext heading. */
   hiddenLine: "cm-lp-hidden-line",
   /** The number of a numbered list item. */
@@ -97,6 +100,31 @@ class RuleWidget extends WidgetType {
   }
 }
 
+/**
+ * The title of the page a wiki link without a label names, in the place of its target. The editor handles its events,
+ * so that a click puts the cursor there and Ctrl+click or Cmd+click opens the page, as on the text of a link.
+ */
+class TitleWidget extends WidgetType {
+  constructor(readonly title: string) {
+    super();
+  }
+
+  override eq(other: TitleWidget) {
+    return other.title === this.title;
+  }
+
+  toDOM() {
+    const title = document.createElement("span");
+    title.className = PREVIEW_CLASS.link;
+    title.textContent = this.title;
+    return title;
+  }
+
+  override ignoreEvent() {
+    return false;
+  }
+}
+
 const bullet = Decoration.replace({ widget: new BulletWidget() });
 const rule = Decoration.replace({ widget: new RuleWidget() });
 
@@ -142,6 +170,7 @@ export function livePreviewDecorations(
   ranges: readonly { from: number; to: number }[],
 ): DecorationSet {
   const { doc } = state;
+  const pages = state.facet(editorPageList);
   // The lines of the selection, and of every table that a selection touches, show their Markdown.
   const editingSpans = selectedLines(state);
   const editing = (number: number) => editingSpans.some(({ first, last }) => first <= number && number <= last);
@@ -299,6 +328,29 @@ export function livePreviewDecorations(
           hide(open.from, open.to);
           hide(close.from, node.to);
           return;
+        }
+
+        // A wiki link shows its label, or the title of the page it names, as a link; one that leads to no page shows
+        // its label or target marked as missing, with the hint of the page view as its title.
+        if (name === "WikiLink") {
+          if (!previewed(node.from, node.to) || insideLink(node.node)) return false;
+          const link = readWikiLink(state, node.node, false);
+          if (!link) return false;
+          const shown = showWikiLink(pages, link);
+          hide(node.from, link.label === null ? link.targetFrom : link.labelFrom);
+          if (shown.exists && link.label === null) {
+            decorations.push(
+              Decoration.replace({ widget: new TitleWidget(shown.text) }).range(link.targetFrom, link.targetTo),
+            );
+          } else {
+            const from = link.label === null ? link.targetFrom : link.labelFrom;
+            const to = link.label === null ? link.targetTo : link.labelTo;
+            const className = shown.exists ? PREVIEW_CLASS.link : PREVIEW_CLASS.missingLink;
+            const attributes = shown.hint === null ? undefined : { title: shown.hint };
+            decorations.push(Decoration.mark({ class: className, attributes }).range(from, to));
+          }
+          hide(link.label === null ? link.targetTo : link.labelTo, node.to);
+          return false;
         }
 
         if (name === "Autolink") {

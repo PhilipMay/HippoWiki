@@ -6,7 +6,16 @@ import { describe, expect, it } from "vitest";
 import { editorExtensions } from "@/features/pages/editor/extensions";
 import { livePreviewDecorations, toggleTask } from "@/features/pages/editor/live-preview";
 
-const OPTIONS = { newPage: false, labelId: "label", descriptionId: "description" };
+/** A folder with the page `setup` in the tab `guides`, titled "Setup guide". */
+const PAGE_LIST = {
+  pages: [{ tab: "guides", name: "setup", title: "Setup guide", address: "/folders/f/guides/setup.md" }],
+  places: [
+    { tab: null, newPageAddress: "/folders/f?action=new&name=" },
+    { tab: "guides", newPageAddress: "/folders/f/guides?action=new&name=" },
+  ],
+};
+
+const OPTIONS = { newPage: false, labelId: "label", descriptionId: "description", pageList: PAGE_LIST };
 
 /**
  * What a decoration does: hides text, replaces it by a widget (with the class of the widget's element unknown here, its
@@ -223,5 +232,84 @@ describe("the box of a task item", () => {
 
   it("does nothing where no box starts", () => {
     expect(toggleTask(EditorState.create({ doc: "- a" }), 2)).toBeNull();
+  });
+});
+
+describe("live preview of wiki links", () => {
+  /**
+   * What live preview shows of `doc` with the cursor at its end: the hidden texts, and each shown text with the class
+   * and the hint of its decoration, or the title a widget shows in the place of the target.
+   */
+  function wikiPreview(doc: string, selection = EditorSelection.single(doc.length)) {
+    const state = EditorState.create({ doc, selection, extensions: editorExtensions(OPTIONS) });
+    ensureSyntaxTree(state, doc.length);
+    const hidden: string[] = [];
+    const shown: string[] = [];
+    livePreviewDecorations(state, [{ from: 0, to: doc.length }]).between(0, doc.length, (from, to, value) => {
+      const spec = value.spec as {
+        class?: string;
+        attributes?: { title?: string };
+        widget?: { title?: string; toDOM?: unknown };
+      };
+      if (spec.widget?.title !== undefined) shown.push(`widget "${spec.widget.title}" for ${doc.slice(from, to)}`);
+      else if (spec.class === undefined && !spec.widget) hidden.push(doc.slice(from, to));
+      else if (spec.class && from < to) {
+        const hint = spec.attributes?.title ? ` (${spec.attributes.title})` : "";
+        shown.push(`${spec.class}: ${doc.slice(from, to)}${hint}`);
+      }
+    });
+    return { hidden, shown };
+  }
+
+  it("shows the title of the page in place of a target without a label, with the brackets hidden", () => {
+    expect(wikiPreview(away("See [[guides/setup]]."))).toEqual({
+      hidden: ["[[", "]]"],
+      shown: ['widget "Setup guide" for guides/setup'],
+    });
+  });
+
+  it("shows the label of a link as a link, with the target and the brackets hidden", () => {
+    expect(wikiPreview(away("[[guides/setup|the setup]]"))).toEqual({
+      hidden: ["[[guides/setup|", "]]"],
+      shown: ["cm-lp-link: the setup"],
+    });
+  });
+
+  it("shows the Markdown of a wiki link on the line of the cursor", () => {
+    expect(wikiPreview("[[guides/setup]] and [[faq|FAQ]]", EditorSelection.single(3))).toEqual({
+      hidden: [],
+      shown: [],
+    });
+  });
+
+  it("marks a link to a missing page, with the hint of the page view", () => {
+    expect(wikiPreview(away("[[no-such-page]] [[guides/faq|FAQ]]")).shown).toEqual([
+      "cm-lp-missing-link: no-such-page (Page does not exist)",
+      "cm-lp-missing-link: FAQ (Page does not exist)",
+    ]);
+  });
+
+  it("marks a target that breaks the name rule and one in a tab that does not exist", () => {
+    expect(wikiPreview(away("[[Setup Guide]] [[nosuchtab/setup]] [[setup#install]]")).shown).toEqual([
+      "cm-lp-missing-link: Setup Guide (Not a valid page name)",
+      "cm-lp-missing-link: nosuchtab/setup (Tab does not exist)",
+      "cm-lp-missing-link: setup#install (Not a valid page name)",
+    ]);
+  });
+
+  it("makes no wiki link in code, after a backslash or in the text of a Markdown link", () => {
+    for (const doc of ["`[[guides/setup]]`", "\\[[guides/setup]]", "[a [[guides/setup]]](https://x.org)"]) {
+      const { hidden, shown } = wikiPreview(away(doc));
+      expect(hidden).not.toContain("[[");
+      expect(shown.filter((text) => text.startsWith("widget") || text.includes("guides/setup ("))).toEqual([]);
+    }
+    expect(wikiPreview(away("[a [[guides/setup]]](https://x.org)")).shown).toEqual(["cm-lp-link: a [[guides/setup]]"]);
+  });
+
+  it("shows ! before a wiki link as text", () => {
+    expect(wikiPreview(away("![[guides/setup]]"))).toEqual({
+      hidden: ["[[", "]]"],
+      shown: ['widget "Setup guide" for guides/setup'],
+    });
   });
 });

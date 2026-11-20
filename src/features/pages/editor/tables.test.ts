@@ -5,7 +5,13 @@ import { describe, expect, it } from "vitest";
 import { editorExtensions } from "@/features/pages/editor/extensions";
 import { tableModel, tables, tablesField } from "@/features/pages/editor/tables";
 
-const OPTIONS = { newPage: false, labelId: "label", descriptionId: "description" };
+/** A folder with the page `setup` placed directly in it, titled "Setup". */
+const PAGE_LIST = {
+  pages: [{ tab: null, name: "setup", title: "Setup", address: "/folders/f/setup.md" }],
+  places: [{ tab: null, newPageAddress: "/folders/f?action=new&name=" }],
+};
+
+const OPTIONS = { newPage: false, labelId: "label", descriptionId: "description", pageList: PAGE_LIST };
 
 function stateOf(doc: string, selection = EditorSelection.single(doc.length)): EditorState {
   const state = EditorState.create({ doc, selection, extensions: [editorExtensions(OPTIONS), tables] });
@@ -28,6 +34,17 @@ function modelOf(doc: string) {
     cells.map((cell) => cell.segments.map((s) => s.text).join(""));
   return { model, state, header: text(model.header), rows: model.rows.map(text) };
 }
+
+describe("wiki links in a rendered table", () => {
+  it("shows them as live preview does, with \\| as the | between target and label", () => {
+    const { model } = modelOf("| a | b | c |\n| - | - | - |\n| [[setup]] | [[setup\\|Set \\| up]] | [[faq]] |");
+    expect(model.rows[0]?.map((cell) => cell.segments)).toEqual([
+      [{ text: "Setup", classes: ["cm-lp-link"] }],
+      [{ text: "Set | up", classes: ["cm-lp-link"] }],
+      [{ text: "faq", classes: ["cm-lp-missing-link"], title: "Page does not exist" }],
+    ]);
+  });
+});
 
 describe("tableModel", () => {
   const doc = [

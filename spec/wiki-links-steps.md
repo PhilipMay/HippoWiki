@@ -40,7 +40,7 @@ write, and a page shows which pages link to it, in the browser and through `read
 - [x] Link index and backlinks
 - [x] Link updates on a page move or rename
 - [x] Link updates on a tab rename
-- [ ] Wiki links in live preview
+- [x] Wiki links in live preview
 - [ ] The `[[` picker
 - [ ] Spec tests
 - [ ] Wrap-up
@@ -353,13 +353,17 @@ Requirements: R2, R24, R28.
 ### Build
 
 - The editor gets the page list of the folder when it opens: `NewPageView` and the edit form read the pages (tab,
-  name, title) and the tabs of the folder through `queries.ts` and pass them, with the folder name, to
-  `MarkdownEditor`, which hands them to the editor state.
-- An extension of the Lezer parser in `src/features/pages/editor/extensions.ts` that reads wiki links by the target
-  rule of the first step (the module without imports), on one line, not in code and not after `\`.
+  name, title) and the tabs of the folder through `queries.ts`, and `src/features/pages/editor-page-list.ts` builds
+  the address of each page and of the new page editor of each place on the server, so that the modules of the editor
+  need no module of addresses (which brings Zod); `MarkdownEditor` hands the list to the editor state.
+- An extension of the Lezer parser in a new module `src/features/pages/editor/wiki-links.ts`, added to the language in
+  `extensions.ts`, that reads wiki links by the target rule of the first step (the module without imports), on one
+  line, not in code and not after `\`; the module also holds the page list of the editor state and what a link shows
+  and leads to.
 - `live-preview.ts`: off the cursor lines a wiki link shows its label, or the title of its target from the page list,
   styled as a link; on the cursor lines its Markdown (R2, R28). A missing target is marked as in the page view (R24):
   the page list as of opening, so a page created elsewhere stays missing until the editor is opened again.
+- `tables.ts`: a rendered table shows its wiki links as live preview does, with `\|` in a cell read as `|`.
 - `preview-plugin.ts`: Ctrl+click or Cmd+click opens in a new tab the page address, or for a missing page in an
   existing place the new page editor with its name and place; an invalid target or a missing tab opens nothing
   (R28). A plain click and a tap only put the cursor there, as for other links.

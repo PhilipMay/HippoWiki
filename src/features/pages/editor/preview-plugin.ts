@@ -8,6 +8,7 @@ import { EditorView, ViewPlugin, type DecorationSet, type ViewUpdate } from "@co
 import { linkDestination } from "@/features/pages/editor/link-address";
 import { livePreviewDecorations } from "@/features/pages/editor/live-preview";
 import { tables } from "@/features/pages/editor/tables";
+import { editorPageList, showWikiLink, wikiLinkAt } from "@/features/pages/editor/wiki-links";
 import { isSafeAddress } from "@/features/pages/safe-address";
 import { theme as appTheme } from "@/lib/theme";
 
@@ -48,6 +49,16 @@ function bareAddress(text: string): string {
   if (/^www\./i.test(text)) return `http://${text}`;
   if (!/^[a-z][a-z0-9+.-]*:/i.test(text) && text.includes("@")) return `mailto:${text}`;
   return text;
+}
+
+/**
+ * What Ctrl+click or Cmd+click opens at `pos`: the address of a wiki link as the page view leads to it, `null` for a
+ * wiki link that leads nowhere, such as one whose target breaks the name rule, or `undefined` where there is no wiki
+ * link.
+ */
+function wikiLinkAddressAt(state: EditorState, pos: number): string | null | undefined {
+  const link = wikiLinkAt(state, pos);
+  return link ? showWikiLink(state.facet(editorPageList), link).address : undefined;
 }
 
 /**
@@ -109,7 +120,10 @@ const previewPlugin = ViewPlugin.fromClass(
         if (event.button !== 0 || !(event.ctrlKey || event.metaKey)) return false;
         const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
         if (pos === null) return false;
-        const address = linkAddressAt(view.state, pos);
+        const wikiAddress = wikiLinkAddressAt(view.state, pos);
+        const address = wikiAddress === undefined ? linkAddressAt(view.state, pos) : wikiAddress;
+        // A wiki link that leads nowhere opens nothing, and the editor stays as it was, as for an unsafe address.
+        if (wikiAddress === null) return true;
         if (address === null) return false;
         if (isSafeAddress(address)) {
           const url = new URL(address, view.dom.ownerDocument.baseURI);
@@ -145,6 +159,13 @@ const previewTheme = EditorView.theme({
     padding: "0.1em 0.3em",
   },
   ".cm-lp-link, .cm-lp-link *": { color: palette.primary.main, textDecoration: "underline" },
+  // A wiki link that leads to no page: a color of its own and a dashed underline, as in the page view.
+  ".cm-lp-missing-link": {
+    color: palette.error.main,
+    textDecorationLine: "underline",
+    textDecorationStyle: "dashed",
+    textUnderlineOffset: "0.2em",
+  },
   ".cm-lp-hidden-line": { fontSize: "0", lineHeight: "0.5rem" },
   ".cm-lp-list-mark, .cm-lp-list-mark *": { color: palette.text.secondary },
   ".cm-lp-bullet": { display: "inline-block", minWidth: "0.6em", color: palette.text.secondary },
