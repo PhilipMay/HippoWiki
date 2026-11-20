@@ -149,7 +149,10 @@ hold pages directly and have tabs at the same time.
   editor was opened for is preselected.
 - A page is moved and renamed in one dialog, which stores name and place together: a page can be renamed, moved within
   its folder (into a tab, back to the folder, to another tab), or both. The current place is preselected.
-- Moving or renaming does not validate or touch the content.
+- Moving or renaming does not validate the content of the page and touches it only where it links to itself. A move
+  or rename of a page and a rename of a tab change the wiki links to them in every page of the folder that is not
+  deleted, in the same write, and the "Move or rename page" and "Rename tab" dialogs say beforehand how many pages
+  will be updated (see `wiki-links.md`).
 - Moving or renaming a page is refused when the page was changed after the dialog was opened; the dialog then shows
   the name and place as stored (see `optimistic-locking.md`). Renaming a folder or a tab is not checked: the last save
   wins.
@@ -257,7 +260,9 @@ This section is the rule for deleting a tab, in the browser and through `delete_
   set it:
   - folder: created, renamed
   - tab: created, renamed
-  - page: created, content edited, moved or renamed, deleted (on its own or with its tab), restored
+  - page: created, content edited, moved or renamed, deleted (on its own or with its tab), restored, and its wiki links
+    updated by a move or rename of a page or a rename of a tab, whose user becomes its last editor (see
+    `wiki-links.md`)
 - Each of these writes stores its user in the same write that changes the item's time of the last change, so that
   time and name always describe the same change. A write that fails changes neither. The same write counts the
   version of a page up, which the page's later changes are checked against (see `optimistic-locking.md`).
@@ -392,7 +397,7 @@ Deleting tabs and folders:
 - Renaming a tab that was deleted after the "Rename tab" dialog was opened shows the not-found page instead of a
   message that the tab no longer exists.
 - No redirects from old addresses after a rename or move.
-- No history of folders and tabs, and moves and renames of pages are not part of the history of a page (see
-  `page-history.md`). No links between pages.
+- No history of folders and tabs, and moves and renames of pages are not part of the history of a page, apart from
+  the revisions of the wiki links they update (see `page-history.md`).
 - Changes of the same folder or tab at the same time are not told apart: the last save wins. Pages are protected (see
   `optimistic-locking.md`).

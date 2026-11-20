@@ -186,7 +186,7 @@ test.describe("the tools of a Manager connection", () => {
     expect(await stored()).toEqual(before);
   });
 
-  test("rename_tab lists the pages whose links into the tab it updated (R30)", async ({ request }) => {
+  test("rename_tab lists the pages whose links into the tab it updated", async ({ request }) => {
     const guides = await createTab({ folder: projects, name: "guides" });
     await createPage({ tab: guides, name: "setup", content: "# Setup guide" });
     await createPage({ tab: guides, name: "onboarding", content: "# Onboarding\n\n[[guides/setup|the setup]]" });

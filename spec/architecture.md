@@ -49,17 +49,17 @@ The documents use one name for each of these things:
     reason the type of an account and `isAdmin()` live in `src/features/users/user-type.ts`.
 - The features, whose specs are listed in `CLAUDE.md`:
 
-  | Feature        | What it holds                                       | Modules of its own                                                                                                                                                                                               |
-  | -------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | `folders`      | folders and their tabs                              | `folder-query.ts`: what a folder or tab address shows                                                                                                                                                            |
-  | `pages`        | pages, their deletion and their history             | `history-service.ts`, `writes.ts` (the data of a soft delete), `page-query.ts`, `markdown.ts`, `safe-address.ts`, `diff.ts`, `changed-page.ts`, `fields.ts`, `editor/` (the Markdown editor, see "UI")           |
-  | `folder-roles` | the roles of users on folders                       | `roles.ts` (the roles and the lowest role of each function), `actors.ts` (the actors of the content and the guards of a content write)                                                                           |
-  | `users`        | the accounts                                        | `user-type.ts`, `records.ts`, `password.ts`                                                                                                                                                                      |
-  | `auth`         | login, logout, the session and the login wait       | `session.ts`: who is calling (see "Login and sessions")                                                                                                                                                          |
-  | `grants`       | the connected apps and the check of an access token | `limits.ts`: the limit of connected apps per user                                                                                                                                                                |
-  | `mcp`          | the MCP server and the folder view "AI apps"        | `server.ts` (the tools a connection gets), `tools.ts` (their handlers), `tool-schemas.ts` (their inputs and outputs), `edits.ts` (the replacements of `edit_page_content`), `http.ts`                            |
-  | `search`       | search in a folder, in the browser and through MCP  | `text.ts` and `language.ts` (what search derives of a page), `index-data.ts` (what a write stores), `words.ts` (the parser of the search words), `query-text.ts`, `excerpt.ts`, `slots.ts`, `limits.ts`          |
-  | `oauth`        | the OAuth authorization server for AI apps          | `clients-service.ts`, `authorization-service.ts`, `token-service.ts`, `cleanup-service.ts`, `rows.ts` (what they share), `issuer.ts` (the issuer and `isOAuthOn()`), `secret.ts`, `metadata-fetch.ts`, `http.ts` |
+  | Feature        | What it holds                                             | Modules of its own                                                                                                                                                                                                                                                                                                                                                                                     |
+  | -------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+  | `folders`      | folders and their tabs                                    | `folder-query.ts`: what a folder or tab address shows                                                                                                                                                                                                                                                                                                                                                  |
+  | `pages`        | pages, their deletion, their history and their wiki links | `history-service.ts`, `links-service.ts` (the index of wiki links, the backlinks, the update of links and the lock of the content writes of a folder), `writes.ts` (the data of a soft delete), `page-query.ts`, `markdown.ts`, `wiki-link-target.ts`, `wiki-links.ts`, `editor-page-list.ts`, `safe-address.ts`, `diff.ts`, `changed-page.ts`, `fields.ts`, `editor/` (the Markdown editor, see "UI") |
+  | `folder-roles` | the roles of users on folders                             | `roles.ts` (the roles and the lowest role of each function), `actors.ts` (the actors of the content and the guards of a content write)                                                                                                                                                                                                                                                                 |
+  | `users`        | the accounts                                              | `user-type.ts`, `records.ts`, `password.ts`                                                                                                                                                                                                                                                                                                                                                            |
+  | `auth`         | login, logout, the session and the login wait             | `session.ts`: who is calling (see "Login and sessions")                                                                                                                                                                                                                                                                                                                                                |
+  | `grants`       | the connected apps and the check of an access token       | `limits.ts`: the limit of connected apps per user                                                                                                                                                                                                                                                                                                                                                      |
+  | `mcp`          | the MCP server and the folder view "AI apps"              | `server.ts` (the tools a connection gets), `tools.ts` (their handlers), `tool-schemas.ts` (their inputs and outputs), `edits.ts` (the replacements of `edit_page_content`), `http.ts`                                                                                                                                                                                                                  |
+  | `search`       | search in a folder, in the browser and through MCP        | `text.ts` and `language.ts` (what search derives of a page), `index-data.ts` (what a write stores), `words.ts` (the parser of the search words), `query-text.ts`, `excerpt.ts`, `slots.ts`, `limits.ts`                                                                                                                                                                                                |
+  | `oauth`        | the OAuth authorization server for AI apps                | `clients-service.ts`, `authorization-service.ts`, `token-service.ts`, `cleanup-service.ts`, `rows.ts` (what they share), `issuer.ts` (the issuer and `isOAuthOn()`), `secret.ts`, `metadata-fetch.ts`, `http.ts`                                                                                                                                                                                       |
 
 - `src/test/`: the helpers of the unit tests, no code of the app (see "Unit tests" in `testing.md`)
 - `src/generated/prisma/`: the generated Prisma client (`npm run db:generate`), not checked in
@@ -406,7 +406,7 @@ The feature is described in `users-and-login.md`. What every new route, query an
   follows the schema of the installed Better Auth version.
 - Writes that must succeed together run in one interactive transaction of the Prisma client
   (`getDb().$transaction(async (tx) => ...)`), such as the two counts of a login in `reserveAttempt()` of the auth
-  service and a content save of a page with its revision. A check that must hold until the write, such as that a
+  service and a content save of a page with its revision and its wiki links. A check that must hold until the write, such as that a
   folder keeps an Owner, reads its rows with `SELECT ... FOR UPDATE` in the same transaction (`changeRole()` and
   `removeRole()` of the folder-roles service). A conditional write inside it that finds its row changed throws an
   error that only the caller knows, which rolls the transaction back, and the caller reads again.
@@ -417,6 +417,11 @@ The feature is described in `users-and-login.md`. What every new route, query an
   of a test helper or the seed, keeps search current. The triggers, their functions and the check constraints of
   search are hand-written in `prisma/migrations/20261119110000_search_index/`; Prisma expresses every index, the GIN
   index on the vector included (see `search.md`).
+- Every content write of a page takes a shared transaction lock of its folder, an advisory lock of PostgreSQL, and a
+  move or rename of a page and a rename of a tab take it exclusively (`lockFolderLinks()` of
+  `src/features/pages/links-service.ts`), so that the update of wiki links sees every link stored before it and no
+  save adds a link to an old name while it runs. The wiki links of every page are kept in the model `PageLink`,
+  stored by every content write, the test helpers and the seed included (see `wiki-links.md`).
 - The `partialIndexes` preview feature is enabled for partial unique indexes (`where` in `@@unique`), such as the one
   on the names of pages placed directly in a folder.
 - The development database and its commands are described in `README.md`. Its image is pinned in
@@ -484,8 +489,10 @@ The feature is described in `users-and-login.md`. What every new route, query an
   nothing of that parse reaches the content, the title, the limits or the page view (see `markdown-editor.md`).
 - The modules of the Markdown editor in `src/features/pages/editor/` run only in the browser and are loaded only by
   `MarkdownEditor` with a dynamic `import()` of `mount.ts`, so that CodeMirror is in a chunk of its own that no other
-  page loads. They import no markdown-it: they share the safe addresses through `safe-address.ts`, and
-  `link-address.ts` decodes a link address as markdown-it does. Their unit tests build an `EditorState` in the `node`
+  page loads. They import no markdown-it: they share the safe addresses through `safe-address.ts`, the rule of wiki
+  link targets through `wiki-link-target.ts`, and `link-address.ts` decodes a link address as markdown-it does. They
+  import no module of addresses either, which brings Zod: the addresses of the wiki links come with the page list
+  that `editor-page-list.ts` builds on the server. Their unit tests build an `EditorState` in the `node`
   environment of Vitest, without a DOM.
 - The page view converts the tokens of that parse into React elements (`markdownToReact.tsx`), with text only as
   children and never `dangerouslySetInnerHTML`. Markdown that is analysed instead of rendered, such as the title

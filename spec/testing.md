@@ -46,8 +46,8 @@ How the code is tested. Commands are listed in `README.md`.
     function) are built from it, so a new write is added there once.
   - `src/test/slow-markdown.ts`: `SLOW_INPUTS`, the content at the content limit that is slow for other Markdown
     parsers, for the cost tests of the parse, of the search text and of live preview.
-  - `src/test/editor-content.ts`: `EDITOR_PAGE`, a page at the content limit with headings, lists, task lists, quotes,
-    code blocks and tables, for the cost test of live preview and the manual check of the editor's speed.
+  - `src/test/editor-content.ts`: `EDITOR_PAGE`, a page at the content limit with headings, wiki links, lists, task
+    lists, quotes, code blocks and tables, for the cost test of live preview and the manual check of the editor's speed.
   - `src/test/language-samples.ts`: a page of the same content in each language that search tells apart, for the
     tests of the language of a page and of search.
   - `src/test/pages-service.ts`: the mocked database and logger of the unit tests of the pages service, which are
@@ -232,7 +232,8 @@ How the code is tested. Commands are listed in `README.md`.
   out of the project `integration` and run with `npm run test:integration:cost`, on their own, like the cost tests.
   `integration/search-size.cost.test.ts` fills one folder with 3,000 pages of about 20,000 characters, in several
   languages and with the vocabulary of real text, and keeps the times of search and of a save into the full folder
-  within their budgets (see "Limits" in `search.md`).
+  within their budgets (see "Limits" in `search.md`). `integration/wiki-link-update.cost.test.ts` keeps a rename that
+  updates the links of 1,000 pages within its budget (see `wiki-links.md`).
 - A new unique constraint gets a constant in `db-errors.ts` and a case in `integration/db-errors.test.ts`; a new
   read with a condition the database must get right and every new write get a case in the integration test of their
   service.
@@ -333,8 +334,9 @@ How the code is tested. Commands are listed in `README.md`.
     - Without `editor`, these three create a user as the last editor, so that the integration tests need no user of
       their own. A test that checks the editor shown after a change through the browser sets up the item with another
       editor, e.g. `createPage({ folder, editor: bob })`.
-    - `createPage()` derives the title from the content, like the forms, and inserts revision 1 of the page, like a
-      page after the migration of the page history; a title given together with content is stored as is, to set up a
+    - `createPage()` derives the title from the content, like the forms, stores its search columns and its wiki links
+      in the index of links, like every write of a page, and inserts revision 1 of the page, like a page after the
+      migration of the page history; a title given together with content is stored as is, to set up a
       page whose stored title differs from its content. A deleted page has no tab.
     - `createRevisions()` gives the page the content and title of its last revision, like the saves that recorded
       them, and leaves its version, last editor and `updatedAt` as they are.
@@ -415,7 +417,11 @@ How the code is tested. Commands are listed in `README.md`.
   toolbar and its shortcuts; `e2e/editor-limit.spec.ts` the content limit and the counter, in a file of its own
   because it fills pages near the limit; `e2e/editor-leave.spec.ts` the question before leaving with unsaved changes;
   `e2e/editor-phone.spec.ts` the editor at phone size with touch, which removes the badge of the development server of
-  Next.js that covers "Save" there; and `e2e/editor-spec-tests.spec.ts` the tests written from the spec alone.
+  Next.js that covers "Save" there; `e2e/editor-wiki-links.spec.ts` the wiki links of live preview and the picker on
+  `[[`; and `e2e/editor-spec-tests.spec.ts` the tests written from the spec alone.
+- Wiki links have specs of their own: `e2e/wiki-links.spec.ts` the page view, missing links, backlinks and the limit;
+  `e2e/wiki-link-updates.spec.ts` the update of links on a move, a rename and a tab rename; and
+  `e2e/wiki-links-spec-tests.spec.ts` the tests written from the spec alone.
 - `e2e/ai-apps.spec.ts` covers the folder view "AI apps" with its addresses per role and the copy button.
 - `e2e/search.spec.ts` covers the results view and its address, the search field on every view of a folder and where
   it is left out, and the messages of the limits. Chromium waits with a request for an address until a request for

@@ -34,7 +34,7 @@ function openedTabs(context: BrowserContext): string[] {
   return opened;
 }
 
-test("a wiki link shows its label or the title of its page off the line of the cursor, its Markdown on it (R2, R28)", async ({
+test("a wiki link shows its label or the title of its page off the line of the cursor, its Markdown on it", async ({
   page,
 }) => {
   const errors = collectErrors(page);
@@ -56,7 +56,7 @@ test("a wiki link shows its label or the title of its page off the line of the c
   expect(errors).toEqual([]);
 });
 
-test("Ctrl+click opens the page, or the editor of a missing page, in a new tab, and nothing for an invalid target (R28)", async ({
+test("Ctrl+click opens the page, or the editor of a missing page, in a new tab, and nothing for an invalid target", async ({
   page,
   context,
 }) => {
@@ -90,7 +90,7 @@ test("Ctrl+click opens the page, or the editor of a missing page, in a new tab, 
   expect((await shownLines(page))[2]).toBe("Setup guide guides/faq Setup Guide");
 });
 
-test("a link to a missing page is marked with its hint, against the pages as of opening the editor (R24)", async ({
+test("a link to a missing page is marked with its hint, against the pages as of opening the editor", async ({
   page,
 }) => {
   const content = "# Onboarding\n\n[[no-such-page]] [[nosuchtab/setup]]\n\nlast";
@@ -120,7 +120,7 @@ test("the editor of a new page shows wiki links against the pages of the folder"
   await expect.poll(async () => (await shownLines(page))[2]).toBe("Setup guide");
 });
 
-test.describe("the picker on [[ (R3)", () => {
+test.describe("the picker on [[", () => {
   test("typing [[ and part of a title lists the matching pages; choosing one inserts its link, one undo reverts it", async ({
     page,
   }) => {

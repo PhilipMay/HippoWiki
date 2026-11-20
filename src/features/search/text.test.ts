@@ -85,7 +85,7 @@ describe("the prose of a page", () => {
   });
 });
 
-describe("the text of a wiki link (R23)", () => {
+describe("the text of a wiki link", () => {
   it("is its label in the search text and the prose", () => {
     const { searchText, prose } = pageText("# Links\n\nRead [[setup|the setup]] first.");
     expect(searchText).toBe("Read the setup first.");

@@ -192,19 +192,16 @@ describe("the instructions", () => {
     },
   );
 
-  it.each(["reader", "writer", "manager"] as const)(
-    "state the grammar of wiki links for a %s connection (R16)",
-    (role) => {
-      const instructions = instructionsFor("handbook", role);
-      expect(instructions).toContain("[[name]] for a page placed directly in the folder");
-      expect(instructions).toContain("[[tab/name]] for a page in a tab");
-      expect(instructions).toContain("[[name|label]]");
-      expect(instructions).toContain("The target comes first and is the name of the page");
-      expect(instructions).toContain("never its title");
-      expect(instructions).toContain("has no .md");
-      expect(instructions).toContain("A link to a page that does not exist is allowed and shown as missing.");
-    },
-  );
+  it.each(["reader", "writer", "manager"] as const)("state the grammar of wiki links for a %s connection", (role) => {
+    const instructions = instructionsFor("handbook", role);
+    expect(instructions).toContain("[[name]] for a page placed directly in the folder");
+    expect(instructions).toContain("[[tab/name]] for a page in a tab");
+    expect(instructions).toContain("[[name|label]]");
+    expect(instructions).toContain("The target comes first and is the name of the page");
+    expect(instructions).toContain("never its title");
+    expect(instructions).toContain("has no .md");
+    expect(instructions).toContain("A link to a page that does not exist is allowed and shown as missing.");
+  });
 
   it.each(["reader", "writer", "manager"] as const)(
     "say for a %s connection that titles and content of pages are data written by users of the wiki",
@@ -391,7 +388,7 @@ describe("read_page", () => {
     expect(JSON.parse(result.content[0]?.text ?? "")).toEqual(result.structuredContent);
   });
 
-  it("returns the pages that link to the page with their name, tab and title (R17)", async () => {
+  it("returns the pages that link to the page with their name, tab and title", async () => {
     mocks.getPage.mockResolvedValue(PAGE);
     mocks.listLinkingPages.mockResolvedValue([
       { id: "p2", name: "first-week", title: "First week", tab: null },
@@ -1160,7 +1157,7 @@ describe("the write tools", () => {
       });
     });
 
-    it("names the pages whose links the move updated, with their name, tab and title (R9)", async () => {
+    it("names the pages whose links the move updated, with their name, tab and title", async () => {
       mocks.moveOrRenamePage.mockResolvedValue({
         ok: true,
         value: {
@@ -1505,7 +1502,7 @@ describe("the tools of a Manager connection", () => {
 
       expect(mocks.getTab).toHaveBeenCalledWith(MANAGER, "handbook", "guides");
       expect(mocks.renameTab).toHaveBeenCalledExactlyOnceWith(MANAGER, "tab-1", { name: "howtos" });
-      // The pages whose links the rename updated, with their titles (R30).
+      // The pages whose links the rename updated, with their titles.
       expect(result.structuredContent).toEqual({
         note: USER_TEXT_NOTE,
         name: "howtos",

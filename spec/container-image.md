@@ -1,7 +1,7 @@
 # HippoWiki – Container Image
 
 The container image of HippoWiki as built: one image that applies the database migrations when it starts, creates
-the admin account if there is none, makes the pages searchable that are not yet, and then serves the wiki, for a first pre-production environment outside the
+the admin account if there is none, makes the pages searchable that are not yet and derives their wiki links, and then serves the wiki, for a first pre-production environment outside the
 development machine. A first installation needs only the image, an empty PostgreSQL database, its address and a first
 password for the admin.
 
@@ -94,7 +94,8 @@ Code: `Containerfile`, `.containerignore`, `scripts/image.sh`, `scripts/image-mi
 
 - The search index makes the pages searchable that were stored before search, or by an older version of the
   derivation of their search text and language, and does nothing when there are none (see "Operation" in
-  `search.md`). In the image it is the bundle `search-index.mjs` of `scripts/search-index.ts`, about 2.3 MB with the
+  `search.md`). In the same run it derives the wiki links of the pages stored before the index of links, or by an
+  older version of its derivation (see "The index of links" in `wiki-links.md`). In the image it is the bundle `search-index.mjs` of `scripts/search-index.ts`, about 2.3 MB with the
   language detector, started by `image-search-index.sh`.
 - `image-start.sh` runs it on every start of a container, after the admin setup and before the server, so that the
   first search finds every page. The first start after the update of search, and after an update that changes the
@@ -199,8 +200,9 @@ Code: `Containerfile`, `.containerignore`, `scripts/image.sh`, `scripts/image-mi
   - a first start installs the database, creates the admin and serves the wiki behind its login with the security
     headers;
   - the server does not run as root and cannot change its own files;
-  - pages stored before search, as after the update of an installation with pages, are searchable after the next
-    start, with the inflections of their language, and keep their last change;
+  - pages stored before search and the index of links, as after the update of an installation with pages, are
+    searchable after the next start, with the inflections of their language, have their wiki links derived, and keep
+    their last change;
   - later starts and the commands `./image-migrate.sh`, `./image-admin.sh` and `./image-search-index.sh` change
     nothing.
 - It runs in a pod of its own whose names and port differ from the development database, the test database,

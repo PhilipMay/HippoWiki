@@ -109,8 +109,9 @@ Read tools, which say so to the client (`readOnlyHint`):
   last editor and how it was last changed (`web` or `mcp`, see "Last editor" in `content-structure.md`), so that an
   agent sees which pages an AI app changed last without reading each one.
 - `read_page`: one page of the folder by its tab, if it is in one, and its name: the title, the Markdown content, the
-  address, the last change, the last editor, how it was last changed (`web` or `mcp`) and its version (see
-  `optimistic-locking.md`).
+  address, the last change, the last editor, how it was last changed (`web` or `mcp`), its version (see
+  `optimistic-locking.md`), and the other pages of the folder that link to it, with their name, tab and title, as the
+  section "Linked from" of the page view lists them (see "Backlinks" in `wiki-links.md`).
 - `search_pages`: the pages of the whole folder that match the words of `query`, the best match first, each with its
   title, its name and tab as `read_page` takes them, its address, a piece of its text, its last change, its last
   editor and how it was last changed. It returns 10 results unless `limit` asks for another number, at most 25, from
@@ -132,7 +133,11 @@ that change the content of a page carry `destructiveHint` as well, because they 
   "Changing parts of a page".
 - `move_or_rename_page`: a page to another tab of the folder, or directly into it, with a new name, based on a
   version. It stays in the folder of the connection. The current name and place change nothing (see "Moving or
-  renaming a page to its own name and place" in `content-structure.md`).
+  renaming a page to its own name and place" in `content-structure.md`). It changes the wiki links to the page in
+  every page of the folder in the same write, and the result names the pages whose links it updated, with their name,
+  tab and title (see "Updates on a move or rename" in `wiki-links.md`).
+- `create_page`, `replace_page_content` and `edit_page_content` are refused with more than 5,000 wiki links, like the
+  other limits of the content (see "The limit" in `wiki-links.md`).
 - `create_page`, `replace_page_content` and `edit_page_content` record a revision of the page with the user of the connection and the
   channel `mcp`, like a content change in the browser, so that a user can undo it in the browser from the history of
   the page (see `page-history.md`). No tool reads the history or reverts a page.
@@ -151,7 +156,8 @@ Tools of a Manager, for a Manager connection only. They do what the browser does
   tool error. The result names the tab and its address.
 - `rename_tab`: a tab by its current name with a new name, under the rules of the browser; like in the browser, a
   rename is not checked against changes meanwhile. An unknown tab, a name that breaks the rule and the name of another
-  tab are tool errors. The result names the tab and its new address; the pages in it have new addresses as well. The
+  tab are tool errors. The result names the tab and its new address, and the pages whose wiki links into the tab it
+  updated, with their name, tab and title; the pages in it have new addresses as well. The
   current name changes nothing (see "Renaming to the same name" in `content-structure.md`).
 - `delete_tab`: a tab by its name, deleted together with all its pages as in the browser, without a further
   confirmation (see "Deleting a tab" in `content-structure.md`). Its description says before the call that every page
@@ -220,7 +226,9 @@ What holds for all of them:
   for changing parts of a page and `replace_page_content` for rewriting it, and that every change states the version;
   a Manager connection is told, besides that, that it deletes pages and creates, renames and deletes tabs,
   that deleting a tab deletes all its pages with it, and that deleted pages can be neither seen nor restored through
-  MCP, only by a Manager or Owner in the browser.
+  MCP, only by a Manager or Owner in the browser. The instructions of every role state the grammar of wiki links: the
+  target first and the label after `|`, a name and not a title, `tab/name` for a page in a tab, no `.md`, and that a
+  link to a page that does not exist is allowed and shown as missing (see "AI apps" in `wiki-links.md`).
 
 ## Changing parts of a page
 
@@ -432,7 +440,8 @@ of the history.
 - no deleted pages through MCP (see "Tools")
 - `edit_page_content` changes only exact texts: no diffs or patches, no line numbers or positions, no edits targeted
   at a heading or section, and no appending or prepending without naming a text
-- no change of several pages in one call
+- no change of several pages in one call, apart from the update of the wiki links that a move, a rename or a tab
+  rename makes
 - no search-and-replace in the browser
 - no connection to several folders at once, or to all folders of a user
 - no page history through MCP: a content change made by an AI agent is undone only in the browser, from the history

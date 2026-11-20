@@ -45,7 +45,7 @@ async function setUpScenario() {
   return { setup, onboarding, firstWeek };
 }
 
-test("renaming a page updates the links of the pages that link to it, with a marked revision by the user (R7, R9, R10)", async ({
+test("renaming a page updates the links of the pages that link to it, with a marked revision by the user", async ({
   page,
 }) => {
   const errors = collectErrors(page);
@@ -78,7 +78,7 @@ test("renaming a page updates the links of the pages that link to it, with a mar
   expect(errors).toEqual([]);
 });
 
-test("an editor opened on a linking page before the rename has its save refused as changed (R10)", async ({
+test("an editor opened on a linking page before the rename has its save refused as changed", async ({
   page,
   context,
 }) => {
@@ -135,7 +135,7 @@ test("a page that links to itself is counted and updated too", async ({ page }) 
   );
 });
 
-test("a revert to a revision that holds the old target stores it as it is, and it shows as missing (R27)", async ({
+test("a revert to a revision that holds the old target stores it as it is, and it shows as missing", async ({
   page,
 }) => {
   await setUpScenario();
@@ -154,9 +154,7 @@ test("a revert to a revision that holds the old target stores it as it is, and i
   );
 });
 
-test("renaming a tab updates the links into it in every page, and its dialog says how many (R11, R30)", async ({
-  page,
-}) => {
+test("renaming a tab updates the links into it in every page, and its dialog says how many", async ({ page }) => {
   const errors = collectErrors(page);
   await setUpScenario();
   await createTab({ folder: handbook, name: "empty" });

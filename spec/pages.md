@@ -2,7 +2,8 @@
 
 The wiki page feature as built: a page is a Markdown document whose title comes from its first heading. Where pages
 live (folders, tabs, names and addresses) is described in `content-structure.md`, deleting and restoring pages in
-`page-deletion.md`, how changes of the same page at the same time are told apart in `optimistic-locking.md`.
+`page-deletion.md`, how changes of the same page at the same time are told apart in `optimistic-locking.md`, and the
+links between pages in `wiki-links.md`.
 
 Code: `src/features/pages/` (the model is `Page` in `prisma/schema.prisma`, the length limits are in
 `src/features/pages/limits.ts`, the title and the suggested name in `src/features/pages/derive.ts`, the Markdown
@@ -18,7 +19,8 @@ routes under `src/app/folders/`. Tests: `src/features/pages/derive.test.ts`, `sr
 - A page's content is Markdown, edited as raw text. It must start with a title heading, `# Title`, after optional
   blank lines; content without one is refused. Nothing else counts as a title heading: not a setext heading, not a
   `##` heading, and not a heading after any other block. The exact rule is in `titleFromContent()`.
-- The title is the text of that heading, as plain text, cut to 200 characters (`TITLE_MAX_LENGTH` in
+- The title is the text of that heading, as plain text, in which a wiki link counts as its label or, without one, as
+  its target as written (see "Display" in `wiki-links.md`), cut to 200 characters (`TITLE_MAX_LENGTH` in
   `src/features/pages/limits.ts`). A heading whose text has no letter or digit, such as `# ...`, counts as no title
   heading. The title is never entered directly and is derived again on every save, so changing the heading changes
   the title. Titles need not be unique.
@@ -26,16 +28,19 @@ routes under `src/app/folders/`. Tests: `src/features/pages/derive.test.ts`, `sr
   characters long (`CONTENT_MAX_LENGTH` in `src/features/pages/limits.ts`), counted with plain line breaks, as the
   editor counts it, so content that fits the editor is never refused for its length. Content with a NUL character is
   refused with a field error, because the database cannot store it.
-- The Markdown of the content has two limits besides its length, both in `src/features/pages/limits.ts` and checked
+- The Markdown of the content has three limits besides its length, all in `src/features/pages/limits.ts` and checked
   at every save, in the browser and through MCP, with a field error at the content:
   - lists and quotes nested at most 20 deep, a list or quote inside another counting one level more: far more than a
     page needs, and it keeps the parse and the page view flat;
   - at most 10,000 table cells in all, counting the empty cells that fill a row up to the columns of its header: a
     small table with a header of many columns and many short rows would otherwise make a page view of millions of
-    cells.
+    cells;
+  - at most 5,000 wiki links, a guard for the page view, the backlinks and the update of links on a rename (see "The
+    limit" in `wiki-links.md`).
 - The content of a page is validated when it is created or edited, and when it is reverted to an earlier revision,
-  with the limits in force at the time of the revert (see `page-history.md`). Moving or renaming neither validates nor
-  touches it, so a limit lowered later never blocks them.
+  with the limits in force at the time of the revert (see `page-history.md`). Moving or renaming neither validates it
+  nor touches it, except that the wiki links to the moved page, in its own content and in the other pages of the
+  folder, are updated without a check of the limits (see `wiki-links.md`), so a limit lowered later never blocks them.
 - Every content change is recorded as a revision of the page (see `page-history.md`).
 - The forms send only what they change; a submitted title is ignored. The service validates again before it writes.
 
@@ -79,7 +84,10 @@ given as `?action=<action>` (see `content-structure.md`).
 - `?action=new` on a folder or tab address: the Markdown editor for a new page (see `markdown-editor.md`). The content
   comes first; "Save" checks on the
   client that it has a title, then asks for the name and the place in the "Save page" dialog, which shows the address
-  the page will get. Saving shows the new page.
+  the page will get. Saving shows the new page. With `&name=<name>`, the address a missing wiki link leads to, the
+  dialog proposes that name instead of the one suggested from the title, with the place of the address preselected;
+  the user can change both. A name that breaks the name rule, an empty or repeated `name`, and `name` with another
+  action, a view or no action show the not-found page.
 - The page address: the breadcrumb, the time of the last update with its last editor and channel (see "Last editor"
   and "Channel" in `content-structure.md`), "Edit" and "Move or rename" for a Writer, "Delete" for a Manager (see
   `folder-roles.md`) and "History" for every role, then the rendered content. The content's `#` heading is the page's
@@ -101,6 +109,8 @@ given as `?action=<action>` (see `content-structure.md`).
 - Task lists are indented and nested like other lists. In a bullet list, the checkbox of a task item sits in place of
   the bullet, and a plain item of the same list keeps its bullet; a task item of an ordered list keeps its number, with
   the checkbox in front of the text. The checkboxes cannot be ticked in the page view.
+- Wiki links, `[[target]]` and `[[target|label]]`, are links to the pages of the folder they name (see
+  `wiki-links.md`).
 - Raw HTML is shown as text and never rendered.
 - A link or image becomes one only with a relative address or an address of `http`, `https`, `mailto`, `irc`, `ircs`
   or `xmpp` (`SAFE_PROTOCOLS` in `markdown.ts`); with any other address, such as `javascript:`, `vbscript:` or
@@ -189,7 +199,7 @@ Saves without a change:
 - a deleted page cannot be removed for good, which is not planned, and is restored only into its own folder, as a
   lasting rule (see `page-deletion.md`)
 - a page has one content in one language; the same page in several languages is not planned
-- no `[[wiki links]]`, no attachments
+- no attachments
 - the title comes only from a leading `# Title` heading: no setext headings, no front matter, no live display of the
   derived title while editing
 - no redirects from the previous address after a page is renamed or moved

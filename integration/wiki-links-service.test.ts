@@ -64,7 +64,7 @@ describe("the index of links", () => {
     expect((await storedPage(id)).linkIndexVersion).toBe(LINK_INDEX_VERSION);
   });
 
-  it("follows the content of a save and of a revert, which stores the links of the old content as they are (R27)", async () => {
+  it("follows the content of a save and of a revert, which stores the links of the old content as they are", async () => {
     const id = await newPage("# Notes\n\n[[a]] [[b]]");
     await save(id, "# Notes\n\n[[b]] [[c]]");
     expect(await linksOf(id)).toEqual(["b", "c"]);
@@ -92,7 +92,7 @@ describe("the index of links", () => {
 });
 
 describe("the linking pages", () => {
-  it("are the other pages of the folder that link to the name and place of the page, by title (R12)", async () => {
+  it("are the other pages of the folder that link to the name and place of the page, by title", async () => {
     const setup = await newPage("# Setup guide\n\n[[guides/setup]]", { name: "setup", tabId: guides.id });
     await newPage("# Onboarding\n\n[[guides/setup|the setup]]", { name: "onboarding", tabId: guides.id });
     await newPage("# First week\n\n[[guides/setup]] and [[guides/setup]]", { name: "first-week" });
@@ -107,7 +107,7 @@ describe("the linking pages", () => {
     ]);
   });
 
-  it("leave out a deleted linking page, and list it again after a restore (R12)", async () => {
+  it("leave out a deleted linking page, and list it again after a restore", async () => {
     const setup = await newPage("# Setup", { name: "setup" });
     const linking = await newPage("# Onboarding\n\n[[setup]]", { name: "onboarding" });
 
@@ -211,7 +211,7 @@ describe("the update of links on a move or rename", () => {
     return pageService.moveOrRenamePage(mover, pageId, { name, tabId, version });
   }
 
-  it("changes the target of every link to the page, the page itself included, and keeps the labels (R7)", async () => {
+  it("changes the target of every link to the page, the page itself included, and keeps the labels", async () => {
     const setup = await newPage("# Setup guide\n\nSee [[guides/setup]].", { name: "setup", tabId: guides.id });
     const onboarding = await newPage("# Onboarding\n\n[[guides/setup|the setup]] [[faq]]", { name: "onboarding" });
     const other = await newPage("# Other\n\n[[setup]]", { name: "other" });
@@ -227,7 +227,7 @@ describe("the update of links on a move or rename", () => {
     expect(await linkingTitles(setup)).toEqual(["Onboarding"]);
   });
 
-  it("gives each updated page a marked revision by the user and channel of the move, the next version and that user as its last editor (R10)", async () => {
+  it("gives each updated page a marked revision by the user and channel of the move, the next version and that user as its last editor", async () => {
     const bob = await createBob();
     const setup = await newPage("# Setup", { name: "setup" });
     const linking = await createPage({ folder, editor: bob, name: "onboarding", content: "# Onboarding\n\n[[setup]]" });
@@ -260,7 +260,7 @@ describe("the update of links on a move or rename", () => {
     expect(await storedPage(about)).toMatchObject({ title: "About guides/install", searchLanguage });
   });
 
-  it("changes no page when the move is refused for a taken name or an older version (R8)", async () => {
+  it("changes no page when the move is refused for a taken name or an older version", async () => {
     const setup = await newPage("# Setup", { name: "setup" });
     await newPage("# Install", { name: "install" });
     const linking = await newPage("# Onboarding\n\n[[setup]]", { name: "onboarding" });
@@ -281,7 +281,7 @@ describe("the update of links on a move or rename", () => {
     expect(await linksOf(linking)).toEqual(["setup"]);
   });
 
-  it("leaves no link to the old name and place once it is stored, and none in code (R8, R31)", async () => {
+  it("leaves no link to the old name and place once it is stored, and none in code", async () => {
     const setup = await newPage("# Setup", { name: "setup" });
     const linking = await newPage("# L\n\n[[setup]] `[[setup]]`\n\n| [[setup\\|S]] |\n| - |", { name: "linking" });
 
@@ -301,7 +301,7 @@ describe("the update of links on a move or rename", () => {
     expect(await storedPage(setup)).toEqual(before);
   });
 
-  it("updates a linking page past the content limit and stores it (R21)", async () => {
+  it("updates a linking page past the content limit and stores it", async () => {
     const setup = await newPage("# Setup", { name: "s" });
     const head = "# Long\n\n[[s]]\n\n";
     const content = head + "x".repeat(CONTENT_MAX_LENGTH - 1 - head.length);
@@ -319,7 +319,7 @@ describe("the update of links on a move or rename", () => {
     expect(deleted.ok).toBe(true);
   });
 
-  it("keeps the link, versions and history of a deleted page (R29)", async () => {
+  it("keeps the link, versions and history of a deleted page", async () => {
     const setup = await newPage("# Setup", { name: "setup" });
     const gone = await newPage("# Gone\n\n[[setup]]", { name: "gone" });
     await pageService.deletePage(actor, gone, { version: (await storedPage(gone)).version });

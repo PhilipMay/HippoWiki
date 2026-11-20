@@ -2062,7 +2062,7 @@ describe("content saves without a change", () => {
 });
 
 describe("the resolution of wiki links", () => {
-  it("resolves [[setup]] to the page directly in the folder and [[guides/setup]] to the page in the tab (R5)", async () => {
+  it("resolves [[setup]] to the page directly in the folder and [[guides/setup]] to the page in the tab", async () => {
     const folder = await createFolder();
     const guides = await createTab({ folder, name: "guides" });
     await createPage({ folder, name: "setup", content: "# Setup" });
@@ -2096,7 +2096,7 @@ describe("the resolution of wiki links", () => {
     });
   });
 
-  it("finds no deleted page and no deleted tab, and a restored page again (R20)", async () => {
+  it("finds no deleted page and no deleted tab, and a restored page again", async () => {
     const folder = await createFolder();
     const guides = await createTab({ folder, name: "guides" });
     const setup = await createPage({ tab: guides, name: "setup", content: "# Setup guide" });

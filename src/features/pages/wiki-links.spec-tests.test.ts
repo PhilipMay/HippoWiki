@@ -1,4 +1,4 @@
-// Tests written from the requirements of wiki links alone (`spec/wiki-links-requirements.md`), for the rules or the
+// Tests written from the requirements of wiki links alone, whose rules are now in `spec/wiki-links.md`, for the rules or the
 // parts of rules that the other tests of wiki links leave open: what counts towards the limit of wiki links.
 
 import { describe, expect, it } from "vitest";
@@ -13,24 +13,23 @@ function contentErrorsOf(content: string): string[] {
   return result.error.issues.filter((issue) => issue.path[0] === "content").map((issue) => issue.message);
 }
 
-describe("the limit of wiki links (R26)", () => {
-  // wiki-links-requirements.md, "Syntax and target", R26 with R13: a target that breaks the name rule is still a wiki
-  // link, shown as missing, so it counts.
+describe("the limit of wiki links", () => {
+  // wiki-links.md, "The limit" and "Syntax and target": a target that breaks the name rule is still a wiki link,
+  // shown as missing, so it counts.
   it("counts links whose target breaks the name rule", () => {
     expect(contentErrorsOf(`# Links\n\n${"[[Setup Guide]] ".repeat(CONTENT_MAX_WIKI_LINKS + 1)}`)).toEqual([
       CONTENT_WIKI_LINKS_MESSAGE,
     ]);
   });
 
-  // wiki-links-requirements.md, "Syntax and target", R26 with R31: [[...]] in code or after a backslash is text, not a
-  // wiki link, so it does not count.
+  // wiki-links.md, "The limit" and "Syntax and target": [[...]] in code or after a backslash is text, not a wiki
+  // link, so it does not count.
   it("does not count [[...]] in a code span or after a backslash", () => {
     expect(contentErrorsOf(`# Links\n\n${"`[[setup]]` ".repeat(CONTENT_MAX_WIKI_LINKS + 1)}`)).toEqual([]);
     expect(contentErrorsOf(`# Links\n\n${"\\[[setup]] ".repeat(CONTENT_MAX_WIKI_LINKS + 1)}`)).toEqual([]);
   });
 
-  // wiki-links-requirements.md, "Syntax and target", R26 ("A page must hold at most 5,000 wiki links"): every link
-  // counts, also the same target again.
+  // wiki-links.md, "The limit": every link counts, also the same target again.
   it("counts every link, not every target", () => {
     const content = `# Links\n\n${"[[a]] [[b]] ".repeat(CONTENT_MAX_WIKI_LINKS / 2)}[[a]]`;
     expect(contentErrorsOf(content)).toEqual([CONTENT_WIKI_LINKS_MESSAGE]);

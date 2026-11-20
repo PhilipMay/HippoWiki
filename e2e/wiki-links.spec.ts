@@ -31,7 +31,7 @@ function withWikiLinks(count: number): string {
   return `# Links\n\n${"[[setup]] ".repeat(count)}`;
 }
 
-test.describe("the limit of wiki links (R26)", () => {
+test.describe("the limit of wiki links", () => {
   test("a save with 5,001 wiki links is refused at the content field and stores nothing", async ({ page }) => {
     const errors = collectErrors(page);
     const created = await createPage({ folder: handbook, name: "links", title: "Links" });
@@ -63,7 +63,7 @@ test.describe("the limit of wiki links (R26)", () => {
   });
 });
 
-test("a page whose heading holds a wiki link gets its label, or its target, in the title (R23)", async ({ page }) => {
+test("a page whose heading holds a wiki link gets its label, or its target, in the title", async ({ page }) => {
   await page.goto("/folders/handbook?action=new");
   await fillContent(page, "# About [[setup|the setup]]\n\nText");
   await page.getByRole("button", { name: "Save" }).click();
@@ -101,7 +101,7 @@ test.describe("wiki links in the page view", () => {
     return page.getByRole("article");
   }
 
-  test("[[setup]] and [[guides/setup]] lead to the page directly in the folder and to the page in the tab, from either place (R5, R6)", async ({
+  test("[[setup]] and [[guides/setup]] lead to the page directly in the folder and to the page in the tab, from either place", async ({
     page,
   }) => {
     const errors = collectErrors(page);
@@ -129,7 +129,7 @@ test.describe("wiki links in the page view", () => {
     expect(errors).toEqual([]);
   });
 
-  test("a link without a label shows the new title of its page without a change of the linking page (R6)", async ({
+  test("a link without a label shows the new title of its page without a change of the linking page", async ({
     page,
   }) => {
     const links = await createPage({ folder: handbook, name: "links", content: "# Links\n\n[[guides/setup]]" });
@@ -143,9 +143,7 @@ test.describe("wiki links in the page view", () => {
     expect(await getTestDb().page.findUniqueOrThrow({ where: { id: links.id } })).toEqual(links);
   });
 
-  test("a link to a missing page is marked, with its hint for pointer and screen reader users (R14)", async ({
-    page,
-  }) => {
+  test("a link to a missing page is marked, with its hint for pointer and screen reader users", async ({ page }) => {
     await createPage({ folder: handbook, name: "links", content: "# Links\n\n[[no-such-page]] and [[setup]]" });
     await page.goto("/folders/handbook/links.md");
 
@@ -161,7 +159,7 @@ test.describe("wiki links in the page view", () => {
     );
   });
 
-  test("a Writer follows a missing link to the editor with its name and place preset, and the link then leads to the new page (R15, R33)", async ({
+  test("a Writer follows a missing link to the editor with its name and place preset, and the link then leads to the new page", async ({
     page,
   }) => {
     const errors = collectErrors(page);
@@ -186,7 +184,7 @@ test.describe("wiki links in the page view", () => {
     expect(errors).toEqual([]);
   });
 
-  test("a Reader sees a missing link as marked text without a link (R15)", async ({ page }) => {
+  test("a Reader sees a missing link as marked text without a link", async ({ page }) => {
     await createPage({ folder: handbook, name: "links", content: "# Links\n\n[[guides/faq]]" });
     await setOwnRole(handbook, "reader");
     await page.goto("/folders/handbook/links.md");
@@ -198,7 +196,7 @@ test.describe("wiki links in the page view", () => {
   });
 
   for (const role of ["writer", "reader"] as const) {
-    test(`a target that breaks the name rule or names a missing tab is marked text with its hint for a ${role} (R13, R19, R25)`, async ({
+    test(`a target that breaks the name rule or names a missing tab is marked text with its hint for a ${role}`, async ({
       page,
     }) => {
       await createPage({ folder: handbook, name: "setup-guide", content: "# Setup guide page" });
@@ -226,7 +224,7 @@ test.describe("wiki links in the page view", () => {
     });
   }
 
-  test("a label keeps its asterisks and a link in a table cell takes \\| (R18)", async ({ page }) => {
+  test("a label keeps its asterisks and a link in a table cell takes \\|", async ({ page }) => {
     await createPage({
       folder: handbook,
       name: "links",
@@ -244,7 +242,7 @@ test.describe("wiki links in the page view", () => {
     );
   });
 
-  test("a code span, a code block, \\[[ and a link over a line break are text (R31)", async ({ page }) => {
+  test("a code span, a code block, \\[[ and a link over a line break are text", async ({ page }) => {
     await createPage({
       folder: handbook,
       name: "links",
@@ -257,7 +255,7 @@ test.describe("wiki links in the page view", () => {
     await expect(article(page)).toContainText("[[setup]]");
   });
 
-  test("a label shows as text, never as HTML (R32)", async ({ page }) => {
+  test("a label shows as text, never as HTML", async ({ page }) => {
     await createPage({ folder: handbook, name: "links", content: "# Links\n\n[[setup|<b>x</b>]]" });
     await page.goto("/folders/handbook/links.md");
 
@@ -265,7 +263,7 @@ test.describe("wiki links in the page view", () => {
     await expect(article(page).locator("b")).toHaveCount(0);
   });
 
-  test("a link into a deleted page shows as missing to a Manager and a Reader, and leads to it again once it is restored under its name (R20)", async ({
+  test("a link into a deleted page shows as missing to a Manager and a Reader, and leads to it again once it is restored under its name", async ({
     page,
   }) => {
     await createPage({ folder: handbook, name: "links", content: "# Links\n\n[[guides/setup]]" });
@@ -298,9 +296,7 @@ test.describe("wiki links in the page view", () => {
     );
   });
 
-  test("a link into a page restored under another name stays missing and no page is changed (R20)", async ({
-    page,
-  }) => {
+  test("a link into a page restored under another name stays missing and no page is changed", async ({ page }) => {
     const links = await createPage({ folder: handbook, name: "links", content: "# Links\n\n[[guides/setup]]" });
     const setup = await getTestDb().page.findFirstOrThrow({ where: { name: "setup", tabId: guides.id } });
     await getTestDb().page.update({ where: { id: setup.id }, data: { deletedAt: new Date(), tabId: null } });
@@ -319,7 +315,7 @@ test.describe("wiki links in the page view", () => {
     expect(await getTestDb().page.findUniqueOrThrow({ where: { id: links.id } })).toEqual(links);
   });
 
-  test("an old revision and a deleted page show their links resolved against the folder as it is now (R22, R33)", async ({
+  test("an old revision and a deleted page show their links resolved against the folder as it is now", async ({
     page,
   }) => {
     const links = await createPage({ folder: handbook, name: "links", content: "# Links\n\n[[faq]] first" });
@@ -360,7 +356,7 @@ test.describe("wiki links in the page view", () => {
   });
 });
 
-test.describe("Linked from (R12)", () => {
+test.describe("Linked from", () => {
   /** The section "Linked from" of the page view. */
   function linkedFrom(page: BrowserPage) {
     return page.getByRole("region", { name: "Linked from" });

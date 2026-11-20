@@ -8,8 +8,9 @@
 - Markdown: markdown-it (`markdown-it`) with its footnote plugin (`markdown-it-footnote`), the Markdown parser of the
   wiki for the title, the limits, the page view and search (see `pages.md`)
 - Markdown editor: CodeMirror 6 with `@codemirror/state`, `@codemirror/view`, `@codemirror/commands`,
-  `@codemirror/language`, `@codemirror/lang-markdown`, `@codemirror/search` and `@lezer/highlight`, without the
-  `codemirror` package and its `basicSetup` (see `markdown-editor.md`). Its Markdown parser, Lezer (`@lezer/markdown`,
+  `@codemirror/language`, `@codemirror/lang-markdown`, `@codemirror/search`, `@codemirror/autocomplete` (only for the
+  picker of wiki links) and `@lezer/highlight`, without the `codemirror` package and its `basicSetup` (see
+  `markdown-editor.md`). Its Markdown parser, Lezer (`@lezer/markdown`,
   CommonMark with the GitHub Flavored Markdown extensions), is a second parser used only to show the content in the
   editor; `entities` decodes the entities of link addresses there as markdown-it does
 - Comparing revisions of a page: jsdiff (`diff`), line by line, with a cap on the size of the difference (see

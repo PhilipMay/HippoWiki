@@ -101,7 +101,7 @@ describe("titleFromContent", () => {
   });
 });
 
-describe("the title and the suggested name of a heading with a wiki link (R23)", () => {
+describe("the title and the suggested name of a heading with a wiki link", () => {
   it("take the label, or the target as written without a label", () => {
     expect(titleFromContent("# About [[setup|the setup]]")).toBe("About the setup");
     expect(titleFromContent("# About [[guides/setup]]")).toBe("About guides/setup");

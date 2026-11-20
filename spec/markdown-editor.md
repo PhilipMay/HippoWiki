@@ -17,11 +17,14 @@ Code: `src/features/pages/editor/`, the modules that only the browser loads:
 - `preview-plugin.ts`: the view plugin of live preview, its styles and the opening of links;
 - `tables.ts`: the rendered tables;
 - `link-address.ts`: the address of a link as the page view reads it;
+- `wiki-links.ts`: the wiki links of the parser, the page list of the folder and what a wiki link shows and leads to;
+- `wiki-link-picker.ts`: the picker on `[[`;
 - `mode.ts`: the mode kept in the browser.
 
 The components are `src/features/pages/components/MarkdownEditor.tsx`, `EditorToolbar.tsx`,
 `DiscardChangesDialog.tsx` and `useUnsavedChangesGuard.ts`, used by `PageForm.tsx` and `NewPageForm.tsx`. The safe
-addresses of links are in `src/features/pages/safe-address.ts`, shared with the page view.
+addresses of links are in `src/features/pages/safe-address.ts`, shared with the page view. The page list of the
+folder, with the addresses of its pages, is built on the server by `src/features/pages/editor-page-list.ts`.
 
 Tests:
 
@@ -29,7 +32,8 @@ Tests:
 - cost: `src/features/pages/editor/live-preview.cost.test.ts`, on the pages of `src/test/editor-content.ts` and
   `src/test/slow-markdown.ts`;
 - end-to-end: `e2e/editor.spec.ts`, `e2e/editor-preview.spec.ts`, `e2e/editor-toolbar.spec.ts`,
-  `e2e/editor-limit.spec.ts`, `e2e/editor-leave.spec.ts`, `e2e/editor-phone.spec.ts`, `e2e/editor-spec-tests.spec.ts`
+  `e2e/editor-limit.spec.ts`, `e2e/editor-leave.spec.ts`, `e2e/editor-phone.spec.ts`, `e2e/editor-spec-tests.spec.ts`,
+  `e2e/editor-wiki-links.spec.ts`
   and `e2e/hydration.spec.ts`, with the helpers of `e2e/support/editor.ts`.
 
 ## Where the editor is used
@@ -59,6 +63,9 @@ Tests:
   size of their level.
 - A link, an autolink and a bare address show only their text, styled as a link. A link whose address the page view
   would not make a link stays its Markdown text.
+- A wiki link shows its label, or the title of its page, styled as a link, and a link to a missing page is marked as
+  in the page view, against the page list of the folder read when the editor opened (see "The editor" in
+  `wiki-links.md`).
 - A bullet item shows a bullet, a numbered item its number as a list mark, a task item a checkbox ticked as in the
   text; a block quote shows a bar per level instead of `>`; a fenced code block shows a monospace box, its fence lines
   hidden; a horizontal rule shows a line.
@@ -72,6 +79,7 @@ Tests:
   new browser tab, so that the editor is never left: an inline link, an autolink, a bare address, and of a reference
   link the address of its definition. It opens the address the page view links to, with the escapes and entities of
   the Markdown decoded, and only an address that the page view would make a link of (see "Rendering" in `pages.md`).
+  A wiki link opens what the page view leads to, and nothing when it cannot be created as written.
 - On a touch screen a tap on a link only puts the cursor there; links are opened from the page view.
 - What the editor shows formatted is a help for writing; the page view decides how a page looks. Where the editor's
   parser reads the Markdown otherwise than the page view, the content and the page view stay as they are.
@@ -86,6 +94,8 @@ Tests:
 - Tab indents the line of the cursor or every line of the selection, a list item becoming the child of the item above
   it, and Shift+Tab outdents them. After Esc, the next Tab or Shift+Tab moves the focus out of the editor instead, so
   that the keyboard is never trapped. The helper text below the editor names this.
+- Typing `[[` opens a picker of the pages of the folder, and choosing one inserts its wiki link as one change that one
+  undo reverts (see "The editor" in `wiki-links.md`). Its keys act only while it is open.
 - Pasting adds plain text, without the formatting of its source.
 - The spell check of the browser is off in the editor.
 
@@ -160,7 +170,8 @@ Tests:
 
 ## The stored content
 
-- The editor never changes the Markdown on its own: no autoformatting, no closing brackets, no trimming. What is saved
+- The editor never changes the Markdown on its own: no autoformatting, no closing brackets, no trimming. The picker on
+  `[[` inserts a link only when the user chooses a page. What is saved
   is exactly the text the user typed or pasted, also after switching the mode, so opening a page and saving it without
   a change stores nothing (see "Saves without a change" in `pages.md`).
 
@@ -175,7 +186,9 @@ Tests:
   of its own, and only where the editor is used. `safe-address.ts` and `link-address.ts` keep markdown-it out of that
   chunk. Rejected: a promise only on loading.
 - The editor uses the packages it needs one by one, not the `codemirror` package with its `basicSetup`, which brings
-  autocompletion, closing brackets and other changes of the text.
+  autocompletion, closing brackets and other changes of the text. Completion is used for the picker of wiki links
+  only, which inserts nothing without a choice (see "Decisions" in `wiki-links.md`); this reverses the earlier
+  decision against completion for wiki links.
 - The content leaves the editor through one hidden field `content` per editor, updated on every change without a React
   render per key, so that the forms submit it as they submitted the textarea.
 - Before the editor is ready the content shows read-only, as the textarea did. Rejected: a loading indicator that hides

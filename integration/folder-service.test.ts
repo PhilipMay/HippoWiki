@@ -1244,7 +1244,7 @@ describe("tab writes through MCP", () => {
 });
 
 describe("the update of links on a tab rename", () => {
-  it("changes [[guides/setup|the setup]] to [[docs/setup|the setup]] with a marked revision (R11)", async () => {
+  it("changes [[guides/setup|the setup]] to [[docs/setup|the setup]] with a marked revision", async () => {
     const folder = await createFolder();
     const guides = await createTab({ folder, name: "guides" });
     await createPage({ tab: guides, name: "setup", content: "# Setup guide" });
@@ -1269,7 +1269,7 @@ describe("the update of links on a tab rename", () => {
     expect(revisions.at(-1)).toMatchObject({ number: 2, userId: user.id, via: "web", linksUpdated: true });
   });
 
-  it("changes no page when the rename is refused for a taken name (R8)", async () => {
+  it("changes no page when the rename is refused for a taken name", async () => {
     const folder = await createFolder();
     const guides = await createTab({ folder, name: "guides" });
     await createTab({ folder, name: "docs" });
@@ -1282,7 +1282,7 @@ describe("the update of links on a tab rename", () => {
     expect(await storedPage(linking.id)).toEqual(linking);
   });
 
-  it("keeps the links of a deleted page (R29), and updates nothing for a rename to the own name", async () => {
+  it("keeps the links of a deleted page, and updates nothing for a rename to the own name", async () => {
     const folder = await createFolder();
     const guides = await createTab({ folder, name: "guides" });
     const gone = await createPage({

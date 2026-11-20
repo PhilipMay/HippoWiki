@@ -22,7 +22,7 @@ function atPositions(content: string): (string | null)[] {
 }
 
 describe("wikiLinksOf", () => {
-  it("reads the target and the label of [[target]] and [[target|label]] (R4)", () => {
+  it("reads the target and the label of [[target]] and [[target|label]]", () => {
     expect(wikiLinksOf("[[setup|Setup guide]]")).toEqual([
       { target: "setup", page: { tab: null, name: "setup" }, label: "Setup guide", position: 2 },
     ]);
@@ -31,24 +31,24 @@ describe("wikiLinksOf", () => {
     ]);
   });
 
-  it("reads the target first, so a title before the bar names no page (R4)", () => {
+  it("reads the target first, so a title before the bar names no page", () => {
     expect(wikiLinksOf("[[Setup guide|setup]]")).toEqual([
       { target: "Setup guide", page: null, label: "setup", position: 2 },
     ]);
   });
 
-  it("reads [[setup]] as the page placed directly in the folder and [[guides/setup]] as the page in the tab (R5)", () => {
+  it("reads [[setup]] as the page placed directly in the folder and [[guides/setup]] as the page in the tab", () => {
     expect(wikiLinksOf("[[setup]] [[guides/setup]]").map((link) => link.page)).toEqual([
       { tab: null, name: "setup" },
       { tab: "guides", name: "setup" },
     ]);
   });
 
-  it("reads the first part of a target with a slash as a tab of the own folder (R1)", () => {
+  it("reads the first part of a target with a slash as a tab of the own folder", () => {
     expect(wikiLinksOf("[[other-folder/setup]]")[0]?.page).toEqual({ tab: "other-folder", name: "setup" });
   });
 
-  it("reads targets that break the name rule as links without a page (R13, R25)", () => {
+  it("reads targets that break the name rule as links without a page", () => {
     const content = "[[Setup Guide]] [[setup.md]] [[Guides/Setup]] [[guides/setup/more]] [[setup#install]]";
     expect(wikiLinksOf(content).map((link) => [link.target, link.page])).toEqual([
       ["Setup Guide", null],
@@ -59,23 +59,23 @@ describe("wikiLinksOf", () => {
     ]);
   });
 
-  it("reads ![[setup]] as the character ! and a wiki link (R25)", () => {
+  it("reads ![[setup]] as the character ! and a wiki link", () => {
     expect(targets("![[setup]]")).toEqual(["setup"]);
   });
 
-  it("keeps the label as written, Markdown included (R18)", () => {
+  it("keeps the label as written, Markdown included", () => {
     expect(wikiLinksOf("[[setup|**Setup**]]")[0]?.label).toBe("**Setup**");
     expect(wikiLinksOf("[[setup|a [b] `c` <d>]]")[0]?.label).toBe("a [b] `c` <d>");
   });
 
-  it("reads [[setup\\|Setup]] in a table cell as the page setup with the label Setup (R18)", () => {
+  it("reads [[setup\\|Setup]] in a table cell as the page setup with the label Setup", () => {
     const content = "| Page | Note |\n| --- | --- |\n| [[setup\\|Setup]] | x |";
     expect(wikiLinksOf(content)).toEqual([
       { target: "setup", page: { tab: null, name: "setup" }, label: "Setup", position: content.indexOf("setup") },
     ]);
   });
 
-  it("finds no wiki link in a code span, a code block, after a backslash or across a line break (R31)", () => {
+  it("finds no wiki link in a code span, a code block, after a backslash or across a line break", () => {
     expect(targets("`[[setup]]`")).toEqual([]);
     expect(targets("```\n[[setup]]\n```")).toEqual([]);
     expect(targets("    [[setup]]")).toEqual([]);
@@ -184,7 +184,7 @@ describe("linkTargetsOf", () => {
 describe("rewriteWikiLinks", () => {
   const renamed = pageMoved({ tab: "guides", name: "setup" }, { tab: "guides", name: "install" });
 
-  it("changes only the target and keeps the label as written (R7)", () => {
+  it("changes only the target and keeps the label as written", () => {
     expect(rewriteWikiLinks("# T\n\nSee [[guides/setup|the setup]] and [[guides/setup]].", renamed)).toBe(
       "# T\n\nSee [[guides/install|the setup]] and [[guides/install]].",
     );
@@ -197,7 +197,7 @@ describe("rewriteWikiLinks", () => {
     );
   });
 
-  it("keeps \\| in tables, code, escapes, other targets and invalid targets (R31)", () => {
+  it("keeps \\| in tables, code, escapes, other targets and invalid targets", () => {
     const content =
       "| a | b |\n| - | - |\n| [[guides/setup\\|Setup]] | `[[guides/setup]]` |\n\n" +
       "```\n[[guides/setup]]\n```\n\n\\[[guides/setup]] [[Guides/Setup]] [[guides/faq]] ![[guides/setup]]";
@@ -216,7 +216,7 @@ describe("rewriteWikiLinks", () => {
     );
   });
 
-  it("changes every link into a renamed tab, whatever the page (R11)", () => {
+  it("changes every link into a renamed tab, whatever the page", () => {
     expect(rewriteWikiLinks("[[guides/setup|the setup]] [[guides/faq]] [[setup]]", tabRenamed("guides", "docs"))).toBe(
       "[[docs/setup|the setup]] [[docs/faq]] [[setup]]",
     );

@@ -154,13 +154,13 @@ describe("the limits of the Markdown of a page", () => {
     expect(CONTENT_TABLE_CELLS_MESSAGE).toContain(CONTENT_MAX_TABLE_CELLS.toLocaleString("en-US"));
   });
 
-  it("accepts 5,000 wiki links (R26)", () => {
+  it("accepts 5,000 wiki links", () => {
     const content = `# Links\n\n${"[[a]] ".repeat(CONTENT_MAX_WIKI_LINKS)}`;
     expect(pageContentInputSchema.safeParse({ content }).success).toBe(true);
     expect(newPageInputSchema.safeParse({ name: "links", content }).success).toBe(true);
   });
 
-  it("refuses 5,001 wiki links at the content field (R26)", () => {
+  it("refuses 5,001 wiki links at the content field", () => {
     const content = `# Links\n\n${"[[a]] ".repeat(CONTENT_MAX_WIKI_LINKS + 1)}`;
     expect(fieldErrorsOf(pageContentInputSchema.safeParse({ content }))).toEqual({
       content: [CONTENT_WIKI_LINKS_MESSAGE],

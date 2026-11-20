@@ -244,7 +244,7 @@ test("read_page reads a page placed directly in the folder and a page in a tab, 
   });
 });
 
-test("read_page returns the pages that link to the page, with their tab and name (R17)", async ({ request }) => {
+test("read_page returns the pages that link to the page, with their tab and name", async ({ request }) => {
   const guides = await createTab({ folder: projects, name: "guides" });
   await createPage({ tab: guides, name: "setup", content: "# Setup guide" });
   await createPage({ tab: guides, name: "onboarding", content: "# Onboarding\n\n[[guides/setup]]" });

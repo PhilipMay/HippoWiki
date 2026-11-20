@@ -28,6 +28,9 @@ Code: `src/features/pages/` (`deletePage`, `restorePage`, `listDeletedPages` and
   the not-found page. There are no redirects.
 - Its name is free at once: a new page of the same name can be created at the same place. Deleted pages never block a
   name, and two deleted pages of a folder may share one.
+- Wiki links into a deleted page or a deleted tab show as missing for every role, and a restore changes no link: a
+  page restored under its old name and place is found by its links again (see "Missing links" in `wiki-links.md`).
+  A deleted page's own links are not updated by a rename while it is deleted.
 - A deleted page cannot be edited, moved or renamed; trying it answers as for a page that does not exist.
 - Like all content, deleted pages are for users only: an admin sees no deleted page and restores none (see "Only users
   see content" in `content-structure.md`).

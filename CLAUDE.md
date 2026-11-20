@@ -29,11 +29,9 @@ file itself holds.
 - `spec/search.md`: How are the pages of a folder searched, in the browser and through MCP?
 - `spec/markdown-editor.md`: How is the content of a page written in the Markdown editor, with live preview and source
   mode?
+- `spec/wiki-links.md`: How do pages link to each other with wiki links, and how are the links kept working when pages
+  and tabs are renamed?
 - `spec/roadmap.md`: Which features may come later, and what is still to check?
-- `spec/wiki-link-ideas.md`: How do other wikis and note tools handle wiki links, and which options follow for
-  HippoWiki?
-- `spec/wiki-links-requirements.md`: What must wiki links between pages do, in the page view, the editor and MCP?
-- `spec/wiki-links-steps.md`: In which steps are wiki links between pages built, tested and specified?
 - `spec/issue-report.md`: How is an issue of a review of code or documents reported?
 - `spec/review-report.md`: Which findings of the security and code review are open? A fixed finding is deleted, and
   the file with its last finding.

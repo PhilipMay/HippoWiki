@@ -20,6 +20,12 @@ the Markdown marks only on the lines of the cursor, and a source mode that shows
 highlighting; with a formatting toolbar, lists continued on Enter, search and replace, a counter near the content
 limit and a question before leaving with unsaved changes, also on phones (`spec/markdown-editor.md`).
 
+Pages link to each other with wiki links, `[[name]]`, `[[tab/name]]` or `[[tab/name|label]]`: the page view shows them
+as links with the title of the page they name, marks links to pages that do not exist yet and lets Writers create
+those pages from them, and every page lists the pages that link to it. Moving or renaming a page or renaming a tab
+updates the links to it in the other pages. The editor shows the links in live preview and offers a list of the pages
+of the folder on typing `[[` (`spec/wiki-links.md`).
+
 Every folder can be searched from a search field on its pages: titles, names and content, in the language each page is
 written in, by parts of words and with typos, with phrases, excluded words and `or`. AI apps search their folder
 through MCP as well (`spec/search.md`).
@@ -121,22 +127,23 @@ Without them the migrations stop with a message that names the fix, before anyth
 migration stays recorded as failed: after the fix, mark it as rolled back with
 `npx prisma migrate resolve --rolled-back 20261119100000_search_database_check`, then apply the migrations again.
 
-Every write of a page makes it searchable. The pages stored before search, and all pages after a change of how their
-text or language is derived, are made searchable by `npm run search:index`: run it after `npm run db:migrate` or
-`npm run db:deploy` on a database with pages. The container image runs it at every start, before it serves.
+Every write of a page makes it searchable and stores its wiki links. The pages stored before search or the index of
+wiki links, and all pages after a change of how their text, language or links are derived, are derived by
+`npm run search:index`: run it after `npm run db:migrate` or `npm run db:deploy` on a database with pages. The
+container image runs it at every start, before it serves.
 
 The application accesses the database with [Prisma](https://www.prisma.io/) 7. The schema is in
 `prisma/schema.prisma`, the migrations are in `prisma/migrations/` and the connection is configured in
 `prisma.config.ts`. The generated client is written to `src/generated/prisma/` and is not checked in.
 
-| Command                | Description                                                                                 |
-| ---------------------- | ------------------------------------------------------------------------------------------- |
-| `npm run db:generate`  | Regenerate the Prisma client; needed after every change to the schema                       |
-| `npm run db:migrate`   | Create and apply a migration from schema changes, e.g. `npm run db:migrate -- --name add-x` |
-| `npm run db:deploy`    | Apply all pending migrations without creating new ones                                      |
-| `npm run db:seed`      | Insert the sample folder, its pages and the known users from `prisma/seed.ts`               |
-| `npm run db:studio`    | Open Prisma Studio to browse and edit the data                                              |
-| `npm run search:index` | Make the pages searchable that were stored before search or by an older derivation          |
+| Command                | Description                                                                                         |
+| ---------------------- | --------------------------------------------------------------------------------------------------- |
+| `npm run db:generate`  | Regenerate the Prisma client; needed after every change to the schema                               |
+| `npm run db:migrate`   | Create and apply a migration from schema changes, e.g. `npm run db:migrate -- --name add-x`         |
+| `npm run db:deploy`    | Apply all pending migrations without creating new ones                                              |
+| `npm run db:seed`      | Insert the sample folder, its pages and the known users from `prisma/seed.ts`                       |
+| `npm run db:studio`    | Open Prisma Studio to browse and edit the data                                                      |
+| `npm run search:index` | Make the pages searchable and derive their wiki links where stored before or by an older derivation |
 
 ## Users
 

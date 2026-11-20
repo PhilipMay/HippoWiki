@@ -1,4 +1,4 @@
-// Tests written from the requirements of wiki links alone (`spec/wiki-links-requirements.md`), for the rules or the
+// Tests written from the requirements of wiki links alone, whose rules are now in `spec/wiki-links.md`, for the rules or the
 // parts of rules that the other specs of wiki links leave open: the links gained while a rename dialog is open, and
 // the roles below Owner.
 
@@ -30,9 +30,9 @@ async function setUpLinks() {
   await createPage({ folder: handbook, name: "first-week", content: "# First week\n\n[[guides/setup]]" });
 }
 
-// wiki-links-requirements.md, "Rename and move", R9 ("a page that gained a link while the dialog was open is updated
-// as well").
-test("a page that gains a link while the Move or rename dialog is open is updated as well (R9)", async ({ page }) => {
+// wiki-links.md, "Updates on a move or rename": a page that gained a link while the dialog was open is updated as
+// well.
+test("a page that gains a link while the Move or rename dialog is open is updated as well", async ({ page }) => {
   const errors = collectErrors(page);
   await setUpLinks();
   await page.goto("/folders/handbook/guides/setup.md?action=move-or-rename");
@@ -54,8 +54,8 @@ test("a page that gains a link while the Move or rename dialog is open is update
   expect(errors).toEqual([]);
 });
 
-// wiki-links-requirements.md, "Rename and move", R30 with R9.
-test("a page that gains a link into the tab while the Rename tab dialog is open is updated as well (R30)", async ({
+// wiki-links.md, "Updates on a tab rename", by the rules of "Updates on a move or rename".
+test("a page that gains a link into the tab while the Rename tab dialog is open is updated as well", async ({
   page,
 }) => {
   await setUpLinks();
@@ -72,8 +72,8 @@ test("a page that gains a link into the tab while the Rename tab dialog is open 
 });
 
 for (const role of ["writer", "manager"] as const) {
-  // wiki-links-requirements.md, "Missing links", R15 ("For a Writer, Manager or Owner").
-  test(`a ${role} follows a missing link to the editor of a new page with its name and place preset (R15)`, async ({
+  // wiki-links.md, "Missing links": for a Writer, Manager or Owner.
+  test(`a ${role} follows a missing link to the editor of a new page with its name and place preset`, async ({
     page,
   }) => {
     await createPage({ folder: handbook, name: "links", content: "# Links\n\n[[guides/faq]]" });
@@ -97,8 +97,8 @@ function linkedFrom(page: BrowserPage) {
   return page.getByRole("region", { name: "Linked from" });
 }
 
-// wiki-links-requirements.md, "Backlinks", R12 ("for every role"), and "Users and roles" (Readers see the backlinks).
-test("a Reader sees under Linked from the pages that link to a page, and follows them (R12)", async ({ page }) => {
+// wiki-links.md, "Backlinks": for every role, Readers included.
+test("a Reader sees under Linked from the pages that link to a page, and follows them", async ({ page }) => {
   await setUpLinks();
   await setOwnRole(handbook, "reader");
 

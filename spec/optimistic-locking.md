@@ -20,14 +20,16 @@ in `src/features/pages/components/`. Tests: `integration/page-service.test.ts`, 
 ## The version of a page
 
 - Every page has a version: 1 when it is created, counted up by one by every stored change of the page: a content
-  save, a revert to an earlier revision, a move or rename, a delete, also with its tab, and a restore. It changes in
+  save, a revert to an earlier revision, a move or rename, a delete, also with its tab, a restore, and an update of its
+  wiki links by a move or rename of a page or a rename of a tab (see `wiki-links.md`). It changes in
   the same write as the time of the last change, the last editor and the channel (see "Last editor" and "Channel" in
   `content-structure.md`), and a write that fails changes none of them.
 - A content save without a change and a move or rename of a page to its own name and place store nothing and keep the
   version; they are checked and refused like every other save or move below (see "Saves without a change" in
   `pages.md` and "Moving or renaming a page to its own name and place" in `content-structure.md`).
 - Renaming a folder or a tab, and every change inside a folder or tab, is no change of its pages and leaves their
-  versions as they are.
+  versions as they are, except that a page whose wiki links a tab rename or another page's move updates is changed:
+  its version counts up, so that an editor, a dialog or an AI app holding the older version is refused as changed.
 
 ## Which changes are refused
 

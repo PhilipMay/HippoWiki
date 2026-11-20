@@ -19,15 +19,19 @@ model `PageRevision` in `prisma/schema.prisma` and its migration
 ## Revisions
 
 - Every content change of a page is recorded as a revision: creating the page and every content save, in the browser
-  and through MCP (`create_page`, `replace_page_content`, `edit_page_content`), and every revert.
+  and through MCP (`create_page`, `replace_page_content`, `edit_page_content`), every revert, and every update of its
+  wiki links by a move or rename of a page or a rename of a tab (see `wiki-links.md`).
 - A revision keeps the content and the title of the page after the change, the time of the change, the user who made
-  it and how (`web` or `mcp`), and, for a revert, the number of the revision it went back to. Revisions are numbered
+  it and how (`web` or `mcp`), for a revert the number of the revision it went back to, and for an update of wiki
+  links a mark of its own. Revisions are numbered
   per page, 1 for the oldest.
 - A revision is stored in the same write as the content change it records, like the last editor and the version of
   the page: a save that is refused or fails records nothing, and after every stored content change the newest
   revision has the content of the page.
 - A content save without a change records no revision (see "Saves without a change" in `pages.md`).
-- Moving, renaming, deleting and restoring a page record no revision, and neither does deleting a tab with its pages.
+- Moving, renaming, deleting and restoring a page record no revision of their own, and neither does deleting a tab
+  with its pages. A move or rename of a page and a rename of a tab record a revision of every page whose wiki links
+  they update, the moved page included when it links to itself, by the user and with the channel of the move.
 - Revisions are kept for as long as the page exists, deleted pages included, with no limit on their number or age. No
   revision is ever changed or removed.
 - Every page that existed when the feature was deployed, deleted pages included, got one first revision with its
@@ -42,7 +46,8 @@ model `PageRevision` in `prisma/schema.prisma` and its migration
 - A user with any role on the folder, the Reader included, opens the history from the page with "History". Admins see
   no content and so no history; for every other user without a role the addresses show the not-found page.
 - The history lists the revisions newest first, each with its number, time, user, channel and title, and, for one
-  that a revert recorded, the revision it went back to. It shows 100 revisions at a time (`REVISIONS_PER_PAGE` in
+  that a revert recorded, the revision it went back to, and for one that an update of wiki links recorded, a mark that
+  says so. It shows 100 revisions at a time (`REVISIONS_PER_PAGE` in
   `src/features/pages/limits.ts`), with links to the newer and the older ones; the older ones are addressed with
   `&before=<n>`, the revisions before revision `n`, from 2 up to the newest.
 - A revision opens rendered like the page. A switch between the rendered and the raw form above it is part of the

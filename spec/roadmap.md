@@ -28,8 +28,8 @@ listed first; there is no order across themes.
 
 ## Links
 
-- Wiki links: `[[wiki links]]` between pages, rendered as links to the page they name (`pages.md`).
-- Backlinks and broken links: show which pages link to a page and which links lead to no page.
+- Broken links and orphaned pages: a list of the wiki links of a folder that lead to no page, and a list of the pages
+  that no page links to (see `wiki-links.md`).
 
 ## History and Revisions
 

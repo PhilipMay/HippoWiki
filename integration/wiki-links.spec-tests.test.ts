@@ -1,4 +1,4 @@
-// Tests written from the requirements of wiki links alone (`spec/wiki-links-requirements.md`), for the rules or the
+// Tests written from the requirements of wiki links alone, whose rules are now in `spec/wiki-links.md`, for the rules or the
 // parts of rules that the other tests of wiki links leave open: the folder as the bound of every link and update, a
 // page that comes to the name and place of a link, the text forms of `[[...]]` on a rename, the limits on an update,
 // the rollback of a whole update and the deleted pages after a restore.
@@ -51,8 +51,8 @@ async function everything() {
   };
 }
 
-describe("the folder bounds every link (R1)", () => {
-  // wiki-links-requirements.md, "Syntax and target", R1.
+describe("the folder bounds every link", () => {
+  // wiki-links.md, "Syntax and target".
   it("reads [[other-folder/setup]] as the tab other-folder of the own folder, never as the folder of that name", async () => {
     const otherFolder = await createFolder({ name: "other-folder", roles: owners(user) });
     await createPage({ folder: otherFolder, name: "setup", content: "# Setup elsewhere" });
@@ -64,7 +64,7 @@ describe("the folder bounds every link (R1)", () => {
     expect(await resolvedTitles("[[other-folder/setup]]")).toEqual([["other-folder/setup", "Setup in the own tab"]]);
   });
 
-  // wiki-links-requirements.md, "Syntax and target", R1, and "Rename and move", R7 ("in the pages of the folder").
+  // wiki-links.md, "Syntax and target", and "Updates on a move or rename": in the pages of the folder.
   it("a rename changes no link in another folder that names the same page", async () => {
     const setup = await createPage({ folder, name: "setup", content: "# Setup" });
     const linking = await createPage({ folder, name: "onboarding", content: "# Onboarding\n\n[[setup]]" });
@@ -79,7 +79,7 @@ describe("the folder bounds every link (R1)", () => {
     expect(await storedPage(elsewhere.id)).toEqual(elsewhere);
   });
 
-  // wiki-links-requirements.md, "Rename and move", R11, by the rules of R1.
+  // wiki-links.md, "Updates on a tab rename", by the rules of "Syntax and target".
   it("a tab rename changes no link in another folder that names a tab of the same name", async () => {
     await createPage({ tab: guides, name: "setup", content: "# Setup guide" });
     const otherFolder = await createFolder({ roles: owners(user) });
@@ -93,8 +93,8 @@ describe("the folder bounds every link (R1)", () => {
   });
 });
 
-describe("a page that comes to the name and place of a link (R33)", () => {
-  // wiki-links-requirements.md, "Syntax and target", R33.
+describe("a page that comes to the name and place of a link", () => {
+  // wiki-links.md, "Syntax and target": a link leads to whichever page has its name and place.
   it.each(["renamed", "moved"])(
     "a page %s to guides/faq is what [[guides/faq]] leads to, without a change of the linking page",
     async (how) => {
@@ -114,7 +114,7 @@ describe("a page that comes to the name and place of a link (R33)", () => {
     },
   );
 
-  // wiki-links-requirements.md, "Syntax and target", R33 (a tab renamed to the place of the link).
+  // wiki-links.md, "Syntax and target": a tab renamed to the place of the link.
   it("a tab renamed to the tab of a link makes its page what the link leads to", async () => {
     const linking = await createPage({ folder, name: "links", content: "# Links\n\n[[docs/setup]]" });
     await createPage({ tab: guides, name: "setup", content: "# Setup guide" });
@@ -126,8 +126,8 @@ describe("a page that comes to the name and place of a link (R33)", () => {
   });
 });
 
-describe("[[...]] as text on a rename (R31)", () => {
-  // wiki-links-requirements.md, "Syntax and target", R31.
+describe("[[...]] as text on a rename", () => {
+  // wiki-links.md, "Syntax and target": [[...]] as text.
   it("code, a fenced or indented code block, \\[[ and a link over a line break are not changed by a rename and count as no backlink", async () => {
     const setup = await createPage({ tab: guides, name: "setup", content: "# Setup" });
     const content =
@@ -152,8 +152,8 @@ describe("[[...]] as text on a rename (R31)", () => {
   });
 });
 
-describe("a link into a tab (R11)", () => {
-  // wiki-links-requirements.md, "Rename and move", R11 ("every wiki link into the tab"): [[guides]] names the page
+describe("a link into a tab", () => {
+  // wiki-links.md, "Updates on a tab rename": every wiki link into the tab; [[guides]] names the page
   // `guides` placed directly in the folder, not the tab.
   it("a tab rename changes [[guides/setup]] but not [[guides]], the page of the tab's name directly in the folder", async () => {
     await createPage({ tab: guides, name: "setup", content: "# Setup guide" });
@@ -169,8 +169,8 @@ describe("a link into a tab (R11)", () => {
   });
 });
 
-describe("the plain text of a link for search (R23)", () => {
-  // wiki-links-requirements.md, "Display", R23 ("never as the title of another page").
+describe("the plain text of a link for search", () => {
+  // wiki-links.md, "Display": never as the title of another page.
   it("a search for the title of a linked page does not find the page that links it without a label", async () => {
     const setup = await pageService.createPage(actor, folder.id, {
       content: "# Unusual zebra handbook",
@@ -192,7 +192,7 @@ describe("the plain text of a link for search (R23)", () => {
 });
 
 describe("the limits on an update of links", () => {
-  // wiki-links-requirements.md, "Syntax and target", R26 ("The update of links on a rename is never refused for it").
+  // wiki-links.md, "The limit": the update of links on a rename is never refused for it.
   it("a rename updates a page that holds more than 5,000 wiki links", async () => {
     const setup = await createPage({ folder, name: "setup", content: "# Setup" });
     const many = await createPage({
@@ -207,7 +207,7 @@ describe("the limits on an update of links", () => {
     expect((await storedPage(many.id)).content).toBe(`# Many\n\n${"[[install]] ".repeat(CONTENT_MAX_WIKI_LINKS + 1)}`);
   });
 
-  // wiki-links-requirements.md, "Rename and move", R21 ("or that is already over a limit lowered later") and R11.
+  // wiki-links.md, "Updates on a move or rename" and "Updates on a tab rename": a page already over a limit.
   it.each([
     ["a page rename", (setupId: string) => move(setupId, "install", guides.id), "[[guides/install]]"],
     ["a tab rename", () => folderService.renameTab(actor, guides.id, { name: "docs" }), "[[docs/setup]]"],
@@ -228,8 +228,8 @@ describe("the limits on an update of links", () => {
     expect(stored.version).toBe(over.version + 1);
   });
 
-  // wiki-links-requirements.md, "Rename and move", R21 ("it can be viewed, moved and deleted, and saved again once it
-  // is within the limit").
+  // wiki-links.md, "Updates on a move or rename": it can be viewed, moved and deleted, and saved again once it is
+  // within the limits.
   it("a page that an update made longer than the limit can be viewed, and saved again once it is within the limit", async () => {
     const setup = await createPage({ folder, name: "s", content: "# Setup" });
     const head = "# Long\n\n[[s]]\n\n";
@@ -249,7 +249,7 @@ describe("the limits on an update of links", () => {
   });
 });
 
-describe("the update of links is one write (R8)", () => {
+describe("the update of links is one write", () => {
   /** Runs the write while a trigger of the test refuses every new revision of the given page. */
   async function whileRevisionsOfAreRefused<T>(pageId: string, write: () => Promise<T>): Promise<T> {
     const db = getTestDb();
@@ -279,8 +279,7 @@ describe("the update of links is one write (R8)", () => {
     return { setup, zeta, third };
   }
 
-  // wiki-links-requirements.md, "Rename and move", R8 ("either the rename or move and all the updates are stored, or
-  // nothing is").
+  // wiki-links.md, "Updates on a move or rename": either the move and all the updates are stored, or nothing is.
   it("a move whose update of one linking page fails stores neither the move nor any update", async () => {
     const { setup, zeta } = await setUp();
     const before = await everything();
@@ -291,7 +290,7 @@ describe("the update of links is one write (R8)", () => {
     expect(await everything()).toStrictEqual(before);
   });
 
-  // wiki-links-requirements.md, "Rename and move", R11 by the rules of R8.
+  // wiki-links.md, "Updates on a tab rename", by the rules of "Updates on a move or rename".
   it("a tab rename whose update of one linking page fails stores neither the rename nor any update", async () => {
     const { third } = await setUp();
     const before = await everything();
@@ -305,8 +304,8 @@ describe("the update of links is one write (R8)", () => {
   });
 });
 
-describe("a tab rename by the rules of a page rename (R11, R10)", () => {
-  // wiki-links-requirements.md, "Rename and move", R11 with R10: the user and channel of the rename, the version
+describe("a tab rename by the rules of a page rename", () => {
+  // wiki-links.md, "Updates on a tab rename": the user and channel of the rename, the version
   // counted up, so that a writer who holds the older version is refused as changed.
   it("through MCP gives a marked revision via mcp, and a save based on the older version is refused as changed", async () => {
     const bob = await createUser({ name: "bob" });
@@ -336,8 +335,9 @@ describe("a tab rename by the rules of a page rename (R11, R10)", () => {
   });
 });
 
-describe("a deleted page after a restore (R29, R20)", () => {
-  // wiki-links-requirements.md, "Rename and move", R29 ("and shows it as missing after it is restored").
+describe("a deleted page after a restore", () => {
+  // wiki-links.md, "Updates on a move or rename": a deleted page is not updated, and its link is missing once it is
+  // restored.
   it("still holds the old link after the rename, and the link is missing once it is restored", async () => {
     const setup = await createPage({ tab: guides, name: "setup", content: "# Setup guide" });
     const gone = await createPage({ folder, name: "gone", content: "# Gone\n\n[[guides/setup]]" });

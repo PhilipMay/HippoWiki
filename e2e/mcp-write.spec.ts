@@ -193,7 +193,7 @@ test.describe("the write tools", () => {
     expect(before).toMatchObject([{ name: "plan", version: 1 }]);
   });
 
-  test("create_page, replace_page_content and edit_page_content with 5,001 wiki links are refused and change nothing (R26)", async ({
+  test("create_page, replace_page_content and edit_page_content with 5,001 wiki links are refused and change nothing", async ({
     request,
   }) => {
     await createPage({ folder: projects, name: "plan", content: "# Plan\n\nOld." });
@@ -217,7 +217,7 @@ test.describe("the write tools", () => {
     expect(await storedPages()).toEqual(before);
   });
 
-  test("move_or_rename_page changes the links to the page and lists the pages it updated (R9)", async ({ request }) => {
+  test("move_or_rename_page changes the links to the page and lists the pages it updated", async ({ request }) => {
     const guides = await createTab({ folder: projects, name: "guides" });
     await createPage({ tab: guides, name: "setup", content: "# Setup guide" });
     await createPage({ tab: guides, name: "onboarding", content: "# Onboarding\n\n[[guides/setup|the setup]]" });

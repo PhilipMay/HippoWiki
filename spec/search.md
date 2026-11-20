@@ -111,14 +111,16 @@ One syntax holds in the browser and through MCP (`words.ts`):
 
 - A page is found by its title, its name and its content.
 - The content is searched as plain text without the title heading. It includes the text of code blocks and inline
-  code and the addresses of links and images, so that commands and linked domains are found.
+  code and the addresses of links and images, so that commands and linked domains are found. A wiki link counts as its
+  label, or as its target as written without one, never as the title of the page it names (see `wiki-links.md`).
 - Parts of words and typos are matched in titles, names and content, against the words that the pages of the folder
   hold, never against the whole text of each page.
 
 ## Languages
 
 - Each page has one search language, detected from its prose, never chosen. The prose is the title and the text
-  without code, inline code and addresses, which lead a detector astray.
+  without code, inline code and addresses, which lead a detector astray. Of a wiki link it holds only the label, not a
+  target, so that an update of links on a rename never changes the language.
 - The languages whose inflections are found are Basque, Catalan, Danish, Dutch, English, Estonian, Finnish, French,
   German, Greek, Hungarian, Italian, Lithuanian, Norwegian, Portuguese, Romanian, Russian, Serbian, Spanish, Swedish
   and Turkish (`SEARCH_LANGUAGES` in `language.ts`). These are the European languages that PostgreSQL stems.
@@ -232,7 +234,8 @@ The read tool `search_pages` is given to every connection: Reader, Writer and Ma
   This holds for every write: through the pages service, a test helper or the seed. The database then keeps the
   vector of the page and the words of its folder current.
 - The pages stored before search, and every page after an update that changes how the text or the language is
-  derived, are derived again before the server serves:
+  derived, are derived again before the server serves, by the same run that derives the wiki links of the pages (see
+  "The index of links" in `wiki-links.md`):
   - `indexOutdatedPages()` derives every page whose stored version differs from `SEARCH_INDEX_VERSION`, deleted pages
     included, so that a restore needs nothing more;
   - it changes neither the time of the last change, nor the last editor, nor the version of a page;

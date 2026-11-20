@@ -98,7 +98,7 @@ describe("the words and the vector of a page", () => {
     expect(await matches(id, "german", "Datenbanken")).toBe(true);
   });
 
-  it("hold the label of a wiki link, so that a search for it finds the page (R23)", async () => {
+  it("hold the label of a wiki link, so that a search for it finds the page", async () => {
     const id = await newPage("# Links\n\nRead [[setup|the setup]] and [[guides/install]].");
 
     expect(await wordsOf()).toMatchObject({ the: 1, setup: 1 });
