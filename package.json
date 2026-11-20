@@ -64,7 +64,7 @@
     "@node-rs/argon2": "^2.2.2",
     "@prisma/adapter-pg": "^7.10.1",
     "@prisma/client": "^7.10.1",
-    "better-auth": "^1.7.22",
+    "better-auth": "^1.7.25",
     "diff": "^9.0.0",
     "eld": "^2.1.1",
     "entities": "^9.0.0",
@@ -79,7 +79,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@playwright/test": "^1.65.0",
+    "@playwright/test": "^1.65.1",
     "@types/node": "^26.6.6",
     "@types/pg": "^8.23.1",
     "@types/react": "^19.3.0",
@@ -92,7 +92,7 @@
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-playwright": "^2.12.2",
     "knip": "^6.45.1",
-    "prettier": "^3.9.10",
+    "prettier": "^3.10.1",
     "prisma": "^7.10.1",
     "tsx": "^4.23.15",
     "typescript": "~6.0.3",
