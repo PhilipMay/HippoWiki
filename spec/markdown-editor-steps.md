@@ -32,7 +32,7 @@ names the IDs it covers.
 - [x] Live preview of blocks
 - [x] Tables in live preview
 - [x] Leaving with unsaved changes
-- [ ] Phones and speed
+- [x] Phones and speed
 - [ ] Spec tests
 - [ ] Wrap-up
 
@@ -510,18 +510,28 @@ The editor is fully usable by touch at phone width, and stays fluid with a page 
 - `src/test/editor-content.ts`: a page of 100,000 characters with headings, lists, task lists, quotes, code blocks and
   tables, for the cost tests and for the manual check.
 - Fix what the cost tests show, for example a decoration that walks the whole document on every key.
+- Decision of this step, approved by the user: `@lezer/markdown` itself takes seconds for some of the inputs of
+  `src/test/slow-markdown.ts` (one parse of `[a](` repeated about 3 s, of lists nested 50,000 deep about 3.5 s, of
+  `[a][` and `*a` about 1 s, also as plain CommonMark), and the editor parses the content twice while it opens. This is
+  accepted as a current limit of the editor for such content, not worked around: the budget of 2 s for building covers
+  the parse only for the page of `src/test/editor-content.ts`, and for the slow inputs the decorations and the tables on
+  the parsed tree. Typing stays within its budget for every input. The wrap-up names the limit in "Current limits" of
+  `markdown-editor.md`.
 
 ### Test
 
 - Cost test `src/features/pages/editor/live-preview.cost.test.ts` (project `cost`), on the page of
-  `src/test/editor-content.ts` and on the inputs of `src/test/slow-markdown.ts`: creating the state, parsing it to the
-  end and building the decorations of live preview and the tables of the whole document stays below 2 s; a typed
+  `src/test/editor-content.ts` and on the inputs of `src/test/slow-markdown.ts`: creating the state of the page, parsing
+  it to the end and building the decorations of live preview and the tables of the whole document stays below 2 s, and
+  for every input the decorations and the tables of the whole document on the parsed tree stay below 2 s; a typed
   character in the middle of the page, with the syntax tree updated and the decorations of a screen of lines and the
   table field updated, stays below 50 ms on average over 100 characters (R38).
 - End-to-end tests, new spec `e2e/editor-phone.spec.ts`, at phone size with touch (`viewport`, `hasTouch`,
-  `isMobile`): edit a page by tapping into the editor and typing, select text, use a toolbar button and the mode switch,
+  `isMobile`): edit a page by tapping into the editor and typing, select text (with the keys of the cursor: Playwright
+  cannot drive the handles of a native selection by touch), use a toolbar button and the mode switch,
   tap a task box, and save; the page view shows the result; every button of the toolbar and "Save" and "Cancel" lie
-  within the width of the window (R30). A tap on a link shows its Markdown and no new tab opens (R34).
+  within the width of the window and are touch targets of at least 24 by 24 pixels, the minimum of WCAG 2.2, as is the
+  task box (R30). A tap on a link shows its Markdown and no new tab opens (R34).
 - Manual checks for the user: in a page of 100,000 characters with tables and lists, typing, moving the cursor,
   scrolling and switching the mode show no noticeable delay on a current laptop, and the editor appears with the
   content within about 2 seconds of the page loading (R38); the editor on a real phone or tablet (R30).

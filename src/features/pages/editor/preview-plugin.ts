@@ -152,6 +152,10 @@ const previewTheme = EditorView.theme({
     cursor: "pointer",
     accentColor: palette.primary.main,
   },
+  // On a touch screen the box is a touch target of the minimum size of WCAG 2.2 (R30).
+  "@media (pointer: coarse)": {
+    ".cm-lp-task": { width: "24px", height: "24px", verticalAlign: "middle" },
+  },
   // One bar per level of the quote, 12px apart.
   ".cm-lp-quote": {
     color: palette.text.secondary,

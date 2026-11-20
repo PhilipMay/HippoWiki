@@ -123,42 +123,49 @@ const INLINE_STYLES: Record<string, { className: string; mark: string }> = {
 
 const hidden = Decoration.replace({});
 
-/** The numbers of the lines that any selection range touches, the line of a cursor included (R3). */
-function cursorLines(state: EditorState): Set<number> {
-  const lines = new Set<number>();
-  for (const range of state.selection.ranges) {
-    const last = state.doc.lineAt(range.to).number;
-    for (let number = state.doc.lineAt(range.from).number; number <= last; number++) lines.add(number);
-  }
-  return lines;
+/** The first and the last line of each selection range: these lines show their Markdown (R3). */
+function selectedLines(state: EditorState): { first: number; last: number }[] {
+  return state.selection.ranges.map((range) => ({
+    first: state.doc.lineAt(range.from).number,
+    last: state.doc.lineAt(range.to).number,
+  }));
 }
 
-/** The decorations of live preview for the given ranges of the document, such as the visible ranges of a view. */
+/**
+ * The decorations of live preview for the given ranges of the document, such as the visible ranges of a view. The
+ * ranges are sorted and do not overlap. Only the nodes in the ranges are visited, and the decorations of a block go to
+ * its lines in the ranges, so that a large block outside the screen costs nothing on a key (R38).
+ */
 export function livePreviewDecorations(
   state: EditorState,
   ranges: readonly { from: number; to: number }[],
 ): DecorationSet {
   const { doc } = state;
-  const editing = cursorLines(state);
+  // The lines of the selection, and of every table that a selection touches, show their Markdown (R3, R8).
+  const editingSpans = selectedLines(state);
+  const editing = (number: number) => editingSpans.some(({ first, last }) => first <= number && number <= last);
   const decorations: Range<Decoration>[] = [];
   const lineOf = (pos: number) => doc.lineAt(pos).number;
   /** Whether the text from `from` to `to` lies on one line that shows formatted, away from the cursor. */
-  const previewed = (from: number, to: number) => lineOf(from) === lineOf(to) && !editing.has(lineOf(from));
+  const previewed = (from: number, to: number) => lineOf(from) === lineOf(to) && !editing(lineOf(from));
   /** Hides the text from `from` to `to` where its line shows formatted. */
   const hide = (from: number, to: number) => {
     if (to > from && previewed(from, to)) decorations.push(hidden.range(from, to));
   };
-  /** Styles the text from `from` to `to` where every line it touches shows formatted. */
+  /**
+   * Styles the text from `from` to `to` where every line it touches shows formatted. Text over several lines lies in
+   * no table, so for it the selection alone decides.
+   */
   const style = (from: number, to: number, className: string) => {
     if (to <= from) return;
-    for (let number = lineOf(from); number <= lineOf(to); number++) if (editing.has(number)) return;
+    if (lineOf(from) === lineOf(to) ? editing(lineOf(from)) : touched(state, from, to)) return;
     decorations.push(Decoration.mark({ class: className }).range(from, to));
   };
   const lineStyle = (pos: number, className: string) =>
     decorations.push(Decoration.line({ class: className }).range(doc.lineAt(pos).from));
-  /** Styles the line of `pos` where it shows formatted: the blocks show their Markdown on the lines of the cursor. */
-  const blockLine = (pos: number, className: string) => {
-    if (!editing.has(lineOf(pos))) lineStyle(pos, className);
+  /** Styles the line `number` where it shows formatted: the blocks show their Markdown on the lines of the cursor. */
+  const blockLine = (number: number, className: string) => {
+    if (!editing(number)) lineStyle(doc.line(number).from, className);
   };
   /** Replaces the text from `from` to `to` by a widget where its line shows formatted. */
   const replace = (from: number, to: number, decoration: Decoration) => {
@@ -166,7 +173,7 @@ export function livePreviewDecorations(
   };
   /** Hides a line such as a fence line: it keeps its place as a line, with its text hidden and its height reduced. */
   const hideLine = (number: number) => {
-    if (editing.has(number)) return;
+    if (editing(number)) return;
     const line = doc.line(number);
     lineStyle(line.from, PREVIEW_CLASS.hiddenLine);
     hide(line.from, line.to);
@@ -174,19 +181,34 @@ export function livePreviewDecorations(
   // The depth of quotes on each line, which sets the number of bars of the line.
   const quoteDepth = new Map<number, number>();
 
-  // A node that reaches into two of the ranges is decorated once; its children are still visited in each range.
+  // A node that reaches into two of the ranges is decorated once; its children are still visited in each range, and
+  // the decorations of its lines go to the lines of each range. Only a node that starts before a range can have been
+  // visited in an earlier one.
   const seen = new Set<string>();
+  // The last line that an earlier range has decorated, so that a line split between two ranges is decorated once.
+  let doneLine = 0;
   for (const { from, to } of ranges) {
+    const firstLine = Math.max(lineOf(from), doneLine + 1);
+    const lastLine = lineOf(to);
+    doneLine = Math.max(doneLine, lastLine);
+    /** The numbers of the lines from `fromPos` to `toPos` that lie in this range. */
+    const linesIn = function* (fromPos: number, toPos: number) {
+      const last = Math.min(lineOf(toPos), lastLine);
+      for (let number = Math.max(lineOf(fromPos), firstLine); number <= last; number++) yield number;
+    };
+    // The depth of quotes at the node that is entered.
+    let quoteLevel = 0;
     syntaxTree(state).iterate({
       from,
       to,
       enter: (node) => {
         const name = node.name;
-        const key = `${name}:${node.from}:${node.to}`;
-        if (seen.has(key)) return name === "Image" ? false : undefined;
-        seen.add(key);
         // Images stay their Markdown text, the link syntax inside them included (R9).
         if (name === "Image") return false;
+        if (name === "Blockquote") quoteLevel++;
+        const key = () => `${name}:${node.from}:${node.to}`;
+        const again = node.from < from && seen.has(key());
+        if (node.to > to) seen.add(key());
 
         // A table is rendered by the field of `tables.ts`, or shows its whole Markdown while the cursor or a selection
         // is in it: then no line of it is decorated (R8).
@@ -194,15 +216,16 @@ export function livePreviewDecorations(
           const first = lineOf(node.from);
           const last = lineOf(node.to);
           if (!touched(state, doc.line(first).from, doc.line(last).to)) return false;
-          for (let number = first; number <= last; number++) editing.add(number);
+          editingSpans.push({ first, last });
           return;
         }
 
-        const heading = /^(?:ATXHeading|SetextHeading)([1-6])$/.exec(name);
+        const heading = name.endsWith("Heading", name.length - 1) ? /^(?:ATX|Setext)Heading([1-6])$/.exec(name) : null;
         if (heading) {
           const level = Number(heading[1]);
           const marks = node.node.getChildren("HeaderMark");
           if (name.startsWith("ATX")) {
+            if (again) return;
             lineStyle(node.from, PREVIEW_CLASS.heading(level));
             for (const mark of marks) {
               // The space after an opening mark and the space before a closing one are hidden with it.
@@ -211,20 +234,41 @@ export function livePreviewDecorations(
             }
           } else {
             const underline = marks[marks.length - 1];
-            for (let number = lineOf(node.from); number <= lineOf(node.to); number++) {
-              const line = doc.line(number);
-              if (underline && line.from <= underline.from && underline.from <= line.to) {
-                if (!editing.has(number)) {
-                  lineStyle(line.from, PREVIEW_CLASS.hiddenLine);
-                  hide(line.from, line.to);
-                }
-              } else {
-                lineStyle(line.from, PREVIEW_CLASS.heading(level));
-              }
+            const underlineLine = underline ? lineOf(underline.from) : -1;
+            for (const number of linesIn(node.from, node.to)) {
+              if (number === underlineLine) hideLine(number);
+              else lineStyle(doc.line(number).from, PREVIEW_CLASS.heading(level));
             }
           }
           return;
         }
+
+        if (name === "Blockquote") {
+          for (const number of linesIn(node.from, node.to)) {
+            quoteDepth.set(number, Math.max(quoteLevel, quoteDepth.get(number) ?? 0));
+          }
+          return;
+        }
+
+        if (name === "FencedCode") {
+          const first = lineOf(node.from);
+          const last = lineOf(node.to);
+          const marks = node.node.getChildren("CodeMark");
+          const closed = marks.length > 1 && lineOf(marks[marks.length - 1]?.from ?? node.from) !== first;
+          for (const number of linesIn(node.from, node.to)) {
+            if (number === first || (closed && number === last)) hideLine(number);
+            else blockLine(number, PREVIEW_CLASS.codeBlock);
+          }
+          return false;
+        }
+
+        if (name === "CodeBlock") {
+          for (const number of linesIn(node.from, node.to)) blockLine(number, PREVIEW_CLASS.codeBlock);
+          return false;
+        }
+
+        // Every other decoration lies on one line or styles a range once; a node of an earlier range has it already.
+        if (again) return name === "Autolink" || name === "HorizontalRule" ? false : undefined;
 
         const inline = INLINE_STYLES[name];
         if (inline) {
@@ -265,15 +309,6 @@ export function livePreviewDecorations(
           return false;
         }
 
-        if (name === "Blockquote") {
-          let depth = 1;
-          for (let parent = node.node.parent; parent; parent = parent.parent) if (parent.name === "Blockquote") depth++;
-          for (let number = lineOf(node.from); number <= lineOf(node.to); number++) {
-            quoteDepth.set(number, Math.max(depth, quoteDepth.get(number) ?? 0));
-          }
-          return;
-        }
-
         if (name === "QuoteMark") {
           hide(node.from, doc.sliceString(node.to, node.to + 1) === " " ? node.to + 1 : node.to);
           return;
@@ -296,26 +331,6 @@ export function livePreviewDecorations(
           return;
         }
 
-        if (name === "FencedCode") {
-          const first = lineOf(node.from);
-          const last = lineOf(node.to);
-          const marks = node.node.getChildren("CodeMark");
-          const closed = marks.length > 1 && lineOf(marks[marks.length - 1]?.from ?? node.from) !== first;
-          hideLine(first);
-          for (let number = first + 1; number <= last; number++) {
-            if (closed && number === last) hideLine(number);
-            else blockLine(doc.line(number).from, PREVIEW_CLASS.codeBlock);
-          }
-          return false;
-        }
-
-        if (name === "CodeBlock") {
-          for (let number = lineOf(node.from); number <= lineOf(node.to); number++) {
-            blockLine(doc.line(number).from, PREVIEW_CLASS.codeBlock);
-          }
-          return false;
-        }
-
         if (name === "HorizontalRule") {
           replace(node.from, node.to, rule);
           return false;
@@ -327,10 +342,13 @@ export function livePreviewDecorations(
         }
         return;
       },
+      leave: (node) => {
+        if (node.name === "Blockquote") quoteLevel--;
+      },
     });
   }
   for (const [number, depth] of quoteDepth) {
-    if (editing.has(number)) continue;
+    if (editing(number)) continue;
     const line = doc.line(number);
     decorations.push(
       Decoration.line({ class: PREVIEW_CLASS.quote, attributes: { style: `--quote-depth: ${depth}` } }).range(
