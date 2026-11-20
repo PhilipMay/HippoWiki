@@ -29,7 +29,7 @@ names the IDs it covers.
 - [x] Content limit and counter
 - [x] Toolbar
 - [x] Live preview of inline elements and the mode switch
-- [ ] Live preview of blocks
+- [x] Live preview of blocks
 - [ ] Tables in live preview
 - [ ] Leaving with unsaved changes
 - [ ] Phones and speed

@@ -2,9 +2,10 @@
 // document to the decorations that show the Markdown formatted, walking the syntax tree of the editor's parser. What
 // it shows is a help for writing; nothing of it reaches the content.
 
+import { isolateHistory } from "@codemirror/commands";
 import { syntaxTree } from "@codemirror/language";
-import type { EditorState, Range } from "@codemirror/state";
-import { Decoration, type DecorationSet } from "@codemirror/view";
+import type { EditorState, Range, TransactionSpec } from "@codemirror/state";
+import { Decoration, WidgetType, type DecorationSet, type EditorView } from "@codemirror/view";
 
 import { isSafeAddress } from "@/features/pages/safe-address";
 
@@ -18,7 +19,98 @@ const PREVIEW_CLASS = {
   link: "cm-lp-link",
   /** A line whose text is hidden and whose height is reduced, such as the underline of a setext heading. */
   hiddenLine: "cm-lp-hidden-line",
+  /** The number of a numbered list item. */
+  listMark: "cm-lp-list-mark",
+  /** A line of a block quote; its depth sets the number of bars. */
+  quote: "cm-lp-quote",
+  /** A line of a fenced or indented code block. */
+  codeBlock: "cm-lp-code-block",
 } as const;
+
+// The widgets build their DOM with `document.createElement` and text nodes only, never from HTML (R31).
+
+/** The bullet of a bullet list item, in the place of its mark. */
+class BulletWidget extends WidgetType {
+  override eq() {
+    return true;
+  }
+
+  toDOM() {
+    const bullet = document.createElement("span");
+    bullet.className = "cm-lp-bullet";
+    bullet.textContent = "•";
+    return bullet;
+  }
+}
+
+/**
+ * The box of a task item, ticked as in the text. A click on it ticks or unticks the item in the text as one change
+ * that one undo reverts, without moving the cursor onto its line (R16); a tap on a touch screen is a click as well.
+ */
+class TaskWidget extends WidgetType {
+  constructor(
+    readonly checked: boolean,
+    readonly label: string,
+  ) {
+    super();
+  }
+
+  override eq(other: TaskWidget) {
+    return other.checked === this.checked && other.label === this.label;
+  }
+
+  toDOM(view: EditorView) {
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.className = "cm-lp-task";
+    box.checked = this.checked;
+    box.setAttribute("aria-label", this.label);
+    // The editor neither moves the cursor nor takes the focus from the box.
+    box.addEventListener("mousedown", (event) => event.preventDefault());
+    box.addEventListener("click", (event) => {
+      // The box shows the text, which the change below redraws.
+      event.preventDefault();
+      const spec = toggleTask(view.state, view.posAtDOM(box));
+      if (spec) view.dispatch(spec);
+    });
+    return box;
+  }
+
+  override ignoreEvent() {
+    return true;
+  }
+}
+
+/** A horizontal rule, in the place of its line. */
+class RuleWidget extends WidgetType {
+  override eq() {
+    return true;
+  }
+
+  toDOM() {
+    const rule = document.createElement("span");
+    rule.className = "cm-lp-rule";
+    rule.setAttribute("role", "separator");
+    return rule;
+  }
+}
+
+const bullet = Decoration.replace({ widget: new BulletWidget() });
+const rule = Decoration.replace({ widget: new RuleWidget() });
+
+/**
+ * The change that ticks or unticks the task box `[ ]`, `[x]` or `[X]` that starts at `pos`, as one entry of the
+ * history; `null` where no task box starts.
+ */
+export function toggleTask(state: EditorState, pos: number): TransactionSpec | null {
+  const box = state.sliceDoc(pos, pos + 3);
+  if (!/^\[[ xX]\]$/.test(box)) return null;
+  return {
+    changes: { from: pos + 1, to: pos + 2, insert: box[1] === " " ? "x" : " " },
+    annotations: isolateHistory.of("full"),
+    userEvent: "input",
+  };
+}
 
 /** The style of an inline element and the name of its marks in the syntax tree. */
 const INLINE_STYLES: Record<string, { className: string; mark: string }> = {
@@ -63,6 +155,23 @@ export function livePreviewDecorations(
   };
   const lineStyle = (pos: number, className: string) =>
     decorations.push(Decoration.line({ class: className }).range(doc.lineAt(pos).from));
+  /** Styles the line of `pos` where it shows formatted: the blocks show their Markdown on the lines of the cursor. */
+  const blockLine = (pos: number, className: string) => {
+    if (!editing.has(lineOf(pos))) lineStyle(pos, className);
+  };
+  /** Replaces the text from `from` to `to` by a widget where its line shows formatted. */
+  const replace = (from: number, to: number, decoration: Decoration) => {
+    if (previewed(from, to)) decorations.push(decoration.range(from, to));
+  };
+  /** Hides a line such as a fence line: it keeps its place as a line, with its text hidden and its height reduced. */
+  const hideLine = (number: number) => {
+    if (editing.has(number)) return;
+    const line = doc.line(number);
+    lineStyle(line.from, PREVIEW_CLASS.hiddenLine);
+    hide(line.from, line.to);
+  };
+  // The depth of quotes on each line, which sets the number of bars of the line.
+  const quoteDepth = new Map<number, number>();
 
   // A node that reaches into two of the ranges is decorated once; its children are still visited in each range.
   const seen = new Set<string>();
@@ -145,6 +254,62 @@ export function livePreviewDecorations(
           return false;
         }
 
+        if (name === "Blockquote") {
+          let depth = 1;
+          for (let parent = node.node.parent; parent; parent = parent.parent) if (parent.name === "Blockquote") depth++;
+          for (let number = lineOf(node.from); number <= lineOf(node.to); number++) {
+            quoteDepth.set(number, Math.max(depth, quoteDepth.get(number) ?? 0));
+          }
+          return;
+        }
+
+        if (name === "QuoteMark") {
+          hide(node.from, doc.sliceString(node.to, node.to + 1) === " " ? node.to + 1 : node.to);
+          return;
+        }
+
+        if (name === "ListMark") {
+          const item = node.node.parent;
+          const task = item?.getChild("Task")?.getChild("TaskMarker");
+          if (item?.parent?.name === "OrderedList") style(node.from, node.to, PREVIEW_CLASS.listMark);
+          // The box of a task item takes the place of the bullet, as in the page view.
+          else if (task) hide(node.from, task.from);
+          else replace(node.from, node.to, bullet);
+          return;
+        }
+
+        if (name === "TaskMarker") {
+          const marker = doc.sliceString(node.from, node.to);
+          const label = doc.sliceString(node.to, doc.lineAt(node.to).to).trim() || "Task";
+          replace(node.from, node.to, Decoration.replace({ widget: new TaskWidget(marker !== "[ ]", label) }));
+          return;
+        }
+
+        if (name === "FencedCode") {
+          const first = lineOf(node.from);
+          const last = lineOf(node.to);
+          const marks = node.node.getChildren("CodeMark");
+          const closed = marks.length > 1 && lineOf(marks[marks.length - 1]?.from ?? node.from) !== first;
+          hideLine(first);
+          for (let number = first + 1; number <= last; number++) {
+            if (closed && number === last) hideLine(number);
+            else blockLine(doc.line(number).from, PREVIEW_CLASS.codeBlock);
+          }
+          return false;
+        }
+
+        if (name === "CodeBlock") {
+          for (let number = lineOf(node.from); number <= lineOf(node.to); number++) {
+            blockLine(doc.line(number).from, PREVIEW_CLASS.codeBlock);
+          }
+          return false;
+        }
+
+        if (name === "HorizontalRule") {
+          replace(node.from, node.to, rule);
+          return false;
+        }
+
         // A bare address, which the page view makes a link of as well (R7).
         if (name === "URL" && !["Link", "Autolink", "LinkReference"].includes(node.node.parent?.name ?? "")) {
           style(node.from, node.to, PREVIEW_CLASS.link);
@@ -152,6 +317,15 @@ export function livePreviewDecorations(
         return;
       },
     });
+  }
+  for (const [number, depth] of quoteDepth) {
+    if (editing.has(number)) continue;
+    const line = doc.line(number);
+    decorations.push(
+      Decoration.line({ class: PREVIEW_CLASS.quote, attributes: { style: `--quote-depth: ${depth}` } }).range(
+        line.from,
+      ),
+    );
   }
   return Decoration.set(decorations, true);
 }

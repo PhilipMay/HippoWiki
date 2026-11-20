@@ -195,3 +195,74 @@ for (const mode of ["live preview", "source mode"]) {
     expect((await getTestDb().page.findUniqueOrThrow({ where: { id: created.id } })).content).toBe(content);
   });
 }
+
+const BLOCKS = "# Blocks\n\n- bullet\n1. numbered\n- [ ] open\n- [x] done\n\n> quote\n\n```\ncode\n```\n\n---\n\nlast";
+
+test("blocks show formatted while the cursor is on another line, and as Markdown on its lines (R6, R7)", async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  const editor = await editAtEnd(page, BLOCKS);
+
+  await expect
+    .poll(() => shownLines(page))
+    .toEqual([
+      "Blocks",
+      "",
+      "• bullet",
+      "1. numbered",
+      " open",
+      " done",
+      "",
+      "quote",
+      "",
+      "",
+      "code",
+      "",
+      "",
+      "",
+      "",
+      "last",
+    ]);
+  await expect(editor.getByRole("checkbox", { name: "open" })).not.toBeChecked();
+  await expect(editor.getByRole("checkbox", { name: "done" })).toBeChecked();
+  await expect(editor.getByRole("separator")).toHaveCount(1);
+  // The style of the line that shows the text: the text itself may sit in an element of the highlighting.
+  const computed = (text: string, property: "fontFamily" | "backgroundImage") =>
+    editor
+      .getByText(text, { exact: true })
+      .evaluate((element, name) => getComputedStyle(element.closest(".cm-line") ?? element)[name], property);
+  expect(await computed("quote", "backgroundImage")).toContain("gradient");
+  expect(await computed("code", "fontFamily")).toContain("monospace");
+
+  // A selection over every line shows all of them as Markdown.
+  await page.keyboard.press("ControlOrMeta+a");
+  await expect.poll(() => shownLines(page)).toEqual(BLOCKS.split("\n"));
+  await expect(editor.getByRole("checkbox")).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test("a click on a task box ticks it in the text, Ctrl+Z unticks it, and only Save stores it (R16)", async ({
+  page,
+}) => {
+  const created = await createPage({ folder: handbook, name: "tasks", content: "# Tasks\n\n- [ ] a\n\nlast" });
+  await page.goto("/folders/handbook/tasks.md?action=edit");
+  const editor = await editorReady(page);
+  await editor.press("ControlOrMeta+End");
+
+  await editor.getByRole("checkbox", { name: "a" }).click();
+  await expectContent(page, "# Tasks\n\n- [x] a\n\nlast");
+  await expect(editor.getByRole("checkbox", { name: "a" })).toBeChecked();
+  // The cursor stayed on the last line, so the box still shows.
+  expect((await shownLines(page))[4]).toBe("last");
+  expect((await getTestDb().page.findUniqueOrThrow({ where: { id: created.id } })).content).toBe(created.content);
+
+  await page.keyboard.press("ControlOrMeta+z");
+  await expectContent(page, "# Tasks\n\n- [ ] a\n\nlast");
+  await editor.getByRole("checkbox", { name: "a" }).click();
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page).toHaveURL("/folders/handbook/tasks.md");
+  expect((await getTestDb().page.findUniqueOrThrow({ where: { id: created.id } })).content).toBe(
+    "# Tasks\n\n- [x] a\n\nlast",
+  );
+});

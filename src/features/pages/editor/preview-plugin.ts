@@ -141,6 +141,33 @@ const previewTheme = EditorView.theme({
   },
   ".cm-lp-link, .cm-lp-link *": { color: palette.primary.main, textDecoration: "underline" },
   ".cm-lp-hidden-line": { fontSize: "0", lineHeight: "0.5rem" },
+  ".cm-lp-list-mark, .cm-lp-list-mark *": { color: palette.text.secondary },
+  ".cm-lp-bullet": { display: "inline-block", minWidth: "0.6em", color: palette.text.secondary },
+  ".cm-lp-task": {
+    width: "1.1em",
+    height: "1.1em",
+    margin: "0 0.35em 0 0",
+    verticalAlign: "-0.15em",
+    cursor: "pointer",
+    accentColor: palette.primary.main,
+  },
+  // One bar per level of the quote, 12px apart.
+  ".cm-lp-quote": {
+    color: palette.text.secondary,
+    paddingLeft: "calc(14px + var(--quote-depth) * 12px)",
+    background: `repeating-linear-gradient(to right, ${palette.divider} 0 3px, transparent 3px 12px) 14px 0 / calc(var(--quote-depth) * 12px) 100% no-repeat`,
+  },
+  ".cm-lp-code-block": {
+    fontFamily: "monospace",
+    fontSize: "0.875em",
+    backgroundColor: palette.action.hover,
+  },
+  ".cm-lp-rule": {
+    display: "inline-block",
+    width: "100%",
+    verticalAlign: "middle",
+    borderTop: `2px solid ${palette.divider}`,
+  },
 });
 
 /** Live preview: its decorations, its link clicks and its styles. */
