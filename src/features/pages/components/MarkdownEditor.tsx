@@ -7,6 +7,7 @@ import FormLabel from "@mui/material/FormLabel";
 import { useEffect, useEffectEvent, useId, useRef, useState, type RefObject } from "react";
 import { flushSync } from "react-dom";
 
+import EditorToolbar from "@/features/pages/components/EditorToolbar";
 import type { EditorHandle } from "@/features/pages/editor/mount";
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 
@@ -139,6 +140,7 @@ export default function MarkdownEditor({
           "&:focus-within": { borderColor: error ? "error.main" : "primary.main", boxShadow: 1 },
         }}
       >
+        <EditorToolbar editor={editor} />
         {!editor && (
           <Box
             component="textarea"

@@ -70,7 +70,7 @@ function parentColumn(state: EditorState, line: Line, info: LineInfo): number | 
 }
 
 /** The lines that any selection range touches, each once, in document order. */
-function selectedLines(state: EditorState): Line[] {
+export function selectedLines(state: EditorState): Line[] {
   const lines = new Map<number, Line>();
   for (const range of state.selection.ranges) {
     const first = state.doc.lineAt(range.from).number;

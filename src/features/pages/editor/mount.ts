@@ -4,6 +4,7 @@
 import { Compartment, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 
+import { FORMAT_COMMANDS, type FormatAction } from "@/features/pages/editor/commands";
 import { editorExtensions, type EditorOptions } from "@/features/pages/editor/extensions";
 
 /** What `MarkdownEditor` needs of a mounted editor. */
@@ -15,6 +16,8 @@ export type EditorHandle = {
   /** The length of the content, counted as the server counts it: every line break is one character (R27). */
   length(): number;
   focus(): void;
+  /** Runs a formatting action of the toolbar and focuses the editor again (R23). */
+  format(action: FormatAction): void;
   /** Marks the content as invalid for screen readers, after a field error of a save (R37). */
   setInvalid(invalid: boolean): void;
   destroy(): void;
@@ -54,6 +57,10 @@ export function mountEditor({ parent, initialContent, onChange, ...options }: Mo
     content: () => view.state.doc.toString(),
     length: () => view.state.doc.length,
     focus: () => view.focus(),
+    format: (action) => {
+      FORMAT_COMMANDS[action](view);
+      view.focus();
+    },
     setInvalid: (value) =>
       view.dispatch({
         effects: invalid.reconfigure(invalidAttribute(value)),

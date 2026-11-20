@@ -27,7 +27,7 @@ names the IDs it covers.
 - [x] Editor in source mode
 - [x] Editing comforts
 - [x] Content limit and counter
-- [ ] Toolbar
+- [x] Toolbar
 - [ ] Live preview of inline elements and the mode switch
 - [ ] Live preview of blocks
 - [ ] Tables in live preview

@@ -16,6 +16,7 @@ import { EditorView, keymap, placeholder } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 import { GFM } from "@lezer/markdown";
 
+import { formatKeymap } from "@/features/pages/editor/commands";
 import { contentLimit } from "@/features/pages/editor/content-limit";
 import { indentExtensions, indentKeymap } from "@/features/pages/editor/indent";
 import { theme as appTheme } from "@/lib/theme";
@@ -127,6 +128,8 @@ const theme = EditorView.theme({
   ".cm-scroller": { fontFamily: "monospace", lineHeight: 1.6, overflow: "visible" },
   ".cm-content": { minHeight: "calc(16 * 1.6em)", padding: "16.5px 0" },
   ".cm-line": { padding: "0 14px" },
+  // The search panel sticks below the toolbar of the editor, which sets the variable to its height.
+  ".cm-panels-top": { top: "var(--editor-toolbar-height, 0px)" },
 });
 
 /**
@@ -140,6 +143,7 @@ export function editorExtensions({ newPage, labelId, descriptionId }: EditorOpti
     syntaxHighlighting(highlightStyle),
     history(),
     markupKeymap,
+    formatKeymap,
     // The search panel sits at the top of the editor and opens with Mod-f; its labels are those of CodeMirror (R13).
     search({ top: true }),
     indentExtensions,

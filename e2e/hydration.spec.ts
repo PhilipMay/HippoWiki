@@ -138,6 +138,7 @@ test("the new page form is locked until hydration", async ({ page }) => {
 
   await expect(contentEditor(page)).toHaveValue("");
   await expect(contentEditor(page)).not.toBeEditable();
+  await expect(page.getByRole("toolbar", { name: "Formatting" }).getByRole("button", { name: "Bold" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Save" })).toBeDisabled();
   await expect(page.getByRole("link", { name: "Cancel" })).toHaveAttribute("href", "/folders/locked-folder");
 });
@@ -151,6 +152,9 @@ test("the edit form is prefilled and locked until hydration", async ({ page }) =
   // Without JavaScript the content shows as text in the read-only field in the place of the editor.
   await expect(contentEditor(page)).toHaveValue("# Locked page\n\nSome content");
   await expect(contentEditor(page)).not.toBeEditable();
+  await expect(
+    page.getByRole("toolbar", { name: "Formatting" }).getByRole("button", { name: "Heading" }),
+  ).toBeDisabled();
   await expect(page.getByRole("button", { name: "Save" })).toBeDisabled();
   await expect(page.getByRole("link", { name: "Cancel" })).toHaveAttribute(
     "href",
