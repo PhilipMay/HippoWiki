@@ -1,5 +1,5 @@
 // Creates the Markdown editor in the browser. `MarkdownEditor` loads this module with a dynamic `import()` once it has
-// hydrated, so that the code of CodeMirror is in a chunk of its own that only the editor loads (R39).
+// hydrated, so that the code of CodeMirror is in a chunk of its own that only the editor loads.
 
 import { Compartment, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
@@ -13,16 +13,16 @@ import { livePreview } from "@/features/pages/editor/preview-plugin";
 export type EditorHandle = {
   /** The content element, which takes the focus and carries the accessible name. */
   contentElement: HTMLElement;
-  /** The content as it is now, with plain line breaks, exactly as the server stores it (R5). */
+  /** The content as it is now, with plain line breaks, exactly as the server stores it. */
   content(): string;
-  /** The length of the content, counted as the server counts it: every line break is one character (R27). */
+  /** The length of the content, counted as the server counts it: every line break is one character. */
   length(): number;
   focus(): void;
-  /** Runs a formatting action of the toolbar and focuses the editor again (R23). */
+  /** Runs a formatting action of the toolbar and focuses the editor again. */
   format(action: FormatAction): void;
-  /** Switches between live preview and source mode, keeping the document, the selection and the history (R2). */
+  /** Switches between live preview and source mode, keeping the document, the selection and the history. */
   setMode(mode: EditorMode): void;
-  /** Marks the content as invalid for screen readers, after a field error of a save (R37). */
+  /** Marks the content as invalid for screen readers, after a field error of a save. */
   setInvalid(invalid: boolean): void;
   destroy(): void;
 };
@@ -38,7 +38,7 @@ type MountOptions = EditorOptions & {
   onChange(handle: EditorHandle): void;
   /**
    * Called when the content starts or stops to differ from the content the editor was opened with, such as after an
-   * undo back to it (R35); not on every change.
+   * undo back to it; not on every change.
    */
   onDirtyChange(dirty: boolean): void;
 };

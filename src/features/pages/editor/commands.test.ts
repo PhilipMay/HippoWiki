@@ -35,7 +35,7 @@ function show(state: EditorState): string {
     : `${doc.slice(0, from)}|${doc.slice(from, to)}|${doc.slice(to)}`;
 }
 
-describe("the inline buttons (R20)", () => {
+describe("the inline buttons", () => {
   it.each([
     ["bold", "**"],
     ["italic", "*"],
@@ -67,7 +67,7 @@ describe("the inline buttons (R20)", () => {
   });
 });
 
-describe("the line buttons (R21)", () => {
+describe("the line buttons", () => {
   it("bullet list sets the mark on every selected line and removes it again", () => {
     const added = apply("|one\ntwo\nthree|", "bullet");
     expect(added).toBe("- |one\n- two\n- three|");
@@ -98,7 +98,7 @@ describe("the line buttons (R21)", () => {
   });
 });
 
-describe("the link button (R22)", () => {
+describe("the link button", () => {
   it("turns the selection into a link with the address selected", () => {
     expect(apply("see |docs| here", "link")).toBe("see [docs](|address|) here");
   });
@@ -108,7 +108,7 @@ describe("the link button (R22)", () => {
   });
 });
 
-describe("the history of the buttons (R23)", () => {
+describe("the history of the buttons", () => {
   it.each(Object.keys(FORMAT_COMMANDS) as FormatAction[])("%s is one change that one undo reverts", (action) => {
     // Typing just before the button would join one change of the history without the isolation.
     const typed = stateOf("# |word|").update({ changes: { from: 6, insert: "s" }, userEvent: "input.type" }).state;

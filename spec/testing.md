@@ -45,7 +45,9 @@ How the code is tested. Commands are listed in `README.md`.
     editor. The tables of these tests that go over the writes (the actor, an admin, no role, the lowest role of each
     function) are built from it, so a new write is added there once.
   - `src/test/slow-markdown.ts`: `SLOW_INPUTS`, the content at the content limit that is slow for other Markdown
-    parsers, for the cost tests of the parse and of the search text.
+    parsers, for the cost tests of the parse, of the search text and of live preview.
+  - `src/test/editor-content.ts`: `EDITOR_PAGE`, a page at the content limit with headings, lists, task lists, quotes,
+    code blocks and tables, for the cost test of live preview and the manual check of the editor's speed.
   - `src/test/language-samples.ts`: a page of the same content in each language that search tells apart, for the
     tests of the language of a page and of search.
   - `src/test/pages-service.ts`: the mocked database and logger of the unit tests of the pages service, which are
@@ -89,6 +91,15 @@ How the code is tested. Commands are listed in `README.md`.
   `src/test/slow-markdown.ts`; they guard the cost of the parse and the page view: each must be parsed and rendered
   within 2 s, so that an update of markdown-it or a change of the renderer cannot bring a slow parse back unnoticed. A
   new input that turns out to be slow is added there.
+- The modules of the Markdown editor get unit tests next to them in `src/features/pages/editor/`, in the `node`
+  environment without a DOM: they build an `EditorState` with the extensions of the editor, run its commands and read
+  its decorations, with the syntax tree parsed to the end with `ensureSyntaxTree()`. What needs the DOM of the editor,
+  such as clicks, the toolbar and the focus, is tested end to end. `src/features/pages/editor/live-preview.cost.test.ts`
+  (project `cost`) builds the state, the parse, the decorations of live preview and the tables of the page of
+  `src/test/editor-content.ts` within 2 s; for every input of `src/test/slow-markdown.ts` it builds the decorations and
+  the tables on the parsed tree within 2 s, since the parser of the editor itself is slow on some of them (see "Current
+  limits" in `markdown-editor.md`), and a typed character in the middle of each, with the parse and the decorations of
+  one screen, within 50 ms on average.
 - The comparison of revisions gets unit tests in `src/features/pages/diff.test.ts`. `src/features/pages/diff.cost.test.ts`
   (project `cost`) compares completely different revisions at the content limit, with many short lines and with few
   long ones: each comparison must answer with a diff or "too different" within 2 s, which guards the cap of the diff.
@@ -294,6 +305,11 @@ How the code is tested. Commands are listed in `README.md`.
     page reloads until the test times out. The production run has no hot module replacement. Without the check the
     test fails after 30 seconds while waiting for `data-hydrated`; with it, its error names the reload loop, so that the
     failure is told apart from one of the app.
+  - `editor.ts` holds the helpers for the Markdown editor, which every spec that writes or reads the content of a page
+    uses: `contentEditor()` and `editorReady()` find the editor by its role and its name "Content", `fillContent()`
+    replaces the whole content as input that CodeMirror reads, `expectContent()` asserts the exact content,
+    `pasteContent()` dispatches a paste, `startInSourceMode()` starts the editor in source mode, and `shownLines()`
+    reads the text that each line shows.
   - `resetTestDatabase()` empties all tables of the database of its worker except the migration history and
     `AuthSecret`, then creates the known users with their fixed ids and restores their saved sessions; tests call it in
     `beforeEach`. `emptyTestDatabase()` only empties the tables, and only of `hippowiki_test` or a worker database; the
@@ -360,7 +376,9 @@ How the code is tested. Commands are listed in `README.md`.
   - the `form` of a dialog that a test submits with `requestSubmit()`, and the `option` elements and labels that a
     test reads or changes as a whole;
   - elements that must be absent from rendered Markdown or a page, such as `script`, `img` or any element with an
-    address.
+    address;
+  - the hidden field `content` of the Markdown editor, whose value is the exact content: CodeMirror draws only the lines
+    in view, so the content is read there, by `expectContent()` of `e2e/support/editor.ts`.
   - A required field has an asterisk after its label, so a label is matched by its text or its start, not exactly.
   - Next.js has an element with the role `alert` of its own, its route announcer; the error message of a form is
     located inside `main` or its dialog.
@@ -392,6 +410,12 @@ How the code is tested. Commands are listed in `README.md`.
   the spec of its group, a change of the access `e2e/mcp-access.spec.ts`; `e2e/oauth.spec.ts` covers the discovery, the registration, the
   token endpoint and the whole flow from the login over the consent page to a tool call, a refresh and a refresh token
   that is used again. The helpers of `e2e/support/oauth.ts` send a folder address as `resource` (`mcpAddress()`).
+- The Markdown editor has specs of its own: `e2e/editor.spec.ts` the editor in source mode, its loading, its safety
+  and its keyboard; `e2e/editor-preview.spec.ts` live preview and the mode switch; `e2e/editor-toolbar.spec.ts` the
+  toolbar and its shortcuts; `e2e/editor-limit.spec.ts` the content limit and the counter, in a file of its own
+  because it fills pages near the limit; `e2e/editor-leave.spec.ts` the question before leaving with unsaved changes;
+  `e2e/editor-phone.spec.ts` the editor at phone size with touch, which removes the badge of the development server of
+  Next.js that covers "Save" there; and `e2e/editor-spec-tests.spec.ts` the tests written from the spec alone.
 - `e2e/ai-apps.spec.ts` covers the folder view "AI apps" with its addresses per role and the copy button.
 - `e2e/search.spec.ts` covers the results view and its address, the search field on every view of a folder and where
   it is left out, and the messages of the limits. Chromium waits with a request for an address until a request for

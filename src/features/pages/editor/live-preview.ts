@@ -1,4 +1,4 @@
-// The decorations of live preview (R3, R6, R7, R9, R10, R31): a pure function from the editor state and ranges of the
+// The decorations of live preview: a pure function from the editor state and ranges of the
 // document to the decorations that show the Markdown formatted, walking the syntax tree of the editor's parser. What
 // it shows is a help for writing; nothing of it reaches the content.
 
@@ -29,7 +29,7 @@ const PREVIEW_CLASS = {
   codeBlock: "cm-lp-code-block",
 } as const;
 
-// The widgets build their DOM with `document.createElement` and text nodes only, never from HTML (R31).
+// The widgets build their DOM with `document.createElement` and text nodes only, never from HTML.
 
 /** The bullet of a bullet list item, in the place of its mark. */
 class BulletWidget extends WidgetType {
@@ -47,7 +47,7 @@ class BulletWidget extends WidgetType {
 
 /**
  * The box of a task item, ticked as in the text. A click on it ticks or unticks the item in the text as one change
- * that one undo reverts, without moving the cursor onto its line (R16); a tap on a touch screen is a click as well.
+ * that one undo reverts, without moving the cursor onto its line; a tap on a touch screen is a click as well.
  */
 class TaskWidget extends WidgetType {
   constructor(
@@ -124,7 +124,7 @@ const INLINE_STYLES: Record<string, { className: string; mark: string }> = {
 
 const hidden = Decoration.replace({});
 
-/** The first and the last line of each selection range: these lines show their Markdown (R3). */
+/** The first and the last line of each selection range: these lines show their Markdown. */
 function selectedLines(state: EditorState): { first: number; last: number }[] {
   return state.selection.ranges.map((range) => ({
     first: state.doc.lineAt(range.from).number,
@@ -135,14 +135,14 @@ function selectedLines(state: EditorState): { first: number; last: number }[] {
 /**
  * The decorations of live preview for the given ranges of the document, such as the visible ranges of a view. The
  * ranges are sorted and do not overlap. Only the nodes in the ranges are visited, and the decorations of a block go to
- * its lines in the ranges, so that a large block outside the screen costs nothing on a key (R38).
+ * its lines in the ranges, so that a large block outside the screen costs nothing on a key.
  */
 export function livePreviewDecorations(
   state: EditorState,
   ranges: readonly { from: number; to: number }[],
 ): DecorationSet {
   const { doc } = state;
-  // The lines of the selection, and of every table that a selection touches, show their Markdown (R3, R8).
+  // The lines of the selection, and of every table that a selection touches, show their Markdown.
   const editingSpans = selectedLines(state);
   const editing = (number: number) => editingSpans.some(({ first, last }) => first <= number && number <= last);
   const decorations: Range<Decoration>[] = [];
@@ -204,7 +204,7 @@ export function livePreviewDecorations(
       to,
       enter: (node) => {
         const name = node.name;
-        // Images stay their Markdown text, the link syntax inside them included (R9).
+        // Images stay their Markdown text, the link syntax inside them included.
         if (name === "Image") return false;
         if (name === "Blockquote") quoteLevel++;
         const key = () => `${name}:${node.from}:${node.to}`;
@@ -212,7 +212,7 @@ export function livePreviewDecorations(
         if (node.to > to) seen.add(key());
 
         // A table is rendered by the field of `tables.ts`, or shows its whole Markdown while the cursor or a selection
-        // is in it: then no line of it is decorated (R8).
+        // is in it: then no line of it is decorated.
         if (name === "Table") {
           const first = lineOf(node.from);
           const last = lineOf(node.to);
@@ -292,7 +292,7 @@ export function livePreviewDecorations(
           const address = node.node.getChild("URL");
           if (!open || !close || open.from !== node.from) return;
           // A link that the page view would not make, such as one to `javascript:`, also when written with an entity,
-          // stays its text (R10).
+          // stays its text.
           if (address && !isSafeAddress(linkDestination(doc.sliceString(address.from, address.to)))) return false;
           if (!previewed(node.from, node.to)) return;
           style(open.to, close.from, PREVIEW_CLASS.link);
@@ -338,7 +338,7 @@ export function livePreviewDecorations(
           return false;
         }
 
-        // A bare address, which the page view makes a link of as well (R7).
+        // A bare address, which the page view makes a link of as well.
         if (name === "URL" && !["Link", "Autolink", "LinkReference"].includes(node.node.parent?.name ?? "")) {
           style(node.from, node.to, PREVIEW_CLASS.link);
         }

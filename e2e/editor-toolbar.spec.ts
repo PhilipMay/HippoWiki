@@ -44,7 +44,7 @@ async function selectBack(page: Page, count: number) {
   for (let index = 0; index < count; index += 1) await page.keyboard.press("Shift+ArrowLeft");
 }
 
-test("the toolbar is above the editor, and every button has a name and is reachable with the keyboard (R14, R19)", async ({
+test("the toolbar is above the editor, and every button has a name and is reachable with the keyboard", async ({
   page,
 }) => {
   const errors = collectErrors(page);
@@ -79,9 +79,7 @@ test("the toolbar is above the editor, and every button has a name and is reacha
   expect(errors).toEqual([]);
 });
 
-test("bold marks the selection, one undo restores it, and typing goes on in the editor (R20, R23)", async ({
-  page,
-}) => {
+test("bold marks the selection, one undo restores it, and typing goes on in the editor", async ({ page }) => {
   await newPageWith(page, "# Page\n\nword");
   await selectBack(page, 4);
 
@@ -95,9 +93,7 @@ test("bold marks the selection, one undo restores it, and typing goes on in the 
   await expectContent(page, "# Page\n\ntext");
 });
 
-test("a line button sets its mark, one undo removes it, and the heading menu sets a heading (R21, R23)", async ({
-  page,
-}) => {
+test("a line button sets its mark, one undo removes it, and the heading menu sets a heading", async ({ page }) => {
   await newPageWith(page, "# Page\n\nword");
 
   await button(page, "Bullet list").click();
@@ -116,7 +112,7 @@ test("a line button sets its mark, one undo removes it, and the heading menu set
   await expectContent(page, "# Page\n\n## words");
 });
 
-test("link on a selected word selects the address for typing (R22)", async ({ page }) => {
+test("link on a selected word selects the address for typing", async ({ page }) => {
   await newPageWith(page, "# Page\n\nSee docs");
   await selectBack(page, 4);
 
@@ -127,7 +123,7 @@ test("link on a selected word selects the address for typing (R22)", async ({ pa
   await expectContent(page, "# Page\n\nSee [docs](https://example.com)");
 });
 
-test("Ctrl+B, Ctrl+I and Ctrl+K do the same as their buttons (R24)", async ({ page }) => {
+test("Ctrl+B, Ctrl+I and Ctrl+K do the same as their buttons", async ({ page }) => {
   await newPageWith(page, "# Page\n\nword");
 
   await selectBack(page, 4);
@@ -139,7 +135,7 @@ test("Ctrl+B, Ctrl+I and Ctrl+K do the same as their buttons (R24)", async ({ pa
   await expectContent(page, "# Page\n\n***[word](address)***");
 });
 
-test("in a long page the toolbar stays at the top of the window at the end of the content (R41)", async ({ page }) => {
+test("in a long page the toolbar stays at the top of the window at the end of the content", async ({ page }) => {
   const lines = Array.from({ length: 200 }, (_, index) => `Line ${index + 1}`);
   await createPage({ folder: handbook, name: "long", content: `# Long\n\n${lines.join("\n")}` });
 

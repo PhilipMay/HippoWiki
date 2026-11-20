@@ -1,5 +1,5 @@
-// Tests written from `spec/markdown-editor-requirements.md` alone, for the rules or the parts of rules that the other
-// specs of the editor leave open.
+// Tests written from the requirements of the editor alone, whose rules are now in `spec/markdown-editor.md`, for the
+// rules or the parts of rules that the other specs of the editor leave open.
 
 import type { Page } from "@playwright/test";
 
@@ -34,8 +34,8 @@ async function editAtEnd(page: Page, content: string, name = "spec") {
   return { editor, created };
 }
 
-// markdown-editor-requirements.md, "Live preview and source mode", R2.
-test("switching the mode keeps the cursor in the middle of a line where it was (R2)", async ({ page }) => {
+// markdown-editor.md, "Live preview and source mode".
+test("switching the mode keeps the cursor in the middle of a line where it was", async ({ page }) => {
   await editAtEnd(page, "# Title\n\nalpha beta gamma\n\nlast");
   await page.keyboard.press("ControlOrMeta+Home");
   await page.keyboard.press("ArrowDown");
@@ -51,8 +51,8 @@ test("switching the mode keeps the cursor in the middle of a line where it was (
   await expectContent(page, "# Title\n\nalpha 12beta gamma\n\nlast");
 });
 
-// markdown-editor-requirements.md, "Editing comforts", R13.
-test("search in live preview finds the marks it hides, and replace all of them is one undo (R13)", async ({ page }) => {
+// markdown-editor.md, "Editing".
+test("search in live preview finds the marks it hides, and replace all of them is one undo", async ({ page }) => {
   const content = "# Marks\n\n**a** and **b**\n\nlast";
   const { editor } = await editAtEnd(page, content);
   await expect.poll(async () => (await shownLines(page))[2]).toBe("a and b");
@@ -68,8 +68,8 @@ test("search in live preview finds the marks it hides, and replace all of them i
   await expectContent(page, content);
 });
 
-// markdown-editor-requirements.md, "Toolbar", R19.
-test("every button of the toolbar has a tooltip with its name, and with its shortcut where it has one (R19)", async ({
+// markdown-editor.md, "Toolbar".
+test("every button of the toolbar has a tooltip with its name, and with its shortcut where it has one", async ({
   page,
 }) => {
   await page.goto("/folders/handbook?action=new");
@@ -97,8 +97,8 @@ test("every button of the toolbar has a tooltip with its name, and with its shor
   }
 });
 
-// markdown-editor-requirements.md, "Toolbar", R25.
-test("the switch of the modes sits at the right end of the toolbar, after every button (R25)", async ({ page }) => {
+// markdown-editor.md, "Toolbar".
+test("the switch of the modes sits at the right end of the toolbar, after every button", async ({ page }) => {
   await page.goto("/folders/handbook?action=new");
   await editorReady(page);
 
@@ -115,8 +115,8 @@ test("the switch of the modes sits at the right end of the toolbar, after every 
   expect(bar.x + bar.width - (source.x + source.width)).toBeLessThan(24);
 });
 
-// markdown-editor-requirements.md, "What live preview shows formatted", R17, with "Rendering" of pages.md.
-test("Ctrl+click opens a relative link, a reference link, an autolink and a www address in a new tab (R17)", async ({
+// markdown-editor.md, "What live preview shows", with "Rendering" of pages.md.
+test("Ctrl+click opens a relative link, a reference link, an autolink and a www address in a new tab", async ({
   page,
   context,
 }) => {
@@ -158,9 +158,9 @@ test("Ctrl+click opens a relative link, a reference link, an autolink and a www 
   await expectContent(page, content);
 });
 
-// markdown-editor-requirements.md, "What live preview shows formatted", R17, with "Rendering" of pages.md: with any
+// markdown-editor.md, "What live preview shows", with "Rendering" of pages.md: with any
 // other address than a relative one or one of the safe protocols, a link stays text, in any spelling.
-test("Ctrl+click on a link with an unsafe address in any spelling opens nothing and runs nothing (R17)", async ({
+test("Ctrl+click on a link with an unsafe address in any spelling opens nothing and runs nothing", async ({
   page,
   context,
 }) => {
@@ -217,8 +217,8 @@ test("Ctrl+click on a link with an unsafe address in any spelling opens nothing 
   await expectContent(page, content);
 });
 
-// markdown-editor-requirements.md, "The stored content", R5: also after switching modes.
-test("after switching the modes back and forth, saving without a change stores nothing (R5)", async ({ page }) => {
+// markdown-editor.md, "The stored content": also after switching modes.
+test("after switching the modes back and forth, saving without a change stores nothing", async ({ page }) => {
   const content =
     "# Plan\n\nSetext\n===\n\na b c ﻿ d e​f\fg\vh\u0085i\n\n| a | b |\n|---|:-:|\n| 1 | 2 |\n\n- [ ] task  \n\t* item\n\n<b>x</b>\n\n";
   const { created } = await editAtEnd(page, content);
@@ -234,10 +234,8 @@ test("after switching the modes back and forth, saving without a change stores n
   expect(await getTestDb().page.findUniqueOrThrow({ where: { id: created.id } })).toStrictEqual(created);
 });
 
-// markdown-editor-requirements.md, "Errors and screen readers", R37: a character the wiki cannot store.
-test("a save of content with a NUL character shows the error at the editor, with the focus in it (R37)", async ({
-  page,
-}) => {
+// markdown-editor.md, "Errors and screen readers": a character the wiki cannot store.
+test("a save of content with a NUL character shows the error at the editor, with the focus in it", async ({ page }) => {
   const errors = collectErrors(page);
   const { created } = await editAtEnd(page, "# Plan\n\nText");
   await pasteContent(page, { "text/plain": " a\u0000b" });
@@ -255,8 +253,8 @@ test("a save of content with a NUL character shows the error at the editor, with
   expect(errors).toEqual([]);
 });
 
-// markdown-editor-requirements.md, "What live preview shows formatted", R17, with "Rendering" of pages.md.
-test("Ctrl+click opens the address that the page view links to, with entities and escapes resolved (R17)", async ({
+// markdown-editor.md, "What live preview shows", with "Rendering" of pages.md.
+test("Ctrl+click opens the address that the page view links to, with entities and escapes resolved", async ({
   page,
   context,
 }) => {

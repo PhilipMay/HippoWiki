@@ -52,7 +52,7 @@ The documents use one name for each of these things:
   | Feature        | What it holds                                       | Modules of its own                                                                                                                                                                                               |
   | -------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
   | `folders`      | folders and their tabs                              | `folder-query.ts`: what a folder or tab address shows                                                                                                                                                            |
-  | `pages`        | pages, their deletion and their history             | `history-service.ts`, `writes.ts` (the data of a soft delete), `page-query.ts`, `markdown.ts`, `diff.ts`, `changed-page.ts`, `fields.ts`                                                                         |
+  | `pages`        | pages, their deletion and their history             | `history-service.ts`, `writes.ts` (the data of a soft delete), `page-query.ts`, `markdown.ts`, `safe-address.ts`, `diff.ts`, `changed-page.ts`, `fields.ts`, `editor/` (the Markdown editor, see "UI")           |
   | `folder-roles` | the roles of users on folders                       | `roles.ts` (the roles and the lowest role of each function), `actors.ts` (the actors of the content and the guards of a content write)                                                                           |
   | `users`        | the accounts                                        | `user-type.ts`, `records.ts`, `password.ts`                                                                                                                                                                      |
   | `auth`         | login, logout, the session and the login wait       | `session.ts`: who is calling (see "Login and sessions")                                                                                                                                                          |
@@ -479,7 +479,14 @@ The feature is described in `users-and-login.md`. What every new route, query an
 - Browser titles are built with `pageTitle()` from `src/lib/site.ts`.
 - Markdown is parsed only with the markdown-it instance of `src/features/pages/markdown.ts`, which has no server-only
   imports, so the browser can use it too. Raw HTML is never rendered, and only links and images with a safe address
-  are made (`isSafeAddress()`).
+  are made (`isSafeAddress()` of `src/features/pages/safe-address.ts`, a module without imports). The one exception is
+  the display of the content in the Markdown editor, whose live preview reads it with the parser of CodeMirror, Lezer;
+  nothing of that parse reaches the content, the title, the limits or the page view (see `markdown-editor.md`).
+- The modules of the Markdown editor in `src/features/pages/editor/` run only in the browser and are loaded only by
+  `MarkdownEditor` with a dynamic `import()` of `mount.ts`, so that CodeMirror is in a chunk of its own that no other
+  page loads. They import no markdown-it: they share the safe addresses through `safe-address.ts`, and
+  `link-address.ts` decodes a link address as markdown-it does. Their unit tests build an `EditorState` in the `node`
+  environment of Vitest, without a DOM.
 - The page view converts the tokens of that parse into React elements (`markdownToReact.tsx`), with text only as
   children and never `dangerouslySetInnerHTML`. Markdown that is analysed instead of rendered, such as the title
   heading of a page, uses the tokens of the same parse, so the result matches the rendered page.

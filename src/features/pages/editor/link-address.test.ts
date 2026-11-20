@@ -12,7 +12,7 @@ function pageViewAddress(destination: string): string | null {
   return typeof href === "string" ? href : null;
 }
 
-describe("linkDestination (R17)", () => {
+describe("linkDestination", () => {
   it("decodes backslash escapes", () => {
     expect(linkDestination("/folders/handbook/a\\_b.md")).toBe("/folders/handbook/a_b.md");
     expect(linkDestination("a\\\\b")).toBe("a\\b");

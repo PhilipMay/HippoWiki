@@ -37,7 +37,7 @@ function contentAttributes(state: EditorState): Record<string, string> {
 }
 
 describe("editorExtensions", () => {
-  it("keeps an undo history whose undo and redo restore the content (R15)", () => {
+  it("keeps an undo history whose undo and redo restore the content", () => {
     const typed = stateOf("# Page").update({ changes: { from: 6, insert: "\n\nText" } }).state;
     expect(typed.doc.toString()).toBe("# Page\n\nText");
 
@@ -46,13 +46,13 @@ describe("editorExtensions", () => {
     expect(run(undone, redo).doc.toString()).toBe("# Page\n\nText");
   });
 
-  it("shows the placeholder only in the editor of a new page (R40)", () => {
+  it("shows the placeholder only in the editor of a new page", () => {
     // The placeholder of CodeMirror is a decoration of the view, which also names it in `aria-placeholder`.
     expect(contentAttributes(stateOf("", true))["aria-placeholder"]).toBe(NEW_PAGE_PLACEHOLDER);
     expect(contentAttributes(stateOf("", false))).not.toHaveProperty("aria-placeholder");
   });
 
-  it("turns spell check, autocorrect and autocapitalization off and names the content element (R33, R36)", () => {
+  it("turns spell check, autocorrect and autocapitalization off and names the content element", () => {
     expect(contentAttributes(stateOf(""))).toMatchObject({
       spellcheck: "false",
       autocorrect: "off",
@@ -70,12 +70,12 @@ describe("editorExtensions", () => {
     ["a lone backslash", "# Title\n\\\n\\"],
     ["no line break at the end", "# Title\n\nlast"],
     ["empty lines at the end", "# Title\n\n\n\n"],
-  ])("gives back content with %s byte for byte (R5)", (_name, content) => {
+  ])("gives back content with %s byte for byte", (_name, content) => {
     expect(stateOf(content).doc.toString()).toBe(content);
   });
 });
 
-describe("Enter (R12)", () => {
+describe("Enter", () => {
   /** The content after Enter with the cursor at the end of `doc`, as the keymap of the editor runs it. */
   function enterAtEnd(doc: string): string {
     const state = stateOf(doc).update({ selection: EditorSelection.cursor(doc.length) }).state;
@@ -115,7 +115,7 @@ describe("Enter (R12)", () => {
   });
 });
 
-describe("replace all (R13)", () => {
+describe("replace all", () => {
   it("replaces every occurrence, also inside marks, in one change that one undo reverts", () => {
     const doc = "# word\n\n**word** and word";
     const searching = stateOf(doc).update({

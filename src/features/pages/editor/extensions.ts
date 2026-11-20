@@ -1,5 +1,5 @@
 // The extensions of the state of the Markdown editor. A module that only the browser loads, through the dynamic import
-// of `mount.ts`, so that the code of CodeMirror is in a chunk of its own (see "Loading" in the requirements, R39). It
+// of `mount.ts`, so that the code of CodeMirror is in a chunk of its own (see "Loading" in `markdown-editor.md`). It
 // has no server-only imports and needs no DOM, so its unit tests build an `EditorState` in Node.js.
 
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
@@ -23,23 +23,23 @@ import { theme as appTheme } from "@/lib/theme";
 
 /** What the extensions of an editor depend on. */
 export type EditorOptions = {
-  /** Whether the editor writes a new page: only then the empty editor shows the placeholder `# Title` (R40). */
+  /** Whether the editor writes a new page: only then the empty editor shows the placeholder `# Title`. */
   newPage: boolean;
-  /** The id of the visible label "Content", which names the content element (R36). */
+  /** The id of the visible label "Content", which names the content element. */
   labelId: string;
-  /** The id of the helper text or the field error below the editor, which describes the content element (R36, R37). */
+  /** The id of the helper text or the field error below the editor, which describes the content element. */
   descriptionId: string;
 };
 
-/** The placeholder of the empty editor of a new page, a hint at the title heading that is never saved (R40). */
+/** The placeholder of the empty editor of a new page, a hint at the title heading that is never saved. */
 export const NEW_PAGE_PLACEHOLDER = "# Title";
 
 /**
  * The language of the editor: CommonMark with the GitHub Flavored Markdown extensions (tables, strikethrough, task
  * lists, autolinks), without the subscript, superscript and emoji syntax of `markdownLanguage`, so that the editor's
- * parse stays close to the markdown-it rules of the page view (R10). No languages are loaded for fenced code. The
+ * parse stays close to the markdown-it rules of the page view. No languages are loaded for fenced code. The
  * completion of HTML tags and the paste of an address as a link are off, because both change the text on their own
- * (R5, R32). The keymap of Enter is the editor's own (`markupKeymap`).
+ *. The keymap of Enter is the editor's own (`markupKeymap`).
  */
 function language(): Extension {
   return markdown({
@@ -53,7 +53,7 @@ function language(): Extension {
 
 /**
  * Enter on a quote line that holds nothing but its marks, with the cursor at its end, removes the last level of the
- * quote, so that the quote ends (R12). The command of CodeMirror would continue it and end it only after a second
+ * quote, so that the quote ends. The command of CodeMirror would continue it and end it only after a second
  * empty line.
  */
 export const endEmptyQuote: StateCommand = ({ state, dispatch }) => {
@@ -86,7 +86,7 @@ export const endEmptyQuote: StateCommand = ({ state, dispatch }) => {
 /**
  * Enter continues a list or a quote with the same mark: the next item, the next number (renumbering the items after it
  * in the same change), an unticked box after a task item, `> ` after a quote line. On an empty item it removes the
- * mark and leaves an empty line, which ends the list (R12). `nonTightLists: false` keeps CodeMirror from making a
+ * mark and leaves an empty line, which ends the list. `nonTightLists: false` keeps CodeMirror from making a
  * tight list loose instead on the second item. Backspace right after a mark removes one level of it.
  */
 export const continueMarkup = insertNewlineContinueMarkupCommand({ nonTightLists: false });
@@ -102,7 +102,7 @@ const markupKeymap = Prec.high(
 const { palette } = appTheme;
 
 /**
- * The syntax highlighting of source mode, with the colors of the theme of the app (R11): headings, emphasis, links,
+ * The syntax highlighting of source mode, with the colors of the theme of the app: headings, emphasis, links,
  * code and the marks each get a color of their own, different from plain text.
  */
 const highlightStyle = HighlightStyle.define([
@@ -120,7 +120,7 @@ const highlightStyle = HighlightStyle.define([
 
 /**
  * The theme of the editor: monospace like the textarea it replaces, at least about 16 lines tall, and without a
- * scroller of its own, so that it grows with its content and the page scrolls (R41). Long lines wrap.
+ * scroller of its own, so that it grows with its content and the page scrolls. Long lines wrap.
  */
 const theme = EditorView.theme({
   "&": { fontSize: "0.875rem" },
@@ -134,7 +134,7 @@ const theme = EditorView.theme({
 
 /**
  * The extensions of the editor state. The editor never changes the content on its own: no autoformatting, no closing
- * brackets, no trimming (R5); pasting stays the plain-text paste of CodeMirror (R32).
+ * brackets, no trimming; pasting stays the plain-text paste of CodeMirror.
  */
 export function editorExtensions({ newPage, labelId, descriptionId }: EditorOptions): Extension[] {
   return [
@@ -144,7 +144,7 @@ export function editorExtensions({ newPage, labelId, descriptionId }: EditorOpti
     history(),
     markupKeymap,
     formatKeymap,
-    // The search panel sits at the top of the editor and opens with Mod-f; its labels are those of CodeMirror (R13).
+    // The search panel sits at the top of the editor and opens with Mod-f; its labels are those of CodeMirror.
     search({ top: true }),
     indentExtensions,
     keymap.of([...indentKeymap, ...searchKeymap, ...defaultKeymap, ...historyKeymap]),

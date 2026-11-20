@@ -1,4 +1,4 @@
-// Tab and Shift+Tab of the Markdown editor (R26): they indent and outdent the lines of the cursor or the selection,
+// Tab and Shift+Tab of the Markdown editor: they indent and outdent the lines of the cursor or the selection,
 // nesting a list item under the item above it. After Esc, the next Tab or Shift+Tab moves the focus out of the editor
 // instead, so that the keyboard is never trapped.
 

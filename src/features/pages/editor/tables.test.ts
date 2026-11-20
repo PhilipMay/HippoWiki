@@ -29,7 +29,7 @@ function modelOf(doc: string) {
   return { model, state, header: text(model.header), rows: model.rows.map(text) };
 }
 
-describe("tableModel (R8)", () => {
+describe("tableModel", () => {
   const doc = [
     "| Left | Center | Right | None |",
     "| :--- | :----: | ----: | ---- |",
@@ -74,7 +74,7 @@ describe("tableModel (R8)", () => {
   });
 });
 
-describe("tablesField (R3, R8)", () => {
+describe("tablesField", () => {
   const doc = "# Title\n\n| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |\n\nlast";
   const tableFrom = doc.indexOf("| a");
   const tableTo = doc.indexOf("| 4 |") + 5;
@@ -106,7 +106,7 @@ describe("tablesField (R3, R8)", () => {
   });
 });
 
-describe("the way into a table with the keyboard (R8)", () => {
+describe("the way into a table with the keyboard", () => {
   const doc = "# Title\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nlast";
   const tableFrom = doc.indexOf("| a");
   const tableTo = doc.indexOf("| 2 |") + 5;

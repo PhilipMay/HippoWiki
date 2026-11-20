@@ -46,7 +46,7 @@ const EDITORS = [
 ];
 
 for (const { what, address, cancelTo, link } of EDITORS) {
-  test.describe(`leaving ${what} (R35)`, () => {
+  test.describe(`leaving ${what}`, () => {
     test("after typing, Cancel asks; Keep editing keeps the text, Discard leads where Cancel leads", async ({
       page,
     }) => {
@@ -135,7 +135,7 @@ for (const { what, address, cancelTo, link } of EDITORS) {
   });
 }
 
-test("Save of an edited page leaves without a question, and the page view asks nothing on closing (R35)", async ({
+test("Save of an edited page leaves without a question, and the page view asks nothing on closing", async ({
   page,
 }) => {
   const dialogs = browserDialogs(page);
@@ -149,7 +149,7 @@ test("Save of an edited page leaves without a question, and the page view asks n
   expect(dialogs).toEqual([]);
 });
 
-test("Save of a new page through the Save page dialog leaves without a question (R35)", async ({ page }) => {
+test("Save of a new page through the Save page dialog leaves without a question", async ({ page }) => {
   const dialogs = browserDialogs(page);
   await page.goto("/folders/handbook?action=new");
   await fillContent(page, "# Fresh page");
@@ -162,7 +162,7 @@ test("Save of a new page through the Save page dialog leaves without a question 
   expect(dialogs).toEqual([]);
 });
 
-test("a save refused as changed shows the stored content, and Cancel then leaves without a question (R35)", async ({
+test("a save refused as changed shows the stored content, and Cancel then leaves without a question", async ({
   page,
 }) => {
   const stored = await getTestDb().page.findFirstOrThrow({ where: { name: "plan" } });

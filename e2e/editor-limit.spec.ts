@@ -30,7 +30,7 @@ async function editAtEnd(page: Page, content: string) {
   return editor;
 }
 
-test("at the limit a typed character is not added (R27)", async ({ page }) => {
+test("at the limit a typed character is not added", async ({ page }) => {
   const content = contentOfLength(CONTENT_MAX_LENGTH);
   await editAtEnd(page, content);
 
@@ -39,7 +39,7 @@ test("at the limit a typed character is not added (R27)", async ({ page }) => {
   await expectContent(page, content);
 });
 
-test("a paste at 99,995 characters adds the first 5 of 10 characters (R27)", async ({ page }) => {
+test("a paste at 99,995 characters adds the first 5 of 10 characters", async ({ page }) => {
   const content = contentOfLength(CONTENT_MAX_LENGTH - 5);
   await editAtEnd(page, content);
 
@@ -48,7 +48,7 @@ test("a paste at 99,995 characters adds the first 5 of 10 characters (R27)", asy
   await expectContent(page, `${content}01234`);
 });
 
-test("the counter shows from 90,000 characters on (R28)", async ({ page }) => {
+test("the counter shows from 90,000 characters on", async ({ page }) => {
   const content = contentOfLength(89_999);
   await editAtEnd(page, content);
 

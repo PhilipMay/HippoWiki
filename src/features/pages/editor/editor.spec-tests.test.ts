@@ -1,5 +1,5 @@
-// Tests written from `spec/markdown-editor-requirements.md` alone, for the rules or the parts of rules that the other
-// tests of the editor leave open.
+// Tests written from the requirements of the editor alone, whose rules are now in `spec/markdown-editor.md`, for the
+// rules or the parts of rules that the other tests of the editor leave open.
 
 import { undo } from "@codemirror/commands";
 import { ensureSyntaxTree } from "@codemirror/language";
@@ -42,8 +42,8 @@ function enter(marked: string): string {
   return run(stateOf(marked), (target) => endEmptyQuote(target) || continueMarkup(target)).doc.toString();
 }
 
-describe("the line buttons remove their own mark (R21)", () => {
-  // markdown-editor-requirements.md, "Toolbar", R21: a line button removes its mark when the lines already have it.
+describe("the line buttons remove their own mark", () => {
+  // markdown-editor.md, "Toolbar": a line button removes its mark when the lines already have it.
   it.each([
     ["numbered list", "numbered", "|1. one\n2. two\n3. three|", "one\ntwo\nthree"],
     ["task list", "task", "|- [ ] one\n- [ ] two|", "one\ntwo"],
@@ -53,14 +53,14 @@ describe("the line buttons remove their own mark (R21)", () => {
     expect(apply(marked, action)).toBe(expected);
   });
 
-  // markdown-editor-requirements.md, "Toolbar", R21: a line button sets its mark on every line of the selection.
+  // markdown-editor.md, "Toolbar": a line button sets its mark on every line of the selection.
   it("bullet list on lines of which only some have the mark sets it on every line, without doubling it", () => {
     expect(apply("|- one\ntwo\n- three|", "bullet")).toBe("- one\n- two\n- three");
   });
 });
 
-describe("Enter in lists and quotes (R12)", () => {
-  // markdown-editor-requirements.md, "Editing comforts", R12: the next item starts with the same mark.
+describe("Enter in lists and quotes", () => {
+  // markdown-editor.md, "Editing": the next item starts with the same mark.
   it.each([
     ["a * item", "* one|", "* one\n* "],
     ["a + item", "+ one|", "+ one\n+ "],
@@ -70,7 +70,7 @@ describe("Enter in lists and quotes (R12)", () => {
     expect(enter(marked)).toBe(expected);
   });
 
-  // markdown-editor-requirements.md, "Editing comforts", R12: Enter on an empty item ends the list.
+  // markdown-editor.md, "Editing": Enter on an empty item ends the list.
   it.each([
     ["numbered item", "1. one\n2. |", "1. one\n"],
     ["task item", "- [ ] one\n- [ ] |", "- [ ] one\n"],
@@ -79,13 +79,13 @@ describe("Enter in lists and quotes (R12)", () => {
   });
 });
 
-describe("the content limit for changes other than typing and pasting (R27)", () => {
+describe("the content limit for changes other than typing and pasting", () => {
   /** Text of `length` characters: a line with `marked` at its end, filled up in front with `x`. */
   function filled(length: number, marked: string): string {
     return `${"x".repeat(length - marked.replaceAll("|", "").length - 1)}\n${marked}`;
   }
 
-  // markdown-editor-requirements.md, "Content limit", R27: any other change that would go past the limit is not made.
+  // markdown-editor.md, "Content limit": any other change that would go past the limit is not made.
   it("at 99,999 characters the bold button changes nothing", () => {
     const state = stateOf(filled(CONTENT_MAX_LENGTH - 1, "|word|"));
     expect(run(state, FORMAT_COMMANDS.bold).doc).toBe(state.doc);
@@ -101,7 +101,7 @@ describe("the content limit for changes other than typing and pasting (R27)", ()
     expect(act(state).doc.toString()).toBe(state.doc.toString());
   });
 
-  // markdown-editor-requirements.md, "Content limit", R27: only a change that would go past the limit is refused.
+  // markdown-editor.md, "Content limit": only a change that would go past the limit is refused.
   it("at 100,000 characters a change that does not go past the limit is made", () => {
     const task = stateOf(filled(CONTENT_MAX_LENGTH, "- [ ] a|"));
     const box = task.doc.length - "[ ] a".length;
@@ -112,8 +112,8 @@ describe("the content limit for changes other than typing and pasting (R27)", ()
   });
 });
 
-describe("the content is kept byte for byte (R5)", () => {
-  // markdown-editor-requirements.md, "The stored content", R5: the editor never changes the Markdown on its own.
+describe("the content is kept byte for byte", () => {
+  // markdown-editor.md, "The stored content": the editor never changes the Markdown on its own.
   it.each([
     ["a line separator and a paragraph separator", "# Title\n\na b c"],
     ["a byte order mark", "﻿# Title\n\ntext"],
@@ -125,8 +125,8 @@ describe("the content is kept byte for byte (R5)", () => {
   });
 });
 
-describe("the history of a task box (R16)", () => {
-  // markdown-editor-requirements.md, "What live preview shows formatted", R16: one change that undo reverts, also
+describe("the history of a task box", () => {
+  // markdown-editor.md, "What live preview shows": one change that undo reverts, also
   // right after typing.
   it("a tick right after typing is one change of its own that one undo reverts", () => {
     const typed = stateOf("- [ ] a|").update({ changes: { from: 7, insert: "b" }, userEvent: "input.type" }).state;

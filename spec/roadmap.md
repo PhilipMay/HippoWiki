@@ -20,8 +20,10 @@ listed first; there is no order across themes.
 
 ## Pages and Editing
 
-- Rich editor: TipTap, or Milkdown since pages are stored as Markdown, with slash commands and the derived title
-  shown while editing, instead of the raw Markdown textarea (`pages.md`, `tech.md`).
+- Slash commands in the Markdown editor: `/` at the start of a line offers blocks such as headings, lists, quotes,
+  code blocks and tables (`markdown-editor.md`).
+- The derived title shown while editing: the editor shows the title that the content gives the page, as it is saved
+  (`markdown-editor.md`, `pages.md`).
 - Import and export: move pages and folders in and out of the wiki as Markdown files.
 
 ## Links

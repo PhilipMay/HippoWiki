@@ -1,4 +1,4 @@
-// Tables in live preview (R8): a GitHub Flavored Markdown table shows as a rendered table, and as its whole Markdown
+// Tables in live preview: a GitHub Flavored Markdown table shows as a rendered table, and as its whole Markdown
 // while the cursor or a selection is in it. Block widgets must come from the state, so the tables are a state field.
 
 import { syntaxTree } from "@codemirror/language";
@@ -128,7 +128,7 @@ export function tableModel(state: EditorState, table: SyntaxNode): TableModel {
   return { header, alignments, rows };
 }
 
-/** The rendered table, built with DOM calls only (R31). Two widgets of the same table text are equal. */
+/** The rendered table, built with DOM calls only. Two widgets of the same table text are equal. */
 class TableWidget extends WidgetType {
   constructor(
     readonly source: string,
@@ -245,7 +245,7 @@ function dirtyRanges(tr: Transaction): { from: number; to: number }[] {
 /**
  * The tables of live preview: every table whose lines no selection range touches is replaced by a rendered table. The
  * field maps its decorations through changes and rebuilds only the tables that a change, a move of the selection or the
- * background parse touches, so that a large page stays fast (R38).
+ * background parse touches, so that a large page stays fast.
  */
 export const tablesField = StateField.define<DecorationSet>({
   create: (state) => Decoration.set(tablesIn(state, 0, state.doc.length).decorations, true),

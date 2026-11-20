@@ -36,7 +36,7 @@ async function editAtEnd(page: Page, address: string) {
   return editor;
 }
 
-test("a new page in a folder and in a tab and an edited page use the editor, not a textarea (R1)", async ({ page }) => {
+test("a new page in a folder and in a tab and an edited page use the editor, not a textarea", async ({ page }) => {
   const errors = collectErrors(page);
   await createTab({ folder: handbook, name: "guides" });
   await createPage({ folder: handbook, name: "plan", content: "# Plan" });
@@ -53,7 +53,7 @@ test("a new page in a folder and in a tab and an edited page use the editor, not
   expect(errors).toEqual([]);
 });
 
-test("with JavaScript the editor replaces the read-only field with the same content and enables Save (R29)", async ({
+test("with JavaScript the editor replaces the read-only field with the same content and enables Save", async ({
   page,
 }) => {
   await createPage({ folder: handbook, name: "plan", content: "# Plan\n\nFirst line\nSecond line" });
@@ -66,7 +66,7 @@ test("with JavaScript the editor replaces the read-only field with the same cont
   await expect(page.getByRole("button", { name: "Save" })).toBeEnabled();
 });
 
-test("every character of the content is visible in source mode (R4)", async ({ page, context }) => {
+test("every character of the content is visible in source mode", async ({ page, context }) => {
   await startInSourceMode(context);
   const content = "# Marks\n\n**bold** _it_ `code` [a](/b) ~~s~~\n- [x] t";
   await createPage({ folder: handbook, name: "marks", content });
@@ -77,7 +77,7 @@ test("every character of the content is visible in source mode (R4)", async ({ p
   expect((await shownLines(page)).join("\n")).toBe(content);
 });
 
-test.describe("the stored content (R5)", () => {
+test.describe("the stored content", () => {
   test("saving without a change stores nothing", async ({ page }) => {
     // The page was last changed by another user than the one of the test, so a stored save would show.
     const created = await createPage({ folder: handbook, name: "plan", content: `# Plan\n\n${UNUSUAL_MARKDOWN}` });
@@ -104,7 +104,7 @@ test.describe("the stored content (R5)", () => {
   });
 });
 
-test("a new page shows the placeholder # Title in grey until something is typed (R40)", async ({ page }) => {
+test("a new page shows the placeholder # Title in grey until something is typed", async ({ page }) => {
   const errors = collectErrors(page);
   await page.goto("/folders/handbook?action=new");
 
@@ -126,7 +126,7 @@ test("a new page shows the placeholder # Title in grey until something is typed 
   expect(errors).toEqual([]);
 });
 
-test.describe("the height of the editor (R41)", () => {
+test.describe("the height of the editor", () => {
   test("a page of a few lines shows an editor of about 16 lines", async ({ page }) => {
     await createPage({ folder: handbook, name: "short", content: "# Short\n\nOne line" });
 
@@ -157,7 +157,7 @@ test.describe("the height of the editor (R41)", () => {
 });
 
 for (const mode of ["live preview", "source mode"]) {
-  test(`raw HTML shows as its characters in ${mode}, never as elements, and runs nothing (R31)`, async ({
+  test(`raw HTML shows as its characters in ${mode}, never as elements, and runs nothing`, async ({
     page,
     context,
   }) => {
@@ -186,7 +186,7 @@ for (const mode of ["live preview", "source mode"]) {
   });
 }
 
-test("pasting HTML adds only its words as plain text (R32)", async ({ page }) => {
+test("pasting HTML adds only its words as plain text", async ({ page }) => {
   await createPage({ folder: handbook, name: "paste", content: "# Paste\n\n" });
 
   await editAtEnd(page, "/folders/handbook/paste.md?action=edit");
@@ -196,13 +196,13 @@ test("pasting HTML adds only its words as plain text (R32)", async ({ page }) =>
   await expect(contentEditor(page).locator("h1, b")).toHaveCount(0);
 });
 
-test("spell check is off in the editor (R33)", async ({ page }) => {
+test("spell check is off in the editor", async ({ page }) => {
   await page.goto("/folders/handbook?action=new");
 
   await expect(await editorReady(page)).toHaveAttribute("spellcheck", "false");
 });
 
-test("the editor is named Content and described by the helper text (R36)", async ({ page }) => {
+test("the editor is named Content and described by the helper text", async ({ page }) => {
   await page.goto("/folders/handbook?action=new");
 
   const editor = await editorReady(page);
@@ -212,9 +212,7 @@ test("the editor is named Content and described by the helper text (R36)", async
   await expect(editor).toHaveAttribute("aria-invalid", "false");
 });
 
-test("a save without a title heading shows the error below the editor and keeps the content (R37)", async ({
-  page,
-}) => {
+test("a save without a title heading shows the error below the editor and keeps the content", async ({ page }) => {
   await createPage({ folder: handbook, name: "plan", content: "# Plan" });
 
   await page.goto("/folders/handbook/plan.md?action=edit");
@@ -230,7 +228,7 @@ test("a save without a title heading shows the error below the editor and keeps 
   await expectContent(page, "No title\n\nText");
 });
 
-test("undo reverts the last change and redo repeats it (R15)", async ({ page }) => {
+test("undo reverts the last change and redo repeats it", async ({ page }) => {
   await createPage({ folder: handbook, name: "plan", content: "# Plan" });
 
   await editAtEnd(page, "/folders/handbook/plan.md?action=edit");
@@ -251,7 +249,7 @@ test("undo reverts the last change and redo repeats it (R15)", async ({ page }) 
   }
 });
 
-test.describe("the code of the editor (R39)", () => {
+test.describe("the code of the editor", () => {
   /** Opens the address and returns whether a loaded script of the app holds the code of CodeMirror. */
   async function loadsEditorCode(page: Page, address: string, waitFor?: () => Promise<unknown>) {
     const bodies: Promise<string>[] = [];
@@ -285,7 +283,7 @@ test.describe("the code of the editor (R39)", () => {
   });
 });
 
-test("source mode colors headings, emphasis, links, code and list marks differently from plain text (R11)", async ({
+test("source mode colors headings, emphasis, links, code and list marks differently from plain text", async ({
   page,
   context,
 }) => {
@@ -306,7 +304,7 @@ test("source mode colors headings, emphasis, links, code and list marks differen
   }
 });
 
-test("Enter at the end of a list item continues the list (R12)", async ({ page }) => {
+test("Enter at the end of a list item continues the list", async ({ page }) => {
   await page.goto("/folders/handbook?action=new");
   await fillContent(page, "# List\n\n- one");
 
@@ -316,7 +314,7 @@ test("Enter at the end of a list item continues the list (R12)", async ({ page }
   await expectContent(page, "# List\n\n- one\n- two");
 });
 
-test("Ctrl+F opens the search, and replace all replaces every occurrence in one step that one undo reverts (R13)", async ({
+test("Ctrl+F opens the search, and replace all replaces every occurrence in one step that one undo reverts", async ({
   page,
 }) => {
   const content = "# Word\n\nword and **word**, then word";
@@ -339,7 +337,7 @@ test("Ctrl+F opens the search, and replace all replaces every occurrence in one 
   await expectContent(page, content);
 });
 
-test.describe("Tab and Esc (R26)", () => {
+test.describe("Tab and Esc", () => {
   test("Tab nests a list item under the item above it, Shift+Tab reverts it", async ({ page }) => {
     await page.goto("/folders/handbook?action=new");
     await fillContent(page, "# List\n\n- a\n- b");

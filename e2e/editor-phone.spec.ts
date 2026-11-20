@@ -5,7 +5,7 @@ import { contentEditor, editorReady, expectContent, shownLines } from "./support
 import { createFolder, createPage, getTestDb, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
 
-// The editor at phone size with a touch screen (R30, R34): Pixel 7 in portrait, without its browser type, which the
+// The editor at phone size with a touch screen: Pixel 7 in portrait, without its browser type, which the
 // project sets.
 const { viewport, userAgent, deviceScaleFactor } = devices["Pixel 7"];
 test.use({ viewport, userAgent, deviceScaleFactor, hasTouch: true, isMobile: true });
@@ -46,7 +46,7 @@ async function removeDevelopmentIndicator(page: Page) {
 
 const CONTENT = "# Phone\n\n- [ ] call back\n\nSome plain words\n\n[docs](https://example.com/docs)\n\nlast";
 
-test("a page is edited by touch at phone size: typing, a toolbar button, the mode switch, a task box, Save (R30)", async ({
+test("a page is edited by touch at phone size: typing, a toolbar button, the mode switch, a task box, Save", async ({
   page,
 }) => {
   const errors = collectErrors(page);
@@ -104,7 +104,7 @@ test("a page is edited by touch at phone size: typing, a toolbar button, the mod
   expect(errors).toEqual([]);
 });
 
-test("a tap on a link shows its Markdown and opens no new tab (R34)", async ({ page, context }) => {
+test("a tap on a link shows its Markdown and opens no new tab", async ({ page, context }) => {
   const opened: string[] = [];
   context.on("page", (other) => opened.push(other.url()));
   await createPage({ folder: handbook, name: "phone", content: CONTENT });

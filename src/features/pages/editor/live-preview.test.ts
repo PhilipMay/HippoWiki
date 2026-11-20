@@ -44,7 +44,7 @@ function preview(doc: string, selection = EditorSelection.single(doc.length)): S
 /** A document whose last line is empty, so that the cursor at its end is on no line of the content before it. */
 const away = (content: string) => `${content}\n\n`;
 
-describe("live preview of headings (R3, R6)", () => {
+describe("live preview of headings", () => {
   it("hides ## and the space after them on another line than the cursor and styles the line", () => {
     const shown = preview(away("## Heading"));
     expect(shown.hidden).toEqual(["## "]);
@@ -81,7 +81,7 @@ describe("live preview of headings (R3, R6)", () => {
   });
 });
 
-describe("live preview of inline elements (R6, R7)", () => {
+describe("live preview of inline elements", () => {
   it.each([
     ["bold", "**word**", "cm-lp-strong", ["**", "**"]],
     ["bold with underscores", "__word__", "cm-lp-strong", ["__", "__"]],
@@ -117,7 +117,7 @@ describe("live preview of inline elements (R6, R7)", () => {
   });
 });
 
-describe("what live preview leaves as text (R9, R10, R31)", () => {
+describe("what live preview leaves as text", () => {
   it.each([
     ["an image", "![alt](/x.png)"],
     ["an image with a link inside", "[![alt](/x.png)](/target)"],
@@ -136,7 +136,7 @@ describe("what live preview leaves as text (R9, R10, R31)", () => {
   });
 });
 
-describe("live preview of blocks (R6, R7)", () => {
+describe("live preview of blocks", () => {
   it("replaces the mark of a bullet item by a bullet and styles the number of a numbered item", () => {
     expect(preview(away("- one\n* two")).widgets).toEqual(["BulletWidget: -", "BulletWidget: *"]);
     const numbered = preview(away("1. one\n2. two"));
@@ -209,7 +209,7 @@ function livePreviewDepths(doc: string): Record<number, string> {
   return depths;
 }
 
-describe("the box of a task item (R16)", () => {
+describe("the box of a task item", () => {
   it("ticks and unticks the box in the text, as one entry of the history", () => {
     const state = EditorState.create({ doc: "- [ ] a", extensions: editorExtensions(OPTIONS) });
     const ticked = state.update(toggleTask(state, 2) ?? {}).state;

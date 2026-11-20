@@ -1,4 +1,4 @@
-// The content limit of a page in the editor (R27): the editor accepts no more than the limit, counted as the server
+// The content limit of a page in the editor: the editor accepts no more than the limit, counted as the server
 // counts the content, in code units with every line break as one character, which is the length of the document of
 // CodeMirror.
 

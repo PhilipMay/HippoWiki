@@ -26,7 +26,7 @@ function appLink(event: MouseEvent): URL | null {
 
 /**
  * Asks before the editor is left while `active`, that is while its content differs from the content it was opened
- * with and no save runs (R35): closing or reloading the tab asks the browser's own question, and a plain click on a
+ * with and no save runs: closing or reloading the tab asks the browser's own question, and a plain click on a
  * link of the app, "Cancel" included, is held and asks with the dialog "Discard changes?". Links opened in a new tab
  * are not held, nor is the back button of the browser. The listeners are removed as soon as the guard is inactive and
  * when the form unmounts, so that saving never asks and no listener outlives the editor.

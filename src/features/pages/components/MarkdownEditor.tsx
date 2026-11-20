@@ -12,11 +12,11 @@ import { readMode, storeMode, type EditorMode } from "@/features/pages/editor/mo
 import type { EditorHandle } from "@/features/pages/editor/mount";
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 
-/** The helper text below the editor, which a field error replaces (R36, R37). */
+/** The helper text below the editor, which a field error replaces. */
 const HELPER_TEXT =
   "Markdown (GitHub Flavored Markdown), starting with the title heading: # Title. Press Esc, then Tab, to leave the editor.";
 
-/** The length from which the counter below the editor shows, 90 % of the content limit (R28). */
+/** The length from which the counter below the editor shows, 90 % of the content limit. */
 const COUNTER_FROM = CONTENT_MAX_LENGTH * 0.9;
 
 /** The counter of the length of the content, or `null` below `COUNTER_FROM`, where it is not shown. */
@@ -24,7 +24,7 @@ function counterOf(length: number): number | null {
   return length >= COUNTER_FROM ? length : null;
 }
 
-/** The minimum height of the editor and of the read-only field before it, in lines (R41). */
+/** The minimum height of the editor and of the read-only field before it, in lines. */
 const MIN_LINES = 16;
 
 type MarkdownEditorProps = {
@@ -50,9 +50,9 @@ type MarkdownEditorProps = {
 };
 
 /**
- * The Markdown editor of a page, CodeMirror 6, in place of a textarea (R1). Until it is ready, its place shows the
- * content as a read-only field, also without JavaScript (R29). Once hydrated it loads the code of the editor with a
- * dynamic `import()`, so that only the editor loads it (R39), and replaces the read-only field with the editor, with
+ * The Markdown editor of a page, CodeMirror 6, in place of a textarea. Until it is ready, its place shows the
+ * content as a read-only field, also without JavaScript. Once hydrated it loads the code of the editor with a
+ * dynamic `import()`, so that only the editor loads it, and replaces the read-only field with the editor, with
  * the same content and the focus at its start. The content leaves the editor through the hidden field `content`,
  * updated on every change without a React render.
  */
@@ -67,7 +67,7 @@ export default function MarkdownEditor({
   onDirtyChange,
 }: MarkdownEditorProps) {
   const [editor, setEditor] = useState<EditorHandle | null>(null);
-  // Live preview until the editor starts in the mode last chosen in this browser (R18).
+  // Live preview until the editor starts in the mode last chosen in this browser.
   const [mode, setMode] = useState<EditorMode>("live");
   // The length shown by the counter. It is set only when it changes from 90,000 characters on, or the counter hides, so
   // that typing below that causes no React render.

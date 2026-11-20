@@ -53,7 +53,8 @@ in `src/features/pages/components/`. Tests: `integration/page-service.test.ts`, 
   action (see "Actions and views" in `content-structure.md`).
 - It shows the page as stored: the editor its current content, the "Move or rename page" dialog its current name and
   place, the "Delete page" dialog its current name, the "Revert page" dialog the same revision. What the user entered
-  is not kept.
+  is not kept. The editor starts anew with the content as stored and does not ask about unsaved changes, since the
+  save itself left it (see "Leaving with unsaved changes" in `markdown-editor.md`).
 - Above its fields a message names the user who last changed the page, the channel and the time of that change, as
   the page view shows them (`changedPageForm()` in `src/features/pages/changed-page.ts`, see "Channel" in
   `content-structure.md`).

@@ -80,7 +80,7 @@ const MODES: { value: EditorMode; name: string }[] = [
   { value: "source", name: "Source" },
 ];
 
-/** Keeps the focus in the editor: the buttons do not take it on mouse down (R23). */
+/** Keeps the focus in the editor: the buttons do not take it on mouse down. */
 const keepFocus = (event: MouseEvent) => event.preventDefault();
 
 type EditorToolbarProps = {
@@ -93,10 +93,10 @@ type EditorToolbarProps = {
 };
 
 /**
- * The formatting toolbar above the editor (R14, R19): bold, italic, strikethrough, inline code, a heading menu, link,
+ * The formatting toolbar above the editor: bold, italic, strikethrough, inline code, a heading menu, link,
  * bullet list, numbered list and task list. Each button has an accessible name and a tooltip with its name and, for
- * bold, italic and link, its shortcut. A button leaves the focus in the editor (R23). The toolbar sticks to the top of
- * the window while the editor is in view and wraps its buttons on a narrow screen (R41, R30).
+ * bold, italic and link, its shortcut. A button leaves the focus in the editor. The toolbar sticks to the top of
+ * the window while the editor is in view and wraps its buttons on a narrow screen.
  */
 export default function EditorToolbar({ editor, mode, onModeChange }: EditorToolbarProps) {
   const apple = useApple();
@@ -206,7 +206,7 @@ export default function EditorToolbar({ editor, mode, onModeChange }: EditorTool
       </Menu>
       {iconButton(LINK_BUTTON)}
       {LIST_BUTTONS.map(iconButton)}
-      {/* The switch between the modes, at the right end, marks the current mode as pressed (R25). Two buttons of
+      {/* The switch between the modes, at the right end, marks the current mode as pressed. Two buttons of
           their own, each a stop of Tab: the group of Material UI has one stop, which does not follow the pressed
           button when the buttons never take the focus. */}
       <Box role="group" aria-label="Mode" sx={{ ml: "auto", display: "flex" }}>

@@ -1,4 +1,4 @@
-// The mode of the editor, live preview or source mode, remembered in the browser (R18). A module without imports, so
+// The mode of the editor, live preview or source mode, remembered in the browser. A module without imports, so
 // that the editor component reads it before the code of CodeMirror is loaded.
 
 /** The two modes of the editor. */
@@ -12,7 +12,7 @@ function parseMode(value: string | null): EditorMode {
   return value === "source" ? "source" : "live";
 }
 
-/** The mode last chosen in this browser; live preview without one and when the storage cannot be read (R18). */
+/** The mode last chosen in this browser; live preview without one and when the storage cannot be read. */
 export function readMode(storage: () => Pick<Storage, "getItem">): EditorMode {
   try {
     return parseMode(storage().getItem(MODE_STORAGE_KEY));

@@ -76,14 +76,15 @@ specs point here. A revert always changes the content (see `page-history.md`).
 A page has the address `/folders/<folder>/<page>.md` or, in a tab, `/folders/<folder>/<tab>/<page>.md`. Actions are
 given as `?action=<action>` (see `content-structure.md`).
 
-- `?action=new` on a folder or tab address: the editor for a new page. The content comes first; "Save" checks on the
+- `?action=new` on a folder or tab address: the Markdown editor for a new page (see `markdown-editor.md`). The content
+  comes first; "Save" checks on the
   client that it has a title, then asks for the name and the place in the "Save page" dialog, which shows the address
   the page will get. Saving shows the new page.
 - The page address: the breadcrumb, the time of the last update with its last editor and channel (see "Last editor"
   and "Channel" in `content-structure.md`), "Edit" and "Move or rename" for a Writer, "Delete" for a Manager (see
   `folder-roles.md`) and "History" for every role, then the rendered content. The content's `#` heading is the page's
   only level-one heading; the browser tab shows the stored title.
-- `?action=edit`: the content in the editor; no title or name field. Saving shows the page. A save is refused when
+- `?action=edit`: the content in the Markdown editor of `markdown-editor.md`; no title or name field. Saving shows the page. A save is refused when
   the page was changed after the editor was opened; the editor then shows the page as stored (see
   `optimistic-locking.md`).
 - `?action=move-or-rename`: see `content-structure.md`. `?action=delete`: see `page-deletion.md`.
@@ -189,9 +190,8 @@ Saves without a change:
   lasting rule (see `page-deletion.md`)
 - a page has one content in one language; the same page in several languages is not planned
 - no `[[wiki links]]`, no attachments
-- raw Markdown editing in a textarea
 - the title comes only from a leading `# Title` heading: no setext headings, no front matter, no live display of the
-  derived title while editing an existing page
+  derived title while editing
 - no redirects from the previous address after a page is renamed or moved
 - Markdown images only from the wiki itself: the browser blocks images of other hosts without a message in the page,
   and a `data:` image is shown as its Markdown text

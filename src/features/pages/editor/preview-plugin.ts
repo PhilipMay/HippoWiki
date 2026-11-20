@@ -1,5 +1,5 @@
 // The view plugin of live preview: it builds the decorations of `live-preview.ts` for the visible ranges, again when
-// the document, the selection or the viewport changes, and opens links with Ctrl+click or Cmd+click (R17).
+// the document, the selection or the viewport changes, and opens links with Ctrl+click or Cmd+click.
 
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import { Prec, type EditorState, type Extension } from "@codemirror/state";
@@ -103,7 +103,7 @@ const previewPlugin = ViewPlugin.fromClass(
     decorations: (plugin) => plugin.decorations,
     eventHandlers: {
       // Ctrl+click or Cmd+click opens a link in a new browser tab, so that the editor is never left; a plain click
-      // puts the cursor there, as does a tap on a touch screen, which has no modifier (R17, R34). Only an address that
+      // puts the cursor there, as does a tap on a touch screen, which has no modifier. Only an address that
       // the page view would make a link of opens.
       mousedown(event, view) {
         if (event.button !== 0 || !(event.ctrlKey || event.metaKey)) return false;
@@ -156,7 +156,7 @@ const previewTheme = EditorView.theme({
     cursor: "pointer",
     accentColor: palette.primary.main,
   },
-  // On a touch screen the box is a touch target of the minimum size of WCAG 2.2 (R30).
+  // On a touch screen the box is a touch target of the minimum size of WCAG 2.2.
   "@media (pointer: coarse)": {
     ".cm-lp-task": { width: "24px", height: "24px", verticalAlign: "middle" },
   },

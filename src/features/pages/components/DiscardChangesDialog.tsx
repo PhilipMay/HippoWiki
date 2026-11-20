@@ -19,7 +19,7 @@ type DiscardChangesDialogProps = {
 };
 
 /**
- * The dialog "Discard changes?" before the editor is left with unsaved changes (R35), with "Keep editing" focused once
+ * The dialog "Discard changes?" before the editor is left with unsaved changes, with "Keep editing" focused once
  * the dialog has entered, so that Enter keeps the work.
  */
 export default function DiscardChangesDialog({ open, onKeepEditing, onDiscard }: DiscardChangesDialogProps) {

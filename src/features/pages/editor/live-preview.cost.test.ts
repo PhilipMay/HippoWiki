@@ -10,7 +10,7 @@ import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 import { EDITOR_PAGE } from "@/test/editor-content";
 import { SLOW_INPUTS } from "@/test/slow-markdown";
 
-// Wall-clock budgets of live preview (R38): this file runs in the Vitest project `cost`, never under coverage and
+// Wall-clock budgets of live preview: this file runs in the Vitest project `cost`, never under coverage and
 // never next to other test files. The view plugin of live preview needs a view, so the tests build its decorations
 // with the pure function it calls, for the ranges the view would ask for.
 
@@ -58,7 +58,7 @@ function parsed(content: string): EditorState {
   return state;
 }
 
-describe("the cost of live preview (R38)", () => {
+describe("the cost of live preview", () => {
   it("builds the state, the tree, the decorations and the tables of the editor page within 2 s", () => {
     expect(EDITOR_PAGE.length).toBe(CONTENT_MAX_LENGTH);
     const start = performance.now();
@@ -68,7 +68,7 @@ describe("the cost of live preview (R38)", () => {
 
   for (const [name, content] of Object.entries(inputs)) {
     // The parser of the editor, @lezer/markdown, takes seconds for some of the slow inputs on its own, so the budget
-    // covers the code of live preview on the parsed tree (see "Phones and speed" in the step plan).
+    // covers the code of live preview on the parsed tree (see "Current limits" in `markdown-editor.md`).
     it(`builds the decorations and the tables of ${name} on the parsed tree within 2 s`, TIMEOUT, () => {
       expect(content.length).toBeLessThanOrEqual(CONTENT_MAX_LENGTH);
       const state = parsed(content);

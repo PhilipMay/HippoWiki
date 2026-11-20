@@ -21,7 +21,7 @@ const throwing = (): Storage => {
   throw new Error("The storage is blocked");
 };
 
-describe("the mode of the editor (R18)", () => {
+describe("the mode of the editor", () => {
   it.each(["live", "source"] as EditorMode[])("reads back the stored mode %s", (mode) => {
     const storage = memoryStorage();
     storeMode(() => storage, mode);

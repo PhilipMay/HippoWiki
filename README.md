@@ -15,6 +15,11 @@ The prototype manages wiki pages written in Markdown, organises them in folders 
 PostgreSQL: create, view, edit, move and rename pages, create and rename folders and tabs, delete pages and tabs and
 restore the pages from the deleted pages of their folder. Folders cannot be deleted yet.
 
+Pages are written in a Markdown editor (CodeMirror 6) with a live preview that shows the formatting while writing and
+the Markdown marks only on the lines of the cursor, and a source mode that shows the whole Markdown with syntax
+highlighting; with a formatting toolbar, lists continued on Enter, search and replace, a counter near the content
+limit and a question before leaving with unsaved changes, also on phones (`spec/markdown-editor.md`).
+
 Every folder can be searched from a search field on its pages: titles, names and content, in the language each page is
 written in, by parts of words and with typos, with phrases, excluded words and `or`. AI apps search their folder
 through MCP as well (`spec/search.md`).
@@ -251,6 +256,13 @@ order, is stated in "When a step is done" in `spec/step-plan-workflow.md`.
 `coverage/index.html`. The tests with a time budget (`*.cost.test.ts`) are left out; `npm run test:cost` runs them on
 their own, because coverage slows down every module. On GitHub, every run of the `unit_tests` workflow shows the coverage in its job summary and
 offers the HTML report as the artifact `coverage-report`.
+
+The speed of the Markdown editor is also checked by hand, with a page of 100,000 characters with tables and lists (see
+"Speed" in `spec/markdown-editor.md`). This copies that page to the clipboard on macOS, to paste it into the editor:
+
+```bash
+npx tsx -e 'import("./src/test/editor-content.ts").then((m) => process.stdout.write(m.EDITOR_PAGE))' | pbcopy
+```
 
 ## Container image
 

@@ -1,5 +1,5 @@
-// The formatting commands of the toolbar and its shortcuts (R20 to R24): pure commands on the editor state. Each is one
-// change with `isolateHistory`, so that it never joins the typing before it and one undo reverts it (R23).
+// The formatting commands of the toolbar and its shortcuts (see "Toolbar" in `markdown-editor.md`): pure commands on the editor state. Each is one
+// change with `isolateHistory`, so that it never joins the typing before it and one undo reverts it.
 
 import { isolateHistory } from "@codemirror/commands";
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
@@ -84,7 +84,7 @@ function markedElement(state: EditorState, range: SelectionRange, inline: Inline
 }
 
 /**
- * Bold, italic, strikethrough or inline code (R20): adds the marks around every selection range, or removes them when
+ * Bold, italic, strikethrough or inline code: adds the marks around every selection range, or removes them when
  * the range is already marked so, the marks just inside or just outside it; without a selection it inserts the pair
  * with the cursor between them, or removes an empty pair around the cursor.
  */
@@ -158,7 +158,7 @@ function lineMarks(text: string): LineMarks {
 type LineMark = "normal" | "heading1" | "heading2" | "heading3" | "bullet" | "numbered" | "task";
 
 /**
- * Heading 1 to 3, "Normal text", bullet list, numbered list and task list (R21): sets the mark on every line of the
+ * Heading 1 to 3, "Normal text", bullet list, numbered list and task list: sets the mark on every line of the
  * selection or on the line of the cursor, keeping the indent of the line; when every one of these lines already has it,
  * it removes it. A heading level replaces another level of any depth, a list mark another list mark, a numbered list
  * numbers the lines `1.`, `2.`, `3.`, and "Normal text" removes the heading mark. Empty lines of a selection of several
@@ -211,7 +211,7 @@ function setLineMark(kind: LineMark): StateCommand {
 const ADDRESS = "address";
 
 /**
- * A link (R22): `[selection](address)` with `address` selected; without a selection `[](address)` with the cursor in
+ * A link: `[selection](address)` with `address` selected; without a selection `[](address)` with the cursor in
  * the text part.
  */
 const insertLink: StateCommand = ({ state, dispatch }) => {
@@ -243,7 +243,7 @@ export const FORMAT_COMMANDS: Record<FormatAction, StateCommand> = {
   link: insertLink,
 };
 
-/** The shortcuts of bold, italic and link (R24), before the default keymap, whose Mod-i selects the parent syntax. */
+/** The shortcuts of bold, italic and link, before the default keymap, whose Mod-i selects the parent syntax. */
 export const formatKeymap = Prec.high(
   keymap.of([
     { key: "Mod-b", run: FORMAT_COMMANDS.bold },

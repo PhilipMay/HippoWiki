@@ -16,7 +16,7 @@ function tab(state: EditorState, direction: 1 | -1 = 1): EditorState {
   return state.update(indentTransaction(state, direction)).state;
 }
 
-describe("Tab and Shift+Tab (R26)", () => {
+describe("Tab and Shift+Tab", () => {
   it("nests a bullet item under the item above it, and Shift+Tab reverts it", () => {
     const indented = tab(stateOf("- a\n- |b"));
     expect(indented.doc.toString()).toBe("- a\n  - b");

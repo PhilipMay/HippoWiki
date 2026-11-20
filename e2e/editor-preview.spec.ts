@@ -36,7 +36,7 @@ async function editAtEnd(page: Page, content: string) {
 
 const INLINE = "**bold** *italic* ~~struck~~ `code` [link](https://example.com) <https://auto.example> www.example.com";
 
-test("inline elements and headings show formatted without their marks, except on the line of the cursor (R3, R6)", async ({
+test("inline elements and headings show formatted without their marks, except on the line of the cursor", async ({
   page,
 }) => {
   const errors = collectErrors(page);
@@ -71,7 +71,7 @@ test("inline elements and headings show formatted without their marks, except on
   expect(errors).toEqual([]);
 });
 
-test("a click on a link shows its Markdown; Ctrl+click opens only a safe address in a new tab (R17)", async ({
+test("a click on a link shows its Markdown; Ctrl+click opens only a safe address in a new tab", async ({
   page,
   context,
 }) => {
@@ -101,7 +101,7 @@ test("a click on a link shows its Markdown; Ctrl+click opens only a safe address
   expect(popups).toHaveLength(1);
 });
 
-test("an image shows as its Markdown and is not requested (R9)", async ({ page }) => {
+test("an image shows as its Markdown and is not requested", async ({ page }) => {
   const requested: string[] = [];
   page.on("request", (request) => {
     if (new URL(request.url()).pathname === "/x.png") requested.push(request.url());
@@ -115,7 +115,7 @@ test("an image shows as its Markdown and is not requested (R9)", async ({ page }
   expect(requested).toEqual([]);
 });
 
-test("the switch names both modes, marks the current one and keeps the text, the cursor and the history (R2, R4, R25)", async ({
+test("the switch names both modes, marks the current one and keeps the text, the cursor and the history", async ({
   page,
 }) => {
   await editAtEnd(page, "# Title\n\n**bold**");
@@ -152,7 +152,7 @@ test("the switch names both modes, marks the current one and keeps the text, the
   await expect(modeButton(page, "Live preview")).toHaveAttribute("aria-pressed", "true");
 });
 
-test("the editor starts in the mode last chosen in the browser, and in live preview in a fresh one (R18)", async ({
+test("the editor starts in the mode last chosen in the browser, and in live preview in a fresh one", async ({
   page,
   browser,
 }) => {
@@ -178,10 +178,7 @@ test("the editor starts in the mode last chosen in the browser, and in live prev
 });
 
 for (const mode of ["live preview", "source mode"]) {
-  test(`the stored content does not depend on the mode it was edited in: ${mode} (R5, R10)`, async ({
-    page,
-    context,
-  }) => {
+  test(`the stored content does not depend on the mode it was edited in: ${mode}`, async ({ page, context }) => {
     if (mode === "source mode") await startInSourceMode(context);
     const created = await createPage({ folder: handbook, name: "stored", content: "# Stored" });
     const content = "# Stored\n\n## Part\n\n**bold** [link](/x) ![img](/y.png)\n\nTitle\n===\n\n<b>html</b>\n";
@@ -198,9 +195,7 @@ for (const mode of ["live preview", "source mode"]) {
 
 const BLOCKS = "# Blocks\n\n- bullet\n1. numbered\n- [ ] open\n- [x] done\n\n> quote\n\n```\ncode\n```\n\n---\n\nlast";
 
-test("blocks show formatted while the cursor is on another line, and as Markdown on its lines (R6, R7)", async ({
-  page,
-}) => {
+test("blocks show formatted while the cursor is on another line, and as Markdown on its lines", async ({ page }) => {
   const errors = collectErrors(page);
   const editor = await editAtEnd(page, BLOCKS);
 
@@ -242,9 +237,7 @@ test("blocks show formatted while the cursor is on another line, and as Markdown
   expect(errors).toEqual([]);
 });
 
-test("a click on a task box ticks it in the text, Ctrl+Z unticks it, and only Save stores it (R16)", async ({
-  page,
-}) => {
+test("a click on a task box ticks it in the text, Ctrl+Z unticks it, and only Save stores it", async ({ page }) => {
   const created = await createPage({ folder: handbook, name: "tasks", content: "# Tasks\n\n- [ ] a\n\nlast" });
   await page.goto("/folders/handbook/tasks.md?action=edit");
   const editor = await editorReady(page);
@@ -269,7 +262,7 @@ test("a click on a task box ticks it in the text, Ctrl+Z unticks it, and only Sa
 
 const TABLE = "# Table\n\n| Left | Center | Right |\n| :--- | :---: | ---: |\n| a | **b** | c |\n| d | e | f |\n\nlast";
 
-test("a table shows rendered, and as its whole Markdown while the cursor is in it (R3, R8)", async ({ page }) => {
+test("a table shows rendered, and as its whole Markdown while the cursor is in it", async ({ page }) => {
   const errors = collectErrors(page);
   const editor = await editAtEnd(page, TABLE);
 
@@ -297,7 +290,7 @@ test("a table shows rendered, and as its whole Markdown while the cursor is in i
   expect(errors).toEqual([]);
 });
 
-test("a click on a cell of the rendered table puts the cursor at that cell in the Markdown (R8)", async ({ page }) => {
+test("a click on a cell of the rendered table puts the cursor at that cell in the Markdown", async ({ page }) => {
   const editor = await editAtEnd(page, TABLE);
 
   await editor.getByRole("table").getByRole("cell", { name: "e", exact: true }).click();

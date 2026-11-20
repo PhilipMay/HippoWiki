@@ -1,4 +1,4 @@
-// The address of a link in the editor as the page view reads it from the Markdown (R17): markdown-it decodes the
+// The address of a link in the editor as the page view reads it from the Markdown: markdown-it decodes the
 // backslash escapes and the entities of a link destination before it checks and links the address, so the editor
 // does the same before it decides whether a link shows formatted and before Ctrl+click opens it. The decoding follows
 // `unescapeAll` of markdown-it, with the same strict decoding of named entities of `entities`, without bringing

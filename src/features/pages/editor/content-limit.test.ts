@@ -18,7 +18,7 @@ function insert(state: EditorState, text: string, userEvent: string): EditorStat
   return state.update(state.replaceSelection(text), { userEvent, scrollIntoView: true }).state;
 }
 
-describe("contentLimit (R27)", () => {
+describe("contentLimit", () => {
   it("adds no typed character at the limit", () => {
     const state = stateOfLength(CONTENT_MAX_LENGTH);
     expect(insert(state, "y", "input.type").doc.length).toBe(CONTENT_MAX_LENGTH);
