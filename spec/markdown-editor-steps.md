@@ -30,7 +30,7 @@ names the IDs it covers.
 - [x] Toolbar
 - [x] Live preview of inline elements and the mode switch
 - [x] Live preview of blocks
-- [ ] Tables in live preview
+- [x] Tables in live preview
 - [ ] Leaving with unsaved changes
 - [ ] Phones and speed
 - [ ] Spec tests
@@ -437,6 +437,9 @@ exception of R3).
   elsewhere does not redraw them.
 - A click on a cell of the rendered table puts the cursor at the start of the text of that cell in the Markdown, which
   then shows the whole table as Markdown (R8).
+- The cursor passes over a block widget when it moves with the keyboard, so a move up or down from the line right
+  below or above a rendered table stops at the edge of the table instead, which then shows its Markdown: a table is
+  reached with the keyboard too.
 
 ### Test
 

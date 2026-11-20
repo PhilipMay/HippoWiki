@@ -266,3 +266,43 @@ test("a click on a task box ticks it in the text, Ctrl+Z unticks it, and only Sa
     "# Tasks\n\n- [x] a\n\nlast",
   );
 });
+
+const TABLE = "# Table\n\n| Left | Center | Right |\n| :--- | :---: | ---: |\n| a | **b** | c |\n| d | e | f |\n\nlast";
+
+test("a table shows rendered, and as its whole Markdown while the cursor is in it (R3, R8)", async ({ page }) => {
+  const errors = collectErrors(page);
+  const editor = await editAtEnd(page, TABLE);
+
+  const table = editor.getByRole("table");
+  await expect(table.getByRole("columnheader")).toHaveText(["Left", "Center", "Right"]);
+  await expect(table.getByRole("row")).toHaveCount(3);
+  await expect(table.getByRole("cell")).toHaveText(["a", "b", "c", "d", "e", "f"]);
+  const align = (name: string) =>
+    table.getByRole("cell", { name, exact: true }).evaluate((element) => getComputedStyle(element).textAlign);
+  expect([await align("d"), await align("e"), await align("f")]).toEqual(["left", "center", "right"]);
+  expect(await table.getByText("b", { exact: true }).evaluate((element) => getComputedStyle(element).fontWeight)).toBe(
+    "700",
+  );
+
+  // Up from the last line into the table: every line of it shows as Markdown, also those without the cursor.
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("ArrowUp");
+  await expect(editor.getByRole("table")).toHaveCount(0);
+  await expect
+    .poll(() => shownLines(page))
+    .toEqual(TABLE.split("\n").map((line, index) => (index === 0 ? "Table" : line)));
+
+  await page.keyboard.press("ControlOrMeta+End");
+  await expect(editor.getByRole("table")).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test("a click on a cell of the rendered table puts the cursor at that cell in the Markdown (R8)", async ({ page }) => {
+  const editor = await editAtEnd(page, TABLE);
+
+  await editor.getByRole("table").getByRole("cell", { name: "e", exact: true }).click();
+  await expect(editor.getByRole("table")).toHaveCount(0);
+  await page.keyboard.type("X");
+
+  await expectContent(page, TABLE.replace("| d | e | f |", "| d | Xe | f |"));
+});

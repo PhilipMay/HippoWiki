@@ -7,6 +7,7 @@ import { syntaxTree } from "@codemirror/language";
 import type { EditorState, Range, TransactionSpec } from "@codemirror/state";
 import { Decoration, WidgetType, type DecorationSet, type EditorView } from "@codemirror/view";
 
+import { touched } from "@/features/pages/editor/tables";
 import { isSafeAddress } from "@/features/pages/safe-address";
 
 /** The classes of live preview, which the theme of `preview-plugin.ts` styles. */
@@ -186,6 +187,16 @@ export function livePreviewDecorations(
         seen.add(key);
         // Images stay their Markdown text, the link syntax inside them included (R9).
         if (name === "Image") return false;
+
+        // A table is rendered by the field of `tables.ts`, or shows its whole Markdown while the cursor or a selection
+        // is in it: then no line of it is decorated (R8).
+        if (name === "Table") {
+          const first = lineOf(node.from);
+          const last = lineOf(node.to);
+          if (!touched(state, doc.line(first).from, doc.line(last).to)) return false;
+          for (let number = first; number <= last; number++) editing.add(number);
+          return;
+        }
 
         const heading = /^(?:ATXHeading|SetextHeading)([1-6])$/.exec(name);
         if (heading) {

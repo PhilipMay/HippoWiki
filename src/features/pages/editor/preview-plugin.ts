@@ -6,6 +6,7 @@ import { Prec, type EditorState, type Extension } from "@codemirror/state";
 import { EditorView, ViewPlugin, type DecorationSet, type ViewUpdate } from "@codemirror/view";
 
 import { livePreviewDecorations } from "@/features/pages/editor/live-preview";
+import { tables } from "@/features/pages/editor/tables";
 import { isSafeAddress } from "@/features/pages/safe-address";
 import { theme as appTheme } from "@/lib/theme";
 
@@ -162,6 +163,15 @@ const previewTheme = EditorView.theme({
     fontSize: "0.875em",
     backgroundColor: palette.action.hover,
   },
+  ".cm-lp-table": { overflowX: "auto", padding: "0.25em 0" },
+  ".cm-lp-table table": { borderCollapse: "collapse", cursor: "text" },
+  ".cm-lp-table th, .cm-lp-table td": {
+    border: `1px solid ${palette.divider}`,
+    padding: "0.25em 0.75em",
+    textAlign: "left",
+    verticalAlign: "top",
+  },
+  ".cm-lp-table th": { fontWeight: 600, backgroundColor: palette.action.hover },
   ".cm-lp-rule": {
     display: "inline-block",
     width: "100%",
@@ -173,5 +183,5 @@ const previewTheme = EditorView.theme({
 /** Live preview: its decorations, its link clicks and its styles. */
 export function livePreview(): Extension {
   // Over the theme of the editor, whose monospace font is that of source mode.
-  return [previewPlugin, Prec.highest(previewTheme)];
+  return [previewPlugin, tables, Prec.highest(previewTheme)];
 }
