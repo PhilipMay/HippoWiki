@@ -63,7 +63,8 @@ that leads the conversation with the user.
    commit (see "What may change"). Report that the requirements are approved, give the commit message, name anything
    found in other spec files or in `roadmap.md` (see "What may change"), and name the next step as information only:
    writing the step plan `spec/<feature>-steps.md`. Do not ask whether to write or implement the step plan, and do not
-   offer to.
+   offer to in the chat; offer it only as a card for the next session, as "Step plans" in `step-plan-workflow.md`
+   describes.
 
 ## Asking questions
 

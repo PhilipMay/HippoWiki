@@ -16,7 +16,17 @@ implements it.
   branch, without asking first. Stage only these two files. The message is a short lowercase summary, for example
   `plan search`. Do not push.
 - Then stop, so that the user can review the plan before any step is built. Report the steps of the plan and the
-  commit message. Do not say how to start implementing the plan, and do not offer to.
+  commit message. Do not say how to start implementing the plan, and do not offer to in the chat: the card for the
+  next session (see below) is the only offer.
+- At the end of a stage, the next stage is offered as a new session that the user starts with one click, never as a
+  hint or a question in the chat. In the Claude desktop app, call `start_session` with the initiation `own_initiative`,
+  the context `fresh` and `use_worktree: false`, so that the work stays on the current branch, and the prompt of the
+  next stage as the whole brief:
+  - After requirements are approved and committed: `Write the step plan for spec/<feature>-requirements.md`.
+  - After a new step plan is committed, and at a stop point once the push succeeded:
+    `Implement spec/<feature>-steps.md`.
+  - Nothing after a finished plan, a failed push or a session that stops early. Without that tool, for example in the
+    terminal CLI, nothing is offered.
 - A step plan has a goal, a scope (what is in, what is explicitly not in), an ordered checklist of steps, and for every
   step a "Goal", "Build" and "Test" section. "Test" lists the unit, integration and end-to-end tests the step adds (see
   `testing.md`), plus any manual checks that cannot be automated.

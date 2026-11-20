@@ -45,7 +45,7 @@ push.
 - If it does not exist, start it: write the step plan as the workflow describes, from `spec/<feature>-requirements.md`
   if that file exists (it must have the status `approved`), and add it to the spec catalog in `CLAUDE.md`. Then commit
   it, without pushing, and stop, as "Step plans" in `spec/step-plan-workflow.md` describes. Do not tell the user how
-  to implement it.
+  to implement it in the chat; the card for the next session that the workflow describes is the only offer.
 
 If no feature was given with the command, ask for it with the question tool. Offer the step plans in `spec/` that can be
 continued, the approved requirements files in `spec/` and the entries of `spec/roadmap.md`; the user can also name a new
