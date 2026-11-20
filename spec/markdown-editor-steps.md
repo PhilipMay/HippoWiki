@@ -25,7 +25,7 @@ names the IDs it covers.
 ## Checklist
 
 - [x] Editor in source mode
-- [ ] Editing comforts
+- [x] Editing comforts
 - [ ] Content limit and counter
 - [ ] Toolbar
 - [ ] Live preview of inline elements and the mode switch
@@ -164,14 +164,17 @@ while Esc then Tab leaves the editor (R11, R12, R13, R26).
 
 ### Build
 
-- Add `@codemirror/search` and `@lezer/highlight`.
+- Add `@codemirror/search`, `@lezer/highlight` and `@codemirror/language`, which the first step left out because its
+  code did not import it yet (knip reports a dependency that nothing imports).
 - Syntax highlighting in source mode: a `HighlightStyle` of the editor for the tags of the Markdown parser (headings,
   emphasis, strong, strikethrough, links and addresses, inline code and code blocks, list and quote marks, the other
   marks), with colors from the theme of `src/lib/theme.ts` (R11).
-- Enter: `insertNewlineContinueMarkup` of `@codemirror/lang-markdown`, through the keymap of `markdown()`: the next
-  item with the same mark, the next number, an unticked box after a task item, `> ` after a quote line; Enter on an
-  empty item or quote line ends the list or quote (R12). Its renumbering of the following items of a numbered list is
-  part of the same change and one undo reverts it.
+- Enter: `insertNewlineContinueMarkupCommand({ nonTightLists: false })` of `@codemirror/lang-markdown`, in a keymap
+  of the editor's own instead of the keymap of `markdown()`, whose command makes a tight list loose on an empty second
+  item instead of ending it: the next item with the same mark, the next number, an unticked box after a task item,
+  `> ` after a quote line; Enter on an empty item ends the list (R12). A command of its own before it ends a quote on
+  an empty quote line, which CodeMirror would continue until a second empty one. Its renumbering of the following
+  items of a numbered list is part of the same change and one undo reverts it.
 - Search and replace: `search()` with the search panel at the top of the editor and `searchKeymap`, opened with
   `Mod-f` while the editor has focus, with replace and replace all (R13). Replace all is one change in the history.
   The labels of the panel stay those of CodeMirror.
@@ -180,9 +183,9 @@ while Esc then Tab leaves the editor (R11, R12, R13, R26).
     item is indented to the content column of the item above it, so that it becomes its child (`- b` below `- a`
     becomes `  - b`, an item below `1. a` gets three spaces); any other line by the indent unit of the editor.
   - Shift+Tab outdents the same lines by the same rule, back to the column of the parent item.
-  - Esc, then Tab or Shift+Tab, moves the focus to the next or the previous control instead: the tab focus mode of
-    `@codemirror/view`, which Escape turns on for the next key, or a keymap of its own where that mode does not do
-    exactly this.
+  - Esc, then Tab or Shift+Tab, moves the focus to the next or the previous control instead. The tab focus mode of
+    `@codemirror/view` that Escape turns on lasts only two seconds, so the editor remembers Esc itself until the next
+    key that is not Tab or a modifier, and its Tab commands leave the key to the browser then.
 
 ### Test
 

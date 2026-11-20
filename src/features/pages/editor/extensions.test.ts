@@ -1,9 +1,16 @@
 import { redo, undo } from "@codemirror/commands";
-import { EditorState, type Transaction } from "@codemirror/state";
+import { ensureSyntaxTree } from "@codemirror/language";
+import { replaceAll, SearchQuery, setSearchQuery } from "@codemirror/search";
+import { EditorSelection, EditorState, type Transaction } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { describe, expect, it } from "vitest";
 
-import { editorExtensions, NEW_PAGE_PLACEHOLDER } from "@/features/pages/editor/extensions";
+import {
+  continueMarkup,
+  editorExtensions,
+  endEmptyQuote,
+  NEW_PAGE_PLACEHOLDER,
+} from "@/features/pages/editor/extensions";
 
 const OPTIONS = { labelId: "label", descriptionId: "description" };
 
@@ -65,5 +72,64 @@ describe("editorExtensions", () => {
     ["empty lines at the end", "# Title\n\n\n\n"],
   ])("gives back content with %s byte for byte (R5)", (_name, content) => {
     expect(stateOf(content).doc.toString()).toBe(content);
+  });
+});
+
+describe("Enter (R12)", () => {
+  /** The content after Enter with the cursor at the end of `doc`, as the keymap of the editor runs it. */
+  function enterAtEnd(doc: string): string {
+    const state = stateOf(doc).update({ selection: EditorSelection.cursor(doc.length) }).state;
+    ensureSyntaxTree(state, state.doc.length);
+    return run(state, (target) => endEmptyQuote(target) || continueMarkup(target)).doc.toString();
+  }
+
+  it.each([
+    ["a bullet item", "- one", "- one\n- "],
+    ["a numbered item", "1. one\n2. two\n3. three", "1. one\n2. two\n3. three\n4. "],
+    ["a ticked task item", "- [x] done", "- [x] done\n- [ ] "],
+    ["a quote line", "> quote", "> quote\n> "],
+  ])("after %s starts the next one with the same mark", (_name, doc, expected) => {
+    expect(enterAtEnd(doc)).toBe(expected);
+  });
+
+  it("renumbers the items after a new numbered item, as one change that one undo reverts", () => {
+    const doc = "1. one\n2. two";
+    const state = stateOf(doc).update({ selection: EditorSelection.cursor(6) }).state;
+    ensureSyntaxTree(state, state.doc.length);
+    const entered = run(state, continueMarkup);
+    expect(entered.doc.toString()).toBe("1. one\n2. \n3. two");
+    expect(run(entered, undo).doc.toString()).toBe(doc);
+  });
+
+  it.each([
+    ["the second item", "- one\n- ", "- one\n"],
+    ["the first item", "- ", ""],
+    ["a quote line", "> quote\n> ", "> quote\n"],
+    ["a nested quote line", "> > quote\n> > ", "> > quote\n> "],
+  ])("on an empty %s removes the mark and leaves an empty line", (_name, doc, expected) => {
+    expect(enterAtEnd(doc)).toBe(expected);
+  });
+
+  it("does not treat a > in a code block as a quote", () => {
+    expect(enterAtEnd("```\n>")).toBe("```\n>");
+  });
+});
+
+describe("replace all (R13)", () => {
+  it("replaces every occurrence, also inside marks, in one change that one undo reverts", () => {
+    const doc = "# word\n\n**word** and word";
+    const searching = stateOf(doc).update({
+      effects: setSearchQuery.of(new SearchQuery({ search: "word", replace: "term" })),
+    }).state;
+    const view = {
+      state: searching,
+      dispatch: (spec: Parameters<EditorView["dispatch"]>[0]) => {
+        view.state = view.state.update(spec as never).state;
+      },
+    };
+
+    expect(replaceAll(view as unknown as EditorView)).toBe(true);
+    expect(view.state.doc.toString()).toBe("# term\n\n**term** and term");
+    expect(run(view.state, undo).doc.toString()).toBe(doc);
   });
 });

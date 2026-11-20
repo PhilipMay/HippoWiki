@@ -275,3 +275,93 @@ test.describe("the code of the editor (R39)", () => {
     expect(await loadsEditorCode(page, "/folders/handbook/plan.md?action=edit", () => editorReady(page))).toBe(true);
   });
 });
+
+test("source mode colors headings, emphasis, links, code and list marks differently from plain text (R11)", async ({
+  page,
+}) => {
+  await createPage({
+    folder: handbook,
+    name: "colors",
+    content: "# Heading\n\nplain words\n\n*emph* [link](/x) `code`\n\n- item",
+  });
+
+  await page.goto("/folders/handbook/colors.md?action=edit");
+
+  const editor = await editorReady(page);
+  const color = (element: Element) => getComputedStyle(element).color;
+  const plain = await editor.getByText("plain words", { exact: true }).evaluate(color);
+  for (const text of ["Heading", "emph", "link", "code", "-"]) {
+    expect(await editor.getByText(text, { exact: true }).evaluate(color), text).not.toBe(plain);
+  }
+});
+
+test("Enter at the end of a list item continues the list (R12)", async ({ page }) => {
+  await page.goto("/folders/handbook?action=new");
+  await fillContent(page, "# List\n\n- one");
+
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("two");
+
+  await expectContent(page, "# List\n\n- one\n- two");
+});
+
+test("Ctrl+F opens the search, and replace all replaces every occurrence in one step that one undo reverts (R13)", async ({
+  page,
+}) => {
+  const content = "# Word\n\nword and **word**, then word";
+  await createPage({ folder: handbook, name: "search", content });
+
+  await page.goto("/folders/handbook/search.md?action=edit");
+  const editor = await editorReady(page);
+  await editor.press("ControlOrMeta+f");
+
+  const find = page.getByRole("textbox", { name: "Find" });
+  await expect(find).toBeFocused();
+  await find.fill("word");
+  await page.getByRole("textbox", { name: "Replace" }).fill("term");
+  await page.getByRole("button", { name: "replace all" }).click();
+
+  // The search ignores case by default, so the heading is found as well.
+  await expectContent(page, "# term\n\nterm and **term**, then term");
+  await editor.focus();
+  await page.keyboard.press("ControlOrMeta+z");
+  await expectContent(page, content);
+});
+
+test.describe("Tab and Esc (R26)", () => {
+  test("Tab nests a list item under the item above it, Shift+Tab reverts it", async ({ page }) => {
+    await page.goto("/folders/handbook?action=new");
+    await fillContent(page, "# List\n\n- a\n- b");
+
+    await page.keyboard.press("Tab");
+    await expectContent(page, "# List\n\n- a\n  - b");
+    await expect(contentEditor(page)).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    await expectContent(page, "# List\n\n- a\n- b");
+  });
+
+  test("Esc then Tab focuses the control after the editor, Esc then Shift+Tab the one before it", async ({ page }) => {
+    await createPage({ folder: handbook, name: "plan", content: "# Plan\n\n- a\n- b" });
+
+    await page.goto("/folders/handbook/plan.md?action=edit");
+    const editor = await editorReady(page);
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Tab");
+    await expect(page.getByRole("button", { name: "Save" })).toBeFocused();
+
+    await editor.focus();
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Shift+Tab");
+    await expect(editor).not.toBeFocused();
+    // The focused control lies before the editor in the page.
+    expect(
+      await editor.evaluate(
+        (element) =>
+          document.activeElement !== null &&
+          document.activeElement !== document.body &&
+          (document.activeElement.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
+      ),
+    ).toBe(true);
+    await expectContent(page, "# Plan\n\n- a\n- b");
+  });
+});
