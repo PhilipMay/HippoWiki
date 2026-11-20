@@ -28,6 +28,8 @@ file itself holds.
 - `spec/folder-roles.md`: Who may see and do what with a folder?
 - `spec/search.md`: How are the pages of a folder searched, in the browser and through MCP?
 - `spec/roadmap.md`: Which features may come later, and what is still to check?
+- `spec/wiki-link-ideas.md`: How do other wikis and note tools handle wiki links, and which options follow for
+  HippoWiki?
 - `spec/issue-report.md`: How is an issue of a review of code or documents reported?
 - `spec/review-report.md`: Which findings of the security and code review are open? A fixed finding is deleted, and
   the file with its last finding.
