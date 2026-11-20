@@ -1,6 +1,7 @@
 // Where the history of a page lives, so that the views of the history serve the page address and the address of a
 // deleted page alike: the components build no addresses themselves.
 
+import { mayDoFolderAction } from "@/features/folders/folder-query";
 import type { DeletedPage, PageWithPlace } from "@/features/pages/service";
 import {
   deletedPageComparePath,
@@ -17,6 +18,10 @@ import {
 /** The place of the history of a page: its breadcrumb and the addresses its views link to. */
 export type HistoryPlace = {
   folderName: string;
+  /** The id of the folder, which the wiki links of a revision are resolved in. */
+  folderId: string;
+  /** Whether the user may create pages in the folder, so that a missing wiki link leads to the editor of a new page. */
+  mayCreatePages: boolean;
   /** The tab of the page, or `null` for a page placed directly in its folder and for a deleted page. */
   tabName: string | null;
   /** Whether the page is deleted: its breadcrumb leads through the deleted pages of its folder. */
@@ -44,6 +49,8 @@ export function pageHistoryPlace(page: PageWithPlace): HistoryPlace {
   const tab = page.tab?.name ?? null;
   return {
     folderName: folder,
+    folderId: page.folder.id,
+    mayCreatePages: mayDoFolderAction(page.role, "new"),
     tabName: tab,
     deleted: false,
     searchFolderName: folder,
@@ -60,6 +67,9 @@ export function deletedPageHistoryPlace(page: DeletedPage): HistoryPlace {
   const folder = page.folder.name;
   return {
     folderName: folder,
+    folderId: page.folder.id,
+    // Only a Manager or Owner reads a deleted page, and both may create pages.
+    mayCreatePages: true,
     tabName: null,
     deleted: true,
     searchFolderName: null,

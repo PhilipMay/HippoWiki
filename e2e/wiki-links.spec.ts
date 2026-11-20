@@ -1,11 +1,21 @@
 // Wiki links in the page view, the limit of wiki links of a page and their plain text in titles. The editor's live
 // preview of wiki links has a spec of its own.
 
+import type { Page as BrowserPage } from "@playwright/test";
+
 import { CONTENT_MAX_WIKI_LINKS } from "@/features/pages/limits";
 import { CONTENT_WIKI_LINKS_MESSAGE } from "@/features/pages/schema";
 
 import { collectErrors } from "./support/browser";
-import { createFolder, createPage, getTestDb, resetTestDatabase } from "./support/database";
+import {
+  createFolder,
+  createPage,
+  createRevisions,
+  createTab,
+  getTestDb,
+  resetTestDatabase,
+  setOwnRole,
+} from "./support/database";
 import { contentEditor, expectContent, fillContent } from "./support/editor";
 import { expect, test } from "./support/test";
 
@@ -75,4 +85,277 @@ test("a page whose heading holds a wiki link gets its label, or its target, in t
   expect(
     (await getTestDb().page.findMany({ select: { title: true }, orderBy: { title: "asc" } })).map((p) => p.title),
   ).toEqual(["About guides/setup", "About the setup"]);
+});
+
+test.describe("wiki links in the page view", () => {
+  let guides: Awaited<ReturnType<typeof createTab>>;
+
+  test.beforeEach(async () => {
+    guides = await createTab({ folder: handbook, name: "guides" });
+    await createPage({ folder: handbook, name: "setup", content: "# Setup\n\nDirectly in the folder." });
+    await createPage({ tab: guides, name: "setup", content: "# Setup guide\n\nIn the tab." });
+  });
+
+  /** The article of the page view. */
+  function article(page: BrowserPage) {
+    return page.getByRole("article");
+  }
+
+  test("[[setup]] and [[guides/setup]] lead to the page directly in the folder and to the page in the tab, from either place (R5, R6)", async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    const content = "# Links\n\n[[setup]] and [[guides/setup]] and [[guides/setup|the setup]]";
+    await createPage({ folder: handbook, name: "links", content });
+    await createPage({ tab: guides, name: "links", content });
+
+    for (const address of ["/folders/handbook/links.md", "/folders/handbook/guides/links.md"]) {
+      await page.goto(address);
+      await expect(article(page).getByRole("link", { name: "Setup", exact: true })).toHaveAttribute(
+        "href",
+        "/folders/handbook/setup.md",
+      );
+      await expect(article(page).getByRole("link", { name: "Setup guide" })).toHaveAttribute(
+        "href",
+        "/folders/handbook/guides/setup.md",
+      );
+      await expect(article(page).getByRole("link", { name: "the setup" })).toHaveAttribute(
+        "href",
+        "/folders/handbook/guides/setup.md",
+      );
+    }
+    await article(page).getByRole("link", { name: "Setup guide" }).click();
+    await expect(page).toHaveURL("/folders/handbook/guides/setup.md");
+    expect(errors).toEqual([]);
+  });
+
+  test("a link without a label shows the new title of its page without a change of the linking page (R6)", async ({
+    page,
+  }) => {
+    const links = await createPage({ folder: handbook, name: "links", content: "# Links\n\n[[guides/setup]]" });
+    await page.goto("/folders/handbook/guides/setup.md?action=edit");
+    await fillContent(page, "# Installation guide\n\nIn the tab.");
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page).toHaveURL("/folders/handbook/guides/setup.md");
+
+    await page.goto("/folders/handbook/links.md");
+    await expect(article(page).getByRole("link", { name: "Installation guide" })).toBeVisible();
+    expect(await getTestDb().page.findUniqueOrThrow({ where: { id: links.id } })).toEqual(links);
+  });
+
+  test("a link to a missing page is marked, with its hint for pointer and screen reader users (R14)", async ({
+    page,
+  }) => {
+    await createPage({ folder: handbook, name: "links", content: "# Links\n\n[[no-such-page]] and [[setup]]" });
+    await page.goto("/folders/handbook/links.md");
+
+    const missing = article(page).getByRole("link", { name: "no-such-page" });
+    await expect(missing).toHaveAccessibleDescription("Page does not exist");
+    await expect(missing).toHaveAttribute("title", "Page does not exist");
+    await expect(missing).toHaveCSS("text-decoration-style", "dashed");
+    const existing = article(page).getByRole("link", { name: "Setup", exact: true });
+    await expect(existing).toHaveAccessibleDescription("");
+    await expect(existing).not.toHaveCSS("text-decoration-style", "dashed");
+    expect(await missing.evaluate((element) => getComputedStyle(element).color)).not.toBe(
+      await existing.evaluate((element) => getComputedStyle(element).color),
+    );
+  });
+
+  test("a Writer follows a missing link to the editor with its name and place preset, and the link then leads to the new page (R15, R33)", async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    await createPage({ folder: handbook, name: "links", content: "# Links\n\n[[guides/faq]]" });
+    await page.goto("/folders/handbook/links.md");
+    await article(page).getByRole("link", { name: "guides/faq" }).click();
+
+    await expect(page).toHaveURL("/folders/handbook/guides?action=new&name=faq");
+    await fillContent(page, "# Frequently asked questions");
+    await page.getByRole("button", { name: "Save" }).click();
+    const dialog = page.getByRole("dialog", { name: "Save page" });
+    await expect(dialog.getByLabel("Name")).toHaveValue("faq");
+    await expect(dialog.getByRole("radio", { name: "Tab guides" })).toBeChecked();
+    await dialog.getByRole("button", { name: "Save" }).click();
+    await expect(page).toHaveURL("/folders/handbook/guides/faq.md");
+
+    await page.goto("/folders/handbook/links.md");
+    await expect(article(page).getByRole("link", { name: "Frequently asked questions" })).toHaveAttribute(
+      "href",
+      "/folders/handbook/guides/faq.md",
+    );
+    expect(errors).toEqual([]);
+  });
+
+  test("a Reader sees a missing link as marked text without a link (R15)", async ({ page }) => {
+    await createPage({ folder: handbook, name: "links", content: "# Links\n\n[[guides/faq]]" });
+    await setOwnRole(handbook, "reader");
+    await page.goto("/folders/handbook/links.md");
+
+    const missing = article(page).getByText("guides/faq");
+    await expect(missing).toHaveAccessibleDescription("Page does not exist");
+    await expect(missing).toHaveCSS("text-decoration-style", "dashed");
+    await expect(article(page).getByRole("paragraph").getByRole("link")).toHaveCount(0);
+  });
+
+  for (const role of ["writer", "reader"] as const) {
+    test(`a target that breaks the name rule or names a missing tab is marked text with its hint for a ${role} (R13, R19, R25)`, async ({
+      page,
+    }) => {
+      await createPage({ folder: handbook, name: "setup-guide", content: "# Setup guide page" });
+      await createPage({
+        folder: handbook,
+        name: "links",
+        content:
+          "# Links\n\n[[Setup Guide]] [[setup.md]] [[Guides/Setup]] [[guides/setup/more]] [[setup#install]] " +
+          "[[nosuchtab/setup]] ![[setup]]",
+      });
+      await setOwnRole(handbook, role);
+      await page.goto("/folders/handbook/links.md");
+
+      for (const text of ["Setup Guide", "setup.md", "Guides/Setup", "guides/setup/more", "setup#install"]) {
+        const marked = article(page).getByText(text, { exact: true });
+        await expect(marked).toHaveAccessibleDescription("Not a valid page name");
+        await expect(marked).toHaveCSS("text-decoration-style", "dashed");
+      }
+      await expect(article(page).getByText("nosuchtab/setup", { exact: true })).toHaveAccessibleDescription(
+        "Tab does not exist",
+      );
+      // `![[setup]]` is the text ! and a link; nothing else is a link.
+      await expect(article(page).getByRole("paragraph").getByRole("link")).toHaveText(["Setup"]);
+      await expect(article(page).getByRole("paragraph").filter({ hasText: "Setup Guide" })).toContainText("!Setup");
+    });
+  }
+
+  test("a label keeps its asterisks and a link in a table cell takes \\| (R18)", async ({ page }) => {
+    await createPage({
+      folder: handbook,
+      name: "links",
+      content: "# Links\n\n[[setup|**Setup**]]\n\n| Page |\n| --- |\n| [[guides/setup\\|The guide]] |",
+    });
+    await page.goto("/folders/handbook/links.md");
+
+    await expect(article(page).getByRole("link", { name: "**Setup**" })).toHaveAttribute(
+      "href",
+      "/folders/handbook/setup.md",
+    );
+    await expect(article(page).getByRole("cell").getByRole("link", { name: "The guide" })).toHaveAttribute(
+      "href",
+      "/folders/handbook/guides/setup.md",
+    );
+  });
+
+  test("a code span, a code block, \\[[ and a link over a line break are text (R31)", async ({ page }) => {
+    await createPage({
+      folder: handbook,
+      name: "links",
+      content: "# Links\n\n`[[setup]]`\n\n```\n[[setup]]\n```\n\n\\[[setup]]\n\n[[setup\n]]",
+    });
+    await page.goto("/folders/handbook/links.md");
+
+    await expect(article(page).getByRole("paragraph").getByRole("link")).toHaveCount(0);
+    await expect(article(page).locator("code")).toHaveText(["[[setup]]", "[[setup]]\n"]);
+    await expect(article(page)).toContainText("[[setup]]");
+  });
+
+  test("a label shows as text, never as HTML (R32)", async ({ page }) => {
+    await createPage({ folder: handbook, name: "links", content: "# Links\n\n[[setup|<b>x</b>]]" });
+    await page.goto("/folders/handbook/links.md");
+
+    await expect(article(page).getByRole("link", { name: "<b>x</b>" })).toBeVisible();
+    await expect(article(page).locator("b")).toHaveCount(0);
+  });
+
+  test("a link into a deleted page shows as missing to a Manager and a Reader, and leads to it again once it is restored under its name (R20)", async ({
+    page,
+  }) => {
+    await createPage({ folder: handbook, name: "links", content: "# Links\n\n[[guides/setup]]" });
+    await page.goto("/folders/handbook/guides/setup.md?action=delete");
+    await page.getByRole("dialog", { name: "Delete page" }).getByRole("button", { name: "Delete" }).click();
+    await expect(page).toHaveURL("/folders/handbook/guides");
+
+    await page.goto("/folders/handbook/links.md");
+    await expect(article(page).getByRole("link", { name: "guides/setup" })).toHaveAccessibleDescription(
+      "Page does not exist",
+    );
+    await setOwnRole(handbook, "reader");
+    await page.reload();
+    await expect(article(page).getByText("guides/setup", { exact: true })).toHaveAccessibleDescription(
+      "Page does not exist",
+    );
+
+    await setOwnRole(handbook, "manager");
+    const deleted = await getTestDb().page.findFirstOrThrow({ where: { deletedAt: { not: null } } });
+    await page.goto(`/deleted-pages/handbook/${deleted.id}?action=restore`);
+    const restore = page.getByRole("dialog", { name: "Restore page" });
+    await restore.getByRole("radio", { name: "Tab guides" }).check();
+    await restore.getByRole("button", { name: "Save" }).click();
+    await expect(page).toHaveURL("/folders/handbook/guides/setup.md");
+
+    await page.goto("/folders/handbook/links.md");
+    await expect(article(page).getByRole("link", { name: "Setup guide" })).toHaveAttribute(
+      "href",
+      "/folders/handbook/guides/setup.md",
+    );
+  });
+
+  test("a link into a page restored under another name stays missing and no page is changed (R20)", async ({
+    page,
+  }) => {
+    const links = await createPage({ folder: handbook, name: "links", content: "# Links\n\n[[guides/setup]]" });
+    const setup = await getTestDb().page.findFirstOrThrow({ where: { name: "setup", tabId: guides.id } });
+    await getTestDb().page.update({ where: { id: setup.id }, data: { deletedAt: new Date(), tabId: null } });
+
+    await page.goto(`/deleted-pages/handbook/${setup.id}?action=restore`);
+    const restore = page.getByRole("dialog", { name: "Restore page" });
+    await restore.getByLabel("Name").fill("install");
+    await restore.getByRole("radio", { name: "Tab guides" }).check();
+    await restore.getByRole("button", { name: "Save" }).click();
+    await expect(page).toHaveURL("/folders/handbook/guides/install.md");
+
+    await page.goto("/folders/handbook/links.md");
+    await expect(article(page).getByRole("link", { name: "guides/setup" })).toHaveAccessibleDescription(
+      "Page does not exist",
+    );
+    expect(await getTestDb().page.findUniqueOrThrow({ where: { id: links.id } })).toEqual(links);
+  });
+
+  test("an old revision and a deleted page show their links resolved against the folder as it is now (R22, R33)", async ({
+    page,
+  }) => {
+    const links = await createPage({ folder: handbook, name: "links", content: "# Links\n\n[[faq]] first" });
+    await createRevisions({ page: links, count: 1, content: () => "# Links\n\n[[faq]] second" });
+    await page.goto("/folders/handbook/links.md?view=revision&revision=1");
+    await expect(article(page).getByRole("link", { name: "faq" })).toHaveAccessibleDescription("Page does not exist");
+
+    await createPage({ folder: handbook, name: "faq", content: "# FAQ" });
+    await page.reload();
+    await expect(article(page).getByRole("link", { name: "FAQ" })).toHaveAttribute("href", "/folders/handbook/faq.md");
+    await page.goto("/folders/handbook/links.md");
+    await expect(article(page).getByRole("link", { name: "FAQ" })).toHaveAttribute("href", "/folders/handbook/faq.md");
+
+    const deleted = await createPage({
+      folder: handbook,
+      name: "old",
+      content: "# Old\n\n[[guides/setup]] and [[gone]]",
+      deletedAt: new Date(),
+    });
+    await page.goto(`/deleted-pages/handbook/${deleted.id}`);
+    await expect(article(page).getByRole("link", { name: "Setup guide" })).toHaveAttribute(
+      "href",
+      "/folders/handbook/guides/setup.md",
+    );
+    await expect(article(page).getByRole("link", { name: "gone" })).toHaveAccessibleDescription("Page does not exist");
+    await page.goto(`/deleted-pages/handbook/${deleted.id}?view=revision&revision=1`);
+    await expect(article(page).getByRole("link", { name: "Setup guide" })).toBeVisible();
+  });
+
+  test("the page view under the delete dialog shows the links", async ({ page }) => {
+    await createPage({ folder: handbook, name: "links", content: "# Links\n\n[[setup]]" });
+    await page.goto("/folders/handbook/links.md?action=delete");
+    await expect(
+      page
+        .getByRole("article", { includeHidden: true })
+        .getByRole("link", { name: "Setup", exact: true, includeHidden: true }),
+    ).toHaveAttribute("href", "/folders/handbook/setup.md");
+  });
 });

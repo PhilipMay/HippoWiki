@@ -2032,3 +2032,71 @@ describe("content saves without a change", () => {
     expect((await revisionsOf(page.id)).map(({ number }) => number)).toEqual([1, 2, 3]);
   });
 });
+
+describe("the resolution of wiki links", () => {
+  it("resolves [[setup]] to the page directly in the folder and [[guides/setup]] to the page in the tab (R5)", async () => {
+    const folder = await createFolder();
+    const guides = await createTab({ folder, name: "guides" });
+    await createPage({ folder, name: "setup", content: "# Setup" });
+    await createPage({ tab: guides, name: "setup", content: "# Setup guide" });
+    await createTab({ folder, name: "empty" });
+
+    expect(
+      await pageService.resolveWikiLinks(
+        actor,
+        folder.id,
+        "[[setup]] [[guides/setup]] [[empty/setup]] [[faq]] [[x/y]]",
+      ),
+    ).toEqual({
+      titles: new Map([
+        ["setup", "Setup"],
+        ["guides/setup", "Setup guide"],
+      ]),
+      tabs: new Set(["guides", "empty"]),
+    });
+  });
+
+  it("finds nothing of another folder", async () => {
+    const folder = await createFolder();
+    const other = await createFolder({ roles: owners(user) });
+    await createPage({ folder: other, name: "setup", content: "# Elsewhere" });
+    await createTab({ folder: other, name: "guides" });
+
+    expect(await pageService.resolveWikiLinks(actor, folder.id, "[[setup]] [[guides/setup]]")).toEqual({
+      titles: new Map(),
+      tabs: new Set(),
+    });
+  });
+
+  it("finds no deleted page and no deleted tab, and a restored page again (R20)", async () => {
+    const folder = await createFolder();
+    const guides = await createTab({ folder, name: "guides" });
+    const setup = await createPage({ tab: guides, name: "setup", content: "# Setup guide" });
+    const direct = await createPage({ folder, name: "faq", content: "# FAQ" });
+    const links = "[[guides/setup]] [[faq]]";
+
+    await pageService.deletePage(actor, direct.id, { version: direct.version });
+    await folderService.deleteTab(actor, folder.id, guides.id);
+    expect(await pageService.resolveWikiLinks(actor, folder.id, links)).toEqual({ titles: new Map(), tabs: new Set() });
+
+    await pageService.restorePage(actor, direct.id, { name: "faq", tabId: null });
+    const docs = await createTab({ folder, name: "guides" });
+    await pageService.restorePage(actor, setup.id, { name: "setup", tabId: docs.id });
+    expect(await pageService.resolveWikiLinks(actor, folder.id, links)).toEqual({
+      titles: new Map([
+        ["guides/setup", "Setup guide"],
+        ["faq", "FAQ"],
+      ]),
+      tabs: new Set(["guides"]),
+    });
+  });
+
+  it("returns null for a user without a role and for an admin", async () => {
+    const folder = await createFolder();
+    const bob = await createBob();
+    const admin = await createUser({ type: "admin" });
+
+    expect(await pageService.resolveWikiLinks(inBrowser(bob), folder.id, "[[setup]]")).toBeNull();
+    expect(await pageService.resolveWikiLinks(inBrowser(admin), folder.id, "[[setup]]")).toBeNull();
+  });
+});

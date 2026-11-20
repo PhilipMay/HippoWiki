@@ -11,6 +11,7 @@ import type { ReactNode } from "react";
 import Link from "@/components/Link";
 import HistoryBreadcrumbs from "@/features/pages/components/HistoryBreadcrumbs";
 import MarkdownContent from "@/features/pages/components/MarkdownContent";
+import type { WikiLinkContext } from "@/features/pages/components/markdownToReact";
 import RevisionLine from "@/features/pages/components/RevisionLine";
 import type { HistoryPlace } from "@/features/pages/components/history-place";
 import SearchField from "@/features/search/components/SearchField";
@@ -22,6 +23,8 @@ type RevisionViewProps = {
   revision: RevisionDetail;
   /** Whether the address asks for the Markdown source instead of the rendered content. */
   raw: boolean;
+  /** What the wiki links of the rendered content lead to; `null` for the Markdown source. */
+  links: WikiLinkContext | null;
   /**
    * The address of the "Revert page" dialog for the revision, or `null` where there is no "Revert": for a role below
    * Writer, for a revision with the content of the page now, and for a deleted page.
@@ -71,7 +74,7 @@ function CompareForm({ place, number }: { place: HistoryPlace; number: number })
  * a link to the current page, the switch "Rendered | Raw", which is part of the address, "Compare" for every revision
  * but the first, "Revert" where it is offered, and the content in the chosen form.
  */
-export default function RevisionView({ place, revision, raw, revertHref = null, children }: RevisionViewProps) {
+export default function RevisionView({ place, revision, raw, links, revertHref = null, children }: RevisionViewProps) {
   const forms = [
     { label: "Rendered", href: place.revisionHref(revision.number), current: !raw },
     { label: "Raw", href: place.revisionHref(revision.number, true), current: raw },
@@ -127,7 +130,7 @@ export default function RevisionView({ place, revision, raw, revertHref = null, 
             {revision.content}
           </Box>
         ) : (
-          <MarkdownContent>{revision.content}</MarkdownContent>
+          <MarkdownContent links={links ?? undefined}>{revision.content}</MarkdownContent>
         )}
       </Paper>
       {children}

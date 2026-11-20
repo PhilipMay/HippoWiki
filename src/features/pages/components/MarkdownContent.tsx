@@ -1,16 +1,16 @@
 import Box from "@mui/material/Box";
 import type { ReactNode } from "react";
 
-import { markdownToReact } from "@/features/pages/components/markdownToReact";
+import { markdownToReact, type WikiLinkContext } from "@/features/pages/components/markdownToReact";
 import { logger } from "@/lib/logger";
 
 /**
  * The page view of the content, or its source as text if parsing or converting it fails, so that the page and its
  * actions stay usable. The error is logged without the content.
  */
-function renderContent(content: string): ReactNode {
+function renderContent(content: string, links: WikiLinkContext | undefined): ReactNode {
   try {
-    return markdownToReact(content);
+    return markdownToReact(content, links);
   } catch (err) {
     logger.error({ err }, "markdown could not be rendered");
     return <pre>{content}</pre>;
@@ -20,9 +20,10 @@ function renderContent(content: string): ReactNode {
 /**
  * Renders Markdown, parsed by markdown-it with the features of GitHub Flavored Markdown that `markdown.ts` sets up, as
  * Material UI typography. Raw HTML inside the Markdown is shown as text, and a link or image with an unsafe address,
- * such as `javascript:`, stays its Markdown text.
+ * such as `javascript:`, stays its Markdown text. Wiki links become links with `links`, which every view of content
+ * gives, and show their plain text without it.
  */
-export default function MarkdownContent({ children }: { children: string }) {
+export default function MarkdownContent({ children, links }: { children: string; links?: WikiLinkContext }) {
   return (
     // `sx` must be a plain object: this is a Server Component, and functions cannot be passed to Client Components.
     <Box
@@ -60,7 +61,7 @@ export default function MarkdownContent({ children }: { children: string }) {
         "& img": { maxWidth: "100%" },
       }}
     >
-      {renderContent(children)}
+      {renderContent(children, links)}
     </Box>
   );
 }

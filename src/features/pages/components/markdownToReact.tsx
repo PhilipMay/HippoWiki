@@ -11,7 +11,47 @@ import TableContainer from "@mui/material/TableContainer";
 import Typography, { type TypographyProps } from "@mui/material/Typography";
 import { Fragment, type ReactNode } from "react";
 
-import { type ListMeta, parseMarkdown, plainText, type TaskMeta, type Token } from "@/features/pages/markdown";
+import Link from "@/components/Link";
+import {
+  isWikiLink,
+  type ListMeta,
+  parseMarkdown,
+  plainText,
+  type TaskMeta,
+  type Token,
+} from "@/features/pages/markdown";
+import type { WikiLinkResolution } from "@/features/pages/service";
+import { wikiLinkTargetText } from "@/features/pages/wiki-link-target";
+import { newPagePath, pagePath } from "@/lib/addresses";
+
+/**
+ * What the page view needs to show wiki links as links: the folder of the content, whether the user may create pages
+ * there, and what the links lead to in the folder as it is now. Without it, a wiki link shows its plain text.
+ */
+export type WikiLinkContext = { folderName: string; mayCreatePages: boolean; resolution: WikiLinkResolution };
+
+/**
+ * The hints of a wiki link that leads to no page, for pointer users as the title of the element and for screen reader
+ * users as its description, from an element of the page view that only describes (`WikiLinkHints`).
+ */
+const WIKI_LINK_HINTS = {
+  missing: { id: "wiki-link-hint-missing", text: "Page does not exist" },
+  invalid: { id: "wiki-link-hint-invalid", text: "Not a valid page name" },
+  noTab: { id: "wiki-link-hint-no-tab", text: "Tab does not exist" },
+} as const;
+
+type WikiLinkHint = keyof typeof WIKI_LINK_HINTS;
+
+/**
+ * The mark of a wiki link that leads to no page: a color of its own and, as a cue that does not rely on color, a
+ * dashed underline.
+ */
+const MISSING_LINK_STYLE = {
+  color: "error.main",
+  textDecorationLine: "underline",
+  textDecorationStyle: "dashed",
+  textUnderlineOffset: "0.2em",
+} as const;
 
 /**
  * The prefix of every id the page view gives an element. Ids of the content cannot then clobber a global of the DOM,
@@ -210,8 +250,74 @@ function containerElement(open: Token, children: ReactNode[], key: string): Reac
   }
 }
 
+/**
+ * The element of a wiki link: a link to the page it names, with its label or the current title of the page; for a
+ * missing page in an existing place, a marked link to the editor of a new page with its name and place for a user who
+ * may create pages, and marked text for anyone else; and marked text for every role when the target breaks the name
+ * rule or names a tab that does not exist. Every address is built from names that follow the name rule, and the label
+ * and the title are children, so they reach the page as text.
+ */
+function wikiLinkElement(token: Token, key: string, links: WikiLinkContext | undefined): ReactNode {
+  if (!links || !isWikiLink(token)) return token.content;
+  const { page, label, target } = token.meta;
+  if (page === null) return missingText(key, label ?? target, "invalid");
+  const title = links.resolution.titles.get(wikiLinkTargetText(page));
+  if (title !== undefined) {
+    return (
+      <MuiLink key={key} component={Link} href={pagePath(links.folderName, page.tab, page.name)}>
+        {label ?? title}
+      </MuiLink>
+    );
+  }
+  if (page.tab !== null && !links.resolution.tabs.has(page.tab)) return missingText(key, label ?? target, "noTab");
+  if (!links.mayCreatePages) return missingText(key, label ?? target, "missing");
+  return (
+    <MuiLink
+      key={key}
+      component={Link}
+      href={newPagePath(links.folderName, page.tab, page.name)}
+      title={WIKI_LINK_HINTS.missing.text}
+      aria-describedby={WIKI_LINK_HINTS.missing.id}
+      sx={MISSING_LINK_STYLE}
+    >
+      {label ?? target}
+    </MuiLink>
+  );
+}
+
+/** The marked text of a wiki link that is no link, with its hint. */
+function missingText(key: string, text: string, hint: WikiLinkHint): ReactNode {
+  return (
+    <Box
+      key={key}
+      component="span"
+      title={WIKI_LINK_HINTS[hint].text}
+      aria-describedby={WIKI_LINK_HINTS[hint].id}
+      sx={MISSING_LINK_STYLE}
+    >
+      {text}
+    </Box>
+  );
+}
+
+/**
+ * The hidden texts that the marked wiki links name as their description. Hidden elements are not read on their own,
+ * but they still describe the elements that point to them.
+ */
+function WikiLinkHints(): ReactNode {
+  return (
+    <>
+      {Object.values(WIKI_LINK_HINTS).map(({ id, text }) => (
+        <span key={id} id={id} hidden>
+          {text}
+        </span>
+      ))}
+    </>
+  );
+}
+
 /** The element of a token without children of its own in the token list. */
-function leafElement(token: Token, key: string): ReactNode {
+function leafElement(token: Token, key: string, links: WikiLinkContext | undefined): ReactNode {
   switch (token.type) {
     case "text":
     case "text_special":
@@ -223,8 +329,7 @@ function leafElement(token: Token, key: string): ReactNode {
     case "code_inline":
       return <code key={key}>{token.content}</code>;
     case "wiki_link":
-      // Its plain text: the label, or the target as written.
-      return token.content;
+      return wikiLinkElement(token, key, links);
     case "code_block":
     case "fence": {
       const language = token.info.trim().split(/\s+/)[0];
@@ -251,7 +356,7 @@ function leafElement(token: Token, key: string): ReactNode {
         />
       );
     case "inline":
-      return <Fragment key={key}>{tokensToReact(token.children ?? [], `${key}.`)}</Fragment>;
+      return <Fragment key={key}>{tokensToReact(token.children ?? [], `${key}.`, links)}</Fragment>;
     case "footnote_ref": {
       const number = footnoteNumber(token);
       return (
@@ -289,7 +394,7 @@ function leafElement(token: Token, key: string): ReactNode {
  * own instead of recursion, so that the nesting of the content does not deepen the call stack; only the inline
  * tokens of a block are converted by a call of their own. A missing closing token closes its element at the end.
  */
-function tokensToReact(tokens: readonly Token[], keyPrefix: string): ReactNode[] {
+function tokensToReact(tokens: readonly Token[], keyPrefix: string, links: WikiLinkContext | undefined): ReactNode[] {
   const root: ReactNode[] = [];
   const open: { token: Token; children: ReactNode[]; key: string }[] = [];
   let children = root;
@@ -306,14 +411,18 @@ function tokensToReact(tokens: readonly Token[], keyPrefix: string): ReactNode[]
     } else if (token.nesting === -1) {
       if (open.length > 0) close();
     } else {
-      children.push(leafElement(token, key));
+      children.push(leafElement(token, key, links));
     }
   });
   while (open.length > 0) close();
   return root;
 }
 
-/** Parses Markdown and returns the React elements of the page view. Throws if the parse or the conversion fails. */
-export function markdownToReact(content: string): ReactNode {
-  return tokensToReact(parseMarkdown(content), "");
+/**
+ * Parses Markdown and returns the React elements of the page view, with the wiki links as links where `links` is
+ * given. Throws if the parse or the conversion fails.
+ */
+export function markdownToReact(content: string, links?: WikiLinkContext): ReactNode {
+  const elements = tokensToReact(parseMarkdown(content), "", links);
+  return links ? [...elements, <WikiLinkHints key="wiki-link-hints" />] : elements;
 }

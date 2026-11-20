@@ -3,6 +3,7 @@ import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import MarkdownContent from "@/features/pages/components/MarkdownContent";
+import type { WikiLinkContext } from "@/features/pages/components/markdownToReact";
 import {
   CONTENT_MAX_DEPTH,
   CONTENT_MAX_LENGTH,
@@ -11,9 +12,10 @@ import {
 } from "@/features/pages/limits";
 import { analyseMarkdown, parseMarkdown, type Token, type WikiLinkMeta } from "@/features/pages/markdown";
 
-/** The page view of the content as HTML, as the server renders it. */
-function render(content: string): string {
-  return renderToString(createElement(MarkdownContent, null, content));
+/** The page view of the content as HTML, as the server renders it, with wiki links as links where `links` is given. */
+function render(content: string, links?: WikiLinkContext): string {
+  // A call instead of `createElement()`, whose props would need the content as `children`.
+  return renderToString(MarkdownContent({ children: content, links }));
 }
 
 /** The unit repeated up to the content limit. */
@@ -267,9 +269,122 @@ describe("wiki links", () => {
     expect(tokens.map((token) => token.type)).toEqual(["wiki_link", "footnote_ref"]);
   });
 
-  it("show their plain text in the page view until they are rendered as links", () => {
+  it("show their plain text in a page view without the links of a folder", () => {
     const html = render("# T\n\n[[setup]] and [[guides/setup|<b>the setup</b>]]");
     expect(html).toContain(">setup<!-- --> and <!-- -->&lt;b&gt;the setup&lt;/b&gt;</p>");
     expect(html).not.toContain("[[");
+  });
+});
+
+describe("wiki links in the page view", () => {
+  /** A folder "handbook" with the page `setup` directly in it, the page `guides/setup` and the tab `guides`. */
+  function context(mayCreatePages: boolean): WikiLinkContext {
+    return {
+      folderName: "handbook",
+      mayCreatePages,
+      resolution: {
+        titles: new Map([
+          ["setup", "Setup"],
+          ["guides/setup", "Setup guide"],
+        ]),
+        tabs: new Set(["guides"]),
+      },
+    };
+  }
+
+  /** The `a` and marked `span` elements of the HTML, with their address, title, description and text. */
+  function elements(html: string): string[] {
+    return [...html.matchAll(/<(a|span)\b([^>]*)>([^<]*)<\/\1>/g)].map(([, tag, attributes = "", text]) => {
+      const values = Object.fromEntries(
+        [...attributes.matchAll(/\s(href|title|aria-describedby)="([^"]*)"/g)].map(([, name, value]) => [name, value]),
+      );
+      const shown = ["href", "title", "aria-describedby"].flatMap((name) =>
+        values[name] === undefined ? [] : [`${name}=${values[name]}`],
+      );
+      return [tag, ...shown, text].join(" ");
+    });
+  }
+
+  it("links an existing page with its title, or with its label (R6)", () => {
+    const html = render("[[guides/setup]] [[setup|the setup]]", context(true));
+    expect(elements(html).slice(0, 2)).toEqual([
+      "a href=/folders/handbook/guides/setup.md Setup guide",
+      "a href=/folders/handbook/setup.md the setup",
+    ]);
+  });
+
+  it("links a missing page to the editor of a new page with its name and place for a Writer (R14, R15)", () => {
+    const html = render("[[faq]] [[guides/faq|FAQ]]", context(true));
+    expect(elements(html).slice(0, 2)).toEqual([
+      "a href=/folders/handbook?action=new&amp;name=faq title=Page does not exist aria-describedby=wiki-link-hint-missing faq",
+      "a href=/folders/handbook/guides?action=new&amp;name=faq title=Page does not exist aria-describedby=wiki-link-hint-missing FAQ",
+    ]);
+    expect(html).toContain('<span id="wiki-link-hint-missing" hidden="">Page does not exist</span>');
+  });
+
+  it("shows a missing page as marked text without a link for a Reader (R15)", () => {
+    const html = render("[[faq]]", context(false));
+    expect(elements(html)[0]).toBe("span title=Page does not exist aria-describedby=wiki-link-hint-missing faq");
+    expect(addresses(html)).toEqual([]);
+  });
+
+  it("shows a target that breaks the name rule or names a missing tab as marked text for every role (R19, R25)", () => {
+    for (const mayCreatePages of [true, false]) {
+      const html = render("[[Setup Guide]] [[nosuchtab/setup]] [[setup#install]]", context(mayCreatePages));
+      expect(elements(html).slice(0, 3)).toEqual([
+        "span title=Not a valid page name aria-describedby=wiki-link-hint-invalid Setup Guide",
+        "span title=Tab does not exist aria-describedby=wiki-link-hint-no-tab nosuchtab/setup",
+        "span title=Not a valid page name aria-describedby=wiki-link-hint-invalid setup#install",
+      ]);
+      expect(addresses(html)).toEqual([]);
+      expect(html).toContain('<span id="wiki-link-hint-invalid" hidden="">Not a valid page name</span>');
+      expect(html).toContain('<span id="wiki-link-hint-no-tab" hidden="">Tab does not exist</span>');
+    }
+  });
+
+  it("shows a label and a title as text, never as HTML (R32)", () => {
+    const links = context(true);
+    const html = render("[[setup|<b>x</b>]] [[faq|<img src=x>]]", {
+      ...links,
+      resolution: { ...links.resolution, titles: new Map([["setup", "<script>alert(1)</script>"]]) },
+    });
+    expect(html).toContain("&lt;b&gt;x&lt;/b&gt;");
+    expect(html).toContain("&lt;img src=x&gt;");
+    expect(html).not.toMatch(/<b>|<img|<script/);
+    expect(
+      render("[[setup]]", {
+        ...links,
+        resolution: { ...links.resolution, titles: new Map([["setup", "<script>x</script>"]]) },
+      }),
+    ).toContain("&lt;script&gt;x&lt;/script&gt;");
+  });
+
+  it("makes no address but one of the wiki of any target (R32)", () => {
+    const targets = [
+      "javascript:alert(1)",
+      "https://example.com",
+      "//example.com",
+      "../setup",
+      "a/b/c",
+      "%2e%2e",
+      "setup?x=1",
+    ];
+    for (const mayCreatePages of [true, false]) {
+      const html = render(targets.map((target) => `[[${target}]]`).join(" "), context(mayCreatePages));
+      expect(addresses(html)).toEqual([]);
+    }
+    const html = render("[[setup]] [[guides/faq]]", context(true));
+    for (const address of addresses(html)) expect(address).toMatch(/^\/folders\/handbook[/?]/);
+  });
+
+  it("shows ![[setup]] as ! and a link (R25)", () => {
+    expect(render("![[setup]]", context(true)).replace(/<style\b[^>]*>[^<]*<\/style>/g, "")).toMatch(
+      /!<a [^>]*href="\/folders\/handbook\/setup.md"[^>]*>Setup<\/a>/,
+    );
+  });
+
+  it("leaves code, escapes and a link over a line break as text (R31)", () => {
+    const html = render("`[[setup]]`\n\n```\n[[setup]]\n```\n\n\\[[setup]]\n\n[[setup\n]]", context(true));
+    expect(addresses(html)).toEqual([]);
   });
 });

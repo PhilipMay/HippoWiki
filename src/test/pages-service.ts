@@ -19,6 +19,7 @@ export const mocks = {
   revisionFindMany: vi.fn(),
   revisionFindUnique: vi.fn(),
   roleFindFirst: vi.fn(),
+  tabFindMany: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
@@ -40,6 +41,7 @@ export function pagesDb() {
       findUnique: mocks.revisionFindUnique,
     },
     folderRole: { findFirst: mocks.roleFindFirst },
+    tab: { findMany: mocks.tabFindMany },
     $transaction: mocks.transaction,
   };
 }
@@ -51,6 +53,7 @@ export const logger = { info: mocks.info, warn: mocks.warn, error: mocks.error }
 export function resetPagesServiceMocks(): void {
   vi.resetAllMocks();
   mocks.findMany.mockResolvedValue([]);
+  mocks.tabFindMany.mockResolvedValue([]);
   // The actor is Owner of every folder, unless a test says otherwise.
   mocks.roleFindFirst.mockResolvedValue({ role: "owner" });
   // An interactive transaction runs its callback with a client of its own.
@@ -66,7 +69,7 @@ export function resetPagesServiceMocks(): void {
 
 /** How often the pages and their revisions have been read; the role of the actor is not counted. */
 export function readCount(): number {
-  return [mocks.findMany, mocks.findFirst, mocks.revisionFindMany, mocks.revisionFindUnique].reduce(
+  return [mocks.findMany, mocks.findFirst, mocks.revisionFindMany, mocks.revisionFindUnique, mocks.tabFindMany].reduce(
     (count, read) => count + read.mock.calls.length,
     0,
   );

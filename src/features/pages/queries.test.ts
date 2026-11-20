@@ -10,6 +10,7 @@ import {
   listFolderPages,
   listPageRevisions,
   listTabPages,
+  resolveWikiLinks,
 } from "@/features/pages/queries";
 import { RedirectError } from "@/test/unit";
 
@@ -25,6 +26,7 @@ const mocks = vi.hoisted(() => ({
   listPageRevisions: vi.fn(),
   getPageRevision: vi.fn(),
   getRevisionComparison: vi.fn(),
+  resolveWikiLinks: vi.fn(),
 }));
 
 vi.mock("@/features/pages/history-service", () => ({
@@ -39,6 +41,7 @@ vi.mock("@/features/pages/service", () => ({
   getPage: mocks.getPage,
   listDeletedPages: mocks.listDeletedPages,
   getDeletedPage: mocks.getDeletedPage,
+  resolveWikiLinks: mocks.resolveWikiLinks,
 }));
 vi.mock("next/server", () => ({ connection: mocks.connection }));
 vi.mock("@/features/auth/session", () => ({ requireUser: mocks.requireUser }));
@@ -53,6 +56,7 @@ const serviceReads = [
   mocks.listPageRevisions,
   mocks.getPageRevision,
   mocks.getRevisionComparison,
+  mocks.resolveWikiLinks,
 ];
 
 /** How often the service has been called. */
@@ -88,6 +92,12 @@ const QUERIES: [string, () => Promise<unknown>, Mock, unknown[]][] = [
   ],
   ["getPageRevision", () => getPageRevision(PAGE_ID, 5), mocks.getPageRevision, [PAGE_ID, 5]],
   ["getRevisionComparison", () => getRevisionComparison(PAGE_ID, 5, 2), mocks.getRevisionComparison, [PAGE_ID, 5, 2]],
+  [
+    "resolveWikiLinks",
+    () => resolveWikiLinks(FOLDER_ID, "[[setup]]"),
+    mocks.resolveWikiLinks,
+    [FOLDER_ID, "[[setup]]"],
+  ],
 ];
 
 describe("every query", () => {

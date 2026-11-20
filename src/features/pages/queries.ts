@@ -53,6 +53,19 @@ export const getPage = cache(
   },
 );
 
+/**
+ * What the wiki links of the content lead to in the folder as it is now: the titles of the pages they name and the
+ * tabs that exist.
+ */
+export async function resolveWikiLinks(
+  folderId: string,
+  content: string,
+): Promise<pageService.WikiLinkResolution | null> {
+  await connection();
+  const user = await requireUser();
+  return pageService.resolveWikiLinks(inBrowser(user), folderId, content);
+}
+
 /** The deleted pages of the folder with id, name, title and time of deletion, without their content, newest first. */
 export async function listDeletedPages(folderId: string): Promise<pageService.DeletedPageSummary[] | null> {
   await connection();

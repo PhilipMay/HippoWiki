@@ -12,6 +12,7 @@ import { listTabs } from "@/features/folders/queries";
 import { restorePage } from "@/features/pages/actions";
 import MarkdownContent from "@/features/pages/components/MarkdownContent";
 import RestorePageDialog from "@/features/pages/components/RestorePageDialog";
+import { resolveWikiLinks } from "@/features/pages/queries";
 import type { DeletedPageAction } from "@/features/pages/page-query";
 import type { DeletedPage } from "@/features/pages/service";
 import { editorWithChannel } from "@/features/users/records";
@@ -32,6 +33,9 @@ export default async function DeletedPageView({ page, action }: DeletedPageViewP
   const folderName = page.folder.name;
   // Only the "Restore page" dialog needs the tabs of the folder.
   const tabs = action === "restore" ? ((await listTabs(page.folder.id)) ?? notFound()) : [];
+  const resolution = (await resolveWikiLinks(page.folder.id, page.content)) ?? notFound();
+  // Only a Manager or Owner reads a deleted page, and both may create pages.
+  const links = { folderName, mayCreatePages: true, resolution };
 
   return (
     <Stack spacing={2}>
@@ -51,7 +55,7 @@ export default async function DeletedPageView({ page, action }: DeletedPageViewP
           </Stack>
         </Stack>
         <Divider sx={{ mb: 3 }} />
-        <MarkdownContent>{page.content}</MarkdownContent>
+        <MarkdownContent links={links}>{page.content}</MarkdownContent>
       </Paper>
       {action === "restore" && (
         <RestorePageDialog

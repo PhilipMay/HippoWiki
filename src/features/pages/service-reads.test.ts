@@ -10,6 +10,7 @@ import {
   listDeletedPages,
   listFolderPages,
   listTabPages,
+  resolveWikiLinks,
 } from "@/features/pages/service";
 import { mocks, readCount, MALFORMED_NAMES, EDITOR, EDITOR_ROW, resetPagesServiceMocks } from "@/test/pages-service";
 import { FOLDER_ID, TAB_ID, PAGE_ID, MALFORMED_ID, ACTOR } from "@/test/unit";
@@ -201,5 +202,45 @@ describe("directPageFirstPerName", () => {
 
   it("returns an empty list for no pages", () => {
     expect(directPageFirstPerName([])).toEqual([]);
+  });
+});
+
+describe("resolveWikiLinks", () => {
+  it("returns the titles of the pages and the tabs that the database finds for the targets", async () => {
+    mocks.findMany.mockResolvedValue([
+      { name: "setup", title: "Setup", tab: null },
+      { name: "setup", title: "Setup guide", tab: { name: "guides" } },
+      // A page that no target names, as the read of every name in every named tab can find.
+      { name: "faq", title: "FAQ", tab: { name: "guides" } },
+    ]);
+    mocks.tabFindMany.mockResolvedValue([{ name: "guides" }]);
+
+    const resolution = await resolveWikiLinks(ACTOR, FOLDER_ID, "[[setup]] [[guides/setup]] [[faq]] [[docs/faq]]");
+
+    expect(resolution).toEqual({
+      titles: new Map([
+        ["setup", "Setup"],
+        ["guides/setup", "Setup guide"],
+      ]),
+      tabs: new Set(["guides"]),
+    });
+  });
+
+  it("reads nothing for a content without valid targets or for a malformed folder id", async () => {
+    const empty = { titles: new Map(), tabs: new Set() };
+    await expect(resolveWikiLinks(ACTOR, FOLDER_ID, "# T\n\n[[Setup Guide]] `[[setup]]`")).resolves.toEqual(empty);
+    await expect(resolveWikiLinks(ACTOR, MALFORMED_ID, "[[setup]]")).resolves.toEqual(empty);
+    expect(readCount()).toBe(0);
+  });
+
+  it("reads no tabs when no target names one", async () => {
+    await resolveWikiLinks(ACTOR, FOLDER_ID, "[[setup]]");
+    expect(mocks.findMany).toHaveBeenCalledOnce();
+    expect(mocks.tabFindMany).not.toHaveBeenCalled();
+  });
+
+  it("throws a database error", async () => {
+    mocks.findMany.mockRejectedValue(new Error("connection lost"));
+    await expect(resolveWikiLinks(ACTOR, FOLDER_ID, "[[setup]]")).rejects.toThrow("connection lost");
   });
 });

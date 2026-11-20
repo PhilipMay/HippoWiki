@@ -56,6 +56,8 @@ import {
   type PageFieldErrors,
 } from "@/features/pages/schema";
 import { deriveName } from "@/features/pages/derive";
+import { wikiLinkTargetText } from "@/features/pages/wiki-link-target";
+import { wikiLinksOf } from "@/features/pages/wiki-links";
 import { NEXT_VERSION, softDeleteData } from "@/features/pages/writes";
 import { searchIndexData } from "@/features/search/index-data";
 import { LAST_EDITOR_SELECT, withLastEditor, type LastEditor } from "@/features/users/records";
@@ -260,6 +262,58 @@ export function directPageFirstPerName<Entry extends { name: string; tab: unknow
     ordered.splice(position, 0, page);
   }
   return ordered;
+}
+
+/**
+ * What the wiki links of a content lead to in its folder as it is now: the title of every page that a valid target
+ * names, by the target as `wikiLinkTargetText()` writes it, and the tabs of the folder that the targets name. A target
+ * that is in neither names a missing page, in an existing place when it has no tab or its tab is listed.
+ */
+export type WikiLinkResolution = { titles: ReadonlyMap<string, string>; tabs: ReadonlySet<string> };
+
+/** The resolution of a content without wiki links, or of a malformed folder id. */
+const NO_WIKI_LINKS: WikiLinkResolution = { titles: new Map(), tabs: new Set() };
+
+/**
+ * Resolves the wiki links of the content against the folder: for each valid target the page of that name and place
+ * that is not deleted, with its title, and for the targets in a tab whether the tab exists. Deleted pages are missing
+ * like pages that never existed; a tab, when it is deleted, no longer exists. One read of the pages and one of the
+ * tabs, both only for the targets of the content. `null` for an admin and for a folder without a role of the actor.
+ */
+export async function resolveWikiLinks(
+  actor: ContentActor,
+  folderId: string,
+  content: string,
+): Promise<WikiLinkResolution | null> {
+  if (!(await mayReadFolder(actor, folderId))) return null;
+  const parsedFolderId = parseFolderId(folderId);
+  const targets = wikiLinksOf(content).flatMap(({ page }) => (page ? [page] : []));
+  if (!parsedFolderId || targets.length === 0) return NO_WIKI_LINKS;
+  const names = [...new Set(targets.map(({ name }) => name))];
+  const tabNames = [...new Set(targets.flatMap(({ tab }) => (tab === null ? [] : [tab])))];
+  const wanted = new Set(targets.map(wikiLinkTargetText));
+  const pages = await getDb().page.findMany({
+    where: {
+      folderId: parsedFolderId,
+      deletedAt: null,
+      name: { in: names },
+      OR: [{ tabId: null }, ...(tabNames.length > 0 ? [{ tab: { name: { in: tabNames } } }] : [])],
+    },
+    select: { name: true, title: true, tab: { select: { name: true } } },
+  });
+  const tabs =
+    tabNames.length === 0
+      ? []
+      : await getDb().tab.findMany({
+          where: { folderId: parsedFolderId, name: { in: tabNames } },
+          select: { name: true },
+        });
+  const titles = new Map<string, string>();
+  for (const page of pages) {
+    const target = wikiLinkTargetText({ tab: page.tab?.name ?? null, name: page.name });
+    if (wanted.has(target)) titles.set(target, page.title);
+  }
+  return { titles, tabs: new Set(tabs.map(({ name }) => name)) };
 }
 
 /**

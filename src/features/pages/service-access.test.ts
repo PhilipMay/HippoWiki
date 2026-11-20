@@ -13,6 +13,7 @@ import {
   listFolderPages,
   listTabPages,
   moveOrRenamePage,
+  resolveWikiLinks,
   restorePage,
   revertPage,
   updatePageContent,
@@ -121,6 +122,7 @@ describe("an admin", () => {
     ["listFolderPages through MCP", () => listFolderPages(MCP_ADMIN, FOLDER_ID)],
     ["listTabPages through MCP", () => listTabPages(MCP_ADMIN, TAB_ID)],
     ["getPage through MCP", () => getPage(MCP_ADMIN, "handbook", null, "overview")],
+    ["resolveWikiLinks", () => resolveWikiLinks(ADMIN, FOLDER_ID, "[[setup]]")],
   ])("gets null from %s, without asking the database", async (_name, read) => {
     await expect(read()).resolves.toBeNull();
 
@@ -163,6 +165,7 @@ describe("the role of the actor", () => {
     ["listTabPages", () => listTabPages(ACTOR, TAB_ID)],
     ["listAllFolderPages", () => listAllFolderPages(ACTOR, FOLDER_ID)],
     ["listDeletedPages", () => listDeletedPages(ACTOR, FOLDER_ID)],
+    ["resolveWikiLinks", () => resolveWikiLinks(ACTOR, FOLDER_ID, "[[setup]] [[guides/setup]]")],
   ] as const)("%s returns null without a role, without reading the pages", async (_name, read) => {
     mocks.roleFindFirst.mockResolvedValue(null);
 

@@ -8,12 +8,14 @@ import { notFound } from "next/navigation";
 import Link from "@/components/Link";
 import Time from "@/components/Time";
 import FolderBreadcrumbs from "@/features/folders/components/FolderBreadcrumbs";
+import { mayDoFolderAction } from "@/features/folders/folder-query";
 import { listTabs } from "@/features/folders/queries";
 import { deletePage, moveOrRenamePage, updatePageContent } from "@/features/pages/actions";
 import DeletePageDialog from "@/features/pages/components/DeletePageDialog";
 import MarkdownContent from "@/features/pages/components/MarkdownContent";
 import MoveOrRenamePageDialog from "@/features/pages/components/MoveOrRenamePageDialog";
 import PageForm from "@/features/pages/components/PageForm";
+import { resolveWikiLinks } from "@/features/pages/queries";
 import type { PageWithPlace } from "@/features/pages/service";
 import { editorWithChannel } from "@/features/users/records";
 import { changedPageForm } from "@/features/pages/changed-page";
@@ -60,6 +62,8 @@ export default async function PageView({ page, action, notice }: PageViewProps) 
 
   // Only the "Move or rename page" dialog needs the tabs of the folder.
   const tabs = action === "move-or-rename" ? ((await listTabs(page.folder.id)) ?? notFound()) : [];
+  const resolution = (await resolveWikiLinks(page.folder.id, page.content)) ?? notFound();
+  const links = { folderName, mayCreatePages: mayDoFolderAction(page.role, "new"), resolution };
 
   return (
     <Stack spacing={2}>
@@ -98,7 +102,7 @@ export default async function PageView({ page, action, notice }: PageViewProps) 
           </Stack>
         </Stack>
         <Divider sx={{ mb: 3 }} />
-        <MarkdownContent>{page.content}</MarkdownContent>
+        <MarkdownContent links={links}>{page.content}</MarkdownContent>
       </Paper>
       {action === "move-or-rename" && (
         <MoveOrRenamePageDialog
