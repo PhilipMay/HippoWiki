@@ -8,6 +8,7 @@ import { useEffect, useEffectEvent, useId, useRef, useState, type RefObject } fr
 import { flushSync } from "react-dom";
 
 import EditorToolbar from "@/features/pages/components/EditorToolbar";
+import { readMode, storeMode, type EditorMode } from "@/features/pages/editor/mode";
 import type { EditorHandle } from "@/features/pages/editor/mount";
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 
@@ -63,6 +64,8 @@ export default function MarkdownEditor({
   onReady,
 }: MarkdownEditorProps) {
   const [editor, setEditor] = useState<EditorHandle | null>(null);
+  // Live preview until the editor starts in the mode last chosen in this browser (R18).
+  const [mode, setMode] = useState<EditorMode>("live");
   // The length shown by the counter. It is set only when it changes from 90,000 characters on, or the counter hides, so
   // that typing below that causes no React render.
   const [counter, setCounter] = useState<number | null>(() => counterOf(initialContent.length));
@@ -79,9 +82,11 @@ export default function MarkdownEditor({
     const field = fieldRef.current;
     if (!parent || !field) return null;
     field.value = initialContent;
+    const startMode = readMode(() => window.localStorage);
     const handle = mount({
       parent,
       initialContent,
+      mode: startMode,
       newPage,
       labelId,
       descriptionId,
@@ -96,7 +101,10 @@ export default function MarkdownEditor({
     });
     // The read-only field is removed in the same task in which the editor is created, so that the two never carry the
     // name "Content" at the same time.
-    flushSync(() => setEditor(handle));
+    flushSync(() => {
+      setEditor(handle);
+      setMode(startMode);
+    });
     if (editorRef) editorRef.current = handle;
     if (contentRef) contentRef.current = handle.contentElement;
     handle.focus();
@@ -140,7 +148,15 @@ export default function MarkdownEditor({
           "&:focus-within": { borderColor: error ? "error.main" : "primary.main", boxShadow: 1 },
         }}
       >
-        <EditorToolbar editor={editor} />
+        <EditorToolbar
+          editor={editor}
+          mode={mode}
+          onModeChange={(next) => {
+            editor?.setMode(next);
+            setMode(next);
+            storeMode(() => window.localStorage, next);
+          }}
+        />
         {!editor && (
           <Box
             component="textarea"

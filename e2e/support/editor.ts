@@ -1,4 +1,6 @@
-import type { Locator, Page } from "@playwright/test";
+import type { BrowserContext, Locator, Page } from "@playwright/test";
+
+import { MODE_STORAGE_KEY } from "@/features/pages/editor/mode";
 
 import { expect } from "./test";
 
@@ -45,4 +47,20 @@ export async function pasteContent(page: Page, data: { "text/plain"?: string; "t
     }
     element.dispatchEvent(new ClipboardEvent("paste", { clipboardData: transfer, bubbles: true, cancelable: true }));
   }, data);
+}
+
+/**
+ * Makes every page of the context start the editor in source mode, as if it had been chosen before in this browser;
+ * without it the editor starts in live preview.
+ */
+export async function startInSourceMode(context: BrowserContext): Promise<void> {
+  await context.addInitScript((key) => window.localStorage.setItem(key, "source"), MODE_STORAGE_KEY);
+}
+
+/**
+ * The text that each line of the editor shows, in order: without the marks that live preview hides. CodeMirror draws
+ * only the lines in view, so this is for content that fits on the screen.
+ */
+export async function shownLines(page: Page): Promise<string[]> {
+  return contentEditor(page).evaluate((element) => Array.from(element.children, (line) => line.textContent));
 }

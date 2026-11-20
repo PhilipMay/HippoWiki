@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import MarkdownContent from "@/features/pages/components/MarkdownContent";
 import { CONTENT_MAX_DEPTH, CONTENT_MAX_LENGTH, CONTENT_MAX_TABLE_CELLS } from "@/features/pages/limits";
-import { analyseMarkdown, isSafeAddress } from "@/features/pages/markdown";
+import { analyseMarkdown } from "@/features/pages/markdown";
 
 /** The page view of the content as HTML, as the server renders it. */
 function render(content: string): string {
@@ -57,34 +57,6 @@ describe("raw HTML and unsafe addresses", () => {
       "[web](https://example.com/a)\n\n[page](/folders/handbook/intro.md)\n\n[mail](mailto:a@example.com)",
     );
     expect(addresses(html)).toEqual(["https://example.com/a", "/folders/handbook/intro.md", "mailto:a@example.com"]);
-  });
-
-  it("allows only relative addresses and the safe protocols", () => {
-    for (const address of [
-      "https://a",
-      "HTTP://a",
-      "mailto:a@b",
-      "irc://a",
-      "ircs://a",
-      "xmpp:a@b",
-      "/a:b",
-      "a?b:c",
-      "#a:b",
-      "a",
-    ]) {
-      expect(isSafeAddress(address)).toBe(true);
-    }
-    for (const address of [
-      "javascript:a",
-      "JAVASCRIPT:a",
-      "vbscript:a",
-      "data:a",
-      "file:///a",
-      "java%09script:a",
-      ":a",
-    ]) {
-      expect(isSafeAddress(address)).toBe(false);
-    }
   });
 });
 

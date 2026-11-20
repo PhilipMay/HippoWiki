@@ -1,7 +1,15 @@
 import type { Page, Response } from "@playwright/test";
 
 import { collectErrors } from "./support/browser";
-import { contentEditor, editorReady, expectContent, fillContent, pasteContent } from "./support/editor";
+import {
+  contentEditor,
+  editorReady,
+  expectContent,
+  fillContent,
+  pasteContent,
+  shownLines,
+  startInSourceMode,
+} from "./support/editor";
 import { createFolder, createPage, createTab, getTestDb, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
 
@@ -58,20 +66,15 @@ test("with JavaScript the editor replaces the read-only field with the same cont
   await expect(page.getByRole("button", { name: "Save" })).toBeEnabled();
 });
 
-test("every character of the content is visible in the editor (R4)", async ({ page }) => {
-  await createPage({
-    folder: handbook,
-    name: "marks",
-    content: "# Marks\n\n**bold** _it_ `code` [a](/b) ~~s~~\n- [x] t",
-  });
+test("every character of the content is visible in source mode (R4)", async ({ page, context }) => {
+  await startInSourceMode(context);
+  const content = "# Marks\n\n**bold** _it_ `code` [a](/b) ~~s~~\n- [x] t";
+  await createPage({ folder: handbook, name: "marks", content });
 
   await page.goto("/folders/handbook/marks.md?action=edit");
 
-  const editor = await editorReady(page);
-  // CodeMirror draws each line as an element of its own.
-  expect(await editor.evaluate((element) => Array.from(element.children, (line) => line.textContent).join("\n"))).toBe(
-    "# Marks\n\n**bold** _it_ `code` [a](/b) ~~s~~\n- [x] t",
-  );
+  await editorReady(page);
+  expect((await shownLines(page)).join("\n")).toBe(content);
 });
 
 test.describe("the stored content (R5)", () => {
@@ -153,29 +156,35 @@ test.describe("the height of the editor (R41)", () => {
   });
 });
 
-test("raw HTML shows as its characters, never as elements, and runs nothing (R31)", async ({ page }) => {
-  const errors = collectErrors(page);
-  const html = ["<b>x</b>", "<script>alert(1)</script>", "<img src=x onerror=alert(1)>"];
-  await createPage({ folder: handbook, name: "html", content: `# HTML\n\n${html.join("\n\n")}` });
-  const requested: string[] = [];
-  page.on("request", (request) => {
-    if (new URL(request.url()).pathname.endsWith("/x")) requested.push(request.url());
-  });
-  let dialogs = 0;
-  page.on("dialog", (dialog) => {
-    dialogs += 1;
-    void dialog.dismiss();
-  });
+for (const mode of ["live preview", "source mode"]) {
+  test(`raw HTML shows as its characters in ${mode}, never as elements, and runs nothing (R31)`, async ({
+    page,
+    context,
+  }) => {
+    if (mode === "source mode") await startInSourceMode(context);
+    const errors = collectErrors(page);
+    const html = ["<b>x</b>", "<script>alert(1)</script>", "<img src=x onerror=alert(1)>"];
+    await createPage({ folder: handbook, name: "html", content: `# HTML\n\n${html.join("\n\n")}` });
+    const requested: string[] = [];
+    page.on("request", (request) => {
+      if (new URL(request.url()).pathname.endsWith("/x")) requested.push(request.url());
+    });
+    let dialogs = 0;
+    page.on("dialog", (dialog) => {
+      dialogs += 1;
+      void dialog.dismiss();
+    });
 
-  await page.goto("/folders/handbook/html.md?action=edit");
+    await page.goto("/folders/handbook/html.md?action=edit");
 
-  const editor = await editorReady(page);
-  for (const text of html) await expect(editor.getByText(text, { exact: true })).toBeVisible();
-  await expect(editor.locator("script, img, b")).toHaveCount(0);
-  expect(requested).toEqual([]);
-  expect(dialogs).toBe(0);
-  expect(errors).toEqual([]);
-});
+    const editor = await editorReady(page);
+    for (const text of html) await expect(editor.getByText(text, { exact: true })).toBeVisible();
+    await expect(editor.locator("script, img[src], b")).toHaveCount(0);
+    expect(requested).toEqual([]);
+    expect(dialogs).toBe(0);
+    expect(errors).toEqual([]);
+  });
+}
 
 test("pasting HTML adds only its words as plain text (R32)", async ({ page }) => {
   await createPage({ folder: handbook, name: "paste", content: "# Paste\n\n" });
@@ -278,7 +287,9 @@ test.describe("the code of the editor (R39)", () => {
 
 test("source mode colors headings, emphasis, links, code and list marks differently from plain text (R11)", async ({
   page,
+  context,
 }) => {
+  await startInSourceMode(context);
   await createPage({
     folder: handbook,
     name: "colors",

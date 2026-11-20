@@ -59,9 +59,10 @@ test("the toolbar is above the editor, and every button has a name and is reacha
     await expect(button(page, name)).toBeEnabled();
   }
 
-  // Esc, then Shift+Tab, leaves the editor backwards onto the last button; Shift+Tab goes on through all of them.
+  // Esc, then Shift+Tab, leaves the editor backwards onto the switch of the modes at the end of the toolbar; Shift+Tab
+  // goes on through all the buttons.
   await page.keyboard.press("Escape");
-  for (const name of BUTTONS.toReversed()) {
+  for (const name of ["Source", "Live preview", ...BUTTONS.toReversed()]) {
     await page.keyboard.press("Shift+Tab");
     await expect(button(page, name)).toBeFocused();
   }

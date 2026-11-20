@@ -28,7 +28,7 @@ names the IDs it covers.
 - [x] Editing comforts
 - [x] Content limit and counter
 - [x] Toolbar
-- [ ] Live preview of inline elements and the mode switch
+- [x] Live preview of inline elements and the mode switch
 - [ ] Live preview of blocks
 - [ ] Tables in live preview
 - [ ] Leaving with unsaved changes
@@ -318,7 +318,8 @@ headings, R7 for links, R9, R10, R17, R18, R25, R31 in live preview, R34).
     them are hidden; the underline of a setext heading is hidden like a fence line (see "Live preview of blocks") (R6).
   - Bold, italic, strikethrough and inline code: the marks are hidden and the text gets its style (R6).
   - Links, autolinks and bare addresses: only the text of the link shows, styled as a link; the brackets, the address
-    and the title are hidden (R7).
+    and the title are hidden (R7). A link whose address `isSafeAddress()` refuses stays its Markdown text, as the page
+    view shows it.
   - Images stay their Markdown text, also the link syntax inside them (R9); raw HTML stays text (R31). Elements that
     the editor's parser reads otherwise than markdown-it are shown as the editor's parser reads them; nothing of this
     reaches the content (R10).
@@ -341,7 +342,8 @@ headings, R7 for links, R9, R10, R17, R18, R25, R31 in live preview, R34).
     ignored (R18).
   - The switch at the right end of the toolbar: a toggle of two buttons, "Live preview" and "Source", the current one
     pressed (`aria-pressed`), reachable with the keyboard and always visible while editing (R25). It switches the
-    mode and stores it.
+    mode and stores it. The two are standalone toggle buttons in a group, each a stop of Tab: the button group of
+    Material UI has a single stop that does not follow the pressed button when the buttons never take the focus.
   - The editor starts in the stored mode, and in live preview without one (R18).
 - The styles of live preview (heading sizes, emphasis, code, link color) come from the theme of the editor, in the
   font of the page view; source mode stays monospace.

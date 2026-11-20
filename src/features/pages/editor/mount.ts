@@ -6,6 +6,8 @@ import { EditorView } from "@codemirror/view";
 
 import { FORMAT_COMMANDS, type FormatAction } from "@/features/pages/editor/commands";
 import { editorExtensions, type EditorOptions } from "@/features/pages/editor/extensions";
+import type { EditorMode } from "@/features/pages/editor/mode";
+import { livePreview } from "@/features/pages/editor/preview-plugin";
 
 /** What `MarkdownEditor` needs of a mounted editor. */
 export type EditorHandle = {
@@ -18,6 +20,8 @@ export type EditorHandle = {
   focus(): void;
   /** Runs a formatting action of the toolbar and focuses the editor again (R23). */
   format(action: FormatAction): void;
+  /** Switches between live preview and source mode, keeping the document, the selection and the history (R2). */
+  setMode(mode: EditorMode): void;
   /** Marks the content as invalid for screen readers, after a field error of a save (R37). */
   setInvalid(invalid: boolean): void;
   destroy(): void;
@@ -28,6 +32,8 @@ type MountOptions = EditorOptions & {
   parent: HTMLElement;
   /** The content the editor starts with. */
   initialContent: string;
+  /** The mode the editor starts in. */
+  mode: EditorMode;
   /** Called with the editor after every change of the document, without a React render. */
   onChange(handle: EditorHandle): void;
 };
@@ -37,14 +43,21 @@ function invalidAttribute(invalid: boolean) {
   return EditorView.contentAttributes.of({ "aria-invalid": invalid ? "true" : "false" });
 }
 
+/** The extensions of a mode: live preview adds its decorations to the highlighting of source mode. */
+function modeExtensions(mode: EditorMode) {
+  return mode === "live" ? livePreview() : [];
+}
+
 /** Creates the editor in `parent`, with the cursor at the start of the content as the textarea had it. */
-export function mountEditor({ parent, initialContent, onChange, ...options }: MountOptions): EditorHandle {
+export function mountEditor({ parent, initialContent, mode, onChange, ...options }: MountOptions): EditorHandle {
   const invalid = new Compartment();
+  const modes = new Compartment();
   const state = EditorState.create({
     doc: initialContent,
     extensions: [
       editorExtensions(options),
       invalid.of(invalidAttribute(false)),
+      modes.of(modeExtensions(mode)),
       EditorView.updateListener.of((update) => {
         if (update.docChanged) onChange(handle);
       }),
@@ -61,6 +74,7 @@ export function mountEditor({ parent, initialContent, onChange, ...options }: Mo
       FORMAT_COMMANDS[action](view);
       view.focus();
     },
+    setMode: (next) => view.dispatch({ effects: modes.reconfigure(modeExtensions(next)) }),
     setInvalid: (value) =>
       view.dispatch({
         effects: invalid.reconfigure(invalidAttribute(value)),

@@ -15,6 +15,7 @@ import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
+import ToggleButton from "@mui/material/ToggleButton";
 import Tooltip from "@mui/material/Tooltip";
 import {
   useEffect,
@@ -28,6 +29,7 @@ import {
 } from "react";
 
 import type { FormatAction } from "@/features/pages/editor/commands";
+import type { EditorMode } from "@/features/pages/editor/mode";
 import type { EditorHandle } from "@/features/pages/editor/mount";
 
 // Nothing to subscribe to: the platform does not change while the page is open.
@@ -73,14 +75,21 @@ const HEADINGS: { action: FormatAction; name: string }[] = [
  */
 const TOOLBAR_HEIGHT_VARIABLE = "--editor-toolbar-height";
 
+const MODES: { value: EditorMode; name: string }[] = [
+  { value: "live", name: "Live preview" },
+  { value: "source", name: "Source" },
+];
+
 /** Keeps the focus in the editor: the buttons do not take it on mouse down (R23). */
 const keepFocus = (event: MouseEvent) => event.preventDefault();
 
 type EditorToolbarProps = {
   /** The editor, or `null` until it is ready; the buttons are disabled until then. */
   editor: EditorHandle | null;
-  /** What sits at the right end of the toolbar: the place of the switch between the modes. */
-  end?: ReactNode;
+  /** The mode of the editor, which the switch at the right end of the toolbar shows. */
+  mode: EditorMode;
+  /** Called with the mode the switch chooses. */
+  onModeChange(mode: EditorMode): void;
 };
 
 /**
@@ -89,7 +98,7 @@ type EditorToolbarProps = {
  * bold, italic and link, its shortcut. A button leaves the focus in the editor (R23). The toolbar sticks to the top of
  * the window while the editor is in view and wraps its buttons on a narrow screen (R41, R30).
  */
-export default function EditorToolbar({ editor, end }: EditorToolbarProps) {
+export default function EditorToolbar({ editor, mode, onModeChange }: EditorToolbarProps) {
   const apple = useApple();
   const [headingMenu, setHeadingMenu] = useState<HTMLElement | null>(null);
   const menuId = useId();
@@ -197,7 +206,34 @@ export default function EditorToolbar({ editor, end }: EditorToolbarProps) {
       </Menu>
       {iconButton(LINK_BUTTON)}
       {LIST_BUTTONS.map(iconButton)}
-      <Box sx={{ ml: "auto" }}>{end}</Box>
+      {/* The switch between the modes, at the right end, marks the current mode as pressed (R25). Two buttons of
+          their own, each a stop of Tab: the group of Material UI has one stop, which does not follow the pressed
+          button when the buttons never take the focus. */}
+      <Box role="group" aria-label="Mode" sx={{ ml: "auto", display: "flex" }}>
+        {MODES.map(({ value, name }, index) => (
+          <ToggleButton
+            key={value}
+            value={value}
+            size="small"
+            selected={mode === value}
+            disabled={!editor}
+            onMouseDown={keepFocus}
+            onChange={() => {
+              if (mode !== value) onModeChange(value);
+              editor?.focus();
+            }}
+            sx={{
+              py: 0.25,
+              textTransform: "none",
+              ...(index === 0
+                ? { borderTopRightRadius: 0, borderBottomRightRadius: 0 }
+                : { borderTopLeftRadius: 0, borderBottomLeftRadius: 0, ml: "-1px" }),
+            }}
+          >
+            {name}
+          </ToggleButton>
+        ))}
+      </Box>
     </Box>
   );
 }
