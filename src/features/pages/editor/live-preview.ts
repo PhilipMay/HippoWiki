@@ -7,6 +7,7 @@ import { syntaxTree } from "@codemirror/language";
 import type { EditorState, Range, TransactionSpec } from "@codemirror/state";
 import { Decoration, WidgetType, type DecorationSet, type EditorView } from "@codemirror/view";
 
+import { linkDestination } from "@/features/pages/editor/link-address";
 import { touched } from "@/features/pages/editor/tables";
 import { isSafeAddress } from "@/features/pages/safe-address";
 
@@ -290,8 +291,9 @@ export function livePreviewDecorations(
           const close = marks[1];
           const address = node.node.getChild("URL");
           if (!open || !close || open.from !== node.from) return;
-          // A link that the page view would not make, such as one to `javascript:`, stays its text (R10).
-          if (address && !isSafeAddress(doc.sliceString(address.from, address.to))) return false;
+          // A link that the page view would not make, such as one to `javascript:`, also when written with an entity,
+          // stays its text (R10).
+          if (address && !isSafeAddress(linkDestination(doc.sliceString(address.from, address.to)))) return false;
           if (!previewed(node.from, node.to)) return;
           style(open.to, close.from, PREVIEW_CLASS.link);
           hide(open.from, open.to);

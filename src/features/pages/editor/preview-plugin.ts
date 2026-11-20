@@ -5,6 +5,7 @@ import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import { Prec, type EditorState, type Extension } from "@codemirror/state";
 import { EditorView, ViewPlugin, type DecorationSet, type ViewUpdate } from "@codemirror/view";
 
+import { linkDestination } from "@/features/pages/editor/link-address";
 import { livePreviewDecorations } from "@/features/pages/editor/live-preview";
 import { tables } from "@/features/pages/editor/tables";
 import { isSafeAddress } from "@/features/pages/safe-address";
@@ -34,7 +35,7 @@ function definitionOf(state: EditorState, label: string): string | null {
       const nodeLabel = node.node.getChild("LinkLabel");
       const url = node.node.getChild("URL");
       if (nodeLabel && url && normalizeLabel(state.sliceDoc(nodeLabel.from, nodeLabel.to)) === wanted) {
-        address = state.sliceDoc(url.from, url.to);
+        address = linkDestination(state.sliceDoc(url.from, url.to));
       }
       return false;
     },
@@ -51,14 +52,15 @@ function bareAddress(text: string): string {
 
 /**
  * The address of the link at `pos`: of an inline link, an autolink or a bare address, and of a reference link the
- * address of its definition in the content. `null` where there is no link, and inside an image.
+ * address of its definition in the content, with the escapes and entities of a link destination decoded as the page
+ * view decodes them. `null` where there is no link, and inside an image.
  */
 function linkAddressAt(state: EditorState, pos: number): string | null {
   for (let node = syntaxTree(state).resolveInner(pos, 1); ;) {
     if (node.name === "Image") return null;
     if (node.name === "Link") {
       const url = node.getChild("URL");
-      if (url) return state.sliceDoc(url.from, url.to);
+      if (url) return linkDestination(state.sliceDoc(url.from, url.to));
       const label = node.getChild("LinkLabel");
       const text = node.getChildren("LinkMark");
       // A full reference `[text][label]` names its label; a collapsed or shortcut one `[text]` is its own label.
@@ -111,7 +113,9 @@ const previewPlugin = ViewPlugin.fromClass(
         if (address === null) return false;
         if (isSafeAddress(address)) {
           const url = new URL(address, view.dom.ownerDocument.baseURI);
-          view.dom.ownerDocument.defaultView?.open(url.href, "_blank", "noopener");
+          // The address as the browser resolves it must be safe as well, so that nothing that the browser reads
+          // otherwise than the check opens.
+          if (isSafeAddress(url.href)) view.dom.ownerDocument.defaultView?.open(url.href, "_blank", "noopener");
         }
         // The editor keeps its content, and the cursor does not move, also for an address that opens nothing.
         return true;

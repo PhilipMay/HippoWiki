@@ -123,6 +123,7 @@ describe("what live preview leaves as text (R9, R10, R31)", () => {
     ["an image with a link inside", "[![alt](/x.png)](/target)"],
     ["raw HTML", "<b>x</b> <script>alert(1)</script> <img src=x onerror=alert(1)>"],
     ["a link to javascript:", "[a](javascript:alert(1))"],
+    ["a link to javascript: written with an entity", "[a](&#x6A;avascript:alert(1))"],
     ["an autolink to javascript:", "<javascript:alert(1)>"],
   ])("%s gets no decoration", (_name, markdown) => {
     const shown = preview(away(markdown));

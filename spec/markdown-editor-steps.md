@@ -33,7 +33,7 @@ names the IDs it covers.
 - [x] Tables in live preview
 - [x] Leaving with unsaved changes
 - [x] Phones and speed
-- [ ] Spec tests
+- [x] Spec tests
 - [ ] Wrap-up
 
 ## Sessions
@@ -548,6 +548,17 @@ Tests written from `spec/markdown-editor-requirements.md` alone check the editor
   it, and keep the tests it reports as useful.
 - A finding with High confidence within the scope of this plan is fixed here, and the failing test of its Evidence is
   added back with the fix; any other finding stops the plan (see "Step plans" in `step-plan-workflow.md`).
+- The agent kept `src/features/pages/editor/editor.spec-tests.test.ts` and `e2e/editor-spec-tests.spec.ts`. Its two
+  findings, neither of High confidence, were decided by the user:
+  - Ctrl+click opened the address as written in the Markdown, not the one the page view links to: entities and
+    backslash escapes were not decoded, so `&#x6A;avascript:` even showed and opened as a relative link. Fixed:
+    `src/features/pages/editor/link-address.ts` decodes the destination of a link as `unescapeAll` of markdown-it
+    does, with the strict entity decoding of the package `entities` (added as a dependency, so that markdown-it stays
+    out of the chunk of the editor); live preview and Ctrl+click check and open the decoded address, and Ctrl+click
+    checks the address resolved by the browser as well. The failing test is back in `e2e/editor-spec-tests.spec.ts`.
+  - R37 does not say how a content error of the server shows for a new page: it shows in the "Save page" dialog, as it
+    did with the textarea, and only the missing title heading shows at the editor. Accepted as it is; the wrap-up
+    writes it into the rules of errors in `markdown-editor.md`.
 
 ### Test
 

@@ -67,6 +67,7 @@
     "better-auth": "^1.7.22",
     "diff": "^9.0.0",
     "eld": "^2.1.1",
+    "entities": "^9.0.0",
     "markdown-it": "^15.0.3",
     "markdown-it-footnote": "^4.0.0",
     "next": "16.4.6",
