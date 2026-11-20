@@ -305,7 +305,7 @@ first, with a token that has the `read:packages` scope.
 | `npm run lint`                  | Lint with ESLint                                                                                    |
 | `npm run format`                | Format all files with Prettier                                                                      |
 | `npm run format:check`          | Check formatting without changing files                                                             |
-| `npm run docs:check`            | Check that the file references in the docs and skills point to existing files                       |
+| `npm run docs:check`            | Check that the file references in the docs, skills and agents point to existing files               |
 | `npm run knip`                  | Report unused files, exports and dependencies with knip                                             |
 | `npm run typecheck`             | Generate the Next.js route types and run the type checker                                           |
 | `npm run test`                  | Run the unit tests with Vitest, then the cost tests                                                 |

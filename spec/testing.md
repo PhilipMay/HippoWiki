@@ -129,7 +129,7 @@ How the code is tested. Commands are listed in `README.md`.
 ## Doc references
 
 - `npm run docs:check` (`scripts/check-doc-references.ts`) checks that the files named in `spec/*.md`, `README.md`,
-  `CLAUDE.md` and the skills in `.claude/skills/` exist. It is part of `npm run check` and of the `lint` workflow.
+  `CLAUDE.md`, the skills in `.claude/skills/` and the agents in `.claude/agents/` exist. It is part of `npm run check` and of the `lint` workflow.
 
 ## Unused code
 

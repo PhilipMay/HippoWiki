@@ -30,6 +30,13 @@ implements it.
 - A step plan has a goal, a scope (what is in, what is explicitly not in), an ordered checklist of steps, and for every
   step a "Goal", "Build" and "Test" section. "Test" lists the unit, integration and end-to-end tests the step adds (see
   `testing.md`), plus any manual checks that cannot be automated.
+- A plan for a feature with an exact contract, such as an MCP tool, a role or a rendering rule, may have a step
+  "Spec tests" after its last build step and before the wrap-up. The session that implements the plan does this step
+  by starting the `spec-tester` agent (`.claude/agents/spec-tester.md`) with the requirements file, or with the
+  feature spec when there is none, and waits for it; it does not write these tests itself. The tests the agent keeps
+  belong to the step. A finding with High confidence within the scope of the plan is fixed in this step, and the
+  failing test of its Evidence is added back with the fix; any other finding stops the plan, as "When a step cannot
+  be finished" says.
 - A whole step plan is implemented in one session, step by step, started with a prompt such as:
 
   ```text
@@ -178,8 +185,8 @@ The end-to-end specs a step affects:
 
 Changes to documentation only:
 
-- A step that changes only documentation (the files in `spec/`, `README.md`, `CLAUDE.md`, `AGENTS.md` and the skills in
-  `.claude/skills/`) is done when `npm run check` passes and its "Test" items have been verified. The integration
+- A step that changes only documentation (the files in `spec/`, `README.md`, `CLAUDE.md`, `AGENTS.md`, the skills in
+  `.claude/skills/` and the agents in `.claude/agents/`) is done when `npm run check` passes and its "Test" items have been verified. The integration
   tests, the end-to-end tests and the build do not run, because none of them reads these files.
 - This also holds for the wrap-up step and for a change outside a step plan.
 - A step that also changes any other file, such as code, configuration, `.env.example` or a fixture, is not
