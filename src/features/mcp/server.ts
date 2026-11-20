@@ -26,6 +26,7 @@ import {
   searchPagesInput,
   searchPagesOutput,
   movedPageOutput,
+  renamedTabOutput,
   storedPageOutput,
   storedTabOutput,
   USER_TEXT_NOTE,
@@ -288,9 +289,11 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
         title: "Rename a tab",
         description:
           "Gives a tab of the folder of this connection a new name, which changes its address and the addresses of " +
-          "all pages in it. A rename to the current name changes nothing. Returns the tab with its new address.",
+          "all pages in it. The wiki links into the tab in every page of the folder are changed to the new name in " +
+          "the same change. A rename to the current name changes nothing. Returns the tab with its new address and " +
+          `the pages whose links were updated. ${USER_TEXT_NOTE}`,
         inputSchema: renameTabInput,
-        outputSchema: storedTabOutput,
+        outputSchema: renamedTabOutput,
         annotations: WRITES,
       },
       (input) => renameTab(options, input),

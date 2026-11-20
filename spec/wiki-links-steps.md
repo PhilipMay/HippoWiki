@@ -39,7 +39,7 @@ write, and a page shows which pages link to it, in the browser and through `read
 - [x] Rendering and missing links
 - [x] Link index and backlinks
 - [x] Link updates on a page move or rename
-- [ ] Link updates on a tab rename
+- [x] Link updates on a tab rename
 - [ ] Wiki links in live preview
 - [ ] The `[[` picker
 - [ ] Spec tests

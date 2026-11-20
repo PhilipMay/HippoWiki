@@ -11,7 +11,7 @@ import NameDialog from "@/features/folders/components/NameDialog";
 import { mayDoTabAction, type TabAction } from "@/features/folders/folder-query";
 import type { TabWithFolder } from "@/features/folders/service";
 import PageList from "@/features/pages/components/PageList";
-import { listTabPages } from "@/features/pages/queries";
+import { countPagesLinkingIntoTab, listTabPages } from "@/features/pages/queries";
 import SearchField from "@/features/search/components/SearchField";
 import { folderPath, tabPath } from "@/lib/addresses";
 
@@ -24,6 +24,8 @@ type TabViewProps = {
 /** What a tab address shows: the pages of the tab, the buttons the role includes, and the dialog of the action on top. */
 export default async function TabView({ tab, action }: TabViewProps) {
   const pages = (await listTabPages(tab.id)) ?? notFound();
+  // The pages whose links a rename will update, as the folder holds them when the dialog is rendered.
+  const linking = action === "rename" ? ((await countPagesLinkingIntoTab(tab.id)) ?? notFound()) : 0;
   const { folder, role } = tab;
   const address = tabPath(folder.name, tab.name);
 
@@ -57,6 +59,11 @@ export default async function TabView({ tab, action }: TabViewProps) {
           action={renameTab.bind(null, tab.id)}
           currentName={tab.name}
           closeHref={address}
+          note={
+            linking === 0
+              ? "No page links into this tab."
+              : `Links in ${linking} ${linking === 1 ? "page" : "pages"} will be updated.`
+          }
         />
       )}
       {action === "delete" && (

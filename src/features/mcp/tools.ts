@@ -24,6 +24,7 @@ import type {
   listFolderOutput,
   movedPageOutput,
   moveOrRenamePageInput,
+  renamedTabOutput,
   readPageInput,
   readPageOutput,
   renameTabInput,
@@ -784,7 +785,16 @@ export async function renameTab(
       const tab = await folderService.getTab(options.actor, options.folder.name, input.tab);
       if (!tab) return tabNotFound(options, input.tab);
       const renamed = await folderService.renameTab(options.actor, tab.id, { name: input.newName });
-      if (renamed.ok) return storedTabResult(options, renamed.value);
+      if (renamed.ok) {
+        const { value } = renamed;
+        return result(
+          withNote({
+            name: value.name,
+            address: addressOf(options, tabPath(value.folder.name, value.name)),
+            updatedPages: updatedPagesData(value.updatedPages),
+          }) satisfies z.infer<typeof renamedTabOutput>,
+        );
+      }
       switch (renamed.error.code) {
         case "not-allowed":
           return toolError(NOT_ALLOWED);

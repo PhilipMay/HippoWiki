@@ -158,8 +158,10 @@ test.describe("the tools of a Manager connection", () => {
     const result = await manage(request, "rename_tab", { tab: "misc", newName: "archive" });
 
     expect(result.structuredContent).toEqual({
+      note: USER_TEXT_NOTE,
       name: "archive",
       address: `${ISSUER}/folders/projects/archive`,
+      updatedPages: [],
     });
     const { tabs, pages } = await listed(request);
     expect(tabs.map(({ name }) => name)).toEqual(["archive", "guides"]);
@@ -184,6 +186,36 @@ test.describe("the tools of a Manager connection", () => {
     expect(await stored()).toEqual(before);
   });
 
+  test("rename_tab lists the pages whose links into the tab it updated (R30)", async ({ request }) => {
+    const guides = await createTab({ folder: projects, name: "guides" });
+    await createPage({ tab: guides, name: "setup", content: "# Setup guide" });
+    await createPage({ tab: guides, name: "onboarding", content: "# Onboarding\n\n[[guides/setup|the setup]]" });
+    await createPage({
+      folder: projects,
+      name: "first-week",
+      content: "# First week\n\n[[guides/setup]] [[guides/faq]]",
+    });
+
+    const result = await manage(request, "rename_tab", { tab: "guides", newName: "docs" });
+
+    expect(result.structuredContent).toMatchObject({
+      name: "docs",
+      updatedPages: [
+        { name: "first-week", tab: null, title: "First week" },
+        { name: "onboarding", tab: "docs", title: "Onboarding" },
+      ],
+    });
+    const contents = await getTestDb().page.findMany({
+      orderBy: { name: "asc" },
+      select: { name: true, content: true },
+    });
+    expect(contents).toEqual([
+      { name: "first-week", content: "# First week\n\n[[docs/setup]] [[docs/faq]]" },
+      { name: "onboarding", content: "# Onboarding\n\n[[docs/setup|the setup]]" },
+      { name: "setup", content: "# Setup guide" },
+    ]);
+  });
+
   test("rename_tab with the current name of a tab changes nothing and answers as a rename; an unknown tab and a Writer connection are refused as for any name", async ({
     request,
   }) => {
@@ -199,7 +231,12 @@ test.describe("the tools of a Manager connection", () => {
     for (const newName of ["guides", " guides "]) {
       const result = await manage(request, "rename_tab", { tab: "guides", newName });
 
-      expect(result.structuredContent).toEqual({ name: "guides", address: `${ISSUER}/folders/projects/guides` });
+      expect(result.structuredContent).toEqual({
+        note: USER_TEXT_NOTE,
+        name: "guides",
+        address: `${ISSUER}/folders/projects/guides`,
+        updatedPages: [],
+      });
       expect(JSON.stringify(result)).toBe(JSON.stringify(renamed).replaceAll("archive", "guides"));
     }
     expect(await stored()).toEqual(before);

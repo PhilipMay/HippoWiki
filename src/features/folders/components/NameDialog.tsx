@@ -1,6 +1,7 @@
 "use client";
 
 import TextField from "@mui/material/TextField";
+import Typography from "@mui/material/Typography";
 import { useActionState, useId, useRef, useState } from "react";
 
 import ActionDialog, { DialogForm, DialogFormActions } from "@/components/ActionDialog";
@@ -21,13 +22,15 @@ type NameDialogProps = {
   currentName?: string;
   /** The address without the action, where closing the dialog leads. */
   closeHref: string;
+  /** A line below the name, such as what a rename does to the links into a tab. */
+  note?: string;
 };
 
 /**
  * Dialog that asks for the name of a folder or tab, used to create and to rename. The route renders it for an action
  * in the query string, so it is open from the start; closing it leads to the address without the action.
  */
-export default function NameDialog({ title, action, currentName, closeHref }: NameDialogProps) {
+export default function NameDialog({ title, action, currentName, closeHref, note }: NameDialogProps) {
   const [state, formAction, pending] = useActionState(action, {});
   // A controlled field keeps the entered name when the action returns errors; React resets only uncontrolled fields
   // after a submission.
@@ -69,6 +72,11 @@ export default function NameDialog({ title, action, currentName, closeHref }: Na
             },
           }}
         />
+        {note && (
+          <Typography variant="body2" color="text.secondary">
+            {note}
+          </Typography>
+        )}
       </DialogForm>
       <DialogFormActions
         closeHref={closeHref}

@@ -153,3 +153,34 @@ test("a revert to a revision that holds the old target stores it as it is, and i
     "Page does not exist",
   );
 });
+
+test("renaming a tab updates the links into it in every page, and its dialog says how many (R11, R30)", async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await setUpScenario();
+  await createTab({ folder: handbook, name: "empty" });
+
+  await page.goto("/folders/handbook/empty?action=rename");
+  await expect(page.getByRole("dialog", { name: "Rename tab" })).toContainText("No page links into this tab.");
+
+  await page.goto("/folders/handbook/guides?action=rename");
+  const dialog = page.getByRole("dialog", { name: "Rename tab" });
+  await expect(dialog).toContainText("Links in 2 pages will be updated.");
+  await dialog.getByLabel("Name").fill("docs");
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(page).toHaveURL("/folders/handbook/docs");
+
+  expect(await contentOf("onboarding")).toBe("# Onboarding\n\nStart with [[docs/setup|the setup]].");
+  expect(await contentOf("first-week")).toBe("# First week\n\n[[docs/setup]]");
+  await page.goto("/folders/handbook/first-week.md?view=history");
+  await expect(page.getByRole("list", { name: "Revisions" }).getByRole("listitem").first()).toContainText(
+    "Links updated after a move or rename",
+  );
+  await page.goto("/folders/handbook/first-week.md");
+  await expect(page.getByRole("article").getByRole("link", { name: "Setup guide" })).toHaveAttribute(
+    "href",
+    "/folders/handbook/docs/setup.md",
+  );
+  expect(errors).toEqual([]);
+});

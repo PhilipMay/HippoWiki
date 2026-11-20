@@ -45,6 +45,13 @@ const mocks = vi.hoisted(() => ({
   queryRaw: vi.fn(),
   pageUpdateManyAndReturn: vi.fn(),
   tabDelete: vi.fn(),
+  txTabFindFirst: vi.fn(),
+  pageLinkFindMany: vi.fn(),
+  pageUpdate: vi.fn(),
+  pageLinkDeleteMany: vi.fn(),
+  pageLinkCreateMany: vi.fn(),
+  revisionFindFirst: vi.fn(),
+  revisionCreate: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
@@ -67,12 +74,25 @@ vi.mock("@/lib/db", () => ({
       updateMany: mocks.tabUpdateMany,
     },
     folderRole: { findFirst: mocks.folderRoleFindFirst },
-    // An interactive transaction runs its callback with a client of its own; here with the mocks of the deletion.
+    // An interactive transaction runs its callback with a client of its own; here with the mocks of the deletion and
+    // of the rename of a tab, whose folder and name before the rename `txTabFindFirst` gives.
     $transaction: (fn: (tx: unknown) => Promise<unknown>) =>
       fn({
         $queryRaw: mocks.queryRaw,
-        page: { updateManyAndReturn: mocks.pageUpdateManyAndReturn },
-        tab: { delete: mocks.tabDelete },
+        $executeRaw: vi.fn(),
+        page: { updateManyAndReturn: mocks.pageUpdateManyAndReturn, update: mocks.pageUpdate },
+        pageLink: {
+          findMany: mocks.pageLinkFindMany,
+          deleteMany: mocks.pageLinkDeleteMany,
+          createMany: mocks.pageLinkCreateMany,
+        },
+        pageRevision: { findFirst: mocks.revisionFindFirst, create: mocks.revisionCreate },
+        tab: {
+          delete: mocks.tabDelete,
+          findFirst: mocks.txTabFindFirst,
+          findUnique: mocks.tabFindUnique,
+          updateMany: mocks.tabUpdateMany,
+        },
       }),
   }),
 }));
@@ -124,6 +144,9 @@ beforeEach(() => {
   vi.resetAllMocks();
   // The actor is Owner of every folder, unless a test says otherwise.
   mocks.folderRoleFindFirst.mockResolvedValue({ role: "owner" });
+  // The tab of a rename is in the folder of the tests, and no page links into it.
+  mocks.txTabFindFirst.mockResolvedValue({ folderId: FOLDER_ID, name: "old-name" });
+  mocks.pageLinkFindMany.mockResolvedValue([]);
   // The locked row of the tab that a deletion reads, unless a test says otherwise.
   mocks.queryRaw.mockResolvedValue([{ folderId: FOLDER_ID, folderName: "handbook" }]);
 });
@@ -572,6 +595,41 @@ describe("renameTab", () => {
     expectNothingLogged();
   });
 
+  it("returns the pages whose links into the tab the rename updated, and reads them for the old name", async () => {
+    const stored = { id: TAB_ID, name: "guides", folder: { name: "handbook" } };
+    mocks.tabUpdateMany.mockResolvedValue({ count: 1 });
+    mocks.tabFindUnique.mockResolvedValue(stored);
+    mocks.pageLinkFindMany.mockResolvedValue([{ pageId: "p1" }]);
+    mocks.queryRaw.mockResolvedValue([{ id: "p1", title: "Linking", content: "# Linking\n\n[[old-name/setup]]" }]);
+    const updated = { id: "p1", name: "linking", title: "Linking", tab: null };
+    const update = vi.fn().mockResolvedValue(updated);
+    mocks.pageUpdate.mockImplementation(update);
+
+    await expect(renameTab(ACTOR, TAB_ID, TAB_VALID)).resolves.toEqual({
+      ok: true,
+      value: { ...stored, updatedPages: [updated] },
+    });
+    expect(mocks.pageLinkFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ folderId: FOLDER_ID, tabName: "old-name" }) }),
+    );
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ content: "# Linking\n\n[[guides/setup]]" }) }),
+    );
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+      { tabId: TAB_ID, linkingPages: 1, channel: "web" },
+      "tab renamed",
+    );
+  });
+
+  it("fails as a whole when the update of the links fails", async () => {
+    const err = new Error("connection lost");
+    mocks.tabUpdateMany.mockResolvedValue({ count: 1 });
+    mocks.pageLinkFindMany.mockRejectedValue(err);
+
+    await expect(renameTab(ACTOR, TAB_ID, TAB_VALID)).resolves.toEqual(FAILED);
+    expect(mocks.error).toHaveBeenCalledWith({ err, tabId: TAB_ID }, "failed to rename tab");
+  });
+
   it("returns the field errors of an invalid name without writing anything", async () => {
     await expect(renameTab(ACTOR, TAB_ID, INVALID)).resolves.toEqual(NAME_REQUIRED);
     expectNothingWritten();
@@ -583,10 +641,16 @@ describe("renameTab", () => {
     mocks.tabUpdateMany.mockResolvedValue({ count: 1 });
     mocks.tabFindUnique.mockResolvedValue(stored);
 
-    await expect(renameTab(ACTOR, TAB_ID, TAB_VALID)).resolves.toEqual({ ok: true, value: stored });
+    await expect(renameTab(ACTOR, TAB_ID, TAB_VALID)).resolves.toEqual({
+      ok: true,
+      value: { ...stored, updatedPages: [] },
+    });
 
     expect(dataOf(mocks.tabUpdateMany)).toEqual({ name: "guides", lastEditedById: ACTOR_ID, lastEditedVia: "web" });
-    expect(mocks.info).toHaveBeenCalledExactlyOnceWith({ tabId: TAB_ID, channel: "web" }, "tab renamed");
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+      { tabId: TAB_ID, linkingPages: 0, channel: "web" },
+      "tab renamed",
+    );
   });
 
   it.each([
@@ -597,7 +661,10 @@ describe("renameTab", () => {
     mocks.tabUpdateMany.mockResolvedValue({ count: 0 });
     mocks.tabFindUnique.mockResolvedValue(stored);
 
-    await expect(renameTab(ACTOR, TAB_ID, input)).resolves.toEqual({ ok: true, value: stored });
+    await expect(renameTab(ACTOR, TAB_ID, input)).resolves.toEqual({
+      ok: true,
+      value: { ...stored, updatedPages: [] },
+    });
 
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
       { tabId: TAB_ID, channel: "web" },
@@ -612,14 +679,20 @@ describe("renameTab", () => {
     mocks.tabUpdateMany.mockResolvedValueOnce({ count: 0 }).mockResolvedValueOnce({ count: 1 });
     mocks.tabFindUnique.mockResolvedValueOnce({ ...stored, name: "other" }).mockResolvedValueOnce(stored);
 
-    await expect(renameTab(ACTOR, TAB_ID, TAB_VALID)).resolves.toEqual({ ok: true, value: stored });
+    await expect(renameTab(ACTOR, TAB_ID, TAB_VALID)).resolves.toEqual({
+      ok: true,
+      value: { ...stored, updatedPages: [] },
+    });
 
     const data = { name: "guides", lastEditedById: ACTOR_ID, lastEditedVia: "web" };
     expect(mocks.tabUpdateMany.mock.calls).toEqual([
       [{ where: { id: TAB_ID, name: { not: "guides" } }, data }],
       [{ where: { id: TAB_ID }, data }],
     ]);
-    expect(mocks.info).toHaveBeenCalledExactlyOnceWith({ tabId: TAB_ID, channel: "web" }, "tab renamed");
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+      { tabId: TAB_ID, linkingPages: 0, channel: "web" },
+      "tab renamed",
+    );
   });
 
   it("returns tab-not-found for a tab that no longer exists", async () => {
@@ -729,7 +802,7 @@ describe("a tab write through MCP", () => {
 
     expect(mocks.info.mock.calls).toEqual([
       [{ tabId: TAB_ID, channel: "mcp", grantId: GRANT_ID }, "tab created"],
-      [{ tabId: TAB_ID, channel: "mcp", grantId: GRANT_ID }, "tab renamed"],
+      [{ tabId: TAB_ID, linkingPages: 0, channel: "mcp", grantId: GRANT_ID }, "tab renamed"],
     ]);
     expect(dataOf(mocks.tabCreate)).toMatchObject({ lastEditedById: ACTOR_ID, lastEditedVia: "mcp" });
     expect(dataOf(mocks.tabUpdateMany)).toMatchObject({
@@ -743,7 +816,10 @@ describe("a tab write through MCP", () => {
     mocks.tabUpdateMany.mockResolvedValue({ count: 0 });
     mocks.tabFindUnique.mockResolvedValue(stored);
 
-    await expect(renameTab(MANAGER, TAB_ID, TAB_VALID)).resolves.toEqual({ ok: true, value: stored });
+    await expect(renameTab(MANAGER, TAB_ID, TAB_VALID)).resolves.toEqual({
+      ok: true,
+      value: { ...stored, updatedPages: [] },
+    });
 
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
       { tabId: TAB_ID, channel: "mcp", grantId: GRANT_ID },

@@ -5,6 +5,7 @@
 
 import type { ContentActor } from "@/features/folder-roles/actors";
 import { readableFolderWhere } from "@/features/folder-roles/service";
+import { parseTabId } from "@/features/folders/schema";
 import { titleFromContent } from "@/features/pages/derive";
 import { parsePageId } from "@/features/pages/schema";
 import { LINK_INDEX_VERSION, linkRowsOf, rewriteWikiLinks, type TargetChange } from "@/features/pages/wiki-links";
@@ -241,4 +242,24 @@ export async function countPagesLinkingTo(actor: ContentActor, pageId: string): 
   return getDb().pageLink.count({
     where: { folderId: page.folderId, tabName: page.tab?.name ?? null, pageName: page.name, page: { deletedAt: null } },
   });
+}
+
+/**
+ * How many pages of the folder that are not deleted hold a wiki link to a page of the tab with the given id, whatever
+ * its name: the pages that a rename of the tab updates, as they are now. `null` for an admin, for a tab of a folder
+ * without a role of the actor, and for a malformed id and a tab that does not exist.
+ */
+export async function countPagesLinkingIntoTab(actor: ContentActor, tabId: string): Promise<number | null> {
+  const readable = readableFolderWhere(actor);
+  if (!readable) return null;
+  const id = parseTabId(tabId);
+  if (!id) return null;
+  const tab = await getDb().tab.findFirst({ where: { id, folder: readable }, select: { folderId: true, name: true } });
+  if (!tab) return null;
+  const pages = await getDb().pageLink.findMany({
+    where: { folderId: tab.folderId, tabName: tab.name, page: { deletedAt: null } },
+    select: { pageId: true },
+    distinct: ["pageId"],
+  });
+  return pages.length;
 }

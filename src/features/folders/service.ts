@@ -35,6 +35,8 @@ import {
   roleSelection,
 } from "@/features/folder-roles/service";
 import { folderInputSchema, parseFolderId, parseTabId, tabInputSchema } from "@/features/folders/schema";
+import { LINKS_TRANSACTION, lockFolderLinks, updateLinks, type LinkingPage } from "@/features/pages/links-service";
+import { tabRenamed } from "@/features/pages/wiki-links";
 import { softDeleteData } from "@/features/pages/writes";
 import { LAST_EDITOR_SELECT, withLastEditor, type LastEditor } from "@/features/users/records";
 import { isAdmin } from "@/features/users/user-type";
@@ -79,6 +81,9 @@ export type TabWithFolder = { id: string; name: string; folder: { id: string; na
 
 /** A tab as stored by a write, with the name of its folder: what its address is built from. */
 export type StoredTab = { id: string; name: string; folder: { name: string } };
+
+/** A tab as stored by a rename, with the pages whose wiki links into it were updated. */
+export type RenamedTab = StoredTab & { updatedPages: LinkingPage[] };
 
 /** The name of a write is invalid; `fieldErrors` holds the messages of the schema. */
 type InvalidName = InvalidInput<NameFieldErrors>;
@@ -377,15 +382,18 @@ export async function createTab(
 }
 
 /**
- * Renames the tab with the given id, with the actor as its last editor, and returns it as stored. A rename to the name
- * the tab has stored at that moment stores nothing and returns the tab as it is, after the same checks as every rename.
- * It is a write of the browser or of MCP.
+ * Renames the tab with the given id, with the actor as its last editor, and returns it as stored. In the same write, in
+ * one transaction that holds the exclusive lock of the links of the folder, it changes every wiki link into the tab,
+ * whatever the page, in the pages of the folder that are not deleted to the new name, as a move of a page does
+ * (`updateLinks()` of the links service), and returns those pages: a rename that is refused or fails changes no page. A
+ * rename to the name the tab has stored at that moment stores nothing, updates no link and returns the tab as it is,
+ * after the same checks as every rename. It is a write of the browser or of MCP.
  */
 export async function renameTab(
   actor: ContentActor,
   id: string,
   input: { name: string },
-): Promise<Result<StoredTab, RenameTabError>> {
+): Promise<Result<RenamedTab, RenameTabError>> {
   const opened = openContentWrite(actor, "tab not renamed");
   if (opened.refused) return opened.refused;
   const { lastEditedById, lastEditedVia } = opened.editor;
@@ -405,19 +413,36 @@ export async function renameTab(
 
   let written: Written<StoredTab>;
   let tab: StoredTab | null;
+  let updatedPages: LinkingPage[] = [];
   try {
-    const db = getDb();
-    const read = () => db.tab.findUnique({ where: { id: tabId }, select: STORED_TAB_SELECT });
-    written = await writeRename(
-      name,
-      // `updateMany` reports a missing tab as a count of 0 instead of throwing; it sets `updatedAt` as well.
-      async (where) =>
-        (await db.tab.updateMany({ where: { id: tabId, ...where }, data: { name, lastEditedById, lastEditedVia } }))
-          .count,
-      read,
-    );
-    // A stored tab is read back, so that a caller gets the stored names, never submitted values.
-    tab = written.kind === "unchanged" ? written.item : written.kind === "stored" ? await read() : null;
+    ({ written, tab, updatedPages } = await getDb().$transaction(async (tx) => {
+      // The folder of the tab, whose links the rename updates; a tab never changes its folder.
+      const located = await tx.tab.findFirst({ where: { id: tabId }, select: { folderId: true } });
+      if (!located) return { written: { kind: "not-found" } as const, tab: null, updatedPages: [] };
+      await lockFolderLinks(tx, located.folderId, "exclusive");
+      // The name before the rename, which the links name; under the lock no other rename changes it.
+      const before = await tx.tab.findFirst({ where: { id: tabId }, select: { name: true } });
+      const read = () => tx.tab.findUnique({ where: { id: tabId }, select: STORED_TAB_SELECT });
+      const result = await writeRename(
+        name,
+        // `updateMany` reports a missing tab as a count of 0 instead of throwing; it sets `updatedAt` as well.
+        async (where) =>
+          (await tx.tab.updateMany({ where: { id: tabId, ...where }, data: { name, lastEditedById, lastEditedVia } }))
+            .count,
+        read,
+      );
+      if (result.kind !== "stored") {
+        return { written: result, tab: result.kind === "unchanged" ? result.item : null, updatedPages: [] };
+      }
+      const updated = before
+        ? await updateLinks(tx, located.folderId, { tabName: before.name }, tabRenamed(before.name, name), {
+            lastEditedById,
+            lastEditedVia,
+          })
+        : [];
+      // A stored tab is read back, so that a caller gets the stored names, never submitted values.
+      return { written: result, tab: await read(), updatedPages: updated };
+    }, LINKS_TRANSACTION));
   } catch (err) {
     if (isForeignKeyViolation(err, LAST_EDITOR)) return unknownActor(err, actor);
     if (isUniqueViolation(err, TAB_NAME)) {
@@ -435,9 +460,9 @@ export async function renameTab(
   if (written.kind === "unchanged") {
     logger.info({ tabId, ...channelOf(actor) }, "tab not changed: name is the same");
   } else {
-    logger.info({ tabId, ...channelOf(actor) }, "tab renamed");
+    logger.info({ tabId, linkingPages: updatedPages.length, ...channelOf(actor) }, "tab renamed");
   }
-  return { ok: true, value: tab };
+  return { ok: true, value: { ...tab, updatedPages } };
 }
 
 /**

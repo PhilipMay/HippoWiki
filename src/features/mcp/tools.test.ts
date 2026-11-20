@@ -29,10 +29,11 @@ const USER_TEXT_TOOLS = [
   "edit_page_content",
   "move_or_rename_page",
   "delete_page",
+  "rename_tab",
   "delete_tab",
 ];
 /** The tools whose results carry only a tab, without the note. */
-const TAB_TOOLS = ["create_tab", "rename_tab"];
+const TAB_TOOLS = ["create_tab"];
 
 const mocks = vi.hoisted(() => ({
   listTabs: vi.fn(),
@@ -1492,16 +1493,24 @@ describe("the tools of a Manager connection", () => {
     it("renames the tab found by its name and returns it with its new address, without a version", async () => {
       mocks.renameTab.mockResolvedValue({
         ok: true,
-        value: { id: "tab-1", name: "howtos", folder: { name: "handbook" } },
+        value: {
+          id: "tab-1",
+          name: "howtos",
+          folder: { name: "handbook" },
+          updatedPages: [{ id: "p2", name: "onboarding", title: "Onboarding", tab: { name: "howtos" } }],
+        },
       });
 
       const result = await callTool("rename_tab", { tab: "guides", newName: "howtos" });
 
       expect(mocks.getTab).toHaveBeenCalledWith(MANAGER, "handbook", "guides");
       expect(mocks.renameTab).toHaveBeenCalledExactlyOnceWith(MANAGER, "tab-1", { name: "howtos" });
+      // The pages whose links the rename updated, with their titles (R30).
       expect(result.structuredContent).toEqual({
+        note: USER_TEXT_NOTE,
         name: "howtos",
         address: "https://wiki.example.com/folders/handbook/howtos",
+        updatedPages: [{ name: "onboarding", tab: "howtos", title: "Onboarding" }],
       });
     });
 
@@ -1863,7 +1872,10 @@ describe("every tool", () => {
     mocks.moveOrRenamePage.mockResolvedValue({ ok: true, value: { ...STORED, name: "moved", updatedPages: [] } });
     mocks.deletePage.mockResolvedValue({ ok: true, value: { folder: { name: "handbook" }, tab: null } });
     mocks.createTab.mockResolvedValue({ ok: true, value: { id: "t2", name: "news", folder: { name: "handbook" } } });
-    mocks.renameTab.mockResolvedValue({ ok: true, value: { id: "tab-1", name: "news", folder: { name: "handbook" } } });
+    mocks.renameTab.mockResolvedValue({
+      ok: true,
+      value: { id: "tab-1", name: "news", folder: { name: "handbook" }, updatedPages: [] },
+    });
     mocks.deleteTab.mockResolvedValue({ ok: true, value: { folder: FOLDER, pageCount: 0, pages: [] } });
     mocks.searchPages.mockResolvedValue({
       ok: true,

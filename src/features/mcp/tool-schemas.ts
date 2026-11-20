@@ -329,6 +329,13 @@ export const storedTabOutput = z.object({
   address: addressOutput("tab"),
 });
 
+/** A tab as stored by `rename_tab`, with the pages whose wiki links into it were updated, which carry their titles. */
+export const renamedTabOutput = z.object({
+  note: NOTE_OUTPUT,
+  ...storedTabOutput.shape,
+  updatedPages: updatedPagesOutput,
+});
+
 export const deletedTabOutput = z.object({
   note: NOTE_OUTPUT,
   name: z.string().describe("The name the deleted tab had"),

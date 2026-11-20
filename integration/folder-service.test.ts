@@ -8,7 +8,7 @@ import type { User } from "@/generated/prisma/client";
 
 import { createFolder, createFolderRole, createPage, createTab, createUser, getTestDb } from "../e2e/support/database";
 import { KNOWN_USER } from "../prisma/known-users";
-import { createBob, FAILED, NOT_ALLOWED, storedPage, UNKNOWN_ACTOR, mcpActorOf } from "./helpers";
+import { createBob, FAILED, NOT_ALLOWED, revisionsOf, storedPage, UNKNOWN_ACTOR, mcpActorOf } from "./helpers";
 
 /**
  * The user who makes the writes, unless a test says otherwise; created anew for every test. It is the known user
@@ -191,7 +191,7 @@ describe("tab writes", () => {
     const renamed = await createTab({ folder: elsewhere, name: "old" });
     await expect(folderService.renameTab(actor, renamed.id, { name: "guides" })).resolves.toStrictEqual({
       ok: true,
-      value: { id: renamed.id, name: "guides", folder: { name: "elsewhere" } },
+      value: { id: renamed.id, name: "guides", folder: { name: "elsewhere" }, updatedPages: [] },
     });
     // The tab that was not renamed keeps its name.
     expect((await getTestDb().tab.findUniqueOrThrow({ where: { id: news.id } })).name).toBe("news");
@@ -650,7 +650,7 @@ describe("a rename to the stored name", () => {
 
       await expect(folderService.renameTab(actor, tab.id, { name })).resolves.toStrictEqual({
         ok: true,
-        value: { id: tab.id, name: "guides", folder: { name: "handbook" } },
+        value: { id: tab.id, name: "guides", folder: { name: "handbook" }, updatedPages: [] },
       });
 
       expect(await storedTab(tab.id)).toStrictEqual({
@@ -670,7 +670,7 @@ describe("a rename to the stored name", () => {
 
     await expect(folderService.renameTab(manager, tab.id, { name: "guides" })).resolves.toStrictEqual({
       ok: true,
-      value: { id: tab.id, name: "guides", folder: { name: "handbook" } },
+      value: { id: tab.id, name: "guides", folder: { name: "handbook" }, updatedPages: [] },
     });
 
     expect(await storedTab(tab.id)).toStrictEqual({
@@ -688,7 +688,7 @@ describe("a rename to the stored name", () => {
 
     await expect(folderService.renameTab(actor, tab.id, { name: "news" })).resolves.toStrictEqual({
       ok: true,
-      value: { id: tab.id, name: "news", folder: { name: folder.name } },
+      value: { id: tab.id, name: "news", folder: { name: folder.name }, updatedPages: [] },
     });
 
     expect(await storedTab(tab.id)).toStrictEqual({
@@ -1175,7 +1175,7 @@ describe("tab writes through MCP", () => {
     if (!created.ok) throw new Error(`not created: ${created.error.code}`);
     await expect(folderService.renameTab(manager, old.id, { name: "archive" })).resolves.toStrictEqual({
       ok: true,
-      value: { id: old.id, name: "archive", folder: { name: "projects" } },
+      value: { id: old.id, name: "archive", folder: { name: "projects" }, updatedPages: [] },
     });
 
     expect(await lastEditorOfTab(created.value.id)).toBe(user.id);
@@ -1240,5 +1240,67 @@ describe("tab writes through MCP", () => {
     await expect(folderService.deleteTab(manager, folder.id, tab.id)).resolves.toEqual(NOT_ALLOWED);
 
     expect(await snapshot()).toStrictEqual(before);
+  });
+});
+
+describe("the update of links on a tab rename", () => {
+  it("changes [[guides/setup|the setup]] to [[docs/setup|the setup]] with a marked revision (R11)", async () => {
+    const folder = await createFolder();
+    const guides = await createTab({ folder, name: "guides" });
+    await createPage({ tab: guides, name: "setup", content: "# Setup guide" });
+    const linking = await createPage({
+      folder,
+      name: "linking",
+      content: "# Linking\n\n[[guides/setup|the setup]] [[setup]]",
+    });
+
+    const renamed = await folderService.renameTab(actor, guides.id, { name: "docs" });
+
+    expect(renamed).toMatchObject({ ok: true, value: { name: "docs" } });
+    expect(renamed.ok && renamed.value.updatedPages.map((page) => page.name)).toEqual(["linking"]);
+    const stored = await storedPage(linking.id);
+    expect(stored).toMatchObject({
+      content: "# Linking\n\n[[docs/setup|the setup]] [[setup]]",
+      version: linking.version + 1,
+      lastEditedById: user.id,
+      lastEditedVia: "web",
+    });
+    const revisions = await revisionsOf(linking.id);
+    expect(revisions.at(-1)).toMatchObject({ number: 2, userId: user.id, via: "web", linksUpdated: true });
+  });
+
+  it("changes no page when the rename is refused for a taken name (R8)", async () => {
+    const folder = await createFolder();
+    const guides = await createTab({ folder, name: "guides" });
+    await createTab({ folder, name: "docs" });
+    const linking = await createPage({ folder, name: "linking", content: "# Linking\n\n[[guides/setup]]" });
+
+    expect(await folderService.renameTab(actor, guides.id, { name: "docs" })).toMatchObject({
+      ok: false,
+      error: { code: "name-taken" },
+    });
+    expect(await storedPage(linking.id)).toEqual(linking);
+  });
+
+  it("keeps the links of a deleted page (R29), and updates nothing for a rename to the own name", async () => {
+    const folder = await createFolder();
+    const guides = await createTab({ folder, name: "guides" });
+    const gone = await createPage({
+      folder,
+      name: "gone",
+      content: "# Gone\n\n[[guides/setup]]",
+      deletedAt: new Date(),
+    });
+    const linking = await createPage({ folder, name: "linking", content: "# Linking\n\n[[guides/setup]]" });
+
+    expect(await folderService.renameTab(actor, guides.id, { name: "guides" })).toMatchObject({
+      ok: true,
+      value: { updatedPages: [] },
+    });
+    expect(await storedPage(linking.id)).toEqual(linking);
+
+    await folderService.renameTab(actor, guides.id, { name: "docs" });
+    expect(await storedPage(gone.id)).toEqual(gone);
+    expect((await storedPage(linking.id)).content).toBe("# Linking\n\n[[docs/setup]]");
   });
 });
