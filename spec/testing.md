@@ -300,14 +300,25 @@ How the code is tested. Commands are listed in `README.md`.
     disabled. Every other page a test opens, in a second tab or a browser context of its own, gets the same wait from
     `hydrating()`, e.g. `hydrating(await context.newPage())`. So no test acts on the locked, server-rendered page, where
     React could undo a change to the DOM or report a hydration mismatch. This matters most in CI, whose runner hydrates
-    much later than a fast local machine.
-  - The wait fails at once when the page loads itself again more than 5 times meanwhile (`MAX_RELOADS_WHILE_HYDRATING`
-    in `test.ts`). No page of the app reloads itself, but the hot module replacement of the development server
-    (`next dev` with Turbopack) can: now and then, when the first page that a worker's server renders for a browser
-    overlaps a compile, the server answers every subscription of the page to its entry chunk with a `restart`, and the
-    page reloads until the test times out. The production run has no hot module replacement. Without the check the
-    test fails after 30 seconds while waiting for `data-hydrated`; with it, its error names the reload loop, so that the
-    failure is told apart from one of the app.
+    much later than a fast local machine. `hydrating()` also routes the page through the filter of `hmr.ts`, and its
+    `goto()` and `reload()` wait for that route before they load the page, so that the first load is covered.
+  - The hot module replacement of the development server (`next dev` with Turbopack) can drive a page into a reload
+    loop: now and then the compile pass that a page render schedules lands just after the page has subscribed to its
+    chunk lists, and the server answers the subscription of the shared entry chunk list with an update of the type
+    `restart`, or sends `reloadPage` because the version of the page no longer matches. The page reloads, its next
+    render schedules the next pass, and the loop never ends until the test times out. The filter of `hmr.ts` keeps the
+    messages `reloadPage` and `restart` from every page that `hydrating()` wraps. That loses nothing: the tests change
+    no source file, so these messages never carry a real update. The production run has no hot module replacement.
+  - The wait still fails at once when the page loads itself again more than 5 times meanwhile
+    (`MAX_RELOADS_WHILE_HYDRATING` in `test.ts`), as a guard: no page of the app reloads itself and the filter keeps
+    the development server from doing so, so its error points to a new cause of reloads, which is told apart from a
+    failure of the app, instead of a test that fails after 30 seconds while waiting for `data-hydrated`.
+  - `hmr.ts` holds that filter. `withoutReloads()` drops a message `reloadPage`, drops the updates of the type
+    `restart` from a `turbopack-message` and the message when none is left, and returns every other message unchanged,
+    binary ones included; its unit tests are in `hmr.test.ts`. `keepFromReloading()` routes the websocket of
+    `/_next/hmr` of a page with `page.routeWebSocket()`, connected to the server, and passes the messages of the server
+    through `withoutReloads()`. The websocket is routed, not stubbed, because a page of Next.js 16 does not hydrate
+    without the connection of the hot module replacement.
   - `editor.ts` holds the helpers for the Markdown editor, which every spec that writes or reads the content of a page
     uses: `contentEditor()` and `editorReady()` find the editor by its role and its name "Content", `fillContent()`
     replaces the whole content as input that CodeMirror reads, `expectContent()` asserts the exact content,
@@ -354,8 +365,9 @@ How the code is tested. Commands are listed in `README.md`.
   - `mcp.ts` has the helpers of the MCP tests, in which a test stands in for an MCP client: `sendMcp()` sends a
     JSON-RPC message to an MCP address with a bearer token, `callTool()` calls a tool there and returns its result, and
     `mcpPath()` gives the path of the address of a folder and role. `setUpProjects()` resets the test database and
-    creates the folder "projects" with a Reader grant of `alice`; until the next reset, `send()` and `call()` use that
-    connection unless a test gives another token or address.
+    creates a user of its own for the test, the Owner and last editor of the folder "projects", with a Reader grant of
+    that user there, instead of one of `alice`, and returns that user as `owner`; until the next reset, `send()` and
+    `call()` use that connection unless a test gives another token or address.
   - `search.ts` has `holdSearchWords()`, which holds the table of the words of the folders in a transaction of the
     test until it is released, so that every search of the worker waits for it until its time limit, and
     `waitForHeldSearches()`, which waits until a number of searches wait for it.
@@ -412,15 +424,20 @@ How the code is tested. Commands are listed in `README.md`.
   access token of a grant from `createGrant()`, for Reader, Writer and Manager connections, each from a test database
   reset by `setUpProjects()`: `e2e/mcp-access.spec.ts` the tokens, the binding of a connection to its address and the
   current role behind it, `e2e/mcp-read.spec.ts` the protocol and the read tools, `e2e/mcp-write.spec.ts` the write
-  tools of a Writer with their locking, `e2e/mcp-edit.spec.ts` the replacements of `edit_page_content`, `e2e/mcp-manager.spec.ts` the tools of a Manager, and `e2e/mcp-search.spec.ts` the search tool. A change of a tool runs
+  tools of a Writer with their locking, `e2e/mcp-edit.spec.ts` the replacements of `edit_page_content`, `e2e/mcp-manager.spec.ts` the tools of a Manager, and `e2e/mcp-search.spec.ts` the search tool. Every
+  test of these specs connects as the user of its own that `setUpProjects()` creates, never as `alice`: the budget of
+  the rate limit of MCP is kept per user in the memory of the server of a worker and outlives `resetTestDatabase()`, so
+  one known user would share one budget across all MCP specs of a worker. Their tests "in the browser" log in as that
+  user with `logIn()`, in a spec without a saved state. A change of a tool runs
   the spec of its group, a change of the access `e2e/mcp-access.spec.ts`; `e2e/oauth.spec.ts` covers the discovery, the registration, the
   token endpoint and the whole flow from the login over the consent page to a tool call, a refresh and a refresh token
   that is used again. The helpers of `e2e/support/oauth.ts` send a folder address as `resource` (`mcpAddress()`).
 - `e2e/mcp-limits.spec.ts` covers the limits of the MCP addresses: the refusal of batches, the body limit and the rate
   limit per user. The servers of the end-to-end tests keep the default limits, so that the spec checks them. The budget
-  of the rate limit is kept per user in the memory of a server and outlives `resetTestDatabase()`, so a test that sends
-  many MCP requests uses a user of its own (`createUser()`), never the known user of the other MCP specs; a spec that
-  meets the limit gets a user of its own, and the limits of the servers are not raised. The unit tests written from the
+  of the rate limit is kept per user in the memory of a server and outlives `resetTestDatabase()`, so every MCP test
+  uses a user of its own: the tests of this spec create theirs with `createUser()`, the other MCP specs get theirs
+  from `setUpProjects()`. `e2e/oauth.spec.ts` approves its grants as `alice` and sends few MCP requests, so it keeps
+  the known user. A spec that meets the limit gets a user of its own, and the limits of the servers are not raised. The unit tests written from the
   spec alone for these limits are `src/features/mcp/limits.spec-tests.test.ts` and `src/lib/env.spec-tests.test.ts`.
 - The Markdown editor has specs of its own: `e2e/editor.spec.ts` the editor in source mode, its loading, its safety
   and its keyboard; `e2e/editor-preview.spec.ts` live preview and the mode switch; `e2e/editor-toolbar.spec.ts` the
