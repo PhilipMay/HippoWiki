@@ -11,7 +11,7 @@ import EmptyState from "@/components/EmptyState";
 import Link from "@/components/Link";
 import Time from "@/components/Time";
 import type { DeletedPageSummary } from "@/features/pages/service";
-import { deletedPagePath } from "@/lib/addresses";
+import { deletedItemPath } from "@/lib/addresses";
 
 type DeletedPagesListProps = {
   /** The deleted pages of the folder, in display order. */
@@ -27,7 +27,7 @@ export default function DeletedPagesList({ pages, folderName }: DeletedPagesList
   if (pages.length === 0) {
     return (
       <EmptyState
-        title="No deleted pages"
+        title="No deleted items"
         text="Pages you delete in this folder will be listed here, where you can restore them."
       />
     );
@@ -35,7 +35,7 @@ export default function DeletedPagesList({ pages, folderName }: DeletedPagesList
 
   return (
     <TableContainer component={Paper} variant="outlined">
-      <Table aria-label="Deleted pages">
+      <Table aria-label="Deleted items">
         <TableHead>
           <TableRow>
             <TableCell>Name</TableCell>
@@ -50,7 +50,7 @@ export default function DeletedPagesList({ pages, folderName }: DeletedPagesList
             <TableRow key={page.id}>
               <TableCell sx={{ overflowWrap: "anywhere" }}>
                 {/* A deleted page has no `.md` address, so its name is shown without the suffix. */}
-                <MuiLink component={Link} href={deletedPagePath(folderName, page.id)}>
+                <MuiLink component={Link} href={deletedItemPath(folderName, page.id)}>
                   {page.name}
                 </MuiLink>
               </TableCell>

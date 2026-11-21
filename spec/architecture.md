@@ -221,7 +221,7 @@ the callers other than the browser.
   `src/lib/names.ts`. Actions that do the same thing share a message for `failed`, such as the content saves, moves
   and renames of a page.
 - On success it calls `revalidateContent()` from `src/lib/revalidate.ts`, which covers every address under `/folders`
-  and `/deleted-pages` (the module says why both), and redirects to the address of the item as stored, built from the
+  and `/deleted-items` (the module says why both), and redirects to the address of the item as stored, built from the
   result of the service with the helpers in `addresses.ts`, never to one built from submitted values.
 - `redirect` and `notFound()` throw, so `redirect` is called last, and both outside `try` blocks.
 
@@ -340,14 +340,14 @@ The feature is described in `users-and-login.md`. What every new route, query an
 
 ## Addresses and actions
 
-- All content lives under `/folders`, deleted pages under `/deleted-pages`; the addresses are described in
+- All content lives under `/folders`, the deleted items of the folders under `/deleted-items`; the addresses are described in
   `content-structure.md`. The login is at `/login`, the forced password change at `/change-password` and the user list
   at `/users` (see `users-and-login.md`), the own account with the connected apps at `/account` (see
   `connected-apps.md`), the overview of the folder roles for admins at `/folder-roles` (see `folder-roles.md`), the MCP
   addresses of the folders at `/mcp/<folder-uuid>/<reader|writer|manager>` (see `mcp.md`) and the endpoints of OAuth
   under `/oauth/` and `/.well-known/` (see `oauth.md`).
 - Routes, Server Actions and links build every address with the helpers in `src/lib/addresses.ts` instead of writing
-  paths by hand, the roots included: `homePath()` for `/`, `foldersPath()` and `deletedPagesRootPath()` for the roots
+  paths by hand, the roots included: `homePath()` for `/`, `foldersPath()` and `deletedItemsRootPath()` for the roots
   that `src/lib/revalidate.ts` revalidates.
 - What an address opens is given in its query string: an action as `?action=<action>`, a view as `?view=<view>`.
   They are read with `parseAction` and `parseView`, passing only the actions and views the address has; an address

@@ -156,7 +156,7 @@ The plan is large, so it has two stop points:
 
 ## Checklist
 
-- [ ] Deleted items
+- [x] Deleted items
 - [ ] File types, names, storage and images
 - [ ] Files in the database and their addresses
 - [ ] Files in the views and the details page

@@ -381,7 +381,7 @@ function asDeleted<Entry extends { deletedAt: Date | null }>(page: Entry): (Entr
  * `null` for an admin and, in the browser, for an actor whose role on the folder is not Manager or Owner.
  */
 export async function listDeletedPages(actor: ContentActor, folderId: string): Promise<DeletedPageSummary[] | null> {
-  if (!(await mayReadFolder(actor, folderId, "deletedPages"))) return null;
+  if (!(await mayReadFolder(actor, folderId, "deletedItems"))) return null;
   const parsedFolderId = parseFolderId(folderId);
   if (!parsedFolderId) return [];
   const pages = await getDb().page.findMany({
@@ -399,7 +399,7 @@ export async function listDeletedPages(actor: ContentActor, folderId: string): P
  * browser, if the actor's role on the folder is not Manager or Owner.
  */
 export async function getDeletedPage(actor: ContentActor, folderName: string, id: string): Promise<DeletedPage | null> {
-  const readable = readableFolderWhere(actor, "deletedPages");
+  const readable = readableFolderWhere(actor, "deletedItems");
   if (!readable) return null;
   const folder = parseName(folderName);
   const pageId = parsePageId(id);
@@ -1032,7 +1032,7 @@ export async function restorePage(
   // A page that does not exist has no role either, so that nothing tells whether a page of this id exists.
   const role = await lookUp(() => roleOnFolderOfPage(actor, pageId), { pageId }, "failed to restore page");
   if (!role.ok) return role;
-  const refused = refusedByRole(actor, "page not restored", role.value, "deletedPages", { pageId });
+  const refused = refusedByRole(actor, "page not restored", role.value, "deletedItems", { pageId });
   if (refused) return refused;
 
   const tabId = parsePlace(input.tabId);

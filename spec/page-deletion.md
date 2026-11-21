@@ -1,13 +1,13 @@
 # HippoWiki – Page Deletion
 
 The soft delete of pages as built: a deleted page disappears from the wiki but keeps its content, can be looked at in
-the deleted pages of its folder and can be restored from there. Pages themselves are described in `pages.md`, folders,
+the deleted items of its folder and can be restored from there. Pages themselves are described in `pages.md`, folders,
 tabs and addresses in `content-structure.md`.
 
 Code: `src/features/pages/` (`deletePage`, `restorePage`, `listDeletedPages` and `getDeletedPage` in `service.ts`,
 `softDeleteData()` in `writes.ts`, which the delete of a tab stores for its pages as well, the dialogs and lists in
-`components/`), routes under `src/app/deleted-pages/`. Tests: `e2e/delete-page.spec.ts`,
-`e2e/deleted-pages.spec.ts`, `e2e/restore-page.spec.ts`, `integration/page-service.test.ts`.
+`components/`), routes under `src/app/deleted-items/`. Tests: `e2e/delete-page.spec.ts`,
+`e2e/deleted-items.spec.ts`, `e2e/restore-page.spec.ts`, `integration/page-service.test.ts`.
 
 ## Deleting
 
@@ -37,20 +37,22 @@ Code: `src/features/pages/` (`deletePage`, `restorePage`, `listDeletedPages` and
 - The deleted pages of a folder, reading one and restoring it need the role Manager or Owner on the folder; for every
   other role their addresses show the not-found page (see `folder-roles.md`).
 
-## Deleted pages of a folder
+## Deleted items of a folder
 
-- The folder address links a Manager and an Owner to "Deleted pages", `/deleted-pages/<folder>`: the deleted pages of
-  the folder, newest first, with name, title, time of deletion, the user who deleted it and, in a column "Via" right
+- The folder address links a Manager and an Owner to "Deleted items", `/deleted-items/<folder>`, a list under the
+  heading "Deleted items" of the deleted pages of the folder, newest first, with name, title, time of deletion, the user who deleted it and, in a column "Via" right
   after "Deleted by", how it was deleted, also for a page deleted with its tab (see "Channel" in
   `content-structure.md`). The list does not show where in the folder a page was.
-- `/deleted-pages/<folder>/<id>` shows a deleted page read-only, with the time of deletion, the user who deleted it
+- `/deleted-items/<folder>/<id>` shows a deleted page read-only, with the time of deletion, the user who deleted it
   and the channel, "Restore" as its only action and "History". A deleted page is addressed by its id, because its name
   need not be unique and it has no `.md` address.
 - A deleted page keeps its history. Its views `?view=history`, `?view=revision` and `?view=compare` show it read-only,
   without "Revert" (see `page-history.md`); deleting, restoring and deleting a tab record no revision, so a restored
   page has its whole history again.
-- Everything else under `/deleted-pages` (an unknown folder or id, a page of another folder or one that is not deleted,
-  `/deleted-pages` alone, any other view or action) shows the not-found page.
+- Everything else under `/deleted-items` (an unknown folder or id, a page of another folder or one that is not deleted,
+  `/deleted-items` alone, any other view or action) shows the not-found page.
+- The old addresses under `/deleted-pages`, the list and a deleted page alike, show the not-found page, for every role;
+  there is no redirect, as after every rename in the wiki.
 
 ## Restoring
 
@@ -69,8 +71,10 @@ Code: `src/features/pages/` (`deletePage`, `restorePage`, `listDeletedPages` and
 - A deleted page loses its tab, because its place inside the folder is forgotten. As a result no unique index on page
   names covers it: the index on the names of pages placed directly in a folder leaves out deleted pages, and the one
   on the names within a tab never sees a page without a tab. So the name is free at once.
-- Deleted pages have addresses of their own under `/deleted-pages`, named for what it holds. Tabs are deleted for good
-  and get none, and so will folders (see "Deleting folders" in `roadmap.md`).
+- Deleted pages have addresses of their own under `/deleted-items`, named for what it holds: the deleted items of a
+  folder, so that other kinds of items can join the list. It was once `/deleted-pages`, which shows the not-found page
+  now instead of a redirect, which would be the only one of the wiki. Tabs are deleted for good and get none, and so
+  will folders (see "Deleting folders" in `roadmap.md`).
 - Who deleted a page, and how, is its last editor and its channel; neither is stored on its own. This holds only as
   long as nothing writes to a deleted page; a later write to deleted pages has to keep the last editor and the channel
   of the deleted pages it touches. Deleting a

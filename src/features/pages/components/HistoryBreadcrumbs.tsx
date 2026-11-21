@@ -4,7 +4,7 @@ import Typography from "@mui/material/Typography";
 
 import Link from "@/components/Link";
 import type { HistoryPlace } from "@/features/pages/components/history-place";
-import { deletedPagesPath, folderPath, foldersPath, tabPath } from "@/lib/addresses";
+import { deletedItemsPath, folderPath, foldersPath, tabPath } from "@/lib/addresses";
 
 type HistoryBreadcrumbsProps = {
   /** Where the page lives. */
@@ -23,7 +23,7 @@ export default function HistoryBreadcrumbs({ place, current }: HistoryBreadcrumb
     { label: "Folders", href: foldersPath() },
     { label: folderName, href: folderPath(folderName) },
     ...(tabName === null ? [] : [{ label: tabName, href: tabPath(folderName, tabName) }]),
-    ...(place.deleted ? [{ label: "Deleted pages", href: deletedPagesPath(folderName) }] : []),
+    ...(place.deleted ? [{ label: "Deleted items", href: deletedItemsPath(folderName) }] : []),
     { label: place.pageLabel, href: place.pageHref },
     ...(current === "History" ? [] : [{ label: "History", href: place.historyHref() }]),
   ];

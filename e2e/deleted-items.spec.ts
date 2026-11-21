@@ -96,12 +96,12 @@ function breadcrumb(page: Page) {
 /** The rows of the list of deleted pages, without its header. */
 function deletedPageRows(page: Page) {
   return page
-    .getByRole("table", { name: "Deleted pages" })
+    .getByRole("table", { name: "Deleted items" })
     .getByRole("row")
     .filter({ has: page.getByRole("cell") });
 }
 
-test("the deleted pages button of a folder leads to its deleted pages, newest first", async ({ page }) => {
+test("the deleted items button of a folder leads to its deleted items, newest first", async ({ page }) => {
   const errors = collectErrors(page);
   const other = await createFolder({ name: "other" });
   const older = await createPage({
@@ -120,34 +120,34 @@ test("the deleted pages button of a folder leads to its deleted pages, newest fi
   await createPage({ folder: other, name: "elsewhere", title: "Elsewhere", deletedAt: new Date() });
 
   await page.goto("/folders/handbook");
-  await page.getByRole("main").getByRole("link", { name: "Deleted pages" }).click();
+  await page.getByRole("main").getByRole("link", { name: "Deleted items" }).click();
 
-  await expect(page).toHaveURL("/deleted-pages/handbook");
-  await expect(page).toHaveTitle("Deleted pages – handbook – HippoWiki");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(["Deleted pages"]);
+  await expect(page).toHaveURL("/deleted-items/handbook");
+  await expect(page).toHaveTitle("Deleted items – handbook – HippoWiki");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(["Deleted items"]);
   const items = breadcrumb(page).getByRole("listitem");
-  await expect(items).toHaveText(["Folders", "handbook", "Deleted pages"]);
-  await expect(items.nth(2).locator("[aria-current=page]")).toHaveText("Deleted pages");
+  await expect(items).toHaveText(["Folders", "handbook", "Deleted items"]);
+  await expect(items.nth(2).locator("[aria-current=page]")).toHaveText("Deleted items");
   await expect(breadcrumb(page).getByRole("link")).toHaveText(["Folders", "handbook"]);
 
-  const table = page.getByRole("table", { name: "Deleted pages" });
+  const table = page.getByRole("table", { name: "Deleted items" });
   // Where in the folder a page was is not known, so there is no tab column.
   await expect(table.getByRole("columnheader")).toHaveText(["Name", "Title", "Deleted", "Deleted by", "Via"]);
   const rows = deletedPageRows(page);
   await expect(rows).toHaveText([/^newerNewer page/, /^olderOlder page/]);
   await expect(rows.nth(1).locator("time")).toHaveAttribute("datetime", "2026-11-01T10:00:00.000Z");
   await expect(table.getByRole("link")).toHaveText(["newer", "older"]);
-  await expect(table.getByRole("link").nth(1)).toHaveAttribute("href", `/deleted-pages/handbook/${older.id}`);
+  await expect(table.getByRole("link").nth(1)).toHaveAttribute("href", `/deleted-items/handbook/${older.id}`);
   expect(errors).toEqual([]);
 });
 
-test("the deleted pages of a folder without any show an empty state", async ({ page }) => {
+test("the deleted items of a folder without any show an empty state", async ({ page }) => {
   await createPage({ folder: handbook, name: "kept" });
   await createPage({ name: "elsewhere", deletedAt: new Date() });
 
-  await page.goto("/deleted-pages/handbook");
+  await page.goto("/deleted-items/handbook");
 
-  await expect(page.getByText("No deleted pages")).toBeVisible();
+  await expect(page.getByText("No deleted items")).toBeVisible();
   await expect(page.getByRole("table")).toHaveCount(0);
 });
 
@@ -160,27 +160,27 @@ test("a deleted page can be opened and read, without edit controls", async ({ pa
     deletedAt: new Date("2026-11-02T09:30:00Z"),
   });
 
-  await page.goto("/deleted-pages/handbook");
-  await page.getByRole("table", { name: "Deleted pages" }).getByRole("link", { name: "removed" }).click();
+  await page.goto("/deleted-items/handbook");
+  await page.getByRole("table", { name: "Deleted items" }).getByRole("link", { name: "removed" }).click();
 
-  await expect(page).toHaveURL(`/deleted-pages/handbook/${removed.id}`);
+  await expect(page).toHaveURL(`/deleted-items/handbook/${removed.id}`);
   await expect(page).toHaveTitle("Deleted: Removed page – HippoWiki");
-  await expect(breadcrumb(page).getByRole("listitem")).toHaveText(["Folders", "handbook", "Deleted pages", "removed"]);
-  await expect(breadcrumb(page).getByRole("link")).toHaveText(["Folders", "handbook", "Deleted pages"]);
+  await expect(breadcrumb(page).getByRole("listitem")).toHaveText(["Folders", "handbook", "Deleted items", "removed"]);
+  await expect(breadcrumb(page).getByRole("link")).toHaveText(["Folders", "handbook", "Deleted items"]);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(["Removed page"]);
   const article = page.getByRole("article");
   await expect(article.getByRole("listitem")).toHaveText(["First point", "Second point"]);
   await expect(article.locator("time")).toHaveAttribute("datetime", "2026-11-02T09:30:00.000Z");
   await expect(page.getByRole("main").getByRole("link", { name: /^(Edit|Move or rename|Delete)$/ })).toHaveCount(0);
 
-  await breadcrumb(page).getByRole("link", { name: "Deleted pages" }).click();
-  await expect(page).toHaveURL("/deleted-pages/handbook");
+  await breadcrumb(page).getByRole("link", { name: "Deleted items" }).click();
+  await expect(page).toHaveURL("/deleted-items/handbook");
   expect(errors).toEqual([]);
 });
 
 test("after renaming a folder its deleted pages open under the new name", async ({ page }) => {
   const removed = await createPage({ folder: handbook, name: "removed", title: "Removed page", deletedAt: new Date() });
-  await page.goto(`/deleted-pages/handbook/${removed.id}`);
+  await page.goto(`/deleted-items/handbook/${removed.id}`);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(["Removed page"]);
 
   await page.goto("/folders/handbook?action=rename");
@@ -189,12 +189,12 @@ test("after renaming a folder its deleted pages open under the new name", async 
   await dialog.getByRole("button", { name: "Save" }).click();
   await expect(page).toHaveURL("/folders/manual");
 
-  await page.goto("/deleted-pages/manual");
+  await page.goto("/deleted-items/manual");
   await deletedPageRows(page).getByRole("link", { name: "removed" }).click();
-  await expect(page).toHaveURL(`/deleted-pages/manual/${removed.id}`);
+  await expect(page).toHaveURL(`/deleted-items/manual/${removed.id}`);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(["Removed page"]);
-  await expectNotFound(page, `/deleted-pages/handbook/${removed.id}`);
-  await expectNotFound(page, "/deleted-pages/handbook");
+  await expectNotFound(page, `/deleted-items/handbook/${removed.id}`);
+  await expectNotFound(page, "/deleted-items/handbook");
 });
 
 test.describe("addresses that are no deleted pages", () => {
@@ -209,22 +209,24 @@ test.describe("addresses that are no deleted pages", () => {
   });
 
   for (const address of [
-    "/deleted-pages",
-    "/deleted-pages/unknown",
-    "/deleted-pages/Handbook",
-    `/deleted-pages/unknown/${removedId}`,
-    "/deleted-pages/handbook/not-a-uuid",
-    "/deleted-pages/handbook/removed",
-    `/deleted-pages/handbook/${removedId.toUpperCase()}x`,
-    "/deleted-pages/handbook/3f1e0b6c-2d4a-4b8e-9c7f-1a2b3c4d5e6f",
-    `/deleted-pages/handbook/${elsewhereId}`,
-    `/deleted-pages/handbook/${keptId}`,
-    `/deleted-pages/handbook/${removedId}/more`,
-    "/deleted-pages/handbook?action=new",
-    "/deleted-pages/handbook?view=all",
-    `/deleted-pages/handbook/${removedId}?action=edit`,
-    `/deleted-pages/handbook/${removedId}?action=delete`,
-    `/deleted-pages/handbook/${removedId}?view=all`,
+    "/deleted-items",
+    "/deleted-items/unknown",
+    "/deleted-items/Handbook",
+    `/deleted-items/unknown/${removedId}`,
+    "/deleted-items/handbook/not-a-uuid",
+    "/deleted-items/handbook/removed",
+    `/deleted-items/handbook/${removedId.toUpperCase()}x`,
+    "/deleted-items/handbook/3f1e0b6c-2d4a-4b8e-9c7f-1a2b3c4d5e6f",
+    `/deleted-items/handbook/${elsewhereId}`,
+    `/deleted-items/handbook/${keptId}`,
+    `/deleted-items/handbook/${removedId}/more`,
+    "/deleted-items/handbook?action=new",
+    "/deleted-items/handbook?view=all",
+    `/deleted-items/handbook/${removedId}?action=edit`,
+    `/deleted-items/handbook/${removedId}?action=delete`,
+    `/deleted-items/handbook/${removedId}?view=all`,
+    "/deleted-pages/handbook",
+    `/deleted-pages/handbook/${removedId}`,
   ]) {
     test(`${address} shows the not-found page`, async ({ page }) => {
       await expectNotFound(page, address);
@@ -232,7 +234,7 @@ test.describe("addresses that are no deleted pages", () => {
   }
 
   test("the deleted page itself is found", async ({ page }) => {
-    const response = await page.goto(`/deleted-pages/handbook/${removedId}`);
+    const response = await page.goto(`/deleted-items/handbook/${removedId}`);
     expect(response?.status()).toBe(200);
   });
 });
@@ -253,8 +255,8 @@ test("the deleted pages show who deleted each page and how in columns, and the d
   const user = await getTestDb().user.findUniqueOrThrow({ where: { id: KNOWN_USER.id } });
   await createPage({ folder, name: "by-user", deletedAt: new Date("2026-11-01T10:00:00Z"), editor: user });
 
-  await page.goto("/deleted-pages/docs");
-  const table = page.getByRole("table", { name: "Deleted pages" });
+  await page.goto("/deleted-items/docs");
+  const table = page.getByRole("table", { name: "Deleted items" });
   await expect(table.getByRole("columnheader")).toHaveText(["Name", "Title", "Deleted", "Deleted by", "Via"]);
   const rows = table.getByRole("row").filter({ has: page.getByRole("cell") });
   await expect(rows).toHaveText([/^by-bob/, /^by-user/]);
@@ -263,7 +265,7 @@ test("the deleted pages show who deleted each page and how in columns, and the d
   await expect(rows.nth(1).getByRole("cell").nth(3)).toHaveText(USER);
   await expect(rows.nth(1).getByRole("cell").nth(4)).toHaveText("web");
 
-  await page.goto(`/deleted-pages/docs/${removed.id}`);
+  await page.goto(`/deleted-items/docs/${removed.id}`);
   await expect(page.getByRole("article").getByText(/^Deleted /)).toHaveText(by("bob", "mcp"));
   expect(errors).toEqual([]);
 });

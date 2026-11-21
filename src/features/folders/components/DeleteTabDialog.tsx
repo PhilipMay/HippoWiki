@@ -30,7 +30,7 @@ function pagesText(pageCount: number): string {
 
 /**
  * Dialog "Delete tab" that names the tab and the number of its pages, and says that the pages can be restored one by
- * one from the deleted pages of the folder while the tab itself cannot. The route renders it for `?action=delete`, so
+ * one from the deleted items of the folder while the tab itself cannot. The route renders it for `?action=delete`, so
  * it is open from the start; closing it leads to the tab address, or to the folder once the tab no longer exists.
  */
 export default function DeleteTabDialog({ action, tabName, pageCount, closeHref, folderHref }: DeleteTabDialogProps) {
@@ -54,7 +54,7 @@ export default function DeleteTabDialog({ action, tabName, pageCount, closeHref,
       description={
         <>
           Delete the tab {tabName}? {pagesText(pageCount)}{" "}
-          {pageCount > 0 && "The pages can be restored one by one from the deleted pages of the folder. "}
+          {pageCount > 0 && "The pages can be restored one by one from the deleted items of the folder. "}
           The tab itself cannot be restored.
         </>
       }

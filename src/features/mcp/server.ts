@@ -71,7 +71,7 @@ const ROLE_ABILITIES: Readonly<Record<McpRole, string>> = {
     "It reads the folder and changes its pages like a Writer connection, with create_page, edit_page_content, " +
     "replace_page_content and move_or_rename_page, deletes pages with delete_page, and creates, renames and deletes " +
     `tabs with create_tab, rename_tab and delete_tab. ${CONTENT_TOOLS} Every change and every delete of a page ` +
-    "states the version that read_page gave for it, and one based on an older version is refused. Deleting a tab deletes all its pages with it. Deleted pages " +
+    "states the version that read_page gave for it, and one based on an older version is refused. Deleting a tab deletes all its pages with it. Deleted items " +
     "can be neither seen nor restored through this connection: only a Manager or Owner of the folder restores them, " +
     "in the browser.",
 };
@@ -256,9 +256,9 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
         title: "Delete a page",
         description:
           "Deletes a page of the folder of this connection, as deleting it in the browser does: it goes to the " +
-          "deleted pages of the folder, where a Manager or Owner can restore it in the browser; deleted pages " +
+          "deleted items of the folder, where a Manager or Owner can restore it in the browser; deleted items " +
           "cannot be seen or restored through this connection. State the version that read_page gave: if the page " +
-          "has changed since, nothing is deleted. Returns the deleted page and the address of the deleted pages of " +
+          "has changed since, nothing is deleted. Returns the deleted page and the address of the deleted items of " +
           `the folder. ${USER_TEXT_NOTE}`,
         inputSchema: deletePageInput,
         outputSchema: deletedPageOutput,
@@ -308,9 +308,9 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
         description:
           "Deletes a tab of the folder of this connection together with every page in it, in one call and without " +
           "a further confirmation. The tab is deleted for good and cannot be restored. Its pages go to the deleted " +
-          "pages of the folder and can only be restored one by one, by a Manager or Owner of the folder in the " +
+          "items of the folder and can only be restored one by one, by a Manager or Owner of the folder in the " +
           "browser. Use list_folder first to see which pages are in the tab. Returns the number of pages deleted " +
-          "with the tab, the name and title of each, and the address of the deleted pages of the folder. " +
+          "with the tab, the name and title of each, and the address of the deleted items of the folder. " +
           USER_TEXT_NOTE,
         inputSchema: deleteTabInput,
         outputSchema: deletedTabOutput,

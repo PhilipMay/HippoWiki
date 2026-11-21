@@ -12,7 +12,7 @@ import { listDeletedPages } from "@/features/pages/queries";
 import { hasSearchWords, parseAction, parseView, type SearchParams } from "@/lib/addresses";
 import { pageTitle } from "@/lib/site";
 
-type Props = PageProps<"/deleted-pages/[folder]">;
+type Props = PageProps<"/deleted-items/[folder]">;
 
 /** The list of deleted pages has neither actions nor views, and deleted pages are never searched. */
 function hasQuery(searchParams: SearchParams): boolean {
@@ -21,8 +21,8 @@ function hasQuery(searchParams: SearchParams): boolean {
 
 export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
   const folder = await getFolderByName((await params).folder);
-  if (!folder || !mayDo(folder.role, "deletedPages") || hasQuery(await searchParams)) return { title: pageTitle() };
-  return { title: pageTitle(`Deleted pages – ${folder.name}`) };
+  if (!folder || !mayDo(folder.role, "deletedItems") || hasQuery(await searchParams)) return { title: pageTitle() };
+  return { title: pageTitle(`Deleted items – ${folder.name}`) };
 }
 
 /** The deleted pages of a folder, newest first. */
@@ -32,13 +32,13 @@ export default async function DeletedPagesPage({ params, searchParams }: Props) 
 
   const folder = await getFolderByName((await params).folder);
   // Only a Manager or an Owner sees the deleted pages; for any other role they do not exist.
-  if (!folder || !mayDo(folder.role, "deletedPages") || hasQuery(await searchParams)) notFound();
+  if (!folder || !mayDo(folder.role, "deletedItems") || hasQuery(await searchParams)) notFound();
 
   return (
     <Stack spacing={3}>
-      <FolderBreadcrumbs folderName={folder.name} current="Deleted pages" />
+      <FolderBreadcrumbs folderName={folder.name} current="Deleted items" />
       <Typography variant="h4" component="h1">
-        Deleted pages
+        Deleted items
       </Typography>
       <DeletedPagesList pages={(await listDeletedPages(folder.id)) ?? notFound()} folderName={folder.name} />
     </Stack>

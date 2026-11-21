@@ -283,7 +283,7 @@ test.describe("wiki links in the page view", () => {
 
     await setOwnRole(handbook, "manager");
     const deleted = await getTestDb().page.findFirstOrThrow({ where: { deletedAt: { not: null } } });
-    await page.goto(`/deleted-pages/handbook/${deleted.id}?action=restore`);
+    await page.goto(`/deleted-items/handbook/${deleted.id}?action=restore`);
     const restore = page.getByRole("dialog", { name: "Restore page" });
     await restore.getByRole("radio", { name: "Tab guides" }).check();
     await restore.getByRole("button", { name: "Save" }).click();
@@ -301,7 +301,7 @@ test.describe("wiki links in the page view", () => {
     const setup = await getTestDb().page.findFirstOrThrow({ where: { name: "setup", tabId: guides.id } });
     await getTestDb().page.update({ where: { id: setup.id }, data: { deletedAt: new Date(), tabId: null } });
 
-    await page.goto(`/deleted-pages/handbook/${setup.id}?action=restore`);
+    await page.goto(`/deleted-items/handbook/${setup.id}?action=restore`);
     const restore = page.getByRole("dialog", { name: "Restore page" });
     await restore.getByLabel("Name").fill("install");
     await restore.getByRole("radio", { name: "Tab guides" }).check();
@@ -335,13 +335,13 @@ test.describe("wiki links in the page view", () => {
       content: "# Old\n\n[[guides/setup]] and [[gone]]",
       deletedAt: new Date(),
     });
-    await page.goto(`/deleted-pages/handbook/${deleted.id}`);
+    await page.goto(`/deleted-items/handbook/${deleted.id}`);
     await expect(article(page).getByRole("link", { name: "Setup guide" })).toHaveAttribute(
       "href",
       "/folders/handbook/guides/setup.md",
     );
     await expect(article(page).getByRole("link", { name: "gone" })).toHaveAccessibleDescription("Page does not exist");
-    await page.goto(`/deleted-pages/handbook/${deleted.id}?view=revision&revision=1`);
+    await page.goto(`/deleted-items/handbook/${deleted.id}?view=revision&revision=1`);
     await expect(article(page).getByRole("link", { name: "Setup guide" })).toBeVisible();
   });
 

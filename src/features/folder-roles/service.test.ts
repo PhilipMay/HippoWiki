@@ -230,11 +230,11 @@ describe("mayReadFolder and mayReadTab", () => {
 
 describe("a function beyond reading", () => {
   it("readableFolderWhere needs a role that allows the function", () => {
-    expect(readableFolderWhere(BROWSER, "deletedPages")).toEqual({
+    expect(readableFolderWhere(BROWSER, "deletedItems")).toEqual({
       roles: { some: { userId: ACTOR_ID, role: { in: ["manager", "owner"] } } },
     });
     // A Writer connection has no function of a Manager.
-    expect(readableFolderWhere(MCP, "deletedPages")).toEqual({ id: { in: [] } });
+    expect(readableFolderWhere(MCP, "deletedItems")).toEqual({ id: { in: [] } });
     expect(readableFolderWhere(MCP_READER, "editPage")).toEqual({ id: { in: [] } });
   });
 
@@ -242,7 +242,7 @@ describe("a function beyond reading", () => {
     mocks.roleFindFirst.mockResolvedValue({ role: "owner" });
 
     await expect(mayReadFolder(MCP, FOLDER_ID, "editPage")).resolves.toBe(true);
-    await expect(mayReadFolder(MCP, FOLDER_ID, "deletedPages")).resolves.toBe(false);
+    await expect(mayReadFolder(MCP, FOLDER_ID, "deletedItems")).resolves.toBe(false);
     await expect(mayReadFolder(MCP_READER, FOLDER_ID, "editPage")).resolves.toBe(false);
   });
 
@@ -254,7 +254,7 @@ describe("a function beyond reading", () => {
       ["owner", true],
     ] as const) {
       mocks.roleFindFirst.mockResolvedValueOnce({ role });
-      await expect(mayReadFolder(BROWSER, FOLDER_ID, "deletedPages"), role).resolves.toBe(allowed);
+      await expect(mayReadFolder(BROWSER, FOLDER_ID, "deletedItems"), role).resolves.toBe(allowed);
     }
   });
 });

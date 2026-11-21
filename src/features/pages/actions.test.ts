@@ -89,10 +89,10 @@ function failure(code: string, fieldErrors?: Record<string, string[]>) {
   return { ok: false, error: { code, ...(fieldErrors && { fieldErrors }) } };
 }
 
-/** Both prefixes are refreshed: a write can change addresses under `/folders` and under `/deleted-pages`. */
+/** Both prefixes are refreshed: a write can change addresses under `/folders` and under `/deleted-items`. */
 function expectContentRevalidated(): void {
   expect(mocks.revalidatePath).toHaveBeenCalledWith("/folders", "layout");
-  expect(mocks.revalidatePath).toHaveBeenCalledWith("/deleted-pages", "layout");
+  expect(mocks.revalidatePath).toHaveBeenCalledWith("/deleted-items", "layout");
 }
 
 function expectNotRevalidatedOrRedirected(): void {

@@ -12,7 +12,7 @@ Code: `src/features/folders/` (folders and tabs, with `renameFolder()`, `renameT
 `components/`), `src/lib/names.ts` (the name rule), `src/lib/addresses.ts` (building and parsing addresses),
 `src/features/folders/folder-query.ts` and `src/features/pages/page-query.ts` (what an address shows, with its title
 and the role of each action), the models `Folder`, `Tab` and `Page` in `prisma/schema.prisma`, and the routes under
-`src/app/folders/` and `src/app/deleted-pages/`. The last editor and the channel: the writes of
+`src/app/folders/` and `src/app/deleted-items/`. The last editor and the channel: the writes of
 `src/features/folders/service.ts` and `src/features/pages/service.ts`, the actors in
 `src/features/folder-roles/actors.ts`, `src/features/users/records.ts` (what the reads return of the last editor and
 how the browser names it), the relation `lastEditedBy` and the field `lastEditedVia` of `Folder`, `Tab` and `Page` in
@@ -63,7 +63,7 @@ hold pages directly and have tabs at the same time.
 
 ## Addresses
 
-- All content lives under the fixed prefix `/folders`; deleted pages live under `/deleted-pages` (see
+- All content lives under the fixed prefix `/folders`; deleted pages live under `/deleted-items` (see
   `page-deletion.md`). The rest of the root belongs to the other routes of the app (see `src/app/`).
 - The addresses:
   - `/folders`: the list of folders
@@ -71,7 +71,7 @@ hold pages directly and have tabs at the same time.
   - `/folders/<folder>/<tab>`: a tab
   - `/folders/<folder>/<page>.md`: a page placed directly in a folder
   - `/folders/<folder>/<tab>/<page>.md`: a page in a tab
-  - `/deleted-pages/<folder>` and `/deleted-pages/<folder>/<id>`: the deleted pages of a folder and a deleted page
+  - `/deleted-items/<folder>` and `/deleted-items/<folder>/<id>`: the deleted items of a folder and a deleted page
 - The `.md` belongs to the address, not to the name. A segment that ends in the lowercase `.md` is a page, any other is
   a tab.
 - Every address maps to at most one item. A malformed name, an unknown folder, tab or page, and a page of another
@@ -107,7 +107,7 @@ hold pages directly and have tabs at the same time.
     (see "The view "AI apps"" in `folder-roles.md` and `mcp.md`);
   - `?view=search&q=<words>`: the results of a search in the whole folder for the words in `q` (see `search.md`). `q`
     belongs only to this view, which needs it once and with more than spaces; `q` on any other address under
-    `/folders` and `/deleted-pages` shows the not-found page.
+    `/folders` and `/deleted-items` shows the not-found page.
 - A page address and the address of a deleted page have the views of the history of the page: `?view=history`, the
   revisions of the page, `?view=revision&revision=<n>`, one revision, and `?view=compare&from=<n>&to=<n>`, a
   comparison of two revisions. The action `revert` needs `&revision=<n>`. These parameters belong only to their view
@@ -130,12 +130,12 @@ hold pages directly and have tabs at the same time.
 - `/folders`: the folders with a role of the user, with their last update and the own role, and a "New folder"
   button; without any folder a hint that the user can create one or ask an Owner of a folder for a role.
 - `/folders/<folder>`: the folder with the own role, the buttons the role includes ("Rename" for an Owner, "All pages"
-  and "Roles" for every role, "AI apps" for every role while `HIPPOWIKI_PUBLIC_URL` is set, "Deleted pages" and
+  and "Roles" for every role, "AI apps" for every role while `HIPPOWIKI_PUBLIC_URL` is set, "Deleted items" and
   "New tab" for a Manager, "New page" for a Writer), and one list of its contents: first the pages placed directly in
   the folder, then its tabs. Its views are listed in "Actions and views".
 - `/folders/<folder>/<tab>`: the tab with "Rename" and "Delete" for a Manager and "New page" for a Writer, and the
   pages of the tab. The contents list of the folder offers no deletion of its tabs.
-- Page addresses are described in `pages.md`, the addresses under `/deleted-pages` in `page-deletion.md`.
+- Page addresses are described in `pages.md`, the addresses under `/deleted-items` in `page-deletion.md`.
 - Every address below a folder has a breadcrumb back to the folder list and the folder.
 
 ## Changing the structure
@@ -156,7 +156,7 @@ hold pages directly and have tabs at the same time.
 - Moving or renaming a page is refused when the page was changed after the dialog was opened; the dialog then shows
   the name and place as stored (see `optimistic-locking.md`). Renaming a folder or a tab is not checked: the last save
   wins.
-- After every write, all addresses under `/folders` and `/deleted-pages` show the new state.
+- After every write, all addresses under `/folders` and `/deleted-items` show the new state.
 
 ## Renaming to the same name
 
@@ -215,7 +215,7 @@ This section is the rule for deleting a tab, in the browser and through `delete_
 - The tab is deleted for good: it cannot be restored, it is not listed among deleted items, and its name is free at
   once for a new tab of the folder.
 - Every page in the tab is soft deleted exactly as if it had been deleted on its own (see `page-deletion.md`): it keeps
-  its content and its folder, forgets its tab, and is listed under "Deleted pages" of the folder, from where it is
+  its content and its folder, forgets its tab, and is listed under "Deleted items" of the folder, from where it is
   restored one by one into a place of the folder. The user who deleted the tab becomes its last editor and so the user
   who deleted it, with the channel of the deletion; all pages of the tab get the same time of deletion, and their
   versions count up.
@@ -244,7 +244,7 @@ This section is the rule for deleting a tab, in the browser and through `delete_
   for the users with a role on the folder, as far as the role allows, through MCP also as far as the role of the
   connection allows (see `folder-roles.md`). An admin reaches no content through any address, form, action or MCP
   tool; an admin sees the names of the folders and who has which role on them only on the overview `/folder-roles`.
-- Every address under `/folders` and `/deleted-pages` shows an admin the not-found page, with and without an action
+- Every address under `/folders` and `/deleted-items` shows an admin the not-found page, with and without an action
   or a view, also for items that exist, so that it reveals nothing, not even whether an item exists. A form of the
   content that an admin submits shows the not-found page and writes nothing. The same holds for a user and a folder
   without a role.

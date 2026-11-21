@@ -158,8 +158,8 @@ test.describe("the address of the results", () => {
       "/folders/handbook/overview.md?q=backup",
       "/folders/handbook/overview.md?view=history&q=backup",
       "/folders/handbook/guides/setup.md?q=backup",
-      "/deleted-pages/handbook?q=backup",
-      `/deleted-pages/handbook/${deleted.id}?q=backup`,
+      "/deleted-items/handbook?q=backup",
+      `/deleted-items/handbook/${deleted.id}?q=backup`,
     ]) {
       await expectNotFound(page, address);
     }
@@ -383,7 +383,7 @@ test.describe("the search field", () => {
     });
   }
 
-  test("does not show while an action is open, outside the folders and on the deleted pages", async ({ page }) => {
+  test("does not show while an action is open, outside the folders and on the deleted items", async ({ page }) => {
     test.setTimeout(60_000);
     const { deleted } = await setUpFolder();
 
@@ -400,10 +400,10 @@ test.describe("the search field", () => {
       "/folders/handbook/overview.md?action=delete",
       "/folders/handbook/guides/setup.md?action=revert&revision=1",
       "/folders",
-      "/deleted-pages/handbook",
-      `/deleted-pages/handbook/${deleted.id}`,
-      `/deleted-pages/handbook/${deleted.id}?view=history`,
-      `/deleted-pages/handbook/${deleted.id}?view=revision&revision=1`,
+      "/deleted-items/handbook",
+      `/deleted-items/handbook/${deleted.id}`,
+      `/deleted-items/handbook/${deleted.id}?view=history`,
+      `/deleted-items/handbook/${deleted.id}?view=revision&revision=1`,
       "/users",
       "/account",
     ]) {

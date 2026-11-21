@@ -174,9 +174,9 @@ Tools of a Manager, for a Manager connection only. They do what the browser does
 (`destructiveHint`), `create_tab` and `rename_tab` the hints of a tool that writes:
 
 - `delete_page`: a page by its tab, if it is in one, and its name, based on the version that `read_page` gave, deleted
-  as in the browser: it goes to the deleted pages of the folder, with the user of the connection as the user who
+  as in the browser: it goes to the deleted items of the folder, with the user of the connection as the user who
   deleted it. The result names the page (its
-  name, title and the tab it was in), the address of the deleted pages of the folder, `/deleted-pages/<folder>`, and
+  name, title and the tab it was in), the address of the list "Deleted items" of the folder, `/deleted-items/<folder>`, and
   that a Manager or Owner can restore it there in the browser.
 - `create_tab`: a new, empty tab of the folder with the given name, under the name rule of the browser. `create_page`
   and `move_or_rename_page` can use it at once. A name that breaks the rule or that another tab of the folder has is a
@@ -190,7 +190,7 @@ Tools of a Manager, for a Manager connection only. They do what the browser does
   confirmation (see "Deleting a tab" in `content-structure.md`). Its description says before the call that every page
   in the tab is deleted with it, that the tab cannot be restored and that its pages can only be restored one by one by
   a Manager or Owner in the browser. The result names the tab, the number of pages deleted with it and the name and
-  title of each, without a limit, and the address of the deleted pages of the folder. An empty tab is deleted as
+  title of each, without a limit, and the address of the deleted items of the folder. An empty tab is deleted as
   well, with the number 0.
 
 What a Manager connection cannot do, because no tool offers it: see, read or restore deleted pages, see the roles of
@@ -369,7 +369,7 @@ of the history.
 - The result of `delete_tab` lists the name and title of every page deleted with it, without a limit, like
   `list_folder` and like the number of pages of a tab, so that the agent can tell the user exactly what went.
   Rejected: the number of pages only, and at most 100 names and the number of the rest.
-- The results of `delete_page` and `delete_tab` name the full address of the deleted pages of the folder, so that the
+- The results of `delete_page` and `delete_tab` name the full address of the deleted items of the folder, so that the
   user can restore them in the browser. Rejected: a hint without the address, and no hint.
 - Deleted pages, restoring, the roles and the Owners stay out of MCP, also with full content management: undoing a
   deletion stays a deliberate step of a person in the browser. Rejected: tools that list, read and restore deleted

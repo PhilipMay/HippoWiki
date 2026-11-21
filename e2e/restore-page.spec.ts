@@ -27,9 +27,9 @@ function restoreDialog(page: Page) {
 
 /** Opens the deleted page and its "Restore page" dialog through the "Restore" button. */
 async function openRestoreDialog(page: Page, id: string) {
-  await page.goto(`/deleted-pages/handbook/${id}`);
+  await page.goto(`/deleted-items/handbook/${id}`);
   await page.getByRole("main").getByRole("link", { name: "Restore" }).click();
-  await expect(page).toHaveURL(`/deleted-pages/handbook/${id}?action=restore`);
+  await expect(page).toHaveURL(`/deleted-items/handbook/${id}?action=restore`);
   const dialog = restoreDialog(page);
   await expect(dialog).toBeVisible();
   return dialog;
@@ -58,8 +58,8 @@ test("restoring a page directly into the folder under its old name leads to it",
   await expect(page.getByRole("list", { name: "Contents" }).getByRole("link")).toHaveText([/^Removed page/]);
   await page.goto("/folders/handbook?view=all");
   await expect(page.getByRole("table", { name: "All pages" }).getByRole("link")).toHaveText(["removed.md"]);
-  await page.goto("/deleted-pages/handbook");
-  await expect(page.getByText("No deleted pages")).toBeVisible();
+  await page.goto("/deleted-items/handbook");
+  await expect(page.getByText("No deleted items")).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -89,10 +89,10 @@ test("restoring a page into a tab under a new name leads to its new address", as
   await expect(page.getByRole("list", { name: "Pages" }).getByRole("link")).toHaveText([/^Removed page/]);
   await page.goto("/folders/handbook?view=all");
   await expect(page.getByRole("table", { name: "All pages" }).getByRole("link")).toHaveText(["restored.md"]);
-  await page.goto("/deleted-pages/handbook");
-  const table = page.getByRole("table", { name: "Deleted pages" });
+  await page.goto("/deleted-items/handbook");
+  const table = page.getByRole("table", { name: "Deleted items" });
   await expect(table.getByRole("link")).toHaveText(["other"]);
-  await expect(table.getByRole("link")).toHaveAttribute("href", `/deleted-pages/handbook/${other.id}`);
+  await expect(table.getByRole("link")).toHaveAttribute("href", `/deleted-items/handbook/${other.id}`);
   expect(errors).toEqual([]);
 });
 
@@ -122,7 +122,7 @@ test("saving without a place shows choose a place", async ({ page }) => {
   const places = dialog.getByRole("radiogroup", { name: "Place" });
   await expect(places).toHaveAccessibleDescription("Choose a place");
   await expect(dialog.getByRole("radio", { name: "Directly in the folder" })).toBeFocused();
-  await expect(page).toHaveURL(`/deleted-pages/handbook/${removed.id}?action=restore`);
+  await expect(page).toHaveURL(`/deleted-items/handbook/${removed.id}?action=restore`);
   expect(await getTestDb().page.findUniqueOrThrow({ where: { id: removed.id } })).toEqual(removed);
 
   await dialog.getByLabel("Name").fill("");
@@ -137,7 +137,7 @@ test("a place chosen while the dialog fades in keeps the focus once the dialog h
   // With the fake clock paused, the fade-in of the dialog does not end until the clock runs, so the place is chosen
   // before the dialog has entered, as on a slow machine or by a quick user.
   await page.clock.install({ time: new Date("2026-11-12T10:00:00Z") });
-  await page.goto(`/deleted-pages/handbook/${removed.id}`);
+  await page.goto(`/deleted-items/handbook/${removed.id}`);
   await page.clock.pauseAt(new Date("2026-11-12T11:00:00Z"));
 
   await page.getByRole("main").getByRole("link", { name: "Restore" }).click();
@@ -178,7 +178,7 @@ test("cancel leads back to the deleted page", async ({ page }) => {
   const dialog = await openRestoreDialog(page, removed.id);
   await dialog.getByRole("link", { name: "Cancel" }).click();
 
-  await expect(page).toHaveURL(`/deleted-pages/handbook/${removed.id}`);
+  await expect(page).toHaveURL(`/deleted-items/handbook/${removed.id}`);
   await expect(restoreDialog(page)).toHaveCount(0);
   expect(await getTestDb().page.findUniqueOrThrow({ where: { id: removed.id } })).toEqual(removed);
 });
@@ -189,7 +189,7 @@ test("the Escape key leads back to the deleted page", async ({ page }) => {
   await openRestoreDialog(page, removed.id);
   await page.keyboard.press("Escape");
 
-  await expect(page).toHaveURL(`/deleted-pages/handbook/${removed.id}`);
+  await expect(page).toHaveURL(`/deleted-items/handbook/${removed.id}`);
   await expect(restoreDialog(page)).toHaveCount(0);
 });
 
@@ -205,7 +205,7 @@ test("restoring into a tab that no longer exists shows an error and the page sta
 
   await expect(dialog.getByRole("alert")).toHaveText("This tab no longer exists.");
   await expect(dialog.getByLabel("Name")).toHaveValue("removed");
-  await expect(page).toHaveURL(`/deleted-pages/handbook/${removed.id}?action=restore`);
+  await expect(page).toHaveURL(`/deleted-items/handbook/${removed.id}?action=restore`);
   expect(await getTestDb().page.findUniqueOrThrow({ where: { id: removed.id } })).toEqual(removed);
 });
 
@@ -238,8 +238,8 @@ test("the second of two Managers who restore the same page at once gets an error
   const removed = await createPage({ folder: team, name: "removed", deletedAt: new Date("2026-11-01T10:00:00Z") });
   const other = await logInElsewhere(browser, "bob");
 
-  await page.goto(`/deleted-pages/team/${removed.id}?action=restore`);
-  await other.page.goto(`/deleted-pages/team/${removed.id}?action=restore`);
+  await page.goto(`/deleted-items/team/${removed.id}?action=restore`);
+  await other.page.goto(`/deleted-items/team/${removed.id}?action=restore`);
   const otherDialog = restoreDialog(other.page);
   await otherDialog.getByRole("radio", { name: "Directly in the folder" }).check();
   await otherDialog.getByRole("button", { name: "Save" }).click();

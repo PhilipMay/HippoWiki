@@ -34,8 +34,8 @@ export const FUNCTION_ROLES = {
   moveOrRenamePage: "writer",
   /** Delete a page. */
   deletePage: "manager",
-  /** See the deleted pages of the folder, read and restore one. */
-  deletedPages: "manager",
+  /** See the deleted items of the folder, read and restore one. */
+  deletedItems: "manager",
   /** Create or rename a tab. */
   editTab: "manager",
   /** Delete a tab for good, with its pages, which are soft deleted. */

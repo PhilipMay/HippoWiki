@@ -9,7 +9,7 @@ import { deletedPageAddressOf } from "@/features/pages/page-query";
 import { getDeletedPage } from "@/features/pages/queries";
 import { pageTitle } from "@/lib/site";
 
-type Props = PageProps<"/deleted-pages/[folder]/[id]">;
+type Props = PageProps<"/deleted-items/[folder]/[id]">;
 
 /**
  * What the address shows: the deleted page with its action or a view of its history, and the browser title, or `null`

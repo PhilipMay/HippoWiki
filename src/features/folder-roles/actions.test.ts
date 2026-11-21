@@ -62,7 +62,7 @@ describe("giveRole", () => {
 
     expect(mocks.giveRole).toHaveBeenCalledExactlyOnceWith(USER, FOLDER_ID, { user: "bob", role: "writer" });
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/folders", "layout");
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/deleted-pages", "layout");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/deleted-items", "layout");
   });
 
   it("returns the field errors of an invalid form without calling the service", async () => {

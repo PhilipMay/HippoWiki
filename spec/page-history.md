@@ -85,7 +85,7 @@ model `PageRevision` in `prisma/schema.prisma` and its migration
 ## Deleted pages
 
 - The history of a deleted page is kept. A Manager and an Owner open it from the deleted page with "History", with the
-  same views at `/deleted-pages/<folder>/<id>`, read-only: no "Revert", and no action besides "Restore" on the deleted
+  same views at `/deleted-items/<folder>/<id>`, read-only: no "Revert", and no action besides "Restore" on the deleted
   page itself. The notice of an old revision links to the deleted page. Every other role gets the not-found page.
 - A restored page has its whole history again.
 

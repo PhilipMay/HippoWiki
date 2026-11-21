@@ -40,7 +40,7 @@ export default function DeletePageDialog({
       pending={pending}
       message={state.message}
       lead={<PageVersionField version={version} changedMessage={changedMessage} />}
-      description={`Delete the page ${pageLabel}? You can restore it later from the deleted pages of its folder.`}
+      description={`Delete the page ${pageLabel}? You can restore it later from the deleted items of its folder.`}
       label="Delete"
       pendingLabel="Deleting…"
       color="error"

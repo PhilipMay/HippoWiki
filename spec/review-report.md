@@ -131,7 +131,7 @@
   - `/oauth/register` and `/oauth/token`;
   - `/_next/static/…`.
 - Pages behind the login: `/`, `/folders`, `/folders/[folder]`, `/folders/[folder]/[item]`,
-  `/folders/[folder]/[item]/[page]`, `/deleted-pages/[folder]`, `/deleted-pages/[folder]/[id]`, `/account`,
+  `/folders/[folder]/[item]/[page]`, `/deleted-items/[folder]`, `/deleted-items/[folder]/[id]`, `/account`,
   `/users`, `/folder-roles`, `/change-password`, `/oauth/authorize` (the consent page), and the pages `not-found`,
   `error` and `global-error`; the views of a folder `?view=all`, `?view=roles` and `?view=mcp` (the view "AI apps") and
   its dialogs such as `?action=give-role`; the action `?action=delete` of a tab; the views of the history of a page
@@ -1627,7 +1627,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
 - Files read: `MarkdownContent.tsx`, `PageView.tsx`, `DeletedPageView.tsx`, the list components, `derive.ts`,
   `schema.ts`, `forms.ts`, `limits.ts`, `actions.ts`, `service.ts` and `queries.ts` of pages and folders,
   `src/lib/names.ts`, `addresses.ts`, `db-errors.ts`, `revalidate.ts`, the routes under `src/app/folders/` and
-  `src/app/deleted-pages/`, the content models and migrations, `pages.md`, `content-structure.md`,
+  `src/app/deleted-items/` (then under `/deleted-pages`), the content models and migrations, `pages.md`, `content-structure.md`,
   `page-deletion.md`, `optimistic-locking.md` and `folder-roles.md`, the write tools in `src/features/mcp/tools.ts`;
   `markdown.ts` and `markdownToReact.tsx`, which replaced react-markdown after the review.
 - Rendering and XSS (ASVS 1.2.2, 1.3.5, `CON.10.A8`, CWE-79): the content is parsed by markdown-it with `html: false`,

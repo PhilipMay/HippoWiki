@@ -49,7 +49,7 @@ import {
   SEARCH_TOOL_MAX_RESULTS,
 } from "@/features/search/limits";
 import * as searchService from "@/features/search/service";
-import { deletedPagesPath, folderPath, pagePath, tabPath } from "@/lib/addresses";
+import { deletedItemsPath, folderPath, pagePath, tabPath } from "@/lib/addresses";
 import { logger } from "@/lib/logger";
 import { NAME_MAX_LENGTH } from "@/lib/name-limits";
 
@@ -679,8 +679,8 @@ export async function moveOrRenamePage(
 
 /** What a delete tells the agent about restoring: only a person in the browser restores deleted pages. */
 const RESTORE_PAGE =
-  "The page can be restored by a Manager or Owner of the folder in the browser, under Deleted pages at the address " +
-  "deletedPagesAddress. Deleted pages can be neither seen nor restored through this connection.";
+  "The page can be restored by a Manager or Owner of the folder in the browser, under Deleted items at the address " +
+  "deletedItemsAddress. Deleted items can be neither seen nor restored through this connection.";
 
 /**
  * The tool `delete_page`: a page of the folder of the connection by its tab, if it is in one, and its name, based on a
@@ -705,7 +705,7 @@ export async function deletePage(
             name: page.name,
             title: page.title,
             tab: deleted.value.tab?.name ?? null,
-            deletedPagesAddress: addressOf(options, deletedPagesPath(deleted.value.folder.name)),
+            deletedItemsAddress: addressOf(options, deletedItemsPath(deleted.value.folder.name)),
             restore: RESTORE_PAGE,
           }) satisfies z.infer<typeof deletedPageOutput>,
         );
@@ -815,7 +815,7 @@ export async function renameTab(
 /** What `delete_tab` tells the agent about restoring: the tab is gone, its pages come back one by one in the browser. */
 const RESTORE_TAB_PAGES =
   "The tab is deleted for good and cannot be restored. Its pages can be restored one by one by a Manager or Owner of " +
-  "the folder in the browser, under Deleted pages at the address deletedPagesAddress. Deleted pages can be neither " +
+  "the folder in the browser, under Deleted items at the address deletedItemsAddress. Deleted items can be neither " +
   "seen nor restored through this connection.";
 
 /**
@@ -841,7 +841,7 @@ export async function deleteTab(
             name: tab.name,
             pageCount: deleted.value.pageCount,
             pages: deleted.value.pages.map(({ name, title }) => ({ name, title })),
-            deletedPagesAddress: addressOf(options, deletedPagesPath(deleted.value.folder.name)),
+            deletedItemsAddress: addressOf(options, deletedItemsPath(deleted.value.folder.name)),
             restore: RESTORE_TAB_PAGES,
           }) satisfies z.infer<typeof deletedTabOutput>,
         );

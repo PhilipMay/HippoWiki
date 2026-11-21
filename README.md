@@ -13,7 +13,7 @@ HippoWiki is a knowledge management system, built with Next.js (App Router) and 
 
 The prototype manages wiki pages written in Markdown, organises them in folders and optional tabs and stores them in
 PostgreSQL: create, view, edit, move and rename pages, create and rename folders and tabs, delete pages and tabs and
-restore the pages from the deleted pages of their folder. Folders cannot be deleted yet.
+restore the pages from the deleted items of their folder. Folders cannot be deleted yet.
 
 Pages are written in a Markdown editor (CodeMirror 6) with a live preview that shows the formatting while writing and
 the Markdown marks only on the lines of the cursor, and a source mode that shows the whole Markdown with syntax

@@ -78,10 +78,10 @@ test("deleting a page in a tab leads to the tab and puts it on top of the delete
     deletedAt: expect.any(Date),
   });
 
-  await page.goto("/deleted-pages/handbook");
-  const table = page.getByRole("table", { name: "Deleted pages" });
+  await page.goto("/deleted-items/handbook");
+  const table = page.getByRole("table", { name: "Deleted items" });
   await expect(table.getByRole("link")).toHaveText(["removed", "earlier"]);
-  await expect(table.getByRole("link").first()).toHaveAttribute("href", `/deleted-pages/handbook/${removed.id}`);
+  await expect(table.getByRole("link").first()).toHaveAttribute("href", `/deleted-items/handbook/${removed.id}`);
   expect(errors).toEqual([]);
   // The browser reports the 404 of the not-found page as a console error, so it is checked last.
   await expectNotFound(page, "/folders/handbook/guides/removed.md");
@@ -114,7 +114,7 @@ test("the dialog names the page, and cancel keeps the page and leads back to it"
   const dialog = deleteDialog(page);
   await expect(page).toHaveTitle("Kept page – HippoWiki");
   await expect(dialog).toHaveAccessibleDescription(
-    "Delete the page kept.md? You can restore it later from the deleted pages of its folder.",
+    "Delete the page kept.md? You can restore it later from the deleted items of its folder.",
   );
   await dialog.getByRole("link", { name: "Cancel" }).click();
 
@@ -158,14 +158,14 @@ test("the deleted pages and the deleted page show the logged-in user who deleted
   await deleteThroughDialog(page, "/folders/handbook/removed.md");
   await expect(page).toHaveURL("/folders/handbook");
 
-  await page.goto("/deleted-pages/handbook");
+  await page.goto("/deleted-items/handbook");
   const rows = page
-    .getByRole("table", { name: "Deleted pages" })
+    .getByRole("table", { name: "Deleted items" })
     .getByRole("row")
     .filter({ has: page.getByRole("cell") });
   await expect(rows.getByRole("cell").nth(3)).toHaveText(USER);
   await expect(rows.getByRole("cell").nth(4)).toHaveText("web");
-  await page.goto(`/deleted-pages/handbook/${removed.id}`);
+  await page.goto(`/deleted-items/handbook/${removed.id}`);
   await expect(page.getByRole("article").getByText(/^Deleted /)).toHaveText(by(USER));
   expect(errors).toEqual([]);
 });

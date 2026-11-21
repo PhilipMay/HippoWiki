@@ -15,7 +15,7 @@ import { listRoleCandidates } from "@/features/folder-roles/queries";
 import { mayDo, ROLE_LABELS, type Role } from "@/features/folder-roles/roles";
 import { listFolderPages } from "@/features/pages/queries";
 import SearchField from "@/features/search/components/SearchField";
-import { allPagesPath, deletedPagesPath, folderMcpPath, folderPath, folderRolesPath } from "@/lib/addresses";
+import { allPagesPath, deletedItemsPath, folderMcpPath, folderPath, folderRolesPath } from "@/lib/addresses";
 
 type FolderViewProps = {
   folder: { id: string; name: string; role: Role | null };
@@ -58,10 +58,10 @@ export default async function FolderView({ folder, action, hasMcp }: FolderViewP
             AI apps
           </Button>
         )}
-        {/* The deleted pages are an address of their own, with the role of its route. */}
-        {mayDo(role, "deletedPages") && (
-          <Button component={Link} href={deletedPagesPath(folder.name)} variant="outlined">
-            Deleted pages
+        {/* The deleted items are an address of their own, with the role of its route. */}
+        {mayDo(role, "deletedItems") && (
+          <Button component={Link} href={deletedItemsPath(folder.name)} variant="outlined">
+            Deleted items
           </Button>
         )}
         {mayDoFolderAction(role, "new-tab") && (

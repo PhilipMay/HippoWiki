@@ -1361,7 +1361,7 @@ describe("the tools of a Manager connection", () => {
     }
     expect(instructions).toContain("Deleting a tab deletes all its pages with it.");
     expect(instructions).toContain(
-      "Deleted pages can be neither seen nor restored through this connection: only a Manager or Owner of the folder " +
+      "Deleted items can be neither seen nor restored through this connection: only a Manager or Owner of the folder " +
         "restores them, in the browser.",
     );
   });
@@ -1369,7 +1369,7 @@ describe("the tools of a Manager connection", () => {
   it("leave the instructions of Reader and Writer connections without the tools of a Manager", () => {
     for (const role of ["reader", "writer"] as const) {
       const instructions = instructionsFor("handbook", role);
-      for (const word of [...MANAGER_TOOLS, "Deleted pages"]) expect(instructions).not.toContain(word);
+      for (const word of [...MANAGER_TOOLS, "Deleted items"]) expect(instructions).not.toContain(word);
     }
   });
 
@@ -1420,7 +1420,7 @@ describe("the tools of a Manager connection", () => {
         name: "setup",
         title: "Setup",
         tab: "guides",
-        deletedPagesAddress: "https://wiki.example.com/deleted-pages/handbook",
+        deletedItemsAddress: "https://wiki.example.com/deleted-items/handbook",
         restore: expect.stringMatching(/restored by a Manager or Owner of the folder in the browser/),
       });
       expect(JSON.parse(result.content[0]?.text ?? "")).toEqual(result.structuredContent);
@@ -1556,7 +1556,7 @@ describe("the tools of a Manager connection", () => {
         name: "guides",
         pageCount: 2,
         pages: DELETED.pages,
-        deletedPagesAddress: "https://wiki.example.com/deleted-pages/handbook",
+        deletedItemsAddress: "https://wiki.example.com/deleted-items/handbook",
         restore: expect.stringMatching(/restored one by one by a Manager or Owner of the folder in the browser/),
       });
       expect(JSON.parse(result.content[0]?.text ?? "")).toEqual(result.structuredContent);
@@ -1568,7 +1568,7 @@ describe("the tools of a Manager connection", () => {
       expect((await callTool("delete_tab", { tab: "guides" })).structuredContent).toMatchObject({
         pageCount: 0,
         pages: [],
-        deletedPagesAddress: "https://wiki.example.com/deleted-pages/handbook",
+        deletedItemsAddress: "https://wiki.example.com/deleted-items/handbook",
       });
     });
 

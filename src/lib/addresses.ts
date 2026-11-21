@@ -1,5 +1,5 @@
 // Every address of the wiki: the folders, tabs and pages under `/folders` with their views and actions in the query
-// string, the deleted pages under `/deleted-pages`, the users, the roles overview, the own account, the login and the
+// string, the deleted items under `/deleted-items`, the users, the roles overview, the own account, the login and the
 // password change with the way back after a login, the MCP addresses of the folders, and the endpoints of OAuth and
 // their metadata under `/.well-known/`. Pure functions used by routes, Server Actions, the adapters of MCP and OAuth
 // and links; no server-only imports.
@@ -15,10 +15,10 @@ const HOME_PATH = "/";
 const FOLDERS_PATH = "/folders";
 
 /**
- * The fixed prefix of the addresses of deleted pages. It names what it holds, so that deleted tabs and folders can get
- * addresses of their own later.
+ * The fixed prefix of the addresses of the deleted items of a folder. It names what it holds, so that deleted tabs and
+ * folders can get addresses of their own later.
  */
-const DELETED_PAGES_PATH = "/deleted-pages";
+const DELETED_ITEMS_PATH = "/deleted-items";
 
 /** The suffix that marks a page in an address. It belongs to the address, not to the page name. */
 const PAGE_SUFFIX = ".md";
@@ -76,9 +76,9 @@ function withNext(path: string, next?: string | string[] | null): string {
   return safe === FOLDERS_PATH ? path : `${path}?${NEXT_PARAM}=${encodeURIComponent(safe)}`;
 }
 
-/** Whether the path is the home page or lies under the content: the folders or the deleted pages. */
+/** Whether the path is the home page or lies under the content: the folders or the deleted items. */
 function isContentPath(path: string): boolean {
-  return [FOLDERS_PATH, DELETED_PAGES_PATH].some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+  return [FOLDERS_PATH, DELETED_ITEMS_PATH].some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
 }
 
 /**
@@ -239,9 +239,9 @@ export function foldersPath(action?: string): string {
   return withAction(FOLDERS_PATH, action);
 }
 
-/** The root of the addresses of deleted pages, which has no page of its own. */
-export function deletedPagesRootPath(): string {
-  return DELETED_PAGES_PATH;
+/** The root of the addresses of deleted items, which has no page of its own. */
+export function deletedItemsRootPath(): string {
+  return DELETED_ITEMS_PATH;
 }
 
 /** The address of a folder, optionally with an action. */
@@ -409,32 +409,32 @@ export function pageRevertPath(
   return notice ? `${path}&notice=${notice}` : path;
 }
 
-/** The address of the list of the deleted pages of a folder. */
-export function deletedPagesPath(folder: string): string {
-  return `${DELETED_PAGES_PATH}/${folder}`;
+/** The address of the list "Deleted items" of a folder. */
+export function deletedItemsPath(folder: string): string {
+  return `${DELETED_ITEMS_PATH}/${folder}`;
 }
 
 /**
- * The address of a deleted page of a folder, optionally with an action. Deleted pages are addressed by their id,
+ * The address of a deleted page of a folder, optionally with an action. Deleted items are addressed by their id,
  * because their names need not be unique.
  */
-export function deletedPagePath(folder: string, id: string, action?: string): string {
-  return withAction(`${DELETED_PAGES_PATH}/${folder}/${id}`, action);
+export function deletedItemPath(folder: string, id: string, action?: string): string {
+  return withAction(`${DELETED_ITEMS_PATH}/${folder}/${id}`, action);
 }
 
 /** The address of the history of a deleted page: its address with the view `history`, as for a page address. */
 export function deletedPageHistoryPath(folder: string, id: string, before?: number): string {
-  return historyPath(deletedPagePath(folder, id), before);
+  return historyPath(deletedItemPath(folder, id), before);
 }
 
 /** The address of a revision of a deleted page, rendered or, with `raw`, as its Markdown source. */
 export function deletedPageRevisionPath(folder: string, id: string, revision: number, raw = false): string {
-  return revisionPath(deletedPagePath(folder, id), revision, raw);
+  return revisionPath(deletedItemPath(folder, id), revision, raw);
 }
 
 /** The address of the comparison of two revisions of a deleted page. */
 export function deletedPageComparePath(folder: string, id: string, from: number, to: number): string {
-  return comparePath(deletedPagePath(folder, id), from, to);
+  return comparePath(deletedItemPath(folder, id), from, to);
 }
 
 /** A page as its address names it, with `.md` after its name: how lists, breadcrumbs and dialogs label a page. */

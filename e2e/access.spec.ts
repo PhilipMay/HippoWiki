@@ -36,8 +36,8 @@ const PROTECTED_ADDRESSES = [
   ["a tab", "/folders/handbook/guides"],
   ["a page", "/folders/handbook/overview.md"],
   ["a page in a tab", "/folders/handbook/guides/setup.md"],
-  ["the deleted pages of a folder", "/deleted-pages/handbook"],
-  ["a deleted page", `/deleted-pages/handbook/${DELETED_PAGE_ID}`],
+  ["the deleted items of a folder", "/deleted-items/handbook"],
+  ["a deleted page", `/deleted-items/handbook/${DELETED_PAGE_ID}`],
   ["the folder list with an action", "/folders?action=new"],
   ["a folder with an action", "/folders/handbook?action=rename"],
   ["a tab with the dialog to delete it", "/folders/handbook/guides?action=delete"],
@@ -55,8 +55,8 @@ const PROTECTED_ADDRESSES = [
   ["the revert dialog of a page", "/folders/handbook/guides/setup.md?action=revert&revision=1"],
   ["the own account", "/account"],
   ["the own account with an action", "/account?action=revoke"],
-  ["a deleted page with an action", `/deleted-pages/handbook/${DELETED_PAGE_ID}?action=restore`],
-  ["the history of a deleted page", `/deleted-pages/handbook/${DELETED_PAGE_ID}?view=history`],
+  ["a deleted page with an action", `/deleted-items/handbook/${DELETED_PAGE_ID}?action=restore`],
+  ["the history of a deleted page", `/deleted-items/handbook/${DELETED_PAGE_ID}?view=history`],
   ["an invalid action", "/folders?action=nothing"],
   ["an invalid folder name", "/folders/Not%20A%20Name"],
   ["a folder that does not exist", "/folders/nowhere"],
@@ -347,7 +347,7 @@ test.describe("with the saved login of the admin", () => {
   // An admin sees no content: every address of it is not found, also for items that exist, so that nothing tells
   // whether an item exists.
   const CONTENT_ADDRESSES = [
-    ...PROTECTED_ADDRESSES.filter(([, address]) => /^\/(folders|deleted-pages)(\/|\?|$)/.test(address)),
+    ...PROTECTED_ADDRESSES.filter(([, address]) => /^\/(folders|deleted-items)(\/|\?|$)/.test(address)),
     ["the folder list with the dialog of a new folder", "/folders?action=new"],
     ["a folder with the form of a new page", "/folders/handbook?action=new"],
     ["a folder with the dialog of a new tab", "/folders/handbook?action=new-tab"],
@@ -356,7 +356,7 @@ test.describe("with the saved login of the admin", () => {
     ["a page with the dialog to move or rename it", "/folders/handbook/overview.md?action=move-or-rename"],
     ["a page with the dialog to delete it", "/folders/handbook/overview.md?action=delete"],
     ["a page in a tab with an action", "/folders/handbook/guides/setup.md?action=edit"],
-    ["the deleted pages of a folder that does not exist", "/deleted-pages/nowhere"],
+    ["the deleted items of a folder that does not exist", "/deleted-items/nowhere"],
   ] as const;
 
   test("the admin overview of the folder roles shows no last editor and no channel", async ({ page }) => {

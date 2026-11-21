@@ -65,7 +65,7 @@ and `src/features/folder-roles/service.test.ts`.
   shows the not-found page, like a folder that does not exist. A form of such a folder shows the not-found page and
   writes nothing.
 - A function the role does not include is not offered, and its address or form answers like one that does not exist
-  and changes nothing: a Reader sees no "New page", "Edit", "Move or rename", "Delete", "Deleted pages", "New tab" or
+  and changes nothing: a Reader sees no "New page", "Edit", "Move or rename", "Delete", "Deleted items", "New tab" or
   "Rename", and `?action=edit` shows a Reader the not-found page.
 - The checks live in the services, before anything else but the actor: a read without the needed role returns `null`
   and a write `not-allowed`, which the routes and actions show as the not-found page. A refused write is logged with
@@ -117,7 +117,7 @@ and `src/features/folder-roles/service.test.ts`.
   only admins get.
 - The overview shows nothing else of the content: no tab, page or deleted page, no time of the last change and no last
   editor. It has no actions, no views and no controls; an admin gives, changes and removes no role. Every address under
-  `/folders` and `/deleted-pages` still shows an admin the not-found page.
+  `/folders` and `/deleted-items` still shows an admin the not-found page.
 - A user sees no "Folder roles", and `/folder-roles` shows a user the not-found page.
 
 ## The view "AI apps"

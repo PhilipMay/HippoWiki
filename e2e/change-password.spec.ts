@@ -101,7 +101,7 @@ for (const [what, address] of [
   ["a page", "/folders/handbook/overview.md"],
   ["an address with an action", "/folders?action=new"],
   ["a page with an action", "/folders/handbook/overview.md?action=edit"],
-  ["the deleted pages of a folder", "/deleted-pages/handbook"],
+  ["the deleted items of a folder", "/deleted-items/handbook"],
   ["the login page", "/login"],
 ] as const) {
   test(`${what} (${address}) leads to the password change while it is pending`, async ({ page }) => {

@@ -6,7 +6,7 @@ import type { DeletedPage, PageWithPlace } from "@/features/pages/service";
 import {
   deletedPageComparePath,
   deletedPageHistoryPath,
-  deletedPagePath,
+  deletedItemPath,
   deletedPageRevisionPath,
   pageComparePath,
   pageHistoryPath,
@@ -24,7 +24,7 @@ export type HistoryPlace = {
   mayCreatePages: boolean;
   /** The tab of the page, or `null` for a page placed directly in its folder and for a deleted page. */
   tabName: string | null;
-  /** Whether the page is deleted: its breadcrumb leads through the deleted pages of its folder. */
+  /** Whether the page is deleted: its breadcrumb leads through the deleted items of its folder. */
   deleted: boolean;
   /**
    * The folder that the search field of the views searches, or `null` for a deleted page, whose addresses offer no
@@ -62,7 +62,7 @@ export function pageHistoryPlace(page: PageWithPlace): HistoryPlace {
   };
 }
 
-/** The place of the history of a deleted page: the address of the deleted page, through the deleted pages. */
+/** The place of the history of a deleted page: the address of the deleted page, through the deleted items. */
 export function deletedPageHistoryPlace(page: DeletedPage): HistoryPlace {
   const folder = page.folder.name;
   return {
@@ -74,7 +74,7 @@ export function deletedPageHistoryPlace(page: DeletedPage): HistoryPlace {
     deleted: true,
     searchFolderName: null,
     pageLabel: page.name,
-    pageHref: deletedPagePath(folder, page.id),
+    pageHref: deletedItemPath(folder, page.id),
     historyHref: (before) => deletedPageHistoryPath(folder, page.id, before),
     revisionHref: (revision, raw) => deletedPageRevisionPath(folder, page.id, revision, raw),
     compareHref: (from, to) => deletedPageComparePath(folder, page.id, from, to),

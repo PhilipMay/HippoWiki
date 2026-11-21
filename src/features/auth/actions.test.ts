@@ -159,7 +159,7 @@ describe("logIn", () => {
   it.each([
     [undefined, "/users"],
     ["/folders/team", "/users"],
-    ["/deleted-pages/team", "/users"],
+    ["/deleted-items/team", "/users"],
     ["/account", "/account"],
   ])("leads an admin with the way back %s to %s", async (next, path) => {
     mocks.logIn.mockResolvedValue({ ok: true, value: { user: ADMIN, headers: new Headers() } });

@@ -16,7 +16,7 @@ import { resolveWikiLinks } from "@/features/pages/queries";
 import type { DeletedPageAction } from "@/features/pages/page-query";
 import type { DeletedPage } from "@/features/pages/service";
 import { editorWithChannel } from "@/features/users/records";
-import { deletedPageHistoryPath, deletedPagePath } from "@/lib/addresses";
+import { deletedPageHistoryPath, deletedItemPath } from "@/lib/addresses";
 
 type DeletedPageViewProps = {
   page: DeletedPage;
@@ -39,14 +39,14 @@ export default async function DeletedPageView({ page, action }: DeletedPageViewP
 
   return (
     <Stack spacing={2}>
-      <FolderBreadcrumbs folderName={folderName} deletedPages current={page.name} />
+      <FolderBreadcrumbs folderName={folderName} deletedItems current={page.name} />
       <Paper component="article" variant="outlined" sx={{ p: { xs: 2, sm: 4 } }}>
         <Stack spacing={1} sx={{ mb: 3 }}>
           <Typography variant="body2" color="text.secondary">
             Deleted <Time date={page.deletedAt} /> by {editorWithChannel(page.lastEditedBy)}
           </Typography>
           <Stack direction="row" spacing={2} sx={{ pt: 1 }}>
-            <Button component={Link} href={deletedPagePath(folderName, page.id, "restore")} variant="outlined">
+            <Button component={Link} href={deletedItemPath(folderName, page.id, "restore")} variant="outlined">
               Restore
             </Button>
             <Button component={Link} href={deletedPageHistoryPath(folderName, page.id)} variant="outlined">
@@ -63,7 +63,7 @@ export default async function DeletedPageView({ page, action }: DeletedPageViewP
           folderName={folderName}
           tabs={tabs}
           initialName={page.name}
-          closeHref={deletedPagePath(folderName, page.id)}
+          closeHref={deletedItemPath(folderName, page.id)}
         />
       )}
     </Stack>

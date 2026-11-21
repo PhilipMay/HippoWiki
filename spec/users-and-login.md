@@ -134,7 +134,7 @@ and `src/lib/client-address.test.ts`.
   control characters and is at most 2048 characters long. Anything else leads to `/folders`, so that a crafted link
   to the login page cannot send a user who just logged in to another site. The rule is `safeNextPath()` in
   `src/lib/addresses.ts`; the login page, the password change and both actions check the value again.
-- An admin sees no content, so for an admin a way back to `/` or to an address under `/folders` or `/deleted-pages`,
+- An admin sees no content, so for an admin a way back to `/` or to an address under `/folders` or `/deleted-items`,
   judged by its path, leads to `/users` instead of the not-found page; every other way back stays. The rule is
   `landingPath()` in `src/lib/addresses.ts`, used by the login, the password change and both of their pages.
 - The folder list is where a login leads anyway, so it is left out of the address.

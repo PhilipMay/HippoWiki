@@ -70,7 +70,7 @@ function withMadeBy<Row extends { user: { username: string }; via: ChangeChannel
  */
 function historyPageWhere(actor: BrowserActor, pageId: string): Prisma.PageWhereInput | null {
   const readable = readableFolderWhere(actor);
-  const deletedReadable = readableFolderWhere(actor, "deletedPages");
+  const deletedReadable = readableFolderWhere(actor, "deletedItems");
   if (!readable || !deletedReadable) return null;
   return {
     id: pageId,

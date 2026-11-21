@@ -63,8 +63,8 @@ test.describe("without a role on a folder", () => {
       "/folders/hidden/intro.md?action=delete",
       "/folders/hidden/guides/setup.md",
       "/folders/hidden/guides/setup.md?action=edit",
-      "/deleted-pages/hidden",
-      `/deleted-pages/hidden/${deleted.id}`,
+      "/deleted-items/hidden",
+      `/deleted-items/hidden/${deleted.id}`,
     ]) {
       await expectNotFound(page, address);
     }
@@ -171,7 +171,7 @@ test("the folder list and the folder show the own role, for each of the four rol
 });
 
 /** The buttons and links of the main area that a role may or may not offer. */
-const OFFERS = ["New page", "Edit", "Move or rename", "Delete", "Deleted pages", "New tab", "Rename"] as const;
+const OFFERS = ["New page", "Edit", "Move or rename", "Delete", "Deleted items", "New tab", "Rename"] as const;
 
 async function expectOffers(page: Page, offered: readonly string[]) {
   const main = page.getByRole("main");
@@ -241,9 +241,9 @@ test.describe("what each role may do", () => {
       "/folders/handbook/intro.md?action=move-or-rename",
       "/folders/handbook/intro.md?action=delete",
       "/folders/handbook/guides/setup.md?action=edit",
-      "/deleted-pages/handbook",
-      `/deleted-pages/handbook/${deleted.id}`,
-      `/deleted-pages/handbook/${deleted.id}?action=restore`,
+      "/deleted-items/handbook",
+      `/deleted-items/handbook/${deleted.id}`,
+      `/deleted-items/handbook/${deleted.id}?action=restore`,
     ]) {
       await expectNotFound(page, address);
     }
@@ -330,7 +330,7 @@ test.describe("what each role may do", () => {
       save("Save"),
     );
     await submitAsReader(
-      `/deleted-pages/handbook/${deleted.id}?action=restore`,
+      `/deleted-items/handbook/${deleted.id}?action=restore`,
       () => page.getByRole("dialog").getByRole("radio", { name: "Directly in the folder" }).check(),
       save("Save"),
     );
@@ -378,9 +378,9 @@ test.describe("what each role may do", () => {
       "/folders/handbook/guides?action=rename",
       "/folders/handbook/guides?action=delete",
       "/folders/handbook?action=rename",
-      "/deleted-pages/handbook",
-      `/deleted-pages/handbook/${deleted.id}`,
-      `/deleted-pages/handbook/${deleted.id}?action=restore`,
+      "/deleted-items/handbook",
+      `/deleted-items/handbook/${deleted.id}`,
+      `/deleted-items/handbook/${deleted.id}?action=restore`,
     ]) {
       await expectNotFound(page, address);
     }
@@ -404,7 +404,7 @@ test.describe("what each role may do", () => {
 
     await submitAsWriter("/folders/handbook/intro.md?action=delete", async () => {}, save("Delete"));
     await submitAsWriter(
-      `/deleted-pages/handbook/${deleted.id}?action=restore`,
+      `/deleted-items/handbook/${deleted.id}?action=restore`,
       () => page.getByRole("dialog").getByRole("radio", { name: "Directly in the folder" }).check(),
       save("Save"),
     );
@@ -432,16 +432,16 @@ test.describe("what each role may do", () => {
     const created = await createPage({ folder, name: "intro", title: "Intro" });
 
     await page.goto("/folders/handbook");
-    await expectOffers(page, ["New page", "Deleted pages", "New tab"]);
+    await expectOffers(page, ["New page", "Deleted items", "New tab"]);
     await page.goto("/folders/handbook/intro.md");
     await expectOffers(page, ["Edit", "Move or rename", "Delete"]);
     await page.getByRole("main").getByRole("link", { name: "Delete" }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
     await expect(page).toHaveURL("/folders/handbook");
 
-    await page.getByRole("link", { name: "Deleted pages" }).click();
+    await page.getByRole("link", { name: "Deleted items" }).click();
     await page.getByRole("main").getByRole("link", { name: /intro/ }).click();
-    await expect(page).toHaveURL(`/deleted-pages/handbook/${created.id}`);
+    await expect(page).toHaveURL(`/deleted-items/handbook/${created.id}`);
     await page.getByRole("main").getByRole("link", { name: "Restore" }).click();
     await page.getByRole("dialog").getByRole("radio", { name: "Directly in the folder" }).check();
     await page.getByRole("dialog").getByRole("button", { name: "Save" }).click();
@@ -484,7 +484,7 @@ test.describe("what each role may do", () => {
     await page.goto("/folders/handbook/guides");
     await expectOffers(page, ["New page", "Rename", "Delete"]);
     await page.goto("/folders/handbook");
-    await expectOffers(page, ["New page", "Deleted pages", "New tab", "Rename"]);
+    await expectOffers(page, ["New page", "Deleted items", "New tab", "Rename"]);
     await page.getByRole("main").getByRole("link", { name: "Rename" }).click();
     await page.getByRole("dialog").getByLabel("Name").fill("guide");
     await page.getByRole("dialog").getByRole("button", { name: "Save" }).click();
@@ -1142,7 +1142,7 @@ test.describe("the admin overview", () => {
         "/folders",
         "/folders/project-x",
         "/folders/project-x?view=roles",
-        "/deleted-pages/handbook",
+        "/deleted-items/handbook",
       ]) {
         await expectNotFound(page, address);
       }

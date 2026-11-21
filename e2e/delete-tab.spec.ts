@@ -43,7 +43,7 @@ function contentsLinks(page: Page) {
 /** The rows of the deleted pages of a folder, without the header row. */
 function deletedRows(page: Page) {
   return page
-    .getByRole("table", { name: "Deleted pages" })
+    .getByRole("table", { name: "Deleted items" })
     .getByRole("row")
     .filter({ has: page.getByRole("cell") });
 }
@@ -77,7 +77,7 @@ test("a Manager deletes a tab with two pages, which become deleted pages of the 
   await openDeleteDialog(page, "/folders/team/meetngs");
   await expect(deleteDialog(page)).toHaveAccessibleDescription(
     "Delete the tab meetngs? Its 2 pages are deleted with it. The pages can be restored one by one from the deleted " +
-      "pages of the folder. The tab itself cannot be restored.",
+      "items of the folder. The tab itself cannot be restored.",
   );
   await deleteDialog(page).getByRole("button", { name: "Delete" }).click();
 
@@ -97,8 +97,8 @@ test("a Manager deletes a tab with two pages, which become deleted pages of the 
   expect(monday?.deletedAt).toEqual(tuesday?.deletedAt);
   expect(monday?.version).toBe(first.version + 1);
 
-  await page.getByRole("link", { name: "Deleted pages" }).click();
-  await expect(page).toHaveURL("/deleted-pages/team");
+  await page.getByRole("link", { name: "Deleted items" }).click();
+  await expect(page).toHaveURL("/deleted-items/team");
   // Both are deleted at the same time, so their order is not fixed.
   await expect(deletedRows(page)).toHaveCount(2);
   expect((await deletedRows(page).getByRole("link").allTextContents()).sort()).toEqual(["monday", "tuesday"]);
@@ -109,7 +109,7 @@ test("a Manager deletes a tab with two pages, which become deleted pages of the 
   }
   // Nothing tells the tab the pages were in, and nothing offers to restore the tab.
   await expect(page.getByRole("main")).not.toContainText("meetngs");
-  await page.goto(`/deleted-pages/team/${first.id}`);
+  await page.goto(`/deleted-items/team/${first.id}`);
   await expect(page.getByRole("article").getByText(/^Deleted /)).toHaveText(new RegExp(`by ${USER} via web$`));
   await expect(page.getByRole("main")).not.toContainText("meetngs");
   expect(errors).toEqual([]);
@@ -137,7 +137,7 @@ test("the dialog of a tab with one page and of a tab without pages says so", asy
   await page.goto("/folders/handbook/single?action=delete");
   await expect(deleteDialog(page)).toHaveAccessibleDescription(
     "Delete the tab single? Its 1 page is deleted with it. The pages can be restored one by one from the deleted " +
-      "pages of the folder. The tab itself cannot be restored.",
+      "items of the folder. The tab itself cannot be restored.",
   );
 
   await page.goto("/folders/handbook/empty?action=delete");
@@ -183,7 +183,7 @@ test("a page of a deleted tab is restored from the deleted pages into another pl
   await deleteDialog(page).getByRole("button", { name: "Delete" }).click();
   await expect(page).toHaveURL("/folders/handbook");
 
-  await page.goto(`/deleted-pages/handbook/${setup.id}`);
+  await page.goto(`/deleted-items/handbook/${setup.id}`);
   await page.getByRole("main").getByRole("link", { name: "Restore" }).click();
   const dialog = page.getByRole("dialog", { name: "Restore page" });
   await expect(dialog.getByRole("radio")).toHaveCount(2);
@@ -366,7 +366,7 @@ test("the folder page offers no deletion next to its tabs", async ({ page }) => 
 
   await expect(contentsLinks(page)).toHaveText([/^guides/]);
   const main = page.getByRole("main");
-  // "Deleted pages" is the only control whose name starts like a deletion.
-  await expect(main.getByRole("link", { name: /^delete(?!d pages$)/i })).toHaveCount(0);
+  // "Deleted items" is the only control whose name starts like a deletion.
+  await expect(main.getByRole("link", { name: /^delete(?!d items$)/i })).toHaveCount(0);
   await expect(main.getByRole("button", { name: /^delete/i })).toHaveCount(0);
 });

@@ -401,7 +401,7 @@ test.describe("the history of a deleted page", () => {
   }) => {
     const errors = collectErrors(page);
     const old = await deletedPage("manager");
-    const address = `/deleted-pages/handbook/${old.id}`;
+    const address = `/deleted-items/handbook/${old.id}`;
 
     await page.goto(address);
     await page.getByRole("main").getByRole("link", { name: "History", exact: true }).click();
@@ -411,7 +411,7 @@ test.describe("the history of a deleted page", () => {
     await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("link")).toHaveText([
       "Folders",
       "handbook",
-      "Deleted pages",
+      "Deleted items",
       "old",
     ]);
 
@@ -448,7 +448,7 @@ test.describe("the history of a deleted page", () => {
       const old = await deletedPage(role);
 
       for (const view of ["view=history", "view=revision&revision=1", "view=compare&from=1&to=2"]) {
-        await expectNotFound(page, `/deleted-pages/handbook/${old.id}?${view}`);
+        await expectNotFound(page, `/deleted-items/handbook/${old.id}?${view}`);
       }
     });
   }
@@ -456,7 +456,7 @@ test.describe("the history of a deleted page", () => {
   test("after a restore the page lists the same revisions as before its deletion", async ({ page }) => {
     const old = await deletedPage("manager");
 
-    await page.goto(`/deleted-pages/handbook/${old.id}?action=restore`);
+    await page.goto(`/deleted-items/handbook/${old.id}?action=restore`);
     const dialog = page.getByRole("dialog", { name: "Restore page" });
     await dialog.getByRole("radio", { name: "Directly in the folder" }).check();
     await dialog.getByRole("button", { name: "Save" }).click();

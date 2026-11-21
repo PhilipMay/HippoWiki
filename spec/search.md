@@ -53,7 +53,7 @@ Tests:
   - the history, a revision and a comparison of a page.
 - The field is left out wherever an action is open: the editors and every dialog, the "Revert page" dialog over a
   revision included. A search therefore never discards unsaved work.
-- The field is also left out on `/folders`, under `/deleted-pages` and on every other page of the app.
+- The field is also left out on `/folders`, under `/deleted-items` and on every other page of the app.
 - Enter opens the results with the words as typed, also when they are exactly the title of a page.
 - Enter in an empty field, or one of spaces only, does nothing.
 - Typing sends nothing and shows no list.
@@ -67,7 +67,7 @@ Tests:
 - `q` belongs only to this view. The view needs `q` once and with more than spaces. The not-found page is shown for:
   - `?view=search` without `q`, with an empty `q`, with `q` of spaces only or with `q` twice;
   - `?view=search` together with an action;
-  - `q` on any other address under `/folders` and `/deleted-pages`.
+  - `q` on any other address under `/folders` and `/deleted-items`.
 - Words that are too long are no address error: the view says so.
 - The results are one list of at most the 100 best pages, without paging. When more pages match, a line says so and
   suggests more precise words.

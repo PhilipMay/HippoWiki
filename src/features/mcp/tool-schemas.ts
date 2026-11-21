@@ -188,10 +188,10 @@ const addressOutput = (item: string) => z.string().describe(`Where a person open
 const pageTabOutput = (verb: "is" | "was") =>
   z.string().nullable().describe(`The tab the page ${verb} in, or null for a page placed directly in the folder`);
 
-/** Where the deleted pages of the folder are, as both delete tools give it. */
-const DELETED_PAGES_ADDRESS_OUTPUT = z
+/** Where the deleted items of the folder are, as both delete tools give it. */
+const DELETED_ITEMS_ADDRESS_OUTPUT = z
   .string()
-  .describe("Where a person sees the deleted pages of the folder in a browser, as a Manager or Owner restores them");
+  .describe("Where a person sees the deleted items of the folder in a browser, as a Manager or Owner restores them");
 
 /** The field `note`, the first field of every result that carries titles or content of pages. */
 const NOTE_OUTPUT = z
@@ -320,7 +320,7 @@ export const deletedPageOutput = z.object({
   name: z.string(),
   title: z.string(),
   tab: pageTabOutput("was"),
-  deletedPagesAddress: DELETED_PAGES_ADDRESS_OUTPUT,
+  deletedItemsAddress: DELETED_ITEMS_ADDRESS_OUTPUT,
   restore: z.string().describe("How the page can be restored"),
 });
 
@@ -343,6 +343,6 @@ export const deletedTabOutput = z.object({
   pages: z
     .array(z.object({ name: z.string(), title: z.string() }))
     .describe("Every page deleted with the tab, by name, without a limit"),
-  deletedPagesAddress: DELETED_PAGES_ADDRESS_OUTPUT,
+  deletedItemsAddress: DELETED_ITEMS_ADDRESS_OUTPUT,
   restore: z.string().describe("How the pages can be restored"),
 });

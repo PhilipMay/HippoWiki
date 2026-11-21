@@ -8,10 +8,10 @@ import {
   changePasswordPath,
   deletedPageComparePath,
   deletedPageHistoryPath,
-  deletedPagePath,
+  deletedItemPath,
   deletedPageRevisionPath,
-  deletedPagesPath,
-  deletedPagesRootPath,
+  deletedItemsPath,
+  deletedItemsRootPath,
   folderMcpPath,
   folderPath,
   hasSearchWords,
@@ -122,14 +122,14 @@ describe("paths", () => {
     expect(PAGE_NOTICES).toEqual(["changed"]);
   });
 
-  it("builds the address of the deleted pages of a folder", () => {
-    expect(deletedPagesPath("handbook")).toBe("/deleted-pages/handbook");
+  it("builds the address of the deleted items of a folder", () => {
+    expect(deletedItemsPath("handbook")).toBe("/deleted-items/handbook");
   });
 
   it("builds the address of a deleted page by its id", () => {
     const id = "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10";
-    expect(deletedPagePath("handbook", id)).toBe(`/deleted-pages/handbook/${id}`);
-    expect(deletedPagePath("handbook", id, "restore")).toBe(`/deleted-pages/handbook/${id}?action=restore`);
+    expect(deletedItemPath("handbook", id)).toBe(`/deleted-items/handbook/${id}`);
+    expect(deletedItemPath("handbook", id, "restore")).toBe(`/deleted-items/handbook/${id}?action=restore`);
   });
 
   it("builds the address of the view AI apps of a folder", () => {
@@ -150,11 +150,11 @@ describe("paths", () => {
     expect(protectedResourceMetadataPath(id, "writer")).toBe(`/.well-known/oauth-protected-resource/mcp/${id}/writer`);
   });
 
-  it("builds the roots of the addresses: the home page, the folders and the deleted pages", () => {
+  it("builds the roots of the addresses: the home page, the folders and the deleted items", () => {
     expect(homePath()).toBe("/");
     expect(foldersPath()).toBe("/folders");
-    expect(deletedPagesRootPath()).toBe("/deleted-pages");
-    expect(deletedPagesPath("handbook").startsWith(`${deletedPagesRootPath()}/`)).toBe(true);
+    expect(deletedItemsRootPath()).toBe("/deleted-items");
+    expect(deletedItemsPath("handbook").startsWith(`${deletedItemsRootPath()}/`)).toBe(true);
   });
 
   it("builds the address of the own account", () => {
@@ -198,13 +198,13 @@ describe("paths", () => {
 
   it("builds the addresses of the history, a revision and a comparison of a deleted page", () => {
     const id = "9c4d2b7e-1a3f-4c5d-8e6f-7a8b9c0d1e22";
-    expect(deletedPageHistoryPath("handbook", id)).toBe(`/deleted-pages/handbook/${id}?view=history`);
-    expect(deletedPageHistoryPath("handbook", id, 151)).toBe(`/deleted-pages/handbook/${id}?view=history&before=151`);
-    expect(deletedPageRevisionPath("handbook", id, 2)).toBe(`/deleted-pages/handbook/${id}?view=revision&revision=2`);
+    expect(deletedPageHistoryPath("handbook", id)).toBe(`/deleted-items/handbook/${id}?view=history`);
+    expect(deletedPageHistoryPath("handbook", id, 151)).toBe(`/deleted-items/handbook/${id}?view=history&before=151`);
+    expect(deletedPageRevisionPath("handbook", id, 2)).toBe(`/deleted-items/handbook/${id}?view=revision&revision=2`);
     expect(deletedPageRevisionPath("handbook", id, 2, true)).toBe(
-      `/deleted-pages/handbook/${id}?view=revision&revision=2&format=raw`,
+      `/deleted-items/handbook/${id}?view=revision&revision=2&format=raw`,
     );
-    expect(deletedPageComparePath("handbook", id, 1, 3)).toBe(`/deleted-pages/handbook/${id}?view=compare&from=1&to=3`);
+    expect(deletedPageComparePath("handbook", id, 1, 3)).toBe(`/deleted-items/handbook/${id}?view=compare&from=1&to=3`);
   });
 
   it("builds the address of the dialog that revokes a connected app", () => {
@@ -425,9 +425,9 @@ describe("landingPath", () => {
     "/folders/team/intro.md?action=edit",
     "/folders/team?action=create",
     "/folders?view=all",
-    "/deleted-pages",
-    "/deleted-pages/team",
-    "/deleted-pages/team/7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002?action=restore",
+    "/deleted-items",
+    "/deleted-items/team",
+    "/deleted-items/team/7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002?action=restore",
     "/?next=/users",
     "/folders#top",
   ])("leads an admin from the home page or the content %j to the user list", (next) => {
@@ -436,7 +436,7 @@ describe("landingPath", () => {
 
   it.each([
     "/folderstuff",
-    "/deleted-pages-old",
+    "/deleted-items-old",
     "/users",
     "/users?action=create",
     "/account",
@@ -452,7 +452,7 @@ describe("landingPath", () => {
     "/folders",
     "/folders/team",
     "/folders/team?action=create",
-    "/deleted-pages/team",
+    "/deleted-items/team",
     "/folderstuff",
     "/users",
     "/account",

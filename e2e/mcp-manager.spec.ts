@@ -64,7 +64,7 @@ test.describe("the tools of a Manager connection", () => {
     return result.content[0]?.text ?? "";
   }
 
-  test("delete_page deletes a page and names it, its tab and the full address of the deleted pages", async ({
+  test("delete_page deletes a page and names it, its tab and the full address of the deleted items", async ({
     request,
   }) => {
     const guides = await createTab({ folder: projects, name: "guides" });
@@ -79,7 +79,7 @@ test.describe("the tools of a Manager connection", () => {
       name: "setup",
       title: "Setup",
       tab: "guides",
-      deletedPagesAddress: `${ISSUER}/deleted-pages/projects`,
+      deletedItemsAddress: `${ISSUER}/deleted-items/projects`,
       restore: expect.stringMatching(/restored by a Manager or Owner of the folder in the browser/),
     });
     expect((await listed(request)).pages.map(({ name }) => name)).toEqual(["plan"]);
@@ -279,7 +279,7 @@ test.describe("the tools of a Manager connection", () => {
       name: "drafts",
       pageCount: 5,
       pages: [1, 2, 3, 4, 5].map((i) => ({ name: `draft-${i}`, title: `Draft ${i}` })),
-      deletedPagesAddress: `${ISSUER}/deleted-pages/projects`,
+      deletedItemsAddress: `${ISSUER}/deleted-items/projects`,
       restore: expect.stringMatching(/restored one by one by a Manager or Owner of the folder in the browser/),
     });
     const { tabs, pages } = await listed(request);
@@ -371,7 +371,7 @@ test.describe("the tools of a Manager connection", () => {
     expect(instructions).toContain("creates, renames and deletes tabs");
     expect(instructions).toContain("Use edit_page_content to change parts of a page");
     expect(instructions).toContain("Deleting a tab deletes all its pages with it.");
-    expect(instructions).toContain("Deleted pages can be neither seen nor restored through this connection");
+    expect(instructions).toContain("Deleted items can be neither seen nor restored through this connection");
   });
 
   test("a call of delete_page, create_tab, rename_tab or delete_tab through a Writer or a Reader connection changes nothing", async ({
@@ -406,7 +406,7 @@ test.describe("the tools of a Manager connection", () => {
       await expect(page).toHaveURL("/folders");
     });
 
-    test("a page deleted through MCP is listed under Deleted pages with the user who deleted it, via mcp", async ({
+    test("a page deleted through MCP is listed under Deleted items with the user who deleted it, via mcp", async ({
       page,
       request,
     }) => {
@@ -414,10 +414,10 @@ test.describe("the tools of a Manager connection", () => {
       await createPage({ folder: projects, name: "plan", content: "# Plan", editor: bob });
 
       await manage(request, "delete_page", { page: "plan", version: 1 });
-      await page.goto("/deleted-pages/projects");
+      await page.goto("/deleted-items/projects");
 
       const rows = page
-        .getByRole("table", { name: "Deleted pages" })
+        .getByRole("table", { name: "Deleted items" })
         .getByRole("row")
         .filter({ has: page.getByRole("cell") });
       await expect(rows).toHaveCount(1);
@@ -426,7 +426,7 @@ test.describe("the tools of a Manager connection", () => {
       await expect(rows.nth(0).getByRole("cell").nth(4)).toHaveText("mcp");
     });
 
-    test("the pages of a tab deleted through MCP are listed under Deleted pages with the user who deleted them, via mcp", async ({
+    test("the pages of a tab deleted through MCP are listed under Deleted items with the user who deleted them, via mcp", async ({
       page,
       request,
     }) => {
@@ -437,10 +437,10 @@ test.describe("the tools of a Manager connection", () => {
       }
 
       await manage(request, "delete_tab", { tab: "drafts" });
-      await page.goto("/deleted-pages/projects");
+      await page.goto("/deleted-items/projects");
 
       const rows = page
-        .getByRole("table", { name: "Deleted pages" })
+        .getByRole("table", { name: "Deleted items" })
         .getByRole("row")
         .filter({ has: page.getByRole("cell") });
       await expect(rows).toHaveCount(5);
