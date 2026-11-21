@@ -126,6 +126,21 @@ describe("GitHub Flavored Markdown", () => {
     expect(addresses(html)).toEqual(["https://example.com/a", "http://www.example.org", "mailto:mail@example.net"]);
   });
 
+  it("leaves file names and bare domains as text", () => {
+    const html = render("Edit README.md, setup.py, main.rs, config.sh and index.de; see v2.io and example.com.");
+    expect(addresses(html)).toEqual([]);
+    expect(html).toContain("README.md, setup.py, main.rs, config.sh and index.de; see v2.io and example.com.");
+  });
+
+  it("links `www.` addresses only at the start of a word", () => {
+    expect(addresses(render("See www.example.org/a?b=1, (www.example.de) and WWW.Example.org."))).toEqual([
+      "http://www.example.org/a?b=1",
+      "http://www.example.de",
+      "http://WWW.Example.org",
+    ]);
+    expect(addresses(render("See awww.x.org and a lone www. here."))).toEqual([]);
+  });
+
   it("renders code blocks with the class of their language", () => {
     const html = render("```ts\nconst a = 1 < 2;\n```\n\n    indented");
     expect(html).toContain('<pre><code class="language-ts">const a = 1 &lt; 2;\n</code></pre>');

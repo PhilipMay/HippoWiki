@@ -104,8 +104,9 @@ given as `?action=<action>` (see `content-structure.md`).
   the save dialog suggests all come from the same parse rules (`markdown.ts`).
 - It supports CommonMark and these features of GitHub Flavored Markdown: tables with alignment, strikethrough, task
   lists, footnotes and links from bare addresses. What differs from GitHub: strikethrough only with `~~`, not with a
-  single `~`; links from bare addresses as linkify-it finds them, which also links a bare domain with a known
-  top-level domain such as `example.com`; no inline footnotes (`^[text]`), as on GitHub.
+  single `~`; no inline footnotes (`^[text]`), as on GitHub.
+- Bare addresses become links as on GitHub: those starting with `www.`, `http://` or `https://`, and bare mail
+  addresses. File names such as `README.md` and bare domains such as `example.com` stay text.
 - Task lists are indented and nested like other lists. In a bullet list, the checkbox of a task item sits in place of
   the bullet, and a plain item of the same list keeps its bullet; a task item of an ordered list keeps its number, with
   the checkbox in front of the text. The checkboxes cannot be ticked in the page view.
@@ -158,6 +159,12 @@ The title and the rendering:
 - Task lists are a rule of its own in `markdown.ts`, because the common plugins for them are no longer maintained.
 - Task lists are laid out as on GitHub, with the checkbox in the indent of the list. Rejected: a task list flush with
   the text, which lost the indent of nested task lists and pushed the bullets of plain items out of the content.
+- Bare domains are not linked, only addresses starting with `www.`, `http://` or `https://` and mail addresses, as on
+  GitHub: many country codes are file extensions, such as `.md`, `.py`, `.rs` and `.sh`, so a file name in running
+  text became a link, and a click led to a host outside the wiki that anyone may own. Rejected: linking bare domains
+  of generic top-level domains only, which still links extensions such as `.app` or `.dev` and drops the links of
+  domains with a country code; keeping the links of bare domains as a current limit, which leaves authors to put file
+  names in backticks.
 
 The cost of the parse:
 

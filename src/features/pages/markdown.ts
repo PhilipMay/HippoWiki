@@ -351,9 +351,30 @@ function startsOfLines(text: string): number[] {
   return starts;
 }
 
+/** The host, port and path that follow `www.`, built from the regular expressions of linkify-it at the first call. */
+let wwwRest: RegExp | null = null;
+
 /**
- * The parser. `html: false` keeps raw HTML as text, `linkify` makes links of bare addresses as linkify-it finds them,
- * and `typographer: false` leaves quotes and dashes as typed.
+ * The length of the host, port and path that follow `www.` at `pos`, or 0 for none: the `validate` of the schema
+ * `www.`. `self.re` exists only once linkify-it has compiled its schemas, so the regular expression is built at the
+ * first call and kept, because building it at every call makes content full of `www.` addresses several times slower.
+ * `get_url_host_port()` and `get_path()` are not documented by linkify-it; the test "links `www.` addresses only at
+ * the start of a word" in `markdown.test.ts` shows when an update breaks them.
+ */
+function validateWww(
+  text: string,
+  pos: number,
+  self: { re: { get_url_host_port(): RegExp; get_path(): RegExp } },
+): number {
+  wwwRest ??= new RegExp(self.re.get_url_host_port().source + self.re.get_path().source, "iy");
+  wwwRest.lastIndex = pos;
+  return wwwRest.exec(text)?.[0].length ?? 0;
+}
+
+/**
+ * The parser. `html: false` keeps raw HTML as text, `linkify` makes links of bare addresses as in GitHub Flavored
+ * Markdown (those starting with `www.`, `http://` or `https://`, and bare mail addresses; a bare domain or a file name
+ * such as `README.md` stays text), and `typographer: false` leaves quotes and dashes as typed.
  *
  * `maxNesting` bounds the nesting of tokens: past it markdown-it stops nesting blocks and drops the rest of the
  * deepest block, and inline markup past it stays text. Each list takes two levels (the list and its item) and each
@@ -365,9 +386,16 @@ const markdown = new MarkdownIt({ html: false, linkify: true, typographer: false
   .use(footnote)
   .disable("footnote_inline");
 markdown.core.ruler.at("footnote_tail", footnoteTail);
-// Links of bare addresses starting with `www.`, as in GitHub Flavored Markdown; linkify-it also links a bare domain
-// with a known top-level domain, such as `example.com`.
-markdown.linkify.set({ fuzzyLink: true });
+// Links of bare addresses as in GitHub Flavored Markdown: those starting with `www.`, `http://` or `https://`, and bare
+// mail addresses. Fuzzy links are off, because they also link a bare domain or a file name such as `README.md` (`.md`
+// is a country code); they also linked `www.` addresses, which therefore get a schema of their own.
+markdown.linkify.set({ fuzzyLink: false });
+markdown.linkify.add("www.", {
+  validate: validateWww,
+  normalize(match) {
+    match.url = `http://${match.url}`;
+  },
+});
 markdown.validateLink = isSafeAddress;
 markdown.core.ruler.push("task_lists", taskLists);
 markdown.inline.ruler.before("link", "wiki_link", wikiLink);

@@ -25,7 +25,7 @@ of `markdown-review.md`, the last finding of that report.
 
 ## Checklist
 
-- [ ] Link bare addresses as GitHub does
+- [x] Link bare addresses as GitHub does
 - [ ] Wrap-up
 
 ## Link bare addresses as GitHub does

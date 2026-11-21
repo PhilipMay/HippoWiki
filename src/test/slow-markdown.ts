@@ -39,6 +39,8 @@ export const SLOW_INPUTS: Readonly<Record<string, string>> = {
   "a]": repeated("a]"),
   "www.a": repeated("www.a"),
   "bare addresses": repeated("www.a.de a.com "),
+  // A `www.` link every nine characters, which calls `validate` of the schema `www.` most often.
+  "www addresses": repeated("www.a.de "),
   "[^a]": repeated("[^a]"),
   "one list item per line": repeated("- a\n"),
   // Alternating markers, because `- - -` is a thematic break.

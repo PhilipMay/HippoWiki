@@ -80,6 +80,13 @@ describe("the prose of a page", () => {
     expect(prose).toBe("Wiederherstellung\nStarte   und lies die Anleitung.\nSiehe  und das Logo.");
   });
 
+  it("holds a file name in running text but no `www.` address", () => {
+    const { searchText, prose } = pageText("# Notes\n\nEdit README.md first, then see www.example.org.\n");
+    expect(prose).toBe("Notes\nEdit README.md first, then see .");
+    expect(searchText).toContain("README.md");
+    expect(searchText).toContain("www.example.org");
+  });
+
   it("removes the control characters", () => {
     expect(pageText("# Title\n\nA\u0001B\n").prose).toBe("Title\nA B");
   });

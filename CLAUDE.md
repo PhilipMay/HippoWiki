@@ -40,8 +40,6 @@ file itself holds.
 - `spec/list-layout-review.md`: Which findings of the review of the list layout in the page view are open? A fixed
   finding is deleted, and the file with its last finding.
 - `spec/bare-links-steps.md`: In which steps are bare addresses linked as on GitHub, so that file names stay text?
-- `spec/markdown-review.md`: Which findings of the review of the Markdown parsing are open? A fixed finding is deleted,
-  and the file with its last finding.
 
 ## Running the Checks
 
