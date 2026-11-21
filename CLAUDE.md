@@ -32,6 +32,8 @@ file itself holds.
 - `spec/wiki-links.md`: How do pages link to each other with wiki links, and how are the links kept working when pages
   and tabs are renamed?
 - `spec/roadmap.md`: Which features may come later, and what is still to check?
+- `spec/e2e-stability-steps.md`: In which steps are the reload loop of the development server and the shared rate-limit
+  budget of the end-to-end tests fixed?
 - `spec/attachments-ideas.md`: How do other wikis store, embed and secure images and attachments, and what does that
   suggest for attachments in HippoWiki, its editor and MCP?
 - `spec/issue-report.md`: How is an issue of a review of code or documents reported?
