@@ -29,6 +29,8 @@ file itself holds.
 - `spec/search.md`: How are the pages of a folder searched, in the browser and through MCP?
 - `spec/markdown-editor.md`: How is the content of a page written in the Markdown editor, with live preview and source
   mode?
+- `spec/hidden-line-cursor-steps.md`: How is the fix planned that lets the arrow keys of live preview stop on the
+  hidden fence lines of a code block and the underline of a setext heading?
 - `spec/wiki-links.md`: How do pages link to each other with wiki links, and how are the links kept working when pages
   and tabs are renamed?
 - `spec/roadmap.md`: Which features may come later, and what is still to check?
