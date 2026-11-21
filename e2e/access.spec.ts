@@ -314,6 +314,24 @@ test.describe("with the saved login of the normal user", () => {
 
     await expect(page).toHaveURL("/folders");
   });
+
+  test("the image optimizer is switched off: with a session it answers 404, for a page and for a static file", async ({
+    page,
+  }) => {
+    await page.goto("/folders");
+    const stylesheet = await page.locator('link[rel="stylesheet"]').first().getAttribute("href");
+    expect(stylesheet).toMatch(/^\/_next\/static\//);
+    expect((await page.request.get(stylesheet ?? "")).status()).toBe(200);
+
+    // `page.request` sends the session cookie of the page. Without the option `images.unoptimized` the address of a
+    // page gives 500 and that of a static file is fetched and run through the image processing.
+    for (const url of ["/folders", stylesheet ?? ""]) {
+      const response = await page.request.get(`/_next/image?url=${encodeURIComponent(url)}&w=64&q=75`, {
+        maxRedirects: 0,
+      });
+      expect(response.status(), url).toBe(404);
+    }
+  });
 });
 
 test.describe("with the saved login of the admin", () => {

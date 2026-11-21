@@ -30,6 +30,12 @@ const nextConfig: NextConfig = {
   output: process.env.HIPPOWIKI_OUTPUT === "standalone" ? "standalone" : undefined,
   // No `X-Powered-By: Next.js`, which names the framework to everyone.
   poweredByHeader: false,
+  // The image optimizer is switched off: the app uses no `next/image`, and the optimizer would fetch any local address
+  // given as `url` and run it through the image processing of the server. With this option Next.js answers
+  // `/_next/image` with 404 (`render404()` in the image route of `next-server.js`, checked before the query is read),
+  // under `next dev` and `next start` alike; without a session cookie `src/proxy.ts` sends it to the login page first.
+  // Attachments will process their images in a route of their own.
+  images: { unoptimized: true },
   async headers() {
     return [{ source: "/:path*", headers: SECURITY_HEADERS }];
   },

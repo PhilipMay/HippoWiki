@@ -209,8 +209,9 @@ the authentication guide of Next.js describes:
 
 - `src/proxy.ts` sends every request without a session cookie to the login page, without asking the database. Only the
   login page, `/api/health`, `/mcp` and the addresses below it, the public endpoints of OAuth and the static files of Next.js (`/_next/static/`)
-  pass it; the image optimizer of Next.js is behind the login like every other address. A Server Action called
-  without the cookie leads to the login page as well, with a full page load instead of the error page.
+  pass it; `/_next/image` is behind the login like every other address, and answers 404 with a session, because the
+  image optimizer of Next.js is switched off. A Server Action called without the cookie leads to the login page as
+  well, with a full page load instead of the error page.
 - `requireUser()` in `src/features/auth/session.ts` checks the session in the database. Every page behind the login,
   every query and every Server Action calls it first; it is the layer that protects the data. Without a session it
   leads to the login page, and while the first password is pending, to the password change. Pages call it before they

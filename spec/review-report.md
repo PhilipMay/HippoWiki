@@ -8,9 +8,9 @@
   tests cover the security rules of the specs well. The weak points are availability (unbounded bodies and batches, a lockout per name in the default
   configuration), the password policy, the trust that the OAuth
   server gives to clients nobody verified, and documentation that ASVS Level 2 asks for.
-- Findings: 97 in all, 0 Blocker, 0 Major, 61 Minor and 36 Nit (50 `issue:`, 17 `suggestion:`, 26 `nit:` and 4
-  `question:`). Accepted deviations: 20. Of the 93 Suggestions with a confidence (a `question:` has none), 12 are High,
-  47 Medium and 34 Low.
+- Findings: 96 in all, 0 Blocker, 0 Major, 61 Minor and 35 Nit (50 `issue:`, 17 `suggestion:`, 25 `nit:` and 4
+  `question:`). Accepted deviations: 20. Of the 92 Suggestions with a confidence (a `question:` has none), 12 are High,
+  46 Medium and 34 Low.
 - To fix first: no finding, because none is a Blocker or Major.
 - Not covered by this review: everything under "Checks on the deployment" (the reverse proxy and its TLS, the host,
   the network, backups, log storage and the settings of the GitHub repository); a scan of the image for
@@ -137,7 +137,8 @@
   its dialogs such as `?action=give-role`; the action `?action=delete` of a tab; the views of the history of a page
   `?view=history`, of a revision `?view=revision` and of a comparison `?view=compare`, also of a deleted page, and the
   action `?action=revert` (added after the last recheck).
-- Other addresses of Next.js behind the login: the image optimizer `/_next/image` and the RSC payloads of the pages.
+- Other addresses of Next.js behind the login: the RSC payloads of the pages, and `/_next/image`, which answers 404
+  because the image optimizer is switched off.
 - Server Actions (`src/features/*/actions.ts`):
   - auth: `logIn()`, `changeFirstPassword()`, `logOut()`;
   - folder-roles: `giveRole()`, `changeRole()` (which also removes a role);
@@ -343,25 +344,6 @@ finding of the review report" in `step-plan-workflow.md` describes.
   route with `OPTIONS` and the Suggestion names none.
 - Reference: ASVS 4.1.4 (Level 3); RFC 9110 section 10.2.1.
 
-#### nit: the image optimizer of Next.js stays switched on although the app uses no `next/image`
-
-- Location: `next.config.ts`, `nextConfig` (no `images` option)
-- Severity: Nit. Only logged-in users reach it, and it fetches only addresses of the app itself; it is unused attack
-  surface, not a hole.
-- Category: security
-- Problem: `/_next/image` is served with the default settings. With a session it fetches the given local address
-  from the server itself, without the cookie, and fails with a 500 when the answer is not an image.
-- Impact: a logged-in user can make the server fetch and resize images on request, a function the app does not need.
-  `architecture.md` (section "Login and sessions") already says the app does not use it.
-- Evidence: with a session cookie, `curl -s -o /dev/null -w '%{http_code}' -b <jar>
-'http://localhost:3100/_next/image?url=%2Ffolders&w=64&q=75'` gives `500`, and the server logs
-  `internal image response failed for /folders 307`. An external address gives `400`. Without a cookie the proxy
-  answers `307` to the login.
-- Suggestion (optional): switch the optimizer off with `images: { unoptimized: true }` in `next.config.ts`.
-- Confidence: Medium. That Next.js then answers `/_next/image` with 404 was read in its server code but not tried, and
-  no test checks the answer with a session.
-- Reference: OWASP A02:2025 Security Misconfiguration; ASVS 15.2.3; CWE-1188.
-
 #### Reviewed
 
 - Files read: `src/proxy.ts`, `src/features/auth/session.ts`, `src/lib/auth.ts`, `src/lib/addresses.ts`, the
@@ -421,6 +403,11 @@ finding of the review report" in `step-plan-workflow.md` describes.
 - Missing and repeated parameters (ASVS 15.3.7, CWE-234): `parseChoice()` and `safeNextPath()` refuse arrays, the
   OAuth readers treat a repeated parameter as missing (a finding in "OAuth"), and `authenticateAccessToken()` requires
   the exact folder and role of the address.
+- The image optimizer of Next.js (OWASP A02:2025, ASVS 15.2.3, CWE-1188): the app uses no `next/image`, so
+  `images: { unoptimized: true }` in `next.config.ts` switches the optimizer off, and Next.js answers `/_next/image`
+  with 404 before it reads the query; the server fetches and processes nothing. Without a session cookie the proxy
+  sends it to the login page like every other address. Checked by `e2e/access.spec.ts`: with a session the address,
+  with a page or with a static file as `url`, answers 404, also in a production build.
 - HTTP methods: Next.js answers 405 for every method a route does not export; on the local server `GET`, `PUT` and
   `DELETE /oauth/token` and `POST /api/health` give `405`. `OPTIONS` on an MCP address is the exception (finding
   above).

@@ -430,9 +430,8 @@ Details to decide:
 - Images embed as `<img>` with `loading="lazy"` and the stored width and height, so that the page does not jump; a
   click opens the image alone in a new tab. A second, smaller rendition for large photos (for example 1600 pixels
   wide) keeps pages light; `srcset` can come later.
-- The image optimizer of Next.js (`/_next/image`) is not used: the app does not use it today (see `architecture.md`
-  and the finding about it in `review-report.md`), and it does not forward the cookie that an attachment behind the
-  login needs. sharp, which Next.js brings already (see "License check in CI" in `roadmap.md`), does the work.
+- The image optimizer of Next.js (`/_next/image`) is not used: it is switched off (see `architecture.md`), and it
+  does not forward the cookie that an attachment behind the login needs. sharp, which Next.js brings already (see "License check in CI" in `roadmap.md`), does the work.
 - PDFs and other files embed as a card with name, type, size and "Open" and "Download". Opening a PDF shows it in the
   viewer of the browser in a new tab. An inline viewer in the page is left out at first: it needs `frame-ancestors`
   opened for the attachment addresses, and a bundled PDF.js has had its own XSS (CVE-2024-4367).

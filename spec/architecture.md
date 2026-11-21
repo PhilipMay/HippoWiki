@@ -251,8 +251,9 @@ The feature is described in `users-and-login.md`. What every new route, query an
   - `src/proxy.ts` sends every request without a session cookie to the login page. It only looks whether the cookie
     is there. Its matcher leaves out the public addresses, each with its reason in the comment of the matcher: the
     login page, `/api/health`, `/mcp` and every address below it, the public endpoints of OAuth and the static files
-    of Next.js, but not the image optimizer (`_next/image`), which the app does not use. A new public address has to
-    be added there. The consent page `/oauth/authorize` is not public.
+    of Next.js. A new public address has to be added there. The image optimizer of Next.js is switched off in
+    `next.config.ts`, because the app uses no `next/image`: `/_next/image` answers 404 behind the login. The consent
+    page `/oauth/authorize` is not public.
   - `requireUser()` from `src/features/auth/session.ts` checks the session in the database. It is the layer that
     protects the data: it redirects to the login page without a session, and to the password change while the user
     still has the first password.

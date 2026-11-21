@@ -135,7 +135,8 @@ All from "Current limits" in `container-image.md`:
 
 - Security fixes on the deployment, after the next release: the fixes of the security review of 2026-11-12 are live,
   so every response carries the five security headers of `next.config.ts` and no `X-Powered-By`, and
-  `/_next/image?url=%2Ffolders&w=64&q=75` redirects to `/login` (`architecture.md`).
+  `/_next/image?url=%2Ffolders&w=64&q=75` answers 404 with a session and redirects to `/login` without one
+  (`architecture.md`).
 - Login limit on the deployment: with `HIPPOWIKI_TRUSTED_PROXIES=1` behind Traefik, a failed login from a known
   address outside the network of the server is logged with that address as `clientAddress`
   (`users-and-login.md`, `container-image.md`).
