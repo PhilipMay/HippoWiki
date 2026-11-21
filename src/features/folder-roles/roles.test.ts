@@ -48,6 +48,8 @@ describe("FUNCTION_ROLES", () => {
       editPage: "writer",
       moveOrRenamePage: "writer",
       deletePage: "manager",
+      editFile: "writer",
+      deleteFile: "manager",
       deletedItems: "manager",
       editTab: "manager",
       deleteTab: "manager",

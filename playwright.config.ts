@@ -1,3 +1,5 @@
+import { mkdirSync } from "node:fs";
+
 import { defineConfig, devices } from "@playwright/test";
 import { config } from "dotenv";
 
@@ -8,6 +10,7 @@ import {
   workerCount,
   workerDatabaseName,
   workerDistDir,
+  workerFilesDir,
   workerPort,
   workerUrl,
 } from "./e2e/support/workers";
@@ -26,6 +29,11 @@ const production = process.env.HIPPOWIKI_E2E_SERVER === "production";
 // own server.
 const workers = workerCount();
 const workerNumbers = Array.from({ length: workers }, (_, index) => index + 1);
+
+// The files directory of each server exists before the servers start, because a server checks it once at its start and
+// keeps files off without it (`src/features/files/store.ts`). The blobs of earlier runs may stay: they are kept by their
+// content and the reset of the databases leaves no version that names them.
+for (const worker of workerNumbers) mkdirSync(workerFilesDir(worker), { recursive: true });
 
 export default defineConfig({
   testDir: "e2e",
@@ -83,6 +91,8 @@ export default defineConfig({
         HIPPOWIKI_TRUSTED_PROXIES: "1",
         // The public address of the server, which switches OAuth on and makes the MCP server give out full addresses.
         HIPPOWIKI_PUBLIC_URL: workerUrl(worker),
+        // The files directory of the worker, where its uploads are kept and `createFile()` writes its blobs.
+        HIPPOWIKI_FILES_DIR: workerFilesDir(worker),
       },
       // Never attach to a server that was started by someone else and may use another database: a taken port fails
       // the run.

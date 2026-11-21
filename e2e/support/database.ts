@@ -5,10 +5,15 @@
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import { setTimeout } from "node:timers/promises";
 
 import { PrismaPg } from "@prisma/adapter-pg";
+import sharp from "sharp";
 
+import { writeBytes } from "@/features/files/store";
+import { FILE_TYPES, isImageType, typeOfExtension } from "@/features/files/types";
 import { generateAccessToken, hashSecret } from "@/features/oauth/secret";
 import { titleFromContent } from "@/features/pages/derive";
 import { LINK_INDEX_VERSION, linkRowsOf } from "@/features/pages/wiki-links";
@@ -17,6 +22,9 @@ import { newUserData, type NewUser } from "@/features/users/records";
 import {
   PrismaClient,
   type ChangeChannel,
+  type File,
+  type FileType,
+  type FileVersion,
   type Folder,
   type FolderRole,
   type FolderRoleType,
@@ -34,7 +42,8 @@ import { hashPassword } from "@/lib/password-hash";
 import { KNOWN_USER, KNOWN_USERS } from "../../prisma/known-users";
 import { SESSIONS_FILE } from "./auth";
 import { TEST_DATABASE_NAME, testContainerDatabaseUrl } from "./container";
-import { MAX_WORKERS, processWorker, workerDatabaseName } from "./workers";
+import { gifBytes, jpegBytes, pdfBytes, pngBytes, webpBytes } from "./files";
+import { MAX_WORKERS, processWorker, workerDatabaseName, workerFilesDir } from "./workers";
 
 /** Host, port and database of a PostgreSQL URL, e.g. "localhost:5432/hippowiki". */
 function databaseLocation(url: string): string {
@@ -462,6 +471,127 @@ export async function createRevisions({
     },
   });
   return db.pageRevision.findMany({ where: { pageId: page.id, number: { gte: first } }, orderBy: { number: "asc" } });
+}
+
+/**
+ * The files directory of the process: that of the server of its worker in an end-to-end test, and outside a worker the
+ * temporary one that `integration/setup.ts` makes for the integration tests and names in `HIPPOWIKI_TEST_FILES_DIR`.
+ */
+export function testFilesDir(): string {
+  const worker = processWorker();
+  if (worker !== undefined) return workerFilesDir(worker);
+  const dir = process.env.HIPPOWIKI_TEST_FILES_DIR;
+  if (!dir) throw new Error("HIPPOWIKI_TEST_FILES_DIR is not set: outside a worker only the integration tests set it");
+  return dir;
+}
+
+/** A content of the type, as `createFile()` stores it without one: a small image of 40 × 30 pixels, or a PDF. */
+function contentOf(type: FileType): Promise<Uint8Array> {
+  switch (type) {
+    case "png":
+      return pngBytes();
+    case "jpeg":
+      return jpegBytes();
+    case "gif":
+      return gifBytes();
+    case "webp":
+      return webpBytes();
+    case "pdf":
+      return Promise.resolve(pdfBytes());
+  }
+}
+
+/** A version that `createFile()` stores, and how it was made. */
+type CreateFileVersion = {
+  /** The content; a small image or PDF of the type of the file by default. */
+  bytes?: Uint8Array;
+  /** The width and height of an image; read from the content by default, `null` for a PDF. */
+  width?: number | null;
+  height?: number | null;
+  /** When it was stored; one minute apart, ending at the `updatedAt` of the file, by default. */
+  createdAt?: Date;
+  /** The user who uploaded it, and how; the last editor of the file and `web` by default. */
+  editor?: User;
+  via?: ChangeChannel;
+  /** The version a revert went back to; `null` by default. */
+  revertedTo?: number | null;
+};
+
+/**
+ * The fields of a file that `createFile()` can set, the folder or tab to place it in, the user who last changed it and
+ * the channel of that change, and its versions.
+ */
+type CreateFileData = Partial<
+  Omit<Prisma.FileUncheckedCreateInput, "folderId" | "tabId" | "lastEditedById" | "lastEditedVia" | "versions" | "type">
+> & {
+  folder?: Folder;
+  tab?: Tab;
+  editor?: User;
+  via?: ChangeChannel;
+  versions?: CreateFileVersion[];
+};
+
+/**
+ * Creates a file directly in the test database, with the blobs of its versions in the files directory of the process
+ * (`testFilesDir()`), as an upload would store them: in the given tab, or placed directly in the given folder; without
+ * either, a new folder is created for it. The file gets a unique name with the extension `png` unless one is given; its
+ * type is the type of the extension of its name. Without versions it gets one, with a small image or PDF of its type.
+ * The given editor is its last editor (for a deleted file, the user who deleted it) and the user of its versions;
+ * without one, a new user is created. The given channel is how it was last changed, `web` unless given. Setting
+ * `deletedAt` creates a deleted file, which has no tab; any other field can be set, e.g. `lockVersion` or `updatedAt`.
+ * Returns the file with its versions, oldest first.
+ */
+export async function createFile({
+  folder,
+  tab,
+  editor,
+  via = "web",
+  versions = [{}],
+  ...data
+}: CreateFileData = {}): Promise<File & { versions: FileVersion[] }> {
+  if (tab && data.deletedAt) throw new Error("A deleted file has no tab: give a folder instead");
+  const name = data.name ?? `test-file-${crypto.randomUUID()}.png`;
+  const extension = name.slice(name.lastIndexOf(".") + 1);
+  const type = typeOfExtension(extension as Parameters<typeof typeOfExtension>[0]);
+  if (FILE_TYPES[type]?.extension !== extension) throw new Error(`${name} has no extension of a file type`);
+  const lastEditor = editor ?? (await createUser());
+  const folderId = tab ? tab.folderId : (folder ?? (await createFolder({ editor: lastEditor }))).id;
+  const updatedAt = data.updatedAt ? new Date(data.updatedAt) : new Date();
+  const dir = testFilesDir();
+  await mkdir(join(dir, "tmp"), { recursive: true });
+  const stored = await Promise.all(
+    versions.map(async (version, index) => {
+      const bytes = version.bytes ?? (await contentOf(type));
+      const blob = await writeBytes(dir, bytes);
+      if (!blob.ok) throw new Error("the blob of a test file does not fit on the disk");
+      const metadata = isImageType(type) && version.width === undefined ? await sharp(bytes).metadata() : undefined;
+      return {
+        number: index + 1,
+        sha256: blob.value.sha256,
+        size: blob.value.size,
+        width: version.width !== undefined ? version.width : (metadata?.width ?? null),
+        height: version.height !== undefined ? version.height : (metadata?.height ?? null),
+        createdAt: version.createdAt ?? new Date(updatedAt.getTime() - (versions.length - 1 - index) * 60_000),
+        userId: (version.editor ?? lastEditor).id,
+        via: version.via ?? via,
+        revertedTo: version.revertedTo ?? null,
+      };
+    }),
+  );
+  return getTestDb().file.create({
+    data: {
+      ...data,
+      name,
+      type,
+      folderId,
+      tabId: tab?.id ?? null,
+      lastEditedById: lastEditor.id,
+      lastEditedVia: via,
+      updatedAt,
+      versions: { create: stored },
+    },
+    include: { versions: { orderBy: { number: "asc" } } },
+  });
 }
 
 /**

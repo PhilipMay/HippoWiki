@@ -56,9 +56,14 @@ export const config = {
   // - what an OAuth client calls before it has a token: the metadata of the authorization server and of the
   //   protected resource under `/.well-known/`, the registration `/oauth/register` and the token endpoint
   //   `/oauth/token`. The consent page `/oauth/authorize` is not public: a user approves a client only when logged in.
+  // One address behind the login is left out as well: the upload address `/api/uploads/` and every address below it,
+  // because the proxy buffers at most 10 MB of the body of a request it sees and cuts the rest without an error
+  // (`experimental.proxyClientMaxBodySize`, fixed at build time), so a larger upload would arrive cut. Its route
+  // checks the session itself (`handleUploadRequest()` of `src/features/files/http.ts`) and answers a request without
+  // one with the not-found page.
   // A Server Action is a POST to the address of its page, so the login itself passes as well. The value must be a
   // constant: Next.js reads it at build time.
   matcher: [
-    "/((?!login$|api/health$|mcp(?:/.*)?$|oauth/register$|oauth/token$|\\.well-known/oauth-authorization-server$|\\.well-known/oauth-protected-resource(?:/.*)?$|_next/static/).*)",
+    "/((?!login$|api/health$|api/uploads/|mcp(?:/.*)?$|oauth/register$|oauth/token$|\\.well-known/oauth-authorization-server$|\\.well-known/oauth-protected-resource(?:/.*)?$|_next/static/).*)",
   ],
 };

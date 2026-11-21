@@ -132,6 +132,19 @@ What the steps share, so that each step builds on the same model:
   "Upload new version" are not offered, every upload is refused, and the server logs one warning at its start
   (`src/instrumentation.ts`).
 
+### Changes found while building
+
+- Step 3: `notFound()` in a route handler answers 404 without the not-found page of the app, and that page could not run
+  under the headers of the files anyway (`sandbox`, `default-src 'none'`). So every refusal of the file address is a
+  plain 404, the same for every reason; the end-to-end tests check it with `expectFileNotFound()` of
+  `e2e/support/files.ts` instead of `expectNotFound()`. The upload address answers its refusals like a missing file in
+  the same way.
+- Step 3: the upload has two codes more than "Files in the database and their addresses" lists: `file-not-found`, for a
+  new version of a file that is gone, and `invalid-image`, for an image that does not decode or has more than 100
+  megapixels. `FileVersion` has `revertedTo`, so that the revert of step 5 needs no migration of its own.
+- Step 3: Chrome shows a PDF under `sandbox` in its viewer (checked with the installed Chrome); Firefox and Safari are
+  left to the manual check.
+
 ## Requirements by step
 
 | Step                                      | Requirements                                      |
@@ -160,7 +173,7 @@ The plan is large, so it has two stop points:
 
 - [x] Deleted items
 - [x] File types, names, storage and images
-- [ ] Files in the database and their addresses
+- [x] Files in the database and their addresses
 - [ ] Files in the views and the details page
 - [ ] New versions and revert
 - [ ] Links and embeds of files

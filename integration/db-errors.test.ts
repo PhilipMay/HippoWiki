@@ -3,7 +3,10 @@
 import { describe, expect, it } from "vitest";
 
 import { newUserData } from "@/features/users/records";
+import type { FileVersion } from "@/generated/prisma/client";
 import {
+  FILE_NAME,
+  FILE_VERSION_NUMBER,
   FOLDER_NAME,
   FOLDER_ROLE_USER,
   isAdminRoleViolation,
@@ -19,17 +22,32 @@ import {
   type UniqueConstraint,
 } from "@/lib/db-errors";
 
-import { createFolder, createFolderRole, createPage, createTab, createUser, getTestDb } from "../e2e/support/database";
+import {
+  createFile,
+  createFolder,
+  createFolderRole,
+  createPage,
+  createTab,
+  createUser,
+  getTestDb,
+} from "../e2e/support/database";
 
 const NAME_CONSTRAINTS = {
   FOLDER_NAME,
   TAB_NAME,
   PAGE_NAME,
   PAGE_REVISION_NUMBER,
+  FILE_NAME,
+  FILE_VERSION_NUMBER,
   USER_NAME,
   OAUTH_CLIENT_METADATA_URL,
   FOLDER_ROLE_USER,
 } as const;
+
+/** The columns of a stored file version without its id, to store it again. */
+function versionRow({ fileId, number, sha256, size, width, height, userId, via, revertedTo }: FileVersion) {
+  return { fileId, number, sha256, size, width, height, userId, via, revertedTo };
+}
 
 /** Creates an OAuth client directly in the test database. */
 function createClientRow(data: { metadataUrl?: string } = {}) {
@@ -153,6 +171,44 @@ describe("unique violations", () => {
       select: { number: true },
     });
     expect(numbers).toEqual([{ number: 1 }, { number: 1 }]);
+  });
+
+  it("reports a taken name among the files placed directly in a folder and in a tab as a violation of FILE_NAME", async () => {
+    const folder = await createFolder();
+    const tab = await createTab({ folder });
+    await createFile({ folder, name: "diagram.png" });
+    await createFile({ tab, name: "diagram.png" });
+
+    expectUniqueViolationOf(await errorOf(createFile({ folder, name: "diagram.png" })), FILE_NAME);
+    expectUniqueViolationOf(await errorOf(createFile({ tab, name: "diagram.png" })), FILE_NAME);
+  });
+
+  it("allows a file next to a page of its name without the extension, and next to deleted files of its name", async () => {
+    const folder = await createFolder();
+    await createPage({ folder, name: "setup" });
+    await createFile({ folder, name: "setup.png", deletedAt: new Date() });
+
+    await expect(createFile({ folder, name: "setup.png" })).resolves.toMatchObject({ deletedAt: null });
+  });
+
+  it("reports a version number that the file already has as a violation of FILE_VERSION_NUMBER", async () => {
+    const file = await createFile();
+    const version = file.versions[0];
+    if (!version) throw new Error("no version");
+    const again = versionRow(version);
+
+    expectUniqueViolationOf(await errorOf(getTestDb().fileVersion.create({ data: again })), FILE_VERSION_NUMBER);
+  });
+
+  it("refuses a version whose SHA-256 is no name of a blob", async () => {
+    const file = await createFile();
+    const version = file.versions[0];
+    if (!version) throw new Error("no version");
+    const again = versionRow(version);
+
+    for (const sha256 of ["../../etc/passwd", "A".repeat(64), "a".repeat(63)]) {
+      await expect(getTestDb().fileVersion.create({ data: { ...again, number: 2, sha256 } }), sha256).rejects.toThrow();
+    }
   });
 
   it("reports a taken user name as a violation of USER_NAME", async () => {
@@ -400,6 +456,26 @@ describe("foreign key violations", () => {
     expectForeignKeyViolation(await errorOf(write));
   });
 
+  it("reports a file whose tab belongs to another folder, and deleting a tab or a file that still has a file or version", async () => {
+    const tab = await createTab();
+    const otherFolder = await createFolder();
+    const write = getTestDb().file.create({
+      data: {
+        name: "diagram.png",
+        type: "png",
+        folderId: otherFolder.id,
+        tabId: tab.id,
+        lastEditedById: tab.lastEditedById,
+        lastEditedVia: "web",
+      },
+    });
+    expectForeignKeyViolation(await errorOf(write));
+
+    const file = await createFile({ tab });
+    expectForeignKeyViolation(await errorOf(getTestDb().tab.delete({ where: { id: tab.id } })));
+    expectForeignKeyViolation(await errorOf(getTestDb().file.delete({ where: { id: file.id } })));
+  });
+
   it("reports deleting a folder that still has a tab", async () => {
     const tab = await createTab();
 
@@ -450,6 +526,21 @@ describe("foreign key violations of the last editor", () => {
     });
 
     expectForeignKeyViolation(await errorOf(write), { ofLastEditor: true });
+  });
+
+  it("reports a file and a version of a file whose user does not exist", async () => {
+    expectForeignKeyViolation(await errorOf(createFile({ folder: await createFolder(), editor })), {
+      ofLastEditor: true,
+    });
+    const file = await createFile();
+    const version = file.versions[0];
+    if (!version) throw new Error("no version");
+    const again = versionRow(version);
+
+    expectForeignKeyViolation(
+      await errorOf(getTestDb().fileVersion.create({ data: { ...again, number: 2, userId: editor.id } })),
+      { ofLastEditor: true },
+    );
   });
 
   it("reports a change of the last editor to a user that does not exist", async () => {

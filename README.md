@@ -54,6 +54,7 @@ What is built is described in the feature specs in `spec/`; the catalog in `CLAU
 ```bash
 nvm use
 cp .env.example .env   # once; .env stays on your machine
+mkdir -p files         # once; the uploaded files of npm run dev (HIPPOWIKI_FILES_DIR), ignored by Git
 npm install            # also generates the Prisma client
 npm run db:up
 npm run db:deploy      # apply the migrations to the development database
@@ -63,6 +64,9 @@ npm run dev
 
 The wiki needs a login. After `npm run db:seed`, log in as the user `alice` with the password `alice-password` to work
 with the content, or as the admin `admin` with `admin-password` to manage the accounts. Without the seed, create the admin with `npm run admin:setup` (see "Users").
+
+`.env.example` sets `HIPPOWIKI_FILES_DIR=files`, the directory of the uploaded images and PDFs. Without the directory
+the wiki runs without files: it offers no upload and logs a warning at its start.
 
 `.env` can also set the optional `HIPPOWIKI_PUBLIC_URL`, the public address of the wiki, such as
 `http://localhost:3000` for `npm run dev`. It is explained in `.env.example`; without it the wiki runs as before.
@@ -284,9 +288,15 @@ npm run image:build   # build the image hippowiki:local for this machine
 npm run image:smoke   # check the built image against a throwaway database
 ```
 
-- What a container needs (`DATABASE_URL`, `HIPPOWIKI_ADMIN_PASSWORD` for the first start, HTTPS in front of it, and
-  the optional variables), what it does when it starts and what the smoke test checks is described in
-  `spec/container-image.md`.
+- What a container needs (`DATABASE_URL`, `HIPPOWIKI_ADMIN_PASSWORD` for the first start, HTTPS in front of it, a
+  volume for the files at `/data/files`, and the optional variables), what it does when it starts and what the smoke
+  test checks is described in `spec/container-image.md`. The files are backed up together with the database, the
+  database first. For example, with a volume of its own for the files:
+
+  ```bash
+  podman run --detach --publish 127.0.0.1:3000:3000 --env-file hippowiki.env --volume hippowiki-files:/data/files:U hippowiki:local
+  ```
+
 - To only apply the migrations, start the image with `./image-migrate.sh` as its command:
 
   ```bash

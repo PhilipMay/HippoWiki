@@ -15,7 +15,7 @@ import { getServerEnv } from "@/lib/env";
 import type { Result } from "@/lib/result";
 
 /** Why files are off: no files directory is set, it is missing, or the server cannot write it. */
-type FilesOffReason = "not-set" | "missing" | "not-writable";
+export type FilesOffReason = "not-set" | "missing" | "not-writable";
 
 /** Whether the store can be used: the absolute path of the files directory, or why files are off. */
 export type StoreState = { on: true; dir: string } | { on: false; reason: FilesOffReason; dir: string | null };

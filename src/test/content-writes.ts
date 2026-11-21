@@ -1,20 +1,21 @@
-// The table of all content writes, for the unit tests of the services of pages and folders: a new write is added here
+// The table of all content writes, for the unit tests of the services of pages, folders and files: a new write is added here
 // once, and every table of those tests that goes over the writes (the actor of a write, an admin, no role, the lowest
 // role of each function) picks it up. It imports the services, so a test imports it after its `vi.mock` calls, as
 // every static import is. It is no test itself and is left out of the coverage (`vitest.config.ts`).
 import type { BrowserActor } from "@/features/folder-roles/actors";
 import type { Role } from "@/features/folder-roles/roles";
+import * as files from "@/features/files/service";
 import * as folders from "@/features/folders/service";
 import * as pages from "@/features/pages/service";
 
 import { FOLDER_ID, PAGE_ID, TAB_ID } from "./unit";
 
-/** A content write of the pages or the folders service. */
+/** A content write of the pages, the folders or the files service. */
 export type ContentWrite = {
   /** The function of the service. */
   name: string;
   /** The service the write belongs to. */
-  service: "pages" | "folders";
+  service: "pages" | "folders" | "files";
   /** The write with valid input, by the given actor. */
   call: (actor: BrowserActor) => Promise<unknown>;
   /** The lowest role that may make the write; `null` for a write that needs no role, such as creating a folder. */
@@ -142,6 +143,21 @@ const CONTENT_WRITES: readonly ContentWrite[] = [
     what: "tab not deleted",
     editorKey: "Page_lastEditedById_fkey",
     failure: "failed to delete tab",
+  },
+  {
+    name: "uploadFile",
+    service: "files",
+    call: (actor) =>
+      files.uploadFile(actor, { folderId: FOLDER_ID, tabId: TAB_ID }, "diagram.png", [], {
+        contentLength: null,
+        stripMetadata: true,
+        replace: null,
+      }),
+    lowest: "writer",
+    target: { folderId: FOLDER_ID, tabId: TAB_ID },
+    what: "file not uploaded",
+    editorKey: "File_lastEditedById_fkey",
+    failure: "failed to upload file",
   },
 ];
 

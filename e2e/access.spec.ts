@@ -3,7 +3,8 @@ import type { Page } from "@playwright/test";
 import { KNOWN_ADMIN, KNOWN_USER } from "../prisma/known-users";
 import { ADMIN_STORAGE_STATE, logIn, NO_STORAGE_STATE, USER_STORAGE_STATE } from "./support/auth";
 import { collectErrors } from "./support/browser";
-import { createFolder, createPage, createTab, getTestDb, resetTestDatabase } from "./support/database";
+import { createFile, createFolder, createPage, createTab, getTestDb, resetTestDatabase } from "./support/database";
+import { expectFileNotFound, pngBytes } from "./support/files";
 import { ISSUER } from "./support/oauth";
 import { expect, test } from "./support/test";
 
@@ -24,6 +25,8 @@ test.beforeEach(async () => {
     deletedAt: new Date(),
     via: "mcp",
   });
+  await createFile({ folder: handbook, name: "diagram.png" });
+  await createFile({ tab: guides, name: "manual.pdf" });
 });
 
 /** Every kind of address that needs a login. */
@@ -38,6 +41,10 @@ const PROTECTED_ADDRESSES = [
   ["a page in a tab", "/folders/handbook/guides/setup.md"],
   ["the deleted items of a folder", "/deleted-items/handbook"],
   ["a deleted page", `/deleted-items/handbook/${DELETED_PAGE_ID}`],
+  ["a file itself", "/files/handbook/diagram.png"],
+  ["a file in a tab", "/files/handbook/guides/manual.pdf"],
+  ["a version of a file", "/files/handbook/diagram.png?version=1"],
+  ["a file that does not exist", "/files/handbook/missing.png"],
   ["the folder list with an action", "/folders?action=new"],
   ["a folder with an action", "/folders/handbook?action=rename"],
   ["a tab with the dialog to delete it", "/folders/handbook/guides?action=delete"],
@@ -158,6 +165,20 @@ test.describe("without a login", () => {
       expect(response.headers()["www-authenticate"]).toMatch(/^Bearer\b/);
       expect(await response.text()).not.toContain("handbook");
     }
+  });
+
+  test("the upload addresses are not sent to the login page: they answer an upload without a session with 404", async ({
+    request,
+  }) => {
+    for (const address of ["/api/uploads/handbook/diagram.png", "/api/uploads/handbook/guides/new.png"]) {
+      for (const headers of [{}, { origin: ISSUER }] as Record<string, string>[]) {
+        const response = await request.post(address, { data: await pngBytes(), headers, maxRedirects: 0 });
+
+        expect(response.status(), address).toBe(404);
+        expect(response.headers().location).toBeUndefined();
+      }
+    }
+    expect(await getTestDb().fileVersion.count()).toBe(2);
   });
 
   test("/mcp and the other addresses below it are not sent to the login page: they answer 404 themselves", async ({
@@ -376,6 +397,13 @@ test.describe("with the saved login of the admin", () => {
       await expect(page.getByText(/Secret|handbook|guides|overview|setup|removed/)).toHaveCount(0);
       await expect(page.getByText(/Updated|Deleted| via (web|mcp)/)).toHaveCount(0);
       await expect(page.getByRole("banner").getByText(KNOWN_ADMIN.name, { exact: true })).toBeVisible();
+    });
+  }
+
+  // The addresses of the files themselves answer an admin with 404, like a file that does not exist.
+  for (const [what, address] of PROTECTED_ADDRESSES.filter(([, path]) => path.startsWith("/files/"))) {
+    test(`${what} (${address}) answers with 404`, async ({ page }) => {
+      await expectFileNotFound(page, address);
     });
   }
 });

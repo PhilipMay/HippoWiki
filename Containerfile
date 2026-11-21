@@ -55,10 +55,14 @@ RUN if ! ls node_modules/@prisma/engines/schema-engine-* >/dev/null 2>&1; then \
 FROM base AS app
 LABEL org.opencontainers.image.source="https://github.com/PhilipMay/HippoWiki"
 WORKDIR /app
+# HIPPOWIKI_FILES_DIR names the directory of the files, which the operator mounts as a volume (see "What the
+# environment has to provide" in spec/container-image.md). The image does not create it: without the volume the wiki
+# runs with files off and logs a warning.
 ENV NODE_ENV=production \
     PORT=3000 \
     NEXT_TELEMETRY_DISABLED=1 \
-    CHECKPOINT_DISABLE=1
+    CHECKPOINT_DISABLE=1 \
+    HIPPOWIKI_FILES_DIR=/data/files
 # Like every file of the image, owned by root, so that the server, which runs as `node`, cannot change its own code.
 COPY --from=build /src/.next/standalone ./
 COPY --from=build /src/.next/static ./.next/static
@@ -74,6 +78,9 @@ COPY --from=build /src/build/search-index.mjs ./search-index.mjs
 # The password hashing with its native build for the platform of the image, whatever the standalone output contains
 # of it: Next.js only traces what the server imports.
 COPY --from=deps /src/node_modules/@node-rs ./node_modules/@node-rs
+# The same for sharp, which processes the uploaded images, with libvips and its native build for the platform.
+COPY --from=deps /src/node_modules/sharp ./node_modules/sharp
+COPY --from=deps /src/node_modules/@img ./node_modules/@img
 COPY scripts/image-admin.sh scripts/image-migrate.sh scripts/image-search-index.sh scripts/image-start.sh ./
 # The cache of Next.js is the only place below /app that `node` can write to.
 RUN mkdir -p .next/cache && chown -R node:node .next/cache

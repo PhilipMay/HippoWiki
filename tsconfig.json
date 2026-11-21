@@ -49,7 +49,9 @@
     ".next-e2e/worker-8/types/**/*.ts",
     ".next-e2e/worker-8/dev/types/**/*.ts",
     ".next-e2e/production/types/**/*.ts",
-    ".next-e2e/production/dev/types/**/*.ts"
+    ".next-e2e/production/dev/types/**/*.ts",
+    ".next-e2e/probe/types/**/*.ts",
+    ".next-e2e/probe/dev/types/**/*.ts"
   ],
   "exclude": ["node_modules"]
 }

@@ -19,6 +19,10 @@ The documents use one name for each of these things:
   it. The code and the database call it a grant; at the MCP address it is a connection.
 - The version and the revision of a page: the version counts the stored changes of a page, for optimistic locking
   (`optimistic-locking.md`); a revision is a stored state of its content, in its history (`page-history.md`).
+- A file: an image or a PDF of a folder, an item of its own next to the pages, placed directly in the folder or in a
+  tab. The version and the lock version of a file: a version is one of its stored contents, which its details page
+  lists; its lock version counts every stored change of the file (a new version, a revert, a move or rename, a delete,
+  a restore), for optimistic locking, as the version of a page does.
 
 ## Layout
 
@@ -59,6 +63,7 @@ The documents use one name for each of these things:
   | `grants`       | the connected apps and the check of an access token       | `limits.ts`: the limit of connected apps per user                                                                                                                                                                                                                                                                                                                                                      |
   | `mcp`          | the MCP server and the folder view "AI apps"              | `server.ts` (the tools a connection gets), `tools.ts` (their handlers), `tool-schemas.ts` (their inputs and outputs), `edits.ts` (the replacements of `edit_page_content`), `http.ts`                                                                                                                                                                                                                  |
   | `search`       | search in a folder, in the browser and through MCP        | `text.ts` and `language.ts` (what search derives of a page), `index-data.ts` (what a write stores), `words.ts` (the parser of the search words), `query-text.ts`, `excerpt.ts`, `slots.ts`, `limits.ts`                                                                                                                                                                                                |
+  | `files`        | files of folders and tabs, their versions and addresses   | `types.ts` (the five types and their detection), `derive.ts`, `store.ts` (the blobs on disk), `images.ts` (sharp), `startup.ts`, `http.ts` (the file and upload addresses)                                                                                                                                                                                                                             |
   | `oauth`        | the OAuth authorization server for AI apps                | `clients-service.ts`, `authorization-service.ts`, `token-service.ts`, `cleanup-service.ts`, `rows.ts` (what they share), `issuer.ts` (the issuer and `isOAuthOn()`), `secret.ts`, `metadata-fetch.ts`, `http.ts`                                                                                                                                                                                       |
 
 - `src/test/`: the helpers of the unit tests, no code of the app (see "Unit tests" in `testing.md`)
@@ -251,7 +256,9 @@ The feature is described in `users-and-login.md`. What every new route, query an
   - `src/proxy.ts` sends every request without a session cookie to the login page. It only looks whether the cookie
     is there. Its matcher leaves out the public addresses, each with its reason in the comment of the matcher: the
     login page, `/api/health`, `/mcp` and every address below it, the public endpoints of OAuth and the static files
-    of Next.js. A new public address has to be added there. The image optimizer of Next.js is switched off in
+    of Next.js. A new public address has to be added there. It also leaves out the upload address `/api/uploads/…`,
+    which is not public: the proxy would cut its body after 10 MB, so its adapter checks the session itself (see
+    below). The image optimizer of Next.js is switched off in
     `next.config.ts`, because the app uses no `next/image`: `/_next/image` answers 404 behind the login. The consent
     page `/oauth/authorize` is not public.
   - `requireUser()` from `src/features/auth/session.ts` checks the session in the database. It is the layer that
@@ -274,6 +281,12 @@ The feature is described in `users-and-login.md`. What every new route, query an
 - These three functions, the actions of the auth feature and `verifyOwnPassword()` of
   `src/features/auth/password-check.ts`, which the consent page of OAuth calls to check the password, are the only
   code that reads the headers of the request for the session.
+- The two route handlers of files find the actor with `getCurrentUser()` and answer without a redirect
+  (`src/features/files/http.ts`): the file address `/files/…`, behind the proxy, answers a session that is no longer
+  valid, a user who still has the first password, an admin and a user without a role with a plain 404; the upload
+  address `/api/uploads/…`, left out of the proxy, does the same, and refuses a request with an `Origin` other than
+  the own host or the public URL, or with `Sec-Fetch-Site: cross-site`, before it looks at the session, so that no
+  page of another site can make a browser upload a file.
 - A caller other than the browser, such as the MCP server, finds its actor with
   `authenticateAccessToken(headers, address)` of the grant service, from the access token of a grant in the
   `Authorization` header (see `connected-apps.md`). It returns the same `Actor`, type included, as the session of the
@@ -292,14 +305,22 @@ The feature is described in `users-and-login.md`. What every new route, query an
 
 ## Security headers
 
-- `next.config.ts` sets the security headers for every address (`headers()` with the source `/:path*`), so every new
-  route, the redirects of `src/proxy.ts` and the static files get them without doing anything:
+- `next.config.ts` sets the security headers for every address but `/files` and the addresses below it (`headers()`
+  with the source `/:path((?!files(?:/|$)).*)`), so every new route, the redirects of `src/proxy.ts` and the static
+  files get them without doing anything:
   - `Strict-Transport-Security: max-age=63072000; includeSubDomains`; browsers ignore it over plain HTTP, so
     `npm run dev` and the end-to-end server on `localhost` are not affected.
   - `Content-Security-Policy: frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; img-src 'self' data:`.
     `img-src 'self' data:` keeps images of other hosts, such as a tracking image in Markdown, from loading. There is
     no `script-src` or `style-src`, because Material UI and Next.js insert inline styles and scripts.
   - `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` and `Referrer-Policy: same-origin`.
+- The addresses of the files themselves, `/files/…`, get headers of their own instead, so that an uploaded file never
+  runs code in the wiki, also when a browser opens it on its own: `Content-Security-Policy: default-src 'none';
+sandbox`, `X-Content-Type-Options: nosniff`, `Cross-Origin-Resource-Policy: same-origin`, `X-Frame-Options: DENY`,
+  `Referrer-Policy: same-origin` and the `Strict-Transport-Security` of the app. The route of a file adds the type
+  that the upload decided from the content, `Content-Disposition` with its name, `Cache-Control: private, no-cache`
+  and its SHA-256 as `ETag` (`src/features/files/http.ts`). Under these headers no page of the app runs, so a file
+  address answers what it does not send with a plain 404 instead of the not-found page.
 - `poweredByHeader: false`: no response names the framework in `X-Powered-By`.
 - A change to the headers is checked by `e2e/security-headers.spec.ts` and the smoke test of the container image.
 

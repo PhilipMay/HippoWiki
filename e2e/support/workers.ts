@@ -1,5 +1,5 @@
-// The workers of the end-to-end tests: how many run, and the port, server address, database and build directory of
-// each one. The configuration, the global setup and the helpers of the tests all take these values from here. The
+// The workers of the end-to-end tests: how many run, and the port, server address, database, build directory and files
+// directory of each one. The configuration, the global setup and the helpers of the tests all take these values from here. The
 // module has no side effects and does not import Playwright, so the unit tests can load it.
 
 /** The environment variable that sets the number of workers for one run. */
@@ -66,6 +66,14 @@ export function workerDatabaseName(worker: number): string {
 /** The build directory of the development server of the worker. */
 export function workerDistDir(worker: number): string {
   return `.next-e2e/worker-${worker}`;
+}
+
+/**
+ * The files directory of the server of the worker (`HIPPOWIKI_FILES_DIR`), where its uploads and the files of
+ * `createFile()` are kept. It is not below the build directory, which a development server may clean.
+ */
+export function workerFilesDir(worker: number): string {
+  return `.next-e2e/files-${worker}`;
 }
 
 /**

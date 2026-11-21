@@ -28,6 +28,24 @@ export const PAGE_NAME: UniqueConstraint = {
 };
 
 /**
+ * The unique indexes on the file name, as Prisma creates them for `@@unique`: within a tab, and among the files placed
+ * directly in a folder. A file and a page of the same name without the extension sit side by side.
+ */
+export const FILE_NAME: UniqueConstraint = {
+  indexes: ["File_tabId_name_key", "File_folderId_name_key"],
+  field: "name",
+};
+
+/**
+ * The unique index on the file and the number of a version, as Prisma creates it for `@@unique`. A new version locks
+ * the row of its file before it numbers the version, so a violation means that another write took the number first.
+ */
+export const FILE_VERSION_NUMBER: UniqueConstraint = {
+  indexes: ["FileVersion_fileId_number_key"],
+  field: "number",
+};
+
+/**
  * The unique index on the page and the number of a revision, as Prisma creates it for `@@unique`. A content save locks
  * the row of its page before it numbers its revision, so a violation means that another write took the number first.
  */
@@ -88,8 +106,9 @@ export type ForeignKey = {
 };
 
 /**
- * The foreign keys of the last editor of folders, tabs and pages, as Prisma creates them for the relations to `User`,
- * and that of the user of a page revision, who is always the last editor of the same write.
+ * The foreign keys of the last editor of folders, tabs, pages and files, as Prisma creates them for the relations to
+ * `User`, and those of the user of a page revision and of a file version, who is always the last editor of the same
+ * write.
  */
 export const LAST_EDITOR: ForeignKey = {
   constraints: [
@@ -97,6 +116,8 @@ export const LAST_EDITOR: ForeignKey = {
     "Tab_lastEditedById_fkey",
     "Page_lastEditedById_fkey",
     "PageRevision_userId_fkey",
+    "File_lastEditedById_fkey",
+    "FileVersion_userId_fkey",
   ],
   field: "lastEditedById",
 };

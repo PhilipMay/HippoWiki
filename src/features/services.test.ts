@@ -26,6 +26,8 @@ it("the services load without Next.js and React", async () => {
   const linksService = await import("@/features/pages/links-service");
   const searchService = await import("@/features/search/service");
   const folderRoleService = await import("@/features/folder-roles/service");
+  // The files service, with the store of the blobs and the processing of images it calls.
+  const fileService = await import("@/features/files/service");
   // The actors and the guards of a content write, which every content service and adapter imports.
   const actors = await import("@/features/folder-roles/actors");
   const userService = await import("@/features/users/service");
@@ -49,6 +51,7 @@ it("the services load without Next.js and React", async () => {
   expect(searchService.indexOutdatedPages).toBeTypeOf("function");
   expect(searchService.searchPages).toBeTypeOf("function");
   expect(folderRoleService.folderRoleOf).toBeTypeOf("function");
+  expect(fileService.uploadFile).toBeTypeOf("function");
   expect(actors.openContentWrite).toBeTypeOf("function");
   expect(userService.ensureAdmin).toBeTypeOf("function");
   expect(grantService.listGrants).toBeTypeOf("function");

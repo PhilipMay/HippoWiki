@@ -1,5 +1,6 @@
-// Every address of the wiki: the folders, tabs and pages under `/folders` with their views and actions in the query
-// string, the deleted items under `/deleted-items`, the users, the roles overview, the own account, the login and the
+// Every address of the wiki: the folders, tabs, pages and the details pages of files under `/folders` with their views
+// and actions in the query string, the files themselves under `/files` and their uploads under `/api/uploads`, the
+// deleted items under `/deleted-items`, the users, the roles overview, the own account, the login and the
 // password change with the way back after a login, the MCP addresses of the folders, and the endpoints of OAuth and
 // their metadata under `/.well-known/`. Pure functions used by routes, Server Actions, the adapters of MCP and OAuth
 // and links; no server-only imports.
@@ -19,6 +20,12 @@ const FOLDERS_PATH = "/folders";
  * folders can get addresses of their own later.
  */
 const DELETED_ITEMS_PATH = "/deleted-items";
+
+/** The fixed prefix of the addresses of the files themselves, which send the content of a file. */
+const FILES_PATH = "/files";
+
+/** The fixed prefix of the addresses that a file is uploaded to. */
+const UPLOADS_PATH = "/api/uploads";
 
 /** The suffix that marks a page in an address. It belongs to the address, not to the page name. */
 const PAGE_SUFFIX = ".md";
@@ -76,9 +83,11 @@ function withNext(path: string, next?: string | string[] | null): string {
   return safe === FOLDERS_PATH ? path : `${path}?${NEXT_PARAM}=${encodeURIComponent(safe)}`;
 }
 
-/** Whether the path is the home page or lies under the content: the folders or the deleted items. */
+/** Whether the path lies under the content: the folders, the deleted items or the files. */
 function isContentPath(path: string): boolean {
-  return [FOLDERS_PATH, DELETED_ITEMS_PATH].some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+  return [FOLDERS_PATH, DELETED_ITEMS_PATH, FILES_PATH].some(
+    (prefix) => path === prefix || path.startsWith(`${prefix}/`),
+  );
 }
 
 /**
@@ -435,6 +444,52 @@ export function deletedPageRevisionPath(folder: string, id: string, revision: nu
 /** The address of the comparison of two revisions of a deleted page. */
 export function deletedPageComparePath(folder: string, id: string, from: number, to: number): string {
   return comparePath(deletedItemPath(folder, id), from, to);
+}
+
+/** The path of a file below a prefix: its folder, its tab if it is in one, and its name with its extension. */
+function placedFilePath(prefix: string, folder: string, tab: string | null, name: string): string {
+  return tab === null ? `${prefix}/${folder}/${name}` : `${prefix}/${folder}/${tab}/${name}`;
+}
+
+/**
+ * The address of the details page of a file, with its details, its versions and the actions on it:
+ * `/folders/<folder>/<name.ext>` for a file placed directly in a folder and `/folders/<folder>/<tab>/<name.ext>` for a
+ * file in a tab; optionally with an action.
+ */
+export function filePath(folder: string, tab: string | null, name: string, action?: string): string {
+  return withAction(placedFilePath(FOLDERS_PATH, folder, tab, name), action);
+}
+
+/**
+ * The address of a file itself, which sends its content: `/files/<folder>/<name.ext>` for a file placed directly in a
+ * folder and `/files/<folder>/<tab>/<name.ext>` for a file in a tab; with `version`, the content of that version, and
+ * with `download`, as an attachment that the browser saves under the name of the file.
+ */
+export function fileContentPath(
+  folder: string,
+  tab: string | null,
+  name: string,
+  { version, download = false }: { version?: number; download?: boolean } = {},
+): string {
+  const query = [...(version === undefined ? [] : [`version=${version}`]), ...(download ? ["download"] : [])];
+  const path = placedFilePath(FILES_PATH, folder, tab, name);
+  return query.length === 0 ? path : `${path}?${query.join("&")}`;
+}
+
+/**
+ * The address that a file is uploaded to, as the body of a `POST`: `/api/uploads/<folder>/[<tab>/]<name.ext>`; with
+ * `keepMetadata`, `strip=0`, which keeps the metadata of a photo, and with `replace`, the lock version of the file of
+ * that name that a new version is based on.
+ */
+export function uploadPath(
+  folder: string,
+  tab: string | null,
+  name: string,
+  { keepMetadata = false, replace }: { keepMetadata?: boolean; replace?: number } = {},
+): string {
+  const query = [...(keepMetadata ? ["strip=0"] : []), ...(replace === undefined ? [] : [`replace=${replace}`])];
+  const path = placedFilePath(UPLOADS_PATH, folder, tab, name);
+  return query.length === 0 ? path : `${path}?${query.join("&")}`;
 }
 
 /** A page as its address names it, with `.md` after its name: how lists, breadcrumbs and dialogs label a page. */

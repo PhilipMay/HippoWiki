@@ -114,7 +114,8 @@ Code: `Containerfile`, `.containerignore`, `scripts/image.sh`, `scripts/image-mi
 
 - A container needs two variables, `DATABASE_URL` and `HIPPOWIKI_ADMIN_PASSWORD`, and nothing else. The optional
   variables `HIPPOWIKI_TRUSTED_PROXIES`, `HIPPOWIKI_LOG_CLIENT_ADDRESS`, `HIPPOWIKI_PUBLIC_URL`,
-  `HIPPOWIKI_MCP_BODY_LIMIT`, `HIPPOWIKI_MCP_RATE_BURST` and `HIPPOWIKI_MCP_RATE_PER_MINUTE` are described below.
+  `HIPPOWIKI_MCP_BODY_LIMIT`, `HIPPOWIKI_MCP_RATE_BURST`, `HIPPOWIKI_MCP_RATE_PER_MINUTE`, `HIPPOWIKI_FILES_DIR` and
+  `HIPPOWIKI_FILE_SIZE_LIMIT` are described below.
 - `DATABASE_URL`: `postgresql://<user>:<password>@<host>:<port>/<database>`. The migration, the admin setup and the
   server read it. Special characters in the password are percent-encoded.
 - Only this form, without parameters, is supported and tested. The migration reads the URL with the schema engine of
@@ -180,6 +181,17 @@ Code: `Containerfile`, `.containerignore`, `scripts/image.sh`, `scripts/image-mi
     default `300`.
   - The rate limit cannot be switched off: `0` is refused for both. Each instance of the server keeps its own budget,
     in memory, so a restart gives every user a full budget again.
+- The files, the images and PDFs that users upload to their folders, are kept in a directory, which the image names
+  with `HIPPOWIKI_FILES_DIR=/data/files` and does not create (see "What the environment has to provide"):
+  - `HIPPOWIKI_FILES_DIR` is a path, relative to the working directory of the server or absolute; an empty value stops
+    the server with an error like a wrong `DATABASE_URL`. It is read when the server runs.
+  - Without the variable, or with a directory that is missing or that the server cannot write, the files are off: the
+    wiki works, the files that exist are listed, but their addresses answer 404 for their content, no upload is
+    offered and every upload is refused. The server logs one warning at its start, with the reason
+    (`src/features/files/startup.ts`).
+  - `HIPPOWIKI_FILE_SIZE_LIMIT` is the size limit of an uploaded file in bytes, a whole number in plain decimal digits
+    like the limits of MCP, from `1048576` (1 MiB) to `1073741824` (1 GiB), default `26214400` (25 MiB), which the
+    messages show as 25 MiB (`src/lib/env.ts`).
 - There is no variable for the secret that signs the session cookies: the server generates it on first use and
   stores it in the database (table `AuthSecret`). It therefore survives a new container, and all sessions with it.
 - The database is PostgreSQL in the version pinned in `scripts/Containerfile`. The database and its user are created
@@ -211,6 +223,8 @@ Code: `Containerfile`, `.containerignore`, `scripts/image.sh`, `scripts/image-mi
   - a first start installs the database, creates the admin and serves the wiki behind its login with the security
     headers;
   - the server does not run as root and cannot change its own files;
+  - without the volume of the files the server serves and logs that files are off; with it, mounted at `/data/files`,
+    it logs no such warning and can write the volume; sharp loads and processes an image in `/app`;
   - pages stored before search and the index of links, as after the update of an installation with pages, are
     searchable after the next start, with the inflections of their language, have their wiki links derived, and keep
     their last change;
@@ -309,6 +323,16 @@ These are not built into the image; whoever runs it takes care of them.
       headers of the client, so the proxy of Next.js sees such requests too.
     - Not checked: a request over IPv6, and the login limit itself with `HIPPOWIKI_TRUSTED_PROXIES=1` (see "Things to
       Check" in `roadmap.md`).
+- A volume for the files, mounted at `/data/files` and writable by the user `node` of the image (uid 1000), for
+  example `--volume hippowiki-files:/data/files:U` with Podman. The image does not create the directory, so that a
+  container without the volume runs with files off instead of keeping uploads inside the container, where a new
+  container would lose them. The directory holds `blobs/`, the contents of the files by their SHA-256, and `tmp/`,
+  the uploads that are still being received.
+- A backup that holds the files with the database: first a backup of the database, then a copy of the directory of the
+  files. In this order every version that the database names has its blob in the copy, because a blob is written
+  before the version that names it and is never removed later; a blob without a version in the backup is harmless.
+  The free space of the volume is the limit on the files of all folders together: an upload that does not fit is
+  refused, and nothing of it is kept.
 - One instance only. Instances that start together would all try to migrate, and each instance has its own page
   cache.
 - Access to the package: a new package in the GitHub Container Registry is private until its visibility is changed, so

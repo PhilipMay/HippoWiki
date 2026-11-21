@@ -7,6 +7,7 @@ import {
   workerCount,
   workerDatabaseName,
   workerDistDir,
+  workerFilesDir,
   workerPort,
   workerUrl,
 } from "./workers";
@@ -53,6 +54,7 @@ describe("the values of a worker", () => {
     expect(workerUrl(1)).toBe("http://localhost:3100");
     expect(workerDatabaseName(1)).toBe("hippowiki_test_1");
     expect(workerDistDir(1)).toBe(".next-e2e/worker-1");
+    expect(workerFilesDir(1)).toBe(".next-e2e/files-1");
   });
 
   it("gives worker 8 the port 3107", () => {

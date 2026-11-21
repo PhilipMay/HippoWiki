@@ -5,12 +5,9 @@
 
 import sharp, { type Metadata, type Sharp } from "sharp";
 
-import type { FileType } from "@/features/files/types";
+import type { ImageType } from "@/features/files/types";
 import { createLimiter, type Limiter } from "@/lib/limiter";
 import type { Result } from "@/lib/result";
-
-/** The types of files that are images, which this module processes; a PDF is stored as it was uploaded. */
-export type ImageType = Exclude<FileType, "pdf">;
 
 /** The most pixels an image may have, all frames of an animated image together: 100 megapixels. */
 export const MAX_IMAGE_PIXELS = 100_000_000;
@@ -31,7 +28,7 @@ const SHARP_FORMATS: Readonly<Record<ImageType, string>> = { png: "png", jpeg: "
 const ALLOWED_LOADERS = ["VipsForeignLoadPng", "VipsForeignLoadJpeg", "VipsForeignLoadNsgif", "VipsForeignLoadWebp"];
 
 /** An image did not get a free slot in time: too many images are being processed. The service answers `failed`. */
-class ImageBusyError extends Error {
+export class ImageBusyError extends Error {
   constructor() {
     super("too many images are being processed");
     this.name = "ImageBusyError";

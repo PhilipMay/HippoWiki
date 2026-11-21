@@ -12,6 +12,8 @@ import {
   deletedPageRevisionPath,
   deletedItemsPath,
   deletedItemsRootPath,
+  fileContentPath,
+  filePath,
   folderMcpPath,
   folderPath,
   hasSearchWords,
@@ -32,6 +34,7 @@ import {
   pagePath,
   pageRevertPath,
   pageRevisionPath,
+  uploadPath,
   parseAccountNotice,
   parseAction,
   parseChoice,
@@ -120,6 +123,41 @@ describe("paths", () => {
       "/folders/handbook/overview.md?notice=changed",
     );
     expect(PAGE_NOTICES).toEqual(["changed"]);
+  });
+
+  it("builds the address of the details page of a file, placed directly in a folder and in a tab", () => {
+    expect(filePath("handbook", null, "diagram.png")).toBe("/folders/handbook/diagram.png");
+    expect(filePath("handbook", "guides", "manual.pdf")).toBe("/folders/handbook/guides/manual.pdf");
+    expect(filePath("handbook", "guides", "manual.pdf", "upload-version")).toBe(
+      "/folders/handbook/guides/manual.pdf?action=upload-version",
+    );
+  });
+
+  it("builds the address of a file itself, of a version of it and of its download", () => {
+    expect(fileContentPath("handbook", null, "diagram.png")).toBe("/files/handbook/diagram.png");
+    expect(fileContentPath("handbook", "guides", "diagram.png")).toBe("/files/handbook/guides/diagram.png");
+    expect(fileContentPath("handbook", "guides", "diagram.png", { version: 2 })).toBe(
+      "/files/handbook/guides/diagram.png?version=2",
+    );
+    expect(fileContentPath("handbook", null, "manual.pdf", { download: true })).toBe(
+      "/files/handbook/manual.pdf?download",
+    );
+    expect(fileContentPath("handbook", null, "manual.pdf", { version: 1, download: true })).toBe(
+      "/files/handbook/manual.pdf?version=1&download",
+    );
+  });
+
+  it("builds the upload address of a file, with the metadata kept and as a new version", () => {
+    expect(uploadPath("handbook", null, "diagram.png")).toBe("/api/uploads/handbook/diagram.png");
+    expect(uploadPath("handbook", "guides", "photo.jpg", { keepMetadata: true })).toBe(
+      "/api/uploads/handbook/guides/photo.jpg?strip=0",
+    );
+    expect(uploadPath("handbook", "guides", "photo.jpg", { keepMetadata: true, replace: 4 })).toBe(
+      "/api/uploads/handbook/guides/photo.jpg?strip=0&replace=4",
+    );
+    expect(uploadPath("handbook", null, "manual.pdf", { replace: 2 })).toBe(
+      "/api/uploads/handbook/manual.pdf?replace=2",
+    );
   });
 
   it("builds the address of the deleted items of a folder", () => {
@@ -425,6 +463,7 @@ describe("landingPath", () => {
     "/folders/team/intro.md?action=edit",
     "/folders/team?action=create",
     "/folders?view=all",
+    "/files/team/diagram.png",
     "/deleted-items",
     "/deleted-items/team",
     "/deleted-items/team/7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002?action=restore",

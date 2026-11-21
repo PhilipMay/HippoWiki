@@ -2,7 +2,7 @@ import type { Page } from "@playwright/test";
 
 import { NO_STORAGE_STATE } from "./support/auth";
 import { collectErrors } from "./support/browser";
-import { createFolder, createPage, resetTestDatabase } from "./support/database";
+import { createFile, createFolder, createPage, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
 
 /** The security headers of `next.config.ts`, with the values every response must carry. */
@@ -12,6 +12,16 @@ const SECURITY_HEADERS = {
     "frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; img-src 'self' data:",
   "x-frame-options": "DENY",
   "x-content-type-options": "nosniff",
+  "referrer-policy": "same-origin",
+};
+
+/** The headers of `next.config.ts` for the addresses of the files themselves, instead of those of the app. */
+const FILE_HEADERS = {
+  "strict-transport-security": "max-age=63072000; includeSubDomains",
+  "content-security-policy": "default-src 'none'; sandbox",
+  "x-content-type-options": "nosniff",
+  "cross-origin-resource-policy": "same-origin",
+  "x-frame-options": "DENY",
   "referrer-policy": "same-origin",
 };
 
@@ -88,6 +98,33 @@ test.describe("with the saved login of the normal user", () => {
     expect(response?.status()).toBe(200);
     await expect(page.getByRole("heading", { level: 1, name: "Overview" })).toBeVisible();
     expectSecurityHeaders(await response!.allHeaders());
+  });
+
+  test("a file at its own address carries the headers of the files, and a 404 below /files as well", async ({
+    request,
+  }) => {
+    const folder = await createFolder({ name: "handbook" });
+    await createFile({ folder, name: "diagram.png" });
+
+    for (const [address, status] of [
+      ["/files/handbook/diagram.png", 200],
+      ["/files/handbook/missing.png", 404],
+    ] as const) {
+      const response = await request.get(address);
+
+      expect(response.status(), address).toBe(status);
+      const headers = response.headers();
+      expect(Object.fromEntries(Object.keys(FILE_HEADERS).map((name) => [name, headers[name]])), address).toEqual(
+        FILE_HEADERS,
+      );
+      expect(headers).not.toHaveProperty("x-powered-by");
+    }
+  });
+
+  test("the app keeps its own headers next to the files", async ({ request }) => {
+    for (const address of ["/", "/folders", "/filesystem", "/files-old/a.png"]) {
+      expectSecurityHeaders((await request.get(address, { maxRedirects: 0 })).headers());
+    }
   });
 
   test("an image of another host in a page is not loaded", async ({ page }) => {

@@ -127,3 +127,11 @@ export function getServerEnv(): ServerEnv {
   cached ??= parseServerEnv(process.env);
   return cached;
 }
+
+/**
+ * Whether the code runs in the Node.js runtime of Next.js, where the server has a file system, rather than in its Edge
+ * runtime. Next.js replaces `NEXT_RUNTIME` when it bundles the code; outside Next.js, as in the tests, it is Node.js.
+ */
+export function isNodeRuntime(): boolean {
+  return process.env.NEXT_RUNTIME !== "edge";
+}

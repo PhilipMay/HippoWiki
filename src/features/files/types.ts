@@ -48,8 +48,11 @@ export function typeOfExtension(extension: FileExtension): FileType {
   return TYPE_OF_EXTENSION[extension];
 }
 
+/** The types of files that are images, which a page shows with `![[…]]`; a PDF is the one that is none. */
+export type ImageType = Exclude<FileType, "pdf">;
+
 /** Whether a file of the type is an image, which a page shows with `![[…]]`. */
-export function isImageType(type: FileType): boolean {
+export function isImageType(type: FileType): type is ImageType {
   return FILE_TYPES[type].image;
 }
 

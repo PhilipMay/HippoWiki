@@ -26,7 +26,7 @@ export function includesRole(role: Role, needed: Role): boolean {
  * folder is no function of a folder: every user may do it.
  */
 export const FUNCTION_ROLES = {
-  /** See the folder in the folder list, open it, its tabs and "All pages", read its pages and its roles. */
+  /** See the folder in the folder list, open it, its tabs and "All pages", read its pages, its files and its roles. */
   read: "reader",
   /** Create a page and edit its content. */
   editPage: "writer",
@@ -34,6 +34,10 @@ export const FUNCTION_ROLES = {
   moveOrRenamePage: "writer",
   /** Delete a page. */
   deletePage: "manager",
+  /** Upload a file or a new version, revert a file to an earlier version, move or rename a file. */
+  editFile: "writer",
+  /** Delete a file. */
+  deleteFile: "manager",
   /** See the deleted items of the folder, read and restore one. */
   deletedItems: "manager",
   /** Create or rename a tab. */

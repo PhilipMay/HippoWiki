@@ -36,6 +36,8 @@ model Folder {
   searchWords    SearchWord[]
   /// The wiki links of the pages of the folder.
   pageLinks      PageLink[]
+  /// The files of the folder, placed directly in it or in one of its tabs, deleted ones included.
+  files          File[]
 }
 
 /// The role of a user on a folder (`src/features/folder-roles/roles.ts`): what the user may see and do with the folder
@@ -87,9 +89,12 @@ model Tab {
   /// How the tab was last changed (`web` or `mcp`): changes on the same writes as the last editor.
   lastEditedVia  ChangeChannel
   pages          Page[]
+  /// The files placed in the tab; a deleted file has no tab.
+  files          File[]
 
   @@unique([folderId, name])
-  // Target of the composite foreign key of `Page`, which makes sure a page's tab belongs to the page's folder.
+  // Target of the composite foreign keys of `Page` and `File`, which make sure the tab of a page or file belongs to
+  // its folder.
   @@unique([id, folderId])
 }
 
@@ -235,6 +240,92 @@ model PageRevision {
   @@unique([pageId, number])
 }
 
+/// The type of a file, decided at its upload from its content, never from its name or the type the browser claims
+/// (`src/features/files/types.ts`). It is fixed by the extension of the name of the file: every version has it.
+enum FileType {
+  png
+  jpeg
+  gif
+  webp
+  pdf
+}
+
+/// A file of a folder, an image or a PDF: an item of its own next to the pages, placed directly in the folder or in one
+/// of its tabs. Its contents are the blobs of its versions in the files directory (`src/features/files/store.ts`).
+model File {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// The name with the extension of its type, the file's part of its addresses `/files/<folder>/[<tab>/]<name.ext>`
+  /// and `/folders/<folder>/[<tab>/]<name.ext>`. Unique among the files of its tab or, without a tab, among the files
+  /// placed directly in its folder; a page of the same name without the extension may sit next to it.
+  name           String
+  type           FileType
+  folderId       String        @db.Uuid
+  folder         Folder        @relation(fields: [folderId], references: [id], onDelete: Restrict)
+  /// The tab the file lives in; without one, the file is placed directly in its folder.
+  tabId          String?       @db.Uuid
+  /// The foreign key includes `folderId`, so the tab is always one of the file's folder.
+  tab            Tab?          @relation(fields: [tabId, folderId], references: [id, folderId], onDelete: Restrict)
+  createdAt      DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime      @updatedAt @db.Timestamptz(3)
+  /// When the file was deleted, or `null` for a file that is not deleted. A deleted file keeps its folder and its
+  /// versions but has no tab, like a deleted page; it is missing from every list and from both of its addresses.
+  deletedAt      DateTime?     @db.Timestamptz(3)
+  /// The user who last changed the file: changes on the same writes as `updatedAt` and `lockVersion`. Uploading it, a
+  /// new version, a revert, a move or rename, a delete and a restore count as changes; for a deleted file it is the
+  /// user who deleted it.
+  lastEditedById String        @db.Uuid
+  lastEditedBy   User          @relation("FileLastEditedBy", fields: [lastEditedById], references: [id], onDelete: Restrict)
+  /// How the file was last changed (`web` or `mcp`): changes on the same writes as the last editor.
+  lastEditedVia  ChangeChannel
+  /// The state of the file, for optimistic locking as the version of a page: 1 when it is uploaded, counted up by every
+  /// later stored change of the file in the same write that changes `updatedAt` and the last editor. A new version, a
+  /// revert, a move, a rename and a delete state the lock version they are based on and are refused if that is not
+  /// the stored one.
+  lockVersion    Int           @default(1)
+  /// The stored contents of the file, one per upload or revert; the newest is the current one.
+  versions       FileVersion[]
+
+  // Files in a tab: unique within the tab. Deleted files have no tab, so they are not covered.
+  @@unique([tabId, name])
+  // Files placed directly in a folder and not deleted: unique among those files only. Deleted files never block a name.
+  @@unique([folderId, name], where: { tabId: null, deletedAt: null })
+  // The files of a folder that are not deleted.
+  @@index([folderId], where: { deletedAt: null })
+}
+
+/// A version of a file: one of its stored contents, the blob of the SHA-256 in the files directory, stored by an upload
+/// or a revert. A version is never changed or deleted.
+model FileVersion {
+  id         String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// The file of the version. Files are never removed, only soft deleted, so the versions stay with them.
+  fileId     String        @db.Uuid
+  file       File          @relation(fields: [fileId], references: [id], onDelete: Restrict)
+  /// The number of the version: 1 for the first upload, counted up per file; the newest is the current version.
+  number     Int
+  /// The SHA-256 of the content in 64 lowercase hex digits, the name of its blob and its `ETag`.
+  sha256     String
+  /// The size of the content in bytes.
+  size       Int
+  /// The width and height of an image in pixels, upright as it shows, of one frame of an animated image; `null` for a
+  /// PDF.
+  width      Int?
+  height     Int?
+  /// When the version was stored.
+  createdAt  DateTime      @default(now()) @db.Timestamptz(3)
+  /// The user who uploaded the version or reverted to it.
+  userId     String        @db.Uuid
+  user       User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  /// How the version was stored (`web` or `mcp`).
+  via        ChangeChannel
+  /// The number of the version a revert went back to, whose blob this version holds; `null` for an upload.
+  revertedTo Int?
+
+  // The order of the versions and the uniqueness of the number per file.
+  @@unique([fileId, number])
+  // Whether a version holds a blob, before the blob of a failed upload is removed.
+  @@index([sha256])
+}
+
 /// A user account. The table has the shape Better Auth expects for its `user` model with the `username` plugin; Better
 /// Auth reads it through its Prisma adapter, and the users service writes it with Prisma.
 model User {
@@ -267,6 +358,9 @@ model User {
   lastEditedPages    Page[]         @relation("PageLastEditedBy")
   /// The revisions of pages the user made.
   pageRevisions      PageRevision[]
+  /// The files the user changed last, and the versions of files the user uploaded.
+  lastEditedFiles    File[]         @relation("FileLastEditedBy")
+  fileVersions       FileVersion[]
   /// The grants of the user to OAuth clients, the connected apps of the account page.
   grants             OAuthGrant[]
   /// The authorization codes that wait to be exchanged for a grant of the user.

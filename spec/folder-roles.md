@@ -34,7 +34,10 @@ and `src/features/folder-roles/service.test.ts`.
   | Create a page, edit its content, revert it to an earlier revision             |        |   ✓    |    ✓    |   ✓   |
   | Move or rename a page                                                         |        |   ✓    |    ✓    |   ✓   |
   | Delete a page                                                                 |        |        |    ✓    |   ✓   |
-  | See the deleted pages of the folder, read one and its history, restore one    |        |        |    ✓    |   ✓   |
+  | See the files, open them, their details pages and their versions              |   ✓    |   ✓    |    ✓    |   ✓   |
+  | Upload a file or a new version, revert, move or rename a file                 |        |   ✓    |    ✓    |   ✓   |
+  | Delete a file                                                                 |        |        |    ✓    |   ✓   |
+  | See the deleted items of the folder, read one and its history, restore one    |        |        |    ✓    |   ✓   |
   | Create or rename a tab                                                        |        |        |    ✓    |   ✓   |
   | Delete a tab                                                                  |        |        |    ✓    |   ✓   |
   | Rename the folder                                                             |        |        |         |   ✓   |

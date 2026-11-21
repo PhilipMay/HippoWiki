@@ -23,6 +23,8 @@ SMOKE_APP="hippowiki-smoke-app"
 SMOKE_MIGRATE="hippowiki-smoke-migrate"
 SMOKE_ADMIN="hippowiki-smoke-admin"
 SMOKE_SEARCH_INDEX="hippowiki-smoke-search-index"
+# The volume of the files directory of the smoke test, mounted at /data/files from the second start on.
+SMOKE_FILES_VOLUME="hippowiki-smoke-files"
 SMOKE_URL="http://127.0.0.1:3200"
 SMOKE_DB_NAME="hippowiki_smoke"
 SMOKE_DB_USER="hippowiki_smoke"
@@ -103,6 +105,7 @@ smoke_cleanup() {
     done
   fi
   podman pod rm --force --ignore "$SMOKE_POD" >/dev/null 2>&1 || true
+  podman volume rm --force "$SMOKE_FILES_VOLUME" >/dev/null 2>&1 || true
   exit "$status"
 }
 
@@ -317,8 +320,11 @@ forgotten\$\$, '${SMOKE_FOLDER_ID}', '2026-01-02 03:04:05+00', '2026-01-03 00:00
 # - /mcp and the metadata of the OAuth authorization server are not found instead of redirecting to the login,
 #   because the container has no HIPPOWIKI_PUBLIC_URL.
 # - /api/health answers on 127.0.0.1 inside the container; the server does not run as root; there is no .env file;
-#   the user node can write only the cache of Next.js.
-# - A second container without HIPPOWIKI_ADMIN_PASSWORD serves, applies no migration and leaves the admin as it was;
+#   the user node can write only the cache of Next.js. Without the volume of the files the server logs that files are
+#   off, and sharp loads and processes an image in /app.
+# - A second container without HIPPOWIKI_ADMIN_PASSWORD and with the volume of the files at /data/files (`:U`, so
+#   that it belongs to node) serves, logs no warning about the files, and node can write the volume and nothing else
+#   besides the cache of Next.js; it applies no migration and leaves the admin as it was;
 #   it derives the search index and the wiki links of the pages stored before it with the version 0 of the
 #   derivations, a deleted one included, and keeps their time of the last change, last editor and version.
 # - ./image-migrate.sh, ./image-admin.sh (with another password) and ./image-search-index.sh exit with 0 and change
@@ -432,6 +438,17 @@ cmd_smoke() {
     smoke_fail "the user node cannot create and remove a file in /app/.next/cache."
   fi
   echo "ok: the user node can write /app/.next/cache"
+  # Without the volume of the files the server serves with files off and tells the operator so.
+  if [[ "$(podman logs "$SMOKE_APP" 2>&1)" != *"files are off"* ]]; then
+    smoke_fail "the container without the volume of the files did not log that files are off."
+  fi
+  echo "ok: without the volume of the files the server logs that files are off"
+  # The native build of sharp for the platform of the image loads and processes an image.
+  if ! podman exec "$SMOKE_APP" node -e \
+    "import('sharp').then(({ default: sharp }) => sharp({ create: { width: 4, height: 4, channels: 3, background: 'red' } }).png().toBuffer()).then((png) => process.exit(png.length > 0 ? 0 : 1), () => process.exit(1))"; then
+    smoke_fail "sharp does not load or process an image in /app inside ${SMOKE_APP}."
+  fi
+  echo "ok: sharp loads and processes an image inside the container"
 
   local migrations
   migrations="$(smoke_migrations)"
@@ -446,9 +463,21 @@ cmd_smoke() {
   pages_before="$(smoke_pages)"
 
   # A second container against the migrated database applies nothing and serves as well. It needs no password for
-  # the admin account, because the admin exists. It makes the pages searchable before it serves.
+  # the admin account, because the admin exists. It makes the pages searchable before it serves. It has the volume of
+  # the files, which `:U` gives to the user of the server.
   podman rm --force "$SMOKE_APP" >/dev/null
-  smoke_start_app
+  podman volume rm --force "$SMOKE_FILES_VOLUME" >/dev/null 2>&1 || true
+  podman volume create "$SMOKE_FILES_VOLUME" >/dev/null
+  smoke_start_app --volume "${SMOKE_FILES_VOLUME}:/data/files:U"
+  if [[ "$(podman logs "$SMOKE_APP" 2>&1)" == *"files are off"* ]]; then
+    smoke_fail "the container with the volume of the files logged that files are off."
+  fi
+  echo "ok: with the volume of the files the server logs no warning about them"
+  if ! podman exec --user node "$SMOKE_APP" sh -c \
+    'test -w /data/files/blobs && test -w /data/files/tmp && test ! -w /data && test ! -w /app && test ! -w /tmp/..'; then
+    smoke_fail "the user node cannot write the volume of the files, or can write /data or /app."
+  fi
+  echo "ok: the user node can write the volume of the files, and not /data or /app"
   smoke_require_status /login
   smoke_require_login_redirect /folders
   if [[ "$(smoke_migrations)" != "$migrations" ]]; then
