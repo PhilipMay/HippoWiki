@@ -33,6 +33,7 @@ file itself holds.
   and tabs are renamed?
 - `spec/roadmap.md`: Which features may come later, and what is still to check?
 - `spec/attachments-requirements.md`: What must attachments do for users, roles and AI apps?
+- `spec/attachments-steps.md`: In which steps are attachments built?
 - `spec/attachments-ideas.md`: How do other wikis store, embed and secure images and attachments, and what does that
   suggest for attachments in HippoWiki, its editor and MCP?
 - `spec/issue-report.md`: How is an issue of a review of code or documents reported?
