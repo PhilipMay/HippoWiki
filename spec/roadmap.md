@@ -46,7 +46,7 @@ listed first; there is no order across themes.
 ## Attachments
 
 - Attachments and images: files and images uploaded to pages, stored locally or in an S3-compatible storage
-  (`tech.md`).
+  (`tech.md`). The research into other wikis and the ideas that follow from it are in `attachments-ideas.md`.
 
 ## Users and Accounts
 
