@@ -1,9 +1,13 @@
 // Helpers for the end-to-end tests of the MCP server: a test stands in for an MCP client, which has no session cookie,
-// only the access token of its grant (see `createGrant()` in ./database.ts).
+// only the access token of its grant (see `createGrant()` in ./database.ts). Every test that `setUpProjects()` sets up
+// connects as a user of its own, not as the known user `alice`: the server of a worker keeps the budget of the rate
+// limit of MCP per user in its memory, which `resetTestDatabase()` does not empty, so the known user would share one
+// budget across all MCP specs of that worker and a spec could meet the limit (429) in the complete suite.
 import type { APIRequestContext, APIResponse } from "@playwright/test";
 
-import { KNOWN_USER } from "../../prisma/known-users";
-import { createFolder, createGrant, getTestDb, resetTestDatabase } from "./database";
+import type { User } from "@/generated/prisma/client";
+
+import { createFolder, createGrant, createUser, resetTestDatabase } from "./database";
 import { expect } from "./test";
 
 /** An MCP address of a folder, such as `/mcp/<folder-id>/reader`, and the bearer token a client sends there. */
@@ -46,27 +50,31 @@ export async function callTool(
   return ((await response.json()) as { result: ToolResult }).result;
 }
 
-/** The Reader connection of the known user to "projects" of the running test, set by `setUpProjects()`. */
+/** The Reader connection of the owner of "projects" of the running test, set by `setUpProjects()`. */
 let projectsReader: McpConnection = { address: "", token: null };
 
 /**
- * Resets the test database and creates the folder "projects", of which the known user `alice` is Owner, with a grant
- * of that user at its Reader address. Returns the folder, the path of the address and the access token. Until the
- * next call, `send()` and `call()` use this connection unless a test gives another token or address. The specs of MCP
- * call it in `beforeEach`.
+ * Resets the test database, creates a user of its own for the test, with `TEST_PASSWORD` and the password change
+ * already done, and the folder "projects", of which that user is the Owner and the last editor, with a grant of that
+ * user at its Reader address. Returns the folder, the user as `owner`, the path of the address and the access token.
+ * Until the next call, `send()` and `call()` use this connection unless a test gives another token or address. The
+ * specs of MCP call it in `beforeEach`. The user is new for every test, so that its MCP requests never share the
+ * budget of the rate limit with another test: the server of a worker keeps that budget per user in its memory, where
+ * it outlives `resetTestDatabase()`.
  */
 export async function setUpProjects(): Promise<{
   projects: Awaited<ReturnType<typeof createFolder>>;
+  owner: User;
   address: string;
   secret: string;
 }> {
   await resetTestDatabase();
-  const editor = await getTestDb().user.findUniqueOrThrow({ where: { id: KNOWN_USER.id } });
-  const projects = await createFolder({ name: "projects", editor });
+  const owner = await createUser({ mustChangePassword: false });
+  const projects = await createFolder({ name: "projects", editor: owner, roles: [{ user: owner, role: "owner" }] });
   const address = mcpPath(projects, "reader");
-  const { accessToken: secret } = await createGrant({ owner: KNOWN_USER, folder: projects });
+  const { accessToken: secret } = await createGrant({ owner, folder: projects });
   projectsReader = { address, token: secret };
-  return { projects, address, secret };
+  return { projects, owner, address, secret };
 }
 
 /**

@@ -1,7 +1,6 @@
 // The search tool of MCP: search_pages for every role of a connection, its results, its windows and its tool errors.
 import { USER_TEXT_NOTE } from "@/features/mcp/tool-schemas";
 
-import { KNOWN_USER } from "../prisma/known-users";
 import { NO_STORAGE_STATE } from "./support/auth";
 import { createFolder, createGrant, createPage, createTab, createUser } from "./support/database";
 import { call, mcpPath, send, setUpProjects, type ToolResult } from "./support/mcp";
@@ -13,9 +12,10 @@ import { expect, test } from "./support/test";
 test.use({ storageState: NO_STORAGE_STATE });
 
 let projects: Awaited<ReturnType<typeof setUpProjects>>["projects"];
+let owner: Awaited<ReturnType<typeof setUpProjects>>["owner"];
 
 test.beforeEach(async () => {
-  ({ projects } = await setUpProjects());
+  ({ projects, owner } = await setUpProjects());
 });
 
 /** A result of `search_pages`. */
@@ -53,7 +53,7 @@ test("a Reader, a Writer and a Manager connection list the tool, whose descripti
   request,
 }) => {
   for (const role of ["reader", "writer", "manager"] as const) {
-    const { accessToken } = await createGrant({ owner: KNOWN_USER, folder: projects, role });
+    const { accessToken } = await createGrant({ owner, folder: projects, role });
     const answer = await send(request, { method: "tools/list" }, accessToken, mcpPath(projects, role));
     const { tools } = ((await answer.json()) as { result: { tools: { name: string; description: string }[] } }).result;
 
@@ -70,7 +70,7 @@ test("finds the pages of its folder only, never a deleted page, and each result 
   request,
 }) => {
   const bob = await createUser({ name: "bob" });
-  const other = await createFolder({ name: "other", roles: [{ user: KNOWN_USER, role: "owner" }] });
+  const other = await createFolder({ name: "other", roles: [{ user: owner, role: "owner" }] });
   await createPage({ folder: other, name: "elsewhere", content: "# Elsewhere\n\nThe backup of the other folder." });
   await createPage({ folder: projects, name: "old", content: "# Old\n\nThe old backup.", deletedAt: new Date() });
   const guides = await createTab({ folder: projects, name: "guides" });

@@ -21,7 +21,7 @@ development server tells it to reload.
 
 ## Checklist
 
-- [ ] A user of its own for every MCP test
+- [x] A user of its own for every MCP test
 - [ ] Keep the reload messages of the development server from the pages
 - [ ] Wrap-up
 

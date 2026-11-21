@@ -6,8 +6,7 @@ import type { APIRequestContext } from "@playwright/test";
 import { USER_TEXT_NOTE } from "@/features/mcp/tool-schemas";
 import { CONTENT_MAX_LENGTH, CONTENT_MAX_WIKI_LINKS } from "@/features/pages/limits";
 
-import { KNOWN_USER } from "../prisma/known-users";
-import { NO_STORAGE_STATE, USER_STORAGE_STATE } from "./support/auth";
+import { logIn, NO_STORAGE_STATE } from "./support/auth";
 import { createFolderRole, createGrant, createPage, createTab, createUser, getTestDb } from "./support/database";
 import { expectContent, fillContent } from "./support/editor";
 import { call, callTool, mcpPath, send, setUpProjects } from "./support/mcp";
@@ -18,24 +17,25 @@ import { expect, test } from "./support/test";
 test.use({ storageState: NO_STORAGE_STATE });
 
 /**
- * The folder "projects", of which the known user is Owner, the path of its Reader address, and the access token of a
- * grant of the known user there: the address and the bearer token of `send()` and `call()` unless a test gives others.
+ * The folder "projects", its Owner, the path of its Reader address, and the access token of a grant of the Owner
+ * there: the address and the bearer token of `send()` and `call()` unless a test gives others.
  */
 let projects: Awaited<ReturnType<typeof setUpProjects>>["projects"];
+let owner: Awaited<ReturnType<typeof setUpProjects>>["owner"];
 let address: string;
 let secret: string;
 
 test.beforeEach(async () => {
-  ({ projects, address, secret } = await setUpProjects());
+  ({ projects, owner, address, secret } = await setUpProjects());
 });
 
 test.describe("the write tools", () => {
-  /** The access token of a Writer connection of the known user to "projects", and its address. */
+  /** The access token of a Writer connection of the Owner to "projects", and its address. */
   let writer: string;
   let writerAddress: string;
 
   test.beforeEach(async () => {
-    ({ accessToken: writer } = await createGrant({ owner: KNOWN_USER, folder: projects, role: "writer" }));
+    ({ accessToken: writer } = await createGrant({ owner, folder: projects, role: "writer" }));
     writerAddress = `/mcp/${projects.id}/writer`;
   });
 
@@ -112,17 +112,17 @@ test.describe("the write tools", () => {
     });
     expect(inTab.structuredContent).toMatchObject({ name: "install", tab: "guides", version: 1 });
     expect(await storedEditors()).toEqual([
-      { name: "install", lastEditedById: KNOWN_USER.id, lastEditedVia: "mcp" },
-      { name: "release-notes", lastEditedById: KNOWN_USER.id, lastEditedVia: "mcp" },
+      { name: "install", lastEditedById: owner.id, lastEditedVia: "mcp" },
+      { name: "release-notes", lastEditedById: owner.id, lastEditedVia: "mcp" },
     ]);
     // Creating a page through MCP records its first revision with the channel mcp.
     expect(await storedRevisions()).toEqual([
-      { page: { name: "install" }, number: 1, content: "# Setup", userId: KNOWN_USER.id, via: "mcp" },
+      { page: { name: "install" }, number: 1, content: "# Setup", userId: owner.id, via: "mcp" },
       {
         page: { name: "release-notes" },
         number: 1,
         content: "# Release Notes\n\nFirst.",
-        userId: KNOWN_USER.id,
+        userId: owner.id,
         via: "mcp",
       },
     ]);
@@ -165,11 +165,11 @@ test.describe("the write tools", () => {
     expect(await storedPages()).toEqual([
       { name: "plan", title: "Roadmap", content: "# Roadmap\n\nNew.", tabId: null, version: 2 },
     ]);
-    expect(await storedEditors()).toEqual([{ name: "plan", lastEditedById: KNOWN_USER.id, lastEditedVia: "mcp" }]);
+    expect(await storedEditors()).toEqual([{ name: "plan", lastEditedById: owner.id, lastEditedVia: "mcp" }]);
     // The new content is recorded as the next revision with the channel mcp; the refused one records nothing.
     expect(await storedRevisions()).toEqual([
       { page: { name: "plan" }, number: 1, content: "# Plan\n\nOld.", userId: bob.id, via: "web" },
-      { page: { name: "plan" }, number: 2, content: "# Roadmap\n\nNew.", userId: KNOWN_USER.id, via: "mcp" },
+      { page: { name: "plan" }, number: 2, content: "# Roadmap\n\nNew.", userId: owner.id, via: "mcp" },
     ]);
   });
 
@@ -247,8 +247,8 @@ test.describe("the write tools", () => {
     ]);
     const revisions = await storedRevisions();
     expect(revisions.filter((revision) => revision.number === 2)).toEqual([
-      expect.objectContaining({ page: { name: "first-week" }, userId: KNOWN_USER.id, via: "mcp" }),
-      expect.objectContaining({ page: { name: "onboarding" }, userId: KNOWN_USER.id, via: "mcp" }),
+      expect.objectContaining({ page: { name: "first-week" }, userId: owner.id, via: "mcp" }),
+      expect.objectContaining({ page: { name: "onboarding" }, userId: owner.id, via: "mcp" }),
     ]);
   });
 
@@ -275,7 +275,7 @@ test.describe("the write tools", () => {
       updatedPages: [],
     });
     expect(await storedEditors()).toEqual([
-      { name: "roadmap", lastEditedById: KNOWN_USER.id, lastEditedVia: "mcp" },
+      { name: "roadmap", lastEditedById: owner.id, lastEditedVia: "mcp" },
       { name: "taken", lastEditedById: expect.any(String), lastEditedVia: "web" },
     ]);
     const before = await storedPages();
@@ -388,7 +388,7 @@ test.describe("the write tools", () => {
       expect(refused.isError).toBe(true);
       expect(refused.content[0]?.text).toMatch(
         new RegExp(
-          `^The page was changed by ${KNOWN_USER.name} via mcp at \\d{4}-\\d{2}-\\d{2}T.*Read the page again with read_page`,
+          `^The page was changed by ${owner.name} via mcp at \\d{4}-\\d{2}-\\d{2}T.*Read the page again with read_page`,
         ),
       );
     }
@@ -407,7 +407,7 @@ test.describe("the write tools", () => {
     await write(request, "replace_page_content", { page: "plan", version: 1, content: "# Plan\n\nBy an agent." });
 
     const read = await call(request, "read_page", { page: "plan" });
-    expect(read.structuredContent).toMatchObject({ lastEditedBy: KNOWN_USER.name, lastEditedVia: "mcp", version: 2 });
+    expect(read.structuredContent).toMatchObject({ lastEditedBy: owner.name, lastEditedVia: "mcp", version: 2 });
     expect(JSON.parse(read.content[0]?.text ?? "")).toEqual(read.structuredContent);
   });
 
@@ -502,7 +502,11 @@ test.describe("the write tools", () => {
   });
 
   test.describe("in the browser", () => {
-    test.use({ storageState: USER_STORAGE_STATE });
+    // The browser is logged in as the Owner of "projects", whose connection the tests use.
+    test.beforeEach(async ({ page }) => {
+      await logIn(page, owner.name);
+      await expect(page).toHaveURL("/folders");
+    });
 
     test("a page changed through MCP names the user and the channel mcp as its last change, and no app", async ({
       page,
@@ -514,7 +518,7 @@ test.describe("the write tools", () => {
       await write(request, "replace_page_content", { page: "plan", version: 1, content: "# Plan\n\nBy an agent." });
       await page.goto("/folders/projects/plan.md");
 
-      await expect(page.getByText(/^Last updated /)).toHaveText(new RegExp(`by ${KNOWN_USER.name} via mcp$`));
+      await expect(page.getByText(/^Last updated /)).toHaveText(new RegExp(`by ${owner.name} via mcp$`));
       await expect(page.getByRole("main")).not.toContainText(/agent app|connected app/i);
     });
 
@@ -529,7 +533,7 @@ test.describe("the write tools", () => {
       await createPage({ folder: projects, name: "plan", content: "# Plan\n\nFirst draft", editor: bob });
 
       await page.goto("/folders/projects/plan.md?action=edit");
-      await fillContent(page, "# Plan\n\nBy alice.");
+      await fillContent(page, "# Plan\n\nBy the owner.");
       const written = await callTool(request, bobsConnection, "replace_page_content", {
         page: "plan",
         version: 1,
@@ -544,17 +548,17 @@ test.describe("the write tools", () => {
       );
       await expectContent(page, "# Plan\n\nBy an agent.");
 
-      await fillContent(page, "# Plan\n\nBy alice.");
+      await fillContent(page, "# Plan\n\nBy the owner.");
       await page.getByRole("button", { name: "Save" }).click();
       await expect(page).toHaveURL("/folders/projects/plan.md");
 
       await page.goto("/folders/projects/plan.md?view=history");
       await expect(page.getByRole("list", { name: "Revisions" }).getByRole("link")).toHaveText([
-        new RegExp(`^Revision 3.+ by ${KNOWN_USER.name} via web · Plan$`),
+        new RegExp(`^Revision 3.+ by ${owner.name} via web · Plan$`),
         /^Revision 2.+ by bob via mcp · Plan$/,
         /^Revision 1.+ by bob via web · Plan$/,
       ]);
-      expect(await storedPages()).toMatchObject([{ content: "# Plan\n\nBy alice.", version: 3 }]);
+      expect(await storedPages()).toMatchObject([{ content: "# Plan\n\nBy the owner.", version: 3 }]);
     });
 
     // The stored content sent back changes nothing and returns the version stated.

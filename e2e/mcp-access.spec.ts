@@ -1,6 +1,6 @@
 // The access to the MCP addresses: the token, the binding of a connection to its address, the role of the user
 // behind it, and the use of a grant.
-import { KNOWN_ADMIN, KNOWN_USER } from "../prisma/known-users";
+import { KNOWN_ADMIN, KNOWN_USERS } from "../prisma/known-users";
 import { NO_STORAGE_STATE } from "./support/auth";
 import { createFolder, createFolderRole, createGrant, createPage, createUser, getTestDb } from "./support/database";
 import { call, send, setUpProjects } from "./support/mcp";
@@ -11,15 +11,16 @@ import { expect, test } from "./support/test";
 test.use({ storageState: NO_STORAGE_STATE });
 
 /**
- * The folder "projects", of which the known user is Owner, the path of its Reader address, and the access token of a
- * grant of the known user there: the address and the bearer token of `send()` and `call()` unless a test gives others.
+ * The folder "projects", its Owner, the path of its Reader address, and the access token of a grant of the Owner
+ * there: the address and the bearer token of `send()` and `call()` unless a test gives others.
  */
 let projects: Awaited<ReturnType<typeof setUpProjects>>["projects"];
+let owner: Awaited<ReturnType<typeof setUpProjects>>["owner"];
 let address: string;
 let secret: string;
 
 test.beforeEach(async () => {
-  ({ projects, address, secret } = await setUpProjects());
+  ({ projects, owner, address, secret } = await setUpProjects());
 });
 
 test("without a token /mcp answers 401 with a Bearer challenge and nothing of the wiki", async ({ request }) => {
@@ -61,9 +62,9 @@ test("with an expired grant, an expired access token and that of a user with the
   request,
 }) => {
   const folder = projects;
-  const expired = await createGrant({ owner: KNOWN_USER, folder, expiresAt: new Date(Date.now() - 1000) });
+  const expired = await createGrant({ owner, folder, expiresAt: new Date(Date.now() - 1000) });
   const expiredAccess = await createGrant({
-    owner: KNOWN_USER,
+    owner,
     folder,
     accessTokenExpiresAt: new Date(Date.now() - 1000),
   });
@@ -114,7 +115,8 @@ test("a bearer token reaches no task of an admin: creating a user leads to the l
     expect(new URL(response.headers().location ?? "", ISSUER).pathname).toBe("/login");
   }
   expect(await getTestDb().user.findUnique({ where: { username: "jane-doe" } })).toBeNull();
-  expect(await getTestDb().user.count()).toBe(2);
+  // The known users and the Owner of "projects".
+  expect(await getTestDb().user.count()).toBe(KNOWN_USERS.length + 1);
 });
 
 for (const method of ["get", "delete"] as const) {
@@ -167,7 +169,7 @@ test("addresses that are no folder addresses answer 404; a folder address withou
 test("the access token of a connection to /mcp/<A>/reader is refused at /mcp/<A>/writer and at /mcp/<B>/reader", async ({
   request,
 }) => {
-  const notes = await createFolder({ name: "notes" });
+  const notes = await createFolder({ name: "notes", roles: [{ user: owner, role: "owner" }] });
 
   for (const to of [`/mcp/${projects.id}/writer`, `/mcp/${notes.id}/reader`]) {
     const response = await send(request, { method: "tools/list" }, secret, to);
@@ -178,10 +180,10 @@ test("the access token of a connection to /mcp/<A>/reader is refused at /mcp/<A>
 });
 
 test("connections to /mcp/<A>/writer, /mcp/<A>/reader and /mcp/<B>/writer work side by side", async ({ request }) => {
-  const notes = await createFolder({ name: "notes" });
-  const { client, accessToken: aWriter } = await createGrant({ owner: KNOWN_USER, folder: projects, role: "writer" });
-  const { accessToken: aReader } = await createGrant({ owner: KNOWN_USER, folder: projects, client });
-  const { accessToken: bWriter } = await createGrant({ owner: KNOWN_USER, folder: notes, role: "writer", client });
+  const notes = await createFolder({ name: "notes", roles: [{ user: owner, role: "owner" }] });
+  const { client, accessToken: aWriter } = await createGrant({ owner, folder: projects, role: "writer" });
+  const { accessToken: aReader } = await createGrant({ owner, folder: projects, client });
+  const { accessToken: bWriter } = await createGrant({ owner, folder: notes, role: "writer", client });
 
   for (const [to, token] of [
     [`/mcp/${projects.id}/writer`, aWriter],
@@ -270,7 +272,7 @@ test("after the folder is renamed the connection lists and reads its pages under
 });
 
 test("a tool call marks the grant as used", async ({ request }) => {
-  const { grant, accessToken: fresh } = await createGrant({ owner: KNOWN_USER, folder: projects });
+  const { grant, accessToken: fresh } = await createGrant({ owner, folder: projects });
 
   expect((await getTestDb().oAuthGrant.findUniqueOrThrow({ where: { id: grant.id } })).lastUsedAt).toBeNull();
   const response = await send(request, { method: "tools/list" }, fresh);
@@ -280,7 +282,7 @@ test("a tool call marks the grant as used", async ({ request }) => {
 });
 
 test("the access token of a revoked grant stops working at once", async ({ request }) => {
-  const { grant, accessToken: revoked } = await createGrant({ owner: KNOWN_USER, folder: projects });
+  const { grant, accessToken: revoked } = await createGrant({ owner, folder: projects });
   expect((await send(request, { method: "tools/list" }, revoked)).status()).toBe(200);
 
   await getTestDb().oAuthGrant.delete({ where: { id: grant.id } });

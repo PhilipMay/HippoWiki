@@ -3,9 +3,8 @@
 import { USER_TEXT_NOTE } from "@/features/mcp/tool-schemas";
 import { NAME_MAX_LENGTH } from "@/lib/name-limits";
 
-import { KNOWN_USER } from "../prisma/known-users";
 import { NO_STORAGE_STATE } from "./support/auth";
-import { createFolder, createGrant, createPage, createTab, createUser, getTestDb } from "./support/database";
+import { createFolder, createGrant, createPage, createTab, createUser } from "./support/database";
 import { call, send, setUpProjects } from "./support/mcp";
 import { ISSUER } from "./support/oauth";
 import { expect, test } from "./support/test";
@@ -14,15 +13,16 @@ import { expect, test } from "./support/test";
 test.use({ storageState: NO_STORAGE_STATE });
 
 /**
- * The folder "projects", of which the known user is Owner, the path of its Reader address, and the access token of a
- * grant of the known user there: the address and the bearer token of `send()` and `call()` unless a test gives others.
+ * The folder "projects", its Owner, the path of its Reader address, and the access token of a grant of the Owner
+ * there: the address and the bearer token of `send()` and `call()` unless a test gives others.
  */
 let projects: Awaited<ReturnType<typeof setUpProjects>>["projects"];
+let owner: Awaited<ReturnType<typeof setUpProjects>>["owner"];
 let address: string;
 let secret: string;
 
 test.beforeEach(async () => {
-  ({ projects, address, secret } = await setUpProjects());
+  ({ projects, owner, address, secret } = await setUpProjects());
 });
 
 test("initialize answers as JSON with the instructions and without a session", async ({ request }) => {
@@ -187,7 +187,7 @@ test("a grant cannot read a folder on which its user has no role", async ({ requ
   const bob = await createUser({ name: "bob" });
   const hidden = await createFolder({ name: "hidden", roles: [{ user: bob, role: "owner" }] });
   await createPage({ folder: hidden, name: "secret", content: "# Secret\n\nOnly for bob." });
-  const { accessToken } = await createGrant({ owner: KNOWN_USER, folder: hidden });
+  const { accessToken } = await createGrant({ owner, folder: hidden });
 
   for (const message of [
     { method: "tools/list" },
@@ -204,7 +204,6 @@ test("a grant cannot read a folder on which its user has no role", async ({ requ
 test("read_page reads a page placed directly in the folder and a page in a tab, with its version", async ({
   request,
 }) => {
-  const editor = await getTestDb().user.findUniqueOrThrow({ where: { id: KNOWN_USER.id } });
   const guides = await createTab({ folder: projects, name: "guides" });
   await createPage({
     folder: projects,
@@ -212,7 +211,7 @@ test("read_page reads a page placed directly in the folder and a page in a tab, 
     content: "# Overview\n\nWelcome to the **projects**.",
     updatedAt: new Date("2026-03-04T09:00:00.000Z"),
     version: 3,
-    editor,
+    editor: owner,
   });
   await createPage({ tab: guides, name: "install", content: "# Install\n\n1. Download\n2. Run" });
 
@@ -229,7 +228,7 @@ test("read_page reads a page placed directly in the folder and a page in a tab, 
     content: "# Overview\n\nWelcome to the **projects**.",
     address: `${ISSUER}/folders/projects/overview.md`,
     lastChanged: "2026-03-04T09:00:00.000Z",
-    lastEditedBy: KNOWN_USER.name,
+    lastEditedBy: owner.name,
     lastEditedVia: "web",
     version: 3,
     linkedFrom: [],

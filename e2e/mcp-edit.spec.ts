@@ -5,8 +5,7 @@ import type { APIRequestContext } from "@playwright/test";
 import { USER_TEXT_NOTE } from "@/features/mcp/tool-schemas";
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 
-import { KNOWN_USER } from "../prisma/known-users";
-import { NO_STORAGE_STATE, USER_STORAGE_STATE } from "./support/auth";
+import { logIn, NO_STORAGE_STATE } from "./support/auth";
 import { createFolderRole, createGrant, createPage, createUser, getTestDb } from "./support/database";
 import { call, mcpPath, send, setUpProjects } from "./support/mcp";
 import { ISSUER } from "./support/oauth";
@@ -22,15 +21,17 @@ const PLAN = "# Plan\n\nThe release is on 2026-03-01.\n\n- one\n- two\n- three\n
 const CHANGED = /^The page was changed by bob via web at .+, after the version this change is based on/;
 
 let projects: Awaited<ReturnType<typeof setUpProjects>>["projects"];
-/** The access token of a Writer connection of the known user to "projects", and its address. */
+/** The Owner of "projects", as whom the connections of the tests work. */
+let owner: Awaited<ReturnType<typeof setUpProjects>>["owner"];
+/** The access token of a Writer connection of the owner to "projects", and its address. */
 let writer: string;
 let writerAddress: string;
 /** The page "plan", last changed by bob in the browser, with one revision. */
 let bob: Awaited<ReturnType<typeof createUser>>;
 
 test.beforeEach(async () => {
-  ({ projects } = await setUpProjects());
-  ({ accessToken: writer } = await createGrant({ owner: KNOWN_USER, folder: projects, role: "writer" }));
+  ({ projects, owner } = await setUpProjects());
+  ({ accessToken: writer } = await createGrant({ owner, folder: projects, role: "writer" }));
   writerAddress = mcpPath(projects, "writer");
   bob = await createUser({ name: "bob" });
   await createPage({ folder: projects, name: "plan", content: PLAN, editor: bob });
@@ -89,12 +90,12 @@ test("one replacement of a date changes only that date and adds one revision by 
   expect(await storedPlan()).toMatchObject({
     content: edited,
     version: 2,
-    lastEditedById: KNOWN_USER.id,
+    lastEditedById: owner.id,
     lastEditedVia: "mcp",
   });
   expect(await storedRevisions()).toEqual([
     { number: 1, content: PLAN, userId: bob.id, via: "web" },
-    { number: 2, content: edited, userId: KNOWN_USER.id, via: "mcp" },
+    { number: 2, content: edited, userId: owner.id, via: "mcp" },
   ]);
 });
 
@@ -293,21 +294,21 @@ test("a Reader connection does not list the tool and its call changes nothing; a
 });
 
 test.describe("in the browser", () => {
-  test.use({ storageState: USER_STORAGE_STATE });
-
   test("a page edited through MCP names the user via mcp, and reverting to the revision before restores its content", async ({
     page,
     request,
   }) => {
     await write(request, { page: "plan", version: 1, edits: [{ oldText: "2026-03-01", newText: "2026-04-15" }] });
+    await logIn(page, owner.name);
+    await expect(page).toHaveURL("/folders");
 
     await page.goto("/folders/projects/plan.md");
-    await expect(page.getByText(/^Last updated /)).toHaveText(new RegExp(`by ${KNOWN_USER.name} via mcp$`));
+    await expect(page.getByText(/^Last updated /)).toHaveText(new RegExp(`by ${owner.name} via mcp$`));
     await expect(page.getByRole("article")).toContainText("The release is on 2026-04-15.");
 
     await page.goto("/folders/projects/plan.md?view=history");
     await expect(page.getByRole("list", { name: "Revisions" }).getByRole("link")).toHaveText([
-      new RegExp(`^Revision 2.+ by ${KNOWN_USER.name} via mcp · Plan$`),
+      new RegExp(`^Revision 2.+ by ${owner.name} via mcp · Plan$`),
       /^Revision 1.+ by bob via web · Plan$/,
     ]);
 

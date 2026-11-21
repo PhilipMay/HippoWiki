@@ -4,8 +4,7 @@ import type { APIRequestContext } from "@playwright/test";
 
 import { USER_TEXT_NOTE } from "@/features/mcp/tool-schemas";
 
-import { KNOWN_USER } from "../prisma/known-users";
-import { NO_STORAGE_STATE, USER_STORAGE_STATE } from "./support/auth";
+import { logIn, NO_STORAGE_STATE } from "./support/auth";
 import { createGrant, createPage, createTab, createUser, getTestDb } from "./support/database";
 import { call, send, setUpProjects, type ToolResult } from "./support/mcp";
 import { ISSUER } from "./support/oauth";
@@ -15,24 +14,25 @@ import { expect, test } from "./support/test";
 test.use({ storageState: NO_STORAGE_STATE });
 
 /**
- * The folder "projects", of which the known user is Owner, the path of its Reader address, and the access token of a
- * grant of the known user there: the address and the bearer token of `send()` and `call()` unless a test gives others.
+ * The folder "projects", its Owner, the path of its Reader address, and the access token of a grant of the Owner
+ * there: the address and the bearer token of `send()` and `call()` unless a test gives others.
  */
 let projects: Awaited<ReturnType<typeof setUpProjects>>["projects"];
+let owner: Awaited<ReturnType<typeof setUpProjects>>["owner"];
 let address: string;
 let secret: string;
 
 test.beforeEach(async () => {
-  ({ projects, address, secret } = await setUpProjects());
+  ({ projects, owner, address, secret } = await setUpProjects());
 });
 
 test.describe("the tools of a Manager connection", () => {
-  /** The access token of a Manager connection of the known user, an Owner, to "projects", and its address. */
+  /** The access token of a Manager connection of the Owner of "projects", and its address. */
   let manager: string;
   let managerAddress: string;
 
   test.beforeEach(async () => {
-    ({ accessToken: manager } = await createGrant({ owner: KNOWN_USER, folder: projects, role: "manager" }));
+    ({ accessToken: manager } = await createGrant({ owner, folder: projects, role: "manager" }));
     managerAddress = `/mcp/${projects.id}/manager`;
   });
 
@@ -90,7 +90,7 @@ test.describe("the tools of a Manager connection", () => {
     expect(deleted).toMatchObject({
       deletedAt: expect.any(Date),
       tabId: null,
-      lastEditedById: KNOWN_USER.id,
+      lastEditedById: owner.id,
       lastEditedVia: "mcp",
     });
   });
@@ -130,7 +130,7 @@ test.describe("the tools of a Manager connection", () => {
     });
     expect((await listed(request)).tabs.map(({ name }) => name)).toEqual(["meetings"]);
     await expect(getTestDb().tab.findFirstOrThrow({ where: { name: "meetings" } })).resolves.toMatchObject({
-      lastEditedById: KNOWN_USER.id,
+      lastEditedById: owner.id,
       lastEditedVia: "mcp",
     });
     await expect(manage(request, "create_page", { tab: "meetings", content: "# Kick-off" })).resolves.toMatchObject({
@@ -166,7 +166,7 @@ test.describe("the tools of a Manager connection", () => {
     const { tabs, pages } = await listed(request);
     expect(tabs.map(({ name }) => name)).toEqual(["archive", "guides"]);
     await expect(getTestDb().tab.findUniqueOrThrow({ where: { id: misc.id } })).resolves.toMatchObject({
-      lastEditedById: KNOWN_USER.id,
+      lastEditedById: owner.id,
       lastEditedVia: "mcp",
     });
     expect(pages).toMatchObject([
@@ -250,7 +250,7 @@ test.describe("the tools of a Manager connection", () => {
     expect(errorOf(await manage(request, "rename_tab", { tab: "unknown", newName: "unknown" }))).toContain(
       'There is no tab named "unknown" in the folder "projects"',
     );
-    const { accessToken: writer } = await createGrant({ owner: KNOWN_USER, folder: projects, role: "writer" });
+    const { accessToken: writer } = await createGrant({ owner, folder: projects, role: "writer" });
     const asWriter = (newName: string) =>
       send(
         request,
@@ -291,7 +291,7 @@ test.describe("the tools of a Manager connection", () => {
       expect(page).toMatchObject({
         deletedAt: expect.any(Date),
         tabId: null,
-        lastEditedById: KNOWN_USER.id,
+        lastEditedById: owner.id,
         lastEditedVia: "mcp",
       });
     }
@@ -377,7 +377,7 @@ test.describe("the tools of a Manager connection", () => {
   test("a call of delete_page, create_tab, rename_tab or delete_tab through a Writer or a Reader connection changes nothing", async ({
     request,
   }) => {
-    const { accessToken: writer } = await createGrant({ owner: KNOWN_USER, folder: projects, role: "writer" });
+    const { accessToken: writer } = await createGrant({ owner, folder: projects, role: "writer" });
     await createTab({ folder: projects, name: "guides" });
     await createPage({ folder: projects, name: "plan", content: "# Plan" });
     const before = await stored();
@@ -400,7 +400,11 @@ test.describe("the tools of a Manager connection", () => {
   });
 
   test.describe("in the browser", () => {
-    test.use({ storageState: USER_STORAGE_STATE });
+    // The browser is logged in as the Owner of "projects", whose connection the tests use.
+    test.beforeEach(async ({ page }) => {
+      await logIn(page, owner.name);
+      await expect(page).toHaveURL("/folders");
+    });
 
     test("a page deleted through MCP is listed under Deleted pages with the user who deleted it, via mcp", async ({
       page,
@@ -418,7 +422,7 @@ test.describe("the tools of a Manager connection", () => {
         .filter({ has: page.getByRole("cell") });
       await expect(rows).toHaveCount(1);
       await expect(rows.nth(0)).toContainText("plan");
-      await expect(rows.nth(0).getByRole("cell").nth(3)).toHaveText(KNOWN_USER.name);
+      await expect(rows.nth(0).getByRole("cell").nth(3)).toHaveText(owner.name);
       await expect(rows.nth(0).getByRole("cell").nth(4)).toHaveText("mcp");
     });
 
@@ -441,7 +445,7 @@ test.describe("the tools of a Manager connection", () => {
         .filter({ has: page.getByRole("cell") });
       await expect(rows).toHaveCount(5);
       for (const i of [0, 1, 2, 3, 4]) {
-        await expect(rows.nth(i).getByRole("cell").nth(3)).toHaveText(KNOWN_USER.name);
+        await expect(rows.nth(i).getByRole("cell").nth(3)).toHaveText(owner.name);
         await expect(rows.nth(i).getByRole("cell").nth(4)).toHaveText("mcp");
       }
     });
@@ -481,8 +485,8 @@ test.describe("the tools of a Manager connection", () => {
       await page.goto("/folders/projects");
 
       await expect(items).toHaveText([
-        new RegExp(`^archive.*by ${KNOWN_USER.name} via mcp$`),
-        new RegExp(`^meetings.*by ${KNOWN_USER.name} via mcp$`),
+        new RegExp(`^archive.*by ${owner.name} via mcp$`),
+        new RegExp(`^meetings.*by ${owner.name} via mcp$`),
         /^other.*by bob via web$/,
       ]);
     });
