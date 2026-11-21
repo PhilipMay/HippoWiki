@@ -22,6 +22,39 @@ export function parsePublicUrl(value: string): string | null {
   return url.origin;
 }
 
+/** The bounds and the default of an environment variable that holds a whole number. */
+type WholeNumberBounds = { readonly min: number; readonly max: number; readonly default: number };
+
+/**
+ * The body limit of an MCP request in bytes (`HIPPOWIKI_MCP_BODY_LIMIT`). 1 MiB by default, which holds the largest
+ * write of a page even when a client escapes every character as `\uXXXX`; it can only be raised, because below it such
+ * a write would fail, and at most to 16 MiB, so that one request stays small against the memory of the server.
+ */
+export const MCP_BODY_LIMIT: WholeNumberBounds = { min: 1_048_576, max: 16_777_216, default: 1_048_576 };
+/** How many MCP requests a user may send at once (`HIPPOWIKI_MCP_RATE_BURST`). */
+export const MCP_RATE_BURST: WholeNumberBounds = { min: 1, max: 10_000, default: 60 };
+/** How many MCP requests the budget of a user gains per minute (`HIPPOWIKI_MCP_RATE_PER_MINUTE`). */
+export const MCP_RATE_PER_MINUTE: WholeNumberBounds = { min: 1, max: 100_000, default: 300 };
+
+/**
+ * An optional variable with a whole number within the bounds, its default when it is not set. Only plain decimal
+ * digits are accepted: a sign, a fraction, an exponent, spaces, a unit such as `1MiB`, leading zeros or an empty value
+ * stop the server, so that a typo does not change a limit.
+ */
+function wholeNumber({ min, max, default: fallback }: WholeNumberBounds) {
+  return z
+    .string()
+    .regex(/^(0|[1-9][0-9]*)$/, { error: "must be a whole number in plain digits" })
+    .transform(Number)
+    .pipe(
+      z
+        .number()
+        .min(min, { error: `must be at least ${min}` })
+        .max(max, { error: `must be at most ${max}` }),
+    )
+    .default(fallback);
+}
+
 /** Environment variables the server needs. */
 export const serverEnvSchema = z.object({
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/, error: "must be a postgresql:// URL" }),
@@ -50,6 +83,13 @@ export const serverEnvSchema = z.object({
       error: "must be an https:// URL (http:// only for localhost) without user, path, query or fragment",
     })
     .transform((value) => (value === undefined ? undefined : (parsePublicUrl(value) ?? undefined))),
+  // The limits of the MCP addresses (see `MCP_BODY_LIMIT` and the two after it). The body limit bounds what one request
+  // can make the server read and parse; the rate limit, a budget per user of a burst refilled per minute, bounds how
+  // many requests one token can send. Neither can be switched off, and `0` is refused: a reverse proxy may limit more
+  // strictly in front of the wiki, but the wiki keeps its own ceiling.
+  HIPPOWIKI_MCP_BODY_LIMIT: wholeNumber(MCP_BODY_LIMIT),
+  HIPPOWIKI_MCP_RATE_BURST: wholeNumber(MCP_RATE_BURST),
+  HIPPOWIKI_MCP_RATE_PER_MINUTE: wholeNumber(MCP_RATE_PER_MINUTE),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

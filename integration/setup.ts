@@ -20,13 +20,18 @@ vi.mock("@/lib/db", async () => {
 // is still reached through the mocked `getDb()` above, never through this URL.
 vi.mock(import("@/lib/env"), async (importOriginal) => {
   const { TEST_DATABASE_URL } = await import("../e2e/support/container");
+  const original = await importOriginal();
+  const { MCP_BODY_LIMIT, MCP_RATE_BURST, MCP_RATE_PER_MINUTE } = original;
   return {
-    ...(await importOriginal()),
+    ...original,
     getServerEnv: () => ({
       DATABASE_URL: TEST_DATABASE_URL,
       NODE_ENV: "test",
       HIPPOWIKI_LOG_CLIENT_ADDRESS: false,
       HIPPOWIKI_TRUSTED_PROXIES: 0,
+      HIPPOWIKI_MCP_BODY_LIMIT: MCP_BODY_LIMIT.default,
+      HIPPOWIKI_MCP_RATE_BURST: MCP_RATE_BURST.default,
+      HIPPOWIKI_MCP_RATE_PER_MINUTE: MCP_RATE_PER_MINUTE.default,
       // The public address of the wiki, which the OAuth service needs for the address of the MCP endpoint.
       HIPPOWIKI_PUBLIC_URL: "https://wiki.example.com",
     }),

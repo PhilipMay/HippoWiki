@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { parseServerEnv } from "@/lib/env";
+import { MCP_BODY_LIMIT, MCP_RATE_BURST, MCP_RATE_PER_MINUTE, parseServerEnv } from "@/lib/env";
 
 const databaseUrl = "postgresql://hippowiki:hippowiki@localhost:5432/hippowiki";
 
@@ -11,6 +11,9 @@ describe("parseServerEnv", () => {
       NODE_ENV: "production",
       HIPPOWIKI_LOG_CLIENT_ADDRESS: false,
       HIPPOWIKI_TRUSTED_PROXIES: 0,
+      HIPPOWIKI_MCP_BODY_LIMIT: 1_048_576,
+      HIPPOWIKI_MCP_RATE_BURST: 60,
+      HIPPOWIKI_MCP_RATE_PER_MINUTE: 300,
     });
   });
 
@@ -105,6 +108,45 @@ describe("parseServerEnv", () => {
     );
   });
 
+  describe("the limits of MCP", () => {
+    it("has the defaults of 1 MiB, 60 at once and 300 per minute without the variables", () => {
+      const env = parseServerEnv({ DATABASE_URL: databaseUrl });
+
+      expect(env.HIPPOWIKI_MCP_BODY_LIMIT).toBe(1_048_576);
+      expect(env.HIPPOWIKI_MCP_RATE_BURST).toBe(60);
+      expect(env.HIPPOWIKI_MCP_RATE_PER_MINUTE).toBe(300);
+      expect([MCP_BODY_LIMIT.default, MCP_RATE_BURST.default, MCP_RATE_PER_MINUTE.default]).toEqual([
+        1_048_576, 60, 300,
+      ]);
+    });
+
+    const VARIABLES = [
+      ["HIPPOWIKI_MCP_BODY_LIMIT", 1_048_576, 16_777_216],
+      ["HIPPOWIKI_MCP_RATE_BURST", 1, 10_000],
+      ["HIPPOWIKI_MCP_RATE_PER_MINUTE", 1, 100_000],
+    ] as const;
+
+    describe.each(VARIABLES)("%s", (name, min, max) => {
+      it.each([min, max, min + 1])("accepts %i", (value) => {
+        expect(parseServerEnv({ DATABASE_URL: databaseUrl, [name]: String(value) })[name]).toBe(value);
+      });
+
+      it.each([String(min - 1), String(max + 1), "1.5", "1e6", "+60", " 60", "60 ", "1MiB", "060", "-1", "0x10", ""])(
+        "refuses %j with an error that names the variable",
+        (value) => {
+          expect(() => parseServerEnv({ DATABASE_URL: databaseUrl, [name]: value })).toThrow(new RegExp(name));
+        },
+      );
+    });
+
+    it.each(["HIPPOWIKI_MCP_RATE_BURST", "HIPPOWIKI_MCP_RATE_PER_MINUTE"])(
+      "refuses 0 for %s, so that the rate limit cannot be switched off",
+      (name) => {
+        expect(() => parseServerEnv({ DATABASE_URL: databaseUrl, [name]: "0" })).toThrow(new RegExp(name));
+      },
+    );
+  });
+
   it("ignores unrelated variables", () => {
     expect(parseServerEnv({ DATABASE_URL: databaseUrl, HOME: "/home/someone" })).not.toHaveProperty("HOME");
   });
@@ -146,6 +188,9 @@ describe("getServerEnv", () => {
       NODE_ENV: "production",
       HIPPOWIKI_LOG_CLIENT_ADDRESS: false,
       HIPPOWIKI_TRUSTED_PROXIES: 0,
+      HIPPOWIKI_MCP_BODY_LIMIT: 1_048_576,
+      HIPPOWIKI_MCP_RATE_BURST: 60,
+      HIPPOWIKI_MCP_RATE_PER_MINUTE: 300,
     });
   });
 
