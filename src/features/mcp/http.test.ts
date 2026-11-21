@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { handleMcpRequest } from "@/features/mcp/http";
-import { MCP_BODY_LIMIT } from "@/lib/env";
+import type { handleMcpRequest as HandleMcpRequest } from "@/features/mcp/http";
+import { MCP_BODY_LIMIT, MCP_RATE_BURST, MCP_RATE_PER_MINUTE } from "@/lib/env";
+
+/**
+ * The adapter, loaded again for every test (see `beforeEach`), so that every test starts with a fresh budget of the
+ * rate limit, which the module keeps for the running server.
+ */
+let handleMcpRequest: typeof HandleMcpRequest;
 
 const mocks = vi.hoisted(() => ({
   authenticateAccessToken: vi.fn(),
@@ -33,6 +39,8 @@ const FOLDER_ID = "3a5c7e90-1b2d-4f6a-8c0e-2d4f6a8c0e11";
 const PATH = [FOLDER_ID, "reader"];
 const CONNECTION = { grantId: "0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01", folderId: FOLDER_ID, role: "reader" };
 const CALLER = { actor: ACTOR, connection: CONNECTION };
+/** The error of a valid token whose user's role no longer allows the address, with the user and the grant. */
+const ROLE_TOO_LOW = { code: "role-too-low", userId: ACTOR.id, grantId: CONNECTION.grantId };
 /** The actor of MCP that the tools pass to the services: the user of the token with the connection of its grant. */
 const MCP_ACTOR = { ...ACTOR, channel: "mcp", connection: CONNECTION };
 const TOKEN = `hwa_${"A".repeat(43)}`;
@@ -41,10 +49,12 @@ const RESOURCE_METADATA = `resource_metadata="${PUBLIC_URL}/.well-known/oauth-pr
 const URL_OF_MCP = `http://localhost:3000/mcp/${FOLDER_ID}/reader`;
 
 /** The server environment that the adapter reads: the public URL and the limits of MCP, their defaults unless given. */
-function setServerEnv(env: { publicUrl?: string | undefined; bodyLimit?: number } = {}): void {
+function setServerEnv(env: { publicUrl?: string | undefined; bodyLimit?: number; rateBurst?: number } = {}): void {
   mocks.getServerEnv.mockReturnValue({
     HIPPOWIKI_PUBLIC_URL: "publicUrl" in env ? env.publicUrl : PUBLIC_URL,
     HIPPOWIKI_MCP_BODY_LIMIT: env.bodyLimit ?? MCP_BODY_LIMIT.default,
+    HIPPOWIKI_MCP_RATE_BURST: env.rateBurst ?? MCP_RATE_BURST.default,
+    HIPPOWIKI_MCP_RATE_PER_MINUTE: MCP_RATE_PER_MINUTE.default,
   });
 }
 
@@ -86,8 +96,10 @@ function modernHeaders(method: string, name?: string): Record<string, string> {
   return { "mcp-protocol-version": "2026-07-28", "mcp-method": method, ...(name ? { "mcp-name": name } : {}) };
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.resetAllMocks();
+  vi.resetModules();
+  ({ handleMcpRequest } = await import("@/features/mcp/http"));
   setPublicUrl(PUBLIC_URL);
   mocks.authenticateAccessToken.mockResolvedValue({ ok: true, value: CALLER });
   mocks.getFolderById.mockResolvedValue({ id: FOLDER_ID, name: "handbook", role: "reader" });
@@ -262,7 +274,7 @@ describe("the token", () => {
   });
 
   it("answers role-too-low with 403 and a message, without insufficient_scope or a challenge, and runs no tool", async () => {
-    mocks.authenticateAccessToken.mockResolvedValue({ ok: false, error: { code: "role-too-low" } });
+    mocks.authenticateAccessToken.mockResolvedValue({ ok: false, error: ROLE_TOO_LOW });
 
     const response = await handleMcpRequest(
       post({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "list_folder" } }),
@@ -635,5 +647,103 @@ describe("a batch", () => {
     expect(second.status).toBe(200);
     expect(mocks.getPage).toHaveBeenCalledTimes(2);
     expect(mocks.info).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("the rate limit", () => {
+  /** Sends `count` lists of the tools, one after the other, and returns the statuses of the answers. */
+  async function sendMany(count: number, message: unknown = TOOLS_LIST): Promise<number[]> {
+    const statuses: number[] = [];
+    for (let index = 0; index < count; index += 1) {
+      statuses.push((await handleMcpRequest(post(message), PATH)).status);
+    }
+    return statuses;
+  }
+
+  it("refuses the 61st request of a user with 429 and Retry-After, before the SDK and any tool, and logs it once", async () => {
+    const statuses = await sendMany(60);
+    mocks.warn.mockClear();
+
+    const refused = await handleMcpRequest(post(readPageCall(61)), PATH);
+
+    expect(statuses.every((status) => status === 200)).toBe(true);
+    expect(refused.status).toBe(429);
+    expect(Number(refused.headers.get("retry-after"))).toBeGreaterThanOrEqual(1);
+    expect(refused.headers.get("content-type")).toContain("application/json");
+    await expect(refused.json()).resolves.toEqual({ error: "rate_limited" });
+    expect(mocks.getPage).not.toHaveBeenCalled();
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
+      { userId: ACTOR.id, grantId: CONNECTION.grantId, folderId: FOLDER_ID, role: "reader" },
+      expect.any(String),
+    );
+    expect(JSON.stringify(mocks.warn.mock.calls)).not.toContain(TOKEN);
+  });
+
+  it("logs further refusals within the minute no more", async () => {
+    await sendMany(60);
+    mocks.warn.mockClear();
+
+    const statuses = await sendMany(10);
+
+    expect(statuses).toEqual(Array.from({ length: 10 }, () => 429));
+    expect(mocks.warn).toHaveBeenCalledOnce();
+  });
+
+  it("counts a list of the tools and a request refused for its role like a tool call, and answers 429 before 403", async () => {
+    await sendMany(30);
+    await sendMany(10, readPageCall(1));
+    mocks.authenticateAccessToken.mockResolvedValue({ ok: false, error: ROLE_TOO_LOW });
+
+    const refusedForRole = await sendMany(20);
+    const overTheBudget = await handleMcpRequest(post(TOOLS_LIST), PATH);
+
+    expect(refusedForRole).toEqual(Array.from({ length: 20 }, () => 403));
+    expect(overTheBudget.status).toBe(429);
+  });
+
+  it.each([
+    ["without a token", "missing-token"],
+    ["with an invalid token", "invalid-token"],
+  ])("lets 70 requests %s get 401 and leaves the budget as it was", async (_case, code) => {
+    mocks.authenticateAccessToken.mockResolvedValue({ ok: false, error: { code } });
+    const unauthorized = await sendMany(70);
+    mocks.authenticateAccessToken.mockResolvedValue({ ok: true, value: CALLER });
+
+    const afterwards = await sendMany(60);
+
+    expect(unauthorized).toEqual(Array.from({ length: 70 }, () => 401));
+    expect(afterwards.every((status) => status === 200)).toBe(true);
+  });
+
+  it("takes nothing for a token that could not be checked", async () => {
+    mocks.authenticateAccessToken.mockResolvedValue({ ok: false, error: { code: "failed" } });
+    await sendMany(70);
+    mocks.authenticateAccessToken.mockResolvedValue({ ok: true, value: CALLER });
+
+    expect((await sendMany(60)).every((status) => status === 200)).toBe(true);
+  });
+
+  it("counts a body over the limit", async () => {
+    await sendMany(59);
+
+    const tooLarge = await handleMcpRequest(postRaw(bodyOfSize(MIB + 1)), PATH);
+    const next = await handleMcpRequest(post(TOOLS_LIST), PATH);
+
+    expect(tooLarge.status).toBe(413);
+    expect(next.status).toBe(429);
+  });
+
+  it("gives another user a budget of their own", async () => {
+    await sendMany(60);
+    const other = { id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1003", name: "bob", type: "user" };
+    mocks.authenticateAccessToken.mockResolvedValue({ ok: true, value: { actor: other, connection: CONNECTION } });
+
+    expect((await handleMcpRequest(post(TOOLS_LIST), PATH)).status).toBe(200);
+  });
+
+  it("follows HIPPOWIKI_MCP_RATE_BURST: with 2 the third request is refused", async () => {
+    setServerEnv({ rateBurst: 2 });
+
+    expect(await sendMany(3)).toEqual([200, 200, 429]);
   });
 });

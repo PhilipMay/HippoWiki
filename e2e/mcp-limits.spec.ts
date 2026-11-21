@@ -1,6 +1,7 @@
-// The limits of the MCP addresses: one call per request (a JSON-RPC batch is refused) and the body limit of a request.
-// Every test connects a user of its own, so that its requests do not count against the budget of the known user, which
-// the other MCP specs use.
+// The limits of the MCP addresses: one call per request (a JSON-RPC batch is refused), the body limit of a request and
+// the rate limit per user. The servers of the tests keep the default limits. Every test connects a user of its own, so
+// that it starts with a full budget and its requests do not count against the budget of the known user, which the
+// other MCP specs use.
 import type { APIRequestContext } from "@playwright/test";
 
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
@@ -183,5 +184,87 @@ test.describe("the body limit", () => {
 
     expect(response.status()).toBe(200);
     expect(await storedPlan()).toMatchObject({ title: "Replaced", version: 2 });
+  });
+});
+
+/** A list of the tools, the smallest request a connected app sends. */
+const TOOLS_LIST = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" });
+
+/** Sends lists of the tools, one after the other, `count` times, and returns the statuses of the answers. */
+async function listMany(request: APIRequestContext, connection: McpConnection, count: number): Promise<number[]> {
+  const statuses: number[] = [];
+  for (let index = 0; index < count; index += 1) {
+    statuses.push((await postText(request, connection, TOOLS_LIST)).status());
+  }
+  return statuses;
+}
+
+test.describe("the rate limit", () => {
+  test("lets at least 60 requests of a user pass, then answers 429 with Retry-After, and after the wait lets one pass", async ({
+    request,
+  }) => {
+    const reader = await connect("reader");
+    const started = Date.now();
+    let passed = 0;
+    let refused = await postText(request, reader, TOOLS_LIST);
+    // A safe stop far above what the budget allows, so that a missing limit fails the test instead of hanging it.
+    while (refused.status() === 200 && passed < 1000) {
+      passed += 1;
+      refused = await postText(request, reader, TOOLS_LIST);
+    }
+    const seconds = (Date.now() - started) / 1000;
+
+    expect(refused.status()).toBe(429);
+    expect(await refused.json()).toEqual({ error: "rate_limited" });
+    // 60 at once, and five more a second for the time the requests took.
+    expect(passed).toBeGreaterThanOrEqual(60);
+    expect(passed).toBeLessThanOrEqual(60 + Math.ceil(5 * seconds));
+    const retryAfter = Number(refused.headers()["retry-after"]);
+    expect(retryAfter).toBeGreaterThanOrEqual(1);
+
+    await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
+
+    expect((await postText(request, reader, TOOLS_LIST)).status()).toBe(200);
+  });
+
+  test("shares one budget between the addresses of a user, and leaves another user unaffected", async ({ request }) => {
+    const reader = await connect("reader");
+    const writer = await connect("writer");
+    const other = await createUser({ mustChangePassword: false });
+    const othersFolder = await createFolder({ roles: [{ user: other, role: "owner" }] });
+    const { accessToken } = await createGrant({ owner: other, folder: othersFolder, role: "reader" });
+    const othersConnection = { address: mcpPath(othersFolder, "reader"), token: accessToken };
+
+    const started = Date.now();
+    const atTheReader = await listMany(request, reader, 30);
+    const statusesAtTheWriter = [];
+    let atTheWriter = await postText(request, writer, TOOLS_LIST);
+    while (atTheWriter.status() === 200 && statusesAtTheWriter.length < 1000) {
+      statusesAtTheWriter.push(atTheWriter.status());
+      atTheWriter = await postText(request, writer, TOOLS_LIST);
+    }
+    const seconds = (Date.now() - started) / 1000;
+    const ofTheOther = await postText(request, othersConnection, TOOLS_LIST);
+
+    expect(atTheReader.every((status) => status === 200)).toBe(true);
+    // The Writer address gets only what the 30 requests at the Reader address left of the budget, and the refill.
+    expect(atTheWriter.status()).toBe(429);
+    expect(statusesAtTheWriter.length).toBeGreaterThanOrEqual(30);
+    expect(statusesAtTheWriter.length).toBeLessThanOrEqual(30 + Math.ceil(5 * seconds));
+    expect(ofTheOther.status()).toBe(200);
+  });
+
+  test("lets 70 requests without a token and 70 with an invalid token get 401, and takes nothing from the budget", async ({
+    request,
+  }) => {
+    const reader = await connect("reader");
+
+    const withoutToken = await listMany(request, { address: reader.address, token: null }, 70);
+    const withInvalidToken = await listMany(request, { address: reader.address, token: `hwa_${"A".repeat(43)}` }, 70);
+    const afterwards = await listMany(request, reader, 60);
+
+    expect(withoutToken.every((status) => status === 401)).toBe(true);
+    expect(withInvalidToken.every((status) => status === 401)).toBe(true);
+    expect(afterwards.every((status) => status === 200)).toBe(true);
   });
 });

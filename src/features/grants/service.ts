@@ -100,9 +100,10 @@ type MissingToken = { code: "missing-token" };
 type BadToken = { code: "invalid-token" };
 /**
  * The access token is valid for the address, but its user has no role on the folder any more or a role below the
- * role of the address; the grant stays and works again once the role is high enough again.
+ * role of the address; the grant stays and works again once the role is high enough again. It names the user and the
+ * grant of the token, so that the MCP route counts the request against the user's rate limit all the same.
  */
-type RoleTooLow = { code: "role-too-low" };
+type RoleTooLow = { code: "role-too-low"; userId: string; grantId: string };
 
 /** `not-allowed`: the actor is an admin, who has no grants, or OAuth is off; it has been logged. */
 type RevokeGrantError = NotAllowed | GrantNotFound | Failed;
@@ -205,7 +206,7 @@ function bearerTokenOf(headers: Headers): string | null {
  *   the first password, who may do nothing but change it, one whose user is an admin, who has no grants, and one of a
  *   grant to another address, another folder or another role (logged as `other-address`).
  * - `role-too-low`: a valid access token for the address whose user has no role on the folder any more, or a role
- *   below the role of the address. It is logged; the grant stays.
+ *   below the role of the address, with the ids of its user and its grant. It is logged; the grant stays.
  * - `failed`: the database could not be read.
  *
  * The MCP route answers `missing-token` and `invalid-token` with 401 and `WWW-Authenticate: Bearer`, and
@@ -293,7 +294,7 @@ export async function authenticateAccessToken(
       { reason: "role-too-low", grantId, folderId: grant.folderId, grantRole, userRole },
       "access token refused",
     );
-    return { ok: false, error: { code: "role-too-low" } };
+    return { ok: false, error: { code: "role-too-low", userId: actor.id, grantId } };
   }
 
   const usedBefore = new Date(now.getTime() - LAST_USE_INTERVAL_MS);

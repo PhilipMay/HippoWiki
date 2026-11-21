@@ -187,16 +187,18 @@ describe("authenticateAccessToken", () => {
     });
   });
 
-  it("refuses a connection above the current role while that lasts, keeps the grant and writes no last use", async () => {
+  it("refuses a connection above the current role while that lasts, names its user and grant, keeps the grant and writes no last use", async () => {
     const alice = await createActor();
     const folder = await createFolder({ roles: [{ user: alice, role: "writer" }] });
     const { grant, accessToken } = await createGrant({ owner: alice, folder, role: "writer" });
     const where = { folderId_userId: { folderId: folder.id, userId: alice.id } };
+    // The error names the user and the grant of the token, so that the MCP route counts the request all the same.
+    const refused = { ok: false, error: { code: "role-too-low", userId: alice.id, grantId: grant.id } };
 
     await getTestDb().folderRole.update({ where, data: { role: "reader" } });
-    await expect(authenticate(accessToken)).resolves.toEqual({ ok: false, error: { code: "role-too-low" } });
+    await expect(authenticate(accessToken)).resolves.toEqual(refused);
     await getTestDb().folderRole.delete({ where });
-    await expect(authenticate(accessToken)).resolves.toEqual({ ok: false, error: { code: "role-too-low" } });
+    await expect(authenticate(accessToken)).resolves.toEqual(refused);
 
     const stored = await getTestDb().oAuthGrant.findUniqueOrThrow({ where: { id: grant.id } });
     expect(stored.lastUsedAt).toBeNull();
@@ -212,7 +214,7 @@ describe("authenticateAccessToken", () => {
     const { grant, accessToken } = await createGrant({ owner: alice, folder, role: "manager" });
     const where = { folderId_userId: { folderId: folder.id, userId: alice.id } };
     const accepted = { ok: true, value: { connection: { grantId: grant.id, folderId: folder.id, role: "manager" } } };
-    const refused = { ok: false, error: { code: "role-too-low" } };
+    const refused = { ok: false, error: { code: "role-too-low", userId: alice.id, grantId: grant.id } };
 
     await expect(authenticate(accessToken)).resolves.toMatchObject(accepted);
     await getTestDb().folderRole.update({ where, data: { role: "owner" } });

@@ -15,12 +15,13 @@ import {
   type McpRequestContext,
 } from "@modelcontextprotocol/server";
 
+import { createRateLimit, type RateLimit } from "@/features/mcp/rate-limit";
 import { createWikiServer } from "@/features/mcp/server";
 import type { WikiToolsOptions } from "@/features/mcp/tools";
 import { inMcp, type McpActor } from "@/features/folder-roles/actors";
 import * as folderService from "@/features/folders/service";
 import { issuer, protectedResourceMetadataUrl } from "@/features/oauth/issuer";
-import { parseMcpPath } from "@/features/oauth/schema";
+import { parseMcpPath, type McpAddress } from "@/features/oauth/schema";
 import * as grantService from "@/features/grants/service";
 import { getServerEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";
@@ -84,6 +85,38 @@ function logContextOf(actor: McpActor): Record<string, string> {
     folderId: actor.connection.folderId,
     role: actor.connection.role,
   };
+}
+
+let rateLimit: RateLimit | undefined;
+
+/**
+ * The budget of the MCP requests of the running server, per user, from `HIPPOWIKI_MCP_RATE_BURST` and
+ * `HIPPOWIKI_MCP_RATE_PER_MINUTE` (`src/lib/env.ts`), built on first use. It lives in memory: a restart gives every
+ * user a full budget, and several instances would each keep a budget of their own.
+ */
+function getRateLimit(): RateLimit {
+  const env = getServerEnv();
+  rateLimit ??= createRateLimit({ burst: env.HIPPOWIKI_MCP_RATE_BURST, perMinute: env.HIPPOWIKI_MCP_RATE_PER_MINUTE });
+  return rateLimit;
+}
+
+/**
+ * Takes the request from the budget of its user, or answers 429 with `Retry-After`, the whole seconds until the next
+ * request of the user may pass, at least 1. The first refusal of a user is logged, and then at most one a minute with
+ * the number of refusals since the line before, so that a client in a loop cannot fill the log.
+ */
+function overRateLimit(user: { userId: string; grantId: string }, address: McpAddress): Response | null {
+  const taken = getRateLimit().take(user.userId);
+  if (taken.ok) return null;
+  if (taken.log) {
+    const { refusedBefore } = taken.log;
+    logger.warn(
+      { ...user, folderId: address.folderId, role: address.role, ...(refusedBefore > 0 ? { refusedBefore } : {}) },
+      "mcp request refused: over the rate limit",
+    );
+  }
+  const retryAfter = Math.max(1, Math.ceil(taken.waitMs / 1000));
+  return refusal(429, "rate_limited", { "Retry-After": String(retryAfter) });
 }
 
 /** The message of the JSON-RPC error with which a batch is refused. */
@@ -217,12 +250,15 @@ async function serve(
  *    the protected resource at the address (`resource_metadata`, RFC 9728), whether a folder of that id exists or
  *    not; with `error="invalid_token"` where a token was sent, the token of another address included. 500 when the
  *    token could not be checked. There are no scopes.
- * 5. A valid token whose user's role on the folder no longer allows the address answers 403 with a short message,
+ * 5. A request over the rate limit of its user answers 429 with `Retry-After`: every request with a token valid for
+ *    the address counts, also one refused for its role in the next step, by default 60 at once and 300 a minute
+ *    (`HIPPOWIKI_MCP_RATE_BURST`, `HIPPOWIKI_MCP_RATE_PER_MINUTE`); a request of step 4 takes nothing.
+ * 6. A valid token whose user's role on the folder no longer allows the address answers 403 with a short message,
  *    without a challenge, so that the client does not authorize again; no tool runs. So does a folder that can no
  *    longer be read with the actor of MCP, e.g. one deleted in the meantime.
- * 6. A body over the body limit of the wiki, `HIPPOWIKI_MCP_BODY_LIMIT` (1 MiB by default), answers 413, whether it
+ * 7. A body over the body limit of the wiki, `HIPPOWIKI_MCP_BODY_LIMIT` (1 MiB by default), answers 413, whether it
  *    has a `Content-Length` or is sent in chunks; the reading stops at the limit. Only now is the body read at all.
- * 7. A JSON-RPC batch, a body that is a JSON array, answers 400 with the JSON-RPC error `-32600`, for every protocol
+ * 8. A JSON-RPC batch, a body that is a JSON array, answers 400 with the JSON-RPC error `-32600`, for every protocol
  *    revision, and is logged without its content; no message of it is answered, so no tool runs. A body that is no
  *    JSON gets the answer of the SDK.
  *
@@ -248,6 +284,17 @@ export async function handleMcpRequest(request: Request, path: readonly string[]
   // The access token has to be valid for the address and its user's role has to allow it; its user is the actor of the
   // tools, and the services decide what the actor may read.
   const caller = await grantService.authenticateAccessToken(request.headers, address);
+
+  // Every request whose token is valid for the address counts against the budget of its user, also when the user's
+  // role no longer allows the address; a request without a valid token reaches nothing and takes nothing.
+  const user = caller.ok
+    ? { userId: caller.value.actor.id, grantId: caller.value.connection.grantId }
+    : caller.error.code === "role-too-low"
+      ? { userId: caller.error.userId, grantId: caller.error.grantId }
+      : null;
+  const limited = user && overRateLimit(user, address);
+  if (limited) return limited;
+
   if (!caller.ok) {
     // What a client needs to start the OAuth flow, after the error if there is one.
     const discovery = [`resource_metadata="${resourceMetadata}"`];

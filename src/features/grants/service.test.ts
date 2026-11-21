@@ -335,7 +335,7 @@ describe("authenticateAccessToken", () => {
 
     await expect(authenticateAccessToken(BEARER(), ADDRESS)).resolves.toEqual({
       ok: false,
-      error: { code: "role-too-low" },
+      error: { code: "role-too-low", userId: CALLER.actor.id, grantId: GRANT_ID },
     });
 
     expect(mocks.folderRoleOf).toHaveBeenCalledExactlyOnceWith(CALLER.actor, FOLDER_ID);
