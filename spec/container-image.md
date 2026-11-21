@@ -113,8 +113,8 @@ Code: `Containerfile`, `.containerignore`, `scripts/image.sh`, `scripts/image-mi
 ## Configuration
 
 - A container needs two variables, `DATABASE_URL` and `HIPPOWIKI_ADMIN_PASSWORD`, and nothing else. The optional
-  variables `HIPPOWIKI_TRUSTED_PROXIES`, `HIPPOWIKI_LOG_CLIENT_ADDRESS` and `HIPPOWIKI_PUBLIC_URL` are described
-  below.
+  variables `HIPPOWIKI_TRUSTED_PROXIES`, `HIPPOWIKI_LOG_CLIENT_ADDRESS`, `HIPPOWIKI_PUBLIC_URL`,
+  `HIPPOWIKI_MCP_BODY_LIMIT`, `HIPPOWIKI_MCP_RATE_BURST` and `HIPPOWIKI_MCP_RATE_PER_MINUTE` are described below.
 - `DATABASE_URL`: `postgresql://<user>:<password>@<host>:<port>/<database>`. The migration, the admin setup and the
   server read it. Special characters in the password are percent-encoded.
 - Only this form, without parameters, is supported and tested. The migration reads the URL with the schema engine of
@@ -169,6 +169,17 @@ Code: `Containerfile`, `.containerignore`, `scripts/image.sh`, `scripts/image-mi
     Check" of `roadmap.md`: with OAuth on, the registration of clients and the token endpoint answer without a login.
   - The limit on the registration of OAuth clients counts per client address group, so it needs
     `HIPPOWIKI_TRUSTED_PROXIES` like the wait after failed logins; with `0` all registrations share one limit.
+- The limits of the MCP addresses are optional, each a whole number in plain decimal digits; a value outside its
+  bounds, with a sign, a fraction, an exponent, spaces, leading zeros or a unit such as `1MiB`, or an empty one, stops
+  the server with an error that names the variable, like a wrong `DATABASE_URL`. They are read when the server runs.
+  What they limit is described in "The endpoint" of `mcp.md`; the defaults and bounds are in `src/lib/env.ts`.
+  - `HIPPOWIKI_MCP_BODY_LIMIT`: the body limit of an MCP request in bytes, from `1048576` (1 MiB, the default) to
+    `16777216` (16 MiB). It can only be raised, because below 1 MiB a write of a large page could fail.
+  - `HIPPOWIKI_MCP_RATE_BURST`: how many MCP requests a user may send at once, from `1` to `10000`, default `60`.
+  - `HIPPOWIKI_MCP_RATE_PER_MINUTE`: how many requests the budget of a user gains per minute, from `1` to `100000`,
+    default `300`.
+  - The rate limit cannot be switched off: `0` is refused for both. Each instance of the server keeps its own budget,
+    in memory, so a restart gives every user a full budget again.
 - There is no variable for the secret that signs the session cookies: the server generates it on first use and
   stores it in the database (table `AuthSecret`). It therefore survives a new container, and all sessions with it.
 - The database is PostgreSQL in the version pinned in `scripts/Containerfile`. The database and its user are created

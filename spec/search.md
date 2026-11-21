@@ -373,6 +373,7 @@ The read tool `search_pages` is given to every connection: Reader, Writer and Ma
 - no narrowing to a tab, no choice of the order, no paging through more than 100 results
 - no inflections of Irish and of languages PostgreSQL cannot stem
 - no search for admins, no search in revisions of pages or in deleted pages
-- no rate limits of searches per user or app, which stay the job of the reverse proxy (see "Rate limits and quotas" in
-  `roadmap.md`)
+- no rate limits of searches in the browser, which stay the job of the reverse proxy (see "Rate limits and quotas" in
+  `roadmap.md`); through MCP a search counts like every request against the budget of its user (see "The endpoint" in
+  `mcp.md`)
 - no semantic search (see "Search" in `roadmap.md`)

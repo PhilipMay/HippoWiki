@@ -8,18 +8,20 @@ user finds the addresses of a folder in its view "AI apps" (see `folder-roles.md
 
 Code: `src/features/mcp/` (`server.ts`, which registers the tools of a connection with their descriptions and hints,
 `tools.ts` with the handlers of the tools, `tool-schemas.ts` with their inputs and outputs, `edits.ts` with the
-replacements of `edit_page_content`, `http.ts` with the adapter of the route, `queries.ts` and
+replacements of `edit_page_content`, `http.ts` with the adapter of the route, `rate-limit.ts` with the budget of the
+requests per user, `queries.ts` and
 `components/` for the view "AI apps"), the route `src/app/mcp/[[...path]]/route.ts` and the exception for it in
 `src/proxy.ts`. The roles of MCP are `MCP_ROLES` and `mcpRolesFor()` in `src/features/folder-roles/roles.ts`, the
 actor of MCP `inMcp()` in `src/features/folder-roles/actors.ts`. The protocol is spoken by the MCP SDK
 (`@modelcontextprotocol/server`, see `tech.md`).
 
 Tests: `e2e/mcp-access.spec.ts`, `e2e/mcp-read.spec.ts`, `e2e/mcp-write.spec.ts`, `e2e/mcp-edit.spec.ts`,
-`e2e/mcp-manager.spec.ts`, `e2e/oauth.spec.ts` for the access tokens of OAuth, `e2e/ai-apps.spec.ts` for the view "AI
+`e2e/mcp-manager.spec.ts`, `e2e/mcp-limits.spec.ts` for the limits of the endpoint, `e2e/oauth.spec.ts` for the access tokens of OAuth, `e2e/ai-apps.spec.ts` for the view "AI
 apps", `integration/grant-service.test.ts`, `integration/page-service.test.ts`, `integration/folder-service.test.ts`,
 and the unit tests next to the code,
-`src/features/mcp/tools.test.ts`, `src/features/mcp/edits.test.ts`, `src/features/mcp/http.test.ts` and
-`src/features/mcp/queries.test.ts`, and the cost test `src/features/mcp/edits.cost.test.ts`.
+`src/features/mcp/tools.test.ts`, `src/features/mcp/edits.test.ts`, `src/features/mcp/http.test.ts`,
+`src/features/mcp/rate-limit.test.ts` and `src/features/mcp/queries.test.ts`, the tests of the limits written from the
+spec alone, `src/features/mcp/limits.spec-tests.test.ts`, and the cost test `src/features/mcp/edits.cost.test.ts`.
 
 ## The addresses
 
@@ -41,9 +43,29 @@ and the unit tests next to the code,
   revisions are served as the SDK serves them, by a server and transport of their own for each request (`serveLegacy()`
   in `src/features/mcp/http.ts`). A request is one of an older client when it sends no per-request `_meta` envelope,
   as the SDK decides it (`isLegacyRequest()`), not because the client opens with `initialize`.
-- A body over the default `maxRequestBodySize` of the SDK is refused with 413, also when it is sent in chunks; the
-  adapter sets no limit of its own, so the limit is the one the installed SDK names. An operator who limits request
-  bodies at the reverse proxy reads it there.
+- One request carries one message. A JSON-RPC batch, a body that is a JSON array, is refused as a whole with 400 and
+  the JSON-RPC error "Invalid Request" (`-32600`), whose message says to send the calls one by one, on every address
+  and for every protocol revision, before any tool runs; an empty array as well. The refusal is logged as one warning
+  with the user, the grant and the address, without the content of the request. Only the revision 2025-03-26 had
+  batches, so only its clients that batch notice.
+- The body of a request is at most the body limit of the wiki: 1 MiB by default, from 1 MiB to 16 MiB with
+  `HIPPOWIKI_MCP_BODY_LIMIT` (`src/lib/env.ts`, see "Configuration" in `container-image.md`). A larger body is refused
+  with 413, whether it has a `Content-Length` or is sent in chunks, and nothing after the limit is read; the limit
+  counts bytes. The largest write of a page, with every character escaped as `\uXXXX`, needs about 600 KB, so it
+  fits. The adapter reads the body once and hands it to the SDK parsed, so that the SDK applies no limit of its own.
+- The requests of a user share one budget, across all the user's connections and addresses: by default 60 at once,
+  refilled at 300 a minute (`HIPPOWIKI_MCP_RATE_BURST` and `HIPPOWIKI_MCP_RATE_PER_MINUTE`, see "Configuration" in
+  `container-image.md`). Every request whose token is valid for its address counts, whatever message it carries, a
+  list of the tools, a refused batch, a body over the limit and a request refused for its role included; a request
+  that is refused before the check of the token or fails it counts nothing (see "The connections"). A request over the
+  budget gets 429 with `Retry-After`, the whole seconds until the next request may pass, at least 1, before the
+  protocol is spoken and before any tool runs.
+- The refusals of the rate limit are logged at most once per user and minute: the first refusal writes a warning with
+  the user, the grant and the address, and the next line of that user, a minute or more later, counts the refusals
+  since the line before. The log holds no token and nothing of the body.
+- The budget is kept in the memory of the running server (`src/features/mcp/rate-limit.ts`): a restart gives every
+  user a full budget, and several instances would each keep a budget of their own. A reverse proxy may limit more
+  strictly in front of the wiki, and limits the requests without a valid token, which the wiki does not count.
 - Without `HIPPOWIKI_PUBLIC_URL` there is no OAuth and therefore no MCP server: every request below `/mcp` answers 404,
   like the endpoints of OAuth, before its path, its method, its headers or its token are looked at. With the variable
   the addresses that the tools give out are full URLs.
@@ -69,7 +91,8 @@ and the unit tests next to the code,
   cannot be read, such as one deleted in the meantime, is answered like a role that is too low.
 - `/mcp` serves users only. Every access token of an admin is refused, because the check of an access token looks at
   the type of the account (see "No apps for admins" in `connected-apps.md`); such a request reaches no tool.
-- What a client gets instead of an answer of the protocol, in this order:
+- What a client gets instead of an answer of the protocol, in this order. Only a request that passes the check of the
+  token, or is refused only for its role, counts against the rate limit, so the refusals before it count nothing:
   1. 404 for an address that is no folder address.
   2. 405 for another method than `POST`, then 403 for a foreign `Origin` (see "The endpoint").
   3. 401 with `WWW-Authenticate: Bearer` without a token, and with `error="invalid_token"` for a token that is unknown,
@@ -77,9 +100,13 @@ and the unit tests next to the code,
      metadata of the protected resource at the address (`resource_metadata`), so that a client finds the
      authorization server. Every folder address answers so, whether a folder of that id exists or not. 500 when the
      token could not be checked.
-  4. 403 with a short JSON message that the user's role on the folder does not allow the address, for a valid token
+  4. 429 with `Retry-After` and a short JSON message for a request over the rate limit of its user (see "The
+     endpoint").
+  5. 403 with a short JSON message that the user's role on the folder does not allow the address, for a valid token
      whose role is too low, and for a folder that cannot be read. It carries no `insufficient_scope` and no
      challenge, so that the client does not authorize again, and no tool runs.
+  6. 413 for a body over the body limit, then 400 with `-32600` for a batch; only now is the body read. A body that is
+     no JSON gets the answer of the SDK.
 - A use through MCP shows as the last use of the connected app on `/account`; a refused request writes none.
 - A token is never logged and never part of an answer.
 
@@ -413,8 +440,8 @@ of the history.
 - Against prompt injection the server marks page text as data and documents what it does and what is left to the
   client, and does not limit what a connection can do: the limits of a connection (one folder, the lower of the two
   roles, no roles, deleted pages restorable in the browser) stay the protection, and real damage needs a client that
-  follows planted text. Rejected: capping batches and adding a rate limit per grant in the same change; recording
-  prompt injection only as an accepted risk.
+  follows planted text; the refusal of batches and the rate limit bound how much one connection can do, not what.
+  Rejected: recording prompt injection only as an accepted risk.
 - Page text is marked in three places, the instructions, the descriptions and the results, so that a client that
   drops the instructions still shows the model the note. Rejected: the instructions and descriptions only; the content
   as an embedded resource of its own, which clients show differently.
@@ -431,9 +458,35 @@ of the history.
   every tool error.
 - The log line of a tool call holds what traces the call to a grant and a tool, at the level `info`. Rejected: the
   client address group, which puts more personal data into the log; the duration of the call.
-- Only a call that reaches a tool is logged, where the tools run. Rejected: also the calls that the SDK refuses first,
-  which needs the adapter to read the request before the SDK; every MCP request, which is noisy because clients list
-  the tools often.
+- A call is logged where the tools run, when it reaches a tool; of the requests that reach no tool, only the refusals of
+  the adapter are logged: a batch, a body over the limit and the rate limit, once per user and minute. Rejected: the
+  calls that the SDK refuses itself; every MCP request, which is noisy because clients list the tools often.
+- Batches are refused instead of capped: the current protocol revision has no batches, so only old clients that batch
+  notice, and every other limit can count requests. Rejected: batches of at most a few calls.
+- A refused batch gets 400 with the JSON-RPC error `-32600`, so that a client of the protocol reads why. Rejected: a
+  short JSON message like the refusals before the protocol.
+- The body limit is 1 MiB by default: the largest write of a page needs about 600 KB in the worst case, and the limit
+  also bounds the replacements of `edit_page_content`. Rejected: keeping the 4 MiB of the SDK, named; 2 MiB.
+- The body limit can only be raised, up to 16 MiB: below 1 MiB a write of a large page could fail, and 16 MiB keeps one
+  request, and the work it can carry, small against the memory of one server. Rejected: a lower bound of 64 KiB.
+- The rate limit counts per user, so that many connected apps of one user do not multiply the budget. Rejected: per
+  connection; no limit in the app, left to the reverse proxy, which cannot tell users apart.
+- 60 at once and 300 a minute by default, as in Wiki.js: an agent reads a whole folder in a burst and then five pages
+  a second, and a runaway loop or a stolen token still meets a ceiling. Rejected: 30 and 120, which slows down agents
+  that read large folders; 120 and 600.
+- Every request with a valid access token counts, lists and refusals for a role that is too low included: one request
+  is one message, the budget is checked in one place before the body is read, and an app that keeps calling after its
+  role was lowered is slowed down too. Requests without a valid token are not counted: they reach no tool, and counting
+  them would need a budget per client address, which the reverse proxy keeps better. Rejected: counting only tool
+  calls; counting only requests that reach the protocol.
+- The budget is counted in the memory of the server: a count in the database would be a write per request, the very
+  load the limit is meant to keep away. A restart forgets it, which is accepted for one container.
+- A request over the budget gets 429 with `Retry-After`, like the other refusals of the endpoint before the protocol.
+  Rejected: a tool error for the model, which would need another rule for requests that are no tool call.
+- Refusals by the rate limit are logged once per user and minute, with a count, so that an agent in a loop cannot fill
+  the log. Rejected: a line per refused request.
+- The rate limit cannot be switched off: a reverse proxy can limit more strictly in front of it, but the wiki keeps its
+  own ceiling. Rejected: `0` to switch it off.
 
 ## Current limits
 
@@ -449,6 +502,7 @@ of the history.
   MCP, but not which app made it
 - no resources and no prompts of the protocol, only tools
 - no SSE, no sessions, no notifications and no subscriptions
-- no rate limits of MCP requests
+- no budget of the rate limit shared between several instances of the server: each keeps its own, in memory
+- no limit for requests without a valid token, which is left to the reverse proxy
 - no CORS: a client that runs in a browser on another origin cannot call an MCP address
 - no tool that lists the accounts

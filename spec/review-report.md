@@ -5,12 +5,12 @@
 - Verdict: no Blocker. The core holds: every page, query and Server Action checks the login, the admin rights and the
   owner of grants on the server; the session and OAuth secrets are random, stored as hashes and kept apart by kind; the OAuth server follows PKCE, exact redirect addresses, single-use codes and refresh rotation
   with reuse detection; the fetch of client metadata documents resists SSRF; Markdown cannot run script; and the
-  tests cover the security rules of the specs well. The weak points are availability (unbounded bodies and batches, a lockout per name in the default
+  tests cover the security rules of the specs well. The weak points are availability (a lockout per name in the default
   configuration), the password policy, the trust that the OAuth
   server gives to clients nobody verified, and documentation that ASVS Level 2 asks for.
-- Findings: 96 in all, 0 Blocker, 0 Major, 61 Minor and 35 Nit (50 `issue:`, 17 `suggestion:`, 25 `nit:` and 4
-  `question:`). Accepted deviations: 20. Of the 92 Suggestions with a confidence (a `question:` has none), 12 are High,
-  46 Medium and 34 Low.
+- Findings: 95 in all, 0 Blocker, 0 Major, 60 Minor and 35 Nit (49 `issue:`, 17 `suggestion:`, 25 `nit:` and 4
+  `question:`). Accepted deviations: 20. Of the 91 Suggestions with a confidence (a `question:` has none), 12 are High,
+  46 Medium and 33 Low.
 - To fix first: no finding, because none is a Blocker or Major.
 - Not covered by this review: everything under "Checks on the deployment" (the reverse proxy and its TLS, the host,
   the network, backups, log storage and the settings of the GitHub repository); a scan of the image for
@@ -1463,35 +1463,6 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
 
 ### MCP server
 
-#### issue: one token can make the server do unbounded work: no rate limit, and up to 100 tool calls in one request
-
-- Location: `src/features/mcp/http.ts`, `serveLegacy()`, `getModernHandler()` and `handleMcpRequest()` (the choice of
-  the path with `isLegacyRequest()`); `spec/mcp.md`, section "Current limits"
-- Severity: Minor. It needs a valid access token of an MCP address; with a Writer address one batch can also carry up
-  to 100 writes of pages, and with a Manager address up to 100 deletes of pages or tabs, each checked like a single
-  one.
-- Category: security
-- Problem: every request without the `_meta` envelope of the 2026 revision goes to the legacy path, whose transport
-  accepts a JSON-RPC batch of up to 100 messages, also with `MCP-Protocol-Version: 2025-06-18`, a revision that removed
-  batches. A `read_page` result holds the content (up to 100,000 characters) twice, so one batch can build about 100 MB
-  of strings. There is no rate limit at all; the MCP specification says servers must rate limit tool calls, and
-  `mcp.md` lists "no rate limits of MCP requests" without a reason. The body limit is the 4 MiB default of the SDK;
-  the read tools take only short names, and the write tools the content of one page of up to 100,000 characters, so
-  one write needs at most a few hundred KB.
-- Impact: any user, or a stolen access token, can tie up the memory and the database pool of the one process, with
-  a Writer address also fill the folder with pages at the rate of 100 per request, and with a Manager address delete
-  100 pages or tabs per request.
-- Evidence: on the local server a batch of 100 `read_page` calls with `MCP-Protocol-Version: 2025-06-18` gives `200`
-  with 100 results (106,591 bytes for a short page); 101 messages give `-32600` "Batch must not exceed 100 messages".
-- Suggestion (required): refuse JSON arrays before the legacy check, pass a `maxRequestBodySize` that fits one write
-  of a full page and no more, both to `createMcpHandler()` in `getModernHandler()` and to the transport of
-  `serveLegacy()`, and add a rate limit per grant, or record "no rate limit" as a decision with its reason and a
-  pointer to the reverse proxy.
-- Confidence: Low. The Suggestion offers a rate limit or a recorded decision, and refusing JSON arrays drops the
-  batches that the revision 2025-03-26 still allowed, which needs a decision.
-- Reference: OWASP A06:2025 Insecure Design; ASVS 2.4.1, 15.2.2; CWE-770; MCP specification 2026-07-28, "Tools",
-  "Security Considerations".
-
 #### suggestion: `list_folder` has no paging
 
 - Location: `src/features/mcp/tools.ts`, `listFolder()`
@@ -1525,9 +1496,8 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
   (transports, authorization, tools, security best practices) and the OWASP MCP Top 10.
 - Revisions: the modern path of the SDK serves 2026-07-28; the legacy path 2024-10-07 to 2025-11-25. "The endpoint"
   in `mcp.md` names 2026-07-28, says that the older revisions are served as the SDK serves them and that a client is
-  served as an older one when it sends no per-request `_meta` envelope, and points to the default
-  `maxRequestBodySize` of the SDK for the body limit; the comments of `getModernHandler()` and `serveLegacy()` in
-  `src/features/mcp/http.ts` say the same.
+  served as an older one when it sends no per-request `_meta` envelope, and names the body limit of the wiki; the
+  comments of `getModernHandler()` and `serveLegacy()` in `src/features/mcp/http.ts` say the same.
 - Page text as user data (OWASP MCP06:2025, OWASP LLM01:2025, OWASP A06:2025, CWE-1427): the instructions of every
   connection, the descriptions of the eight tools whose results carry titles or content, and the field `note`, the
   first field of their results in the structured data and in the text and named in their output schemas, say that
@@ -1583,11 +1553,22 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
   before the tool runs, `initialize` and the list of tools write none (`mcp.md`, "What holds for all of them").
   Checked by the unit tests of "every tool" in `src/features/mcp/tools.test.ts`, which check the line of each of the
   ten tools, the outcomes of a tool error and of a failing database, and that no logged line holds page text.
-- Body size: the SDK refuses more than 4 MiB with `413`, also chunked; on the local server 5 MB give `413` with and
-  without `Content-Length`. Without a token the body is not read. The content of a page is limited to 100,000
+- Body size: the adapter refuses a body over the body limit of the wiki, 1 MiB by default (`HIPPOWIKI_MCP_BODY_LIMIT`),
+  with `413`, with and without `Content-Length`, and stops reading at the limit. Without a token the body is not read. The content of a page is limited to 100,000
   characters by the service (the input schema of the write tools has no limit of its own); `create_page` without a
   name leaves the name to the service, which derives it only after its checks of the role and the content, so content
   over the limit is never parsed.
+- Unbounded work of one token (OWASP A06:2025, ASVS 2.4.1 and 15.2.2, CWE-770; MCP specification 2026-07-28, "Tools"
+  and "Security Considerations", which ask servers to rate limit tool calls): the adapter refuses a JSON-RPC batch as a
+  whole with `400` and `-32600` before the choice of the path, so for every revision and before any tool runs; it reads
+  the body itself under the body limit of the wiki and hands it to the SDK parsed; and every request with a token valid
+  for its address, a request refused for its role included, takes from a budget per user, 60 at once and 300 a minute
+  by default, kept in memory, with `429` and `Retry-After` over it and a log line at most once per user and minute
+  (`mcp.md`, "The endpoint" and "The connections"). Checked by `src/features/mcp/http.test.ts`,
+  `src/features/mcp/rate-limit.test.ts`, `src/features/mcp/limits.spec-tests.test.ts`, `src/lib/env.test.ts` and
+  `e2e/mcp-limits.spec.ts` against the real server: a batch of two `read_page` calls gets `400`, a write of a full page
+  with every character escaped fits, a body of 1 MiB and one byte gets `413` with and without `Content-Length`, and
+  the requests of one user meet the budget across addresses while those without a valid token count nothing.
 - OWASP MCP Top 10: MCP01 (tokens as hashes, never logged or answered), MCP02 (the tools of the role of the address,
   the lower of the user's current role and the role of the connection, nothing of an Owner and no tool that lists or
   restores deleted pages or changes roles; the tools of a Manager are not covered until a recheck), MCP03 (names,
@@ -2450,13 +2431,13 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   "Passwords"; `spec/oauth.md`, section "Clients"; `spec/mcp.md`, section "The endpoint"
 - Severity: Minor
 - Category: docs
-- Problem: this ties together the findings on the queue of the password hashing, the batches at the MCP addresses, the unbounded bodies of the OAuth endpoints and the unpaged lists. ASVS 15.1.3 asks for one place
-  that names each function that needs much time or memory and its guard; today the parts are scattered (the Argon2
-  limiter in `users-and-login.md`, the limits of the metadata fetch in `oauth.md`) or missing (the 4 MiB of the MCP
-  SDK).
+- Problem: this ties together the findings on the queue of the password hashing, the unbounded bodies of the OAuth
+  endpoints and the unpaged lists. ASVS 15.1.3 asks for one place that names each function that needs much time or
+  memory and its guard; today the parts are scattered (the Argon2 limiter in `users-and-login.md`, the limits of the
+  metadata fetch in `oauth.md`, the body limit and the rate limit of the MCP addresses in `mcp.md`).
 - Impact: there is no single list to check a new costly path against, and no statement of what the timeout of the
   proxy has to cover.
-- Evidence: `grep -n "4 MiB\|maxRequestBodySize" spec/*.md` finds nothing outside this report.
+- Evidence: no spec file holds a list of the costly functions; each limit is named only in the spec of its feature.
 - Suggestion (required): one table, for example in the security overview, with each costly function, its limit, or
   "none, a task of the proxy", and a link to its finding. Its first entry is the Markdown parse, whose guards
   `pages.md` lists in "The cost of the Markdown parse".
@@ -2471,14 +2452,15 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 - Category: tests
 - Problem: the rules of the features are tested thoroughly, but these were checked only by hand in this review: a
   Server Action with a foreign `Origin` is refused; pages, RSC payloads and action answers carry `no-store`; no answer
-  carries `Access-Control-*`; an MCP address refuses a body over 4 MiB; and there is no `/api/auth/*`.
+  carries `Access-Control-*`; and there is no `/api/auth/*`. The body limit of the MCP addresses is the wiki's own now
+  and has its tests (`e2e/mcp-limits.spec.ts`).
 - Impact: an upgrade of Next.js or the SDK, a setting such as `serverActions.allowedOrigins`, a `use cache` or a new
   route under `api/auth` could weaken CSRF or caching protection unnoticed.
 - Evidence: no test file under `e2e/` or `src/` sends a Server Action with a foreign `Origin`, asserts
   `Cache-Control` on a page, or calls `/api/auth/`.
 - Suggestion (required): end-to-end tests for each of these (the CSRF test can rewrite the `Origin` with `page.route`).
-- Confidence: Medium. How Next.js answers a Server Action whose `Origin` was rewritten with `page.route`, and how the
-  SDK answers a body over 4 MiB, was read in the code but not tried in a test.
+- Confidence: Medium. How Next.js answers a Server Action whose `Origin` was rewritten with `page.route` was read in
+  the code but not tried in a test.
 - Reference: OWASP A01:2025 Broken Access Control; ASVS 3.5.1, 3.4.2, 14.3.2; CWE-352; `CON.10.A15`.
 
 #### issue: Better Auth takes `BETTER_AUTH_SECRETS` from the environment, which replaces the cookie secret of `AuthSecret`
@@ -2822,8 +2804,10 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
 - The issuer is the public `https` address, and the reverse proxy serves the `/.well-known/` documents under no other
   host (OAuth).
 - Production sets `HIPPOWIKI_PUBLIC_URL` where MCP is wanted (without it every address under `/mcp` answers 404), and
-  the reverse proxy sets a body limit and a rate limit for the addresses under `/mcp/` and passes `Host` unchanged; the
-  body limit must still let one write of a full page through (100,000 characters as JSON) (MCP server).
+  the reverse proxy passes `Host` unchanged for the addresses under `/mcp/`; the wiki has a body limit and a rate limit
+  per user of its own there (`mcp.md`), so the proxy may limit more strictly, must still let one write of a full page
+  through (100,000 characters as JSON, about 600 KB with every character escaped), and limits the requests without a
+  valid token (MCP server).
 - No intermediary routes or applies policy by `Mcp-*` headers, or it trusts them only for requests of the 2026-07-28
   revision (MCP server).
 - How many processes serve the app, and whether the reverse proxy has a request timeout; with one process a slow page
@@ -2954,7 +2938,7 @@ The requirements are those of the module texts on bsi.bund.de as fetched on 2026
 | A03 Software Supply Chain Failures         | Supply chain; Configuration (base image)                                         |
 | A04 Cryptographic Failures                 | Cross-cutting (inventory); Login (hashing)                                       |
 | A05 Injection                              | Content (XSS); Cross-cutting (SQL); MCP server (arguments)                       |
-| A06 Insecure Design                        | Content (Markdown); MCP server (prompt injection, batches); Login; OAuth         |
+| A06 Insecure Design                        | Content (Markdown); MCP server (prompt injection, limits); Login; OAuth          |
 | A07 Authentication Failures                | Login; Connected apps; OAuth                                                     |
 | A08 Software or Data Integrity Failures    | Supply chain                                                                     |
 | A09 Security Logging and Alerting Failures | Logging; Login; Connected apps; MCP server (tool calls)                          |

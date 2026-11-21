@@ -1,7 +1,8 @@
-// Tests written from the requirements of the attachment groundwork alone (`spec/attachment-groundwork-requirements.md`,
-// R2 to R9), for the rules or the parts of rules that the other tests of the MCP adapter leave open: batches at every
-// address, the body limit in bytes and for the current protocol, what counts against the rate limit, the value of
-// `Retry-After`, the log of the refusals over time, the variables of the limits and the order of the refusals.
+// Tests written from the spec alone ("The endpoint" and "The connections" in `spec/mcp.md`, "Configuration" in
+// `spec/container-image.md`), for the rules or the parts of rules that the other tests of the MCP adapter leave open:
+// batches at every address, the body limit in bytes and for the current protocol, what counts against the rate limit,
+// the value of `Retry-After`, the log of the refusals over time, the variables of the limits and the order of the
+// refusals.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -221,7 +222,7 @@ function warningsOf(userId: string): unknown[][] {
 }
 
 describe("a batch", () => {
-  // attachment-groundwork-requirements.md, R2 and R7: refused as a whole on every MCP address and for every protocol
+  // mcp.md, "The endpoint": refused as a whole on every MCP address and for every protocol
   // revision, with 400 and -32600, before any tool runs.
   it.each([
     ["writer", false, { "mcp-protocol-version": "2025-03-26" }],
@@ -242,7 +243,7 @@ describe("a batch", () => {
     },
   );
 
-  // attachment-groundwork-requirements.md, R2: "before any tool runs", also for the write tools of a Writer.
+  // mcp.md, "The endpoint": "before any tool runs", also for the write tools of a Writer.
   it("of create_page calls at the Writer address creates no page", async () => {
     const batch = [toolCall(1, "create_page", { content: "# One" }), toolCall(2, "create_page", { content: "# Two" })];
 
@@ -253,7 +254,7 @@ describe("a batch", () => {
     expect(mocks.updatePageContent).not.toHaveBeenCalled();
   });
 
-  // attachment-groundwork-requirements.md, R2: a batch is a JSON array of messages, whatever it holds.
+  // mcp.md, "The endpoint": a batch is a JSON array of messages, whatever it holds.
   it.each([
     ["one call", [toolCall(1, "read_page", { page: "a" })]],
     ["an initialize of 2025-03-26", [INITIALIZE]],
@@ -267,7 +268,7 @@ describe("a batch", () => {
     expect(mocks.getPage).not.toHaveBeenCalled();
   });
 
-  // attachment-groundwork-requirements.md, R7: one warning line with the user, the grant and the address.
+  // mcp.md, "The endpoint": one warning line with the user, the grant and the address.
   it("is logged once with the user, the grant and the address of the Writer address it was sent to", async () => {
     await send(post([toolCall(1, "create_page", { content: "# Secret title\n\nSecret text" })], { role: "writer" }));
 
@@ -282,7 +283,7 @@ describe("a batch", () => {
 });
 
 describe("the body limit", () => {
-  // attachment-groundwork-requirements.md, R3: for every protocol revision, the current one included.
+  // mcp.md, "The endpoint": for every protocol revision, the current one included.
   it.each(["reader", "writer", "manager"] as const)(
     "refuses a body of 1 MiB and one byte of the current protocol at the %s address with 413",
     async (role) => {
@@ -297,7 +298,8 @@ describe("the body limit", () => {
     },
   );
 
-  // attachment-groundwork-requirements.md, R3 and R9: the limit is a number of bytes, not of characters.
+  // mcp.md, "The endpoint" and container-image.md, "Configuration": the limit is a number of bytes, not of
+  // characters.
   it("counts bytes: a body of fewer than 1 MiB characters but more than 1 MiB of UTF-8 is refused with 413", async () => {
     const call = toolCall(1, "read_page", { page: "a" });
     const text = JSON.stringify({ ...call, params: { ...(call.params as object), pad: "ä".repeat(MIB / 2) } });
@@ -312,14 +314,14 @@ describe("the body limit", () => {
     expect(mocks.getPage).not.toHaveBeenCalled();
   });
 
-  // attachment-groundwork-requirements.md, R3: a larger body is refused, whatever its Content-Length claims.
+  // mcp.md, "The endpoint": a larger body is refused, whatever its Content-Length claims.
   it("refuses a body in chunks larger than the limit whose Content-Length claims less", async () => {
     const response = await send(post(inChunks(bodyOfSize(MIB + 1)).stream, { headers: { "content-length": "100" } }));
 
     expect(response.status).toBe(413);
   });
 
-  // attachment-groundwork-requirements.md, R9: a value within the bounds changes the limit of R3 accordingly.
+  // container-image.md, "Configuration": a value within the bounds changes the body limit accordingly.
   it("follows HIPPOWIKI_MCP_BODY_LIMIT at 2 MiB: 2 MiB fits and 2 MiB and one byte is refused", async () => {
     setLimits({ bodyLimit: 2 * MIB });
 
@@ -331,7 +333,7 @@ describe("the body limit", () => {
     expect([fits.status, fitsInChunks.status, tooLarge.status, tooLargeInChunks.status]).toEqual([200, 200, 413, 413]);
   });
 
-  // attachment-groundwork-requirements.md, R3: the bound applies before the body is parsed, so an oversized batch is
+  // mcp.md, "The endpoint": the bound applies before the body is parsed, so an oversized batch is
   // refused as too large.
   it("refuses a batch over the limit with 413", async () => {
     const batch = JSON.stringify([toolCall(1, "read_page", { page: "a" }), toolCall(2, "read_page", { page: "b" })]);
@@ -342,7 +344,7 @@ describe("the body limit", () => {
 });
 
 describe("what counts against the rate limit", () => {
-  // attachment-groundwork-requirements.md, R4: every request whose token is valid counts, whatever message it carries.
+  // mcp.md, "The endpoint": every request whose token is valid counts, whatever message it carries.
   it.each([
     ["a refused batch", () => post([TOOLS_LIST, TOOLS_LIST]), 400],
     ["a body that is not JSON", () => post("{not json"), 400],
@@ -364,7 +366,7 @@ describe("what counts against the rate limit", () => {
     expect(next.status).toBe(429);
   });
 
-  // attachment-groundwork-requirements.md, R4: one budget across all the user's connections and addresses.
+  // mcp.md, "The endpoint": one budget across all the user's connections and addresses.
   it("shares one budget between the Reader, Writer and Manager addresses of several folders of a user", async () => {
     setLimits({ rateBurst: 3, ratePerMinute: 1 });
 
@@ -380,8 +382,8 @@ describe("what counts against the rate limit", () => {
 });
 
 describe("the answer over the budget", () => {
-  // attachment-groundwork-requirements.md, R5 and R9: Retry-After is the number of seconds until the next request is
-  // allowed, and HIPPOWIKI_MCP_RATE_PER_MINUTE sets how fast the budget refills.
+  // mcp.md, "The endpoint" and container-image.md, "Configuration": Retry-After is the number of seconds until the
+  // next request is allowed, and HIPPOWIKI_MCP_RATE_PER_MINUTE sets how fast the budget refills.
   it.each([1, 7, 40, 60, 300])(
     "with %i a minute gives Retry-After in whole seconds, after which the next request is allowed",
     async (perMinute) => {
@@ -403,7 +405,7 @@ describe("the answer over the budget", () => {
     },
   );
 
-  // attachment-groundwork-requirements.md, R9: HIPPOWIKI_MCP_RATE_PER_MINUTE changes the limit of R4.
+  // container-image.md, "Configuration": HIPPOWIKI_MCP_RATE_PER_MINUTE changes the rate limit.
   it("follows HIPPOWIKI_MCP_RATE_PER_MINUTE: with 60 a minute exactly one request more is allowed a second later", async () => {
     vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-21T10:00:00Z") });
     await loadAdapter();
@@ -419,7 +421,7 @@ describe("the answer over the budget", () => {
 });
 
 describe("the log of the rate limit", () => {
-  // attachment-groundwork-requirements.md, R8: at most one line per user and minute; the next line a minute or more
+  // mcp.md, "The endpoint": at most one line per user and minute; the next line a minute or more
   // later says how many requests were refused since the line before.
   it("writes one line for 100 refusals within a minute, and a second line a minute later that counts the 99 others", async () => {
     vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-21T10:00:00Z") });
@@ -441,7 +443,7 @@ describe("the log of the rate limit", () => {
     expect(JSON.stringify(lines[1])).toContain(FOLDER_ID);
   });
 
-  // attachment-groundwork-requirements.md, R8: the minute is one of each user: the first refusal of another user in
+  // mcp.md, "The endpoint": the minute is one of each user: the first refusal of another user in
   // the same minute writes a line of its own.
   it("writes a line for the first refusal of another user within the minute of the first", async () => {
     setLimits({ rateBurst: 1, ratePerMinute: 1 });
@@ -456,7 +458,7 @@ describe("the log of the rate limit", () => {
 });
 
 describe("the budget", () => {
-  // attachment-groundwork-requirements.md, R6: the budget is kept by the running server only.
+  // mcp.md, "The endpoint": the budget is kept by the running server only.
   it("is full again after a restart of the server", async () => {
     setLimits({ rateBurst: 1, ratePerMinute: 1 });
     expect(await sendMany(2)).toEqual([200, 429]);
@@ -468,7 +470,7 @@ describe("the budget", () => {
 });
 
 describe("the order of the refusals", () => {
-  // attachment-groundwork-requirements.md, "Effect on existing features": the rate limit comes after the check of
+  // mcp.md, "The connections": the rate limit comes after the check of
   // the token, so a request without a valid token gets 401 also from a user whose budget is used up.
   it("answers 401 before 429", async () => {
     setLimits({ rateBurst: 1, ratePerMinute: 1 });
@@ -478,7 +480,7 @@ describe("the order of the refusals", () => {
     expect((await send(post(TOOLS_LIST))).status).toBe(401);
   });
 
-  // attachment-groundwork-requirements.md, R5 and "Decisions": over the budget the request is refused before the
+  // mcp.md, "The endpoint" and "Decisions": over the budget the request is refused before the
   // protocol and before the body is read, so a batch and a body over the limit get 429.
   it("answers 429 before 400 for a batch and before 413 for a body over the limit, without reading the body", async () => {
     setLimits({ rateBurst: 1, ratePerMinute: 1 });
@@ -493,7 +495,7 @@ describe("the order of the refusals", () => {
     expect(large.pulled()).toBe(0);
   });
 
-  // attachment-groundwork-requirements.md, "Effect on existing features": the rate limit comes before the check of
+  // mcp.md, "The connections": the rate limit comes before the check of
   // the role and the protocol, so the role is checked before the body: 403 before 413 and 400.
   it("answers 403 for a role that is too low before 413 for a body over the limit and 400 for a batch", async () => {
     roleTooLow();

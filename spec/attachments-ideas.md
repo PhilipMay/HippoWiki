@@ -640,7 +640,8 @@ Reading, for every connection:
 Uploading, for a Writer and a Manager connection:
 
 - Small files inline: `upload_attachment` takes tab, page, name, MIME type and the bytes as base64. The body of an MCP
-  request is limited by the SDK to 4 MiB (`maxRequestBodySize`), so a file of at most about 2 MiB fits after base64.
+  request is limited by the body limit of the wiki, 1 MiB by default (`HIPPOWIKI_MCP_BODY_LIMIT`, see `mcp.md`), so a
+  file of at most about 700 KB fits after base64.
   Useful for what the model writes itself, such as an SVG or a CSV; a model cannot reliably produce the base64 of a
   file it does not hold, and each character is an output token.
 - Larger files through an upload address: `create_attachment_upload` takes tab, page, name, MIME type and size, checks

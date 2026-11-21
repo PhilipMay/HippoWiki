@@ -406,6 +406,8 @@ How the code is tested. Commands are listed in `README.md`.
 - `e2e/access.spec.ts` checks that every kind of address leads to the login page without a login, as a redirect that
   sends nothing of the page, and that the redirect carries the address as the way back. A new route adds its address
   there; a new public address is checked there as well, for not being sent to the login page.
+  `e2e/image-optimizer-spec-tests.spec.ts` holds the tests of the switched-off image optimizer written from the spec
+  alone.
 - The specs of MCP call the MCP addresses of folders with `request`, the helpers of `e2e/support/mcp.ts` and the
   access token of a grant from `createGrant()`, for Reader, Writer and Manager connections, each from a test database
   reset by `setUpProjects()`: `e2e/mcp-access.spec.ts` the tokens, the binding of a connection to its address and the
@@ -414,6 +416,12 @@ How the code is tested. Commands are listed in `README.md`.
   the spec of its group, a change of the access `e2e/mcp-access.spec.ts`; `e2e/oauth.spec.ts` covers the discovery, the registration, the
   token endpoint and the whole flow from the login over the consent page to a tool call, a refresh and a refresh token
   that is used again. The helpers of `e2e/support/oauth.ts` send a folder address as `resource` (`mcpAddress()`).
+- `e2e/mcp-limits.spec.ts` covers the limits of the MCP addresses: the refusal of batches, the body limit and the rate
+  limit per user. The servers of the end-to-end tests keep the default limits, so that the spec checks them. The budget
+  of the rate limit is kept per user in the memory of a server and outlives `resetTestDatabase()`, so a test that sends
+  many MCP requests uses a user of its own (`createUser()`), never the known user of the other MCP specs; a spec that
+  meets the limit gets a user of its own, and the limits of the servers are not raised. The unit tests written from the
+  spec alone for these limits are `src/features/mcp/limits.spec-tests.test.ts` and `src/lib/env.spec-tests.test.ts`.
 - The Markdown editor has specs of its own: `e2e/editor.spec.ts` the editor in source mode, its loading, its safety
   and its keyboard; `e2e/editor-preview.spec.ts` live preview and the mode switch; `e2e/editor-toolbar.spec.ts` the
   toolbar and its shortcuts; `e2e/editor-limit.spec.ts` the content limit and the counter, in a file of its own

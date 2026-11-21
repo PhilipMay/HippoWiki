@@ -1,6 +1,5 @@
-// Tests written from the requirements of the attachment groundwork alone (`spec/attachment-groundwork-requirements.md`,
-// R1), for the parts of the rule that `e2e/access.spec.ts` leaves open: `/_next/image` with other queries than the
-// two of its acceptance.
+// Tests written from the spec alone ("Authenticated access only" in `spec/users-and-login.md`), for the parts of the
+// rule that `e2e/access.spec.ts` leaves open: `/_next/image` with other queries than the two of its acceptance.
 
 import { NO_STORAGE_STATE } from "./support/auth";
 import { expect, test } from "./support/test";
@@ -16,8 +15,8 @@ const IMAGE_ADDRESSES = [
 ] as const;
 
 test.describe("the image optimizer with a session", () => {
-  // attachment-groundwork-requirements.md, R1: with a valid session, /_next/image answers as an address that does not
-  // exist, whatever its query.
+  // users-and-login.md, "Authenticated access only": with a valid session, /_next/image answers as an address that does
+  // not exist, whatever its query.
   for (const [what, address] of IMAGE_ADDRESSES) {
     test(`${what} answers 404 and no image`, async ({ page }) => {
       // `page.request` sends the session cookie of the saved login of the known user.
@@ -32,8 +31,8 @@ test.describe("the image optimizer with a session", () => {
 test.describe("the image optimizer without a session", () => {
   test.use({ storageState: NO_STORAGE_STATE });
 
-  // attachment-groundwork-requirements.md, R1: without a session cookie the address leads to the login page, as every
-  // address behind the login does.
+  // users-and-login.md, "Authenticated access only": without a session cookie the address leads to the login page, as
+  // every address behind the login does.
   for (const [what, address] of IMAGE_ADDRESSES) {
     test(`${what} leads to the login page`, async ({ request }) => {
       const response = await request.get(address, { maxRedirects: 0 });

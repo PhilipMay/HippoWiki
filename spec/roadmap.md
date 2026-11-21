@@ -100,7 +100,8 @@ listed first; there is no order across themes.
 - MCP write tools for folders: create folders from AI apps; renaming a folder and its roles stay in the browser,
   because the Owner is never a role of MCP (`mcp.md`, `folder-roles.md`).
 - CORS for other origins: let web applications on other origins call the API.
-- Rate limits and quotas: limits on requests, writes and stored content per user.
+- Rate limits and quotas: limits on requests in the browser, writes and stored content per user; the MCP requests
+  have a rate limit per user already (`mcp.md`).
 
 ## Operations
 
@@ -175,8 +176,9 @@ All from "Current limits" in `container-image.md`:
   section "Checks on the deployment" of `review-report.md`:
   - The reverse proxy: TLS by BSI TR-02102-2 and a redirect to HTTPS with HSTS passed on; `Host` passed unchanged and
     unknown hosts refused; `X-Forwarded-For`, `X-Forwarded-Host` and `X-Forwarded-Proto` of clients replaced; body
-    limits, timeouts and rate limits for `/login`, `/oauth/register`, `/oauth/token` and the MCP addresses under
-    `/mcp/`; no CORS headers, no
+    limits, timeouts and rate limits for `/login`, `/oauth/register` and `/oauth/token`; for the MCP addresses under
+    `/mcp/`, which have a body limit and a rate limit per user of their own (`mcp.md`), limits that may be stricter and
+    a limit for the requests without a valid token; no CORS headers, no
     change of the CSP, no shared cache; no `Authorization` header and no search words, `q` of the results address, in
     its access logs; `/api/health` only for the health checker.
   - The configuration: `HIPPOWIKI_TRUSTED_PROXIES` set to the real number of proxies, `HIPPOWIKI_PUBLIC_URL` set, no
