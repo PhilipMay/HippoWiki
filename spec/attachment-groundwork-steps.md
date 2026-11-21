@@ -26,7 +26,7 @@ an operator can change the three limits with environment variables within bounds
 - [x] Environment variables of the MCP limits
 - [x] Body limit and batches at the MCP addresses
 - [x] Rate limit of MCP requests
-- [ ] Spec tests
+- [x] Spec tests
 - [ ] Wrap-up
 
 ## Switch off the image optimizer
@@ -240,7 +240,9 @@ is complete only now and its documents are those of this step.
      for their role included, and none without; its 429 with `Retry-After`; its log once per user and minute; that a
      restart gives every user a full budget and that several instances would each keep a budget of their own (R6).
      "The connections": the list of what a client gets instead of an answer of the protocol gains the 429 after the
-     401 and before the 403, and the 413 and 400 of the body after the 403. "Decisions" takes the decisions of the
+     401 and before the 403, and the 413 and 400 of the body after the 403, and says that only a request that passes
+     the check of the token counts, so that the 404, 405 and 403 of a foreign `Origin` before it count nothing (the
+     finding of the spec tests, agreed with the user). "Decisions" takes the decisions of the
      requirements that still hold; the decision on prompt injection no longer names capping batches and a rate limit
      as rejected. "Current limits" no longer lists "no rate limits of MCP requests" and names that the budget is not
      shared between instances. The pointers to the code and the tests name `src/features/mcp/rate-limit.ts`, its test
@@ -250,7 +252,7 @@ is complete only now and its documents are those of this step.
    - `connected-apps.md`, "Current limits": "no rate limits of requests with an access token" says that the MCP
      requests have one (see `mcp.md`) and the token endpoint none.
    - `architecture.md` or `testing.md` only where a convention changed, such as the end-to-end tests of the rate limit
-     using users of their own.
+     using users of their own; `testing.md` names the spec-test files of this plan next to the others.
    - The finding is fixed as "Fixing a finding of the review report" in `spec/step-plan-workflow.md` describes: its
      section in "MCP server" is deleted; "Summary" gets the new counts (one Minor, one `issue:`, one Low less) and its
      verdict no longer names unbounded bodies and batches of MCP; its requirements (OWASP A06:2025, ASVS 2.4.1 and
@@ -264,7 +266,9 @@ is complete only now and its documents are those of this step.
 3. `README.md`: the commands are unchanged; its summary of what the prototype can do names the limits of MCP if it
    describes MCP in that detail.
 4. Delete this step file and `spec/attachment-groundwork-requirements.md`. The steps before name the rules in the
-   comments of the code and the tests, not the requirement IDs, so that no ID is left to remove; a search for `R1` to
+   comments of the code and the tests, not the requirement IDs, so that no ID is left to remove, except in the files
+   of the spec tests, which cite the requirements file and its IDs and are reworded to the sections of `mcp.md`,
+   `container-image.md` and `users-and-login.md`; a search for `R1` to
    `R9` in `src/`, `e2e/`, `integration/` and `scripts/` checks it. An ID found all the same is replaced by the
    section of `mcp.md` or `container-image.md` that holds the rule now, or dropped with its sentence kept.
 5. `CLAUDE.md`: remove the entries of this step file and of the requirements file; the entries of `mcp.md` and
