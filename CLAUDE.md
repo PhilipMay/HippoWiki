@@ -39,7 +39,6 @@ file itself holds.
   the file with its last finding.
 - `spec/list-layout-review.md`: Which findings of the review of the list layout in the page view are open? A fixed
   finding is deleted, and the file with its last finding.
-- `spec/bare-links-steps.md`: In which steps are bare addresses linked as on GitHub, so that file names stay text?
 
 ## Running the Checks
 
