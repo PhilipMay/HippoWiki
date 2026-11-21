@@ -274,6 +274,88 @@ describe("uploading a file", () => {
   });
 });
 
+describe("reverting a file", () => {
+  it("stores the blob of the old version as the newest version and writes no blob", async () => {
+    const folder = await createFolder({ name: "handbook" });
+    const file = await createFile({
+      folder,
+      name: "diagram.png",
+      lockVersion: 2,
+      versions: [{ bytes: await pngBytes(10, 10) }, { bytes: await pngBytes(20, 20) }],
+    });
+    const before = await blobs();
+
+    const result = await fileService.revertFile(actor, file.id, { version: 1, lockVersion: 2 });
+
+    expect(result).toMatchObject({ ok: true, value: { lockVersion: 3 } });
+    expect(await blobs()).toEqual(before);
+    const versions = await getTestDb().fileVersion.findMany({ where: { fileId: file.id }, orderBy: { number: "asc" } });
+    const [first, , third] = versions;
+    expect(versions).toHaveLength(3);
+    expect(third).toMatchObject({
+      number: 3,
+      sha256: first?.sha256,
+      size: first?.size,
+      width: 10,
+      height: 10,
+      userId: user.id,
+      via: "web",
+      revertedTo: 1,
+    });
+    const content = await fileService.getFileContent(actor, "handbook", null, "diagram.png", null);
+    expect(content?.version).toMatchObject({ number: 3, sha256: first?.sha256 });
+    expect(await getTestDb().file.findUniqueOrThrow({ where: { id: file.id } })).toMatchObject({
+      lockVersion: 3,
+      lastEditedById: user.id,
+    });
+  });
+
+  it("refuses a revert based on an older lock version and one to the current version, and stores nothing", async () => {
+    const folder = await createFolder();
+    const file = await createFile({ folder, lockVersion: 2, versions: [{}, {}] });
+
+    await expect(fileService.revertFile(actor, file.id, { version: 1, lockVersion: 1 })).resolves.toMatchObject({
+      ok: false,
+      error: { code: "file-changed", file: { lockVersion: 2 } },
+    });
+    await expect(fileService.revertFile(actor, file.id, { version: 2, lockVersion: 2 })).resolves.toEqual({
+      ok: false,
+      error: { code: "version-not-found" },
+    });
+    expect(await getTestDb().fileVersion.count()).toBe(2);
+    expect((await getTestDb().file.findUniqueOrThrow({ where: { id: file.id } })).lockVersion).toBe(2);
+  });
+
+  it("stores one of a new version and a revert based on the same lock version at the same time", async () => {
+    for (let round = 0; round < 5; round += 1) {
+      const folder = await createFolder();
+      const file = await createFile({ folder, name: "diagram.png", lockVersion: 2, versions: [{}, {}] });
+
+      const results = await Promise.all([
+        fileService.revertFile(actor, file.id, { version: 1, lockVersion: 2 }),
+        fileService.uploadFile(actor, { folderId: folder.id, tabId: null }, "diagram.png", [await pngBytes(9, 9)], {
+          ...NEW_FILE,
+          replace: 2,
+        }),
+      ]);
+
+      expect(results.filter((result) => result.ok)).toHaveLength(1);
+      expect(results.find((result) => !result.ok)).toMatchObject({ error: { code: "file-changed" } });
+      expect(await getTestDb().fileVersion.count({ where: { fileId: file.id } })).toBe(3);
+    }
+  });
+
+  it("refuses a revert by a Reader", async () => {
+    const bob = await createBob();
+    const folder = await createFolder({ roles: [{ user: bob, role: "reader" }] });
+    const file = await createFile({ folder, versions: [{}, {}] });
+
+    await expect(fileService.revertFile(inBrowser(bob), file.id, { version: 1, lockVersion: 1 })).resolves.toEqual(
+      NOT_ALLOWED,
+    );
+  });
+});
+
 describe("the reads of files", () => {
   it("list the files of a folder and of a tab by name, without deleted files and without those of the other place", async () => {
     const folder = await createFolder();

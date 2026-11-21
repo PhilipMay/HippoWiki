@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/features/auth/session";
 import FileDetailsView from "@/features/files/components/FileDetailsView";
 import { fileAddressOf } from "@/features/files/file-query";
-import { getFile } from "@/features/files/queries";
+import { getFile, getUploadSettings } from "@/features/files/queries";
 import PageAddress from "@/features/pages/components/PageAddress";
 import { pageAddressOf } from "@/features/pages/page-query";
 import { getPage } from "@/features/pages/queries";
@@ -23,8 +23,9 @@ async function resolve({ params, searchParams }: Props) {
   const fileName = parseFileSegment(segment);
   if (fileName) {
     const file = await getFile(folder, item, fileName);
-    const address = file && fileAddressOf(file, await searchParams);
-    return address && ({ kind: "file", file, ...address } as const);
+    const uploads = await getUploadSettings();
+    const address = file && fileAddressOf(file, await searchParams, uploads.on);
+    return address && ({ kind: "file", file, uploads, ...address } as const);
   }
   const pageName = parsePageSegment(segment);
   const page = pageName === null ? null : await getPage(folder, item, pageName);
@@ -42,6 +43,6 @@ export default async function TabPageView(props: Props) {
 
   // An action that the role does not include answers like an unknown one.
   const resolved = (await resolve(props)) ?? notFound();
-  if (resolved.kind === "file") return <FileDetailsView file={resolved.file} />;
+  if (resolved.kind === "file") return <FileDetailsView {...resolved} />;
   return <PageAddress page={resolved.page} query={resolved.query} />;
 }

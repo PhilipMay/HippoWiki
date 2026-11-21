@@ -358,8 +358,8 @@ export function parseNewPageName(searchParams: SearchParams): string | null | "i
 }
 
 /**
- * The notice of a page address whose editor or dialog is shown again because a change of the page was refused: the
- * page was changed after the editor or dialog was opened.
+ * The notice of a page address, or of the details page of a file, whose editor or dialog is shown again because a
+ * change was refused: the page or file was changed after the editor or dialog was opened.
  */
 export const CHANGED_NOTICE = "changed";
 
@@ -479,8 +479,30 @@ function placedFilePath(prefix: string, folder: string, tab: string | null, name
  * `/folders/<folder>/<name.ext>` for a file placed directly in a folder and `/folders/<folder>/<tab>/<name.ext>` for a
  * file in a tab; optionally with an action.
  */
-export function filePath(folder: string, tab: string | null, name: string, action?: string): string {
-  return withAction(placedFilePath(FOLDERS_PATH, folder, tab, name), action);
+export function filePath(
+  folder: string,
+  tab: string | null,
+  name: string,
+  action?: string,
+  notice?: PageNotice,
+): string {
+  const path = withAction(placedFilePath(FOLDERS_PATH, folder, tab, name), action);
+  return notice ? `${path}${action ? "&" : "?"}notice=${notice}` : path;
+}
+
+/**
+ * The address of the "Revert file" dialog of a file for one of its versions: the address of its details page with the
+ * action `revert` and the number of the version, optionally with a notice after it.
+ */
+export function fileRevertPath(
+  folder: string,
+  tab: string | null,
+  name: string,
+  version: number,
+  notice?: PageNotice,
+): string {
+  const path = `${filePath(folder, tab, name, "revert")}&version=${version}`;
+  return notice ? `${path}&notice=${notice}` : path;
 }
 
 /**

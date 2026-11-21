@@ -391,3 +391,22 @@ test("the copy button of the details page of a file stays disabled until hydrati
   await expect(page.getByLabel("Link", { exact: true })).toHaveValue("[[manual.pdf]]");
   await expect(page.getByRole("button", { name: "Copy link" })).toBeDisabled();
 });
+
+test("the dialogs of a new version and of a revert of a file are locked until hydration", async ({ page }) => {
+  const folder = await createFolder({ name: "locked-folder" });
+  await createFile({ folder, name: "diagram.png", versions: [{}, {}] });
+
+  await page.goto("/folders/locked-folder/diagram.png?action=upload-version");
+  const upload = page.getByRole("dialog", { name: "Upload new version" });
+  await expect(upload.getByLabel("File")).toBeDisabled();
+  await expect(upload.getByRole("checkbox", { name: "Remove location and camera data" })).toBeDisabled();
+  await expect(upload.getByRole("button", { name: "Upload" })).toBeDisabled();
+
+  await page.goto("/folders/locked-folder/diagram.png?action=revert&version=1");
+  const revert = page.getByRole("dialog", { name: "Revert file" });
+  await expect(revert.getByRole("button", { name: "Revert" })).toBeDisabled();
+  await expect(revert.getByRole("link", { name: "Cancel" })).toHaveAttribute(
+    "href",
+    "/folders/locked-folder/diagram.png",
+  );
+});

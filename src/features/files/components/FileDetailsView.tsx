@@ -14,14 +14,20 @@ import type { ReactNode } from "react";
 
 import CopyField from "@/components/CopyField";
 import HeadingWithActions from "@/components/HeadingWithActions";
+import Link from "@/components/Link";
 import Time from "@/components/Time";
 import FolderBreadcrumbs from "@/features/folders/components/FolderBreadcrumbs";
-import type { FileWithPlace } from "@/features/files/service";
-import { FILE_TYPES, isImageType } from "@/features/files/types";
+import { revertFile } from "@/features/files/actions";
+import RevertFileDialog from "@/features/files/components/RevertFileDialog";
+import UploadVersionDialog from "@/features/files/components/UploadVersionDialog";
+import { mayDoFileAction, type FileAction } from "@/features/files/file-query";
+import type { FileWithPlace, UploadSettings } from "@/features/files/service";
+import { FILE_TYPES, isImageType, type FileType } from "@/features/files/types";
+import { changedMessage } from "@/features/pages/changed-page";
 import SearchField from "@/features/search/components/SearchField";
 import { editorWithChannel } from "@/features/users/records";
-import { fileContentPath } from "@/lib/addresses";
-import { formatBytes } from "@/lib/format";
+import { fileContentPath, filePath, fileRevertPath, type PageNotice } from "@/lib/addresses";
+import { formatBytes, formatDateTime } from "@/lib/format";
 
 /** The most width a preview of an image takes, as the text of a page does. */
 const PREVIEW_MAX_WIDTH = "100%";
@@ -35,6 +41,12 @@ function linkToCopy(file: FileWithPlace): string {
   return isImageType(file.type) ? `![[${target}]]` : `[[${target}]]`;
 }
 
+/** What the file field of "Upload new version" accepts: the extensions and the MIME type of the type of the file. */
+function acceptOf(type: FileType): string {
+  const { extension, mimeType } = FILE_TYPES[type];
+  return type === "jpeg" ? `.jpg,.jpeg,${mimeType}` : `.${extension},${mimeType}`;
+}
+
 /** Where the file lives, as a sentence. */
 function placeOf(file: FileWithPlace): string {
   return file.tab
@@ -42,17 +54,31 @@ function placeOf(file: FileWithPlace): string {
     : `Directly in the folder ${file.folder.name}`;
 }
 
+type FileDetailsViewProps = {
+  file: FileWithPlace;
+  /** The action of the address, already checked against the role, with the version of a revert and the notice. */
+  action: FileAction | null;
+  version: number | null;
+  notice: PageNotice | null;
+  /** Whether files can be uploaded, and their size limit. */
+  uploads: UploadSettings;
+};
+
 /**
  * The details page of a file: its place, a preview of an image, its type, size, width and height, the number of its
- * versions and its last change, "Open" and "Download", the link to copy, and its versions, newest first, each with a
- * link that opens it.
+ * versions and its last change, "Open" and "Download", "Upload new version" for the roles that may, the link to copy,
+ * and its versions, newest first, each with a link that opens it and, but for the current one, "Revert" for the roles
+ * that may; with the dialog of the action on top.
  */
-export default function FileDetailsView({ file }: { file: FileWithPlace }) {
+export default function FileDetailsView({ file, action, version, notice, uploads }: FileDetailsViewProps) {
   const folder = file.folder.name;
   const tab = file.tab?.name ?? null;
   const [current] = file.versions;
   const image = isImageType(file.type);
   const address = fileContentPath(folder, tab, file.name);
+  const detailsHref = filePath(folder, tab, file.name);
+  const mayRevert = mayDoFileAction(file.role, "revert");
+  const reverted = version === null ? undefined : file.versions.find(({ number }) => number === version);
 
   const details: [string, ReactNode][] = [
     ["Place", placeOf(file)],
@@ -72,7 +98,8 @@ export default function FileDetailsView({ file }: { file: FileWithPlace }) {
 
   return (
     <Stack spacing={3}>
-      <SearchField folderName={folder} />
+      {/* The search field is left out while a dialog is open, so that a search never discards what was entered. */}
+      {action === null && <SearchField folderName={folder} />}
       <FolderBreadcrumbs folderName={folder} tabName={tab} current={file.name} />
       <HeadingWithActions title={file.name}>
         <Button component="a" href={address} target="_blank" rel="noopener noreferrer" variant="outlined">
@@ -81,6 +108,11 @@ export default function FileDetailsView({ file }: { file: FileWithPlace }) {
         <Button component="a" href={fileContentPath(folder, tab, file.name, { download: true })} variant="outlined">
           Download
         </Button>
+        {uploads.on && mayDoFileAction(file.role, "upload-version") && (
+          <Button component={Link} href={filePath(folder, tab, file.name, "upload-version")} variant="contained">
+            Upload new version
+          </Button>
+        )}
       </HeadingWithActions>
 
       {image && (
@@ -124,33 +156,73 @@ export default function FileDetailsView({ file }: { file: FileWithPlace }) {
                 <TableCell>By</TableCell>
                 <TableCell>Via</TableCell>
                 <TableCell>Size</TableCell>
+                {mayRevert && <TableCell>Actions</TableCell>}
               </TableRow>
             </TableHead>
             <TableBody>
-              {file.versions.map((version) => (
-                <TableRow key={version.number}>
+              {file.versions.map((entry) => (
+                <TableRow key={entry.number}>
                   <TableCell>
                     <MuiLink
-                      href={fileContentPath(folder, tab, file.name, { version: version.number })}
+                      href={fileContentPath(folder, tab, file.name, { version: entry.number })}
                       target="_blank"
                       rel="noopener noreferrer"
                     >
-                      {`Version ${version.number}`}
+                      {`Version ${entry.number}`}
                     </MuiLink>
-                    {version.revertedTo !== null && ` (reverted to version ${version.revertedTo})`}
+                    {entry.revertedTo !== null && ` (reverted to version ${entry.revertedTo})`}
                   </TableCell>
                   <TableCell>
-                    <Time date={version.createdAt} />
+                    <Time date={entry.createdAt} />
                   </TableCell>
-                  <TableCell>{version.uploadedBy.name}</TableCell>
-                  <TableCell>{version.uploadedBy.via}</TableCell>
-                  <TableCell>{formatBytes(version.size)}</TableCell>
+                  <TableCell>{entry.uploadedBy.name}</TableCell>
+                  <TableCell>{entry.uploadedBy.via}</TableCell>
+                  <TableCell>{formatBytes(entry.size)}</TableCell>
+                  {mayRevert && (
+                    <TableCell>
+                      {/* A revert to the current version would change nothing, so it is not offered. */}
+                      {entry.number !== current.number && (
+                        <MuiLink
+                          component={Link}
+                          href={fileRevertPath(folder, tab, file.name, entry.number)}
+                          aria-label={`Revert to version ${entry.number}`}
+                        >
+                          Revert
+                        </MuiLink>
+                      )}
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </TableContainer>
       </Stack>
+
+      {action === "upload-version" && (
+        <UploadVersionDialog
+          folderName={folder}
+          tabName={tab}
+          fileName={file.name}
+          typeLabel={FILE_TYPES[file.type].label}
+          accept={acceptOf(file.type)}
+          image={image}
+          lockVersion={file.lockVersion}
+          sizeLimit={uploads.sizeLimit}
+          closeHref={detailsHref}
+        />
+      )}
+      {action === "revert" && reverted && (
+        <RevertFileDialog
+          // A new key after a refused revert starts the dialog anew with the file as it is now.
+          key={`${file.lockVersion}-${notice ?? ""}`}
+          action={revertFile.bind(null, file.id, reverted.number)}
+          versionLabel={`version ${reverted.number} of ${formatDateTime(reverted.createdAt)} by ${reverted.uploadedBy.name} via ${reverted.uploadedBy.via}`}
+          lockVersion={file.lockVersion}
+          changedMessage={notice === "changed" ? changedMessage(file, "file") : undefined}
+          closeHref={detailsHref}
+        />
+      )}
     </Stack>
   );
 }

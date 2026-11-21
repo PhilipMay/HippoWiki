@@ -35,8 +35,9 @@ async function resolve({ params, searchParams }: Props) {
   const fileName = parseFileSegment(item);
   if (fileName) {
     const file = await getFile(folder, null, fileName);
-    const address = file && fileAddressOf(file, query);
-    return address && ({ kind: "file", file, ...address } as const);
+    const uploads = await getUploadSettings();
+    const address = file && fileAddressOf(file, query, uploads.on);
+    return address && ({ kind: "file", file, uploads, ...address } as const);
   }
   const tab = await getTab(folder, item);
   const uploads = await getUploadSettings();
@@ -55,7 +56,7 @@ export default async function FolderItemPage(props: Props) {
   // An action that the role does not include answers like an unknown one, before the content is read.
   const resolved = (await resolve(props)) ?? notFound();
   if (resolved.kind === "page") return <PageAddress page={resolved.page} query={resolved.query} />;
-  if (resolved.kind === "file") return <FileDetailsView file={resolved.file} />;
+  if (resolved.kind === "file") return <FileDetailsView {...resolved} />;
 
   const { tab, uploads, action, name } = resolved;
   if (action === "new") return <NewPageView folder={tab.folder} tab={tab} presetName={name} />;

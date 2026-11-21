@@ -74,6 +74,7 @@ import {
   ACTOR,
   ACTOR_ID,
   ADMIN,
+  FILE_ID,
   FOLDER_ID,
   foreignKeyViolation,
   knownError,
@@ -141,6 +142,18 @@ beforeEach(() => {
   mocks.processImage.mockResolvedValue({ ok: true, value: { width: 30, height: 40, bytes: Buffer.from("png") } });
   mocks.fileCreate.mockResolvedValue({ ...STORED_ROW, lockVersion: 1 });
   mocks.removeBlobIfUnused.mockResolvedValue(undefined);
+  // A file with the lock version 3 and the versions 1 and 2, of which version 2 is the current one.
+  mocks.fileUpdateMany.mockResolvedValue({ count: 1 });
+  mocks.versionFindFirst.mockImplementation(({ where }: { where: { number?: number } }) =>
+    Promise.resolve(
+      where.number === undefined
+        ? { number: 2 }
+        : where.number <= 2
+          ? { sha256: SHA, size: 1000, width: 30, height: 40 }
+          : null,
+    ),
+  );
+  mocks.fileFindUniqueOrThrow.mockResolvedValue({ ...STORED_ROW, lockVersion: 4 });
   mocks.transaction.mockImplementation((run: (tx: unknown) => Promise<unknown>) =>
     run({
       file: {
@@ -203,6 +216,7 @@ describe("the content writes of files", () => {
 
   it.each(WRITES)("$name answers a missing actor with failed", async (write) => {
     mocks.fileCreate.mockRejectedValue(foreignKeyViolation({ index: write.editorKey }));
+    mocks.transaction.mockRejectedValue(foreignKeyViolation({ index: write.editorKey }));
 
     await expect(write.call(ACTOR)).resolves.toEqual({ ok: false, error: { code: "failed" } });
     expect(mocks.error).toHaveBeenCalledWith(
@@ -498,6 +512,70 @@ describe("checkUploadName", () => {
       expect.objectContaining({ folderId: FOLDER_ID }),
       "failed to check upload name",
     );
+  });
+});
+
+describe("revertFile", () => {
+  const revert = (version: number, lockVersion: number | null = 3) =>
+    fileService.revertFile(ACTOR, FILE_ID, { version, lockVersion });
+
+  it("stores the content of the version as the newest version, without a blob, and logs it", async () => {
+    await expect(revert(1)).resolves.toEqual({ ok: true, value: { ...STORED_FILE, lockVersion: 4 } });
+    expect(mocks.fileUpdateMany.mock.calls[0]?.[0]).toMatchObject({
+      data: { lockVersion: { increment: 1 }, lastEditedById: ACTOR_ID, lastEditedVia: "web" },
+    });
+    expect(mocks.versionCreate.mock.calls[0]?.[0]).toEqual({
+      data: {
+        sha256: SHA,
+        size: 1000,
+        width: 30,
+        height: 40,
+        fileId: FILE_ID,
+        number: 3,
+        userId: ACTOR_ID,
+        via: "web",
+        revertedTo: 1,
+      },
+    });
+    expect(mocks.receiveBlob).not.toHaveBeenCalled();
+    expect(mocks.info).toHaveBeenCalledWith(
+      { fileId: FILE_ID, lockVersion: 4, version: 1, channel: "web" },
+      "file reverted",
+    );
+  });
+
+  it("refuses a version that does not exist and the current version", async () => {
+    await expect(revert(5)).resolves.toEqual({ ok: false, error: { code: "version-not-found" } });
+    await expect(revert(2)).resolves.toEqual({ ok: false, error: { code: "version-not-found" } });
+    expect(mocks.versionCreate).not.toHaveBeenCalled();
+  });
+
+  it("refuses a revert based on an older lock version, or on none, with the file as it is now", async () => {
+    mocks.fileUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.fileFindUnique.mockResolvedValue({ ...STORED_ROW, lockVersion: 4 });
+
+    await expect(revert(1)).resolves.toEqual({
+      ok: false,
+      error: { code: "file-changed", file: { ...STORED_FILE, lockVersion: 4 } },
+    });
+    await expect(revert(1, null)).resolves.toEqual({
+      ok: false,
+      error: { code: "file-changed", file: { ...STORED_FILE, lockVersion: 4 } },
+    });
+    mocks.fileFindUnique.mockResolvedValue(null);
+    await expect(revert(1)).resolves.toEqual({ ok: false, error: { code: "file-not-found" } });
+    expect(mocks.versionCreate).not.toHaveBeenCalled();
+  });
+
+  it("answers a malformed id without asking the database, and any other error with failed", async () => {
+    await expect(fileService.revertFile(ACTOR, MALFORMED_ID, { version: 1, lockVersion: 3 })).resolves.toEqual({
+      ok: false,
+      error: { code: "file-not-found" },
+    });
+    expect(mocks.roleFindFirst).not.toHaveBeenCalled();
+
+    mocks.transaction.mockRejectedValue(knownError("P1001"));
+    await expect(revert(1)).resolves.toEqual({ ok: false, error: { code: "failed" } });
   });
 });
 

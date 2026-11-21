@@ -1,6 +1,9 @@
-// What the upload dialog needs of an upload: the answer of the upload address, which the dialog reads after its
-// `fetch()`. No server-only imports, so Client Components can use it.
+// What the dialogs of files need: the answer of the upload address, which the upload dialogs read after their `fetch()`,
+// the answer of the check of a name, and the form of a revert. No server-only imports, so Client Components can use its
+// types; a Client Component takes the names of fields from `fields.ts`, which brings no Zod.
 
+import { LOCK_VERSION_FIELD } from "@/features/files/fields";
+import { parseLockVersion } from "@/features/files/schema";
 import type { LastEditor } from "@/features/users/records";
 
 /** The field of the upload dialog that a refusal belongs to: the name, the chosen file, or the dialog as a whole. */
@@ -41,4 +44,21 @@ export function uploadedFileState(file: {
   lastEditedBy: LastEditor;
 }): UploadedFileState {
   return { lockVersion: file.lockVersion, updatedAt: file.updatedAt.toISOString(), lastEditedBy: file.lastEditedBy };
+}
+
+/** The state of the "Revert file" dialog: the error of the last submission. */
+export type FileRevertFormState = { message?: string };
+
+/** The Server Action of the "Revert file" dialog, with the file and the version bound. */
+export type FileRevertFormAction = (state: FileRevertFormState, formData: FormData) => Promise<FileRevertFormState>;
+
+/**
+ * Reads the lock version of the file from a submitted form, or `null` if it is missing or malformed. That is no error
+ * of the form: the service refuses a change without a lock version as one based on an older state, so that the current
+ * file is shown.
+ */
+export function parseLockVersionFormData(formData: FormData): number | null {
+  const value = formData.get(LOCK_VERSION_FIELD);
+  if (typeof value !== "string" || !/^[0-9]+$/.test(value)) return null;
+  return parseLockVersion(Number(value));
 }

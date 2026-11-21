@@ -14,6 +14,7 @@ import {
   type ChangeRoleFieldErrors,
   type GiveRoleFieldErrors,
 } from "@/features/folder-roles/schema";
+import { parseFileId } from "@/features/files/schema";
 import { parseFolderId, parseTabId } from "@/features/folders/schema";
 import { parsePageId } from "@/features/pages/schema";
 import { parseUserId, parseUserName } from "@/features/users/schema";
@@ -46,8 +47,13 @@ function roleHolderId(actor: Actor): string | null {
   return editorIdOf(actor);
 }
 
-/** The folder a role is read on: by its id, by one of its tabs or by one of its pages. */
-type FolderCondition = { id?: string; tabs?: { some: { id: string } }; pages?: { some: { id: string } } };
+/** The folder a role is read on: by its id, by one of its tabs, by one of its pages or by one of its files. */
+type FolderCondition = {
+  id?: string;
+  tabs?: { some: { id: string } };
+  pages?: { some: { id: string } };
+  files?: { some: { id: string } };
+};
 
 /**
  * The role that counts for the actor on the folder that the condition selects, or `null` without one: an actor of MCP
@@ -103,6 +109,19 @@ export async function roleOnFolderOfPage(actor: Actor | ContentActor, pageId: st
   const id = parsePageId(pageId);
   if (!userId || !id) return null;
   return roleWhere(actor, userId, { pages: { some: { id } } });
+}
+
+/**
+ * The role of the actor on the folder of the file with the given id, deleted files included, or `null` for an admin, a
+ * malformed id, a file that does not exist and a folder without a role of the actor; for an actor of MCP as in
+ * `folderRoleOf()`. A missing file and a missing role give the same answer, so that nothing tells whether a file
+ * exists.
+ */
+export async function roleOnFolderOfFile(actor: Actor | ContentActor, fileId: string): Promise<Role | null> {
+  const userId = roleHolderId(actor);
+  const id = parseFileId(fileId);
+  if (!userId || !id) return null;
+  return roleWhere(actor, userId, { files: { some: { id } } });
 }
 
 /**

@@ -145,6 +145,11 @@ What the steps share, so that each step builds on the same model:
 - Step 3: Chrome shows a PDF under `sandbox` in its viewer (checked with the installed Chrome); Firefox and Safari are
   left to the manual check.
 
+- Step 5: a refused "Upload new version" stays open with the chosen file and the message, and takes the lock version of
+  the file as it is now from the answer of the upload address, instead of being shown again at `?notice=changed`,
+  because the file is sent with `fetch()`; the revert follows the pages with `?notice=changed`. The message comes from
+  `changedMessage()` of `src/features/pages/changed-page.ts`, now shared by pages and files.
+
 ## Requirements by step
 
 | Step                                      | Requirements                                      |
@@ -175,7 +180,7 @@ The plan is large, so it has two stop points:
 - [x] File types, names, storage and images
 - [x] Files in the database and their addresses
 - [x] Files in the views and the details page
-- [ ] New versions and revert
+- [x] New versions and revert
 - [ ] Links and embeds of files
 - [ ] Moving and renaming files
 - [ ] Deleting and restoring files

@@ -21,6 +21,7 @@ import {
   openContentWrite,
   refusedByRole,
   unknownActor,
+  type BrowserActor,
   type ContentActor,
   type Editor,
 } from "@/features/folder-roles/actors";
@@ -31,11 +32,12 @@ import {
   readableFolderWhere,
   readerOf,
   roleOf,
+  roleOnFolderOfFile,
   roleSelection,
 } from "@/features/folder-roles/service";
 import { parseFolderId, parseTabId } from "@/features/folders/schema";
 import { ImageBusyError, processImage } from "@/features/files/images";
-import { parseLockVersion, uploadInputSchema, type FileFieldErrors } from "@/features/files/schema";
+import { parseFileId, parseLockVersion, uploadInputSchema, type FileFieldErrors } from "@/features/files/schema";
 import {
   commitBlob,
   discardStaged,
@@ -721,5 +723,88 @@ export async function uploadFile(
     { fileId: file.id, lockVersion: file.lockVersion, size: content.blob.size, ...channelOf(actor) },
     existing.value ? "file version uploaded" : "file uploaded",
   );
+  return { ok: true, value: file };
+}
+
+/** The version to revert to does not exist, or it is the current version, which a revert would not change. */
+type VersionNotFound = { code: "version-not-found" };
+
+export type RevertFileError = NotAllowed | FileNotFound | FileChanged | VersionNotFound | Failed;
+
+/** The version of a revert was not found in its transaction; thrown inside it to roll it back. */
+class VersionMissing extends Error {}
+
+/**
+ * Reverts the file with the given id to an earlier version, based on the lock version that the dialog was opened with:
+ * stores the content of that version as the newest version, which names the version it went back to, by the actor, and
+ * counts the lock version up, in one transaction. No byte is written: the new version holds the blob of the old one.
+ * Only the browser reverts. It is refused with `file-changed` when the file was changed after that lock version, and
+ * with `version-not-found` for a version that does not exist or is the current one.
+ */
+export async function revertFile(
+  actor: BrowserActor,
+  id: string,
+  input: { version: number; lockVersion: number | null },
+): Promise<Result<StoredFile, RevertFileError>> {
+  const opened = openContentWrite(actor, "file not reverted");
+  if (opened.refused) return opened.refused;
+  const { editor } = opened;
+
+  const fileId = parseFileId(id);
+  if (!fileId) return { ok: false, error: { code: "file-not-found" } };
+
+  const role = await lookUp(() => roleOnFolderOfFile(actor, fileId), { fileId }, "failed to revert file");
+  if (!role.ok) return role;
+  const refused = refusedByRole(actor, "file not reverted", role.value, "editFile", { fileId });
+  if (refused) return refused;
+
+  const lockVersion = parseLockVersion(input.lockVersion);
+  if (lockVersion === null) return refusedFileWrite(fileId, input.lockVersion, "file to revert");
+
+  let file: StoredFile;
+  try {
+    file = withLastEditor(
+      await getDb().$transaction(async (tx) => {
+        const { count } = await tx.file.updateMany({
+          where: { id: fileId, lockVersion, deletedAt: null },
+          data: { lockVersion: { increment: 1 }, ...editor },
+        });
+        if (count === 0) throw new FileChangedMeanwhile();
+        // The update holds the row of the file, so the newest version stays the newest until the end.
+        const newest = await tx.fileVersion.findFirst({
+          where: { fileId },
+          select: { number: true },
+          orderBy: { number: "desc" },
+        });
+        const target = await tx.fileVersion.findFirst({
+          where: { fileId, number: input.version },
+          select: { sha256: true, size: true, width: true, height: true },
+        });
+        if (!newest || !target || newest.number === input.version) throw new VersionMissing();
+        await tx.fileVersion.create({
+          data: {
+            ...target,
+            fileId,
+            number: newest.number + 1,
+            userId: editor.lastEditedById,
+            via: editor.lastEditedVia,
+            revertedTo: input.version,
+          },
+        });
+        return tx.file.findUniqueOrThrow({ where: { id: fileId }, select: STORED_FILE_SELECT });
+      }),
+    );
+  } catch (err) {
+    if (err instanceof FileChangedMeanwhile) return refusedFileWrite(fileId, lockVersion, "file to revert");
+    if (err instanceof VersionMissing) {
+      logger.warn({ fileId, version: input.version }, "version to revert to not found");
+      return { ok: false, error: { code: "version-not-found" } };
+    }
+    if (isForeignKeyViolation(err, LAST_EDITOR)) return unknownActor(err, actor);
+    logger.error({ err, fileId }, "failed to revert file");
+    return { ok: false, error: { code: "failed" } };
+  }
+
+  logger.info({ fileId, lockVersion: file.lockVersion, version: input.version, ...channelOf(actor) }, "file reverted");
   return { ok: true, value: file };
 }

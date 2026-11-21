@@ -5,6 +5,15 @@ import { z } from "zod";
 
 import { fileNameSchema } from "@/lib/names";
 
+/** A file id: a UUID, like the ids of pages. */
+const fileIdSchema = z.guid();
+
+/** Returns the id if it is a well-formed file id, otherwise `null`, so that malformed ids never reach the database. */
+export function parseFileId(id: string): string | null {
+  const result = fileIdSchema.safeParse(id);
+  return result.success ? result.data : null;
+}
+
 /** The largest value of a PostgreSQL `integer` column, such as the lock version of a file and a version number. */
 const INTEGER_MAX = 2_147_483_647;
 

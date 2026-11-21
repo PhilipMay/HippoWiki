@@ -1,10 +1,19 @@
 import { readFile } from "node:fs/promises";
 
 import type { Page } from "@playwright/test";
+import sharp from "sharp";
 
 import { collectErrors, expectNotFound } from "./support/browser";
-import { createFile, createFolder, createPage, createTab, createUser, resetTestDatabase } from "./support/database";
-import { pdfBytes, pngBytes } from "./support/files";
+import {
+  createFile,
+  createFolder,
+  createPage,
+  createTab,
+  createUser,
+  resetTestDatabase,
+  setOwnRole,
+} from "./support/database";
+import { pdfBytes, pngBytes, uploadFile } from "./support/files";
 import { expect, test } from "./support/test";
 
 let handbook: Awaited<ReturnType<typeof createFolder>>;
@@ -62,9 +71,9 @@ test("the details page of an image shows its preview, its details, the link to c
   await expect(page.getByLabel("Link", { exact: true })).toHaveValue("![[guides/diagram.png]]");
 
   const versions = page.getByRole("table", { name: "Versions" });
-  await expect(versions.getByRole("columnheader")).toHaveText(["Version", "Uploaded", "By", "Via", "Size"]);
-  await expect(versions.getByRole("link")).toHaveText(["Version 2", "Version 1"]);
-  await expect(versions.getByRole("link").nth(1)).toHaveAttribute(
+  await expect(versions.getByRole("columnheader")).toHaveText(["Version", "Uploaded", "By", "Via", "Size", "Actions"]);
+  await expect(versions.getByRole("link", { name: /^Version/ })).toHaveText(["Version 2", "Version 1"]);
+  await expect(versions.getByRole("link", { name: /^Version/ }).nth(1)).toHaveAttribute(
     "href",
     "/files/handbook/guides/diagram.png?version=1",
   );
@@ -155,4 +164,140 @@ test("the details page shows the not-found page for a missing file, a deleted on
   ]) {
     await expectNotFound(page, address);
   }
+});
+
+/** The width of the image that the address returns. */
+async function widthAt(page: Page, address: string): Promise<number | undefined> {
+  return (await sharp(await (await page.request.get(address)).body()).metadata()).width;
+}
+
+test.describe("new versions and revert", () => {
+  test.beforeEach(async () => {
+    await createFile({
+      tab: guides,
+      name: "diagram.png",
+      versions: [{ bytes: await pngBytes(10, 10, "red") }, { bytes: await pngBytes(20, 10, "blue") }],
+    });
+  });
+
+  test("a new PNG for a PNG file adds a version, and the file address returns it", async ({ page }) => {
+    await page.goto("/folders/handbook/guides/diagram.png");
+    await page.getByRole("main").getByRole("link", { name: "Upload new version" }).click();
+    await expect(page).toHaveURL("/folders/handbook/guides/diagram.png?action=upload-version");
+    const dialog = page.getByRole("dialog", { name: "Upload new version" });
+    await dialog
+      .getByLabel("File")
+      .setInputFiles({ name: "Anything.png", mimeType: "image/png", buffer: await pngBytes(30, 10, "green") });
+    await dialog.getByRole("button", { name: "Upload" }).click();
+
+    await expect(page).toHaveURL("/folders/handbook/guides/diagram.png");
+    await expect(page.getByRole("table", { name: "Versions" }).getByRole("link", { name: /^Version/ })).toHaveText([
+      "Version 3",
+      "Version 2",
+      "Version 1",
+    ]);
+    expect(await widthAt(page, "/files/handbook/guides/diagram.png")).toBe(30);
+  });
+
+  test("a PDF chosen for a PNG file is refused with a message, and nothing is stored", async ({ page }) => {
+    await page.goto("/folders/handbook/guides/diagram.png?action=upload-version");
+    const dialog = page.getByRole("dialog", { name: "Upload new version" });
+    await dialog
+      .getByLabel("File")
+      .setInputFiles({ name: "manual.pdf", mimeType: "application/pdf", buffer: pdfBytes() });
+    await dialog.getByRole("button", { name: "Upload" }).click();
+
+    await expect(dialog.getByLabel("File")).toHaveAccessibleDescription(
+      "The file is a PDF, but the name ends in .png: use a name that ends in .pdf.",
+    );
+    expect(await widthAt(page, "/files/handbook/guides/diagram.png")).toBe(20);
+  });
+
+  test("a revert to version 1 of a file with two versions stores a third that returns version 1", async ({ page }) => {
+    await page.goto("/folders/handbook/guides/diagram.png");
+    const versions = page.getByRole("table", { name: "Versions" });
+    // The current version offers no revert.
+    await expect(versions.getByRole("link", { name: /^Revert/ })).toHaveText(["Revert"]);
+    await versions.getByRole("link", { name: "Revert to version 1" }).click();
+    await expect(page).toHaveURL("/folders/handbook/guides/diagram.png?action=revert&version=1");
+    const dialog = page.getByRole("dialog", { name: "Revert file" });
+    await expect(dialog).toContainText("Set the file back to version 1 of");
+    await dialog.getByRole("button", { name: "Revert" }).click();
+
+    await expect(page).toHaveURL("/folders/handbook/guides/diagram.png");
+    await expect(versions.getByRole("link", { name: /^Version/ })).toHaveText(["Version 3", "Version 2", "Version 1"]);
+    await expect(versions.getByRole("row").nth(1)).toContainText("(reverted to version 1)");
+    expect(await widthAt(page, "/files/handbook/guides/diagram.png")).toBe(10);
+  });
+
+  test("a Reader sees the versions, but no Upload new version and no revert, and their addresses are not found", async ({
+    page,
+  }) => {
+    await setOwnRole(handbook, "reader");
+    await page.goto("/folders/handbook/guides/diagram.png");
+
+    await expect(page.getByRole("table", { name: "Versions" }).getByRole("link")).toHaveText([
+      "Version 2",
+      "Version 1",
+    ]);
+    await expect(page.getByRole("main").getByRole("link", { name: "Upload new version" })).toHaveCount(0);
+    await expectNotFound(page, "/folders/handbook/guides/diagram.png?action=upload-version");
+    await expectNotFound(page, "/folders/handbook/guides/diagram.png?action=revert&version=1");
+  });
+
+  test("a revert to the current version or to one that does not exist is not found", async ({ page }) => {
+    await expectNotFound(page, "/folders/handbook/guides/diagram.png?action=revert&version=2");
+    await expectNotFound(page, "/folders/handbook/guides/diagram.png?action=revert&version=3");
+    await expectNotFound(page, "/folders/handbook/guides/diagram.png?action=revert");
+  });
+
+  test("a new version uploaded while the revert dialog is open makes the revert show the message", async ({ page }) => {
+    await page.goto("/folders/handbook/guides/diagram.png?action=revert&version=1");
+    const dialog = page.getByRole("dialog", { name: "Revert file" });
+    await uploadFile(page, {
+      folder: "handbook",
+      tab: "guides",
+      name: "diagram.png",
+      bytes: await pngBytes(40, 10, "green"),
+      replace: 1,
+    });
+
+    await dialog.getByRole("button", { name: "Revert" }).click();
+    await expect(page).toHaveURL("/folders/handbook/guides/diagram.png?action=revert&version=1&notice=changed");
+    await expect(dialog.getByRole("alert")).toHaveText(
+      /^This file was changed by alice via web at .* after you opened it\.$/,
+    );
+    expect(await widthAt(page, "/files/handbook/guides/diagram.png")).toBe(40);
+
+    await dialog.getByRole("button", { name: "Revert" }).click();
+    await expect(page).toHaveURL("/folders/handbook/guides/diagram.png");
+    expect(await widthAt(page, "/files/handbook/guides/diagram.png")).toBe(10);
+  });
+
+  test("a new version uploaded while Upload new version is open shows the message, and confirming stores it", async ({
+    page,
+  }) => {
+    await page.goto("/folders/handbook/guides/diagram.png?action=upload-version");
+    const dialog = page.getByRole("dialog", { name: "Upload new version" });
+    await dialog
+      .getByLabel("File")
+      .setInputFiles({ name: "mine.png", mimeType: "image/png", buffer: await pngBytes(50, 10, "black") });
+    await uploadFile(page, {
+      folder: "handbook",
+      tab: "guides",
+      name: "diagram.png",
+      bytes: await pngBytes(40, 10, "green"),
+      replace: 1,
+    });
+
+    await dialog.getByRole("button", { name: "Upload" }).click();
+    await expect(dialog.getByRole("alert")).toHaveText(
+      /^This file was changed by alice via web at .* after you opened it\.$/,
+    );
+    expect(await widthAt(page, "/files/handbook/guides/diagram.png")).toBe(40);
+
+    await dialog.getByRole("button", { name: "Upload" }).click();
+    await expect(page).toHaveURL("/folders/handbook/guides/diagram.png");
+    expect(await widthAt(page, "/files/handbook/guides/diagram.png")).toBe(50);
+  });
 });

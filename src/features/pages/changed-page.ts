@@ -1,6 +1,7 @@
 // What a form that rests on the version of a page needs after a change that was refused as `page-changed` (see
 // `optimistic-locking.md`): the message of the notice `changed` and the key that starts the form anew. The page view
-// and the page address use it for the editor and the dialogs alike. No server-only imports.
+// and the page address use it for the editor and the dialogs alike, and the dialogs of files the message, with the
+// lock version of the file. No server-only imports.
 
 import type { PageWithPlace } from "@/features/pages/service";
 import { editorWithChannel } from "@/features/users/records";
@@ -10,11 +11,14 @@ import { formatDateTime } from "@/lib/format";
 type ChangedPage = Pick<PageWithPlace, "version" | "updatedAt" | "lastEditedBy">;
 
 /**
- * The message of the notice `changed`: who changed the page last, how and when, as the page view shows them. The editor
- * or dialog shows it after a change was refused, because the page was changed after it was opened.
+ * The message of the notice `changed`: who changed the page or file last, how and when, as their views show them. The
+ * editor or dialog shows it after a change was refused, because the item was changed after it was opened.
  */
-function changedMessage(page: ChangedPage): string {
-  return `This page was changed by ${editorWithChannel(page.lastEditedBy)} at ${formatDateTime(page.updatedAt)} after you opened it.`;
+export function changedMessage(
+  item: { updatedAt: Date; lastEditedBy: ChangedPage["lastEditedBy"] },
+  what: "page" | "file" = "page",
+): string {
+  return `This ${what} was changed by ${editorWithChannel(item.lastEditedBy)} at ${formatDateTime(item.updatedAt)} after you opened it.`;
 }
 
 /**

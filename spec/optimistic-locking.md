@@ -76,6 +76,28 @@ This section is the rule of the version for every caller other than the browser,
   version, or on none, is refused with a tool error that names who changed the page last, how (`web` or `mcp`) and
   when, and tells the agent to read the page again; nothing is changed.
 
+## Files
+
+Files are protected as pages are, with their lock version (see "Terms" in `architecture.md`):
+
+- Every file has a lock version: 1 when it is uploaded, counted up by every stored change of the file in the same
+  write: a new version, a revert, and the moves, renames, deletes and restores of later steps. The versions of a file,
+  its stored contents, are another thing: the details page lists them.
+- A new version and a revert state the lock version they are based on: the one the file had when the dialog was opened,
+  `replace=<lock version>` of the upload address and the hidden field of "Revert file"
+  (`src/features/files/fields.ts`). The service refuses a change based on another lock version, or on none, with
+  `file-changed` and the file as it is now; the check is part of the write (`uploadFile()` and `revertFile()` of
+  `src/features/files/service.ts`), also for an upload that was refused only after its body was read, whose blob is
+  then removed again unless a version holds it.
+- A refused revert shows its dialog again at `?action=revert&version=<n>&notice=changed`, with the message that names
+  who changed the file last, how and when (`changedMessage()` of `src/features/pages/changed-page.ts`); confirming
+  again reverts it. A refused new version keeps "Upload new version" open with the chosen file and shows the same
+  message, because the file is sent with `fetch()` and is not shown again by an address; uploading again stores it.
+- An upload under a taken name asks first whether to store a new version, and that question states the lock version of
+  the file as the question showed it, so a change in between is refused in the same way.
+- Tests: `integration/file-service.test.ts` (a new version and a revert at the same time), `src/features/files/`
+  (`service.test.ts`, `actions.test.ts`, `file-query.test.ts`), `e2e/file-details.spec.ts`.
+
 ## Restoring
 
 - Restoring a deleted page is not checked against a change in the meantime and states no version. It counts the

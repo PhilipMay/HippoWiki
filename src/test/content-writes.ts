@@ -8,7 +8,7 @@ import * as files from "@/features/files/service";
 import * as folders from "@/features/folders/service";
 import * as pages from "@/features/pages/service";
 
-import { FOLDER_ID, PAGE_ID, TAB_ID } from "./unit";
+import { FILE_ID, FOLDER_ID, PAGE_ID, TAB_ID } from "./unit";
 
 /** A content write of the pages, the folders or the files service. */
 export type ContentWrite = {
@@ -158,6 +158,16 @@ const CONTENT_WRITES: readonly ContentWrite[] = [
     what: "file not uploaded",
     editorKey: "File_lastEditedById_fkey",
     failure: "failed to upload file",
+  },
+  {
+    name: "revertFile",
+    service: "files",
+    call: (actor) => files.revertFile(actor, FILE_ID, { version: 1, lockVersion: 3 }),
+    lowest: "writer",
+    target: { fileId: FILE_ID },
+    what: "file not reverted",
+    editorKey: "FileVersion_userId_fkey",
+    failure: "failed to revert file",
   },
 ];
 

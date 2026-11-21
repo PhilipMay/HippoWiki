@@ -1,16 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { checkUploadName } from "@/features/files/actions";
+import { checkUploadName, revertFile } from "@/features/files/actions";
 import { NotFoundError, RedirectError } from "@/test/unit";
 
 const mocks = vi.hoisted(() => ({
   checkUploadName: vi.fn(),
+  revertFile: vi.fn(),
   notFound: vi.fn(),
+  redirect: vi.fn(),
+  revalidatePath: vi.fn(),
   requireUser: vi.fn(),
 }));
 
-vi.mock("@/features/files/service", () => ({ checkUploadName: mocks.checkUploadName }));
-vi.mock("next/navigation", () => ({ notFound: mocks.notFound }));
+vi.mock("@/features/files/service", () => ({ checkUploadName: mocks.checkUploadName, revertFile: mocks.revertFile }));
+vi.mock("next/navigation", () => ({ notFound: mocks.notFound, redirect: mocks.redirect }));
+vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("@/features/auth/session", () => ({ requireUser: mocks.requireUser }));
 
 const USER = { id: crypto.randomUUID(), name: "alice", type: "user", mustChangePassword: false };
@@ -22,6 +26,9 @@ beforeEach(() => {
   vi.resetAllMocks();
   mocks.notFound.mockImplementation(() => {
     throw new NotFoundError();
+  });
+  mocks.redirect.mockImplementation((path: string) => {
+    throw new RedirectError(path);
   });
   mocks.requireUser.mockResolvedValue(USER);
 });
@@ -76,5 +83,66 @@ describe("checkUploadName", () => {
     mocks.checkUploadName.mockResolvedValue({ ok: false, error: { code: "not-allowed" } });
 
     await expect(checkUploadName(FOLDER_ID, TAB_ID, "diagram.png")).rejects.toBeInstanceOf(NotFoundError);
+  });
+});
+
+describe("revertFile", () => {
+  const FILE_ID = "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002";
+  const STORED = { name: "diagram.png", folder: { name: "handbook" }, tab: { name: "guides" } };
+
+  /** The form of the dialog with the given lock version. */
+  function form(lockVersion: string | null = "3"): FormData {
+    const data = new FormData();
+    if (lockVersion !== null) data.set("lockVersion", lockVersion);
+    return data;
+  }
+
+  it("does not reach the service without a logged-in user or with a malformed id", async () => {
+    await expect(revertFile("not-a-uuid", 1, {}, form())).resolves.toEqual({ message: "This file no longer exists." });
+    mocks.requireUser.mockRejectedValue(new RedirectError("/login"));
+    await expect(revertFile(FILE_ID, 1, {}, form())).rejects.toBeInstanceOf(RedirectError);
+    expect(mocks.revertFile).not.toHaveBeenCalled();
+  });
+
+  it("reverts with the lock version of the form, revalidates and leads to the details page", async () => {
+    mocks.revertFile.mockResolvedValue({ ok: true, value: STORED });
+
+    await expect(revertFile(FILE_ID, 1, {}, form())).rejects.toEqual(
+      new RedirectError("/folders/handbook/guides/diagram.png"),
+    );
+    expect(mocks.revertFile).toHaveBeenCalledWith(BROWSER_USER, FILE_ID, { version: 1, lockVersion: 3 });
+    expect(mocks.revalidatePath).toHaveBeenCalled();
+  });
+
+  it("passes no lock version for a missing or malformed one", async () => {
+    mocks.revertFile.mockResolvedValue({ ok: false, error: { code: "failed" } });
+    for (const value of [null, "", "x", "-1", "1.5"]) {
+      await revertFile(FILE_ID, 1, {}, form(value));
+      expect(mocks.revertFile).toHaveBeenLastCalledWith(BROWSER_USER, FILE_ID, { version: 1, lockVersion: null });
+    }
+  });
+
+  it("shows the dialog again with the notice when the file was changed", async () => {
+    mocks.revertFile.mockResolvedValue({ ok: false, error: { code: "file-changed", file: STORED } });
+
+    await expect(revertFile(FILE_ID, 1, {}, form())).rejects.toEqual(
+      new RedirectError("/folders/handbook/guides/diagram.png?action=revert&version=1&notice=changed"),
+    );
+  });
+
+  it.each([
+    [{ code: "file-not-found" }, { message: "This file no longer exists." }],
+    [{ code: "failed" }, { message: "The file could not be reverted. Please try again." }],
+  ])("answers %j with its message, without revalidating", async (error, state) => {
+    mocks.revertFile.mockResolvedValue({ ok: false, error });
+
+    await expect(revertFile(FILE_ID, 1, {}, form())).resolves.toEqual(state);
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it.each(["not-allowed", "version-not-found"])("shows the not-found page for %s", async (code) => {
+    mocks.revertFile.mockResolvedValue({ ok: false, error: { code } });
+
+    await expect(revertFile(FILE_ID, 1, {}, form())).rejects.toBeInstanceOf(NotFoundError);
   });
 });

@@ -51,6 +51,7 @@ export const FOLDER_ID = "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10";
 export const OTHER_FOLDER_ID = "1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e55";
 export const TAB_ID = "5a2c1c0e-3f55-4a55-8a42-5d2f0e6a9b11";
 export const PAGE_ID = "9c4d2b7e-1a3f-4c5d-8e6f-7a8b9c0d1e22";
+export const FILE_ID = "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002";
 export const ACTOR_ID = "9d4b2f6e-1c3a-4e8b-b7d5-2a6c8e0f1b12";
 export const GRANT_ID = "0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01";
 export const MALFORMED_ID = "not-a-uuid";
