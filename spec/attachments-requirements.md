@@ -22,7 +22,8 @@ Users with a role on a folder work with its files in the browser, with the same 
 | See the deleted files of the folder and restore one                           |        |        |    ✓    |   ✓   |
 
 - AI apps list the files of the folder of their connection and read their details through MCP, with the role of the
-  connection; they do not read the content of a file, and they do not upload, change or delete files.
+  connection; they do not read the content of a file, and they do not upload, change or delete a file on its own.
+  A Manager connection that deletes a tab deletes its files with it, as in the browser (R20).
 - Admins see no content, and so no files, as for pages.
 
 ## Scenarios
@@ -246,8 +247,11 @@ Users with a role on a folder work with its files in the browser, with the same 
     the heading "Deleted items"; the deleted pages and files of the folder are listed there.
 - R20: Deleting a tab must delete its files in the same way as its pages: each as a soft delete that a Manager or an
   Owner can restore.
+  This holds in the browser and for `delete_tab` through MCP: a Manager connection deletes a tab that holds files, and
+  its files go to the deleted items of the folder with its pages; the result of `delete_tab` names the deleted files
+  next to the deleted pages, and its description says before the call that the files of the tab are deleted with it.
   - Acceptance: after deleting a tab with two files, both are among the deleted items of the folder and can be
-    restored.
+    restored; the same after `delete_tab` of a Manager connection, whose result names both files.
 - R40: The old addresses under `/deleted-pages` must show the not-found page, as an address does after every rename in
   the wiki.
   - Acceptance: `/deleted-pages/<folder>` and `/deleted-pages/<folder>/<id>` show the not-found page.
@@ -260,8 +264,10 @@ Users with a role on a folder work with its files in the browser, with the same 
   version.
   - Acceptance: a Reader, a Writer and a Manager connection list the files of their folder and read the details of
     one; no result holds the content of an image or a PDF; no connection reaches the files of another folder.
-- R6: MCP must offer no way to upload, change, move, rename or delete a file in the first version.
-  - Acceptance: no tool of any connection uploads, changes, moves, renames or deletes a file.
+- R6: MCP must offer no way to upload, change, move, rename or delete a file on its own in the first version. The one
+  exception is `delete_tab` of a Manager connection, which deletes the files of the tab with its pages (R20).
+  - Acceptance: no tool of any connection uploads, changes, moves, renames or deletes a single file; `delete_tab` is
+    the only tool after which a file is deleted, and only together with its tab.
 - R43: The MCP tool `search_pages` must find files whose name matches the words of the search, as the search in the
   browser does (R30), each result marked as a file with its details and without its content.
   - Acceptance: through MCP a search for `diagram` returns the file `guides/network-diagram.png` marked as a file, with
@@ -272,12 +278,12 @@ Users with a role on a folder work with its files in the browser, with the same 
 - In: images (PNG, JPEG, GIF, WebP) and PDFs as items of folders and tabs; showing and linking them in pages; a
   details page per file with versions; a section "Files" in the views of folders and tabs; uploading from those
   views; finding files by name in search; listing files and reading their details through MCP.
-- Not in: other file types; uploading, changing, moving, renaming or deleting files through MCP; uploading from the
-  page editor (paste, drop or a toolbar button); a limit on the total size of files per folder or per user, which
-  belongs to the roadmap entry "Rate limits and quotas"; S3-compatible storage, which comes in a later step; links to
-  files that work without a login; searching the text inside PDFs; the content of files through MCP; a host of its
-  own for files; a list of the files that no page shows or links, which belongs to the roadmap entry "Broken links and
-  orphaned pages"; redirects from the old addresses under `/deleted-pages`.
+- Not in: other file types; uploading, changing, moving, renaming or deleting a file on its own through MCP;
+  uploading from the page editor (paste, drop or a toolbar button); a limit on the total size of files per folder or
+  per user, which belongs to the roadmap entry "Rate limits and quotas"; S3-compatible storage, which comes in a later
+  step; links to files that work without a login; searching the text inside PDFs; the content of files through MCP; a
+  host of its own for files; a list of the files that no page shows or links, which belongs to the roadmap entry
+  "Broken links and orphaned pages"; redirects from the old addresses under `/deleted-pages`.
 
 ## Effect on existing features
 
@@ -297,7 +303,7 @@ Users with a role on a folder work with its files in the browser, with the same 
   `page-deletion.md` and "Deleting a tab" in `content-structure.md`). The list is renamed "Deleted items" and moves
   from `/deleted-pages` to `/deleted-items`, a new prefix next to `/folders` and `/files` (see "Addresses" in
   `content-structure.md`); the results of `delete_page` and `delete_tab` through MCP name the new address (see
-  `mcp.md`).
+  `mcp.md`). `delete_tab` through MCP deletes the files of the tab with its pages and names them in its result.
 - Pages: "no attachments" in the current limits of `pages.md` is lifted.
 - Markdown editor: live preview shows images, and the picker on `[[` offers files (see `markdown-editor.md`, whose
   current limits say images stay their Markdown text).
@@ -321,6 +327,11 @@ Users with a role on a folder work with its files in the browser, with the same 
 - Every file has two addresses: the file itself, and a page with its details and actions, as MediaWiki and GitHub do.
 - AI apps only read files through MCP in the first version. Rejected for now: uploads of small files through MCP, as
   Wiki.js offers; no MCP tools at all.
+- `delete_tab` through MCP deletes the files of the tab with its pages, as deleting a tab does in the browser, so that
+  deleting a tab works the same way everywhere; the delete is soft, and a Manager or Owner restores each file with its
+  versions in the browser. Rejected: refusing `delete_tab` for a tab that holds files, which would make what the tool
+  does depend on what the tab holds and leave a tab of files that no AI app can delete; moving the files of the tab
+  into the folder.
 - The roles follow those of pages: every role reads, a Writer uploads, moves and renames, a Manager or Owner deletes.
   Rejected: deleting by a Writer, which lets a Writer remove a document that pages rely on; uploading by Managers
   only.
