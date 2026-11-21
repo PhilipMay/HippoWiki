@@ -18,7 +18,14 @@ import { notFound } from "next/navigation";
 
 import { getCurrentUser } from "@/features/auth/session";
 import { inBrowser, type BrowserActor } from "@/features/folder-roles/actors";
-import type { UploadAnswer, UploadField, UploadedFileState } from "@/features/files/forms";
+import {
+  FOLDER_GONE_MESSAGE,
+  TAB_GONE_MESSAGE,
+  UPLOAD_FAILED_MESSAGE,
+  uploadedFileState,
+  type UploadAnswer,
+  type UploadField,
+} from "@/features/files/forms";
 import { parseNumberParam } from "@/features/files/schema";
 import * as fileService from "@/features/files/service";
 import { ACCEPTED_TYPES_MESSAGE, FILE_TYPES } from "@/features/files/types";
@@ -171,11 +178,6 @@ async function* bodyOf(request: Request): AsyncGenerator<Uint8Array> {
   }
 }
 
-/** What the dialog shows of the file of a taken name or of a file changed meanwhile. */
-function fileState(file: fileService.StoredFile): UploadedFileState {
-  return { lockVersion: file.lockVersion, updatedAt: file.updatedAt.toISOString(), lastEditedBy: file.lastEditedBy };
-}
-
 /** A refused upload as JSON, with its status, the field it belongs to and the message. */
 function refused(
   status: number,
@@ -184,20 +186,17 @@ function refused(
   message: string,
   file?: fileService.StoredFile,
 ): Response {
-  const answer: UploadAnswer = { ok: false, code, field, message, ...(file ? { file: fileState(file) } : {}) };
+  const answer: UploadAnswer = { ok: false, code, field, message, ...(file ? { file: uploadedFileState(file) } : {}) };
   return Response.json(answer, { status });
 }
-
-/** The message of a failed upload, also of an unexpected answer of the server. */
-const UPLOAD_FAILED_MESSAGE = "The file could not be uploaded. Please try again.";
 
 /** The answer to the error of an upload that the service returned. */
 function uploadRefusal(error: Exclude<fileService.UploadFileError, { code: "not-allowed" }>): Response {
   switch (error.code) {
     case "folder-not-found":
-      return refused(404, error.code, null, "This folder no longer exists.");
+      return refused(404, error.code, null, FOLDER_GONE_MESSAGE);
     case "tab-not-found":
-      return refused(404, error.code, null, "This tab no longer exists.");
+      return refused(404, error.code, null, TAB_GONE_MESSAGE);
     case "invalid-input":
       return refused(400, error.code, "name", error.fieldErrors.name?.[0] ?? "The name is not valid.");
     case "name-taken":
@@ -255,7 +254,7 @@ export async function handleUploadRequest(request: Request, segments: FileSegmen
   let tabId: string | null = null;
   if (place.tab !== null) {
     const tab = await folderService.getTab(actor, place.folder, place.tab);
-    if (!tab) return refused(404, "tab-not-found", null, "This tab no longer exists.");
+    if (!tab) return refused(404, "tab-not-found", null, TAB_GONE_MESSAGE);
     tabId = tab.id;
   }
 

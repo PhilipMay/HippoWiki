@@ -1,6 +1,7 @@
 import { KNOWN_USER } from "../prisma/known-users";
 import { ADMIN_STORAGE_STATE, NO_STORAGE_STATE, submitLogin } from "./support/auth";
 import {
+  createFile,
   createFolder,
   createGrant,
   createPage,
@@ -362,4 +363,31 @@ test("the restore dialog is prefilled and locked until hydration, without a plac
     "href",
     `/deleted-items/locked-folder/${removed.id}`,
   );
+});
+
+test("the upload dialog is locked until hydration", async ({ page }) => {
+  const folder = await createFolder({ name: "locked-folder" });
+  await createTab({ folder, name: "locked-tab" });
+
+  await page.goto("/folders/locked-folder/locked-tab?action=upload&name=manual.pdf");
+
+  const dialog = page.getByRole("dialog", { name: "Upload file" });
+  await expect(dialog.getByLabel("File")).toBeDisabled();
+  await expect(dialog.getByLabel("Name")).toHaveValue("manual.pdf");
+  await expect(dialog.getByLabel("Name")).not.toBeEditable();
+  await expect(dialog.getByRole("button", { name: "Upload" })).toBeDisabled();
+  await expect(dialog.getByRole("link", { name: "Cancel" })).toHaveAttribute(
+    "href",
+    "/folders/locked-folder/locked-tab",
+  );
+});
+
+test("the copy button of the details page of a file stays disabled until hydration", async ({ page }) => {
+  const folder = await createFolder({ name: "locked-folder" });
+  await createFile({ folder, name: "manual.pdf" });
+
+  await page.goto("/folders/locked-folder/manual.pdf");
+
+  await expect(page.getByLabel("Link", { exact: true })).toHaveValue("[[manual.pdf]]");
+  await expect(page.getByRole("button", { name: "Copy link" })).toBeDisabled();
 });

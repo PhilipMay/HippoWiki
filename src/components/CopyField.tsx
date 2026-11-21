@@ -7,26 +7,26 @@ import { useId, useState } from "react";
 
 import { useHydrated } from "@/lib/hydration";
 
-type McpAddressProps = {
-  /** The full MCP address, which the button copies. */
-  address: string;
+type CopyFieldProps = {
+  /** The text that the field shows and the button copies, such as an MCP address or the link of a file. */
+  value: string;
   /** The label of the field, e.g. "Reader address". */
   label: string;
 };
 
 /**
- * An MCP address of a folder in a read-only field, with a button that copies the full address. The button is
- * disabled until hydration, because a click before then would do nothing. Without access to the clipboard the
- * address can still be selected in the field.
+ * A text in a read-only field, with a button that copies it, such as an MCP address of a folder or the link to a file.
+ * The button is disabled until hydration, because a click before then would do nothing. Without access to the
+ * clipboard the text can still be selected in the field.
  */
-export default function McpAddress({ address, label }: McpAddressProps) {
+export default function CopyField({ value, label }: CopyFieldProps) {
   const hydrated = useHydrated();
   const [copied, setCopied] = useState<"copied" | "failed" | null>(null);
   const fieldId = useId();
 
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(address);
+      await navigator.clipboard.writeText(value);
       setCopied("copied");
     } catch {
       setCopied("failed");
@@ -38,7 +38,7 @@ export default function McpAddress({ address, label }: McpAddressProps) {
       <TextField
         id={fieldId}
         label={label}
-        value={address}
+        value={value}
         size="small"
         fullWidth
         slotProps={{ htmlInput: { readOnly: true, spellCheck: false, style: { fontFamily: "monospace" } } }}

@@ -14,6 +14,9 @@ import {
   deletedItemsRootPath,
   fileContentPath,
   filePath,
+  parseFileSegment,
+  parseUploadName,
+  uploadFilePath,
   folderMcpPath,
   folderPath,
   hasSearchWords,
@@ -131,6 +134,29 @@ describe("paths", () => {
     expect(filePath("handbook", "guides", "manual.pdf", "upload-version")).toBe(
       "/folders/handbook/guides/manual.pdf?action=upload-version",
     );
+  });
+
+  it("builds the address of the upload dialog of a folder and of a tab, with a preset name", () => {
+    expect(uploadFilePath("handbook", null)).toBe("/folders/handbook?action=upload");
+    expect(uploadFilePath("handbook", "guides", "manual.pdf")).toBe(
+      "/folders/handbook/guides?action=upload&name=manual.pdf",
+    );
+  });
+
+  it("reads the preset name of the upload dialog by the rule of file names", () => {
+    expect(parseUploadName({})).toBeNull();
+    expect(parseUploadName({ name: "manual.pdf" })).toBe("manual.pdf");
+    for (const name of ["manual", "Manual.pdf", "photo.jpeg", "", " a.png", ["a.png", "a.png"]]) {
+      expect(parseUploadName({ name }), JSON.stringify(name)).toBe("invalid");
+    }
+  });
+
+  it("reads a segment as a file name only with the extension of a type", () => {
+    expect(parseFileSegment("diagram.png")).toBe("diagram.png");
+    expect(parseFileSegment("manual.pdf")).toBe("manual.pdf");
+    for (const segment of ["diagram", "setup.md", "Diagram.png", "photo.jpeg", "a.b.png", "guides"]) {
+      expect(parseFileSegment(segment), segment).toBeNull();
+    }
   });
 
   it("builds the address of a file itself, of a version of it and of its download", () => {

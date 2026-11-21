@@ -24,6 +24,7 @@ describe("mayDoFolderAction", () => {
     ["new-tab", "manager"],
     ["rename", "owner"],
     ["give-role", "owner"],
+    ["upload", "writer"],
   ])("allows %s from %s up", (action, lowestRole) => {
     expectFrom((role) => mayDoFolderAction(role, action), lowestRole);
   });
@@ -34,6 +35,7 @@ describe("mayDoTabAction", () => {
     ["new", "writer"],
     ["rename", "manager"],
     ["delete", "manager"],
+    ["upload", "writer"],
   ])("allows %s from %s up", (action, lowestRole) => {
     expectFrom((role) => mayDoTabAction(role, action), lowestRole);
   });
@@ -53,12 +55,12 @@ describe("folderAddressOf", () => {
     [{ view: "mcp" }, "AI apps – handbook"],
     [{ view: "search", q: "backup server" }, "Search – handbook"],
   ])("gives %o the title %s", (searchParams, title) => {
-    expect(folderAddressOf(owner, searchParams, true)?.title).toBe(title);
+    expect(folderAddressOf(owner, searchParams, true, true)?.title).toBe(title);
   });
 
   it("reads the action and the view", () => {
-    expect(folderAddressOf(owner, { action: "new-tab" }, true)).toMatchObject({ action: "new-tab", view: null });
-    expect(folderAddressOf(owner, { view: "roles" }, true)).toMatchObject({ action: null, view: "roles" });
+    expect(folderAddressOf(owner, { action: "new-tab" }, true, true)).toMatchObject({ action: "new-tab", view: null });
+    expect(folderAddressOf(owner, { view: "roles" }, true, true)).toMatchObject({ action: null, view: "roles" });
   });
 
   it.each<SearchParams>([
@@ -80,40 +82,40 @@ describe("folderAddressOf", () => {
     { view: "roles", q: "backup" },
     { action: "new", q: "backup" },
   ])("shows the not-found page for %o", (searchParams) => {
-    expect(folderAddressOf(owner, searchParams, true)).toBeNull();
+    expect(folderAddressOf(owner, searchParams, true, true)).toBeNull();
   });
 
   it("reads the words of the view search as typed, and none for the other views", () => {
-    expect(folderAddressOf(owner, { view: "search", q: "  backup  -old " }, true)).toMatchObject({
+    expect(folderAddressOf(owner, { view: "search", q: "  backup  -old " }, true, true)).toMatchObject({
       action: null,
       view: "search",
       words: "  backup  -old ",
     });
     // A search that is too long is no address error: the view tells the user.
-    expect(folderAddressOf(owner, { view: "search", q: "x".repeat(500) }, true)?.words).toHaveLength(500);
-    expect(folderAddressOf(owner, { view: "all" }, true)?.words).toBeNull();
-    expect(folderAddressOf(owner, {}, true)?.words).toBeNull();
+    expect(folderAddressOf(owner, { view: "search", q: "x".repeat(500) }, true, true)?.words).toHaveLength(500);
+    expect(folderAddressOf(owner, { view: "all" }, true, true)?.words).toBeNull();
+    expect(folderAddressOf(owner, {}, true, true)?.words).toBeNull();
   });
 
   it("shows the not-found page for an action beyond the role, but every view to every role", () => {
     const reader = { name: "handbook", role: "reader" as const };
     for (const action of ["new", "rename", "new-tab", "give-role"]) {
-      expect(folderAddressOf(reader, { action }, true), action).toBeNull();
+      expect(folderAddressOf(reader, { action }, true, true), action).toBeNull();
     }
     for (const view of ["all", "roles", "mcp"]) {
-      expect(folderAddressOf(reader, { view }, true), view).not.toBeNull();
+      expect(folderAddressOf(reader, { view }, true, true), view).not.toBeNull();
     }
-    expect(folderAddressOf(reader, { view: "search", q: "backup" }, true)).not.toBeNull();
+    expect(folderAddressOf(reader, { view: "search", q: "backup" }, true, true)).not.toBeNull();
   });
 
   it("reads the preset name of a new page, and none without one", () => {
-    expect(folderAddressOf(owner, { action: "new", name: "faq" }, true)).toMatchObject({
+    expect(folderAddressOf(owner, { action: "new", name: "faq" }, true, true)).toMatchObject({
       action: "new",
       name: "faq",
       title: "New page",
     });
-    expect(folderAddressOf(owner, { action: "new" }, true)?.name).toBeNull();
-    expect(folderAddressOf(owner, {}, true)?.name).toBeNull();
+    expect(folderAddressOf(owner, { action: "new" }, true, true)?.name).toBeNull();
+    expect(folderAddressOf(owner, {}, true, true)?.name).toBeNull();
   });
 
   it.each<SearchParams>([
@@ -125,12 +127,35 @@ describe("folderAddressOf", () => {
     { view: "all", name: "faq" },
     { name: "faq" },
   ])("shows the not-found page for the preset name in %o", (searchParams) => {
-    expect(folderAddressOf(owner, searchParams, true)).toBeNull();
+    expect(folderAddressOf(owner, searchParams, true, true)).toBeNull();
+  });
+
+  it("reads the upload dialog with the preset name of a file, and only while the files are on", () => {
+    expect(folderAddressOf(owner, { action: "upload" }, true, true)).toMatchObject({ action: "upload", name: null });
+    expect(folderAddressOf(owner, { action: "upload", name: "manual.pdf" }, true, true)).toMatchObject({
+      action: "upload",
+      name: "manual.pdf",
+      title: "handbook",
+    });
+    expect(folderAddressOf(owner, { action: "upload" }, true, false)).toBeNull();
+    expect(folderAddressOf(owner, {}, true, false)).not.toBeNull();
+    const reader = { name: "handbook", role: "reader" as const };
+    expect(folderAddressOf(reader, { action: "upload" }, true, true)).toBeNull();
+  });
+
+  it.each<SearchParams>([
+    { action: "upload", name: "manual" },
+    { action: "upload", name: "Manual.pdf" },
+    { action: "upload", name: "photo.jpeg" },
+    { action: "upload", name: ["a.png", "a.png"] },
+    { action: "new", name: "manual.pdf" },
+  ])("shows the not-found page for the preset name in %o", (searchParams) => {
+    expect(folderAddressOf(owner, searchParams, true, true)).toBeNull();
   });
 
   it("shows the not-found page for the view of the AI apps without an MCP server", () => {
-    expect(folderAddressOf(owner, { view: "mcp" }, false)).toBeNull();
-    expect(folderAddressOf(owner, {}, false)?.title).toBe("handbook");
+    expect(folderAddressOf(owner, { view: "mcp" }, false, true)).toBeNull();
+    expect(folderAddressOf(owner, {}, false, true)?.title).toBe("handbook");
   });
 });
 
@@ -143,7 +168,7 @@ describe("tabAddressOf", () => {
     [{ action: "rename" }, "guides – handbook"],
     [{ action: "delete" }, "guides – handbook"],
   ])("gives %o the title %s", (searchParams, title) => {
-    expect(tabAddressOf(manager, searchParams)?.title).toBe(title);
+    expect(tabAddressOf(manager, searchParams, true)?.title).toBe(title);
   });
 
   it.each<SearchParams>([
@@ -157,13 +182,13 @@ describe("tabAddressOf", () => {
     { q: "" },
     { action: "rename", q: "backup" },
   ])("shows the not-found page for %o", (searchParams) => {
-    expect(tabAddressOf(manager, searchParams)).toBeNull();
+    expect(tabAddressOf(manager, searchParams, true)).toBeNull();
   });
 
   it("reads the preset name of a new page, and none without one", () => {
-    expect(tabAddressOf(manager, { action: "new", name: "faq" })).toMatchObject({ action: "new", name: "faq" });
-    expect(tabAddressOf(manager, { action: "new" })?.name).toBeNull();
-    expect(tabAddressOf(manager, {})?.name).toBeNull();
+    expect(tabAddressOf(manager, { action: "new", name: "faq" }, true)).toMatchObject({ action: "new", name: "faq" });
+    expect(tabAddressOf(manager, { action: "new" }, true)?.name).toBeNull();
+    expect(tabAddressOf(manager, {}, true)?.name).toBeNull();
   });
 
   it.each<SearchParams>([
@@ -173,13 +198,23 @@ describe("tabAddressOf", () => {
     { action: "delete", name: "faq" },
     { name: "faq" },
   ])("shows the not-found page for the preset name in %o", (searchParams) => {
-    expect(tabAddressOf(manager, searchParams)).toBeNull();
+    expect(tabAddressOf(manager, searchParams, true)).toBeNull();
+  });
+
+  it("reads the upload dialog of a tab with the preset name of a file, and only while the files are on", () => {
+    expect(tabAddressOf(manager, { action: "upload", name: "diagram.png" }, true)).toMatchObject({
+      action: "upload",
+      name: "diagram.png",
+    });
+    expect(tabAddressOf(manager, { action: "upload" }, false)).toBeNull();
+    expect(tabAddressOf(manager, { action: "upload", name: "diagram" }, true)).toBeNull();
+    expect(tabAddressOf({ ...manager, role: "reader" }, { action: "upload" }, true)).toBeNull();
   });
 
   it("shows the not-found page for an action beyond the role", () => {
     const writer = { ...manager, role: "writer" as const };
-    expect(tabAddressOf(writer, { action: "new" })).not.toBeNull();
-    expect(tabAddressOf(writer, { action: "rename" })).toBeNull();
-    expect(tabAddressOf(writer, { action: "delete" })).toBeNull();
+    expect(tabAddressOf(writer, { action: "new" }, true)).not.toBeNull();
+    expect(tabAddressOf(writer, { action: "rename" }, true)).toBeNull();
+    expect(tabAddressOf(writer, { action: "delete" }, true)).toBeNull();
   });
 });

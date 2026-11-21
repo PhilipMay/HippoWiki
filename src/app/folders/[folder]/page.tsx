@@ -5,6 +5,7 @@ import { requireUser } from "@/features/auth/session";
 import FolderView from "@/features/folders/components/FolderView";
 import { folderAddressOf } from "@/features/folders/folder-query";
 import { getFolderByName } from "@/features/folders/queries";
+import { getUploadSettings } from "@/features/files/queries";
 import FolderRolesView from "@/features/folder-roles/components/FolderRolesView";
 import AiAppsView from "@/features/mcp/components/AiAppsView";
 import { listMcpAddresses } from "@/features/mcp/queries";
@@ -18,14 +19,15 @@ type Props = PageProps<"/folders/[folder]">;
 /**
  * What the address shows: the folder with its action or view and the browser title, or `null` for the not-found page
  * (see `folderAddressOf()`). The title and the page both use it. `mcpAddresses` is `null` without a public URL, when
- * there is no MCP server: no view and no button.
+ * there is no MCP server: no view and no button. Without the files directory there is no "Upload file".
  */
 async function resolve({ params, searchParams }: Props) {
   const folder = await getFolderByName((await params).folder);
   if (!folder) return null;
   const mcpAddresses = listMcpAddresses(folder, folder.role);
-  const address = folderAddressOf(folder, await searchParams, mcpAddresses !== null);
-  return address && { folder, mcpAddresses, ...address };
+  const uploads = await getUploadSettings();
+  const address = folderAddressOf(folder, await searchParams, mcpAddresses !== null, uploads.on);
+  return address && { folder, mcpAddresses, uploads, ...address };
 }
 
 export async function generateMetadata(props: Props): Promise<Metadata> {
@@ -37,7 +39,7 @@ export default async function FolderPage(props: Props) {
   const user = await requireUser();
 
   // An action that the role does not include answers like an unknown one, before the content is read.
-  const { folder, mcpAddresses, action, view, words, name } = (await resolve(props)) ?? notFound();
+  const { folder, mcpAddresses, uploads, action, view, words, name } = (await resolve(props)) ?? notFound();
 
   if (action === "new") return <NewPageView folder={folder} tab={null} presetName={name} />;
   switch (view) {
@@ -52,6 +54,14 @@ export default async function FolderPage(props: Props) {
       // `resolve()` finds the view only with words.
       return <SearchView folder={folder} words={words ?? notFound()} />;
     case null:
-      return <FolderView folder={folder} action={action} hasMcp={mcpAddresses !== null} />;
+      return (
+        <FolderView
+          folder={folder}
+          action={action}
+          hasMcp={mcpAddresses !== null}
+          uploads={uploads}
+          presetName={action === "upload" ? name : null}
+        />
+      );
   }
 }

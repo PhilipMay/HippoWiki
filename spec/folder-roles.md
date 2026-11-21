@@ -68,8 +68,10 @@ and `src/features/folder-roles/service.test.ts`.
   shows the not-found page, like a folder that does not exist. A form of such a folder shows the not-found page and
   writes nothing.
 - A function the role does not include is not offered, and its address or form answers like one that does not exist
-  and changes nothing: a Reader sees no "New page", "Edit", "Move or rename", "Delete", "Deleted items", "New tab" or
-  "Rename", and `?action=edit` shows a Reader the not-found page.
+  and changes nothing: a Reader sees no "New page", "Upload file", "Edit", "Move or rename", "Delete", "Deleted items",
+  "New tab" or "Rename", and `?action=edit` and `?action=upload` show a Reader the not-found page. Every role sees
+  the files of the folder, their details pages and their versions; an upload of a Reader answers like a missing folder
+  and stores nothing.
 - The checks live in the services, before anything else but the actor: a read without the needed role returns `null`
   and a write `not-allowed`, which the routes and actions show as the not-found page. A refused write is logged with
   the actor, the folder, tab or page, and the role, if any. A missing item and a missing role give the same answer, so

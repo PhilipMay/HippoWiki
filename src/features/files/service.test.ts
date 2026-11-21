@@ -470,6 +470,45 @@ describe("uploadFile", () => {
   });
 });
 
+describe("checkUploadName", () => {
+  const check = (name: string, actor: ContentActor = ACTOR) => fileService.checkUploadName(actor, PLACE, name);
+
+  it("answers a free name with null and a taken one with the file of that name", async () => {
+    await expect(check("diagram.png")).resolves.toEqual({ ok: true, value: null });
+    mocks.fileFindFirst.mockResolvedValue(STORED_ROW);
+    await expect(check("diagram.png")).resolves.toEqual({ ok: true, value: STORED_FILE });
+    expect(mocks.receiveBlob).not.toHaveBeenCalled();
+  });
+
+  it("makes the checks of an upload: an admin, the role, the tab and the name", async () => {
+    await expect(check("diagram.png", ADMIN)).resolves.toEqual({ ok: false, error: { code: "not-allowed" } });
+    mocks.roleFindFirst.mockResolvedValueOnce({ role: "reader" });
+    await expect(check("diagram.png")).resolves.toEqual({ ok: false, error: { code: "not-allowed" } });
+    mocks.tabFindFirst.mockResolvedValueOnce(null);
+    await expect(check("diagram.png")).resolves.toEqual({ ok: false, error: { code: "tab-not-found" } });
+    await expect(check("photo.jpeg")).resolves.toMatchObject({ ok: false, error: { code: "invalid-input" } });
+    expect(mocks.fileFindFirst).not.toHaveBeenCalled();
+  });
+
+  it("answers a failed read with failed", async () => {
+    mocks.fileFindFirst.mockRejectedValue(new Error("connection lost"));
+
+    await expect(check("diagram.png")).resolves.toEqual({ ok: false, error: { code: "failed" } });
+    expect(mocks.error).toHaveBeenCalledWith(
+      expect.objectContaining({ folderId: FOLDER_ID }),
+      "failed to check upload name",
+    );
+  });
+});
+
+describe("uploadSettings", () => {
+  it("tells whether the store can be used, with the size limit", async () => {
+    await expect(fileService.uploadSettings()).resolves.toEqual({ on: true, sizeLimit: 26_214_400 });
+    mocks.getStore.mockResolvedValue({ on: false, reason: "not-set", dir: null });
+    await expect(fileService.uploadSettings()).resolves.toEqual({ on: false, sizeLimit: 26_214_400 });
+  });
+});
+
 describe("the reads of files", () => {
   it("read nothing for an admin", async () => {
     await expect(fileService.listFolderFiles(ADMIN, FOLDER_ID)).resolves.toBeNull();

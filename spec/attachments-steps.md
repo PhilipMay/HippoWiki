@@ -174,7 +174,7 @@ The plan is large, so it has two stop points:
 - [x] Deleted items
 - [x] File types, names, storage and images
 - [x] Files in the database and their addresses
-- [ ] Files in the views and the details page
+- [x] Files in the views and the details page
 - [ ] New versions and revert
 - [ ] Links and embeds of files
 - [ ] Moving and renaming files

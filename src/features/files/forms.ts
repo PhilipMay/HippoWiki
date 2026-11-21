@@ -18,3 +18,27 @@ export type UploadAnswer =
   | { ok: true; address: string }
   | { ok: false; code: string; field: UploadField; message: string; file?: UploadedFileState };
 
+/**
+ * The answer of the check of a name before an upload: whether the name is taken at the place, with the file of that
+ * name as it is now, or why the name or the place was refused, with the message to show at its field.
+ */
+export type NameCheck =
+  { ok: true; file: UploadedFileState | null } | { ok: false; field: UploadField; message: string };
+
+/** The message of an upload into a folder that no longer exists. */
+export const FOLDER_GONE_MESSAGE = "This folder no longer exists.";
+
+/** The message of an upload into a tab that no longer exists. */
+export const TAB_GONE_MESSAGE = "This tab no longer exists.";
+
+/** The message of an upload that failed, also of an answer of the server that could not be read. */
+export const UPLOAD_FAILED_MESSAGE = "The file could not be uploaded. Please try again.";
+
+/** What the dialog shows of the file of a taken name or of a file changed meanwhile. */
+export function uploadedFileState(file: {
+  lockVersion: number;
+  updatedAt: Date;
+  lastEditedBy: LastEditor;
+}): UploadedFileState {
+  return { lockVersion: file.lockVersion, updatedAt: file.updatedAt.toISOString(), lastEditedBy: file.lastEditedBy };
+}

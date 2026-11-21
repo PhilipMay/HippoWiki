@@ -388,6 +388,76 @@ export async function getFileContent(
   return { name: file.name, type: file.type, version, blob };
 }
 
+/** Whether files can be uploaded, and their size limit in bytes: what the views offer and the dialog checks first. */
+export type UploadSettings = { on: boolean; sizeLimit: number };
+
+/** Whether the files directory can be used, and the size limit of an upload (`HIPPOWIKI_FILE_SIZE_LIMIT`). */
+export async function uploadSettings(): Promise<UploadSettings> {
+  return { on: (await getStore()).on, sizeLimit: getServerEnv().HIPPOWIKI_FILE_SIZE_LIMIT };
+}
+
+export type CheckUploadNameError = NotAllowed | FolderNotFound | TabNotFound | InvalidInput<FileFieldErrors> | Failed;
+
+/**
+ * The checks of an upload before its file is sent, which store nothing: the actor, the ids, the role `editFile`, the
+ * place and the name, as `uploadFile()` makes them; then the file of the name at the place that is not deleted, or
+ * `null` when the name is free there.
+ */
+export async function checkUploadName(
+  actor: ContentActor,
+  place: FilePlace,
+  name: string,
+): Promise<Result<StoredFile | null, CheckUploadNameError>> {
+  const opened = openContentWrite(actor, "upload name not checked");
+  if (opened.refused) return opened.refused;
+  const checked = await checkedPlace(actor, place, "upload name not checked", "failed to check upload name");
+  if (!checked.ok) return checked;
+  const { folderId, tabId, ids } = checked.value;
+
+  const parsed = uploadInputSchema.safeParse({ name });
+  if (!parsed.success) return invalidInput(parsed.error);
+  return lookUp(() => findPlacedFile(folderId, tabId, parsed.data.name), ids, "failed to check upload name");
+}
+
+/** The ids of a place, parsed, with the ids that the log lines of a write name. */
+type CheckedPlace = { folderId: string; tabId: string | null; ids: Record<string, string> };
+
+/**
+ * The checks of the place of an upload, in the order of every content write: the ids, the role `editFile` of the actor
+ * on the folder, and the tab, which must be one of the folder.
+ */
+async function checkedPlace(
+  actor: ContentActor,
+  place: FilePlace,
+  what: string,
+  failure: string,
+): Promise<Result<CheckedPlace, NotAllowed | FolderNotFound | TabNotFound | Failed>> {
+  const folderId = parseFolderId(place.folderId);
+  if (!folderId) return { ok: false, error: { code: "folder-not-found" } };
+  const tabId = place.tabId === null ? null : parseTabId(place.tabId);
+  if (tabId === null && place.tabId !== null) return { ok: false, error: { code: "tab-not-found" } };
+  const ids = { folderId, ...(tabId ? { tabId } : {}) };
+
+  const role = await lookUp(() => folderRoleOf(actor, folderId), ids, failure);
+  if (!role.ok) return role;
+  const refused = refusedByRole(actor, what, role.value, "editFile", ids);
+  if (refused) return refused;
+
+  if (tabId !== null) {
+    const tab = await lookUp(
+      () => getDb().tab.findFirst({ where: { id: tabId, folderId }, select: { id: true } }),
+      ids,
+      failure,
+    );
+    if (!tab.ok) return tab;
+    if (!tab.value) {
+      logger.warn(ids, `${what}: tab not found`);
+      return { ok: false, error: { code: "tab-not-found" } };
+    }
+  }
+  return { ok: true, value: { folderId, tabId, ids } };
+}
+
 /**
  * The file of the name at the place that is not deleted, as stored, or `null` without one. The place is the folder
  * and the tab of the given ids, already parsed.
@@ -534,29 +604,9 @@ export async function uploadFile(
   if (opened.refused) return opened.refused;
   const { editor } = opened;
 
-  const folderId = parseFolderId(place.folderId);
-  if (!folderId) return { ok: false, error: { code: "folder-not-found" } };
-  const tabId = place.tabId === null ? null : parseTabId(place.tabId);
-  if (tabId === null && place.tabId !== null) return { ok: false, error: { code: "tab-not-found" } };
-  const ids = { folderId, ...(tabId ? { tabId } : {}) };
-
-  const role = await lookUp(() => folderRoleOf(actor, folderId), ids, "failed to upload file");
-  if (!role.ok) return role;
-  const refused = refusedByRole(actor, "file not uploaded", role.value, "editFile", ids);
-  if (refused) return refused;
-
-  if (tabId !== null) {
-    const tab = await lookUp(
-      () => getDb().tab.findFirst({ where: { id: tabId, folderId }, select: { id: true } }),
-      ids,
-      "failed to upload file",
-    );
-    if (!tab.ok) return tab;
-    if (!tab.value) {
-      logger.warn(ids, "tab of upload not found");
-      return { ok: false, error: { code: "tab-not-found" } };
-    }
-  }
+  const checked = await checkedPlace(actor, place, "file not uploaded", "failed to upload file");
+  if (!checked.ok) return checked;
+  const { folderId, tabId, ids } = checked.value;
 
   const parsed = uploadInputSchema.safeParse({ name });
   if (!parsed.success) return invalidInput(parsed.error);

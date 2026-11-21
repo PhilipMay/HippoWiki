@@ -2,7 +2,9 @@
 
 The content structure as built: folders, optional tabs inside a folder and Markdown pages, and the addresses they have.
 What a page itself is (its content, derived title, editor and rendering) is described in `pages.md`, deleting and
-restoring pages in `page-deletion.md`, and who sees and does what with a folder in `folder-roles.md`. This spec owns
+restoring pages in `page-deletion.md`, and who sees and does what with a folder in `folder-roles.md`. Folders and tabs
+also hold files, images and PDFs, which have addresses of their own (see "Addresses" and "Routes"; the files service is
+`src/features/files/`). This spec owns
 deleting a tab, renaming a folder or tab to its own name, moving or renaming a page to its own name and place, and the
 last editor and the channel of every item.
 
@@ -19,7 +21,7 @@ how the browser names it), the relation `lastEditedBy` and the field `lastEdited
 `prisma/schema.prisma`, and the migrations `prisma/migrations/20261116103037_init/` and
 `prisma/migrations/20261117130000_change_channel/`.
 
-Tests: `e2e/folders.spec.ts`, `e2e/tabs.spec.ts`, `e2e/all-pages.spec.ts`, `e2e/create-page.spec.ts`,
+Tests: `e2e/folders.spec.ts`, `e2e/tabs.spec.ts`, `e2e/upload-file.spec.ts`, `e2e/file-details.spec.ts`, `e2e/all-pages.spec.ts`, `e2e/create-page.spec.ts`,
 `e2e/move-or-rename-page.spec.ts`, `e2e/delete-tab.spec.ts`, `e2e/access.spec.ts`, `e2e/mcp-write.spec.ts`,
 `e2e/mcp-manager.spec.ts`, `e2e/folder-roles.spec.ts`, `e2e/hydration.spec.ts`, `src/lib/names.test.ts`,
 `src/lib/addresses.test.ts`, `src/features/folders/folder-query.test.ts`, `src/features/pages/page-query.test.ts`,
@@ -36,6 +38,10 @@ Content has three levels:
 - **Tab**: an optional section inside a folder, such as "guides", "meetings" or "archive".
 - **Page**: a Markdown document. A page lives either directly in a folder or in one tab of that folder, and so always in
   exactly one folder.
+- **File**: an image (PNG, JPEG, GIF, WebP) or a PDF, an item of its own next to the pages, placed directly in a folder
+  or in one of its tabs like a page. Its name is a name of the name rule followed by the extension of its type, such
+  as `diagram.png` (`FILE_NAME_PATTERN` in `src/lib/name-limits.ts`); it is unique among the files of its place, and a
+  file `setup.png` and a page `setup` sit side by side.
 
 There is no deeper nesting: no folders inside folders and no tabs inside tabs. A new folder has no tabs; a folder may
 hold pages directly and have tabs at the same time.
@@ -71,9 +77,17 @@ hold pages directly and have tabs at the same time.
   - `/folders/<folder>/<tab>`: a tab
   - `/folders/<folder>/<page>.md`: a page placed directly in a folder
   - `/folders/<folder>/<tab>/<page>.md`: a page in a tab
+  - `/folders/<folder>/<name.ext>` and `/folders/<folder>/<tab>/<name.ext>`: the details page of a file placed directly
+    in a folder or in a tab
+  - `/files/<folder>/<name.ext>` and `/files/<folder>/<tab>/<name.ext>`: the file itself, which sends its content to the
+    users with a role on its folder, `?version=<n>` an earlier version and `?download` as an attachment
   - `/deleted-items/<folder>` and `/deleted-items/<folder>/<id>`: the deleted items of a folder and a deleted page
-- The `.md` belongs to the address, not to the name. A segment that ends in the lowercase `.md` is a page, any other is
-  a tab.
+- The `.md` belongs to the address, not to the name. A segment that ends in the lowercase `.md` is a page, one that is a
+  file name with the lowercase extension of a type of file (`png`, `jpg`, `gif`, `webp`, `pdf`) is a file, any other
+  is a tab. Names of tabs and pages have no dot, so no address of them changed its meaning with the files.
+- The address of a file itself answers everything that sends no file with a plain 404, the same for a user without a
+  role, an admin, a missing or deleted file, a version that does not exist and any other query, so that nobody learns
+  from it whether a file exists. It runs nothing in the file (see "Security headers" in `architecture.md`).
 - Every address maps to at most one item. A malformed name, an unknown folder, tab or page, and a page of another
   folder or tab show the not-found page. Pages have no address outside `/folders`.
 - A rename or move changes the address, deleting a page or a tab removes it. There are no redirects from the old
@@ -94,6 +108,7 @@ hold pages directly and have tabs at the same time.
   | tab          | `new`            | the editor for a new page, the tab preselected           |
   | tab          | `rename`         | the "Rename tab" dialog                                  |
   | tab          | `delete`         | the "Delete tab" dialog                                  |
+  | folder, tab  | `upload`         | the "Upload file" dialog                                 |
   | page         | `edit`           | the edit form (see `pages.md`)                           |
   | page         | `move-or-rename` | the "Move or rename page" dialog                         |
   | page         | `delete`         | the "Delete page" dialog                                 |
@@ -112,6 +127,9 @@ hold pages directly and have tabs at the same time.
   revisions of the page, `?view=revision&revision=<n>`, one revision, and `?view=compare&from=<n>&to=<n>`, a
   comparison of two revisions. The action `revert` needs `&revision=<n>`. These parameters belong only to their view
   or action; anywhere else they show the not-found page (see `page-history.md`).
+- The action `upload` exists only while the files are on (see "Configuration" in `container-image.md`), and may carry
+  `&name=<name.ext>`, a file name of the rule that the dialog proposes instead of the one the chosen file suggests; a
+  malformed or repeated name shows the not-found page. The details page of a file has no actions and no views yet.
 - A page address with an action may also carry the notice `?action=<action>&notice=changed`: the editor or dialog of
   the action is shown again after a change was refused, because the page was changed after it was opened (see
   `optimistic-locking.md`). A notice without an action, and an unknown, empty or repeated notice, show the not-found
@@ -131,10 +149,22 @@ hold pages directly and have tabs at the same time.
   button; without any folder a hint that the user can create one or ask an Owner of a folder for a role.
 - `/folders/<folder>`: the folder with the own role, the buttons the role includes ("Rename" for an Owner, "All pages"
   and "Roles" for every role, "AI apps" for every role while `HIPPOWIKI_PUBLIC_URL` is set, "Deleted items" and
-  "New tab" for a Manager, "New page" for a Writer), and one list of its contents: first the pages placed directly in
-  the folder, then its tabs. Its views are listed in "Actions and views".
-- `/folders/<folder>/<tab>`: the tab with "Rename" and "Delete" for a Manager and "New page" for a Writer, and the
-  pages of the tab. The contents list of the folder offers no deletion of its tabs.
+  "New tab" for a Manager, "Upload file" and "New page" for a Writer), and one list of its contents: first the pages
+  placed directly in the folder, then its tabs; below them a section "Files" with the files placed directly in the
+  folder. Its views are listed in "Actions and views".
+- `/folders/<folder>/<tab>`: the tab with "Rename" and "Delete" for a Manager and "Upload file" and "New page" for a
+  Writer, the pages of the tab and, below them, a section "Files" with its files. The contents list of the folder
+  offers no deletion of its tabs.
+- "Upload file" is offered only while the files are on. Its dialog takes the file, its name, which the name of the
+  chosen file suggests by the name rule (`Network Diagram (v2).PNG` gives `network-diagram-v2.png`, `photo.jpeg`
+  `photo.jpg`), and, for an image, "Remove location and camera data", on by default. Before it sends the file it asks
+  whether the name is taken at the place; a taken name leads to the question whether to store the file as a new
+  version of the file of that name, and cancelling stores nothing. A refused upload keeps the dialog open with its
+  message at the field it belongs to. A stored upload leads to the details page of the file.
+- The details page of a file shows its place, a preview of an image at most as wide as the text, its type, size, the
+  width and height of an image, the number of its versions and its last change, "Open" (the file itself, in a new
+  tab) and "Download", the link to copy into a page (`![[…]]` for an image, `[[…]]` for a PDF), and its versions,
+  newest first, each with its number, when, by whom and how it was uploaded, its size and a link that opens it.
 - Page addresses are described in `pages.md`, the addresses under `/deleted-items` in `page-deletion.md`.
 - Every address below a folder has a breadcrumb back to the folder list and the folder.
 
@@ -300,6 +330,8 @@ This section is the rule for deleting a tab, in the browser and through `delete_
 - The contents of a folder show its pages by name, then its tabs by name.
 - The list of all pages of a folder is ordered by name and then by tab; among pages of the same name, the one placed
   directly in the folder comes first.
+- The section "Files" of a folder or a tab lists its files by name, each with its type, its size and its last change,
+  and is left out when the place holds no files.
 - Deleted pages are missing from all of these lists.
 - Lists show names and metadata only, never page content. The one exception is the results of a search, which show a
   piece of the text of each page around the match (see "Results" in `search.md`).

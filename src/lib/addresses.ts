@@ -7,7 +7,7 @@
 
 import type { McpRole } from "@/features/folder-roles/roles";
 import { isAdmin, type UserType } from "@/features/users/user-type";
-import { parseName } from "@/lib/names";
+import { parseFileName, parseName } from "@/lib/names";
 
 /** The home page of the wiki, which leads on to the start page of the account. */
 const HOME_PATH = "/";
@@ -306,7 +306,10 @@ export function tabPath(folder: string, tab: string, action?: string): string {
   return withAction(`${FOLDERS_PATH}/${folder}/${tab}`, action);
 }
 
-/** The search parameter of the editor of a new page with the name that its "Save page" dialog proposes. */
+/**
+ * The search parameter of the editor of a new page with the name that its "Save page" dialog proposes, and of the
+ * "Upload file" dialog with the name of the file it proposes.
+ */
 const NEW_PAGE_NAME_PARAM = "name";
 
 /**
@@ -317,6 +320,26 @@ const NEW_PAGE_NAME_PARAM = "name";
 export function newPagePath(folder: string, tab: string | null, name?: string): string {
   const path = tab === null ? folderPath(folder, "new") : tabPath(folder, tab, "new");
   return name === undefined ? path : `${path}&${NEW_PAGE_NAME_PARAM}=${name}`;
+}
+
+/**
+ * The address of the "Upload file" dialog of a folder or, with a tab, of the tab: the address with the action `upload`,
+ * and with a name, the name of the file that the dialog proposes instead of the one the chosen file suggests. The name
+ * must follow the rule of file names, which needs no encoding.
+ */
+export function uploadFilePath(folder: string, tab: string | null, name?: string): string {
+  const path = tab === null ? folderPath(folder, "upload") : tabPath(folder, tab, "upload");
+  return name === undefined ? path : `${path}&${NEW_PAGE_NAME_PARAM}=${name}`;
+}
+
+/**
+ * Reads the preset name of the "Upload file" dialog from the query string: `null` without one, the name if it is given
+ * once and follows the rule of file names exactly, and `"invalid"` for anything else.
+ */
+export function parseUploadName(searchParams: SearchParams): string | null | "invalid" {
+  const name = searchParams[NEW_PAGE_NAME_PARAM];
+  if (name === undefined) return null;
+  return (typeof name === "string" && parseFileName(name)?.name) || "invalid";
 }
 
 /** Whether the query string holds a preset name of a new page, in any form. */
@@ -504,6 +527,14 @@ export function pageLabel(name: string): string {
 export function parsePageSegment(segment: string): string | null {
   if (!segment.endsWith(PAGE_SUFFIX)) return null;
   return parseName(segment.slice(0, -PAGE_SUFFIX.length));
+}
+
+/**
+ * Returns the name of a file if the URL segment is a file name with the extension of its type, otherwise `null`. Names
+ * of tabs and pages have no dot, so a segment that ends in the extension of a file is never a tab or a page.
+ */
+export function parseFileSegment(segment: string): string | null {
+  return parseFileName(segment)?.name ?? null;
 }
 
 /** The search parameters of a request, as Next.js passes them to a page. */

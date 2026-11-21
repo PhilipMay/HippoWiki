@@ -7,6 +7,7 @@ import { KNOWN_USER } from "../prisma/known-users";
 import { holdServerAction } from "./support/browser";
 import { createFolder, createPage, createUser, getTestDb, resetTestDatabase } from "./support/database";
 import { fillContent } from "./support/editor";
+import { pngBytes } from "./support/files";
 import { authorizeUrl, awaitCallback, mcpAddress, registerClient } from "./support/oauth";
 import { expect, test } from "./support/test";
 
@@ -68,6 +69,27 @@ test("a confirmation dialog disables its buttons, shows Deleting… and ignores 
   });
 
   await expect(page).toHaveURL("/folders/handbook");
+});
+
+test("the upload dialog disables its buttons and its fields, shows Uploading… and ignores Escape while it uploads", async ({
+  page,
+}) => {
+  await page.goto("/folders/handbook?action=upload");
+  const dialog = page.getByRole("dialog", { name: "Upload file" });
+  await dialog
+    .getByLabel("File")
+    .setInputFiles({ name: "diagram.png", mimeType: "image/png", buffer: await pngBytes() });
+
+  // The dialog first checks the name with a Server Action, which is held.
+  await submitHeld(page, dialog.getByRole("button", { name: "Upload" }), async () => {
+    await expect(dialog.getByRole("button", { name: "Uploading…" })).toBeDisabled();
+    await expect(dialog.getByRole("link", { name: "Cancel" })).toBeDisabled();
+    await expect(dialog.getByLabel("File")).toBeDisabled();
+    await expect(dialog.getByLabel("Name")).not.toBeEditable();
+    await expectEscapeIgnored(page, dialog, "/folders/handbook?action=upload");
+  });
+
+  await expect(page).toHaveURL("/folders/handbook/diagram.png");
 });
 
 test("the editor of a page disables Save and shows Saving… while it saves", async ({ page }) => {

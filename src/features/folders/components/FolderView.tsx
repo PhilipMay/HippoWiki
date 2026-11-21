@@ -9,13 +9,25 @@ import FolderContentsList from "@/features/folders/components/FolderContentsList
 import NameDialog from "@/features/folders/components/NameDialog";
 import { mayDoFolderAction, type FolderAction } from "@/features/folders/folder-query";
 import { listTabs } from "@/features/folders/queries";
+import { checkUploadName } from "@/features/files/actions";
+import FileList from "@/features/files/components/FileList";
+import UploadFileDialog from "@/features/files/components/UploadFileDialog";
+import { listFolderFiles } from "@/features/files/queries";
+import type { UploadSettings } from "@/features/files/service";
 import { giveRole } from "@/features/folder-roles/actions";
 import GiveRoleDialog from "@/features/folder-roles/components/GiveRoleDialog";
 import { listRoleCandidates } from "@/features/folder-roles/queries";
 import { mayDo, ROLE_LABELS, type Role } from "@/features/folder-roles/roles";
 import { listFolderPages } from "@/features/pages/queries";
 import SearchField from "@/features/search/components/SearchField";
-import { allPagesPath, deletedItemsPath, folderMcpPath, folderPath, folderRolesPath } from "@/lib/addresses";
+import {
+  allPagesPath,
+  deletedItemsPath,
+  folderMcpPath,
+  folderPath,
+  folderRolesPath,
+  uploadFilePath,
+} from "@/lib/addresses";
 
 type FolderViewProps = {
   folder: { id: string; name: string; role: Role | null };
@@ -23,16 +35,24 @@ type FolderViewProps = {
   action: Exclude<FolderAction, "new"> | null;
   /** Whether there is an MCP server, and with it the view "AI apps". */
   hasMcp: boolean;
+  /** Whether files can be uploaded, and their size limit. */
+  uploads: UploadSettings;
+  /** The name of the file that the "Upload file" dialog proposes, from the address. */
+  presetName: string | null;
 };
 
 /**
- * What a folder address shows without a view: the folder with its tabs and the pages placed directly in it, the buttons
- * the role includes, and the dialog of the action on top.
+ * What a folder address shows without a view: the folder with its tabs and the pages placed directly in it, its files
+ * below them, the buttons the role includes, and the dialog of the action on top.
  */
-export default async function FolderView({ folder, action, hasMcp }: FolderViewProps) {
-  const [pages, tabs] = await Promise.all([listFolderPages(folder.id), listTabs(folder.id)]);
+export default async function FolderView({ folder, action, hasMcp, uploads, presetName }: FolderViewProps) {
+  const [pages, tabs, files] = await Promise.all([
+    listFolderPages(folder.id),
+    listTabs(folder.id),
+    listFolderFiles(folder.id),
+  ]);
   // `null` only for an admin, for whom the folder was not found already.
-  if (!pages || !tabs) notFound();
+  if (!pages || !tabs || !files) notFound();
   const { role } = folder;
   const address = folderPath(folder.name);
 
@@ -64,6 +84,11 @@ export default async function FolderView({ folder, action, hasMcp }: FolderViewP
             Deleted items
           </Button>
         )}
+        {uploads.on && mayDoFolderAction(role, "upload") && (
+          <Button component={Link} href={uploadFilePath(folder.name, null)} variant="outlined">
+            Upload file
+          </Button>
+        )}
         {mayDoFolderAction(role, "new-tab") && (
           <Button component={Link} href={folderPath(folder.name, "new-tab")} variant="outlined">
             New tab
@@ -76,6 +101,7 @@ export default async function FolderView({ folder, action, hasMcp }: FolderViewP
         )}
       </HeadingWithActions>
       <FolderContentsList folderName={folder.name} pages={pages} tabs={tabs} />
+      <FileList files={files} folderName={folder.name} />
       {action === "rename" && (
         <NameDialog
           title="Rename folder"
@@ -86,6 +112,16 @@ export default async function FolderView({ folder, action, hasMcp }: FolderViewP
       )}
       {action === "new-tab" && (
         <NameDialog title="New tab" action={createTab.bind(null, folder.id)} closeHref={address} />
+      )}
+      {action === "upload" && (
+        <UploadFileDialog
+          folderName={folder.name}
+          tabName={null}
+          presetName={presetName}
+          sizeLimit={uploads.sizeLimit}
+          checkName={checkUploadName.bind(null, folder.id, null)}
+          closeHref={address}
+        />
       )}
       {action === "give-role" && (
         <GiveRoleDialog

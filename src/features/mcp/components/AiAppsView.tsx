@@ -3,7 +3,7 @@ import Typography from "@mui/material/Typography";
 
 import FolderBreadcrumbs from "@/features/folders/components/FolderBreadcrumbs";
 import { MCP_ROLE_ABILITIES, ROLE_LABELS } from "@/features/folder-roles/roles";
-import McpAddress from "@/features/mcp/components/McpAddress";
+import CopyField from "@/components/CopyField";
 import type { McpAddressEntry } from "@/features/mcp/queries";
 import SearchField from "@/features/search/components/SearchField";
 
@@ -32,7 +32,7 @@ export default function AiAppsView({ folderName, addresses }: AiAppsViewProps) {
             {ROLE_LABELS[role]}
           </Typography>
           <Typography color="text.secondary">{MCP_ROLE_ABILITIES[role]}</Typography>
-          <McpAddress address={address} label={`${ROLE_LABELS[role]} address`} />
+          <CopyField value={address} label={`${ROLE_LABELS[role]} address`} />
         </Stack>
       ))}
     </Stack>
