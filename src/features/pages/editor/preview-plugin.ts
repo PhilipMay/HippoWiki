@@ -1,12 +1,13 @@
 // The view plugin of live preview: it builds the decorations of `live-preview.ts` for the visible ranges, again when
-// the document, the selection or the viewport changes, and opens links with Ctrl+click or Cmd+click.
+// the document, the selection or the viewport changes, opens links with Ctrl+click or Cmd+click, and stops the arrow
+// keys on the lines it hides.
 
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
-import { Prec, type EditorState, type Extension } from "@codemirror/state";
-import { EditorView, ViewPlugin, type DecorationSet, type ViewUpdate } from "@codemirror/view";
+import { EditorSelection, Prec, type EditorState, type Extension, type SelectionRange } from "@codemirror/state";
+import { EditorView, ViewPlugin, keymap, type Command, type DecorationSet, type ViewUpdate } from "@codemirror/view";
 
 import { linkDestination } from "@/features/pages/editor/link-address";
-import { livePreviewDecorations } from "@/features/pages/editor/live-preview";
+import { livePreviewDecorations, PREVIEW_CLASS } from "@/features/pages/editor/live-preview";
 import { tables } from "@/features/pages/editor/tables";
 import { editorPageList, showWikiLink, wikiLinkAt } from "@/features/pages/editor/wiki-links";
 import { isSafeAddress } from "@/features/pages/safe-address";
@@ -138,6 +139,78 @@ const previewPlugin = ViewPlugin.fromClass(
   },
 );
 
+/**
+ * Whether the decorations of live preview hide the line that starts at `from`, such as a fence line, so that the arrow
+ * keys and the screen cannot disagree. A line outside the visible ranges has no decorations and counts as shown.
+ */
+function isHiddenLine(view: EditorView, from: number): boolean {
+  let hidden = false;
+  view.plugin(previewPlugin)?.decorations.between(from, from, (start, _end, decoration) => {
+    if (start !== from || decoration.spec.class !== PREVIEW_CLASS.hiddenLine) return;
+    hidden = true;
+    return false;
+  });
+  return hidden;
+}
+
+/**
+ * The cursor on the hidden line `number`, which a move of CodeMirror from `range` to `moved` passes over: at the goal
+ * column of the move, counted in characters from the start of the line and at most its length, with that goal column
+ * kept, so that the next arrow key returns to the column the cursor came from.
+ */
+function cursorOnHiddenLine(view: EditorView, number: number, moved: SelectionRange): SelectionRange {
+  const line = view.state.doc.line(number);
+  const goal = moved.goalColumn ?? 0;
+  // The start of the text of the line, from the left of the content; the line is hidden, so the start of the content
+  // stands in where it has no coordinates.
+  const start = (view.coordsAtPos(line.from, 1)?.left ?? 0) - view.contentDOM.getBoundingClientRect().left;
+  const column = Math.max(0, Math.round((goal - Math.max(0, start)) / view.defaultCharacterWidth));
+  return EditorSelection.cursor(line.from + Math.min(column, line.length), 0, undefined, goal);
+}
+
+/**
+ * Arrow Up or Arrow Down in live preview: moves each cursor as CodeMirror does, except that a move that would pass over
+ * a hidden line next to the cursor stops on it, so that the line shows its Markdown. A hidden line is so short that
+ * the move of CodeMirror by the height of a line passes over it. A selection that is not empty, and a move that stops
+ * on no hidden line, are left to the default keymap.
+ */
+function moveOntoHiddenLines(forward: boolean): Command {
+  return (view) => {
+    const { state } = view;
+    if (state.selection.ranges.some((range) => !range.empty)) return false;
+    let stopped = false;
+    const ranges = state.selection.ranges.map((range) => {
+      const moved = view.moveVertically(range, forward);
+      const from = state.doc.lineAt(range.head).number;
+      const next = from + (forward ? 1 : -1);
+      if (Math.abs(state.doc.lineAt(moved.head).number - from) > 1 && isHiddenLine(view, state.doc.line(next).from)) {
+        stopped = true;
+        return cursorOnHiddenLine(view, next, moved);
+      }
+      // As the command of CodeMirror: a cursor that cannot move further goes to the start or the end of its line.
+      return moved.head !== range.head ? moved : view.moveToLineBoundary(range, forward);
+    });
+    if (!stopped) return false;
+    view.dispatch({
+      selection: EditorSelection.create(ranges, state.selection.mainIndex),
+      scrollIntoView: true,
+      userEvent: "select",
+    });
+    return true;
+  };
+}
+
+/**
+ * The arrow keys of live preview, before the default keymap; the keys of the picker on `[[`, whose keymap has the
+ * highest precedence, act first while its list is open.
+ */
+const hiddenLineKeymap = Prec.high(
+  keymap.of([
+    { key: "ArrowUp", run: moveOntoHiddenLines(false) },
+    { key: "ArrowDown", run: moveOntoHiddenLines(true) },
+  ]),
+);
+
 const { palette, typography } = appTheme;
 
 /** The styles of live preview, in the font of the page view; source mode stays monospace. */
@@ -209,8 +282,8 @@ const previewTheme = EditorView.theme({
   },
 });
 
-/** Live preview: its decorations, its link clicks and its styles. */
+/** Live preview: its decorations, its link clicks, its arrow keys and its styles. */
 export function livePreview(): Extension {
   // Over the theme of the editor, whose monospace font is that of source mode.
-  return [previewPlugin, tables, Prec.highest(previewTheme)];
+  return [previewPlugin, tables, hiddenLineKeymap, Prec.highest(previewTheme)];
 }

@@ -23,7 +23,7 @@ then shows its Markdown and can be edited like any other line.
 
 ## Checklist
 
-- [ ] Arrow keys stop on hidden lines
+- [x] Arrow keys stop on hidden lines
 - [ ] Wrap-up
 
 ## Arrow keys stop on hidden lines

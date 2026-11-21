@@ -12,8 +12,11 @@ import { touched } from "@/features/pages/editor/tables";
 import { editorPageList, insideLink, readWikiLink, showWikiLink } from "@/features/pages/editor/wiki-links";
 import { isSafeAddress } from "@/features/pages/safe-address";
 
-/** The classes of live preview, which the theme of `preview-plugin.ts` styles. */
-const PREVIEW_CLASS = {
+/**
+ * The classes of live preview, which the theme of `preview-plugin.ts` styles; its arrow keys read the class of a hidden
+ * line.
+ */
+export const PREVIEW_CLASS = {
   heading: (level: number) => `cm-lp-heading cm-lp-h${level}`,
   strong: "cm-lp-strong",
   emphasis: "cm-lp-emphasis",

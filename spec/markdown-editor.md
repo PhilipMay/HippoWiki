@@ -14,7 +14,8 @@ Code: `src/features/pages/editor/`, the modules that only the browser loads:
 - `indent.ts`: Tab and Shift+Tab, and Esc then Tab to leave the editor;
 - `content-limit.ts`: the content limit;
 - `live-preview.ts`: the decorations of live preview;
-- `preview-plugin.ts`: the view plugin of live preview, its styles and the opening of links;
+- `preview-plugin.ts`: the view plugin of live preview, its styles, the opening of links and the arrow keys on hidden
+  lines;
 - `tables.ts`: the rendered tables;
 - `link-address.ts`: the address of a link as the page view reads it;
 - `wiki-links.ts`: the wiki links of the parser, the page list of the folder and what a wiki link shows and leads to;
@@ -69,6 +70,9 @@ Tests:
 - A bullet item shows a bullet, a numbered item its number as a list mark, a task item a checkbox ticked as in the
   text; a block quote shows a bar per level instead of `>`; a fenced code block shows a monospace box, its fence lines
   hidden; a horizontal rule shows a line.
+- Arrow Up and Arrow Down stop on a hidden line, the fence line of a code block or the underline of a setext heading,
+  which then shows its Markdown and is edited like any other line; the next arrow key returns to the column the cursor
+  came from.
 - A GitHub Flavored Markdown table shows as a rendered table with its header, its rows and the alignment of its
   columns. A click on a cell puts the cursor at that cell in the Markdown, which then shows the whole table.
 - Images stay their Markdown text, and raw HTML stays its text; nothing of the content becomes an element of the page
@@ -208,6 +212,10 @@ Tests:
   open-ended list of differences.
 - The lines of the cursor show all their marks: predictable, and the text does not shift while the cursor moves along a
   line. Rejected: only the marks of the element at the cursor, as in Obsidian; the whole block.
+- Arrow Up and Arrow Down stop on a hidden line, because a hidden line is so short that the move of CodeMirror by the
+  height of a line passes over it, and its Markdown could then never be reached with the keys. Rejected: showing the
+  fence lines while the cursor is on the line next to the block, which would make the text jump on every arrow key next
+  to a code block.
 - A table is rendered as a widget and turns to Markdown as a whole while the cursor is in it, since it spans many
   lines; a click on a cell leads into its Markdown. Rejected: editing the cells inside the rendered table, as in
   Obsidian, at a much larger cost.

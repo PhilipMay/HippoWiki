@@ -299,3 +299,145 @@ test("a click on a cell of the rendered table puts the cursor at that cell in th
 
   await expectContent(page, TABLE.replace("| d | e | f |", "| d | Xe | f |"));
 });
+
+/**
+ * The line of the cursor, counted from 1, and its column in the text of that line, read from the selection of the
+ * browser, which CodeMirror keeps on the cursor. For content that fits on the screen, without rendered tables.
+ */
+async function cursor(page: Page): Promise<{ line: number; column: number }> {
+  return contentEditor(page).evaluate((element) => {
+    const selection = element.ownerDocument.getSelection();
+    const focus = selection?.focusNode;
+    const line = (focus instanceof Element ? focus : focus?.parentElement)?.closest(".cm-line");
+    if (!selection || !focus || !line) return { line: 0, column: -1 };
+    const before = element.ownerDocument.createRange();
+    before.setStart(line, 0);
+    before.setEnd(focus, selection.focusOffset);
+    return { line: Array.from(element.children).indexOf(line) + 1, column: before.toString().length };
+  });
+}
+
+const CODE = "above\n\n```js\nlet a = 1;\n```\n\nbelow";
+
+/** What each line of `CODE` shows with the cursor on the line `number`: a fence line only its own Markdown. */
+function codeLinesWithCursorOn(number: number): string[] {
+  const lines = ["above", "", "", "let a = 1;", "", "", "below"];
+  if (number === 3) lines[2] = "```js";
+  if (number === 5) lines[4] = "```";
+  return lines;
+}
+
+test("Arrow Down and Arrow Up stop on the fence lines of a code block, which then show their Markdown", async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await editAtEnd(page, CODE);
+  await page.keyboard.press("ControlOrMeta+Home");
+
+  for (let number = 2; number <= 7; number++) {
+    await page.keyboard.press("ArrowDown");
+    await expect.poll(async () => (await cursor(page)).line).toBe(number);
+    await expect.poll(() => shownLines(page)).toEqual(codeLinesWithCursorOn(number));
+  }
+  for (let number = 6; number >= 1; number--) {
+    await page.keyboard.press("ArrowUp");
+    await expect.poll(async () => (await cursor(page)).line).toBe(number);
+    await expect.poll(() => shownLines(page)).toEqual(codeLinesWithCursorOn(number));
+  }
+  expect(errors).toEqual([]);
+});
+
+test("the arrow keys keep the column across a fence line", async ({ page }) => {
+  const above = "a line longer than the fence";
+  await editAtEnd(page, `${above}\n\`\`\`js\nlet a = 1;\n\`\`\`\n\nbelow`);
+  await page.keyboard.press("ControlOrMeta+Home");
+  await page.keyboard.press("End");
+
+  await page.keyboard.press("ArrowDown");
+  await expect.poll(() => cursor(page)).toEqual({ line: 2, column: "```js".length });
+  // The code line is shorter than the line above, so the cursor goes to its end.
+  await page.keyboard.press("ArrowDown");
+  await expect.poll(() => cursor(page)).toEqual({ line: 3, column: "let a = 1;".length });
+  // Back over the fence line to the column the cursor came from.
+  await page.keyboard.press("ArrowUp");
+  await expect.poll(async () => (await cursor(page)).line).toBe(2);
+  await page.keyboard.press("ArrowUp");
+  await expect.poll(() => cursor(page)).toEqual({ line: 1, column: above.length });
+});
+
+test("typing on a fence line reached with the arrow keys changes the fence", async ({ page }) => {
+  await editAtEnd(page, CODE);
+  await page.keyboard.press("ControlOrMeta+Home");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  await expect.poll(async () => (await shownLines(page))[2]).toBe("```js");
+
+  await page.keyboard.press("End");
+  await page.keyboard.press("Backspace");
+  await page.keyboard.press("Backspace");
+  await page.keyboard.type("ts");
+  await expectContent(page, CODE.replace("```js", "```ts"));
+});
+
+test("Arrow Up stops on the underline of a setext heading, which then shows its Markdown", async ({ page }) => {
+  await editAtEnd(page, "Title\n=====\n\nnext");
+
+  await page.keyboard.press("ArrowUp");
+  await expect.poll(async () => (await cursor(page)).line).toBe(3);
+  expect(await shownLines(page)).toEqual(["Title", "", "", "next"]);
+  await page.keyboard.press("ArrowUp");
+  await expect.poll(async () => (await cursor(page)).line).toBe(2);
+  await expect.poll(() => shownLines(page)).toEqual(["Title", "=====", "", "next"]);
+});
+
+test("Arrow Down reaches the opening fence line of a code block without a closing fence", async ({ page }) => {
+  await editAtEnd(page, "above\n\n```js\nlet a = 1;\nlet b = 2;");
+  await page.keyboard.press("ControlOrMeta+Home");
+
+  for (let number = 2; number <= 5; number++) {
+    await page.keyboard.press("ArrowDown");
+    await expect.poll(async () => (await cursor(page)).line).toBe(number);
+  }
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("ArrowUp");
+  await expect.poll(async () => (await cursor(page)).line).toBe(3);
+  await expect.poll(async () => (await shownLines(page))[2]).toBe("```js");
+});
+
+test("Arrow Down walks through the rows of a wrapped line before it stops on the fence line below", async ({
+  page,
+}) => {
+  const long = Array.from({ length: 80 }, (_, index) => `word${index}`).join(" ");
+  await editAtEnd(page, `${long}\n\`\`\`js\nlet a = 1;\n\`\`\``);
+  await page.keyboard.press("ControlOrMeta+Home");
+  const rows = await contentEditor(page).evaluate((element) => {
+    const line = element.children[0];
+    if (!line) return 0;
+    return Math.round(line.getBoundingClientRect().height / parseFloat(getComputedStyle(line).lineHeight));
+  });
+  expect(rows).toBeGreaterThan(1);
+
+  let column = 0;
+  for (let row = 2; row <= rows; row++) {
+    await page.keyboard.press("ArrowDown");
+    await expect.poll(async () => (await cursor(page)).column).toBeGreaterThan(column);
+    const now = await cursor(page);
+    expect(now.line).toBe(1);
+    column = now.column;
+  }
+  await page.keyboard.press("ArrowDown");
+  await expect.poll(async () => (await cursor(page)).line).toBe(2);
+  await expect.poll(async () => (await shownLines(page))[1]).toBe("```js");
+});
+
+test("in source mode Arrow Down visits every line, as before", async ({ page, context }) => {
+  await startInSourceMode(context);
+  await editAtEnd(page, CODE);
+  await page.keyboard.press("ControlOrMeta+Home");
+
+  for (let number = 2; number <= 7; number++) {
+    await page.keyboard.press("ArrowDown");
+    await expect.poll(async () => (await cursor(page)).line).toBe(number);
+  }
+  expect(await shownLines(page)).toEqual(CODE.split("\n"));
+});
