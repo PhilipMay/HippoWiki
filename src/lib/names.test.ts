@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { NAME_MAX_LENGTH } from "@/lib/name-limits";
-import { nameSchema, nameSchemaWith, parseExact, parseName } from "@/lib/names";
+import { FILE_EXTENSIONS, FILE_NAME_PATTERN, NAME_MAX_LENGTH, NAME_PATTERN } from "@/lib/name-limits";
+import {
+  FILE_NAME_RULE_MESSAGE,
+  fileNameSchema,
+  nameSchema,
+  nameSchemaWith,
+  parseExact,
+  parseFileName,
+  parseName,
+} from "@/lib/names";
 
 function nameErrors(name: string): string[] {
   const result = nameSchema.safeParse(name);
@@ -89,5 +97,68 @@ describe("parseExact", () => {
     expect(parseExact(schema, "abc")).toBe("abc");
     expect(parseExact(schema, " abc")).toBeNull();
     expect(parseExact(schema, "Abc")).toBeNull();
+  });
+});
+
+function fileNameErrors(name: string): string[] {
+  const result = fileNameSchema.safeParse(name);
+  return result.success ? [] : result.error.issues.map((issue) => issue.message);
+}
+
+describe("FILE_NAME_PATTERN", () => {
+  it("is a name of the name rule followed by a dot and one of the extensions", () => {
+    for (const extension of FILE_EXTENSIONS) {
+      expect(FILE_NAME_PATTERN.test(`network-diagram-v2.${extension}`)).toBe(true);
+    }
+    expect(FILE_NAME_PATTERN.source).toContain(NAME_PATTERN.source.slice(1, -1));
+    expect(FILE_EXTENSIONS).toEqual(["png", "jpg", "gif", "webp", "pdf"]);
+  });
+
+  it("refuses every other extension and a name without one", () => {
+    for (const name of ["photo.jpeg", "photo.svg", "notes.md", "notes.txt", "photo", "photo.", ".png"]) {
+      expect(FILE_NAME_PATTERN.test(name), name).toBe(false);
+    }
+  });
+});
+
+describe("fileNameSchema", () => {
+  it("accepts a name with the extension of its type and trims it", () => {
+    expect(fileNameSchema.parse("setup.png")).toBe("setup.png");
+    expect(fileNameSchema.parse(" report-2026.pdf\n")).toBe("report-2026.pdf");
+    expect(fileNameSchema.parse(`${"a".repeat(NAME_MAX_LENGTH)}.webp`)).toBe(`${"a".repeat(NAME_MAX_LENGTH)}.webp`);
+  });
+
+  it("requires a name", () => {
+    expect(fileNameErrors("")).toEqual(["Name is required"]);
+    expect(fileNameErrors("  ")).toEqual(["Name is required"]);
+  });
+
+  it("refuses upper case, a space, a second dot and .jpeg with the rule", () => {
+    for (const name of ["Setup.png", "setup.PNG", "my file.png", "a.b.png", "photo.jpeg", "a--b.png", "a_b.gif"]) {
+      expect(fileNameErrors(name), name).toEqual([FILE_NAME_RULE_MESSAGE]);
+    }
+  });
+
+  it("limits the part before the extension to the length of a name", () => {
+    expect(fileNameErrors(`${"a".repeat(NAME_MAX_LENGTH + 1)}.png`)).toEqual([
+      "Name must be at most 80 characters before its extension",
+    ]);
+  });
+});
+
+describe("parseFileName", () => {
+  it("reads the name, the part before the dot and the extension", () => {
+    expect(parseFileName("network-diagram.png")).toEqual({
+      name: "network-diagram.png",
+      base: "network-diagram",
+      extension: "png",
+    });
+    expect(parseFileName("manual.pdf")).toEqual({ name: "manual.pdf", base: "manual", extension: "pdf" });
+  });
+
+  it("returns null for a name that breaks the rule or has surrounding whitespace", () => {
+    for (const text of ["", "setup", "setup.md", "Setup.png", "a.b.png", "photo.jpeg", " setup.png", "setup.png\n"]) {
+      expect(parseFileName(text), text).toBeNull();
+    }
   });
 });

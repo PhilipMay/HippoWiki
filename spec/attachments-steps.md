@@ -43,8 +43,10 @@ What the plan reuses, checked against the installed packages and the npm registr
   free space, `open()` with `sync()`, `rename()`, `rm()`), `node:stream` (`Readable.fromWeb()` and `Readable.toWeb()`
   between the body of a route handler and a file) and `node:stream/promises` (`pipeline()`).
 - Code of the project:
-  - `deriveName()` of `src/features/pages/derive.ts` suggests the name of an upload from its file name, by the rule
-    that suggests page names (`Network Diagram (v2).PNG` gives `network-diagram-v2` and the extension `png`).
+  - `deriveName()` suggests the name of an upload from its file name, by the rule that suggests page names
+    (`Network Diagram (v2).PNG` gives `network-diagram-v2` and the extension `png`). Step 2 moves it from
+    `src/features/pages/derive.ts`, which imports the Markdown parser, into the pure module `src/lib/derive-name.ts`,
+    so that the upload dialog does not load markdown-it into the folder view.
   - `createLimiter()` of `src/lib/password-hash.ts` limits the images processed at the same time; step 2 moves it
     into `src/lib/limiter.ts`, with the error of a busy limiter as an argument, so that the hashing and the images
     share it.
@@ -157,7 +159,7 @@ The plan is large, so it has two stop points:
 ## Checklist
 
 - [x] Deleted items
-- [ ] File types, names, storage and images
+- [x] File types, names, storage and images
 - [ ] Files in the database and their addresses
 - [ ] Files in the views and the details page
 - [ ] New versions and revert

@@ -37,6 +37,13 @@ export const MCP_RATE_BURST: WholeNumberBounds = { min: 1, max: 10_000, default:
 export const MCP_RATE_PER_MINUTE: WholeNumberBounds = { min: 1, max: 100_000, default: 300 };
 
 /**
+ * The size limit of an uploaded file in bytes (`HIPPOWIKI_FILE_SIZE_LIMIT`): 25 MiB by default, which holds most
+ * manuals and photos, from 1 MiB, so that an ordinary screenshot always fits, to 1 GiB, so that one upload stays small
+ * against the disk of the server.
+ */
+export const FILE_SIZE_LIMIT: WholeNumberBounds = { min: 1_048_576, max: 1_073_741_824, default: 26_214_400 };
+
+/**
  * An optional variable with a whole number within the bounds, its default when it is not set. Only plain decimal
  * digits are accepted: a sign, a fraction, an exponent, spaces, a unit such as `1MiB`, leading zeros or an empty value
  * stop the server, so that a typo does not change a limit.
@@ -90,6 +97,13 @@ export const serverEnvSchema = z.object({
   HIPPOWIKI_MCP_BODY_LIMIT: wholeNumber(MCP_BODY_LIMIT),
   HIPPOWIKI_MCP_RATE_BURST: wholeNumber(MCP_RATE_BURST),
   HIPPOWIKI_MCP_RATE_PER_MINUTE: wholeNumber(MCP_RATE_PER_MINUTE),
+  // The directory that keeps the contents of uploaded files, a path relative to the working directory of the server or
+  // an absolute one. Without it, or with a directory that is missing or that the server cannot write, files are off:
+  // the wiki works, uploads are refused, and the server logs a warning at its start (`src/features/files/store.ts`).
+  // An empty value stops the server, so that a typo does not switch files off.
+  HIPPOWIKI_FILES_DIR: z.string().min(1, { error: "must be a path" }).optional(),
+  // The size limit of an uploaded file (see `FILE_SIZE_LIMIT`).
+  HIPPOWIKI_FILE_SIZE_LIMIT: wholeNumber(FILE_SIZE_LIMIT),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

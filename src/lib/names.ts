@@ -1,9 +1,10 @@
 // The name rule shared by folders, tabs, pages and user names: the schema of a name with its limits, and the parse of a
-// name that must match exactly. Used by Client Components, so no server-only imports.
+// name that must match exactly; and the name of a file, a name with the extension of its type. Used by Client
+// Components, so no server-only imports.
 
 import { z } from "zod";
 
-import { NAME_MAX_LENGTH, NAME_PATTERN } from "@/lib/name-limits";
+import { FILE_NAME_PATTERN, NAME_MAX_LENGTH, NAME_PATTERN, type FileExtension } from "@/lib/name-limits";
 
 /** Shown at the name field when another item already uses the name where it must be unique. */
 export const NAME_TAKEN_MESSAGE = "Name is already in use";
@@ -40,3 +41,41 @@ export function parseName(segment: string): string | null {
 
 /** The messages of the name schema at the field of a name, as services return them in `invalid-input`. */
 export type NameFieldErrors = { name?: string[] };
+
+/** The rule of the name of a file, as the name field shows it when a name breaks it. */
+export const FILE_NAME_RULE_MESSAGE =
+  "Use lowercase letters, digits and single hyphens, then a dot and png, jpg, gif, webp or pdf";
+
+/** The name of a file without its extension: everything before the last dot, or the whole text without one. */
+function withoutExtension(text: string): string {
+  const dot = text.lastIndexOf(".");
+  return dot < 0 ? text : text.slice(0, dot);
+}
+
+/**
+ * The name of a file, after surrounding whitespace is cut off: a name of the name rule, a dot and the lowercase
+ * extension of its type (`FILE_NAME_PATTERN`); the part before the dot has the length limit of a name. Upper case, a
+ * space, a second dot and `.jpeg` break the rule.
+ */
+export const fileNameSchema = z
+  .string()
+  .trim()
+  .min(1, { error: "Name is required", abort: true })
+  .refine((text) => withoutExtension(text).length <= NAME_MAX_LENGTH, {
+    error: `Name must be at most ${NAME_MAX_LENGTH} characters before its extension`,
+  })
+  .regex(FILE_NAME_PATTERN, FILE_NAME_RULE_MESSAGE);
+
+/** A file name read with `parseFileName()`: the whole name, the part before the dot and the extension. */
+export type FileName = { name: string; base: string; extension: FileExtension };
+
+/**
+ * Reads a file name that must match exactly (`parseExact()`), e.g. a segment of an address: its parts, or `null` when
+ * it breaks the rule of `fileNameSchema`.
+ */
+export function parseFileName(text: string): FileName | null {
+  const name = parseExact(fileNameSchema, text);
+  if (name === null) return null;
+  const dot = name.lastIndexOf(".");
+  return { name, base: name.slice(0, dot), extension: name.slice(dot + 1) as FileExtension };
+}

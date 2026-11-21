@@ -2,6 +2,8 @@
 // of memory and a processor core for its whole run: a burst of logins must not take the server down.
 import { hash, verify, type Algorithm } from "@node-rs/argon2";
 
+import { createLimiter, type Limiter } from "@/lib/limiter";
+
 /** `Algorithm.Argon2id`; the enum of the package is a `const enum`, which `isolatedModules` cannot read. */
 const ARGON2ID: Algorithm = 2;
 
@@ -24,54 +26,6 @@ export class PasswordHashBusyError extends Error {
   }
 }
 
-/** Runs the work once a slot is free and settles like the work. */
-export type Limiter = <Value>(work: () => Promise<Value>) => Promise<Value>;
-
-/**
- * A limiter that runs at most `maxConcurrent` pieces of work at the same time. Further callers wait for a free slot in
- * the order they came. A caller that has waited `maxWaitMs` is rejected with `PasswordHashBusyError`; its work never
- * runs and it takes no slot later. A slot is freed when its work has ended, also when it failed.
- */
-export function createLimiter({ maxConcurrent, maxWaitMs }: { maxConcurrent: number; maxWaitMs: number }): Limiter {
-  let running = 0;
-  /** The callers that wait for a slot, oldest first; calling an entry gives its caller the slot. */
-  const waiting: (() => void)[] = [];
-
-  function acquire(): Promise<void> {
-    if (running < maxConcurrent) {
-      running += 1;
-      return Promise.resolve();
-    }
-    return new Promise((resolve, reject) => {
-      const grant = () => {
-        clearTimeout(timer);
-        resolve();
-      };
-      const timer = setTimeout(() => {
-        waiting.splice(waiting.indexOf(grant), 1);
-        reject(new PasswordHashBusyError());
-      }, maxWaitMs);
-      waiting.push(grant);
-    });
-  }
-
-  function release(): void {
-    // The slot goes straight to the oldest waiting caller, so a caller that comes now cannot overtake it.
-    const next = waiting.shift();
-    if (next) next();
-    else running -= 1;
-  }
-
-  return async (work) => {
-    await acquire();
-    try {
-      return await work();
-    } finally {
-      release();
-    }
-  };
-}
-
 // One limiter per process. It lives on `globalThis`, so that a module evaluated twice (a hot reload in development, or
 // two bundles of the server) still shares it.
 const globalForHashes = globalThis as typeof globalThis & { hippowikiHashLimiter?: Limiter };
@@ -80,6 +34,7 @@ function limit<Value>(work: () => Promise<Value>): Promise<Value> {
   globalForHashes.hippowikiHashLimiter ??= createLimiter({
     maxConcurrent: MAX_CONCURRENT_HASHES,
     maxWaitMs: MAX_HASH_WAIT_MS,
+    busyError: () => new PasswordHashBusyError(),
   });
   return globalForHashes.hippowikiHashLimiter(work);
 }

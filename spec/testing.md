@@ -118,8 +118,9 @@ How the code is tested. Commands are listed in `README.md`.
 - The auth service (`src/features/auth/service.test.ts`) mocks `@/lib/auth`, `@/lib/db` and `@/lib/logger` and sets
   the clock with fake timers for `Date`. Its tests and those of the users service assert that no password and no hash
   is logged, for every outcome.
-- The limiter of the password hashing is tested with a work function that the test controls and with fake timers;
-  the hashing itself with real hashes.
+- The limiter of `src/lib/limiter.ts`, which the password hashing and the processing of images share, is tested with
+  a work function that the test controls and with fake timers (`src/lib/limiter.test.ts`); the hashing itself with
+  real hashes.
 - Route handlers get unit tests for their failure branches; they mock `@/lib/db` and `@/lib/logger`.
 - The adapters of callers other than the browser get unit tests like actions and queries, with the service mocked: the
   adapter of the MCP addresses (`src/features/mcp/http.test.ts`) for the 404 of every address that is no folder

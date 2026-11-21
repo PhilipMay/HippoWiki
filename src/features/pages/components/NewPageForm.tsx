@@ -15,12 +15,13 @@ import DiscardChangesDialog from "@/features/pages/components/DiscardChangesDial
 import MarkdownEditor from "@/features/pages/components/MarkdownEditor";
 import PageNameAndPlaceFields, { FOLDER_TARGET } from "@/features/pages/components/PageNameAndPlaceFields";
 import { useUnsavedChangesGuard } from "@/features/pages/components/useUnsavedChangesGuard";
-import { deriveName, titleFromContent } from "@/features/pages/derive";
+import { titleFromContent } from "@/features/pages/derive";
 import type { EditorHandle } from "@/features/pages/editor/mount";
 import type { EditorPageList } from "@/features/pages/editor/wiki-links";
 import type { PageFormAction } from "@/features/pages/forms";
 import { TITLE_HEADING_MISSING_MESSAGE } from "@/features/pages/schema";
 import { folderPath, tabPath } from "@/lib/addresses";
+import { deriveName } from "@/lib/derive-name";
 import { focusOnEntered } from "@/lib/focus";
 import { useFocusOnFirstError, useSubmitInTransition } from "@/lib/form-hooks";
 

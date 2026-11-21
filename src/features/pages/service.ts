@@ -56,7 +56,6 @@ import {
   isRevisionNumber,
   type PageFieldErrors,
 } from "@/features/pages/schema";
-import { deriveName } from "@/features/pages/derive";
 import {
   LINK_INDEX_DATA,
   LINKS_TRANSACTION,
@@ -72,6 +71,7 @@ import { searchIndexData } from "@/features/search/index-data";
 import { LAST_EDITOR_SELECT, withLastEditor, type LastEditor } from "@/features/users/records";
 import type { ChangeChannel, Prisma } from "@/generated/prisma/client";
 import { getDb } from "@/lib/db";
+import { deriveName } from "@/lib/derive-name";
 import {
   isForeignKeyViolation,
   isUniqueViolation,

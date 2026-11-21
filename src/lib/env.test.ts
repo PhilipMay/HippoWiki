@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { MCP_BODY_LIMIT, MCP_RATE_BURST, MCP_RATE_PER_MINUTE, parseServerEnv } from "@/lib/env";
+import { FILE_SIZE_LIMIT, MCP_BODY_LIMIT, MCP_RATE_BURST, MCP_RATE_PER_MINUTE, parseServerEnv } from "@/lib/env";
 
 const databaseUrl = "postgresql://hippowiki:hippowiki@localhost:5432/hippowiki";
 
@@ -14,6 +14,7 @@ describe("parseServerEnv", () => {
       HIPPOWIKI_MCP_BODY_LIMIT: 1_048_576,
       HIPPOWIKI_MCP_RATE_BURST: 60,
       HIPPOWIKI_MCP_RATE_PER_MINUTE: 300,
+      HIPPOWIKI_FILE_SIZE_LIMIT: 26_214_400,
     });
   });
 
@@ -147,6 +148,44 @@ describe("parseServerEnv", () => {
     );
   });
 
+  describe("the files", () => {
+    it("has no files directory and a size limit of 25 MiB without the variables", () => {
+      const env = parseServerEnv({ DATABASE_URL: databaseUrl });
+
+      expect(env.HIPPOWIKI_FILES_DIR).toBeUndefined();
+      expect(env.HIPPOWIKI_FILE_SIZE_LIMIT).toBe(26_214_400);
+      expect(FILE_SIZE_LIMIT).toEqual({ min: 1_048_576, max: 1_073_741_824, default: 26_214_400 });
+    });
+
+    it("takes the files directory as a path, relative or absolute", () => {
+      for (const path of ["files", "/data/files", "./data/files"]) {
+        expect(parseServerEnv({ DATABASE_URL: databaseUrl, HIPPOWIKI_FILES_DIR: path }).HIPPOWIKI_FILES_DIR).toBe(path);
+      }
+    });
+
+    it("refuses an empty files directory with an error that names the variable", () => {
+      expect(() => parseServerEnv({ DATABASE_URL: databaseUrl, HIPPOWIKI_FILES_DIR: "" })).toThrow(
+        /HIPPOWIKI_FILES_DIR/,
+      );
+    });
+
+    it.each([1_048_576, 1_073_741_824, 52_428_800])("accepts a size limit of %i", (value) => {
+      expect(
+        parseServerEnv({ DATABASE_URL: databaseUrl, HIPPOWIKI_FILE_SIZE_LIMIT: String(value) })
+          .HIPPOWIKI_FILE_SIZE_LIMIT,
+      ).toBe(value);
+    });
+
+    it.each(["1048575", "1073741825", "25MiB", "25e6", " 26214400", "026214400", "-1", ""])(
+      "refuses the size limit %j with an error that names the variable",
+      (value) => {
+        expect(() => parseServerEnv({ DATABASE_URL: databaseUrl, HIPPOWIKI_FILE_SIZE_LIMIT: value })).toThrow(
+          /HIPPOWIKI_FILE_SIZE_LIMIT/,
+        );
+      },
+    );
+  });
+
   it("ignores unrelated variables", () => {
     expect(parseServerEnv({ DATABASE_URL: databaseUrl, HOME: "/home/someone" })).not.toHaveProperty("HOME");
   });
@@ -191,6 +230,7 @@ describe("getServerEnv", () => {
       HIPPOWIKI_MCP_BODY_LIMIT: 1_048_576,
       HIPPOWIKI_MCP_RATE_BURST: 60,
       HIPPOWIKI_MCP_RATE_PER_MINUTE: 300,
+      HIPPOWIKI_FILE_SIZE_LIMIT: 26_214_400,
     });
   });
 
