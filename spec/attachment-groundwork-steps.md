@@ -24,7 +24,7 @@ an operator can change the three limits with environment variables within bounds
 
 - [x] Switch off the image optimizer
 - [x] Environment variables of the MCP limits
-- [ ] Body limit and batches at the MCP addresses
+- [x] Body limit and batches at the MCP addresses
 - [ ] Rate limit of MCP requests
 - [ ] Spec tests
 - [ ] Wrap-up

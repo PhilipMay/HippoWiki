@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { handleMcpRequest } from "@/features/mcp/http";
+import { MCP_BODY_LIMIT } from "@/lib/env";
 
 const mocks = vi.hoisted(() => ({
   authenticateAccessToken: vi.fn(),
@@ -8,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   getFolderById: vi.fn(),
   listTabs: vi.fn(),
   listAllFolderPages: vi.fn(),
+  getPage: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
@@ -15,8 +17,14 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/features/grants/service", () => ({ authenticateAccessToken: mocks.authenticateAccessToken }));
 vi.mock("@/features/folders/service", () => ({ getFolderById: mocks.getFolderById, listTabs: mocks.listTabs }));
-vi.mock("@/features/pages/service", () => ({ listAllFolderPages: mocks.listAllFolderPages }));
-vi.mock("@/lib/env", () => ({ getServerEnv: mocks.getServerEnv }));
+vi.mock("@/features/pages/service", () => ({
+  listAllFolderPages: mocks.listAllFolderPages,
+  getPage: mocks.getPage,
+}));
+vi.mock(import("@/lib/env"), async (importOriginal) => ({
+  ...(await importOriginal()),
+  getServerEnv: mocks.getServerEnv,
+}));
 vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, error: mocks.error } }));
 
 const ACTOR = { id: "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002", name: "alice", type: "user" };
@@ -32,9 +40,17 @@ const PUBLIC_URL = "https://wiki.example.com";
 const RESOURCE_METADATA = `resource_metadata="${PUBLIC_URL}/.well-known/oauth-protected-resource/mcp/${FOLDER_ID}/reader"`;
 const URL_OF_MCP = `http://localhost:3000/mcp/${FOLDER_ID}/reader`;
 
+/** The server environment that the adapter reads: the public URL and the limits of MCP, their defaults unless given. */
+function setServerEnv(env: { publicUrl?: string | undefined; bodyLimit?: number } = {}): void {
+  mocks.getServerEnv.mockReturnValue({
+    HIPPOWIKI_PUBLIC_URL: "publicUrl" in env ? env.publicUrl : PUBLIC_URL,
+    HIPPOWIKI_MCP_BODY_LIMIT: env.bodyLimit ?? MCP_BODY_LIMIT.default,
+  });
+}
+
 /** Sets the public URL that the adapter reads from the server environment. */
 function setPublicUrl(publicUrl: string | undefined): void {
-  mocks.getServerEnv.mockReturnValue({ HIPPOWIKI_PUBLIC_URL: publicUrl });
+  setServerEnv({ publicUrl });
 }
 
 /** A `POST` to `/mcp` with a JSON-RPC message, as an MCP client sends it. */
@@ -77,6 +93,7 @@ beforeEach(() => {
   mocks.getFolderById.mockResolvedValue({ id: FOLDER_ID, name: "handbook", role: "reader" });
   mocks.listTabs.mockResolvedValue([]);
   mocks.listAllFolderPages.mockResolvedValue([]);
+  mocks.getPage.mockResolvedValue(null);
 });
 
 describe("without a public URL", () => {
@@ -425,5 +442,198 @@ describe("a body that is not a message", () => {
     expect(response.status).toBe(400);
     expect(response.headers.get("content-type")).toContain("application/json");
     await expect(response.json()).resolves.toMatchObject({ error: { code: -32700 } });
+  });
+});
+
+/** A `tools/call` of `read_page` with the given id, as a client of the protocol of 2025 or, with `_meta`, of now. */
+function readPageCall(id: number, modern = false): Record<string, unknown> {
+  return {
+    jsonrpc: "2.0",
+    id,
+    method: "tools/call",
+    params: { name: "read_page", arguments: { page: `page-${id}` }, ...(modern ? { _meta: MODERN_META } : {}) },
+  };
+}
+
+/** A body of JSON, a `tools/list` padded with spaces, of exactly the given number of bytes. */
+function bodyOfSize(bytes: number): string {
+  const message = JSON.stringify(TOOLS_LIST);
+  return message + " ".repeat(bytes - message.length);
+}
+
+/**
+ * A body sent in chunks of 64 KiB without a `Content-Length`, of the given number of bytes; `pulled()` says how many
+ * bytes the stream has handed out so far.
+ */
+function chunkedBody(bytes: number): { stream: ReadableStream<Uint8Array>; pulled: () => number } {
+  const encoded = new TextEncoder().encode(bodyOfSize(bytes));
+  const chunk = 64 * 1024;
+  let offset = 0;
+  const stream = new ReadableStream<Uint8Array>(
+    {
+      pull(controller) {
+        if (offset >= encoded.length) {
+          controller.close();
+          return;
+        }
+        controller.enqueue(encoded.subarray(offset, offset + chunk));
+        offset += chunk;
+      },
+    },
+    { highWaterMark: 0 },
+  );
+  return { stream, pulled: () => Math.min(offset, encoded.length) };
+}
+
+/**
+ * A `POST` with the given body as it is, with the headers of an MCP client: a text with its `Content-Length`, as a
+ * client sends a body it holds whole, or a stream without one, as a body sent in chunks.
+ */
+function postRaw(body: string | ReadableStream<Uint8Array>, headers: Record<string, string> = {}): Request {
+  return new Request(URL_OF_MCP, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json, text/event-stream",
+      authorization: `Bearer ${TOKEN}`,
+      ...(typeof body === "string" ? { "content-length": String(new TextEncoder().encode(body).length) } : {}),
+      ...headers,
+    },
+    body,
+    ...(typeof body === "string" ? {} : { duplex: "half" }),
+  } as RequestInit);
+}
+
+const MIB = 1024 * 1024;
+
+describe("the body limit", () => {
+  it("lets a body of exactly 1 MiB pass, with a Content-Length and in chunks", async () => {
+    const withLength = await handleMcpRequest(postRaw(bodyOfSize(MIB)), PATH);
+    const inChunks = await handleMcpRequest(postRaw(chunkedBody(MIB).stream), PATH);
+
+    expect(withLength.status).toBe(200);
+    expect(inChunks.status).toBe(200);
+    await expect(inChunks.json()).resolves.toMatchObject({ id: 2, result: { tools: expect.any(Array) } });
+  });
+
+  it("refuses a body of 1 MiB and one byte with a Content-Length with 413, and the SDK and no tool see it", async () => {
+    const response = await handleMcpRequest(
+      postRaw(bodyOfSize(MIB + 1).replace(JSON.stringify(TOOLS_LIST), JSON.stringify(readPageCall(5)))),
+      PATH,
+    );
+
+    expect(response.status).toBe(413);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    await expect(response.json()).resolves.toEqual({ error: "request_too_large" });
+    expect(mocks.getPage).not.toHaveBeenCalled();
+    expect(mocks.info).not.toHaveBeenCalled();
+  });
+
+  it("refuses a body of 1 MiB and one byte in chunks with 413, and stops reading it at the limit", async () => {
+    const large = chunkedBody(4 * MIB);
+    const justOver = chunkedBody(MIB + 1);
+
+    const response = await handleMcpRequest(postRaw(large.stream), PATH);
+    const second = await handleMcpRequest(postRaw(justOver.stream), PATH);
+
+    expect(response.status).toBe(413);
+    expect(second.status).toBe(413);
+    // The reader stops with the chunk that passes the limit: the stream of 4 MiB is not read to its end.
+    expect(large.pulled()).toBeLessThanOrEqual(MIB + 64 * 1024);
+    expect(mocks.info).not.toHaveBeenCalled();
+  });
+
+  it("refuses a Content-Length over the limit without reading the body", async () => {
+    const small = chunkedBody(1024);
+
+    const response = await handleMcpRequest(postRaw(small.stream, { "content-length": String(MIB + 1) }), PATH);
+
+    expect(response.status).toBe(413);
+    expect(small.pulled()).toBe(0);
+  });
+
+  it("follows HIPPOWIKI_MCP_BODY_LIMIT: with 4 MiB a body of 2 MiB fits", async () => {
+    setServerEnv({ bodyLimit: 4 * MIB });
+
+    const response = await handleMcpRequest(postRaw(bodyOfSize(2 * MIB)), PATH);
+    const inChunks = await handleMcpRequest(postRaw(chunkedBody(2 * MIB).stream), PATH);
+
+    expect(response.status).toBe(200);
+    expect(inChunks.status).toBe(200);
+  });
+
+  it("does not read the body of a request without a token", async () => {
+    mocks.authenticateAccessToken.mockResolvedValue({ ok: false, error: { code: "missing-token" } });
+    const large = chunkedBody(4 * MIB);
+
+    const response = await handleMcpRequest(postRaw(large.stream), PATH);
+
+    expect(response.status).toBe(401);
+    expect(large.pulled()).toBe(0);
+  });
+});
+
+describe("a batch", () => {
+  const BATCH_ERROR = {
+    jsonrpc: "2.0",
+    id: null,
+    error: {
+      code: -32600,
+      message: "Invalid Request: batches are not supported. Send the calls one by one, each in a request of its own.",
+    },
+  };
+
+  it.each([
+    ["without the _meta envelope, of 2025-03-26", false, { "mcp-protocol-version": "2025-03-26" }],
+    ["without the _meta envelope, of 2025-06-18", false, { "mcp-protocol-version": "2025-06-18" }],
+    ["without the _meta envelope or a version header", false, {}],
+    ["with the _meta envelope", true, modernHeaders("tools/call", "read_page")],
+  ])("is refused as a whole with 400 and -32600, %s, and no tool runs", async (_case, modern, headers) => {
+    const response = await handleMcpRequest(post([readPageCall(1, modern), readPageCall(2, modern)], headers), PATH);
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    await expect(response.json()).resolves.toEqual(BATCH_ERROR);
+    expect(mocks.getPage).not.toHaveBeenCalled();
+    expect(mocks.info).not.toHaveBeenCalled();
+  });
+
+  it("is logged as one warning with the user, the grant and the address, without the calls", async () => {
+    await handleMcpRequest(post([readPageCall(1), readPageCall(2)]), PATH);
+
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(
+      { userId: ACTOR.id, grantId: CONNECTION.grantId, folderId: FOLDER_ID, role: "reader" },
+      expect.any(String),
+    );
+    const logged = JSON.stringify(mocks.warn.mock.calls);
+    expect(logged).not.toContain("page-1");
+    expect(logged).not.toContain("read_page");
+    expect(logged).not.toContain(TOKEN);
+  });
+
+  it("is refused also when it is empty", async () => {
+    const response = await handleMcpRequest(post([]), PATH);
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual(BATCH_ERROR);
+  });
+
+  it("is not read without a token: 401 comes first", async () => {
+    mocks.authenticateAccessToken.mockResolvedValue({ ok: false, error: { code: "missing-token" } });
+
+    const response = await handleMcpRequest(post([readPageCall(1), readPageCall(2)]), PATH);
+
+    expect(response.status).toBe(401);
+    expect(mocks.warn).not.toHaveBeenCalled();
+  });
+
+  it("leaves single calls working, one by one", async () => {
+    const first = await handleMcpRequest(post(readPageCall(1)), PATH);
+    const second = await handleMcpRequest(post(readPageCall(2)), PATH);
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(mocks.getPage).toHaveBeenCalledTimes(2);
+    expect(mocks.info).toHaveBeenCalledTimes(2);
   });
 });
