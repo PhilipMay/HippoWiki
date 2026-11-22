@@ -44,6 +44,8 @@ file itself holds.
   are open? A fixed finding is deleted, and the file with its last finding.
 - `spec/list-layout-review.md`: Which findings of the review of the list layout in the page view are open? A fixed
   finding is deleted, and the file with its last finding.
+- `spec/explorative-test-report.md`: Which findings of the explorative test of the web application are open? A fixed
+  finding is deleted, and the file with its last finding.
 
 ## Running the Checks
 
