@@ -478,31 +478,8 @@ test.describe("the consent page, as an admin", () => {
     expect(await getTestDb().oAuthGrant.count()).toBe(0);
   });
 
-  for (const [what, params, message] of [
-    ["a client that is not registered", { client_id: "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10" }, /not known to the wiki/],
-    [
-      "a redirect address that is not one of the client",
-      { redirect_uri: "https://evil.example/callback" },
-      /not one of its own/,
-    ],
-  ] as const) {
-    test(`a request with ${what} shows the error of every user and sends the browser nowhere`, async ({
-      page,
-      request,
-    }) => {
-      const clientId = await registerClient(request);
-      const requests: string[] = [];
-      page.on("request", (each) => requests.push(new URL(each.url()).host));
-      const address = authorizeUrl(clientId, reader, params);
-
-      await page.goto(address);
-
-      await expect(page.getByRole("main").getByRole("alert")).toHaveText(message);
-      await expect(page.getByRole("main").getByRole("link", { name: /^Return to/ })).toHaveCount(0);
-      await expect(page).toHaveURL(address);
-      expect(requests.filter((host) => host !== new URL(ISSUER).host)).toEqual([]);
-    });
-  }
+  // A request that cannot be trusted shows an admin the error of every user (`loadConsent` in
+  // src/features/oauth/queries.test.ts).
 });
 
 test.describe("the consent page, as a logged-in user", () => {
@@ -586,53 +563,37 @@ test.describe("the consent page, as a logged-in user", () => {
     expect(grant.expiresAt.getTime() - Date.now()).toBeLessThanOrEqual(30 * DAY_MS);
   });
 
-  for (const [what, params, message] of [
-    [
-      "a redirect address that is not one of the client",
-      { redirect_uri: "https://evil.example/callback" },
-      /not one of its own/,
-    ],
-    ["a redirect address on another path", { redirect_uri: "http://127.0.0.1:53682/other" }, /not one of its own/],
-    ["a client that is not registered", { client_id: "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10" }, /not known to the wiki/],
-    ["a client id that is no id", { client_id: "example" }, /not known to the wiki/],
-  ] as const) {
-    test(`a request with ${what} shows the reason and sends the browser nowhere`, async ({ page, request }) => {
-      const errors = collectErrors(page);
-      const clientId = await registerClient(request);
-      const requests: string[] = [];
-      page.on("request", (each) => requests.push(new URL(each.url()).host));
-      const address = authorizeUrl(clientId, reader, params);
+  // The other requests that cannot be trusted, an unknown client or a redirect address on another path, are told
+  // apart in integration/oauth-service.test.ts and shown in the same way (`loadConsent` in
+  // src/features/oauth/queries.test.ts).
+  test("a request with a redirect address that is not one of the client shows the reason and sends the browser nowhere", async ({
+    page,
+    request,
+  }) => {
+    const errors = collectErrors(page);
+    const clientId = await registerClient(request);
+    const requests: string[] = [];
+    page.on("request", (each) => requests.push(new URL(each.url()).host));
+    const address = authorizeUrl(clientId, reader, { redirect_uri: "https://evil.example/callback" });
 
-      await page.goto(address);
+    await page.goto(address);
 
-      await expect(page.getByRole("main").getByRole("alert")).toHaveText(message);
-      await expect(page).toHaveURL(address);
-      await expect(page.getByRole("button", { name: "Approve" })).toHaveCount(0);
-      await expect(page.getByRole("button", { name: "Deny" })).toHaveCount(0);
-      // The name of the client is not shown for a request that cannot be trusted.
-      await expect(page.getByText("Example connector")).toHaveCount(0);
-      expect(requests.filter((host) => host !== new URL(ISSUER).host)).toEqual([]);
-      expect(errors).toEqual([]);
-    });
-  }
+    await expect(page.getByRole("main").getByRole("alert")).toHaveText(/not one of its own/);
+    await expect(page).toHaveURL(address);
+    await expect(page.getByRole("main").getByRole("link", { name: /^Return to/ })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Approve" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Deny" })).toHaveCount(0);
+    // The name of the client is not shown for a request that cannot be trusted.
+    await expect(page.getByText("Example connector")).toHaveCount(0);
+    expect(requests.filter((host) => host !== new URL(ISSUER).host)).toEqual([]);
+    expect(errors).toEqual([]);
+  });
 
+  // The other refused requests, such as another response type, no PKCE challenge or another resource, are told apart
+  // in integration/oauth-service.test.ts and shown in the same way.
   for (const [what, params, error] of [
-    ["another response type", { response_type: "token" }, "unsupported_response_type"],
     ["PKCE with the method plain", { code_challenge_method: "plain" }, "invalid_request"],
-    ["no PKCE challenge", { code_challenge: "" }, "invalid_request"],
-    ["no resource", { resource: null }, "invalid_target"],
-    ["the plain /mcp as the resource", { resource: `${ISSUER}/mcp` }, "invalid_target"],
-    [
-      "the address of the role Owner",
-      { resource: `${ISSUER}/mcp/0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10/owner` },
-      "invalid_target",
-    ],
     ["a resource that is no folder address", { resource: `${ISSUER}/mcp/abc/reader` }, "invalid_target"],
-    [
-      "a resource that is another server",
-      { resource: "https://other.example/mcp/0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10/reader" },
-      "invalid_target",
-    ],
   ] as const) {
     test(`a request with ${what} shows the reason and returns to the client with ${error} only on a click`, async ({
       page,
@@ -718,21 +679,14 @@ test.describe("the consent page, as a logged-in user", () => {
     });
   }
 
-  test("a missing folder, a folder without a role and a role too low show the same refusal with access_denied", async ({
-    page,
-    request,
-  }) => {
-    const notes = await createFolder({ name: "notes", roles: [] });
+  test("a missing folder and a role too low show the same refusal with access_denied", async ({ page, request }) => {
     const handbook = await createFolder({ name: "handbook", roles: [{ user: KNOWN_USER, role: "reader" }] });
-    const drafts = await createFolder({ name: "drafts", roles: [{ user: KNOWN_USER, role: "writer" }] });
     const clientId = await registerClient(request);
 
+    // Every case of the refusal is in integration/oauth-service.test.ts; the page shows the same for each.
     for (const resource of [
       mcpAddress({ id: "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10" }),
-      mcpAddress(notes),
       mcpAddress(handbook, "writer"),
-      mcpAddress(handbook, "manager"),
-      mcpAddress(drafts, "manager"),
     ]) {
       const callback = await awaitCallback(page);
       await page.goto(authorizeUrl(clientId, resource));
@@ -741,7 +695,7 @@ test.describe("the consent page, as a logged-in user", () => {
       await expect(main.getByRole("alert")).toHaveText(
         "The request of the app cannot be answered: No app can be connected to this address.",
       );
-      await expect(main.getByText(/notes|handbook|drafts/)).toHaveCount(0);
+      await expect(main.getByText(/handbook/)).toHaveCount(0);
       await expect(main.getByRole("button", { name: "Approve" })).toHaveCount(0);
       await main.getByRole("link", { name: "Return to 127.0.0.1:53682" }).click();
       expect(await callback()).toEqual({

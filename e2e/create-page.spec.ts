@@ -79,37 +79,31 @@ test("creating a page derives title and name from the title heading and shows th
   expect(errors).toEqual([]);
 });
 
-for (const { name, content } of [
-  { name: "text before the title heading", content: "Intro\n\n# Title" },
-  { name: "a level-two heading first", content: "## Section\n\n# Title" },
-  { name: "a title heading only inside a code block", content: "```\n# Not the title\n```\n\n# Title" },
-  { name: "a setext heading", content: "Title\n=====" },
-  { name: "a heading without text", content: "# **" },
-  { name: "empty content", content: "" },
-]) {
-  test(`${name} shows the error at the content field and opens no dialog`, async ({ page }) => {
-    const errors = collectErrors(page);
-    await page.goto(NEW_PAGE);
-    const field = contentEditor(page);
-    await fillContent(page, content);
-    await page.getByRole("button", { name: "Save" }).click();
+// The other contents without a title heading, such as a level-two heading first, a setext heading or empty content,
+// are tested in src/features/pages/derive.test.ts (`titleFromContent`) and give the same error.
+test("text before the title heading shows the error at the content field and opens no dialog", async ({ page }) => {
+  const errors = collectErrors(page);
+  const content = "Intro\n\n# Title";
+  await page.goto(NEW_PAGE);
+  const field = contentEditor(page);
+  await fillContent(page, content);
+  await page.getByRole("button", { name: "Save" }).click();
 
-    await expect(field).toHaveAttribute("aria-invalid", "true");
-    await expect(field).toHaveAccessibleDescription(TITLE_HEADING_MISSING);
-    await expect(saveDialog(page)).toHaveCount(0);
-    await expect(page).toHaveURL(NEW_PAGE);
-    await expectContent(page, content);
-    expect(await getTestDb().page.count()).toBe(0);
+  await expect(field).toHaveAttribute("aria-invalid", "true");
+  await expect(field).toHaveAccessibleDescription(TITLE_HEADING_MISSING);
+  await expect(saveDialog(page)).toHaveCount(0);
+  await expect(page).toHaveURL(NEW_PAGE);
+  await expectContent(page, content);
+  expect(await getTestDb().page.count()).toBe(0);
 
-    // Adding a title heading removes the error and opens the dialog.
-    await fillContent(page, `# Fixed\n\n${content}`);
-    await page.getByRole("button", { name: "Save" }).click();
-    await expect(saveDialog(page).getByLabel("Name")).toHaveValue("fixed");
-    // Behind the open dialog the editor is hidden from assistive technology.
-    await expect(contentEditor(page, { includeHidden: true })).toHaveAttribute("aria-invalid", "false");
-    expect(errors).toEqual([]);
-  });
-}
+  // Adding a title heading removes the error and opens the dialog.
+  await fillContent(page, `# Fixed\n\n${content}`);
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(saveDialog(page).getByLabel("Name")).toHaveValue("fixed");
+  // Behind the open dialog the editor is hidden from assistive technology.
+  await expect(contentEditor(page, { includeHidden: true })).toHaveAttribute("aria-invalid", "false");
+  expect(errors).toEqual([]);
+});
 
 test("the dialog asks for the name and the place and shows no title", async ({ page }) => {
   const dialog = await openSaveDialog(page, "# Hidden title\n\nBody");
@@ -200,24 +194,25 @@ test("a name that is taken in another folder is free in this folder", async ({ p
   ]);
 });
 
-for (const { name, error } of [
-  { name: "Bad Name", error: "Use lowercase letters, digits and single hyphens" },
-  { name: "valid-title.md", error: "Use lowercase letters, digits and single hyphens" },
-  { name: "", error: "Name is required" },
-]) {
-  test(`the name "${name}" shows "${error}" in the dialog and creates nothing`, async ({ page }) => {
-    const dialog = await openSaveDialog(page, "# Valid title");
-    await dialog.getByLabel("Name").fill(name);
+test("an invalid name shows its error in the open dialog and creates nothing", async ({ page }) => {
+  const dialog = await openSaveDialog(page, "# Valid title");
+  const nameField = dialog.getByLabel("Name");
+
+  for (const [name, error] of [
+    ["Bad Name", "Use lowercase letters, digits and single hyphens"],
+    ["valid-title.md", "Use lowercase letters, digits and single hyphens"],
+    ["", "Name is required"],
+  ] as const) {
+    await nameField.fill(name);
     await dialog.getByRole("button", { name: "Save" }).click();
 
-    const nameField = dialog.getByLabel("Name");
-    await expect(nameField).toHaveAttribute("aria-invalid", "true");
-    await expect(nameField).toHaveAccessibleDescription(error);
-    await expect(page).toHaveURL(NEW_PAGE);
-    await expect(nameField).toHaveValue(name);
-    expect(await getTestDb().page.count()).toBe(0);
-  });
-}
+    await expect(nameField, name).toHaveAccessibleDescription(error);
+    await expect(nameField, name).toHaveAttribute("aria-invalid", "true");
+    await expect(nameField, name).toHaveValue(name);
+  }
+  await expect(page).toHaveURL(NEW_PAGE);
+  expect(await getTestDb().page.count()).toBe(0);
+});
 
 test("no page name is reserved: a page can be named new", async ({ page }) => {
   const dialog = await openSaveDialog(page, "# New");
@@ -400,46 +395,40 @@ test.describe("the place of the new page", () => {
     expect(errors).toEqual([]);
   });
 
-  test("choosing a tab on the folder address creates the page in that tab", async ({ page }) => {
+  test("choosing another place than the one of the address creates the page there", async ({ page }) => {
     const errors = collectErrors(page);
-    const dialog = await openSaveDialog(page, "# Into a tab");
-    await dialog.getByRole("radio", { name: "Tab guides" }).check();
-
+    // On a tab address: another tab, then the folder.
+    let dialog = await openSaveDialog(page, "# Into the folder", NEW_PAGE_IN_GUIDES);
+    await dialog.getByRole("radio", { name: "Tab meetings" }).check();
     await expect(dialog.getByLabel("Name")).toHaveAccessibleDescription(
-      "Address: /folders/handbook/guides/into-a-tab.md",
+      "Address: /folders/handbook/meetings/into-the-folder.md",
     );
-    await dialog.getByRole("button", { name: "Save" }).click();
-
-    await expect(page).toHaveURL("/folders/handbook/guides/into-a-tab.md");
-    expect(await getTestDb().page.findFirstOrThrow()).toMatchObject({ folderId: handbook.id, tabId: guides.id });
-    expect(errors).toEqual([]);
-  });
-
-  test("choosing the folder on a tab address creates the page directly in the folder", async ({ page }) => {
-    const errors = collectErrors(page);
-    const dialog = await openSaveDialog(page, "# Into the folder", NEW_PAGE_IN_GUIDES);
     await dialog.getByRole("radio", { name: "Directly in the folder" }).check();
-
     await expect(dialog.getByLabel("Name")).toHaveAccessibleDescription(
       "Address: /folders/handbook/into-the-folder.md",
     );
     await dialog.getByRole("button", { name: "Save" }).click();
 
     await expect(page).toHaveURL("/folders/handbook/into-the-folder.md");
-    expect(await getTestDb().page.findFirstOrThrow()).toMatchObject({ folderId: handbook.id, tabId: null });
-    expect(errors).toEqual([]);
-  });
+    expect(await getTestDb().page.findFirstOrThrow({ where: { name: "into-the-folder" } })).toMatchObject({
+      folderId: handbook.id,
+      tabId: null,
+    });
 
-  test("choosing another tab on a tab address creates the page in that tab", async ({ page }) => {
-    const dialog = await openSaveDialog(page, "# Elsewhere", NEW_PAGE_IN_GUIDES);
-    await dialog.getByRole("radio", { name: "Tab meetings" }).check();
-
+    // On the folder address: a tab.
+    dialog = await openSaveDialog(page, "# Into a tab");
+    await dialog.getByRole("radio", { name: "Tab guides" }).check();
     await expect(dialog.getByLabel("Name")).toHaveAccessibleDescription(
-      "Address: /folders/handbook/meetings/elsewhere.md",
+      "Address: /folders/handbook/guides/into-a-tab.md",
     );
     await dialog.getByRole("button", { name: "Save" }).click();
 
-    await expect(page).toHaveURL("/folders/handbook/meetings/elsewhere.md");
+    await expect(page).toHaveURL("/folders/handbook/guides/into-a-tab.md");
+    expect(await getTestDb().page.findFirstOrThrow({ where: { name: "into-a-tab" } })).toMatchObject({
+      folderId: handbook.id,
+      tabId: guides.id,
+    });
+    expect(errors).toEqual([]);
   });
 
   test("a name taken at the chosen place keeps name, place and content, and is free at another place", async ({

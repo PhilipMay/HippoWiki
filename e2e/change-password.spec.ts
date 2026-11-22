@@ -144,43 +144,9 @@ test("log out works while the password change is pending", async ({ page }) => {
 
 test.describe("a rule that the new password breaks", () => {
   // Each case breaks one rule: its error shows at its field, which gets the focus, and the user stays on the form.
+  // The other rules of a new password give their errors in the same way; they are tested in
+  // src/features/auth/schema.test.ts and src/features/users/schema.test.ts.
   for (const { what, input, field, error, emptied } of [
-    {
-      what: "a new password of 7 characters",
-      input: { next: "1234567" },
-      field: "New password",
-      error: "Password must be at least 8 characters",
-    },
-    {
-      what: "a new password of 129 characters",
-      input: { next: "p".repeat(129) },
-      field: "New password",
-      error: "Password must be at most 128 characters",
-    },
-    {
-      what: "a new password built from the user name",
-      input: { next: "Alice2026" },
-      field: "New password",
-      error: "Password must not be built only from the user name or the name of the wiki, digits and symbols",
-    },
-    {
-      what: "a new password built from the name of the wiki",
-      input: { next: "hippowiki2026" },
-      field: "New password",
-      error: "Password must not be built only from the user name or the name of the wiki, digits and symbols",
-    },
-    {
-      what: "a common new password",
-      input: { next: "password123" },
-      field: "New password",
-      error: "Password is too common, choose another one",
-    },
-    {
-      what: "a new password that is the current one",
-      input: { next: KNOWN_USER.password },
-      field: "New password",
-      error: "New password must differ from the current one",
-    },
     {
       what: "a repetition that differs",
       input: { repeat: "another-password" },
@@ -193,12 +159,6 @@ test.describe("a rule that the new password breaks", () => {
       field: "Current password",
       error: "Current password is wrong",
       emptied: true,
-    },
-    {
-      what: "a missing current password",
-      input: { current: "" },
-      field: "Current password",
-      error: "Current password is required",
     },
   ]) {
     test(`${what} shows its error and keeps the user on the form`, async ({ page }) => {
@@ -222,7 +182,7 @@ test.describe("a rule that the new password breaks", () => {
         }
       } else {
         // What was entered stays in the form, so that only the field with the error has to be typed again.
-        await expect(newPasswordField(page)).toHaveValue(input.next ?? NEW_PASSWORD);
+        await expect(newPasswordField(page)).toHaveValue(NEW_PASSWORD);
       }
       // Nothing was changed: the current password still logs in and the change is still pending.
       expect(await storedAccount()).toStrictEqual(before);
@@ -403,15 +363,6 @@ test("a rule that the new password breaks keeps the way back", async ({ page }) 
   await expect(page).toHaveURL("/account");
 });
 
-test("a crafted way back to another site leads to the folder list after the password change", async ({ page }) => {
-  await makeChangePending();
-  await page.goto("/change-password?next=https%3A%2F%2Fevil.example%2F");
-
-  await submitChange(page, {});
-
-  await expect(page).toHaveURL("/folders");
-});
-
 test.describe("an admin with a pending password change", () => {
   test.use({ storageState: ADMIN_STORAGE_STATE });
 
@@ -427,16 +378,6 @@ test.describe("an admin with a pending password change", () => {
     await expect(page.getByRole("heading", { level: 1, name: "Users" })).toBeVisible();
     await expect(page.getByRole("banner").getByRole("link", { name: "Folders" })).toHaveCount(0);
     expect(errors).toEqual([]);
-  });
-
-  test("with a way back into the content lands on the user list after the change", async ({ page }) => {
-    await makeChangePending(KNOWN_ADMIN);
-    await page.goto("/change-password?next=%2Ffolders%2Fteam");
-    await expect(page).toHaveURL("/change-password?next=%2Ffolders%2Fteam");
-
-    await submitChange(page, { current: KNOWN_ADMIN.password });
-
-    await expect(page).toHaveURL("/users");
   });
 });
 

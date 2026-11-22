@@ -86,18 +86,18 @@ test("the dialog suggests the name of the chosen file by the name rule, .jpeg as
   await expect(page).toHaveURL("/folders/handbook/photo.jpg");
 });
 
-test("names that break the rule are refused at the name field, and nothing is stored", async ({ page }) => {
+// The other names that break the rule, such as a space, two dots or another extension, are tested in
+// src/features/files/service.test.ts and give the same error.
+test("a name that breaks the rule is refused at the name field, and nothing is stored", async ({ page }) => {
   await page.goto("/folders/handbook?action=upload");
   const dialog = uploadDialog(page);
   await chooseFile(dialog, "diagram.png", await pngBytes());
 
-  for (const name of ["Setup.png", "my file.png", "a.b.png", "photo.jpeg"]) {
-    await dialog.getByLabel("Name").fill(name);
-    await dialog.getByRole("button", { name: "Upload" }).click();
-    await expect(dialog.getByLabel("Name"), name).toHaveAccessibleDescription(
-      "Use lowercase letters, digits and single hyphens, then a dot and png, jpg, gif, webp or pdf",
-    );
-  }
+  await dialog.getByLabel("Name").fill("Setup.png");
+  await dialog.getByRole("button", { name: "Upload" }).click();
+  await expect(dialog.getByLabel("Name")).toHaveAccessibleDescription(
+    "Use lowercase letters, digits and single hyphens, then a dot and png, jpg, gif, webp or pdf",
+  );
   await expect(page).toHaveURL("/folders/handbook?action=upload");
   expect(await getTestDb().file.count()).toBe(0);
 });

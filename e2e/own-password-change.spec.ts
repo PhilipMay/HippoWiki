@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 
-import { KNOWN_ADMIN, KNOWN_USER } from "../prisma/known-users";
+import { KNOWN_USER } from "../prisma/known-users";
 import {
   ADMIN_STORAGE_STATE,
   logIn,
@@ -21,9 +21,10 @@ import {
 import { listFolderStatus, mcpAddress } from "./support/oauth";
 import { expect, hydrating, test } from "./support/test";
 
-// The tests change the password of the known user or the known admin with their saved logins: every reset puts back
-// their passwords and the sessions of their saved logins, so a change ends nothing that a later test needs. One test
-// logs in through the login page first, as a user of its own.
+// The tests change the password of the known user with its saved login: every reset puts back its password and the
+// sessions of its saved login, so a change ends nothing that a later test needs. One test logs in through the login
+// page first, as a user of its own. An admin opens the same dialog ("an admin sees no such choice"),
+// and `changeOwnPassword` of src/features/auth/actions.ts has no branch by the type of the user.
 test.use({ storageState: USER_STORAGE_STATE });
 
 const NEW_PASSWORD = "my-new-own-password";
@@ -117,14 +118,6 @@ test.describe("a user of its own who has logged in through the login page", () =
   });
 });
 
-test.describe("the known admin", () => {
-  test.use({ storageState: ADMIN_STORAGE_STATE });
-
-  test("opens the dialog from the button, changes the password and logs in with the new one", async ({ page }) => {
-    await changeFromTheButton(page, KNOWN_ADMIN.name, KNOWN_ADMIN.password, "/users");
-  });
-});
-
 test("the address of the dialog opens it directly, and Cancel and Escape close it without a change", async ({
   page,
 }) => {
@@ -148,69 +141,24 @@ test("the address of the dialog opens it directly, and Cancel and Escape close i
   expect(errors).toEqual([]);
 });
 
-test.describe("a new password that breaks a rule", () => {
-  for (const { what, input, field, error } of [
-    {
-      what: "a common one",
-      input: { next: "password123" },
-      field: /^New password/,
-      error: "Password is too common, choose another one",
-    },
-    {
-      what: "one built from the user name",
-      input: { next: `${KNOWN_USER.name}2026` },
-      field: /^New password/,
-      error: "Password must not be built only from the user name or the name of the wiki, digits and symbols",
-    },
-    {
-      what: "one built from a context word",
-      input: { next: "hippowiki2026" },
-      field: /^New password/,
-      error: "Password must not be built only from the user name or the name of the wiki, digits and symbols",
-    },
-    {
-      what: "one equal to the current one",
-      input: { next: KNOWN_USER.password },
-      field: /^New password/,
-      error: "New password must differ from the current one",
-    },
-    {
-      what: "one that is too short",
-      input: { next: "1234567" },
-      field: /^New password/,
-      error: "Password must be at least 8 characters",
-    },
-    {
-      what: "one that is too long",
-      input: { next: "p".repeat(129) },
-      field: /^New password/,
-      error: "Password must be at most 128 characters",
-    },
-    {
-      what: "a repetition that differs",
-      input: { repeat: "another-password" },
-      field: "Repeat new password",
-      error: "The two new passwords do not match",
-    },
-  ]) {
-    test(`${what} is refused with the message of the forced change, and the old password still works`, async ({
-      page,
-    }) => {
-      const errors = collectErrors(page);
-      const before = await storedPassword(KNOWN_USER);
-      await page.goto("/account?action=change-password");
+// The other rules of a new password give their errors in the same way, from the same schema and in the same fields;
+// they are tested in src/features/auth/schema.test.ts and src/features/users/schema.test.ts.
+test("a new password that breaks a rule is refused with the message of the forced change, and the old password still works", async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  const before = await storedPassword(KNOWN_USER);
+  await page.goto("/account?action=change-password");
 
-      await submitChange(page, input);
+  await submitChange(page, { next: "password123" });
 
-      const dialog = changeDialog(page);
-      await expect(dialog.getByText(error, { exact: true })).toBeVisible();
-      await expect(dialog.getByLabel(field)).toBeFocused();
-      // Errors of the rules keep what was entered.
-      await expect(dialog.getByLabel("Current password")).toHaveValue(KNOWN_USER.password);
-      expect(await storedPassword(KNOWN_USER)).toBe(before);
-      expect(errors).toEqual([]);
-    });
-  }
+  const dialog = changeDialog(page);
+  await expect(dialog.getByText("Password is too common, choose another one", { exact: true })).toBeVisible();
+  await expect(dialog.getByLabel(/^New password/)).toBeFocused();
+  // Errors of the rules keep what was entered.
+  await expect(dialog.getByLabel("Current password")).toHaveValue(KNOWN_USER.password);
+  expect(await storedPassword(KNOWN_USER)).toBe(before);
+  expect(errors).toEqual([]);
 });
 
 test("the change logs out a second browser of the user at its next request, and the first goes on", async ({
@@ -358,24 +306,17 @@ test.describe("disconnecting the apps", () => {
   }
 });
 
-test.describe("addresses that are not found", () => {
-  for (const { type, storageState } of KNOWN_STATES) {
-    test.describe(`the known ${type}`, () => {
-      test.use({ storageState });
+// The reading of the notice and the action is tested in src/lib/addresses.test.ts (`parseAccountNotice`).
+test("an unknown action, an unknown notice and a notice with an action are not found", async ({ page }) => {
+  // In the browser once: the not-found page opens no dialog.
+  await expectNotFound(page, "/account?notice=password-changed&action=change-password");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 
-      test(`for a ${type}: an unknown action, an unknown notice and a notice with an action`, async ({ page }) => {
-        // In the browser once: the not-found page opens no dialog.
-        await expectNotFound(page, "/account?notice=password-changed&action=change-password");
-        await expect(page.getByRole("dialog")).toHaveCount(0);
-
-        for (const address of [
-          "/account?action=change-passwords",
-          "/account?notice=anything",
-          "/account?notice=password-changed&notice=password-changed",
-        ]) {
-          await expectNotFoundResponse(page.request, address);
-        }
-      });
-    });
+  for (const address of [
+    "/account?action=change-passwords",
+    "/account?notice=anything",
+    "/account?notice=password-changed&notice=password-changed",
+  ]) {
+    await expectNotFoundResponse(page.request, address);
   }
 });

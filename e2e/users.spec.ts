@@ -170,35 +170,30 @@ test.describe("the admin, creating a user", () => {
     expect((await getTestDb().user.findUniqueOrThrow({ where: { username: "maria" } })).type).toBe("admin");
   });
 
-  for (const [what, change] of [
-    ["without a type", (radio: HTMLInputElement) => radio.removeAttribute("name")],
-    [
-      "with an unknown type",
-      (radio: HTMLInputElement) => {
-        radio.value = "root";
-      },
-    ],
-  ] as const) {
-    test(`a crafted submission ${what} shows the error at the type, keeps the dialog open and creates nothing`, async ({
-      page,
-    }) => {
-      await page.goto("/users?action=create");
-      const dialog = newUserDialog(page);
-      await dialog.getByLabel("User name").fill("jane-doe");
-      // Change the radio buttons of the form as a crafted request would.
-      for (const radio of await dialog.getByRole("radio").all()) await radio.evaluate(change);
+  // A missing type and the other types that are not one are refused in the same way (src/features/users/forms.test.ts).
+  test("a crafted submission with an unknown type shows the error at the type, keeps the dialog open and creates nothing", async ({
+    page,
+  }) => {
+    await page.goto("/users?action=create");
+    const dialog = newUserDialog(page);
+    await dialog.getByLabel("User name").fill("jane-doe");
+    // Change the radio buttons of the form as a crafted request would.
+    for (const radio of await dialog.getByRole("radio").all()) {
+      await radio.evaluate((input: HTMLInputElement) => {
+        input.value = "root";
+      });
+    }
 
-      await dialog.getByRole("button", { name: "Create" }).click();
+    await dialog.getByRole("button", { name: "Create" }).click();
 
-      await expect(dialog.getByText("Choose the type of the account", { exact: true })).toBeVisible();
-      await expect(dialog.getByRole("radiogroup", { name: "Type" })).toHaveAccessibleDescription(
-        /^Choose the type of the account/,
-      );
-      await expect(userCreatedDialog(page)).toHaveCount(0);
-      await expect(page).toHaveURL("/users?action=create");
-      expect(await getTestDb().user.count()).toBe(2);
-    });
-  }
+    await expect(dialog.getByText("Choose the type of the account", { exact: true })).toBeVisible();
+    await expect(dialog.getByRole("radiogroup", { name: "Type" })).toHaveAccessibleDescription(
+      /^Choose the type of the account/,
+    );
+    await expect(userCreatedDialog(page)).toHaveCount(0);
+    await expect(page).toHaveURL("/users?action=create");
+    expect(await getTestDb().user.count()).toBe(2);
+  });
 
   test("the type chosen before a name error is kept when the name is corrected", async ({ page }) => {
     const dialog = await submitNewUser(page, "alice", "Admin");
@@ -318,30 +313,24 @@ test.describe("the admin, creating a user", () => {
     expect(await getTestDb().user.count()).toBe(2);
   });
 
-  for (const [what, name, error] of [
-    ["a taken name", "alice", "Name is already in use"],
-    ["the name of the admin", "admin", "Name is already in use"],
-    ["a name that breaks the rule", "Jane Doe", "Use lowercase letters, digits and single hyphens"],
-    ["a name of 2 characters", "ab", "Name must be at least 3 characters"],
-    ["an empty name", "", "Name is required"],
-  ] as const) {
-    test(`${what} shows its error and keeps the dialog open`, async ({ page }) => {
-      const errors = collectErrors(page);
+  // The rules of a name are tested in src/lib/names.test.ts and src/features/users/actions.test.ts, a taken name in
+  // integration/user-service.test.ts; "a corrected name creates the user after an error" shows a taken name here.
+  test("an empty name shows its error and keeps the dialog open", async ({ page }) => {
+    const errors = collectErrors(page);
 
-      const dialog = await submitNewUser(page, name);
+    const dialog = await submitNewUser(page, "");
 
-      const field = dialog.getByLabel("User name");
-      await expect(field).toHaveAttribute("aria-invalid", "true");
-      await expect(field).toHaveAccessibleDescription(error);
-      await expect(dialog).toBeVisible();
-      await expect(field).toHaveValue(name);
-      await expect(field).toBeFocused();
-      await expect(userCreatedDialog(page)).toHaveCount(0);
-      await expect(page).toHaveURL("/users?action=create");
-      expect(await getTestDb().user.count()).toBe(2);
-      expect(errors).toEqual([]);
-    });
-  }
+    const field = dialog.getByLabel("User name");
+    await expect(field).toHaveAttribute("aria-invalid", "true");
+    await expect(field).toHaveAccessibleDescription("Name is required");
+    await expect(dialog).toBeVisible();
+    await expect(field).toHaveValue("");
+    await expect(field).toBeFocused();
+    await expect(userCreatedDialog(page)).toHaveCount(0);
+    await expect(page).toHaveURL("/users?action=create");
+    expect(await getTestDb().user.count()).toBe(2);
+    expect(errors).toEqual([]);
+  });
 
   test("a corrected name creates the user after an error", async ({ page }) => {
     const dialog = await submitNewUser(page, "alice");

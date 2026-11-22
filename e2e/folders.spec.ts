@@ -101,29 +101,31 @@ test("the name field submits with the Enter key", async ({ page }) => {
   await expect(page).toHaveURL("/folders/by-keyboard");
 });
 
-for (const { name, error } of [
-  { name: "Bad Name", error: "Use lowercase letters, digits and single hyphens" },
-  { name: "guides.md", error: "Use lowercase letters, digits and single hyphens" },
-  { name: "double--hyphen", error: "Use lowercase letters, digits and single hyphens" },
-  { name: "", error: "Name is required" },
-]) {
-  test(`the folder name "${name}" shows "${error}" and creates nothing`, async ({ page }) => {
-    const errors = collectErrors(page);
-    await page.goto("/folders?action=new");
-    const dialog = page.getByRole("dialog", { name: "New folder" });
-    const field = dialog.getByLabel("Name");
+// The rules of a name are tested in src/lib/names.test.ts; the dialog shows each error in the same way.
+test("an invalid folder name shows its error in the open dialog and creates nothing", async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.goto("/folders?action=new");
+  const dialog = page.getByRole("dialog", { name: "New folder" });
+  const field = dialog.getByLabel("Name");
+
+  for (const [name, error] of [
+    ["Bad Name", "Use lowercase letters, digits and single hyphens"],
+    ["guides.md", "Use lowercase letters, digits and single hyphens"],
+    ["double--hyphen", "Use lowercase letters, digits and single hyphens"],
+    ["", "Name is required"],
+  ] as const) {
     await field.fill(name);
     await dialog.getByRole("button", { name: "Save" }).click();
 
-    await expect(field).toHaveAttribute("aria-invalid", "true");
-    await expect(field).toHaveAccessibleDescription(error);
-    await expect(field).toHaveValue(name);
-    await expect(field).toBeFocused();
-    await expect(page).toHaveURL("/folders?action=new");
-    expect(await getTestDb().folder.count()).toBe(0);
-    expect(errors).toEqual([]);
-  });
-}
+    await expect(field, name).toHaveAccessibleDescription(error);
+    await expect(field, name).toHaveAttribute("aria-invalid", "true");
+    await expect(field, name).toHaveValue(name);
+    await expect(field, name).toBeFocused();
+  }
+  await expect(page).toHaveURL("/folders?action=new");
+  expect(await getTestDb().folder.count()).toBe(0);
+  expect(errors).toEqual([]);
+});
 
 test("a taken folder name shows the error at the name field and keeps the entered name", async ({ page }) => {
   const errors = collectErrors(page);

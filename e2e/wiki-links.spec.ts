@@ -63,7 +63,8 @@ test.describe("the limit of wiki links", () => {
   });
 });
 
-test("a page whose heading holds a wiki link gets its label, or its target, in the title", async ({ page }) => {
+// A heading with a link without a label gives its target, as tested in src/features/pages/derive.test.ts.
+test("a page whose heading holds a wiki link gets its label in the title", async ({ page }) => {
   await page.goto("/folders/handbook?action=new");
   await fillContent(page, "# About [[setup|the setup]]\n\nText");
   await page.getByRole("button", { name: "Save" }).click();
@@ -73,18 +74,7 @@ test("a page whose heading holds a wiki link gets its label, or its target, in t
 
   await expect(page).toHaveURL("/folders/handbook/about-the-setup.md");
   await expect(page).toHaveTitle("About the setup – HippoWiki");
-
-  await page.goto("/folders/handbook?action=new");
-  await fillContent(page, "# About [[guides/setup]]");
-  await page.getByRole("button", { name: "Save" }).click();
-  await expect(dialog.getByLabel("Name")).toHaveValue("about-guides-setup");
-  await dialog.getByRole("button", { name: "Save" }).click();
-
-  await expect(page).toHaveURL("/folders/handbook/about-guides-setup.md");
-  await expect(page).toHaveTitle("About guides/setup – HippoWiki");
-  expect(
-    (await getTestDb().page.findMany({ select: { title: true }, orderBy: { title: "asc" } })).map((p) => p.title),
-  ).toEqual(["About guides/setup", "About the setup"]);
+  expect((await getTestDb().page.findFirstOrThrow()).title).toBe("About the setup");
 });
 
 test.describe("wiki links in the page view", () => {
@@ -195,73 +185,36 @@ test.describe("wiki links in the page view", () => {
     await expect(article(page).getByRole("paragraph").getByRole("link")).toHaveCount(0);
   });
 
-  for (const role of ["writer", "reader"] as const) {
-    test(`a target that breaks the name rule or names a missing tab is marked text with its hint for a ${role}`, async ({
-      page,
-    }) => {
-      await createPage({ folder: handbook, name: "setup-guide", content: "# Setup guide page" });
-      await createPage({
-        folder: handbook,
-        name: "links",
-        content:
-          "# Links\n\n[[Setup Guide]] [[setup.md]] [[Guides/Setup]] [[guides/setup/more]] [[setup#install]] " +
-          "[[nosuchtab/setup]] ![[setup]]",
-      });
-      await setOwnRole(handbook, role);
-      await page.goto("/folders/handbook/links.md");
-
-      for (const text of ["Setup Guide", "setup.md", "Guides/Setup", "guides/setup/more", "setup#install"]) {
-        const marked = article(page).getByText(text, { exact: true });
-        await expect(marked).toHaveAccessibleDescription("Not a valid page name");
-        await expect(marked).toHaveCSS("text-decoration-style", "dashed");
-      }
-      await expect(article(page).getByText("nosuchtab/setup", { exact: true })).toHaveAccessibleDescription(
-        "Tab does not exist",
-      );
-      // `![[setup]]` is the text ! and a link; nothing else is a link.
-      await expect(article(page).getByRole("paragraph").getByRole("link")).toHaveText(["Setup"]);
-      await expect(article(page).getByRole("paragraph").filter({ hasText: "Setup Guide" })).toContainText("!Setup");
-    });
-  }
-
-  test("a label keeps its asterisks and a link in a table cell takes \\|", async ({ page }) => {
+  // As a Writer, who gets a link for a missing page; a Reader gets no link for any missing page.
+  test("a target that breaks the name rule or names a missing tab is marked text with its hint for a writer", async ({
+    page,
+  }) => {
+    await createPage({ folder: handbook, name: "setup-guide", content: "# Setup guide page" });
     await createPage({
       folder: handbook,
       name: "links",
-      content: "# Links\n\n[[setup|**Setup**]]\n\n| Page |\n| --- |\n| [[guides/setup\\|The guide]] |",
+      content:
+        "# Links\n\n[[Setup Guide]] [[setup.md]] [[Guides/Setup]] [[guides/setup/more]] [[setup#install]] " +
+        "[[nosuchtab/setup]] ![[setup]]",
     });
+    await setOwnRole(handbook, "writer");
     await page.goto("/folders/handbook/links.md");
 
-    await expect(article(page).getByRole("link", { name: "**Setup**" })).toHaveAttribute(
-      "href",
-      "/folders/handbook/setup.md",
+    for (const text of ["Setup Guide", "setup.md", "Guides/Setup", "guides/setup/more", "setup#install"]) {
+      const marked = article(page).getByText(text, { exact: true });
+      await expect(marked).toHaveAccessibleDescription("Not a valid page name");
+      await expect(marked).toHaveCSS("text-decoration-style", "dashed");
+    }
+    await expect(article(page).getByText("nosuchtab/setup", { exact: true })).toHaveAccessibleDescription(
+      "Tab does not exist",
     );
-    await expect(article(page).getByRole("cell").getByRole("link", { name: "The guide" })).toHaveAttribute(
-      "href",
-      "/folders/handbook/guides/setup.md",
-    );
+    // `![[setup]]` is the text ! and a link; nothing else is a link.
+    await expect(article(page).getByRole("paragraph").getByRole("link")).toHaveText(["Setup"]);
+    await expect(article(page).getByRole("paragraph").filter({ hasText: "Setup Guide" })).toContainText("!Setup");
   });
 
-  test("a code span, a code block, \\[[ and a link over a line break are text", async ({ page }) => {
-    await createPage({
-      folder: handbook,
-      name: "links",
-      content: "# Links\n\n`[[setup]]`\n\n```\n[[setup]]\n```\n\n\\[[setup]]\n\n[[setup\n]]",
-    });
-    await page.goto("/folders/handbook/links.md");
-
-    await expect(article(page).getByRole("paragraph").getByRole("link")).toHaveCount(0);
-    await expect(article(page).locator("code")).toHaveText(["[[setup]]", "[[setup]]\n"]);
-    await expect(article(page)).toContainText("[[setup]]");
-  });
-
-  test("a label shows as text, never as HTML", async ({ page }) => {
-    await createPage({ folder: handbook, name: "links", content: "# Links\n\n[[setup|<b>x</b>]]" });
-    await page.goto("/folders/handbook/links.md");
-
-    await expect(article(page).getByRole("link", { name: "<b>x</b>" })).toBeVisible();
-    await expect(article(page).locator("b")).toHaveCount(0);
-  });
+  // A label with Markdown, \| in a table cell, code, escapes and a link over a line break are read in
+  // src/features/pages/wiki-links.test.ts, and a label is rendered as text in src/features/pages/markdown.test.ts.
 
   test("a link into a deleted page shows as missing to a Manager and a Reader, and leads to it again once it is restored under its name", async ({
     page,

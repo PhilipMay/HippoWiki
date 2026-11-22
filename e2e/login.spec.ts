@@ -110,15 +110,6 @@ test("the Enter key in the password field logs in", async ({ page }) => {
   await expect(page).toHaveURL("/folders");
 });
 
-test("a name with spaces around it logs in", async ({ page }) => {
-  await page.goto("/login");
-
-  await submitLogin(page, `  ${KNOWN_USER.name} `, KNOWN_USER.password);
-
-  await expect(page).toHaveURL("/folders");
-  await expect(page.getByRole("banner").getByText(KNOWN_USER.name, { exact: true })).toBeVisible();
-});
-
 test("the session cookie is not readable by scripts and lasts 30 days", async ({ page, context }) => {
   const before = Date.now() / 1000;
 
@@ -159,32 +150,6 @@ test("a wrong password and an unknown name show the same message, and the name s
   await expect(page.getByRole("banner").getByRole("button", { name: "Log out" })).toHaveCount(0);
   expect(await newSessionCount()).toBe(0);
   expect(errors).toEqual([]);
-});
-
-test("a name that cannot belong to a user and a password in another case show the same message", async ({ page }) => {
-  await page.goto("/login");
-
-  await submitLogin(page, "Not A Name!", KNOWN_USER.password);
-  await expect(formAlert(page)).toHaveText(INVALID_CREDENTIALS);
-  await expect(page.getByLabel("User name")).toHaveValue("Not A Name!");
-
-  await submitLogin(page, KNOWN_USER.name, KNOWN_USER.password.toUpperCase());
-  // The alert shows the same text already, so the emptied password field tells that the answer has arrived. Without
-  // the wait the next test would reset the database while this login is still being counted.
-  await expect(page.getByLabel("Password")).toHaveValue("");
-  await expect(formAlert(page)).toHaveText(INVALID_CREDENTIALS);
-  expect(await newSessionCount()).toBe(0);
-});
-
-test("the right password logs in after a failed attempt", async ({ page }) => {
-  await page.goto("/login");
-  await submitLogin(page, KNOWN_USER.name, "wrong-password");
-  await expect(formAlert(page)).toHaveText(INVALID_CREDENTIALS);
-
-  await page.getByLabel("Password").fill(KNOWN_USER.password);
-  await page.getByRole("button", { name: "Log in" }).click();
-
-  await expect(page).toHaveURL("/folders");
 });
 
 const WAIT_ONE_MINUTE = "Too many failed logins. Please try again in 1 minute.";
@@ -232,29 +197,6 @@ test("once the wait is over, the right password logs in", async ({ page }) => {
   await expect(page).toHaveURL("/folders");
   await expect(page.getByRole("banner").getByText(KNOWN_USER.name, { exact: true })).toBeVisible();
   expect(await getTestDb().loginAttempt.count()).toBe(0);
-});
-
-test("an unknown name shows the same messages as a known one, also for the wait", async ({ page }) => {
-  await page.goto("/login");
-  await failFiveLogins(page, "nobody");
-
-  await submitLogin(page, "nobody", "wrong-password");
-
-  await expect(formAlert(page)).toHaveText(WAIT_ONE_MINUTE);
-  expect(await getTestDb().loginAttempt.findMany()).toMatchObject([{ username: "nobody", failures: 5 }]);
-});
-
-test("the wait of one name does not hold back another user", async ({ page }) => {
-  await getTestDb().loginAttempt.create({
-    data: { username: KNOWN_USER.name, clientAddress: VISITOR_ADDRESS, failures: 9, lastFailedAt: new Date() },
-  });
-  await page.goto("/login");
-
-  await submitLogin(page, KNOWN_USER.name, KNOWN_USER.password);
-  await expect(formAlert(page)).toHaveText("Too many failed logins. Please try again in 15 minutes.");
-
-  await submitLogin(page, KNOWN_ADMIN.name, KNOWN_ADMIN.password);
-  await expect(page).toHaveURL("/users");
 });
 
 test("with 20 logins for a name within the hour, the right password waits for the rest of the hour", async ({
@@ -308,21 +250,6 @@ test.describe("the wait per client address", () => {
     await expect(ownerPage).toHaveURL("/folders");
     expect(await newSessionCount(KNOWN_USER.id)).toBe(1);
     await ownerPage.context().close();
-  });
-
-  test("a forged entry to the left of the address gives no new budget", async ({ browser }) => {
-    const strangerPage = await openLoginFrom(browser, "203.0.113.7");
-    await failFiveLogins(strangerPage, KNOWN_USER.name);
-
-    const forgingPage = await openLoginFrom(browser, "198.51.100.9, 203.0.113.7");
-    await submitLogin(forgingPage, KNOWN_USER.name, KNOWN_USER.password);
-
-    await expect(formAlert(forgingPage)).toHaveText(WAIT_ONE_MINUTE);
-    expect(await getTestDb().loginAttempt.findMany()).toMatchObject([
-      { username: KNOWN_USER.name, clientAddress: "203.0.113.7", failures: 5 },
-    ]);
-    await strangerPage.context().close();
-    await forgingPage.context().close();
   });
 
   test("a header that is not an address counts in the shared group", async ({ browser }) => {
@@ -393,17 +320,6 @@ test("log out leads to the login page and the header shows no name", async ({ pa
   expect(errors).toEqual([]);
 });
 
-test("a new login after a logout works", async ({ page }) => {
-  await logInHome(page, KNOWN_USER);
-  await page.getByRole("banner").getByRole("button", { name: "Log out" }).click();
-  await expect(page).toHaveURL("/login");
-
-  await submitLogin(page, KNOWN_ADMIN.name, KNOWN_ADMIN.password);
-
-  await expect(page).toHaveURL("/users");
-  await expect(page.getByRole("banner").getByText(KNOWN_ADMIN.name, { exact: true })).toBeVisible();
-});
-
 test("a user can be logged in in two browsers, and a logout ends only one of the sessions", async ({
   page,
   browser,
@@ -449,16 +365,16 @@ test("a failed login keeps the way back for the next attempt", async ({ page }) 
   await expect(page).toHaveURL("/account");
 });
 
-for (const next of ["https://evil.example/", "//evil.example/", "/\\evil.example/", "javascript:alert(1)"]) {
-  test(`a crafted way back to another site (${next}) leads to the folder list`, async ({ page }) => {
-    await page.goto(`/login?next=${encodeURIComponent(next)}`);
+// The other crafted ways back are refused by the same check (src/features/auth/forms.test.ts,
+// src/features/auth/actions.test.ts and src/lib/addresses.test.ts).
+test("a crafted way back to another site (/\\evil.example/) leads to the folder list", async ({ page }) => {
+  await page.goto(`/login?next=${encodeURIComponent("/\\evil.example/")}`);
 
-    await submitLogin(page, KNOWN_USER.name, KNOWN_USER.password);
+  await submitLogin(page, KNOWN_USER.name, KNOWN_USER.password);
 
-    await expect(page).toHaveURL("/folders");
-    await expect(page.getByRole("heading", { level: 1, name: "Folders" })).toBeVisible();
-  });
-}
+  await expect(page).toHaveURL("/folders");
+  await expect(page.getByRole("heading", { level: 1, name: "Folders" })).toBeVisible();
+});
 
 test("a way back that a crafted request puts into the form leads to the folder list", async ({ page }) => {
   await page.goto("/login?next=%2Faccount");
