@@ -24,6 +24,8 @@ export default defineConfig({
           name: "cost",
           environment: "node",
           include: ["src/**/*.cost.test.ts"],
+          // The cost test files would otherwise run side by side and share the CPU, so they run one after another.
+          fileParallelism: false,
         },
       },
       {

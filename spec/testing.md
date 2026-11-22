@@ -30,7 +30,8 @@ How the code is tested. Commands are listed in `README.md`.
 - Vitest project `cost`: tests with a wall-clock budget, next to the code as `*.cost.test.ts` and left out of `unit`.
   `npm run test:cost` runs only this project, on its own and never with coverage: V8 coverage instruments every module,
   the dependencies included, and other test files running at the same time share the CPU, so a budget measured then
-  says nothing about the code. `npm run test:unit` runs only `unit`; `npm run test` runs `unit`, then `cost`, as two
+  says nothing about the code. For the same reason the cost test files run one after another, never side by side
+  (`fileParallelism: false`). `npm run test:unit` runs only `unit`; `npm run test` runs `unit`, then `cost`, as two
   runs.
 - Schemas, environment parsing and other pure helpers get unit tests.
 - Mocks are set up with `vi.mock` and shared mock functions from `vi.hoisted`, reset in `beforeEach`.
