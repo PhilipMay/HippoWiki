@@ -24,28 +24,58 @@ function atPositions(content: string): (string | null)[] {
 describe("wikiLinksOf", () => {
   it("reads the target and the label of [[target]] and [[target|label]]", () => {
     expect(wikiLinksOf("[[setup|Setup guide]]")).toEqual([
-      { target: "setup", page: { tab: null, name: "setup" }, label: "Setup guide", position: 2 },
+      {
+        target: "setup",
+        page: { kind: "page", tab: null, name: "setup" },
+        embed: false,
+        label: "Setup guide",
+        position: 2,
+      },
     ]);
     expect(wikiLinksOf("[[setup]]")).toEqual([
-      { target: "setup", page: { tab: null, name: "setup" }, label: null, position: 2 },
+      { target: "setup", page: { kind: "page", tab: null, name: "setup" }, embed: false, label: null, position: 2 },
     ]);
   });
 
   it("reads the target first, so a title before the bar names no page", () => {
     expect(wikiLinksOf("[[Setup guide|setup]]")).toEqual([
-      { target: "Setup guide", page: null, label: "setup", position: 2 },
+      { target: "Setup guide", page: null, embed: false, label: "setup", position: 2 },
     ]);
   });
 
   it("reads [[setup]] as the page placed directly in the folder and [[guides/setup]] as the page in the tab", () => {
     expect(wikiLinksOf("[[setup]] [[guides/setup]]").map((link) => link.page)).toEqual([
-      { tab: null, name: "setup" },
-      { tab: "guides", name: "setup" },
+      { kind: "page", tab: null, name: "setup" },
+      { kind: "page", tab: "guides", name: "setup" },
     ]);
   });
 
   it("reads the first part of a target with a slash as a tab of the own folder", () => {
-    expect(wikiLinksOf("[[other-folder/setup]]")[0]?.page).toEqual({ tab: "other-folder", name: "setup" });
+    expect(wikiLinksOf("[[other-folder/setup]]")[0]?.page).toEqual({
+      kind: "page",
+      tab: "other-folder",
+      name: "setup",
+    });
+  });
+
+  it("reads ![[file]] as an embed of a file, and ![[page]] as no embed", () => {
+    expect(wikiLinksOf("![[guides/diagram.png|Diagram]] [[report.pdf]] ![[setup]]")).toEqual([
+      {
+        target: "guides/diagram.png",
+        page: { kind: "file", tab: "guides", name: "diagram.png" },
+        embed: true,
+        label: "Diagram",
+        position: 3,
+      },
+      {
+        target: "report.pdf",
+        page: { kind: "file", tab: null, name: "report.pdf" },
+        embed: false,
+        label: null,
+        position: 34,
+      },
+      { target: "setup", page: { kind: "page", tab: null, name: "setup" }, embed: false, label: null, position: 50 },
+    ]);
   });
 
   it("reads targets that break the name rule as links without a page", () => {
@@ -71,7 +101,13 @@ describe("wikiLinksOf", () => {
   it("reads [[setup\\|Setup]] in a table cell as the page setup with the label Setup", () => {
     const content = "| Page | Note |\n| --- | --- |\n| [[setup\\|Setup]] | x |";
     expect(wikiLinksOf(content)).toEqual([
-      { target: "setup", page: { tab: null, name: "setup" }, label: "Setup", position: content.indexOf("setup") },
+      {
+        target: "setup",
+        page: { kind: "page", tab: null, name: "setup" },
+        embed: false,
+        label: "Setup",
+        position: content.indexOf("setup"),
+      },
     ]);
   });
 
@@ -167,10 +203,21 @@ describe("linkTargetsOf", () => {
   it("gives each valid target once, in the order of its first link, a link of the page to itself included", () => {
     const content = "# Setup\n\n[[guides/setup]] [[faq]] [[guides/setup|again]] [[Setup Guide]] `[[code]]` [[setup]]";
     expect(linkTargetsOf(content)).toEqual([
-      { tab: "guides", name: "setup" },
-      { tab: null, name: "faq" },
-      { tab: null, name: "setup" },
+      { kind: "page", tab: "guides", name: "setup" },
+      { kind: "page", tab: null, name: "faq" },
+      { kind: "page", tab: null, name: "setup" },
     ]);
+  });
+
+  it("gives the targets of files, of links and embeds alike, with their extension", () => {
+    const content =
+      "![[guides/diagram.png]] [[guides/diagram.png|again]] [[report.pdf]] [[photo.jpeg]] [[guides/diagram]]";
+    expect(linkTargetsOf(content)).toEqual([
+      { kind: "file", tab: "guides", name: "diagram.png" },
+      { kind: "file", tab: null, name: "report.pdf" },
+      { kind: "page", tab: "guides", name: "diagram" },
+    ]);
+    expect(linkRowsOf("![[t/a.png]]", "folder")).toEqual([{ folderId: "folder", tabName: "t", pageName: "a.png" }]);
   });
 
   it("gives the rows of the index of links of a folder", () => {
@@ -182,7 +229,10 @@ describe("linkTargetsOf", () => {
 });
 
 describe("rewriteWikiLinks", () => {
-  const renamed = pageMoved({ tab: "guides", name: "setup" }, { tab: "guides", name: "install" });
+  const renamed = pageMoved(
+    { kind: "page", tab: "guides", name: "setup" },
+    { kind: "page", tab: "guides", name: "install" },
+  );
 
   it("changes only the target and keeps the label as written", () => {
     expect(rewriteWikiLinks("# T\n\nSee [[guides/setup|the setup]] and [[guides/setup]].", renamed)).toBe(
@@ -209,16 +259,38 @@ describe("rewriteWikiLinks", () => {
 
   it("moves a link into another tab or directly into the folder", () => {
     expect(
-      rewriteWikiLinks("[[guides/setup]]", pageMoved({ tab: "guides", name: "setup" }, { tab: null, name: "setup" })),
+      rewriteWikiLinks(
+        "[[guides/setup]]",
+        pageMoved({ kind: "page", tab: "guides", name: "setup" }, { kind: "page", tab: null, name: "setup" }),
+      ),
     ).toBe("[[setup]]");
-    expect(rewriteWikiLinks("[[setup]]", pageMoved({ tab: null, name: "setup" }, { tab: "docs", name: "setup" }))).toBe(
-      "[[docs/setup]]",
-    );
+    expect(
+      rewriteWikiLinks(
+        "[[setup]]",
+        pageMoved({ kind: "page", tab: null, name: "setup" }, { kind: "page", tab: "docs", name: "setup" }),
+      ),
+    ).toBe("[[docs/setup]]");
   });
 
   it("changes every link into a renamed tab, whatever the page", () => {
     expect(rewriteWikiLinks("[[guides/setup|the setup]] [[guides/faq]] [[setup]]", tabRenamed("guides", "docs"))).toBe(
       "[[docs/setup|the setup]] [[docs/faq]] [[setup]]",
+    );
+  });
+
+  it("changes the links and embeds of the files of a renamed tab", () => {
+    expect(rewriteWikiLinks("![[guides/diagram.png|D]] [[guides/report.pdf]]", tabRenamed("guides", "docs"))).toBe(
+      "![[docs/diagram.png|D]] [[docs/report.pdf]]",
+    );
+  });
+
+  it("changes the links and embeds of a moved file, and no page of the same name", () => {
+    const moved = pageMoved(
+      { kind: "file", tab: "guides", name: "diagram.png" },
+      { kind: "file", tab: null, name: "network.png" },
+    );
+    expect(rewriteWikiLinks("![[guides/diagram.png]] [[guides/diagram.png|x]] [[guides/diagram]]", moved)).toBe(
+      "![[network.png]] [[network.png|x]] [[guides/diagram]]",
     );
   });
 

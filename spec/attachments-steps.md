@@ -150,6 +150,12 @@ What the steps share, so that each step builds on the same model:
   because the file is sent with `fetch()`; the revert follows the pages with `?notice=changed`. The message comes from
   `changedMessage()` of `src/features/pages/changed-page.ts`, now shared by pages and files.
 
+- Step 6: `\![[diagram.png]]` is the character `!` followed by a link of the file, as `\![text](address)` is `!` and a
+  link in Markdown. The derivation of the links of a page stored before the step is tested in
+  `integration/wiki-links-service.test.ts`, next to the other tests of the derivation, instead of
+  `integration/search-index.test.ts`. With file targets in the index, a tab rename already updates the links and
+  embeds of the files of the tab, and the "Rename tab" dialog counts them; step 7 adds the tests.
+
 ## Requirements by step
 
 | Step                                      | Requirements                                      |
@@ -181,7 +187,7 @@ The plan is large, so it has two stop points:
 - [x] Files in the database and their addresses
 - [x] Files in the views and the details page
 - [x] New versions and revert
-- [ ] Links and embeds of files
+- [x] Links and embeds of files
 - [ ] Moving and renaming files
 - [ ] Deleting and restoring files
 - [ ] Files in the editor

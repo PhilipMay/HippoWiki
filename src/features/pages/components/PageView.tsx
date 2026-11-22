@@ -9,6 +9,7 @@ import Link from "@/components/Link";
 import Time from "@/components/Time";
 import FolderBreadcrumbs from "@/features/folders/components/FolderBreadcrumbs";
 import { mayDoFolderAction } from "@/features/folders/folder-query";
+import { getUploadSettings } from "@/features/files/queries";
 import { listTabs } from "@/features/folders/queries";
 import { deletePage, moveOrRenamePage, updatePageContent } from "@/features/pages/actions";
 import DeletePageDialog from "@/features/pages/components/DeletePageDialog";
@@ -72,7 +73,13 @@ export default async function PageView({ page, action, notice }: PageViewProps) 
   const linkingCount = action === "move-or-rename" ? ((await countPagesLinkingTo(page.id)) ?? notFound()) : 0;
   const resolution = (await resolveWikiLinks(page.folder.id, page.content)) ?? notFound();
   const linkingPages = (await listLinkingPages(page.id)) ?? notFound();
-  const links = { folderName, mayCreatePages: mayDoFolderAction(page.role, "new"), resolution };
+  const uploads = await getUploadSettings();
+  const links = {
+    folderName,
+    mayCreatePages: mayDoFolderAction(page.role, "new"),
+    mayUploadFiles: uploads.on && mayDoFolderAction(page.role, "upload"),
+    resolution,
+  };
 
   return (
     <Stack spacing={2}>

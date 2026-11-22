@@ -15,7 +15,19 @@ describe("parseWikiLinkTarget", () => {
       { tab: "t".repeat(NAME_MAX_LENGTH), name: "p".repeat(NAME_MAX_LENGTH) },
     ],
   ])("reads %j as a page", (text, target) => {
-    expect(parseWikiLinkTarget(text)).toEqual(target);
+    expect(parseWikiLinkTarget(text)).toEqual({ kind: "page", ...target });
+  });
+
+  it.each([
+    ["diagram.png", { tab: null, name: "diagram.png" }],
+    ["guides/diagram.png", { tab: "guides", name: "diagram.png" }],
+    ["photo.jpg", { tab: null, name: "photo.jpg" }],
+    ["guides/anim.gif", { tab: "guides", name: "anim.gif" }],
+    ["photo.webp", { tab: null, name: "photo.webp" }],
+    ["guides/report.pdf", { tab: "guides", name: "report.pdf" }],
+    [`${"x".repeat(NAME_MAX_LENGTH)}.png`, { tab: null, name: `${"x".repeat(NAME_MAX_LENGTH)}.png` }],
+  ])("reads %j as a file", (text, target) => {
+    expect(parseWikiLinkTarget(text)).toEqual({ kind: "file", ...target });
   });
 
   it.each([
@@ -35,6 +47,13 @@ describe("parseWikiLinkTarget", () => {
     ["two hyphens", "setup--guide"],
     ["an empty text", ""],
     ["a backslash", "setup\\"],
+    [".jpeg", "photo.jpeg"],
+    ["another extension", "report.docx"],
+    ["an extension in upper case", "diagram.PNG"],
+    ["a second dot", "a.b.png"],
+    ["a file name too long", `${"x".repeat(NAME_MAX_LENGTH + 1)}.png`],
+    ["a file name as the tab", "diagram.png/setup"],
+    ["only an extension", ".png"],
   ])("refuses a target with %s", (_, text) => {
     expect(parseWikiLinkTarget(text)).toBeNull();
   });
@@ -44,5 +63,6 @@ describe("wikiLinkTargetText", () => {
   it("writes a target as a link names it", () => {
     expect(wikiLinkTargetText({ tab: null, name: "setup" })).toBe("setup");
     expect(wikiLinkTargetText({ tab: "guides", name: "setup" })).toBe("guides/setup");
+    expect(wikiLinkTargetText({ tab: "guides", name: "diagram.png" })).toBe("guides/diagram.png");
   });
 });

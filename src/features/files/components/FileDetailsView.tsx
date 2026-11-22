@@ -10,6 +10,7 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
+import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 
 import CopyField from "@/components/CopyField";
@@ -24,6 +25,8 @@ import { mayDoFileAction, type FileAction } from "@/features/files/file-query";
 import type { FileWithPlace, UploadSettings } from "@/features/files/service";
 import { FILE_TYPES, isImageType, type FileType } from "@/features/files/types";
 import { changedMessage } from "@/features/pages/changed-page";
+import LinkedFrom from "@/features/pages/components/LinkedFrom";
+import { listPagesLinkingToFile } from "@/features/pages/queries";
 import SearchField from "@/features/search/components/SearchField";
 import { editorWithChannel } from "@/features/users/records";
 import { fileContentPath, filePath, fileRevertPath, type PageNotice } from "@/lib/addresses";
@@ -67,10 +70,11 @@ type FileDetailsViewProps = {
 /**
  * The details page of a file: its place, a preview of an image, its type, size, width and height, the number of its
  * versions and its last change, "Open" and "Download", "Upload new version" for the roles that may, the link to copy,
- * and its versions, newest first, each with a link that opens it and, but for the current one, "Revert" for the roles
- * that may; with the dialog of the action on top.
+ * the pages that show or link it, and its versions, newest first, each with a link that opens it and, but for the
+ * current one, "Revert" for the roles that may; with the dialog of the action on top.
  */
-export default function FileDetailsView({ file, action, version, notice, uploads }: FileDetailsViewProps) {
+export default async function FileDetailsView({ file, action, version, notice, uploads }: FileDetailsViewProps) {
+  const linkingPages = (await listPagesLinkingToFile(file.id)) ?? notFound();
   const folder = file.folder.name;
   const tab = file.tab?.name ?? null;
   const [current] = file.versions;
@@ -142,6 +146,13 @@ export default function FileDetailsView({ file, action, version, notice, uploads
       </TableContainer>
 
       <CopyField label="Link" value={linkToCopy(file)} />
+
+      <LinkedFrom
+        folderName={folder}
+        pages={linkingPages}
+        heading="Shown or linked from"
+        emptyText="No page shows or links this file."
+      />
 
       <Stack component="section" spacing={1} aria-labelledby="versions-heading">
         <Typography id="versions-heading" variant="h6" component="h2">

@@ -243,6 +243,11 @@ describe("analyseMarkdown", () => {
       CONTENT_MAX_WIKI_LINKS + 1,
     );
   });
+
+  it("counts the links and embeds of files together with the links to pages", () => {
+    const content = `# T\n\n${"[[a]]".repeat(4_000)} ${"![[b.png]]".repeat(500)} ${"[[c.pdf]]".repeat(501)}`;
+    expect(analyseMarkdown(content).wikiLinks).toBe(CONTENT_MAX_WIKI_LINKS + 1);
+  });
 });
 
 /** The inline tokens of the first block of the content. */
@@ -256,18 +261,61 @@ describe("wiki links", () => {
     expect(link).toMatchObject({ type: "wiki_link", content: "guides/setup" });
     expect(link?.meta).toEqual({
       target: "guides/setup",
-      page: { tab: "guides", name: "setup" },
+      page: { kind: "page", tab: "guides", name: "setup" },
+      embed: false,
       label: null,
       offset: 2,
       position: 2,
     } satisfies WikiLinkMeta);
     expect(text).toMatchObject({ type: "text", content: " " });
     expect(labelled).toMatchObject({ type: "wiki_link", content: "Setup guide" });
-    expect((labelled?.meta as WikiLinkMeta).page).toEqual({ tab: null, name: "setup" });
+    expect((labelled?.meta as WikiLinkMeta).page).toEqual({ kind: "page", tab: null, name: "setup" });
   });
 
   it("make ![[setup]] the text ! and a wiki link", () => {
     expect(inlineTokens("![[setup]]").map((token) => token.type)).toEqual(["text", "wiki_link"]);
+  });
+
+  it("read ![[file]] and ![[file|label]] as embeds, and [[file]] as a link of the file", () => {
+    const [embed, , labelled, , link] = inlineTokens("![[guides/diagram.png]] ![[report.pdf|Manual]] [[report.pdf]]");
+    expect(embed).toMatchObject({ type: "wiki_link", markup: "![[", content: "guides/diagram.png" });
+    expect(embed?.meta).toEqual({
+      target: "guides/diagram.png",
+      page: { kind: "file", tab: "guides", name: "diagram.png" },
+      embed: true,
+      label: null,
+      offset: 3,
+      position: 3,
+    } satisfies WikiLinkMeta);
+    expect(labelled).toMatchObject({ type: "wiki_link", content: "Manual", meta: { embed: true, label: "Manual" } });
+    expect(link).toMatchObject({ type: "wiki_link", markup: "[[", meta: { embed: false } });
+  });
+
+  it("make ![[…]] of a target that breaks the rule the text ! and a wiki link", () => {
+    for (const content of ["![[photo.jpeg]]", "![[Diagram.png]]", "![[report.docx]]"]) {
+      const tokens = inlineTokens(content);
+      expect(tokens.map((token) => [token.type, (token.meta as WikiLinkMeta | null)?.embed])).toEqual([
+        ["text", undefined],
+        ["wiki_link", false],
+      ]);
+    }
+  });
+
+  it("keep ![[…]] of a file as text in code and after a backslash, and across a line break", () => {
+    expect(inlineTokens("`![[guides/diagram.png]]`").map((token) => token.type)).toEqual(["code_inline"]);
+    // `\!` is the character `!`, so a link of the file follows it, as `\![text](address)` is `!` and a link.
+    const escaped = inlineTokens("\\![[diagram.png]]");
+    expect(escaped.map((token) => [token.type, (token.meta as WikiLinkMeta | null)?.embed])).toEqual([
+      ["text", undefined],
+      ["wiki_link", false],
+    ]);
+    expect(inlineTokens("\\[[diagram.png]]").some((token) => token.type === "wiki_link")).toBe(false);
+    expect(inlineTokens("![[diagram\n.png]]").some((token) => token.type === "wiki_link")).toBe(false);
+  });
+
+  it("keep no embed inside the text of a Markdown link", () => {
+    const tokens = inlineTokens("[see ![[diagram.png]]](https://example.com)");
+    expect(tokens.some((token) => (token.meta as WikiLinkMeta | null)?.embed)).toBe(false);
   });
 
   it("keep a wiki link inside the text of a Markdown link, which then stays text", () => {
@@ -297,10 +345,15 @@ describe("wiki links in the page view", () => {
     return {
       folderName: "handbook",
       mayCreatePages,
+      mayUploadFiles: mayCreatePages,
       resolution: {
         titles: new Map([
           ["setup", "Setup"],
           ["guides/setup", "Setup guide"],
+        ]),
+        files: new Map([
+          ["guides/diagram.png", { type: "png", width: 640, height: 480 }],
+          ["guides/report.pdf", { type: "pdf", width: null, height: null }],
         ]),
         tabs: new Set(["guides"]),
       },
@@ -396,6 +449,69 @@ describe("wiki links in the page view", () => {
     expect(render("![[setup]]", context(true)).replace(/<style\b[^>]*>[^<]*<\/style>/g, "")).toMatch(
       /!<a [^>]*href="\/folders\/handbook\/setup.md"[^>]*>Setup<\/a>/,
     );
+  });
+
+  it("shows an embed of an image at its size, inside a link that opens the file in a new tab", () => {
+    const html = render("![[guides/diagram.png]] ![[guides/diagram.png|The network]]", context(false));
+    // The style that Emotion renders on the server may stand between the link and its image.
+    const images = [...html.matchAll(/<a ([^>]*)>(?:<style\b[^>]*>[^<]*<\/style>)?<img ([^>]*)>/g)].map(
+      ([, link = "", image = ""]) => [
+        link.match(/href="([^"]*)"/)?.[1],
+        /target="_blank"/.test(link),
+        image.match(/src="([^"]*)"/)?.[1],
+        image.match(/alt="([^"]*)"/)?.[1],
+        image.match(/width="([^"]*)"/)?.[1],
+        image.match(/height="([^"]*)"/)?.[1],
+        /loading="lazy"/.test(image),
+      ],
+    );
+    const address = "/files/handbook/guides/diagram.png";
+    expect(images).toEqual([
+      [address, true, address, "diagram.png", "640", "480", true],
+      [address, true, address, "The network", "640", "480", true],
+    ]);
+  });
+
+  it("links a PDF, embedded or linked, and an image that is only linked, with the label or the name", () => {
+    const html = render(
+      "![[guides/report.pdf]] [[guides/report.pdf|Manual]] [[guides/diagram.png]] ![[guides/report.pdf|Guide]]",
+      context(false),
+    );
+    expect(elements(html).slice(0, 4)).toEqual([
+      "a href=/files/handbook/guides/report.pdf report.pdf",
+      "a href=/files/handbook/guides/report.pdf Manual",
+      "a href=/files/handbook/guides/diagram.png diagram.png",
+      "a href=/files/handbook/guides/report.pdf Guide",
+    ]);
+    expect(html).not.toContain("<img");
+  });
+
+  it("links a missing file to the upload dialog of its place for a Writer, and marks it for a Reader", () => {
+    const writer = render("[[guides/manual.pdf]] ![[faq.png|FAQ]]", context(true));
+    expect(elements(writer).slice(0, 2)).toEqual([
+      "a href=/folders/handbook/guides?action=upload&amp;name=manual.pdf title=File does not exist aria-describedby=wiki-link-hint-missing-file guides/manual.pdf",
+      "a href=/folders/handbook?action=upload&amp;name=faq.png title=File does not exist aria-describedby=wiki-link-hint-missing-file FAQ",
+    ]);
+    expect(writer).toContain('<span id="wiki-link-hint-missing-file" hidden="">File does not exist</span>');
+    const reader = render("[[guides/manual.pdf]]", context(false));
+    expect(elements(reader)[0]).toBe(
+      "span title=File does not exist aria-describedby=wiki-link-hint-missing-file guides/manual.pdf",
+    );
+    expect(addresses(reader)).toEqual([]);
+  });
+
+  it("marks a file in a missing tab and a file name that breaks the rule for every role", () => {
+    const html = render("[[nosuchtab/a.png]] ![[photo.jpeg]]", context(true));
+    expect(elements(html).slice(0, 2)).toEqual([
+      "span title=Tab does not exist aria-describedby=wiki-link-hint-no-tab nosuchtab/a.png",
+      "span title=Not a valid page name aria-describedby=wiki-link-hint-invalid photo.jpeg",
+    ]);
+  });
+
+  it("shows no file for a page of the same name, and no page for a file", () => {
+    const links = context(false);
+    const html = render("[[guides/setup.png]] [[guides/diagram]]", links);
+    expect(addresses(html)).toEqual([]);
   });
 
   it("leaves code, escapes and a link over a line break as text", () => {

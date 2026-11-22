@@ -47,6 +47,7 @@ import {
   roleSelection,
 } from "@/features/folder-roles/service";
 import { parseFolderId, parseTabId } from "@/features/folders/schema";
+import type { FileType } from "@/features/files/types";
 import {
   newPageInputSchema,
   pageContentInputSchema,
@@ -64,7 +65,7 @@ import {
   updateLinks,
   type LinkingPage,
 } from "@/features/pages/links-service";
-import { wikiLinkTargetText } from "@/features/pages/wiki-link-target";
+import { wikiLinkTargetText, type WikiLinkTarget } from "@/features/pages/wiki-link-target";
 import { linkRowsOf, pageMoved, wikiLinksOf } from "@/features/pages/wiki-links";
 import { NEXT_VERSION, softDeleteData } from "@/features/pages/writes";
 import { searchIndexData } from "@/features/search/index-data";
@@ -273,21 +274,40 @@ export function directPageFirstPerName<Entry extends { name: string; tab: unknow
   return ordered;
 }
 
+/** What the page view needs of a file that a wiki link names: its type and the width and height of an image. */
+export type LinkedFile = { type: FileType; width: number | null; height: number | null };
+
 /**
- * What the wiki links of a content lead to in its folder as it is now: the title of every page that a valid target
- * names, by the target as `wikiLinkTargetText()` writes it, and the tabs of the folder that the targets name. A target
- * that is in neither names a missing page, in an existing place when it has no tab or its tab is listed.
+ * What the wiki links of a content lead to in its folder as it is now: the title of every page and the current version
+ * of every file that a valid target names, by the target as `wikiLinkTargetText()` writes it, and the tabs of the
+ * folder that the targets name. A target that is in none of them names a missing page or file, in an existing place
+ * when it has no tab or its tab is listed.
  */
-export type WikiLinkResolution = { titles: ReadonlyMap<string, string>; tabs: ReadonlySet<string> };
+export type WikiLinkResolution = {
+  titles: ReadonlyMap<string, string>;
+  files: ReadonlyMap<string, LinkedFile>;
+  tabs: ReadonlySet<string>;
+};
 
 /** The resolution of a content without wiki links, or of a malformed folder id. */
-const NO_WIKI_LINKS: WikiLinkResolution = { titles: new Map(), tabs: new Set() };
+const NO_WIKI_LINKS: WikiLinkResolution = { titles: new Map(), files: new Map(), tabs: new Set() };
+
+/** The condition of the items of a folder that are not deleted, placed directly in it or in one of the named tabs. */
+function inPlaces(folderId: string, names: string[], tabNames: string[]) {
+  return {
+    folderId,
+    deletedAt: null,
+    name: { in: names },
+    OR: [{ tabId: null }, ...(tabNames.length > 0 ? [{ tab: { name: { in: tabNames } } }] : [])],
+  };
+}
 
 /**
- * Resolves the wiki links of the content against the folder: for each valid target the page of that name and place
- * that is not deleted, with its title, and for the targets in a tab whether the tab exists. Deleted pages are missing
- * like pages that never existed; a tab, when it is deleted, no longer exists. One read of the pages and one of the
- * tabs, both only for the targets of the content. `null` for an admin and for a folder without a role of the actor.
+ * Resolves the wiki links of the content against the folder: for each valid target the page or file of that name and
+ * place that is not deleted, a page with its title and a file with the type, width and height of its current version,
+ * and for the targets in a tab whether the tab exists. Deleted pages and files are missing like those that never
+ * existed; a tab, when it is deleted, no longer exists. At most one read each of the pages, the files and the tabs,
+ * only for the targets of the content. `null` for an admin and for a folder without a role of the actor.
  */
 export async function resolveWikiLinks(
   actor: ContentActor,
@@ -298,18 +318,32 @@ export async function resolveWikiLinks(
   const parsedFolderId = parseFolderId(folderId);
   const targets = wikiLinksOf(content).flatMap(({ page }) => (page ? [page] : []));
   if (!parsedFolderId || targets.length === 0) return NO_WIKI_LINKS;
-  const names = [...new Set(targets.map(({ name }) => name))];
+  const namesOf = (kind: WikiLinkTarget["kind"]) => [
+    ...new Set(targets.flatMap((target) => (target.kind === kind ? [target.name] : []))),
+  ];
+  const pageNames = namesOf("page");
+  const fileNames = namesOf("file");
   const tabNames = [...new Set(targets.flatMap(({ tab }) => (tab === null ? [] : [tab])))];
   const wanted = new Set(targets.map(wikiLinkTargetText));
-  const pages = await getDb().page.findMany({
-    where: {
-      folderId: parsedFolderId,
-      deletedAt: null,
-      name: { in: names },
-      OR: [{ tabId: null }, ...(tabNames.length > 0 ? [{ tab: { name: { in: tabNames } } }] : [])],
-    },
-    select: { name: true, title: true, tab: { select: { name: true } } },
-  });
+  const pages =
+    pageNames.length === 0
+      ? []
+      : await getDb().page.findMany({
+          where: inPlaces(parsedFolderId, pageNames, tabNames),
+          select: { name: true, title: true, tab: { select: { name: true } } },
+        });
+  const files =
+    fileNames.length === 0
+      ? []
+      : await getDb().file.findMany({
+          where: inPlaces(parsedFolderId, fileNames, tabNames),
+          select: {
+            name: true,
+            type: true,
+            tab: { select: { name: true } },
+            versions: { select: { width: true, height: true }, orderBy: { number: "desc" }, take: 1 },
+          },
+        });
   const tabs =
     tabNames.length === 0
       ? []
@@ -322,7 +356,15 @@ export async function resolveWikiLinks(
     const target = wikiLinkTargetText({ tab: page.tab?.name ?? null, name: page.name });
     if (wanted.has(target)) titles.set(target, page.title);
   }
-  return { titles, tabs: new Set(tabs.map(({ name }) => name)) };
+  const linkedFiles = new Map<string, LinkedFile>();
+  for (const file of files) {
+    const target = wikiLinkTargetText({ tab: file.tab?.name ?? null, name: file.name });
+    const current = file.versions[0];
+    if (wanted.has(target) && current) {
+      linkedFiles.set(target, { type: file.type, width: current.width, height: current.height });
+    }
+  }
+  return { titles, files: linkedFiles, tabs: new Set(tabs.map(({ name }) => name)) };
 }
 
 /**
@@ -861,12 +903,12 @@ async function storeMoveOrRename(
     // The update matched the page that `before` read, under the lock; without it there is nothing to update.
     if (!before) return { kind: "stored", updatedPages: [] };
     const after = await tx.page.findUnique({ where: { id: pageId }, select: PAGE_FOLDER_AND_TAB });
-    const from = { tab: before.tab?.name ?? null, name: before.name };
+    const from = { kind: "page", tab: before.tab?.name ?? null, name: before.name } as const;
     const updatedPages = await updateLinks(
       tx,
       located.folderId,
       { tabName: from.tab, pageName: from.name },
-      pageMoved(from, { tab: after?.tab?.name ?? null, name }),
+      pageMoved(from, { kind: "page", tab: after?.tab?.name ?? null, name }),
       { lastEditedById, lastEditedVia },
     );
     return { kind: "stored", updatedPages };

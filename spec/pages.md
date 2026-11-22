@@ -110,8 +110,8 @@ given as `?action=<action>` (see `content-structure.md`).
 - Task lists are indented and nested like other lists. In a bullet list, the checkbox of a task item sits in place of
   the bullet, and a plain item of the same list keeps its bullet; a task item of an ordered list keeps its number, with
   the checkbox in front of the text. The checkboxes cannot be ticked in the page view.
-- Wiki links, `[[target]]` and `[[target|label]]`, are links to the pages of the folder they name (see
-  `wiki-links.md`).
+- Wiki links, `[[target]]` and `[[target|label]]`, are links to the pages and files of the folder they name, and
+  `![[target]]` of a file shows an image of the folder in the page and links a PDF (see `wiki-links.md`).
 - Raw HTML is shown as text and never rendered.
 - A link or image becomes one only with a relative address or an address of `http`, `https`, `mailto`, `irc`, `ircs`
   or `xmpp` (`SAFE_PROTOCOLS` in `markdown.ts`); with any other address, such as `javascript:`, `vbscript:` or
@@ -206,7 +206,6 @@ Saves without a change:
 - a deleted page cannot be removed for good, which is not planned, and is restored only into its own folder, as a
   lasting rule (see `page-deletion.md`)
 - a page has one content in one language; the same page in several languages is not planned
-- no attachments
 - the title comes only from a leading `# Title` heading: no setext headings, no front matter, no live display of the
   derived title while editing
 - no redirects from the previous address after a page is renamed or moved

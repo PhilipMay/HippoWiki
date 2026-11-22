@@ -100,14 +100,17 @@ function footnoteTail(state: StateCore): void {
 }
 
 /**
- * What a token `wiki_link` holds: a link `[[target]]` or `[[target|label]]` to a page of the folder. Its `content` is
- * its plain text, the label or, without one, the target as written.
+ * What a token `wiki_link` holds: a link `[[target]]` or `[[target|label]]` to a page or a file of the folder, or an
+ * embed `![[target]]` or `![[target|label]]` of a file, which shows an image and links a PDF. Its `content` is its
+ * plain text, the label or, without one, the target as written.
  */
 export type WikiLinkMeta = {
   /** The target as written, between `[[` and the first `|` or `]]`. */
   target: string;
-  /** The page the target names, or `null` for a target that breaks the rule of `wiki-link-target.ts`. */
+  /** The page or file the target names, or `null` for a target that breaks the rule of `wiki-link-target.ts`. */
   page: WikiLinkTarget | null;
+  /** Whether it is an embed, `![[…]]`, which only a target that names a file makes. */
+  embed: boolean;
   /** The label as written, plain text after the `|`, or `null` without one; an empty label counts as none. */
   label: string | null;
   /** Where the target starts in the content of its inline token. */
@@ -142,13 +145,16 @@ function nextMark(state: StateInline, mark: string, from: number): number {
 
 /**
  * The inline rule of wiki links: `[[`, a target up to the first `|` or `]]`, then an optional label up to `]]`, all on
- * one line. It runs before the rule of links, after those of escapes and code spans, so a code span and `\[` keep
- * their text. The label is plain text: nothing in it is parsed. Inside the text of a Markdown link there is no wiki
- * link, as there is no link inside a link. An empty target makes no wiki link.
+ * one line; with a `!` before it and a target that names a file, an embed of the file. `!` before a target that names
+ * a page or breaks the rule stays the character `!`, and the rule then reads the link at the `[[` after it. It runs
+ * before the rule of links, after those of escapes and code spans, so a code span, `\[` and `\!` keep their text. The
+ * label is plain text: nothing in it is parsed. Inside the text of a Markdown link there is no wiki link, as there is
+ * no link inside a link. An empty target makes no wiki link.
  */
 function wikiLink(state: StateInline, silent: boolean): boolean {
-  const start = state.pos;
   const src = state.src;
+  const embed = src.charCodeAt(state.pos) === 0x21;
+  const start = embed ? state.pos + 1 : state.pos;
   if (src.charCodeAt(start) !== 0x5b || src.charCodeAt(start + 1) !== 0x5b) return false;
   if (state.linkLevel > 0) return false;
   const close = nextMark(state, "]]", start + 2);
@@ -163,19 +169,15 @@ function wikiLink(state: StateInline, silent: boolean): boolean {
     }
   }
   if (targetEnd === start + 2) return false;
+  const target = src.slice(start + 2, targetEnd);
+  const page = parseWikiLinkTarget(target);
+  if (embed && page?.kind !== "file") return false;
   if (!silent) {
-    const target = src.slice(start + 2, targetEnd);
     const label = targetEnd < close && targetEnd + 1 < close ? src.slice(targetEnd + 1, close) : null;
     const token = state.push("wiki_link", "", 0);
-    token.markup = "[[";
+    token.markup = embed ? "![[" : "[[";
     token.content = label ?? target;
-    token.meta = {
-      target,
-      page: parseWikiLinkTarget(target),
-      label,
-      offset: start + 2,
-      position: null,
-    } satisfies WikiLinkMeta;
+    token.meta = { target, page, embed, label, offset: start + 2, position: null } satisfies WikiLinkMeta;
   }
   state.pos = close + 2;
   return true;

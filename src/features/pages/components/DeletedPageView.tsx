@@ -8,6 +8,7 @@ import { notFound } from "next/navigation";
 import Link from "@/components/Link";
 import Time from "@/components/Time";
 import FolderBreadcrumbs from "@/features/folders/components/FolderBreadcrumbs";
+import { getUploadSettings } from "@/features/files/queries";
 import { listTabs } from "@/features/folders/queries";
 import { restorePage } from "@/features/pages/actions";
 import MarkdownContent from "@/features/pages/components/MarkdownContent";
@@ -34,8 +35,8 @@ export default async function DeletedPageView({ page, action }: DeletedPageViewP
   // Only the "Restore page" dialog needs the tabs of the folder.
   const tabs = action === "restore" ? ((await listTabs(page.folder.id)) ?? notFound()) : [];
   const resolution = (await resolveWikiLinks(page.folder.id, page.content)) ?? notFound();
-  // Only a Manager or Owner reads a deleted page, and both may create pages.
-  const links = { folderName, mayCreatePages: true, resolution };
+  // Only a Manager or Owner reads a deleted page, and both may create pages and upload files.
+  const links = { folderName, mayCreatePages: true, mayUploadFiles: (await getUploadSettings()).on, resolution };
 
   return (
     <Stack spacing={2}>

@@ -20,6 +20,7 @@ export const mocks = {
   revisionFindUnique: vi.fn(),
   roleFindFirst: vi.fn(),
   tabFindMany: vi.fn(),
+  fileFindMany: vi.fn(),
   pageInWrite: vi.fn(),
   linkDeleteMany: vi.fn(),
   linkCreateMany: vi.fn(),
@@ -49,6 +50,7 @@ export function pagesDb() {
     },
     folderRole: { findFirst: mocks.roleFindFirst },
     tab: { findMany: mocks.tabFindMany },
+    file: { findMany: mocks.fileFindMany },
     $transaction: mocks.transaction,
   };
 }
@@ -61,6 +63,7 @@ export function resetPagesServiceMocks(): void {
   vi.resetAllMocks();
   mocks.findMany.mockResolvedValue([]);
   mocks.tabFindMany.mockResolvedValue([]);
+  mocks.fileFindMany.mockResolvedValue([]);
   // The folder and tab of a page that a write reads in its transaction, for the lock and the links of the folder.
   mocks.pageInWrite.mockResolvedValue({ folderId: "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10", tab: null });
   // No page links to the page that a move or rename changes.
@@ -87,12 +90,16 @@ export function resetPagesServiceMocks(): void {
   mocks.revisionFindFirst.mockResolvedValue({ number: 3 });
 }
 
-/** How often the pages and their revisions have been read; the role of the actor is not counted. */
+/** How often the pages, their revisions, the tabs and the files have been read; the role of the actor is not counted. */
 export function readCount(): number {
-  return [mocks.findMany, mocks.findFirst, mocks.revisionFindMany, mocks.revisionFindUnique, mocks.tabFindMany].reduce(
-    (count, read) => count + read.mock.calls.length,
-    0,
-  );
+  return [
+    mocks.findMany,
+    mocks.findFirst,
+    mocks.revisionFindMany,
+    mocks.revisionFindUnique,
+    mocks.tabFindMany,
+    mocks.fileFindMany,
+  ].reduce((count, read) => count + read.mock.calls.length, 0);
 }
 
 /** The calls that write, or read for a write. */

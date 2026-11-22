@@ -9,14 +9,16 @@ import { wikiLinkTargetText, type WikiLinkTarget } from "@/features/pages/wiki-l
  * of the parse or of `linkTargetsOf()` that changes what they derive: the server then derives every page whose stored
  * version differs again before it serves.
  */
-export const LINK_INDEX_VERSION = 1;
+export const LINK_INDEX_VERSION = 2;
 
 /** A wiki link of the content. */
 export type WikiLink = {
   /** The target as written. */
   target: string;
-  /** The page the target names, or `null` for a target that breaks the name rule. */
+  /** The page or file the target names, or `null` for a target that breaks the name rule. */
   page: WikiLinkTarget | null;
+  /** Whether it is an embed of a file, `![[…]]`. */
+  embed: boolean;
   /** The label as written, or `null` without one. */
   label: string | null;
   /**
@@ -61,16 +63,17 @@ export function wikiLinksOf(content: string): WikiLink[] {
     if (token.type !== "inline") continue;
     for (const child of token.children ?? []) {
       if (!isWikiLink(child)) continue;
-      const { target, page, label, position } = child.meta;
-      links.push({ target, page, label, position: position === null ? null : toContent(position) });
+      const { target, page, embed, label, position } = child.meta;
+      links.push({ target, page, embed, label, position: position === null ? null : toContent(position) });
     }
   }
   return links;
 }
 
 /**
- * The targets of the content that the index of links stores: each valid target once, in the order of its first link. A
- * target that breaks the name rule names no page and is left out; a link of the page to itself is kept.
+ * The targets of the content that the index of links stores: each valid target once, in the order of its first link or
+ * embed, those of files with the extension in their name. A target that breaks the name rule names nothing and is left
+ * out; a link of the page to itself is kept.
  */
 export function linkTargetsOf(content: string): WikiLinkTarget[] {
   const targets = new Map<string, WikiLinkTarget>();
@@ -80,7 +83,10 @@ export function linkTargetsOf(content: string): WikiLinkTarget[] {
   return [...targets.values()];
 }
 
-/** The rows of the index of links of a page of the given folder with the given content, without the page. */
+/**
+ * The rows of the index of links of a page of the given folder with the given content, without the page. A file is in
+ * `pageName` with its extension, which no name of a page has.
+ */
 export function linkRowsOf(
   content: string,
   folderId: string,
@@ -91,14 +97,14 @@ export function linkRowsOf(
 /** How a move, a rename or a tab rename changes a target: the new target, or `null` for a target it leaves alone. */
 export type TargetChange = (target: WikiLinkTarget) => WikiLinkTarget | null;
 
-/** The change of the targets that name the page at `from`, which is now at `to`. */
+/** The change of the targets that name the page or file at `from`, which is now at `to`. */
 export function pageMoved(from: WikiLinkTarget, to: WikiLinkTarget): TargetChange {
-  return (target) => (target.tab === from.tab && target.name === from.name ? to : null);
+  return (target) => (target.kind === from.kind && target.tab === from.tab && target.name === from.name ? to : null);
 }
 
-/** The change of the targets in the tab `from`, which is now named `to`. */
+/** The change of the targets in the tab `from`, pages and files alike, which is now named `to`. */
 export function tabRenamed(from: string, to: string): TargetChange {
-  return (target) => (target.tab === from ? { tab: to, name: target.name } : null);
+  return (target) => (target.tab === from ? { ...target, tab: to } : null);
 }
 
 /**

@@ -2,8 +2,9 @@
 
 Wiki links as built: Writers and AI apps link one page of a folder to another with `[[target]]` or
 `[[target|label]]`, where the target names the page as its address does, instead of the full address
-`/folders/<folder>/<tab>/<page>.md`. The page view renders such a link as a link to the page it names and marks a link
-whose page does not exist; the Markdown editor shows the links in live preview and offers a picker on `[[`. A move or
+`/folders/<folder>/<tab>/<page>.md`, link a file of the folder in the same way with its name and extension, and show an
+image of the folder with `![[target]]`. The page view renders such a link as a link to the page or file it names and
+marks a link whose page or file does not exist; the Markdown editor shows the links in live preview and offers a picker on `[[`. A move or
 rename of a page and a rename of a tab update the links to it, and a page shows which pages link to it. The raw
 Markdown stays short and readable for people and AI apps, and a rename of the folder breaks no link. What a page is
 is described in `pages.md`, folders, tabs and addresses in `content-structure.md`.
@@ -14,7 +15,9 @@ Code:
 - the parse: the inline rule `wiki_link` in `src/features/pages/markdown.ts`, and `src/features/pages/wiki-links.ts`
   (the links of a content with the place of each target, the targets the index stores, and the rewrite of targets);
 - the page view: `src/features/pages/components/markdownToReact.tsx`, with `resolveWikiLinks()` of
-  `src/features/pages/service.ts`, and the section "Linked from" in `src/features/pages/components/LinkedFrom.tsx`;
+  `src/features/pages/service.ts`, and the section "Linked from" in `src/features/pages/components/LinkedFrom.tsx`,
+  which the details page of a file (`src/features/files/components/FileDetailsView.tsx`) shows as "Shown or linked
+  from";
 - the index of links, the backlinks, the update of links and the lock of the content writes of a folder:
   `src/features/pages/links-service.ts`, the models `PageLink`, `Page` (the version of the derivation of its links) and
   `PageRevision` (the mark of an update) in `prisma/schema.prisma`, and the migrations
@@ -35,7 +38,7 @@ Tests: `src/features/pages/wiki-links.test.ts`, `src/features/pages/wiki-link-ta
 `src/features/pages/editor-page-list.test.ts`, `integration/wiki-links-service.test.ts`,
 `integration/wiki-links.spec-tests.test.ts`, `integration/wiki-link-update.cost.test.ts`,
 `integration/page-service.test.ts`, `integration/folder-service.test.ts`, `integration/search-index.test.ts`,
-`e2e/wiki-links.spec.ts`, `e2e/wiki-link-updates.spec.ts`, `e2e/wiki-links-spec-tests.spec.ts`,
+`e2e/wiki-links.spec.ts`, `e2e/file-links.spec.ts`, `e2e/wiki-link-updates.spec.ts`, `e2e/wiki-links-spec-tests.spec.ts`,
 `e2e/editor-wiki-links.spec.ts`, `e2e/mcp-read.spec.ts`, `e2e/mcp-write.spec.ts` and `e2e/mcp-manager.spec.ts`.
 
 ## Syntax and target
@@ -45,14 +48,22 @@ Tests: `src/features/pages/wiki-links.test.ts`, `src/features/pages/wiki-link-ta
 - The target names a page as its address does, the same from every page of the folder: `[[name]]` is the page of
   that name placed directly in the folder, `[[tab/name]]` the page of that name in that tab. It never leads into
   another folder: the first part of `tab/name` is always a tab of the own folder, also when a folder has that name.
+- A target whose last part is the name of a file, a name, a dot and one of the extensions `png`, `jpg`, `gif`, `webp`
+  and `pdf` (see "Names" in `content-structure.md`), names the file of that name and place in the same way:
+  `[[diagram.png]]` is the file placed directly in the folder, `[[guides/diagram.png]]` the file in the tab `guides`. A
+  target without an extension still names a page, so `[[guides/setup]]` and a file `guides/setup.png` never meet.
+- An embed, `![[target]]` or `![[target|label]]` with a target that names a file, shows the file in the page (see
+  "Display"). It follows every rule of a link: it is text in code, across a line break and inside the text of a
+  Markdown link, and `\![[diagram.png]]` is the character `!` followed by a link of the file.
 - A link leads to whichever page has the name and place it names when it is shown, however that page got there:
   created, moved, renamed or restored.
-- Only exact names link: a target must follow the name rule of tabs and pages (see "Names" in
-  `content-structure.md`), with at most one `/` between a tab name and a page name, written exactly as the names are
-  stored. Anything else, such as a title, upper case, spaces, `.md` or a second `/`, breaks the rule and shows as a
-  missing link (see "Missing links").
-- Section links and embeds are not part of the syntax, and nothing is reserved for them: `[[setup#install]]` is a
-  target that breaks the name rule, and `![[setup]]` is the character `!` followed by a link.
+- Only exact names link: a target must follow the name rule of tabs, pages and files (see "Names" in
+  `content-structure.md`), with at most one `/` between a tab name and a page or file name, written exactly as the
+  names are stored. Anything else, such as a title, upper case, spaces, `.md`, `.jpeg`, another extension or a second
+  `/`, breaks the rule and shows as a missing link (see "Missing links").
+- Section links and embeds of pages are not part of the syntax, and nothing is reserved for them: `[[setup#install]]`
+  is a target that breaks the name rule, and `![[setup]]`, like `!` before any target that names no file, is the
+  character `!` followed by a link.
 - The label is plain text, shown exactly as written; Markdown inside it is not formatted. In a cell of a table, the
   `|` between target and label is written `\|`, as GitHub Flavored Markdown tables require.
 - `[[...]]` is text, not a wiki link, inside a code span or a code block, after a backslash (`\[[`), inside the text of
@@ -68,6 +79,15 @@ Tests: `src/features/pages/wiki-links.test.ts`, `src/features/pages/wiki-link-ta
   so an old revision shows a link to a page created later as a link.
 - A link to an existing page shows its label or, without one, the current title of that page, which follows a change
   of the heading without a change of the linking page.
+- A link to an existing file, and an embed of a PDF, is a link to the address of the file itself (`/files/…`, see
+  "Addresses" in `content-structure.md`), with its label or, without one, the name of the file, such as `report.pdf`;
+  a PDF is never shown inside the page.
+- An embed of an image shows the image from the address of the file, at its own size but at most as wide as the text,
+  with its label or, without one, the name of the file as its alt text, inside a link that opens the file in a new
+  browser tab. Its width and height are given, so that the page does not move when it loads, and it loads when it
+  comes near the screen.
+- A link or embed of a file always shows its current version, in every view: an old revision and a deleted page show
+  the version that the file has now.
 - A link leads only to the address that the wiki builds from the names of its folder, tab and page, and its label and
   the title it shows reach the page as text, never as HTML.
 - Where the content is read as plain text, for the title, the suggested name and the search text, a wiki link counts
@@ -78,16 +98,21 @@ Tests: `src/features/pages/wiki-links.test.ts`, `src/features/pages/wiki-link-ta
 
 ## Missing links
 
-- A link whose target is no page of the folder shows as missing: in a color of its own and with a dashed underline, a
+- A link whose target is no page or file of the folder shows as missing: in a color of its own and with a dashed underline, a
   second cue that does not rely on color, and with a hint for pointer and screen reader users alike.
 - For a Writer, Manager or Owner a link to a missing page in a place that exists leads to the editor of a new page,
   `?action=new&name=<name>` on the folder or the tab of the link, whose "Save page" dialog proposes the name and
   preselects the place (see "Routes" in `pages.md`). For a Reader it is marked text, not a link.
+- A link or embed of a missing file has the hint that the file does not exist. For a Writer, Manager or Owner, while
+  the files are on, one in a place that exists leads to the "Upload file" dialog of the folder or tab of the link,
+  `?action=upload&name=<name.ext>`, with the name filled in (see "Actions and views" in `content-structure.md`); for a
+  Reader, and while the files are off, it is marked text.
 - A link that cannot be created as written, because its target breaks the name rule or names a tab that does not
   exist, is marked text for every role, with a hint that says why.
-- A link into a deleted page or a deleted tab shows as missing for every role, Managers and Owners included, with
+- A link into a deleted page, a deleted file or a deleted tab shows as missing for every role, Managers and Owners included, with
   nothing that tells that the page was deleted. A restore changes no link: restored under its old name and place, the
-  page is found by its links again; restored under another, the links stay missing.
+  page is found by its links again; restored under another, the links stay missing. A link into another folder, such
+  as `[[other-folder/x.png]]`, names a tab of the own folder and shows as such.
 
 ## Updates on a move or rename
 
@@ -126,11 +151,15 @@ Tests: `src/features/pages/wiki-links.test.ts`, `src/features/pages/wiki-link-ta
   below the content: the title of each linking page as a link to it, with its tab, sorted by title, or a sentence that
   no page links here. Deleted pages are not listed, and a page that links to itself does not list itself.
 - `read_page` returns the same pages, with their name, tab and title.
+- The details page of a file shows, for every role, the pages of the folder that show or link it, in a section "Shown
+  or linked from", in the same way, or a sentence that no page shows or links it.
 
 ## The index of links
 
-- The wiki keeps the wiki links of every page in an index, one entry per distinct valid target of a page, so that the
-  backlinks, the numbers of the dialogs and the pages an update has to change are one indexed read. Every content
+- The wiki keeps the wiki links of every page in an index, one entry per distinct valid target of a page, links and
+  embeds of files included, so that the backlinks, the pages that show or link a file, the numbers of the dialogs and
+  the pages an update has to change are one indexed read. A file is kept by its name with the extension, which no
+  page name has, so a page and a file never share an entry. Every content
   write stores the links of the content in the same write, also a revert and the writes of the test helpers and the
   seed. The entries of deleted pages stay, so that a restore needs nothing; the reads leave deleted pages out.
 - Every content write of a folder waits for a move, a rename or a tab rename of that folder that is running, and those
@@ -170,7 +199,7 @@ search:index`, and the start of the container image, see "Operation" in `search.
 ## The limit
 
 - A page holds at most 5,000 wiki links (`CONTENT_MAX_WIKI_LINKS` in `src/features/pages/limits.ts`), counting every
-  link, a target that breaks the name rule included, and no text in code. A save with more is refused with a field
+  link and every embed, those of files and a target that breaks the name rule included, and no text in code. A save with more is refused with a field
   error at the content, in the browser and through MCP, like the other limits of the content (see "Content and title"
   in `pages.md`). The update of links on a move or rename is never refused for it.
 
@@ -188,7 +217,13 @@ The syntax and the target:
   such targets left as plain text.
 - The label is plain text, like the title. Rejected: inline Markdown in labels, which needs more parsing in the page
   view and in the editor.
-- Section links and embeds follow the plain rules and are not reserved. Rejected: leaving them as unmarked text.
+- Section links and embeds of pages follow the plain rules and are not reserved. Rejected: leaving them as unmarked
+  text.
+- Files are linked and shown with the syntax of wiki links, named by their extension, so that the index of links, the
+  missing display and the updates work for files as for pages. Rejected: plain Markdown to `/files` addresses, which is
+  not tracked; both syntaxes side by side.
+- `![[…]]` of a PDF is a plain link: embeds show images only. Rejected: a PDF viewer inside the page, which needs the
+  security headers of the app relaxed for files.
 - Code, escapes and line breaks keep `[[...]]` as text, as Markdown does for its own links.
 - Relative Markdown links to page addresses stay as they are. Rejected: treating them like wiki links, which doubles
   the forms to find and rewrite, and they hold the folder name.
@@ -253,7 +288,7 @@ Backlinks, AI apps and the editor:
 ## Current limits
 
 - No links across folders.
-- No section links (`[[page#section]]`), heading ids or embeds (`![[page]]`).
+- No section links (`[[page#section]]`), heading ids or embeds of pages (`![[page]]`).
 - No list of the broken links of a folder and no list of the pages that nothing links to (see `roadmap.md`).
 - No redirects from old addresses (see `roadmap.md`).
 - A restore or a revert updates no links, and the links of deleted pages are never updated.

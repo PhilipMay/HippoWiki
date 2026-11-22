@@ -4,12 +4,12 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { inBrowser, type BrowserActor, type McpActor } from "@/features/folder-roles/actors";
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
-import { indexOutdatedLinks, listLinkingPages } from "@/features/pages/links-service";
+import { indexOutdatedLinks, listLinkingPages, listPagesLinkingToFile } from "@/features/pages/links-service";
 import * as pageService from "@/features/pages/service";
 import { LINK_INDEX_VERSION } from "@/features/pages/wiki-links";
 import type { Folder, Tab, User } from "@/generated/prisma/client";
 
-import { createFolder, createPage, createTab, createUser, getTestDb } from "../e2e/support/database";
+import { createFile, createFolder, createPage, createTab, createUser, getTestDb } from "../e2e/support/database";
 import { KNOWN_USER } from "../prisma/known-users";
 import { createBob, mcpActorOf, owners, revisionsOf, storedPage } from "./helpers";
 
@@ -134,6 +134,56 @@ describe("the linking pages", () => {
   });
 });
 
+describe("the pages that show or link a file", () => {
+  /** The pages that show or link the file, as their titles. */
+  async function showingTitles(fileId: string): Promise<string[] | undefined> {
+    return (await listPagesLinkingToFile(actor, fileId))?.map((page) => page.title);
+  }
+
+  it("are the pages of the folder with an embed or a link of its name and place, by title, each once", async () => {
+    const file = await createFile({ tab: guides, name: "diagram.png" });
+    await newPage("# Setup\n\n![[guides/diagram.png]] ![[guides/diagram.png|again]]", { name: "setup" });
+    await newPage("# Network\n\n[[guides/diagram.png|the diagram]]", { name: "network", tabId: guides.id });
+    await newPage("# Elsewhere\n\n![[diagram.png]] [[guides/diagram]] `![[guides/diagram.png]]`", {
+      name: "elsewhere",
+    });
+    const other = await createFolder({ roles: owners(user) });
+    await createPage({ folder: other, content: "# Other folder\n\n![[guides/diagram.png]]" });
+
+    expect(await listPagesLinkingToFile(actor, file.id)).toStrictEqual([
+      { id: expect.any(String), name: "network", title: "Network", tab: { name: "guides" } },
+      { id: expect.any(String), name: "setup", title: "Setup", tab: null },
+    ]);
+  });
+
+  it("leave out a page whose link was removed, once it is saved, and a deleted page", async () => {
+    const file = await createFile({ folder, name: "report.pdf" });
+    const linking = await newPage("# Manual\n\n[[report.pdf]]", { name: "manual" });
+    const showing = await newPage("# Embedding\n\n![[report.pdf]]", { name: "embedding" });
+    expect(await showingTitles(file.id)).toEqual(["Embedding", "Manual"]);
+
+    await save(linking, "# Manual\n\nNo link any more.");
+    await pageService.deletePage(actor, showing, { version: (await storedPage(showing)).version });
+
+    expect(await showingTitles(file.id)).toEqual([]);
+  });
+
+  it("are null for a deleted file, a user without a role, an admin and another folder through MCP", async () => {
+    const file = await createFile({ folder, name: "diagram.png" });
+    const deleted = await createFile({ folder, name: "gone.png", deletedAt: new Date() });
+    const bob = await createBob();
+    const admin = await createUser({ type: "admin" });
+    const other = await createFolder({ roles: owners(user) });
+
+    expect(await listPagesLinkingToFile(inBrowser(bob), file.id)).toBeNull();
+    expect(await listPagesLinkingToFile(inBrowser(admin), file.id)).toBeNull();
+    expect(await listPagesLinkingToFile(mcpActorOf(user, other, "reader"), file.id)).toBeNull();
+    expect(await listPagesLinkingToFile(mcpActorOf(user, folder, "reader"), file.id)).toEqual([]);
+    expect(await listPagesLinkingToFile(actor, deleted.id)).toBeNull();
+    expect(await listPagesLinkingToFile(actor, "not-a-uuid")).toBeNull();
+  });
+});
+
 describe("the pages stored before the index of links", () => {
   /** A page as stored before the index of links: no rows and the version 0. */
   const BEFORE_INDEX = { linkIndexVersion: 0, links: {} };
@@ -167,6 +217,20 @@ describe("the pages stored before the index of links", () => {
       linkIndexVersion: LINK_INDEX_VERSION,
     });
     expect({ ...after, linkIndexVersion: 0 }).toEqual(before);
+  });
+
+  it("get the targets of files, which broke the name rule for the index before files", async () => {
+    // As the previous version of the derivation stored them: no row for a target with an extension.
+    const page = await createPage({
+      folder,
+      content: "# Old\n\n![[guides/diagram.png]] [[setup.png]] [[setup]]",
+      linkIndexVersion: LINK_INDEX_VERSION - 1,
+      links: { createMany: { data: [{ folderId: folder.id, tabName: null, pageName: "setup" }] } },
+    });
+
+    expect(await indexOutdatedLinks()).toEqual({ ok: true, value: { pages: 1 } });
+
+    expect(await linksOf(page.id)).toEqual(["guides/diagram.png", "setup", "setup.png"]);
   });
 
   it("are not derived again by a second run, and all again once after the version changed", async () => {

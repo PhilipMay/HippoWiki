@@ -9,7 +9,15 @@ import * as pageService from "@/features/pages/service";
 import { inBrowser, type BrowserActor } from "@/features/folder-roles/actors";
 import type { Page, User } from "@/generated/prisma/client";
 
-import { createFolder, createPage, createRevisions, createTab, createUser, getTestDb } from "../e2e/support/database";
+import {
+  createFile,
+  createFolder,
+  createPage,
+  createRevisions,
+  createTab,
+  createUser,
+  getTestDb,
+} from "../e2e/support/database";
 import { KNOWN_USER } from "../prisma/known-users";
 import { createBob, NOT_ALLOWED, owners, revisionsOf, storedPage, UNKNOWN_ACTOR, mcpActorOf } from "./helpers";
 
@@ -2080,7 +2088,40 @@ describe("the resolution of wiki links", () => {
         ["setup", "Setup"],
         ["guides/setup", "Setup guide"],
       ]),
+      files: new Map(),
       tabs: new Set(["guides", "empty"]),
+    });
+  });
+
+  it("resolves the targets of files to the type, width and height of their current version, and no deleted file", async () => {
+    const folder = await createFolder();
+    const guides = await createTab({ folder, name: "guides" });
+    await createFile({
+      tab: guides,
+      name: "diagram.png",
+      versions: [
+        { width: 10, height: 20 },
+        { width: 30, height: 40 },
+      ],
+    });
+    await createFile({ folder, name: "report.pdf" });
+    await createFile({ folder, name: "gone.png", deletedAt: new Date() });
+    // A page of the name without the extension is no file.
+    await createPage({ tab: guides, name: "diagram", content: "# Diagram page" });
+
+    expect(
+      await pageService.resolveWikiLinks(
+        actor,
+        folder.id,
+        "![[guides/diagram.png]] [[report.pdf]] [[gone.png]] [[diagram.png]] [[guides/report.pdf]]",
+      ),
+    ).toEqual({
+      titles: new Map(),
+      files: new Map([
+        ["guides/diagram.png", { type: "png", width: 30, height: 40 }],
+        ["report.pdf", { type: "pdf", width: null, height: null }],
+      ]),
+      tabs: new Set(["guides"]),
     });
   });
 
@@ -2090,10 +2131,11 @@ describe("the resolution of wiki links", () => {
     await createPage({ folder: other, name: "setup", content: "# Elsewhere" });
     await createTab({ folder: other, name: "guides" });
 
-    expect(await pageService.resolveWikiLinks(actor, folder.id, "[[setup]] [[guides/setup]]")).toEqual({
-      titles: new Map(),
-      tabs: new Set(),
-    });
+    await createFile({ folder: other, name: "diagram.png" });
+
+    expect(await pageService.resolveWikiLinks(actor, folder.id, "[[setup]] [[guides/setup]] ![[diagram.png]]")).toEqual(
+      { titles: new Map(), files: new Map(), tabs: new Set() },
+    );
   });
 
   it("finds no deleted page and no deleted tab, and a restored page again", async () => {
@@ -2105,7 +2147,11 @@ describe("the resolution of wiki links", () => {
 
     await pageService.deletePage(actor, direct.id, { version: direct.version });
     await folderService.deleteTab(actor, folder.id, guides.id);
-    expect(await pageService.resolveWikiLinks(actor, folder.id, links)).toEqual({ titles: new Map(), tabs: new Set() });
+    expect(await pageService.resolveWikiLinks(actor, folder.id, links)).toEqual({
+      titles: new Map(),
+      files: new Map(),
+      tabs: new Set(),
+    });
 
     await pageService.restorePage(actor, direct.id, { name: "faq", tabId: null });
     const docs = await createTab({ folder, name: "guides" });
@@ -2115,6 +2161,7 @@ describe("the resolution of wiki links", () => {
         ["guides/setup", "Setup guide"],
         ["faq", "FAQ"],
       ]),
+      files: new Map(),
       tabs: new Set(["guides"]),
     });
   });

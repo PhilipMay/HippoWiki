@@ -55,8 +55,8 @@ export const getPage = cache(
 );
 
 /**
- * What the wiki links of the content lead to in the folder as it is now: the titles of the pages they name and the
- * tabs that exist.
+ * What the wiki links of the content lead to in the folder as it is now: the titles of the pages and the current
+ * versions of the files they name, and the tabs that exist.
  */
 export async function resolveWikiLinks(
   folderId: string,
@@ -65,6 +65,13 @@ export async function resolveWikiLinks(
   await connection();
   const user = await requireUser();
   return pageService.resolveWikiLinks(inBrowser(user), folderId, content);
+}
+
+/** The pages of the folder that show or link the file, sorted by title; deleted pages are left out. */
+export async function listPagesLinkingToFile(fileId: string): Promise<linksService.LinkingPage[] | null> {
+  await connection();
+  const user = await requireUser();
+  return linksService.listPagesLinkingToFile(inBrowser(user), fileId);
 }
 
 /** The other pages of the folder that link to the page, sorted by title; deleted pages are left out. */

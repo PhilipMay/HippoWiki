@@ -188,7 +188,8 @@ model SearchWord {
 /// the pages that link to a page, for its backlinks and for the update of the links when it is renamed, are one indexed
 /// read. Derived data, stored in the same write as the content of the page (`src/features/pages/links-service.ts`),
 /// for deleted pages too, so that a restore needs nothing; the reads leave deleted pages out. A target names a page of
-/// the folder of the linking page by its name and place, whether such a page exists or not.
+/// the folder of the linking page by its name and place, or a file by its name with its extension, whether it exists or
+/// not.
 model PageLink {
   id       String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   /// The page that holds the link. Pages are never removed, only soft deleted.
@@ -197,9 +198,9 @@ model PageLink {
   /// The folder of the linking page, which is the folder of the target.
   folderId String  @db.Uuid
   folder   Folder  @relation(fields: [folderId], references: [id], onDelete: Restrict)
-  /// The name of the tab of the target, or `null` for a page placed directly in the folder.
+  /// The name of the tab of the target, or `null` for a page or file placed directly in the folder.
   tabName  String?
-  /// The name of the page of the target.
+  /// The name of the page of the target, or of the file with its extension (`diagram.png`), which no page name has.
   pageName String
 
   // The links of a page, which a write of its content replaces.

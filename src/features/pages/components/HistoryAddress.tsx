@@ -5,6 +5,7 @@ import PageHistory from "@/features/pages/components/PageHistory";
 import RevisionComparison from "@/features/pages/components/RevisionComparison";
 import RevisionView from "@/features/pages/components/RevisionView";
 import type { HistoryPlace } from "@/features/pages/components/history-place";
+import { getUploadSettings } from "@/features/files/queries";
 import { getPageRevision, getRevisionComparison, listPageRevisions, resolveWikiLinks } from "@/features/pages/queries";
 import type { RevisionDetail } from "@/features/pages/history-service";
 import type { PageAddressView } from "@/features/pages/page-query";
@@ -42,7 +43,13 @@ export default async function HistoryAddress({ pageId, title, place, view, rever
       const offered = revert?.(revision);
       // The wiki links of a revision lead where they lead now, like those of the page view.
       const resolution = view.raw ? null : ((await resolveWikiLinks(place.folderId, revision.content)) ?? notFound());
-      const links = resolution && { folderName: place.folderName, mayCreatePages: place.mayCreatePages, resolution };
+      const uploads = await getUploadSettings();
+      const links = resolution && {
+        folderName: place.folderName,
+        mayCreatePages: place.mayCreatePages,
+        mayUploadFiles: uploads.on && place.mayUploadFiles,
+        resolution,
+      };
       return (
         <RevisionView place={place} revision={revision} raw={view.raw} links={links} revertHref={offered?.href ?? null}>
           {offered?.dialog}

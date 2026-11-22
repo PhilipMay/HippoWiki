@@ -22,6 +22,11 @@ export type HistoryPlace = {
   folderId: string;
   /** Whether the user may create pages in the folder, so that a missing wiki link leads to the editor of a new page. */
   mayCreatePages: boolean;
+  /**
+   * Whether the role of the user includes uploading files, so that a missing link of a file leads to the "Upload file"
+   * dialog while the files are on.
+   */
+  mayUploadFiles: boolean;
   /** The tab of the page, or `null` for a page placed directly in its folder and for a deleted page. */
   tabName: string | null;
   /** Whether the page is deleted: its breadcrumb leads through the deleted items of its folder. */
@@ -51,6 +56,7 @@ export function pageHistoryPlace(page: PageWithPlace): HistoryPlace {
     folderName: folder,
     folderId: page.folder.id,
     mayCreatePages: mayDoFolderAction(page.role, "new"),
+    mayUploadFiles: mayDoFolderAction(page.role, "upload"),
     tabName: tab,
     deleted: false,
     searchFolderName: folder,
@@ -68,8 +74,9 @@ export function deletedPageHistoryPlace(page: DeletedPage): HistoryPlace {
   return {
     folderName: folder,
     folderId: page.folder.id,
-    // Only a Manager or Owner reads a deleted page, and both may create pages.
+    // Only a Manager or Owner reads a deleted page, and both may create pages and upload files.
     mayCreatePages: true,
+    mayUploadFiles: true,
     tabName: null,
     deleted: true,
     searchFolderName: null,

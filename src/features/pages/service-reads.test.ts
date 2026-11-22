@@ -222,12 +222,46 @@ describe("resolveWikiLinks", () => {
         ["setup", "Setup"],
         ["guides/setup", "Setup guide"],
       ]),
+      files: new Map(),
       tabs: new Set(["guides"]),
     });
+    expect(mocks.fileFindMany).not.toHaveBeenCalled();
+  });
+
+  it("returns the type, width and height of the current version of the files that the targets name", async () => {
+    mocks.fileFindMany.mockResolvedValue([
+      { name: "diagram.png", type: "png", tab: { name: "guides" }, versions: [{ width: 640, height: 480 }] },
+      { name: "report.pdf", type: "pdf", tab: null, versions: [{ width: null, height: null }] },
+      // A file that no target names, as the read of every name in every named tab can find.
+      { name: "report.pdf", type: "pdf", tab: { name: "guides" }, versions: [{ width: null, height: null }] },
+    ]);
+    mocks.tabFindMany.mockResolvedValue([{ name: "guides" }]);
+
+    const resolution = await resolveWikiLinks(ACTOR, FOLDER_ID, "![[guides/diagram.png]] [[report.pdf]] [[setup.png]]");
+
+    expect(resolution).toEqual({
+      titles: new Map(),
+      files: new Map([
+        ["guides/diagram.png", { type: "png", width: 640, height: 480 }],
+        ["report.pdf", { type: "pdf", width: null, height: null }],
+      ]),
+      tabs: new Set(["guides"]),
+    });
+    // Only the files are read, by their names with the extension, and only those that are not deleted.
+    expect(mocks.findMany).not.toHaveBeenCalled();
+    expect(mocks.fileFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          folderId: FOLDER_ID,
+          deletedAt: null,
+          name: { in: ["diagram.png", "report.pdf", "setup.png"] },
+        }),
+      }),
+    );
   });
 
   it("reads nothing for a content without valid targets or for a malformed folder id", async () => {
-    const empty = { titles: new Map(), tabs: new Set() };
+    const empty = { titles: new Map(), files: new Map(), tabs: new Set() };
     await expect(resolveWikiLinks(ACTOR, FOLDER_ID, "# T\n\n[[Setup Guide]] `[[setup]]`")).resolves.toEqual(empty);
     await expect(resolveWikiLinks(ACTOR, MALFORMED_ID, "[[setup]]")).resolves.toEqual(empty);
     expect(readCount()).toBe(0);

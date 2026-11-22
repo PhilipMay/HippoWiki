@@ -20,15 +20,22 @@ import {
   type TaskMeta,
   type Token,
 } from "@/features/pages/markdown";
-import type { WikiLinkResolution } from "@/features/pages/service";
-import { MISSING_WIKI_LINK_HINTS, wikiLinkTargetText } from "@/features/pages/wiki-link-target";
-import { newPagePath, pagePath } from "@/lib/addresses";
+import { isImageType } from "@/features/files/types";
+import type { LinkedFile, WikiLinkResolution } from "@/features/pages/service";
+import { MISSING_WIKI_LINK_HINTS, wikiLinkTargetText, type WikiLinkTarget } from "@/features/pages/wiki-link-target";
+import { fileContentPath, newPagePath, pagePath, uploadFilePath } from "@/lib/addresses";
 
 /**
  * What the page view needs to show wiki links as links: the folder of the content, whether the user may create pages
- * there, and what the links lead to in the folder as it is now. Without it, a wiki link shows its plain text.
+ * and upload files there (the latter only while the files are on), and what the links lead to in the folder as it is
+ * now. Without it, a wiki link shows its plain text.
  */
-export type WikiLinkContext = { folderName: string; mayCreatePages: boolean; resolution: WikiLinkResolution };
+export type WikiLinkContext = {
+  folderName: string;
+  mayCreatePages: boolean;
+  mayUploadFiles: boolean;
+  resolution: WikiLinkResolution;
+};
 
 /**
  * The hints of a wiki link that leads to no page, for pointer users as the title of the element and for screen reader
@@ -36,6 +43,7 @@ export type WikiLinkContext = { folderName: string; mayCreatePages: boolean; res
  */
 const WIKI_LINK_HINTS = {
   missing: { id: "wiki-link-hint-missing", text: MISSING_WIKI_LINK_HINTS.missing },
+  missingFile: { id: "wiki-link-hint-missing-file", text: MISSING_WIKI_LINK_HINTS.missingFile },
   invalid: { id: "wiki-link-hint-invalid", text: MISSING_WIKI_LINK_HINTS.invalid },
   noTab: { id: "wiki-link-hint-no-tab", text: MISSING_WIKI_LINK_HINTS.noTab },
 } as const;
@@ -251,17 +259,21 @@ function containerElement(open: Token, children: ReactNode[], key: string): Reac
 }
 
 /**
- * The element of a wiki link: a link to the page it names, with its label or the current title of the page; for a
- * missing page in an existing place, a marked link to the editor of a new page with its name and place for a user who
- * may create pages, and marked text for anyone else; and marked text for every role when the target breaks the name
- * rule or names a tab that does not exist. Every address is built from names that follow the name rule, and the label
- * and the title are children, so they reach the page as text.
+ * The element of a wiki link: a link to the page it names, with its label or the current title of the page, or to the
+ * file it names (see `fileLinkElement()`); for a missing page or file in an existing place, a marked link to the editor
+ * of a new page or to the "Upload file" dialog, with its name and place, for a user who may create pages or upload
+ * files, and marked text for anyone else; and marked text for every role when the target breaks the name rule or names
+ * a tab that does not exist. Every address is built from names that follow the name rule, and the label and the title
+ * are children, so they reach the page as text.
  */
 function wikiLinkElement(token: Token, key: string, links: WikiLinkContext | undefined): ReactNode {
   if (!links || !isWikiLink(token)) return token.content;
-  const { page, label, target } = token.meta;
+  const { page, label, target, embed } = token.meta;
   if (page === null) return missingText(key, label ?? target, "invalid");
-  const title = links.resolution.titles.get(wikiLinkTargetText(page));
+  const text = wikiLinkTargetText(page);
+  const file = page.kind === "file" ? links.resolution.files.get(text) : undefined;
+  if (file) return fileLinkElement(key, links.folderName, page, file, label, embed);
+  const title = page.kind === "page" ? links.resolution.titles.get(text) : undefined;
   if (title !== undefined) {
     return (
       <MuiLink key={key} component={Link} href={pagePath(links.folderName, page.tab, page.name)}>
@@ -270,17 +282,62 @@ function wikiLinkElement(token: Token, key: string, links: WikiLinkContext | und
     );
   }
   if (page.tab !== null && !links.resolution.tabs.has(page.tab)) return missingText(key, label ?? target, "noTab");
-  if (!links.mayCreatePages) return missingText(key, label ?? target, "missing");
+  const hint = page.kind === "file" ? "missingFile" : "missing";
+  const mayCreate = page.kind === "file" ? links.mayUploadFiles : links.mayCreatePages;
+  if (!mayCreate) return missingText(key, label ?? target, hint);
   return (
     <MuiLink
       key={key}
       component={Link}
-      href={newPagePath(links.folderName, page.tab, page.name)}
-      title={WIKI_LINK_HINTS.missing.text}
-      aria-describedby={WIKI_LINK_HINTS.missing.id}
+      href={
+        page.kind === "file"
+          ? uploadFilePath(links.folderName, page.tab, page.name)
+          : newPagePath(links.folderName, page.tab, page.name)
+      }
+      title={WIKI_LINK_HINTS[hint].text}
+      aria-describedby={WIKI_LINK_HINTS[hint].id}
       sx={MISSING_LINK_STYLE}
     >
       {label ?? target}
+    </MuiLink>
+  );
+}
+
+/**
+ * The element of a wiki link to a file that exists: for an embed of an image, the image from the address of the file,
+ * at its own size but at most as wide as the text, loaded when it comes near the screen, with the label or the name as
+ * its alt text, inside a link that opens the file in a new browser tab; for a link and for an embed of a PDF, a link to
+ * the address of the file with the label or the name of the file. The address names the file, not a version, so every
+ * view shows its current version.
+ */
+function fileLinkElement(
+  key: string,
+  folderName: string,
+  target: WikiLinkTarget,
+  file: LinkedFile,
+  label: string | null,
+  embed: boolean,
+): ReactNode {
+  const address = fileContentPath(folderName, target.tab, target.name);
+  if (!embed || !isImageType(file.type)) {
+    return (
+      <MuiLink key={key} href={address}>
+        {label ?? target.name}
+      </MuiLink>
+    );
+  }
+  return (
+    <MuiLink key={key} href={address} target="_blank" rel="noopener noreferrer">
+      {/* `Box` renders the `img` element, because the lint rules of Next.js report a plain `<img>`. */}
+      <Box
+        component="img"
+        src={address}
+        alt={label ?? target.name}
+        width={file.width ?? undefined}
+        height={file.height ?? undefined}
+        loading="lazy"
+        sx={{ maxWidth: "100%", height: "auto", verticalAlign: "bottom" }}
+      />
     </MuiLink>
   );
 }

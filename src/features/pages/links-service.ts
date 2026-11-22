@@ -6,6 +6,7 @@
 import type { ContentActor } from "@/features/folder-roles/actors";
 import { readableFolderWhere } from "@/features/folder-roles/service";
 import { parseTabId } from "@/features/folders/schema";
+import { parseFileId } from "@/features/files/schema";
 import { titleFromContent } from "@/features/pages/derive";
 import { parsePageId } from "@/features/pages/schema";
 import { LINK_INDEX_VERSION, linkRowsOf, rewriteWikiLinks, type TargetChange } from "@/features/pages/wiki-links";
@@ -16,7 +17,10 @@ import { getDb } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import type { Failed, Result } from "@/lib/result";
 
-/** A page that links to another page: what "Linked from" and `read_page` show of it. */
+/**
+ * A page that links to another page or to a file: what "Linked from", "Shown or linked from" and `read_page` show of
+ * it.
+ */
 export type LinkingPage = { id: string; name: string; title: string; tab: { name: string } | null };
 
 /** The columns of a page that a write of its links stores with it: the version of the derivation. */
@@ -87,6 +91,29 @@ export async function listLinkingPages(actor: ContentActor, pageId: string): Pro
       pageId: { not: id },
       page: { deletedAt: null },
     },
+    select: { page: { select: { id: true, name: true, title: true, tab: { select: { name: true } } } } },
+    orderBy: [{ page: { title: "asc" } }, { page: { name: "asc" } }],
+  });
+  return links.map((link) => link.page);
+}
+
+/**
+ * The pages of the folder that are not deleted and show or link the file with the given id, with `![[…]]` or `[[…]]`,
+ * sorted by title and then by name, each once. `null` for an admin, for a file of a folder without a role of the
+ * actor, and for a malformed id and a file that does not exist or is deleted.
+ */
+export async function listPagesLinkingToFile(actor: ContentActor, fileId: string): Promise<LinkingPage[] | null> {
+  const readable = readableFolderWhere(actor);
+  if (!readable) return null;
+  const id = parseFileId(fileId);
+  if (!id) return null;
+  const file = await getDb().file.findFirst({
+    where: { id, deletedAt: null, folder: readable },
+    select: { folderId: true, name: true, tab: { select: { name: true } } },
+  });
+  if (!file) return null;
+  const links = await getDb().pageLink.findMany({
+    where: { folderId: file.folderId, tabName: file.tab?.name ?? null, pageName: file.name, page: { deletedAt: null } },
     select: { page: { select: { id: true, name: true, title: true, tab: { select: { name: true } } } } },
     orderBy: [{ page: { title: "asc" } }, { page: { name: "asc" } }],
   });
