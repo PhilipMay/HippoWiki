@@ -200,10 +200,15 @@ async function listMany(request: APIRequestContext, connection: McpConnection, c
 }
 
 test.describe("the rate limit", () => {
-  test("lets at least 60 requests of a user pass, then answers 429 with Retry-After, and after the wait lets one pass", async ({
+  test("lets at least 60 requests of a user pass, then answers 429 with Retry-After at every address of the user but not to another user, and after the wait lets one pass", async ({
     request,
   }) => {
     const reader = await connect("reader");
+    const writer = await connect("writer");
+    const other = await createUser({ mustChangePassword: false });
+    const othersFolder = await createFolder({ roles: [{ user: other, role: "owner" }] });
+    const { accessToken } = await createGrant({ owner: other, folder: othersFolder, role: "reader" });
+    const othersConnection = { address: mcpPath(othersFolder, "reader"), token: accessToken };
     const started = Date.now();
     let passed = 0;
     let refused = await postText(request, reader, TOOLS_LIST);
@@ -213,6 +218,9 @@ test.describe("the rate limit", () => {
       refused = await postText(request, reader, TOOLS_LIST);
     }
     const seconds = (Date.now() - started) / 1000;
+    // The budget is one per user, shared by the addresses of the user, and the budget of another user is its own.
+    const atTheWriter = await postText(request, writer, TOOLS_LIST);
+    const ofTheOther = await postText(request, othersConnection, TOOLS_LIST);
 
     expect(refused.status()).toBe(429);
     expect(await refused.json()).toEqual({ error: "rate_limited" });
@@ -221,50 +229,30 @@ test.describe("the rate limit", () => {
     expect(passed).toBeLessThanOrEqual(60 + Math.ceil(5 * seconds));
     const retryAfter = Number(refused.headers()["retry-after"]);
     expect(retryAfter).toBeGreaterThanOrEqual(1);
+    expect(atTheWriter.status()).toBe(429);
+    expect(ofTheOther.status()).toBe(200);
 
     await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
 
     expect((await postText(request, reader, TOOLS_LIST)).status()).toBe(200);
   });
 
-  test("shares one budget between the addresses of a user, and leaves another user unaffected", async ({ request }) => {
-    const reader = await connect("reader");
-    const writer = await connect("writer");
-    const other = await createUser({ mustChangePassword: false });
-    const othersFolder = await createFolder({ roles: [{ user: other, role: "owner" }] });
-    const { accessToken } = await createGrant({ owner: other, folder: othersFolder, role: "reader" });
-    const othersConnection = { address: mcpPath(othersFolder, "reader"), token: accessToken };
-
-    const started = Date.now();
-    const atTheReader = await listMany(request, reader, 30);
-    const statusesAtTheWriter = [];
-    let atTheWriter = await postText(request, writer, TOOLS_LIST);
-    while (atTheWriter.status() === 200 && statusesAtTheWriter.length < 1000) {
-      statusesAtTheWriter.push(atTheWriter.status());
-      atTheWriter = await postText(request, writer, TOOLS_LIST);
-    }
-    const seconds = (Date.now() - started) / 1000;
-    const ofTheOther = await postText(request, othersConnection, TOOLS_LIST);
-
-    expect(atTheReader.every((status) => status === 200)).toBe(true);
-    // The Writer address gets only what the 30 requests at the Reader address left of the budget, and the refill.
-    expect(atTheWriter.status()).toBe(429);
-    expect(statusesAtTheWriter.length).toBeGreaterThanOrEqual(30);
-    expect(statusesAtTheWriter.length).toBeLessThanOrEqual(30 + Math.ceil(5 * seconds));
-    expect(ofTheOther.status()).toBe(200);
-  });
-
-  test("lets 70 requests without a token and 70 with an invalid token get 401, and takes nothing from the budget", async ({
+  // That 70 of each kind take nothing from the budget is tested in src/features/mcp/http.test.ts.
+  test("lets requests without a token and with an invalid token get 401, and takes nothing from the budget", async ({
     request,
   }) => {
     const reader = await connect("reader");
+    const withoutToken = { address: reader.address, token: null };
+    const withInvalidToken = { address: reader.address, token: `hwa_${"A".repeat(43)}` };
 
-    const withoutToken = await listMany(request, { address: reader.address, token: null }, 70);
-    const withInvalidToken = await listMany(request, { address: reader.address, token: `hwa_${"A".repeat(43)}` }, 70);
+    const refused = await Promise.all(
+      [withoutToken, withInvalidToken].flatMap((connection) =>
+        Array.from({ length: 5 }, () => postText(request, connection, TOOLS_LIST)),
+      ),
+    );
     const afterwards = await listMany(request, reader, 60);
 
-    expect(withoutToken.every((status) => status === 401)).toBe(true);
-    expect(withInvalidToken.every((status) => status === 401)).toBe(true);
+    expect(refused.map((response) => response.status())).toEqual(Array.from({ length: 10 }, () => 401));
     expect(afterwards.every((status) => status === 200)).toBe(true);
   });
 });

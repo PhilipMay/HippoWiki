@@ -207,21 +207,8 @@ test.describe("the time limit and the searches at the same time", () => {
     expect((await search(request, { query: "gateway" })).results).toHaveLength(1);
   });
 
-  test("a search that takes longer than the time limit is a tool error, and the next one works", async ({
-    request,
-  }) => {
-    test.setTimeout(60_000);
-    const { release } = await holdSearchWords();
-    try {
-      expect(errorOf(await call(request, "search_pages", { query: "gateway" }))).toBe(
-        "This search is too broad and took too long. Use more precise words.",
-      );
-    } finally {
-      await release();
-    }
-    expect((await search(request, { query: "gateway" })).results).toHaveLength(1);
-  });
-
+  // A search that takes longer than the time limit: the limit is tested in integration/search-service.test.ts, the
+  // message of the tool error in src/features/mcp/tools.test.ts, and search.spec.ts waits for the limit in the browser.
   test("a fourth search at the same time is a tool error at once, with the text of the browser", async ({
     request,
   }) => {

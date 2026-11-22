@@ -50,17 +50,8 @@ test.describe("the limit of wiki links", () => {
     expect(errors).toEqual([]);
   });
 
-  test("a save with 5,000 wiki links is stored", async ({ page }) => {
-    const created = await createPage({ folder: handbook, name: "links", title: "Links" });
-    const value = withWikiLinks(CONTENT_MAX_WIKI_LINKS);
-
-    await page.goto("/folders/handbook/links.md?action=edit");
-    await fillContent(page, value);
-    await page.getByRole("button", { name: "Save" }).click();
-
-    await expect(page).toHaveURL("/folders/handbook/links.md");
-    expect((await getTestDb().page.findUniqueOrThrow({ where: { id: created.id } })).content).toBe(value);
-  });
+  // That a save with 5,000 wiki links is stored, with all its links in the index, is tested in
+  // integration/wiki-links-service.test.ts.
 });
 
 // A heading with a link without a label gives its target, as tested in src/features/pages/derive.test.ts.

@@ -1,8 +1,8 @@
 import type { Page } from "@playwright/test";
 
 import { VERSION_FIELD } from "@/features/pages/fields";
-import { CONTENT_MAX_TABLE_CELLS } from "@/features/pages/limits";
-import { CONTENT_TABLE_CELLS_MESSAGE } from "@/features/pages/schema";
+import { CONTENT_MAX_DEPTH } from "@/features/pages/limits";
+import { CONTENT_DEPTH_MESSAGE } from "@/features/pages/schema";
 
 import { KNOWN_USER } from "../prisma/known-users";
 import { collectErrors, expectNotFound, expectNotFoundResponse } from "./support/browser";
@@ -220,20 +220,22 @@ test("a revert of a page deleted meanwhile shows that it no longer exists, and n
   expect(await stored(intro.id)).toEqual({ content: "# Intro\n\nThree", version: 1, revisions: 3 });
 });
 
-test("reverting to a revision that breaks the table cell limit shows the message of that limit, and the page stays as it was", async ({
+// The cheapest limit to break: the table cell limit, whose revision is far larger, is refused in the same way
+// (integration/page-service.test.ts, "refuses a revision past the table cell limit and changes nothing").
+test("reverting to a revision that breaks the depth limit shows the message of that limit, and the page stays as it was", async ({
   page,
 }) => {
   const intro = await pageWithThreeRevisions();
   // A revision stored before the limit existed.
-  const table = `# Intro\n\n| a |\n| - |\n${"| x |\n".repeat(CONTENT_MAX_TABLE_CELLS)}`;
+  const nested = `# Intro\n\n${">".repeat(CONTENT_MAX_DEPTH + 1)} deep`;
   await getTestDb().pageRevision.update({
     where: { pageId_number: { pageId: intro.id, number: 1 } },
-    data: { content: table },
+    data: { content: nested },
   });
 
   await page.goto("/folders/handbook/intro.md?action=revert&revision=1");
   await revertDialog(page).getByRole("button", { name: "Revert" }).click();
 
-  await expect(revertDialog(page).getByRole("alert")).toContainText(CONTENT_TABLE_CELLS_MESSAGE);
+  await expect(revertDialog(page).getByRole("alert")).toContainText(CONTENT_DEPTH_MESSAGE);
   expect(await stored(intro.id)).toEqual({ content: "# Intro\n\nThree", version: 1, revisions: 3 });
 });
