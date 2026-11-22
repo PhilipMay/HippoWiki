@@ -40,8 +40,6 @@ file itself holds.
   the file with its last finding.
 - `spec/list-layout-review.md`: Which findings of the review of the list layout in the page view are open? A fixed
   finding is deleted, and the file with its last finding.
-- `spec/hmr-route-race-steps.md`: How is the race fixed in which a second page of a browser context of the end-to-end
-  tests misses the websocket route and never hydrates?
 
 ## Running the Checks
 

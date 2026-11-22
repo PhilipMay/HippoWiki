@@ -301,10 +301,15 @@ How the code is tested. Commands are listed in `README.md`.
     `@playwright/test`. After `page.goto()` and `page.reload()` its `page` waits until the page has hydrated, i.e. until
     `HydrationMarker` has set `data-hydrated="true"` on `<html>` (see "UI" in `architecture.md`); not with JavaScript
     disabled. Every other page a test opens, in a second tab or a browser context of its own, gets the same wait from
-    `hydrating()`, e.g. `hydrating(await context.newPage())`. So no test acts on the locked, server-rendered page, where
-    React could undo a change to the DOM or report a hydration mismatch. This matters most in CI, whose runner hydrates
-    much later than a fast local machine. `hydrating()` also routes the page through the filter of `hmr.ts`, and its
-    `goto()` and `reload()` wait for that route before they load the page, so that the first load is covered.
+    `hydrating()`, which lives in `hydration.ts` and is re-exported by `test.ts`. So no test acts on the locked,
+    server-rendered page, where React could undo a change to the DOM or report a hydration mismatch. This matters most
+    in CI, whose runner hydrates much later than a fast local machine; its unit tests are in `hydration.test.ts`.
+  - `hydrating()` is awaited, as in `await hydrating(await context.newPage())`: it routes the page through the filter of
+    `hmr.ts` and settles once that route is in place, and the `page` of the fixture waits for it as well before the
+    test gets it. Its `goto()` and `reload()` then wait for hydration. The route comes first because the binding of
+    `page.routeWebSocket()` is installed for the whole browser context during its first route, and a page of the
+    context created during that install misses it: its websocket of the hot module replacement fails and it never
+    hydrates.
   - The hot module replacement of the development server (`next dev` with Turbopack) can drive a page into a reload
     loop: now and then the compile pass that a page render schedules lands just after the page has subscribed to its
     chunk lists, and the server answers the subscription of the shared entry chunk list with an update of the type
@@ -313,7 +318,7 @@ How the code is tested. Commands are listed in `README.md`.
     messages `reloadPage` and `restart` from every page that `hydrating()` wraps. That loses nothing: the tests change
     no source file, so these messages never carry a real update. The production run has no hot module replacement.
   - The wait still fails at once when the page loads itself again more than 5 times meanwhile
-    (`MAX_RELOADS_WHILE_HYDRATING` in `test.ts`), as a guard: no page of the app reloads itself and the filter keeps
+    (`MAX_RELOADS_WHILE_HYDRATING` in `hydration.ts`), as a guard: no page of the app reloads itself and the filter keeps
     the development server from doing so, so its error points to a new cause of reloads, which is told apart from a
     failure of the app, instead of a test that fails after 30 seconds while waiting for `data-hydrated`.
   - `hmr.ts` holds that filter. `withoutReloads()` drops a message `reloadPage`, drops the updates of the type
