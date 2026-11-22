@@ -162,8 +162,8 @@ All from "Current limits" in `container-image.md`:
   neither for the probe nor for the login limit.
 - Logins at the same time on the deployment: each counted login holds a database connection for an interactive
   transaction, and the pool of the `pg` adapter has 10 connections by default. Check that a burst of logins for one
-  name is answered with waits and not with a failed login, and whether the rounds of `reserveAttempt()`
-  (`MAX_RESERVE_ROUNDS` in `src/features/auth/service.ts`) are enough when many logins with the right password arrive at the same moment.
+  name is answered with waits and not with a failed login, and from how many logins with the right password at the
+  same moment the rounds of `reserveAttempt()` give up there. The local numbers are in `manual-check-report.md`.
 - Log volume: every login whose `X-Forwarded-For` has no usable entry logs a warning; check that a correct setup
   behind Traefik writes none, so that a warning points to a broken setup.
 - OAuth on the deployment, after the checks above and only then with `HIPPOWIKI_PUBLIC_URL` set
@@ -205,6 +205,5 @@ All from "Current limits" in `container-image.md`:
     released regularly for fixes of the base image; a scan of the published image for vulnerabilities.
   - The logs: stdout and stderr collected into a separate system with limited access, a retention period and
     synchronised time; alerts on a reused refresh token, on waits after failed logins and on a failed health check.
-  - The GitHub repository: rules for `main` and release tags, who may publish releases and push to the image package,
-    private vulnerability reporting, alerts and security updates of Dependabot, read-only default permissions of
-    workflows, approval for workflows of fork pull requests.
+  - The GitHub repository: who may push to the image package. The other settings were read; what they lack is in
+    `review-report.md` and `manual-check-report.md`.

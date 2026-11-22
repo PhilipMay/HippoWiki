@@ -2123,7 +2123,9 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 - Problem: nothing in the repository says where to report a vulnerability, through which private channel, or what
   answer to expect. Private vulnerability reporting of GitHub is a setting that cannot be seen from the repository.
 - Impact: someone who finds a flaw in the OAuth server or the MCP endpoint can only open a public issue.
-- Evidence: there is no SECURITY.md, CONTRIBUTING.md or CHANGELOG.md, and `README.md` does not mention security.
+- Evidence: there is no SECURITY.md, CONTRIBUTING.md or CHANGELOG.md, and `README.md` does not mention security. On
+  2026-11-22, private vulnerability reporting is off:
+  `gh api repos/PhilipMay/HippoWiki/private-vulnerability-reporting` gives `{"enabled":false}`.
 - Suggestion (required): add SECURITY.md with the supported versions, the private channel, the expected time to
   answer and how fixes are released.
 - Confidence: Low. The private channel, the supported versions and the time to answer are choices of the maintainer.
@@ -2141,12 +2143,13 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 - Evidence: "Upgrading existing packages is a task of its own, not part of a feature step." On 2026-11-14,
   `npm audit` reports 7 moderate vulnerabilities, all in development tools (`minimatch` below
   `@typescript-eslint/typescript-estree`, GHSA-g3hv-75wg-m249), and `npm audit --omit=dev` reports none; no check
-  would have failed either way.
+  would have failed either way. On 2026-11-22, the alerts and the security updates of Dependabot are on, and the alert
+  of that advisory has been open since 2026-11-11: `@typescript-eslint/typescript-estree` asks for
+  `minimatch@^10.2.2`, and the fix is 11.0.1, so a security update of Dependabot cannot reach it.
 - Suggestion (required): add a rule with time frames (for example critical and high in production within 7 days,
   moderate within 30) that makes a security fix not wait; make sure alerts and security updates of Dependabot are on;
   optionally `npm audit --omit=dev --audit-level=high` in CI.
-- Confidence: Low. The time frames are a decision of the process, and whether the alerts and security updates of
-  Dependabot are on cannot be seen from the repository.
+- Confidence: Low. The time frames are a decision of the process.
 - Reference: OWASP A03:2025 Software Supply Chain Failures; ASVS 15.1.1, 15.2.1; CWE-1395.
 
 #### issue: users cannot check that a published image is the one CI built, and "no signing" has no reason
@@ -2199,7 +2202,8 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 - Problem: a tag can be moved by the owner of the action, and in the release job `actions/checkout@v7` runs where
   `packages: write` is available.
 - Impact: a compromised or moved tag runs foreign code in every workflow, the release included.
-- Evidence: all 16 `uses:` lines name a `@v7` tag.
+- Evidence: all 16 `uses:` lines name a `@v7` tag. On 2026-11-22, the settings of Actions allow every action
+  (`allowed_actions: all`) and do not require pinning by SHA (`sha_pinning_required: false`).
 - Suggestion (required): pin each action to its commit SHA with the version as a comment; Dependabot keeps both up to
   date.
 - Confidence: Medium. That Dependabot keeps both the SHA and the version comment up to date is from its documentation
@@ -2248,7 +2252,9 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   rules of the repository require reviews or checks on `main` or protect release tags cannot be seen from the
   repository.
 - Impact: one compromised developer account or machine can put code into `main` and publish a release.
-- Evidence: "push the current branch with `git push`, without asking first".
+- Evidence: "push the current branch with `git push`, without asking first". On 2026-11-22, neither `main` nor any
+  tag has a rule: `gh api repos/PhilipMay/HippoWiki/branches/main/protection` answers "Branch not protected", and the
+  repository has no rulesets.
 - Suggestion (required): document it as a decision (single maintainer, CI as the gate, periodic reviews), or require
   pull requests with passing checks and protect `v*` tags.
 - Confidence: Low. Documenting it as a decision or requiring pull requests is a choice of the maintainer's process.
@@ -2831,9 +2837,8 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
   is taken before a new version starts (Configuration).
 - `NODE_OPTIONS` has no `--inspect`, and `HIPPOWIKI_LOG_CLIENT_ADDRESS` is `false` outside a deliberate check
   (Configuration).
-- In the settings of the repository: rules for `main` (review, required checks) and for release tags, who may publish
-  releases, private vulnerability reporting, alerts and security updates of Dependabot, read-only default permissions
-  of workflows, approval for workflows of fork pull requests, and who may push to the image package (Supply chain).
+- In the settings of the repository: who may push to the image package (Supply chain). The other settings were read
+  on 2026-11-22; what they lack is in the findings of "Supply chain" and in `manual-check-report.md`.
 - The deployment pulls the image by digest, not by tag (Supply chain).
 - No vulnerability scanner is installed on the review machine, so the image was not scanned; a scan of the published
   image (for example with Trivy or Grype) is left to the deployment (Supply chain).

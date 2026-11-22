@@ -40,6 +40,8 @@ file itself holds.
   the file with its last finding.
 - `spec/markdown-parser-review.md`: Which findings of the review of the code around the Markdown parser are open? A
   fixed finding is deleted, and the file with its last finding.
+- `spec/manual-check-report.md`: Which findings of the manual checks of the app and of the settings of the repository
+  are open? A fixed finding is deleted, and the file with its last finding.
 - `spec/list-layout-review.md`: Which findings of the review of the list layout in the page view are open? A fixed
   finding is deleted, and the file with its last finding.
 
