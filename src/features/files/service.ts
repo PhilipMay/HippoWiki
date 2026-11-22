@@ -288,19 +288,25 @@ export async function listTabFiles(actor: ContentActor, tabId: string): Promise<
   return files.map(summaryOf);
 }
 
-/** A file of the folder as the Markdown editor knows it: its place, its type and the width and height of an image. */
+/**
+ * A file of the folder as the Markdown editor and `list_folder` of MCP know it: its place, its type, the size, width
+ * and height of its current version, and its last change.
+ */
 export type FolderFile = {
   name: string;
   type: FileType;
   tab: { name: string } | null;
+  size: number;
   width: number | null;
   height: number | null;
+  updatedAt: Date;
+  lastEditedBy: LastEditor;
 };
 
 /**
  * Every file of the folder that is not deleted, placed directly in it or in one of its tabs, by name and then by tab,
- * with the width and height of its current version: what the editor shows and offers for links. `null` for an admin
- * and for a folder without a role of the actor.
+ * with the size, width and height of its current version: what the editor shows and offers for links, and what
+ * `list_folder` lists. `null` for an admin and for a folder without a role of the actor.
  */
 export async function listAllFolderFiles(actor: ContentActor, folderId: string): Promise<FolderFile[] | null> {
   if (!(await mayReadFolder(actor, folderId))) return null;
@@ -311,16 +317,22 @@ export async function listAllFolderFiles(actor: ContentActor, folderId: string):
     select: {
       name: true,
       type: true,
+      updatedAt: true,
+      ...LAST_EDITOR_SELECT,
       tab: { select: { name: true } },
-      versions: { select: { width: true, height: true }, orderBy: { number: "desc" }, take: 1 },
+      versions: { select: { size: true, width: true, height: true }, orderBy: { number: "desc" }, take: 1 },
     },
     orderBy: [{ name: "asc" }, { tab: { name: "asc" } }],
   });
-  return files.map(({ versions, ...file }) => ({
-    ...file,
-    width: versions[0]?.width ?? null,
-    height: versions[0]?.height ?? null,
-  }));
+  return files.map((row) => {
+    const { versions, ...file } = withLastEditor(row);
+    return {
+      ...file,
+      size: versions[0]?.size ?? 0,
+      width: versions[0]?.width ?? null,
+      height: versions[0]?.height ?? null,
+    };
+  });
 }
 
 /** The condition of a file at a place, by the names of its folder and tab, that is not deleted. */

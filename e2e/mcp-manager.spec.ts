@@ -349,7 +349,7 @@ test.describe("the tools of a Manager connection", () => {
     expect(await stored()).toEqual(before);
   });
 
-  test("the tool list of a Manager connection has eleven tools, the destructive hint on the content changes and the deletes and none for deleted pages, roles or the folder", async ({
+  test("the tool list of a Manager connection has twelve tools, the destructive hint on the content changes and the deletes and none for deleted pages, roles or the folder", async ({
     request,
   }) => {
     const answer = await send(request, { method: "tools/list" }, manager, managerAddress);
@@ -363,6 +363,7 @@ test.describe("the tools of a Manager connection", () => {
       "list_folder",
       "read_page",
       "search_pages",
+      "read_file",
       "create_page",
       "replace_page_content",
       "edit_page_content",
@@ -383,8 +384,10 @@ test.describe("the tools of a Manager connection", () => {
     expect(hints.create_tab?.destructiveHint).toBe(false);
     expect(hints.rename_tab?.destructiveHint).toBe(false);
     expect(tools.map(({ name }) => name).join(" ")).not.toMatch(/restore|deleted|role|owner|folder_/);
-    // No tool uploads, changes, moves, renames or deletes a single file: delete_tab deletes files only with their tab.
-    expect(tools.map(({ name }) => name).join(" ")).not.toMatch(/file|upload/);
+    // No tool uploads, changes, moves, renames or deletes a single file: delete_tab deletes files only with their tab,
+    // and read_file only reads.
+    expect(tools.map(({ name }) => name).filter((name) => /file|upload/.test(name))).toEqual(["read_file"]);
+    expect(hints.read_file).toMatchObject({ readOnlyHint: true, destructiveHint: false });
     expect(tools.find(({ name }) => name === "delete_tab")?.description).toContain(
       "together with every page and every file (image or PDF) in it",
     );

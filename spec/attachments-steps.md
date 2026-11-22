@@ -182,6 +182,12 @@ What the steps share, so that each step builds on the same model:
   pages of the results view get the heading "Pages", and the message without results reads "No pages or files in this
   folder match …". `FileList` lists a file with a `tab` of its own after its tab, for the results.
 
+- Step 11: `list_folder` and `search_pages` share the output of a file (`fileOutput` of
+  `src/features/mcp/tool-schemas.ts`), with `detailsAddress` next to `address`; `read_file` lists the pages as
+  `shownOrLinkedFrom` and the number of versions as `versions`. `listAllFolderFiles()` of the files service now also
+  returns the size and the last change of each file, for `list_folder`. The log line of a call keeps a name of up to
+  the length limit of a name and `.webp`, so that a file name is not cut before its extension.
+
 ## Requirements by step
 
 | Step                                      | Requirements                                      |
@@ -218,7 +224,7 @@ The plan is large, so it has two stop points:
 - [x] Deleting and restoring files
 - [x] Files in the editor
 - [x] Files in search
-- [ ] Files through MCP
+- [x] Files through MCP
 - [ ] Spec tests
 - [ ] Wrap-up
 

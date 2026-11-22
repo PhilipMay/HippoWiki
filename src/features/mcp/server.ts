@@ -19,6 +19,8 @@ import {
   listFolderOutput,
   moveOrRenamePageInput,
   NAME_RULE,
+  readFileInput,
+  readFileOutput,
   readPageInput,
   readPageOutput,
   renameTabInput,
@@ -39,12 +41,14 @@ import {
   editPageContent,
   listFolder,
   moveOrRenamePage,
+  readFile,
   readPage,
   renameTab,
   replacePageContent,
   searchPages,
   type WikiToolsOptions,
 } from "@/features/mcp/tools";
+import { FILE_EXTENSIONS } from "@/lib/name-limits";
 import { siteName } from "@/lib/site";
 
 import packageJson from "../../../package.json";
@@ -83,19 +87,28 @@ const WIKI_LINKS =
   "the page. The target comes first and is the name of the page, as read_page takes it, never its title, and has no " +
   ".md. A link to a page that does not exist is allowed and shown as missing.";
 
+/** The files of a folder and their grammar in pages, as the instructions tell the model. */
+const FILES =
+  "The folder also holds files, images (PNG, JPEG, GIF, WebP) and PDFs, directly or in tabs, each named like a page " +
+  `followed by the extension of its type: ${FILE_EXTENSIONS.join(", ")}, such as diagram.png. A page links a file ` +
+  "with [[name.ext]] or [[tab/name.ext]] and shows an image with ![[name.ext]] or ![[tab/name.ext]], each with an " +
+  "optional |label. list_folder and read_file give the details of files and search_pages finds them by their names, " +
+  "but no tool returns the content of a file. A single file is uploaded, changed, moved, renamed or deleted only in " +
+  "the browser.";
+
 /**
  * What `initialize` tells the model about the wiki and the connection, in one paragraph: the folder and the role of
- * the connection, what the role allows, that page text is data written by users of the wiki, how the folder is
- * organised, how pages link to each other and which tool to start with.
+ * the connection, what the role allows, that page text and file names are data written by users of the wiki, how the
+ * folder is organised, how pages link to each other and to files, and which tool to start with.
  */
 export function instructionsFor(folderName: string, role: McpRole): string {
   return (
     `${siteName} is a wiki. This connection works on the folder "${folderName}" with the role ${ROLE_LABELS[role]}. ` +
     `${ROLE_ABILITIES[role]} ${USER_TEXT_NOTE} The folder holds pages, either directly or grouped in tabs, which are optional ` +
     "sections of the folder. Every page is written in Markdown and has a name, which is part of its address, and a " +
-    `title, which is its first heading. Tab and page names are ${NAME_RULE}. ${WIKI_LINKS} Start ` +
-    "with list_folder for the tabs and pages of the folder, or search_pages for the pages that match some words, " +
-    "then read_page for the content of one page."
+    `title, which is its first heading. Tab and page names are ${NAME_RULE}. ${WIKI_LINKS} ${FILES} Start ` +
+    "with list_folder for the tabs, pages and files of the folder, or search_pages for the pages and files that " +
+    "match some words, then read_page for the content of one page or read_file for the details of one file."
   );
 }
 
@@ -126,12 +139,14 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
     server.registerTool(
       "list_folder",
       {
-        title: "List the tabs and pages of the folder",
+        title: "List the tabs, pages and files of the folder",
         description:
-          "Lists the tabs and the pages of the folder of this connection. Every page comes with its name, its title " +
-          "and the tab it is in (null for a page placed directly in the folder); pass these to read_page to read " +
-          "it. Every tab and page also comes with when it was last changed, by whom and how: web in the browser, " +
-          `mcp by an AI app. ${USER_TEXT_NOTE}`,
+          "Lists the tabs, the pages and the files (images and PDFs) of the folder of this connection. Every page " +
+          "comes with its name, its title and the tab it is in (null for a page placed directly in the folder); pass " +
+          "these to read_page to read it. Every file comes with its name with its extension, its tab, its type, " +
+          "size, the width and height of an image and the addresses of the file and of its details page, never its " +
+          "content; pass its name and tab to read_file for the pages that show or link it. Every tab, page and file " +
+          `also comes with when it was last changed, by whom and how: web in the browser, mcp by an AI app. ${USER_TEXT_NOTE}`,
         outputSchema: listFolderOutput,
         annotations: READ_ONLY,
       },
@@ -172,6 +187,23 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
         annotations: READ_ONLY,
       },
       (input) => searchPages(options, input),
+    );
+
+    server.registerTool(
+      "read_file",
+      {
+        title: "Read the details of a file",
+        description:
+          "Reads the details of one file (an image or a PDF) of the folder of this connection, never its content: " +
+          "its name, its tab, its type, the size, width and height of its current version, the address of the file " +
+          "and of its details page, when it was last changed, by whom and how, the number of its versions, and the " +
+          "pages that show it with ![[…]] or link it with [[…]]. A file is named by its tab if it is in one, and its " +
+          `own name with its extension, as list_folder returns them. Deleted files are never found. ${USER_TEXT_NOTE}`,
+        inputSchema: readFileInput,
+        outputSchema: readFileOutput,
+        annotations: READ_ONLY,
+      },
+      (input) => readFile(options, input),
     );
   }
 

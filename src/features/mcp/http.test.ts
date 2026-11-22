@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   getFolderById: vi.fn(),
   listTabs: vi.fn(),
   listAllFolderPages: vi.fn(),
+  listAllFolderFiles: vi.fn(),
   getPage: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
@@ -23,6 +24,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/features/grants/service", () => ({ authenticateAccessToken: mocks.authenticateAccessToken }));
 vi.mock("@/features/folders/service", () => ({ getFolderById: mocks.getFolderById, listTabs: mocks.listTabs }));
+vi.mock("@/features/files/service", () => ({ listAllFolderFiles: mocks.listAllFolderFiles }));
 vi.mock("@/features/pages/service", () => ({
   listAllFolderPages: mocks.listAllFolderPages,
   getPage: mocks.getPage,
@@ -105,6 +107,7 @@ beforeEach(async () => {
   mocks.getFolderById.mockResolvedValue({ id: FOLDER_ID, name: "handbook", role: "reader" });
   mocks.listTabs.mockResolvedValue([]);
   mocks.listAllFolderPages.mockResolvedValue([]);
+  mocks.listAllFolderFiles.mockResolvedValue([]);
   mocks.getPage.mockResolvedValue(null);
 });
 
@@ -355,7 +358,7 @@ describe("a client of the protocol of 2025", () => {
 
     expect(list.headers.get("content-type")).toBe("application/json");
     const tools = ((await list.json()) as { result: { tools: { name: string }[] } }).result.tools;
-    expect(tools.map((tool) => tool.name)).toEqual(["list_folder", "read_page", "search_pages"]);
+    expect(tools.map((tool) => tool.name)).toEqual(["list_folder", "read_page", "search_pages", "read_file"]);
     expect(call.headers.get("content-type")).toBe("application/json");
     await expect(call.json()).resolves.toMatchObject({
       id: 3,
@@ -396,7 +399,7 @@ describe("a client of the current protocol", () => {
     expect(list.status).toBe(200);
     expect(list.headers.get("content-type")).toBe("application/json");
     const tools = ((await list.json()) as { result: { tools: { name: string }[] } }).result.tools;
-    expect(tools.map((tool) => tool.name)).toEqual(["list_folder", "read_page", "search_pages"]);
+    expect(tools.map((tool) => tool.name)).toEqual(["list_folder", "read_page", "search_pages", "read_file"]);
     expect(call.status).toBe(200);
     expect(call.headers.get("content-type")).toBe("application/json");
     await expect(call.json()).resolves.toMatchObject({

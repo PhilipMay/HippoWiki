@@ -11,6 +11,7 @@ import type { z } from "zod";
 
 import { mayDo } from "@/features/folder-roles/roles";
 import type { McpActor } from "@/features/folder-roles/actors";
+import * as fileService from "@/features/files/service";
 import * as folderService from "@/features/folders/service";
 import type {
   createPageInput,
@@ -26,6 +27,8 @@ import type {
   movedPageOutput,
   moveOrRenamePageInput,
   renamedTabOutput,
+  readFileInput,
+  readFileOutput,
   readPageInput,
   readPageOutput,
   renameTabInput,
@@ -94,23 +97,26 @@ function toolError(message: string): CallToolResult {
 const READ_FAILED = "The wiki could not be read. Please try again later.";
 const WRITE_FAILED = "The change could not be stored. Please try again later.";
 
-/** The keys of the arguments of a tool that name a tab or a page, as the log line of a call gives them. */
-const NAME_KEYS = ["tab", "page", "name", "newTab", "newName"] as const;
+/** The keys of the arguments of a tool that name a tab, a page or a file, as the log line of a call gives them. */
+const NAME_KEYS = ["tab", "page", "file", "name", "newTab", "newName"] as const;
 
-/** The tab and page names of the arguments of a call, `null` for "directly in the folder". */
+/** The longest name that a log line keeps: a name and its extension, `.webp` the longest one. */
+const LOGGED_NAME_LENGTH = NAME_MAX_LENGTH + ".webp".length;
+
+/** The tab, page and file names of the arguments of a call, `null` for "directly in the folder". */
 type LoggedNames = Partial<Record<(typeof NAME_KEYS)[number], string | null>>;
 
 /**
- * The tab and page names of the arguments of a call, and nothing else of them: never content, replacements, a title, an
- * address or a version. A name is the agent's own input, which the input schema does not check, so one longer than the
- * length limit of a name is cut to it, and a line stays short.
+ * The tab, page and file names of the arguments of a call, and nothing else of them: never content, replacements, a
+ * title, an address or a version. A name is the agent's own input, which the input schema does not check, so one
+ * longer than the length limit of a name with the longest extension is cut to it, and a line stays short.
  */
 function namesOf(input: Record<string, unknown>): LoggedNames {
   const names: LoggedNames = {};
   for (const key of NAME_KEYS) {
     const value = input[key];
     if (value === null) names[key] = null;
-    else if (typeof value === "string") names[key] = value.slice(0, NAME_MAX_LENGTH);
+    else if (typeof value === "string") names[key] = value.slice(0, LOGGED_NAME_LENGTH);
   }
   return names;
 }
@@ -201,10 +207,7 @@ function sortByTabThenName<Page extends { name: string; tab: { name: string } | 
 }
 
 /** A file as the tools list it: its details and its two addresses, without its content. */
-function fileData(
-  options: WikiToolsOptions,
-  file: Omit<searchService.FileSearchResult, "id">,
-): z.infer<typeof fileOutput> {
+function fileData(options: WikiToolsOptions, file: fileService.FolderFile): z.infer<typeof fileOutput> {
   const { folder } = options;
   const tab = file.tab?.name ?? null;
   return {
@@ -222,15 +225,19 @@ function fileData(
   };
 }
 
-/** The tool `list_folder`: the tabs and pages of the folder of the connection, the pages placed directly in it first. */
+/**
+ * The tool `list_folder`: the tabs, pages and files of the folder of the connection, the pages and files placed
+ * directly in it first. The files come with their details, never their content.
+ */
 export async function listFolder(options: WikiToolsOptions): Promise<CallToolResult> {
   return run(options, "list_folder", {}, async () => {
     const { actor, folder } = options;
     const tabs = await folderService.listTabs(actor, folder.id);
-    // The service leaves deleted pages out.
+    // The services leave deleted pages and files out.
     const allPages = await pageService.listAllFolderPages(actor, folder.id);
+    const allFiles = await fileService.listAllFolderFiles(actor, folder.id);
     // `null` when the actor may no longer read the folder.
-    if (!tabs || !allPages) return folderGone();
+    if (!tabs || !allPages || !allFiles) return folderGone();
     const pages = sortByTabThenName(allPages);
     return result(
       withNote({
@@ -251,6 +258,7 @@ export async function listFolder(options: WikiToolsOptions): Promise<CallToolRes
           lastEditedBy: page.lastEditedBy.name,
           lastEditedVia: page.lastEditedBy.via,
         })),
+        files: sortByTabThenName(allFiles).map((file) => fileData(options, file)),
       }) satisfies z.infer<typeof listFolderOutput>,
     );
   });
@@ -289,6 +297,50 @@ export async function readPage(
           title: linked.title,
         })),
       }) satisfies z.infer<typeof readPageOutput>,
+    );
+  });
+}
+
+/** The tool error of a file that does not exist, also a deleted one, with where to find the files. */
+function fileNotFound(folderName: string, tab: string | null, file: string): CallToolResult {
+  return toolError(
+    `There is no file named "${file}" ${placeOf(folderName, tab)}. Use list_folder to see the files of the folder ` +
+      "and the tab each one is in; a file is named with its extension, such as diagram.png.",
+  );
+}
+
+/**
+ * The tool `read_file`: the details of a file of the folder of the connection by its tab, if it is in one, and its
+ * name with its extension, with the number of its versions and the pages that show or link it, never its content. A
+ * deleted file is not found.
+ */
+export async function readFile(
+  options: WikiToolsOptions,
+  input: z.infer<typeof readFileInput>,
+): Promise<CallToolResult> {
+  return run(options, "read_file", input, async () => {
+    const tab = input.tab ?? null;
+    const file = await fileService.getFile(options.actor, options.folder.name, tab, input.file);
+    if (!file) return fileNotFound(options.folder.name, tab, input.file);
+    // `null` when the file was deleted since, or the actor may no longer read the folder.
+    const linking = await linksService.listPagesLinkingToFile(options.actor, file.id);
+    if (!linking) return fileNotFound(options.folder.name, tab, input.file);
+    const [current] = file.versions;
+    return result(
+      withNote({
+        ...fileData(options, {
+          name: file.name,
+          type: file.type,
+          tab: file.tab,
+          size: current.size,
+          width: current.width,
+          height: current.height,
+          updatedAt: file.updatedAt,
+          lastEditedBy: file.lastEditedBy,
+        }),
+        versions: file.versions.length,
+        shownOrLinkedFrom: linking.map((page) => ({ name: page.name, tab: page.tab?.name ?? null, title: page.title })),
+      }) satisfies z.infer<typeof readFileOutput>,
     );
   });
 }

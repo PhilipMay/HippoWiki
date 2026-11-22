@@ -82,8 +82,14 @@ test.describe("the write tools", () => {
         }
       ).result.tools.map((tool) => tool.name);
 
-    expect(await listed(writer, writerAddress)).toEqual(["list_folder", "read_page", "search_pages", ...writeTools]);
-    expect(await listed(secret, address)).toEqual(["list_folder", "read_page", "search_pages"]);
+    expect(await listed(writer, writerAddress)).toEqual([
+      "list_folder",
+      "read_page",
+      "search_pages",
+      "read_file",
+      ...writeTools,
+    ]);
+    expect(await listed(secret, address)).toEqual(["list_folder", "read_page", "search_pages", "read_file"]);
 
     const answer = await send(request, {
       method: "tools/call",
