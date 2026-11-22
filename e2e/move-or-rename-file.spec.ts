@@ -67,22 +67,15 @@ test("renaming a file updates every page that shows or links it, says how many b
     "Overview",
     "Setup",
   ]);
+  // The pages are updated as stored; their views, lists and revisions follow the stored content
+  // (integration/file-service.test.ts, and the revisions of a link update in wiki-link-updates.spec.ts).
   expect(await contentOf("setup")).toBe("# Setup\n\n![[guides/network.png|The network]]");
   expect(await contentOf("overview")).toBe("# Overview\n\nSee [[guides/network.png]].");
   expect(await contentOf("other")).toBe("# Other\n\n[[guides/diagram]]");
-  await page.goto("/folders/handbook/setup.md");
-  await expect(page.getByRole("article").getByRole("img", { name: "The network" })).toHaveAttribute(
-    "src",
-    "/files/handbook/guides/network.png",
-  );
-  await page.goto("/folders/handbook/setup.md?view=history");
-  await expect(page.getByRole("list", { name: "Revisions" }).getByRole("listitem").first()).toContainText(
-    "Links updated after a move or rename",
-  );
   expect(errors).toEqual([]);
 });
 
-test("moving a file from a tab into the folder lists it there, and a file without links says so", async ({ page }) => {
+test("moving a file from a tab into the folder puts it there, and a file without links says so", async ({ page }) => {
   await createFile({ tab: guides, name: "report.pdf" });
 
   await page.goto("/folders/handbook/guides/report.pdf?action=move-or-rename");
@@ -93,10 +86,11 @@ test("moving a file from a tab into the folder lists it there, and a file withou
   await dialog.getByRole("button", { name: "Save" }).click();
 
   await expect(page).toHaveURL("/folders/handbook/report.pdf");
-  await page.goto("/folders/handbook");
-  await expect(page.getByRole("region", { name: "Files" }).getByRole("link", { name: "report.pdf" })).toBeVisible();
-  await page.goto("/folders/handbook/guides");
-  await expect(page.getByRole("region", { name: "Files" })).toHaveCount(0);
+  // The lists of the folder and the tab follow the stored place (integration/file-service.test.ts).
+  expect(await getTestDb().file.findFirstOrThrow({ where: { name: "report.pdf" } })).toMatchObject({
+    folderId: handbook.id,
+    tabId: null,
+  });
 });
 
 test("a name with another extension and a taken name are refused at the name field and change nothing", async ({

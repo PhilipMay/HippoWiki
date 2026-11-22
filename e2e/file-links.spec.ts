@@ -80,34 +80,8 @@ test("![[…]] shows an image at its own size, a wide one at the width of the te
   expect(errors).toEqual([]);
 });
 
-test("[[…]] and ![[…]] of a PDF are links to the file with the name or the label, and [[guides/setup]] stays a page link", async ({
-  page,
-}) => {
-  await createFile({ tab: guides, name: "report.pdf" });
-  await createPage({ tab: guides, name: "setup", content: "# Setup guide" });
-  await createPage({
-    folder: handbook,
-    name: "links",
-    content: "# Links\n\n[[guides/report.pdf]] ![[guides/report.pdf|Manual]] [[guides/setup]]",
-  });
-
-  await page.goto("/folders/handbook/links.md");
-
-  await expect(article(page).getByRole("link", { name: "report.pdf", exact: true })).toHaveAttribute(
-    "href",
-    "/files/handbook/guides/report.pdf",
-  );
-  await expect(article(page).getByRole("link", { name: "Manual" })).toHaveAttribute(
-    "href",
-    "/files/handbook/guides/report.pdf",
-  );
-  await expect(article(page).getByRole("link", { name: "Setup guide" })).toHaveAttribute(
-    "href",
-    "/folders/handbook/guides/setup.md",
-  );
-  await expect(article(page).getByRole("img")).toHaveCount(0);
-});
-
+// [[…]] and ![[…]] of a PDF are links to the file: with its name in attachments-spec-tests.spec.ts, with a label in
+// src/features/pages/markdown.test.ts.
 test("a missing file, a deleted file and a file of another folder show as missing, and code is text", async ({
   page,
 }) => {

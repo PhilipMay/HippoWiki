@@ -35,17 +35,20 @@ async function closeTab(page: Page) {
   await closed;
 }
 
+/** The editor of a stored page. */
+const EDITED = {
+  what: "an edited page",
+  address: "/folders/handbook/plan.md?action=edit",
+  cancelTo: "/folders/handbook/plan.md",
+  link: "Edit",
+};
+
 const EDITORS = [
-  {
-    what: "an edited page",
-    address: "/folders/handbook/plan.md?action=edit",
-    cancelTo: "/folders/handbook/plan.md",
-    link: "Edit",
-  },
+  EDITED,
   { what: "a new page", address: "/folders/handbook?action=new", cancelTo: "/folders/handbook", link: "New page" },
 ];
 
-for (const { what, address, cancelTo, link } of EDITORS) {
+for (const { what, address, cancelTo } of EDITORS) {
   test.describe(`leaving ${what}`, () => {
     test("after typing, Cancel asks; Keep editing keeps the text, Discard leads where Cancel leads", async ({
       page,
@@ -86,56 +89,60 @@ for (const { what, address, cancelTo, link } of EDITORS) {
       await page.getByRole("banner").getByRole("link", { name: "Folders" }).click();
       await expect(page).toHaveURL("/folders");
     });
-
-    test("after typing, a link of the app bar asks, and Discard follows it", async ({ page }) => {
-      await page.goto(address);
-      await editorReady(page);
-      await page.keyboard.type("x");
-
-      await page.getByRole("banner").getByRole("link", { name: "Folders" }).click();
-      await expect(discardDialog(page)).toBeVisible();
-      await expect(page).toHaveURL(address);
-      await discardDialog(page).getByRole("button", { name: "Discard" }).click();
-      await expect(page).toHaveURL("/folders");
-    });
-
-    test("after typing, closing the tab asks the question of the browser; without a change it does not", async ({
-      page,
-      context,
-    }) => {
-      const dialogs = browserDialogs(page);
-      await page.goto(address);
-      await editorReady(page);
-      await page.keyboard.type("x");
-      await closeTab(page);
-      expect(dialogs).toEqual(["beforeunload"]);
-
-      const unchanged = await context.newPage();
-      const none = browserDialogs(unchanged);
-      await unchanged.goto(address);
-      await editorReady(unchanged);
-      await closeTab(unchanged);
-      expect(none).toEqual([]);
-    });
-
-    test("the back button leaves without a question, and the page it leads to asks nothing", async ({ page }) => {
-      const dialogs = browserDialogs(page);
-      // The editor is opened by its link, as in the app, so that the back button goes back within the app.
-      await page.goto(cancelTo);
-      await page.getByRole("link", { name: link, exact: true }).click();
-      await expect(page).toHaveURL(address);
-      await editorReady(page);
-      await page.keyboard.type("x");
-
-      await page.goBack();
-      await expect(page).toHaveURL(cancelTo);
-      // The address changes before the page it leads to replaces the editor, whose question is removed with it.
-      await expect(contentEditor(page)).toHaveCount(0);
-      await closeTab(page);
-      expect(dialogs).toEqual([]);
-    });
   });
 }
+
+// For the edited page only: the question before leaving is the same for both forms; only their changes are their own,
+// which "Cancel asks" and "after undoing" check for each.
+test.describe("leaving an edited page", () => {
+  test("after typing, a link of the app bar asks, and Discard follows it", async ({ page }) => {
+    await page.goto(EDITED.address);
+    await editorReady(page);
+    await page.keyboard.type("x");
+
+    await page.getByRole("banner").getByRole("link", { name: "Folders" }).click();
+    await expect(discardDialog(page)).toBeVisible();
+    await expect(page).toHaveURL(EDITED.address);
+    await discardDialog(page).getByRole("button", { name: "Discard" }).click();
+    await expect(page).toHaveURL("/folders");
+  });
+
+  test("after typing, closing the tab asks the question of the browser; without a change it does not", async ({
+    page,
+    context,
+  }) => {
+    const dialogs = browserDialogs(page);
+    await page.goto(EDITED.address);
+    await editorReady(page);
+    await page.keyboard.type("x");
+    await closeTab(page);
+    expect(dialogs).toEqual(["beforeunload"]);
+
+    const unchanged = await context.newPage();
+    const none = browserDialogs(unchanged);
+    await unchanged.goto(EDITED.address);
+    await editorReady(unchanged);
+    await closeTab(unchanged);
+    expect(none).toEqual([]);
+  });
+
+  test("the back button leaves without a question, and the page it leads to asks nothing", async ({ page }) => {
+    const dialogs = browserDialogs(page);
+    // The editor is opened by its link, as in the app, so that the back button goes back within the app.
+    await page.goto(EDITED.cancelTo);
+    await page.getByRole("link", { name: EDITED.link, exact: true }).click();
+    await expect(page).toHaveURL(EDITED.address);
+    await editorReady(page);
+    await page.keyboard.type("x");
+
+    await page.goBack();
+    await expect(page).toHaveURL(EDITED.cancelTo);
+    // The address changes before the page it leads to replaces the editor, whose question is removed with it.
+    await expect(contentEditor(page)).toHaveCount(0);
+    await closeTab(page);
+    expect(dialogs).toEqual([]);
+  });
+});
 
 test("Save of an edited page leaves without a question, and the page view asks nothing on closing", async ({
   page,

@@ -140,42 +140,8 @@ test.describe("wiki links in the page view", () => {
     );
   });
 
-  test("a Writer follows a missing link to the editor with its name and place preset, and the link then leads to the new page", async ({
-    page,
-  }) => {
-    const errors = collectErrors(page);
-    await createPage({ folder: handbook, name: "links", content: "# Links\n\n[[guides/faq]]" });
-    await page.goto("/folders/handbook/links.md");
-    await article(page).getByRole("link", { name: "guides/faq" }).click();
-
-    await expect(page).toHaveURL("/folders/handbook/guides?action=new&name=faq");
-    await fillContent(page, "# Frequently asked questions");
-    await page.getByRole("button", { name: "Save" }).click();
-    const dialog = page.getByRole("dialog", { name: "Save page" });
-    await expect(dialog.getByLabel("Name")).toHaveValue("faq");
-    await expect(dialog.getByRole("radio", { name: "Tab guides" })).toBeChecked();
-    await dialog.getByRole("button", { name: "Save" }).click();
-    await expect(page).toHaveURL("/folders/handbook/guides/faq.md");
-
-    await page.goto("/folders/handbook/links.md");
-    await expect(article(page).getByRole("link", { name: "Frequently asked questions" })).toHaveAttribute(
-      "href",
-      "/folders/handbook/guides/faq.md",
-    );
-    expect(errors).toEqual([]);
-  });
-
-  test("a Reader sees a missing link as marked text without a link", async ({ page }) => {
-    await createPage({ folder: handbook, name: "links", content: "# Links\n\n[[guides/faq]]" });
-    await setOwnRole(handbook, "reader");
-    await page.goto("/folders/handbook/links.md");
-
-    const missing = article(page).getByText("guides/faq");
-    await expect(missing).toHaveAccessibleDescription("Page does not exist");
-    await expect(missing).toHaveCSS("text-decoration-style", "dashed");
-    await expect(article(page).getByRole("paragraph").getByRole("link")).toHaveCount(0);
-  });
-
+  // A Writer and a Manager follow a missing link to the editor with its name and place preset in
+  // wiki-links-spec-tests.spec.ts, and a Reader sees a missing link as marked text in "a link into a deleted page" below.
   // As a Writer, who gets a link for a missing page; a Reader gets no link for any missing page.
   test("a target that breaks the name rule or names a missing tab is marked text with its hint for a writer", async ({
     page,

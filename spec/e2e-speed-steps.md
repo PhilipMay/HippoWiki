@@ -60,7 +60,7 @@ this plan estimates that about 420 s of the summed test time can go.
 - [x] Rule loops in the browser
 - [x] Redundant tests and role loops
 - [x] Limits with heavy setup
-- [ ] Editor, wiki link and file specs
+- [x] Editor, wiki link and file specs
 - [ ] Wrap-up
 
 ## Sessions

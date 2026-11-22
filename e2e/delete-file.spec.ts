@@ -176,11 +176,9 @@ test("a new version uploaded after the delete dialog was opened makes the delete
   });
 });
 
-test("deleting a tab with two files names them, and both are among the deleted items and can be restored", async ({
-  page,
-}) => {
+test("deleting a tab with two files names them, and both are among the deleted items", async ({ page }) => {
   await createPage({ tab: guides, name: "setup", title: "Setup" });
-  const report = await createFile({ tab: guides, name: "report.pdf" });
+  await createFile({ tab: guides, name: "report.pdf" });
   await createFile({ tab: guides, name: "diagram.png" });
 
   await page.goto("/folders/handbook/guides?action=delete");
@@ -195,9 +193,5 @@ test("deleting a tab with two files names them, and both are among the deleted i
     "File report.pdf",
     "Page setup",
   ]);
-  await page.goto(`/deleted-items/handbook/${report.id}?action=restore`);
-  const restore = page.getByRole("dialog", { name: "Restore file" });
-  await restore.getByRole("radio", { name: "Directly in the folder" }).check();
-  await restore.getByRole("button", { name: "Save" }).click();
-  await expect(page).toHaveURL("/folders/handbook/report.pdf");
+  // Each is restored like any deleted file ("a deleted file is listed with a deleted page" above).
 });

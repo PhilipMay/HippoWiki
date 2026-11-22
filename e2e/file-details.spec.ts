@@ -4,15 +4,7 @@ import type { Page } from "@playwright/test";
 import sharp from "sharp";
 
 import { collectErrors, expectNotFound, expectNotFoundResponse } from "./support/browser";
-import {
-  createFile,
-  createFolder,
-  createPage,
-  createTab,
-  createUser,
-  resetTestDatabase,
-  setOwnRole,
-} from "./support/database";
+import { createFile, createFolder, createTab, createUser, resetTestDatabase, setOwnRole } from "./support/database";
 import { pdfBytes, pngBytes, uploadFile } from "./support/files";
 import { expect, test } from "./support/test";
 
@@ -130,26 +122,7 @@ test("the copy button copies the link of the file", async ({ page, context }) =>
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("![[guides/diagram.png]]");
 });
 
-test("a page that shows the file can be deleted, and the file stays", async ({ page }) => {
-  await createFile({ folder: handbook, name: "diagram.png" });
-  await createPage({
-    folder: handbook,
-    name: "intro",
-    content: "# Intro\n\n![Diagram](/files/handbook/diagram.png)",
-  });
-  await page.goto("/folders/handbook/intro.md");
-  await expect(page.getByRole("main").getByRole("img", { name: "Diagram" })).toBeVisible();
-
-  await page.goto("/folders/handbook/intro.md?action=delete");
-  await page.getByRole("dialog", { name: "Delete page" }).getByRole("button", { name: "Delete" }).click();
-  await expect(page).toHaveURL("/folders/handbook");
-
-  await expect(page.getByRole("list", { name: "Files" }).getByRole("link")).toHaveText([/^diagram\.png/]);
-  await page.goto("/folders/handbook/diagram.png");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(["diagram.png"]);
-});
-
-// The actions and views of a file address are read by `fileAddressOf()`, whose unit tests cover them.
+// A file stays as it was when a page that shows it is deleted (integration/file-service.test.ts).
 test("the details page shows the not-found page for a file in another place and a deleted one", async ({ page }) => {
   await createFile({ tab: guides, name: "diagram.png" });
   await createFile({ folder: handbook, name: "gone.png", deletedAt: new Date() });

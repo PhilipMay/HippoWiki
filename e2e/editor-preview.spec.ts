@@ -34,13 +34,18 @@ async function editAtEnd(page: Page, content: string) {
   return editor;
 }
 
+const IMAGE = "![alt](/x.png)";
 const INLINE = "**bold** *italic* ~~struck~~ `code` [link](https://example.com) <https://auto.example> www.example.com";
 
-test("inline elements and headings show formatted without their marks, except on the line of the cursor", async ({
+test("inline elements and headings show formatted without their marks, except on the line of the cursor, and an image as its Markdown, not requested", async ({
   page,
 }) => {
   const errors = collectErrors(page);
-  const editor = await editAtEnd(page, `# Title\n\n## Section\n\n${INLINE}\n\nlast`);
+  const requested: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/x.png") requested.push(request.url());
+  });
+  const editor = await editAtEnd(page, `# Title\n\n## Section\n\n${INLINE}\n\n${IMAGE}\n\nlast`);
 
   await expect
     .poll(() => shownLines(page))
@@ -51,8 +56,13 @@ test("inline elements and headings show formatted without their marks, except on
       "",
       "bold italic struck code link https://auto.example www.example.com",
       "",
+      IMAGE,
+      "",
       "last",
     ]);
+  // CodeMirror draws images without an address as helpers of the cursor; no image has an address.
+  await expect(contentEditor(page).locator("img[src]")).toHaveCount(0);
+  expect(requested).toEqual([]);
   const style = (text: string, property: "fontWeight" | "fontStyle" | "textDecorationLine" | "fontSize") =>
     editor.getByText(text, { exact: true }).evaluate((element, name) => getComputedStyle(element)[name], property);
   expect(await style("bold", "fontWeight")).toBe("700");
@@ -61,9 +71,8 @@ test("inline elements and headings show formatted without their marks, except on
   expect(parseFloat(await style("Title", "fontSize"))).toBeGreaterThan(parseFloat(await style("last", "fontSize")));
 
   // Onto the line of the inline elements: every mark of that line shows, the other lines stay formatted.
-  await page.keyboard.press("ArrowUp");
-  await page.keyboard.press("ArrowUp");
-  await expect.poll(() => shownLines(page)).toEqual(["Title", "", "Section", "", INLINE, "", "last"]);
+  for (let step = 0; step < 4; step += 1) await page.keyboard.press("ArrowUp");
+  await expect.poll(() => shownLines(page)).toEqual(["Title", "", "Section", "", INLINE, "", IMAGE, "", "last"]);
 
   // Onto the heading.
   await page.keyboard.press("ControlOrMeta+Home");
@@ -99,20 +108,6 @@ test("a click on a link shows its Markdown; Ctrl+click opens only a safe address
   await editor.getByText("safe", { exact: true }).click();
   await expect.poll(async () => (await shownLines(page))[2]).toBe("[safe](https://example.com/target)");
   expect(popups).toHaveLength(1);
-});
-
-test("an image shows as its Markdown and is not requested", async ({ page }) => {
-  const requested: string[] = [];
-  page.on("request", (request) => {
-    if (new URL(request.url()).pathname === "/x.png") requested.push(request.url());
-  });
-
-  await editAtEnd(page, "# Image\n\n![alt](/x.png)\n\nlast");
-
-  await expect.poll(() => shownLines(page)).toEqual(["Image", "", "![alt](/x.png)", "", "last"]);
-  // CodeMirror draws images without an address as helpers of the cursor; no image has an address.
-  await expect(contentEditor(page).locator("img[src]")).toHaveCount(0);
-  expect(requested).toEqual([]);
 });
 
 test("the switch names both modes, marks the current one and keeps the text, the cursor and the history", async ({
@@ -159,8 +154,7 @@ test("the editor starts in the mode last chosen in the browser, and in live prev
   await createPage({ folder: handbook, name: "other", content: "# Other" });
   await editAtEnd(page, "# Title");
   await modeButton(page, "Source").click();
-  await page.getByRole("button", { name: "Save" }).click();
-  await expect(page).toHaveURL("/folders/handbook/preview.md");
+  await expect(modeButton(page, "Source")).toHaveAttribute("aria-pressed", "true");
 
   await page.goto("/folders/handbook/other.md");
   await page.getByRole("link", { name: "Edit" }).click();
@@ -177,21 +171,19 @@ test("the editor starts in the mode last chosen in the browser, and in live prev
   await fresh.close();
 });
 
-for (const mode of ["live preview", "source mode"]) {
-  test(`the stored content does not depend on the mode it was edited in: ${mode}`, async ({ page, context }) => {
-    if (mode === "source mode") await startInSourceMode(context);
-    const created = await createPage({ folder: handbook, name: "stored", content: "# Stored" });
-    const content = "# Stored\n\n## Part\n\n**bold** [link](/x) ![img](/y.png)\n\nTitle\n===\n\n<b>html</b>\n";
+// Source mode stores the content as typed in the same way ("unusual Markdown stays byte for byte" of editor.spec.ts).
+test("the stored content does not depend on live preview, in which it was edited", async ({ page }) => {
+  const created = await createPage({ folder: handbook, name: "stored", content: "# Stored" });
+  const content = "# Stored\n\n## Part\n\n**bold** [link](/x) ![img](/y.png)\n\nTitle\n===\n\n<b>html</b>\n";
 
-    await page.goto("/folders/handbook/stored.md?action=edit");
-    await fillContent(page, content);
-    await page.keyboard.press("ControlOrMeta+Home");
-    await page.getByRole("button", { name: "Save" }).click();
+  await page.goto("/folders/handbook/stored.md?action=edit");
+  await fillContent(page, content);
+  await page.keyboard.press("ControlOrMeta+Home");
+  await page.getByRole("button", { name: "Save" }).click();
 
-    await expect(page).toHaveURL("/folders/handbook/stored.md");
-    expect((await getTestDb().page.findUniqueOrThrow({ where: { id: created.id } })).content).toBe(content);
-  });
-}
+  await expect(page).toHaveURL("/folders/handbook/stored.md");
+  expect((await getTestDb().page.findUniqueOrThrow({ where: { id: created.id } })).content).toBe(content);
+});
 
 const BLOCKS = "# Blocks\n\n- bullet\n1. numbered\n- [ ] open\n- [x] done\n\n> quote\n\n```\ncode\n```\n\n---\n\nlast";
 
@@ -327,7 +319,7 @@ function codeLinesWithCursorOn(number: number): string[] {
   return lines;
 }
 
-test("Arrow Down and Arrow Up stop on the fence lines of a code block, which then show their Markdown", async ({
+test("Arrow Down and Arrow Up stop on the fence lines of a code block, also without a closing fence, and typing there changes the fence", async ({
   page,
 }) => {
   const errors = collectErrors(page);
@@ -344,6 +336,28 @@ test("Arrow Down and Arrow Up stop on the fence lines of a code block, which the
     await expect.poll(async () => (await cursor(page)).line).toBe(number);
     await expect.poll(() => shownLines(page)).toEqual(codeLinesWithCursorOn(number));
   }
+
+  // Typing on the opening fence line, reached with the arrow keys, changes the fence.
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  await expect.poll(async () => (await shownLines(page))[2]).toBe("```js");
+  await page.keyboard.press("End");
+  await page.keyboard.press("Backspace");
+  await page.keyboard.press("Backspace");
+  await page.keyboard.type("ts");
+  await expectContent(page, CODE.replace("```js", "```ts"));
+
+  // A code block without a closing fence: Arrow Down reaches its opening fence line too.
+  await fillContent(page, "above\n\n```js\nlet a = 1;\nlet b = 2;");
+  await page.keyboard.press("ControlOrMeta+Home");
+  for (let number = 2; number <= 5; number++) {
+    await page.keyboard.press("ArrowDown");
+    await expect.poll(async () => (await cursor(page)).line).toBe(number);
+  }
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("ArrowUp");
+  await expect.poll(async () => (await cursor(page)).line).toBe(3);
+  await expect.poll(async () => (await shownLines(page))[2]).toBe("```js");
   expect(errors).toEqual([]);
 });
 
@@ -365,20 +379,6 @@ test("the arrow keys keep the column across a fence line", async ({ page }) => {
   await expect.poll(() => cursor(page)).toEqual({ line: 1, column: above.length });
 });
 
-test("typing on a fence line reached with the arrow keys changes the fence", async ({ page }) => {
-  await editAtEnd(page, CODE);
-  await page.keyboard.press("ControlOrMeta+Home");
-  await page.keyboard.press("ArrowDown");
-  await page.keyboard.press("ArrowDown");
-  await expect.poll(async () => (await shownLines(page))[2]).toBe("```js");
-
-  await page.keyboard.press("End");
-  await page.keyboard.press("Backspace");
-  await page.keyboard.press("Backspace");
-  await page.keyboard.type("ts");
-  await expectContent(page, CODE.replace("```js", "```ts"));
-});
-
 test("Arrow Up stops on the underline of a setext heading, which then shows its Markdown", async ({ page }) => {
   await editAtEnd(page, "Title\n=====\n\nnext");
 
@@ -388,20 +388,6 @@ test("Arrow Up stops on the underline of a setext heading, which then shows its 
   await page.keyboard.press("ArrowUp");
   await expect.poll(async () => (await cursor(page)).line).toBe(2);
   await expect.poll(() => shownLines(page)).toEqual(["Title", "=====", "", "next"]);
-});
-
-test("Arrow Down reaches the opening fence line of a code block without a closing fence", async ({ page }) => {
-  await editAtEnd(page, "above\n\n```js\nlet a = 1;\nlet b = 2;");
-  await page.keyboard.press("ControlOrMeta+Home");
-
-  for (let number = 2; number <= 5; number++) {
-    await page.keyboard.press("ArrowDown");
-    await expect.poll(async () => (await cursor(page)).line).toBe(number);
-  }
-  await page.keyboard.press("ArrowUp");
-  await page.keyboard.press("ArrowUp");
-  await expect.poll(async () => (await cursor(page)).line).toBe(3);
-  await expect.poll(async () => (await shownLines(page))[2]).toBe("```js");
 });
 
 test("Arrow Down walks through the rows of a wrapped line before it stops on the fence line below", async ({

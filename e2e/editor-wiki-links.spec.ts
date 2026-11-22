@@ -123,7 +123,7 @@ test("the editor of a new page shows wiki links against the pages of the folder"
 });
 
 test.describe("the picker on [[", () => {
-  test("typing [[ and part of a title lists the matching pages; choosing one inserts its link, one undo reverts it", async ({
+  test('typing [[ and part of a title lists the matching pages; choosing one inserts its link, one undo reverts it, and no match says "No page found"', async ({
     page,
   }) => {
     const errors = collectErrors(page);
@@ -146,22 +146,20 @@ test.describe("the picker on [[", () => {
 
     await page.keyboard.press("ControlOrMeta+z");
     await expectContent(page, "# Onboarding\n\nSee [[guide");
-    expect(errors).toEqual([]);
-  });
 
-  test('says "No page found" without a match, and Esc leaves the text as typed', async ({ page }) => {
-    const editor = await editAtEnd(page, "# Onboarding\n\n");
-    await editor.pressSequentially("[[nothing");
+    // Without a match it says "No page found", and Esc leaves the text as typed.
+    await editor.pressSequentially("nothing");
     await expect(page.getByRole("listbox").getByRole("option")).toHaveText(["No page found"]);
     await page.keyboard.press("Escape");
     await expect(page.getByRole("listbox")).toBeHidden();
-    await expectContent(page, "# Onboarding\n\n[[nothing");
+    await expectContent(page, "# Onboarding\n\nSee [[guidenothing");
 
     // Esc then Tab still leaves the editor while no picker is open.
     await page.keyboard.press("Escape");
     await page.keyboard.press("Tab");
     await expect(editor).not.toBeFocused();
-    await expectContent(page, "# Onboarding\n\n[[nothing");
+    await expectContent(page, "# Onboarding\n\nSee [[guidenothing");
+    expect(errors).toEqual([]);
   });
 
   test("Enter continues a list while no picker is open", async ({ page }) => {
@@ -212,7 +210,9 @@ test.describe("files in the editor", () => {
     await expectContent(page, "# Onboarding\n\nSee [[guides/diagram.png]]");
   });
 
-  test("dropping and pasting a file changes nothing and uploads nothing", async ({ page }) => {
+  test("dropping and pasting a file changes nothing and uploads nothing, and the toolbar has no upload button", async ({
+    page,
+  }) => {
     const content = "# Onboarding\n\ntext";
     const editor = await editAtEnd(page, content);
     const uploads: string[] = [];
@@ -236,10 +236,8 @@ test.describe("files in the editor", () => {
     await expectContent(page, content);
     expect(uploads).toEqual([]);
     expect(await getTestDb().file.count()).toBe(0);
-  });
 
-  test("the toolbar has no upload button", async ({ page }) => {
-    await editAtEnd(page, "# Onboarding");
+    // Nor has the toolbar an upload button.
     const toolbar = page.getByRole("toolbar", { name: "Formatting" });
     await expect(toolbar.getByRole("button").first()).toBeVisible();
     await expect(toolbar.getByRole("button", { name: /upload|file|image/i })).toHaveCount(0);

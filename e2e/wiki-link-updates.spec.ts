@@ -4,8 +4,7 @@ import type { Page as BrowserPage } from "@playwright/test";
 import { KNOWN_USER } from "../prisma/known-users";
 import { by, collectErrors } from "./support/browser";
 import { createFile, createFolder, createPage, createTab, getTestDb, resetTestDatabase } from "./support/database";
-import { expectContent, fillContent } from "./support/editor";
-import { expect, hydrating, test } from "./support/test";
+import { expect, test } from "./support/test";
 
 let handbook: Awaited<ReturnType<typeof createFolder>>;
 let guides: Awaited<ReturnType<typeof createTab>>;
@@ -65,43 +64,21 @@ test("renaming a page updates the links of the pages that link to it, with a mar
     "Onboarding",
   ]);
 
-  for (const address of ["/folders/handbook/guides/onboarding.md", "/folders/handbook/first-week.md"]) {
-    await page.goto(address);
-    await expect(page.getByRole("article").getByText(/^Last updated/)).toHaveText(by(USER));
-    await page.goto(`${address}?view=history`);
-    const newest = page.getByRole("list", { name: "Revisions" }).getByRole("listitem").first();
-    await expect(newest).toContainText(`by ${USER} via web`);
-    await expect(newest).toContainText("Links updated after a move or rename");
-  }
-  await page.goto("/folders/handbook/first-week.md?view=revision&revision=2");
+  // The second linking page gets its revision in the same way (integration/wiki-links-service.test.ts).
+  await page.goto("/folders/handbook/guides/onboarding.md");
+  await expect(page.getByRole("article").getByText(/^Last updated/)).toHaveText(by(USER));
+  await page.goto("/folders/handbook/guides/onboarding.md?view=history");
+  const newest = page.getByRole("list", { name: "Revisions" }).getByRole("listitem").first();
+  await expect(newest).toContainText(`by ${USER} via web`);
+  await expect(newest).toContainText("Links updated after a move or rename");
+  await page.goto("/folders/handbook/guides/onboarding.md?view=revision&revision=2");
   await expect(page.getByRole("main")).toContainText("Links updated after a move or rename");
   expect(errors).toEqual([]);
 });
 
-test("an editor opened on a linking page before the rename has its save refused as changed", async ({
-  page,
-  context,
-}) => {
-  await setUpScenario();
-  await page.goto("/folders/handbook/first-week.md?action=edit");
-  await fillContent(page, "# First week\n\n[[guides/setup]] and more");
-
-  const other = await hydrating(await context.newPage());
-  await other.goto("/folders/handbook/guides/setup.md?action=move-or-rename");
-  await moveDialog(other).getByLabel("Name").fill("install");
-  await moveDialog(other).getByRole("button", { name: "Save" }).click();
-  await expect(other).toHaveURL("/folders/handbook/guides/install.md");
-  await other.close();
-
-  await page.getByRole("button", { name: "Save" }).click();
-  await expect(page).toHaveURL("/folders/handbook/first-week.md?action=edit&notice=changed");
-  await expect(page.getByRole("main").getByRole("alert")).toHaveText(
-    new RegExp(`^This page was changed by ${USER} via web at .+ after you opened it\\.$`),
-  );
-  expect(await contentOf("first-week")).toBe("# First week\n\n[[guides/install]]");
-  await expectContent(page, "# First week\n\n[[guides/install]]");
-});
-
+// An editor opened on a linking page before the rename has its save refused as changed, as after any change
+// ("a save refused as changed" of editor-leave.spec.ts); the rename counts the version of the page up
+// (integration/wiki-links-service.test.ts).
 test("moving a page into another tab updates the links to it, and a page without links says so", async ({ page }) => {
   await setUpScenario();
   await createTab({ folder: handbook, name: "docs" });
@@ -135,25 +112,7 @@ test("a page that links to itself is counted and updated too", async ({ page }) 
   );
 });
 
-test("a revert to a revision that holds the old target stores it as it is, and it shows as missing", async ({
-  page,
-}) => {
-  await setUpScenario();
-  await page.goto("/folders/handbook/guides/setup.md?action=move-or-rename");
-  await moveDialog(page).getByLabel("Name").fill("install");
-  await moveDialog(page).getByRole("button", { name: "Save" }).click();
-  await expect(page).toHaveURL("/folders/handbook/guides/install.md");
-
-  await page.goto("/folders/handbook/first-week.md?action=revert&revision=1");
-  await page.getByRole("dialog", { name: "Revert page" }).getByRole("button", { name: "Revert" }).click();
-  await expect(page).toHaveURL("/folders/handbook/first-week.md");
-
-  expect(await contentOf("first-week")).toBe("# First week\n\n[[guides/setup]]");
-  await expect(page.getByRole("article").getByRole("link", { name: "guides/setup" })).toHaveAccessibleDescription(
-    "Page does not exist",
-  );
-});
-
+// A revert to a revision that holds the old target stores it as it is (integration/wiki-links-service.test.ts).
 test("renaming a tab updates the links into it in every page, and its dialog says how many", async ({ page }) => {
   const errors = collectErrors(page);
   await setUpScenario();
@@ -171,15 +130,7 @@ test("renaming a tab updates the links into it in every page, and its dialog say
 
   expect(await contentOf("onboarding")).toBe("# Onboarding\n\nStart with [[docs/setup|the setup]].");
   expect(await contentOf("first-week")).toBe("# First week\n\n[[docs/setup]]");
-  await page.goto("/folders/handbook/first-week.md?view=history");
-  await expect(page.getByRole("list", { name: "Revisions" }).getByRole("listitem").first()).toContainText(
-    "Links updated after a move or rename",
-  );
-  await page.goto("/folders/handbook/first-week.md");
-  await expect(page.getByRole("article").getByRole("link", { name: "Setup guide" })).toHaveAttribute(
-    "href",
-    "/folders/handbook/docs/setup.md",
-  );
+  // The revisions of the updated pages are those of "renaming a page" above.
   expect(errors).toEqual([]);
 });
 

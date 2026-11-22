@@ -79,48 +79,45 @@ test("the toolbar is above the editor, and every button has a name and is reacha
   expect(errors).toEqual([]);
 });
 
-test("bold marks the selection, one undo restores it, and typing goes on in the editor", async ({ page }) => {
+test("bold marks the selection, a line button sets its mark, link selects the address, each undone at once, and typing goes on in the editor", async ({
+  page,
+}) => {
   await newPageWith(page, "# Page\n\nword");
   await selectBack(page, 4);
 
+  // Bold marks the selection, and one undo restores it.
   await button(page, "Bold").click();
   await expectContent(page, "# Page\n\n**word**");
   await expect(contentEditor(page)).toBeFocused();
-
   await page.keyboard.press("ControlOrMeta+z");
   await expectContent(page, "# Page\n\nword");
+  // The undo restores the selection, which typing replaces.
   await page.keyboard.type("text");
   await expectContent(page, "# Page\n\ntext");
-});
 
-test("a line button sets its mark, one undo removes it, and the heading menu sets a heading", async ({ page }) => {
-  await newPageWith(page, "# Page\n\nword");
-
+  // A line button sets its mark, and one undo removes it with the typing.
   await button(page, "Bullet list").click();
-  await expectContent(page, "# Page\n\n- word");
+  await expectContent(page, "# Page\n\n- text");
   await page.keyboard.type("s");
-  await expectContent(page, "# Page\n\n- words");
+  await expectContent(page, "# Page\n\n- texts");
   await page.keyboard.press("ControlOrMeta+z");
   await page.keyboard.press("ControlOrMeta+z");
-  await expectContent(page, "# Page\n\nword");
+  await expectContent(page, "# Page\n\ntext");
 
+  // The heading menu sets a heading.
   await button(page, "Heading").click();
   await page.getByRole("menuitem", { name: "Heading 2" }).click();
-  await expectContent(page, "# Page\n\n## word");
+  await expectContent(page, "# Page\n\n## text");
   await expect(contentEditor(page)).toBeFocused();
   await page.keyboard.type("s");
-  await expectContent(page, "# Page\n\n## words");
-});
+  await expectContent(page, "# Page\n\n## texts");
 
-test("link on a selected word selects the address for typing", async ({ page }) => {
-  await newPageWith(page, "# Page\n\nSee docs");
-  await selectBack(page, 4);
-
+  // Link on a selected word selects the address for typing.
+  await selectBack(page, 5);
   await button(page, "Link").click();
-  await expectContent(page, "# Page\n\nSee [docs](address)");
+  await expectContent(page, "# Page\n\n## [texts](address)");
   await page.keyboard.type("https://example.com");
-
-  await expectContent(page, "# Page\n\nSee [docs](https://example.com)");
+  await expectContent(page, "# Page\n\n## [texts](https://example.com)");
 });
 
 test("Ctrl+B, Ctrl+I and Ctrl+K do the same as their buttons", async ({ page }) => {

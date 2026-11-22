@@ -10,7 +10,7 @@ import {
   shownLines,
   startInSourceMode,
 } from "./support/editor";
-import { createFolder, createPage, createTab, getTestDb, resetTestDatabase } from "./support/database";
+import { createFolder, createPage, getTestDb, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
 
 let handbook: Awaited<ReturnType<typeof createFolder>>;
@@ -36,23 +36,6 @@ async function editAtEnd(page: Page, address: string) {
   return editor;
 }
 
-test("a new page in a folder and in a tab and an edited page use the editor, not a textarea", async ({ page }) => {
-  const errors = collectErrors(page);
-  await createTab({ folder: handbook, name: "guides" });
-  await createPage({ folder: handbook, name: "plan", content: "# Plan" });
-
-  for (const address of [
-    "/folders/handbook?action=new",
-    "/folders/handbook/guides?action=new",
-    "/folders/handbook/plan.md?action=edit",
-  ]) {
-    await page.goto(address);
-    await expect(await editorReady(page), address).toHaveAttribute("contenteditable", "true");
-    await expect(page.locator("textarea"), address).toHaveCount(0);
-  }
-  expect(errors).toEqual([]);
-});
-
 test("with JavaScript the editor replaces the read-only field with the same content and enables Save", async ({
   page,
 }) => {
@@ -61,36 +44,16 @@ test("with JavaScript the editor replaces the read-only field with the same cont
   await page.goto("/folders/handbook/plan.md?action=edit");
 
   const editor = await editorReady(page);
+  await expect(editor).toHaveAttribute("contenteditable", "true");
+  // The editor of a new page is the same component; neither has a textarea.
+  await expect(page.locator("textarea")).toHaveCount(0);
   await expect(editor).toHaveText("# PlanFirst lineSecond line");
   await expectContent(page, "# Plan\n\nFirst line\nSecond line");
   await expect(page.getByRole("button", { name: "Save" })).toBeEnabled();
 });
 
-test("every character of the content is visible in source mode", async ({ page, context }) => {
-  await startInSourceMode(context);
-  const content = "# Marks\n\n**bold** _it_ `code` [a](/b) ~~s~~\n- [x] t";
-  await createPage({ folder: handbook, name: "marks", content });
-
-  await page.goto("/folders/handbook/marks.md?action=edit");
-
-  await editorReady(page);
-  expect((await shownLines(page)).join("\n")).toBe(content);
-});
-
 test.describe("the stored content", () => {
-  test("saving without a change stores nothing", async ({ page }) => {
-    // The page was last changed by another user than the one of the test, so a stored save would show.
-    const created = await createPage({ folder: handbook, name: "plan", content: `# Plan\n\n${UNUSUAL_MARKDOWN}` });
-
-    await page.goto("/folders/handbook/plan.md?action=edit");
-    await editorReady(page);
-    await page.getByRole("button", { name: "Save" }).click();
-
-    await expect(page).toHaveURL("/folders/handbook/plan.md");
-    // The version, the last editor and the time of the last change stay.
-    expect(await getTestDb().page.findUniqueOrThrow({ where: { id: created.id } })).toStrictEqual(created);
-  });
-
+  // That saving without a change stores nothing is tested in editor-spec-tests.spec.ts, after switching the modes.
   test("unusual Markdown stays byte for byte after an edit at its end", async ({ page }) => {
     const created = await createPage({ folder: handbook, name: "plan", content: `# Plan\n\n${UNUSUAL_MARKDOWN}` });
 
@@ -156,35 +119,30 @@ test.describe("the height of the editor", () => {
   });
 });
 
-for (const mode of ["live preview", "source mode"]) {
-  test(`raw HTML shows as its characters in ${mode}, never as elements, and runs nothing`, async ({
-    page,
-    context,
-  }) => {
-    if (mode === "source mode") await startInSourceMode(context);
-    const errors = collectErrors(page);
-    const html = ["<b>x</b>", "<script>alert(1)</script>", "<img src=x onerror=alert(1)>"];
-    await createPage({ folder: handbook, name: "html", content: `# HTML\n\n${html.join("\n\n")}` });
-    const requested: string[] = [];
-    page.on("request", (request) => {
-      if (new URL(request.url()).pathname.endsWith("/x")) requested.push(request.url());
-    });
-    let dialogs = 0;
-    page.on("dialog", (dialog) => {
-      dialogs += 1;
-      void dialog.dismiss();
-    });
-
-    await page.goto("/folders/handbook/html.md?action=edit");
-
-    const editor = await editorReady(page);
-    for (const text of html) await expect(editor.getByText(text, { exact: true })).toBeVisible();
-    await expect(editor.locator("script, img[src], b")).toHaveCount(0);
-    expect(requested).toEqual([]);
-    expect(dialogs).toBe(0);
-    expect(errors).toEqual([]);
+// In live preview; source mode shows raw HTML as its characters too (src/features/pages/editor/live-preview.test.ts).
+test("raw HTML shows as its characters in live preview, never as elements, and runs nothing", async ({ page }) => {
+  const errors = collectErrors(page);
+  const html = ["<b>x</b>", "<script>alert(1)</script>", "<img src=x onerror=alert(1)>"];
+  await createPage({ folder: handbook, name: "html", content: `# HTML\n\n${html.join("\n\n")}` });
+  const requested: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.endsWith("/x")) requested.push(request.url());
   });
-}
+  let dialogs = 0;
+  page.on("dialog", (dialog) => {
+    dialogs += 1;
+    void dialog.dismiss();
+  });
+
+  await page.goto("/folders/handbook/html.md?action=edit");
+
+  const editor = await editorReady(page);
+  for (const text of html) await expect(editor.getByText(text, { exact: true })).toBeVisible();
+  await expect(editor.locator("script, img[src], b")).toHaveCount(0);
+  expect(requested).toEqual([]);
+  expect(dialogs).toBe(0);
+  expect(errors).toEqual([]);
+});
 
 test("pasting HTML adds only its words as plain text", async ({ page }) => {
   await createPage({ folder: handbook, name: "paste", content: "# Paste\n\n" });
@@ -196,16 +154,11 @@ test("pasting HTML adds only its words as plain text", async ({ page }) => {
   await expect(contentEditor(page).locator("h1, b")).toHaveCount(0);
 });
 
-test("spell check is off in the editor", async ({ page }) => {
-  await page.goto("/folders/handbook?action=new");
-
-  await expect(await editorReady(page)).toHaveAttribute("spellcheck", "false");
-});
-
-test("the editor is named Content and described by the helper text", async ({ page }) => {
+test("the editor is named Content, described by the helper text, and has spell check off", async ({ page }) => {
   await page.goto("/folders/handbook?action=new");
 
   const editor = await editorReady(page);
+  await expect(editor).toHaveAttribute("spellcheck", "false");
   await expect(editor).toHaveAccessibleName("Content");
   await expect(editor).toHaveAccessibleDescription(HELPER_TEXT);
   await expect(page.getByText(HELPER_TEXT)).toBeVisible();
@@ -267,36 +220,29 @@ test.describe("the code of the editor", () => {
     return (await Promise.all(bodies)).some((body) => body.includes("cm-content"));
   }
 
-  test("only the editor loads it, never the page view, a folder, a tab or the list of all pages", async ({ page }) => {
-    await createTab({ folder: handbook, name: "guides" });
+  // The page view and one list; the tab and the list of all pages load the same code as the folder.
+  test("only the editor loads it, never the page view or the folder", async ({ page }) => {
     await createPage({ folder: handbook, name: "plan", content: "# Plan\n\n- [ ] Task" });
 
-    for (const address of [
-      "/folders/handbook/plan.md",
-      "/folders/handbook",
-      "/folders/handbook/guides",
-      "/folders/handbook?view=all",
-    ]) {
+    for (const address of ["/folders/handbook/plan.md", "/folders/handbook"]) {
       expect(await loadsEditorCode(page, address), address).toBe(false);
     }
     expect(await loadsEditorCode(page, "/folders/handbook/plan.md?action=edit", () => editorReady(page))).toBe(true);
   });
 });
 
-test("source mode colors headings, emphasis, links, code and list marks differently from plain text", async ({
+test("source mode shows every character, and colors headings, emphasis, links, code and list marks differently from plain text", async ({
   page,
   context,
 }) => {
   await startInSourceMode(context);
-  await createPage({
-    folder: handbook,
-    name: "colors",
-    content: "# Heading\n\nplain words\n\n*emph* [link](/x) `code`\n\n- item",
-  });
+  const content = "# Heading\n\nplain words\n\n*emph* [link](/x) `code`\n\n- item\n\n**bold** _it_ ~~s~~\n* [x] t";
+  await createPage({ folder: handbook, name: "colors", content });
 
   await page.goto("/folders/handbook/colors.md?action=edit");
 
   const editor = await editorReady(page);
+  expect((await shownLines(page)).join("\n")).toBe(content);
   const color = (element: Element) => getComputedStyle(element).color;
   const plain = await editor.getByText("plain words", { exact: true }).evaluate(color);
   for (const text of ["Heading", "emph", "link", "code", "-"]) {
@@ -304,16 +250,7 @@ test("source mode colors headings, emphasis, links, code and list marks differen
   }
 });
 
-test("Enter at the end of a list item continues the list", async ({ page }) => {
-  await page.goto("/folders/handbook?action=new");
-  await fillContent(page, "# List\n\n- one");
-
-  await page.keyboard.press("Enter");
-  await page.keyboard.type("two");
-
-  await expectContent(page, "# List\n\n- one\n- two");
-});
-
+// Enter at the end of a list item continues the list (src/features/pages/editor/extensions.test.ts).
 test("Ctrl+F opens the search, and replace all replaces every occurrence in one step that one undo reverts", async ({
   page,
 }) => {
