@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { KNOWN_ADMIN, KNOWN_USER } from "../prisma/known-users";
-import { ADMIN_STORAGE_STATE, logIn, NO_STORAGE_STATE, USER_STORAGE_STATE } from "./support/auth";
+import { ADMIN_STORAGE_STATE, NO_STORAGE_STATE, USER_STORAGE_STATE } from "./support/auth";
 import { collectErrors, expectNotFoundResponse } from "./support/browser";
 import { createFile, createFolder, createPage, createTab, getTestDb, resetTestDatabase } from "./support/database";
 import { expectFileNotFound, pngBytes } from "./support/files";
@@ -108,12 +108,6 @@ async function expectLoginPage(page: Page, address?: string) {
 /** The text of the HTML, without its scripts, styles and tags. */
 function textOf(html: string): string {
   return html.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, "").replace(/<[^>]*>/g, " ");
-}
-
-/** Opens the login page and logs in as the known normal user. */
-async function logInAsUser(page: Page) {
-  await logIn(page, KNOWN_USER.name, KNOWN_USER.password);
-  await expect(page).toHaveURL("/folders");
 }
 
 test.describe("without a login", () => {
@@ -273,12 +267,12 @@ test.describe("without a login", () => {
   });
 });
 
-test.describe("without a login after a login has ended", () => {
-  test.use({ storageState: NO_STORAGE_STATE });
+// The saved login ends in these tests; the next reset of the test database puts its session back.
+test.describe("after the saved login of the normal user has ended", () => {
+  test.use({ storageState: USER_STORAGE_STATE });
   test.beforeEach(createContent);
 
   test("after the session has ended in the database, the content leads to the login page", async ({ page }) => {
-    await logInAsUser(page);
     await page.goto("/folders/handbook/overview.md");
     await expect(page.getByRole("heading", { level: 1, name: "Secret overview" })).toBeVisible();
 
@@ -291,7 +285,6 @@ test.describe("without a login after a login has ended", () => {
   test("a Server Action that is submitted after the session has ended changes nothing and leads to the login page", async ({
     page,
   }) => {
-    await logInAsUser(page);
     await page.goto("/folders?action=new");
     const dialog = page.getByRole("dialog", { name: "New folder" });
     await dialog.getByLabel("Name").fill("too-late");
@@ -307,7 +300,6 @@ test.describe("without a login after a login has ended", () => {
     page,
     context,
   }) => {
-    await logInAsUser(page);
     await page.goto("/folders/handbook/overview.md?action=delete");
     const dialog = page.getByRole("dialog", { name: "Delete page" });
     await expect(dialog).toBeVisible();

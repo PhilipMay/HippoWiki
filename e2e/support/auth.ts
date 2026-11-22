@@ -37,14 +37,19 @@ export async function becomeUser(context: BrowserContext, storageState: string):
 }
 
 /**
- * Logs in as the given user in a browser context of its own, as another person working at the same time would. The
- * user is one of `createUser()`, with `TEST_PASSWORD` and `mustChangePassword: false`. The test closes the context
- * when it is done.
+ * Logs in as the given user in a browser context of its own, as another person working at the same time would, or as
+ * a second browser of the same user. The user is one of `createUser()`, with `TEST_PASSWORD` and
+ * `mustChangePassword: false`, unless another password is given, such as that of a known user. The test closes the
+ * context when it is done.
  */
-export async function logInElsewhere(browser: Browser, name: string): Promise<{ context: BrowserContext; page: Page }> {
+export async function logInElsewhere(
+  browser: Browser,
+  name: string,
+  password?: string,
+): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser.newContext({ storageState: NO_STORAGE_STATE });
   const page = await hydrating(await context.newPage());
-  await logIn(page, name);
+  await logIn(page, name, password);
   await expect(page).toHaveURL("/folders");
   return { context, page };
 }

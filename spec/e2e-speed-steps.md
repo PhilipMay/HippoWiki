@@ -56,7 +56,7 @@ this plan estimates that about 420 s of the summed test time can go.
 - [x] Not-found checks through HTTP
 - [x] Access without a login
 - [x] Changes of other users without a second login
-- [ ] Logins of accounts of their own
+- [x] Logins of accounts of their own
 - [ ] Rule loops in the browser
 - [ ] Redundant tests and role loops
 - [ ] Limits with heavy setup
@@ -250,6 +250,9 @@ Tests that need a logged-in user log in through the login page only when the log
   "in the browser", which need the user of `setUpProjects()` because of the rate limit per user.
 
 About 20 s if the rule goes, about 8 s otherwise.
+
+Decided in this step: the rule goes. A password change of the known user and of the admin through the dialog,
+followed by a spec with their saved states, passed with one worker and with four, and `testing.md` says so now.
 
 ### Test
 

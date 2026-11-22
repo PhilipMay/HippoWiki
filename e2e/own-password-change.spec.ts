@@ -1,6 +1,14 @@
 import type { Page } from "@playwright/test";
 
-import { logIn, logInElsewhere, NO_STORAGE_STATE, submitLogin } from "./support/auth";
+import { KNOWN_ADMIN, KNOWN_USER } from "../prisma/known-users";
+import {
+  ADMIN_STORAGE_STATE,
+  logIn,
+  logInElsewhere,
+  NO_STORAGE_STATE,
+  submitLogin,
+  USER_STORAGE_STATE,
+} from "./support/auth";
 import { collectErrors, expectNotFound, expectNotFoundResponse } from "./support/browser";
 import {
   createGrant,
@@ -13,10 +21,10 @@ import {
 import { listFolderStatus, mcpAddress } from "./support/oauth";
 import { expect, hydrating, test } from "./support/test";
 
-// The users of these tests are their own, created by `createUser()` with the password change done, and log in
-// themselves: a change of the password ends all other sessions, and the saved sessions of the known users must stay
-// valid for the other specs.
-test.use({ storageState: NO_STORAGE_STATE });
+// The tests change the password of the known user or the known admin with their saved logins: every reset puts back
+// their passwords and the sessions of their saved logins, so a change ends nothing that a later test needs. One test
+// logs in through the login page first, as a user of its own.
+test.use({ storageState: USER_STORAGE_STATE });
 
 const NEW_PASSWORD = "my-new-own-password";
 const CHANGED_NOTICE = "Your password was changed, and your other browsers were logged out.";
@@ -26,22 +34,24 @@ test.beforeEach(async () => {
   await resetTestDatabase();
 });
 
-/** Creates a user of the given type with the password change done and logs in; returns the user. */
-async function logInAsNew(page: Page, type: "user" | "admin" = "user", name?: string) {
-  const user = await createUser({ name, type, mustChangePassword: false });
-  await logIn(page, user.name);
-  await expect(page).toHaveURL(type === "admin" ? "/users" : "/folders");
-  return user;
-}
+/** The saved logins of the known user and the known admin, for the tests that run as each type. */
+const KNOWN_STATES = [
+  { type: "user", storageState: USER_STORAGE_STATE },
+  { type: "admin", storageState: ADMIN_STORAGE_STATE },
+] as const;
 
 function changeDialog(page: Page) {
   return page.getByRole("dialog", { name: "Change password" });
 }
 
-/** Fills the three fields of the dialog and submits it. */
+/** Fills the three fields of the dialog and submits it; the current password is that of the known user by default. */
 async function submitChange(
   page: Page,
-  { current = TEST_PASSWORD, next = NEW_PASSWORD, repeat = next }: { current?: string; next?: string; repeat?: string },
+  {
+    current = KNOWN_USER.password,
+    next = NEW_PASSWORD,
+    repeat = next,
+  }: { current?: string; next?: string; repeat?: string },
 ) {
   const dialog = changeDialog(page);
   await dialog.getByLabel("Current password").fill(current);
@@ -57,58 +67,73 @@ async function storedPassword(user: { id: string }) {
 }
 
 /** Logs out in the page, and asserts that the old password is refused and the new one logs in. */
-async function expectNewPasswordOnly(page: Page, name: string, landing: string) {
+async function expectNewPasswordOnly(page: Page, name: string, oldPassword: string, landing: string) {
   await page.getByRole("banner").getByRole("button", { name: "Log out" }).click();
   await expect(page).toHaveURL("/login");
-  await submitLogin(page, name, TEST_PASSWORD);
+  await submitLogin(page, name, oldPassword);
   await expect(page.getByText(INVALID_CREDENTIALS)).toBeVisible();
   await submitLogin(page, name, NEW_PASSWORD);
   await expect(page).toHaveURL(landing);
 }
 
-for (const { type, landing } of [
-  { type: "user", landing: "/folders" },
-  { type: "admin", landing: "/users" },
-] as const) {
-  test(`a ${type} opens the dialog from the button, changes the password and logs in with the new one`, async ({
-    page,
-  }) => {
-    const errors = collectErrors(page);
-    const user = await logInAsNew(page, type);
-    await page.goto("/account");
+/**
+ * Opens the dialog from the button of the account page, checks its fields, changes the password from the given one and
+ * asserts that only the new password logs in afterwards.
+ */
+async function changeFromTheButton(page: Page, name: string, password: string, landing: string) {
+  const errors = collectErrors(page);
+  await page.goto("/account");
 
-    await page.getByRole("link", { name: "Change password" }).click();
+  await page.getByRole("link", { name: "Change password" }).click();
 
-    await expect(page).toHaveURL("/account?action=change-password");
-    const dialog = changeDialog(page);
-    await expect(dialog).toBeVisible();
-    await expect(dialog.getByLabel("Current password")).toBeFocused();
-    await expect(dialog.getByText("All your other browsers are logged out with the change")).toBeVisible();
-    for (const label of ["Current password", /^New password/, "Repeat new password"]) {
-      await expect(dialog.getByLabel(label)).toHaveAttribute("type", "password");
-    }
-    await expect(dialog.getByLabel("Current password")).toHaveAttribute("autocomplete", "current-password");
-    await expect(dialog.getByLabel(/^New password/)).toHaveAttribute("autocomplete", "new-password");
+  await expect(page).toHaveURL("/account?action=change-password");
+  const dialog = changeDialog(page);
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel("Current password")).toBeFocused();
+  await expect(dialog.getByText("All your other browsers are logged out with the change")).toBeVisible();
+  for (const label of ["Current password", /^New password/, "Repeat new password"]) {
+    await expect(dialog.getByLabel(label)).toHaveAttribute("type", "password");
+  }
+  await expect(dialog.getByLabel("Current password")).toHaveAttribute("autocomplete", "current-password");
+  await expect(dialog.getByLabel(/^New password/)).toHaveAttribute("autocomplete", "new-password");
 
-    await submitChange(page, {});
+  await submitChange(page, { current: password });
 
-    await expect(page.getByText(CHANGED_NOTICE)).toBeVisible();
-    await expect(changeDialog(page)).toHaveCount(0);
-    await expectNewPasswordOnly(page, user.name, landing);
-    expect(errors).toEqual([]);
-  });
+  await expect(page.getByText(CHANGED_NOTICE)).toBeVisible();
+  await expect(changeDialog(page)).toHaveCount(0);
+  await expectNewPasswordOnly(page, name, password, landing);
+  expect(errors).toEqual([]);
 }
+
+test.describe("a user of its own who has logged in through the login page", () => {
+  test.use({ storageState: NO_STORAGE_STATE });
+
+  test("opens the dialog from the button, changes the password and logs in with the new one", async ({ page }) => {
+    const user = await createUser({ mustChangePassword: false });
+    await logIn(page, user.name);
+    await expect(page).toHaveURL("/folders");
+
+    await changeFromTheButton(page, user.name, TEST_PASSWORD, "/folders");
+  });
+});
+
+test.describe("the known admin", () => {
+  test.use({ storageState: ADMIN_STORAGE_STATE });
+
+  test("opens the dialog from the button, changes the password and logs in with the new one", async ({ page }) => {
+    await changeFromTheButton(page, KNOWN_ADMIN.name, KNOWN_ADMIN.password, "/users");
+  });
+});
 
 test("the address of the dialog opens it directly, and Cancel and Escape close it without a change", async ({
   page,
 }) => {
   const errors = collectErrors(page);
-  const user = await logInAsNew(page);
-  const before = await storedPassword(user);
+  const before = await storedPassword(KNOWN_USER);
 
   await page.goto("/account?action=change-password");
   await expect(changeDialog(page)).toBeVisible();
-  await changeDialog(page).getByLabel("Current password").fill(TEST_PASSWORD);
+  await changeDialog(page).getByLabel("Current password").fill(KNOWN_USER.password);
   await changeDialog(page).getByRole("link", { name: "Cancel" }).click();
   await expect(page).toHaveURL("/account");
   await expect(changeDialog(page)).toHaveCount(0);
@@ -119,7 +144,7 @@ test("the address of the dialog opens it directly, and Cancel and Escape close i
   await expect(page).toHaveURL("/account");
   await expect(changeDialog(page)).toHaveCount(0);
 
-  expect(await storedPassword(user)).toBe(before);
+  expect(await storedPassword(KNOWN_USER)).toBe(before);
   expect(errors).toEqual([]);
 });
 
@@ -133,7 +158,7 @@ test.describe("a new password that breaks a rule", () => {
     },
     {
       what: "one built from the user name",
-      input: { next: "alexander2026" },
+      input: { next: `${KNOWN_USER.name}2026` },
       field: /^New password/,
       error: "Password must not be built only from the user name or the name of the wiki, digits and symbols",
     },
@@ -145,7 +170,7 @@ test.describe("a new password that breaks a rule", () => {
     },
     {
       what: "one equal to the current one",
-      input: { next: TEST_PASSWORD },
+      input: { next: KNOWN_USER.password },
       field: /^New password/,
       error: "New password must differ from the current one",
     },
@@ -172,8 +197,7 @@ test.describe("a new password that breaks a rule", () => {
       page,
     }) => {
       const errors = collectErrors(page);
-      const user = await logInAsNew(page, "user", "alexander");
-      const before = await storedPassword(user);
+      const before = await storedPassword(KNOWN_USER);
       await page.goto("/account?action=change-password");
 
       await submitChange(page, input);
@@ -182,8 +206,8 @@ test.describe("a new password that breaks a rule", () => {
       await expect(dialog.getByText(error, { exact: true })).toBeVisible();
       await expect(dialog.getByLabel(field)).toBeFocused();
       // Errors of the rules keep what was entered.
-      await expect(dialog.getByLabel("Current password")).toHaveValue(TEST_PASSWORD);
-      expect(await storedPassword(user)).toBe(before);
+      await expect(dialog.getByLabel("Current password")).toHaveValue(KNOWN_USER.password);
+      expect(await storedPassword(KNOWN_USER)).toBe(before);
       expect(errors).toEqual([]);
     });
   }
@@ -194,8 +218,7 @@ test("the change logs out a second browser of the user at its next request, and 
   browser,
 }) => {
   const errors = collectErrors(page);
-  const user = await logInAsNew(page);
-  const other = await logInElsewhere(browser, user.name);
+  const other = await logInElsewhere(browser, KNOWN_USER.name, KNOWN_USER.password);
   await page.goto("/account?action=change-password");
 
   await submitChange(page, {});
@@ -205,14 +228,13 @@ test("the change logs out a second browser of the user at its next request, and 
   await expect(other.page).toHaveURL(/^[^?]*\/login/);
   await page.goto("/folders");
   await expect(page).toHaveURL("/folders");
-  await expect(page.getByRole("banner").getByText(user.name, { exact: true })).toBeVisible();
+  await expect(page.getByRole("banner").getByText(KNOWN_USER.name, { exact: true })).toBeVisible();
   await other.context.close();
   expect(errors).toEqual([]);
 });
 
 test("the notice of the change is shown once: a reload shows no message", async ({ page }) => {
   const errors = collectErrors(page);
-  await logInAsNew(page);
   await page.goto("/account?action=change-password");
 
   await submitChange(page, {});
@@ -234,12 +256,11 @@ test.describe("wrong current passwords", () => {
     browser,
   }) => {
     const errors = collectErrors(page);
-    const user = await logInAsNew(page);
-    const before = await storedPassword(user);
+    const before = await storedPassword(KNOWN_USER);
     await page.goto("/account?action=change-password");
     const dialog = changeDialog(page);
     // As five wrong current passwords leave the counts, which count like failed logins of the name.
-    await storeFiveFailedLogins(user.name, "192.0.2.30");
+    await storeFiveFailedLogins(KNOWN_USER.name, "192.0.2.30");
 
     await submitChange(page, {});
 
@@ -247,14 +268,14 @@ test.describe("wrong current passwords", () => {
       dialog.getByText("Too many wrong passwords. Please try again in 1 minute.", { exact: true }),
     ).toBeVisible();
     await expect(dialog.getByLabel("Current password")).toBeFocused();
-    expect(await storedPassword(user)).toBe(before);
+    expect(await storedPassword(KNOWN_USER)).toBe(before);
 
     const visitor = await browser.newContext({
       storageState: NO_STORAGE_STATE,
       extraHTTPHeaders: { "x-forwarded-for": "192.0.2.30" },
     });
     const loginPage = await hydrating(await visitor.newPage());
-    await logIn(loginPage, user.name);
+    await logIn(loginPage, KNOWN_USER.name, KNOWN_USER.password);
     await expect(loginPage.getByText("Too many failed logins. Please try again in 1 minute.")).toBeVisible();
     await visitor.close();
     expect(errors).toEqual([]);
@@ -269,14 +290,12 @@ test.describe("disconnecting the apps", () => {
     return changeDialog(page).getByRole("checkbox", { name: "Also disconnect all my apps" });
   }
 
-  /** A user of its own, logged in, with two connected apps; returns the user and the apps. */
-  async function userWithTwoApps(page: Page) {
-    const user = await logInAsNew(page);
-    const apps = [
-      await createGrant({ owner: user, name: "First connector" }),
-      await createGrant({ owner: user, name: "Second connector" }),
+  /** Connects two apps of the known user; returns them. */
+  async function twoApps() {
+    return [
+      await createGrant({ owner: KNOWN_USER, name: "First connector" }),
+      await createGrant({ owner: KNOWN_USER, name: "Second connector" }),
     ];
-    return { user, apps };
   }
 
   test("ticked, it disconnects every app: they leave the list and their tokens are refused", async ({
@@ -284,7 +303,7 @@ test.describe("disconnecting the apps", () => {
     request,
   }) => {
     const errors = collectErrors(page);
-    const { apps } = await userWithTwoApps(page);
+    const apps = await twoApps();
     await page.goto("/account?action=change-password");
     await expect(choice(page)).not.toBeChecked();
 
@@ -301,7 +320,7 @@ test.describe("disconnecting the apps", () => {
 
   test("not ticked, every app stays and works", async ({ page, request }) => {
     const errors = collectErrors(page);
-    const { apps } = await userWithTwoApps(page);
+    const apps = await twoApps();
     await page.goto("/account?action=change-password");
 
     await submitChange(page, {});
@@ -315,7 +334,7 @@ test.describe("disconnecting the apps", () => {
   });
 
   test("the choice stays ticked after an error of the form", async ({ page }) => {
-    await userWithTwoApps(page);
+    await twoApps();
     await page.goto("/account?action=change-password");
 
     await choice(page).check();
@@ -325,34 +344,38 @@ test.describe("disconnecting the apps", () => {
     await expect(choice(page)).toBeChecked();
   });
 
-  for (const type of ["user", "admin"] as const) {
-    test(`a${type === "admin" ? "n admin" : " user without apps"} sees no such choice`, async ({ page }) => {
-      await logInAsNew(page, type);
+  for (const { type, storageState } of KNOWN_STATES) {
+    test.describe(`the known ${type}`, () => {
+      test.use({ storageState });
 
-      await page.goto("/account?action=change-password");
+      test(`a${type === "admin" ? "n admin" : " user without apps"} sees no such choice`, async ({ page }) => {
+        await page.goto("/account?action=change-password");
 
-      await expect(changeDialog(page).getByLabel("Current password")).toBeVisible();
-      await expect(changeDialog(page).getByRole("checkbox")).toHaveCount(0);
+        await expect(changeDialog(page).getByLabel("Current password")).toBeVisible();
+        await expect(changeDialog(page).getByRole("checkbox")).toHaveCount(0);
+      });
     });
   }
 });
 
 test.describe("addresses that are not found", () => {
-  for (const type of ["user", "admin"] as const) {
-    test(`for a ${type}: an unknown action, an unknown notice and a notice with an action`, async ({ page }) => {
-      await logInAsNew(page, type);
+  for (const { type, storageState } of KNOWN_STATES) {
+    test.describe(`the known ${type}`, () => {
+      test.use({ storageState });
 
-      // In the browser once: the not-found page opens no dialog.
-      await expectNotFound(page, "/account?notice=password-changed&action=change-password");
-      await expect(page.getByRole("dialog")).toHaveCount(0);
+      test(`for a ${type}: an unknown action, an unknown notice and a notice with an action`, async ({ page }) => {
+        // In the browser once: the not-found page opens no dialog.
+        await expectNotFound(page, "/account?notice=password-changed&action=change-password");
+        await expect(page.getByRole("dialog")).toHaveCount(0);
 
-      for (const address of [
-        "/account?action=change-passwords",
-        "/account?notice=anything",
-        "/account?notice=password-changed&notice=password-changed",
-      ]) {
-        await expectNotFoundResponse(page.request, address);
-      }
+        for (const address of [
+          "/account?action=change-passwords",
+          "/account?notice=anything",
+          "/account?notice=password-changed&notice=password-changed",
+        ]) {
+          await expectNotFoundResponse(page.request, address);
+        }
+      });
     });
   }
 });

@@ -286,14 +286,17 @@ How the code is tested. Commands are listed in `README.md`.
     saved cookies are valid on the server of every worker and stay valid after every reset. It never empties
     `AuthSecret`: the running server keeps the secret that signed them, and every worker database has the same one.
   - The Playwright UI does not run the setup project by itself (see `README.md`).
-  - A test that needs a user with a first password creates one with `createUser()` and logs in through the login
-    page, in a spec or a browser context without a saved state.
+  - A test that needs a pending password change sets `mustChangePassword` on the row of the known user or the admin
+    and keeps the saved state: the session reads the user from the database on every request. The tests of the login
+    and one test of each password change log in through the login page, with a user of their own from `createUser()`
+    where the known users cannot stand in, in a spec or a browser context without a saved state.
   - A test in which a second user works at the same time logs that user in with `logInElsewhere(browser, name)` of
     `e2e/support/auth.ts`, in a browser context of its own; the user is created with `createUser()` and
     `mustChangePassword: false`, and the test closes the context.
-  - A test that changes a password or ends the sessions of an account uses an account of its own, created with
-    `createUser()` and `mustChangePassword: false`, and logs in through the login page in a spec without a saved
-    state, so that the saved sessions of the known users stay valid for the other specs.
+  - A test that changes the password of the known user or the admin, or ends their sessions, does so with their saved
+    state: `resetTestDatabase()` puts back their passwords and the rows of their saved sessions before every test, and
+    the tests of a worker run one after another, so the saved states stay valid for every later test, with one worker
+    and with several.
   - Every approval on the consent page enters the password of its user first, with `approve(page, password)` or
     `connect(..., password)` of `e2e/support/oauth.ts`; the password is the one of the known user unless another is
     given.

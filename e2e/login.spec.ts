@@ -1,7 +1,7 @@
 import type { Browser, Page } from "@playwright/test";
 
 import { KNOWN_ADMIN, KNOWN_USER } from "../prisma/known-users";
-import { logIn, NO_STORAGE_STATE, submitLogin } from "./support/auth";
+import { ADMIN_STORAGE_STATE, logIn, NO_STORAGE_STATE, submitLogin, USER_STORAGE_STATE } from "./support/auth";
 import { collectErrors } from "./support/browser";
 import { createUser, getTestDb, resetTestDatabase, storeFiveFailedLogins, TEST_PASSWORD } from "./support/database";
 import { expect, hydrating, test } from "./support/test";
@@ -98,15 +98,6 @@ test("a user with a way back into the content lands there", async ({ page }) => 
   await submitLogin(page, KNOWN_USER.name, KNOWN_USER.password);
 
   await expect(page).toHaveURL("/folders/team");
-});
-
-test("an admin who is logged in already and opens the login page goes to the user list", async ({ page }) => {
-  await logInHome(page, KNOWN_ADMIN);
-
-  await page.goto("/login?next=%2Ffolders");
-
-  await expect(page).toHaveURL("/users");
-  await expect(page.getByRole("heading", { level: 1, name: "Users" })).toBeVisible();
 });
 
 test("the Enter key in the password field logs in", async ({ page }) => {
@@ -413,15 +404,6 @@ test("a new login after a logout works", async ({ page }) => {
   await expect(page.getByRole("banner").getByText(KNOWN_ADMIN.name, { exact: true })).toBeVisible();
 });
 
-test("a logged-in user who opens the login page lands on the folder list", async ({ page }) => {
-  await logInHome(page, KNOWN_USER);
-
-  await page.goto("/login");
-
-  await expect(page).toHaveURL("/folders");
-  await expect(page.getByRole("heading", { level: 1, name: "Folders" })).toBeVisible();
-});
-
 test("a user can be logged in in two browsers, and a logout ends only one of the sessions", async ({
   page,
   browser,
@@ -495,16 +477,6 @@ test("a way back that a crafted request puts into the form leads to the folder l
   await expect(page).toHaveURL("/folders");
 });
 
-test("a logged-in user who opens the login page with a way back lands there", async ({ page }) => {
-  await logInHome(page, KNOWN_USER);
-
-  await page.goto("/login?next=%2Faccount");
-  await expect(page).toHaveURL("/account");
-
-  await page.goto("/login?next=https%3A%2F%2Fevil.example%2F");
-  await expect(page).toHaveURL("/folders");
-});
-
 for (const address of ["/login?action=new", "/login?view=all"]) {
   test(`${address} shows the not-found page`, async ({ page }) => {
     const response = await page.goto(address);
@@ -513,3 +485,34 @@ for (const address of ["/login?action=new", "/login?view=all"]) {
     await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
   });
 }
+
+// A user or an admin who is logged in already opens the login page with the saved login.
+test.describe("with the saved login of the normal user", () => {
+  test.use({ storageState: USER_STORAGE_STATE });
+
+  test("a logged-in user who opens the login page lands on the folder list", async ({ page }) => {
+    await page.goto("/login");
+
+    await expect(page).toHaveURL("/folders");
+    await expect(page.getByRole("heading", { level: 1, name: "Folders" })).toBeVisible();
+  });
+
+  test("a logged-in user who opens the login page with a way back lands there", async ({ page }) => {
+    await page.goto("/login?next=%2Faccount");
+    await expect(page).toHaveURL("/account");
+
+    await page.goto("/login?next=https%3A%2F%2Fevil.example%2F");
+    await expect(page).toHaveURL("/folders");
+  });
+});
+
+test.describe("with the saved login of the admin", () => {
+  test.use({ storageState: ADMIN_STORAGE_STATE });
+
+  test("an admin who is logged in already and opens the login page goes to the user list", async ({ page }) => {
+    await page.goto("/login?next=%2Ffolders");
+
+    await expect(page).toHaveURL("/users");
+    await expect(page.getByRole("heading", { level: 1, name: "Users" })).toBeVisible();
+  });
+});
