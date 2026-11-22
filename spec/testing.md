@@ -567,6 +567,12 @@ the HTML report:
 - Before: 1062 tests, 5.3 min, 1163 s of summed test time.
 - After: 725 tests, 3.3 min, 689 s of summed test time.
 
+In CI, with one worker, the step of the tests on 2026-11-22: the three pushes before the change against the push that
+finished it. The step varies from run to run on the runners, so these are single runs, not medians:
+
+- `end_to_end_tests`: 19 min 33 s, 26 min 46 s and 21 min 30 s before, 15 min 54 s after.
+- `end_to_end_tests_production`: 8 min 52 s, 8 min 39 s and 7 min 39 s before, 5 min 32 s after.
+
 Decisions:
 
 - Several workers in one run, not shards: the workers take the next spec file when they are free, which balances the
