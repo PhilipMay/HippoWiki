@@ -23,6 +23,7 @@ Code:
   `PageRevision` (the mark of an update) in `prisma/schema.prisma`, and the migrations
   `prisma/migrations/20261120151123_wiki_links/` and `prisma/migrations/20261120152656_revision_links_updated/`;
 - the moves, renames and tab renames that update links: `moveOrRenamePage()` of `src/features/pages/service.ts`,
+  `moveOrRenameFile()` of `src/features/files/service.ts` with `MoveOrRenameFileDialog.tsx`,
   `renameTab()` of `src/features/folders/service.ts`, `MoveOrRenamePageDialog.tsx` and `NameDialog.tsx`;
 - the derivation of the links of the existing pages: `scripts/search-index.ts`;
 - MCP: the instructions in `src/features/mcp/server.ts` and the results in `src/features/mcp/tools.ts`;
@@ -38,7 +39,7 @@ Tests: `src/features/pages/wiki-links.test.ts`, `src/features/pages/wiki-link-ta
 `src/features/pages/editor-page-list.test.ts`, `integration/wiki-links-service.test.ts`,
 `integration/wiki-links.spec-tests.test.ts`, `integration/wiki-link-update.cost.test.ts`,
 `integration/page-service.test.ts`, `integration/folder-service.test.ts`, `integration/search-index.test.ts`,
-`e2e/wiki-links.spec.ts`, `e2e/file-links.spec.ts`, `e2e/wiki-link-updates.spec.ts`, `e2e/wiki-links-spec-tests.spec.ts`,
+`e2e/wiki-links.spec.ts`, `e2e/file-links.spec.ts`, `e2e/move-or-rename-file.spec.ts`, `e2e/wiki-link-updates.spec.ts`, `e2e/wiki-links-spec-tests.spec.ts`,
 `e2e/editor-wiki-links.spec.ts`, `e2e/mcp-read.spec.ts`, `e2e/mcp-write.spec.ts` and `e2e/mcp-manager.spec.ts`.
 
 ## Syntax and target
@@ -125,6 +126,9 @@ Tests: `src/features/pages/wiki-links.test.ts`, `src/features/pages/wiki-link-ta
   either ends before the update and is updated, or starts after it.
 - The "Move or rename page" dialog says how many pages hold links to the page and will be updated, as the folder holds
   them when the dialog is opened; `move_or_rename_page` names the pages whose links it updated.
+- A move or rename of a file updates every link and embed of it in the same way (`moveOrRenameFile()` of
+  `src/features/files/service.ts`), and the "Move or rename file" dialog says how many pages show or link the file. A
+  file is moved and renamed only in the browser.
 - Each page whose content an update changes gets a revision by the user who moved, with the channel of the move,
   marked in its history as links updated after a rename or move; that user becomes its last editor, and its version
   counts up, so that an editor, a dialog or an AI app that holds the older version is refused as changed (see
@@ -139,10 +143,10 @@ Tests: `src/features/pages/wiki-links.test.ts`, `src/features/pages/wiki-link-ta
 
 ## Updates on a tab rename
 
-- When a tab is renamed, in the browser or through `rename_tab`, every wiki link into the tab, to any page of it, is
-  changed to the new tab name by the rules of "Updates on a move or rename". A link to a page of the same name placed
+- When a tab is renamed, in the browser or through `rename_tab`, every wiki link into the tab, to any page or file of
+  it, embeds included, is changed to the new tab name by the rules of "Updates on a move or rename". A link to a page of the same name placed
   directly in the folder is no link into the tab and stays. A rename to the own name updates nothing.
-- The "Rename tab" dialog says how many pages hold links into the tab and will be updated, and `rename_tab` names the
+- The "Rename tab" dialog says how many pages hold links into the tab, to its pages and files, and will be updated, and `rename_tab` names the
   pages whose links it updated. The "Rename folder" dialog says nothing of links: a rename of the folder breaks none.
 
 ## Backlinks

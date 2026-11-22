@@ -1,18 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { checkUploadName, revertFile } from "@/features/files/actions";
+import { checkUploadName, moveOrRenameFile, revertFile } from "@/features/files/actions";
 import { NotFoundError, RedirectError } from "@/test/unit";
 
 const mocks = vi.hoisted(() => ({
   checkUploadName: vi.fn(),
   revertFile: vi.fn(),
+  moveOrRenameFile: vi.fn(),
   notFound: vi.fn(),
   redirect: vi.fn(),
   revalidatePath: vi.fn(),
   requireUser: vi.fn(),
 }));
 
-vi.mock("@/features/files/service", () => ({ checkUploadName: mocks.checkUploadName, revertFile: mocks.revertFile }));
+vi.mock("@/features/files/service", () => ({
+  checkUploadName: mocks.checkUploadName,
+  revertFile: mocks.revertFile,
+  moveOrRenameFile: mocks.moveOrRenameFile,
+}));
 vi.mock("next/navigation", () => ({ notFound: mocks.notFound, redirect: mocks.redirect }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("@/features/auth/session", () => ({ requireUser: mocks.requireUser }));
@@ -144,5 +149,78 @@ describe("revertFile", () => {
     mocks.revertFile.mockResolvedValue({ ok: false, error: { code } });
 
     await expect(revertFile(FILE_ID, 1, {}, form())).rejects.toBeInstanceOf(NotFoundError);
+  });
+});
+
+describe("moveOrRenameFile", () => {
+  const FILE_ID = "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002";
+  const STORED = { name: "network.png", folder: { name: "handbook" }, tab: null, updatedPages: [] };
+
+  /** The form of the dialog with the given name, place and lock version. */
+  function form(name = "network.png", place = "", lockVersion: string | null = "3"): FormData {
+    const data = new FormData();
+    data.set("name", name);
+    data.set("place", place);
+    if (lockVersion !== null) data.set("lockVersion", lockVersion);
+    return data;
+  }
+
+  it("does not reach the service without a logged-in user or with a malformed id", async () => {
+    await expect(moveOrRenameFile("not-a-uuid", {}, form())).resolves.toEqual({
+      message: "This file no longer exists.",
+    });
+    mocks.requireUser.mockRejectedValue(new RedirectError("/login"));
+    await expect(moveOrRenameFile(FILE_ID, {}, form())).rejects.toBeInstanceOf(RedirectError);
+    expect(mocks.moveOrRenameFile).not.toHaveBeenCalled();
+  });
+
+  it("moves with the name, place and lock version of the form, revalidates and leads to the new details page", async () => {
+    mocks.moveOrRenameFile.mockResolvedValue({ ok: true, value: STORED });
+
+    await expect(moveOrRenameFile(FILE_ID, {}, form(" network.png ", TAB_ID))).rejects.toEqual(
+      new RedirectError("/folders/handbook/network.png"),
+    );
+    expect(mocks.moveOrRenameFile).toHaveBeenCalledWith(BROWSER_USER, FILE_ID, {
+      name: "network.png",
+      tabId: TAB_ID,
+      lockVersion: 3,
+    });
+    expect(mocks.revalidatePath).toHaveBeenCalled();
+  });
+
+  it("answers an invalid name and a malformed place together, without the service", async () => {
+    await expect(moveOrRenameFile(FILE_ID, {}, form("Network.png", "not-a-tab"))).resolves.toEqual({
+      fieldErrors: { name: [expect.any(String)] },
+      message: "This tab no longer exists.",
+    });
+    expect(mocks.moveOrRenameFile).not.toHaveBeenCalled();
+  });
+
+  it("shows the dialog again with the notice when the file was changed", async () => {
+    const file = { name: "diagram.png", folder: { name: "handbook" }, tab: { name: "guides" } };
+    mocks.moveOrRenameFile.mockResolvedValue({ ok: false, error: { code: "file-changed", file } });
+
+    await expect(moveOrRenameFile(FILE_ID, {}, form())).rejects.toEqual(
+      new RedirectError("/folders/handbook/guides/diagram.png?action=move-or-rename&notice=changed"),
+    );
+  });
+
+  it.each([
+    [{ code: "file-not-found" }, { message: "This file no longer exists." }],
+    [{ code: "tab-not-found" }, { message: "This tab no longer exists." }],
+    [{ code: "invalid-input", fieldErrors: { name: ["x"] } }, { fieldErrors: { name: ["x"] } }],
+    [{ code: "name-taken" }, { fieldErrors: { name: ["Name is already in use"] } }],
+    [{ code: "failed" }, { message: "The file could not be moved or renamed. Please try again." }],
+  ])("answers %j with its message, without revalidating", async (error, state) => {
+    mocks.moveOrRenameFile.mockResolvedValue({ ok: false, error });
+
+    await expect(moveOrRenameFile(FILE_ID, {}, form())).resolves.toEqual(state);
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it("shows the not-found page for a role that may not move it", async () => {
+    mocks.moveOrRenameFile.mockResolvedValue({ ok: false, error: { code: "not-allowed" } });
+
+    await expect(moveOrRenameFile(FILE_ID, {}, form())).rejects.toBeInstanceOf(NotFoundError);
   });
 });

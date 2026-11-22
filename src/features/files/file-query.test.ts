@@ -15,6 +15,7 @@ describe("mayDoFileAction", () => {
   it.each<[FileAction, Role]>([
     ["upload-version", "writer"],
     ["revert", "writer"],
+    ["move-or-rename", "writer"],
   ])("allows %s from %s up", (action, lowest) => {
     for (const role of ROLES) {
       expect(mayDoFileAction(role, action), role).toBe(ROLES.indexOf(role) >= ROLES.indexOf(lowest));
@@ -49,12 +50,17 @@ describe("fileAddressOf", () => {
     expect(fileAddressOf(owner, { action: "upload-version", notice: "changed" }, true)).toMatchObject({
       notice: "changed",
     });
+    expect(fileAddressOf(owner, { action: "move-or-rename", notice: "changed" }, true)).toMatchObject({
+      action: "move-or-rename",
+      notice: "changed",
+    });
   });
 
   it("shows a Reader no action", () => {
     const reader = { ...FILE, role: "reader" as const };
     expect(fileAddressOf(reader, { action: "upload-version" }, true)).toBeNull();
     expect(fileAddressOf(reader, { action: "revert", version: "1" }, true)).toBeNull();
+    expect(fileAddressOf(reader, { action: "move-or-rename" }, true)).toBeNull();
     expect(fileAddressOf(reader, {}, true)).not.toBeNull();
   });
 
@@ -62,6 +68,7 @@ describe("fileAddressOf", () => {
     const owner = { ...FILE, role: "owner" as const };
     expect(fileAddressOf(owner, { action: "upload-version" }, false)).toBeNull();
     expect(fileAddressOf(owner, { action: "revert", version: "1" }, false)).not.toBeNull();
+    expect(fileAddressOf(owner, { action: "move-or-rename" }, false)).not.toBeNull();
   });
 
   it.each<SearchParams>([

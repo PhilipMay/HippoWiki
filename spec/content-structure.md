@@ -111,6 +111,7 @@ hold pages directly and have tabs at the same time.
   | folder, tab  | `upload`         | the "Upload file" dialog                                 |
   | file         | `upload-version` | the "Upload new version" dialog                          |
   | file         | `revert`         | the "Revert file" dialog over a version of the file      |
+  | file         | `move-or-rename` | the "Move or rename file" dialog                         |
   | page         | `edit`           | the edit form (see `pages.md`)                           |
   | page         | `move-or-rename` | the "Move or rename page" dialog                         |
   | page         | `delete`         | the "Delete page" dialog                                 |
@@ -133,8 +134,9 @@ hold pages directly and have tabs at the same time.
   `&name=<name.ext>`, a file name of the rule that the dialog proposes instead of the one the chosen file suggests; a
   malformed or repeated name shows the not-found page. The action `upload-version` of the details page of a file also
   exists only while the files are on, and `revert` needs `&version=<n>` of an earlier version; a revert to the current
-  version would change nothing and shows the not-found page, as do `version` without `revert` and every view. Both
-  actions may carry `&notice=changed` after a refused change (see "Files" in `optimistic-locking.md`).
+  version would change nothing and shows the not-found page, as do `version` without `revert` and every view. These
+  actions and `move-or-rename` may carry `&notice=changed` after a refused change (see "Files" in
+  `optimistic-locking.md`).
 - A page address with an action may also carry the notice `?action=<action>&notice=changed`: the editor or dialog of
   the action is shown again after a change was refused, because the page was changed after it was opened (see
   `optimistic-locking.md`). A notice without an action, and an unknown, empty or repeated notice, show the not-found
@@ -168,9 +170,11 @@ hold pages directly and have tabs at the same time.
   message at the field it belongs to. A stored upload leads to the details page of the file.
 - The details page of a file shows its place, a preview of an image at most as wide as the text, its type, size, the
   width and height of an image, the number of its versions and its last change, "Open" (the file itself, in a new
-  tab) and "Download", the link to copy into a page (`![[…]]` for an image, `[[…]]` for a PDF), and its versions,
+  tab) and "Download", the link to copy into a page (`![[…]]` for an image, `[[…]]` for a PDF), the pages that show
+  or link it (see "Backlinks" in `wiki-links.md`), and its versions,
   newest first, each with its number, when, by whom and how it was uploaded, its size and a link that opens it. A
-  Writer also gets "Upload new version", which takes a file of the same type, and "Revert" at every version but the
+  Writer also gets "Move or rename", "Upload new version", which takes a file of the same type, and "Revert" at every
+  version but the
   current one, which stores that version again as the newest one, without a byte written; a version made by a revert
   names the version it went back to.
 - Page addresses are described in `pages.md`, the addresses under `/deleted-items` in `page-deletion.md`.
@@ -187,11 +191,15 @@ hold pages directly and have tabs at the same time.
   editor was opened for is preselected.
 - A page is moved and renamed in one dialog, which stores name and place together: a page can be renamed, moved within
   its folder (into a tab, back to the folder, to another tab), or both. The current place is preselected.
+- A file is moved and renamed in the same way, from its details page, in the "Move or rename file" dialog: within its
+  folder, with its name and place stored together and its versions kept. Its extension stays, because it fixes the
+  type of the file: a name with another extension is refused at the name field. A move to the own name and place
+  stores nothing, as for a page.
 - Moving or renaming does not validate the content of the page and touches it only where it links to itself. A move
-  or rename of a page and a rename of a tab change the wiki links to them in every page of the folder that is not
-  deleted, in the same write, and the "Move or rename page" and "Rename tab" dialogs say beforehand how many pages
-  will be updated (see `wiki-links.md`).
-- Moving or renaming a page is refused when the page was changed after the dialog was opened; the dialog then shows
+  or rename of a page or a file and a rename of a tab change the wiki links to them in every page of the folder that
+  is not deleted, in the same write, and the "Move or rename page", "Move or rename file" and "Rename tab" dialogs say
+  beforehand how many pages will be updated (see `wiki-links.md`).
+- Moving or renaming a page or a file is refused when it was changed after the dialog was opened; the dialog then shows
   the name and place as stored (see `optimistic-locking.md`). Renaming a folder or a tab is not checked: the last save
   wins.
 - After every write, all addresses under `/folders` and `/deleted-items` show the new state.

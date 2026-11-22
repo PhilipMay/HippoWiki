@@ -16,9 +16,10 @@ import {
 
 /**
  * The actions of the details page of a file: `upload-version` opens the dialog "Upload new version", which exists only
- * while the files are on, and `revert` the dialog "Revert file" for the version in `&version=<n>`.
+ * while the files are on, `revert` the dialog "Revert file" for the version in `&version=<n>`, and `move-or-rename`
+ * the dialog "Move or rename file".
  */
-const FILE_ACTIONS = ["upload-version", "revert"] as const;
+const FILE_ACTIONS = ["upload-version", "revert", "move-or-rename"] as const;
 
 export type FileAction = (typeof FILE_ACTIONS)[number];
 
@@ -26,6 +27,7 @@ export type FileAction = (typeof FILE_ACTIONS)[number];
 const FILE_ACTION_FUNCTIONS: Record<FileAction, FolderFunction> = {
   "upload-version": "editFile",
   revert: "editFile",
+  "move-or-rename": "editFile",
 };
 
 /**

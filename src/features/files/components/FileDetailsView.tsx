@@ -18,7 +18,9 @@ import HeadingWithActions from "@/components/HeadingWithActions";
 import Link from "@/components/Link";
 import Time from "@/components/Time";
 import FolderBreadcrumbs from "@/features/folders/components/FolderBreadcrumbs";
-import { revertFile } from "@/features/files/actions";
+import { listTabs } from "@/features/folders/queries";
+import { moveOrRenameFile, revertFile } from "@/features/files/actions";
+import MoveOrRenameFileDialog from "@/features/files/components/MoveOrRenameFileDialog";
 import RevertFileDialog from "@/features/files/components/RevertFileDialog";
 import UploadVersionDialog from "@/features/files/components/UploadVersionDialog";
 import { mayDoFileAction, type FileAction } from "@/features/files/file-query";
@@ -69,12 +71,15 @@ type FileDetailsViewProps = {
 
 /**
  * The details page of a file: its place, a preview of an image, its type, size, width and height, the number of its
- * versions and its last change, "Open" and "Download", "Upload new version" for the roles that may, the link to copy,
+ * versions and its last change, "Open" and "Download", "Move or rename" and "Upload new version" for the roles that
+ * may, the link to copy,
  * the pages that show or link it, and its versions, newest first, each with a link that opens it and, but for the
  * current one, "Revert" for the roles that may; with the dialog of the action on top.
  */
 export default async function FileDetailsView({ file, action, version, notice, uploads }: FileDetailsViewProps) {
   const linkingPages = (await listPagesLinkingToFile(file.id)) ?? notFound();
+  // Only the "Move or rename file" dialog needs the tabs of the folder.
+  const tabs = action === "move-or-rename" ? ((await listTabs(file.folder.id)) ?? notFound()) : [];
   const folder = file.folder.name;
   const tab = file.tab?.name ?? null;
   const [current] = file.versions;
@@ -112,6 +117,11 @@ export default async function FileDetailsView({ file, action, version, notice, u
         <Button component="a" href={fileContentPath(folder, tab, file.name, { download: true })} variant="outlined">
           Download
         </Button>
+        {mayDoFileAction(file.role, "move-or-rename") && (
+          <Button component={Link} href={filePath(folder, tab, file.name, "move-or-rename")} variant="outlined">
+            Move or rename
+          </Button>
+        )}
         {uploads.on && mayDoFileAction(file.role, "upload-version") && (
           <Button component={Link} href={filePath(folder, tab, file.name, "upload-version")} variant="contained">
             Upload new version
@@ -220,6 +230,21 @@ export default async function FileDetailsView({ file, action, version, notice, u
           image={image}
           lockVersion={file.lockVersion}
           sizeLimit={uploads.sizeLimit}
+          closeHref={detailsHref}
+        />
+      )}
+      {action === "move-or-rename" && (
+        <MoveOrRenameFileDialog
+          // A new key after a refused move starts the dialog anew with the file as it is now.
+          key={`${file.lockVersion}-${notice ?? ""}`}
+          action={moveOrRenameFile.bind(null, file.id)}
+          folderName={folder}
+          tabs={tabs}
+          currentTabId={file.tab?.id ?? null}
+          initialName={file.name}
+          linkingPages={linkingPages.length}
+          lockVersion={file.lockVersion}
+          changedMessage={notice === "changed" ? changedMessage(file, "file") : undefined}
           closeHref={detailsHref}
         />
       )}

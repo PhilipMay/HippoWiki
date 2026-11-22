@@ -10,6 +10,9 @@ const mocks = vi.hoisted(() => ({
   versionCount: vi.fn(),
   versionFindFirst: vi.fn(),
   versionCreate: vi.fn(),
+  txFileFindFirst: vi.fn(),
+  executeRaw: vi.fn(),
+  linkFindMany: vi.fn(),
   roleFindFirst: vi.fn(),
   tabFindFirst: vi.fn(),
   transaction: vi.fn(),
@@ -154,13 +157,20 @@ beforeEach(() => {
     ),
   );
   mocks.fileFindUniqueOrThrow.mockResolvedValue({ ...STORED_ROW, lockVersion: 4 });
+  // The file to move or rename: a PNG in the tab guides, and no page shows or links it.
+  mocks.fileFindUnique.mockResolvedValue({ ...STORED_ROW, folderId: FOLDER_ID });
+  mocks.txFileFindFirst.mockResolvedValue({ name: "diagram.png", tab: { name: "guides" } });
+  mocks.linkFindMany.mockResolvedValue([]);
   mocks.transaction.mockImplementation((run: (tx: unknown) => Promise<unknown>) =>
     run({
       file: {
+        findFirst: mocks.txFileFindFirst,
         updateMany: mocks.fileUpdateMany,
         findUniqueOrThrow: mocks.fileFindUniqueOrThrow,
       },
       fileVersion: { findFirst: mocks.versionFindFirst, create: mocks.versionCreate },
+      pageLink: { findMany: mocks.linkFindMany },
+      $executeRaw: mocks.executeRaw,
     }),
   );
 });
@@ -576,6 +586,96 @@ describe("revertFile", () => {
 
     mocks.transaction.mockRejectedValue(knownError("P1001"));
     await expect(revert(1)).resolves.toEqual({ ok: false, error: { code: "failed" } });
+  });
+});
+
+describe("moveOrRenameFile", () => {
+  const move = (input: Partial<{ name: string; tabId: string | null; lockVersion: number | null }> = {}) =>
+    fileService.moveOrRenameFile(ACTOR, FILE_ID, { name: "network.png", tabId: null, lockVersion: 3, ...input });
+
+  it("stores the name and place under the exclusive lock of the links, counts the lock version up and logs it", async () => {
+    await expect(move()).resolves.toEqual({
+      ok: true,
+      value: { ...STORED_FILE, lockVersion: 4, updatedPages: [] },
+    });
+    expect(mocks.executeRaw).toHaveBeenCalledOnce();
+    expect(String(mocks.executeRaw.mock.calls[0]?.[0])).toContain("pg_advisory_xact_lock(");
+    expect(mocks.fileUpdateMany.mock.calls[0]?.[0]).toMatchObject({
+      where: { id: FILE_ID, lockVersion: 3, deletedAt: null },
+      data: { name: "network.png", tabId: null, lockVersion: { increment: 1 }, lastEditedById: ACTOR_ID },
+    });
+    // The links and embeds of the old name and place are looked up in the index.
+    expect(mocks.linkFindMany.mock.calls[0]?.[0]).toMatchObject({
+      where: { folderId: FOLDER_ID, tabName: "guides", pageName: "diagram.png" },
+    });
+    expect(mocks.info).toHaveBeenCalledWith(
+      { fileId: FILE_ID, tabId: null, lockVersion: 4, linkingPages: 0, channel: "web" },
+      "file moved or renamed",
+    );
+  });
+
+  it("stores nothing for the own name and place, and answers with the file as stored", async () => {
+    mocks.fileUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.txFileFindFirst.mockImplementation(({ where }: { where: { OR?: unknown } }) =>
+      Promise.resolve(where.OR ? null : STORED_ROW),
+    );
+
+    await expect(move({ name: "diagram.png", tabId: TAB_ID })).resolves.toEqual({
+      ok: true,
+      value: { ...STORED_FILE, updatedPages: [] },
+    });
+    expect(mocks.linkFindMany).not.toHaveBeenCalled();
+    expect(mocks.info).toHaveBeenCalledWith(
+      { fileId: FILE_ID, channel: "web" },
+      "file not changed: name and place are the same",
+    );
+  });
+
+  it("refuses a move based on an older lock version, or on none, with the file as it is now", async () => {
+    mocks.fileUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.txFileFindFirst.mockResolvedValue(null);
+    mocks.fileFindUnique
+      .mockResolvedValueOnce({ type: "png", folderId: FOLDER_ID })
+      .mockResolvedValueOnce({ ...STORED_ROW, lockVersion: 4 })
+      .mockResolvedValueOnce({ type: "png", folderId: FOLDER_ID })
+      .mockResolvedValueOnce({ ...STORED_ROW, lockVersion: 4 });
+
+    const changed = { ok: false, error: { code: "file-changed", file: { ...STORED_FILE, lockVersion: 4 } } };
+    await expect(move()).resolves.toEqual(changed);
+    await expect(move({ lockVersion: null })).resolves.toEqual(changed);
+    expect(mocks.linkFindMany).not.toHaveBeenCalled();
+  });
+
+  it("checks in the order of a move: the id, the place, the name rule, the file, the extension", async () => {
+    await expect(
+      fileService.moveOrRenameFile(ACTOR, MALFORMED_ID, { name: "a.png", tabId: null, lockVersion: 3 }),
+    ).resolves.toEqual({ ok: false, error: { code: "file-not-found" } });
+    expect(mocks.roleFindFirst).not.toHaveBeenCalled();
+
+    await expect(move({ tabId: MALFORMED_ID })).resolves.toEqual({ ok: false, error: { code: "tab-not-found" } });
+    await expect(move({ name: "Network.png" })).resolves.toMatchObject({
+      ok: false,
+      error: { code: "invalid-input", fieldErrors: { name: [expect.any(String)] } },
+    });
+    await expect(move({ name: "network.jpg" })).resolves.toEqual({
+      ok: false,
+      error: {
+        code: "invalid-input",
+        fieldErrors: { name: ["The name must end in .png, because the type of a file cannot change"] },
+      },
+    });
+    mocks.fileFindUnique.mockResolvedValue(null);
+    await expect(move()).resolves.toEqual({ ok: false, error: { code: "file-not-found" } });
+    expect(mocks.transaction).not.toHaveBeenCalled();
+  });
+
+  it("answers a taken name, a tab of another folder and any other error", async () => {
+    mocks.transaction.mockRejectedValueOnce(uniqueViolation({ index: "File_tabId_name_key" }));
+    await expect(move()).resolves.toEqual({ ok: false, error: { code: "name-taken" } });
+    mocks.transaction.mockRejectedValueOnce(foreignKeyViolation({ index: "File_tabId_folderId_fkey" }));
+    await expect(move({ tabId: TAB_ID })).resolves.toEqual({ ok: false, error: { code: "tab-not-found" } });
+    mocks.transaction.mockRejectedValueOnce(knownError("P1001"));
+    await expect(move()).resolves.toEqual({ ok: false, error: { code: "failed" } });
   });
 });
 

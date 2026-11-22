@@ -3,7 +3,7 @@ import type { Page as BrowserPage } from "@playwright/test";
 
 import { KNOWN_USER } from "../prisma/known-users";
 import { by, collectErrors } from "./support/browser";
-import { createFolder, createPage, createTab, getTestDb, resetTestDatabase } from "./support/database";
+import { createFile, createFolder, createPage, createTab, getTestDb, resetTestDatabase } from "./support/database";
 import { expectContent, fillContent } from "./support/editor";
 import { expect, hydrating, test } from "./support/test";
 
@@ -181,4 +181,27 @@ test("renaming a tab updates the links into it in every page, and its dialog say
     "/folders/handbook/docs/setup.md",
   );
   expect(errors).toEqual([]);
+});
+
+test("renaming a tab updates the links and embeds of its files in every page, and its dialog counts them", async ({
+  page,
+}) => {
+  await createFile({ tab: guides, name: "diagram.png" });
+  await createPage({ folder: handbook, name: "setup", content: "# Setup\n\n![[guides/diagram.png]]" });
+  await createPage({ tab: guides, name: "manual", content: "# Manual\n\n[[guides/diagram.png|The diagram]]" });
+
+  await page.goto("/folders/handbook/guides?action=rename");
+  const dialog = page.getByRole("dialog", { name: "Rename tab" });
+  await expect(dialog).toContainText("Links in 2 pages will be updated.");
+  await dialog.getByLabel("Name").fill("manuals");
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(page).toHaveURL("/folders/handbook/manuals");
+
+  expect(await contentOf("setup")).toBe("# Setup\n\n![[manuals/diagram.png]]");
+  expect(await contentOf("manual")).toBe("# Manual\n\n[[manuals/diagram.png|The diagram]]");
+  await page.goto("/folders/handbook/setup.md");
+  await expect(page.getByRole("article").getByRole("img", { name: "diagram.png" })).toHaveAttribute(
+    "src",
+    "/files/handbook/manuals/diagram.png",
+  );
 });

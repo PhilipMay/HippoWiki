@@ -1,10 +1,15 @@
 // What the dialogs of files need: the answer of the upload address, which the upload dialogs read after their `fetch()`,
-// the answer of the check of a name, and the form of a revert. No server-only imports, so Client Components can use its
+// the answer of the check of a name, and the forms of a revert and of a move or rename. No server-only imports, so Client Components can use its
 // types; a Client Component takes the names of fields from `fields.ts`, which brings no Zod.
 
+import { z } from "zod";
+
 import { LOCK_VERSION_FIELD } from "@/features/files/fields";
-import { parseLockVersion } from "@/features/files/schema";
+import { parseLockVersion, uploadInputSchema, type FileFieldErrors } from "@/features/files/schema";
+import { parseTabId } from "@/features/folders/schema";
+import { PLACE_FIELD } from "@/features/pages/fields";
 import type { LastEditor } from "@/features/users/records";
+import { textField, type FormState } from "@/lib/forms";
 
 /** The field of the upload dialog that a refusal belongs to: the name, the chosen file, or the dialog as a whole. */
 export type UploadField = "name" | "file" | null;
@@ -61,4 +66,44 @@ export function parseLockVersionFormData(formData: FormData): number | null {
   const value = formData.get(LOCK_VERSION_FIELD);
   if (typeof value !== "string" || !/^[0-9]+$/.test(value)) return null;
   return parseLockVersion(Number(value));
+}
+
+/**
+ * State of the "Move or rename file" form between submissions: the errors of the last attempt, if any; the message is
+ * one that is not about the name, e.g. when the chosen tab or the file no longer exists.
+ */
+export type FileMoveOrRenameFormState = FormState<FileFieldErrors>;
+
+/** The Server Action of the "Move or rename file" dialog, with the file bound. */
+export type FileMoveOrRenameFormAction = (
+  state: FileMoveOrRenameFormState,
+  formData: FormData,
+) => Promise<FileMoveOrRenameFormState>;
+
+/**
+ * Validates the name and reads the place and the lock version of a submitted "Move or rename file" form. A missing
+ * name and a file count as empty; an empty or missing place is the folder itself, a malformed tab id or a file is no
+ * place; a missing or malformed lock version is `null`, which is no error of the form. On failure, returns the errors
+ * of the name field and whether the place is invalid; both are reported together.
+ */
+export function parseFileMoveOrRenameFormData(
+  formData: FormData,
+):
+  | { success: true; data: { name: string; tabId: string | null; lockVersion: number | null } }
+  | { success: false; fieldErrors: FileFieldErrors; placeInvalid: boolean } {
+  const name = uploadInputSchema.safeParse({ name: textField(formData, "name") });
+  const place = formData.get(PLACE_FIELD) ?? "";
+  const tabId = typeof place === "string" && place !== "" ? parseTabId(place) : null;
+  const placeValid = typeof place === "string" && (place === "" || tabId !== null);
+  if (name.success && placeValid) {
+    return {
+      success: true,
+      data: { name: name.data.name, tabId, lockVersion: parseLockVersionFormData(formData) },
+    };
+  }
+  return {
+    success: false,
+    fieldErrors: name.success ? {} : z.flattenError(name.error).fieldErrors,
+    placeInvalid: !placeValid,
+  };
 }

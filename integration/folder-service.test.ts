@@ -6,7 +6,15 @@ import * as pageService from "@/features/pages/service";
 import { inBrowser, type BrowserActor } from "@/features/folder-roles/actors";
 import type { User } from "@/generated/prisma/client";
 
-import { createFolder, createFolderRole, createPage, createTab, createUser, getTestDb } from "../e2e/support/database";
+import {
+  createFile,
+  createFolder,
+  createFolderRole,
+  createPage,
+  createTab,
+  createUser,
+  getTestDb,
+} from "../e2e/support/database";
 import { KNOWN_USER } from "../prisma/known-users";
 import { createBob, FAILED, NOT_ALLOWED, revisionsOf, storedPage, UNKNOWN_ACTOR, mcpActorOf } from "./helpers";
 
@@ -230,6 +238,24 @@ describe("tab writes", () => {
     await expect(folderService.renameTab(actor, tab.id, { name: "how-to" })).resolves.toMatchObject({ ok: true });
 
     expect(await versions()).toEqual([2, 3, 5]);
+  });
+});
+
+describe("renaming a tab with files", () => {
+  it("updates the links and embeds of the files of the tab in every page of the folder", async () => {
+    const folder = await createFolder();
+    const guides = await createTab({ folder, name: "guides" });
+    await createFile({ tab: guides, name: "diagram.png" });
+    const page = await createPage({
+      folder,
+      content: "# Setup\n\n![[guides/diagram.png]] [[guides/report.pdf|Manual]] [[diagram.png]]",
+    });
+
+    await expect(folderService.renameTab(actor, guides.id, { name: "manuals" })).resolves.toMatchObject({ ok: true });
+
+    expect((await storedPage(page.id)).content).toBe(
+      "# Setup\n\n![[manuals/diagram.png]] [[manuals/report.pdf|Manual]] [[diagram.png]]",
+    );
   });
 });
 

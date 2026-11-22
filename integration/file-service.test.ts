@@ -21,7 +21,7 @@ import {
 } from "../e2e/support/database";
 import { PHOTO_CAMERA, pdfBytes, phonePhoto, pngBytes } from "../e2e/support/files";
 import { KNOWN_USER } from "../prisma/known-users";
-import { createBob, NOT_ALLOWED } from "./helpers";
+import { createBob, NOT_ALLOWED, revisionsOf, storedPage } from "./helpers";
 
 /** The user who makes the writes, the known user `alice`, Owner of every folder a test creates without roles. */
 let user: User;
@@ -353,6 +353,96 @@ describe("reverting a file", () => {
     await expect(fileService.revertFile(inBrowser(bob), file.id, { version: 1, lockVersion: 1 })).resolves.toEqual(
       NOT_ALLOWED,
     );
+  });
+});
+
+describe("moving and renaming a file", () => {
+  it("updates the links and embeds of every page that is not deleted, with a revision each, and keeps the versions", async () => {
+    const folder = await createFolder();
+    const guides = await createTab({ folder, name: "guides" });
+    const file = await createFile({ tab: guides, name: "diagram.png", versions: [{}, {}] });
+    const setup = await createPage({
+      folder,
+      name: "setup",
+      content: "# Setup\n\n![[guides/diagram.png|The network]]",
+    });
+    const network = await createPage({ tab: guides, name: "network", content: "# Network\n\n[[guides/diagram.png]]" });
+    const other = await createPage({ folder, name: "other", content: "# Other\n\n[[guides/diagram]] [[diagram.png]]" });
+    const deleted = await createPage({ folder, content: "# Gone\n\n![[guides/diagram.png]]", deletedAt: new Date() });
+    const untouched = await Promise.all([other, deleted].map(({ id }) => storedPage(id)));
+
+    const result = await fileService.moveOrRenameFile(actor, file.id, {
+      name: "network.png",
+      tabId: null,
+      lockVersion: file.lockVersion,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { name: "network.png", tab: null, lockVersion: file.lockVersion + 1, lastEditedBy: { name: "alice" } },
+    });
+    expect(result.ok && result.value.updatedPages.map(({ name }) => name)).toEqual(["network", "setup"]);
+    expect((await storedPage(setup.id)).content).toBe("# Setup\n\n![[network.png|The network]]");
+    expect((await storedPage(network.id)).content).toBe("# Network\n\n[[network.png]]");
+    for (const id of [setup.id, network.id]) {
+      expect((await revisionsOf(id)).at(-1)).toMatchObject({ userId: user.id, via: "web", linksUpdated: true });
+    }
+    expect(await Promise.all([other, deleted].map(({ id }) => storedPage(id)))).toEqual(untouched);
+    expect(await getTestDb().fileVersion.count({ where: { fileId: file.id } })).toBe(2);
+    await expect(fileService.getFile(actor, folder.name, null, "network.png")).resolves.toMatchObject({
+      versions: [{ number: 2 }, { number: 1 }],
+    });
+  });
+
+  it("refuses a taken name, a tab of another folder and an older lock version, and changes no page", async () => {
+    const folder = await createFolder();
+    const guides = await createTab({ folder, name: "guides" });
+    const file = await createFile({ tab: guides, name: "diagram.png", lockVersion: 2 });
+    await createFile({ folder, name: "taken.png" });
+    const elsewhere = await createTab({ folder: await createFolder(), name: "elsewhere" });
+    const page = await createPage({ folder, content: "# Setup\n\n![[guides/diagram.png]]" });
+    const before = await storedPage(page.id);
+
+    const move = (input: { name?: string; tabId?: string | null; lockVersion?: number }) =>
+      fileService.moveOrRenameFile(actor, file.id, { name: "network.png", tabId: null, lockVersion: 2, ...input });
+    await expect(move({ name: "taken.png" })).resolves.toEqual({ ok: false, error: { code: "name-taken" } });
+    await expect(move({ tabId: elsewhere.id })).resolves.toEqual({ ok: false, error: { code: "tab-not-found" } });
+    await expect(move({ lockVersion: 1 })).resolves.toMatchObject({
+      ok: false,
+      error: { code: "file-changed", file: { name: "diagram.png", lockVersion: 2 } },
+    });
+    await expect(move({ name: "network.pdf" })).resolves.toMatchObject({
+      ok: false,
+      error: { code: "invalid-input" },
+    });
+
+    expect(await storedPage(page.id)).toEqual(before);
+    expect(await getTestDb().file.findUniqueOrThrow({ where: { id: file.id } })).toMatchObject({
+      name: "diagram.png",
+      tabId: guides.id,
+      lockVersion: 2,
+    });
+  });
+
+  it("stores nothing for a move to the own name and place, and refuses a Reader", async () => {
+    const bob = await createBob();
+    const folder = await createFolder({
+      roles: [
+        { user, role: "owner" },
+        { user: bob, role: "reader" },
+      ],
+    });
+    const file = await createFile({ folder, name: "diagram.png", editor: bob });
+    const stored = await getTestDb().file.findUniqueOrThrow({ where: { id: file.id } });
+
+    await expect(
+      fileService.moveOrRenameFile(actor, file.id, { name: "diagram.png", tabId: null, lockVersion: 1 }),
+    ).resolves.toMatchObject({ ok: true, value: { name: "diagram.png", lockVersion: 1, updatedPages: [] } });
+    await expect(
+      fileService.moveOrRenameFile(inBrowser(bob), file.id, { name: "other.png", tabId: null, lockVersion: 1 }),
+    ).resolves.toEqual(NOT_ALLOWED);
+
+    expect(await getTestDb().file.findUniqueOrThrow({ where: { id: file.id } })).toEqual(stored);
   });
 });
 

@@ -3,6 +3,7 @@
 
 import { z } from "zod";
 
+import { FILE_TYPES, type FileType } from "@/features/files/types";
 import { fileNameSchema } from "@/lib/names";
 
 /** A file id: a UUID, like the ids of pages. */
@@ -45,3 +46,11 @@ export const uploadInputSchema = z.object({ name: fileNameSchema });
 
 /** The messages of the schema at the name field of an upload, as the service returns them in `invalid-input`. */
 export type FileFieldErrors = { name?: string[] };
+
+/**
+ * The message at the name field of a move or rename whose name has another extension than the type of the file: the
+ * type is fixed by the extension, so it stays.
+ */
+export function fileExtensionMessage(type: FileType): string {
+  return `The name must end in .${FILE_TYPES[type].extension}, because the type of a file cannot change`;
+}

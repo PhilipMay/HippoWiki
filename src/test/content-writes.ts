@@ -169,6 +169,16 @@ const CONTENT_WRITES: readonly ContentWrite[] = [
     editorKey: "FileVersion_userId_fkey",
     failure: "failed to revert file",
   },
+  {
+    name: "moveOrRenameFile",
+    service: "files",
+    call: (actor) => files.moveOrRenameFile(actor, FILE_ID, { name: "network.png", tabId: null, lockVersion: 3 }),
+    lowest: "writer",
+    target: { fileId: FILE_ID },
+    what: "file not moved or renamed",
+    editorKey: "File_lastEditedById_fkey",
+    failure: "failed to move or rename file",
+  },
 ];
 
 /** The content writes of the given service. */

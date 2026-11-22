@@ -10,14 +10,19 @@ import TextField from "@mui/material/TextField";
 import { useId, type Ref } from "react";
 
 import { PLACE_FIELD } from "@/features/pages/fields";
-import { pagePath } from "@/lib/addresses";
+import { filePath, pagePath } from "@/lib/addresses";
 import { NAME_MAX_LENGTH } from "@/lib/name-limits";
+
+/** The longest extension of a file with its dot, which a name of a file may have after the length limit of a name. */
+const FILE_EXTENSION_LENGTH = ".webp".length;
 
 /** The value of the place "directly in the folder": no tab. */
 export const FOLDER_TARGET = "";
 
 type PageNameAndPlaceFieldsProps = {
-  /** The name of the page's folder, for the address shown below the name. */
+  /** Whether the fields are those of a page or of a file, whose name has its extension; a page by default. */
+  item?: "page" | "file";
+  /** The name of the folder of the page or file, for the address shown below the name. */
   folderName: string;
   /** The tabs of the folder, in display order. */
   tabs: { id: string; name: string }[];
@@ -46,11 +51,12 @@ type PageNameAndPlaceFieldsProps = {
 };
 
 /**
- * The name field of a page, with the address it gets below it, and the choice of its place: directly in the folder or
- * one of its tabs. Shared by the "Save page", the "Move or rename page" and the "Restore page" dialog; the dialog keeps
- * name and place in its state.
+ * The name field of a page or file, with the address it gets below it, and the choice of its place: directly in the
+ * folder or one of its tabs. Shared by the "Save page", the "Move or rename page", the "Restore page" and the "Move or
+ * rename file" dialog; the dialog keeps name and place in its state.
  */
 export default function PageNameAndPlaceFields({
+  item = "page",
   folderName,
   tabs,
   name,
@@ -66,6 +72,7 @@ export default function PageNameAndPlaceFields({
   const placeLabelId = useId();
   const placeErrorId = useId();
   const tabName = tabs.find((tab) => tab.id === place)?.name ?? null;
+  const addressOf = item === "file" ? filePath : pagePath;
 
   return (
     <>
@@ -79,11 +86,11 @@ export default function PageNameAndPlaceFields({
         fullWidth
         error={!!nameError}
         helperText={
-          nameError ?? (place === null ? undefined : `Address: ${pagePath(folderName, tabName, name.trim())}`)
+          nameError ?? (place === null ? undefined : `Address: ${addressOf(folderName, tabName, name.trim())}`)
         }
         slotProps={{
           htmlInput: {
-            maxLength: NAME_MAX_LENGTH,
+            maxLength: item === "file" ? NAME_MAX_LENGTH + FILE_EXTENSION_LENGTH : NAME_MAX_LENGTH,
             spellCheck: false,
             autoCapitalize: "none",
             readOnly: locked,

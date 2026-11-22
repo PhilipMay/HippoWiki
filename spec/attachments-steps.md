@@ -156,6 +156,11 @@ What the steps share, so that each step builds on the same model:
   `integration/search-index.test.ts`. With file targets in the index, a tab rename already updates the links and
   embeds of the files of the tab, and the "Rename tab" dialog counts them; step 7 adds the tests.
 
+- Step 7: a name with another extension than the type of the file is refused at the name field with a message that
+  says the type cannot change (`fileExtensionMessage()` of `src/features/files/schema.ts`). The "Rename tab" dialog
+  needed no change: it counts the rows of the index of links in the tab, which hold the targets of files since step 6.
+  The "Move or rename file" dialog counts the pages that "Shown or linked from" lists.
+
 ## Requirements by step
 
 | Step                                      | Requirements                                      |
@@ -188,7 +193,7 @@ The plan is large, so it has two stop points:
 - [x] Files in the views and the details page
 - [x] New versions and revert
 - [x] Links and embeds of files
-- [ ] Moving and renaming files
+- [x] Moving and renaming files
 - [ ] Deleting and restoring files
 - [ ] Files in the editor
 - [ ] Files in search

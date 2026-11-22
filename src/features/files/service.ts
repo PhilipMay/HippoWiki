@@ -37,7 +37,13 @@ import {
 } from "@/features/folder-roles/service";
 import { parseFolderId, parseTabId } from "@/features/folders/schema";
 import { ImageBusyError, processImage } from "@/features/files/images";
-import { parseFileId, parseLockVersion, uploadInputSchema, type FileFieldErrors } from "@/features/files/schema";
+import {
+  fileExtensionMessage,
+  parseFileId,
+  parseLockVersion,
+  uploadInputSchema,
+  type FileFieldErrors,
+} from "@/features/files/schema";
 import {
   commitBlob,
   discardStaged,
@@ -51,8 +57,10 @@ import {
   type StoredBlob,
 } from "@/features/files/store";
 import { detectType, isImageType, typeOfExtension, type FileType } from "@/features/files/types";
+import { LINKS_TRANSACTION, lockFolderLinks, updateLinks, type LinkingPage } from "@/features/pages/links-service";
+import { pageMoved } from "@/features/pages/wiki-links";
 import { LAST_EDITOR_SELECT, withLastEditor, type LastEditor } from "@/features/users/records";
-import type { ChangeChannel } from "@/generated/prisma/client";
+import type { ChangeChannel, Prisma } from "@/generated/prisma/client";
 import { getDb } from "@/lib/db";
 import { FILE_NAME, isForeignKeyViolation, isUniqueViolation, LAST_EDITOR } from "@/lib/db-errors";
 import { getServerEnv } from "@/lib/env";
@@ -63,6 +71,7 @@ import {
   type Failed,
   type FolderNotFound,
   type InvalidInput,
+  type NameTaken,
   type NotAllowed,
   type Result,
   type TabNotFound,
@@ -807,4 +816,153 @@ export async function revertFile(
 
   logger.info({ fileId, lockVersion: file.lockVersion, version: input.version, ...channelOf(actor) }, "file reverted");
   return { ok: true, value: file };
+}
+
+export type MoveOrRenameFileError =
+  NotAllowed | FileNotFound | FileChanged | TabNotFound | InvalidInput<FileFieldErrors> | NameTaken | Failed;
+
+/** A file as stored by a move or rename, with the pages whose links and embeds of it were updated. */
+export type MovedFile = StoredFile & { updatedPages: LinkingPage[] };
+
+/** What the store of a move or rename did. */
+type FileMoveWrite =
+  | { kind: "stored"; file: StoredFile; updatedPages: LinkingPage[] }
+  | { kind: "unchanged"; file: StoredFile }
+  | { kind: "refused" };
+
+/**
+ * Stores the given name and place of the file with the given id, based on the lock version that the dialog was opened
+ * with, and returns the file as stored with the pages whose links and embeds of it were updated. The file is placed in
+ * the tab with the id `tabId` of its folder or, with `null`, directly in the folder; a tab of another folder is
+ * refused by the composite foreign key and counts as missing. The extension stays, because it fixes the type: a name
+ * with another one is refused at the name field. The checks are those of a move of a page: the actor, the id, the role
+ * `editFile`, the place, the name and the lock version, which a change since the dialog was opened makes refuse the
+ * move with `file-changed`, also when the name is taken. A move to the name and place the file has stored stores
+ * nothing and is logged apart. A stored move counts the lock version up, makes the actor the last editor and updates
+ * every link and embed of the file in the pages of the folder that are not deleted, in one transaction that holds the
+ * exclusive lock of the links of the folder (`lockFolderLinks()`), each updated page with a revision marked as links
+ * updated; a move that is refused or fails changes no page. Only the browser moves files.
+ */
+export async function moveOrRenameFile(
+  actor: BrowserActor,
+  id: string,
+  input: { name: string; tabId: string | null; lockVersion: number | null },
+): Promise<Result<MovedFile, MoveOrRenameFileError>> {
+  const opened = openContentWrite(actor, "file not moved or renamed");
+  if (opened.refused) return opened.refused;
+  const { editor } = opened;
+
+  const fileId = parseFileId(id);
+  if (!fileId) return { ok: false, error: { code: "file-not-found" } };
+
+  const failure = "failed to move or rename file";
+  const role = await lookUp(() => roleOnFolderOfFile(actor, fileId), { fileId }, failure);
+  if (!role.ok) return role;
+  const refused = refusedByRole(actor, "file not moved or renamed", role.value, "editFile", { fileId });
+  if (refused) return refused;
+
+  const tabId = input.tabId === null ? null : parseTabId(input.tabId);
+  if (tabId === null && input.tabId !== null) return { ok: false, error: { code: "tab-not-found" } };
+
+  const parsed = uploadInputSchema.safeParse({ name: input.name });
+  if (!parsed.success) return invalidInput(parsed.error);
+  const { name } = parsed.data;
+  const stored = await lookUp(
+    () => getDb().file.findUnique({ where: { id: fileId, deletedAt: null }, select: { type: true, folderId: true } }),
+    { fileId },
+    failure,
+  );
+  if (!stored.ok) return stored;
+  if (!stored.value) {
+    logger.warn({ fileId }, "file to move or rename not found");
+    return { ok: false, error: { code: "file-not-found" } };
+  }
+  const extension = parseFileName(name)?.extension;
+  if (!extension || typeOfExtension(extension) !== stored.value.type) {
+    return {
+      ok: false,
+      error: { code: "invalid-input", fieldErrors: { name: [fileExtensionMessage(stored.value.type)] } },
+    };
+  }
+
+  const lockVersion = parseLockVersion(input.lockVersion);
+  let written: FileMoveWrite;
+  try {
+    if (lockVersion === null) return await refusedFileWrite(fileId, input.lockVersion, "file to move or rename");
+    written = await storeFileMove(fileId, stored.value.folderId, lockVersion, { name, tabId }, editor);
+  } catch (err) {
+    // Before the tab key: a missing actor must not be reported as a missing tab.
+    if (isForeignKeyViolation(err, LAST_EDITOR)) return unknownActor(err, actor);
+    if (isUniqueViolation(err, FILE_NAME)) {
+      logger.warn({ fileId, tabId, name }, "name of moved or renamed file already in use at the target");
+      return { ok: false, error: { code: "name-taken" } };
+    }
+    if (isForeignKeyViolation(err)) {
+      logger.warn({ fileId, tabId }, "target tab of moved or renamed file not found in the file's folder");
+      return { ok: false, error: { code: "tab-not-found" } };
+    }
+    logger.error({ err, fileId, tabId }, failure);
+    return { ok: false, error: { code: "failed" } };
+  }
+  if (written.kind === "refused") return refusedFileWrite(fileId, lockVersion, "file to move or rename");
+  if (written.kind === "unchanged") {
+    logger.info({ fileId, ...channelOf(actor) }, "file not changed: name and place are the same");
+    return { ok: true, value: { ...written.file, updatedPages: [] } };
+  }
+  const { file, updatedPages } = written;
+  logger.info(
+    { fileId, tabId, lockVersion: file.lockVersion, linkingPages: updatedPages.length, ...channelOf(actor) },
+    "file moved or renamed",
+  );
+  return { ok: true, value: { ...file, updatedPages } };
+}
+
+/**
+ * The transaction of a move or rename of a file: takes the exclusive lock of the links of the folder, stores the name
+ * and place if the file is not deleted, has the lock version and differs from them, counts the lock version up, and
+ * updates the links and embeds of the old name and place in the pages of the folder (`updateLinks()`). A file with the
+ * lock version and this name and place stores nothing (`unchanged`); anything else that matched no row is `refused`.
+ */
+async function storeFileMove(
+  fileId: string,
+  folderId: string,
+  lockVersion: number,
+  target: { name: string; tabId: string | null },
+  editor: Editor,
+): Promise<FileMoveWrite> {
+  const { name, tabId } = target;
+  const current = { id: fileId, lockVersion, deletedAt: null };
+  // `not` never matches a column that is `null`, so a file directly in the folder is matched apart.
+  const differs: Prisma.FileWhereInput[] = [
+    { name: { not: name } },
+    ...(tabId === null ? [{ tabId: { not: null } }] : [{ tabId: null }, { tabId: { not: tabId } }]),
+  ];
+  return getDb().$transaction(async (tx): Promise<FileMoveWrite> => {
+    await lockFolderLinks(tx, folderId, "exclusive");
+    // The name and place before the move, which the links name.
+    const before = await tx.file.findFirst({
+      where: { ...current, OR: differs },
+      select: { name: true, tab: { select: { name: true } } },
+    });
+    const { count } = await tx.file.updateMany({
+      where: { ...current, OR: differs },
+      data: { name, tabId, lockVersion: { increment: 1 }, ...editor },
+    });
+    if (count === 0 || !before) {
+      const unchanged = await tx.file.findFirst({ where: { ...current, name, tabId }, select: STORED_FILE_SELECT });
+      return unchanged ? { kind: "unchanged", file: withLastEditor(unchanged) } : { kind: "refused" };
+    }
+    const file = withLastEditor(await tx.file.findUniqueOrThrow({ where: { id: fileId }, select: STORED_FILE_SELECT }));
+    const updatedPages = await updateLinks(
+      tx,
+      folderId,
+      { tabName: before.tab?.name ?? null, pageName: before.name },
+      pageMoved(
+        { kind: "file", tab: before.tab?.name ?? null, name: before.name },
+        { kind: "file", tab: file.tab?.name ?? null, name: file.name },
+      ),
+      editor,
+    );
+    return { kind: "stored", file, updatedPages };
+  }, LINKS_TRANSACTION);
 }

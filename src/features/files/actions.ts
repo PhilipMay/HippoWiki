@@ -7,12 +7,15 @@ import { notFound, redirect } from "next/navigation";
 
 import { requireUser } from "@/features/auth/session";
 import { inBrowser } from "@/features/folder-roles/actors";
+import { NAME_TAKEN_STATE } from "@/features/folders/forms";
 import {
   FOLDER_GONE_MESSAGE,
+  parseFileMoveOrRenameFormData,
   parseLockVersionFormData,
   TAB_GONE_MESSAGE,
   uploadedFileState,
   UPLOAD_FAILED_MESSAGE,
+  type FileMoveOrRenameFormState,
   type FileRevertFormState,
   type NameCheck,
 } from "@/features/files/forms";
@@ -26,6 +29,9 @@ const FILE_GONE_MESSAGE = "This file no longer exists.";
 
 /** The message of a revert that failed. */
 const REVERT_FAILED_MESSAGE = "The file could not be reverted. Please try again.";
+
+/** The message of a move or rename that failed. */
+const MOVE_FAILED_MESSAGE = "The file could not be moved or renamed. Please try again.";
 
 /**
  * Checks the name of an upload into the tab with the id `tabId` or, with `null`, directly into the folder with the id
@@ -90,6 +96,59 @@ export async function revertFile(
       }
       case "failed":
         return { message: REVERT_FAILED_MESSAGE };
+    }
+  }
+
+  revalidateContent();
+  const { folder, tab, name } = result.value;
+  redirect(filePath(folder.name, tab?.name ?? null, name));
+}
+
+/**
+ * Stores the name and place of the file with the given id from the submitted "Move or rename file" form, based on the
+ * lock version in the form, and redirects to its details page as stored. Returns the errors to show in the dialog if
+ * the input is invalid, the name is taken at the place, the tab or the file no longer exists, or the move cannot be
+ * stored. If the file was changed after the dialog was opened, the dialog is shown again with the file as it is now
+ * and the notice that says so. Bind the id with `moveOrRenameFile.bind(null, id)`.
+ */
+export async function moveOrRenameFile(
+  id: string,
+  _prevState: FileMoveOrRenameFormState,
+  formData: FormData,
+): Promise<FileMoveOrRenameFormState> {
+  const user = await requireUser();
+
+  const fileId = parseFileId(id);
+  if (!fileId) return { message: FILE_GONE_MESSAGE };
+
+  const input = parseFileMoveOrRenameFormData(formData);
+  if (!input.success) {
+    return {
+      ...(Object.keys(input.fieldErrors).length > 0 && { fieldErrors: input.fieldErrors }),
+      ...(input.placeInvalid && { message: TAB_GONE_MESSAGE }),
+    };
+  }
+
+  const result = await fileService.moveOrRenameFile(inBrowser(user), fileId, input.data);
+  if (!result.ok) {
+    switch (result.error.code) {
+      case "not-allowed":
+        notFound();
+      case "file-not-found":
+        return { message: FILE_GONE_MESSAGE };
+      case "file-changed": {
+        const { folder, tab, name } = result.error.file;
+        revalidateContent();
+        redirect(filePath(folder.name, tab?.name ?? null, name, "move-or-rename", CHANGED_NOTICE));
+      }
+      case "tab-not-found":
+        return { message: TAB_GONE_MESSAGE };
+      case "invalid-input":
+        return { fieldErrors: result.error.fieldErrors };
+      case "name-taken":
+        return NAME_TAKEN_STATE;
+      case "failed":
+        return { message: MOVE_FAILED_MESSAGE };
     }
   }
 
