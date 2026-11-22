@@ -251,7 +251,7 @@ What holds for all of them:
 - Every write tool of pages returns the page as stored: its name, title, tab, address and version, which a change
   counts up and a content save without a change and a move to the current name and place keep.
 - An address is the full URL of the folder, tab, page or file, which a person can open; the address of a file itself
-  answers only a logged-in user with a role on its folder (see `attachments-requirements.md`).
+  answers only a logged-in user with a role on its folder (see `attachments.md`).
 - The name of an existing tab or page is a plain string in the input of every tool. A name that no item has, one that
   breaks the name rule or has spaces around it included, gets the not-found error of the tool, which points to
   `list_folder`; the input schema refuses none of them. The reason: the MCP specification asks for errors of input

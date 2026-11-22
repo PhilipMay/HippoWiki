@@ -36,8 +36,9 @@ Code: `src/features/pages/` (`deletePage`, `restorePage`, `listDeletedPages` and
   (see "Deleting a tab" in `content-structure.md`); no tool deletes a single file.
 - A delete is refused when the file was changed after the dialog was opened, as for pages (see "Files" in
   `optimistic-locking.md`).
-- A deleted file is invisible as a deleted page is: it is missing from the section "Files", both its addresses, the
-  details page and the file itself, show the not-found page, and its links and embeds show as missing.
+- A deleted file is invisible as a deleted page is: it is missing from the section "Files", its details page shows the
+  not-found page and the file itself answers a plain 404 (see "Addresses" in `content-structure.md`), and its links
+  and embeds show as missing.
 
 ## Deleted pages are invisible
 

@@ -176,7 +176,9 @@ How the code is tested. Commands are listed in `README.md`.
   mocked: the tests call the services, which work outside a request. The test files run one after another
   (`fileParallelism: false`).
 - Rows are created with the helpers of `e2e/support/database.ts` (`createFolder()`, `createTab()`, `createPage()`,
-  `createRevisions()`, `createFolderRole()`, `createUser()`, `createGrant()`). A state that no helper sets up, such as
+  `createRevisions()`, `createFile()`, `createFolderRole()`, `createUser()`, `createGrant()`). `integration/setup.ts`
+  creates a temporary directory of files for the test file, which `createFile()` and the store of the files service
+  use, and removes it after the file. A state that no helper sets up, such as
   another version, channel or revision of a stored row, is written directly with the client of `getTestDb()`.
 - `integration/helpers.ts` holds what the tests of the content services share: the results `NOT_ALLOWED` and
   `FAILED`, `UNKNOWN_ACTOR`, `owners()` for the roles of a folder, `createBob()` for the second user, `mcpActorOf()`
@@ -338,7 +340,7 @@ How the code is tested. Commands are listed in `README.md`.
     own.
   - The helpers that insert rows directly into the test database: `createUser()`, `createGrant()` (an OAuth client
     and the grant of a user to it at an MCP address, with its access token), `createFolder()`, `createFolderRole()`,
-    `createTab()`, `createPage()` and `createRevisions()`. Each gives every row a unique name and lets a test set any
+    `createTab()`, `createPage()`, `createRevisions()` and `createFile()`. Each gives every row a unique name and lets a test set any
     field; what each one creates when a field is left out is in its doc comment in `e2e/support/database.ts`. What a
     test relies on:
     - Without `roles`, a folder that `createFolder()`, `createTab()` or `createPage()` creates has the known user
@@ -355,6 +357,16 @@ How the code is tested. Commands are listed in `README.md`.
     - `createRevisions()` gives the page the content and title of its last revision, like the saves that recorded
       them, and leaves its version, last editor and `updatedAt` as they are.
     - `createUser()` creates a user whose first password is still to change, unless `mustChangePassword` is false.
+    - `createFile()` writes the blob of every version into the files directory of its process, as an upload stores
+      it, and inserts the file and its versions; without versions it gets one with a small image or PDF of the type
+      of its extension. A deleted file has no tab.
+  - Every server of the end-to-end tests has a files directory of its own, `.next-e2e/files-<worker>`
+    (`workerFilesDir()` in `e2e/support/workers.ts`, set as `HIPPOWIKI_FILES_DIR` in `playwright.config.ts`), so the
+    files are on in every run; that the views offer no upload while the files are off is covered by the unit tests of
+    the files service and the smoke test of the container image.
+  - `files.ts` has the helpers of files: the test images and PDFs made with sharp (`pngBytes()` and the others,
+    `phonePhoto()` with a GPS position and a camera), `uploadFile()`, which posts a file to the upload address with the
+    cookies of the page, and `expectFileNotFound()`, which checks the plain 404 of a file address.
   - Tests that open an address give the folder, tab and page fixed names, e.g.
     `createPage({ folder, name: "overview" })` for `/folders/<folder>/overview.md`.
   - `getTestDb()` returns a Prisma client for the test database of the worker, e.g. to check what an action stored.
@@ -450,6 +462,11 @@ How the code is tested. Commands are listed in `README.md`.
 - Wiki links have specs of their own: `e2e/wiki-links.spec.ts` the page view, missing links, backlinks and the limit;
   `e2e/wiki-link-updates.spec.ts` the update of links on a move, a rename and a tab rename; and
   `e2e/wiki-links-spec-tests.spec.ts` the tests written from the spec alone.
+- Files have specs of their own: `e2e/files.spec.ts` the upload address and the file address with its headers;
+  `e2e/upload-file.spec.ts` the upload dialog and the section "Files"; `e2e/file-details.spec.ts` the details page,
+  new versions and reverts; `e2e/file-links.spec.ts` links and embeds of files in pages; `e2e/move-or-rename-file.spec.ts`
+  and `e2e/delete-file.spec.ts` the moves, renames, deletes and restores; and `e2e/attachments-spec-tests.spec.ts` and
+  `e2e/mcp-attachments-spec-tests.spec.ts` the tests written from the spec alone (see `attachments.md`).
 - `e2e/ai-apps.spec.ts` covers the folder view "AI apps" with its addresses per role and the copy button.
 - `e2e/search.spec.ts` covers the results view and its address, the search field on every view of a folder and where
   it is left out, and the messages of the limits. Chromium waits with a request for an address until a request for

@@ -1,4 +1,4 @@
-// Tests written from the requirements of attachments alone (`spec/attachments-requirements.md`), for the rules or the
+// Tests written from the spec of attachments alone (`spec/attachments.md`), for the rules or the
 // parts of rules that the other tests of the files service leave open: a PDF is stored as uploaded, also with the
 // removal of the metadata of photos switched on.
 import { beforeEach, describe, expect, it } from "vitest";
@@ -18,7 +18,7 @@ beforeEach(async () => {
 });
 
 describe("the metadata of an upload", () => {
-  // attachments-requirements.md, "Uploading" (R26): a PDF is stored as uploaded; the removal of the metadata is for
+  // attachments.md, "Images": a PDF is stored as uploaded; the removal of the metadata is for
   // photos only.
   it("stores a PDF byte for byte, also with the removal of the metadata switched on", async () => {
     const folder = await createFolder({ name: "handbook" });

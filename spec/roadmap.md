@@ -29,7 +29,8 @@ listed first; there is no order across themes.
 ## Links
 
 - Broken links and orphaned pages: a list of the wiki links of a folder that lead to no page, and a list of the pages
-  that no page links to (see `wiki-links.md`).
+  that no page links to (see `wiki-links.md`), with a list of the files that no page shows or links
+  (`attachments.md`, `attachments-ideas.md`).
 
 ## History and Revisions
 
@@ -45,8 +46,15 @@ listed first; there is no order across themes.
 
 ## Attachments
 
-- Attachments and images: files and images uploaded to pages, stored locally or in an S3-compatible storage
-  (`tech.md`). The research into other wikis and the ideas that follow from it are in `attachments-ideas.md`.
+- S3-compatible storage: the contents of files in an object storage instead of a mounted directory
+  (`attachments.md`, `attachments-ideas.md`).
+- Uploading from the editor: paste, drop and a toolbar button that upload a file and insert its link
+  (`attachments.md`, `attachments-ideas.md`).
+- Files through MCP: uploads of files, and their content, images as images and PDFs as their text
+  (`attachments.md`, `mcp.md`, `attachments-ideas.md`).
+- Text of PDFs in search: find a PDF by the words inside it (`search.md`, `attachments-ideas.md`).
+- More types of files: SVG, Office and text files, as downloads or shown safely (`attachments.md`,
+  `attachments-ideas.md`).
 
 ## Users and Accounts
 
@@ -100,8 +108,9 @@ listed first; there is no order across themes.
 - MCP write tools for folders: create folders from AI apps; renaming a folder and its roles stay in the browser,
   because the Owner is never a role of MCP (`mcp.md`, `folder-roles.md`).
 - CORS for other origins: let web applications on other origins call the API.
-- Rate limits and quotas: limits on requests in the browser, writes and stored content per user; the MCP requests
-  have a rate limit per user already (`mcp.md`).
+- Rate limits and quotas: limits on requests in the browser, writes and stored content per user, the total size of
+  the files of a folder or a user included; the MCP requests have a rate limit per user already (`mcp.md`,
+  `attachments.md`, `attachments-ideas.md`).
 
 ## Operations
 
@@ -109,7 +118,8 @@ listed first; there is no order across themes.
   (`container-image.md`).
 - Reverse proxy with TLS: HTTPS in front of the container, with the login rate limit per client address of "Login and
   Sessions" (`container-image.md`).
-- Database backups: back up the database, at least before a new version starts (`container-image.md`).
+- Database backups: back up the database, at least before a new version starts, and then the files directory
+  (`container-image.md`, `attachments-ideas.md`).
 - Backup schedule, retention and tested restore: regular backups, how long they are kept, and a restore that is
   tried out.
 - NixOS deployment: run HippoWiki on NixOS.

@@ -1,4 +1,4 @@
-// Tests of MCP written from the requirements of attachments alone (`spec/attachments-requirements.md`), for the rules
+// Tests of MCP written from the spec of attachments alone (`spec/attachments.md`), for the rules
 // or the parts of rules that the other specs of MCP leave open: the tools of pages, given the names of files, change
 // no file, and the files of a tab deleted through `delete_tab` are restored in the browser with their versions.
 import type { APIRequestContext } from "@playwright/test";
@@ -35,7 +35,7 @@ async function allFiles() {
   };
 }
 
-// attachments-requirements.md, "MCP" (R6): no tool of any connection uploads, changes, moves, renames or deletes a
+// attachments.md, "MCP": no tool of any connection uploads, changes, moves, renames or deletes a
 // single file, also not a tool of pages that is given the name of a file.
 test("the tools of pages, given the name of a file, change no file and create none", async ({ request }) => {
   const guides = await createTab({ folder: projects, name: "guides" });
@@ -76,7 +76,7 @@ test("the tools of pages, given the name of a file, change no file and create no
   ]);
 });
 
-// attachments-requirements.md, "Deleting and restoring" (R20): after `delete_tab` of a Manager connection the files of
+// attachments.md, "Moving, renaming, deleting and restoring": after `delete_tab` of a Manager connection the files of
 // the tab are among the deleted items of the folder, and a Manager or an Owner restores each with its versions.
 test("the files of a tab deleted through delete_tab are listed under Deleted items and restored with their versions", async ({
   page,

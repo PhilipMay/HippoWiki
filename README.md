@@ -13,7 +13,7 @@ HippoWiki is a knowledge management system, built with Next.js (App Router) and 
 
 The prototype manages wiki pages written in Markdown, organises them in folders and optional tabs and stores them in
 PostgreSQL: create, view, edit, move and rename pages, create and rename folders and tabs, delete pages and tabs and
-restore the pages from the deleted items of their folder. Folders cannot be deleted yet.
+restore the pages and files from the deleted items of their folder. Folders cannot be deleted yet.
 
 Pages are written in a Markdown editor (CodeMirror 6) with a live preview that shows the formatting while writing and
 the Markdown marks only on the lines of the cursor, and a source mode that shows the whole Markdown with syntax
@@ -26,9 +26,15 @@ those pages from them, and every page lists the pages that link to it. Moving or
 updates the links to it in the other pages. The editor shows the links in live preview and offers a list of the pages
 of the folder on typing `[[` (`spec/wiki-links.md`).
 
+Folders and tabs also hold files, images (PNG, JPEG, GIF, WebP) and PDFs, uploaded from their views next to the pages:
+pages show images with `![[name.png]]` and link files with `[[name.pdf]]`, every file has a details page with its
+versions, can be moved, renamed, deleted and restored like a page, and is served with headers that run nothing in it.
+The location and camera data of a photo are removed on upload unless the uploader keeps them. AI apps list files and
+read their details through MCP, never their content (`spec/attachments.md`).
+
 Every folder can be searched from a search field on its pages: titles, names and content, in the language each page is
-written in, by parts of words and with typos, with phrases, excluded words and `or`. AI apps search their folder
-through MCP as well (`spec/search.md`).
+written in, by parts of words and with typos, with phrases, excluded words and `or`, and files by their names. AI apps
+search their folder through MCP as well (`spec/search.md`).
 
 The wiki can only be used after a login. Every account is either an admin, who manages the accounts, sees no content
 and only an overview of who has which role on which folder, or a user, who creates folders, works with the folders on

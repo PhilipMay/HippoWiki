@@ -29,6 +29,10 @@
 - Authentication: Better Auth with its `username` plugin, called only on the server; its password hashing is
   replaced
 - Password hashing: Argon2id with `@node-rs/argon2`, a native package with prebuilt builds
+- Images: sharp (`sharp`, Apache-2.0, with libvips under LGPL-3.0), the version that Next.js installs, which decodes,
+  measures and rewrites uploaded images without their metadata (see `attachments.md`)
+- Files: the contents of uploaded files on a directory of the server, kept by their SHA-256; S3-compatible storage
+  may come later (see `roadmap.md`)
 - Logging: pino
 - MCP server: the official MCP TypeScript SDK (`@modelcontextprotocol/server`, v2), with its web-standard handler in
   a route handler of Next.js: stateless Streamable HTTP with JSON responses (see `mcp.md`)

@@ -4,7 +4,7 @@ Search in one folder as built: users find the pages of a folder whose title they
 about a topic, in the browser and through MCP, in the language each page is written in, by parts of words and with
 typos, without anybody choosing a language. The same search finds the files of the folder, its images and PDFs, by
 their names. Folders, tabs and their addresses are described in `content-structure.md`, files in
-`attachments-requirements.md`, the tools of MCP in `mcp.md`.
+`attachments.md`, the tools of MCP in `mcp.md`.
 
 Code: `src/features/search/`:
 

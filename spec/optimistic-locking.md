@@ -81,7 +81,7 @@ This section is the rule of the version for every caller other than the browser,
 Files are protected as pages are, with their lock version (see "Terms" in `architecture.md`):
 
 - Every file has a lock version: 1 when it is uploaded, counted up by every stored change of the file in the same
-  write: a new version, a revert, a move or rename, and the deletes and restores of later steps. The versions of a file,
+  write: a new version, a revert, a move or rename, a delete and a restore. The versions of a file,
   its stored contents, are another thing: the details page lists them.
 - A new version, a revert and a move or rename state the lock version they are based on: the one the file had when the
   dialog was opened, `replace=<lock version>` of the upload address and the hidden field of "Revert file" and "Move or
