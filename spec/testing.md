@@ -290,7 +290,10 @@ How the code is tested. Commands are listed in `README.md`.
     and keeps the saved state: the session reads the user from the database on every request. The tests of the login
     and one test of each password change log in through the login page, with a user of their own from `createUser()`
     where the known users cannot stand in, in a spec or a browser context without a saved state.
-  - A test in which a second user works at the same time logs that user in with `logInElsewhere(browser, name)` of
+  - A test of a change that another user makes at the same time sets that change up in the database with
+    `getTestDb()`, as the other user's save leaves it: the content or the name, the next version, the other user as
+    the last editor and the channel. Only a test that needs the browser of the other user, such as "refuses the save
+    of the second editor…" of `e2e/edit-page.spec.ts`, logs that user in with `logInElsewhere(browser, name)` of
     `e2e/support/auth.ts`, in a browser context of its own; the user is created with `createUser()` and
     `mustChangePassword: false`, and the test closes the context.
   - A test that changes the password of the known user or the admin, or ends their sessions, does so with their saved
@@ -395,14 +398,36 @@ How the code is tested. Commands are listed in `README.md`.
     `waitForHeldSearches()`, which waits until a number of searches wait for it.
   - `setOwnRole()` sets the role of the known user `alice` on a folder, as another Owner would while a form of the test
     is open.
+  - `storeFiveFailedLogins()` stores the counts that five failed logins of a name from a client address group leave,
+    so that its next login, password change or approval waits. A test of the wait uses it instead of submitting five
+    wrong passwords; only "after five wrong passwords the right one is refused" of `e2e/login.spec.ts` submits them, and
+    the counting itself is tested in `integration/auth-service.test.ts`.
   - `auth.ts` also has `submitLogin()`, which fills and submits the login form of the open page, and `logIn()`, which
     opens the login page first; the test asserts where the login leads.
   - `browser.ts` has `collectErrors()`, which records console errors and uncaught exceptions of the browser page (tests
     assert it stays empty); `expectNotFound()`, which opens an address and expects the not-found page with the status
-    404, named with the address; `by()`, the end of a line of a list or view that names the last editor and the
+    404, named with the address; `expectNotFoundResponse()`, which sends a `GET` of the address with the cookies of the
+    page and expects the status 404 and the HTML of the not-found page in either form that Next.js sends, the error
+    shell with the digest of `notFound()` or the page rendered on the server, without rendering it in the browser;
+    `by()`, the end of a line of a list or view that names the last editor and the
     channel, "by <user> via <channel>"; and `holdServerAction()`, which holds the next request of a Server Action of
     the page with `page.route()` until the test releases it.
   - The public URL of the server of the worker, the base of every full address, is `ISSUER` of `oauth.ts`.
+- A behaviour is checked end to end once, at the cheapest level that still shows it; what an HTTP request, a unit or an
+  integration test shows is not checked again in the browser:
+  - A not-found check that only tests how an address is read uses `expectNotFoundResponse()`, and a spec loops over
+    such addresses in one test after a single setup. `expectNotFound()` is kept for what the not-found page shows,
+    such as the banner, "Back to folders", the plain title or that no dialog opens, once per kind of route.
+  - The rules of an input are checked in the unit tests of its schema or parser (for example
+    `src/features/auth/schema.test.ts`, `src/lib/names.test.ts` or `src/features/pages/derive.test.ts`), and each form
+    keeps one browser case for how it shows an error; several name errors of one dialog are checked in a loop in the
+    open dialog, as in `e2e/tabs.spec.ts`.
+  - A loop over roles runs in the browser only where the code has a branch for the role; the roles themselves are
+    checked in the unit tests of `src/features/folder-roles/` and the integration tests of the services.
+  - A limit is checked end to end with the cheapest content that breaks it, and its size on a lower level.
+  - At least one case of each kind of page stays in the browser: the not-found page, the login page, each form with
+    its errors and each dialog.
+  - Where a test leaves a case to another test or level, a comment names that test.
 - `eslint-plugin-playwright` checks all files in `e2e/`: a Playwright call or `expect` that is not awaited
   (`missing-playwright-await`), `page.waitForTimeout()` (`no-wait-for-timeout`) and checks such as
   `expect(await locator.isVisible())` instead of the retrying `await expect(locator).toBeVisible()`
@@ -535,6 +560,13 @@ cores, 16 GB), one run with 3 workers against the median of five runs before:
   two flaky tests.
 - `end_to_end_tests_production`, CI: the step of the tests took 5 min 1 s with one worker and 3 min 30 s with 3.
 
+Times of the complete `npm run test:e2e` before and after the checks moved to the cheapest level that shows them (see
+"End-to-end tests"), both locally with 4 workers on 2026-11-22, as reported by Playwright, with the summed test time of
+the HTML report:
+
+- Before: 1062 tests, 5.3 min, 1163 s of summed test time.
+- After: 725 tests, 3.3 min, 689 s of summed test time.
+
 Decisions:
 
 - Several workers in one run, not shards: the workers take the next spec file when they are free, which balances the
@@ -561,6 +593,22 @@ Current limits:
 
 - The parallel run pays off only locally: CI runs with one worker (see "Decisions").
 - Every run starts the servers of all workers, also for one spec.
+- The files written from the spec alone (`*-spec-tests.spec.ts`) belong to the `spec-tester` agent and were left as
+  they are. These of their tests check, each with a variation of its own, what another spec checks as well, for its
+  next run:
+  - `e2e/editor-spec-tests.spec.ts`: the cursor kept across a mode switch (`e2e/editor-preview.spec.ts`), replace all
+    as one undo (`e2e/editor.spec.ts`), Ctrl+click on an unsafe and on a safe link (`e2e/editor-preview.spec.ts`), a
+    save without a change (`e2e/edit-page.spec.ts`) and the error of a save shown at the editor (`e2e/editor.spec.ts`).
+  - `e2e/attachments-spec-tests.spec.ts`: the section Files of a place without files (`e2e/upload-file.spec.ts`), the
+    end of the access once the role is removed and a folder without a role (`e2e/files.spec.ts`), the headers of a
+    file address (`e2e/files.spec.ts`, `e2e/security-headers.spec.ts`), the served type (`e2e/files.spec.ts`) and the
+    controls of each role (the specs of the file dialogs).
+  - `e2e/image-optimizer-spec-tests.spec.ts`: the switched-off image optimizer (`e2e/access.spec.ts`).
+  - `e2e/mcp-attachments-spec-tests.spec.ts`: the files of a tab deleted through `delete_tab`
+    (`e2e/mcp-manager.spec.ts`, `e2e/delete-file.spec.ts`).
+  - `e2e/wiki-links-spec-tests.spec.ts`: Linked from (`e2e/wiki-links.spec.ts`), a missing link that leads to the
+    editor of a new page (`e2e/create-page.spec.ts`, `e2e/editor-wiki-links.spec.ts`) and the update of links on a
+    rename (`e2e/wiki-link-updates.spec.ts`).
 
 ## Continuous integration
 
