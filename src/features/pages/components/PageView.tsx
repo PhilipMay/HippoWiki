@@ -9,7 +9,7 @@ import Link from "@/components/Link";
 import Time from "@/components/Time";
 import FolderBreadcrumbs from "@/features/folders/components/FolderBreadcrumbs";
 import { mayDoFolderAction } from "@/features/folders/folder-query";
-import { getUploadSettings } from "@/features/files/queries";
+import { getUploadSettings, listAllFolderFiles } from "@/features/files/queries";
 import { listTabs } from "@/features/folders/queries";
 import { deletePage, moveOrRenamePage, updatePageContent } from "@/features/pages/actions";
 import DeletePageDialog from "@/features/pages/components/DeletePageDialog";
@@ -46,9 +46,16 @@ export default async function PageView({ page, action, notice }: PageViewProps) 
   const { key: formKey, changedMessage: message } = changedPageForm(page, notice);
 
   if (action === "edit") {
-    // The pages and tabs of the folder as of opening the editor, which its live preview resolves wiki links against.
-    const [pages, tabs] = await Promise.all([listAllFolderPages(page.folder.id), listTabs(page.folder.id)]);
-    if (!pages || !tabs) notFound();
+    // The pages, files and tabs of the folder as of opening the editor, which its live preview resolves wiki links
+    // against.
+    const [pages, tabs, files, uploads] = await Promise.all([
+      listAllFolderPages(page.folder.id),
+      listTabs(page.folder.id),
+      listAllFolderFiles(page.folder.id),
+      getUploadSettings(),
+    ]);
+    if (!pages || !tabs || !files) notFound();
+    const mayUpload = uploads.on && mayDoFolderAction(page.role, "upload");
     return (
       <Stack spacing={3}>
         <Typography variant="h4" component="h1">
@@ -61,7 +68,7 @@ export default async function PageView({ page, action, notice }: PageViewProps) 
           version={page.version}
           changedMessage={message}
           cancelHref={address}
-          pageList={buildEditorPageList(folderName, pages, tabs)}
+          pageList={buildEditorPageList(folderName, pages, tabs, files, mayUpload)}
         />
       </Stack>
     );

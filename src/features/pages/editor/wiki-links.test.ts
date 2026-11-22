@@ -18,10 +18,19 @@ const PAGE_LIST: EditorPageList = {
     { tab: null, name: "setup", title: "Setup", address: "/folders/f/setup.md" },
     { tab: "guides", name: "setup", title: "Setup guide", address: "/folders/f/guides/setup.md" },
   ],
+  files: [],
   places: [
-    { tab: null, newPageAddress: "/folders/f?action=new&name=" },
-    { tab: "guides", newPageAddress: "/folders/f/guides?action=new&name=" },
-    { tab: "docs", newPageAddress: "/folders/f/docs?action=new&name=" },
+    { tab: null, newPageAddress: "/folders/f?action=new&name=", uploadAddress: "/folders/f?action=upload&name=" },
+    {
+      tab: "guides",
+      newPageAddress: "/folders/f/guides?action=new&name=",
+      uploadAddress: "/folders/f/guides?action=upload&name=",
+    },
+    {
+      tab: "docs",
+      newPageAddress: "/folders/f/docs?action=new&name=",
+      uploadAddress: "/folders/f/docs?action=upload&name=",
+    },
   ],
 };
 
@@ -119,6 +128,7 @@ describe("showWikiLink", () => {
       exists: true,
       hint: null,
       address: "/folders/f/guides/setup.md",
+      image: null,
     });
     expect(show("[[setup]]")).toMatchObject({ text: "Setup", address: "/folders/f/setup.md" });
     expect(show("[[guides/setup|the setup]]")).toMatchObject({ text: "the setup", exists: true });
@@ -130,6 +140,7 @@ describe("showWikiLink", () => {
       exists: false,
       hint: "Page does not exist",
       address: "/folders/f/docs?action=new&name=faq",
+      image: null,
     });
     expect(show("[[faq|FAQ]]")).toMatchObject({ text: "FAQ", address: "/folders/f?action=new&name=faq" });
   });
@@ -141,6 +152,7 @@ describe("showWikiLink", () => {
         exists: false,
         hint: "Not a valid page name",
         address: null,
+        image: null,
       });
     }
     expect(show("[[nosuchtab/setup]]")).toEqual({
@@ -148,11 +160,76 @@ describe("showWikiLink", () => {
       exists: false,
       hint: "Tab does not exist",
       address: null,
+      image: null,
     });
+  });
+
+  /** The page list with an image `guides/diagram.png` and a PDF `report.pdf`. */
+  const WITH_FILES: EditorPageList = {
+    ...PAGE_LIST,
+    files: [
+      {
+        tab: "guides",
+        name: "diagram.png",
+        address: "/files/f/guides/diagram.png",
+        image: { width: 640, height: 480 },
+      },
+      { tab: null, name: "report.pdf", address: "/files/f/report.pdf", image: null },
+    ],
+  };
+
+  it("shows an embed of an image as its image, with the label or the name as alt text", () => {
+    expect(show("![[guides/diagram.png]]", WITH_FILES)).toEqual({
+      text: "diagram.png",
+      exists: true,
+      hint: null,
+      address: "/files/f/guides/diagram.png",
+      image: { address: "/files/f/guides/diagram.png", alt: "diagram.png", width: 640, height: 480 },
+    });
+    expect(show("![[guides/diagram.png|The network]]", WITH_FILES).image).toMatchObject({ alt: "The network" });
+  });
+
+  it("shows a link of a file and an embed of a PDF as a link to the file with the label or the name", () => {
+    expect(show("[[guides/diagram.png]]", WITH_FILES)).toMatchObject({
+      text: "diagram.png",
+      exists: true,
+      address: "/files/f/guides/diagram.png",
+      image: null,
+    });
+    expect(show("![[report.pdf|Manual]]", WITH_FILES)).toMatchObject({
+      text: "Manual",
+      address: "/files/f/report.pdf",
+      image: null,
+    });
+  });
+
+  it("leads a missing file to the upload dialog of its place, or nowhere while uploads are not offered", () => {
+    expect(show("[[guides/manual.pdf]]", WITH_FILES)).toEqual({
+      text: "guides/manual.pdf",
+      exists: false,
+      hint: "File does not exist",
+      address: "/folders/f/guides?action=upload&name=manual.pdf",
+      image: null,
+    });
+    const noUploads = { ...WITH_FILES, places: WITH_FILES.places.map((place) => ({ ...place, uploadAddress: null })) };
+    expect(show("![[faq.png]]", noUploads)).toMatchObject({ hint: "File does not exist", address: null });
+    expect(show("[[nosuchtab/a.png]]", WITH_FILES)).toMatchObject({ hint: "Tab does not exist", address: null });
+    // A page of the name without the extension is no file.
+    expect(show("[[guides/setup.png]]", WITH_FILES)).toMatchObject({ exists: false, hint: "File does not exist" });
   });
 
   it("leads nowhere without a page list", () => {
     expect(show("[[setup]]", null)).toMatchObject({ exists: false, address: null });
+  });
+});
+
+describe("embeds", () => {
+  it("are wiki links from their `!` for a target that names a file, and no embed for a page", () => {
+    const state = stateOf("![[guides/diagram.png|D]] ![[setup]]");
+    const embed = wikiLinkAt(state, 0);
+    expect(embed).toMatchObject({ from: 0, target: "guides/diagram.png", embed: true, label: "D", targetFrom: 3 });
+    const page = wikiLinkAt(state, 27);
+    expect(page).toMatchObject({ from: 27, target: "setup", embed: false });
   });
 });
 

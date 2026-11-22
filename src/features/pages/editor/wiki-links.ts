@@ -1,6 +1,6 @@
-// Wiki links in the Markdown editor: the extension of the editor's parser that reads `[[target]]` and
-// `[[target|label]]`, the page list of the folder that the editor gets when it opens, and what a wiki link shows and
-// leads to against that list. The target follows the rule of `wiki-link-target.ts`, which the page view uses as well.
+// Wiki links in the Markdown editor: the extension of the editor's parser that reads `[[target]]`,
+// `[[target|label]]` and the embeds `![[target]]` of files, the page list of the folder that the editor gets when it
+// opens, with its pages and files, and what a wiki link shows and leads to against that list. The target follows the rule of `wiki-link-target.ts`, which the page view uses as well.
 // The addresses come with the page list from the server, so that this module needs no module of addresses.
 
 import { syntaxTree } from "@codemirror/language";
@@ -25,24 +25,48 @@ type EditorPage = {
   address: string;
 };
 
+/** A file of the folder as the editor knows it. */
+type EditorFile = {
+  /** The tab of the file, or `null` for a file placed directly in the folder. */
+  tab: string | null;
+  /** The name with its extension. */
+  name: string;
+  /** The address of the file itself. */
+  address: string;
+  /** The width and height of an image, which an embed shows; `null` for a PDF, which an embed links. */
+  image: { width: number | null; height: number | null } | null;
+};
+
+/** A place of the folder, as the editor knows it. */
+type EditorPlace = {
+  /** The tab, or `null` for the folder itself. */
+  tab: string | null;
+  /** The address of the editor of a new page there, to which the name of the new page is appended. */
+  newPageAddress: string;
+  /**
+   * The address of the "Upload file" dialog there, to which the name of the file is appended, or `null` while the
+   * files are off or for a role that may not upload.
+   */
+  uploadAddress: string | null;
+};
+
 /**
- * The pages of the folder that are not deleted and the places that exist, as they were when the editor was opened:
- * what live preview resolves wiki links against and what the picker on `[[` offers.
+ * The pages and files of the folder that are not deleted and the places that exist, as they were when the editor was
+ * opened: what live preview resolves wiki links against and what the picker on `[[` offers.
  */
 export type EditorPageList = {
   pages: EditorPage[];
-  /**
-   * The folder itself (`tab` `null`) and each of its tabs, with the address of the editor of a new page there, to which
-   * the name of the new page is appended.
-   */
-  places: { tab: string | null; newPageAddress: string }[];
+  files: EditorFile[];
+  /** The folder itself (`tab` `null`) and each of its tabs. */
+  places: EditorPlace[];
 };
 
-/** The page list as the editor looks it up: the pages by their target, and the places by their tab. */
+/** The page list as the editor looks it up: the pages and the files by their target, and the places by their tab. */
 export type PageIndex = {
   list: EditorPageList;
   pages: ReadonlyMap<string, EditorPage>;
-  places: ReadonlyMap<string | null, string>;
+  files: ReadonlyMap<string, EditorFile>;
+  places: ReadonlyMap<string | null, EditorPlace>;
 };
 
 /** The page list of the editor, or `null` for an editor without one, whose wiki links open nothing. */
@@ -51,8 +75,9 @@ export const editorPageList = Facet.define<EditorPageList, PageIndex | null>({
     const list = values[0];
     if (!list) return null;
     const pages = new Map(list.pages.map((page) => [wikiLinkTargetText(page), page]));
-    const places = new Map(list.places.map(({ tab, newPageAddress }) => [tab, newPageAddress]));
-    return { list, pages, places };
+    const files = new Map(list.files.map((file) => [wikiLinkTargetText(file), file]));
+    const places = new Map(list.places.map((place) => [place.tab, place]));
+    return { list, pages, files, places };
   },
 });
 
@@ -81,8 +106,8 @@ function nextMark(cx: InlineContext, mark: string, from: number): number {
  * The inline parser of wiki links, as the rule of the page view reads them: `[[`, a target up to the first `|` or `]]`
  * that is not empty, then an optional label up to `]]`, all on one line. It runs before the parser of links, after
  * those of escapes and code spans, so a code span and `\[` keep their text. Nothing inside a wiki link is parsed. `!`
- * before a wiki link stays text, as no image follows, unless an image may follow: `![[a]](b)` is left to the parser of
- * images.
+ * before a target that names a file makes an embed, whose first mark is `![[`; before any other target it stays text,
+ * as no image follows, unless an image may follow: `![[a]](b)` is left to the parser of images.
  */
 function parseWikiLink(cx: InlineContext, next: number, pos: number): number {
   let start = pos;
@@ -103,9 +128,18 @@ function parseWikiLink(cx: InlineContext, next: number, pos: number): number {
   }
   if ((bar === -1 ? close : bar) === textStart) return -1;
   const end = close + 2 + cx.offset;
-  if (next === EXCLAMATION_MARK) {
+  const embed =
+    next === EXCLAMATION_MARK &&
+    parseWikiLinkTarget(cx.text.slice(textStart, bar === -1 ? close : bar))?.kind === "file";
+  if (next === EXCLAMATION_MARK && !embed) {
     const after = cx.char(end);
     if (after === 0x28 || after === OPEN_BRACKET) return -1;
+  }
+  if (embed) {
+    const marks = [cx.elt("WikiLinkMark", pos, start + 2)];
+    if (bar !== -1) marks.push(cx.elt("WikiLinkMark", bar + cx.offset, bar + cx.offset + 1));
+    marks.push(cx.elt("WikiLinkMark", close + cx.offset, end));
+    return cx.addElement(cx.elt("WikiLink", pos, end, marks));
   }
   const marks = [cx.elt("WikiLinkMark", start, start + 2)];
   if (bar !== -1) marks.push(cx.elt("WikiLinkMark", bar + cx.offset, bar + cx.offset + 1));
@@ -132,8 +166,10 @@ export type EditorWikiLink = {
   target: string;
   targetFrom: number;
   targetTo: number;
-  /** The page the target names, or `null` for a target that breaks the name rule. */
+  /** The page or file the target names, or `null` for a target that breaks the name rule. */
   page: WikiLinkTarget | null;
+  /** Whether it is an embed of a file, `![[…]]`. */
+  embed: boolean;
   /** The label as written, or `null` without one; an empty label counts as none. */
   label: string | null;
   labelFrom: number;
@@ -166,6 +202,7 @@ export function readWikiLink(state: EditorState, node: SyntaxNode, inTable: bool
     targetFrom,
     targetTo,
     page: parseWikiLinkTarget(target),
+    embed: state.sliceDoc(node.from, node.from + 1) === "!",
     label,
     labelFrom,
     labelTo: close.from,
@@ -174,37 +211,58 @@ export function readWikiLink(state: EditorState, node: SyntaxNode, inTable: bool
 
 /** What a wiki link shows and where it leads, as the page view shows it for a user who may create pages. */
 export type ShownWikiLink = {
-  /** The label, or the title of the page without one, or the target as written for a page that does not exist. */
+  /**
+   * The label, or without one the title of the page or the name of the file, or the target as written for a page or
+   * file that does not exist.
+   */
   text: string;
-  /** Whether the link leads to a page; otherwise it is marked as missing. */
+  /** Whether the link leads to a page or a file; otherwise it is marked as missing. */
   exists: boolean;
-  /** Why a missing link leads to no page, or `null` for a link to a page. */
+  /** Why a missing link leads to no page or file, or `null` for a link that leads to one. */
   hint: string | null;
   /**
-   * The address of the page, or of the editor of a new page with its name and place for a missing page in a place that
-   * exists; `null` for a target that breaks the name rule, a tab that does not exist, or an editor without a page list.
+   * The address of the page or of the file, or for one that is missing in a place that exists the editor of a new page
+   * or the "Upload file" dialog with its name and place; `null` for a target that breaks the name rule, a tab that does
+   * not exist, a file while uploads are not offered, or an editor without a page list.
    */
   address: string | null;
+  /** For an embed of an image that exists: the image to show, with its alt text; `null` otherwise. */
+  image: { address: string; alt: string; width: number | null; height: number | null } | null;
 };
 
 /** Resolves a wiki link against the page list of the editor. */
 export function showWikiLink(index: PageIndex | null, link: EditorWikiLink): ShownWikiLink {
   const fallback = link.label ?? link.target;
-  if (link.page === null)
-    return { text: fallback, exists: false, hint: MISSING_WIKI_LINK_HINTS.invalid, address: null };
-  const page = index?.pages.get(wikiLinkTargetText(link.page));
-  if (page) return { text: link.label ?? page.title, exists: true, hint: null, address: page.address };
-  const newPageAddress = index?.places.get(link.page.tab);
-  if (newPageAddress === undefined) {
-    const hint = link.page.tab === null ? MISSING_WIKI_LINK_HINTS.missing : MISSING_WIKI_LINK_HINTS.noTab;
-    return { text: fallback, exists: false, hint, address: null };
-  }
-  return {
+  const missing = (hint: string, address: string | null = null): ShownWikiLink => ({
     text: fallback,
     exists: false,
-    hint: MISSING_WIKI_LINK_HINTS.missing,
-    address: `${newPageAddress}${link.page.name}`,
-  };
+    hint,
+    address,
+    image: null,
+  });
+  if (link.page === null) return missing(MISSING_WIKI_LINK_HINTS.invalid);
+  const target = wikiLinkTargetText(link.page);
+  if (link.page.kind === "file") {
+    const file = index?.files.get(target);
+    if (file) {
+      const text = link.label ?? file.name;
+      const image = link.embed && file.image ? { address: file.address, alt: text, ...file.image } : null;
+      return { text, exists: true, hint: null, address: file.address, image };
+    }
+  } else {
+    const page = index?.pages.get(target);
+    if (page) return { text: link.label ?? page.title, exists: true, hint: null, address: page.address, image: null };
+  }
+  const place = index?.places.get(link.page.tab);
+  if (place === undefined) {
+    if (link.page.tab !== null) return missing(MISSING_WIKI_LINK_HINTS.noTab);
+    return missing(link.page.kind === "file" ? MISSING_WIKI_LINK_HINTS.missingFile : MISSING_WIKI_LINK_HINTS.missing);
+  }
+  if (link.page.kind === "file") {
+    const address = place.uploadAddress === null ? null : `${place.uploadAddress}${link.page.name}`;
+    return missing(MISSING_WIKI_LINK_HINTS.missingFile, address);
+  }
+  return missing(MISSING_WIKI_LINK_HINTS.missing, `${place.newPageAddress}${link.page.name}`);
 }
 
 /** Whether a node lies inside a node of one of the names. */

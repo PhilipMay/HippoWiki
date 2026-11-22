@@ -28,7 +28,8 @@ Code:
 - the derivation of the links of the existing pages: `scripts/search-index.ts`;
 - MCP: the instructions in `src/features/mcp/server.ts` and the results in `src/features/mcp/tools.ts`;
 - the editor: `src/features/pages/editor/wiki-links.ts` (the extension of the parser, the page list and what a link
-  shows and leads to), `src/features/pages/editor/wiki-link-picker.ts` (the picker), and
+  shows and leads to), `src/features/pages/editor/file-embeds.ts` (the images of live preview),
+  `src/features/pages/editor/wiki-link-picker.ts` (the picker), and
   `src/features/pages/editor-page-list.ts` (the page list with its addresses, built on the server).
 
 Tests: `src/features/pages/wiki-links.test.ts`, `src/features/pages/wiki-link-target.test.ts`,
@@ -185,15 +186,20 @@ search:index`, and the start of the container image, see "Operation" in `search.
 ## The editor
 
 - Live preview shows a wiki link as a link, with its brackets and its target hidden except on the lines of the cursor,
-  as it shows other links: its label, or without one the title of its page from the page list of the folder. A link
-  to a missing page is marked as in the page view, with its hint. A rendered table shows its wiki links the same way.
-- The page list is read when the editor opens, so a page created, moved or renamed elsewhere afterwards shows as
-  before until the editor is opened again.
-- Ctrl+click or Cmd+click on a wiki link opens, in a new browser tab, what the page view leads to: the page, or for a
-  missing page in a place that exists the editor of a new page with its name and place preset; a link that cannot be
+  as it shows other links: its label, or without one the title of its page or the name of its file from the page list
+  of the folder. A link to a missing page or file is marked as in the page view, with its hint. A rendered table shows
+  its wiki links the same way.
+- An embed of an image shows the image under its line, its Markdown hidden except on the lines of the cursor; an embed
+  of a PDF shows as a link (see "What live preview shows" in `markdown-editor.md`).
+- The page list, with the pages and files of the folder, is read when the editor opens, so a page or file created,
+  moved or renamed elsewhere afterwards shows as before until the editor is opened again.
+- Ctrl+click or Cmd+click on a wiki link opens, in a new browser tab, what the page view leads to: the page or the
+  file, for a missing page in a place that exists the editor of a new page with its name and place preset, and for a
+  missing file there the "Upload file" dialog with its name, while the files are on; a link that cannot be
   created as written opens nothing. A plain click and a tap put the cursor there.
-- Typing `[[` opens a picker with the pages of the folder, each with its title and place, filtered by title and name
-  as the user types on. Choosing a page, with the keyboard or by touch, replaces `[[` and the typed text with
+- Typing `[[` opens a picker with the pages of the folder, each with its title and place, and after them its files,
+  each with its name, marked as a file with its place, filtered by title and name as the user types on. Choosing a
+  file inserts `[[name.ext]]` or `[[tab/name.ext]]`. Choosing a page, with the keyboard or by touch, replaces `[[` and the typed text with
   `[[name]]` or `[[tab/name]]`, without a label, as one change that one undo reverts. Without a match the picker says
   that no page was found; Esc closes it and leaves the text as typed. The picker does not open in code or after a
   backslash. Its keys act only while it is open, so Enter in a list and Esc then Tab work as before.

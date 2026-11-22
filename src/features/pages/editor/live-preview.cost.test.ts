@@ -3,6 +3,7 @@ import { EditorSelection, EditorState } from "@codemirror/state";
 import { describe, expect, it } from "vitest";
 
 import { editorExtensions } from "@/features/pages/editor/extensions";
+import { imageEmbedsField } from "@/features/pages/editor/file-embeds";
 import { livePreviewDecorations } from "@/features/pages/editor/live-preview";
 import { livePreview } from "@/features/pages/editor/preview-plugin";
 import { tablesField } from "@/features/pages/editor/tables";
@@ -14,16 +15,27 @@ import { SLOW_INPUTS } from "@/test/slow-markdown";
 // never next to other test files. The view plugin of live preview needs a view, so the tests build its decorations
 // with the pure function it calls, for the ranges the view would ask for.
 
-/** A folder of 1,000 pages, half of them in the tab `guides`, which the wiki links of the inputs are resolved against. */
+/**
+ * A folder of 1,000 pages, half of them in the tab `guides`, and the files that the embeds of the editor page name,
+ * which the wiki links of the inputs are resolved against.
+ */
 const PAGE_LIST = {
   pages: Array.from({ length: 1_000 }, (_unused, index) => {
     const tab = index % 2 === 0 ? null : "guides";
     const name = index < 2 ? "setup" : `page-${index}`;
     return { tab, name, title: `Page ${index}`, address: `/folders/f/${tab ?? ""}/${name}.md` };
   }),
+  files: [
+    { tab: "guides", name: "diagram.png", address: "/files/f/guides/diagram.png", image: { width: 640, height: 480 } },
+    { tab: null, name: "report.pdf", address: "/files/f/report.pdf", image: null },
+  ],
   places: [
-    { tab: null, newPageAddress: "/folders/f?action=new&name=" },
-    { tab: "guides", newPageAddress: "/folders/f/guides?action=new&name=" },
+    { tab: null, newPageAddress: "/folders/f?action=new&name=", uploadAddress: "/folders/f?action=upload&name=" },
+    {
+      tab: "guides",
+      newPageAddress: "/folders/f/guides?action=new&name=",
+      uploadAddress: "/folders/f/guides?action=upload&name=",
+    },
   ],
 };
 
@@ -65,12 +77,14 @@ function screenAround(state: EditorState, pos: number) {
 
 const inputs: Record<string, string> = { "the editor page": EDITOR_PAGE, ...SLOW_INPUTS };
 
-/** The decorations of live preview and the tables of the whole document, the tree parsed to the end before. */
+/** The decorations, the tables and the images of live preview of the whole document, the tree parsed to the end before. */
 function decorateAll(state: EditorState): EditorState {
   livePreviewDecorations(state, [{ from: 0, to: state.doc.length }]);
-  // A transaction takes over the tree parsed to the end, which adds the tables of the whole document to the field.
+  // A transaction takes over the tree parsed to the end, which adds the tables and the images of the whole document to
+  // their fields.
   const next = state.update({}).state;
   next.field(tablesField);
+  next.field(imageEmbedsField);
   return next;
 }
 
@@ -117,6 +131,7 @@ describe("the cost of live preview", () => {
         ensureSyntaxTree(state, screen.to, 10_000);
         livePreviewDecorations(state, [screen]);
         state.field(tablesField);
+        state.field(imageEmbedsField);
       }
       expect((performance.now() - start) / TYPED).toBeLessThan(typingBudget);
     });

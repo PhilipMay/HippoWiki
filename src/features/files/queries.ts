@@ -66,3 +66,10 @@ export const getDeletedFile = cache(async (folderName: string, id: string): Prom
   const user = await requireUser();
   return fileService.getDeletedFile(inBrowser(user), folderName, id);
 });
+
+/** Every file of the folder that is not deleted, with its tab, for the Markdown editor. */
+export async function listAllFolderFiles(folderId: string): Promise<fileService.FolderFile[] | null> {
+  await connection();
+  const user = await requireUser();
+  return fileService.listAllFolderFiles(inBrowser(user), folderId);
+}

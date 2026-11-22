@@ -7,16 +7,22 @@ import { describe, expect, it } from "vitest";
 
 import { editorExtensions } from "@/features/pages/editor/extensions";
 import { NO_PAGE_FOUND, wikiLinkCompletions } from "@/features/pages/editor/wiki-link-picker";
+import type { EditorPageList } from "@/features/pages/editor/wiki-links";
 
-const PAGE_LIST = {
+const PAGE_LIST: EditorPageList = {
   pages: [
     { tab: "guides", name: "setup", title: "Setup guide", address: "/folders/f/guides/setup.md" },
     { tab: null, name: "onboarding", title: "Onboarding", address: "/folders/f/onboarding.md" },
     { tab: null, name: "first-week", title: "First week", address: "/folders/f/first-week.md" },
   ],
+  files: [],
   places: [
-    { tab: null, newPageAddress: "/folders/f?action=new&name=" },
-    { tab: "guides", newPageAddress: "/folders/f/guides?action=new&name=" },
+    { tab: null, newPageAddress: "/folders/f?action=new&name=", uploadAddress: "/folders/f?action=upload&name=" },
+    {
+      tab: "guides",
+      newPageAddress: "/folders/f/guides?action=new&name=",
+      uploadAddress: "/folders/f/guides?action=upload&name=",
+    },
   ],
 };
 
@@ -42,8 +48,8 @@ function entriesAt(text: string, pageList: typeof PAGE_LIST | null = PAGE_LIST) 
 }
 
 /** Chooses the entry with the label at the cursor, through a view that only dispatches, and returns the state after. */
-function choose(text: string, label: string): EditorState {
-  let state = stateOf(text);
+function choose(text: string, label: string, pageList: EditorPageList = PAGE_LIST): EditorState {
+  let state = stateOf(text, pageList);
   const result = wikiLinkCompletions(new CompletionContext(state, state.selection.main.head, false));
   const entry = result?.options.find((option: Completion) => option.label === label);
   if (!result || !entry || typeof entry.apply !== "function") throw new Error(`no entry ${label}`);
@@ -119,5 +125,43 @@ describe("the picker of wiki links", () => {
     expect(state.doc.toString()).toBe("x [[guides/setup]]");
     undo({ state, dispatch: (tr) => (state = tr.state) });
     expect(state.doc.toString()).toBe("x [[setu");
+  });
+});
+
+describe("the files in the picker of wiki links", () => {
+  /** The page list with the image `guides/network-diagram.png` and the PDF `report.pdf`. */
+  const WITH_FILES: EditorPageList = {
+    ...PAGE_LIST,
+    files: [
+      { tab: null, name: "report.pdf", address: "/files/f/report.pdf", image: null },
+      {
+        tab: "guides",
+        name: "network-diagram.png",
+        address: "/files/f/guides/network-diagram.png",
+        image: { width: 640, height: 480 },
+      },
+    ],
+  };
+
+  it("lists the files after the pages, by target, each marked as a file with its place", () => {
+    expect(entriesAt("[[", WITH_FILES)).toEqual([
+      "First week (Directly in the folder)",
+      "Onboarding (Directly in the folder)",
+      "Setup guide (Tab guides)",
+      "guides/network-diagram.png (File in tab guides)",
+      "report.pdf (File directly in the folder)",
+    ]);
+  });
+
+  it("filters the files by their name and tab as the user types on", () => {
+    expect(entriesAt("[[dia", WITH_FILES)).toEqual(["guides/network-diagram.png (File in tab guides)"]);
+    expect(entriesAt("[[.PDF", WITH_FILES)).toEqual(["report.pdf (File directly in the folder)"]);
+  });
+
+  it("inserts the link of a chosen file without a label", () => {
+    expect(choose("See [[dia", "guides/network-diagram.png", WITH_FILES).doc.toString()).toBe(
+      "See [[guides/network-diagram.png]]",
+    );
+    expect(choose("[[rep", "report.pdf", WITH_FILES).doc.toString()).toBe("[[report.pdf]]");
   });
 });

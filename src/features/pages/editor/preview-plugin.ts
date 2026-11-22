@@ -7,6 +7,7 @@ import { EditorSelection, Prec, type EditorState, type Extension, type Selection
 import { EditorView, ViewPlugin, keymap, type Command, type DecorationSet, type ViewUpdate } from "@codemirror/view";
 
 import { linkDestination } from "@/features/pages/editor/link-address";
+import { IMAGE_CLASS, imageEmbedsField } from "@/features/pages/editor/file-embeds";
 import { livePreviewDecorations, PREVIEW_CLASS } from "@/features/pages/editor/live-preview";
 import { tables } from "@/features/pages/editor/tables";
 import { editorPageList, showWikiLink, wikiLinkAt } from "@/features/pages/editor/wiki-links";
@@ -265,6 +266,8 @@ const previewTheme = EditorView.theme({
     fontSize: "0.875em",
     backgroundColor: palette.action.hover,
   },
+  [`.${IMAGE_CLASS}`]: { padding: "0.25em 0" },
+  [`.${IMAGE_CLASS} img`]: { display: "block", maxWidth: "100%", height: "auto" },
   ".cm-lp-table": { overflowX: "auto", padding: "0.25em 0" },
   ".cm-lp-table table": { borderCollapse: "collapse", cursor: "text" },
   ".cm-lp-table th, .cm-lp-table td": {
@@ -282,8 +285,8 @@ const previewTheme = EditorView.theme({
   },
 });
 
-/** Live preview: its decorations, its link clicks, its arrow keys and its styles. */
+/** Live preview: its decorations, its images, its link clicks, its arrow keys and its styles. */
 export function livePreview(): Extension {
   // Over the theme of the editor, whose monospace font is that of source mode.
-  return [previewPlugin, tables, hiddenLineKeymap, Prec.highest(previewTheme)];
+  return [previewPlugin, tables, imageEmbedsField, hiddenLineKeymap, Prec.highest(previewTheme)];
 }

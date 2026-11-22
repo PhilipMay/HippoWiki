@@ -333,13 +333,18 @@ export function livePreviewDecorations(
           return;
         }
 
-        // A wiki link shows its label, or the title of the page it names, as a link; one that leads to no page shows
-        // its label or target marked as missing, with the hint of the page view as its title.
+        // A wiki link shows its label, or the title of the page or the name of the file it names, as a link; one that
+        // leads to nothing shows its label or target marked as missing, with the hint of the page view as its title.
+        // The embed of an image is hidden: the image shows under its line (`file-embeds.ts`).
         if (name === "WikiLink") {
           if (!previewed(node.from, node.to) || insideLink(node.node)) return false;
           const link = readWikiLink(state, node.node, false);
           if (!link) return false;
           const shown = showWikiLink(pages, link);
+          if (shown.image) {
+            hide(node.from, node.to);
+            return false;
+          }
           hide(node.from, link.label === null ? link.targetFrom : link.labelFrom);
           if (shown.exists && link.label === null) {
             decorations.push(

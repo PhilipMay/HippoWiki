@@ -168,6 +168,12 @@ What the steps share, so that each step builds on the same model:
   `src/features/files/writes.ts` (`softDeleteFileData()`), which the delete of a tab stores as well. The "Delete file"
   dialog says how many pages will show the file as missing.
 
+- Step 9: the image of an embed shows under its line also on the lines of the cursor, where its Markdown is visible
+  above it, so that the image does not jump while the cursor moves; the images come from `imageEmbedsField` of
+  `src/features/pages/editor/file-embeds.ts`. A missing file in the editor leads to the "Upload file" dialog only while
+  the files are on (`uploadAddress` of the page list). The editor's page list gets the files from
+  `listAllFolderFiles()` of the files service.
+
 ## Requirements by step
 
 | Step                                      | Requirements                                      |
@@ -202,7 +208,7 @@ The plan is large, so it has two stop points:
 - [x] Links and embeds of files
 - [x] Moving and renaming files
 - [x] Deleting and restoring files
-- [ ] Files in the editor
+- [x] Files in the editor
 - [ ] Files in search
 - [ ] Files through MCP
 - [ ] Spec tests

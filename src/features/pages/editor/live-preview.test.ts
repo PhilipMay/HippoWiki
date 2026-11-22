@@ -3,15 +3,20 @@ import { ensureSyntaxTree } from "@codemirror/language";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { describe, expect, it } from "vitest";
 
-import { editorExtensions } from "@/features/pages/editor/extensions";
+import { editorExtensions, type EditorOptions } from "@/features/pages/editor/extensions";
 import { livePreviewDecorations, toggleTask } from "@/features/pages/editor/live-preview";
 
 /** A folder with the page `setup` in the tab `guides`, titled "Setup guide". */
 const PAGE_LIST = {
   pages: [{ tab: "guides", name: "setup", title: "Setup guide", address: "/folders/f/guides/setup.md" }],
+  files: [],
   places: [
-    { tab: null, newPageAddress: "/folders/f?action=new&name=" },
-    { tab: "guides", newPageAddress: "/folders/f/guides?action=new&name=" },
+    { tab: null, newPageAddress: "/folders/f?action=new&name=", uploadAddress: "/folders/f?action=upload&name=" },
+    {
+      tab: "guides",
+      newPageAddress: "/folders/f/guides?action=new&name=",
+      uploadAddress: "/folders/f/guides?action=upload&name=",
+    },
   ],
 };
 
@@ -240,8 +245,8 @@ describe("live preview of wiki links", () => {
    * What live preview shows of `doc` with the cursor at its end: the hidden texts, and each shown text with the class
    * and the hint of its decoration, or the title a widget shows in the place of the target.
    */
-  function wikiPreview(doc: string, selection = EditorSelection.single(doc.length)) {
-    const state = EditorState.create({ doc, selection, extensions: editorExtensions(OPTIONS) });
+  function wikiPreview(doc: string, selection = EditorSelection.single(doc.length), options: EditorOptions = OPTIONS) {
+    const state = EditorState.create({ doc, selection, extensions: editorExtensions(options) });
     ensureSyntaxTree(state, doc.length);
     const hidden: string[] = [];
     const shown: string[] = [];
@@ -311,5 +316,42 @@ describe("live preview of wiki links", () => {
       hidden: ["[[", "]]"],
       shown: ['widget "Setup guide" for guides/setup'],
     });
+  });
+
+  /** The options with the image `guides/diagram.png` and the PDF `report.pdf` in the page list. */
+  const WITH_FILES = {
+    ...OPTIONS,
+    pageList: {
+      ...PAGE_LIST,
+      files: [
+        {
+          tab: "guides",
+          name: "diagram.png",
+          address: "/files/f/guides/diagram.png",
+          image: { width: 640, height: 480 },
+        },
+        { tab: null, name: "report.pdf", address: "/files/f/report.pdf", image: null },
+      ],
+    },
+  };
+
+  it("hides the embed of an image, whose image shows under its line, and shows its Markdown on the line of the cursor", () => {
+    const doc = "![[guides/diagram.png|The network]]";
+    expect(wikiPreview(away(doc), undefined, WITH_FILES)).toEqual({ hidden: [doc], shown: [] });
+    expect(wikiPreview(doc, EditorSelection.single(3), WITH_FILES)).toEqual({ hidden: [], shown: [] });
+  });
+
+  it("shows a link of a file and an embed of a PDF as links with the name or the label", () => {
+    expect(wikiPreview(away("[[guides/diagram.png]] ![[report.pdf|Manual]]"), undefined, WITH_FILES)).toEqual({
+      hidden: ["[[", "]]", "![[report.pdf|", "]]"],
+      shown: ['widget "diagram.png" for guides/diagram.png', "cm-lp-link: Manual"],
+    });
+  });
+
+  it("marks a link and an embed of a missing file with the hint of the page view", () => {
+    expect(wikiPreview(away("[[guides/manual.pdf]] ![[faq.png]]"), undefined, WITH_FILES).shown).toEqual([
+      "cm-lp-missing-link: guides/manual.pdf (File does not exist)",
+      "cm-lp-missing-link: faq.png (File does not exist)",
+    ]);
   });
 });

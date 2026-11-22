@@ -1,11 +1,13 @@
 // Wiki links in the Markdown editor: live preview of the links, with the titles and the missing pages of the page list
-// as of opening the editor, and Ctrl+click or Cmd+click on a link.
+// as of opening the editor, and Ctrl+click or Cmd+click on a link; the images, files and file picker of live preview,
+// and pasted and dropped files, which the editor ignores.
 
 import type { BrowserContext, Page } from "@playwright/test";
 
 import { collectErrors } from "./support/browser";
-import { createFolder, createPage, createTab, resetTestDatabase } from "./support/database";
+import { createFile, createFolder, createPage, createTab, getTestDb, resetTestDatabase } from "./support/database";
 import { contentEditor, editorReady, expectContent, shownLines } from "./support/editor";
+import { pngBytes } from "./support/files";
 import { expect, test } from "./support/test";
 
 let handbook: Awaited<ReturnType<typeof createFolder>>;
@@ -166,5 +168,80 @@ test.describe("the picker on [[", () => {
     const editor = await editAtEnd(page, "# Onboarding\n\n- [[guides/setup]]");
     await editor.press("Enter");
     await expectContent(page, "# Onboarding\n\n- [[guides/setup]]\n- ");
+  });
+});
+
+test.describe("files in the editor", () => {
+  test("live preview shows the image of ![[…]] below its line, and the Markdown on the line of the cursor", async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    await createFile({ tab: guides, name: "diagram.png", versions: [{ bytes: await pngBytes(120, 80) }] });
+    const editor = await editAtEnd(page, "# Onboarding\n\n![[guides/diagram.png|The network]]\n\nlast");
+
+    const image = editor.getByRole("img", { name: "The network" });
+    await expect(image).toHaveAttribute("src", "/files/handbook/guides/diagram.png");
+    await expect(image).toHaveAttribute("width", "120");
+    await expect.poll(() => image.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(120);
+    // The image is a block under the line of the embed, whose Markdown is hidden away from the cursor.
+    const lines = editor.locator(".cm-line");
+    const embedLine = lines.nth(2);
+    await expect(embedLine).toHaveText("");
+    const below = await image.evaluate((img) => img.getBoundingClientRect().top);
+    expect(below).toBeGreaterThanOrEqual(await embedLine.evaluate((line) => line.getBoundingClientRect().bottom));
+
+    await page.keyboard.press("ArrowUp");
+    await page.keyboard.press("ArrowUp");
+    await expect(embedLine).toHaveText("![[guides/diagram.png|The network]]");
+    await expect(image).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+
+  test("typing [[dia offers guides/diagram.png marked as a file, and choosing it inserts its link", async ({
+    page,
+  }) => {
+    await createFile({ tab: guides, name: "diagram.png" });
+    const editor = await editAtEnd(page, "# Onboarding\n\n");
+
+    await editor.pressSequentially("See [[dia");
+    const options = page.getByRole("listbox").getByRole("option");
+    await expect(options).toHaveCount(1);
+    await expect(options.first()).toContainText("guides/diagram.png");
+    await expect(options.first()).toContainText("File in tab guides");
+    await page.keyboard.press("Enter");
+    await expectContent(page, "# Onboarding\n\nSee [[guides/diagram.png]]");
+  });
+
+  test("dropping and pasting a file changes nothing and uploads nothing", async ({ page }) => {
+    const content = "# Onboarding\n\ntext";
+    const editor = await editAtEnd(page, content);
+    const uploads: string[] = [];
+    page.on("request", (request) => {
+      if (request.url().includes("/api/uploads/")) uploads.push(request.url());
+    });
+
+    for (const type of ["drop", "paste"] as const) {
+      await editor.evaluate((element, eventType) => {
+        const transfer = new DataTransfer();
+        transfer.items.add(new File(["# Not a page\n"], "notes.md", { type: "text/markdown" }));
+        transfer.items.add(new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "photo.png", { type: "image/png" }));
+        const event =
+          eventType === "paste"
+            ? new ClipboardEvent("paste", { clipboardData: transfer, bubbles: true, cancelable: true })
+            : new DragEvent("drop", { dataTransfer: transfer, bubbles: true, cancelable: true });
+        element.dispatchEvent(event);
+      }, type);
+    }
+
+    await expectContent(page, content);
+    expect(uploads).toEqual([]);
+    expect(await getTestDb().file.count()).toBe(0);
+  });
+
+  test("the toolbar has no upload button", async ({ page }) => {
+    await editAtEnd(page, "# Onboarding");
+    const toolbar = page.getByRole("toolbar", { name: "Formatting" });
+    await expect(toolbar.getByRole("button").first()).toBeVisible();
+    await expect(toolbar.getByRole("button", { name: /upload|file|image/i })).toHaveCount(0);
   });
 });

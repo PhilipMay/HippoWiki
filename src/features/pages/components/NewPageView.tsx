@@ -3,6 +3,7 @@ import Typography from "@mui/material/Typography";
 import { notFound } from "next/navigation";
 
 import { listTabs } from "@/features/folders/queries";
+import { getUploadSettings, listAllFolderFiles } from "@/features/files/queries";
 import { createPage } from "@/features/pages/actions";
 import NewPageForm from "@/features/pages/components/NewPageForm";
 import { buildEditorPageList } from "@/features/pages/editor-page-list";
@@ -21,8 +22,13 @@ type NewPageViewProps = {
  * page that does not exist yet.
  */
 export default async function NewPageView({ folder, tab, presetName }: NewPageViewProps) {
-  const [tabs, pages] = await Promise.all([listTabs(folder.id), listAllFolderPages(folder.id)]);
-  if (!tabs || !pages) notFound();
+  const [tabs, pages, files, uploads] = await Promise.all([
+    listTabs(folder.id),
+    listAllFolderPages(folder.id),
+    listAllFolderFiles(folder.id),
+    getUploadSettings(),
+  ]);
+  if (!tabs || !pages || !files) notFound();
 
   return (
     <Stack spacing={3}>
@@ -35,7 +41,8 @@ export default async function NewPageView({ folder, tab, presetName }: NewPageVi
         tabs={tabs}
         tab={tab && { id: tab.id, name: tab.name }}
         presetName={presetName}
-        pageList={buildEditorPageList(folder.name, pages, tabs)}
+        // Only a Writer, Manager or Owner opens the editor of a new page, and each of them may upload files.
+        pageList={buildEditorPageList(folder.name, pages, tabs, files, uploads.on)}
       />
     </Stack>
   );

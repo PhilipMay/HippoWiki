@@ -1,5 +1,5 @@
-// The picker of wiki links: typing `[[` opens a list of the pages of the folder from the page list of the editor,
-// filtered by title and name as the user types on, and choosing a page inserts its link. Nothing is inserted without a
+// The picker of wiki links: typing `[[` opens a list of the pages and files of the folder from the page list of the
+// editor, filtered by title and name as the user types on, and choosing a page or a file inserts its link. Nothing is inserted without a
 // choice, so the editor still never changes the Markdown on its own.
 
 import {
@@ -20,6 +20,7 @@ import { wikiLinkTargetText } from "@/features/pages/wiki-link-target";
 import { theme as appTheme } from "@/lib/theme";
 
 type Page = EditorPageList["pages"][number];
+type File = EditorPageList["files"][number];
 
 /** The text of the entry that says that no page matches. */
 export const NO_PAGE_FOUND = "No page found";
@@ -56,6 +57,20 @@ function matchingPages(index: PageIndex, typed: string): Page[] {
   return pages.filter((page) => page.title.toLowerCase().includes(query) || wikiLinkTargetText(page).includes(query));
 }
 
+/** The files of the list sorted by their target, computed once per page list. */
+const sortedFiles = new WeakMap<PageIndex, File[]>();
+
+/** The files whose target (`name.ext` or `tab/name.ext`) holds the typed text, ignoring case, sorted by target. */
+function matchingFiles(index: PageIndex, typed: string): File[] {
+  let files = sortedFiles.get(index);
+  if (!files) {
+    files = [...index.list.files].sort((a, b) => wikiLinkTargetText(a).localeCompare(wikiLinkTargetText(b), "en"));
+    sortedFiles.set(index, files);
+  }
+  const query = typed.trim().toLowerCase();
+  return query === "" ? files : files.filter((file) => wikiLinkTargetText(file).includes(query));
+}
+
 /** Whether the `[[` at `pos` is text: escaped by a backslash, or inside code. */
 function isText(state: EditorState, pos: number): boolean {
   let backslashes = 0;
@@ -70,10 +85,23 @@ function isText(state: EditorState, pos: number): boolean {
 
 /** The entry of a page: its title and its place; choosing it inserts its link. */
 function pageEntry(page: Page): Completion {
-  const target = wikiLinkTargetText(page);
+  return entry(page.title, page.tab === null ? "Directly in the folder" : `Tab ${page.tab}`, wikiLinkTargetText(page));
+}
+
+/** The entry of a file: its target, marked as a file with its place; choosing it inserts its link. */
+function fileEntry(file: File): Completion {
+  const target = wikiLinkTargetText(file);
   return {
-    label: page.title,
-    detail: page.tab === null ? "Directly in the folder" : `Tab ${page.tab}`,
+    ...entry(target, file.tab === null ? "File directly in the folder" : `File in tab ${file.tab}`, target),
+    type: "file",
+  };
+}
+
+/** An entry of the picker with its label and detail; choosing it inserts the link of the target, without a label. */
+function entry(label: string, detail: string, target: string): Completion {
+  return {
+    label,
+    detail,
     apply: (view, completion, from, to) => {
       // `[[` and the text typed after it become the link; a `]]` right after the cursor is replaced with them.
       const start = from - 2;
@@ -100,18 +128,21 @@ const noPageFound: Completion = {
 
 /**
  * The source of the picker: after `[[` on the line of the cursor, outside code and not after a backslash, the pages of
- * the folder that match the typed text, or the entry "No page found".
+ * the folder that match the typed text and then its files, or the entry "No page found".
  */
 export function wikiLinkCompletions(context: CompletionContext): CompletionResult | null {
   const index = context.state.facet(editorPageList);
   if (!index) return null;
   const typed = context.matchBefore(TYPED_LINK);
   if (!typed || isText(context.state, typed.from)) return null;
-  const pages = matchingPages(index, typed.text.slice(2));
+  const options = [
+    ...matchingPages(index, typed.text.slice(2)).map(pageEntry),
+    ...matchingFiles(index, typed.text.slice(2)).map(fileEntry),
+  ];
   return {
     from: typed.from + 2,
     to: context.pos,
-    options: pages.length === 0 ? [noPageFound] : pages.map(pageEntry),
+    options: options.length === 0 ? [noPageFound] : options,
     // The source filters by title and name itself, and runs again on every key.
     filter: false,
   };

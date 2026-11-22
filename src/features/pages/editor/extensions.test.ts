@@ -6,6 +6,7 @@ import { EditorView } from "@codemirror/view";
 import { describe, expect, it } from "vitest";
 
 import {
+  carriesFiles,
   continueMarkup,
   editorExtensions,
   endEmptyQuote,
@@ -131,5 +132,17 @@ describe("replace all", () => {
     expect(replaceAll(view as unknown as EditorView)).toBe(true);
     expect(view.state.doc.toString()).toBe("# term\n\n**term** and term");
     expect(run(view.state, undo).doc.toString()).toBe(doc);
+  });
+});
+
+describe("pasted and dropped files", () => {
+  /** The data of a paste or a drop with the given files and types. */
+  const data = (files: number, types: string[]) => ({ files: { length: files } as FileList, types });
+
+  it("are told apart from text, so that the editor ignores them and uploads nothing", () => {
+    expect(carriesFiles(data(1, ["Files"]))).toBe(true);
+    expect(carriesFiles(data(0, ["text/html", "Files"]))).toBe(true);
+    expect(carriesFiles(data(0, ["text/plain"]))).toBe(false);
+    expect(carriesFiles(null)).toBe(false);
   });
 });

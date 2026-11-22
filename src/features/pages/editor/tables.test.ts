@@ -8,7 +8,10 @@ import { tableModel, tables, tablesField } from "@/features/pages/editor/tables"
 /** A folder with the page `setup` placed directly in it, titled "Setup". */
 const PAGE_LIST = {
   pages: [{ tab: null, name: "setup", title: "Setup", address: "/folders/f/setup.md" }],
-  places: [{ tab: null, newPageAddress: "/folders/f?action=new&name=" }],
+  files: [],
+  places: [
+    { tab: null, newPageAddress: "/folders/f?action=new&name=", uploadAddress: "/folders/f?action=upload&name=" },
+  ],
 };
 
 const OPTIONS = { newPage: false, labelId: "label", descriptionId: "description", pageList: PAGE_LIST };

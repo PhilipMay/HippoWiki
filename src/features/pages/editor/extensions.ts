@@ -32,8 +32,8 @@ export type EditorOptions = {
   /** The id of the helper text or the field error below the editor, which describes the content element. */
   descriptionId: string;
   /**
-   * The pages and places of the folder as of opening the editor, which wiki links are resolved against; without it, a
-   * wiki link shows as missing and opens nothing.
+   * The pages, files and places of the folder as of opening the editor, which wiki links are resolved against; without
+   * it, a wiki link shows as missing and opens nothing.
    */
   pageList?: EditorPageList;
 };
@@ -140,9 +140,34 @@ const theme = EditorView.theme({
 });
 
 /**
+ * Whether the data of a paste or a drop carries files, such as an image copied or dragged from the desktop. The editor
+ * uploads nothing (see "Current limits" in `markdown-editor.md`).
+ */
+export function carriesFiles(data: Pick<DataTransfer, "files" | "types"> | null): boolean {
+  return data !== null && (data.files.length > 0 || Array.from(data.types).includes("Files"));
+}
+
+/**
+ * A paste or drop that carries files changes nothing, instead of the text that CodeMirror would read from a dropped
+ * file or the name of a pasted one; a paste or drop of text works as before.
+ */
+const ignoreFiles = EditorView.domEventHandlers({
+  paste: (event) => {
+    if (!carriesFiles(event.clipboardData)) return false;
+    event.preventDefault();
+    return true;
+  },
+  drop: (event) => {
+    if (!carriesFiles(event.dataTransfer)) return false;
+    event.preventDefault();
+    return true;
+  },
+});
+
+/**
  * The extensions of the editor state. The editor never changes the content on its own: no autoformatting, no closing
- * brackets, no trimming; pasting stays the plain-text paste of CodeMirror; the picker on `[[` inserts a link only when
- * the user chooses a page.
+ * brackets, no trimming; pasting stays the plain-text paste of CodeMirror, and a paste or drop of files changes
+ * nothing; the picker on `[[` inserts a link only when the user chooses a page or a file.
  */
 export function editorExtensions({ newPage, labelId, descriptionId, pageList }: EditorOptions): Extension[] {
   return [
@@ -167,6 +192,7 @@ export function editorExtensions({ newPage, labelId, descriptionId, pageList }: 
       "aria-describedby": descriptionId,
     }),
     EditorView.lineWrapping,
+    ignoreFiles,
     theme,
   ];
 }

@@ -288,6 +288,41 @@ export async function listTabFiles(actor: ContentActor, tabId: string): Promise<
   return files.map(summaryOf);
 }
 
+/** A file of the folder as the Markdown editor knows it: its place, its type and the width and height of an image. */
+export type FolderFile = {
+  name: string;
+  type: FileType;
+  tab: { name: string } | null;
+  width: number | null;
+  height: number | null;
+};
+
+/**
+ * Every file of the folder that is not deleted, placed directly in it or in one of its tabs, by name and then by tab,
+ * with the width and height of its current version: what the editor shows and offers for links. `null` for an admin
+ * and for a folder without a role of the actor.
+ */
+export async function listAllFolderFiles(actor: ContentActor, folderId: string): Promise<FolderFile[] | null> {
+  if (!(await mayReadFolder(actor, folderId))) return null;
+  const parsedFolderId = parseFolderId(folderId);
+  if (!parsedFolderId) return [];
+  const files = await getDb().file.findMany({
+    where: { folderId: parsedFolderId, deletedAt: null },
+    select: {
+      name: true,
+      type: true,
+      tab: { select: { name: true } },
+      versions: { select: { width: true, height: true }, orderBy: { number: "desc" }, take: 1 },
+    },
+    orderBy: [{ name: "asc" }, { tab: { name: "asc" } }],
+  });
+  return files.map(({ versions, ...file }) => ({
+    ...file,
+    width: versions[0]?.width ?? null,
+    height: versions[0]?.height ?? null,
+  }));
+}
+
 /** The condition of a file at a place, by the names of its folder and tab, that is not deleted. */
 function placedFileWhere(
   folder: string,

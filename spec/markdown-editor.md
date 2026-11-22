@@ -17,6 +17,7 @@ Code: `src/features/pages/editor/`, the modules that only the browser loads:
 - `preview-plugin.ts`: the view plugin of live preview, its styles, the opening of links and the arrow keys on hidden
   lines;
 - `tables.ts`: the rendered tables;
+- `file-embeds.ts`: the images of the embeds of files under their lines;
 - `link-address.ts`: the address of a link as the page view reads it;
 - `wiki-links.ts`: the wiki links of the parser, the page list of the folder and what a wiki link shows and leads to;
 - `wiki-link-picker.ts`: the picker on `[[`;
@@ -25,7 +26,7 @@ Code: `src/features/pages/editor/`, the modules that only the browser loads:
 The components are `src/features/pages/components/MarkdownEditor.tsx`, `EditorToolbar.tsx`,
 `DiscardChangesDialog.tsx` and `useUnsavedChangesGuard.ts`, used by `PageForm.tsx` and `NewPageForm.tsx`. The safe
 addresses of links are in `src/features/pages/safe-address.ts`, shared with the page view. The page list of the
-folder, with the addresses of its pages, is built on the server by `src/features/pages/editor-page-list.ts`.
+folder, with the addresses of its pages and files, is built on the server by `src/features/pages/editor-page-list.ts`.
 
 Tests:
 
@@ -64,9 +65,12 @@ Tests:
   size of their level.
 - A link, an autolink and a bare address show only their text, styled as a link. A link whose address the page view
   would not make a link stays its Markdown text.
-- A wiki link shows its label, or the title of its page, styled as a link, and a link to a missing page is marked as
-  in the page view, against the page list of the folder read when the editor opened (see "The editor" in
-  `wiki-links.md`).
+- A wiki link shows its label, or the title of its page or the name of its file, styled as a link, and a link to a
+  missing page or file is marked as in the page view, against the page list of the folder read when the editor opened
+  (see "The editor" in `wiki-links.md`).
+- An embed of an image of the folder, `![[name.ext]]`, shows the image under its line, at its own size but at most as
+  wide as the editor, with its place kept before it loads; its Markdown is hidden except on the lines of the cursor,
+  where the image stays below it. An embed of a PDF shows as a link to it (`file-embeds.ts`).
 - A bullet item shows a bullet, a numbered item its number as a list mark, a task item a checkbox ticked as in the
   text; a block quote shows a bar per level instead of `>`; a fenced code block shows a monospace box, its fence lines
   hidden; a horizontal rule shows a line.
@@ -75,8 +79,8 @@ Tests:
   came from.
 - A GitHub Flavored Markdown table shows as a rendered table with its header, its rows and the alignment of its
   columns. A click on a cell puts the cursor at that cell in the Markdown, which then shows the whole table.
-- Images stay their Markdown text, and raw HTML stays its text; nothing of the content becomes an element of the page
-  other than text.
+- Markdown images (`![alt](address)`) stay their Markdown text, and raw HTML stays its text; nothing of the content
+  becomes an element of the page other than text and the images of the embeds of files of the folder.
 - A click on a task box switches it between `[ ]` and `[x]` in the text as one change that one undo reverts. It is
   stored only by "Save", like every other edit.
 - A plain click on a link puts the cursor there, so that it shows its Markdown. Ctrl+click or Cmd+click opens it in a
@@ -98,9 +102,10 @@ Tests:
 - Tab indents the line of the cursor or every line of the selection, a list item becoming the child of the item above
   it, and Shift+Tab outdents them. After Esc, the next Tab or Shift+Tab moves the focus out of the editor instead, so
   that the keyboard is never trapped. The helper text below the editor names this.
-- Typing `[[` opens a picker of the pages of the folder, and choosing one inserts its wiki link as one change that one
-  undo reverts (see "The editor" in `wiki-links.md`). Its keys act only while it is open.
-- Pasting adds plain text, without the formatting of its source.
+- Typing `[[` opens a picker of the pages and files of the folder, and choosing one inserts its wiki link as one change
+  that one undo reverts (see "The editor" in `wiki-links.md`). Its keys act only while it is open.
+- Pasting adds plain text, without the formatting of its source. A paste or a drop that carries files, such as an image
+  from the desktop, changes nothing and uploads nothing: files are uploaded from the views of folders and tabs.
 - The spell check of the browser is off in the editor.
 
 ## Toolbar
@@ -259,7 +264,10 @@ Tests:
 
 ## Current limits
 
-- Images are not shown in live preview; they stay their Markdown text.
+- Markdown images (`![alt](address)`) are not shown in live preview; they stay their Markdown text. Only the embeds of
+  images of the folder show.
+- The editor uploads nothing: no paste or drop of a file and no upload button in the toolbar; a file is uploaded in the
+  view of its folder or tab and then linked or embedded by its name.
 - No slash commands, and the title derived from the content is not shown while editing.
 - The cells of a rendered table cannot be edited in place; the cursor goes into the Markdown of the table.
 - No toolbar buttons for quotes, code blocks, horizontal rules and tables, and no shortcuts other than those of bold,
