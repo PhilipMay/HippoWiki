@@ -54,7 +54,7 @@ this plan estimates that about 420 s of the summed test time can go.
 
 - [x] Missing lower-level tests
 - [x] Not-found checks through HTTP
-- [ ] Access without a login
+- [x] Access without a login
 - [ ] Changes of other users without a second login
 - [ ] Logins of accounts of their own
 - [ ] Rule loops in the browser

@@ -395,6 +395,10 @@ test("log out leads to the login page and the header shows no name", async ({ pa
   await expect(banner.getByRole("button", { name: "Log out" })).toHaveCount(0);
   expect(await newSessionCount()).toBe(0);
   expect(await page.context().cookies()).toEqual([]);
+  // The content leads to the login page again, with the address as the way back.
+  await page.goto("/folders/handbook");
+  await expect(page).toHaveURL(`/login?next=${encodeURIComponent("/folders/handbook")}`);
+  await expect(page.getByRole("heading", { level: 1, name: "Log in" })).toBeVisible();
   expect(errors).toEqual([]);
 });
 

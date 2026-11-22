@@ -2,7 +2,7 @@ import type { Page } from "@playwright/test";
 
 import { KNOWN_ADMIN, KNOWN_USER } from "../prisma/known-users";
 import { ADMIN_STORAGE_STATE, logIn, NO_STORAGE_STATE, USER_STORAGE_STATE } from "./support/auth";
-import { collectErrors } from "./support/browser";
+import { collectErrors, expectNotFoundResponse } from "./support/browser";
 import { createFile, createFolder, createPage, createTab, getTestDb, resetTestDatabase } from "./support/database";
 import { expectFileNotFound, pngBytes } from "./support/files";
 import { ISSUER } from "./support/oauth";
@@ -10,8 +10,12 @@ import { expect, test } from "./support/test";
 
 const DELETED_PAGE_ID = "9c4d2b7e-1a3f-4c5d-8e6f-7a8b9c0d1e22";
 
-// Content that a visitor without a login must never get to see, under every kind of address.
-test.beforeEach(async () => {
+/**
+ * Resets the test database and creates the content that a visitor without a login must never get to see, under every
+ * kind of address. The tests that only read share it, created once in `beforeAll()` of their `describe`; the tests
+ * that end sessions or submit actions get it anew in `beforeEach()`.
+ */
+async function createContent() {
   await resetTestDatabase();
   const handbook = await createFolder({ name: "handbook" });
   const guides = await createTab({ folder: handbook, name: "guides" });
@@ -27,7 +31,7 @@ test.beforeEach(async () => {
   });
   await createFile({ folder: handbook, name: "diagram.png" });
   await createFile({ tab: guides, name: "manual.pdf" });
-});
+}
 
 /** Every kind of address that needs a login. */
 const PROTECTED_ADDRESSES = [
@@ -101,6 +105,11 @@ async function expectLoginPage(page: Page, address?: string) {
   await expect(page.getByText(/Secret/)).toHaveCount(0);
 }
 
+/** The text of the HTML, without its scripts, styles and tags. */
+function textOf(html: string): string {
+  return html.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, "").replace(/<[^>]*>/g, " ");
+}
+
 /** Opens the login page and logs in as the known normal user. */
 async function logInAsUser(page: Page) {
   await logIn(page, KNOWN_USER.name, KNOWN_USER.password);
@@ -109,23 +118,28 @@ async function logInAsUser(page: Page) {
 
 test.describe("without a login", () => {
   test.use({ storageState: NO_STORAGE_STATE });
+  test.beforeAll(createContent);
 
-  for (const [what, address] of PROTECTED_ADDRESSES) {
-    test(`${what} (${address}) leads to the login page`, async ({ page, request }) => {
+  test("every kind of address leads to the login page", async ({ request }) => {
+    for (const [what, address] of PROTECTED_ADDRESSES) {
+      const named = `${what} (${address})`;
       // The answer itself is a redirect: nothing of the page is sent, not even as HTML that a script hides.
       const response = await request.get(address, { maxRedirects: 0 });
-      expect(response.status()).toBe(307);
+      expect(response.status(), named).toBe(307);
       const location = new URL(response.headers().location ?? "", "http://localhost");
-      expect(location.pathname).toBe("/login");
+      expect(location.pathname, named).toBe("/login");
       // The way back is the address that was asked for.
-      expect(location.searchParams.get("next")).toBe(address === "/folders" ? null : address);
-      expect(await response.text()).not.toContain("Secret");
+      expect(location.searchParams.get("next"), named).toBe(address === "/folders" ? null : address);
+      expect(await response.text(), named).not.toContain("Secret");
+    }
+  });
 
-      await page.goto(address);
+  // The login page with its way back is tested in login.spec.ts.
+  test("the redirect shows the login page in the browser", async ({ page }) => {
+    await page.goto("/folders/handbook/guides/setup.md");
 
-      await expectLoginPage(page, address);
-    });
-  }
+    await expectLoginPage(page, "/folders/handbook/guides/setup.md");
+  });
 
   test("the login page and its static files need no login", async ({ page, request }) => {
     const errors = collectErrors(page);
@@ -257,6 +271,11 @@ test.describe("without a login", () => {
     expect(response?.status()).toBe(404);
     await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
   });
+});
+
+test.describe("without a login after a login has ended", () => {
+  test.use({ storageState: NO_STORAGE_STATE });
+  test.beforeEach(createContent);
 
   test("after the session has ended in the database, the content leads to the login page", async ({ page }) => {
     await logInAsUser(page);
@@ -267,16 +286,6 @@ test.describe("without a login", () => {
     await page.goto("/folders/handbook/overview.md");
 
     await expectLoginPage(page);
-  });
-
-  test("after a logout, the content leads to the login page", async ({ page }) => {
-    await logInAsUser(page);
-
-    await page.getByRole("banner").getByRole("button", { name: "Log out" }).click();
-    await expect(page).toHaveURL("/login");
-    await page.goto("/folders/handbook");
-
-    await expectLoginPage(page, "/folders/handbook");
   });
 
   test("a Server Action that is submitted after the session has ended changes nothing and leads to the login page", async ({
@@ -313,6 +322,7 @@ test.describe("without a login", () => {
 
 test.describe("with the saved login of the normal user", () => {
   test.use({ storageState: USER_STORAGE_STATE });
+  test.beforeAll(createContent);
 
   test("the content opens", async ({ page }) => {
     const errors = collectErrors(page);
@@ -361,6 +371,7 @@ test.describe("with the saved login of the normal user", () => {
 
 test.describe("with the saved login of the admin", () => {
   test.use({ storageState: ADMIN_STORAGE_STATE });
+  test.beforeAll(createContent);
 
   test("the home page leads to the user list", async ({ page }) => {
     await page.goto("/");
@@ -391,18 +402,36 @@ test.describe("with the saved login of the admin", () => {
     await expect(page.getByRole("main")).not.toContainText(/Updated|Deleted| via (web|mcp)|\bweb\b|\bmcp\b/);
   });
 
-  for (const [what, address] of CONTENT_ADDRESSES) {
-    test(`${what} (${address}) shows the not-found page`, async ({ page }) => {
+  /** Addresses of a folder, a page and a deleted page, which the admin opens in the browser. */
+  const SHOWN_ADDRESSES = new Set<string>([
+    "/folders/handbook",
+    "/folders/handbook/overview.md",
+    `/deleted-items/handbook/${DELETED_PAGE_ID}`,
+  ]);
+
+  test("every content address shows the not-found page in the browser", async ({ page }) => {
+    for (const address of SHOWN_ADDRESSES) {
       const response = await page.goto(address);
 
-      expect(response?.status()).toBe(404);
+      expect(response?.status(), address).toBe(404);
       await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
       // Neither the content nor the names of folders, tabs and pages, nor a last editor or a channel.
       await expect(page.getByText(/Secret|handbook|guides|overview|setup|removed/)).toHaveCount(0);
       await expect(page.getByText(/Updated|Deleted| via (web|mcp)/)).toHaveCount(0);
       await expect(page.getByRole("banner").getByText(KNOWN_ADMIN.name, { exact: true })).toBeVisible();
-    });
-  }
+    }
+  });
+
+  test("every content address answers with the not-found page and sends nothing of the content", async ({ page }) => {
+    for (const [what, address] of CONTENT_ADDRESSES.filter(([, path]) => !SHOWN_ADDRESSES.has(path))) {
+      const named = `${what} (${address})`;
+      await expectNotFoundResponse(page.request, address);
+      const html = await (await page.request.get(address)).text();
+      // The payload holds the segments of the address, so the names are looked for in the text of the HTML only.
+      expect(html, named).not.toContain("Secret");
+      expect(textOf(html), named).not.toMatch(/handbook|guides|overview|setup|removed|Updated|Deleted| via (web|mcp)/);
+    }
+  });
 
   // The addresses of the files themselves answer an admin with 404, like a file that does not exist.
   for (const [what, address] of PROTECTED_ADDRESSES.filter(([, path]) => path.startsWith("/files/"))) {
