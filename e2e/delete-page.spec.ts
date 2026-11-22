@@ -5,8 +5,7 @@ import { VERSION_FIELD } from "@/features/pages/fields";
 import { KNOWN_USER } from "../prisma/known-users";
 import { by, collectErrors, expectNotFound } from "./support/browser";
 import { createFolder, createPage, createTab, createUser, getTestDb, resetTestDatabase } from "./support/database";
-import { fillContent } from "./support/editor";
-import { expect, hydrating, test } from "./support/test";
+import { expect, test } from "./support/test";
 
 let handbook: Awaited<ReturnType<typeof createFolder>>;
 
@@ -55,8 +54,11 @@ test("deleting a page placed directly in a folder leads to the folder and remove
   await expectNotFound(page, "/folders/handbook/removed.md");
 });
 
-test("deleting a page in a tab leads to the tab and puts it on top of the deleted pages", async ({ page }) => {
+test("deleting a page in a tab leads to the tab and puts it on top of the deleted pages, deleted by the logged-in user", async ({
+  page,
+}) => {
   const errors = collectErrors(page);
+  const bob = await createUser({ name: "bob" });
   const guides = await createTab({ folder: handbook, name: "guides" });
   await createPage({ tab: guides, name: "kept", title: "Kept page" });
   await createPage({
@@ -65,7 +67,7 @@ test("deleting a page in a tab leads to the tab and puts it on top of the delete
     title: "Earlier",
     deletedAt: new Date("2026-01-01T00:00:00Z"),
   });
-  const removed = await createPage({ tab: guides, name: "removed", title: "Removed page" });
+  const removed = await createPage({ tab: guides, name: "removed", title: "Removed page", editor: bob, via: "mcp" });
 
   await deleteThroughDialog(page, "/folders/handbook/guides/removed.md");
 
@@ -81,27 +83,18 @@ test("deleting a page in a tab leads to the tab and puts it on top of the delete
   const table = page.getByRole("table", { name: "Deleted items" });
   await expect(table.getByRole("link")).toHaveText(["removed", "earlier"]);
   await expect(table.getByRole("link").first()).toHaveAttribute("href", `/deleted-items/handbook/${removed.id}`);
+  // "Deleted by" and "Via" name the logged-in user and the browser, also in the view of the deleted page.
+  const removedRow = table
+    .getByRole("row")
+    .filter({ has: page.getByRole("cell") })
+    .first();
+  await expect(removedRow.getByRole("cell").nth(4)).toHaveText(USER);
+  await expect(removedRow.getByRole("cell").nth(5)).toHaveText("web");
+  await page.goto(`/deleted-items/handbook/${removed.id}`);
+  await expect(page.getByRole("article").getByText(/^Deleted /)).toHaveText(by(USER));
   expect(errors).toEqual([]);
   // The browser reports the 404 of the not-found page as a console error, so it is checked last.
   await expectNotFound(page, "/folders/handbook/guides/removed.md");
-});
-
-test("a page of the same name can be created at the same place right after deleting", async ({ page }) => {
-  const guides = await createTab({ folder: handbook, name: "guides" });
-  await createPage({ tab: guides, name: "overview", title: "Old overview" });
-
-  await deleteThroughDialog(page, "/folders/handbook/guides/overview.md");
-  await expect(page).toHaveURL("/folders/handbook/guides");
-
-  await page.goto("/folders/handbook/guides?action=new");
-  await fillContent(page, "# Overview\n\nNew text");
-  await page.getByRole("button", { name: "Save" }).click();
-  const dialog = page.getByRole("dialog", { name: "Save page" });
-  await expect(dialog.getByLabel("Name")).toHaveValue("overview");
-  await dialog.getByRole("button", { name: "Save" }).click();
-
-  await expect(page).toHaveURL("/folders/handbook/guides/overview.md");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(["Overview"]);
 });
 
 test("the dialog names the page, and cancel keeps the page and leads back to it", async ({ page }) => {
@@ -147,26 +140,6 @@ test("deleting a page that was deleted in the meantime shows an error in the dia
 
   await expect(dialog.getByRole("alert")).toHaveText("This page no longer exists.");
   expect(await getTestDb().page.findUniqueOrThrow({ where: { id: created.id } })).toMatchObject({ deletedAt });
-});
-
-test("the deleted pages and the deleted page show the logged-in user who deleted the page", async ({ page }) => {
-  const errors = collectErrors(page);
-  const bob = await createUser({ name: "bob" });
-  const removed = await createPage({ folder: handbook, name: "removed", editor: bob, via: "mcp" });
-
-  await deleteThroughDialog(page, "/folders/handbook/removed.md");
-  await expect(page).toHaveURL("/folders/handbook");
-
-  await page.goto("/deleted-items/handbook");
-  const rows = page
-    .getByRole("table", { name: "Deleted items" })
-    .getByRole("row")
-    .filter({ has: page.getByRole("cell") });
-  await expect(rows.getByRole("cell").nth(4)).toHaveText(USER);
-  await expect(rows.getByRole("cell").nth(5)).toHaveText("web");
-  await page.goto(`/deleted-items/handbook/${removed.id}`);
-  await expect(page.getByRole("article").getByText(/^Deleted /)).toHaveText(by(USER));
-  expect(errors).toEqual([]);
 });
 
 test.describe("a page changed after the dialog was opened", () => {
@@ -267,20 +240,6 @@ test.describe("a page changed after the dialog was opened", () => {
       /^This page was changed by bob via web at .+ after you opened it\.$/,
     );
     expect((await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).deletedAt).toBeNull();
-  });
-
-  // The second of two deletes of the same page finds it deleted, as before.
-  test("the second of two deletes of the same page shows that it no longer exists", async ({ page, context }) => {
-    await createPage({ folder: team, name: "plan" });
-    const second = await hydrating(await context.newPage());
-
-    await page.goto("/folders/team/plan.md?action=delete");
-    await second.goto("/folders/team/plan.md?action=delete");
-    await deleteDialog(page).getByRole("button", { name: "Delete" }).click();
-    await expect(page).toHaveURL("/folders/team");
-
-    await deleteDialog(second).getByRole("button", { name: "Delete" }).click();
-    await expect(deleteDialog(second).getByRole("alert")).toHaveText("This page no longer exists.");
   });
 
   // A dialog opened before the feature submits no version; its delete is refused once.

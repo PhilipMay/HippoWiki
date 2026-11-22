@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { KNOWN_USER } from "../prisma/known-users";
-import { ADMIN_STORAGE_STATE, becomeUser, logInElsewhere } from "./support/auth";
+import { ADMIN_STORAGE_STATE, becomeUser } from "./support/auth";
 import { by, collectErrors } from "./support/browser";
 import { createFolder, createPage, createTab, createUser, getTestDb, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
@@ -38,9 +38,20 @@ async function openRestoreDialog(page: Page, id: string) {
 /** The logged-in user of the tests, who makes every change through the GUI. */
 const USER = KNOWN_USER.name;
 
-test("restoring a page directly into the folder under its old name leads to it", async ({ page }) => {
+test("restoring a page directly into the folder under its old name leads to it, restored by the logged-in user", async ({
+  page,
+}) => {
   const errors = collectErrors(page);
-  const removed = await createDeletedPage();
+  const bob = await createUser({ name: "bob" });
+  // Deleted through MCP; only the browser restores.
+  const removed = await createPage({
+    folder: handbook,
+    name: "removed",
+    content: CONTENT,
+    deletedAt: new Date("2026-11-01T10:00:00Z"),
+    editor: bob,
+    via: "mcp",
+  });
 
   const dialog = await openRestoreDialog(page, removed.id);
   await expect(dialog.getByLabel("Name")).toHaveValue("removed");
@@ -51,11 +62,13 @@ test("restoring a page directly into the folder under its old name leads to it",
   await expect(page).toHaveURL("/folders/handbook/removed.md");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(["Removed page"]);
   await expect(page.getByRole("article").getByRole("listitem")).toHaveText(["First point", "Second point"]);
+  await expect(page.getByText(/^Last updated /)).toHaveText(by(USER));
   const stored = await getTestDb().page.findUniqueOrThrow({ where: { id: removed.id } });
   expect(stored).toMatchObject({ name: "removed", content: CONTENT, tabId: null, deletedAt: null });
 
   await page.goto("/folders/handbook");
   await expect(page.getByRole("list", { name: "Contents" }).getByRole("link")).toHaveText([/^Removed page/]);
+  await expect(page.getByRole("list", { name: "Contents" }).getByRole("listitem")).toHaveText([by(USER)]);
   await page.goto("/folders/handbook?view=all");
   await expect(page.getByRole("table", { name: "All pages" }).getByRole("link")).toHaveText(["removed.md"]);
   await page.goto("/deleted-items/handbook");
@@ -85,10 +98,7 @@ test("restoring a page into a tab under a new name leads to its new address", as
     deletedAt: null,
   });
 
-  await page.goto("/folders/handbook/guides");
-  await expect(page.getByRole("list", { name: "Pages" }).getByRole("link")).toHaveText([/^Removed page/]);
-  await page.goto("/folders/handbook?view=all");
-  await expect(page.getByRole("table", { name: "All pages" }).getByRole("link")).toHaveText(["restored.md"]);
+  // The lists of the folder show the restored page as in the test above; the other deleted page stays deleted.
   await page.goto("/deleted-items/handbook");
   const table = page.getByRole("table", { name: "Deleted items" });
   await expect(table.getByRole("link")).toHaveText(["other"]);
@@ -172,7 +182,7 @@ test("a name that is taken at the chosen place shows an error and keeps name and
   await expect(page).toHaveURL("/folders/handbook/taken.md");
 });
 
-test("cancel leads back to the deleted page", async ({ page }) => {
+test("cancel and the Escape key lead back to the deleted page", async ({ page }) => {
   const removed = await createDeletedPage();
 
   const dialog = await openRestoreDialog(page, removed.id);
@@ -180,17 +190,13 @@ test("cancel leads back to the deleted page", async ({ page }) => {
 
   await expect(page).toHaveURL(`/deleted-items/handbook/${removed.id}`);
   await expect(restoreDialog(page)).toHaveCount(0);
-  expect(await getTestDb().page.findUniqueOrThrow({ where: { id: removed.id } })).toEqual(removed);
-});
-
-test("the Escape key leads back to the deleted page", async ({ page }) => {
-  const removed = await createDeletedPage();
 
   await openRestoreDialog(page, removed.id);
   await page.keyboard.press("Escape");
 
   await expect(page).toHaveURL(`/deleted-items/handbook/${removed.id}`);
   await expect(restoreDialog(page)).toHaveCount(0);
+  expect(await getTestDb().page.findUniqueOrThrow({ where: { id: removed.id } })).toEqual(removed);
 });
 
 test("restoring into a tab that no longer exists shows an error and the page stays deleted", async ({ page }) => {
@@ -209,6 +215,8 @@ test("restoring into a tab that no longer exists shows an error and the page sta
   expect(await getTestDb().page.findUniqueOrThrow({ where: { id: removed.id } })).toEqual(removed);
 });
 
+// Restoring is not checked against a change in the meantime; of two restores at once exactly one wins
+// (integration/page-service.test.ts), and the second finds the page restored, as here.
 test("restoring a page that was restored in the meantime shows an error in the dialog", async ({ page }) => {
   const removed = await createDeletedPage();
 
@@ -219,62 +227,6 @@ test("restoring a page that was restored in the meantime shows an error in the d
 
   await expect(dialog.getByRole("alert")).toHaveText("This page no longer exists.");
   await expect(dialog.getByLabel("Name")).toHaveValue("removed");
-});
-
-// Restoring is not checked against a change in the meantime; of two restores at once, the second finds the page
-// restored, as before.
-test("the second of two Managers who restore the same page at once gets an error in the dialog", async ({
-  page,
-  browser,
-}) => {
-  const bob = await createUser({ name: "bob", mustChangePassword: false });
-  const team = await createFolder({
-    name: "team",
-    roles: [
-      { user: { id: KNOWN_USER.id }, role: "manager" },
-      { user: bob, role: "manager" },
-    ],
-  });
-  const removed = await createPage({ folder: team, name: "removed", deletedAt: new Date("2026-11-01T10:00:00Z") });
-  const other = await logInElsewhere(browser, "bob");
-
-  await page.goto(`/deleted-items/team/${removed.id}?action=restore`);
-  await other.page.goto(`/deleted-items/team/${removed.id}?action=restore`);
-  const otherDialog = restoreDialog(other.page);
-  await otherDialog.getByRole("radio", { name: "Directly in the folder" }).check();
-  await otherDialog.getByRole("button", { name: "Save" }).click();
-  await expect(other.page).toHaveURL("/folders/team/removed.md");
-
-  const dialog = restoreDialog(page);
-  await dialog.getByRole("radio", { name: "Directly in the folder" }).check();
-  await dialog.getByRole("button", { name: "Save" }).click();
-
-  await expect(dialog.getByRole("alert")).toHaveText("This page no longer exists.");
-  await other.context.close();
-});
-
-test("the restored page shows the logged-in user who restored it, via web", async ({ page }) => {
-  const errors = collectErrors(page);
-  const bob = await createUser({ name: "bob" });
-  // Deleted through MCP; only the browser restores.
-  const removed = await createPage({
-    folder: handbook,
-    name: "removed",
-    content: CONTENT,
-    deletedAt: new Date("2026-11-01T10:00:00Z"),
-    editor: bob,
-    via: "mcp",
-  });
-
-  const dialog = await openRestoreDialog(page, removed.id);
-  await dialog.getByRole("radio", { name: "Directly in the folder" }).check();
-  await dialog.getByRole("button", { name: "Save" }).click();
-
-  await expect(page).toHaveURL("/folders/handbook/removed.md");
-  await expect(page.getByText(/^Last updated /)).toHaveText(by(USER));
-  await page.goto("/folders/handbook");
-  await expect(page.getByRole("list", { name: "Contents" }).getByRole("listitem")).toHaveText([by(USER)]);
-  expect(errors).toEqual([]);
 });
 
 test("a submission of the restore dialog with the login of an admin changes nothing and is not found", async ({

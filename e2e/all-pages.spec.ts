@@ -2,8 +2,7 @@ import type { Page } from "@playwright/test";
 
 import { KNOWN_USER } from "../prisma/known-users";
 import { collectErrors, expectNotFoundResponse } from "./support/browser";
-import { createFolder, createPage, createTab, createUser, resetTestDatabase } from "./support/database";
-import { fillContent } from "./support/editor";
+import { createFolder, createPage, createTab, createUser, getTestDb, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
 
 let handbook: Awaited<ReturnType<typeof createFolder>>;
@@ -75,6 +74,17 @@ test("all pages of a folder are listed by name and then by tab, each with its ta
   await expect(links.nth(3)).toHaveAttribute("href", "/folders/handbook/meetings/overview.md");
   await expect(rows.nth(4).locator("time")).toHaveAttribute("datetime", "2026-02-01T10:00:00.000Z");
 
+  // The breadcrumb leads back to the folder.
+  await breadcrumb(page).getByRole("link", { name: "handbook" }).click();
+  await expect(page).toHaveURL("/folders/handbook");
+  await expect(page.getByRole("list", { name: "Contents" }).getByRole("link")).toHaveText([
+    /^Folder overview/,
+    /^Apple/,
+    /^guides/,
+    /^meetings/,
+  ]);
+
+  await page.goBack();
   await links.nth(2).click();
   await expect(page).toHaveURL("/folders/handbook/guides/overview.md");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(["Guides overview"]);
@@ -94,20 +104,6 @@ test("the list of all pages shows an empty state for a folder without pages", as
   ).toBeVisible();
   await expect(page.getByRole("table")).toHaveCount(0);
   await expect(breadcrumb(page).getByRole("listitem")).toHaveText(["Folders", "handbook", "All pages"]);
-});
-
-test("the list of all pages is reached from the folder and left through the breadcrumb", async ({ page }) => {
-  const guides = await createTab({ folder: handbook, name: "guides" });
-  await createPage({ tab: guides, name: "setup", title: "Setup" });
-
-  await page.goto("/folders/handbook");
-  await page.getByRole("main").getByRole("link", { name: "All pages" }).click();
-  await expect(page).toHaveURL("/folders/handbook?view=all");
-  await expect(page.getByRole("table", { name: "All pages" }).getByRole("link")).toHaveText(["setup.md"]);
-
-  await breadcrumb(page).getByRole("link", { name: "handbook" }).click();
-  await expect(page).toHaveURL("/folders/handbook");
-  await expect(page.getByRole("list", { name: "Contents" }).getByRole("link")).toHaveText([/^guides/]);
 });
 
 test("unknown views, a view with an action and addresses without views show the not-found page", async ({ page }) => {
@@ -142,12 +138,9 @@ test("the list of all pages shows who changed each page last and how", async ({ 
   const folder = await createFolder({ name: "docs" });
   const guides = await createTab({ folder, name: "guides" });
   await createPage({ folder, name: "direct", editor: bob, via: "mcp" });
-  await createPage({ tab: guides, name: "in-tab", content: "# In tab", editor: bob, via: "mcp" });
-
-  await page.goto("/folders/docs/guides/in-tab.md?action=edit");
-  await fillContent(page, "# In tab\n\nChanged");
-  await page.getByRole("button", { name: "Save" }).click();
-  await expect(page).toHaveURL("/folders/docs/guides/in-tab.md");
+  // A save of the logged-in user in the browser; that a save stores its user and channel is tested in edit-page.spec.ts.
+  const alice = await getTestDb().user.findUniqueOrThrow({ where: { id: KNOWN_USER.id } });
+  await createPage({ tab: guides, name: "in-tab", content: "# In tab", editor: alice, via: "web" });
 
   await page.goto("/folders/docs?view=all");
   const table = page.getByRole("table", { name: "All pages" });

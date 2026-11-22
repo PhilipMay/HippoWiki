@@ -465,6 +465,8 @@ test.describe("the place of the new page", () => {
     await dialog.getByRole("radio", { name: "Tab meetings" }).check();
     await dialog.getByRole("button", { name: "Cancel" }).click();
     await expect(dialog).toBeHidden();
+    // The form of a new page in a tab leads back to the tab.
+    await expect(page.getByRole("link", { name: "Cancel" })).toHaveAttribute("href", "/folders/handbook/guides");
 
     await page.getByRole("button", { name: "Save" }).click();
     await expect(dialog.getByRole("radio", { name: "Tab guides" })).toBeChecked();

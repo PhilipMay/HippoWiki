@@ -9,18 +9,24 @@ test.beforeEach(async () => {
   await resetTestDatabase();
 });
 
-for (const [role, roles] of [
-  ["reader", ["Reader"]],
-  ["writer", ["Reader", "Writer"]],
-  ["manager", ["Reader", "Writer", "Manager"]],
-  ["owner", ["Reader", "Writer", "Manager"]],
+// An Owner sees the addresses of a Manager (`mcpRolesFor` in src/features/folder-roles/roles.test.ts). One role opens
+// the view from the folder, the others open its address.
+for (const [role, roles, fromFolder] of [
+  ["reader", ["Reader"], true],
+  ["writer", ["Reader", "Writer"], false],
+  ["manager", ["Reader", "Writer", "Manager"], false],
 ] as const) {
-  test(`a ${role} opens "AI apps" from the folder and sees the addresses of ${roles.join(", ")}`, async ({ page }) => {
+  test(`a ${role} opens "AI apps"${fromFolder ? " from the folder" : ""} and sees the addresses of ${roles.join(", ")}`, async ({
+    page,
+  }) => {
     const errors = collectErrors(page);
     const folder = await createFolder({ name: "projects", roles: [{ user: KNOWN_USER, role }] });
-    await page.goto("/folders/projects");
-
-    await page.getByRole("link", { name: "AI apps" }).click();
+    if (fromFolder) {
+      await page.goto("/folders/projects");
+      await page.getByRole("link", { name: "AI apps" }).click();
+    } else {
+      await page.goto("/folders/projects?view=mcp");
+    }
 
     await expect(page).toHaveURL("/folders/projects?view=mcp");
     await expect(page).toHaveTitle("AI apps – projects – HippoWiki");

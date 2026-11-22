@@ -294,7 +294,7 @@ test("a Reader connection does not list the tool and its call changes nothing; a
 });
 
 test.describe("in the browser", () => {
-  test("a page edited through MCP names the user via mcp, and reverting to the revision before restores its content", async ({
+  test("a page edited through MCP names the user via mcp and no app, and reverting to the revision before restores its content", async ({
     page,
     request,
   }) => {
@@ -304,6 +304,8 @@ test.describe("in the browser", () => {
 
     await page.goto("/folders/projects/plan.md");
     await expect(page.getByText(/^Last updated /)).toHaveText(new RegExp(`by ${owner.name} via mcp$`));
+    // The page names no app of the change.
+    await expect(page.getByRole("main")).not.toContainText(/agent app|connected app/i);
     await expect(page.getByRole("article")).toContainText("The release is on 2026-04-15.");
 
     await page.goto("/folders/projects/plan.md?view=history");

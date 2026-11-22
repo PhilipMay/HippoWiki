@@ -300,17 +300,11 @@ test("a search that matches more than 100 pages lists 100 and says that more mat
   for (let index = 0; index < 150; index += 1) {
     await createPage({ folder: handbook, name: `meeting-${index}`, content: `# Meeting ${index}\n\nThe agenda.` });
   }
-  for (let index = 0; index < 30; index += 1) {
-    await createPage({ folder: handbook, name: `budget-${index}`, content: `# Budget ${index}\n\nThe invoice.` });
-  }
 
   await page.goto(results("agenda"));
   await expect(resultList(page).getByRole("listitem")).toHaveCount(100);
   await expect(page.getByRole("main")).toContainText("More than 100 pages match. Use more precise words");
-
-  await page.goto(results("invoice"));
-  await expect(resultList(page).getByRole("listitem")).toHaveCount(30);
-  await expect(page.getByRole("main")).not.toContainText("More than 100 pages match");
+  // That fewer matches are all listed without the message is tested in integration/search-service.test.ts.
 });
 
 test.describe("the limits of a search", () => {
@@ -436,23 +430,30 @@ test.describe("the search field", () => {
     "/folders/handbook/guides/setup.md?view=compare&from=1&to=2",
   ];
 
-  for (const role of ["reader", "writer", "manager", "owner"] as const) {
-    test(`shows on every address of the folder, its tab and its pages to a ${role}`, async ({ page }) => {
-      test.setTimeout(60_000);
-      await setUpFolder();
-      await setOwnRole(handbook, role);
-
-      for (const address of VIEWS) {
-        await page.goto(address);
-        await expect(searchField(page), address).toBeVisible();
-        await expect(searchField(page), address).toBeEditable();
-      }
-    });
-  }
-
-  test("does not show while an action is open, outside the folders and on the deleted items", async ({ page }) => {
+  // To a Reader: `SearchField` has no branch by role, and the views show it to every role alike.
+  test("shows on every address of the folder, its tab and its pages to a reader", async ({ page }) => {
     test.setTimeout(60_000);
+    await setUpFolder();
+    await setOwnRole(handbook, "reader");
+
+    for (const address of VIEWS) {
+      await page.goto(address);
+      await expect(searchField(page), address).toBeVisible();
+      await expect(searchField(page), address).toBeEditable();
+    }
+  });
+
+  // The HTML that the server renders holds the field wherever the page shows it, so its absence is read there. The
+  // folder list, the user list and the account page never render it.
+  test("does not show while an action is open and on the deleted items", async ({ page }) => {
     const { deleted } = await setUpFolder();
+    /** The HTML of the address as the server renders it, after a check that the page was found. */
+    const htmlOf = async (address: string) => {
+      const response = await page.request.get(address);
+      expect(response.status(), address).toBe(200);
+      return response.text();
+    };
+    expect(await htmlOf("/folders/handbook")).toContain('role="search"');
 
     for (const address of [
       "/folders/handbook?action=new",
@@ -466,17 +467,12 @@ test.describe("the search field", () => {
       "/folders/handbook/overview.md?action=move-or-rename",
       "/folders/handbook/overview.md?action=delete",
       "/folders/handbook/guides/setup.md?action=revert&revision=1",
-      "/folders",
       "/deleted-items/handbook",
       `/deleted-items/handbook/${deleted.id}`,
       `/deleted-items/handbook/${deleted.id}?view=history`,
       `/deleted-items/handbook/${deleted.id}?view=revision&revision=1`,
-      "/users",
-      "/account",
     ]) {
-      await page.goto(address);
-      await expect(page.getByRole("heading", { level: 1 }).or(page.getByRole("dialog")).first(), address).toBeVisible();
-      await expect(page.getByRole("search"), address).toHaveCount(0);
+      expect(await htmlOf(address), address).not.toContain('role="search"');
     }
   });
 

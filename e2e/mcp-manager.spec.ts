@@ -444,36 +444,18 @@ test.describe("the tools of a Manager connection", () => {
       await expect(page).toHaveURL("/folders");
     });
 
-    test("a page deleted through MCP is listed under Deleted items with the user who deleted it, via mcp", async ({
+    test("a page and the pages of a tab deleted through MCP are listed under Deleted items with the user who deleted them, via mcp", async ({
       page,
       request,
     }) => {
       const bob = await createUser({ name: "bob" });
       await createPage({ folder: projects, name: "plan", content: "# Plan", editor: bob });
-
-      await manage(request, "delete_page", { page: "plan", version: 1 });
-      await page.goto("/deleted-items/projects");
-
-      const rows = page
-        .getByRole("table", { name: "Deleted items" })
-        .getByRole("row")
-        .filter({ has: page.getByRole("cell") });
-      await expect(rows).toHaveCount(1);
-      await expect(rows.nth(0)).toContainText("plan");
-      await expect(rows.nth(0).getByRole("cell").nth(4)).toHaveText(owner.name);
-      await expect(rows.nth(0).getByRole("cell").nth(5)).toHaveText("mcp");
-    });
-
-    test("the pages of a tab deleted through MCP are listed under Deleted items with the user who deleted them, via mcp", async ({
-      page,
-      request,
-    }) => {
-      const bob = await createUser({ name: "bob" });
       const drafts = await createTab({ folder: projects, name: "drafts", editor: bob });
       for (const i of [1, 2, 3, 4, 5]) {
         await createPage({ tab: drafts, name: `draft-${i}`, content: `# Draft ${i}`, editor: bob });
       }
 
+      await manage(request, "delete_page", { page: "plan", version: 1 });
       await manage(request, "delete_tab", { tab: "drafts" });
       await page.goto("/deleted-items/projects");
 
@@ -481,34 +463,16 @@ test.describe("the tools of a Manager connection", () => {
         .getByRole("table", { name: "Deleted items" })
         .getByRole("row")
         .filter({ has: page.getByRole("cell") });
-      await expect(rows).toHaveCount(5);
-      for (const i of [0, 1, 2, 3, 4]) {
+      await expect(rows).toHaveCount(6);
+      await expect(rows.filter({ hasText: "plan" })).toHaveCount(1);
+      for (const i of [0, 1, 2, 3, 4, 5]) {
         await expect(rows.nth(i).getByRole("cell").nth(4)).toHaveText(owner.name);
         await expect(rows.nth(i).getByRole("cell").nth(5)).toHaveText("mcp");
       }
     });
 
-    test("a tab deleted in the browser meanwhile is a tool error of delete_tab that changes nothing", async ({
-      page,
-      request,
-    }) => {
-      const guides = await createTab({ folder: projects, name: "guides" });
-      await createPage({ tab: guides, name: "intro", content: "# Intro" });
-      await expect(manage(request, "list_folder")).resolves.toMatchObject({
-        structuredContent: { tabs: [{ name: "guides" }] },
-      });
-
-      await page.goto("/folders/projects/guides?action=delete");
-      await page.getByRole("dialog", { name: "Delete tab" }).getByRole("button", { name: "Delete" }).click();
-      await expect(page).toHaveURL("/folders/projects");
-      const before = await stored();
-
-      expect(errorOf(await manage(request, "delete_tab", { tab: "guides" }))).toContain(
-        'There is no tab named "guides" in the folder "projects"',
-      );
-      expect(await stored()).toEqual(before);
-    });
-
+    // A tab that is gone when delete_tab runs is a tool error ("delete_tab deletes an empty tab…" above), however it
+    // went (delete-tab.spec.ts deletes one in the browser).
     test("a tab created and a tab renamed through MCP show the user as their last editor", async ({
       page,
       request,

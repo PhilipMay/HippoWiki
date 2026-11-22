@@ -8,7 +8,6 @@ import { ADMIN_STORAGE_STATE, becomeUser, logInElsewhere } from "./support/auth"
 import { by, collectErrors, expectNotFoundResponse } from "./support/browser";
 import {
   createFolder,
-  createFolderRole,
   createPage,
   createRevisions,
   createTab,
@@ -17,7 +16,7 @@ import {
   resetTestDatabase,
 } from "./support/database";
 import { contentEditor, editorReady, expectContent, fillContent } from "./support/editor";
-import { expect, hydrating, test } from "./support/test";
+import { expect, test } from "./support/test";
 
 let handbook: Awaited<ReturnType<typeof createFolder>>;
 
@@ -29,11 +28,6 @@ test.beforeEach(async () => {
 /** The links of the contents list of a folder, in display order. */
 function listLinks(page: BrowserPage) {
   return page.getByRole("list", { name: "Contents" }).getByRole("link");
-}
-
-/** The "Move or rename page" dialog. */
-function moveOrRenameDialog(page: BrowserPage) {
-  return page.getByRole("dialog", { name: "Move or rename page" });
 }
 
 /** The logged-in user of the tests, who makes every change through the GUI. */
@@ -298,52 +292,10 @@ test("editing an unknown page or a page address without .md shows the not-found 
   }
 });
 
-test("a folder and a page can be created, and the page edited and renamed", async ({ page }) => {
+// That a save without a change records no revision and keeps the page as it is, also as another user, is tested in
+// integration/page-service.test.ts; "a save without a change" below shows it in the browser.
+test("a page created and saved in the browser has a revision per change", async ({ page }) => {
   const errors = collectErrors(page);
-
-  await page.goto("/folders?action=new");
-  await page.getByRole("dialog", { name: "New folder" }).getByLabel("Name").fill("lifecycle");
-  await page.getByRole("dialog", { name: "New folder" }).getByRole("button", { name: "Save" }).click();
-  await expect(page).toHaveURL("/folders/lifecycle");
-  await expect(page.getByText("This folder is empty")).toBeVisible();
-
-  await page.getByRole("link", { name: "New page" }).click();
-  await fillContent(page, "# Lifecycle page\n\nFirst version");
-  await page.getByRole("button", { name: "Save" }).click();
-  await page.getByRole("dialog", { name: "Save page" }).getByRole("button", { name: "Save" }).click();
-  await expect(page).toHaveURL("/folders/lifecycle/lifecycle-page.md");
-  await expect(page).toHaveTitle("Lifecycle page – HippoWiki");
-
-  await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("link", { name: "lifecycle" }).click();
-  await expect(listLinks(page)).toHaveText([/^Lifecycle page/]);
-
-  await page.getByRole("link", { name: /^Lifecycle page/ }).click();
-  await page.getByRole("link", { name: "Edit" }).click();
-  await fillContent(page, "# Lifecycle page, edited\n\nSecond version");
-  await page.getByRole("button", { name: "Save" }).click();
-  await expect(page).toHaveURL("/folders/lifecycle/lifecycle-page.md");
-  await expect(page).toHaveTitle("Lifecycle page, edited – HippoWiki");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(["Lifecycle page, edited"]);
-  await expect(page.getByRole("article").getByText("Second version")).toBeVisible();
-
-  await page.getByRole("link", { name: "Move or rename" }).click();
-  await moveOrRenameDialog(page).getByLabel("Name").fill("lifecycle-renamed");
-  await moveOrRenameDialog(page).getByRole("button", { name: "Save" }).click();
-  await expect(page).toHaveURL("/folders/lifecycle/lifecycle-renamed.md");
-
-  await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("link", { name: "lifecycle" }).click();
-  await expect(listLinks(page)).toHaveText([/^Lifecycle page, edited.*lifecycle-renamed\.md/]);
-  expect(await getTestDb().page.count()).toBe(1);
-  expect(errors).toEqual([]);
-});
-
-test("a page created and saved in the browser has a revision per change, and a save without a change changes nothing", async ({
-  page,
-  browser,
-}) => {
-  const errors = collectErrors(page);
-  const bob = await createUser({ name: "bob", mustChangePassword: false });
-  await createFolderRole({ folder: handbook, user: bob, role: "writer" });
   /** The revisions of the page as stored, oldest first. */
   const revisions = async () =>
     getTestDb().pageRevision.findMany({
@@ -367,17 +319,6 @@ test("a page created and saved in the browser has a revision per change, and a s
     { number: 1, content: "# History\n\nFirst version", user: { username: USER }, via: "web" },
     { number: 2, content: "# History\n\nSecond version", user: { username: USER }, via: "web" },
   ]);
-
-  // Another user saves without a change: no revision, and the page stays as it is.
-  const before = await getTestDb().page.findFirstOrThrow({ where: { name: "history" } });
-  const other = await logInElsewhere(browser, "bob");
-  await other.page.goto("/folders/handbook/history.md?action=edit");
-  await other.page.getByRole("button", { name: "Save" }).click();
-  await expect(other.page).toHaveURL("/folders/handbook/history.md");
-  await expect(other.page.getByText(/^Last updated /)).toHaveText(by(USER));
-  await other.context.close();
-  expect(await revisions()).toHaveLength(2);
-  expect(await getTestDb().page.findFirstOrThrow({ where: { name: "history" } })).toStrictEqual(before);
   expect(errors).toEqual([]);
 });
 
@@ -510,27 +451,6 @@ test.describe("a page changed after the editor was opened", () => {
     await expect(changedMessage(page)).toHaveText(/^This page was changed by bob via mcp at .+ after you opened it\.$/);
   });
 
-  // The user's own save in another tab counts like the save of another user.
-  test("refuses the save in a second tab after a save in the first", async ({ page, context }) => {
-    await createPage({ folder: team, name: "plan", content: "# Plan\n\nFirst draft" });
-    const second = await hydrating(await context.newPage());
-
-    await page.goto("/folders/team/plan.md?action=edit");
-    await second.goto("/folders/team/plan.md?action=edit");
-    await fillContent(page, "# Plan\n\nFrom the first tab");
-    await page.getByRole("button", { name: "Save" }).click();
-    await expect(page).toHaveURL("/folders/team/plan.md");
-
-    await fillContent(second, "# Plan\n\nFrom the second tab");
-    await second.getByRole("button", { name: "Save" }).click();
-
-    await expect(second).toHaveURL("/folders/team/plan.md?action=edit&notice=changed");
-    await expectContent(second, "# Plan\n\nFrom the first tab");
-    await expect(changedMessage(second)).toHaveText(
-      new RegExp(`^This page was changed by ${USER} via web at .+ after you opened it\\.$`),
-    );
-  });
-
   // A rename counts as a change, and the editor is shown at the new address.
   test("refuses the save after a rename and shows the editor at the new address", async ({ page }) => {
     const plan = await createPage({ folder: team, name: "plan", content: "# Plan\n\nFirst draft" });
@@ -590,31 +510,6 @@ test.describe("a page changed after the editor was opened", () => {
     await expectContent(page, "# Plan\n\nBob's version");
     await expect(changedMessage(page)).toHaveText(/^This page was changed by bob via web at .+ after you opened it\.$/);
     expect(await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).toStrictEqual(stored);
-    expect(errors).toEqual([]);
-  });
-
-  // Unchanged saves: an empty save changes nothing, so it does not refuse the save of another editor.
-  test("stores the change of the second editor after the first saved without a change", async ({ page, browser }) => {
-    const errors = collectErrors(page);
-    const plan = await createPage({ folder: team, name: "plan", content: "# Plan\n\nFirst draft", version: 3 });
-    const other = await logInElsewhere(browser, "bob");
-
-    await page.goto("/folders/team/plan.md?action=edit");
-    await other.page.goto("/folders/team/plan.md?action=edit");
-    await page.getByRole("button", { name: "Save" }).click();
-    await expect(page).toHaveURL("/folders/team/plan.md");
-
-    await fillContent(other.page, "# Plan\n\nBob's version");
-    await other.page.getByRole("button", { name: "Save" }).click();
-    await expect(other.page).toHaveURL("/folders/team/plan.md");
-    await expect(other.page.getByText(/^Last updated /)).toHaveText(by("bob"));
-    await other.context.close();
-
-    expect(await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).toMatchObject({
-      content: "# Plan\n\nBob's version",
-      version: 4,
-      lastEditedById: bob.id,
-    });
     expect(errors).toEqual([]);
   });
 

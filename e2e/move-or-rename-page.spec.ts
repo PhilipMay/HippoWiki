@@ -163,96 +163,10 @@ test("renaming a page in the folder shows it at its new address", async ({ page 
   }
 });
 
-test("renaming a page in a tab keeps it in the tab", async ({ page }) => {
-  const renamed = await createPage({ tab: guides, name: "old-name", content: "# Renamed page\n\nBody" });
-
-  await page.goto("/folders/handbook/guides/old-name.md");
-  await page.getByRole("link", { name: "Move or rename" }).click();
-  await expect(page).toHaveURL("/folders/handbook/guides/old-name.md?action=move-or-rename");
-  const dialog = dialogOf(page);
-  await dialog.getByLabel("Name").fill("new-name");
-  await dialog.getByRole("button", { name: "Save" }).click();
-
-  await expect(page).toHaveURL("/folders/handbook/guides/new-name.md");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(["Renamed page"]);
-  await expect(breadcrumbItems(page)).toHaveText(["Folders", "handbook", "guides", "new-name.md"]);
-  expect(await getTestDb().page.findUniqueOrThrow({ where: { id: renamed.id } })).toMatchObject({
-    name: "new-name",
-    title: "Renamed page",
-    content: "# Renamed page\n\nBody",
-    tabId: guides.id,
-  });
-
-  await expectNotFound(page, "/folders/handbook/guides/old-name.md");
-});
-
-test("moving a page from the folder into a tab shows it at its new address", async ({ page }) => {
+// The other moves and renames, within a tab, into a tab, back to the folder and between tabs, are stored in the same
+// way (integration/page-service.test.ts).
+test("moving a page from one tab to another with a new name shows it at its new address", async ({ page }) => {
   const errors = collectErrors(page);
-  const moved = await createPage({ folder: handbook, name: "moved", content: "# Moved page\n\nBody" });
-
-  await page.goto("/folders/handbook/moved.md?action=move-or-rename");
-  const dialog = dialogOf(page);
-  await dialog.getByRole("radio", { name: "Tab guides" }).check();
-  await dialog.getByRole("button", { name: "Save" }).click();
-
-  await expect(page).toHaveURL("/folders/handbook/guides/moved.md");
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(["Moved page"]);
-  await expect(breadcrumbItems(page)).toHaveText(["Folders", "handbook", "guides", "moved.md"]);
-  expect(await getTestDb().page.findUniqueOrThrow({ where: { id: moved.id } })).toMatchObject({
-    name: "moved",
-    title: "Moved page",
-    content: "# Moved page\n\nBody",
-    folderId: handbook.id,
-    tabId: guides.id,
-  });
-  expect(errors).toEqual([]);
-
-  await expectNotFound(page, "/folders/handbook/moved.md");
-});
-
-test("moving a page from a tab back to the folder shows it at its new address", async ({ page }) => {
-  const moved = await createPage({ tab: guides, name: "moved", title: "Moved page" });
-
-  await page.goto("/folders/handbook/guides/moved.md?action=move-or-rename");
-  const dialog = dialogOf(page);
-  await dialog.getByRole("radio", { name: "Directly in the folder" }).check();
-  await dialog.getByRole("button", { name: "Save" }).click();
-
-  await expect(page).toHaveURL("/folders/handbook/moved.md");
-  await expect(breadcrumbItems(page)).toHaveText(["Folders", "handbook", "moved.md"]);
-  expect(await getTestDb().page.findUniqueOrThrow({ where: { id: moved.id } })).toMatchObject({
-    name: "moved",
-    folderId: handbook.id,
-    tabId: null,
-  });
-
-  await expectNotFound(page, "/folders/handbook/guides/moved.md");
-});
-
-test("moving a page from one tab to another shows it at its new address", async ({ page }) => {
-  const moved = await createPage({ tab: guides, name: "moved", title: "Moved page" });
-
-  await page.goto("/folders/handbook/guides/moved.md?action=move-or-rename");
-  const dialog = dialogOf(page);
-  await dialog.getByRole("radio", { name: "Tab meetings" }).check();
-  await dialog.getByRole("button", { name: "Save" }).click();
-
-  await expect(page).toHaveURL("/folders/handbook/meetings/moved.md");
-  expect(await getTestDb().page.findUniqueOrThrow({ where: { id: moved.id } })).toMatchObject({
-    folderId: handbook.id,
-    tabId: meetings.id,
-  });
-
-  await expectNotFound(page, "/folders/handbook/guides/moved.md");
-  // The page is listed in its new tab only.
-  await page.goto("/folders/handbook/meetings");
-  await expect(page.getByRole("list", { name: "Pages" }).getByRole("link")).toHaveText([/^Moved page/]);
-  await page.goto("/folders/handbook/guides");
-  await expect(page.getByText("No pages yet")).toBeVisible();
-});
-
-test("renaming and moving a page together shows it at its new address", async ({ page }) => {
   const changed = await createPage({ tab: guides, name: "old-name", content: "# Changed page\n\nBody" });
 
   await page.goto("/folders/handbook/guides/old-name.md?action=move-or-rename");
@@ -262,7 +176,13 @@ test("renaming and moving a page together shows it at its new address", async ({
   await dialog.getByRole("button", { name: "Save" }).click();
 
   await expect(page).toHaveURL("/folders/handbook/meetings/new-name.md");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(["Changed page"]);
+  await expect(breadcrumbItems(page)).toHaveText(["Folders", "handbook", "meetings", "new-name.md"]);
+  await expect(
+    page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("link", { name: "meetings" }),
+  ).toHaveAttribute("href", "/folders/handbook/meetings");
+  expect(errors).toEqual([]);
   expect(await getTestDb().page.findUniqueOrThrow({ where: { id: changed.id } })).toMatchObject({
     name: "new-name",
     title: "Changed page",
@@ -270,8 +190,9 @@ test("renaming and moving a page together shows it at its new address", async ({
     tabId: meetings.id,
   });
 
-  await expectNotFound(page, "/folders/handbook/guides/old-name.md");
-  await expectNotFound(page, "/folders/handbook/guides/new-name.md");
+  for (const address of ["/folders/handbook/guides/old-name.md", "/folders/handbook/guides/new-name.md"]) {
+    await expectNotFoundResponse(page.request, address);
+  }
 });
 
 test("a name taken at the target shows the error at the name field and the page stays unchanged", async ({ page }) => {

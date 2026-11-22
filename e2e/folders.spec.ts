@@ -51,16 +51,6 @@ test("the folder list shows folders by name and links to them", async ({ page })
   await expect(page.getByText("This folder is empty")).toBeVisible();
 });
 
-test("the app bar links to the folder list", async ({ page }) => {
-  await createFolder({ name: "handbook" });
-  await page.goto("/folders/handbook");
-
-  await page.getByRole("banner").getByRole("link", { name: "Folders" }).click();
-
-  await expect(page).toHaveURL("/folders");
-  await expect(page.getByRole("heading", { level: 1, name: "Folders" })).toBeVisible();
-});
-
 test("creating a folder through the dialog shows the new folder", async ({ page }) => {
   const errors = collectErrors(page);
   await createFolder({ name: "archive" });
@@ -87,7 +77,9 @@ test("creating a folder through the dialog shows the new folder", async ({ page 
     { name: "handbook" },
   ]);
 
+  // The app bar leads back to the folder list.
   await page.getByRole("banner").getByRole("link", { name: "Folders" }).click();
+  await expect(page).toHaveURL("/folders");
   await expect(listLinks(page)).toHaveText([/^archive/, /^handbook/]);
   expect(errors).toEqual([]);
 });

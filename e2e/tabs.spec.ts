@@ -369,68 +369,6 @@ test("the folder header links to all pages, a new tab and a new page", async ({ 
   await expect(main.getByRole("link", { name: "New page" })).toHaveAttribute("href", "/folders/handbook?action=new");
 });
 
-test("a page can be created in a tab, viewed, edited and renamed", async ({ page }) => {
-  const errors = collectErrors(page);
-  const tab = await createTab({ folder: handbook, name: "guides" });
-
-  await page.goto("/folders/handbook/guides");
-  await page.getByRole("link", { name: "New page" }).click();
-
-  await expect(page).toHaveURL("/folders/handbook/guides?action=new");
-  await expect(page).toHaveTitle("New page – HippoWiki");
-  await expect(page.getByRole("link", { name: "Cancel" })).toHaveAttribute("href", "/folders/handbook/guides");
-  await fillContent(page, "# Setup guide\n\nFirst version");
-  await page.getByRole("button", { name: "Save" }).click();
-  const saveDialog = page.getByRole("dialog", { name: "Save page" });
-  await expect(saveDialog.getByLabel("Name")).toHaveAccessibleDescription(
-    "Address: /folders/handbook/guides/setup-guide.md",
-  );
-  await saveDialog.getByRole("button", { name: "Save" }).click();
-
-  await expect(page).toHaveURL("/folders/handbook/guides/setup-guide.md");
-  await expect(page).toHaveTitle("Setup guide – HippoWiki");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(["Setup guide"]);
-  await expect(breadcrumb(page).getByRole("listitem")).toHaveText(["Folders", "handbook", "guides", "setup-guide.md"]);
-  await expect(breadcrumb(page).getByRole("link", { name: "guides" })).toHaveAttribute(
-    "href",
-    "/folders/handbook/guides",
-  );
-  const created = await getTestDb().page.findFirstOrThrow();
-  expect(created).toMatchObject({ name: "setup-guide", folderId: handbook.id, tabId: tab.id });
-
-  await page.getByRole("link", { name: "Edit" }).click();
-  await expect(page).toHaveURL("/folders/handbook/guides/setup-guide.md?action=edit");
-  await expect(page).toHaveTitle("Edit Setup guide – HippoWiki");
-  await fillContent(page, "# Setup guide, edited\n\nSecond version");
-  await page.getByRole("button", { name: "Save" }).click();
-
-  await expect(page).toHaveURL("/folders/handbook/guides/setup-guide.md");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(["Setup guide, edited"]);
-
-  await page.getByRole("link", { name: "Move or rename" }).click();
-  await expect(page).toHaveURL("/folders/handbook/guides/setup-guide.md?action=move-or-rename");
-  const moveOrRenameDialog = page.getByRole("dialog", { name: "Move or rename page" });
-  await moveOrRenameDialog.getByLabel("Name").fill("setup");
-  await moveOrRenameDialog.getByRole("button", { name: "Save" }).click();
-
-  await expect(page).toHaveURL("/folders/handbook/guides/setup.md");
-  expect(await getTestDb().page.findUniqueOrThrow({ where: { id: created.id } })).toMatchObject({
-    name: "setup",
-    title: "Setup guide, edited",
-    folderId: handbook.id,
-    tabId: tab.id,
-  });
-
-  // The page is listed in its tab, not among the pages placed directly in the folder.
-  await breadcrumb(page).getByRole("link", { name: "guides" }).click();
-  await expect(page).toHaveURL("/folders/handbook/guides");
-  await expect(listLinks(page)).toHaveText([/^Setup guide, edited.*setup\.md/]);
-  await expect(listLinks(page)).toHaveAttribute("href", "/folders/handbook/guides/setup.md");
-  await page.goto("/folders/handbook");
-  await expect(contentsLinks(page)).toHaveText([/^guides/]);
-  expect(errors).toEqual([]);
-});
-
 test("a tab lists its pages by name, without the pages of the folder and of other tabs", async ({ page }) => {
   const guides = await createTab({ folder: handbook, name: "guides" });
   const meetings = await createTab({ folder: handbook, name: "meetings" });
@@ -449,23 +387,9 @@ test("a tab lists its pages by name, without the pages of the folder and of othe
   await expect(contentsLinks(page)).toHaveText([/^In folder/, /^guides/, /^meetings/]);
 });
 
-test("a page created on the folder address is placed directly in the folder, also when it has tabs", async ({
-  page,
-}) => {
-  await createTab({ folder: handbook, name: "guides" });
-
-  await page.goto("/folders/handbook?action=new");
-  await fillContent(page, "# Direct page");
-  await page.getByRole("button", { name: "Save" }).click();
-  await page.getByRole("dialog", { name: "Save page" }).getByRole("button", { name: "Save" }).click();
-
-  await expect(page).toHaveURL("/folders/handbook/direct-page.md");
-  expect(await getTestDb().page.findFirstOrThrow()).toMatchObject({ folderId: handbook.id, tabId: null });
-});
-
-test("overview.md can exist directly in a folder and in two of its tabs, but only once in the same tab", async ({
-  page,
-}) => {
+// That the name can be taken once directly in the folder and once in each tab, and its pages read at their addresses, is
+// tested in integration/page-service.test.ts.
+test("overview.md can exist in two tabs of a folder, but only once in the same tab", async ({ page }) => {
   const errors = collectErrors(page);
   const guides = await createTab({ folder: handbook, name: "guides" });
   await createTab({ folder: handbook, name: "meetings" });
@@ -482,13 +406,6 @@ test("overview.md can exist directly in a folder and in two of its tabs, but onl
   await expect(page).toHaveURL("/folders/handbook/meetings/overview.md");
   expect(await getTestDb().page.count({ where: { name: "overview", folderId: handbook.id } })).toBe(3);
 
-  await page.goto("/folders/handbook/overview.md");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(["Folder overview"]);
-  await page.goto("/folders/handbook/guides/overview.md");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(["Guides overview"]);
-  await page.goto("/folders/handbook/meetings/overview.md");
-  await expect(page.getByRole("article").getByText("Meetings overview")).toBeVisible();
-
   // A second overview in the same tab is refused.
   await page.goto("/folders/handbook/meetings?action=new");
   await fillContent(page, "# Overview\n\nA second one");
@@ -497,14 +414,6 @@ test("overview.md can exist directly in a folder and in two of its tabs, but onl
   await expect(dialog.getByLabel("Name")).toHaveAccessibleDescription("Name is already in use");
   await expect(dialog.getByLabel("Name")).toHaveValue("overview");
   await expect(page).toHaveURL("/folders/handbook/meetings?action=new");
-  expect(await getTestDb().page.count()).toBe(3);
-
-  // And so is a second overview placed directly in the folder.
-  await page.goto("/folders/handbook?action=new");
-  await fillContent(page, "# Overview\n\nA second one");
-  await page.getByRole("button", { name: "Save" }).click();
-  await dialog.getByRole("button", { name: "Save" }).click();
-  await expect(dialog.getByLabel("Name")).toHaveAccessibleDescription("Name is already in use");
   expect(await getTestDb().page.count()).toBe(3);
   expect(errors).toEqual([]);
 });

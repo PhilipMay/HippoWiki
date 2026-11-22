@@ -507,6 +507,56 @@ test.describe("the write tools", () => {
     expect(await storedPages()).toMatchObject([{ content: "# Plan", version: 1 }]);
   });
 
+  // The stored content sent back changes nothing and returns the version stated.
+  test("replace_page_content with the stored content keeps the last change and the version; a change on that version is stored", async ({
+    request,
+  }) => {
+    const bob = await createUser({ name: "bob" });
+    const updatedAt = new Date("2026-01-01T10:00:00Z");
+    await createPage({ folder: projects, name: "plan", content: "# Plan\n\nBy bob.", editor: bob, updatedAt });
+    const read = (await call(request, "read_page", { page: "plan" })).structuredContent as {
+      content: string;
+      version: number;
+    };
+
+    const same = await write(request, "replace_page_content", {
+      page: "plan",
+      version: read.version,
+      content: read.content,
+    });
+
+    expect(same.isError).toBeFalsy();
+    expect(same.structuredContent).toEqual({
+      note: USER_TEXT_NOTE,
+      name: "plan",
+      title: "Plan",
+      tab: null,
+      address: `${ISSUER}/folders/projects/plan.md`,
+      version: read.version,
+    });
+    await expect(call(request, "read_page", { page: "plan" })).resolves.toMatchObject({
+      structuredContent: {
+        lastEditedBy: "bob",
+        lastEditedVia: "web",
+        lastChanged: updatedAt.toISOString(),
+        version: read.version,
+      },
+    });
+    expect(await getTestDb().page.findFirstOrThrow({ where: { folderId: projects.id, name: "plan" } })).toMatchObject({
+      lastEditedById: bob.id,
+      lastEditedVia: "web",
+      updatedAt,
+    });
+
+    const changed = await write(request, "replace_page_content", {
+      page: "plan",
+      version: read.version,
+      content: "# Plan\n\nBy an agent.",
+    });
+    expect(changed.structuredContent).toMatchObject({ version: read.version + 1 });
+    expect(await storedPages()).toMatchObject([{ content: "# Plan\n\nBy an agent.", version: read.version + 1 }]);
+  });
+
   test.describe("in the browser", () => {
     // The browser is logged in as the Owner of "projects", whose connection the tests use.
     test.beforeEach(async ({ page }) => {
@@ -514,20 +564,7 @@ test.describe("the write tools", () => {
       await expect(page).toHaveURL("/folders");
     });
 
-    test("a page changed through MCP names the user and the channel mcp as its last change, and no app", async ({
-      page,
-      request,
-    }) => {
-      const bob = await createUser({ name: "bob" });
-      await createPage({ folder: projects, name: "plan", content: "# Plan", editor: bob });
-
-      await write(request, "replace_page_content", { page: "plan", version: 1, content: "# Plan\n\nBy an agent." });
-      await page.goto("/folders/projects/plan.md");
-
-      await expect(page.getByText(/^Last updated /)).toHaveText(new RegExp(`by ${owner.name} via mcp$`));
-      await expect(page.getByRole("main")).not.toContainText(/agent app|connected app/i);
-    });
-
+    // That a page changed through MCP names the user and the channel mcp, and no app, is shown in mcp-edit.spec.ts.
     test("a write through MCP while the editor is open refuses the save in the browser once, and both are in the history", async ({
       page,
       request,
@@ -565,57 +602,6 @@ test.describe("the write tools", () => {
         /^Revision 1.+ by bob via web · Plan$/,
       ]);
       expect(await storedPages()).toMatchObject([{ content: "# Plan\n\nBy the owner.", version: 3 }]);
-    });
-
-    // The stored content sent back changes nothing and returns the version stated.
-    test("replace_page_content with the stored content keeps the last change and the version; a change on that version is stored", async ({
-      page,
-      request,
-    }) => {
-      const bob = await createUser({ name: "bob" });
-      const updatedAt = new Date("2026-01-01T10:00:00Z");
-      await createPage({ folder: projects, name: "plan", content: "# Plan\n\nBy bob.", editor: bob, updatedAt });
-      await page.goto("/folders/projects/plan.md");
-      const time = await page.getByRole("article").locator("time").textContent();
-      const read = (await call(request, "read_page", { page: "plan" })).structuredContent as {
-        content: string;
-        version: number;
-      };
-
-      const same = await write(request, "replace_page_content", {
-        page: "plan",
-        version: read.version,
-        content: read.content,
-      });
-
-      expect(same.isError).toBeFalsy();
-      expect(same.structuredContent).toEqual({
-        note: USER_TEXT_NOTE,
-        name: "plan",
-        title: "Plan",
-        tab: null,
-        address: `${ISSUER}/folders/projects/plan.md`,
-        version: read.version,
-      });
-      await expect(call(request, "read_page", { page: "plan" })).resolves.toMatchObject({
-        structuredContent: {
-          lastEditedBy: "bob",
-          lastEditedVia: "web",
-          lastChanged: updatedAt.toISOString(),
-          version: read.version,
-        },
-      });
-      await page.goto("/folders/projects/plan.md");
-      await expect(page.getByText(/^Last updated /)).toHaveText(/by bob via web$/);
-      await expect(page.getByRole("article").locator("time")).toHaveText(time ?? "");
-
-      const changed = await write(request, "replace_page_content", {
-        page: "plan",
-        version: read.version,
-        content: "# Plan\n\nBy an agent.",
-      });
-      expect(changed.structuredContent).toMatchObject({ version: read.version + 1 });
-      expect(await storedPages()).toMatchObject([{ content: "# Plan\n\nBy an agent.", version: read.version + 1 }]);
     });
   });
 });

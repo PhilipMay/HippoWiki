@@ -1,19 +1,8 @@
 import type { Page } from "@playwright/test";
 
 import { KNOWN_USER } from "../prisma/known-users";
-import { logInElsewhere } from "./support/auth";
 import { collectErrors, expectNotFound } from "./support/browser";
-import {
-  createFolder,
-  createGrant,
-  createPage,
-  createTab,
-  createUser,
-  getTestDb,
-  resetTestDatabase,
-} from "./support/database";
-import { editorReady, fillContent } from "./support/editor";
-import { callTool, mcpPath } from "./support/mcp";
+import { createFolder, createPage, createTab, createUser, getTestDb, resetTestDatabase } from "./support/database";
 import { expect, hydrating, test } from "./support/test";
 
 let handbook: Awaited<ReturnType<typeof createFolder>>;
@@ -117,18 +106,8 @@ test("a Manager deletes a tab with two pages, which become deleted pages of the 
   await expectNotFound(page, "/folders/team/meetngs");
 });
 
-test("an Owner deletes a tab in the same way", async ({ page }) => {
-  const archive = await createTab({ folder: handbook, name: "archive" });
-  await createPage({ tab: archive, name: "old" });
-
-  await openDeleteDialog(page, "/folders/handbook/archive");
-  await deleteDialog(page).getByRole("button", { name: "Delete" }).click();
-
-  await expect(page).toHaveURL("/folders/handbook");
-  expect(await getTestDb().tab.count()).toBe(0);
-  expect((await storedPages(handbook)).map(({ deletedAt }) => deletedAt)).toEqual([expect.any(Date)]);
-});
-
+// An Owner deletes a tab in the same way, and the name of the tab is free at once, with the last change of the folder
+// kept (integration/folder-service.test.ts, "deleting a tab").
 test("the dialog of a tab with one page and of a tab without pages says so", async ({ page }) => {
   const single = await createTab({ folder: handbook, name: "single" });
   await createPage({ tab: single, name: "only" });
@@ -172,47 +151,8 @@ test("Cancel and the Escape key lead back to the tab, which keeps its pages", as
   expect(errors).toEqual([]);
 });
 
-test("a page of a deleted tab is restored from the deleted pages into another place, with none preselected", async ({
-  page,
-}) => {
-  const old = await createTab({ folder: handbook, name: "old" });
-  await createTab({ folder: handbook, name: "guides" });
-  const setup = await createPage({ tab: old, name: "setup", title: "Setup" });
-
-  await openDeleteDialog(page, "/folders/handbook/old");
-  await deleteDialog(page).getByRole("button", { name: "Delete" }).click();
-  await expect(page).toHaveURL("/folders/handbook");
-
-  await page.goto(`/deleted-items/handbook/${setup.id}`);
-  await page.getByRole("main").getByRole("link", { name: "Restore" }).click();
-  const dialog = page.getByRole("dialog", { name: "Restore page" });
-  await expect(dialog.getByRole("radio")).toHaveCount(2);
-  for (const radio of await dialog.getByRole("radio").all()) await expect(radio).not.toBeChecked();
-  await dialog.getByRole("radio", { name: "Tab guides" }).check();
-  await dialog.getByRole("button", { name: "Save" }).click();
-
-  await expect(page).toHaveURL("/folders/handbook/guides/setup.md");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(["Setup"]);
-});
-
-test("after deleting the tab archive, a new tab archive is created in the same folder", async ({ page }) => {
-  const archive = await createTab({ folder: handbook, name: "archive" });
-  await createPage({ tab: archive, name: "old" });
-
-  await openDeleteDialog(page, "/folders/handbook/archive");
-  await deleteDialog(page).getByRole("button", { name: "Delete" }).click();
-  await expect(page).toHaveURL("/folders/handbook");
-
-  await page.goto("/folders/handbook?action=new-tab");
-  await page.getByRole("dialog").getByLabel("Name").fill("archive");
-  await page.getByRole("dialog").getByRole("button", { name: "Save" }).click();
-
-  await expect(page).toHaveURL("/folders/handbook/archive");
-  await expect(page.getByRole("heading", { level: 1, name: "archive" })).toBeVisible();
-  await expect(page.getByRole("list", { name: "Pages" })).toHaveCount(0);
-});
-
-test("the pages in the tab when confirming are deleted, not those of the moment the dialog was opened", async ({
+// A page of a deleted tab is restored like any deleted page (restore-page.spec.ts).
+test("the pages in the tab when confirming are deleted, not those of the moment the dialog was opened, also after a rename", async ({
   page,
 }) => {
   const guides = await createTab({ folder: handbook, name: "guides" });
@@ -221,30 +161,19 @@ test("the pages in the tab when confirming are deleted, not those of the moment 
 
   await page.goto("/folders/handbook/guides?action=delete");
   await expect(deleteDialog(page)).toContainText("Its 2 pages are deleted with it.");
-  // Meanwhile one page is created in the tab, and one is moved out of it.
+  // Meanwhile one page is created in the tab, one is moved out of it, and the tab is renamed.
   await createPage({ tab: guides, name: "late" });
   await getTestDb().page.update({ where: { id: leaves.id }, data: { tabId: null } });
-  await deleteDialog(page).getByRole("button", { name: "Delete" }).click();
-
-  await expect(page).toHaveURL("/folders/handbook");
-  expect((await storedPages(handbook)).map(({ name, deletedAt }) => [name, deletedAt !== null])).toEqual([
-    ["late", true],
-    ["leaves", false],
-    ["stays", true],
-  ]);
-});
-
-test("a tab renamed after the dialog was opened is deleted on confirming", async ({ page }) => {
-  const guides = await createTab({ folder: handbook, name: "guides" });
-  await createPage({ tab: guides, name: "setup" });
-
-  await page.goto("/folders/handbook/guides?action=delete");
   await getTestDb().tab.update({ where: { id: guides.id }, data: { name: "manuals" } });
   await deleteDialog(page).getByRole("button", { name: "Delete" }).click();
 
   await expect(page).toHaveURL("/folders/handbook");
   expect(await getTestDb().tab.count()).toBe(0);
-  expect((await storedPages(handbook)).map(({ deletedAt }) => deletedAt)).toEqual([expect.any(Date)]);
+  expect((await storedPages(handbook)).map(({ name, deletedAt }) => [name, deletedAt !== null])).toEqual([
+    ["late", true],
+    ["leaves", false],
+    ["stays", true],
+  ]);
 });
 
 test("the second of two dialogs of the same tab says that the tab no longer exists and deletes nothing", async ({
@@ -279,86 +208,8 @@ test("the second of two dialogs of the same tab says that the tab no longer exis
   await expect(second).toHaveURL("/folders/handbook");
 });
 
-test("a Writer whose editor was open on a page of the deleted tab gets the message on saving", async ({
-  page,
-  browser,
-}) => {
-  const bob = await createUser({ name: "bob", mustChangePassword: false });
-  const team = await createFolder({
-    name: "team",
-    roles: [
-      { user: ALICE, role: "manager" },
-      { user: bob, role: "writer" },
-    ],
-  });
-  const guides = await createTab({ folder: team, name: "guides" });
-  const plan = await createPage({ tab: guides, name: "plan", content: "# Plan\n\nFirst draft" });
-  const other = await logInElsewhere(browser, "bob");
-  await other.page.goto("/folders/team/guides/plan.md?action=edit");
-  await editorReady(other.page);
-
-  await openDeleteDialog(page, "/folders/team/guides");
-  await deleteDialog(page).getByRole("button", { name: "Delete" }).click();
-  await expect(page).toHaveURL("/folders/team");
-  const deleted = await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } });
-
-  await fillContent(other.page, "# Plan\n\nBob's version");
-  await other.page.getByRole("button", { name: "Save" }).click();
-
-  await expect(other.page.getByRole("main").getByRole("alert")).toHaveText("This page no longer exists.");
-  expect(await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).toEqual(deleted);
-  await other.context.close();
-});
-
-test("the folder list shows the same last change of the folder before and after", async ({ page }) => {
-  const bob = await createUser({ name: "bob" });
-  const team = await createFolder({
-    name: "team",
-    editor: bob,
-    updatedAt: new Date("2026-03-04T09:00:00Z"),
-    roles: [{ user: ALICE, role: "owner" }],
-  });
-  const guides = await createTab({ folder: team, name: "guides" });
-  await createPage({ tab: guides, name: "setup" });
-  const item = page.getByRole("list", { name: "Folders" }).getByRole("listitem").filter({ hasText: "team" });
-
-  await page.goto("/folders");
-  const before = await item.textContent();
-  expect(before).toContain("bob");
-
-  await openDeleteDialog(page, "/folders/team/guides");
-  await deleteDialog(page).getByRole("button", { name: "Delete" }).click();
-  await expect(page).toHaveURL("/folders/team");
-
-  await page.goto("/folders");
-  await expect(item).toHaveText(before ?? "");
-});
-
-test("after the deletion, a Writer connection of MCP lists neither the tab nor its pages and creates no page in it", async ({
-  page,
-  request,
-}) => {
-  const guides = await createTab({ folder: handbook, name: "guides" });
-  await createPage({ tab: guides, name: "setup" });
-  await createPage({ folder: handbook, name: "intro" });
-  const { accessToken } = await createGrant({ owner: KNOWN_USER, folder: handbook, role: "writer" });
-  const writerOfHandbook = { address: mcpPath(handbook, "writer"), token: accessToken };
-
-  await openDeleteDialog(page, "/folders/handbook/guides");
-  await deleteDialog(page).getByRole("button", { name: "Delete" }).click();
-  await expect(page).toHaveURL("/folders/handbook");
-
-  const listed = await callTool(request, writerOfHandbook, "list_folder");
-  expect(listed.structuredContent).toMatchObject({ tabs: [], pages: [{ name: "intro", tab: null }] });
-  const created = await callTool(request, writerOfHandbook, "create_page", {
-    content: "# New",
-    tab: "guides",
-  });
-  expect(created.isError).toBe(true);
-  expect(created.content[0]?.text).toContain('There is no tab named "guides"');
-  expect((await storedPages(handbook)).map(({ name }) => name)).toEqual(["intro", "setup"]);
-});
-
+// A save of a page of a deleted tab is refused like the save of a deleted page ("saving a page that was deleted in the
+// meantime" of edit-page.spec.ts), and MCP no longer lists the tab or its pages (integration/folder-service.test.ts).
 test("the folder page offers no deletion next to its tabs", async ({ page }) => {
   await createTab({ folder: handbook, name: "guides" });
 

@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { KNOWN_USER } from "../prisma/known-users";
-import { ADMIN_STORAGE_STATE, becomeUser, logInElsewhere, USER_STORAGE_STATE } from "./support/auth";
+import { ADMIN_STORAGE_STATE, becomeUser, logInElsewhere } from "./support/auth";
 import { collectErrors, expectNotFound, expectNotFoundResponse } from "./support/browser";
 import {
   createFolder,
@@ -26,11 +26,6 @@ const ALICE = { id: KNOWN_USER.id };
 /** The items of the folder list, in display order. */
 function listItems(page: Page) {
   return page.getByRole("list", { name: "Folders" }).getByRole("listitem");
-}
-
-/** Removes the role of the logged-in user on the folder, as an Owner would. */
-async function removeOwnRole(folder: { id: string }) {
-  await getTestDb().folderRole.deleteMany({ where: { folderId: folder.id, userId: KNOWN_USER.id } });
 }
 
 test.describe("without a role on a folder", () => {
@@ -102,33 +97,8 @@ test.describe("without a role on a folder", () => {
     expect(await getTestDb().folder.count()).toBe(1);
   });
 
-  test("a crafted form to create a page shows the not-found page and writes nothing", async ({ page }) => {
-    const folder = await createFolder({ name: "handbook" });
-    await page.goto("/folders/handbook?action=new");
-    await fillContent(page, "# Secret");
-    await page.getByRole("button", { name: "Save" }).click();
-    const dialog = page.getByRole("dialog");
-    await expect(dialog).toBeVisible();
-    await removeOwnRole(folder);
-
-    await dialog.getByRole("button", { name: "Save" }).click();
-
-    await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
-    expect(await getTestDb().page.count()).toBe(0);
-  });
-
-  test("a crafted form to rename the folder shows the not-found page and writes nothing", async ({ page }) => {
-    const folder = await createFolder({ name: "handbook" });
-    await page.goto("/folders/handbook?action=rename");
-    const dialog = page.getByRole("dialog", { name: "Rename folder" });
-    await dialog.getByLabel("Name").fill("mine-now");
-    await removeOwnRole(folder);
-
-    await dialog.getByRole("button", { name: "Save" }).click();
-
-    await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
-    expect((await getTestDb().folder.findUniqueOrThrow({ where: { id: folder.id } })).name).toBe("handbook");
-  });
+  // A crafted form of a user who lost the role is refused like one of a role too low (src/features/pages/actions.test.ts,
+  // src/features/folders/actions.test.ts and integration/folder-role-service.test.ts).
 });
 
 test("the folder list and the folder show the own role, for each of the four roles", async ({ page }) => {
@@ -254,74 +224,28 @@ test.describe("what each role may do", () => {
     }
   });
 
-  test("a crafted form of each write of a Reader shows the not-found page and writes nothing", async ({ page }) => {
+  // One editor form and one dialog form; every other write of a Reader is refused by the same check
+  // (src/features/pages/actions.test.ts, src/features/folders/actions.test.ts and the services).
+  test("a crafted form of a write of a Reader shows the not-found page and writes nothing", async ({ page }) => {
     const folder = await createFolder({ name: "handbook" });
-    const tab = await createTab({ folder, name: "guides" });
     await createPage({ folder, name: "intro", title: "Intro" });
-    await createPage({ tab, name: "setup", title: "Setup" });
-    const deleted = await createPage({ folder, name: "old", deletedAt: new Date() });
     const before = {
-      folders: await getTestDb().folder.findMany(),
       tabs: await getTestDb().tab.findMany(),
       pages: await getTestDb().page.findMany({ orderBy: { name: "asc" } }),
     };
     const submitAsReader = (address: string, fill: () => Promise<void>, submit: () => Promise<void>) =>
       submitAs(page, folder, "reader", address, fill, submit);
-    const save = (name: string) => clickInDialog(page, name);
-    await submitAsReader(
-      "/folders/handbook?action=new",
-      async () => {
-        await fillContent(page, "# Crafted");
-        await page.getByRole("button", { name: "Save" }).click();
-        await expect(page.getByRole("dialog")).toBeVisible();
-      },
-      save("Save"),
-    );
     await submitAsReader(
       "/folders/handbook/intro.md?action=edit",
       () => fillContent(page, "# Crafted"),
       () => page.getByRole("button", { name: "Save" }).click(),
     );
     await submitAsReader(
-      "/folders/handbook/intro.md?action=move-or-rename",
-      () => page.getByRole("dialog").getByLabel("Name").fill("crafted"),
-      save("Save"),
-    );
-    // A move to the name and place the page has is checked like every move. The form is submitted directly, also
-    // where "Save" is disabled for an unchanged dialog, once the dialog is hydrated.
-    await submitAsReader(
-      "/folders/handbook/intro.md?action=move-or-rename",
-      () => expect(page.getByRole("dialog").getByLabel("Name")).toBeEditable(),
-      () =>
-        page
-          .getByRole("dialog")
-          .locator("form")
-          .evaluate((form: HTMLFormElement) => form.requestSubmit()),
-    );
-    await submitAsReader("/folders/handbook/intro.md?action=delete", async () => {}, save("Delete"));
-    await submitAsReader(
       "/folders/handbook?action=new-tab",
       () => page.getByRole("dialog").getByLabel("Name").fill("crafted"),
-      save("Save"),
-    );
-    await submitAsReader(
-      "/folders/handbook/guides?action=rename",
-      () => page.getByRole("dialog").getByLabel("Name").fill("crafted"),
-      save("Save"),
-    );
-    await submitAsReader("/folders/handbook/guides?action=delete", async () => {}, save("Delete"));
-    await submitAsReader(
-      "/folders/handbook?action=rename",
-      () => page.getByRole("dialog").getByLabel("Name").fill("crafted"),
-      save("Save"),
-    );
-    await submitAsReader(
-      `/deleted-items/handbook/${deleted.id}?action=restore`,
-      () => page.getByRole("dialog").getByRole("radio", { name: "Directly in the folder" }).check(),
-      save("Save"),
+      clickInDialog(page, "Save"),
     );
 
-    expect(await getTestDb().folder.findMany()).toStrictEqual(before.folders);
     expect(await getTestDb().tab.findMany()).toStrictEqual(before.tabs);
     expect(await getTestDb().page.findMany({ orderBy: { name: "asc" } })).toStrictEqual(before.pages);
   });
@@ -370,42 +294,24 @@ test.describe("what each role may do", () => {
     }
   });
 
-  test("a crafted form of each function of a Manager, submitted as a Writer, shows the not-found page and writes nothing", async ({
+  // One form; the other functions of a Manager are refused for a Writer by the same check.
+  test("a crafted form of a function of a Manager, submitted as a Writer, shows the not-found page and writes nothing", async ({
     page,
   }) => {
     const folder = await createFolder({ name: "handbook" });
-    const tab = await createTab({ folder, name: "guides" });
     await createPage({ folder, name: "intro", title: "Intro" });
-    await createPage({ tab, name: "setup", title: "Setup" });
-    const deleted = await createPage({ folder, name: "old", deletedAt: new Date() });
-    const before = {
-      tabs: await getTestDb().tab.findMany(),
-      pages: await getTestDb().page.findMany({ orderBy: { name: "asc" } }),
-    };
-    const submitAsWriter = (address: string, fill: () => Promise<void>, submit: () => Promise<void>) =>
-      submitAs(page, folder, "writer", address, fill, submit);
-    const save = (name: string) => clickInDialog(page, name);
+    const before = await getTestDb().page.findMany({ orderBy: { name: "asc" } });
 
-    await submitAsWriter("/folders/handbook/intro.md?action=delete", async () => {}, save("Delete"));
-    await submitAsWriter(
-      `/deleted-items/handbook/${deleted.id}?action=restore`,
-      () => page.getByRole("dialog").getByRole("radio", { name: "Directly in the folder" }).check(),
-      save("Save"),
+    await submitAs(
+      page,
+      folder,
+      "writer",
+      "/folders/handbook/intro.md?action=delete",
+      async () => {},
+      clickInDialog(page, "Delete"),
     );
-    await submitAsWriter(
-      "/folders/handbook?action=new-tab",
-      () => page.getByRole("dialog").getByLabel("Name").fill("crafted"),
-      save("Save"),
-    );
-    await submitAsWriter(
-      "/folders/handbook/guides?action=rename",
-      () => page.getByRole("dialog").getByLabel("Name").fill("crafted"),
-      save("Save"),
-    );
-    await submitAsWriter("/folders/handbook/guides?action=delete", async () => {}, save("Delete"));
 
-    expect(await getTestDb().tab.findMany()).toStrictEqual(before.tabs);
-    expect(await getTestDb().page.findMany({ orderBy: { name: "asc" } })).toStrictEqual(before.pages);
+    expect(await getTestDb().page.findMany({ orderBy: { name: "asc" } })).toStrictEqual(before);
   });
 
   test("a Manager deletes, reads and restores a page, creates, renames and deletes a tab, and does not rename the folder", async ({
@@ -675,35 +581,6 @@ test.describe("giving a role", () => {
       await expectNotFound(page, "/folders/project-x?action=give-role");
     });
   }
-
-  test("a crafted form with the name of an admin is refused and gives no role", async ({ page }) => {
-    await createUser({ name: "bob" });
-    await createFolder({ name: "project-x", editor: await aliceUser() });
-
-    await page.goto("/folders/project-x?action=give-role");
-    const user = giveRoleDialog(page).getByLabel("User");
-    // The option of bob is changed into the name of the admin, as a crafted request would send it.
-    await user.locator("option", { hasText: "bob" }).evaluate((option: HTMLOptionElement) => (option.value = "admin"));
-    await user.selectOption("admin");
-    await giveRoleDialog(page).getByRole("radio", { name: "Owner" }).check();
-    await giveRoleDialog(page).getByRole("button", { name: "Save" }).click();
-
-    await expect(giveRoleDialog(page).getByText("There is no such user")).toBeVisible();
-    expect(await getTestDb().folderRole.count({ where: { user: { type: "admin" } } })).toBe(0);
-  });
-
-  test("a crafted form of a Manager writes nothing", async ({ page }) => {
-    await createUser({ name: "bob" });
-    const folder = await createFolder({ name: "project-x", editor: await aliceUser() });
-
-    await page.goto("/folders/project-x?action=give-role");
-    await giveRoleDialog(page).getByLabel("User").selectOption("bob");
-    await setOwnRole(folder, "manager");
-    await giveRoleDialog(page).getByRole("button", { name: "Save" }).click();
-
-    await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
-    expect(await getTestDb().folderRole.count()).toBe(1);
-  });
 });
 
 /** The logged-in user as a row of the database, to be the last editor of a folder, so that no other user is created. */
@@ -910,6 +787,8 @@ test.describe("changing and removing roles", () => {
     expect(await getTestDb().folderRole.count({ where: { userId: KNOWN_USER.id, role: "owner" } })).toBe(1);
   });
 
+  // A crafted Remove and a crafted Give role of a Manager are refused by the same check
+  // (integration/folder-role-service.test.ts), and "a manager sees no Give role" above shows its address.
   test("a Manager sees no controls, and a crafted change of a Manager changes nothing", async ({ page }) => {
     const bob = await createUser({ name: "bob" });
     const folder = await createFolder({
@@ -935,31 +814,6 @@ test.describe("changing and removing roles", () => {
     expect(await getTestDb().folderRole.findFirstOrThrow({ where: { userId: bob.id } })).toMatchObject({
       role: "reader",
     });
-  });
-
-  test("a crafted Remove of a Manager removes no role", async ({ page }) => {
-    const bob = await createUser({ name: "bob" });
-    const folder = await createFolder({
-      name: "project-x",
-      roles: [
-        { user: ALICE, role: "owner" },
-        { user: bob, role: "reader" },
-      ],
-    });
-    const bobsRole = await getTestDb().folderRole.findFirstOrThrow({ where: { userId: bob.id } });
-
-    // Opened as Owner; then the role is lowered to Manager, as if the Manager had crafted the request.
-    await page.goto("/folders/project-x?view=roles");
-    await expect(page.getByRole("button", { name: "Remove the role of bob" })).toBeEnabled();
-    await setOwnRole(folder, "manager");
-    await page.getByRole("button", { name: "Remove the role of bob" }).click();
-
-    await expect(page.getByRole("main").getByRole("button")).toHaveCount(0);
-    await expect(page.getByRole("list", { name: "Roles" }).getByRole("listitem")).toHaveText([
-      "aliceManager",
-      "bobReader",
-    ]);
-    expect(await getTestDb().folderRole.findFirstOrThrow({ where: { userId: bob.id } })).toStrictEqual(bobsRole);
   });
 
   // The select sends no change for the selected role, so the role of bob is set meanwhile, as another Owner
@@ -991,64 +845,8 @@ test.describe("changing and removing roles", () => {
     expect(errors).toEqual([]);
   });
 
-  // A change to the same role is checked like every change.
-  for (const role of ["manager", "writer"] as const) {
-    test(`a crafted change of a ${role} to the role a user has changes nothing`, async ({ page }) => {
-      const bob = await createUser({ name: "bob" });
-      const folder = await createFolder({
-        name: "project-x",
-        roles: [
-          { user: ALICE, role: "owner" },
-          { user: bob, role: "reader" },
-        ],
-      });
-      const where = { folderId_userId: { folderId: folder.id, userId: bob.id } };
-
-      // Opened as Owner; bob's role is set meanwhile, then the own role is lowered, as if the request were crafted.
-      await page.goto("/folders/project-x?view=roles");
-      await expect(roleOf(page, "bob")).toBeEnabled();
-      const before = await getTestDb().folderRole.update({ where, data: { role: "writer" } });
-      await setOwnRole(folder, role);
-      await roleOf(page, "bob").selectOption("writer");
-
-      await expect(page.getByRole("main").getByRole("combobox")).toHaveCount(0);
-      await expect(page.getByRole("list", { name: "Roles" }).getByRole("listitem")).toHaveText([
-        `alice${role === "manager" ? "Manager" : "Writer"}`,
-        "bobWriter",
-      ]);
-      expect(await getTestDb().folderRole.findUniqueOrThrow({ where })).toStrictEqual(before);
-    });
-  }
-
-  test("a crafted change to a value that is no role shows choose a role and changes nothing", async ({ page }) => {
-    const bob = await createUser({ name: "bob" });
-    const folder = await createFolder({
-      name: "project-x",
-      roles: [
-        { user: ALICE, role: "owner" },
-        { user: bob, role: "reader" },
-      ],
-    });
-    const before = await getTestDb().folderRole.findFirstOrThrow({ where: { folderId: folder.id, userId: bob.id } });
-
-    // The select offers only the roles, so the value that is no role is added to it, as a crafted request sends it.
-    await page.goto("/folders/project-x?view=roles");
-    await expect(roleOf(page, "bob")).toBeEnabled();
-    await roleOf(page, "bob").evaluate((select) => {
-      const option = document.createElement("option");
-      option.value = "admin";
-      option.textContent = "Admin";
-      select.append(option);
-    });
-    await roleOf(page, "bob").selectOption("admin");
-
-    await expect(page.getByRole("main").getByRole("alert")).toHaveText("Choose a role");
-    await expect(page).toHaveURL("/folders/project-x?view=roles");
-    expect(
-      await getTestDb().folderRole.findFirstOrThrow({ where: { folderId: folder.id, userId: bob.id } }),
-    ).toStrictEqual(before);
-  });
-
+  // A change to the same role and a value that is no role are checked like every change
+  // (integration/folder-role-service.test.ts and src/features/folder-roles/schema.test.ts).
   test("a change of a role takes effect with the next request of the user it concerns", async ({ page, browser }) => {
     const bob = await createUser({ name: "bob", mustChangePassword: false });
     const folder = await createFolder({
@@ -1144,10 +942,9 @@ test.describe("the admin overview", () => {
     await expectNotFound(page, "/folder-roles");
   });
 
-  test("forms submitted with the login of the admin give, change and remove no role and create no folder", async ({
-    page,
-    context,
-  }) => {
+  // One form; the other forms of roles and folders are refused for an admin by the same check (the actions and the
+  // services of folder-roles and folders, and "an admin" of integration/folder-service.test.ts).
+  test("a form submitted with the login of the admin gives no role", async ({ page, context }) => {
     const bob = await createUser({ name: "bob" });
     await createUser({ name: "dave" });
     await createFolder({
@@ -1168,26 +965,7 @@ test.describe("the admin overview", () => {
     await giveRoleDialog(page).getByRole("button", { name: "Save" }).click();
     await expect(notFound).toBeVisible();
 
-    for (const submit of [
-      () => roleOf(page, "bob").selectOption("owner"),
-      () => page.getByRole("button", { name: "Remove the role of bob" }).click(),
-    ]) {
-      await becomeUser(context, USER_STORAGE_STATE);
-      await page.goto("/folders/project-x?view=roles");
-      await becomeUser(context, ADMIN_STORAGE_STATE);
-      await submit();
-      await expect(notFound).toBeVisible();
-    }
-
-    await becomeUser(context, USER_STORAGE_STATE);
-    await page.goto("/folders?action=new");
-    await page.getByRole("dialog", { name: "New folder" }).getByLabel("Name").fill("admins-folder");
-    await becomeUser(context, ADMIN_STORAGE_STATE);
-    await page.getByRole("dialog", { name: "New folder" }).getByRole("button", { name: "Save" }).click();
-    await expect(notFound).toBeVisible();
-
     expect(await getTestDb().folderRole.findMany({ orderBy: { id: "asc" } })).toStrictEqual(before);
-    expect(await getTestDb().folder.count()).toBe(1);
     // No folder ever shows an admin in its roles.
     expect(await getTestDb().folderRole.count({ where: { user: { type: "admin" } } })).toBe(0);
   });

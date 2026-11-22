@@ -207,33 +207,8 @@ test.describe("the admin, creating a user", () => {
     expect((await getTestDb().user.findUniqueOrThrow({ where: { username: "maria" } })).type).toBe("admin");
   });
 
-  test("the whole chain for a new admin: logs in, changes the password, lands on the user list and creates a user", async ({
-    page,
-    browser,
-  }) => {
-    const password = await createUserInDialog(page, "maria", "Admin");
-
-    // The new admin, in a browser of their own.
-    const adminContext = await browser.newContext({ storageState: NO_STORAGE_STATE });
-    const adminPage = await hydrating(await adminContext.newPage());
-    await adminPage.goto("/login");
-    await submitLogin(adminPage, "maria", password);
-    await expect(adminPage).toHaveURL("/change-password");
-    await adminPage.getByLabel("Current password").fill(password);
-    await adminPage.getByLabel(/^New password/).fill("my-own-password");
-    await adminPage.getByLabel("Repeat new password").fill("my-own-password");
-    await adminPage.getByRole("button", { name: "Change password" }).click();
-
-    await expect(adminPage).toHaveURL("/users");
-    const banner = adminPage.getByRole("banner");
-    await expect(banner.getByRole("link", { name: "Folders" })).toHaveCount(0);
-    await expect(banner.getByRole("link", { name: "maria" })).toBeVisible();
-    await expect(adminPage.getByText("Password change pending")).toHaveCount(0);
-    await createUserInDialog(adminPage, "jane-doe");
-    expect((await getTestDb().user.findUniqueOrThrow({ where: { username: "jane-doe" } })).type).toBe("user");
-    await adminContext.close();
-  });
-
+  // A new admin logs in, changes the first password and lands on the user list as change-password.spec.ts shows for
+  // the known admin; integration/user-service.test.ts logs in with the password of a new admin.
   test("the copy button puts the password on the clipboard", async ({ page, context }) => {
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
     const password = await createUserInDialog(page, "jane-doe");
@@ -260,7 +235,7 @@ test.describe("the admin, creating a user", () => {
     await expect(created.getByLabel("First password")).toHaveValue(password);
   });
 
-  test("after a reload the password is gone", async ({ page }) => {
+  test("the password is not shown again after a reload, in the list or under any address", async ({ page }) => {
     const password = await createUserInDialog(page, "jane-doe");
 
     await page.reload();
@@ -270,13 +245,9 @@ test.describe("the admin, creating a user", () => {
     await expect(userCreatedDialog(page)).toHaveCount(0);
     await expect(page.getByLabel("First password")).toHaveCount(0);
     expect(await page.content()).not.toContain(password);
-  });
 
-  test("the password is not shown again in the list or under any address", async ({ page }) => {
-    const password = await createUserInDialog(page, "jane-doe");
-    await userCreatedDialog(page).getByRole("link", { name: "Back to the user list" }).click();
+    await newUserDialog(page).getByRole("link", { name: "Cancel" }).click();
     await expect(page).toHaveURL("/users");
-
     expect(await page.content()).not.toContain(password);
     await page.goBack();
     await expect(newUserDialog(page)).toBeVisible();

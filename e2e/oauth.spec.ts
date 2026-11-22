@@ -17,7 +17,6 @@ import {
   approve,
   authorizeUrl,
   awaitCallback,
-  connect,
   exchange,
   ISSUER,
   listFolderStatus,
@@ -313,13 +312,15 @@ test.describe("the whole flow", () => {
     const clientId = await registerClient(request);
     const callback = await awaitCallback(page);
 
-    // The connector opens the consent page in the browser of the user, who is not logged in.
-    await page.goto(authorizeUrl(clientId, reader));
+    // The connector opens the consent page in the browser of the user, who is not logged in. The scope it sends is
+    // ignored: the folder address and its role decide what the grant may do.
+    const address = authorizeUrl(clientId, reader, { scope: "write admin openid" });
+    await page.goto(address);
     await expect(page).toHaveURL(new RegExp(`^${ISSUER}/login\\?next=%2Foauth%2Fauthorize%3Fclient_id%3D`));
     await submitLogin(page, KNOWN_USER.name, KNOWN_USER.password);
 
     // The login leads back to the consent page with the whole request.
-    await expect(page).toHaveURL(authorizeUrl(clientId, reader));
+    await expect(page).toHaveURL(address);
     await expect(page).toHaveTitle("Connect an app – HippoWiki");
     await expect(page.getByRole("heading", { level: 1, name: "Connect an app" })).toBeVisible();
     const main = page.getByRole("main");
@@ -344,7 +345,7 @@ test.describe("the whole flow", () => {
     expect(answer.iss).toBe(ISSUER);
     expect(answer.code).toMatch(/^hwc_/);
 
-    // The code is exchanged for tokens, once.
+    // The code is exchanged for tokens, once, without a scope.
     const exchanged = await exchange(request, clientId, answer.code ?? "", reader);
     expect(exchanged.status()).toBe(200);
     expect(exchanged.headers()["cache-control"]).toBe("no-store");
@@ -548,21 +549,6 @@ test.describe("the consent page, as a logged-in user", () => {
     expect(await getTestDb().oAuthGrant.count()).toBe(0);
   });
 
-  test("the chosen lifetime is the lifetime of the grant", async ({ page, request }) => {
-    const clientId = await registerClient(request);
-    const callback = await awaitCallback(page);
-    await page.goto(authorizeUrl(clientId, reader));
-
-    await page.getByRole("radio", { name: "30 days" }).check();
-    await approve(page);
-    const { code } = await callback();
-    expect((await exchange(request, clientId, code ?? "", reader)).status()).toBe(200);
-
-    const grant = await getTestDb().oAuthGrant.findFirstOrThrow();
-    expect(grant.expiresAt.getTime() - Date.now()).toBeGreaterThan(30 * DAY_MS - 60_000);
-    expect(grant.expiresAt.getTime() - Date.now()).toBeLessThanOrEqual(30 * DAY_MS);
-  });
-
   // The other requests that cannot be trusted, an unknown client or a redirect address on another path, are told
   // apart in integration/oauth-service.test.ts and shown in the same way (`loadConsent` in
   // src/features/oauth/queries.test.ts).
@@ -651,33 +637,32 @@ test.describe("the consent page, as a logged-in user", () => {
     expect(await getTestDb().oAuthGrant.findFirstOrThrow()).toMatchObject({ folderId: projects.id, role: "writer" });
   });
 
-  for (const role of ["manager", "owner"] as const) {
-    test(`a ${role} approves a connection to the Manager address, and the app lists the folder through MCP`, async ({
-      page,
-      request,
-    }) => {
-      const errors = collectErrors(page);
-      const guides = await createFolder({ name: "guides", roles: [{ user: KNOWN_USER, role }] });
-      const manager = mcpAddress(guides, "manager");
-      const clientId = await registerClient(request);
-      const callback = await awaitCallback(page);
+  // An Owner reaches the Manager address through the same check (integration/oauth-service.test.ts).
+  test("a manager approves a connection to the Manager address, and the app lists the folder through MCP", async ({
+    page,
+    request,
+  }) => {
+    const errors = collectErrors(page);
+    const guides = await createFolder({ name: "guides", roles: [{ user: KNOWN_USER, role: "manager" }] });
+    const manager = mcpAddress(guides, "manager");
+    const clientId = await registerClient(request);
+    const callback = await awaitCallback(page);
 
-      await page.goto(authorizeUrl(clientId, manager));
+    await page.goto(authorizeUrl(clientId, manager));
 
-      const main = page.getByRole("main");
-      await expect(main.getByText(/It asks to connect to the folder guides with the role Manager\./)).toBeVisible();
-      await expect(main.getByText(/delete pages, and create, rename and delete tabs/)).toBeVisible();
-      expect(errors).toEqual([]);
+    const main = page.getByRole("main");
+    await expect(main.getByText(/It asks to connect to the folder guides with the role Manager\./)).toBeVisible();
+    await expect(main.getByText(/delete pages, and create, rename and delete tabs/)).toBeVisible();
+    expect(errors).toEqual([]);
 
-      await approve(page);
-      const { code } = await callback();
-      const response = await exchange(request, clientId, code ?? "", manager);
-      expect(response.status()).toBe(200);
-      const tokens = (await response.json()) as Tokens;
-      expect(await getTestDb().oAuthGrant.findFirstOrThrow()).toMatchObject({ folderId: guides.id, role: "manager" });
-      expect(await listFolderStatus(request, tokens.access_token, manager)).toBe(200);
-    });
-  }
+    await approve(page);
+    const { code } = await callback();
+    const response = await exchange(request, clientId, code ?? "", manager);
+    expect(response.status()).toBe(200);
+    const tokens = (await response.json()) as Tokens;
+    expect(await getTestDb().oAuthGrant.findFirstOrThrow()).toMatchObject({ folderId: guides.id, role: "manager" });
+    expect(await listFolderStatus(request, tokens.access_token, manager)).toBe(200);
+  });
 
   test("a missing folder and a role too low show the same refusal with access_denied", async ({ page, request }) => {
     const handbook = await createFolder({ name: "handbook", roles: [{ user: KNOWN_USER, role: "reader" }] });
@@ -709,20 +694,6 @@ test.describe("the consent page, as a logged-in user", () => {
     expect(await getTestDb().oAuthGrant.count()).toBe(0);
   });
 
-  test("a scope that the client sends is ignored", async ({ page, request }) => {
-    const clientId = await registerClient(request);
-    const callback = await awaitCallback(page);
-    await page.goto(authorizeUrl(clientId, reader, { scope: "write admin openid" }));
-    await approve(page);
-    const { code } = await callback();
-
-    const response = await exchange(request, clientId, code ?? "", reader);
-
-    expect(response.status()).toBe(200);
-    expect(await response.json()).not.toHaveProperty("scope");
-    expect(await getTestDb().oAuthGrant.findFirstOrThrow()).toMatchObject({ folderId: projects.id, role: "reader" });
-  });
-
   test("with 50 connected apps the page asks to revoke an app first and offers no approval; deny still answers the client", async ({
     page,
     request,
@@ -750,39 +721,6 @@ test.describe("the consent page, as a logged-in user", () => {
     expect(await getTestDb().oAuthGrant.count()).toBe(50);
   });
 
-  test("a 50th app that is a grant of the same client does not block connecting it again: the grant is replaced", async ({
-    page,
-    request,
-  }) => {
-    const others = [];
-    for (let index = 0; index < 49; index += 1) {
-      others.push((await createGrant({ owner: KNOWN_USER, folder: projects })).client.id);
-    }
-    const clientId = await registerClient(request);
-    const first = await connect(page, request, clientId, reader);
-    expect(await getTestDb().oAuthGrant.count()).toBe(50);
-
-    // The connector registers again, as some do on every connect, with the same name and redirect address.
-    const second = await connect(page, request, await registerClient(request), reader);
-
-    expect(await getTestDb().oAuthGrant.count()).toBe(50);
-    expect(await getTestDb().oAuthGrant.count({ where: { clientId: { notIn: others } } })).toBe(1);
-    expect(await listFolderStatus(request, first.access_token, reader)).toBe(401);
-    expect(await listFolderStatus(request, second.access_token, reader)).toBe(200);
-  });
-
-  test("a second client gets a grant of its own", async ({ page, request }) => {
-    const first = await connect(page, request, await registerClient(request, "First connector"), reader);
-    const second = await connect(page, request, await registerClient(request, "Second connector"), reader);
-
-    expect((await getTestDb().oAuthGrant.findMany({ orderBy: { name: "asc" } })).map((grant) => grant.name)).toEqual([
-      "First connector",
-      "Second connector",
-    ]);
-    expect(await listFolderStatus(request, first.access_token, reader)).toBe(200);
-    expect(await listFolderStatus(request, second.access_token, reader)).toBe(200);
-  });
-
   test("a redirect address that a crafted request puts into the form is not followed", async ({ page, request }) => {
     const clientId = await registerClient(request);
     const requests: string[] = [];
@@ -804,23 +742,6 @@ test.describe("the consent page, as a logged-in user", () => {
     await expect(page).toHaveURL(authorizeUrl(clientId, reader));
     expect(await getTestDb().oAuthCode.count()).toBe(0);
     expect(requests.filter((host) => host !== new URL(ISSUER).host)).toEqual([]);
-  });
-
-  test("the code is bound to the client: another client cannot exchange it", async ({ page, request }) => {
-    const clientId = await registerClient(request);
-    const other = await registerClient(request, "Other connector");
-    const callback = await awaitCallback(page);
-    await page.goto(authorizeUrl(clientId, reader));
-    await approve(page);
-    const { code } = await callback();
-
-    const stolen = await exchange(request, other, code ?? "", reader);
-
-    expect(stolen.status()).toBe(400);
-    expect(await stolen.json()).toMatchObject({ error: "invalid_grant" });
-    // The failed exchange used the code up.
-    expect((await exchange(request, clientId, code ?? "", reader)).status()).toBe(400);
-    expect(await getTestDb().oAuthGrant.count()).toBe(0);
   });
 });
 

@@ -1,14 +1,14 @@
 import type { Browser, Page } from "@playwright/test";
 
-import { KNOWN_ADMIN, KNOWN_USER } from "../prisma/known-users";
-import { ADMIN_STORAGE_STATE, logIn, NO_STORAGE_STATE, USER_STORAGE_STATE } from "./support/auth";
+import { KNOWN_USER } from "../prisma/known-users";
+import { logIn, NO_STORAGE_STATE, USER_STORAGE_STATE } from "./support/auth";
 import { collectErrors } from "./support/browser";
 import { getTestDb, resetTestDatabase } from "./support/database";
 import { expect, hydrating, test } from "./support/test";
 
-// The tests end the other sessions of the known user or the known admin, whose saved logins they use: every reset puts
-// back the sessions of the saved logins, so the end of a session ends nothing that a later test needs. The second
-// browser, whose session the tests end, logs in through the login page.
+// The tests end the other sessions of the known user, whose saved login they use: every reset puts back the sessions of
+// the saved logins, so the end of a session ends nothing that a later test needs. The second browser, whose session
+// the tests end, logs in through the login page.
 test.use({ storageState: USER_STORAGE_STATE });
 
 const LOGGED_OUT_NOTICE = "Your other browsers were logged out.";
@@ -17,21 +17,12 @@ test.beforeEach(async () => {
   await resetTestDatabase();
 });
 
-/** Where a login of the type leads. */
-function landingOf(type: "user" | "admin") {
-  return type === "admin" ? "/users" : "/folders";
-}
-
 /** Logs the account in in a browser context of its own, as a second browser of the same person. */
-async function logInSecondBrowser(
-  browser: Browser,
-  { name, password }: { name: string; password: string },
-  type: "user" | "admin",
-) {
+async function logInSecondBrowser(browser: Browser, { name, password }: { name: string; password: string }) {
   const context = await browser.newContext({ storageState: NO_STORAGE_STATE });
   const page = await hydrating(await context.newPage());
   await logIn(page, name, password);
-  await expect(page).toHaveURL(landingOf(type));
+  await expect(page).toHaveURL("/folders");
   return { context, page };
 }
 
@@ -39,39 +30,29 @@ function logOutDialog(page: Page) {
   return page.getByRole("dialog", { name: "Log out other browsers" });
 }
 
-for (const { type, known, storageState } of [
-  { type: "user", known: KNOWN_USER, storageState: USER_STORAGE_STATE },
-  { type: "admin", known: KNOWN_ADMIN, storageState: ADMIN_STORAGE_STATE },
-] as const) {
-  test.describe(`the known ${type}`, () => {
-    test.use({ storageState });
+// For the known user; an admin ends the other sessions in the same way (integration/auth-service.test.ts), and the admin
+// test of account.spec.ts checks the link of the admin.
+test("confirming logs out a second browser at its next request, and the first goes on", async ({ page, browser }) => {
+  const errors = collectErrors(page);
+  const second = await logInSecondBrowser(browser, KNOWN_USER);
+  await page.goto("/account");
 
-    test(`confirming logs out a second browser of the ${type} at its next request, and the first goes on`, async ({
-      page,
-      browser,
-    }) => {
-      const errors = collectErrors(page);
-      const second = await logInSecondBrowser(browser, known, type);
-      await page.goto("/account");
+  await page.getByRole("link", { name: "Log out other browsers" }).click();
+  await expect(page).toHaveURL("/account?action=log-out-others");
+  const dialog = logOutDialog(page);
+  await expect(dialog).toContainText("this browser stays logged in");
+  await expect(dialog.getByRole("textbox")).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Log out other browsers" }).click();
 
-      await page.getByRole("link", { name: "Log out other browsers" }).click();
-      await expect(page).toHaveURL("/account?action=log-out-others");
-      const dialog = logOutDialog(page);
-      await expect(dialog).toContainText("this browser stays logged in");
-      await expect(dialog.getByRole("textbox")).toHaveCount(0);
-      await dialog.getByRole("button", { name: "Log out other browsers" }).click();
-
-      await expect(page.getByText(LOGGED_OUT_NOTICE)).toBeVisible();
-      await expect(logOutDialog(page)).toHaveCount(0);
-      await second.page.goto(landingOf(type));
-      await expect(second.page).toHaveURL(/^[^?]*\/login/);
-      await page.goto(landingOf(type));
-      await expect(page).toHaveURL(landingOf(type));
-      await second.context.close();
-      expect(errors).toEqual([]);
-    });
-  });
-}
+  await expect(page.getByText(LOGGED_OUT_NOTICE)).toBeVisible();
+  await expect(logOutDialog(page)).toHaveCount(0);
+  await second.page.goto("/folders");
+  await expect(second.page).toHaveURL(/^[^?]*\/login/);
+  await page.goto("/folders");
+  await expect(page).toHaveURL("/folders");
+  await second.context.close();
+  expect(errors).toEqual([]);
+});
 
 test("closing the dialog with Cancel or Escape ends nothing", async ({ page }) => {
   const errors = collectErrors(page);
