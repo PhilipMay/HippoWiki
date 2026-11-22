@@ -19,7 +19,8 @@ import Link from "@/components/Link";
 import Time from "@/components/Time";
 import FolderBreadcrumbs from "@/features/folders/components/FolderBreadcrumbs";
 import { listTabs } from "@/features/folders/queries";
-import { moveOrRenameFile, revertFile } from "@/features/files/actions";
+import { deleteFile, moveOrRenameFile, revertFile } from "@/features/files/actions";
+import DeleteFileDialog from "@/features/files/components/DeleteFileDialog";
 import MoveOrRenameFileDialog from "@/features/files/components/MoveOrRenameFileDialog";
 import RevertFileDialog from "@/features/files/components/RevertFileDialog";
 import UploadVersionDialog from "@/features/files/components/UploadVersionDialog";
@@ -71,8 +72,8 @@ type FileDetailsViewProps = {
 
 /**
  * The details page of a file: its place, a preview of an image, its type, size, width and height, the number of its
- * versions and its last change, "Open" and "Download", "Move or rename" and "Upload new version" for the roles that
- * may, the link to copy,
+ * versions and its last change, "Open" and "Download", "Move or rename", "Delete" and "Upload new version" for
+ * the roles that may, the link to copy,
  * the pages that show or link it, and its versions, newest first, each with a link that opens it and, but for the
  * current one, "Revert" for the roles that may; with the dialog of the action on top.
  */
@@ -120,6 +121,11 @@ export default async function FileDetailsView({ file, action, version, notice, u
         {mayDoFileAction(file.role, "move-or-rename") && (
           <Button component={Link} href={filePath(folder, tab, file.name, "move-or-rename")} variant="outlined">
             Move or rename
+          </Button>
+        )}
+        {mayDoFileAction(file.role, "delete") && (
+          <Button component={Link} href={filePath(folder, tab, file.name, "delete")} variant="outlined">
+            Delete
           </Button>
         )}
         {uploads.on && mayDoFileAction(file.role, "upload-version") && (
@@ -242,6 +248,17 @@ export default async function FileDetailsView({ file, action, version, notice, u
           tabs={tabs}
           currentTabId={file.tab?.id ?? null}
           initialName={file.name}
+          linkingPages={linkingPages.length}
+          lockVersion={file.lockVersion}
+          changedMessage={notice === "changed" ? changedMessage(file, "file") : undefined}
+          closeHref={detailsHref}
+        />
+      )}
+      {action === "delete" && (
+        <DeleteFileDialog
+          key={`${file.lockVersion}-${notice ?? ""}`}
+          action={deleteFile.bind(null, file.id)}
+          fileName={file.name}
           linkingPages={linkingPages.length}
           lockVersion={file.lockVersion}
           changedMessage={notice === "changed" ? changedMessage(file, "file") : undefined}

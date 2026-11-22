@@ -104,8 +104,8 @@ test("a Manager deletes a tab with two pages, which become deleted pages of the 
   expect((await deletedRows(page).getByRole("link").allTextContents()).sort()).toEqual(["monday", "tuesday"]);
   // Deleted by the logged-in user in the browser, though last changed through MCP before.
   for (const row of await deletedRows(page).all()) {
-    await expect(row.getByRole("cell").nth(3)).toHaveText(USER);
-    await expect(row.getByRole("cell").nth(4)).toHaveText("web");
+    await expect(row.getByRole("cell").nth(4)).toHaveText(USER);
+    await expect(row.getByRole("cell").nth(5)).toHaveText("web");
   }
   // Nothing tells the tab the pages were in, and nothing offers to restore the tab.
   await expect(page.getByRole("main")).not.toContainText("meetngs");

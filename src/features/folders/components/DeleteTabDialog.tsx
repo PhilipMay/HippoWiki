@@ -15,25 +15,38 @@ type DeleteTabDialogProps = {
   tabName: string;
   /** The number of pages in the tab when the dialog was rendered. */
   pageCount: number;
+  /** The number of files in the tab when the dialog was rendered. */
+  fileCount: number;
   /** The tab address without the action, where closing the dialog leads. */
   closeHref: string;
   /** The folder address, the only way left once the tab no longer exists. */
   folderHref: string;
 };
 
-/** What goes with the tab: its pages, in singular, plural and none. */
-function pagesText(pageCount: number): string {
-  if (pageCount === 0) return "It has no pages, so no page is deleted with it.";
-  if (pageCount === 1) return "Its 1 page is deleted with it.";
-  return `Its ${pageCount} pages are deleted with it.`;
+/** What goes with the tab: its pages and files, in singular, plural and none. */
+function contentsText(pageCount: number, fileCount: number): string {
+  const count = (number: number, item: string) => `${number} ${item}${number === 1 ? "" : "s"}`;
+  if (fileCount === 0) {
+    if (pageCount === 0) return "It has no pages, so no page is deleted with it.";
+    return pageCount === 1 ? "Its 1 page is deleted with it." : `Its ${pageCount} pages are deleted with it.`;
+  }
+  if (pageCount === 0) return `Its ${count(fileCount, "file")} ${fileCount === 1 ? "is" : "are"} deleted with it.`;
+  return `Its ${count(pageCount, "page")} and ${count(fileCount, "file")} are deleted with it.`;
 }
 
 /**
- * Dialog "Delete tab" that names the tab and the number of its pages, and says that the pages can be restored one by
- * one from the deleted items of the folder while the tab itself cannot. The route renders it for `?action=delete`, so
+ * Dialog "Delete tab" that names the tab and the number of its pages and files, and says that they can be restored one
+ * by one from the deleted items of the folder while the tab itself cannot. The route renders it for `?action=delete`, so
  * it is open from the start; closing it leads to the tab address, or to the folder once the tab no longer exists.
  */
-export default function DeleteTabDialog({ action, tabName, pageCount, closeHref, folderHref }: DeleteTabDialogProps) {
+export default function DeleteTabDialog({
+  action,
+  tabName,
+  pageCount,
+  fileCount,
+  closeHref,
+  folderHref,
+}: DeleteTabDialogProps) {
   const [state, formAction, pending] = useActionState(action, {});
   const gone = state.tabGone === true;
   const backRef = useRef<HTMLAnchorElement>(null);
@@ -53,8 +66,9 @@ export default function DeleteTabDialog({ action, tabName, pageCount, closeHref,
       message={state.message}
       description={
         <>
-          Delete the tab {tabName}? {pagesText(pageCount)}{" "}
-          {pageCount > 0 && "The pages can be restored one by one from the deleted items of the folder. "}
+          Delete the tab {tabName}? {contentsText(pageCount, fileCount)}{" "}
+          {pageCount + fileCount > 0 &&
+            `${fileCount === 0 ? "The pages" : pageCount === 0 ? "The files" : "They"} can be restored one by one from the deleted items of the folder. `}
           The tab itself cannot be restored.
         </>
       }

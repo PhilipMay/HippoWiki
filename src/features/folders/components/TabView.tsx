@@ -100,6 +100,7 @@ export default async function TabView({ tab, action, uploads, presetName }: TabV
           action={deleteTab.bind(null, folder.id, tab.id)}
           tabName={tab.name}
           pageCount={pages.length}
+          fileCount={files.length}
           closeHref={address}
           folderHref={folderPath(folder.name)}
         />

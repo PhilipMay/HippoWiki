@@ -254,9 +254,9 @@ section is the rule for every caller; the other specs point here.
 This section is the rule for deleting a tab, in the browser and through `delete_tab`; the other specs point here.
 
 - A Manager or an Owner of the folder deletes a tab from the tab address with "Delete" (`?action=delete`), after a
-  confirmation in the "Delete tab" dialog. The dialog names the tab and the number of pages that will be deleted with
-  it, as the tab held them when the dialog was opened, and says that the pages can be restored one by one and the tab
-  itself not. Confirming leads to the folder; cancelling leads back to the tab.
+  confirmation in the "Delete tab" dialog. The dialog names the tab and the number of pages and files that will be
+  deleted with it, as the tab held them when the dialog was opened, and says that they can be restored one by one and
+  the tab itself not. Confirming leads to the folder; cancelling leads back to the tab.
 - A Manager connection of an AI app deletes a tab through MCP with `delete_tab`, by the same rules (see `mcp.md`).
 - The tab is deleted for good: it cannot be restored, it is not listed among deleted items, and its name is free at
   once for a new tab of the folder.
@@ -265,12 +265,16 @@ This section is the rule for deleting a tab, in the browser and through `delete_
   restored one by one into a place of the folder. The user who deleted the tab becomes its last editor and so the user
   who deleted it, with the channel of the deletion; all pages of the tab get the same time of deletion, and their
   versions count up.
+- Every file in the tab is soft deleted in the same way, with the same time of deletion, as if it had been deleted on
+  its own (see "Deleting a file" in `page-deletion.md`): it keeps its versions, forgets its tab, is listed under
+  "Deleted items" and is restored one by one, and its lock version counts up. A file uploaded into the tab while it is
+  being deleted either goes with it or is refused; no file is ever left in a missing tab.
 - The deletion takes the pages that are in the tab when it is confirmed, without checking their versions or for
   changes since the dialog was opened: a page added to the tab meanwhile goes with it, a page moved out meanwhile
   stays, and a page edited meanwhile is deleted with its latest content. A page created, moved or restored into the
   tab while it is being deleted either goes with it or is refused as written into a tab that does not exist; no page
   is ever left in a missing tab.
-- Deleting is all or nothing: either the tab and all its pages are deleted, or nothing changes and the dialog stays open
+- Deleting is all or nothing: either the tab and all its pages and files are deleted, or nothing changes and the dialog stays open
   with a message.
 - The dialog refers to the tab, not to its name: a tab renamed after the dialog was opened is still deleted.
 - There is no limit on the number of pages of a deleted tab.
@@ -281,8 +285,8 @@ This section is the rule for deleting a tab, in the browser and through `delete_
 - An editor or dialog still open on a page of the deleted tab answers its save or confirmation with the message that the
   page no longer exists. For an AI app the deleted tab is missing like one that never existed, also for `delete_tab`.
 - Deleting a tab leaves the time of the last change and the last editor of the folder as they are.
-- Every deletion of a tab is logged with the user, the folder, the tab, the number of pages deleted with it and the
-  channel, through MCP also the grant; a refused deletion is logged like the other refused content writes.
+- Every deletion of a tab is logged with the user, the folder, the tab, the numbers of pages and files deleted with it
+  and the channel, through MCP also the grant; a refused deletion is logged like the other refused content writes.
 
 ## Only users see content
 

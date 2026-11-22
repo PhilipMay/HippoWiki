@@ -49,3 +49,20 @@ export const getUploadSettings = cache(async (): Promise<fileService.UploadSetti
   await requireUser();
   return fileService.uploadSettings();
 });
+
+/** The deleted files of the folder, newest first; `null` for a role below Manager. */
+export async function listDeletedFiles(folderId: string): Promise<fileService.DeletedFileSummary[] | null> {
+  await connection();
+  const user = await requireUser();
+  return fileService.listDeletedFiles(inBrowser(user), folderId);
+}
+
+/**
+ * The deleted file with the given id in the folder of the given name, with its versions. Cached per request, because
+ * `generateMetadata` and the page both read it.
+ */
+export const getDeletedFile = cache(async (folderName: string, id: string): Promise<fileService.DeletedFile | null> => {
+  await connection();
+  const user = await requireUser();
+  return fileService.getDeletedFile(inBrowser(user), folderName, id);
+});

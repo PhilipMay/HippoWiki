@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { fileAddressOf, mayDoFileAction, type FileAction } from "@/features/files/file-query";
+import { deletedFileAddressOf, fileAddressOf, mayDoFileAction, type FileAction } from "@/features/files/file-query";
 import { ROLES, type Role } from "@/features/folder-roles/roles";
 import type { SearchParams } from "@/lib/addresses";
 
@@ -16,6 +16,7 @@ describe("mayDoFileAction", () => {
     ["upload-version", "writer"],
     ["revert", "writer"],
     ["move-or-rename", "writer"],
+    ["delete", "manager"],
   ])("allows %s from %s up", (action, lowest) => {
     for (const role of ROLES) {
       expect(mayDoFileAction(role, action), role).toBe(ROLES.indexOf(role) >= ROLES.indexOf(lowest));
@@ -61,6 +62,10 @@ describe("fileAddressOf", () => {
     expect(fileAddressOf(reader, { action: "upload-version" }, true)).toBeNull();
     expect(fileAddressOf(reader, { action: "revert", version: "1" }, true)).toBeNull();
     expect(fileAddressOf(reader, { action: "move-or-rename" }, true)).toBeNull();
+    expect(fileAddressOf({ ...FILE, role: "writer" }, { action: "delete" }, true)).toBeNull();
+    expect(fileAddressOf({ ...FILE, role: "manager" }, { action: "delete" }, true)).toMatchObject({
+      action: "delete",
+    });
     expect(fileAddressOf(reader, {}, true)).not.toBeNull();
   });
 
@@ -73,7 +78,7 @@ describe("fileAddressOf", () => {
 
   it.each<SearchParams>([
     { action: "edit" },
-    { action: "delete" },
+    { action: "restore" },
     { action: "" },
     { action: ["revert", "revert"], version: "1" },
     { action: "revert" },
@@ -90,5 +95,29 @@ describe("fileAddressOf", () => {
     { q: "diagram" },
   ])("shows the not-found page for %o", (searchParams) => {
     expect(fileAddressOf({ ...FILE, role: "owner" }, searchParams, true)).toBeNull();
+  });
+});
+
+describe("deletedFileAddressOf", () => {
+  it("shows the deleted file, and the restore dialog for restore, with a title that says it is deleted", () => {
+    expect(deletedFileAddressOf({ name: "diagram.png" }, {})).toEqual({ action: null, title: "Deleted: diagram.png" });
+    expect(deletedFileAddressOf({ name: "diagram.png" }, { action: "restore" })).toEqual({
+      action: "restore",
+      title: "Deleted: diagram.png",
+    });
+  });
+
+  it.each<SearchParams>([
+    { action: "delete" },
+    { action: "revert", version: "1" },
+    { action: "" },
+    { action: ["restore", "restore"] },
+    { version: "1" },
+    { notice: "changed" },
+    { action: "restore", notice: "changed" },
+    { view: "history" },
+    { q: "diagram" },
+  ])("shows the not-found page for %o", (searchParams) => {
+    expect(deletedFileAddressOf({ name: "diagram.png" }, searchParams)).toBeNull();
   });
 });

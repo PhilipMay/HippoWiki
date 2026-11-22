@@ -163,8 +163,8 @@ test("the deleted pages and the deleted page show the logged-in user who deleted
     .getByRole("table", { name: "Deleted items" })
     .getByRole("row")
     .filter({ has: page.getByRole("cell") });
-  await expect(rows.getByRole("cell").nth(3)).toHaveText(USER);
-  await expect(rows.getByRole("cell").nth(4)).toHaveText("web");
+  await expect(rows.getByRole("cell").nth(4)).toHaveText(USER);
+  await expect(rows.getByRole("cell").nth(5)).toHaveText("web");
   await page.goto(`/deleted-items/handbook/${removed.id}`);
   await expect(page.getByRole("article").getByText(/^Deleted /)).toHaveText(by(USER));
   expect(errors).toEqual([]);

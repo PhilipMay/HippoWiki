@@ -161,6 +161,13 @@ What the steps share, so that each step builds on the same model:
   needed no change: it counts the rows of the index of links in the tab, which hold the targets of files since step 6.
   The "Move or rename file" dialog counts the pages that "Shown or linked from" lists.
 
+- Step 8: the list of deleted items is merged from `listDeletedPages()` and `listDeletedFiles()` by
+  `deletedItemsOf()` of `src/features/pages/components/DeletedItemsList.tsx`, instead of a read `listDeletedItems()`
+  of its own, so that each service reads only its own table; the list gets the columns "Kind" and "Title or type". The
+  "Restore page" dialog is shared by files (`item="file"`, "Restore file"). The soft delete of a file is in
+  `src/features/files/writes.ts` (`softDeleteFileData()`), which the delete of a tab stores as well. The "Delete file"
+  dialog says how many pages will show the file as missing.
+
 ## Requirements by step
 
 | Step                                      | Requirements                                      |
@@ -194,7 +201,7 @@ The plan is large, so it has two stop points:
 - [x] New versions and revert
 - [x] Links and embeds of files
 - [x] Moving and renaming files
-- [ ] Deleting and restoring files
+- [x] Deleting and restoring files
 - [ ] Files in the editor
 - [ ] Files in search
 - [ ] Files through MCP

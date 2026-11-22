@@ -5,7 +5,7 @@ import type { APIRequestContext } from "@playwright/test";
 import { USER_TEXT_NOTE } from "@/features/mcp/tool-schemas";
 
 import { logIn, NO_STORAGE_STATE } from "./support/auth";
-import { createGrant, createPage, createTab, createUser, getTestDb } from "./support/database";
+import { createFile, createGrant, createPage, createTab, createUser, getTestDb } from "./support/database";
 import { call, send, setUpProjects, type ToolResult } from "./support/mcp";
 import { ISSUER } from "./support/oauth";
 import { expect, test } from "./support/test";
@@ -279,6 +279,7 @@ test.describe("the tools of a Manager connection", () => {
       name: "drafts",
       pageCount: 5,
       pages: [1, 2, 3, 4, 5].map((i) => ({ name: `draft-${i}`, title: `Draft ${i}` })),
+      files: [],
       deletedItemsAddress: `${ISSUER}/deleted-items/projects`,
       restore: expect.stringMatching(/restored one by one by a Manager or Owner of the folder in the browser/),
     });
@@ -298,6 +299,35 @@ test.describe("the tools of a Manager connection", () => {
     await expect(manage(request, "create_tab", { name: "drafts" })).resolves.toMatchObject({
       structuredContent: { name: "drafts" },
     });
+  });
+
+  test("delete_tab deletes a tab with two files, names both, and they go to the deleted items of the folder", async ({
+    request,
+  }) => {
+    const guides = await createTab({ folder: projects, name: "guides" });
+    await createPage({ tab: guides, name: "setup", content: "# Setup" });
+    const report = await createFile({ tab: guides, name: "report.pdf" });
+    const diagram = await createFile({ tab: guides, name: "diagram.png" });
+    const kept = await createFile({ folder: projects, name: "kept.png" });
+
+    const result = await manage(request, "delete_tab", { tab: "guides" });
+
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toMatchObject({
+      name: "guides",
+      pageCount: 1,
+      files: [{ name: "diagram.png" }, { name: "report.pdf" }],
+      restore: expect.stringContaining("Its pages and files can be restored one by one"),
+    });
+    for (const file of [report, diagram]) {
+      expect(await getTestDb().file.findUniqueOrThrow({ where: { id: file.id } })).toMatchObject({
+        deletedAt: expect.any(Date),
+        tabId: null,
+        lastEditedById: owner.id,
+        lastEditedVia: "mcp",
+      });
+    }
+    expect(await getTestDb().file.findUniqueOrThrow({ where: { id: kept.id } })).toMatchObject({ deletedAt: null });
   });
 
   test("delete_tab deletes an empty tab with 0 pages; a tab that does not exist is a tool error that changes nothing", async ({
@@ -325,7 +355,7 @@ test.describe("the tools of a Manager connection", () => {
     const answer = await send(request, { method: "tools/list" }, manager, managerAddress);
     const tools = (
       (await answer.json()) as {
-        result: { tools: { name: string; annotations: Record<string, boolean> }[] };
+        result: { tools: { name: string; description: string; annotations: Record<string, boolean> }[] };
       }
     ).result.tools;
 
@@ -353,6 +383,11 @@ test.describe("the tools of a Manager connection", () => {
     expect(hints.create_tab?.destructiveHint).toBe(false);
     expect(hints.rename_tab?.destructiveHint).toBe(false);
     expect(tools.map(({ name }) => name).join(" ")).not.toMatch(/restore|deleted|role|owner|folder_/);
+    // No tool uploads, changes, moves, renames or deletes a single file: delete_tab deletes files only with their tab.
+    expect(tools.map(({ name }) => name).join(" ")).not.toMatch(/file|upload/);
+    expect(tools.find(({ name }) => name === "delete_tab")?.description).toContain(
+      "together with every page and every file (image or PDF) in it",
+    );
   });
 
   test("initialize at the Manager address gives the instructions of a Manager connection", async ({ request }) => {
@@ -370,7 +405,7 @@ test.describe("the tools of a Manager connection", () => {
     expect(instructions).toContain('the folder "projects" with the role Manager');
     expect(instructions).toContain("creates, renames and deletes tabs");
     expect(instructions).toContain("Use edit_page_content to change parts of a page");
-    expect(instructions).toContain("Deleting a tab deletes all its pages with it.");
+    expect(instructions).toContain("Deleting a tab deletes all its pages and files with it.");
     expect(instructions).toContain("Deleted items can be neither seen nor restored through this connection");
   });
 
@@ -422,8 +457,8 @@ test.describe("the tools of a Manager connection", () => {
         .filter({ has: page.getByRole("cell") });
       await expect(rows).toHaveCount(1);
       await expect(rows.nth(0)).toContainText("plan");
-      await expect(rows.nth(0).getByRole("cell").nth(3)).toHaveText(owner.name);
-      await expect(rows.nth(0).getByRole("cell").nth(4)).toHaveText("mcp");
+      await expect(rows.nth(0).getByRole("cell").nth(4)).toHaveText(owner.name);
+      await expect(rows.nth(0).getByRole("cell").nth(5)).toHaveText("mcp");
     });
 
     test("the pages of a tab deleted through MCP are listed under Deleted items with the user who deleted them, via mcp", async ({
@@ -445,8 +480,8 @@ test.describe("the tools of a Manager connection", () => {
         .filter({ has: page.getByRole("cell") });
       await expect(rows).toHaveCount(5);
       for (const i of [0, 1, 2, 3, 4]) {
-        await expect(rows.nth(i).getByRole("cell").nth(3)).toHaveText(owner.name);
-        await expect(rows.nth(i).getByRole("cell").nth(4)).toHaveText("mcp");
+        await expect(rows.nth(i).getByRole("cell").nth(4)).toHaveText(owner.name);
+        await expect(rows.nth(i).getByRole("cell").nth(5)).toHaveText("mcp");
       }
     });
 

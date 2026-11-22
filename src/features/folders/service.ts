@@ -35,6 +35,7 @@ import {
   roleSelection,
 } from "@/features/folder-roles/service";
 import { folderInputSchema, parseFolderId, parseTabId, tabInputSchema } from "@/features/folders/schema";
+import { softDeleteFileData } from "@/features/files/writes";
 import { LINKS_TRANSACTION, lockFolderLinks, updateLinks, type LinkingPage } from "@/features/pages/links-service";
 import { tabRenamed } from "@/features/pages/wiki-links";
 import { softDeleteData } from "@/features/pages/writes";
@@ -98,10 +99,10 @@ export type DeleteTabError = NotAllowed | TabNotFound | Failed;
 type PageDeletedWithTab = { name: string; title: string };
 
 /**
- * What a tab deletion leaves: the folder of the tab as stored, the number of pages deleted with the tab, and these
- * pages by name, exactly those the deletion changed.
+ * What a tab deletion leaves: the folder of the tab as stored, the number of pages deleted with the tab, these pages
+ * by name and the files deleted with it by name, exactly those the deletion changed.
  */
-export type DeletedTab = { folder: Folder; pageCount: number; pages: PageDeletedWithTab[] };
+export type DeletedTab = { folder: Folder; pageCount: number; pages: PageDeletedWithTab[]; files: { name: string }[] };
 
 const SUMMARY_SELECT = { id: true, name: true, updatedAt: true, ...LAST_EDITOR_SELECT } as const;
 const STORED_TAB_SELECT = { id: true, name: true, folder: { select: { name: true } } } as const;
@@ -466,12 +467,13 @@ export async function renameTab(
 }
 
 /**
- * Deletes the tab with the given id in the folder with the given id for good, together with its pages, and returns the
- * folder as stored, the number of pages deleted with the tab and these pages by name. The pages that are in the tab at
- * that moment are soft deleted with the data that `deletePage()` of the pages service stores for one page
- * (`softDeleteData()`), with the actor as their last editor and one time of deletion for all of them, but without
- * checking their versions: whatever is in the tab now goes with it. Either the
- * tab and all its pages are deleted, or nothing changes. The folder is not touched: its `updatedAt` and last editor stay
+ * Deletes the tab with the given id in the folder with the given id for good, together with its pages and files, and
+ * returns the folder as stored, the number of pages deleted with the tab, these pages by name and the files by name.
+ * The pages and files that are in the tab at that moment are soft deleted with the data that `deletePage()` of the
+ * pages service and `deleteFile()` of the files service store for one of them (`softDeleteData()`,
+ * `softDeleteFileData()`), with the actor as their last editor and one time of deletion for all of them, but without
+ * checking their versions: whatever is in the tab now goes with it. Either the tab and all its pages and files are
+ * deleted, or nothing changes. The folder is not touched: its `updatedAt` and last editor stay
  * as they are. It is a write of the browser or of MCP.
  *
  * The role is read on the given folder, not on the folder of the tab, because a tab deleted meanwhile has no folder any
@@ -517,15 +519,25 @@ export async function deleteTab(
       if (!tab) return null;
       // A page in a tab is never deleted, so these are exactly the pages of the tab; it sets `updatedAt` as well. The
       // pages come back from the same write, so that the list holds exactly the pages that went with the tab.
+      const deletedAt = new Date();
       const pages = await tx.page.updateManyAndReturn({
         where: { tabId },
-        data: softDeleteData(opened.editor),
+        data: softDeleteData(opened.editor, deletedAt),
         select: { name: true, title: true },
       });
+      // A deleted file has no tab either, so these are exactly the files of the tab; the lock on the row of the tab
+      // keeps an upload into it waiting until the tab is gone, and then fails on the foreign key.
+      const files = await tx.file.updateManyAndReturn({
+        where: { tabId },
+        data: softDeleteFileData(opened.editor, deletedAt),
+        select: { name: true },
+      });
       await tx.tab.delete({ where: { id: tabId } });
-      // Names are lowercase letters, digits and hyphens, so comparing the strings sorts them.
-      pages.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-      return { folder: { id: parsedFolderId, name: tab.folderName }, pageCount: pages.length, pages };
+      // Names are lowercase letters, digits, hyphens and a dot, so comparing the strings sorts them.
+      const byName = (a: { name: string }, b: { name: string }) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+      pages.sort(byName);
+      files.sort(byName);
+      return { folder: { id: parsedFolderId, name: tab.folderName }, pageCount: pages.length, pages, files };
     });
   } catch (err) {
     if (isForeignKeyViolation(err, LAST_EDITOR)) return unknownActor(err, actor);
@@ -538,7 +550,14 @@ export async function deleteTab(
   }
 
   logger.info(
-    { actorId: actor.id, folderId: parsedFolderId, tabId, pageCount: deleted.pageCount, ...channelOf(actor) },
+    {
+      actorId: actor.id,
+      folderId: parsedFolderId,
+      tabId,
+      pageCount: deleted.pageCount,
+      fileCount: deleted.files.length,
+      ...channelOf(actor),
+    },
     "tab deleted",
   );
   return { ok: true, value: deleted };

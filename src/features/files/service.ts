@@ -57,6 +57,7 @@ import {
   type StoredBlob,
 } from "@/features/files/store";
 import { detectType, isImageType, typeOfExtension, type FileType } from "@/features/files/types";
+import { softDeleteFileData } from "@/features/files/writes";
 import { LINKS_TRANSACTION, lockFolderLinks, updateLinks, type LinkingPage } from "@/features/pages/links-service";
 import { pageMoved } from "@/features/pages/wiki-links";
 import { LAST_EDITOR_SELECT, withLastEditor, type LastEditor } from "@/features/users/records";
@@ -965,4 +966,216 @@ async function storeFileMove(
     );
     return { kind: "stored", file, updatedPages };
   }, LINKS_TRANSACTION);
+}
+
+export type DeleteFileError = NotAllowed | FileNotFound | FileChanged | Failed;
+
+/** Where a deleted file was: the names of its folder and tab, the address to go to after the delete. */
+export type FilePlaceNames = { folder: { name: string }; tab: { name: string } | null };
+
+/**
+ * Deletes the file with the given id as a soft delete, based on the lock version that the dialog was opened with, and
+ * returns the place it was in. The file keeps its row, its folder and its versions, so it can be restored; it gets the
+ * time of deletion, loses its tab, because its place inside the folder is forgotten, and the actor becomes its last
+ * editor (`softDeleteFileData()`). Its name is free at once. A file that is already deleted counts as missing. The
+ * delete is refused with `file-changed` when the file was changed after that lock version. Only the browser deletes a
+ * single file; a delete of a tab deletes the files of the tab with it, also through MCP (`deleteTab()` of the folders
+ * service).
+ */
+export async function deleteFile(
+  actor: BrowserActor,
+  id: string,
+  input: { lockVersion: number | null },
+): Promise<Result<FilePlaceNames, DeleteFileError>> {
+  const opened = openContentWrite(actor, "file not deleted");
+  if (opened.refused) return opened.refused;
+
+  const fileId = parseFileId(id);
+  if (!fileId) return { ok: false, error: { code: "file-not-found" } };
+
+  const role = await lookUp(() => roleOnFolderOfFile(actor, fileId), { fileId }, "failed to delete file");
+  if (!role.ok) return role;
+  const refused = refusedByRole(actor, "file not deleted", role.value, "deleteFile", { fileId });
+  if (refused) return refused;
+
+  const lockVersion = parseLockVersion(input.lockVersion);
+  if (lockVersion === null) return refusedFileWrite(fileId, input.lockVersion, "file to delete");
+
+  let place: FilePlaceNames | null;
+  try {
+    // The read of the place and the update in one transaction: the lock version in the condition of the update makes
+    // the place the one the file had when it was deleted, because a move in between counts the lock version up.
+    place = await getDb().$transaction(async (tx) => {
+      const where = { id: fileId, lockVersion, deletedAt: null };
+      const file = await tx.file.findFirst({
+        where,
+        select: { folder: { select: { name: true } }, tab: { select: { name: true } } },
+      });
+      if (!file) return null;
+      const { count } = await tx.file.updateMany({ where, data: softDeleteFileData(opened.editor) });
+      return count === 0 ? null : file;
+    });
+  } catch (err) {
+    if (isForeignKeyViolation(err, LAST_EDITOR)) return unknownActor(err, actor);
+    logger.error({ err, fileId }, "failed to delete file");
+    return { ok: false, error: { code: "failed" } };
+  }
+  if (place === null) return refusedFileWrite(fileId, lockVersion, "file to delete");
+
+  logger.info({ fileId, ...channelOf(actor) }, "file deleted");
+  return { ok: true, value: place };
+}
+
+/**
+ * What the list of deleted items shows of a file: its name, type and size, and when and by whom it was deleted. Nothing
+ * writes to a deleted file, so its last editor is the user who deleted it, with the channel of the delete.
+ */
+export type DeletedFileSummary = {
+  id: string;
+  name: string;
+  type: FileType;
+  size: number;
+  deletedAt: Date;
+  lastEditedBy: LastEditor;
+};
+
+/** A deleted file with its folder and its versions, newest first, as the view of a deleted file shows it. */
+export type DeletedFile = {
+  id: string;
+  name: string;
+  type: FileType;
+  deletedAt: Date;
+  lastEditedBy: LastEditor;
+  folder: { id: string; name: string };
+  versions: [FileVersionEntry, ...FileVersionEntry[]];
+};
+
+/**
+ * The deleted files of the folder, newest first, without their content. `null` for an admin and, in the browser, for
+ * an actor whose role on the folder is not Manager or Owner.
+ */
+export async function listDeletedFiles(actor: ContentActor, folderId: string): Promise<DeletedFileSummary[] | null> {
+  if (!(await mayReadFolder(actor, folderId, "deletedItems"))) return null;
+  const parsedFolderId = parseFolderId(folderId);
+  if (!parsedFolderId) return [];
+  const files = await getDb().file.findMany({
+    where: { folderId: parsedFolderId, deletedAt: { not: null } },
+    select: { ...SUMMARY_SELECT, deletedAt: true },
+    // The id keeps files deleted at the same moment in a stable order.
+    orderBy: [{ deletedAt: "desc" }, { id: "asc" }],
+  });
+  return files.flatMap(({ deletedAt, ...file }) => (deletedAt ? [{ ...summaryOf(file), deletedAt }] : []));
+}
+
+/**
+ * The deleted file with the given id in the folder with the given name, with its folder and its versions, newest
+ * first. `null` for an admin, if the name or the id is malformed, the file belongs to another folder or is not
+ * deleted, and, in the browser, if the actor's role on the folder is not Manager or Owner.
+ */
+export async function getDeletedFile(actor: ContentActor, folderName: string, id: string): Promise<DeletedFile | null> {
+  const readable = readableFolderWhere(actor, "deletedItems");
+  if (!readable) return null;
+  const folder = parseName(folderName);
+  const fileId = parseFileId(id);
+  if (!folder || !fileId) return null;
+  const file = await getDb().file.findFirst({
+    where: { id: fileId, folder: { name: folder, ...readable }, deletedAt: { not: null } },
+    select: {
+      id: true,
+      name: true,
+      type: true,
+      deletedAt: true,
+      ...LAST_EDITOR_SELECT,
+      folder: { select: { id: true, name: true } },
+      versions: { select: VERSION_SELECT, orderBy: { number: "desc" } },
+    },
+  });
+  if (!file) return null;
+  const { versions, deletedAt, ...rest } = withLastEditor(file);
+  const [newest, ...older] = versions.map(versionEntry);
+  if (!newest || !deletedAt) return null;
+  return { ...rest, deletedAt, versions: [newest, ...older] };
+}
+
+export type RestoreFileError =
+  NotAllowed | FileNotFound | TabNotFound | InvalidInput<FileFieldErrors> | NameTaken | Failed;
+
+/**
+ * Restores the deleted file with the given id into its folder, under the given name, at the given place, with all its
+ * versions, and returns it as stored, with the actor as its last editor and the next lock version: in the tab with the
+ * id `tabId` of its folder or, with `null`, directly in the folder. The extension of the name stays that of its type.
+ * A file that is not deleted counts as missing; a tab of another folder is refused by the composite foreign key and
+ * counts as missing as well. A name that is taken at the place gives `name-taken`: a deleted file never holds a name.
+ * The checks are those of the restore of a page; only the browser restores.
+ */
+export async function restoreFile(
+  actor: BrowserActor,
+  id: string,
+  input: { name: string; tabId: string | null },
+): Promise<Result<StoredFile, RestoreFileError>> {
+  const opened = openContentWrite(actor, "file not restored");
+  if (opened.refused) return opened.refused;
+
+  const fileId = parseFileId(id);
+  if (!fileId) return { ok: false, error: { code: "file-not-found" } };
+
+  const failure = "failed to restore file";
+  const role = await lookUp(() => roleOnFolderOfFile(actor, fileId), { fileId }, failure);
+  if (!role.ok) return role;
+  const refused = refusedByRole(actor, "file not restored", role.value, "deletedItems", { fileId });
+  if (refused) return refused;
+
+  const tabId = input.tabId === null ? null : parseTabId(input.tabId);
+  if (tabId === null && input.tabId !== null) return { ok: false, error: { code: "tab-not-found" } };
+
+  const parsed = uploadInputSchema.safeParse({ name: input.name });
+  if (!parsed.success) return invalidInput(parsed.error);
+  const { name } = parsed.data;
+  const deleted = await lookUp(
+    () => getDb().file.findUnique({ where: { id: fileId, deletedAt: { not: null } }, select: { type: true } }),
+    { fileId },
+    failure,
+  );
+  if (!deleted.ok) return deleted;
+  if (!deleted.value) {
+    logger.warn({ fileId }, "deleted file to restore not found");
+    return { ok: false, error: { code: "file-not-found" } };
+  }
+  const extension = parseFileName(name)?.extension;
+  if (!extension || typeOfExtension(extension) !== deleted.value.type) {
+    return {
+      ok: false,
+      error: { code: "invalid-input", fieldErrors: { name: [fileExtensionMessage(deleted.value.type)] } },
+    };
+  }
+
+  let file: StoredFile | null;
+  try {
+    // Only a deleted file can be restored; `updateMany` reports any other as a count of 0.
+    const { count } = await getDb().file.updateMany({
+      where: { id: fileId, deletedAt: { not: null } },
+      data: { deletedAt: null, name, tabId, ...opened.editor, lockVersion: { increment: 1 } },
+    });
+    file = count === 0 ? null : await findStoredFile(fileId);
+  } catch (err) {
+    // Before the tab key: a missing actor must not be reported as a missing tab.
+    if (isForeignKeyViolation(err, LAST_EDITOR)) return unknownActor(err, actor);
+    if (isUniqueViolation(err, FILE_NAME)) {
+      logger.warn({ fileId, tabId, name }, "name of restored file already in use at the target");
+      return { ok: false, error: { code: "name-taken" } };
+    }
+    if (isForeignKeyViolation(err)) {
+      logger.warn({ fileId, tabId }, "target tab of restored file not found in the file's folder");
+      return { ok: false, error: { code: "tab-not-found" } };
+    }
+    logger.error({ err, fileId, tabId }, failure);
+    return { ok: false, error: { code: "failed" } };
+  }
+  if (file === null) {
+    logger.warn({ fileId }, "deleted file to restore not found");
+    return { ok: false, error: { code: "file-not-found" } };
+  }
+
+  logger.info({ fileId, tabId, ...channelOf(actor) }, "file restored");
+  return { ok: true, value: file };
 }

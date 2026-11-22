@@ -44,6 +44,7 @@ const mocks = vi.hoisted(() => ({
   folderRoleFindFirst: vi.fn(),
   queryRaw: vi.fn(),
   pageUpdateManyAndReturn: vi.fn(),
+  fileUpdateManyAndReturn: vi.fn(),
   tabDelete: vi.fn(),
   txTabFindFirst: vi.fn(),
   pageLinkFindMany: vi.fn(),
@@ -81,6 +82,7 @@ vi.mock("@/lib/db", () => ({
         $queryRaw: mocks.queryRaw,
         $executeRaw: vi.fn(),
         page: { updateManyAndReturn: mocks.pageUpdateManyAndReturn, update: mocks.pageUpdate },
+        file: { updateManyAndReturn: mocks.fileUpdateManyAndReturn },
         pageLink: {
           findMany: mocks.pageLinkFindMany,
           deleteMany: mocks.pageLinkDeleteMany,
@@ -112,6 +114,7 @@ const databaseCalls = [
   mocks.folderRoleFindFirst,
   mocks.queryRaw,
   mocks.pageUpdateManyAndReturn,
+  mocks.fileUpdateManyAndReturn,
   mocks.tabDelete,
 ];
 
@@ -122,6 +125,7 @@ const writeCalls = [
   mocks.tabCreate,
   mocks.tabUpdateMany,
   mocks.pageUpdateManyAndReturn,
+  mocks.fileUpdateManyAndReturn,
   mocks.tabDelete,
 ];
 
@@ -149,6 +153,8 @@ beforeEach(() => {
   mocks.pageLinkFindMany.mockResolvedValue([]);
   // The locked row of the tab that a deletion reads, unless a test says otherwise.
   mocks.queryRaw.mockResolvedValue([{ folderId: FOLDER_ID, folderName: "handbook" }]);
+  // A tab that a deletion deletes holds no files, unless a test says otherwise.
+  mocks.fileUpdateManyAndReturn.mockResolvedValue([]);
 });
 
 /** Names that are not valid as written: not lowercase, surrounding whitespace, a double hyphen, empty. */
@@ -833,7 +839,15 @@ describe("a tab write through MCP", () => {
     await expect(deleteTab(MANAGER, FOLDER_ID, TAB_ID)).resolves.toMatchObject({ ok: true, value: { pageCount: 1 } });
 
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
-      { actorId: ACTOR_ID, folderId: FOLDER_ID, tabId: TAB_ID, pageCount: 1, channel: "mcp", grantId: GRANT_ID },
+      {
+        actorId: ACTOR_ID,
+        folderId: FOLDER_ID,
+        tabId: TAB_ID,
+        pageCount: 1,
+        fileCount: 0,
+        channel: "mcp",
+        grantId: GRANT_ID,
+      },
       "tab deleted",
     );
     expect(dataOf(mocks.pageUpdateManyAndReturn)).toMatchObject({
@@ -863,11 +877,12 @@ describe("deleteTab", () => {
     expectNothingLogged();
   });
 
-  it("soft deletes the pages of the tab, deletes the tab and returns the folder and the pages by name", async () => {
+  it("soft deletes the pages and files of the tab, deletes the tab and returns the folder, the pages and the files by name", async () => {
     mocks.pageUpdateManyAndReturn.mockResolvedValue([
       { name: "second", title: "Second" },
       { name: "first", title: "First" },
     ]);
+    mocks.fileUpdateManyAndReturn.mockResolvedValue([{ name: "report.pdf" }, { name: "diagram.png" }]);
     mocks.tabDelete.mockResolvedValue({ id: TAB_ID });
 
     await expect(deleteTab(ACTOR, FOLDER_ID, TAB_ID)).resolves.toEqual({
@@ -879,6 +894,7 @@ describe("deleteTab", () => {
           { name: "first", title: "First" },
           { name: "second", title: "Second" },
         ],
+        files: [{ name: "diagram.png" }, { name: "report.pdf" }],
       },
     });
 
@@ -889,8 +905,16 @@ describe("deleteTab", () => {
       lastEditedVia: "web",
       version: { increment: 1 },
     });
+    // The files get the same time of deletion as the pages, and their lock version counts up.
+    expect(dataOf(mocks.fileUpdateManyAndReturn)).toEqual({
+      deletedAt: (dataOf(mocks.pageUpdateManyAndReturn) as { deletedAt: Date }).deletedAt,
+      tabId: null,
+      lastEditedById: ACTOR_ID,
+      lastEditedVia: "web",
+      lockVersion: { increment: 1 },
+    });
     expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
-      { actorId: ACTOR_ID, folderId: FOLDER_ID, tabId: TAB_ID, pageCount: 2, channel: "web" },
+      { actorId: ACTOR_ID, folderId: FOLDER_ID, tabId: TAB_ID, pageCount: 2, fileCount: 2, channel: "web" },
       "tab deleted",
     );
   });

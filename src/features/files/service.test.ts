@@ -37,6 +37,7 @@ vi.mock("@/lib/db", () => ({
       findUnique: mocks.fileFindUnique,
       findMany: mocks.fileFindMany,
       create: mocks.fileCreate,
+      updateMany: mocks.fileUpdateMany,
     },
     fileVersion: { count: mocks.versionCount },
     folderRole: { findFirst: mocks.roleFindFirst },
@@ -226,6 +227,8 @@ describe("the content writes of files", () => {
 
   it.each(WRITES)("$name answers a missing actor with failed", async (write) => {
     mocks.fileCreate.mockRejectedValue(foreignKeyViolation({ index: write.editorKey }));
+    mocks.fileUpdateMany.mockRejectedValue(foreignKeyViolation({ index: write.editorKey }));
+    mocks.roleFindFirst.mockResolvedValue({ role: "owner" });
     mocks.transaction.mockRejectedValue(foreignKeyViolation({ index: write.editorKey }));
 
     await expect(write.call(ACTOR)).resolves.toEqual({ ok: false, error: { code: "failed" } });
@@ -676,6 +679,131 @@ describe("moveOrRenameFile", () => {
     await expect(move({ tabId: TAB_ID })).resolves.toEqual({ ok: false, error: { code: "tab-not-found" } });
     mocks.transaction.mockRejectedValueOnce(knownError("P1001"));
     await expect(move()).resolves.toEqual({ ok: false, error: { code: "failed" } });
+  });
+});
+
+describe("deleteFile", () => {
+  beforeEach(() => mocks.roleFindFirst.mockResolvedValue({ role: "manager" }));
+
+  const remove = (lockVersion: number | null = 3) => fileService.deleteFile(ACTOR, FILE_ID, { lockVersion });
+
+  it("soft deletes the file based on its lock version, returns its place and logs it", async () => {
+    mocks.txFileFindFirst.mockResolvedValue({ folder: { name: "handbook" }, tab: { name: "guides" } });
+
+    await expect(remove()).resolves.toEqual({
+      ok: true,
+      value: { folder: { name: "handbook" }, tab: { name: "guides" } },
+    });
+    expect(mocks.fileUpdateMany.mock.calls[0]?.[0]).toEqual({
+      where: { id: FILE_ID, lockVersion: 3, deletedAt: null },
+      data: {
+        deletedAt: expect.any(Date),
+        tabId: null,
+        lastEditedById: ACTOR_ID,
+        lastEditedVia: "web",
+        lockVersion: { increment: 1 },
+      },
+    });
+    expect(mocks.info).toHaveBeenCalledWith({ fileId: FILE_ID, channel: "web" }, "file deleted");
+  });
+
+  it("refuses a delete based on an older lock version, or on none, with the file as it is now", async () => {
+    mocks.txFileFindFirst.mockResolvedValue(null);
+    mocks.fileFindUnique.mockResolvedValue({ ...STORED_ROW, lockVersion: 4 });
+
+    const changed = { ok: false, error: { code: "file-changed", file: { ...STORED_FILE, lockVersion: 4 } } };
+    await expect(remove()).resolves.toEqual(changed);
+    await expect(remove(null)).resolves.toEqual(changed);
+    mocks.fileFindUnique.mockResolvedValue(null);
+    await expect(remove()).resolves.toEqual({ ok: false, error: { code: "file-not-found" } });
+    expect(mocks.fileUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("answers a malformed id without asking the database, and any other error with failed", async () => {
+    await expect(fileService.deleteFile(ACTOR, MALFORMED_ID, { lockVersion: 3 })).resolves.toEqual({
+      ok: false,
+      error: { code: "file-not-found" },
+    });
+    expect(mocks.roleFindFirst).not.toHaveBeenCalled();
+    mocks.transaction.mockRejectedValue(knownError("P1001"));
+    await expect(remove()).resolves.toEqual({ ok: false, error: { code: "failed" } });
+  });
+});
+
+describe("restoreFile", () => {
+  beforeEach(() => mocks.roleFindFirst.mockResolvedValue({ role: "manager" }));
+
+  const restore = (input: Partial<{ name: string; tabId: string | null }> = {}) =>
+    fileService.restoreFile(ACTOR, FILE_ID, { name: "diagram.png", tabId: TAB_ID, ...input });
+
+  it("restores the deleted file under the name and place, with the next lock version, and logs it", async () => {
+    await expect(restore()).resolves.toMatchObject({ ok: true, value: STORED_FILE });
+    expect(mocks.fileUpdateMany.mock.calls[0]?.[0]).toEqual({
+      where: { id: FILE_ID, deletedAt: { not: null } },
+      data: {
+        deletedAt: null,
+        name: "diagram.png",
+        tabId: TAB_ID,
+        lastEditedById: ACTOR_ID,
+        lastEditedVia: "web",
+        lockVersion: { increment: 1 },
+      },
+    });
+    expect(mocks.info).toHaveBeenCalledWith({ fileId: FILE_ID, tabId: TAB_ID, channel: "web" }, "file restored");
+  });
+
+  it("checks the place, the name rule and the extension of the type, and refuses a file that is not deleted", async () => {
+    await expect(restore({ tabId: MALFORMED_ID })).resolves.toEqual({ ok: false, error: { code: "tab-not-found" } });
+    await expect(restore({ name: "Diagram.png" })).resolves.toMatchObject({ error: { code: "invalid-input" } });
+    await expect(restore({ name: "diagram.pdf" })).resolves.toEqual({
+      ok: false,
+      error: {
+        code: "invalid-input",
+        fieldErrors: { name: ["The name must end in .png, because the type of a file cannot change"] },
+      },
+    });
+    expect(mocks.fileUpdateMany).not.toHaveBeenCalled();
+    mocks.fileFindUnique.mockResolvedValue(null);
+    await expect(restore()).resolves.toEqual({ ok: false, error: { code: "file-not-found" } });
+  });
+
+  it("answers a taken name, a tab of another folder and any other error", async () => {
+    mocks.fileUpdateMany.mockRejectedValueOnce(uniqueViolation({ index: "File_folderId_name_key" }));
+    await expect(restore()).resolves.toEqual({ ok: false, error: { code: "name-taken" } });
+    mocks.fileUpdateMany.mockRejectedValueOnce(foreignKeyViolation({ index: "File_tabId_folderId_fkey" }));
+    await expect(restore()).resolves.toEqual({ ok: false, error: { code: "tab-not-found" } });
+    mocks.fileUpdateMany.mockRejectedValueOnce(knownError("P1001"));
+    await expect(restore()).resolves.toEqual({ ok: false, error: { code: "failed" } });
+  });
+});
+
+describe("the reads of deleted files", () => {
+  it("read nothing for an admin, and nothing for malformed ids or names", async () => {
+    await expect(fileService.listDeletedFiles(ADMIN, FOLDER_ID)).resolves.toBeNull();
+    await expect(fileService.getDeletedFile(ADMIN, "handbook", FILE_ID)).resolves.toBeNull();
+    await expect(fileService.getDeletedFile(ACTOR, "Handbook", FILE_ID)).resolves.toBeNull();
+    await expect(fileService.getDeletedFile(ACTOR, "handbook", MALFORMED_ID)).resolves.toBeNull();
+    expect(mocks.fileFindFirst).not.toHaveBeenCalled();
+  });
+
+  it("read nothing for a Writer, for whom deleted items do not exist", async () => {
+    mocks.roleFindFirst.mockResolvedValue({ role: "writer" });
+    await expect(fileService.listDeletedFiles(ACTOR, FOLDER_ID)).resolves.toBeNull();
+    expect(mocks.fileFindMany).not.toHaveBeenCalled();
+  });
+
+  it("list the deleted files with their size and who deleted them, newest first", async () => {
+    mocks.roleFindFirst.mockResolvedValue({ role: "manager" });
+    const deletedAt = new Date("2026-11-21T10:00:00Z");
+    mocks.fileFindMany.mockResolvedValue([{ ...STORED_ROW, deletedAt, versions: [{ size: 1000 }] }]);
+
+    await expect(fileService.listDeletedFiles(ACTOR, FOLDER_ID)).resolves.toMatchObject([
+      { id: STORED_ROW.id, name: "diagram.png", type: "png", size: 1000, deletedAt, lastEditedBy: { name: "bob" } },
+    ]);
+    expect(mocks.fileFindMany.mock.calls[0]?.[0]).toMatchObject({
+      where: { folderId: FOLDER_ID, deletedAt: { not: null } },
+      orderBy: [{ deletedAt: "desc" }, { id: "asc" }],
+    });
   });
 });
 

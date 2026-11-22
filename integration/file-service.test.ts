@@ -446,6 +446,84 @@ describe("moving and renaming a file", () => {
   });
 });
 
+describe("deleting and restoring a file", () => {
+  it("loses its tab, frees its name at once and keeps its versions, and a restore brings all of them back", async () => {
+    const folder = await createFolder();
+    const guides = await createTab({ folder, name: "guides" });
+    const file = await createFile({ tab: guides, name: "diagram.png", versions: [{}, {}] });
+
+    await expect(fileService.deleteFile(actor, file.id, { lockVersion: file.lockVersion })).resolves.toEqual({
+      ok: true,
+      value: { folder: { name: folder.name }, tab: { name: "guides" } },
+    });
+    expect(await getTestDb().file.findUniqueOrThrow({ where: { id: file.id } })).toMatchObject({
+      tabId: null,
+      deletedAt: expect.any(Date),
+      lastEditedById: user.id,
+      lockVersion: file.lockVersion + 1,
+    });
+    await expect(fileService.getFile(actor, folder.name, "guides", "diagram.png")).resolves.toBeNull();
+    await expect(fileService.listTabFiles(actor, guides.id)).resolves.toEqual([]);
+    await expect(fileService.getDeletedFile(actor, folder.name, file.id)).resolves.toMatchObject({
+      name: "diagram.png",
+      versions: [{ number: 2 }, { number: 1 }],
+    });
+
+    // The name is free at once: a new file takes it, so the restore under it is refused.
+    const taken = await createFile({ tab: guides, name: "diagram.png" });
+    await expect(fileService.restoreFile(actor, file.id, { name: "diagram.png", tabId: guides.id })).resolves.toEqual({
+      ok: false,
+      error: { code: "name-taken" },
+    });
+    await expect(fileService.restoreFile(actor, file.id, { name: "diagram.png", tabId: null })).resolves.toMatchObject({
+      ok: true,
+      value: { name: "diagram.png", tab: null, lockVersion: file.lockVersion + 2 },
+    });
+    await expect(fileService.getFile(actor, folder.name, null, "diagram.png")).resolves.toMatchObject({
+      versions: [{ number: 2 }, { number: 1 }],
+    });
+    expect(taken.deletedAt).toBeNull();
+  });
+
+  it("refuses a delete based on an older lock version, and one by a Writer, and deletes nothing", async () => {
+    const bob = await createBob();
+    const folder = await createFolder({
+      roles: [
+        { user, role: "owner" },
+        { user: bob, role: "writer" },
+      ],
+    });
+    const file = await createFile({ folder, name: "diagram.png", lockVersion: 2 });
+
+    await expect(fileService.deleteFile(actor, file.id, { lockVersion: 1 })).resolves.toMatchObject({
+      ok: false,
+      error: { code: "file-changed", file: { lockVersion: 2 } },
+    });
+    await expect(fileService.deleteFile(inBrowser(bob), file.id, { lockVersion: 2 })).resolves.toEqual(NOT_ALLOWED);
+    expect(await getTestDb().file.findUniqueOrThrow({ where: { id: file.id } })).toMatchObject({ deletedAt: null });
+  });
+
+  it("lists the deleted files of the folder only, newest first, and only for a Manager or Owner", async () => {
+    const bob = await createBob();
+    const folder = await createFolder({
+      roles: [
+        { user, role: "owner" },
+        { user: bob, role: "writer" },
+      ],
+    });
+    await createFile({ folder, name: "older.png", deletedAt: new Date("2026-11-01T10:00:00Z") });
+    await createFile({ folder, name: "newer.pdf", deletedAt: new Date("2026-11-02T10:00:00Z") });
+    await createFile({ folder, name: "kept.png" });
+    await createFile({ folder: await createFolder(), name: "other.png", deletedAt: new Date() });
+
+    expect((await fileService.listDeletedFiles(actor, folder.id))?.map(({ name }) => name)).toEqual([
+      "newer.pdf",
+      "older.png",
+    ]);
+    await expect(fileService.listDeletedFiles(inBrowser(bob), folder.id)).resolves.toBeNull();
+  });
+});
+
 describe("the reads of files", () => {
   it("list the files of a folder and of a tab by name, without deleted files and without those of the other place", async () => {
     const folder = await createFolder();

@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { checkUploadName, moveOrRenameFile, revertFile } from "@/features/files/actions";
+import { checkUploadName, deleteFile, moveOrRenameFile, restoreFile, revertFile } from "@/features/files/actions";
 import { NotFoundError, RedirectError } from "@/test/unit";
 
 const mocks = vi.hoisted(() => ({
   checkUploadName: vi.fn(),
   revertFile: vi.fn(),
   moveOrRenameFile: vi.fn(),
+  deleteFile: vi.fn(),
+  restoreFile: vi.fn(),
   notFound: vi.fn(),
   redirect: vi.fn(),
   revalidatePath: vi.fn(),
@@ -17,6 +19,8 @@ vi.mock("@/features/files/service", () => ({
   checkUploadName: mocks.checkUploadName,
   revertFile: mocks.revertFile,
   moveOrRenameFile: mocks.moveOrRenameFile,
+  deleteFile: mocks.deleteFile,
+  restoreFile: mocks.restoreFile,
 }));
 vi.mock("next/navigation", () => ({ notFound: mocks.notFound, redirect: mocks.redirect }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
@@ -222,5 +226,102 @@ describe("moveOrRenameFile", () => {
     mocks.moveOrRenameFile.mockResolvedValue({ ok: false, error: { code: "not-allowed" } });
 
     await expect(moveOrRenameFile(FILE_ID, {}, form())).rejects.toBeInstanceOf(NotFoundError);
+  });
+});
+
+describe("deleteFile", () => {
+  const FILE_ID = "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002";
+
+  /** The form of the dialog with the given lock version. */
+  function form(lockVersion: string | null = "3"): FormData {
+    const data = new FormData();
+    if (lockVersion !== null) data.set("lockVersion", lockVersion);
+    return data;
+  }
+
+  it("does not reach the service without a logged-in user or with a malformed id", async () => {
+    await expect(deleteFile("not-a-uuid", {}, form())).resolves.toEqual({ message: "This file no longer exists." });
+    mocks.requireUser.mockRejectedValue(new RedirectError("/login"));
+    await expect(deleteFile(FILE_ID, {}, form())).rejects.toBeInstanceOf(RedirectError);
+    expect(mocks.deleteFile).not.toHaveBeenCalled();
+  });
+
+  it("deletes with the lock version of the form and leads to the tab or the folder the file was in", async () => {
+    mocks.deleteFile.mockResolvedValue({ ok: true, value: { folder: { name: "handbook" }, tab: { name: "guides" } } });
+    await expect(deleteFile(FILE_ID, {}, form())).rejects.toEqual(new RedirectError("/folders/handbook/guides"));
+    expect(mocks.deleteFile).toHaveBeenCalledWith(BROWSER_USER, FILE_ID, { lockVersion: 3 });
+    expect(mocks.revalidatePath).toHaveBeenCalled();
+
+    mocks.deleteFile.mockResolvedValue({ ok: true, value: { folder: { name: "handbook" }, tab: null } });
+    await expect(deleteFile(FILE_ID, {}, form(null))).rejects.toEqual(new RedirectError("/folders/handbook"));
+    expect(mocks.deleteFile).toHaveBeenLastCalledWith(BROWSER_USER, FILE_ID, { lockVersion: null });
+  });
+
+  it("shows the dialog again with the notice when the file was changed", async () => {
+    const file = { name: "diagram.png", folder: { name: "handbook" }, tab: { name: "guides" } };
+    mocks.deleteFile.mockResolvedValue({ ok: false, error: { code: "file-changed", file } });
+
+    await expect(deleteFile(FILE_ID, {}, form())).rejects.toEqual(
+      new RedirectError("/folders/handbook/guides/diagram.png?action=delete&notice=changed"),
+    );
+  });
+
+  it.each([
+    [{ code: "file-not-found" }, { message: "This file no longer exists." }],
+    [{ code: "failed" }, { message: "The file could not be deleted. Please try again." }],
+  ])("answers %j with its message", async (error, state) => {
+    mocks.deleteFile.mockResolvedValue({ ok: false, error });
+    await expect(deleteFile(FILE_ID, {}, form())).resolves.toEqual(state);
+  });
+
+  it("shows the not-found page for a role that may not delete", async () => {
+    mocks.deleteFile.mockResolvedValue({ ok: false, error: { code: "not-allowed" } });
+    await expect(deleteFile(FILE_ID, {}, form())).rejects.toBeInstanceOf(NotFoundError);
+  });
+});
+
+describe("restoreFile", () => {
+  const FILE_ID = "7c0b6a2e-3f5d-4c1a-9e2b-1a4f8d6c1002";
+
+  /** The form of the dialog with the given name and place; `null` leaves the place out. */
+  function form(name = "diagram.png", place: string | null = TAB_ID): FormData {
+    const data = new FormData();
+    data.set("name", name);
+    if (place !== null) data.set("place", place);
+    return data;
+  }
+
+  it("restores under the name and place of the form and leads to the details page", async () => {
+    mocks.restoreFile.mockResolvedValue({
+      ok: true,
+      value: { name: "diagram.png", folder: { name: "handbook" }, tab: { name: "guides" } },
+    });
+
+    await expect(restoreFile(FILE_ID, {}, form())).rejects.toEqual(
+      new RedirectError("/folders/handbook/guides/diagram.png"),
+    );
+    expect(mocks.restoreFile).toHaveBeenCalledWith(BROWSER_USER, FILE_ID, { name: "diagram.png", tabId: TAB_ID });
+  });
+
+  it("asks for a place when none is chosen, and reports an invalid name with it, without the service", async () => {
+    await expect(restoreFile(FILE_ID, {}, form("Diagram.png", null))).resolves.toEqual({
+      fieldErrors: { name: [expect.any(String)], place: ["Choose a place"] },
+    });
+    expect(mocks.restoreFile).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [{ code: "file-not-found" }, { message: "This file no longer exists." }],
+    [{ code: "tab-not-found" }, { message: "This tab no longer exists." }],
+    [{ code: "name-taken" }, { fieldErrors: { name: ["Name is already in use"] } }],
+    [{ code: "failed" }, { message: "The file could not be restored. Please try again." }],
+  ])("answers %j with its message", async (error, state) => {
+    mocks.restoreFile.mockResolvedValue({ ok: false, error });
+    await expect(restoreFile(FILE_ID, {}, form())).resolves.toEqual(state);
+  });
+
+  it("shows the not-found page for a role that may not restore", async () => {
+    mocks.restoreFile.mockResolvedValue({ ok: false, error: { code: "not-allowed" } });
+    await expect(restoreFile(FILE_ID, {}, form())).rejects.toBeInstanceOf(NotFoundError);
   });
 });

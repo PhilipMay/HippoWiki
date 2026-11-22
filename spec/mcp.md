@@ -186,12 +186,13 @@ Tools of a Manager, for a Manager connection only. They do what the browser does
   tab are tool errors. The result names the tab and its new address, and the pages whose wiki links into the tab it
   updated, with their name, tab and title; the pages in it have new addresses as well. The
   current name changes nothing (see "Renaming to the same name" in `content-structure.md`).
-- `delete_tab`: a tab by its name, deleted together with all its pages as in the browser, without a further
+- `delete_tab`: a tab by its name, deleted together with all its pages and files as in the browser, without a further
   confirmation (see "Deleting a tab" in `content-structure.md`). Its description says before the call that every page
-  in the tab is deleted with it, that the tab cannot be restored and that its pages can only be restored one by one by
-  a Manager or Owner in the browser. The result names the tab, the number of pages deleted with it and the name and
-  title of each, without a limit, and the address of the deleted items of the folder. An empty tab is deleted as
-  well, with the number 0.
+  and every file in the tab is deleted with it, that the tab cannot be restored and that its pages and files can only
+  be restored one by one by a Manager or Owner in the browser. The result names the tab, the number of pages deleted
+  with it and the name and title of each, the name of each file deleted with it, both without a limit, and the address
+  of the deleted items of the folder. An empty tab is deleted as well, with the number 0. It is the only tool after
+  which a file is deleted: no tool uploads, changes, moves, renames or deletes a single file.
 
 What a Manager connection cannot do, because no tool offers it: see, read or restore deleted pages, see the roles of
 the folder or its Owners, rename the folder, or give, change or remove roles. This spec holds the rule for the deleted

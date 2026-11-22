@@ -179,6 +179,26 @@ const CONTENT_WRITES: readonly ContentWrite[] = [
     editorKey: "File_lastEditedById_fkey",
     failure: "failed to move or rename file",
   },
+  {
+    name: "deleteFile",
+    service: "files",
+    call: (actor) => files.deleteFile(actor, FILE_ID, { lockVersion: 3 }),
+    lowest: "manager",
+    target: { fileId: FILE_ID },
+    what: "file not deleted",
+    editorKey: "File_lastEditedById_fkey",
+    failure: "failed to delete file",
+  },
+  {
+    name: "restoreFile",
+    service: "files",
+    call: (actor) => files.restoreFile(actor, FILE_ID, { name: "diagram.png", tabId: null }),
+    lowest: "manager",
+    target: { fileId: FILE_ID },
+    what: "file not restored",
+    editorKey: "File_lastEditedById_fkey",
+    failure: "failed to restore file",
+  },
 ];
 
 /** The content writes of the given service. */

@@ -1338,10 +1338,10 @@ describe("the tools of a Manager connection", () => {
     expect(await listedTools()).toHaveLength(count);
   });
 
-  it("warn in the description of delete_tab that its pages go with it, for good, restored one by one in the browser", async () => {
+  it("warn in the description of delete_tab that its pages and files go with it, for good, restored one by one in the browser", async () => {
     const description = (await listedTools()).find((tool) => tool.name === "delete_tab")?.description ?? "";
 
-    expect(description).toContain("together with every page in it");
+    expect(description).toContain("together with every page and every file (image or PDF) in it");
     expect(description).toContain("deleted for good and cannot be restored");
     expect(description).toContain("restored one by one, by a Manager or Owner of the folder in the browser");
   });
@@ -1359,7 +1359,7 @@ describe("the tools of a Manager connection", () => {
     ]) {
       expect(instructions).toContain(tool);
     }
-    expect(instructions).toContain("Deleting a tab deletes all its pages with it.");
+    expect(instructions).toContain("Deleting a tab deletes all its pages and files with it.");
     expect(instructions).toContain(
       "Deleted items can be neither seen nor restored through this connection: only a Manager or Owner of the folder " +
         "restores them, in the browser.",
@@ -1541,9 +1541,10 @@ describe("the tools of a Manager connection", () => {
         { name: "install", title: "Install" },
         { name: "setup", title: "Setup" },
       ],
+      files: [{ name: "diagram.png" }, { name: "report.pdf" }],
     };
 
-    it("deletes the tab found by its name with its pages, and lists them with where to restore them", async () => {
+    it("deletes the tab found by its name with its pages and files, and lists them with where to restore them", async () => {
       mocks.deleteTab.mockResolvedValue({ ok: true, value: DELETED });
 
       const result = await callTool("delete_tab", { tab: "guides" });
@@ -1556,6 +1557,7 @@ describe("the tools of a Manager connection", () => {
         name: "guides",
         pageCount: 2,
         pages: DELETED.pages,
+        files: DELETED.files,
         deletedItemsAddress: "https://wiki.example.com/deleted-items/handbook",
         restore: expect.stringMatching(/restored one by one by a Manager or Owner of the folder in the browser/),
       });
@@ -1563,18 +1565,19 @@ describe("the tools of a Manager connection", () => {
     });
 
     it("deletes an empty tab with the number 0 and no pages", async () => {
-      mocks.deleteTab.mockResolvedValue({ ok: true, value: { folder: FOLDER, pageCount: 0, pages: [] } });
+      mocks.deleteTab.mockResolvedValue({ ok: true, value: { folder: FOLDER, pageCount: 0, pages: [], files: [] } });
 
       expect((await callTool("delete_tab", { tab: "guides" })).structuredContent).toMatchObject({
         pageCount: 0,
         pages: [],
+        files: [],
         deletedItemsAddress: "https://wiki.example.com/deleted-items/handbook",
       });
     });
 
     it("lists every page of a tab with more than a hundred pages", async () => {
       const pages = Array.from({ length: 150 }, (_, i) => ({ name: `page-${i}`, title: `Page ${i}` }));
-      mocks.deleteTab.mockResolvedValue({ ok: true, value: { folder: FOLDER, pageCount: 150, pages } });
+      mocks.deleteTab.mockResolvedValue({ ok: true, value: { folder: FOLDER, pageCount: 150, pages, files: [] } });
 
       expect((await callTool("delete_tab", { tab: "guides" })).structuredContent).toMatchObject({
         pageCount: 150,
@@ -1873,7 +1876,7 @@ describe("every tool", () => {
       ok: true,
       value: { id: "tab-1", name: "news", folder: { name: "handbook" }, updatedPages: [] },
     });
-    mocks.deleteTab.mockResolvedValue({ ok: true, value: { folder: FOLDER, pageCount: 0, pages: [] } });
+    mocks.deleteTab.mockResolvedValue({ ok: true, value: { folder: FOLDER, pageCount: 0, pages: [], files: [] } });
     mocks.searchPages.mockResolvedValue({
       ok: true,
       value: {

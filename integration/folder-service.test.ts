@@ -1,6 +1,7 @@
 // Runs the folder and tab service against the test database, to check its reads and writes on real data.
 import { beforeEach, describe, expect, it } from "vitest";
 
+import * as fileService from "@/features/files/service";
 import * as folderService from "@/features/folders/service";
 import * as pageService from "@/features/pages/service";
 import { inBrowser, type BrowserActor } from "@/features/folder-roles/actors";
@@ -15,6 +16,7 @@ import {
   createUser,
   getTestDb,
 } from "../e2e/support/database";
+import { pngBytes } from "../e2e/support/files";
 import { KNOWN_USER } from "../prisma/known-users";
 import { createBob, FAILED, NOT_ALLOWED, revisionsOf, storedPage, UNKNOWN_ACTOR, mcpActorOf } from "./helpers";
 
@@ -791,6 +793,7 @@ describe("deleting a tab", () => {
       folders: await db.folder.findMany({ orderBy: { id: "asc" } }),
       tabs: await db.tab.findMany({ orderBy: { id: "asc" } }),
       pages: await db.page.findMany({ orderBy: { id: "asc" } }),
+      files: await db.file.findMany({ orderBy: { id: "asc" } }),
     };
   }
 
@@ -812,6 +815,7 @@ describe("deleting a tab", () => {
             { name: "first", title: "First page" },
             { name: "second", title: "Second page" },
           ],
+          files: [],
         },
       });
 
@@ -1000,11 +1004,47 @@ describe("deleting a tab", () => {
     expect(await lastEditorOfFolder(folder.id)).toBe(bob.id);
   });
 
+  it("deletes the files of the tab with its pages, each restorable with its versions, and names them", async () => {
+    const folder = await createFolder({ name: "docs" });
+    const tab = await createTab({ folder, name: "guides" });
+    await createPage({ tab, name: "intro" });
+    const report = await createFile({ tab, name: "report.pdf", versions: [{}, {}] });
+    const diagram = await createFile({ tab, name: "diagram.png" });
+    const elsewhere = await createFile({ folder, name: "elsewhere.png" });
+
+    await expect(folderService.deleteTab(actor, folder.id, tab.id)).resolves.toMatchObject({
+      ok: true,
+      value: { pageCount: 1, files: [{ name: "diagram.png" }, { name: "report.pdf" }] },
+    });
+
+    const page = await getTestDb().page.findFirstOrThrow({ where: { folderId: folder.id } });
+    for (const file of [report, diagram]) {
+      expect(await getTestDb().file.findUniqueOrThrow({ where: { id: file.id } })).toMatchObject({
+        tabId: null,
+        deletedAt: page.deletedAt,
+        lastEditedById: user.id,
+        lockVersion: file.lockVersion + 1,
+      });
+    }
+    expect(await getTestDb().file.findUniqueOrThrow({ where: { id: elsewhere.id } })).toMatchObject({
+      deletedAt: null,
+    });
+    await expect(fileService.listDeletedFiles(actor, folder.id)).resolves.toMatchObject([
+      { name: expect.any(String) },
+      { name: expect.any(String) },
+    ]);
+    await expect(fileService.restoreFile(actor, report.id, { name: "report.pdf", tabId: null })).resolves.toMatchObject(
+      { ok: true, value: { name: "report.pdf", tab: null } },
+    );
+    expect(await getTestDb().fileVersion.count({ where: { fileId: report.id } })).toBe(2);
+  });
+
   it("deletes all or nothing: a failing delete of the tab leaves the tab and all its pages as they were", async () => {
     const folder = await createFolder({ name: "docs" });
     const tab = await createTab({ folder, name: "guides" });
     await createPage({ tab, name: "first" });
     await createPage({ tab, name: "second" });
+    await createFile({ tab, name: "diagram.png" });
     const before = await snapshot();
     const db = getTestDb();
     await db.$executeRawUnsafe(`
@@ -1074,6 +1114,31 @@ describe("deleting a tab", () => {
       expect(created).toEqual(TAB_NOT_FOUND);
     }
     await expectNoTabAndNoPageInOne();
+  }, 30_000);
+
+  it("never leaves a file uploaded at the same time in a missing tab", async () => {
+    const folder = await createFolder({ name: "docs" });
+    const tab = await createTab({ folder, name: "guides" });
+    const bytes = await pngBytes();
+
+    const uploaded = await againstDeleteOfTab(folder, tab, () =>
+      fileService.uploadFile(actor, { folderId: folder.id, tabId: tab.id }, "late.png", [bytes], {
+        contentLength: null,
+        stripMetadata: true,
+        replace: null,
+      }),
+    );
+
+    if (uploaded?.ok) {
+      expect(await getTestDb().file.findUniqueOrThrow({ where: { id: uploaded.value.id } })).toMatchObject({
+        tabId: null,
+        deletedAt: expect.any(Date),
+      });
+    } else {
+      expect(uploaded).toEqual(TAB_NOT_FOUND);
+    }
+    expect(await getTestDb().file.count({ where: { tabId: { not: null } } })).toBe(0);
+    expect(await getTestDb().tab.count()).toBe(0);
   }, 30_000);
 
   it("never leaves a page moved at the same time in a missing tab", async () => {
@@ -1241,6 +1306,7 @@ describe("tab writes through MCP", () => {
           { name: "first", title: "First" },
           { name: "second", title: "Second" },
         ],
+        files: [],
       },
     });
 

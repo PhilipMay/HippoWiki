@@ -814,14 +814,14 @@ export async function renameTab(
 
 /** What `delete_tab` tells the agent about restoring: the tab is gone, its pages come back one by one in the browser. */
 const RESTORE_TAB_PAGES =
-  "The tab is deleted for good and cannot be restored. Its pages can be restored one by one by a Manager or Owner of " +
-  "the folder in the browser, under Deleted items at the address deletedItemsAddress. Deleted items can be neither " +
-  "seen nor restored through this connection.";
+  "The tab is deleted for good and cannot be restored. Its pages and files can be restored one by one by a Manager " +
+  "or Owner of the folder in the browser, under Deleted items at the address deletedItemsAddress. Deleted items can " +
+  "be neither seen nor restored through this connection.";
 
 /**
  * The tool `delete_tab`: a tab of the folder of the connection, by its name, deleted for good together with all its
- * pages, as deleting it in the browser does, without a further confirmation: the description warns of it before the
- * call. The pages go to the deleted pages of the folder.
+ * pages and files, as deleting it in the browser does, without a further confirmation: the description warns of it
+ * before the call. The pages and files go to the deleted items of the folder.
  */
 export async function deleteTab(
   options: WikiToolsOptions,
@@ -841,6 +841,7 @@ export async function deleteTab(
             name: tab.name,
             pageCount: deleted.value.pageCount,
             pages: deleted.value.pages.map(({ name, title }) => ({ name, title })),
+            files: deleted.value.files.map(({ name }) => ({ name })),
             deletedItemsAddress: addressOf(options, deletedItemsPath(deleted.value.folder.name)),
             restore: RESTORE_TAB_PAGES,
           }) satisfies z.infer<typeof deletedTabOutput>,

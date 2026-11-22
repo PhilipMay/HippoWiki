@@ -1,5 +1,5 @@
 // What the dialogs of files need: the answer of the upload address, which the upload dialogs read after their `fetch()`,
-// the answer of the check of a name, and the forms of a revert and of a move or rename. No server-only imports, so Client Components can use its
+// the answer of the check of a name, and the forms of a revert, a move or rename, a delete and a restore. No server-only imports, so Client Components can use its
 // types; a Client Component takes the names of fields from `fields.ts`, which brings no Zod.
 
 import { z } from "zod";
@@ -105,5 +105,47 @@ export function parseFileMoveOrRenameFormData(
     success: false,
     fieldErrors: name.success ? {} : z.flattenError(name.error).fieldErrors,
     placeInvalid: !placeValid,
+  };
+}
+
+/** State of the "Delete file" form between submissions: the error of the last attempt, if any. */
+export type FileDeleteFormState = { message?: string };
+
+/** The Server Action of the "Delete file" dialog, with the file bound. */
+export type FileDeleteFormAction = (state: FileDeleteFormState, formData: FormData) => Promise<FileDeleteFormState>;
+
+/** Shown at the place field of the "Restore file" form when no place is chosen. */
+const CHOOSE_PLACE_MESSAGE = "Choose a place";
+
+/** The errors of the fields of the "Restore file" form. */
+export type FileRestoreFieldErrors = { name?: string[]; place?: string[] };
+
+/** State of the "Restore file" form between submissions: errors from the last attempt, if any. */
+export type FileRestoreFormState = FormState<FileRestoreFieldErrors>;
+
+/**
+ * Validates the name and reads the place of a submitted "Restore file" form, as for restoring a page: no place is
+ * preselected, so a missing place is reported as "Choose a place" at the place field; an empty place is the folder
+ * itself, a malformed tab id or a file is no place. On failure, returns the errors of name and place and whether the
+ * place is invalid; all are reported together.
+ */
+export function parseFileRestoreFormData(
+  formData: FormData,
+):
+  | { success: true; data: { name: string; tabId: string | null } }
+  | { success: false; fieldErrors: FileRestoreFieldErrors; placeInvalid: boolean } {
+  const name = uploadInputSchema.safeParse({ name: textField(formData, "name") });
+  const place = formData.get(PLACE_FIELD);
+  const placeMissing = place === null;
+  const tabId = typeof place === "string" && place !== "" ? parseTabId(place) : null;
+  const placeValid = typeof place === "string" && (place === "" || tabId !== null);
+  if (name.success && placeValid) return { success: true, data: { name: name.data.name, tabId } };
+  return {
+    success: false,
+    fieldErrors: {
+      ...(!name.success && z.flattenError(name.error).fieldErrors),
+      ...(placeMissing && { place: [CHOOSE_PLACE_MESSAGE] }),
+    },
+    placeInvalid: !placeMissing && !placeValid,
   };
 }

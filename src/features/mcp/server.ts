@@ -71,7 +71,7 @@ const ROLE_ABILITIES: Readonly<Record<McpRole, string>> = {
     "It reads the folder and changes its pages like a Writer connection, with create_page, edit_page_content, " +
     "replace_page_content and move_or_rename_page, deletes pages with delete_page, and creates, renames and deletes " +
     `tabs with create_tab, rename_tab and delete_tab. ${CONTENT_TOOLS} Every change and every delete of a page ` +
-    "states the version that read_page gave for it, and one based on an older version is refused. Deleting a tab deletes all its pages with it. Deleted items " +
+    "states the version that read_page gave for it, and one based on an older version is refused. Deleting a tab deletes all its pages and files with it. Deleted items " +
     "can be neither seen nor restored through this connection: only a Manager or Owner of the folder restores them, " +
     "in the browser.",
 };
@@ -304,13 +304,14 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
     server.registerTool(
       "delete_tab",
       {
-        title: "Delete a tab with all its pages",
+        title: "Delete a tab with all its pages and files",
         description:
-          "Deletes a tab of the folder of this connection together with every page in it, in one call and without " +
-          "a further confirmation. The tab is deleted for good and cannot be restored. Its pages go to the deleted " +
-          "items of the folder and can only be restored one by one, by a Manager or Owner of the folder in the " +
-          "browser. Use list_folder first to see which pages are in the tab. Returns the number of pages deleted " +
-          "with the tab, the name and title of each, and the address of the deleted items of the folder. " +
+          "Deletes a tab of the folder of this connection together with every page and every file (image or PDF) " +
+          "in it, in one call and without a further confirmation. The tab is deleted for good and cannot be " +
+          "restored. Its pages and files go to the deleted items of the folder and can only be restored one by one, " +
+          "by a Manager or Owner of the folder in the browser. Use list_folder first to see which pages are in the " +
+          "tab. Returns the number of pages deleted with the tab, the name and title of each, the name of each file " +
+          "deleted with it, and the address of the deleted items of the folder. " +
           USER_TEXT_NOTE,
         inputSchema: deleteTabInput,
         outputSchema: deletedTabOutput,

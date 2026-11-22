@@ -132,9 +132,16 @@ test("the deleted items button of a folder leads to its deleted items, newest fi
 
   const table = page.getByRole("table", { name: "Deleted items" });
   // Where in the folder a page was is not known, so there is no tab column.
-  await expect(table.getByRole("columnheader")).toHaveText(["Name", "Title", "Deleted", "Deleted by", "Via"]);
+  await expect(table.getByRole("columnheader")).toHaveText([
+    "Name",
+    "Kind",
+    "Title or type",
+    "Deleted",
+    "Deleted by",
+    "Via",
+  ]);
   const rows = deletedPageRows(page);
-  await expect(rows).toHaveText([/^newerNewer page/, /^olderOlder page/]);
+  await expect(rows).toHaveText([/^newerPageNewer page/, /^olderPageOlder page/]);
   await expect(rows.nth(1).locator("time")).toHaveAttribute("datetime", "2026-11-01T10:00:00.000Z");
   await expect(table.getByRole("link")).toHaveText(["newer", "older"]);
   await expect(table.getByRole("link").nth(1)).toHaveAttribute("href", `/deleted-items/handbook/${older.id}`);
@@ -257,13 +264,20 @@ test("the deleted pages show who deleted each page and how in columns, and the d
 
   await page.goto("/deleted-items/docs");
   const table = page.getByRole("table", { name: "Deleted items" });
-  await expect(table.getByRole("columnheader")).toHaveText(["Name", "Title", "Deleted", "Deleted by", "Via"]);
+  await expect(table.getByRole("columnheader")).toHaveText([
+    "Name",
+    "Kind",
+    "Title or type",
+    "Deleted",
+    "Deleted by",
+    "Via",
+  ]);
   const rows = table.getByRole("row").filter({ has: page.getByRole("cell") });
   await expect(rows).toHaveText([/^by-bob/, /^by-user/]);
-  await expect(rows.nth(0).getByRole("cell").nth(3)).toHaveText("bob");
-  await expect(rows.nth(0).getByRole("cell").nth(4)).toHaveText("mcp");
-  await expect(rows.nth(1).getByRole("cell").nth(3)).toHaveText(USER);
-  await expect(rows.nth(1).getByRole("cell").nth(4)).toHaveText("web");
+  await expect(rows.nth(0).getByRole("cell").nth(4)).toHaveText("bob");
+  await expect(rows.nth(0).getByRole("cell").nth(5)).toHaveText("mcp");
+  await expect(rows.nth(1).getByRole("cell").nth(4)).toHaveText(USER);
+  await expect(rows.nth(1).getByRole("cell").nth(5)).toHaveText("web");
 
   await page.goto(`/deleted-items/docs/${removed.id}`);
   await expect(page.getByRole("article").getByText(/^Deleted /)).toHaveText(by("bob", "mcp"));

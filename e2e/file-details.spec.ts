@@ -159,7 +159,7 @@ test("the details page shows the not-found page for a missing file, a deleted on
     "/folders/handbook/gone.png",
     "/folders/handbook/guides/Diagram.png",
     "/folders/handbook/guides/diagram.jpeg",
-    "/folders/handbook/guides/diagram.png?action=delete",
+    "/folders/handbook/guides/diagram.png?action=restore",
     "/folders/handbook/guides/diagram.png?view=history",
   ]) {
     await expectNotFound(page, address);

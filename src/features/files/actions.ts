@@ -11,17 +11,20 @@ import { NAME_TAKEN_STATE } from "@/features/folders/forms";
 import {
   FOLDER_GONE_MESSAGE,
   parseFileMoveOrRenameFormData,
+  parseFileRestoreFormData,
   parseLockVersionFormData,
   TAB_GONE_MESSAGE,
   uploadedFileState,
   UPLOAD_FAILED_MESSAGE,
+  type FileDeleteFormState,
   type FileMoveOrRenameFormState,
+  type FileRestoreFormState,
   type FileRevertFormState,
   type NameCheck,
 } from "@/features/files/forms";
 import { parseFileId } from "@/features/files/schema";
 import * as fileService from "@/features/files/service";
-import { CHANGED_NOTICE, filePath, fileRevertPath } from "@/lib/addresses";
+import { CHANGED_NOTICE, filePath, fileRevertPath, folderPath, tabPath } from "@/lib/addresses";
 import { revalidateContent } from "@/lib/revalidate";
 
 /** The message of a change of a file that no longer exists or is deleted. */
@@ -29,6 +32,12 @@ const FILE_GONE_MESSAGE = "This file no longer exists.";
 
 /** The message of a revert that failed. */
 const REVERT_FAILED_MESSAGE = "The file could not be reverted. Please try again.";
+
+/** The message of a delete that failed. */
+const DELETE_FAILED_MESSAGE = "The file could not be deleted. Please try again.";
+
+/** The message of a restore that failed. */
+const RESTORE_FAILED_MESSAGE = "The file could not be restored. Please try again.";
 
 /** The message of a move or rename that failed. */
 const MOVE_FAILED_MESSAGE = "The file could not be moved or renamed. Please try again.";
@@ -149,6 +158,92 @@ export async function moveOrRenameFile(
         return NAME_TAKEN_STATE;
       case "failed":
         return { message: MOVE_FAILED_MESSAGE };
+    }
+  }
+
+  revalidateContent();
+  const { folder, tab, name } = result.value;
+  redirect(filePath(folder.name, tab?.name ?? null, name));
+}
+
+/**
+ * Deletes the file with the given id, based on the lock version in the form, and redirects to the folder or tab it was
+ * in. The file can be restored from the deleted items of its folder. Returns the error to show in the dialog if the
+ * file no longer exists or cannot be deleted. If the file was changed after the dialog was opened, the dialog is shown
+ * again with the file as it is now and the notice that says so. Bind the id with `deleteFile.bind(null, id)`.
+ */
+export async function deleteFile(
+  id: string,
+  _prevState: FileDeleteFormState,
+  formData: FormData,
+): Promise<FileDeleteFormState> {
+  const user = await requireUser();
+
+  const fileId = parseFileId(id);
+  if (!fileId) return { message: FILE_GONE_MESSAGE };
+
+  const result = await fileService.deleteFile(inBrowser(user), fileId, {
+    lockVersion: parseLockVersionFormData(formData),
+  });
+  if (!result.ok) {
+    switch (result.error.code) {
+      case "not-allowed":
+        notFound();
+      case "file-not-found":
+        return { message: FILE_GONE_MESSAGE };
+      case "file-changed": {
+        const { folder, tab, name } = result.error.file;
+        revalidateContent();
+        redirect(filePath(folder.name, tab?.name ?? null, name, "delete", CHANGED_NOTICE));
+      }
+      case "failed":
+        return { message: DELETE_FAILED_MESSAGE };
+    }
+  }
+
+  revalidateContent();
+  const { folder, tab } = result.value;
+  redirect(tab ? tabPath(folder.name, tab.name) : folderPath(folder.name));
+}
+
+/**
+ * Restores the deleted file with the given id under the submitted name and place, and redirects to its details page.
+ * Returns the errors to show in the dialog if the input is invalid, the name is taken at the place, the tab or the
+ * file no longer exists, or the restore cannot be stored. Bind the id with `restoreFile.bind(null, id)`.
+ */
+export async function restoreFile(
+  id: string,
+  _prevState: FileRestoreFormState,
+  formData: FormData,
+): Promise<FileRestoreFormState> {
+  const user = await requireUser();
+
+  const fileId = parseFileId(id);
+  if (!fileId) return { message: FILE_GONE_MESSAGE };
+
+  const input = parseFileRestoreFormData(formData);
+  if (!input.success) {
+    return {
+      ...(Object.keys(input.fieldErrors).length > 0 && { fieldErrors: input.fieldErrors }),
+      ...(input.placeInvalid && { message: TAB_GONE_MESSAGE }),
+    };
+  }
+
+  const result = await fileService.restoreFile(inBrowser(user), fileId, input.data);
+  if (!result.ok) {
+    switch (result.error.code) {
+      case "not-allowed":
+        notFound();
+      case "file-not-found":
+        return { message: FILE_GONE_MESSAGE };
+      case "tab-not-found":
+        return { message: TAB_GONE_MESSAGE };
+      case "invalid-input":
+        return { fieldErrors: result.error.fieldErrors };
+      case "name-taken":
+        return NAME_TAKEN_STATE;
+      case "failed":
+        return { message: RESTORE_FAILED_MESSAGE };
     }
   }
 

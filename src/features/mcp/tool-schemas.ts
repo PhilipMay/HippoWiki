@@ -343,6 +343,9 @@ export const deletedTabOutput = z.object({
   pages: z
     .array(z.object({ name: z.string(), title: z.string() }))
     .describe("Every page deleted with the tab, by name, without a limit"),
+  files: z
+    .array(z.object({ name: z.string().describe("The name of the file with its extension") }))
+    .describe("Every file (image or PDF) deleted with the tab, by name, without a limit"),
   deletedItemsAddress: DELETED_ITEMS_ADDRESS_OUTPUT,
-  restore: z.string().describe("How the pages can be restored"),
+  restore: z.string().describe("How the pages and files can be restored"),
 });

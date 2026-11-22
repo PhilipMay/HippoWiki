@@ -16,10 +16,10 @@ import {
 
 /**
  * The actions of the details page of a file: `upload-version` opens the dialog "Upload new version", which exists only
- * while the files are on, `revert` the dialog "Revert file" for the version in `&version=<n>`, and `move-or-rename`
- * the dialog "Move or rename file".
+ * while the files are on, `revert` the dialog "Revert file" for the version in `&version=<n>`, `move-or-rename` the
+ * dialog "Move or rename file" and `delete` the dialog "Delete file".
  */
-const FILE_ACTIONS = ["upload-version", "revert", "move-or-rename"] as const;
+const FILE_ACTIONS = ["upload-version", "revert", "move-or-rename", "delete"] as const;
 
 export type FileAction = (typeof FILE_ACTIONS)[number];
 
@@ -28,6 +28,7 @@ const FILE_ACTION_FUNCTIONS: Record<FileAction, FolderFunction> = {
   "upload-version": "editFile",
   revert: "editFile",
   "move-or-rename": "editFile",
+  delete: "deleteFile",
 };
 
 /**
@@ -79,4 +80,25 @@ export function fileAddressOf(
     return null;
   }
   return { action, version, notice, title: `${file.name} – ${file.folder.name}` };
+}
+
+/** The actions of the address of a deleted file: `restore` opens the "Restore file" dialog. */
+const DELETED_FILE_ACTIONS = ["restore"] as const;
+
+export type DeletedFileAction = (typeof DELETED_FILE_ACTIONS)[number];
+
+/**
+ * What the address of a deleted file shows, and its browser title: the file read-only, or the "Restore file" dialog
+ * for `restore`. `null` for any other action, any view, the words of a search, a version and a notice: a deleted file
+ * has no versions to open and no history. The title shows that the file is a deleted copy.
+ */
+export function deletedFileAddressOf(
+  file: { name: string },
+  searchParams: SearchParams,
+): { action: DeletedFileAction | null; title: string } | null {
+  if (parseView(searchParams) !== null || hasSearchWords(searchParams)) return null;
+  if (searchParams.version !== undefined || searchParams.notice !== undefined) return null;
+  const action = parseAction(searchParams, DELETED_FILE_ACTIONS);
+  if (action === "invalid") return null;
+  return { action, title: `Deleted: ${file.name}` };
 }
