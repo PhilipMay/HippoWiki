@@ -163,7 +163,9 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
           'or a typo; "two words" in quotes match as a phrase, -word leaves out the pages with the word, and or ' +
           "between two words finds either. The best matches come first, each with its title, its name and tab, a " +
           "piece of its text and when it was last changed, by whom and how. Read the best results with read_page, " +
-          "by their name and tab; ask for the next ones with nextOffset. Deleted pages are never found. " +
+          "by their name and tab; ask for the next ones with nextOffset. The first call, with offset 0, also lists " +
+          "in files the images and PDFs of the folder whose names match, each with its details and addresses but " +
+          "never its content. Deleted pages and files are never found. " +
           USER_TEXT_NOTE,
         inputSchema: searchPagesInput,
         outputSchema: searchPagesOutput,

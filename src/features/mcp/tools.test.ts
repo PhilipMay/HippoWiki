@@ -490,9 +490,30 @@ describe("search_pages", () => {
     };
   }
 
-  /** The results of a search with the given pages of the given number of best pages. */
-  function results(pages: ReturnType<typeof found>[], total = pages.length, more = false) {
-    return { ok: true, value: { results: pages, total, more } };
+  /** A file that a search found by its name, as the search service returns it. */
+  function foundFile(name: string, tab: string | null = null) {
+    const image = !name.endsWith(".pdf");
+    return {
+      id: `id-${name}`,
+      name,
+      type: image ? ("png" as const) : ("pdf" as const),
+      tab: tab === null ? null : { name: tab },
+      size: 2048,
+      width: image ? 640 : null,
+      height: image ? 480 : null,
+      updatedAt: CHANGED,
+      lastEditedBy: { name: "mike", via: "web" as const },
+    };
+  }
+
+  /** The results of a search with the given pages of the given number of best pages, and the given files. */
+  function results(
+    pages: ReturnType<typeof found>[],
+    total = pages.length,
+    more = false,
+    files: ReturnType<typeof foundFile>[] = [],
+  ) {
+    return { ok: true, value: { results: pages, total, more, files, moreFiles: false } };
   }
 
   it.each(MCP_ROLES)(
@@ -539,9 +560,63 @@ describe("search_pages", () => {
           lastEditedVia: "mcp",
         },
       ],
+      files: [],
+      moreFiles: false,
       nextOffset: null,
       more: false,
     });
+  });
+
+  it("gives each file whose name matches its details and both its addresses, marked as a file, without its content", async () => {
+    mocks.searchPages.mockResolvedValue(
+      results([], 0, false, [foundFile("network-diagram.png", "guides"), foundFile("manual.pdf")]),
+    );
+
+    const result = await callTool("search_pages", { query: "diagram" });
+
+    expect(result.structuredContent).toMatchObject({
+      note: USER_TEXT_NOTE,
+      results: [],
+      files: [
+        {
+          name: "network-diagram.png",
+          tab: "guides",
+          type: "png",
+          size: 2048,
+          width: 640,
+          height: 480,
+          address: `${PUBLIC_URL}/files/handbook/guides/network-diagram.png`,
+          detailsAddress: `${PUBLIC_URL}/folders/handbook/guides/network-diagram.png`,
+          lastChanged: CHANGED.toISOString(),
+          lastEditedBy: "mike",
+          lastEditedVia: "web",
+        },
+        {
+          name: "manual.pdf",
+          tab: null,
+          type: "pdf",
+          width: null,
+          height: null,
+          address: `${PUBLIC_URL}/files/handbook/manual.pdf`,
+          detailsAddress: `${PUBLIC_URL}/folders/handbook/manual.pdf`,
+        },
+      ],
+      moreFiles: false,
+    });
+    // The id of a file stays inside the wiki, and no field holds content.
+    expect(Object.keys((result.structuredContent as { files: object[] }).files[0] ?? {})).toEqual([
+      "name",
+      "tab",
+      "type",
+      "size",
+      "width",
+      "height",
+      "address",
+      "detailsAddress",
+      "lastChanged",
+      "lastEditedBy",
+      "lastEditedVia",
+    ]);
   });
 
   it("gives the offset of the next results while the best results go on, and says when more pages match", async () => {
@@ -1883,6 +1958,8 @@ describe("every tool", () => {
         results: [{ ...PAGE, excerpt: [{ text: "Setup", match: true }] }],
         total: 1,
         more: false,
+        files: [],
+        moreFiles: false,
       },
     });
   });

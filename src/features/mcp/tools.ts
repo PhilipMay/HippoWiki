@@ -21,6 +21,7 @@ import type {
   deleteTabInput,
   editedPageOutput,
   editPageContentInput,
+  fileOutput,
   listFolderOutput,
   movedPageOutput,
   moveOrRenamePageInput,
@@ -49,7 +50,7 @@ import {
   SEARCH_TOOL_MAX_RESULTS,
 } from "@/features/search/limits";
 import * as searchService from "@/features/search/service";
-import { deletedItemsPath, folderPath, pagePath, tabPath } from "@/lib/addresses";
+import { deletedItemsPath, fileContentPath, filePath, folderPath, pagePath, tabPath } from "@/lib/addresses";
 import { logger } from "@/lib/logger";
 import { NAME_MAX_LENGTH } from "@/lib/name-limits";
 
@@ -199,6 +200,28 @@ function sortByTabThenName<Page extends { name: string; tab: { name: string } | 
   });
 }
 
+/** A file as the tools list it: its details and its two addresses, without its content. */
+function fileData(
+  options: WikiToolsOptions,
+  file: Omit<searchService.FileSearchResult, "id">,
+): z.infer<typeof fileOutput> {
+  const { folder } = options;
+  const tab = file.tab?.name ?? null;
+  return {
+    name: file.name,
+    tab,
+    type: file.type,
+    size: file.size,
+    width: file.width,
+    height: file.height,
+    address: addressOf(options, fileContentPath(folder.name, tab, file.name)),
+    detailsAddress: addressOf(options, filePath(folder.name, tab, file.name)),
+    lastChanged: file.updatedAt.toISOString(),
+    lastEditedBy: file.lastEditedBy.name,
+    lastEditedVia: file.lastEditedBy.via,
+  };
+}
+
 /** The tool `list_folder`: the tabs and pages of the folder of the connection, the pages placed directly in it first. */
 export async function listFolder(options: WikiToolsOptions): Promise<CallToolResult> {
   return run(options, "list_folder", {}, async () => {
@@ -297,8 +320,8 @@ function searchError(error: searchService.SearchError): CallToolResult {
 
 /**
  * The tool `search_pages`: the pages of the folder of the connection that match the words of the query, the best
- * first, with a piece of their text, `limit` at a time from `offset` on, up to the `SEARCH_MAX_RESULTS` best ones. It
- * takes no tab: a search always covers the whole folder. Deleted pages are never found. The query is never logged:
+ * first, with a piece of their text, `limit` at a time from `offset` on, up to the `SEARCH_MAX_RESULTS` best ones, and
+ * in the first call, with offset 0, the files whose names match, without their content. It takes no tab: a search always covers the whole folder. Deleted pages are never found. The query is never logged:
  * people search for names and incidents.
  */
 export async function searchPages(
@@ -325,7 +348,7 @@ export async function searchPages(
     // `null` when the actor may no longer read the folder.
     if (!found) return folderGone();
     if (!found.ok) return searchError(found.error);
-    const { results, total, more } = found.value;
+    const { results, total, more, files, moreFiles } = found.value;
     const next = offset + results.length;
     return result(
       withNote({
@@ -339,6 +362,8 @@ export async function searchPages(
           lastEditedBy: page.lastEditedBy.name,
           lastEditedVia: page.lastEditedBy.via,
         })),
+        files: files.map((file) => fileData(options, file)),
+        moreFiles,
         nextOffset: results.length > 0 && next < total ? next : null,
         more,
       }) satisfies z.infer<typeof searchPagesOutput>,

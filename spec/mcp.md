@@ -142,9 +142,12 @@ Read tools, which say so to the client (`readOnlyHint`):
 - `search_pages`: the pages of the whole folder that match the words of `query`, the best match first, each with its
   title, its name and tab as `read_page` takes them, its address, a piece of its text, its last change, its last
   editor and how it was last changed. It returns 10 results unless `limit` asks for another number, at most 25, from
-  `offset` on, up to the 100 best results, and gives the offset of the next results. It takes no folder and no tab,
-  and never finds a deleted page. Its syntax, its limits and its tool errors are those of search in the browser (see
-  "Search through MCP" in `search.md`).
+  `offset` on, up to the 100 best results, and gives the offset of the next results. Its first call, with `offset` 0,
+  also lists in `files` the images and PDFs whose names match, the same files as the browser finds, each with its
+  name and tab, its type, size, width and height, the addresses of the file and of its details page and its last
+  change, and never the content of a file. It takes no folder and no tab, and never finds a deleted page or file. Its
+  syntax, its limits and its tool errors are those of search in the browser (see "Search through MCP" in
+  `search.md`).
 
 Write tools of pages, for a Writer and a Manager connection, each with the hints of a tool that writes; the two tools
 that change the content of a page carry `destructiveHint` as well, because they can remove any text of it:

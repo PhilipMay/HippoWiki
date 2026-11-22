@@ -8,15 +8,20 @@
 // excludes in every language; no search compares a word with the whole text of every page. The order is decided in
 // the database (`ORDER_LEVEL` below).
 //
+// The same search finds the files of the folder that are not deleted by their names (`file-names.ts`), in the same
+// transaction, so that the time limit and the slots cover it as well. The content of a file is never searched.
+//
 // The pages that exist when search is installed, and every page after an update that changes how the search text or
 // the language of a page is derived, are derived again before the server serves (`indexOutdatedPages()`, run by
 // `scripts/search-index.ts` at every start of the container image), so that every search is complete from the first
 // request.
 
+import type { FileType } from "@/features/files/types";
 import { channelOf, type ContentActor } from "@/features/folder-roles/actors";
 import { mayReadFolder } from "@/features/folder-roles/service";
 import { parseFolderId } from "@/features/folders/schema";
 import { excerptParts, LESS_THAN_STAND_IN, MATCH_END, MATCH_START, type ExcerptPart } from "@/features/search/excerpt";
+import { fileNamePatterns, type FileNamePatterns, type FileNameTerm } from "@/features/search/file-names";
 import { SEARCH_INDEX_VERSION, searchIndexData } from "@/features/search/index-data";
 import { SEARCH_LANGUAGES, type SearchLanguage } from "@/features/search/language";
 import {
@@ -31,7 +36,7 @@ import { createSlots, type Slots } from "@/features/search/slots";
 import { parseSearch, type ParsedSearch, type SearchWordsError } from "@/features/search/words";
 import { isAdmin } from "@/features/users/user-type";
 import { LAST_EDITOR_SELECT, withLastEditor, type LastEditor } from "@/features/users/records";
-import { Prisma } from "@/generated/prisma/client";
+import { Prisma, type ChangeChannel } from "@/generated/prisma/client";
 import { getDb } from "@/lib/db";
 import { isStatementTimeout } from "@/lib/db-errors";
 import { logger } from "@/lib/logger";
@@ -98,13 +103,34 @@ export type SearchResult = {
   excerpt: ExcerptPart[];
 };
 
-/** The results of a search: the pages of the window, in the order of the best match. */
+/** A file that a search found by its name: what the lists show of it, with its tab and the size of its current version. */
+export type FileSearchResult = {
+  id: string;
+  name: string;
+  type: FileType;
+  tab: { name: string } | null;
+  size: number;
+  /** The width and height of the current version of an image; `null` for a PDF. */
+  width: number | null;
+  height: number | null;
+  updatedAt: Date;
+  lastEditedBy: LastEditor;
+};
+
+/**
+ * The results of a search: the pages of the window, in the order of the best match, and the files whose names match,
+ * which only the first window holds.
+ */
 export type SearchResults = {
   results: SearchResult[];
   /** How many of the `SEARCH_MAX_RESULTS` best pages there are, the window aside. */
   total: number;
   /** Whether more pages than `SEARCH_MAX_RESULTS` match. */
   more: boolean;
+  /** The best `SEARCH_MAX_RESULTS` files, the best match first; empty for a window with an offset. */
+  files: FileSearchResult[];
+  /** Whether more files than `SEARCH_MAX_RESULTS` match. */
+  moreFiles: boolean;
 };
 
 /**
@@ -121,6 +147,20 @@ type Transaction = Prisma.TransactionClient;
 
 /** One of the best pages, in the order of the match, before its fields are read. */
 type RankedPage = { id: string; language: SearchLanguage; level: number };
+
+/** A file that a search found, as its query returns it. */
+type FileRow = {
+  id: string;
+  name: string;
+  type: FileType;
+  tab: string | null;
+  updatedAt: Date;
+  username: string;
+  via: ChangeChannel;
+  size: number;
+  width: number | null;
+  height: number | null;
+};
 
 /**
  * The slots of the searches of this server process, on `globalThis`, so that the modules of the browser and of MCP,
@@ -144,7 +184,8 @@ type Outcome = "found" | SearchError["code"];
 
 /**
  * Searches the folder with the given words and returns its best pages, at most `SEARCH_MAX_RESULTS`, or the window of
- * them that is given, each with a piece of its text. `null` for an admin, without asking the database, for a malformed
+ * them that is given, each with a piece of its text, and the best files by their names, at most `SEARCH_MAX_RESULTS`,
+ * in the first window only. `null` for an admin, without asking the database, for a malformed
  * folder id and for a folder that the actor may not read. It takes no tab: a search always covers the whole folder.
  *
  * Words that are no search are answered before anything runs. A search runs in a slot of its own, at most
@@ -164,7 +205,7 @@ export async function searchPages(
   if (!parsedFolderId || !(await mayReadFolder(actor, parsedFolderId))) return null;
 
   const parsed = parseSearch(input);
-  const log = (outcome: Outcome, results: number | null) =>
+  const log = (outcome: Outcome, results: number | null, files: number | null = null) =>
     logger.info(
       {
         actorId: actor.id,
@@ -172,6 +213,7 @@ export async function searchPages(
         folderId: parsedFolderId,
         outcome,
         results,
+        files,
         durationMs: Math.round(performance.now() - start),
         characters: [...input.trim()].length,
         words: parsed.ok ? parsed.value.words : null,
@@ -194,7 +236,7 @@ export async function searchPages(
   }
   try {
     const results = await running;
-    log("found", results.total);
+    log("found", results.total, results.files.length);
     return { ok: true, value: results };
   } catch (err) {
     if (isStatementTimeout(err)) {
@@ -225,7 +267,14 @@ async function search(
   const best = ranked.slice(0, SEARCH_MAX_RESULTS);
   const windowed = best.slice(window.offset, window.offset + window.limit);
   const results = await resultsOf(tx, limited, folderId, windowed, texts);
-  return { results, total: best.length, more: ranked.length > SEARCH_MAX_RESULTS };
+  const files = window.offset === 0 ? await searchFiles(tx, limited, folderId, parsed, input) : [];
+  return {
+    results,
+    total: best.length,
+    more: ranked.length > SEARCH_MAX_RESULTS,
+    files: files.slice(0, SEARCH_MAX_RESULTS),
+    moreFiles: files.length > SEARCH_MAX_RESULTS,
+  };
 }
 
 /** Lets the next statements of the transaction run only until the deadline; at least 1 ms, since 0 means no limit. */
@@ -385,4 +434,81 @@ async function resultsOf(
     const row = byId.get(id);
     return row ? [{ ...row, excerpt: excerptOf.get(id) ?? [] }] : [];
   });
+}
+
+/** Whether the name without its extension matches one of the alternatives, in the given form of their patterns. */
+function anyOf(alternatives: FileNameTerm[], form: keyof FileNameTerm): Prisma.Sql {
+  return Prisma.sql`(${Prisma.join(
+    alternatives.map((term) => Prisma.sql`m.base ~ ${term[form]}`),
+    " OR ",
+  )})`;
+}
+
+/**
+ * The order of a match of a file, decided in the database: 1 a name without its extension that is the words of the
+ * search; 2 every word exactly or by the start of a part; 3 the rest, with a word as a part of a word.
+ */
+function fileOrderLevel(patterns: FileNamePatterns): Prisma.Sql {
+  return Prisma.sql`CASE
+      WHEN m.base = ${patterns.wholeName} THEN 1
+      WHEN ${Prisma.join(
+        patterns.clauses.map((alternatives) => anyOf(alternatives, "strong")),
+        " AND ",
+      )} THEN 2
+      ELSE 3
+    END`;
+}
+
+/**
+ * The best files of the folder that are not deleted whose names match the words, one more than `SEARCH_MAX_RESULTS` to
+ * tell whether more match, with their fields and the size of their current version: by the level of their match, then by name, then those placed directly in
+ * the folder before those in tabs, by tab. Every word is a bound parameter.
+ */
+async function searchFiles(
+  tx: Transaction,
+  limited: () => Promise<void>,
+  folderId: string,
+  parsed: ParsedSearch,
+  input: string,
+): Promise<FileSearchResult[]> {
+  const patterns = fileNamePatterns(parsed, input.trim());
+  if (!patterns) return [];
+  const excluded =
+    patterns.excluded.length === 0
+      ? Prisma.empty
+      : Prisma.sql`AND NOT (${Prisma.join(
+          patterns.excluded.map((pattern) => Prisma.sql`m.base ~ ${pattern}`),
+          " OR ",
+        )})`;
+  await limited();
+  // One statement with the fields of the files: a read with relations of Prisma would send several queries at once
+  // over the one connection of the transaction.
+  const rows = await tx.$queryRaw<FileRow[]>`
+    SELECT m.id, m.name, m.type::text AS type, m.tab, m."updatedAt", u.username, m."lastEditedVia"::text AS via,
+      v.size, v.width, v.height
+    FROM (
+      SELECT f.id, f.name, f.type, f."updatedAt", f."lastEditedById", f."lastEditedVia", t.name AS tab,
+        split_part(f.name, '.', 1) AS base
+      FROM "File" AS f
+        LEFT JOIN "Tab" AS t ON t.id = f."tabId"
+      WHERE f."folderId" = ${folderId}::uuid AND f."deletedAt" IS NULL
+    ) AS m
+      JOIN "User" AS u ON u.id = m."lastEditedById"
+      -- The current version is the newest one; every file has one.
+      JOIN LATERAL (
+        SELECT fv.size, fv.width, fv.height FROM "FileVersion" AS fv
+        WHERE fv."fileId" = m.id ORDER BY fv.number DESC LIMIT 1
+      ) AS v ON true
+    WHERE ${Prisma.join(
+      patterns.clauses.map((alternatives) => anyOf(alternatives, "weak")),
+      " AND ",
+    )}
+      ${excluded}
+    ORDER BY ${fileOrderLevel(patterns)}, m.name, m.tab NULLS FIRST, m.id
+    LIMIT ${SEARCH_MAX_RESULTS + 1}`;
+  return rows.map(({ tab, username, via, ...file }) => ({
+    ...file,
+    tab: tab === null ? null : { name: tab },
+    lastEditedBy: { name: username, via },
+  }));
 }

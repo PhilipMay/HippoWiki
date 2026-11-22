@@ -46,6 +46,8 @@ export default async function SearchView({ folder, words }: { folder: { id: stri
         <SearchResultList
           results={found.ok ? found.value.results : []}
           more={found.ok && found.value.more}
+          files={found.ok ? found.value.files : []}
+          moreFiles={found.ok && found.value.moreFiles}
           folderName={folder.name}
           words={words}
         />

@@ -11,7 +11,15 @@ import { searchPages, type SearchResults } from "@/features/search/service";
 import type { Folder, User } from "@/generated/prisma/client";
 import { samplePage } from "@/test/language-samples";
 
-import { createFolder, createFolderRole, createPage, createTab, createUser, getTestDb } from "../e2e/support/database";
+import {
+  createFile,
+  createFolder,
+  createFolderRole,
+  createPage,
+  createTab,
+  createUser,
+  getTestDb,
+} from "../e2e/support/database";
 import { KNOWN_USER } from "../prisma/known-users";
 import { createBob, mcpActorOf, owners, storedPage } from "./helpers";
 
@@ -116,6 +124,8 @@ describe("the folder and the deletion of the pages", () => {
       ],
       total: 1,
       more: false,
+      files: [],
+      moreFiles: false,
     });
   });
 });
@@ -426,6 +436,124 @@ describe("the number of results", () => {
     expect(result?.ok && result.value.total).toBe(30);
     const beyond = await searchPages(actor, folder.id, "gateway", { offset: 30, limit: 10 });
     expect(beyond?.ok && beyond.value.results).toEqual([]);
+  });
+});
+
+describe("files", () => {
+  /** The files that the search finds, each as its place and name, in their order. */
+  async function fileNames(input: string, searcher: ContentActor = actor): Promise<string[]> {
+    const { files } = await search(input, searcher);
+    return files.map((file) => (file.tab ? `${file.tab.name}/${file.name}` : file.name));
+  }
+
+  it("finds guides/network-diagram.png by diagram, with its fields", async () => {
+    const guides = await createTab({ folder, name: "guides" });
+    const file = await createFile({ tab: guides, name: "network-diagram.png", editor: user });
+    await newPage("# Network\n\nThe diagram of the network.");
+
+    const found = await search("diagram");
+    expect(found.files).toStrictEqual([
+      {
+        id: file.id,
+        name: "network-diagram.png",
+        type: "png",
+        tab: { name: "guides" },
+        size: file.versions[0]?.size,
+        width: file.versions[0]?.width,
+        height: file.versions[0]?.height,
+        updatedAt: file.updatedAt,
+        lastEditedBy: { name: "alice", via: "web" },
+      },
+    ]);
+    expect(found.moreFiles).toBe(false);
+    expect(found.results.map(({ title }) => title)).toEqual(["Network"]);
+  });
+
+  it("finds a file by the start of a part and by a part of a word, but not by a short part", async () => {
+    await createFile({ folder, name: "network-diagram-v2.pdf", editor: user });
+
+    expect(await fileNames("diag")).toEqual(["network-diagram-v2.pdf"]);
+    expect(await fileNames("agra")).toEqual(["network-diagram-v2.pdf"]);
+    expect(await fileNames("v2")).toEqual(["network-diagram-v2.pdf"]);
+    expect(await fileNames("ag")).toEqual([]);
+    expect(await fileNames("diagrams")).toEqual([]);
+  });
+
+  it("finds only files with every word, and leaves out those with an excluded word", async () => {
+    await createFile({ folder, name: "network-diagram.png", editor: user });
+    await createFile({ folder, name: "office-diagram.png", editor: user });
+
+    expect(await fileNames("diagram network")).toEqual(["network-diagram.png"]);
+    expect(await fileNames("diagram -network")).toEqual(["office-diagram.png"]);
+    expect(await fileNames("network or office")).toEqual(["network-diagram.png", "office-diagram.png"]);
+    expect(await fileNames('"diagram network"')).toEqual([]);
+  });
+
+  it("orders the whole name first, then the start of a part, then a part of a word, then by name and place", async () => {
+    const guides = await createTab({ folder, name: "guides" });
+    await createFile({ folder, name: "subdiagram.png", editor: user });
+    await createFile({ folder, name: "network-diagram.png", editor: user });
+    await createFile({ tab: guides, name: "diagram.png", editor: user });
+    await createFile({ folder, name: "diagram.png", editor: user });
+    await createFile({ folder, name: "a-diagram.png", editor: user });
+
+    expect(await fileNames("diagram")).toEqual([
+      "diagram.png",
+      "guides/diagram.png",
+      "a-diagram.png",
+      "network-diagram.png",
+      "subdiagram.png",
+    ]);
+  });
+
+  it("never finds a deleted file or a file of another folder", async () => {
+    const other = await createFolder({ roles: owners(user) });
+    await createFile({ folder: other, name: "network-diagram.png", editor: user });
+    await createFile({ folder, name: "old-diagram.png", editor: user, deletedAt: new Date() });
+
+    expect(await fileNames("diagram")).toEqual([]);
+  });
+
+  it("finds nothing by a word that is only inside a PDF", async () => {
+    await createFile({
+      folder,
+      name: "manual.pdf",
+      editor: user,
+      versions: [{ bytes: new TextEncoder().encode("%PDF-1.4\n(zanzibar) Tj\n%%EOF\n") }],
+    });
+
+    expect(await fileNames("zanzibar")).toEqual([]);
+    expect(await fileNames("manual")).toEqual(["manual.pdf"]);
+  });
+
+  it("reads the operators of a regular expression as plain text", async () => {
+    await createFile({ folder, name: "network-diagram.png", editor: user });
+
+    expect(await fileNames(".* diagram")).toEqual(["network-diagram.png"]);
+    for (const input of ["n.*", "(a|n)etwork", "[n]etwork", "\\w+"]) {
+      expect(await fileNames(input), input).toEqual([]);
+    }
+  });
+
+  it("returns the 100 best files, says that more match, and no files beyond the first window", async () => {
+    for (let index = 0; index < 101; index++) {
+      await createFile({ folder, name: `diagram-${index}.png`, editor: user, versions: [{ width: 1, height: 1 }] });
+    }
+
+    const found = await search("diagram");
+    expect(found.files).toHaveLength(SEARCH_MAX_RESULTS);
+    expect(found.moreFiles).toBe(true);
+    const beyond = await searchPages(actor, folder.id, "diagram", { offset: 10, limit: 10 });
+    expect(beyond?.ok && beyond.value.files).toEqual([]);
+  });
+
+  it("finds the files for a Reader and for an MCP connection", async () => {
+    const bob = await createBob();
+    await createFolderRole({ folder, user: bob, role: "reader" });
+    await createFile({ folder, name: "network-diagram.png", editor: user });
+
+    expect(await fileNames("diagram", inBrowser(bob))).toEqual(["network-diagram.png"]);
+    expect(await fileNames("diagram", mcpActorOf(bob, folder, "reader"))).toEqual(["network-diagram.png"]);
   });
 });
 

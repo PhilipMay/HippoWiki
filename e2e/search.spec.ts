@@ -4,6 +4,7 @@ import { KNOWN_USER } from "../prisma/known-users";
 import { ADMIN_STORAGE_STATE, becomeUser, logInElsewhere } from "./support/auth";
 import { collectErrors, expectNotFound } from "./support/browser";
 import {
+  createFile,
   createFolder,
   createFolderRole,
   createPage,
@@ -219,13 +220,92 @@ test("words that find nothing show the message with the words as typed and the h
 
   for (const words of ['zebra "<b>x</b>" -old', "---"]) {
     await page.goto(results(words));
-    await expect(page.getByRole("main")).toContainText(`No pages in this folder match ${words}`);
+    await expect(page.getByRole("main")).toContainText(`No pages or files in this folder match ${words}`);
     await expect(page.getByRole("main")).toContainText(
       "All words must match. Put words in quotes for a phrase, write -word to leave out the pages with a word, and or between two words to find either.",
     );
     await expect(resultList(page)).toHaveCount(0);
     await expect(page.locator("main b")).toHaveCount(0);
   }
+});
+
+test.describe("files in the results", () => {
+  /** The list of the files of the open results view. */
+  function fileList(page: Page) {
+    return page.getByRole("list", { name: "Files" });
+  }
+
+  test("a search lists the files whose names match above the pages, each leading to its details page", async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    const mike = await createUser({ name: "mike" });
+    const guides = await createTab({ folder: handbook, name: "guides" });
+    await createFile({
+      tab: guides,
+      name: "network-diagram.png",
+      editor: mike,
+      via: "mcp",
+      updatedAt: new Date("2026-03-04T10:00:00Z"),
+    });
+    await createFile({ folder: handbook, name: "diagram.pdf" });
+    await createFile({ folder: handbook, name: "photo.jpg" });
+    await createPage({ folder: handbook, name: "network", content: "# Network\n\nThe diagram of the network." });
+
+    await page.goto(results("diagram"));
+
+    await expect(page.getByRole("main").getByRole("heading", { level: 2 })).toHaveText(["Files", "Pages"]);
+    const files = fileList(page).getByRole("listitem");
+    // The whole name first, then a name with a part that matches.
+    await expect(files).toHaveText([/^diagram\.pdf/, /^guides \/ network-diagram\.png/]);
+    await expect(files.nth(1)).toContainText("PNG");
+    await expect(files.nth(1)).toContainText("by mike via mcp");
+    await expect(files.nth(1).locator("time")).toHaveAttribute("datetime", "2026-03-04T10:00:00.000Z");
+    await expect(files.nth(0)).toContainText("PDF");
+    await expect(resultTitles(page)).toHaveText(["Network"]);
+    // The files come before the pages.
+    await expect(
+      page
+        .getByRole("main")
+        .getByRole("list", { name: /^(Files|Search results)$/ })
+        .first(),
+    ).toHaveAccessibleName("Files");
+
+    await files.nth(1).getByRole("link").click();
+    await expect(page).toHaveURL("/folders/handbook/guides/network-diagram.png");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("network-diagram.png");
+    expect(errors).toEqual([]);
+  });
+
+  test("a part of a word finds a file, and a deleted file or one of another folder is never found", async ({
+    page,
+  }) => {
+    const other = await createFolder({ name: "other", roles: [{ user: KNOWN_USER, role: "owner" }] });
+    await createFile({ folder: other, name: "network-diagram.png" });
+    await createFile({ folder: handbook, name: "old-diagram.png", deletedAt: new Date() });
+    await createFile({ folder: handbook, name: "network-diagram.png" });
+
+    await page.goto(results("agra"));
+    await expect(fileList(page).getByRole("listitem")).toHaveText([/^network-diagram\.png/]);
+    // Without pages that match, the list of the pages and its heading are left out.
+    await expect(resultList(page)).toHaveCount(0);
+    await expect(page.getByRole("main").getByRole("heading", { level: 2 })).toHaveText(["Files"]);
+
+    await page.goto(results("diagram -network"));
+    await expect(page.getByRole("main")).toContainText("No pages or files in this folder match diagram -network");
+    await expect(fileList(page)).toHaveCount(0);
+  });
+
+  test("a word that is only inside a PDF finds nothing", async ({ page }) => {
+    await createFile({
+      folder: handbook,
+      name: "manual.pdf",
+      versions: [{ bytes: new TextEncoder().encode("%PDF-1.4\n(zanzibar) Tj\n%%EOF\n") }],
+    });
+
+    await page.goto(results("zanzibar"));
+    await expect(page.getByRole("main")).toContainText("No pages or files in this folder match zanzibar");
+  });
 });
 
 test("a search that matches more than 100 pages lists 100 and says that more match", async ({ page }) => {
@@ -278,7 +358,7 @@ test.describe("the limits of a search", () => {
     ]) {
       await page.goto(results(words));
       await expect(alert(page)).toHaveCount(0);
-      await expect(page.getByRole("main")).toContainText(/No pages in this folder match|Gateway/);
+      await expect(page.getByRole("main")).toContainText(/No pages or files in this folder match|Gateway/);
     }
     await page.goto(results(Array.from({ length: 10 }, () => "gateway").join(" ")));
     await expect(resultTitles(page)).toHaveText(["Gateway"]);

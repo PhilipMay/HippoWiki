@@ -1,8 +1,9 @@
-// The search tool of MCP: search_pages for every role of a connection, its results, its windows and its tool errors.
+// The search tool of MCP: search_pages for every role of a connection, its results, the files it finds by their names,
+// its windows and its tool errors.
 import { USER_TEXT_NOTE } from "@/features/mcp/tool-schemas";
 
-import { NO_STORAGE_STATE } from "./support/auth";
-import { createFolder, createGrant, createPage, createTab, createUser } from "./support/database";
+import { logInElsewhere, NO_STORAGE_STATE } from "./support/auth";
+import { createFile, createFolder, createGrant, createPage, createTab, createUser } from "./support/database";
 import { call, mcpPath, send, setUpProjects, type ToolResult } from "./support/mcp";
 import { ISSUER } from "./support/oauth";
 import { holdSearchWords, waitForHeldSearches } from "./support/search";
@@ -30,8 +31,30 @@ type SearchResult = {
   lastEditedVia: "web" | "mcp";
 };
 
+/** A file of the results of `search_pages`. */
+type FileResult = {
+  name: string;
+  tab: string | null;
+  type: string;
+  size: number;
+  width: number | null;
+  height: number | null;
+  address: string;
+  detailsAddress: string;
+  lastChanged: string;
+  lastEditedBy: string;
+  lastEditedVia: "web" | "mcp";
+};
+
 /** The structured content of a call of `search_pages` that worked. */
-type SearchAnswer = { note: string; results: SearchResult[]; nextOffset: number | null; more: boolean };
+type SearchAnswer = {
+  note: string;
+  results: SearchResult[];
+  files: FileResult[];
+  moreFiles: boolean;
+  nextOffset: number | null;
+  more: boolean;
+};
 
 /** Calls `search_pages` at the Reader address of "projects" and returns its structured content. */
 async function search(request: Parameters<typeof call>[0], args: Record<string, unknown>): Promise<SearchAnswer> {
@@ -100,6 +123,8 @@ test("finds the pages of its folder only, never a deleted page, and each result 
         lastEditedVia: "mcp",
       },
     ],
+    files: [],
+    moreFiles: false,
     nextOffset: null,
     more: false,
   });
@@ -230,4 +255,79 @@ test("the scenario: an AI app searches for backup and gets the matching pages of
   const answer = await search(request, { query: "backup" });
 
   expect(answer.results.map(({ title }) => title)).toEqual(["Backup plan", "Servers"]);
+});
+
+test.describe("files", () => {
+  test("finds guides/network-diagram.png by diagram, marked as a file, with the files of the browser and no content", async ({
+    request,
+    browser,
+  }) => {
+    const guides = await createTab({ folder: projects, name: "guides" });
+    const diagram = await createFile({ tab: guides, name: "network-diagram.png", editor: owner });
+    await createFile({ folder: projects, name: "diagram-notes.pdf", editor: owner });
+    await createFile({ folder: projects, name: "old-diagram.png", editor: owner, deletedAt: new Date() });
+    const other = await createFolder({ name: "other", roles: [{ user: owner, role: "owner" }] });
+    await createFile({ folder: other, name: "diagram.png", editor: owner });
+    await createPage({ folder: projects, name: "network", content: "# Network\n\nThe diagram of the network." });
+
+    for (const role of ["reader", "writer", "manager"] as const) {
+      const { accessToken } = await createGrant({ owner, folder: projects, role });
+      const result = await call(request, "search_pages", { query: "diagram" }, accessToken, mcpPath(projects, role));
+      expect(result.isError, role).toBeFalsy();
+      const answer = result.structuredContent as SearchAnswer;
+      expect(
+        answer.results.map(({ title }) => title),
+        role,
+      ).toEqual(["Network"]);
+      expect(
+        answer.files.map(({ tab, name }) => (tab ? `${tab}/${name}` : name)),
+        role,
+      ).toEqual(["diagram-notes.pdf", "guides/network-diagram.png"]);
+      expect(answer.moreFiles, role).toBe(false);
+    }
+
+    const answer = await search(request, { query: "diagram" });
+    expect(answer.files.find(({ name }) => name === "network-diagram.png")).toEqual({
+      name: "network-diagram.png",
+      tab: "guides",
+      type: "png",
+      size: diagram.versions[0]?.size,
+      width: diagram.versions[0]?.width,
+      height: diagram.versions[0]?.height,
+      address: `${ISSUER}/files/projects/guides/network-diagram.png`,
+      detailsAddress: `${ISSUER}/folders/projects/guides/network-diagram.png`,
+      lastChanged: diagram.updatedAt.toISOString(),
+      lastEditedBy: owner.username,
+      lastEditedVia: "web",
+    });
+    // No result holds the bytes of the image or the PDF, in the structured content or in its text.
+    const raw = await call(request, "search_pages", { query: "diagram" });
+    expect(raw.content.map(({ type }) => type)).toEqual(["text"]);
+    const text = JSON.stringify(raw);
+    expect(text).not.toContain("%PDF");
+    expect(text).not.toContain("base64");
+
+    // The browser lists the same files for the same words.
+    const person = await logInElsewhere(browser, owner.username);
+    await person.page.goto(`/folders/projects?view=search&q=diagram`);
+    await expect(person.page.getByRole("list", { name: "Files" }).getByRole("listitem")).toHaveText([
+      /^diagram-notes\.pdf/,
+      /^guides \/ network-diagram\.png/,
+    ]);
+    await person.context.close();
+  });
+
+  test("lists the files only in the first call, not in the calls for the next results", async ({ request }) => {
+    await createFile({ folder: projects, name: "backup-diagram.png", editor: owner });
+    for (let index = 0; index < 12; index += 1) {
+      await createPage({ folder: projects, name: `backup-${index}`, content: `# Backup ${index}\n\nThe backup.` });
+    }
+
+    const first = await search(request, { query: "backup" });
+    expect(first.files.map(({ name }) => name)).toEqual(["backup-diagram.png"]);
+    expect(first.nextOffset).toBe(10);
+    const next = await search(request, { query: "backup", offset: 10 });
+    expect(next.files).toEqual([]);
+    expect(next.results).toHaveLength(2);
+  });
 });

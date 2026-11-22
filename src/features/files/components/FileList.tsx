@@ -17,18 +17,30 @@ import { editorWithChannel } from "@/features/users/records";
 import { filePath } from "@/lib/addresses";
 import { formatBytes } from "@/lib/format";
 
+/** A file of the list; one with a `tab` of its own, as a search finds it, is listed with its place. */
+type FileListItem = FileSummary & { tab?: { name: string } | null };
+
 type FileListProps = {
   /** The files to list, in display order. */
-  files: FileSummary[];
+  files: FileListItem[];
   /** Name of the folder the files live in, for their addresses. */
   folderName: string;
-  /** Name of the tab the files live in, or `null` for files placed directly in the folder. */
+  /**
+   * Name of the tab the files live in, or `null` for files placed directly in the folder; a file with a `tab` of its
+   * own is in that one.
+   */
   tabName?: string | null;
 };
 
+/** The name of the file, after its tab when the file names its place itself, as the search results name pages. */
+function labelOf(file: FileListItem): string {
+  return file.tab ? `${file.tab.name} / ${file.name}` : file.name;
+}
+
 /**
- * The section "Files" of a folder or a tab, below its pages: each file with its name, type, size and last change,
- * leading to its details page. Without files there is no section, so that a folder without files looks as before.
+ * The section "Files" of a folder or a tab, below its pages, and of the search results, above the pages: each file with
+ * its name, type, size and last change, leading to its details page. Without files there is no section, so that a
+ * folder without files looks as before.
  */
 export default function FileList({ files, folderName, tabName = null }: FileListProps) {
   if (files.length === 0) return null;
@@ -42,13 +54,16 @@ export default function FileList({ files, folderName, tabName = null }: FileList
         <List disablePadding aria-label="Files">
           {files.map((file, index) => (
             <ListItem key={file.id} disablePadding divider={index < files.length - 1}>
-              <ListItemButton component={Link} href={filePath(folderName, tabName, file.name)}>
+              <ListItemButton
+                component={Link}
+                href={filePath(folderName, file.tab === undefined ? tabName : (file.tab?.name ?? null), file.name)}
+              >
                 <ListItemIcon>
                   {/* Decorative: the text names the file and its type. */}
                   {isImageType(file.type) ? <ImageIcon /> : <PictureAsPdfIcon />}
                 </ListItemIcon>
                 <ListItemText
-                  primary={file.name}
+                  primary={labelOf(file)}
                   secondary={
                     <>
                       {FILE_TYPES[file.type].label} · {formatBytes(file.size)} · Updated <Time date={file.updatedAt} />{" "}

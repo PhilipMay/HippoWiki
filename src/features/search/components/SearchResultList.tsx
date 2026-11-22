@@ -8,9 +8,10 @@ import Typography from "@mui/material/Typography";
 import EmptyState from "@/components/EmptyState";
 import Link from "@/components/Link";
 import Time from "@/components/Time";
+import FileList from "@/features/files/components/FileList";
 import type { ExcerptPart } from "@/features/search/excerpt";
 import { SEARCH_MAX_RESULTS } from "@/features/search/limits";
-import type { SearchResult } from "@/features/search/service";
+import type { FileSearchResult, SearchResult } from "@/features/search/service";
 import { editorWithChannel } from "@/features/users/records";
 import { pageLabel, pagePath } from "@/lib/addresses";
 
@@ -23,6 +24,10 @@ type SearchResultListProps = {
   results: SearchResult[];
   /** Whether more pages match than the list shows. */
   more: boolean;
+  /** The files whose names match, in the order of the best match. */
+  files: FileSearchResult[];
+  /** Whether more files match than the list shows. */
+  moreFiles: boolean;
   folderName: string;
   /** The words of the search as typed, for the message when nothing matches. */
   words: string;
@@ -41,17 +46,56 @@ function Excerpt({ parts }: { parts: ExcerptPart[] }) {
 }
 
 /**
- * The results of a search as one list, in the order of the service: each with its title linking to the page, its name
- * and tab, the piece of its text around the match and its last update. When more pages match, a line says so; when
- * none match, a message with the words and a hint on the syntax.
+ * The results of a search in the order of the service: the files whose names match in a list "Files" first, each with
+ * its place, type, size and last change, and then the pages as one list, each with its title linking to the page, its
+ * name and tab, the piece of its text around the match and its last update. When more files or pages match, a line
+ * says so; when nothing matches, a message with the words and a hint on the syntax.
  */
-export default function SearchResultList({ results, more, folderName, words }: SearchResultListProps) {
-  if (results.length === 0) {
-    return <EmptyState title={`No pages in this folder match ${words}`} text={SEARCH_SYNTAX_HINT} />;
+export default function SearchResultList({
+  results,
+  more,
+  files,
+  moreFiles,
+  folderName,
+  words,
+}: SearchResultListProps) {
+  if (results.length === 0 && files.length === 0) {
+    return <EmptyState title={`No pages or files in this folder match ${words}`} text={SEARCH_SYNTAX_HINT} />;
   }
 
   return (
-    <Stack spacing={2}>
+    <Stack spacing={3}>
+      {files.length > 0 && (
+        <Stack spacing={2}>
+          <FileList files={files} folderName={folderName} />
+          {moreFiles && (
+            <Typography color="text.secondary">
+              More than {SEARCH_MAX_RESULTS} files match. Use more precise words to find fewer files.
+            </Typography>
+          )}
+        </Stack>
+      )}
+      {results.length > 0 && (
+        <PageResults results={results} more={more} folderName={folderName} withHeading={files.length > 0} />
+      )}
+    </Stack>
+  );
+}
+
+/** The pages of the results, under a heading "Pages" when files are listed above them. */
+function PageResults({
+  results,
+  more,
+  folderName,
+  withHeading,
+}: Pick<SearchResultListProps, "results" | "more" | "folderName"> & { withHeading: boolean }) {
+  return (
+    <Stack spacing={withHeading ? 1 : 2}>
+      {withHeading && (
+        <Typography variant="h6" component="h2">
+          Pages
+        </Typography>
+      )}
       <Paper variant="outlined">
         <List disablePadding aria-label="Search results">
           {results.map((result, index) => (

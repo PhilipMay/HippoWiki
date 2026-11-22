@@ -2,8 +2,9 @@
 
 Search in one folder as built: users find the pages of a folder whose title they roughly know and the pages that are
 about a topic, in the browser and through MCP, in the language each page is written in, by parts of words and with
-typos, without anybody choosing a language. Folders, tabs and their addresses are described in `content-structure.md`,
-the tools of MCP in `mcp.md`.
+typos, without anybody choosing a language. The same search finds the files of the folder, its images and PDFs, by
+their names. Folders, tabs and their addresses are described in `content-structure.md`, files in
+`attachments-requirements.md`, the tools of MCP in `mcp.md`.
 
 Code: `src/features/search/`:
 
@@ -12,10 +13,11 @@ Code: `src/features/search/`:
 - `index-data.ts`: what a write stores, with `SEARCH_INDEX_VERSION`;
 - `words.ts`: the parser of the search words;
 - `query-text.ts`: the queries built from the words;
+- `file-names.ts`: the patterns of the names of files built from the words;
 - `excerpt.ts`: the parts of a piece of text;
 - `slots.ts`: the searches at the same time;
 - `limits.ts`: every number of search;
-- `service.ts`: `searchPages()` and `indexOutdatedPages()`;
+- `service.ts`: `searchPages()`, with the files, and `indexOutdatedPages()`;
 - `queries.ts`;
 - `components/`: the results view and the search field.
 
@@ -40,8 +42,8 @@ Tests:
 - An admin reads no content and gets no search: the not-found page in the browser, without asking the database.
 - A user without a role on a folder gets the not-found page and learns nothing about the folder.
 - A search covers the whole folder, whichever of its addresses it was started from. It cannot be narrowed to a tab.
-- A search finds only the pages of the folder that are not deleted, by their current state, right after every write:
-  a new page, a change of the content or the title, a move, a rename and a restore.
+- A search finds only the pages and files of the folder that are not deleted, by their current state, right after
+  every write: a new page or file, a change of the content or the title, a move, a rename and a restore.
 
 ## Search field
 
@@ -71,6 +73,11 @@ Tests:
 - Words that are too long are no address error: the view says so.
 - The results are one list of at most the 100 best pages, without paging. When more pages match, a line says so and
   suggests more precise words.
+- The files whose names match stand above the pages, in a list "Files" of at most the 100 best files, without paging;
+  when more files match, a line says so. With files listed, the pages get the heading "Pages". Each file shows:
+  - its tab, if it is in one, and its name, as a link to its details page;
+  - its type and the size of its current version;
+  - the time of its last change and its last editor with the channel.
 - Each result shows:
   - the title of the page, as a link to it;
   - its name and its tab, if it is in one;
@@ -82,8 +89,9 @@ Tests:
   matches only by its title or its name shows the start of its text, unmarked.
 - The results are the one list of the wiki that shows a piece of the content of each page; every other list shows
   names and metadata only (see "Lists and order" in `content-structure.md`).
-- Words that find nothing show a message that no page of the folder matches them, with the words as typed, and one
-  line on the syntax. Words without a letter or a digit, such as `---`, are answered the same way.
+- Words that find neither a page nor a file show a message that no page or file of the folder matches them, with the
+  words as typed, and one line on the syntax. Words without a letter or a digit, such as `---`, are answered the same
+  way. Files without pages show the list "Files" alone.
 - The messages of a search that is too long, too broad or refused as busy stand at the top of the view, above the
   field.
 
@@ -116,6 +124,19 @@ One syntax holds in the browser and through MCP (`words.ts`):
 - Parts of words and typos are matched in titles, names and content, against the words that the pages of the folder
   hold, never against the whole text of each page.
 
+## What a file is found by
+
+- A file is found by its name without the extension, whose parts are split at the hyphens: `network-diagram-v2.png`
+  has the parts `network`, `diagram` and `v2`. Its content, also the text inside a PDF, is never searched.
+- Every word must match a part: exactly, by its start, or as a part of a word, from 3 letters as for pages. A word of 1
+  or 2 letters matches only a whole part. There are no inflections and no typos, because names are no prose.
+- The words of a phrase, and the pieces of one word such as `network-diagram`, must match parts that follow each other.
+- A word with a leading `-` leaves out the files with a part that is that word, and `or` means either, as for pages.
+- The words of a search reach the query of the files only as bound parameters, as patterns of lowercase letters,
+  digits and a fixed syntax (`file-names.ts`): a word with a letter that no name holds, such as `ü`, matches no file.
+- The files are searched in the same transaction as the pages, so the time limit and the 3 searches at the same time
+  hold for both together.
+
 ## Languages
 
 - Each page has one search language, detected from its prose, never chosen. The prose is the title and the text
@@ -143,6 +164,14 @@ The order is decided by the database. A page counts by the weakest match of its 
 
 Within each group, the page where the words occur more often and closer together comes first, then the page changed
 last, then the id. There is no other order to choose.
+
+The files have an order of their own:
+
+1. files whose name without the extension is the words of the search, joined by hyphens;
+2. files whose every word matches a part exactly or by its start;
+3. the other files, with a word that matches only as a part of a word.
+
+Within each group, by name, then the file placed directly in the folder before those in tabs, by tab.
 
 ## Limits
 
@@ -174,7 +203,7 @@ last, then the id. There is no other order to choose.
 - Each search is logged in one line at the level `info`, with these fields:
   - the user, the channel and, through MCP, the grant;
   - the folder;
-  - the outcome and the number of results;
+  - the outcome, the number of results and the number of files;
   - the time it took;
   - the number of characters and words.
 
@@ -200,6 +229,11 @@ The read tool `search_pages` is given to every connection: Reader, Writer and Ma
   - the piece of text as plain text without marks;
   - the time of the last change;
   - the last editor with the channel.
+- The first call, with `offset` 0, also returns `files`: the same files as the browser finds, at most 100, each marked
+  as a file by its place in that list, with its name and tab, its type, the size, width and height of its current
+  version, the full URLs of the file and of its details page, the time of its last change and its last editor with
+  the channel, and never its content; `moreFiles` says when more files match. A call with another offset returns no
+  files.
 - The result starts with the note on text written by users, and the description ends with it (see "Prompt injection"
   in `mcp.md`).
 - These are tool errors, with the texts of the browser where the browser has one:
@@ -259,6 +293,13 @@ The read tool `search_pages` is given to every connection: Reader, Writer and Ma
   an optional tab filter in the browser and in the search tool.
 - Deleted pages are never searched, for any role. Rejected: a search in the deleted pages of a folder for Managers and
   Owners, which can come later.
+- Files are found by their names only, with the parts of their names matched as the names of pages are, but without
+  inflections and typos; the text of PDFs comes later. Their names are matched by patterns of the regular expressions
+  of PostgreSQL, built only of the letters and digits of the words, in the same transaction as the pages. Rejected:
+  the vectors of the pages for the names of files, which would stem a name; files only in a search of their own.
+- The files stand in a list of their own above the pages, so that a file never pushes a page down and each list keeps
+  its own order. `search_pages` returns them only in its first call, so that the windows of the pages stay the same.
+  Rejected: one list of pages and files.
 - Code and the addresses of links are searched, so that commands and linked domains are found. Rejected: prose only,
   and code without link addresses.
 
@@ -372,7 +413,8 @@ The read tool `search_pages` is given to every connection: Reader, Writer and Ma
 - no suggestions while typing, and no opening of a page directly from the search field
 - no narrowing to a tab, no choice of the order, no paging through more than 100 results
 - no inflections of Irish and of languages PostgreSQL cannot stem
-- no search for admins, no search in revisions of pages or in deleted pages
+- no search for admins, no search in revisions of pages or in deleted pages or files
+- no search of the content of files, such as the text inside a PDF (see "Attachments" in `roadmap.md`)
 - no rate limits of searches in the browser, which stay the job of the reverse proxy (see "Rate limits and quotas" in
   `roadmap.md`); through MCP a search counts like every request against the budget of its user (see "The endpoint" in
   `mcp.md`)

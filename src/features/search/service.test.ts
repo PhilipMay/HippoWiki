@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SEARCH_MAX_RUNNING } from "@/features/search/limits";
 import { searchPages } from "@/features/search/service";
+import { Prisma } from "@/generated/prisma/client";
 import { ACTOR, ADMIN, FOLDER_ID, GRANT_ID, knownError, MALFORMED_ID, mcpActor } from "@/test/unit";
 
 const mocks = vi.hoisted(() => ({
@@ -25,10 +26,20 @@ beforeEach(() => {
   mocks.queryRaw.mockResolvedValue([]);
   mocks.findMany.mockResolvedValue([]);
   // An interactive transaction runs its callback with a client of its own.
-  mocks.transaction.mockImplementation((run: (tx: unknown) => Promise<unknown>) =>
-    run({ $queryRaw: mocks.queryRaw, page: { findMany: mocks.findMany } }),
-  );
+  mocks.transaction.mockImplementation((run: (tx: unknown) => Promise<unknown>) => run(transactionClient()));
 });
+
+/** The client of a transaction of the mocks. */
+function transactionClient() {
+  return { $queryRaw: mocks.queryRaw, page: { findMany: mocks.findMany } };
+}
+
+/** The raw queries of the search, each as the text and the bound values that the database gets. */
+function rawQueries(): Prisma.Sql[] {
+  return mocks.queryRaw.mock.calls.map(([strings, ...values]) =>
+    Prisma.sql(strings as readonly string[], ...(values as unknown[])),
+  );
+}
 
 /** Whether any call reached the database. */
 function reachedDatabase(): boolean {
@@ -82,7 +93,7 @@ describe("the outcomes of a search", () => {
   it("returns no results as found and logs them without a word", async () => {
     expect(await searchPages(ACTOR, FOLDER_ID, `${SECRET} "backup server"`)).toEqual({
       ok: true,
-      value: { results: [], total: 0, more: false },
+      value: { results: [], total: 0, more: false, files: [], moreFiles: false },
     });
     expect(mocks.info).toHaveBeenCalledWith(
       {
@@ -91,6 +102,7 @@ describe("the outcomes of a search", () => {
         folderId: FOLDER_ID,
         outcome: "found",
         results: 0,
+        files: 0,
         durationMs: expect.any(Number) as number,
         characters: SECRET.length + 16,
         words: 3,
@@ -149,7 +161,7 @@ describe("the outcomes of a search", () => {
     });
     mocks.transaction.mockImplementation(async (run: (tx: unknown) => Promise<unknown>) => {
       await held;
-      return run({ $queryRaw: mocks.queryRaw, page: { findMany: mocks.findMany } });
+      return run(transactionClient());
     });
     const running = Array.from({ length: SEARCH_MAX_RUNNING }, () => searchPages(ACTOR, FOLDER_ID, "backup"));
     // The role of the actor is read before a search takes its slot.
@@ -163,6 +175,69 @@ describe("the outcomes of a search", () => {
     release();
     for (const result of await Promise.all(running)) expect(result?.ok).toBe(true);
     expect((await searchPages(ACTOR, FOLDER_ID, "backup"))?.ok).toBe(true);
+  });
+
+  it("reaches the query of files with every word as a bound parameter", async () => {
+    await searchPages(ACTOR, FOLDER_ID, `${SECRET} "network diagram" -old`);
+
+    const files = rawQueries().find((query) => query.sql.includes('FROM "File"'));
+    expect(files?.sql).not.toContain(SECRET);
+    expect(files?.sql).not.toContain("network");
+    expect(files?.values).toEqual(
+      expect.arrayContaining([
+        FOLDER_ID,
+        `incidentmallory-network-diagram-old`,
+        `(^|-)[a-z0-9]*${SECRET}[a-z0-9]*(-|$)`,
+        "(^|-)[a-z0-9]*network[a-z0-9]*-diagram[a-z0-9]*(-|$)",
+        "(^|-)old(-|$)",
+      ]),
+    );
+    expect(loggedText()).not.toContain(SECRET);
+  });
+
+  it("searches no files beyond the first window", async () => {
+    await searchPages(ACTOR, FOLDER_ID, "diagram", { offset: 10, limit: 10 });
+
+    expect(rawQueries().some((query) => query.sql.includes('FROM "File"'))).toBe(false);
+  });
+
+  it("returns the files found, in the order of the match, with the size of the current version", async () => {
+    const updatedAt = new Date("2026-11-22T10:00:00Z");
+    const row = (id: string, name: string, tab: string | null) => ({
+      id,
+      name,
+      type: "png",
+      tab,
+      updatedAt,
+      username: "alice",
+      via: "web",
+      size: 120,
+      width: 4,
+      height: 3,
+    });
+    mocks.queryRaw.mockImplementation((strings: readonly string[]) =>
+      Promise.resolve(
+        strings.join("").includes('FROM "File"')
+          ? [row("f2", "network-diagram.png", "guides"), row("f1", "diagram.png", null)]
+          : [],
+      ),
+    );
+
+    const found = await searchPages(ACTOR, FOLDER_ID, "diagram");
+    expect(found?.ok && found.value.files).toEqual([
+      {
+        id: "f2",
+        name: "network-diagram.png",
+        type: "png",
+        tab: { name: "guides" },
+        size: 120,
+        width: 4,
+        height: 3,
+        updatedAt,
+        lastEditedBy: { name: "alice", via: "web" },
+      },
+      expect.objectContaining({ id: "f1", tab: null }),
+    ]);
   });
 
   it("frees the slot of a search that failed", async () => {

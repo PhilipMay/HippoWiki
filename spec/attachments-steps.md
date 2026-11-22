@@ -174,6 +174,14 @@ What the steps share, so that each step builds on the same model:
   the files are on (`uploadAddress` of the page list). The editor's page list gets the files from
   `listAllFolderFiles()` of the files service.
 
+- Step 10: the patterns of the names of files are built by `fileNamePatterns()` of the pure module
+  `src/features/search/file-names.ts` and matched with `~` of PostgreSQL; a word with a letter that no name holds
+  matches no file. The files are read with their fields in one raw statement of the search transaction, because a read
+  of Prisma with the relation of the versions sends several queries at once over its one connection. The results get
+  `files` and `moreFiles`, which `search_pages` returns as such, empty beyond the first call; with files listed, the
+  pages of the results view get the heading "Pages", and the message without results reads "No pages or files in this
+  folder match …". `FileList` lists a file with a `tab` of its own after its tab, for the results.
+
 ## Requirements by step
 
 | Step                                      | Requirements                                      |
@@ -209,7 +217,7 @@ The plan is large, so it has two stop points:
 - [x] Moving and renaming files
 - [x] Deleting and restoring files
 - [x] Files in the editor
-- [ ] Files in search
+- [x] Files in search
 - [ ] Files through MCP
 - [ ] Spec tests
 - [ ] Wrap-up

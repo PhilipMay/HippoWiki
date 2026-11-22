@@ -198,6 +198,26 @@ const NOTE_OUTPUT = z
   .literal(USER_TEXT_NOTE)
   .describe("Says that the titles and content in this result are written by users of the wiki");
 
+/**
+ * A file of the folder, an image or a PDF, as `search_pages` lists it: its details without its content, which no tool
+ * returns.
+ */
+export const fileOutput = z.object({
+  name: z.string().describe("The name of the file with its extension, as [[name.ext]] links it"),
+  tab: z.string().nullable().describe("The tab the file is in, or null for a file placed directly in the folder"),
+  type: z.enum(["png", "jpeg", "gif", "webp", "pdf"]).describe("The type of the file"),
+  size: z.number().int().describe("The size of the current version of the file in bytes"),
+  width: z.number().int().nullable().describe("The width of an image in pixels, upright as it shows; null for a PDF"),
+  height: z.number().int().nullable().describe("The height of an image in pixels, upright as it shows; null for a PDF"),
+  address: z
+    .string()
+    .describe("Where a person with a role on the folder opens the file itself in a browser, after logging in"),
+  detailsAddress: z.string().describe("Where a person opens the details page of the file, with its versions"),
+  lastChanged: lastChangedOutput("file"),
+  lastEditedBy: lastEditedByOutput("file"),
+  lastEditedVia: lastEditedViaOutput("file"),
+});
+
 export const listFolderOutput = z.object({
   note: NOTE_OUTPUT,
   folder: z.object({ name: z.string(), address: z.string() }),
@@ -241,6 +261,13 @@ export const searchPagesOutput = z.object({
       }),
     )
     .describe("The pages that match, the best match first"),
+  files: z
+    .array(fileOutput)
+    .describe(
+      `The files (images and PDFs) whose names match, the best match first, at most ${SEARCH_MAX_RESULTS}; only the ` +
+        "first call, with offset 0, holds them, the calls for the next results an empty list",
+    ),
+  moreFiles: z.boolean().describe(`Whether more than ${SEARCH_MAX_RESULTS} files match; false beyond the first call`),
   nextOffset: z
     .number()
     .nullable()
