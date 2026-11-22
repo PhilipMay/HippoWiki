@@ -69,7 +69,7 @@ hold pages directly and have tabs at the same time.
 
 ## Addresses
 
-- All content lives under the fixed prefix `/folders`; deleted pages live under `/deleted-items` (see
+- All content lives under the fixed prefix `/folders`; deleted pages and files live under `/deleted-items` (see
   `page-deletion.md`). The rest of the root belongs to the other routes of the app (see `src/app/`).
 - The addresses:
   - `/folders`: the list of folders
@@ -81,7 +81,7 @@ hold pages directly and have tabs at the same time.
     in a folder or in a tab
   - `/files/<folder>/<name.ext>` and `/files/<folder>/<tab>/<name.ext>`: the file itself, which sends its content to the
     users with a role on its folder, `?version=<n>` an earlier version and `?download` as an attachment
-  - `/deleted-items/<folder>` and `/deleted-items/<folder>/<id>`: the deleted items of a folder and a deleted page
+  - `/deleted-items/<folder>` and `/deleted-items/<folder>/<id>`: the deleted items of a folder and a deleted page or file
 - The `.md` belongs to the address, not to the name. A segment that ends in the lowercase `.md` is a page, one that is a
   file name with the lowercase extension of a type of file (`png`, `jpg`, `gif`, `webp`, `pdf`) is a file, any other
   is a tab. Names of tabs and pages have no dot, so no address of them changed its meaning with the files.

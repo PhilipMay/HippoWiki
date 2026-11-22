@@ -188,6 +188,13 @@ What the steps share, so that each step builds on the same model:
   returns the size and the last change of each file, for `list_folder`. The log line of a call keeps a name of up to
   the length limit of a name and `.webp`, so that a file name is not cut before its extension.
 
+- Step 12: the `spec-tester` agent kept 11 tests in `e2e/attachments-spec-tests.spec.ts`,
+  `e2e/mcp-attachments-spec-tests.spec.ts` and `integration/attachments.spec-tests.test.ts`; none failed. Of its two
+  documentation findings, the stale "Addresses" of `content-structure.md` (deleted files under `/deleted-items`) is
+  fixed here. The other, that R7, R19 and R28 promise the not-found page at the file address, which answers a plain
+  404 since step 3, was settled with the user: the wrap-up states the plain 404 of `/files/…` and the not-found page
+  of the details page in `spec/attachments.md`.
+
 ## Requirements by step
 
 | Step                                      | Requirements                                      |
@@ -225,7 +232,7 @@ The plan is large, so it has two stop points:
 - [x] Files in the editor
 - [x] Files in search
 - [x] Files through MCP
-- [ ] Spec tests
+- [x] Spec tests
 - [ ] Wrap-up
 
 ## Deleted items
