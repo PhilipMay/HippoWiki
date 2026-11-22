@@ -208,6 +208,3 @@ All from "Current limits" in `container-image.md`:
   - The GitHub repository: rules for `main` and release tags, who may publish releases and push to the image package,
     private vulnerability reporting, alerts and security updates of Dependabot, read-only default permissions of
     workflows, approval for workflows of fork pull requests.
-- The code around the Markdown parser (`src/features/pages/markdown.ts`): how closely its consumers depend on the
-  tokens of markdown-it, the footnote rule that replaces the one of markdown-it-footnote, and the parses that are
-  repeated for the same content. A review of the parsing named them but reported no finding.
