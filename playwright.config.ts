@@ -43,7 +43,7 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   // A test that passes only on a retry fails the CI run, so timing problems show up early. The retries still run: the
-  // report then shows the test as flaky and keeps the trace of the first retry.
+  // report then shows the test as flaky and keeps the trace of the failed first run (see `trace` below).
   failOnFlakyTests: !!process.env.CI,
   reporter: [["list"], ["html", { open: "never" }]],
   // The global setup starts the test database container, the global teardown removes it.
@@ -51,7 +51,9 @@ export default defineConfig({
   globalTeardown: "./e2e/global-teardown.ts",
   // The `baseURL` of each test is the address of the server of its worker (see e2e/support/test.ts).
   use: {
-    trace: "on-first-retry",
+    // The trace of the first run of a test, kept only when that run fails: it shows the failure itself, also of a test
+    // that then passes on a retry. The retries record none.
+    trace: "retain-on-first-failure",
   },
   projects: [
     // Logs in once as each known user and saves the browser states (see e2e/support/auth.ts).

@@ -583,7 +583,8 @@ Current limits:
 - The end-to-end tests start and remove their throwaway container `hippowiki-test-db` as they do locally. Both
   end-to-end workflows set `HIPPOWIKI_E2E_WORKERS` to 1 for the step of the tests, so they run with one worker and one
   server (see "Workers" in "End-to-end tests"). With `CI` set, Playwright retries a failed test, fails the run if a test passed only on a retry, and rejects `test.only`
-  (`playwright.config.ts`).
+  (`playwright.config.ts`). Every run keeps the trace of the first run of a test that failed, the failed run itself and
+  not its retry, in the HTML report.
 - The end-to-end workflows upload the Playwright HTML report, and the unit test workflow the coverage report with its
   tables of `scripts/coverage-summary.ts` in the job summary, also when the tests fail.
 - Dependabot (`.github/dependabot.yml`) checks the `npm` and `github-actions` dependencies and the two images of
