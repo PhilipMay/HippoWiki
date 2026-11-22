@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { KNOWN_USER } from "../prisma/known-users";
-import { ADMIN_STORAGE_STATE, becomeUser, logInElsewhere } from "./support/auth";
+import { ADMIN_STORAGE_STATE, becomeUser } from "./support/auth";
 import { collectErrors, expectNotFound, expectNotFoundResponse } from "./support/browser";
 import {
   createFile,
@@ -11,6 +11,7 @@ import {
   createRevisions,
   createTab,
   createUser,
+  getTestDb,
   resetTestDatabase,
   setOwnRole,
 } from "./support/database";
@@ -111,24 +112,30 @@ test.describe("the address of the results", () => {
     expect(errors).toEqual([]);
   });
 
-  test("shows the results to another user with a role on the folder", async ({ browser }) => {
-    const bob = await createUser({ name: "bob", mustChangePassword: false });
-    await createFolderRole({ folder: handbook, user: bob, role: "reader" });
-    await createPage({ folder: handbook, name: "backup", content: "# Backup\n\nThe backup of the server." });
+  // The logged-in user is a Reader of a folder of bob, who created its page.
+  test("shows the results to another user with a role on the folder", async ({ page }) => {
+    const bob = await createUser({ name: "bob" });
+    await createFolderRole({ folder: handbook, user: bob, role: "owner" });
+    await setOwnRole(handbook, "reader");
+    await createPage({
+      folder: handbook,
+      name: "backup",
+      content: "# Backup\n\nThe backup of the server.",
+      editor: bob,
+    });
 
-    const other = await logInElsewhere(browser, "bob");
-    await other.page.goto(results("backup"));
-    await expect(resultTitles(other.page)).toHaveText(["Backup"]);
-    await other.context.close();
+    await page.goto(results("backup"));
+    await expect(resultTitles(page)).toHaveText(["Backup"]);
   });
 
-  test("shows the not-found page to a user without a role on the folder", async ({ browser }) => {
-    await createUser({ name: "carol", mustChangePassword: false });
-    await createPage({ folder: handbook, name: "backup", content: "# Backup" });
+  // The logged-in user has no role on the folder of bob.
+  test("shows the not-found page to a user without a role on the folder", async ({ page }) => {
+    const bob = await createUser({ name: "bob" });
+    await createFolderRole({ folder: handbook, user: bob, role: "owner" });
+    await getTestDb().folderRole.deleteMany({ where: { folderId: handbook.id, userId: KNOWN_USER.id } });
+    await createPage({ folder: handbook, name: "backup", content: "# Backup", editor: bob });
 
-    const other = await logInElsewhere(browser, "carol");
-    await expectNotFound(other.page, results("backup"));
-    await other.context.close();
+    await expectNotFound(page, results("backup"));
   });
 
   test("shows the not-found page to an admin", async ({ page, context }) => {

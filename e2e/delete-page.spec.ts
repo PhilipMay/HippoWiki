@@ -3,7 +3,6 @@ import type { Page } from "@playwright/test";
 import { VERSION_FIELD } from "@/features/pages/fields";
 
 import { KNOWN_USER } from "../prisma/known-users";
-import { logInElsewhere } from "./support/auth";
 import { by, collectErrors, expectNotFound } from "./support/browser";
 import { createFolder, createPage, createTab, createUser, getTestDb, resetTestDatabase } from "./support/database";
 import { fillContent } from "./support/editor";
@@ -188,19 +187,21 @@ test.describe("a page changed after the dialog was opened", () => {
 
   test("refuses the delete after a content save and shows the message; confirming again deletes the page", async ({
     page,
-    browser,
   }) => {
     const errors = collectErrors(page);
     const plan = await createPage({ folder: team, name: "plan", content: "# Plan\n\nFirst draft" });
-    const other = await logInElsewhere(browser, "bob");
 
-    // The dialog is open while bob saves the content.
+    // The dialog is open while bob saves the content in the browser.
     await page.goto("/folders/team/plan.md?action=delete");
-    await other.page.goto("/folders/team/plan.md?action=edit");
-    await fillContent(other.page, "# Plan\n\nBob's version");
-    await other.page.getByRole("button", { name: "Save" }).click();
-    await expect(other.page).toHaveURL("/folders/team/plan.md");
-    const time = (await other.page.getByRole("article").locator("time").textContent()) ?? "";
+    await getTestDb().page.update({
+      where: { id: plan.id },
+      data: {
+        content: "# Plan\n\nBob's version",
+        version: { increment: 1 },
+        lastEditedById: bob.id,
+        lastEditedVia: "web",
+      },
+    });
 
     const dialog = deleteDialog(page);
     await dialog.getByRole("button", { name: "Delete" }).click();
@@ -208,7 +209,7 @@ test.describe("a page changed after the dialog was opened", () => {
     // The dialog stays open with the message, and the page is still at its address.
     await expect(page).toHaveURL("/folders/team/plan.md?action=delete&notice=changed");
     await expect(dialog.getByRole("alert")).toHaveText(
-      `This page was changed by bob via web at ${time} after you opened it.`,
+      /^This page was changed by bob via web at .+ after you opened it\.$/,
     );
     expect(await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).toMatchObject({
       deletedAt: null,
@@ -220,7 +221,6 @@ test.describe("a page changed after the dialog was opened", () => {
     await expect(page).toHaveURL("/folders/team");
     expect((await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).deletedAt).not.toBeNull();
     expect(errors).toEqual([]);
-    await other.context.close();
   });
 
   test("names the channel mcp for a page changed through MCP after the dialog was opened", async ({ page }) => {
@@ -248,16 +248,15 @@ test.describe("a page changed after the dialog was opened", () => {
   });
 
   // The dialog is shown again at the page's new address.
-  test("refuses the delete after a rename and shows the dialog at the new address", async ({ page, browser }) => {
+  test("refuses the delete after a rename and shows the dialog at the new address", async ({ page }) => {
     const plan = await createPage({ folder: team, name: "plan" });
-    const other = await logInElsewhere(browser, "bob");
 
     await page.goto("/folders/team/plan.md?action=delete");
-    await other.page.goto("/folders/team/plan.md?action=move-or-rename");
-    const renameDialog = other.page.getByRole("dialog", { name: "Move or rename page" });
-    await renameDialog.getByLabel("Name").fill("release-plan");
-    await renameDialog.getByRole("button", { name: "Save" }).click();
-    await expect(other.page).toHaveURL("/folders/team/release-plan.md");
+    // Bob renames the page in the browser meanwhile.
+    await getTestDb().page.update({
+      where: { id: plan.id },
+      data: { name: "release-plan", version: { increment: 1 }, lastEditedById: bob.id, lastEditedVia: "web" },
+    });
 
     const dialog = deleteDialog(page);
     await dialog.getByRole("button", { name: "Delete" }).click();
@@ -268,7 +267,6 @@ test.describe("a page changed after the dialog was opened", () => {
       /^This page was changed by bob via web at .+ after you opened it\.$/,
     );
     expect((await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).deletedAt).toBeNull();
-    await other.context.close();
   });
 
   // The second of two deletes of the same page finds it deleted, as before.

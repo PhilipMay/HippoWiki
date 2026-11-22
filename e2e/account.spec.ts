@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { KNOWN_ADMIN, KNOWN_USER } from "../prisma/known-users";
-import { ADMIN_STORAGE_STATE, NO_STORAGE_STATE, submitLogin } from "./support/auth";
+import { ADMIN_STORAGE_STATE } from "./support/auth";
 import { collectErrors, expectNotFound, expectNotFoundResponse } from "./support/browser";
 import {
   createFolder,
@@ -10,10 +10,9 @@ import {
   createUser,
   getTestDb,
   resetTestDatabase,
-  TEST_PASSWORD,
 } from "./support/database";
 import { connect, listFolderStatus, mcpAddress, refresh, registerClient } from "./support/oauth";
-import { expect, hydrating, test } from "./support/test";
+import { expect, test } from "./support/test";
 
 /** The folder "projects", of which the known user is Owner, and its MCP address for Reader. */
 let projects: { id: string };
@@ -96,12 +95,10 @@ test("apps are listed newest first with their name, connection time, expiry or E
   expect(errors).toEqual([]);
 });
 
-test("an app connected through OAuth is listed, and a use through /mcp shows as its last use", async ({
-  page,
-  request,
-}) => {
+// The approval on the consent page, which stores the grant, is tested in oauth.spec.ts.
+test("a connected app is listed, and a use through /mcp shows as its last use", async ({ page, request }) => {
   const errors = collectErrors(page);
-  const tokens = await connect(page, request, await registerClient(request, "Example connector"), reader);
+  const { accessToken } = await createGrant({ owner: KNOWN_USER, folder: projects, name: "Example connector" });
 
   await page.goto("/account");
 
@@ -110,11 +107,11 @@ test("an app connected through OAuth is listed, and a use through /mcp shows as 
   await expect(rows.nth(0)).toContainText("Example connector");
   await expect(rows.nth(0)).toContainText("Last used never");
   const html = await page.content();
-  expect(html).not.toContain(tokens.access_token);
-  expect(html).not.toContain(tokens.refresh_token);
+  expect(html).not.toContain(accessToken);
+  expect(html).not.toContain("hwa_");
   expect(html).not.toContain("hwr_");
 
-  expect(await listFolderStatus(request, tokens.access_token, reader)).toBe(200);
+  expect(await listFolderStatus(request, accessToken, reader)).toBe(200);
   await page.reload();
   await expect(appRows(page).nth(0)).not.toContainText("Last used never");
   expect(errors).toEqual([]);
@@ -122,13 +119,17 @@ test("an app connected through OAuth is listed, and a use through /mcp shows as 
 
 test("two connections of the same app to different addresses are two entries, each with its folder and role", async ({
   page,
-  request,
 }) => {
   const errors = collectErrors(page);
   const notes = await createFolder({ name: "notes" });
-  const clientId = await registerClient(request, "Example connector");
-  await connect(page, request, clientId, mcpAddress(projects, "writer"));
-  await connect(page, request, clientId, mcpAddress(notes, "reader"));
+  const { client } = await createGrant({
+    owner: KNOWN_USER,
+    folder: projects,
+    role: "writer",
+    name: "Example connector",
+    createdAt: new Date(Date.now() - 60_000),
+  });
+  await createGrant({ owner: KNOWN_USER, client, folder: notes, role: "reader", name: "Example connector" });
 
   await page.goto("/account");
 
@@ -143,13 +144,9 @@ test("two connections of the same app to different addresses are two entries, ea
   expect(errors).toEqual([]);
 });
 
-test("a connection to the Manager address is listed with its folder and the role Manager", async ({
-  page,
-  request,
-}) => {
+test("a connection to the Manager address is listed with its folder and the role Manager", async ({ page }) => {
   const errors = collectErrors(page);
-  const clientId = await registerClient(request, "Example connector");
-  await connect(page, request, clientId, mcpAddress(projects, "manager"));
+  await createGrant({ owner: KNOWN_USER, folder: projects, role: "manager", name: "Example connector" });
 
   await page.goto("/account");
 
@@ -273,24 +270,16 @@ test("addresses that are not found: creating a token, the former token=, the app
   expect(await getTestDb().oAuthGrant.count()).toBe(2);
 });
 
-test("a user sees only their own apps, also when another user connects one", async ({ page, request, browser }) => {
-  // Another user connects an app in a browser of their own.
+test("a user sees only their own apps, also when another user connects one", async ({ page, request }) => {
+  // Another user has connected an app to the same folder; a token of a user whose first password is still to change
+  // is refused, so bob has changed it.
   const bob = await createUser({ name: "bob", mustChangePassword: false });
   await createFolderRole({ folder: projects, user: bob, role: "reader" });
-  const bobContext = await browser.newContext({ storageState: NO_STORAGE_STATE });
-  const bobPage = await hydrating(await bobContext.newPage());
-  await bobPage.goto("/login");
-  await submitLogin(bobPage, "bob");
-  await expect(bobPage).toHaveURL("/folders");
-  const tokens = await connect(
-    bobPage,
-    bobContext.request,
-    await registerClient(request, "Bob's connector"),
-    reader,
-    TEST_PASSWORD,
-  );
-  await bobContext.close();
-  const bobsGrant = await getTestDb().oAuthGrant.findFirstOrThrow({ where: { userId: bob.id } });
+  const { grant: bobsGrant, accessToken } = await createGrant({
+    owner: bob,
+    folder: projects,
+    name: "Bob's connector",
+  });
   await createGrant({ owner: KNOWN_USER, name: "Alice's connector" });
 
   await page.goto("/account");
@@ -300,7 +289,7 @@ test("a user sees only their own apps, also when another user connects one", asy
   await expect(page.getByText("Bob's connector")).toHaveCount(0);
   await expectNotFound(page, `/account?action=revoke&app=${bobsGrant.id}`);
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  expect(await listFolderStatus(request, tokens.access_token, reader)).toBe(200);
+  expect(await listFolderStatus(request, accessToken, reader)).toBe(200);
 });
 
 test.describe("an admin", () => {

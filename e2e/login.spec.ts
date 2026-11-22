@@ -3,7 +3,7 @@ import type { Browser, Page } from "@playwright/test";
 import { KNOWN_ADMIN, KNOWN_USER } from "../prisma/known-users";
 import { logIn, NO_STORAGE_STATE, submitLogin } from "./support/auth";
 import { collectErrors } from "./support/browser";
-import { createUser, getTestDb, resetTestDatabase, TEST_PASSWORD } from "./support/database";
+import { createUser, getTestDb, resetTestDatabase, storeFiveFailedLogins, TEST_PASSWORD } from "./support/database";
 import { expect, hydrating, test } from "./support/test";
 
 /**
@@ -226,8 +226,8 @@ test("after five wrong passwords the right one is refused with the message of th
 });
 
 test("once the wait is over, the right password logs in", async ({ page }) => {
+  await storeFiveFailedLogins(KNOWN_USER.name, VISITOR_ADDRESS);
   await page.goto("/login");
-  await failFiveLogins(page, KNOWN_USER.name);
   await submitLogin(page, KNOWN_USER.name, KNOWN_USER.password);
   await expect(formAlert(page)).toHaveText(WAIT_ONE_MINUTE);
 
@@ -302,8 +302,8 @@ test.describe("the wait per client address", () => {
     page,
     browser,
   }) => {
+    await storeFiveFailedLogins(KNOWN_USER.name, VISITOR_ADDRESS);
     await page.goto("/login");
-    await failFiveLogins(page, KNOWN_USER.name);
 
     await submitLogin(page, KNOWN_USER.name, KNOWN_USER.password);
     await expect(formAlert(page)).toHaveText(WAIT_ONE_MINUTE);

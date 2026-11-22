@@ -2,7 +2,7 @@ import type { Browser, Page } from "@playwright/test";
 
 import { logIn, NO_STORAGE_STATE } from "./support/auth";
 import { collectErrors } from "./support/browser";
-import { createUser, resetTestDatabase } from "./support/database";
+import { createUser, getTestDb, resetTestDatabase } from "./support/database";
 import { expect, hydrating, test } from "./support/test";
 
 // The users of these tests are their own, created by `createUser()` with the password change done, and log in
@@ -70,10 +70,17 @@ for (const type of ["user", "admin"] as const) {
   });
 }
 
-test("closing the dialog with Cancel or Escape ends nothing", async ({ page, browser }) => {
+test("closing the dialog with Cancel or Escape ends nothing", async ({ page }) => {
   const errors = collectErrors(page);
   const account = await logInAsNew(page);
-  const second = await logInSecondBrowser(browser, account.name, "user");
+  // The session of a second browser, as its login leaves it; the confirming tests above log one in for real.
+  const second = await getTestDb().session.create({
+    data: {
+      userId: account.id,
+      token: crypto.randomUUID(),
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    },
+  });
 
   await page.goto("/account?action=log-out-others");
   await logOutDialog(page).getByRole("link", { name: "Cancel" }).click();
@@ -86,9 +93,8 @@ test("closing the dialog with Cancel or Escape ends nothing", async ({ page, bro
   await expect(page).toHaveURL("/account");
   await expect(logOutDialog(page)).toHaveCount(0);
 
-  await second.page.goto("/folders");
-  await expect(second.page).toHaveURL("/folders");
-  await second.context.close();
+  expect(await getTestDb().session.count({ where: { userId: account.id } })).toBe(2);
+  await expect(getTestDb().session.findUnique({ where: { id: second.id } })).resolves.not.toBeNull();
   expect(errors).toEqual([]);
 });
 

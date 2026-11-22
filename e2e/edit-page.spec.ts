@@ -10,6 +10,7 @@ import {
   createFolder,
   createFolderRole,
   createPage,
+  createRevisions,
   createTab,
   createUser,
   getTestDb,
@@ -431,6 +432,15 @@ test.describe("a page changed after the editor was opened", () => {
     });
   });
 
+  /** A content save of bob in the browser while the editor of the test is open: a revision, the next version, bob. */
+  async function saveAsBob(plan: Awaited<ReturnType<typeof createPage>>, content: string) {
+    await createRevisions({ page: plan, count: 1, content: () => content, editor: bob });
+    await getTestDb().page.update({
+      where: { id: plan.id },
+      data: { version: { increment: 1 }, lastEditedById: bob.id, lastEditedVia: "web" },
+    });
+  }
+
   /** The message of a refused change, as the editor shows it above the content. */
   function changedMessage(page: BrowserPage) {
     return page.getByRole("main").getByRole("alert");
@@ -522,16 +532,15 @@ test.describe("a page changed after the editor was opened", () => {
   });
 
   // A rename counts as a change, and the editor is shown at the new address.
-  test("refuses the save after a rename and shows the editor at the new address", async ({ page, browser }) => {
+  test("refuses the save after a rename and shows the editor at the new address", async ({ page }) => {
     const plan = await createPage({ folder: team, name: "plan", content: "# Plan\n\nFirst draft" });
-    const other = await logInElsewhere(browser, "bob");
 
     await page.goto("/folders/team/plan.md?action=edit");
-    await other.page.goto("/folders/team/plan.md?action=move-or-rename");
-    const dialog = other.page.getByRole("dialog", { name: "Move or rename page" });
-    await dialog.getByLabel("Name").fill("release-plan");
-    await dialog.getByRole("button", { name: "Save" }).click();
-    await expect(other.page).toHaveURL("/folders/team/release-plan.md");
+    // Bob renames the page in the browser meanwhile.
+    await getTestDb().page.update({
+      where: { id: plan.id },
+      data: { name: "release-plan", version: { increment: 1 }, lastEditedById: bob.id, lastEditedVia: "web" },
+    });
 
     await fillContent(page, "# Plan\n\nAlice's version");
     await page.getByRole("button", { name: "Save" }).click();
@@ -542,7 +551,6 @@ test.describe("a page changed after the editor was opened", () => {
     expect((await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } })).content).toBe(
       "# Plan\n\nFirst draft",
     );
-    await other.context.close();
   });
 
   // An editor opened before the feature submits no version; its save is refused once.
@@ -568,18 +576,12 @@ test.describe("a page changed after the editor was opened", () => {
   // A save without a change is refused like every other save based on an older version.
   test("refuses a save without a change in an editor opened before another change, and keeps that change", async ({
     page,
-    browser,
   }) => {
     const errors = collectErrors(page);
     const plan = await createPage({ folder: team, name: "plan", content: "# Plan\n\nFirst draft" });
-    const other = await logInElsewhere(browser, "bob");
 
     await page.goto("/folders/team/plan.md?action=edit");
-    await other.page.goto("/folders/team/plan.md?action=edit");
-    await fillContent(other.page, "# Plan\n\nBob's version");
-    await other.page.getByRole("button", { name: "Save" }).click();
-    await expect(other.page).toHaveURL("/folders/team/plan.md");
-    await other.context.close();
+    await saveAsBob(plan, "# Plan\n\nBob's version");
     const stored = await getTestDb().page.findUniqueOrThrow({ where: { id: plan.id } });
 
     await page.getByRole("button", { name: "Save" }).click();

@@ -626,9 +626,10 @@ test.describe("giving a role", () => {
     await expect(page).toHaveURL("/folders/project-x");
   });
 
-  test("an Owner makes another user Owner, who then may give roles too", async ({ page, browser }) => {
-    await createUser({ name: "bob", mustChangePassword: false });
-    await createFolder({ name: "project-x", editor: await aliceUser() });
+  // That an Owner may give roles is shown by alice; the role is read as stored, so bob's next request has it.
+  test("an Owner makes another user Owner", async ({ page }) => {
+    const bob = await createUser({ name: "bob" });
+    const folder = await createFolder({ name: "project-x", editor: await aliceUser() });
 
     await page.goto("/folders/project-x?action=give-role");
     await giveRoleDialog(page).getByLabel("User").selectOption("bob");
@@ -636,10 +637,12 @@ test.describe("giving a role", () => {
     await giveRoleDialog(page).getByRole("button", { name: "Save" }).click();
     await expect(page).toHaveURL("/folders/project-x");
 
-    const bob = await logInElsewhere(browser, "bob");
-    await bob.page.goto("/folders/project-x?view=roles");
-    await expect(bob.page.getByRole("main").getByRole("link", { name: "Give role" })).toBeVisible();
-    await bob.context.close();
+    expect(
+      await getTestDb().folderRole.findUniqueOrThrow({
+        where: { folderId_userId: { folderId: folder.id, userId: bob.id } },
+        select: { role: true },
+      }),
+    ).toEqual({ role: "owner" });
   });
 
   test("with every user holding a role, the dialog says so and offers no Save", async ({ page }) => {

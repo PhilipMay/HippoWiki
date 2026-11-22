@@ -10,6 +10,7 @@ import {
   createUser,
   getTestDb,
   resetTestDatabase,
+  storeFiveFailedLogins,
   TEST_PASSWORD,
 } from "./support/database";
 import { expectContent } from "./support/editor";
@@ -252,17 +253,14 @@ test.describe("wrong current passwords", () => {
   // The client address of the tests, after the one trusted proxy of the end-to-end server (`playwright.config.ts`).
   test.use({ extraHTTPHeaders: { "x-forwarded-for": "192.0.2.20" } });
 
+  // That each wrong current password is counted is tested in integration/auth-service.test.ts.
   test("count like failed logins: after 5 the change waits, and so does the login of the name", async ({ page }) => {
     const errors = collectErrors(page);
     const user = await logInWithFirstPassword(page);
     const before = await getTestDb().account.findFirstOrThrow({ where: { userId: user.id } });
+    // As five wrong current passwords leave the counts.
+    await storeFiveFailedLogins(user.name, "192.0.2.20");
 
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      await submitChange(page, { current: "wrong-password" });
-      // The answer empties the field that was just filled: only then is the next change submitted.
-      await expect(page.getByLabel("Current password")).toHaveValue("");
-      await expect(page.getByText("Current password is wrong", { exact: true })).toBeVisible();
-    }
     await submitChange(page, {});
 
     await expect(

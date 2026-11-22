@@ -10,6 +10,7 @@ import {
   createUser,
   getTestDb,
   resetTestDatabase,
+  storeFiveFailedLogins,
   TEST_PASSWORD,
 } from "./support/database";
 import {
@@ -917,14 +918,10 @@ test.describe("the password before an approval", () => {
       const clientId = await registerClient(request);
       await page.goto(authorizeUrl(clientId, reader));
       const main = page.getByRole("main");
-      const password = main.getByLabel("Your password");
+      // As five wrong passwords leave the counts; that each one is counted is tested in
+      // integration/auth-service.test.ts.
+      await storeFiveFailedLogins(KNOWN_USER.name, "192.0.2.40");
 
-      for (let attempt = 0; attempt < 5; attempt += 1) {
-        await approve(page, "wrong-password");
-        // The answer empties the field that was just filled: only then is the next approval sent.
-        await expect(password).toHaveValue("");
-        await expect(main.getByText("Wrong password", { exact: true })).toBeVisible();
-      }
       await approve(page);
 
       await expect(

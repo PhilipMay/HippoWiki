@@ -219,6 +219,19 @@ export async function resetTestDatabase(): Promise<void> {
   if (sessions.length > 0) await getTestDb().session.createMany({ data: sessions });
 }
 
+/**
+ * Stores the counts that five failed logins in a row of the name from the client address group leave, as if the last
+ * of them had just failed: five failures in a row in `LoginAttempt` and five logins of the hour in `LoginWindow`. The
+ * next login of the name from the group then waits a minute, also a password change or an approval on the consent
+ * page, which count like logins. A test of the wait uses it instead of submitting five wrong passwords; the counting
+ * itself is tested in `integration/auth-service.test.ts`, and the five real submits in `e2e/login.spec.ts`.
+ */
+export async function storeFiveFailedLogins(username: string, clientAddress: string): Promise<void> {
+  const now = new Date();
+  await getTestDb().loginAttempt.create({ data: { username, clientAddress, failures: 5, lastFailedAt: now } });
+  await getTestDb().loginWindow.create({ data: { username, attempts: 5, startedAt: now } });
+}
+
 /** The hashes of the passwords that `createUser()` has stored; a hash takes time, so each one is computed once. */
 const passwordHashes = new Map<string, Promise<string>>();
 
