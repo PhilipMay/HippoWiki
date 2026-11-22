@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { inBrowser, type BrowserActor } from "@/features/folder-roles/actors";
 import * as fileService from "@/features/files/service";
+import * as pageService from "@/features/pages/service";
 import type { User } from "@/generated/prisma/client";
 
 import {
@@ -566,6 +567,23 @@ describe("the reads of files", () => {
     await expect(fileService.getFile(actor, "handbook", null, "gone.png")).resolves.toBeNull();
     await expect(fileService.getFileContent(actor, "handbook", null, "gone.png", null)).resolves.toBeNull();
     await expect(fileService.getFile(actor, "handbook", null, "diagram.png")).resolves.toBeNull();
+  });
+
+  it("stay as they were for a file once a page that shows it is deleted", async () => {
+    const folder = await createFolder({ name: "handbook" });
+    await createFile({ folder, name: "diagram.png" });
+    const page = await createPage({ folder, content: "# Intro\n\n![Diagram](/files/handbook/diagram.png)" });
+
+    await expect(pageService.deletePage(actor, page.id, { version: 1 })).resolves.toMatchObject({ ok: true });
+
+    expect((await fileService.listFolderFiles(actor, folder.id))?.map(({ name }) => name)).toEqual(["diagram.png"]);
+    await expect(fileService.getFile(actor, "handbook", null, "diagram.png")).resolves.toMatchObject({
+      name: "diagram.png",
+    });
+    const content = await fileService.getFileContent(actor, "handbook", null, "diagram.png", null);
+    expect(content).toMatchObject({ name: "diagram.png", version: { number: 1 } });
+    const bytes = Buffer.from(await new Response(content?.blob.stream).arrayBuffer());
+    expect(bytes).toEqual(await blobBytes(content?.version.sha256 ?? ""));
   });
 
   it("read nothing of a folder without a role and nothing of a version that does not exist", async () => {

@@ -52,7 +52,7 @@ this plan estimates that about 420 s of the summed test time can go.
 
 ## Checklist
 
-- [ ] Missing lower-level tests
+- [x] Missing lower-level tests
 - [ ] Not-found checks through HTTP
 - [ ] Access without a login
 - [ ] Changes of other users without a second login

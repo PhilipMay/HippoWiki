@@ -761,6 +761,23 @@ describe("deletePage", () => {
     ).resolves.toMatchObject({ ok: true });
   });
 
+  it("lets a page be created under the name and in the place of a deleted page, which stays deleted", async () => {
+    const folder = await createFolder();
+    const tab = await createTab({ folder });
+    const inTab = await createPage({ tab, name: "intro" });
+    const direct = await createPage({ folder, name: "intro" });
+    await pageService.deletePage(actor, inTab.id, { version: 1 });
+    await pageService.deletePage(actor, direct.id, { version: 1 });
+
+    for (const tabId of [tab.id, null]) {
+      const created = await pageService.createPage(actor, folder.id, { name: "intro", content: "# New", tabId });
+      expect(created).toMatchObject({ ok: true, value: { name: "intro" } });
+    }
+    expect((await storedPage(inTab.id)).deletedAt).toBeInstanceOf(Date);
+    expect((await storedPage(direct.id)).deletedAt).toBeInstanceOf(Date);
+    expect(await pageService.listAllFolderPages(actor, folder.id)).toHaveLength(2);
+  });
+
   it("returns page-not-found for a page that is already deleted, and not-allowed for one that does not exist", async () => {
     const page = await createPage({ deletedAt: new Date() });
 

@@ -3,7 +3,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { inBrowser, type BrowserActor, type McpActor } from "@/features/folder-roles/actors";
-import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
+import { CONTENT_MAX_LENGTH, CONTENT_MAX_WIKI_LINKS } from "@/features/pages/limits";
 import { indexOutdatedLinks, listLinkingPages, listPagesLinkingToFile } from "@/features/pages/links-service";
 import * as pageService from "@/features/pages/service";
 import { LINK_INDEX_VERSION } from "@/features/pages/wiki-links";
@@ -73,6 +73,17 @@ describe("the index of links", () => {
     const reverted = await pageService.revertPage(actor, id, { revision: 1, version });
     expect(reverted.ok).toBe(true);
     expect(await linksOf(id)).toEqual(["a", "b"]);
+  });
+
+  it("holds all links of a save with the most wiki links a page may have", async () => {
+    const id = await newPage("# Links");
+    const targets = Array.from({ length: CONTENT_MAX_WIKI_LINKS }, (_, index) => `p-${index}`);
+    const content = `# Links\n\n${targets.map((target) => `[[${target}]]`).join(" ")}`;
+
+    await save(id, content);
+
+    expect((await storedPage(id)).content).toBe(content);
+    expect(await linksOf(id)).toEqual(targets.sort());
   });
 
   it("stays as it was when a save is refused", async () => {

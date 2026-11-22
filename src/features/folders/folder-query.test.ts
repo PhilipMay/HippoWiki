@@ -68,6 +68,8 @@ describe("folderAddressOf", () => {
     { action: "" },
     { action: ["new", "new"] },
     { view: "history" },
+    { view: "All" },
+    { view: "" },
     { view: ["all", "all"] },
     { action: "new", view: "all" },
     { view: "search" },

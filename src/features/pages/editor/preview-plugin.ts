@@ -68,7 +68,7 @@ function wikiLinkAddressAt(state: EditorState, pos: number): string | null | und
  * address of its definition in the content, with the escapes and entities of a link destination decoded as the page
  * view decodes them. `null` where there is no link, and inside an image.
  */
-function linkAddressAt(state: EditorState, pos: number): string | null {
+export function linkAddressAt(state: EditorState, pos: number): string | null {
   for (let node = syntaxTree(state).resolveInner(pos, 1); ;) {
     if (node.name === "Image") return null;
     if (node.name === "Link") {

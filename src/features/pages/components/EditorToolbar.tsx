@@ -47,16 +47,16 @@ function useApple(): boolean {
 /** A button of the toolbar: its action, its accessible name, its icon and the key of its shortcut. */
 type ToolbarButton = { action: FormatAction; name: string; icon: ReactNode; key?: string };
 
-const INLINE_BUTTONS: ToolbarButton[] = [
+export const INLINE_BUTTONS: ToolbarButton[] = [
   { action: "bold", name: "Bold", icon: <FormatBoldIcon />, key: "B" },
   { action: "italic", name: "Italic", icon: <FormatItalicIcon />, key: "I" },
   { action: "strikethrough", name: "Strikethrough", icon: <StrikethroughSIcon /> },
   { action: "code", name: "Inline code", icon: <CodeIcon /> },
 ];
 
-const LINK_BUTTON: ToolbarButton = { action: "link", name: "Link", icon: <LinkIcon />, key: "K" };
+export const LINK_BUTTON: ToolbarButton = { action: "link", name: "Link", icon: <LinkIcon />, key: "K" };
 
-const LIST_BUTTONS: ToolbarButton[] = [
+export const LIST_BUTTONS: ToolbarButton[] = [
   { action: "bullet", name: "Bullet list", icon: <FormatListBulletedIcon /> },
   { action: "numbered", name: "Numbered list", icon: <FormatListNumberedIcon /> },
   { action: "task", name: "Task list", icon: <ChecklistIcon /> },
@@ -79,6 +79,14 @@ const MODES: { value: EditorMode; name: string }[] = [
   { value: "live", name: "Live preview" },
   { value: "source", name: "Source" },
 ];
+
+/**
+ * The tooltip of a button of the toolbar: its name and, where it has one, its shortcut, with Cmd on an Apple platform
+ * and Ctrl elsewhere.
+ */
+export function tooltipOf({ name, key }: { name: string; key?: string }, apple: boolean): string {
+  return key === undefined ? name : `${name} (${apple ? `⌘${key}` : `Ctrl+${key}`})`;
+}
 
 /** Keeps the focus in the editor: the buttons do not take it on mouse down. */
 const keepFocus = (event: MouseEvent) => event.preventDefault();
@@ -116,9 +124,6 @@ export default function EditorToolbar({ editor, mode, onModeChange }: EditorTool
     return () => observer.disconnect();
   }, []);
 
-  const tooltip = ({ name, key }: { name: string; key?: string }) =>
-    key === undefined ? name : `${name} (${apple ? `⌘${key}` : `Ctrl+${key}`})`;
-
   /** The tooltip shows only on an enabled control: Material UI does not show one on a disabled button. */
   const withTooltip = (title: string, control: ReactElement) =>
     editor ? <Tooltip title={title}>{control}</Tooltip> : control;
@@ -126,7 +131,7 @@ export default function EditorToolbar({ editor, mode, onModeChange }: EditorTool
   const iconButton = (button: ToolbarButton) => (
     <span key={button.action}>
       {withTooltip(
-        tooltip(button),
+        tooltipOf(button, apple),
         <IconButton
           aria-label={button.name}
           size="small"

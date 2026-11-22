@@ -1209,8 +1209,10 @@ describe("deleting a tab", () => {
     await expect(folderService.deleteTab(actor, folder.id, tab.id)).resolves.toMatchObject({ ok: true });
     const mcp = mcpActorOf(user, folder, "writer");
 
+    // The calls behind `list_folder`, and behind `create_page`, which finds the tab by its name first.
     await expect(folderService.listTabs(mcp, folder.id)).resolves.toEqual([]);
     expect((await pageService.listAllFolderPages(mcp, folder.id))?.map(({ name }) => name)).toEqual(["direct"]);
+    await expect(folderService.getTab(mcp, "docs", "guides")).resolves.toBeNull();
     await expect(
       pageService.createPage(mcp, folder.id, { name: "new", content: "# New", tabId: tab.id }),
     ).resolves.toEqual(TAB_NOT_FOUND);

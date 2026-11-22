@@ -267,6 +267,26 @@ describe("changeRole and removeRole", () => {
       ["carla", "manager"],
     ]);
   });
+
+  // A change to the role the user has is checked like every change, although it would write nothing.
+  it("refuses a Manager's change to the role the user has", async () => {
+    const bob = await createBob();
+    const folder = await createFolder({
+      roles: [
+        { user: actor, role: "manager" },
+        { user: bob, role: "reader" },
+      ],
+    });
+
+    await expect(folderRoleService.changeRole(actor, folder.id, bob.id, "reader")).resolves.toEqual({
+      ok: false,
+      error: { code: "not-allowed" },
+    });
+    expect(await rolesOf(folder.id)).toEqual([
+      ["bob", "reader"],
+      ["carla", "manager"],
+    ]);
+  });
 });
 
 describe("listAllFolderRoles", () => {
