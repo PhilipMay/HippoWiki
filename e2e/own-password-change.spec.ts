@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { logIn, logInElsewhere, NO_STORAGE_STATE, submitLogin } from "./support/auth";
-import { collectErrors, expectNotFound } from "./support/browser";
+import { collectErrors, expectNotFound, expectNotFoundResponse } from "./support/browser";
 import { createGrant, createUser, getTestDb, resetTestDatabase, TEST_PASSWORD } from "./support/database";
 import { listFolderStatus, mcpAddress } from "./support/oauth";
 import { expect, hydrating, test } from "./support/test";
@@ -339,14 +339,16 @@ test.describe("addresses that are not found", () => {
     test(`for a ${type}: an unknown action, an unknown notice and a notice with an action`, async ({ page }) => {
       await logInAsNew(page, type);
 
+      // In the browser once: the not-found page opens no dialog.
+      await expectNotFound(page, "/account?notice=password-changed&action=change-password");
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+
       for (const address of [
         "/account?action=change-passwords",
         "/account?notice=anything",
-        "/account?notice=password-changed&action=change-password",
         "/account?notice=password-changed&notice=password-changed",
       ]) {
-        await expectNotFound(page, address);
-        await expect(page.getByRole("dialog")).toHaveCount(0);
+        await expectNotFoundResponse(page.request, address);
       }
     });
   }

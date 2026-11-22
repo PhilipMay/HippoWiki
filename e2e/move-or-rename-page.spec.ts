@@ -5,7 +5,7 @@ import { PLACE_FIELD, VERSION_FIELD } from "@/features/pages/fields";
 
 import { KNOWN_USER } from "../prisma/known-users";
 import { logInElsewhere } from "./support/auth";
-import { by, collectErrors, expectNotFound } from "./support/browser";
+import { by, collectErrors, expectNotFound, expectNotFoundResponse } from "./support/browser";
 import { createFolder, createPage, createTab, createUser, getTestDb, resetTestDatabase } from "./support/database";
 import { fillContent } from "./support/editor";
 import { expect, test } from "./support/test";
@@ -494,25 +494,28 @@ test("a folder without tabs offers only the folder itself", async ({ page }) => 
   await expect(dialog.getByRole("radio", { name: "Directly in the folder" })).toBeChecked();
 });
 
-for (const address of [
-  "/folders/handbook/in-folder.md?action=rename",
-  "/folders/handbook/in-folder.md?action=move",
-  "/folders/handbook/guides/in-guides.md?action=rename",
-  "/folders/handbook/guides/in-guides.md?action=move",
-  "/folders/handbook?action=move-or-rename",
-  "/folders/handbook/guides?action=move-or-rename",
-  "/folders/handbook/in-folder.md?action=move-or-rename&action=move-or-rename",
-  "/folders/handbook/no-such-page.md?action=move-or-rename",
-  "/folders/handbook/guides/no-such-page.md?action=move-or-rename",
-]) {
-  test(`${address} shows the not-found page`, async ({ page }) => {
-    await createPage({ folder: handbook, name: "in-folder", title: "In folder" });
-    await createPage({ tab: guides, name: "in-guides", title: "In guides" });
+test("addresses without the dialog of the page, and the dialog of a page that does not exist, show the not-found page", async ({
+  page,
+}) => {
+  await createPage({ folder: handbook, name: "in-folder", title: "In folder" });
+  await createPage({ tab: guides, name: "in-guides", title: "In guides" });
 
-    await expectNotFound(page, address);
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-  });
-}
+  for (const address of [
+    "/folders/handbook/in-folder.md?action=rename",
+    "/folders/handbook/in-folder.md?action=move",
+    "/folders/handbook/guides/in-guides.md?action=rename",
+    "/folders/handbook/guides/in-guides.md?action=move",
+    "/folders/handbook?action=move-or-rename",
+    "/folders/handbook/guides?action=move-or-rename",
+    "/folders/handbook/in-folder.md?action=move-or-rename&action=move-or-rename",
+    "/folders/handbook/guides/no-such-page.md?action=move-or-rename",
+  ]) {
+    await expectNotFoundResponse(page.request, address);
+  }
+  // In the browser, the not-found page shows no dialog.
+  await expectNotFound(page, "/folders/handbook/no-such-page.md?action=move-or-rename");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
 
 test("moving or renaming a page makes the logged-in user its last editor in the page view and the lists", async ({
   page,

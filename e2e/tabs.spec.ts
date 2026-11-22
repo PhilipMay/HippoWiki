@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { KNOWN_USER } from "../prisma/known-users";
-import { by, collectErrors, expectNotFound } from "./support/browser";
+import { by, collectErrors, expectNotFound, expectNotFoundResponse } from "./support/browser";
 import { createFolder, createPage, createTab, createUser, getTestDb, resetTestDatabase } from "./support/database";
 import { expectContent, fillContent } from "./support/editor";
 import { expect, test } from "./support/test";
@@ -587,47 +587,46 @@ test("saving a page into a tab that no longer exists shows an error and keeps th
   expect(await getTestDb().page.count()).toBe(0);
 });
 
-for (const address of [
-  // An unknown or malformed tab, and the tab of another folder.
-  "/folders/handbook/no-such-tab",
-  "/folders/handbook/Guides",
-  "/folders/handbook/guides.MD",
-  "/folders/handbook/elsewhere",
-  "/folders/no-such-folder/guides",
-  // A page in the wrong place.
-  "/folders/handbook/meetings/in-guides.md",
-  "/folders/handbook/in-guides.md",
-  "/folders/handbook/guides/in-folder.md",
-  "/folders/other/guides/in-guides.md",
-  "/folders/handbook/no-such-tab/in-guides.md",
-  // A page address in a tab without or with a wrong suffix, and with further segments.
-  "/folders/handbook/guides/in-guides",
-  "/folders/handbook/guides/in-guides.MD",
-  "/folders/handbook/guides/in-guides.md/more",
-  "/folders/handbook/guides/meetings",
-  // Actions that the address does not have.
-  "/folders/handbook/guides?action=edit",
-  "/folders/handbook/guides?action=move-or-rename",
-  "/folders/handbook/guides?action=delete&action=delete",
-  "/folders/handbook/guides?action=new-tab",
-  "/folders/handbook/guides?action=new&action=new",
-  "/folders/handbook/guides/in-guides.md?action=new",
-  "/folders/handbook/guides/in-guides.md?action=new-tab",
-  "/folders/handbook/guides/in-guides.md?action=restore",
-  "/folders/handbook?action=new-tab&action=new-tab",
-]) {
-  test(`${address} shows the not-found page`, async ({ page }) => {
-    const other = await createFolder({ name: "other" });
-    const guides = await createTab({ folder: handbook, name: "guides" });
-    await createTab({ folder: handbook, name: "meetings" });
-    await createTab({ folder: other, name: "elsewhere" });
-    await createPage({ tab: guides, name: "in-guides", title: "In guides" });
-    await createPage({ folder: handbook, name: "in-folder", title: "In folder" });
+test("unknown, malformed and misplaced addresses of tabs and their pages show the not-found page", async ({ page }) => {
+  const other = await createFolder({ name: "other" });
+  const guides = await createTab({ folder: handbook, name: "guides" });
+  await createTab({ folder: handbook, name: "meetings" });
+  await createTab({ folder: other, name: "elsewhere" });
+  await createPage({ tab: guides, name: "in-guides", title: "In guides" });
+  await createPage({ folder: handbook, name: "in-folder", title: "In folder" });
 
-    await expectNotFound(page, address);
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-  });
-}
+  for (const address of [
+    // An unknown or malformed tab, and the tab of another folder.
+    "/folders/handbook/no-such-tab",
+    "/folders/handbook/Guides",
+    "/folders/handbook/guides.MD",
+    "/folders/handbook/elsewhere",
+    "/folders/no-such-folder/guides",
+    // A page in the wrong place.
+    "/folders/handbook/meetings/in-guides.md",
+    "/folders/handbook/in-guides.md",
+    "/folders/handbook/guides/in-folder.md",
+    "/folders/other/guides/in-guides.md",
+    "/folders/handbook/no-such-tab/in-guides.md",
+    // A page address in a tab without or with a wrong suffix, and with further segments.
+    "/folders/handbook/guides/in-guides",
+    "/folders/handbook/guides/in-guides.MD",
+    "/folders/handbook/guides/in-guides.md/more",
+    "/folders/handbook/guides/meetings",
+    // Actions that the address does not have.
+    "/folders/handbook/guides?action=edit",
+    "/folders/handbook/guides?action=move-or-rename",
+    "/folders/handbook/guides?action=delete&action=delete",
+    "/folders/handbook/guides?action=new-tab",
+    "/folders/handbook/guides?action=new&action=new",
+    "/folders/handbook/guides/in-guides.md?action=new",
+    "/folders/handbook/guides/in-guides.md?action=new-tab",
+    "/folders/handbook/guides/in-guides.md?action=restore",
+    "/folders/handbook?action=new-tab&action=new-tab",
+  ]) {
+    await expectNotFoundResponse(page.request, address);
+  }
+});
 
 test("the folder contents show who changed each tab last; creating and renaming make it the logged-in user", async ({
   page,

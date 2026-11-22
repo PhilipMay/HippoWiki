@@ -2,7 +2,7 @@ import type { Page } from "@playwright/test";
 
 import { KNOWN_USER } from "../prisma/known-users";
 import { ADMIN_STORAGE_STATE, becomeUser, logInElsewhere, USER_STORAGE_STATE } from "./support/auth";
-import { collectErrors, expectNotFound } from "./support/browser";
+import { collectErrors, expectNotFound, expectNotFoundResponse } from "./support/browser";
 import {
   createFolder,
   createFolderRole,
@@ -47,26 +47,16 @@ test.describe("without a role on a folder", () => {
     await expect(listItems(page)).toHaveCount(1);
     await expect(listItems(page)).toHaveText([/^mine/]);
 
+    // One address per kind of route: the role is checked before the action or view is read.
     for (const address of [
-      "/folders/hidden",
       "/folders/hidden?action=new",
-      "/folders/hidden?action=rename",
-      "/folders/hidden?action=new-tab",
-      "/folders/hidden?view=all",
       "/folders/hidden/guides",
-      "/folders/hidden/guides?action=new",
-      "/folders/hidden/guides?action=rename",
-      "/folders/hidden/guides?action=delete",
-      "/folders/hidden/intro.md",
       "/folders/hidden/intro.md?action=edit",
-      "/folders/hidden/intro.md?action=move-or-rename",
-      "/folders/hidden/intro.md?action=delete",
       "/folders/hidden/guides/setup.md",
-      "/folders/hidden/guides/setup.md?action=edit",
       "/deleted-items/hidden",
       `/deleted-items/hidden/${deleted.id}`,
     ]) {
-      await expectNotFound(page, address);
+      await expectNotFoundResponse(page.request, address);
     }
   });
 
@@ -230,22 +220,17 @@ test.describe("what each role may do", () => {
     await expect(page.getByRole("heading", { level: 1, name: "All pages" })).toBeVisible();
     expect(errors).toEqual([]);
 
+    // One address per kind of route; the lowest role of each action is in the unit tests of `folderAddressOf()`,
+    // `tabAddressOf()` and `pageAddressOf()`.
     for (const address of [
-      "/folders/handbook?action=new",
       "/folders/handbook?action=new-tab",
-      "/folders/handbook?action=rename",
       "/folders/handbook/guides?action=new",
-      "/folders/handbook/guides?action=rename",
-      "/folders/handbook/guides?action=delete",
       "/folders/handbook/intro.md?action=edit",
-      "/folders/handbook/intro.md?action=move-or-rename",
-      "/folders/handbook/intro.md?action=delete",
-      "/folders/handbook/guides/setup.md?action=edit",
+      "/folders/handbook/guides/setup.md?action=move-or-rename",
       "/deleted-items/handbook",
-      `/deleted-items/handbook/${deleted.id}`,
       `/deleted-items/handbook/${deleted.id}?action=restore`,
     ]) {
-      await expectNotFound(page, address);
+      await expectNotFoundResponse(page.request, address);
     }
   });
 
@@ -255,16 +240,17 @@ test.describe("what each role may do", () => {
     await createPage({ folder, name: "intro", title: "Intro" });
     await createPage({ tab, name: "setup", title: "Setup" });
 
-    // The title and the page decide alike, so the not-found page of an action is not titled like the action.
+    // The title and the page decide alike, so the not-found page of an action is not titled like the action. One
+    // address per kind of route, the title read from the HTML.
     for (const address of [
       "/folders/handbook?action=new",
-      "/folders/handbook?action=rename",
       "/folders/handbook/guides?action=new",
       "/folders/handbook/intro.md?action=edit",
       "/folders/handbook/guides/setup.md?action=revert&revision=1",
     ]) {
-      await expectNotFound(page, address);
-      await expect(page, address).toHaveTitle("HippoWiki");
+      await expectNotFoundResponse(page.request, address);
+      const html = await (await page.request.get(address)).text();
+      expect(html.match(/<title>([^<]*)<\/title>/)?.[1], address).toBe("HippoWiki");
     }
   });
 
@@ -372,17 +358,15 @@ test.describe("what each role may do", () => {
     await page.goto("/folders/handbook/guides");
     await expectOffers(page, ["New page"]);
     expect(errors).toEqual([]);
+    // One address per kind of route.
     for (const address of [
       "/folders/handbook/guides/final.md?action=delete",
       "/folders/handbook?action=new-tab",
       "/folders/handbook/guides?action=rename",
-      "/folders/handbook/guides?action=delete",
-      "/folders/handbook?action=rename",
       "/deleted-items/handbook",
-      `/deleted-items/handbook/${deleted.id}`,
       `/deleted-items/handbook/${deleted.id}?action=restore`,
     ]) {
-      await expectNotFound(page, address);
+      await expectNotFoundResponse(page.request, address);
     }
   });
 
@@ -1141,12 +1125,11 @@ test.describe("the admin overview", () => {
       for (const address of [
         "/folders",
         "/folders/project-x",
-        "/folders/project-x?view=roles",
         "/deleted-items/handbook",
+        "/folder-roles?action=give-role",
       ]) {
-        await expectNotFound(page, address);
+        await expectNotFoundResponse(page.request, address);
       }
-      await expectNotFound(page, "/folder-roles?action=give-role");
     });
   });
 

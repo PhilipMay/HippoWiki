@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { KNOWN_USER } from "../prisma/known-users";
-import { by, collectErrors, expectNotFound } from "./support/browser";
+import { by, collectErrors, expectNotFound, expectNotFoundResponse } from "./support/browser";
 import { createFolder, createPage, createTab, createUser, getTestDb, resetTestDatabase } from "./support/database";
 import { fillContent } from "./support/editor";
 import { expect, test } from "./support/test";
@@ -58,9 +58,11 @@ test("every view and action of the old address of a deleted page shows the not-f
   const fromTab = await createPage({ tab: guides, name: "from-tab" });
   await getTestDb().page.update({ where: { id: fromTab.id }, data: { deletedAt: new Date(), tabId: null } });
 
+  // The plain address shows the not-found page in the browser; its views and actions only need the answer.
   for (const oldAddress of ["/folders/handbook/removed.md", "/folders/handbook/guides/from-tab.md"]) {
-    for (const query of VIEWS_AND_ACTIONS) {
-      await expectNotFound(page, `${oldAddress}${query}`);
+    await expectNotFound(page, oldAddress);
+    for (const query of VIEWS_AND_ACTIONS.filter((query) => query !== "")) {
+      await expectNotFoundResponse(page.request, `${oldAddress}${query}`);
     }
   }
 });
@@ -204,16 +206,15 @@ test("after renaming a folder its deleted pages open under the new name", async 
   await expectNotFound(page, "/deleted-items/handbook");
 });
 
-test.describe("addresses that are no deleted pages", () => {
+test("addresses that are no deleted pages show the not-found page, and the deleted page itself is found", async ({
+  page,
+}) => {
   const removedId = "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10";
   const keptId = "5a2c1c0e-3f55-4a55-8a42-5d2f0e6a9b11";
   const elsewhereId = "9c4d2b7e-1a3f-4c5d-8e6f-7a8b9c0d1e22";
-
-  test.beforeEach(async () => {
-    await createPage({ id: removedId, folder: handbook, name: "removed", deletedAt: new Date() });
-    await createPage({ id: keptId, folder: handbook, name: "kept" });
-    await createPage({ id: elsewhereId, folder: await createFolder({ name: "other" }), deletedAt: new Date() });
-  });
+  await createPage({ id: removedId, folder: handbook, name: "removed", deletedAt: new Date() });
+  await createPage({ id: keptId, folder: handbook, name: "kept" });
+  await createPage({ id: elsewhereId, folder: await createFolder({ name: "other" }), deletedAt: new Date() });
 
   for (const address of [
     "/deleted-items",
@@ -235,15 +236,9 @@ test.describe("addresses that are no deleted pages", () => {
     "/deleted-pages/handbook",
     `/deleted-pages/handbook/${removedId}`,
   ]) {
-    test(`${address} shows the not-found page`, async ({ page }) => {
-      await expectNotFound(page, address);
-    });
+    await expectNotFoundResponse(page.request, address);
   }
-
-  test("the deleted page itself is found", async ({ page }) => {
-    const response = await page.goto(`/deleted-items/handbook/${removedId}`);
-    expect(response?.status()).toBe(200);
-  });
+  expect((await page.request.get(`/deleted-items/handbook/${removedId}`)).status()).toBe(200);
 });
 
 test("the deleted pages show who deleted each page and how in columns, and the deleted page in its view", async ({

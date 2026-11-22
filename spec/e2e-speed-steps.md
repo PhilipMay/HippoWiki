@@ -53,7 +53,7 @@ this plan estimates that about 420 s of the summed test time can go.
 ## Checklist
 
 - [x] Missing lower-level tests
-- [ ] Not-found checks through HTTP
+- [x] Not-found checks through HTTP
 - [ ] Access without a login
 - [ ] Changes of other users without a second login
 - [ ] Logins of accounts of their own
@@ -106,9 +106,14 @@ The not-found checks that test how an address is read send a request instead of 
 ### Build
 
 - Add `expectNotFoundResponse(request, address)` to `e2e/support/browser.ts`: it sends a `GET` with the cookies of the
-  page (`page.request`), expects the status 404, and expects the heading "Page not found" in the HTML with its
-  `script` elements removed, because the payload of React Server Components holds the segments of every address. It
-  names the address in each assertion, like `expectNotFound()`.
+  page (`page.request`), expects the status 404 and the HTML of the not-found page in one of the two forms that
+  Next.js sends, in the development and in the production build: for an address that a route answers with
+  `notFound()`, the error shell (`<html id="__next_error__">`), which holds no heading, with the digest of
+  `notFound()` (`NEXT_HTTP_ERROR_FALLBACK;404`) in its payload, from which the browser renders the page; for an
+  address that matches no route, the page rendered on the server, with the heading "Page not found" in the HTML with
+  its `script` elements removed. It names the address in each assertion, like `expectNotFound()`. The heading alone
+  tells nothing apart, because the payload of every page, a found one included, holds the heading of the not-found
+  page.
 - Keep `expectNotFound()` for the cases that show the not-found page in the browser: one in `e2e/pages.spec.ts`,
   with the banner and "Back to folders", and the cases that check what the page shows besides the heading, such as
   the plain title.
@@ -150,7 +155,7 @@ The not-found checks that test how an address is read send a request instead of 
 ### Test
 
 - Unit tests of `expectNotFoundResponse()` are not needed: it has no logic of its own beyond Playwright calls. Check
-  once by hand that it fails for an address that exists and for one that answers 404 without the heading.
+  once by hand that it fails for an address that exists and for one that answers a plain 404, such as a missing file.
 - The complete `npm run test:e2e` runs, because the step changes `e2e/support/`.
 
 ## Access without a login

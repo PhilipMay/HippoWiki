@@ -3,7 +3,7 @@ import type { Page } from "@playwright/test";
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 
 import { KNOWN_USER } from "../prisma/known-users";
-import { collectErrors, expectNotFound } from "./support/browser";
+import { collectErrors, expectNotFound, expectNotFoundResponse } from "./support/browser";
 import {
   createFolder,
   createPage,
@@ -170,8 +170,6 @@ test.describe("the history list", () => {
       "/folders/handbook/intro.md?view=history&before=05",
       "/folders/handbook/intro.md?view=history&before=+5",
       "/folders/handbook/intro.md?view=history&before=2.0",
-      "/folders/handbook/intro.md?view=history&before=6",
-      "/folders/handbook/intro.md?view=history&before=99999999999",
       "/folders/handbook/intro.md?view=history&before=3&before=4",
       "/folders/handbook/intro.md?before=3",
       "/folders/handbook/intro.md?view=history&action=edit",
@@ -181,6 +179,13 @@ test.describe("the history list", () => {
       "/folders/handbook/intro.md?view=history&view=history",
       "/folders/handbook/guides/setup.md?view=history&before=abc",
       "/folders/handbook/guides/setup.md?view=nothing",
+    ]) {
+      await expectNotFoundResponse(page.request, address);
+    }
+    // A before past the newest revision, past any number and a page that does not exist depend on the data.
+    for (const address of [
+      "/folders/handbook/intro.md?view=history&before=6",
+      "/folders/handbook/intro.md?view=history&before=99999999999",
       "/folders/handbook/missing.md?view=history",
     ]) {
       await expectNotFound(page, address);
@@ -268,7 +273,6 @@ test.describe("the view of a revision", () => {
       "/folders/handbook/intro.md?view=revision&revision=0",
       "/folders/handbook/intro.md?view=revision&revision=02",
       "/folders/handbook/intro.md?view=revision&revision=x",
-      "/folders/handbook/intro.md?view=revision&revision=4",
       "/folders/handbook/intro.md?view=revision&revision=1&revision=2",
       "/folders/handbook/intro.md?view=revision&revision=1&format=html",
       "/folders/handbook/intro.md?view=revision&revision=1&format=",
@@ -277,8 +281,10 @@ test.describe("the view of a revision", () => {
       "/folders/handbook/intro.md?revision=1",
       "/folders/handbook/intro.md?action=edit&format=raw",
     ]) {
-      await expectNotFound(page, address);
+      await expectNotFoundResponse(page.request, address);
     }
+    // A revision the page does not have depends on the data.
+    await expectNotFound(page, "/folders/handbook/intro.md?view=revision&revision=4");
   });
 });
 
@@ -377,13 +383,14 @@ test.describe("comparing revisions", () => {
       "/folders/handbook/intro.md?view=compare&from=&to=2",
       "/folders/handbook/intro.md?view=compare&from=0&to=2",
       "/folders/handbook/intro.md?view=compare&from=x&to=2",
-      "/folders/handbook/intro.md?view=compare&from=1&to=6",
       "/folders/handbook/intro.md?view=compare&from=1&from=2&to=3",
       "/folders/handbook/intro.md?view=compare&from=1&to=2&revision=1",
       "/folders/handbook/intro.md?view=revision&revision=2&from=1",
     ]) {
-      await expectNotFound(page, address);
+      await expectNotFoundResponse(page.request, address);
     }
+    // A number the page does not have depends on the data.
+    await expectNotFound(page, "/folders/handbook/intro.md?view=compare&from=1&to=6");
   });
 });
 
@@ -439,7 +446,7 @@ test.describe("the history of a deleted page", () => {
       `${address}?action=restore&revision=1`,
       `${address}?view=compare&from=1`,
     ]) {
-      await expectNotFound(page, notFoundAddress);
+      await expectNotFoundResponse(page.request, notFoundAddress);
     }
   });
 
@@ -447,8 +454,11 @@ test.describe("the history of a deleted page", () => {
     test(`a ${role} gets the not-found page at the history of a deleted page`, async ({ page }) => {
       const old = await deletedPage(role);
 
-      for (const view of ["view=history", "view=revision&revision=1", "view=compare&from=1&to=2"]) {
-        await expectNotFound(page, `/deleted-items/handbook/${old.id}?${view}`);
+      const address = `/deleted-items/handbook/${old.id}`;
+
+      await expectNotFound(page, `${address}?view=history`);
+      for (const view of ["view=revision&revision=1", "view=compare&from=1&to=2"]) {
+        await expectNotFoundResponse(page.request, `${address}?${view}`);
       }
     });
   }

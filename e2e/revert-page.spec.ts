@@ -5,7 +5,7 @@ import { CONTENT_MAX_TABLE_CELLS } from "@/features/pages/limits";
 import { CONTENT_TABLE_CELLS_MESSAGE } from "@/features/pages/schema";
 
 import { KNOWN_USER } from "../prisma/known-users";
-import { collectErrors, expectNotFound } from "./support/browser";
+import { collectErrors, expectNotFound, expectNotFoundResponse } from "./support/browser";
 import {
   createFolder,
   createPage,
@@ -117,14 +117,15 @@ test("the newest revision and an older one with the content of the page offer no
     "/folders/handbook/intro.md?action=revert",
     "/folders/handbook/intro.md?action=revert&revision=",
     "/folders/handbook/intro.md?action=revert&revision=0",
-    "/folders/handbook/intro.md?action=revert&revision=5",
     "/folders/handbook/intro.md?action=revert&revision=1&revision=3",
     "/folders/handbook/intro.md?action=revert&revision=1&view=revision",
     "/folders/handbook/intro.md?action=revert&revision=1&format=raw",
     "/folders/handbook/intro.md?action=edit&revision=1",
   ]) {
-    await expectNotFound(page, address);
+    await expectNotFoundResponse(page.request, address);
   }
+  // A revision the page does not have depends on the data.
+  await expectNotFound(page, "/folders/handbook/intro.md?action=revert&revision=5");
 });
 
 test("a revert opened before another user's save is refused with who changed the page, how and when, and the page keeps that save", async ({

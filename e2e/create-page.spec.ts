@@ -4,7 +4,7 @@ import { PLACE_FIELD } from "@/features/pages/fields";
 import { CONTENT_MAX_DEPTH } from "@/features/pages/limits";
 
 import { KNOWN_USER } from "../prisma/known-users";
-import { by, collectErrors, expectNotFound } from "./support/browser";
+import { by, collectErrors } from "./support/browser";
 import { createFolder, createPage, createTab, createUser, getTestDb, resetTestDatabase } from "./support/database";
 import { contentEditor, expectContent, fillContent } from "./support/editor";
 import { expect, test } from "./support/test";
@@ -399,18 +399,6 @@ test.describe("the place of the new page", () => {
     await expect(page).toHaveURL("/folders/handbook/meetings/changed.md");
     expect(errors).toEqual([]);
   });
-
-  for (const query of [
-    "action=new&name=FAQ",
-    "action=new&name=",
-    "action=new&name=faq&name=faq",
-    "name=faq",
-    "action=rename&name=faq",
-  ]) {
-    test(`/folders/handbook/guides?${query} shows the not-found page`, async ({ page }) => {
-      await expectNotFound(page, `/folders/handbook/guides?${query}`);
-    });
-  }
 
   test("choosing a tab on the folder address creates the page in that tab", async ({ page }) => {
     const errors = collectErrors(page);

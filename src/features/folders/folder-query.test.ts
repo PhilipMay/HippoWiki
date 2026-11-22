@@ -195,9 +195,11 @@ describe("tabAddressOf", () => {
 
   it.each<SearchParams>([
     { action: "new", name: "Faq" },
+    { action: "new", name: "FAQ" },
     { action: "new", name: "" },
     { action: "new", name: ["faq", "faq"] },
     { action: "delete", name: "faq" },
+    { action: "rename", name: "faq" },
     { name: "faq" },
   ])("shows the not-found page for the preset name in %o", (searchParams) => {
     expect(tabAddressOf(manager, searchParams, true)).toBeNull();

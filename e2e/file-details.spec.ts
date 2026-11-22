@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import type { Page } from "@playwright/test";
 import sharp from "sharp";
 
-import { collectErrors, expectNotFound } from "./support/browser";
+import { collectErrors, expectNotFound, expectNotFoundResponse } from "./support/browser";
 import {
   createFile,
   createFolder,
@@ -149,20 +149,13 @@ test("a page that shows the file can be deleted, and the file stays", async ({ p
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(["diagram.png"]);
 });
 
-test("the details page shows the not-found page for a missing file, a deleted one and any action", async ({ page }) => {
+// The actions and views of a file address are read by `fileAddressOf()`, whose unit tests cover them.
+test("the details page shows the not-found page for a file in another place and a deleted one", async ({ page }) => {
   await createFile({ tab: guides, name: "diagram.png" });
   await createFile({ folder: handbook, name: "gone.png", deletedAt: new Date() });
 
-  for (const address of [
-    "/folders/handbook/diagram.png",
-    "/folders/handbook/guides/missing.png",
-    "/folders/handbook/gone.png",
-    "/folders/handbook/guides/Diagram.png",
-    "/folders/handbook/guides/diagram.jpeg",
-    "/folders/handbook/guides/diagram.png?action=restore",
-    "/folders/handbook/guides/diagram.png?view=history",
-  ]) {
-    await expectNotFound(page, address);
+  for (const address of ["/folders/handbook/diagram.png", "/folders/handbook/gone.png"]) {
+    await expectNotFoundResponse(page.request, address);
   }
 });
 
@@ -243,12 +236,6 @@ test.describe("new versions and revert", () => {
     await expect(page.getByRole("main").getByRole("link", { name: "Upload new version" })).toHaveCount(0);
     await expectNotFound(page, "/folders/handbook/guides/diagram.png?action=upload-version");
     await expectNotFound(page, "/folders/handbook/guides/diagram.png?action=revert&version=1");
-  });
-
-  test("a revert to the current version or to one that does not exist is not found", async ({ page }) => {
-    await expectNotFound(page, "/folders/handbook/guides/diagram.png?action=revert&version=2");
-    await expectNotFound(page, "/folders/handbook/guides/diagram.png?action=revert&version=3");
-    await expectNotFound(page, "/folders/handbook/guides/diagram.png?action=revert");
   });
 
   test("a new version uploaded while the revert dialog is open makes the revert show the message", async ({ page }) => {

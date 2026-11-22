@@ -2,7 +2,7 @@ import type { Page } from "@playwright/test";
 
 import { KNOWN_USER } from "../prisma/known-users";
 import { ADMIN_STORAGE_STATE, becomeUser } from "./support/auth";
-import { by, collectErrors, expectNotFound } from "./support/browser";
+import { by, collectErrors, expectNotFound, expectNotFoundResponse } from "./support/browser";
 import { createFolder, createPage, createTab, createUser, getTestDb, resetTestDatabase } from "./support/database";
 import { expect, test } from "./support/test";
 
@@ -285,21 +285,6 @@ test("the rename dialog of a folder keeps Save disabled, and Enter without effec
   expect(errors).toEqual([]);
 });
 
-test("an unknown folder shows the not-found page", async ({ page }) => {
-  await createFolder({ name: "existing" });
-
-  await expectNotFound(page, "/folders/no-such-folder");
-  await expect(page.getByRole("banner")).toBeVisible();
-});
-
-for (const name of ["Bad_Name", "Existing", "existing--folder", "existing.md"]) {
-  test(`the malformed folder name "${name}" shows the not-found page`, async ({ page }) => {
-    await createFolder({ name: "existing" });
-
-    await expectNotFound(page, `/folders/${name}`);
-  });
-}
-
 test("an invalid query string shows the not-found page under the plain title", async ({ page }) => {
   const folder = await createFolder({ name: "existing" });
   const tab = await createTab({ folder, name: "guides" });
@@ -320,23 +305,31 @@ test("an invalid query string shows the not-found page under the plain title", a
   }
 });
 
-for (const address of [
-  "/folders?action=rename",
-  "/folders?action=delete",
-  "/folders?action=",
-  "/folders?action=new&action=new",
-  "/folders/existing?action=edit",
-  "/folders/existing?action=delete",
-  "/folders/existing?action=rename&action=rename",
-  "/folders/no-such-folder?action=rename",
-]) {
-  test(`the action in ${address} shows the not-found page`, async ({ page }) => {
-    await createFolder({ name: "existing" });
+test("an unknown or malformed folder and an action an address does not have show the not-found page", async ({
+  page,
+}) => {
+  await createFolder({ name: "existing" });
 
-    await expectNotFound(page, address);
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-  });
-}
+  for (const address of [
+    // An unknown folder and malformed folder names.
+    "/folders/no-such-folder",
+    "/folders/Bad_Name",
+    "/folders/Existing",
+    "/folders/existing--folder",
+    "/folders/existing.md",
+    // Actions that the address does not have.
+    "/folders?action=rename",
+    "/folders?action=delete",
+    "/folders?action=",
+    "/folders?action=new&action=new",
+    "/folders/existing?action=edit",
+    "/folders/existing?action=delete",
+    "/folders/existing?action=rename&action=rename",
+    "/folders/no-such-folder?action=rename",
+  ]) {
+    await expectNotFoundResponse(page.request, address);
+  }
+});
 
 test("cancelling the new folder dialog returns to the folder list", async ({ page }) => {
   const errors = collectErrors(page);

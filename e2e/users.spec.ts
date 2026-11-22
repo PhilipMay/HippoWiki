@@ -2,7 +2,7 @@ import type { Page } from "@playwright/test";
 
 import { KNOWN_ADMIN, KNOWN_USER } from "../prisma/known-users";
 import { ADMIN_STORAGE_STATE, becomeUser, NO_STORAGE_STATE, submitLogin, USER_STORAGE_STATE } from "./support/auth";
-import { collectErrors, expectNotFound } from "./support/browser";
+import { collectErrors, expectNotFound, expectNotFoundResponse } from "./support/browser";
 import { createUser, getTestDb, resetTestDatabase } from "./support/database";
 import { expect, hydrating, test } from "./support/test";
 
@@ -62,18 +62,20 @@ test.describe("the admin", () => {
     await expect(userRows(page)).toHaveText([new RegExp(`^${KNOWN_ADMIN.name}`), new RegExp(`^${KNOWN_USER.name}`)]);
   });
 
-  for (const address of [
-    "/users?action=anything",
-    "/users?action=new",
-    "/users?view=all",
-    "/users?action=create&action=create",
-    "/users?action=create&view=all",
-  ]) {
-    test(`${address} shows the not-found page`, async ({ page }) => {
-      await expectNotFound(page, address);
-      await expect(page.getByRole("list", { name: "Users" })).toHaveCount(0);
-    });
-  }
+  test("unknown actions and views, and repeated or mixed ones, show the not-found page", async ({ page }) => {
+    // In the browser once: the not-found page shows nothing of the list.
+    await expectNotFound(page, "/users?action=anything");
+    await expect(page.getByRole("list", { name: "Users" })).toHaveCount(0);
+
+    for (const address of [
+      "/users?action=new",
+      "/users?view=all",
+      "/users?action=create&action=create",
+      "/users?action=create&view=all",
+    ]) {
+      await expectNotFoundResponse(page.request, address);
+    }
+  });
 });
 
 /**
@@ -455,18 +457,15 @@ test.describe("a user", () => {
     expect(errors).toEqual([]);
   });
 
-  test("gets the not-found page for the New user dialog", async ({ page }) => {
+  test("gets the not-found page for the New user dialog and for unknown actions and views", async ({ page }) => {
     await expectNotFound(page, "/users?action=create");
     await expect(page.getByRole("list", { name: "Users" })).toHaveCount(0);
     await expect(page.getByRole("dialog")).toHaveCount(0);
-  });
 
-  for (const address of ["/users?action=anything", "/users?view=all"]) {
-    test(`${address} shows the not-found page`, async ({ page }) => {
-      await expectNotFound(page, address);
-      await expect(page.getByRole("list", { name: "Users" })).toHaveCount(0);
-    });
-  }
+    for (const address of ["/users?action=anything", "/users?view=all"]) {
+      await expectNotFoundResponse(page.request, address);
+    }
+  });
 
   test("has the menu entry Users, which leads to the list", async ({ page }) => {
     await page.goto("/folders");

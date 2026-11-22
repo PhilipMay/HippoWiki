@@ -5,7 +5,7 @@ import { CONTENT_MAX_LENGTH, CONTENT_MAX_TABLE_CELLS } from "@/features/pages/li
 
 import { KNOWN_USER } from "../prisma/known-users";
 import { ADMIN_STORAGE_STATE, becomeUser, logInElsewhere } from "./support/auth";
-import { by, collectErrors, expectNotFound } from "./support/browser";
+import { by, collectErrors, expectNotFoundResponse } from "./support/browser";
 import {
   createFolder,
   createFolderRole,
@@ -293,7 +293,7 @@ test("editing an unknown page or a page address without .md shows the not-found 
     "/folders/handbook/existing-page?action=edit",
     "/folders/handbook/Bad_Name.md?action=edit",
   ]) {
-    await expectNotFound(page, address);
+    await expectNotFoundResponse(page.request, address);
   }
 });
 
@@ -629,7 +629,7 @@ test.describe("a page changed after the editor was opened", () => {
       "/folders/team/guides/plan.md?notice=changed",
       "/folders/team/guides/plan.md?action=edit&notice=other",
     ]) {
-      await expectNotFound(page, address);
+      await expectNotFoundResponse(page.request, address);
     }
   });
 });

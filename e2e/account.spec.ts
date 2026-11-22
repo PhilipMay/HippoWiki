@@ -2,7 +2,7 @@ import type { Page } from "@playwright/test";
 
 import { KNOWN_ADMIN, KNOWN_USER } from "../prisma/known-users";
 import { ADMIN_STORAGE_STATE, NO_STORAGE_STATE, submitLogin } from "./support/auth";
-import { collectErrors, expectNotFound } from "./support/browser";
+import { collectErrors, expectNotFound, expectNotFoundResponse } from "./support/browser";
 import {
   createFolder,
   createFolderRole,
@@ -58,12 +58,6 @@ test("a user without apps sees the user name and that no app is connected; the n
   await expect(page.getByText(/\/mcp|connect an app|token|scope/i)).toHaveCount(0);
   await expect(page.getByRole("link", { name: "New token" })).toHaveCount(0);
   expect(errors).toEqual([]);
-});
-
-test("creating a token is not found", async ({ page }) => {
-  await expectNotFound(page, "/account?action=create");
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  expect(await getTestDb().oAuthGrant.count()).toBe(0);
 });
 
 test("apps are listed newest first with their name, connection time, expiry or Expired, and last use or never", async ({
@@ -248,40 +242,24 @@ test("an app that was revoked in the meantime shows the not-found page", async (
   await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
 });
 
-test.describe("addresses that are not found", () => {
-  test("the former address with token= of an own app", async ({ page }) => {
-    const { grant } = await createGrant({ owner: KNOWN_USER });
+test("addresses that are not found: creating a token, the former token=, the app of another user, an app without revoke and malformed ones", async ({
+  page,
+}) => {
+  const { grant: own } = await createGrant({ owner: KNOWN_USER });
+  const bob = await createUser({ name: "bob", mustChangePassword: false });
+  const { grant: bobs } = await createGrant({ owner: bob, name: "Bob's connector" });
 
-    await expectNotFound(page, `/account?action=revoke&token=${grant.id}`);
-
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-    await expectNotFound(page, `/account?token=${grant.id}`);
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-    expect(await getTestDb().oAuthGrant.count()).toBe(1);
-  });
-
-  test("the app of another user in the revoke address", async ({ page }) => {
-    const bob = await createUser({ name: "bob", mustChangePassword: false });
-    const { grant } = await createGrant({ owner: bob, name: "Bob's connector" });
-
-    await expectNotFound(page, `/account?action=revoke&app=${grant.id}`);
-
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-    await expect(page.getByText("Bob's connector")).toHaveCount(0);
-    expect(await getTestDb().oAuthGrant.count()).toBe(1);
-  });
-
-  test("an app without the action revoke", async ({ page }) => {
-    const { grant } = await createGrant({ owner: KNOWN_USER });
-
-    await expectNotFound(page, `/account?app=${grant.id}`);
-
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-    await expectNotFound(page, `/account?action=create&app=${grant.id}`);
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-  });
+  // In the browser once: the not-found page opens no dialog and shows nothing of the app.
+  await expectNotFound(page, `/account?action=revoke&app=${bobs.id}`);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByText("Bob's connector")).toHaveCount(0);
 
   for (const address of [
+    "/account?action=create",
+    `/account?action=revoke&token=${own.id}`,
+    `/account?token=${own.id}`,
+    `/account?app=${own.id}`,
+    `/account?action=create&app=${own.id}`,
     "/account?action=revoke&app=not-a-uuid",
     // A well-formed id that no app has.
     "/account?action=revoke&app=6f0c1a2b-3d4e-4f50-8a1b-2c3d4e5f6a7b",
@@ -290,11 +268,9 @@ test.describe("addresses that are not found", () => {
     "/account?view=all",
     "/account?action=revoke&action=revoke",
   ]) {
-    test(address, async ({ page }) => {
-      await expectNotFound(page, address);
-      await expect(page.getByRole("dialog")).toHaveCount(0);
-    });
+    await expectNotFoundResponse(page.request, address);
   }
+  expect(await getTestDb().oAuthGrant.count()).toBe(2);
 });
 
 test("a user sees only their own apps, also when another user connects one", async ({ page, request, browser }) => {
@@ -353,19 +329,21 @@ test.describe("an admin", () => {
     const { grant: own } = await createGrant({ owner: KNOWN_ADMIN, name: "Admin connector" });
     const { grant: users } = await createGrant({ owner: KNOWN_USER, name: "Alice's connector" });
 
+    // In the browser once: the not-found page opens no dialog and shows nothing of the app.
+    await expectNotFound(page, `/account?action=revoke&app=${users.id}`);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page.getByText("Alice's connector")).toHaveCount(0);
+
     for (const address of [
       "/account?action=create",
       "/account?action=revoke",
       `/account?action=revoke&app=${own.id}`,
-      `/account?action=revoke&app=${users.id}`,
       `/account?app=${own.id}`,
       `/account?action=revoke&token=${own.id}`,
       "/account?view=all",
     ]) {
-      await expectNotFound(page, address);
-      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await expectNotFoundResponse(page.request, address);
     }
-    await expect(page.getByText("Alice's connector")).toHaveCount(0);
     expect(await getTestDb().oAuthGrant.count()).toBe(2);
   });
 });

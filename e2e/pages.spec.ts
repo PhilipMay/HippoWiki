@@ -1,6 +1,6 @@
 import type { Locator } from "@playwright/test";
 
-import { collectErrors, expectNotFound } from "./support/browser";
+import { collectErrors, expectNotFound, expectNotFoundResponse } from "./support/browser";
 import { createFolder, createPage, createUser, resetTestDatabase } from "./support/database";
 import { expectContent } from "./support/editor";
 import { expect, test } from "./support/test";
@@ -269,44 +269,48 @@ test("the same page name in two folders gives two pages, each at its own address
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(["Archive overview"]);
 });
 
-for (const address of [
-  // An unknown page, and a page address without or with a wrong suffix.
-  "/folders/handbook/no-such-page.md",
-  "/folders/handbook/existing-page",
-  "/folders/handbook/existing-page.MD",
-  "/folders/handbook/existing-page.Md",
-  "/folders/handbook/existing-page.md.md",
-  "/folders/handbook/existing-page.markdown",
-  // Malformed names.
-  "/folders/handbook/Existing-Page.md",
-  "/folders/handbook/existing--page.md",
-  "/folders/handbook/.md",
-  "/folders/Handbook/existing-page.md",
-  // The page of another folder, and an unknown folder.
-  "/folders/other/existing-page.md",
-  "/folders/no-such-folder/existing-page.md",
-  // Unknown and repeated actions.
-  "/folders/handbook/existing-page.md?action=restore",
-  "/folders/handbook/existing-page.md?action=new",
-  "/folders/handbook/existing-page.md?action=",
-  "/folders/handbook/existing-page.md?action=edit&action=edit",
-  "/folders/handbook/existing-page?action=edit",
-  // Page addresses outside `/folders`.
-  "/pages",
-  "/pages/new",
-  "/pages/existing-page",
-  "/pages/existing-page/edit",
-]) {
-  test(`${address} shows the not-found page`, async ({ page }) => {
-    const folder = await createFolder({ name: "handbook" });
-    await createFolder({ name: "other" });
-    await createPage({ folder, name: "existing-page", title: "Existing page" });
+test("the not-found page shows the banner of the app and leads back to the folders", async ({ page }) => {
+  const folder = await createFolder({ name: "handbook" });
+  await createPage({ folder, name: "existing-page", title: "Existing page" });
 
-    await expectNotFound(page, address);
-    await expect(page.getByRole("banner")).toBeVisible();
-    await expect(page.getByRole("link", { name: "Back to folders" })).toHaveAttribute("href", "/folders");
-  });
-}
+  await expectNotFound(page, "/folders/handbook/no-such-page.md");
+  await expect(page.getByRole("banner")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Back to folders" })).toHaveAttribute("href", "/folders");
+});
+
+test("unknown, malformed and misplaced page addresses show the not-found page", async ({ page }) => {
+  const folder = await createFolder({ name: "handbook" });
+  await createFolder({ name: "other" });
+  await createPage({ folder, name: "existing-page", title: "Existing page" });
+
+  for (const address of [
+    // An unknown page, and a page address without or with a wrong suffix.
+    "/folders/handbook/no-such-page.md",
+    "/folders/handbook/existing-page",
+    "/folders/handbook/existing-page.MD",
+    "/folders/handbook/existing-page.Md",
+    "/folders/handbook/existing-page.md.md",
+    "/folders/handbook/existing-page.markdown",
+    // Malformed names.
+    "/folders/handbook/Existing-Page.md",
+    "/folders/handbook/existing--page.md",
+    "/folders/handbook/.md",
+    "/folders/Handbook/existing-page.md",
+    // The page of another folder, and an unknown folder.
+    "/folders/other/existing-page.md",
+    "/folders/no-such-folder/existing-page.md",
+    // Unknown and repeated actions.
+    "/folders/handbook/existing-page.md?action=restore",
+    "/folders/handbook/existing-page.md?action=new",
+    "/folders/handbook/existing-page.md?action=",
+    "/folders/handbook/existing-page.md?action=edit&action=edit",
+    "/folders/handbook/existing-page?action=edit",
+    // A page address outside `/folders`, a route the app no longer has.
+    "/pages/existing-page",
+  ]) {
+    await expectNotFoundResponse(page.request, address);
+  }
+});
 
 test("a page shows when, by whom and how it was last changed", async ({ page }) => {
   const bob = await createUser({ name: "bob" });

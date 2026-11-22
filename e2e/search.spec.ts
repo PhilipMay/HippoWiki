@@ -2,7 +2,7 @@ import type { Page } from "@playwright/test";
 
 import { KNOWN_USER } from "../prisma/known-users";
 import { ADMIN_STORAGE_STATE, becomeUser, logInElsewhere } from "./support/auth";
-import { collectErrors, expectNotFound } from "./support/browser";
+import { collectErrors, expectNotFound, expectNotFoundResponse } from "./support/browser";
 import {
   createFile,
   createFolder,
@@ -138,31 +138,11 @@ test.describe("the address of the results", () => {
     await expectNotFound(page, results("backup"));
   });
 
+  // The words of every other address are read by `folderAddressOf()`, `tabAddressOf()`, `pageAddressOf()` and
+  // `deletedPageAddressOf()`, whose unit tests cover them; these two routes read them in their page.
   test("shows the not-found page for words that do not belong to the address", async ({ page }) => {
-    const guides = await createTab({ folder: handbook, name: "guides" });
-    await createPage({ folder: handbook, name: "overview", content: "# Overview" });
-    await createPage({ tab: guides, name: "setup", content: "# Setup" });
-    const deleted = await createPage({ folder: handbook, name: "old", content: "# Old", deletedAt: new Date() });
-
-    for (const address of [
-      "/folders/handbook?view=search",
-      "/folders/handbook?view=search&q=",
-      "/folders/handbook?view=search&q=%20%20",
-      "/folders/handbook?view=search&q=backup&q=server",
-      "/folders/handbook?view=search&q=backup&action=new",
-      "/folders/handbook?view=search&q=backup&action=rename",
-      "/folders?q=backup",
-      "/folders/handbook?q=backup",
-      "/folders/handbook?view=all&q=backup",
-      "/folders/handbook/guides?q=backup",
-      "/folders/handbook/guides?view=search&q=backup",
-      "/folders/handbook/overview.md?q=backup",
-      "/folders/handbook/overview.md?view=history&q=backup",
-      "/folders/handbook/guides/setup.md?q=backup",
-      "/deleted-items/handbook?q=backup",
-      `/deleted-items/handbook/${deleted.id}?q=backup`,
-    ]) {
-      await expectNotFound(page, address);
+    for (const address of ["/folders?q=backup", "/deleted-items/handbook?q=backup"]) {
+      await expectNotFoundResponse(page.request, address);
     }
   });
 });

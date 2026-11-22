@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { KNOWN_USER } from "../prisma/known-users";
-import { collectErrors, expectNotFound } from "./support/browser";
+import { collectErrors, expectNotFoundResponse } from "./support/browser";
 import { createFolder, createPage, createTab, createUser, resetTestDatabase } from "./support/database";
 import { fillContent } from "./support/editor";
 import { expect, test } from "./support/test";
@@ -110,31 +110,31 @@ test("the list of all pages is reached from the folder and left through the brea
   await expect(page.getByRole("list", { name: "Contents" }).getByRole("link")).toHaveText([/^guides/]);
 });
 
-for (const address of [
-  // Unknown, empty and repeated views.
-  "/folders/handbook?view=some",
-  "/folders/handbook?view=All",
-  "/folders/handbook?view=",
-  "/folders/handbook?view=all&view=all",
-  // A view has no actions.
-  "/folders/handbook?view=all&action=new",
-  "/folders/handbook?view=all&action=rename",
-  "/folders/handbook?view=all&action=delete",
-  // Addresses without views.
-  "/folders?view=all",
-  "/folders/handbook/guides?view=all",
-  "/folders/handbook/in-folder.md?view=all",
-  "/folders/handbook/guides/in-guides.md?view=all",
-  "/folders/no-such-folder?view=all",
-]) {
-  test(`${address} shows the not-found page`, async ({ page }) => {
-    const guides = await createTab({ folder: handbook, name: "guides" });
-    await createPage({ tab: guides, name: "in-guides", title: "In guides" });
-    await createPage({ folder: handbook, name: "in-folder", title: "In folder" });
+test("unknown views, a view with an action and addresses without views show the not-found page", async ({ page }) => {
+  const guides = await createTab({ folder: handbook, name: "guides" });
+  await createPage({ tab: guides, name: "in-guides", title: "In guides" });
+  await createPage({ folder: handbook, name: "in-folder", title: "In folder" });
 
-    await expectNotFound(page, address);
-  });
-}
+  for (const address of [
+    // Unknown, empty and repeated views.
+    "/folders/handbook?view=some",
+    "/folders/handbook?view=All",
+    "/folders/handbook?view=",
+    "/folders/handbook?view=all&view=all",
+    // A view has no actions.
+    "/folders/handbook?view=all&action=new",
+    "/folders/handbook?view=all&action=rename",
+    "/folders/handbook?view=all&action=delete",
+    // Addresses without views.
+    "/folders?view=all",
+    "/folders/handbook/guides?view=all",
+    "/folders/handbook/in-folder.md?view=all",
+    "/folders/handbook/guides/in-guides.md?view=all",
+    "/folders/no-such-folder?view=all",
+  ]) {
+    await expectNotFoundResponse(page.request, address);
+  }
+});
 
 test("the list of all pages shows who changed each page last and how", async ({ page }) => {
   const errors = collectErrors(page);
