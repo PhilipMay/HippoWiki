@@ -137,8 +137,9 @@ const eslintConfig = defineConfig([
     },
   },
   {
-    // The modules that validate the environment and create the logger read process.env themselves.
-    files: ["src/lib/env.ts", "src/lib/logger.ts"],
+    // The modules that validate the environment and create the logger read process.env themselves, and the
+    // instrumentation file compares NEXT_RUNTIME in place, where Next.js sees it when it bundles the code.
+    files: ["src/lib/env.ts", "src/lib/logger.ts", "src/instrumentation.ts"],
     rules: {
       "no-restricted-properties": "off",
     },

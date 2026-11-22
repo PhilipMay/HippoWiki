@@ -353,7 +353,9 @@ sandbox`, `X-Content-Type-Options: nosniff`, `Cross-Origin-Resource-Policy: same
   holds also for the reads a write makes before it writes, such as the role of the actor or the user who gets a role:
   `lookUp()` of `src/features/folder-roles/actors.ts` logs such an error under the message of the failed write.
 - The server environment is read through `getServerEnv()` from `src/lib/env.ts`, never directly from `process.env`.
-  `HIPPOWIKI_ADMIN_PASSWORD` is not part of it: only the admin setup script reads it.
+  `HIPPOWIKI_ADMIN_PASSWORD` is not part of it: only the admin setup script reads it. The one exception is
+  `register()` in `src/instrumentation.ts`: it compares `process.env.NEXT_RUNTIME` in place, because Next.js leaves the
+  Node.js-only code out of the Edge bundle only when it sees that comparison where the code is imported.
 - A password and its hash are never logged. A password is checked for its length with a refinement on the length of
   the string, as Better Auth counts it; `.min()` and `.max()` of Zod count code points.
 - Server-side logging goes through the pino `logger` from `src/lib/logger.ts`, not `console`. Errors are logged with
@@ -534,7 +536,8 @@ group of rules is for, and how its config objects are combined. What new code ha
   deliberately not awaited is marked with `void` and a comment saying why.
 - Lint rules hold the conventions above:
   - Imports come in groups separated by a blank line: Node.js modules, packages, `@/` modules, relative paths.
-  - `process.env` is read in `src/` only by `src/lib/env.ts` and `src/lib/logger.ts` (see "Validation and errors").
+  - `process.env` is read in `src/` only by `src/lib/env.ts`, `src/lib/logger.ts` and `src/instrumentation.ts` (see
+    "Validation and errors").
   - Material UI is imported per path (see "UI").
   - No file of `src/` uses `console` (see "Validation and errors"), apart from the client error pages, because the
     pino logger runs only on the server.
