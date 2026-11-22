@@ -314,7 +314,7 @@ test("after the change the user lands on the folder list, and the next login nee
 test("the change logs out a second browser of the same user", async ({ page, browser }) => {
   const user = await logInWithFirstPassword(page);
   const otherContext = await browser.newContext({ storageState: NO_STORAGE_STATE });
-  const otherPage = hydrating(await otherContext.newPage());
+  const otherPage = await hydrating(await otherContext.newPage());
   await logIn(otherPage, "newcomer");
   await expect(otherPage).toHaveURL("/change-password");
   expect(await getTestDb().session.count({ where: { userId: user.id } })).toBe(2);
@@ -336,7 +336,7 @@ test("a form that is submitted in a second tab after the change leads to the fol
   context,
 }) => {
   await logInWithFirstPassword(page);
-  const otherTab = hydrating(await context.newPage());
+  const otherTab = await hydrating(await context.newPage());
   await otherTab.goto("/change-password");
   await submitChange(page, {});
   await expect(page).toHaveURL("/folders");

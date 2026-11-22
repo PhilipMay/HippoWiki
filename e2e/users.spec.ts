@@ -218,7 +218,7 @@ test.describe("the admin, creating a user", () => {
 
     // The new admin, in a browser of their own.
     const adminContext = await browser.newContext({ storageState: NO_STORAGE_STATE });
-    const adminPage = hydrating(await adminContext.newPage());
+    const adminPage = await hydrating(await adminContext.newPage());
     await adminPage.goto("/login");
     await submitLogin(adminPage, "maria", password);
     await expect(adminPage).toHaveURL("/change-password");
@@ -388,7 +388,7 @@ test.describe("the admin, creating a user", () => {
 
     // The new user, in a browser of their own.
     const userContext = await browser.newContext({ storageState: NO_STORAGE_STATE });
-    const userPage = hydrating(await userContext.newPage());
+    const userPage = await hydrating(await userContext.newPage());
     await userPage.goto("/login");
     await submitLogin(userPage, "jane-doe", password);
 

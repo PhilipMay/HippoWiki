@@ -32,7 +32,7 @@ async function logInAsNew(page: Page, type: "user" | "admin" = "user") {
 /** Logs the account in in a browser context of its own, as a second browser of the same person. */
 async function logInSecondBrowser(browser: Browser, name: string, type: "user" | "admin") {
   const context = await browser.newContext({ storageState: NO_STORAGE_STATE });
-  const page = hydrating(await context.newPage());
+  const page = await hydrating(await context.newPage());
   await logIn(page, name);
   await expect(page).toHaveURL(landingOf(type));
   return { context, page };

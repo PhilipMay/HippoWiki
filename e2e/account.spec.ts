@@ -302,7 +302,7 @@ test("a user sees only their own apps, also when another user connects one", asy
   const bob = await createUser({ name: "bob", mustChangePassword: false });
   await createFolderRole({ folder: projects, user: bob, role: "reader" });
   const bobContext = await browser.newContext({ storageState: NO_STORAGE_STATE });
-  const bobPage = hydrating(await bobContext.newPage());
+  const bobPage = await hydrating(await bobContext.newPage());
   await bobPage.goto("/login");
   await submitLogin(bobPage, "bob");
   await expect(bobPage).toHaveURL("/folders");

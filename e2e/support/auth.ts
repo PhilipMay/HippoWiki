@@ -43,7 +43,7 @@ export async function becomeUser(context: BrowserContext, storageState: string):
  */
 export async function logInElsewhere(browser: Browser, name: string): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser.newContext({ storageState: NO_STORAGE_STATE });
-  const page = hydrating(await context.newPage());
+  const page = await hydrating(await context.newPage());
   await logIn(page, name);
   await expect(page).toHaveURL("/folders");
   return { context, page };

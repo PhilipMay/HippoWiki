@@ -28,7 +28,7 @@ Next.js stops before it hydrates, and the test times out waiting for `data-hydra
 
 ## Checklist
 
-- [ ] Wait for the route before a page is used
+- [x] Wait for the route before a page is used
 - [ ] Wrap-up
 
 ## Wait for the route before a page is used

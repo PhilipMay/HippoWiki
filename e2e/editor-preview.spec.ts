@@ -170,7 +170,7 @@ test("the editor starts in the mode last chosen in the browser, and in live prev
 
   // A fresh browser with the same login has no mode stored.
   const fresh = await browser.newContext({ storageState: USER_STORAGE_STATE });
-  const other = hydrating(await fresh.newPage());
+  const other = await hydrating(await fresh.newPage());
   await other.goto("/folders/handbook/other.md?action=edit");
   await editorReady(other);
   await expect(modeButton(other, "Live preview")).toHaveAttribute("aria-pressed", "true");

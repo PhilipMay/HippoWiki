@@ -86,7 +86,7 @@ test("an editor opened on a linking page before the rename has its save refused 
   await page.goto("/folders/handbook/first-week.md?action=edit");
   await fillContent(page, "# First week\n\n[[guides/setup]] and more");
 
-  const other = hydrating(await context.newPage());
+  const other = await hydrating(await context.newPage());
   await other.goto("/folders/handbook/guides/setup.md?action=move-or-rename");
   await moveDialog(other).getByLabel("Name").fill("install");
   await moveDialog(other).getByRole("button", { name: "Save" }).click();

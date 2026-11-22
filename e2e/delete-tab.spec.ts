@@ -253,7 +253,7 @@ test("the second of two dialogs of the same tab says that the tab no longer exis
 }) => {
   const guides = await createTab({ folder: handbook, name: "guides" });
   await createPage({ tab: guides, name: "setup" });
-  const second = hydrating(await context.newPage());
+  const second = await hydrating(await context.newPage());
 
   await page.goto("/folders/handbook/guides?action=delete");
   await second.goto("/folders/handbook/guides?action=delete");

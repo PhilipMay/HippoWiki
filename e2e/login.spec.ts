@@ -292,7 +292,7 @@ async function openLoginFrom(browser: Browser, forwardedFor: string): Promise<Pa
     storageState: NO_STORAGE_STATE,
     extraHTTPHeaders: { "x-forwarded-for": forwardedFor },
   });
-  const page = hydrating(await context.newPage());
+  const page = await hydrating(await context.newPage());
   await page.goto("/login");
   return page;
 }
@@ -424,7 +424,7 @@ test("a user can be logged in in two browsers, and a logout ends only one of the
 }) => {
   await logInHome(page, KNOWN_USER);
   const otherContext = await browser.newContext({ storageState: NO_STORAGE_STATE });
-  const otherPage = hydrating(await otherContext.newPage());
+  const otherPage = await hydrating(await otherContext.newPage());
   await otherPage.goto("/login");
   await submitLogin(otherPage, KNOWN_USER.name, KNOWN_USER.password);
   await expect(otherPage).toHaveURL("/folders");

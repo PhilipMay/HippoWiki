@@ -503,7 +503,7 @@ test.describe("a page changed after the editor was opened", () => {
   // The user's own save in another tab counts like the save of another user.
   test("refuses the save in a second tab after a save in the first", async ({ page, context }) => {
     await createPage({ folder: team, name: "plan", content: "# Plan\n\nFirst draft" });
-    const second = hydrating(await context.newPage());
+    const second = await hydrating(await context.newPage());
 
     await page.goto("/folders/team/plan.md?action=edit");
     await second.goto("/folders/team/plan.md?action=edit");

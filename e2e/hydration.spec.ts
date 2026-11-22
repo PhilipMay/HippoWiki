@@ -102,7 +102,7 @@ test.describe("without a login", () => {
     // The login form needs JavaScript, so a browser with JavaScript logs in and hands its session to one without.
     await createUser({ name: "newcomer" });
     const withJavaScript = await browser.newContext({ javaScriptEnabled: true, storageState: NO_STORAGE_STATE });
-    const loginPage = hydrating(await withJavaScript.newPage());
+    const loginPage = await hydrating(await withJavaScript.newPage());
     await loginPage.goto("/login");
     await submitLogin(loginPage, "newcomer");
     await expect(loginPage).toHaveURL("/change-password");

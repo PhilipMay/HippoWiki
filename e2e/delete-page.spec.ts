@@ -274,7 +274,7 @@ test.describe("a page changed after the dialog was opened", () => {
   // The second of two deletes of the same page finds it deleted, as before.
   test("the second of two deletes of the same page shows that it no longer exists", async ({ page, context }) => {
     await createPage({ folder: team, name: "plan" });
-    const second = hydrating(await context.newPage());
+    const second = await hydrating(await context.newPage());
 
     await page.goto("/folders/team/plan.md?action=delete");
     await second.goto("/folders/team/plan.md?action=delete");

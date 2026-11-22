@@ -250,7 +250,7 @@ test.describe("wrong current passwords", () => {
       storageState: NO_STORAGE_STATE,
       extraHTTPHeaders: { "x-forwarded-for": "192.0.2.30" },
     });
-    const loginPage = hydrating(await visitor.newPage());
+    const loginPage = await hydrating(await visitor.newPage());
     await logIn(loginPage, user.name);
     await expect(loginPage.getByText("Too many failed logins. Please try again in 1 minute.")).toBeVisible();
     await visitor.close();
