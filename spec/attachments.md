@@ -124,8 +124,12 @@ Tests:
 
 - The details page shows a preview of an image, at most as wide as the text, or "Open" for a PDF; the name and place,
   the type, the size, the width and height of an image, the number of versions, the last change with who made it,
-  how and when, the link to copy (`![[…]]` for an image, `[[…]]` for a PDF), the pages that show or link it, and
-  "Open" and "Download" (see "Routes" in `content-structure.md`).
+  how and when, the copy fields, the pages that show or link it, and "Open" and "Download" (see "Routes" in
+  `content-structure.md`).
+- The copy fields hold the texts a page uses for the file: for an image "Embed link" with `![[…]]`, which shows it,
+  then "Wiki link" with `[[…]]`, which only links it; for a PDF only "Wiki link" with `[[…]]`. Each field has a copy
+  button of its own. The target names the file as the wiki links of the folder name it: its name with its extension,
+  with the tab and a `/` before it for a file in a tab. The view of a deleted file shows no copy field.
 - It lists the versions, newest first, each with its number, who stored it, how, when and its size, and opens each one.
 - A Writer, a Manager and an Owner store a new version with "Upload new version", which takes a file of the same type,
   and revert to an earlier version, which stores that version again as the newest one with the actor as its uploader.
@@ -214,6 +218,13 @@ Tests:
   updates on renames work for files as for pages. Rejected: plain Markdown to `/files` addresses, which is not tracked.
 - An image fits the width of the text and opens in a new tab; `![[…]]` of a PDF is a plain link. Rejected for now: a
   caption, an enlarged view, a card or a viewer of a PDF inside the page, which needs the headers relaxed.
+- The details page of an image offers both the embed and the wiki link, so that a page can link an image without
+  showing it, without editing the copied text; the embed comes first, because showing is the more common use of an
+  image. Rejected: only the embed.
+- The copy field of a PDF is labelled "Wiki link", so that the same text has the same label on every details page.
+  Rejected: "Link" for PDFs, which would leave two labels for the same `[[…]]` text. A PDF gets no "Embed link",
+  because `![[…]]` of a PDF is only a link.
+- The copy fields have no hint text; their labels and values say what they do. Rejected: a line under each field.
 - Files are uploaded only from the views of folders and tabs. Rejected for now: uploading from the editor.
 - Files are found by their names; the text of PDFs comes later.
 - AI apps only read the details of files, through `list_folder`, `read_file` and `search_pages`, and `delete_tab`

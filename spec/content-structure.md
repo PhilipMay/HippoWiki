@@ -170,8 +170,9 @@ hold pages directly and have tabs at the same time.
   message at the field it belongs to. A stored upload leads to the details page of the file.
 - The details page of a file shows its place, a preview of an image at most as wide as the text, its type, size, the
   width and height of an image, the number of its versions and its last change, "Open" (the file itself, in a new
-  tab) and "Download", the link to copy into a page (`![[…]]` for an image, `[[…]]` for a PDF), the pages that show
-  or link it (see "Backlinks" in `wiki-links.md`), and its versions,
+  tab) and "Download", the embed link `![[…]]` of an image and the wiki link `[[…]]` of every file to copy into a
+  page (see "The details page and versions" in `attachments.md`), the pages that show or link it (see "Backlinks" in
+  `wiki-links.md`), and its versions,
   newest first, each with its number, when, by whom and how it was uploaded, its size and a link that opens it. A
   Writer also gets "Move or rename", "Upload new version", which takes a file of the same type, and "Revert" at every
   version but the
