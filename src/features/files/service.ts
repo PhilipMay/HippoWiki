@@ -450,6 +450,42 @@ export async function getFileContent(
   return { name: file.name, type: file.type, version, blob };
 }
 
+/** The current version of a file, as a signed link to it names it (`link-service.ts`). */
+export type CurrentFileVersion = {
+  name: string;
+  type: FileType;
+  tab: { name: string } | null;
+  version: { id: string; number: number; size: number };
+};
+
+/**
+ * The current version of the file of the given name at the place, with the name, type and tab of the file, as
+ * `getFile()` finds it. `null` for an admin, if a name is malformed, the actor has no role on the folder or no such
+ * file exists there; a deleted file is never found. It reads no content, so it does not depend on the files directory.
+ */
+export async function getCurrentFileVersion(
+  actor: ContentActor,
+  folderName: string,
+  tabName: string | null,
+  fileName: string,
+): Promise<CurrentFileVersion | null> {
+  const readable = readableFolderWhere(actor);
+  const names = parsedNames(folderName, tabName, fileName);
+  if (!readable || !names) return null;
+  const file = await getDb().file.findFirst({
+    where: placedFileWhere(names.folder, names.tab, names.name, readable),
+    select: {
+      name: true,
+      type: true,
+      tab: { select: { name: true } },
+      versions: { select: { id: true, number: true, size: true }, orderBy: { number: "desc" }, take: 1 },
+    },
+  });
+  const version = file?.versions[0];
+  if (!file || !version) return null;
+  return { name: file.name, type: file.type, tab: file.tab, version };
+}
+
 /** Whether files can be uploaded, and their size limit in bytes: what the views offer and the dialog checks first. */
 export type UploadSettings = { on: boolean; sizeLimit: number };
 

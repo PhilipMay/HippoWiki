@@ -1,4 +1,5 @@
-// The signed links to files that AI apps get through MCP: the key that signs them, and the read of a file by a link.
+// The signed links to files that AI apps get through MCP: the key that signs them, the link that the MCP tool
+// `get_file_download_link` hands out, and the read of a file by a link.
 // A link carries everything needed to check it (`link-token.ts`), so handing one out stores nothing and nothing is
 // cleaned up.
 //
@@ -14,14 +15,16 @@
 
 import { randomBytes } from "node:crypto";
 
-import { inMcp } from "@/features/folder-roles/actors";
-import { checkLinkToken, isWithinLifetime } from "@/features/files/link-token";
-import { getFileContent, type FileContent } from "@/features/files/service";
+import { inMcp, type McpActor } from "@/features/folder-roles/actors";
+import { checkLinkToken, expiryOf, isWithinLifetime, signLinkToken } from "@/features/files/link-token";
+import { getCurrentFileVersion, getFileContent, type FileContent } from "@/features/files/service";
 import { getStore } from "@/features/files/store";
 import { callerOfGrant, type McpCaller } from "@/features/grants/service";
 import { getDb } from "@/lib/db";
 import { getServerEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";
+import type { Result } from "@/lib/result";
+import type { FileType } from "@/features/files/types";
 
 /** The id of the one row of `FileLinkKey`. */
 const KEY_ROW_ID = 1;
@@ -70,6 +73,56 @@ export function forgetLinkKey(): void {
 /** The current time. The one place the service takes it from, so that tests can set the clock. */
 function currentTime(): Date {
   return new Date();
+}
+
+/** A link to the current version of a file, as the MCP tool hands it out: the file, the token and when it expires. */
+export type FileLink = {
+  name: string;
+  tab: string | null;
+  type: FileType;
+  /** The size of the current version in bytes. */
+  size: number;
+  /** The token of the link, which the address of the file carries as its query `token`. */
+  token: string;
+  expiresAt: Date;
+};
+
+/**
+ * `file-not-found`: no such file at the place for the actor, also a deleted one or one of another folder.
+ * `files-off`: the files directory cannot be used, so no link could download anything.
+ */
+export type CreateFileLinkError = { code: "file-not-found" } | { code: "files-off" };
+
+/**
+ * A signed link to the current version of the file of the given name at the place, for the connection of the actor of
+ * MCP. The file is read as `read_file` reads it, so a missing file, a deleted file and a file of another folder are
+ * not found; while the files are off no link is made, because it could only answer 404. The link expires the
+ * lifetime of the server from now, in whole seconds. Nothing is stored: the token carries the grant of the connection,
+ * the id of the version and the expiry, signed with the key of the links.
+ */
+export async function createFileLink(
+  actor: McpActor,
+  folderName: string,
+  tabName: string | null,
+  fileName: string,
+): Promise<Result<FileLink, CreateFileLinkError>> {
+  const file = await getCurrentFileVersion(actor, folderName, tabName, fileName);
+  if (!file) return { ok: false, error: { code: "file-not-found" } };
+  if (!(await getStore()).on) return { ok: false, error: { code: "files-off" } };
+
+  const exp = expiryOf(currentTime(), getServerEnv().HIPPOWIKI_FILE_LINK_LIFETIME);
+  const token = signLinkToken(await getLinkKey(), { grant: actor.connection.grantId, version: file.version.id, exp });
+  return {
+    ok: true,
+    value: {
+      name: file.name,
+      tab: file.tab?.name ?? null,
+      type: file.type,
+      size: file.version.size,
+      token,
+      expiresAt: new Date(exp * 1000),
+    },
+  };
 }
 
 /** The content of a file read by a signed link, and who the link acts for: the user and the connection of its grant. */

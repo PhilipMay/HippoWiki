@@ -11,6 +11,7 @@ import type { z } from "zod";
 
 import { mayDo } from "@/features/folder-roles/roles";
 import type { McpActor } from "@/features/folder-roles/actors";
+import * as linkService from "@/features/files/link-service";
 import * as fileService from "@/features/files/service";
 import { isImageType } from "@/features/files/types";
 import * as folderService from "@/features/folders/service";
@@ -23,6 +24,7 @@ import type {
   deleteTabInput,
   editedPageOutput,
   editPageContentInput,
+  fileDownloadLinkOutput,
   fileOutput,
   listFolderOutput,
   movedPageOutput,
@@ -55,7 +57,15 @@ import {
   SEARCH_TOOL_MAX_RESULTS,
 } from "@/features/search/limits";
 import * as searchService from "@/features/search/service";
-import { deletedItemsPath, fileContentPath, filePath, folderPath, pagePath, tabPath } from "@/lib/addresses";
+import {
+  deletedItemsPath,
+  fileContentPath,
+  fileLinkPath,
+  filePath,
+  folderPath,
+  pagePath,
+  tabPath,
+} from "@/lib/addresses";
 import { logger } from "@/lib/logger";
 import { NAME_MAX_LENGTH } from "@/lib/name-limits";
 
@@ -348,6 +358,45 @@ export async function readFile(
         versions: file.versions.length,
         shownOrLinkedFrom: linking.map((page) => ({ name: page.name, tab: page.tab?.name ?? null, title: page.title })),
       }) satisfies z.infer<typeof readFileOutput>,
+    );
+  });
+}
+
+/** The tool error of a link to a file while the files are off, when no link could download anything. */
+const FILES_OFF = "The file cannot be downloaded: the server of the wiki has no place to keep files.";
+
+/**
+ * The tool `get_file_download_link`: a short-lived signed link to the current version of a file of the folder of the
+ * connection, by its tab, if it is in one, and its name with its extension, which downloads the file without a login
+ * until it expires (`link-service.ts`). A file that `read_file` would not find gets its tool error. The link is the
+ * public URL of the wiki with the address of the file and the token as its only query. Neither the link nor its token
+ * is logged: the log line of the call names only the tab and the file.
+ */
+export async function getFileDownloadLink(
+  options: WikiToolsOptions,
+  input: z.infer<typeof readFileInput>,
+): Promise<CallToolResult> {
+  return run(options, "get_file_download_link", input, async () => {
+    const tab = input.tab ?? null;
+    const link = await linkService.createFileLink(options.actor, options.folder.name, tab, input.file);
+    if (!link.ok) {
+      switch (link.error.code) {
+        case "file-not-found":
+          return fileNotFound(options.folder.name, tab, input.file);
+        case "files-off":
+          return toolError(FILES_OFF);
+      }
+    }
+    const { name, tab: fileTab, type, size, token, expiresAt } = link.value;
+    return result(
+      withNote({
+        name,
+        tab: fileTab,
+        type,
+        size,
+        downloadLink: addressOf(options, fileLinkPath(options.folder.name, fileTab, name, token)),
+        expiresAt: expiresAt.toISOString(),
+      }) satisfies z.infer<typeof fileDownloadLinkOutput>,
     );
   });
 }

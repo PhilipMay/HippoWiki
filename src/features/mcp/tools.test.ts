@@ -1,7 +1,10 @@
+import { randomBytes } from "node:crypto";
+
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { McpActor } from "@/features/folder-roles/actors";
+import { checkLinkToken } from "@/features/files/link-token";
 import { MCP_ROLES, mayDo, type FolderFunction } from "@/features/folder-roles/roles";
 import { createWikiServer, instructionsFor } from "@/features/mcp/server";
 import { ADDRESS_HINT, USER_TEXT_NOTE } from "@/features/mcp/tool-schemas";
@@ -25,6 +28,7 @@ const USER_TEXT_TOOLS = [
   "read_page",
   "search_pages",
   "read_file",
+  "get_file_download_link",
   "create_page",
   "replace_page_content",
   "edit_page_content",
@@ -53,6 +57,9 @@ const mocks = vi.hoisted(() => ({
   listPagesLinkingToFile: vi.fn(),
   listAllFolderFiles: vi.fn(),
   getFile: vi.fn(),
+  getCurrentFileVersion: vi.fn(),
+  getStore: vi.fn(),
+  findLinkKey: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
@@ -78,7 +85,18 @@ vi.mock("@/features/pages/links-service", () => ({
   listLinkingPages: mocks.listLinkingPages,
   listPagesLinkingToFile: mocks.listPagesLinkingToFile,
 }));
-vi.mock("@/features/files/service", () => ({ listAllFolderFiles: mocks.listAllFolderFiles, getFile: mocks.getFile }));
+vi.mock("@/features/files/service", () => ({
+  listAllFolderFiles: mocks.listAllFolderFiles,
+  getFile: mocks.getFile,
+  getCurrentFileVersion: mocks.getCurrentFileVersion,
+}));
+// The links to files are made by the real links service, with the key of the links from a mocked database.
+vi.mock("@/features/files/store", () => ({ getStore: mocks.getStore }));
+vi.mock("@/lib/db", () => ({ getDb: () => ({ fileLinkKey: { findUnique: mocks.findLinkKey } }) }));
+vi.mock("@/lib/env", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/env")>()),
+  getServerEnv: () => ({ HIPPOWIKI_FILE_LINK_LIFETIME: LINK_LIFETIME }),
+}));
 vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, error: mocks.error } }));
 // The real parse, watched, to see whether the content was parsed.
 vi.mock("@/features/pages/markdown", async (importOriginal) => {
@@ -87,6 +105,21 @@ vi.mock("@/features/pages/markdown", async (importOriginal) => {
 });
 
 const PUBLIC_URL = "https://wiki.example.com";
+/** The lifetime of the links to files in the environment of the tests, in seconds. */
+const LINK_LIFETIME = 600;
+/** The key of the links to files in the mocked database. */
+const LINK_KEY = randomBytes(32);
+const VERSION_ID = "5e7a9c1b-3d5f-4a7c-9e1b-3d5f7a9c1b20";
+
+/** The current version of a file as `getCurrentFileVersion()` of the files service returns it. */
+function currentVersionOf(name: string, tab: string | null) {
+  return {
+    name,
+    type: name.endsWith(".pdf") ? "pdf" : "png",
+    tab: tab === null ? null : { name: tab },
+    version: { id: VERSION_ID, number: 2, size: 4096 },
+  };
+}
 const FOLDER_ID = "0b0e7a52-6a4f-4a3e-9d0b-0c1f4f1f7a10";
 const FOLDER = { id: FOLDER_ID, name: "handbook" };
 const CHANGED = new Date("2026-03-01T12:00:00.000Z");
@@ -185,9 +218,26 @@ beforeEach(() => {
   mocks.listLinkingPages.mockResolvedValue([]);
   mocks.listPagesLinkingToFile.mockResolvedValue([]);
   mocks.listAllFolderFiles.mockResolvedValue([]);
+  mocks.getStore.mockResolvedValue({ on: true, dir: "/srv/files" });
+  mocks.findLinkKey.mockResolvedValue({ secret: LINK_KEY.toString("hex") });
 });
 
 describe("the instructions", () => {
+  it.each(["reader", "writer", "manager"] as const)(
+    "of a %s connection name get_file_download_link and warn against writing its link into a page",
+    (role) => {
+      const instructions = instructionsFor("handbook", role);
+
+      expect(instructions).toContain(
+        "get_file_download_link gives a link that downloads one file for a few minutes; never write such a link " +
+          "into a page, because it expires and lets anyone who reads it download the file.",
+      );
+      expect(instructions).toContain(
+        "To download an image or PDF, get a short-lived link with get_file_download_link.",
+      );
+    },
+  );
+
   it("name the folder and the role of the connection, and tell a Reader that it cannot change the folder", async () => {
     const answer = await send({
       method: "initialize",
@@ -276,7 +326,13 @@ describe("the read tools", () => {
       inputSchema: { properties?: Record<string, { description?: string }>; required?: string[] };
       annotations: Record<string, boolean>;
     }[];
-    expect(tools.map((tool) => tool.name)).toEqual(["list_folder", "read_page", "search_pages", "read_file"]);
+    expect(tools.map((tool) => tool.name)).toEqual([
+      "list_folder",
+      "read_page",
+      "search_pages",
+      "read_file",
+      "get_file_download_link",
+    ]);
     for (const tool of tools) {
       expect(tool.description.length).toBeGreaterThan(40);
       expect(tool.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false });
@@ -667,6 +723,147 @@ describe("read_file", () => {
   });
 });
 
+describe("get_file_download_link", () => {
+  const NOW = new Date("2026-11-23T10:00:00.400Z");
+  const NOW_SECONDS = Math.floor(NOW.getTime() / 1000);
+
+  beforeEach(() => {
+    vi.useFakeTimers({ now: NOW, toFake: ["Date"] });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** The link of a result, and the data of its token checked with the key of the links. */
+  function linkOf(result: ToolResult) {
+    const { downloadLink } = result.structuredContent as { downloadLink: string };
+    const url = new URL(downloadLink);
+    const checked = checkLinkToken(LINK_KEY, url.searchParams.get("token") ?? "");
+    return { downloadLink, url, data: checked.ok ? checked.data : null };
+  }
+
+  it.each([
+    ["an image in a tab", "guides", "diagram.png", "png", "/files/handbook/guides/diagram.png"],
+    ["a PDF placed directly in the folder", null, "manual.pdf", "pdf", "/files/handbook/manual.pdf"],
+  ])(
+    "returns for %s a link below the public URL with the path of the file address and the token as its only query",
+    async (_case, tab, name, type, path) => {
+      mocks.getCurrentFileVersion.mockResolvedValue(currentVersionOf(name, tab));
+
+      const result = await callTool("get_file_download_link", { tab, file: name });
+
+      expect(mocks.getCurrentFileVersion).toHaveBeenCalledExactlyOnceWith(READER, "handbook", tab, name);
+      const { downloadLink, url, data } = linkOf(result);
+      expect(downloadLink.startsWith(`${PUBLIC_URL}/`)).toBe(true);
+      expect(url.origin).toBe(PUBLIC_URL);
+      expect(url.pathname).toBe(path);
+      expect([...url.searchParams.keys()]).toEqual(["token"]);
+      expect(downloadLink).toBe(`${PUBLIC_URL}${path}?token=${url.searchParams.get("token")}`);
+      expect(data).toStrictEqual({
+        use: "file-link",
+        v: 1,
+        grant: READER.connection.grantId,
+        version: VERSION_ID,
+        exp: NOW_SECONDS + LINK_LIFETIME,
+      });
+      expect(result.structuredContent).toMatchObject({ name, tab, type });
+    },
+  );
+
+  it("starts its result with the note, then the file, the link and when it expires, the lifetime from now to the second", async () => {
+    mocks.getCurrentFileVersion.mockResolvedValue(currentVersionOf("diagram.png", "guides"));
+
+    const result = await callTool("get_file_download_link", { tab: "guides", file: "diagram.png" });
+
+    const structured = result.structuredContent as Record<string, unknown>;
+    expect(Object.keys(structured)).toEqual(["note", "name", "tab", "type", "size", "downloadLink", "expiresAt"]);
+    expect(structured).toStrictEqual({
+      note: USER_TEXT_NOTE,
+      name: "diagram.png",
+      tab: "guides",
+      type: "png",
+      size: 4096,
+      downloadLink: linkOf(result).downloadLink,
+      expiresAt: new Date((NOW_SECONDS + LINK_LIFETIME) * 1000).toISOString(),
+    });
+    expect(structured.expiresAt).toBe("2026-11-23T10:10:00.000Z");
+    expect(JSON.parse(result.content[0]?.text ?? "")).toEqual(structured);
+  });
+
+  it.each([
+    ["a page name", "setup"],
+    ["a file that does not exist", "gone.png"],
+    ["a deleted file or one of another folder, which the service does not find", "diagram.png"],
+  ])("answers %s with the tool error of read_file and gives no link", async (_case, file) => {
+    mocks.getCurrentFileVersion.mockResolvedValue(null);
+
+    const message = errorOf(await callTool("get_file_download_link", { tab: "guides", file }));
+
+    expect(message).toBe(
+      `There is no file named "${file}" in the tab "guides" of the folder "handbook". Use list_folder to see the ` +
+        "files of the folder and the tab each one is in; a file is named with its extension, such as diagram.png.",
+    );
+    expect(mocks.findLinkKey).not.toHaveBeenCalled();
+  });
+
+  it("answers with a tool error and gives no link while the files are off", async () => {
+    mocks.getCurrentFileVersion.mockResolvedValue(currentVersionOf("diagram.png", null));
+    mocks.getStore.mockResolvedValue({ on: false, reason: "not-set", dir: null });
+
+    expect(errorOf(await callTool("get_file_download_link", { file: "diagram.png" }))).toBe(
+      "The file cannot be downloaded: the server of the wiki has no place to keep files.",
+    );
+    expect(mocks.findLinkKey).not.toHaveBeenCalled();
+  });
+
+  it("logs the call with the grant, the user, the folder, the role, the tool, the tab, the file and the outcome, and no part of the token", async () => {
+    mocks.getCurrentFileVersion.mockResolvedValue(currentVersionOf("diagram.png", "guides"));
+
+    const result = await callTool("get_file_download_link", { tab: "guides", file: "diagram.png" });
+
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+      {
+        grantId: READER.connection.grantId,
+        userId: READER.id,
+        folderId: FOLDER_ID,
+        role: "reader",
+        tool: "get_file_download_link",
+        names: { tab: "guides", file: "diagram.png" },
+        outcome: "worked",
+      },
+      "mcp tool called",
+    );
+    const token = linkOf(result).url.searchParams.get("token") ?? "";
+    const [dataPart = "", signature = ""] = token.split(".");
+    const logged = JSON.stringify([mocks.info.mock.calls, mocks.warn.mock.calls, mocks.error.mock.calls]);
+    expect(logged).not.toContain(dataPart.slice(0, 16));
+    expect(logged).not.toContain(signature.slice(0, 16));
+  });
+
+  it("is a read tool of every role, which describes the link and ends with the note", async () => {
+    for (const role of ["reader", "writer", "manager"] as const) {
+      actor = { ...READER, connection: { ...READER.connection, role } };
+      const tools = (await send({ method: "tools/list" })).result?.tools as {
+        name: string;
+        description: string;
+        annotations: Record<string, boolean>;
+      }[];
+      const tool = tools.find(({ name }) => name === "get_file_download_link");
+
+      expect(tool?.annotations, role).toStrictEqual({
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      });
+      expect(tool?.description).toContain("downloads the current version of one file");
+      expect(tool?.description).toContain("without a login, for a few minutes");
+      expect(tool?.description.endsWith(USER_TEXT_NOTE)).toBe(true);
+    }
+  });
+});
+
 describe("search_pages", () => {
   /** A page that a search found, as the search service returns it. */
   function found(name: string, tab: string | null = null) {
@@ -983,12 +1180,13 @@ describe("the write tools", () => {
       "read_page",
       "search_pages",
       "read_file",
+      "get_file_download_link",
       "create_page",
       "replace_page_content",
       "edit_page_content",
       "move_or_rename_page",
     ]);
-    const [create, replace, edit, move] = tools.slice(4);
+    const [create, replace, edit, move] = tools.slice(5);
     expect(Object.keys(create?.inputSchema.properties ?? {})).toEqual(["content", "tab", "name"]);
     expect(create?.inputSchema.required).toEqual(["content"]);
     expect(Object.keys(replace?.inputSchema.properties ?? {})).toEqual(["tab", "page", "version", "content"]);
@@ -999,7 +1197,7 @@ describe("the write tools", () => {
     expect(move?.inputSchema.required).toEqual(["page", "newTab", "newName"]);
     expect(create?.inputSchema.properties?.name?.description).toContain(LENGTH_LIMIT);
     expect(move?.inputSchema.properties?.newName?.description).toContain(LENGTH_LIMIT);
-    for (const tool of tools.slice(4)) {
+    for (const tool of tools.slice(5)) {
       expect(tool.description.length).toBeGreaterThan(40);
       expect(tool.annotations).toMatchObject({ readOnlyHint: false, openWorldHint: false });
       for (const argument of Object.values(tool.inputSchema.properties ?? {}))
@@ -1015,11 +1213,12 @@ describe("the write tools", () => {
 
     const answer = await send({ method: "tools/list" });
 
-    expect((answer.result?.tools as { name: string }[]).map((tool) => tool.name).slice(0, 8)).toEqual([
+    expect((answer.result?.tools as { name: string }[]).map((tool) => tool.name).slice(0, 9)).toEqual([
       "list_folder",
       "read_page",
       "search_pages",
       "read_file",
+      "get_file_download_link",
       "create_page",
       "replace_page_content",
       "edit_page_content",
@@ -1045,6 +1244,7 @@ describe("the write tools", () => {
       "read_page",
       "search_pages",
       "read_file",
+      "get_file_download_link",
     ]);
     expectToolNotFound(call, "create_page");
     expectToolNotFound(edit, "edit_page_content");
@@ -1589,7 +1789,7 @@ describe("the tools of a Manager connection", () => {
   it("are registered for a Manager connection after the write tools, with inputs, output schemas and hints", async () => {
     const tools = await listedTools();
 
-    expect(tools.map((tool) => tool.name).slice(8)).toEqual(MANAGER_TOOLS);
+    expect(tools.map((tool) => tool.name).slice(9)).toEqual(MANAGER_TOOLS);
     const byName = Object.fromEntries(tools.map((tool) => [tool.name, tool]));
     expect(Object.keys(byName.delete_page?.inputSchema.properties ?? {})).toEqual(["tab", "page", "version"]);
     expect(byName.delete_page?.inputSchema.required).toEqual(["page"]);
@@ -1616,9 +1816,9 @@ describe("the tools of a Manager connection", () => {
   });
 
   it.each([
-    ["Manager", 12, MANAGER],
-    ["Writer", 8, WRITER],
-    ["Reader", 4, READER],
+    ["Manager", 13, MANAGER],
+    ["Writer", 9, WRITER],
+    ["Reader", 5, READER],
   ])("give a %s connection %i tools", async (_role, count, other) => {
     actor = other;
 
@@ -1900,6 +2100,7 @@ describe("the tools of each role", () => {
     ["read_page", "read"],
     ["search_pages", "read"],
     ["read_file", "read"],
+    ["get_file_download_link", "read"],
     ["create_page", "editPage"],
     ["replace_page_content", "editPage"],
     ["edit_page_content", "editPage"],
@@ -1931,11 +2132,16 @@ describe("the tools of each role", () => {
         annotations: Record<string, boolean>;
       }[];
 
-      // The one tool that takes a file only reads it; delete_tab deletes files only together with their tab.
+      // The two tools that take a file only read it; delete_tab deletes files only together with their tab.
       const withFile = tools.filter((tool) => Object.keys(tool.inputSchema.properties ?? {}).includes("file"));
-      expect(withFile.map((tool) => tool.name)).toEqual(["read_file"]);
-      expect(withFile[0]?.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false });
-      expect(tools.filter((tool) => /file/u.test(tool.name)).map((tool) => tool.name)).toEqual(["read_file"]);
+      expect(withFile.map((tool) => tool.name)).toEqual(["read_file", "get_file_download_link"]);
+      for (const tool of withFile) {
+        expect(tool.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false });
+      }
+      expect(tools.filter((tool) => /file/u.test(tool.name)).map((tool) => tool.name)).toEqual([
+        "read_file",
+        "get_file_download_link",
+      ]);
     },
   );
 });
@@ -2088,15 +2294,17 @@ describe("the hint on the addresses", () => {
 
   it("ends the description of every address field of every tool of a Manager connection, after what it says of its item", async () => {
     const schemas = await outputSchemas();
-    expect(schemas.size).toBe(12);
+    expect(schemas.size).toBe(13);
 
     const addresses = [...schemas].flatMap(([tool, schema]) =>
       fieldsOf(schema)
         .filter(([name]) => name === "address" || name.endsWith("Address"))
         .map(([name, field]) => [tool, name, field.description ?? ""] as const),
     );
-    // Every tool returns at least one address: of a page, a file, a tab, the folder or the deleted items.
-    expect(new Set(addresses.map(([tool]) => tool))).toEqual(new Set(schemas.keys()));
+    // Every tool returns at least one address: of a page, a file, a tab, the folder or the deleted items. The one
+    // exception is get_file_download_link, whose link is for downloading, not for people, and has no hint.
+    const withAddresses = [...schemas.keys()].filter((tool) => tool !== "get_file_download_link");
+    expect(new Set(addresses.map(([tool]) => tool))).toEqual(new Set(withAddresses));
     for (const [tool, name, description] of addresses) {
       expect(description, `${tool}: ${name}`).toMatch(/^Where a person (opens|with a role|sees) .+\. /);
       expect(description.endsWith(` ${ADDRESS_HINT}`), `${tool}: ${name}`).toBe(true);
@@ -2129,7 +2337,8 @@ describe("the hint on the addresses", () => {
   it("is the text of the hint, word for word", () => {
     expect(ADDRESS_HINT).toBe(
       "Addresses are for people: each opens only in a browser after logging in to the wiki, so an AI app cannot " +
-        "fetch it with its access token. To point to a page or file in a page, use its wiki link.",
+        "fetch it with its access token. To point to a page or file in a page, use its wiki link. To download an " +
+        "image or PDF, get a short-lived link with get_file_download_link.",
     );
   });
 });
@@ -2303,7 +2512,7 @@ describe("every tool", () => {
   const WRITE_FAILED = "The change could not be stored. Please try again later.";
 
   /**
-   * Each of the twelve tools, called by a Manager connection, which has all of them: its arguments, the service it
+   * Each of the thirteen tools, called by a Manager connection, which has all of them: its arguments, the service it
    * calls, and the message of a failure of that service.
    */
   const TOOLS = [
@@ -2311,6 +2520,7 @@ describe("every tool", () => {
     ["read_page", { page: "setup" }, mocks.getPage, READ_FAILED],
     ["search_pages", { query: "Setup" }, mocks.searchPages, READ_FAILED],
     ["read_file", { file: "diagram.png" }, mocks.getFile, READ_FAILED],
+    ["get_file_download_link", { file: "diagram.png" }, mocks.getCurrentFileVersion, READ_FAILED],
     ["create_page", { content: "# New", name: "new" }, mocks.createPage, WRITE_FAILED],
     [
       "replace_page_content",
@@ -2343,6 +2553,7 @@ describe("every tool", () => {
     // The query is never logged.
     search_pages: {},
     read_file: { file: "diagram.png" },
+    get_file_download_link: { file: "diagram.png" },
     create_page: { name: "new" },
     replace_page_content: { page: "setup" },
     edit_page_content: { page: "setup" },
@@ -2372,6 +2583,7 @@ describe("every tool", () => {
     mocks.getPage.mockResolvedValue(PAGE);
     mocks.getTab.mockResolvedValue(TAB);
     mocks.getFile.mockResolvedValue(FILE);
+    mocks.getCurrentFileVersion.mockResolvedValue(currentVersionOf("diagram.png", null));
     mocks.createPage.mockResolvedValue({ ok: true, value: { ...STORED, name: "new", version: 1 } });
     mocks.updatePageContent.mockResolvedValue({ ok: true, value: STORED });
     mocks.moveOrRenamePage.mockResolvedValue({ ok: true, value: { ...STORED, name: "moved", updatedPages: [] } });

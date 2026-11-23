@@ -358,7 +358,13 @@ describe("a client of the protocol of 2025", () => {
 
     expect(list.headers.get("content-type")).toBe("application/json");
     const tools = ((await list.json()) as { result: { tools: { name: string }[] } }).result.tools;
-    expect(tools.map((tool) => tool.name)).toEqual(["list_folder", "read_page", "search_pages", "read_file"]);
+    expect(tools.map((tool) => tool.name)).toEqual([
+      "list_folder",
+      "read_page",
+      "search_pages",
+      "read_file",
+      "get_file_download_link",
+    ]);
     expect(call.headers.get("content-type")).toBe("application/json");
     await expect(call.json()).resolves.toMatchObject({
       id: 3,
@@ -399,7 +405,13 @@ describe("a client of the current protocol", () => {
     expect(list.status).toBe(200);
     expect(list.headers.get("content-type")).toBe("application/json");
     const tools = ((await list.json()) as { result: { tools: { name: string }[] } }).result.tools;
-    expect(tools.map((tool) => tool.name)).toEqual(["list_folder", "read_page", "search_pages", "read_file"]);
+    expect(tools.map((tool) => tool.name)).toEqual([
+      "list_folder",
+      "read_page",
+      "search_pages",
+      "read_file",
+      "get_file_download_link",
+    ]);
     expect(call.status).toBe(200);
     expect(call.headers.get("content-type")).toBe("application/json");
     await expect(call.json()).resolves.toMatchObject({

@@ -17,7 +17,8 @@ const PUBLIC_URL = "https://wiki.example.com";
 /** The hint on the addresses, word for word. */
 const HINT =
   "Addresses are for people: each opens only in a browser after logging in to the wiki, so an AI app cannot fetch it " +
-  "with its access token. To point to a page or file in a page, use its wiki link.";
+  "with its access token. To point to a page or file in a page, use its wiki link. To download an image or PDF, get a " +
+  "short-lived link with get_file_download_link.";
 
 /** A JSON Schema as `tools/list` gives it, with only what the tests read. */
 type Schema = {
@@ -107,6 +108,7 @@ async function callEveryTool(): Promise<[string, Record<string, unknown>][]> {
   await record("read_page", { page: "overview" });
   await record("read_file", { tab: "guides", file: "diagram.png" });
   await record("read_file", { file: "manual.pdf" });
+  await record("get_file_download_link", { tab: "guides", file: "diagram.png" });
   await record("search_pages", { query: "install" });
   await record("search_pages", { query: "overview" });
   await record("search_pages", { query: "diagram" });
@@ -201,6 +203,9 @@ describe("the hint on the addresses", () => {
     for (const [tool, result] of results) {
       for (const { path, value } of fieldsOf(result)) {
         if (!isAddress(value)) continue;
+        // The link of get_file_download_link is no address for people: it downloads the file without a login until it
+        // expires (signed-file-links-requirements.md, R3 and R27), so it does not say that it opens only after a login.
+        if (tool === "get_file_download_link" && path.at(-1) === "downloadLink") continue;
         seen.add(value);
         const description = schemaAt(schemas.get(tool), path)?.description ?? "";
         const where = `${tool}: ${path.join(".")}`;

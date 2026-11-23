@@ -17,6 +17,7 @@ import {
   deleteTabInput,
   editedPageOutput,
   editPageContentInput,
+  fileDownloadLinkOutput,
   listFolderOutput,
   moveOrRenamePageInput,
   NAME_RULE,
@@ -40,6 +41,7 @@ import {
   deletePage,
   deleteTab,
   editPageContent,
+  getFileDownloadLink,
   listFolder,
   moveOrRenamePage,
   readFile,
@@ -94,8 +96,9 @@ const FILES =
   `followed by the extension of its type: ${FILE_EXTENSIONS.join(", ")}, such as diagram.png. A page links a file ` +
   "with [[name.ext]] or [[tab/name.ext]] and shows an image with ![[name.ext]] or ![[tab/name.ext]], each with an " +
   "optional |label. list_folder and read_file give the details of files and search_pages finds them by their names, " +
-  "but no tool returns the content of a file. A single file is uploaded, changed, moved, renamed or deleted only in " +
-  "the browser.";
+  "but no tool returns the content of a file. get_file_download_link gives a link that downloads one file for a few " +
+  "minutes; never write such a link into a page, because it expires and lets anyone who reads it download the file. " +
+  "A single file is uploaded, changed, moved, renamed or deleted only in the browser.";
 
 /**
  * What `initialize` tells the model about the wiki and the connection, in one paragraph: the folder and the role of
@@ -211,6 +214,24 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
         annotations: READ_ONLY,
       },
       (input) => readFile(options, input),
+    );
+
+    server.registerTool(
+      "get_file_download_link",
+      {
+        title: "Get a download link of a file",
+        description:
+          "Gives a link that downloads the current version of one file (an image or a PDF) of the folder of this " +
+          "connection without a login, for a few minutes, with its name, its tab, its type, its size and when the " +
+          "link expires. Fetch the link with a plain GET, without the access token. Ask for a new link once it has " +
+          "expired or the file has changed. Never write the link into a page: it expires, and anyone who reads it " +
+          "can download the file until then. A file is named by its tab if it is in one, and its own name with its " +
+          `extension, as list_folder returns them. Deleted files are never found. ${USER_TEXT_NOTE}`,
+        inputSchema: readFileInput,
+        outputSchema: fileDownloadLinkOutput,
+        annotations: READ_ONLY,
+      },
+      (input) => getFileDownloadLink(options, input),
     );
   }
 

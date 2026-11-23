@@ -35,12 +35,13 @@ export const USER_TEXT_NOTE =
  * What the model is told about every address a tool returns: it is for people, because it opens only in a browser
  * after a login, and the access token of a connection works only for MCP. The description of every address field ends
  * with it, and the instructions of every connection state it once, so that an AI app gives an address to its user
- * instead of fetching it, and points to a page or file in a page with its wiki link (see "What holds for all of them"
- * in `spec/mcp.md`).
+ * instead of fetching it, points to a page or file in a page with its wiki link, and downloads a file with a signed link
+ * of `get_file_download_link` (see "What holds for all of them" in `spec/mcp.md`).
  */
 export const ADDRESS_HINT =
   "Addresses are for people: each opens only in a browser after logging in to the wiki, so an AI app cannot fetch " +
-  "it with its access token. To point to a page or file in a page, use its wiki link.";
+  "it with its access token. To point to a page or file in a page, use its wiki link. To download an image or PDF, " +
+  "get a short-lived link with get_file_download_link.";
 
 /**
  * The tab a page is in, as a tool takes it. `null` is accepted next to a missing tab, because `list_folder` returns
@@ -390,6 +391,26 @@ export const readFileOutput = z.object({
       }),
     )
     .describe("The pages of the folder that show the file with ![[…]] or link it with [[…]], sorted by title"),
+});
+
+/**
+ * What `get_file_download_link` returns: the file as `read_file` names it, the link and its expiry. The link is no
+ * address for people: it downloads the file without a login until it expires, so it has no hint of the addresses.
+ */
+export const fileDownloadLinkOutput = z.object({
+  note: NOTE_OUTPUT,
+  name: z.string().describe("The name of the file with its extension"),
+  tab: z.string().nullable().describe("The tab the file is in, or null for a file placed directly in the folder"),
+  type: z.enum(["png", "jpeg", "gif", "webp", "pdf"]).describe("The type of the file"),
+  size: z.number().int().describe("The size of the current version of the file in bytes"),
+  downloadLink: z
+    .string()
+    .describe(
+      "A link that downloads the current version of the file without a login until expiresAt; add &download to " +
+        "get it as an attachment. Never write it into a page: it expires, and anyone who reads it can download the " +
+        "file until then",
+    ),
+  expiresAt: z.string().describe("When the link stops working, as an ISO 8601 time in UTC"),
 });
 
 export const storedPageOutput = z.object({

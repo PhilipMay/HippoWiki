@@ -87,9 +87,16 @@ test.describe("the write tools", () => {
       "read_page",
       "search_pages",
       "read_file",
+      "get_file_download_link",
       ...writeTools,
     ]);
-    expect(await listed(secret, address)).toEqual(["list_folder", "read_page", "search_pages", "read_file"]);
+    expect(await listed(secret, address)).toEqual([
+      "list_folder",
+      "read_page",
+      "search_pages",
+      "read_file",
+      "get_file_download_link",
+    ]);
 
     const answer = await send(request, {
       method: "tools/call",

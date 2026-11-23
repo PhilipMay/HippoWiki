@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   findUniqueOrThrow: vi.fn(),
   callerOfGrant: vi.fn(),
   getFileContent: vi.fn(),
+  getCurrentFileVersion: vi.fn(),
   getStore: vi.fn(),
   lifetime: 600,
   info: vi.fn(),
@@ -27,11 +28,15 @@ vi.mock("@/lib/db", () => ({
 vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, error: mocks.error } }));
 vi.mock("@/lib/env", () => ({ getServerEnv: () => ({ HIPPOWIKI_FILE_LINK_LIFETIME: mocks.lifetime }) }));
 vi.mock("@/features/grants/service", () => ({ callerOfGrant: mocks.callerOfGrant }));
-vi.mock("@/features/files/service", () => ({ getFileContent: mocks.getFileContent }));
+vi.mock("@/features/files/service", () => ({
+  getFileContent: mocks.getFileContent,
+  getCurrentFileVersion: mocks.getCurrentFileVersion,
+}));
 vi.mock("@/features/files/store", () => ({ getStore: mocks.getStore }));
 
-import { forgetLinkKey, getLinkedFileContent } from "@/features/files/link-service";
-import { signLinkToken } from "@/features/files/link-token";
+import type { McpActor } from "@/features/folder-roles/actors";
+import { createFileLink, forgetLinkKey, getLinkedFileContent } from "@/features/files/link-service";
+import { checkLinkToken, signLinkToken } from "@/features/files/link-token";
 
 const KEY = randomBytes(32);
 const NOW = new Date("2026-11-23T10:00:00.000Z");
@@ -201,5 +206,80 @@ describe("getLinkedFileContent", () => {
       "file link refused",
     );
     expectTokenNotLogged(token);
+  });
+});
+
+describe("createFileLink", () => {
+  const ACTOR: McpActor = {
+    id: CALLER.actor.id,
+    name: "alice",
+    type: "user",
+    channel: "mcp",
+    connection: { grantId: GRANT_ID, folderId: FOLDER_ID, role: "reader" },
+  };
+
+  beforeEach(() => {
+    mocks.getCurrentFileVersion.mockResolvedValue({
+      name: "diagram.png",
+      type: "png",
+      tab: { name: "guides" },
+      version: { id: VERSION_ID, number: 3, size: 4096 },
+    });
+  });
+
+  it("signs a token with the grant of the connection, the id of the current version and the expiry of now plus the lifetime", async () => {
+    const created = await createFileLink(ACTOR, "handbook", "guides", "diagram.png");
+
+    if (!created.ok) return expect.fail(`no link: ${created.error.code}`);
+    expect(mocks.getCurrentFileVersion).toHaveBeenCalledExactlyOnceWith(ACTOR, "handbook", "guides", "diagram.png");
+    const { token, ...link } = created.value;
+    expect(link).toStrictEqual({
+      name: "diagram.png",
+      tab: "guides",
+      type: "png",
+      size: 4096,
+      expiresAt: new Date((NOW_SECONDS + 600) * 1000),
+    });
+    expect(checkLinkToken(KEY, token)).toStrictEqual({
+      ok: true,
+      data: { use: "file-link", v: 1, grant: GRANT_ID, version: VERSION_ID, exp: NOW_SECONDS + 600 },
+    });
+  });
+
+  it("takes the expiry from the lifetime of the server, in whole seconds", async () => {
+    mocks.lifetime = 60;
+    vi.setSystemTime(NOW.getTime() + 999);
+
+    const created = await createFileLink(ACTOR, "handbook", "guides", "diagram.png");
+
+    expect(created.ok && created.value.expiresAt).toEqual(new Date((NOW_SECONDS + 60) * 1000));
+  });
+
+  it("writes no row: it only reads the key of the links", async () => {
+    await createFileLink(ACTOR, "handbook", "guides", "diagram.png");
+    await createFileLink(ACTOR, "handbook", "guides", "diagram.png");
+
+    expect(mocks.findUnique).toHaveBeenCalledOnce();
+    expect(mocks.createMany).not.toHaveBeenCalled();
+  });
+
+  it("answers file-not-found for a file the service does not find, without a token", async () => {
+    mocks.getCurrentFileVersion.mockResolvedValue(null);
+
+    await expect(createFileLink(ACTOR, "handbook", null, "gone.png")).resolves.toStrictEqual({
+      ok: false,
+      error: { code: "file-not-found" },
+    });
+    expect(mocks.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("answers files-off while the files directory cannot be used, without a token", async () => {
+    mocks.getStore.mockResolvedValue({ on: false, reason: "not-set", dir: null });
+
+    await expect(createFileLink(ACTOR, "handbook", "guides", "diagram.png")).resolves.toStrictEqual({
+      ok: false,
+      error: { code: "files-off" },
+    });
+    expect(mocks.findUnique).not.toHaveBeenCalled();
   });
 });

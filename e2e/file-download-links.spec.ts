@@ -1,16 +1,27 @@
 // The download of a file by a signed link, as an AI app or a program it hands the link to makes it: without a session
-// cookie, with the token of the link as the only query besides `download`. The tokens are signed by
-// `signFileLinkToken()` with the key of the database of the worker, as the server signs them.
+// cookie, with the token of the link as the only query besides `download`. The links come from the MCP tool
+// `get_file_download_link`, or are signed by `signFileLinkToken()` with the key of the database of the worker, as the
+// server signs them, to make one that has expired or is broken.
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { APIRequestContext, APIResponse } from "@playwright/test";
 
+import { hashSecret } from "@/features/oauth/secret";
 import { MCP_RATE_BURST } from "@/lib/env";
 
-import { NO_STORAGE_STATE, USER_STORAGE_STATE } from "./support/auth";
-import { createFile, createGrant, getTestDb, signFileLinkToken, testFilesDir } from "./support/database";
-import { setUpProjects } from "./support/mcp";
+import { logIn, NO_STORAGE_STATE, USER_STORAGE_STATE } from "./support/auth";
+import {
+  createFile,
+  createFolderRole,
+  createGrant,
+  createUser,
+  getTestDb,
+  signFileLinkToken,
+  testFilesDir,
+} from "./support/database";
+import { pdfBytes, uploadFile } from "./support/files";
+import { call, send, setUpProjects } from "./support/mcp";
 import { expect, test } from "./support/test";
 
 // Whoever holds a link has no session cookie.
@@ -27,13 +38,15 @@ const FILE_HEADERS = {
 };
 
 let projects: Awaited<ReturnType<typeof setUpProjects>>["projects"];
+let owner: Awaited<ReturnType<typeof setUpProjects>>["owner"];
+/** The access token of the Reader connection of the owner, with which `call()` calls the tools. */
+let secret: string;
 let grantId: string;
 let image: Awaited<ReturnType<typeof createFile>>;
 let pdf: Awaited<ReturnType<typeof createFile>>;
 
 test.beforeEach(async () => {
-  let owner;
-  ({ projects, owner } = await setUpProjects());
+  ({ projects, owner, secret } = await setUpProjects());
   ({
     grant: { id: grantId },
   } = await createGrant({ owner, folder: projects }));
@@ -186,3 +199,93 @@ function readBytes(file: typeof image): Promise<Buffer> {
   const sha256 = file.versions.at(-1)?.sha256 ?? "";
   return readFile(join(testFilesDir(), "blobs", sha256.slice(0, 2), sha256));
 }
+
+test.describe("a link of get_file_download_link", () => {
+  /** The link and its expiry that the tool gives a Reader connection of the owner of "projects" for the file. */
+  async function linkTo(
+    request: APIRequestContext,
+    file: string,
+  ): Promise<{ downloadLink: string; expiresAt: string }> {
+    const result = await call(request, "get_file_download_link", { file });
+    expect(result.isError, JSON.stringify(result.content)).toBeFalsy();
+    return result.structuredContent as { downloadLink: string; expiresAt: string };
+  }
+
+  test("downloads the image without a cookie", async ({ request }) => {
+    const { downloadLink, expiresAt } = await linkTo(request, "diagram.png");
+
+    expect(new URL(downloadLink).pathname).toBe("/files/projects/diagram.png");
+    expect(Date.parse(expiresAt) - Date.now()).toBeGreaterThan(9 * 60 * 1000);
+    const response = await request.get(downloadLink, { maxRedirects: 0 });
+    expect(response.status()).toBe(200);
+    expect(response.headers()["content-type"]).toBe("image/png");
+    expect(await response.body()).toEqual(await readBytes(image));
+  });
+
+  test("answers 404 once the app is revoked on the account page, although it has not expired", async ({
+    request,
+    page,
+  }) => {
+    const { downloadLink } = await linkTo(request, "diagram.png");
+    expect((await request.get(downloadLink)).status()).toBe(200);
+    const grant = await getTestDb().oAuthGrant.findUniqueOrThrow({ where: { accessTokenHash: hashSecret(secret) } });
+
+    // The page logs in in a browser context of its own; the request of the link carries no cookie.
+    await logIn(page, owner.username);
+    await expect(page).toHaveURL("/folders");
+    await page.goto(`/account?action=revoke&app=${grant.id}`);
+    await page.getByRole("dialog", { name: "Revoke app" }).getByRole("button", { name: "Revoke" }).click();
+    await expect(page).toHaveURL("/account");
+
+    expect(await getTestDb().oAuthGrant.findUnique({ where: { id: grant.id } })).toBeNull();
+    expect((await request.get(downloadLink, { maxRedirects: 0 })).status()).toBe(404);
+  });
+
+  test("answers 404 once a Writer uploads a new version of the PDF, and a new link downloads the new bytes", async ({
+    request,
+    page,
+  }) => {
+    const { downloadLink } = await linkTo(request, "manual.pdf");
+    const writer = await createUser({ mustChangePassword: false });
+    await createFolderRole({ folder: projects, user: writer, role: "writer" });
+    const bytes = pdfBytes("The second version");
+
+    await logIn(page, writer.username);
+    await expect(page).toHaveURL("/folders");
+    const uploaded = await uploadFile(page, {
+      folder: "projects",
+      name: "manual.pdf",
+      bytes,
+      replace: pdf.lockVersion,
+    });
+    expect(uploaded.status()).toBe(201);
+
+    expect((await request.get(downloadLink, { maxRedirects: 0 })).status()).toBe(404);
+    const again = await linkTo(request, "manual.pdf");
+    expect(again.downloadLink).not.toBe(downloadLink);
+    const response = await request.get(again.downloadLink, { maxRedirects: 0 });
+    expect(response.status()).toBe(200);
+    expect(await response.body()).toEqual(bytes);
+  });
+
+  test("each call of the tool counts against the rate budget of the user", async ({ request }) => {
+    const message = {
+      method: "tools/call",
+      params: { name: "get_file_download_link", arguments: { file: "diagram.png" } },
+    };
+    const started = Date.now();
+    let passed = 0;
+    let answer = await send(request, message);
+    // A safe stop far above what the budget allows, so that a missing limit fails the test instead of hanging it.
+    while (answer.status() === 200 && passed < 1000) {
+      passed += 1;
+      answer = await send(request, message);
+    }
+    const seconds = (Date.now() - started) / 1000;
+
+    expect(answer.status()).toBe(429);
+    // The burst at once, and five more a second for the time the calls took.
+    expect(passed).toBeGreaterThanOrEqual(MCP_RATE_BURST.default);
+    expect(passed).toBeLessThanOrEqual(MCP_RATE_BURST.default + Math.ceil(5 * seconds));
+  });
+});

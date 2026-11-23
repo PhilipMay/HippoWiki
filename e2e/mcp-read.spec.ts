@@ -57,7 +57,13 @@ test("initialize answers as JSON with the instructions and without a session", a
   // The addresses are for people: they open only in a browser after a login.
   expect(result.instructions).toContain(
     "Addresses are for people: each opens only in a browser after logging in to the wiki, so an AI app cannot fetch " +
-      "it with its access token. To point to a page or file in a page, use its wiki link.",
+      "it with its access token. To point to a page or file in a page, use its wiki link. To download an image or " +
+      "PDF, get a short-lived link with get_file_download_link.",
+  );
+  // The link of a file downloads it for a few minutes, and never belongs into a page.
+  expect(result.instructions).toContain(
+    "get_file_download_link gives a link that downloads one file for a few minutes; never write such a link into a " +
+      "page, because it expires and lets anyone who reads it download the file.",
   );
   expect(result.capabilities).toHaveProperty("tools");
 });
@@ -87,10 +93,16 @@ test("a request of the current protocol is answered as JSON as well", async ({ r
   expect(response.status()).toBe(200);
   expect(response.headers()["content-type"]).toBe("application/json");
   const { result } = (await response.json()) as { result: { tools: { name: string }[] } };
-  expect(result.tools.map((tool) => tool.name)).toEqual(["list_folder", "read_page", "search_pages", "read_file"]);
+  expect(result.tools.map((tool) => tool.name)).toEqual([
+    "list_folder",
+    "read_page",
+    "search_pages",
+    "read_file",
+    "get_file_download_link",
+  ]);
 });
 
-test("a Reader connection offers only the four read tools, list_folder, read_page, search_pages and read_file", async ({
+test("a Reader connection offers only the five read tools, list_folder, read_page, search_pages, read_file and get_file_download_link", async ({
   request,
 }) => {
   const response = await send(request, { method: "tools/list" });
@@ -107,7 +119,13 @@ test("a Reader connection offers only the four read tools, list_folder, read_pag
       }[];
     };
   };
-  expect(result.tools.map((tool) => tool.name)).toEqual(["list_folder", "read_page", "search_pages", "read_file"]);
+  expect(result.tools.map((tool) => tool.name)).toEqual([
+    "list_folder",
+    "read_page",
+    "search_pages",
+    "read_file",
+    "get_file_download_link",
+  ]);
   // The address of a page in list_folder says what it opens, then that it is for people.
   expect(result.tools[0]?.outputSchema.properties.pages.items.properties.address.description).toBe(
     `Where a person opens the page in a browser. ${ADDRESS_HINT}`,
@@ -473,11 +491,11 @@ test.describe("files", () => {
       expect(
         tools.map(({ name }) => name).filter((name) => name.includes("file")),
         role,
-      ).toEqual(["read_file"]);
+      ).toEqual(["read_file", "get_file_download_link"]);
       expect(
         tools.filter((tool) => Object.keys(tool.inputSchema.properties ?? {}).includes("file")).map(({ name }) => name),
         role,
-      ).toEqual(["read_file"]);
+      ).toEqual(["read_file", "get_file_download_link"]);
       const unknown = await send(
         request,
         { method: "tools/call", params: { name: "upload_file", arguments: { file: "x.png" } } },

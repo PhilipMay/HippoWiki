@@ -24,7 +24,7 @@ app: what the app may no longer read, its links no longer download. The plan is 
 - [x] Token and key of file links
 - [x] Check of a grant without an access token
 - [x] Download by link
-- [ ] The tool get_file_download_link
+- [x] The tool get_file_download_link
 - [ ] Spec tests
 - [ ] Wrap-up
 
