@@ -368,6 +368,7 @@ describe("list_folder", () => {
           title: "Overview",
           tab: null,
           address: "https://wiki.example.com/folders/handbook/overview.md",
+          wikiLink: "[[overview]]",
           lastChanged: "2026-03-01T12:00:00.000Z",
           lastEditedBy: "alice",
           lastEditedVia: "web",
@@ -377,6 +378,7 @@ describe("list_folder", () => {
           title: "Setup",
           tab: "guides",
           address: "https://wiki.example.com/folders/handbook/guides/setup.md",
+          wikiLink: "[[guides/setup]]",
           lastChanged: "2026-03-01T12:00:00.000Z",
           lastEditedBy: "bob",
           lastEditedVia: "mcp",
@@ -481,6 +483,7 @@ describe("read_page", () => {
       tab: "guides",
       content: "# Setup\n\nInstall it.",
       address: "https://wiki.example.com/folders/handbook/guides/setup.md",
+      wikiLink: "[[guides/setup]]",
       lastChanged: "2026-03-01T12:00:00.000Z",
       lastEditedBy: "alice",
       lastEditedVia: "mcp",
@@ -723,6 +726,7 @@ describe("search_pages", () => {
           name: "backup",
           tab: "guides",
           address: `${PUBLIC_URL}/folders/handbook/guides/backup.md`,
+          wikiLink: "[[guides/backup]]",
           excerpt: "The backup of <b>the</b> server",
           lastChanged: CHANGED.toISOString(),
           lastEditedBy: "mike",
@@ -733,6 +737,7 @@ describe("search_pages", () => {
           name: "overview",
           tab: null,
           address: `${PUBLIC_URL}/folders/handbook/overview.md`,
+          wikiLink: "[[overview]]",
           excerpt: "The backup of <b>the</b> server",
           lastChanged: CHANGED.toISOString(),
           lastEditedBy: "mike",
@@ -1071,6 +1076,7 @@ describe("the write tools", () => {
         title: "Release Notes",
         tab: null,
         address: "https://wiki.example.com/folders/handbook/release-notes.md",
+        wikiLink: "[[release-notes]]",
         version: 1,
       });
     });
@@ -1146,6 +1152,7 @@ describe("the write tools", () => {
         title: "Setup",
         tab: null,
         address: "https://wiki.example.com/folders/handbook/setup.md",
+        wikiLink: "[[setup]]",
         version: 4,
       });
     });
@@ -1256,6 +1263,7 @@ describe("the write tools", () => {
         title: "Setup",
         tab: null,
         address: "https://wiki.example.com/folders/handbook/setup.md",
+        wikiLink: "[[setup]]",
         version: 5,
         replaced: [1, 3],
       });
@@ -1411,6 +1419,7 @@ describe("the write tools", () => {
         name: "install",
         tab: "guides",
         address: "https://wiki.example.com/folders/handbook/guides/install.md",
+        wikiLink: "[[guides/install]]",
       });
     });
 
@@ -1438,7 +1447,8 @@ describe("the write tools", () => {
         { name: "first-week", tab: null, title: "First week" },
         { name: "onboarding", tab: "guides", title: "Onboarding" },
       ];
-      expect(result.structuredContent).toMatchObject({ name: "install", updatedPages });
+      // A rename in place gives the link of the new name, directly in the folder.
+      expect(result.structuredContent).toMatchObject({ name: "install", wikiLink: "[[install]]", updatedPages });
       expect(JSON.parse(result.content[0]?.text ?? "")).toMatchObject({ updatedPages });
     });
 
@@ -1482,6 +1492,7 @@ describe("the write tools", () => {
         name: "setup",
         tab: "guides",
         address: "https://wiki.example.com/folders/handbook/guides/setup.md",
+        wikiLink: "[[guides/setup]]",
         version: 4,
       });
     });
@@ -1908,6 +1919,99 @@ describe("the tools of each role", () => {
       expect(tools.filter((tool) => /file/u.test(tool.name)).map((tool) => tool.name)).toEqual(["read_file"]);
     },
   );
+});
+
+describe("the wiki link of a page", () => {
+  /** A page whose title differs from its name, as the services return it, in a tab or placed directly in the folder. */
+  function page(tab: string | null) {
+    return {
+      id: "p1",
+      name: "setup",
+      title: "Install The Server",
+      content: "# Install The Server",
+      updatedAt: CHANGED,
+      lastEditedBy: EDITOR,
+      version: 4,
+      folder: { id: FOLDER_ID, name: "handbook" },
+      tab: tab === null ? null : { id: "tab-1", name: tab },
+      role: "manager",
+      excerpt: [{ text: "Install", match: true }],
+    };
+  }
+  const STORED = { id: "p1", name: "setup", title: "Install The Server", version: 5, folder: FOLDER };
+
+  beforeEach(() => {
+    actor = MANAGER;
+    mocks.listTabs.mockResolvedValue([]);
+    mocks.getTab.mockResolvedValue({ id: "tab-1", name: "guides", folder: FOLDER, role: "manager" });
+  });
+
+  /** The page results of each tool that returns the address of a page, for the page in the given tab. */
+  async function pageResults(tab: string | null): Promise<Record<string, unknown>[]> {
+    const stored = { ...STORED, tab: tab === null ? null : { name: tab } };
+    mocks.listAllFolderPages.mockResolvedValue([page(tab)]);
+    mocks.getPage.mockResolvedValue(page(tab));
+    mocks.searchPages.mockResolvedValue({
+      ok: true,
+      value: { results: [page(tab)], total: 1, more: false, files: [], moreFiles: false },
+    });
+    mocks.createPage.mockResolvedValue({ ok: true, value: stored });
+    mocks.updatePageContent.mockResolvedValue({ ok: true, value: stored });
+    mocks.moveOrRenamePage.mockResolvedValue({ ok: true, value: { ...stored, updatedPages: [] } });
+    const place = { tab, page: "setup", version: 4 };
+    const of = async (name: string, args: Record<string, unknown> = {}) => {
+      const result = await callTool(name, args);
+      expect(result.isError, result.content[0]?.text).toBeFalsy();
+      return result.structuredContent as Record<string, unknown>;
+    };
+    const listed = (await of("list_folder")).pages as Record<string, unknown>[];
+    const searched = (await of("search_pages", { query: "install" })).results as Record<string, unknown>[];
+    return [
+      ...listed,
+      await of("read_page", { tab, page: "setup" }),
+      ...searched,
+      await of("create_page", { content: "# Install The Server", tab, name: "setup" }),
+      await of("replace_page_content", { ...place, content: "# Install The Server" }),
+      await of("edit_page_content", { ...place, edits: [{ oldText: "Server", newText: "Host" }] }),
+      await of("move_or_rename_page", { ...place, newTab: tab, newName: "setup" }),
+    ];
+  }
+
+  it.each([
+    ["in a tab", "guides", "[[guides/setup]]"],
+    ["placed directly in the folder", null, "[[setup]]"],
+  ])(
+    "is returned for a page %s by every tool that returns its address, with the name and without a label or embed link",
+    async (_case, tab, wikiLink) => {
+      const results = await pageResults(tab);
+
+      expect(results).toHaveLength(7);
+      for (const result of results) {
+        expect(result).toMatchObject({ wikiLink });
+        expect(result).not.toHaveProperty("embedLink");
+      }
+    },
+  );
+
+  it("is named in the output schema of every tool that returns the address of a page, and described there", async () => {
+    const answer = await send({ method: "tools/list" });
+
+    type Schema = { properties?: Record<string, Schema & { description?: string }>; items?: Schema };
+    const tools = answer.result?.tools as { name: string; outputSchema: Schema }[];
+    const schemaOf = (name: string) => tools.find((tool) => tool.name === name)?.outputSchema;
+    const pageSchemas = [
+      schemaOf("list_folder")?.properties?.pages?.items,
+      schemaOf("search_pages")?.properties?.results?.items,
+      ...["read_page", "create_page", "replace_page_content", "edit_page_content", "move_or_rename_page"].map(schemaOf),
+    ];
+    for (const schema of pageSchemas) {
+      expect(schema?.properties?.wikiLink?.description).toBe(
+        "The wiki link with which a page links this page: [[name]] for a page placed directly in the folder, " +
+          "[[tab/name]] for a page in a tab, without a label",
+      );
+      expect(schema?.properties).not.toHaveProperty("embedLink");
+    }
+  });
 });
 
 describe("the descriptions", () => {

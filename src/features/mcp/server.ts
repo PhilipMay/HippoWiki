@@ -142,8 +142,8 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
         title: "List the tabs, pages and files of the folder",
         description:
           "Lists the tabs, the pages and the files (images and PDFs) of the folder of this connection. Every page " +
-          "comes with its name, its title and the tab it is in (null for a page placed directly in the folder); pass " +
-          "these to read_page to read it. Every file comes with its name with its extension, its tab, its type, " +
+          "comes with its name, its title, the tab it is in (null for a page placed directly in the folder), its " +
+          "address and its wiki link, with which a page links it; pass the name and tab to read_page to read it. Every file comes with its name with its extension, its tab, its type, " +
           "size, the width and height of an image and the addresses of the file and of its details page, never its " +
           "content; pass its name and tab to read_file for the pages that show or link it. Every tab, page and file " +
           `also comes with when it was last changed, by whom and how: web in the browser, mcp by an AI app. ${USER_TEXT_NOTE}`,
@@ -158,8 +158,8 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
       {
         title: "Read a page",
         description:
-          "Reads one page of the folder of this connection: its title, its Markdown content, its address, when it " +
-          "was last changed, by whom and how (web in the browser, mcp by an AI app), and its version. A page is " +
+          "Reads one page of the folder of this connection: its title, its Markdown content, its address, its wiki " +
+          "link, with which a page links it, when it was last changed, by whom and how (web in the browser, mcp by an AI app), and its version. A page is " +
           `named by its tab if it is in one, and its own name, as list_folder returns them. ${USER_TEXT_NOTE}`,
         inputSchema: readPageInput,
         outputSchema: readPageOutput,
@@ -176,8 +176,8 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
           "Searches the pages of the whole folder of this connection by their titles, names and content, in the " +
           "language each page is written in. Every word must match, also by an inflection, its start, a part of a word " +
           'or a typo; "two words" in quotes match as a phrase, -word leaves out the pages with the word, and or ' +
-          "between two words finds either. The best matches come first, each with its title, its name and tab, a " +
-          "piece of its text and when it was last changed, by whom and how. Read the best results with read_page, " +
+          "between two words finds either. The best matches come first, each with its title, its name and tab, its " +
+          "address and wiki link, a piece of its text and when it was last changed, by whom and how. Read the best results with read_page, " +
           "by their name and tab; ask for the next ones with nextOffset. The first call, with offset 0, also lists " +
           "in files the images and PDFs of the folder whose names match, each with its details and addresses but " +
           "never its content. Deleted pages and files are never found. " +

@@ -202,6 +202,17 @@ const addressOutput = (item: string) => z.string().describe(`Where a person open
 const pageTabOutput = (verb: "is" | "was") =>
   z.string().nullable().describe(`The tab the page ${verb} in, or null for a page placed directly in the folder`);
 
+/**
+ * The wiki link of a page, as every result that gives the address of a page gives it next to it (R3). It carries no
+ * label, not the title either, so that it stays right when the title changes; a page has no embed link.
+ */
+const PAGE_WIKI_LINK_OUTPUT = z
+  .string()
+  .describe(
+    "The wiki link with which a page links this page: [[name]] for a page placed directly in the folder, " +
+      "[[tab/name]] for a page in a tab, without a label",
+  );
+
 /** Where the deleted items of the folder are, as both delete tools give it. */
 const DELETED_ITEMS_ADDRESS_OUTPUT = z
   .string()
@@ -251,6 +262,7 @@ export const listFolderOutput = z.object({
         title: z.string(),
         tab: pageTabOutput("is"),
         address: z.string(),
+        wikiLink: PAGE_WIKI_LINK_OUTPUT,
         lastChanged: lastChangedOutput("page"),
         lastEditedBy: lastEditedByOutput("page"),
         lastEditedVia: lastEditedViaOutput("page"),
@@ -274,6 +286,7 @@ export const searchPagesOutput = z.object({
         name: z.string().describe("The name of the page, as read_page takes it"),
         tab: pageTabOutput("is"),
         address: addressOutput("page"),
+        wikiLink: PAGE_WIKI_LINK_OUTPUT,
         excerpt: z.string().describe("A short piece of the text of the page around the match, as plain text"),
         lastChanged: lastChangedOutput("page"),
         lastEditedBy: lastEditedByOutput("page"),
@@ -308,6 +321,7 @@ export const readPageOutput = z.object({
   tab: z.string().nullable(),
   content: z.string().describe("The Markdown source of the page"),
   address: addressOutput("page"),
+  wikiLink: PAGE_WIKI_LINK_OUTPUT,
   lastChanged: lastChangedOutput("page"),
   lastEditedBy: lastEditedByOutput("page"),
   lastEditedVia: lastEditedViaOutput("page"),
@@ -344,6 +358,7 @@ export const storedPageOutput = z.object({
   title: z.string(),
   tab: z.string().nullable(),
   address: addressOutput("page"),
+  wikiLink: PAGE_WIKI_LINK_OUTPUT,
   version: z
     .number()
     .int()

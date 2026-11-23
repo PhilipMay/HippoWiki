@@ -114,9 +114,15 @@ test.describe("the write tools", () => {
       title: "Release Notes",
       tab: null,
       address: `${ISSUER}/folders/projects/release-notes.md`,
+      wikiLink: "[[release-notes]]",
       version: 1,
     });
-    expect(inTab.structuredContent).toMatchObject({ name: "install", tab: "guides", version: 1 });
+    expect(inTab.structuredContent).toMatchObject({
+      name: "install",
+      tab: "guides",
+      wikiLink: "[[guides/install]]",
+      version: 1,
+    });
     expect(await storedEditors()).toEqual([
       { name: "install", lastEditedById: owner.id, lastEditedVia: "mcp" },
       { name: "release-notes", lastEditedById: owner.id, lastEditedVia: "mcp" },
@@ -165,7 +171,13 @@ test.describe("the write tools", () => {
     });
     const refused = await write(request, "replace_page_content", { page: "plan", version: 2, content: "No title" });
 
-    expect(replaced.structuredContent).toMatchObject({ name: "plan", title: "Roadmap", version: 2 });
+    // The wiki link names the page by its name, not by its new title.
+    expect(replaced.structuredContent).toMatchObject({
+      name: "plan",
+      title: "Roadmap",
+      wikiLink: "[[plan]]",
+      version: 2,
+    });
     expect(refused.isError).toBe(true);
     expect(refused.content[0]?.text).toContain("must start with a title heading");
     expect(await storedPages()).toEqual([
@@ -277,6 +289,7 @@ test.describe("the write tools", () => {
       title: "Plan",
       tab: "guides",
       address: `${ISSUER}/folders/projects/guides/roadmap.md`,
+      wikiLink: "[[guides/roadmap]]",
       version: 2,
       updatedPages: [],
     });
@@ -327,6 +340,7 @@ test.describe("the write tools", () => {
         title: "Plan",
         tab: "guides",
         address: `${ISSUER}/folders/projects/guides/plan.md`,
+        wikiLink: "[[guides/plan]]",
         version: 3,
         updatedPages: [],
       });
@@ -532,6 +546,7 @@ test.describe("the write tools", () => {
       title: "Plan",
       tab: null,
       address: `${ISSUER}/folders/projects/plan.md`,
+      wikiLink: "[[plan]]",
       version: read.version,
     });
     await expect(call(request, "read_page", { page: "plan" })).resolves.toMatchObject({

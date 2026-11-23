@@ -6,7 +6,7 @@ import { USER_TEXT_NOTE } from "@/features/mcp/tool-schemas";
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 
 import { logIn, NO_STORAGE_STATE } from "./support/auth";
-import { createFolderRole, createGrant, createPage, createUser, getTestDb } from "./support/database";
+import { createFolderRole, createGrant, createPage, createTab, createUser, getTestDb } from "./support/database";
 import { call, mcpPath, send, setUpProjects } from "./support/mcp";
 import { ISSUER } from "./support/oauth";
 import { expect, test } from "./support/test";
@@ -83,6 +83,7 @@ test("one replacement of a date changes only that date and adds one revision by 
     title: "Plan",
     tab: null,
     address: `${ISSUER}/folders/projects/plan.md`,
+    wikiLink: "[[plan]]",
     version: 2,
     replaced: [1],
   });
@@ -97,6 +98,26 @@ test("one replacement of a date changes only that date and adds one revision by 
     { number: 1, content: PLAN, userId: bob.id, via: "web" },
     { number: 2, content: edited, userId: owner.id, via: "mcp" },
   ]);
+});
+
+test("a page in a tab is edited by its tab and name and returns the wiki link with the tab", async ({ request }) => {
+  const guides = await createTab({ folder: projects, name: "guides" });
+  await createPage({ tab: guides, name: "setup", content: "# Setup\n\nRun npm." });
+
+  const result = await write(request, {
+    tab: "guides",
+    page: "setup",
+    version: 1,
+    edits: [{ oldText: "npm", newText: "pnpm" }],
+  });
+
+  expect(result.structuredContent).toMatchObject({
+    name: "setup",
+    tab: "guides",
+    address: `${ISSUER}/folders/projects/guides/setup.md`,
+    wikiLink: "[[guides/setup]]",
+    version: 2,
+  });
 });
 
 test("three replacements in one call change three places and add one revision", async ({ request }) => {

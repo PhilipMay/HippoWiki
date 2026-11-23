@@ -25,6 +25,7 @@ type SearchResult = {
   name: string;
   tab: string | null;
   address: string;
+  wikiLink: string;
   excerpt: string;
   lastChanged: string;
   lastEditedBy: string;
@@ -117,6 +118,7 @@ test("finds the pages of its folder only, never a deleted page, and each result 
         name: "backup",
         tab: "guides",
         address: `${ISSUER}/folders/projects/guides/backup.md`,
+        wikiLink: "[[guides/backup]]",
         excerpt: "The <b>backup</b> runs every night",
         lastChanged: "2026-03-04T10:00:00.000Z",
         lastEditedBy: "bob",
@@ -132,6 +134,21 @@ test("finds the pages of its folder only, never a deleted page, and each result 
   const [found] = answer.results;
   const read = await call(request, "read_page", { tab: found?.tab, page: found?.name });
   expect(read.structuredContent).toMatchObject({ name: "backup", tab: "guides", title: "Backup" });
+});
+
+test("gives each result the wiki link of its page, with its tab or without one, and no title in it", async ({
+  request,
+}) => {
+  const guides = await createTab({ folder: projects, name: "guides" });
+  await createPage({ tab: guides, name: "restore", content: "# Restore The Backup\n\nThe backup comes back." });
+  await createPage({ folder: projects, name: "nightly", content: "# Nightly Jobs\n\nThe backup runs at night." });
+
+  const answer = await search(request, { query: "backup" });
+
+  expect(answer.results.map(({ name, wikiLink }) => [name, wikiLink]).sort()).toEqual([
+    ["nightly", "[[nightly]]"],
+    ["restore", "[[guides/restore]]"],
+  ]);
 });
 
 test("returns 10 results without a number, at most 25 a call, the next ones by offset, and only the 100 best", async ({
@@ -152,6 +169,7 @@ test("returns 10 results without a number, at most 25 a call, the next ones by o
       "name",
       "tab",
       "address",
+      "wikiLink",
       "excerpt",
       "lastChanged",
       "lastEditedBy",

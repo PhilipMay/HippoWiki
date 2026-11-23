@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseWikiLinkTarget, wikiLinkTargetText } from "@/features/pages/wiki-link-target";
+import { embedLinkOf, parseWikiLinkTarget, wikiLinkOf, wikiLinkTargetText } from "@/features/pages/wiki-link-target";
 import { NAME_MAX_LENGTH } from "@/lib/name-limits";
 
 describe("parseWikiLinkTarget", () => {
@@ -64,5 +64,19 @@ describe("wikiLinkTargetText", () => {
     expect(wikiLinkTargetText({ tab: null, name: "setup" })).toBe("setup");
     expect(wikiLinkTargetText({ tab: "guides", name: "setup" })).toBe("guides/setup");
     expect(wikiLinkTargetText({ tab: "guides", name: "diagram.png" })).toBe("guides/diagram.png");
+  });
+});
+
+describe("wikiLinkOf and embedLinkOf", () => {
+  it("write the wiki link and the embed link of an item placed directly in the folder, without a label", () => {
+    expect(wikiLinkOf({ tab: null, name: "setup" })).toBe("[[setup]]");
+    expect(wikiLinkOf({ tab: null, name: "diagram.png" })).toBe("[[diagram.png]]");
+    expect(embedLinkOf({ tab: null, name: "diagram.png" })).toBe("![[diagram.png]]");
+  });
+
+  it("write the wiki link and the embed link of an item in a tab with the tab before its name, without a label", () => {
+    expect(wikiLinkOf({ tab: "guides", name: "setup" })).toBe("[[guides/setup]]");
+    expect(wikiLinkOf({ tab: "guides", name: "manual.pdf" })).toBe("[[guides/manual.pdf]]");
+    expect(embedLinkOf({ tab: "guides", name: "diagram.png" })).toBe("![[guides/diagram.png]]");
   });
 });

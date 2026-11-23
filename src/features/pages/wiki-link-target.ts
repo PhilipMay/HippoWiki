@@ -54,6 +54,22 @@ export function wikiLinkTargetText(target: { tab: string | null; name: string })
 }
 
 /**
+ * The wiki link of a page or file, `[[target]]`, without a label: the link with which a page links it, as the copy
+ * field "Wiki link" of the details page of a file and the results of the MCP tools give it (R3, R4).
+ */
+export function wikiLinkOf(target: { tab: string | null; name: string }): string {
+  return `[[${wikiLinkTargetText(target)}]]`;
+}
+
+/**
+ * The embed link of a file, `![[target]]`, without a label: the link with which a page shows an image, as the copy
+ * field "Embed link" of the details page of an image and the results of the MCP tools give it (R5).
+ */
+export function embedLinkOf(target: { tab: string | null; name: string }): string {
+  return `![[${wikiLinkTargetText(target)}]]`;
+}
+
+/**
  * Why a wiki link leads to no page or file, the hints of the page view and of live preview: the page or the file does
  * not exist, the target breaks the name rule, or it names a tab that does not exist.
  */

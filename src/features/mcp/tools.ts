@@ -45,6 +45,7 @@ import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 import * as linksService from "@/features/pages/links-service";
 import { TITLE_HEADING_MISSING_MESSAGE } from "@/features/pages/schema";
 import * as pageService from "@/features/pages/service";
+import { wikiLinkOf } from "@/features/pages/wiki-link-target";
 import {
   SEARCH_MAX_CHARACTERS,
   SEARCH_MAX_RESULTS,
@@ -254,6 +255,7 @@ export async function listFolder(options: WikiToolsOptions): Promise<CallToolRes
           title: page.title,
           tab: page.tab?.name ?? null,
           address: addressOf(options, pagePath(folder.name, page.tab?.name ?? null, page.name)),
+          wikiLink: wikiLinkOf({ tab: page.tab?.name ?? null, name: page.name }),
           lastChanged: page.updatedAt.toISOString(),
           lastEditedBy: page.lastEditedBy.name,
           lastEditedVia: page.lastEditedBy.via,
@@ -287,6 +289,7 @@ export async function readPage(
         tab: page.tab?.name ?? null,
         content: page.content,
         address: addressOf(options, pagePath(page.folder.name, page.tab?.name ?? null, page.name)),
+        wikiLink: wikiLinkOf({ tab: page.tab?.name ?? null, name: page.name }),
         lastChanged: page.updatedAt.toISOString(),
         lastEditedBy: page.lastEditedBy.name,
         lastEditedVia: page.lastEditedBy.via,
@@ -409,6 +412,7 @@ export async function searchPages(
           name: page.name,
           tab: page.tab?.name ?? null,
           address: addressOf(options, pagePath(folder.name, page.tab?.name ?? null, page.name)),
+          wikiLink: wikiLinkOf({ tab: page.tab?.name ?? null, name: page.name }),
           excerpt: page.excerpt.map((part) => part.text).join(""),
           lastChanged: page.updatedAt.toISOString(),
           lastEditedBy: page.lastEditedBy.name,
@@ -515,6 +519,8 @@ function storedPageData(options: WikiToolsOptions, stored: pageService.StoredPag
     title: stored.title,
     tab,
     address: addressOf(options, pagePath(options.folder.name, tab, stored.name)),
+    // The tab and name as stored, so that after a move or rename the link names the new place (R3).
+    wikiLink: wikiLinkOf({ tab, name: stored.name }),
     version: stored.version,
   });
 }

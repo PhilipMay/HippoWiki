@@ -29,7 +29,7 @@ images in the pages it writes without building the links itself. The requirement
 
 ## Checklist
 
-- [ ] Wiki links of pages
+- [x] Wiki links of pages
 - [ ] Wiki links and embed links of files
 - [ ] Hint on the addresses
 - [ ] Spec tests
