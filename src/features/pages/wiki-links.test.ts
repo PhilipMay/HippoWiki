@@ -301,4 +301,51 @@ describe("rewriteWikiLinks", () => {
   it("returns content without such links as it is", () => {
     expect(rewriteWikiLinks("# T\n\nNo links.", renamed)).toBe("# T\n\nNo links.");
   });
+
+  describe("with a footnote definition before another link", () => {
+    const oldRenamed = pageMoved({ kind: "page", tab: null, name: "old" }, { kind: "page", tab: null, name: "new" });
+
+    it("changes the link in the definition and the link after it, and nothing else", () => {
+      expect(rewriteWikiLinks("# T\n\n[^1]: see [[old]]\n\nText[^1] and [[old]].\n", oldRenamed)).toBe(
+        "# T\n\n[^1]: see [[new]]\n\nText[^1] and [[new]].\n",
+      );
+    });
+
+    it("keeps line breaks as CRLF", () => {
+      expect(rewriteWikiLinks("# T\r\n\r\n[^1]: see [[old]]\r\n\r\nText[^1] and [[old]].\r\n", oldRenamed)).toBe(
+        "# T\r\n\r\n[^1]: see [[new]]\r\n\r\nText[^1] and [[new]].\r\n",
+      );
+    });
+
+    it("changes the links of two definitions in reverse order of their references and of the text", () => {
+      const content = "# T\n\n[^b]: B [[old|b]]\n\n[^a]: A [[old]]\n\nFirst[^a], second[^b], and [[old|text]].\n";
+      expect(rewriteWikiLinks(content, oldRenamed)).toBe(
+        "# T\n\n[^b]: B [[new|b]]\n\n[^a]: A [[new]]\n\nFirst[^a], second[^b], and [[new|text]].\n",
+      );
+    });
+
+    it("changes the links into a renamed tab", () => {
+      const content = "# T\n\n[^1]: see [[guides/setup]]\n\nText[^1] and [[guides/intro]].\n";
+      expect(rewriteWikiLinks(content, tabRenamed("guides", "docs"))).toBe(
+        "# T\n\n[^1]: see [[docs/setup]]\n\nText[^1] and [[docs/intro]].\n",
+      );
+    });
+
+    it("changes the embed and the link of a moved file", () => {
+      const moved = pageMoved(
+        { kind: "file", tab: null, name: "diagram.png" },
+        { kind: "file", tab: "docs", name: "network.png" },
+      );
+      const content = "# T\n\n[^1]: see ![[diagram.png]]\n\nText[^1] and [[diagram.png]].\n";
+      expect(rewriteWikiLinks(content, moved)).toBe(
+        "# T\n\n[^1]: see ![[docs/network.png]]\n\nText[^1] and [[docs/network.png]].\n",
+      );
+    });
+
+    it("keeps a link of the definition that does not change", () => {
+      expect(rewriteWikiLinks("# T\n\n[^1]: see [[other]]\n\nText[^1] and [[old]].\n", oldRenamed)).toBe(
+        "# T\n\n[^1]: see [[other]]\n\nText[^1] and [[new]].\n",
+      );
+    });
+  });
 });

@@ -261,6 +261,34 @@ describe("renaming a tab with files", () => {
   });
 });
 
+describe("renaming a tab with linked pages", () => {
+  it("changes only the targets of a linking page whose footnote definition with a link stands before another link, and back", async () => {
+    const folder = await createFolder();
+    const guides = await createTab({ folder, name: "guides" });
+    await createPage({ tab: guides, name: "setup" });
+    await createPage({ tab: guides, name: "intro" });
+    const original = "# Notes\n\n[^1]: see [[guides/setup]]\n\nText[^1] and [[guides/intro|the intro]].\n";
+    const notes = await createPage({ folder, name: "notes", content: original });
+    const links = async () =>
+      (await getTestDb().pageLink.findMany({ where: { pageId: notes.id } }))
+        .map(({ tabName, pageName }) => `${tabName}/${pageName}`)
+        .sort();
+
+    await expect(folderService.renameTab(actor, guides.id, { name: "manuals" })).resolves.toMatchObject({ ok: true });
+
+    const renamed = "# Notes\n\n[^1]: see [[manuals/setup]]\n\nText[^1] and [[manuals/intro|the intro]].\n";
+    expect((await storedPage(notes.id)).content).toBe(renamed);
+    expect(await links()).toEqual(["manuals/intro", "manuals/setup"]);
+    expect((await revisionsOf(notes.id)).at(-1)).toMatchObject({ number: 2, content: renamed, linksUpdated: true });
+
+    await expect(folderService.renameTab(actor, guides.id, { name: "guides" })).resolves.toMatchObject({ ok: true });
+
+    expect((await storedPage(notes.id)).content).toBe(original);
+    expect(await links()).toEqual(["guides/intro", "guides/setup"]);
+    expect((await revisionsOf(notes.id)).at(-1)).toMatchObject({ number: 3, content: original, linksUpdated: true });
+  });
+});
+
 describe("the last editor of folders", () => {
   it("is the actor of the creation, and the actor of a rename replaces it", async () => {
     const bob = await createBob();

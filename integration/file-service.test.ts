@@ -395,6 +395,36 @@ describe("moving and renaming a file", () => {
     });
   });
 
+  it("changes only the targets of a linking page whose footnote definition with an embed stands before another link, and back", async () => {
+    const folder = await createFolder();
+    const guides = await createTab({ folder, name: "guides" });
+    const file = await createFile({ tab: guides, name: "diagram.png" });
+    const original =
+      "# Notes\n\n[^1]: see ![[guides/diagram.png]]\n\nText[^1] and [[guides/diagram.png|the diagram]].\n";
+    const notes = await createPage({ folder, name: "notes", content: original });
+    const links = async () =>
+      (await getTestDb().pageLink.findMany({ where: { pageId: notes.id } })).map(({ tabName, pageName }) =>
+        tabName === null ? pageName : `${tabName}/${pageName}`,
+      );
+    const move = async (name: string, tabId: string | null) => {
+      const { lockVersion } = await getTestDb().file.findUniqueOrThrow({ where: { id: file.id } });
+      return fileService.moveOrRenameFile(actor, file.id, { name, tabId, lockVersion });
+    };
+
+    await expect(move("network.png", null)).resolves.toMatchObject({ ok: true });
+
+    const moved = "# Notes\n\n[^1]: see ![[network.png]]\n\nText[^1] and [[network.png|the diagram]].\n";
+    expect((await storedPage(notes.id)).content).toBe(moved);
+    expect(await links()).toEqual(["network.png"]);
+    expect((await revisionsOf(notes.id)).at(-1)).toMatchObject({ number: 2, content: moved, linksUpdated: true });
+
+    await expect(move("diagram.png", guides.id)).resolves.toMatchObject({ ok: true });
+
+    expect((await storedPage(notes.id)).content).toBe(original);
+    expect(await links()).toEqual(["guides/diagram.png"]);
+    expect((await revisionsOf(notes.id)).at(-1)).toMatchObject({ number: 3, content: original, linksUpdated: true });
+  });
+
   it("refuses a taken name, a tab of another folder and an older lock version, and changes no page", async () => {
     const folder = await createFolder();
     const guides = await createTab({ folder, name: "guides" });

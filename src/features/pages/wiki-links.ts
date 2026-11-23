@@ -55,7 +55,11 @@ function positionInContent(content: string): (position: number) => number {
   };
 }
 
-/** The wiki links of the content, in their order. A link inside the alt text of an image is no link. */
+/**
+ * The wiki links of the content, in the order of the page view, which puts the links of the footnote definitions after
+ * the links of the text: not the order of the source. A caller that needs the order of the source sorts by `position`.
+ * A link inside the alt text of an image is no link.
+ */
 export function wikiLinksOf(content: string): WikiLink[] {
   const toContent = positionInContent(content);
   const links: WikiLink[] = [];
@@ -109,15 +113,18 @@ export function tabRenamed(from: string, to: string): TargetChange {
 
 /**
  * The content with the target of every wiki link that the change names replaced by the new target, at the positions
- * of the parse: only the target, so that the label, a `\|` before it in a table, the code and every other target stay
+ * of the parse, in the order of the source: only the target, so that the label, a `\|` before it in a table, the code and every other target stay
  * as they were. The result is not checked against the limits of the content.
  */
 export function rewriteWikiLinks(content: string, change: TargetChange): string {
   let rewritten = "";
   let at = 0;
-  for (const { page, position, target } of wikiLinksOf(content)) {
-    const changed = page && position !== null ? change(page) : null;
-    if (changed === null || position === null) continue;
+  const links = wikiLinksOf(content)
+    .filter((link): link is WikiLink & { position: number } => link.position !== null)
+    .sort((a, b) => a.position - b.position);
+  for (const { page, position, target } of links) {
+    const changed = page ? change(page) : null;
+    if (changed === null) continue;
     rewritten += content.slice(at, position) + wikiLinkTargetText(changed);
     at = position + target.length;
   }

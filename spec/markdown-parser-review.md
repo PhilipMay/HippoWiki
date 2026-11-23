@@ -2,19 +2,15 @@
 
 ## Summary
 
-- Verdict: one Blocker and one Major.
-  - The Blocker: a rename of a page or a tab corrupts the content of a linking page when a footnote definition that
-    holds a changed link comes before another changed link. The footnote rule moves the definitions to the end, and
-    `rewriteWikiLinks()` expects the links in source order.
+- Verdict: one Major and no Blocker.
   - The Major: the footnote reference rule of markdown-it-footnote, which `markdown.ts` keeps, takes quadratic time as
     soon as the page defines a footnote. One parse of 100,000 characters then takes about 7 s, and every save or view
     of the page parses it two to four times.
   - The replaced footnote tail rule is correct and linear for every input without nested definitions. Nested
     definitions leak unbalanced tokens, which also defeats the depth limit.
-- Findings: 10 in all, 1 Blocker, 1 Major, 4 Minor and 4 Nit (4 `issue:`, 1 `suggestion:`, 4 `nit:`, 1 `question:`).
-  Of the 9 Suggestions, 4 are High, 3 Medium and 2 Low.
-- To fix first: the order of the links in `rewriteWikiLinks()`, then the footnote reference rule and its input of the
-  cost test.
+- Findings: 9 in all, 0 Blocker, 1 Major, 4 Minor and 4 Nit (3 `issue:`, 1 `suggestion:`, 4 `nit:`, 1 `question:`).
+  Of the 8 Suggestions, 3 are High, 3 Medium and 2 Low.
+- To fix first: the footnote reference rule and its input of the cost test.
 - Not covered by this review: see "Not covered" at the end.
 
 ## Scope and method
@@ -39,56 +35,10 @@
   - Timings are the best of 3 to 7 runs on an Apple M4 Pro with Node 26.13.
   - The unit tests of `markdown.test.ts`, `wiki-links.test.ts`, `text.test.ts`, `derive.test.ts` and
     `link-address.test.ts` pass (130 tests).
-  - The Blocker and the quadratic time of the Major were reproduced a second time, on their own: the positions
-    `[39, 17]` and the duplicated content of the Evidence, and 435 ms against 1,549 ms for 12,500 and 25,000 `[^` with
-    a definition (24 and 46 ms without one).
+  - The quadratic time of the Major was reproduced a second time, on its own: 435 ms against 1,549 ms for 12,500 and
+    25,000 `[^` with a definition (24 and 46 ms without one).
 
 ## Findings
-
-#### issue: a rename duplicates part of a linking page when a footnote definition with a changed link stands before another changed link
-
-- Location: `src/features/pages/wiki-links.ts`, `rewriteWikiLinks()` and `wikiLinksOf()`. It is called from
-  `src/features/pages/links-service.ts` for every linking page of a move, a rename or a rename of a tab.
-- Severity: Blocker. Wrong results and silent corruption of the content of other users' pages, stored as a new
-  revision.
-- Category: correctness
-- Problem:
-  - `wikiLinksOf()` returns the links in the order of the tokens.
-  - `footnoteTail()` moves every footnote definition to a footnote block at the end of the tokens. So a link inside a
-    definition comes after every link of the text, even when the definition stands earlier in the source.
-  - `rewriteWikiLinks()` builds the result with `content.slice(at, position)` and `at = position + target.length`.
-    That only works for ascending positions.
-  - With a smaller position after a larger one, the slice is empty, `at` moves backwards, and the closing
-    `content.slice(at)` appends the rest of the content a second time.
-- Impact:
-  - Any page that defines a footnote after the paragraph that cites it, and links the renamed page or tab again later,
-    gets text duplicated on every rename. Defining a footnote right after its paragraph is a common style.
-  - The duplicate keeps the old link, so the page goes on linking the old name, and the index of links stores it
-    again.
-  - The result is not checked against the limits, so it can grow past 100,000 characters and compound with each
-    rename.
-- Evidence:
-  - Input: `"# T\n\n[^1]: see [[old]]\n\nText[^1] and [[old]].\n"`. The positions from `wikiLinksOf()` are `[39, 17]`.
-  - `rewriteWikiLinks(content, pageMoved(old → new))` returns
-    `"# T\n\n[^1]: see [[old]]\n\nText[^1] and [[newnew]]\n\nText[^1] and [[old]].\n"`.
-  - Content with CRLF and a rename of a tab behave the same way.
-  - The corpus test "footnotes" in `wiki-links.test.ts` has the definition only after the text, so its order happens
-    to be ascending.
-- Suggestion (required):
-  - Rewrite in source order, leaving out the links without a position, as now:
-    ```ts
-    const links = wikiLinksOf(content)
-      .filter((link) => link.position !== null)
-      .sort((a, b) => a.position! - b.position!);
-    ```
-    Then the same loop over `links`.
-  - Add the input above, and one with two definitions in reverse order, to `describe("rewriteWikiLinks")` in
-    `wiki-links.test.ts`.
-  - Say in the comment of `wikiLinksOf()` that its order is that of the page view, with the footnote definitions last.
-  - The positions are distinct, because each sits at its own `[[`. `linkTargetsOf()` and the comparison with the
-    editor in `editor/wiki-links.test.ts` keep their order.
-- Confidence: High. One fix in one function. The sorted version, run on the inputs above, the case in reverse order,
-  CRLF and a rename of a tab, gives exactly the expected content, and the named test checks it.
 
 #### issue: footnote references take quadratic time as soon as the content defines a footnote, so one page can block the server for seconds per view
 
@@ -369,8 +319,10 @@
   - The lockfile pins markdown-it 15.0.3 and markdown-it-footnote 4.0.0.
   - The editor imports no markdown-it. `link-address.ts` is tested against `parseMarkdown()` (`link-address.test.ts`),
     and `safe-address.ts` is shared.
-  - The remaining gaps are the untyped footnote metas and the order of the tokens that `rewriteWikiLinks()` relies on
-    (both findings above).
+  - The order of the tokens, which puts the footnote definitions last, no longer matters for the rewrite of wiki
+    links: `rewriteWikiLinks()` sorts the links by their positions in the source, which unit tests and integration
+    tests of a page, tab and file rename with a footnote definition before another link check.
+  - The remaining gap is the untyped footnote metas (finding above).
 - The parse paths: traced as in the suggestion above. Opening the editor parses nothing with markdown-it on the
   server, and its list of pages comes from the database.
 - Escaped task markers: already open in `list-layout-review.md` ("an escaped task marker `\[ ]` still makes a task
@@ -389,8 +341,6 @@
 
 - The real server under load. The blocking of the event loop of the footnote finding is inferred from measured times
   of the parse and the render of the pure functions, not observed end to end.
-- The corruption of a rename through the database (`moveOrRenamePage()` in an integration test). Only the pure
-  `rewriteWikiLinks()`, which `links-service.ts` calls directly, was run.
 - What GitHub does with nested footnote definitions, footnote labels that contain `[`, and the task marker `\[ ]`.
 - Timings on the CI runner. All numbers are from an Apple M4 Pro, so the margins of the cost budgets in CI may be
   smaller.

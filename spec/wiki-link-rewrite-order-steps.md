@@ -32,7 +32,7 @@ page when a footnote definition with a changed link stands before another change
 
 ## Checklist
 
-- [ ] Rewrite the links in the order of their positions
+- [x] Rewrite the links in the order of their positions
 - [ ] Wrap-up
 
 ## Rewrite the links in the order of their positions

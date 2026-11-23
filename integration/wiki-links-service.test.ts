@@ -394,6 +394,25 @@ describe("the update of links on a move or rename", () => {
     expect(deleted.ok).toBe(true);
   });
 
+  it("changes only the targets of a linking page whose footnote definition with a link stands before another link, and back", async () => {
+    const original = "# Notes\n\n[^1]: see [[setup]]\n\nText[^1] and [[setup|the setup]].\n";
+    const setup = await newPage("# Setup", { name: "setup" });
+    const notes = await newPage(original, { name: "notes" });
+
+    await move(setup, "install", null);
+
+    const renamed = "# Notes\n\n[^1]: see [[install]]\n\nText[^1] and [[install|the setup]].\n";
+    expect((await storedPage(notes)).content).toBe(renamed);
+    expect(await linksOf(notes)).toEqual(["install"]);
+    expect((await revisionsOf(notes)).at(-1)).toMatchObject({ number: 2, content: renamed, linksUpdated: true });
+
+    await move(setup, "setup", null);
+
+    expect((await storedPage(notes)).content).toBe(original);
+    expect(await linksOf(notes)).toEqual(["setup"]);
+    expect((await revisionsOf(notes)).at(-1)).toMatchObject({ number: 3, content: original, linksUpdated: true });
+  });
+
   it("keeps the link, versions and history of a deleted page", async () => {
     const setup = await newPage("# Setup", { name: "setup" });
     const gone = await newPage("# Gone\n\n[[setup]]", { name: "gone" });
