@@ -6,8 +6,8 @@
   headers, CSRF, caching, CORS, the client address of a login, the waits of logins at the same time, the tools of MCP
   per role, and the speed of the editor. The weak points are settings of the GitHub repository and the limit of logins
   with the right password at the same moment.
-- Findings: 4 in all, 0 Blocker, 0 Major, 4 Minor and 0 Nit (2 `issue:`, 2 `suggestion:`). Of the 4 Suggestions,
-  1 is High, 2 Medium and 1 Low.
+- Findings: 3 in all, 0 Blocker, 0 Major, 3 Minor and 0 Nit (2 `issue:`, 1 `suggestion:`). Of the 3 Suggestions,
+  1 is High, 1 Medium and 1 Low.
 - To fix first: the approval of workflows from fork pull requests, the one High suggestion.
 - The settings of the repository that open findings of `review-report.md` could not see are added to those findings
   as Evidence: private vulnerability reporting, the alerts and security updates of Dependabot, the rules for `main`
@@ -67,21 +67,6 @@ api` call shows it afterwards.
 - Confidence: Medium. Whether the seed passwords, the test values of the tests and the format of the secrets of
   HippoWiki raise alerts that have to be closed by hand was not tried.
 - Reference: OWASP A02:2025 Security Misconfiguration; CWE-798.
-
-#### suggestion: no code scanning runs on the repository
-
-- Location: the settings of the repository, "Code scanning"; `.github/workflows/`
-- Severity: Minor
-- Category: security
-- Problem: the default setup of CodeQL is `not-configured`, for the languages `actions` and `javascript-typescript`
-  that GitHub found, and no workflow runs another static analysis for security. ESLint and the tests check the rules
-  of the specs, not the patterns of known vulnerabilities, and nothing checks the workflows themselves.
-- Impact: a new flaw of a known kind, such as an injection into a workflow through the name of a branch, is only found
-  by the next review.
-- Evidence: `gh api repos/PhilipMay/HippoWiki/code-scanning/default-setup` gives `"state":"not-configured"`.
-- Suggestion (optional): turn on the default setup of CodeQL for `actions` and `javascript-typescript`.
-- Confidence: Medium. How many alerts it raises at first, and how much time it adds to a push, was not tried.
-- Reference: OWASP A03:2025 Software Supply Chain Failures; BSI TR-03185-2 QA.04.
 
 #### suggestion: about 50 logins with the right password at the same moment for one name start to fail with the general error
 
@@ -165,7 +150,9 @@ api` call shows it afterwards.
   `search_pages` work against `https://hippowiki.maysprot.ddnss.eu`, and the app gets the 12 tools of a Manager.
 - The settings of the repository that hold: the default permissions of workflows are read-only and may not approve
   pull requests; the alerts and security updates of Dependabot are on; the only collaborator is the owner, who
-  published the last releases.
+  published the last releases; the default setup of CodeQL is `configured` for `actions` and
+  `javascript-typescript` (`gh api repos/PhilipMay/HippoWiki/code-scanning/default-setup`, 2026-11-23), and its first
+  run passed.
 
 ## Not covered
 

@@ -653,3 +653,6 @@ Current limits:
 - Dependabot (`.github/dependabot.yml`) checks the `npm` and `github-actions` dependencies and the two images of
   `scripts/Containerfile` and the `Containerfile` of the project root every week. Its pull requests run the same
   workflows; merging one is an upgrade, a task of its own (see `step-plan-workflow.md`).
+- Code scanning runs the default setup of CodeQL, set in the settings of the repository and not in a workflow file,
+  for `actions` and `javascript-typescript` with the default query suite. It analyses every push to `main` and every
+  pull request, and once a week; its alerts are under "Security" → "Code scanning" of the repository.
