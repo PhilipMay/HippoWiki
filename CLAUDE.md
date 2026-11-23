@@ -31,8 +31,6 @@ file itself holds.
   mode?
 - `spec/wiki-links.md`: How do pages link to each other with wiki links, and how are the links kept working when pages
   and tabs are renamed?
-- `spec/wiki-link-rewrite-order-steps.md`: How is the rewrite of wiki links on a rename fixed so that a footnote
-  definition before another link no longer corrupts the linking page?
 - `spec/roadmap.md`: Which features may come later, and what is still to check?
 - `spec/attachments.md`: How do images and PDFs work as files of folders and tabs?
 - `spec/attachments-ideas.md`: How do other wikis store, embed and secure images and attachments, and what does that

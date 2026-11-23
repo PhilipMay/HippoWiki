@@ -120,7 +120,8 @@ Tests: `src/features/pages/wiki-links.test.ts`, `src/features/pages/wiki-link-ta
 
 - When a page is moved or renamed, every wiki link to it in the pages of the folder, the moved page itself included,
   is changed to the new name and place. Only the target changes; the label stays as written, and every other byte of
-  the content stays as it was. A move to the own name and place updates nothing.
+  the content stays as it was, wherever the link stands, inside a footnote definition included. A move to the own name
+  and place updates nothing.
 - The links are updated always, in the same write as the move: either the move and all the updates are stored, or
   nothing is. A move that is refused changes no page. The update takes the links as they are when the move is stored,
   so a page that gained a link while the dialog was open is updated as well; a content save that runs at the same time
