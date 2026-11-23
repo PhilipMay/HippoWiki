@@ -238,6 +238,20 @@ export const fileOutput = z.object({
     .string()
     .describe("Where a person with a role on the folder opens the file itself in a browser, after logging in"),
   detailsAddress: z.string().describe("Where a person opens the details page of the file, with its versions"),
+  // The same texts as the copy fields "Wiki link" and "Embed link" of the details page of the file (R4, R5).
+  wikiLink: z
+    .string()
+    .describe(
+      "The wiki link with which a page links the file: [[name.ext]] for a file placed directly in the folder, " +
+        "[[tab/name.ext]] for a file in a tab, without a label",
+    ),
+  embedLink: z
+    .string()
+    .nullable()
+    .describe(
+      "The embed with which a page shows the image: ![[name.ext]] for an image placed directly in the folder, " +
+        "![[tab/name.ext]] for an image in a tab, without a label; null for a PDF, which cannot be shown",
+    ),
   lastChanged: lastChangedOutput("file"),
   lastEditedBy: lastEditedByOutput("file"),
   lastEditedVia: lastEditedViaOutput("file"),

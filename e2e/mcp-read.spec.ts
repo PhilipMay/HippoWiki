@@ -375,6 +375,8 @@ test.describe("files", () => {
         height: diagram.versions[1]?.height,
         address: `${ISSUER}/files/projects/guides/diagram.png`,
         detailsAddress: `${ISSUER}/folders/projects/guides/diagram.png`,
+        wikiLink: "[[guides/diagram.png]]",
+        embedLink: "![[guides/diagram.png]]",
         lastChanged: "2026-03-05T09:00:00.000Z",
         lastEditedBy: "bob",
         lastEditedVia: "mcp",
@@ -395,7 +397,15 @@ test.describe("files", () => {
         ],
       });
       const pdf = await call(request, "read_file", { file: "manual.pdf" }, token, to);
-      expect(pdf.structuredContent, role).toMatchObject({ type: "pdf", tab: null, width: null, height: null });
+      expect(pdf.structuredContent, role).toMatchObject({
+        type: "pdf",
+        tab: null,
+        width: null,
+        height: null,
+        wikiLink: "[[manual.pdf]]",
+        embedLink: null,
+      });
+      expect(files[0], role).toMatchObject({ wikiLink: "[[manual.pdf]]", embedLink: null });
 
       // No result holds the bytes of an image or a PDF.
       for (const result of [listed, read, pdf]) {

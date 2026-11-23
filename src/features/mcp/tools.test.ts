@@ -427,11 +427,20 @@ describe("list_folder", () => {
       height: 480,
       address: `${PUBLIC_URL}/files/handbook/guides/diagram.png`,
       detailsAddress: `${PUBLIC_URL}/folders/handbook/guides/diagram.png`,
+      wikiLink: "[[guides/diagram.png]]",
+      embedLink: "![[guides/diagram.png]]",
       lastChanged: CHANGED.toISOString(),
       lastEditedBy: "alice",
       lastEditedVia: "web",
     });
-    expect(files[0]).toMatchObject({ type: "pdf", width: null, height: null });
+    expect(files[0]).toMatchObject({
+      type: "pdf",
+      width: null,
+      height: null,
+      wikiLink: "[[manual.pdf]]",
+      embedLink: null,
+    });
+    expect(files[1]).toMatchObject({ wikiLink: "[[photo.png]]", embedLink: "![[photo.png]]" });
   });
 
   it.each([
@@ -599,6 +608,8 @@ describe("read_file", () => {
       height: 480,
       address: `${PUBLIC_URL}/files/handbook/guides/diagram.png`,
       detailsAddress: `${PUBLIC_URL}/folders/handbook/guides/diagram.png`,
+      wikiLink: "[[guides/diagram.png]]",
+      embedLink: "![[guides/diagram.png]]",
       lastChanged: CHANGED.toISOString(),
       lastEditedBy: "bob",
       lastEditedVia: "mcp",
@@ -623,6 +634,8 @@ describe("read_file", () => {
       width: null,
       height: null,
       address: `${PUBLIC_URL}/files/handbook/manual.pdf`,
+      wikiLink: "[[manual.pdf]]",
+      embedLink: null,
       shownOrLinkedFrom: [],
     });
   });
@@ -771,6 +784,8 @@ describe("search_pages", () => {
           height: 480,
           address: `${PUBLIC_URL}/files/handbook/guides/network-diagram.png`,
           detailsAddress: `${PUBLIC_URL}/folders/handbook/guides/network-diagram.png`,
+          wikiLink: "[[guides/network-diagram.png]]",
+          embedLink: "![[guides/network-diagram.png]]",
           lastChanged: CHANGED.toISOString(),
           lastEditedBy: "mike",
           lastEditedVia: "web",
@@ -783,6 +798,8 @@ describe("search_pages", () => {
           height: null,
           address: `${PUBLIC_URL}/files/handbook/manual.pdf`,
           detailsAddress: `${PUBLIC_URL}/folders/handbook/manual.pdf`,
+          wikiLink: "[[manual.pdf]]",
+          embedLink: null,
         },
       ],
       moreFiles: false,
@@ -797,6 +814,8 @@ describe("search_pages", () => {
       "height",
       "address",
       "detailsAddress",
+      "wikiLink",
+      "embedLink",
       "lastChanged",
       "lastEditedBy",
       "lastEditedVia",
@@ -2010,6 +2029,31 @@ describe("the wiki link of a page", () => {
           "[[tab/name]] for a page in a tab, without a label",
       );
       expect(schema?.properties).not.toHaveProperty("embedLink");
+    }
+  });
+});
+
+describe("the links of a file", () => {
+  it("are named and described in the output schemas of list_folder, search_pages and read_file", async () => {
+    const answer = await send({ method: "tools/list" });
+
+    type Schema = { properties?: Record<string, Schema & { description?: string; type?: unknown }>; items?: Schema };
+    const tools = answer.result?.tools as { name: string; outputSchema: Schema }[];
+    const schemaOf = (name: string) => tools.find((tool) => tool.name === name)?.outputSchema;
+    const fileSchemas = [
+      schemaOf("list_folder")?.properties?.files?.items,
+      schemaOf("search_pages")?.properties?.files?.items,
+      schemaOf("read_file"),
+    ];
+    for (const schema of fileSchemas) {
+      expect(schema?.properties?.wikiLink?.description).toBe(
+        "The wiki link with which a page links the file: [[name.ext]] for a file placed directly in the folder, " +
+          "[[tab/name.ext]] for a file in a tab, without a label",
+      );
+      expect(schema?.properties?.embedLink?.description).toBe(
+        "The embed with which a page shows the image: ![[name.ext]] for an image placed directly in the folder, " +
+          "![[tab/name.ext]] for an image in a tab, without a label; null for a PDF, which cannot be shown",
+      );
     }
   });
 });

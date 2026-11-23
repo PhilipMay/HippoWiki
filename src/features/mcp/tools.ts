@@ -12,6 +12,7 @@ import type { z } from "zod";
 import { mayDo } from "@/features/folder-roles/roles";
 import type { McpActor } from "@/features/folder-roles/actors";
 import * as fileService from "@/features/files/service";
+import { isImageType } from "@/features/files/types";
 import * as folderService from "@/features/folders/service";
 import type {
   createPageInput,
@@ -45,7 +46,7 @@ import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 import * as linksService from "@/features/pages/links-service";
 import { TITLE_HEADING_MISSING_MESSAGE } from "@/features/pages/schema";
 import * as pageService from "@/features/pages/service";
-import { wikiLinkOf } from "@/features/pages/wiki-link-target";
+import { embedLinkOf, wikiLinkOf } from "@/features/pages/wiki-link-target";
 import {
   SEARCH_MAX_CHARACTERS,
   SEARCH_MAX_RESULTS,
@@ -207,7 +208,7 @@ function sortByTabThenName<Page extends { name: string; tab: { name: string } | 
   });
 }
 
-/** A file as the tools list it: its details and its two addresses, without its content. */
+/** A file as the tools list it: its details, its two addresses and its links, without its content. */
 function fileData(options: WikiToolsOptions, file: fileService.FolderFile): z.infer<typeof fileOutput> {
   const { folder } = options;
   const tab = file.tab?.name ?? null;
@@ -220,6 +221,9 @@ function fileData(options: WikiToolsOptions, file: fileService.FolderFile): z.in
     height: file.height,
     address: addressOf(options, fileContentPath(folder.name, tab, file.name)),
     detailsAddress: addressOf(options, filePath(folder.name, tab, file.name)),
+    wikiLink: wikiLinkOf({ tab, name: file.name }),
+    // Only an image can be shown in a page; a PDF has the field as null, so that every file has the same fields (R5).
+    embedLink: isImageType(file.type) ? embedLinkOf({ tab, name: file.name }) : null,
     lastChanged: file.updatedAt.toISOString(),
     lastEditedBy: file.lastEditedBy.name,
     lastEditedVia: file.lastEditedBy.via,

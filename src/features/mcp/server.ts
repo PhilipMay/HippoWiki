@@ -143,9 +143,11 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
         description:
           "Lists the tabs, the pages and the files (images and PDFs) of the folder of this connection. Every page " +
           "comes with its name, its title, the tab it is in (null for a page placed directly in the folder), its " +
-          "address and its wiki link, with which a page links it; pass the name and tab to read_page to read it. Every file comes with its name with its extension, its tab, its type, " +
-          "size, the width and height of an image and the addresses of the file and of its details page, never its " +
-          "content; pass its name and tab to read_file for the pages that show or link it. Every tab, page and file " +
+          "address and its wiki link, with which a page links it; pass the name and tab to read_page to read it. " +
+          "Every file comes with its name with its extension, its tab, its type, size, the width and height of an " +
+          "image, the addresses of the file and of its details page, its wiki link and, for an image, its embed " +
+          "link, with which a page shows it, never its content; pass its name and tab to read_file for the pages " +
+          "that show or link it. Every tab, page and file " +
           `also comes with when it was last changed, by whom and how: web in the browser, mcp by an AI app. ${USER_TEXT_NOTE}`,
         outputSchema: listFolderOutput,
         annotations: READ_ONLY,
@@ -159,8 +161,9 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
         title: "Read a page",
         description:
           "Reads one page of the folder of this connection: its title, its Markdown content, its address, its wiki " +
-          "link, with which a page links it, when it was last changed, by whom and how (web in the browser, mcp by an AI app), and its version. A page is " +
-          `named by its tab if it is in one, and its own name, as list_folder returns them. ${USER_TEXT_NOTE}`,
+          "link, with which a page links it, when it was last changed, by whom and how (web in the browser, mcp by " +
+          "an AI app), and its version. A page is named by its tab if it is in one, and its own name, as " +
+          `list_folder returns them. ${USER_TEXT_NOTE}`,
         inputSchema: readPageInput,
         outputSchema: readPageOutput,
         annotations: READ_ONLY,
@@ -177,10 +180,11 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
           "language each page is written in. Every word must match, also by an inflection, its start, a part of a word " +
           'or a typo; "two words" in quotes match as a phrase, -word leaves out the pages with the word, and or ' +
           "between two words finds either. The best matches come first, each with its title, its name and tab, its " +
-          "address and wiki link, a piece of its text and when it was last changed, by whom and how. Read the best results with read_page, " +
-          "by their name and tab; ask for the next ones with nextOffset. The first call, with offset 0, also lists " +
-          "in files the images and PDFs of the folder whose names match, each with its details and addresses but " +
-          "never its content. Deleted pages and files are never found. " +
+          "address and wiki link, a piece of its text and when it was last changed, by whom and how. Read the best " +
+          "results with read_page, by their name and tab; ask for the next ones with nextOffset. The first call, " +
+          "with offset 0, also lists in files the images and PDFs of the folder whose names match, each with its " +
+          "details, addresses, wiki link and, for an image, embed link, but never its content. Deleted pages and " +
+          "files are never found. " +
           USER_TEXT_NOTE,
         inputSchema: searchPagesInput,
         outputSchema: searchPagesOutput,
@@ -196,7 +200,8 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
         description:
           "Reads the details of one file (an image or a PDF) of the folder of this connection, never its content: " +
           "its name, its tab, its type, the size, width and height of its current version, the address of the file " +
-          "and of its details page, when it was last changed, by whom and how, the number of its versions, and the " +
+          "and of its details page, its wiki link and, for an image, its embed link, with which a page shows it, " +
+          "when it was last changed, by whom and how, the number of its versions, and the " +
           "pages that show it with ![[…]] or link it with [[…]]. A file is named by its tab if it is in one, and its " +
           `own name with its extension, as list_folder returns them. Deleted files are never found. ${USER_TEXT_NOTE}`,
         inputSchema: readFileInput,

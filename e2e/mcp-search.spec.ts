@@ -42,6 +42,8 @@ type FileResult = {
   height: number | null;
   address: string;
   detailsAddress: string;
+  wikiLink: string;
+  embedLink: string | null;
   lastChanged: string;
   lastEditedBy: string;
   lastEditedVia: "web" | "mcp";
@@ -301,9 +303,15 @@ test.describe("files", () => {
       height: diagram.versions[0]?.height,
       address: `${ISSUER}/files/projects/guides/network-diagram.png`,
       detailsAddress: `${ISSUER}/folders/projects/guides/network-diagram.png`,
+      wikiLink: "[[guides/network-diagram.png]]",
+      embedLink: "![[guides/network-diagram.png]]",
       lastChanged: diagram.updatedAt.toISOString(),
       lastEditedBy: owner.username,
       lastEditedVia: "web",
+    });
+    expect(answer.files.find(({ name }) => name === "diagram-notes.pdf")).toMatchObject({
+      wikiLink: "[[diagram-notes.pdf]]",
+      embedLink: null,
     });
     // No result holds the bytes of the image or the PDF, in the structured content or in its text.
     const raw = await call(request, "search_pages", { query: "diagram" });
