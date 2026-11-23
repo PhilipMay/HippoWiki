@@ -36,6 +36,7 @@ file itself holds.
 - `spec/attachments-ideas.md`: How do other wikis store, embed and secure images and attachments, and what does that
   suggest for attachments in HippoWiki, its editor and MCP?
 - `spec/file-copy-links-requirements.md`: Which links to a file does its details page offer to copy?
+- `spec/file-copy-links-steps.md`: In which steps are the copy links of the details page of a file built?
 - `spec/issue-report.md`: How is an issue of a review of code or documents reported?
 - `spec/review-report-v2.md`: Which findings and questions of the reviews, checks and tests are open, in one part per
   review? A fixed finding is deleted, a part with its last finding, and the file with its last part.
