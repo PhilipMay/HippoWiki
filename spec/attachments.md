@@ -4,7 +4,8 @@ Images and PDFs as built: users of a folder upload them as files of their own, d
 next to the pages, so that screenshots, diagrams and manuals live in the wiki. Pages show images with `![[…]]` and
 link files with `[[…]]`; every file has an address that returns the file itself and a details page with its versions
 and the actions on it. Files are moved, renamed, deleted and restored like pages, are found by their names in search,
-and AI apps list them and read their details through MCP, and download one with a short-lived signed link.
+and AI apps list them and read their details through MCP, download one with a short-lived signed link, and, with a
+Writer or Manager connection, upload a new file or a new version with such a link.
 
 Folders, tabs and their addresses are described in `content-structure.md`, the roles in `folder-roles.md`, the
 links in `wiki-links.md`, the soft delete in `page-deletion.md`, the directory of the files in `container-image.md`.
@@ -108,6 +109,10 @@ Tests:
   address checks the session itself, because it is left out of `src/proxy.ts`, and refuses a user who still has the
   first password, an `Origin` other than the own and `Sec-Fetch-Site: cross-site`, so that no page of another site can
   make a browser upload a file (see "Login and sessions" in `architecture.md`).
+- A `POST` of the upload address with the query `token` is an upload by a signed upload link, which a Writer or
+  Manager connection of an AI app gets through MCP: it is checked by the token instead of a session, stores the file
+  with the user of the connection and the way `mcp`, and takes every choice of the upload from the link (see
+  `signed-file-links.md`).
 - An upload under the name of a file at the same place asks whether to store a new version of that file; confirmed,
   it is stored as the newest version, cancelled, nothing is stored.
 
@@ -179,8 +184,11 @@ Tests:
   for an image, its embed link, the texts of the copy fields of its details page, and the pages that show or link it. No tool returns the content of a file, and no connection reaches the files of another folder.
 - Every connection gets a short-lived signed link to the current version of a file of its folder with
   `get_file_download_link`, which downloads the file without a login (see `signed-file-links.md`).
-- No tool uploads, changes, moves, renames or deletes a single file. The one tool after which a file is deleted is
-  `delete_tab` of a Manager connection, together with its tab (see "Tools" in `mcp.md`).
+- A Writer and a Manager connection upload a new file or a new version of a file with a short-lived signed link of
+  `get_file_upload_link`, to which the app sends the bytes of the file (see `signed-file-links.md`). A new version is
+  based on the lock version of the file, which `list_folder` and `read_file` give.
+- No tool moves, renames, reverts or deletes a single file. The one tool after which a file is deleted is `delete_tab`
+  of a Manager connection, together with its tab (see "Tools" in `mcp.md`).
 
 ## Decisions
 
@@ -234,9 +242,10 @@ Tests:
 - Files are uploaded only from the views of folders and tabs. Rejected for now: uploading from the editor.
 - Files are found by their names; the text of PDFs comes later.
 - AI apps read the details of files, through `list_folder`, `read_file` and `search_pages`, download a file with the
-  short-lived link of `get_file_download_link`, and `delete_tab` deletes the files of a tab with its pages, as in the
-  browser. Rejected for now: uploads through MCP; images as
-  images and PDFs as their text. Rejected: refusing `delete_tab` for a tab with files.
+  short-lived link of `get_file_download_link`, upload one with the short-lived link of `get_file_upload_link`, and
+  `delete_tab` deletes the files of a tab with its pages, as in the browser. Rejected for now: moving, renaming,
+  reverting and deleting a single file through MCP; images as images and PDFs as their text. Rejected: refusing
+  `delete_tab` for a tab with files.
 - The address of a file answers logged-in users with a role, checked on every request, and an AI app with a
   short-lived signed link that follows the access of its connected app (see `signed-file-links.md`). Rejected: such
   links in the browser; public secret links, which cannot be withdrawn.
@@ -244,7 +253,7 @@ Tests:
 ## Current limits
 
 - no other types than PNG, JPEG, GIF, WebP and PDF, such as SVG, Office or text files
-- no upload, change, move, rename or delete of a single file through MCP, and no content of files in a tool result
+- no move, rename, revert or delete of a single file through MCP, and no content of files in a tool result
 - no upload from the editor (paste, drop or a toolbar button)
 - no limit on the total size of files per folder or user (see "Rate limits and quotas" in `roadmap.md`)
 - no S3-compatible storage; no host of its own for files

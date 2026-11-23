@@ -30,8 +30,8 @@ Folders and tabs also hold files, images (PNG, JPEG, GIF, WebP) and PDFs, upload
 pages show images with `![[name.png]]` and link files with `[[name.pdf]]`, every file has a details page with its
 versions, can be moved, renamed, deleted and restored like a page, and is served with headers that run nothing in it.
 The location and camera data of a photo are removed on upload unless the uploader keeps them. AI apps list files and
-read their details through MCP, and download one with a short-lived signed link (`spec/attachments.md`,
-`spec/signed-file-links.md`).
+read their details through MCP, download one with a short-lived signed link, and, with a Writer or Manager connection,
+upload a new file or a new version with such a link (`spec/attachments.md`, `spec/signed-file-links.md`).
 
 Every folder can be searched from a search field on its pages: titles, names and content, in the language each page is
 written in, by parts of words and with typos, with phrases, excluded words and `or`, and files by their names. AI apps
@@ -208,13 +208,14 @@ To connect an app, such as Claude Code or the connector of claude.ai or ChatGPT:
 
 A client that cannot connect through OAuth cannot use the MCP server. A Reader connection lists the tabs and pages of
 its folder, searches its pages and reads them; a Writer connection also creates pages, changes parts of their content by exact
-search-and-replace, replaces their whole content and moves or renames them;
+search-and-replace, replaces their whole content and moves or renames them, and uploads images and PDFs;
 a Manager connection also deletes pages and creates, renames and deletes tabs. Deleted pages are restored only in the
 browser (`spec/mcp.md`). The tools return, next to the address of each page and file, the wiki link a page uses for
 it and the embed link of an image; the addresses are for people and open only in a browser after a login, so an app
 gives them to its user instead of fetching them. To download an image or PDF, an app gets a link with
 `get_file_download_link` that works without a login for 10 minutes (`HIPPOWIKI_FILE_LINK_LIFETIME`,
-`spec/signed-file-links.md`). Every request carries one call (batches are refused), has a body limit of 1 MiB, and counts
+`spec/signed-file-links.md`). To upload one, a Writer or Manager connection gets a link for one upload with
+`get_file_upload_link`, as long-lived, and sends the file to it with the `curl` command of the result. Every request carries one call (batches are refused), has a body limit of 1 MiB, and counts
 against a budget per user of 60 requests at once and 300 a minute; an operator changes these limits, within bounds, with
 `HIPPOWIKI_MCP_BODY_LIMIT`, `HIPPOWIKI_MCP_RATE_BURST` and `HIPPOWIKI_MCP_RATE_PER_MINUTE` (`spec/container-image.md`).
 

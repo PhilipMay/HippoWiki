@@ -1,8 +1,7 @@
-// Tests of signed upload links written from the requirements alone (spec/signed-upload-links-requirements.md), for
-// what only the running server shows: the answers of the upload address to a `POST` by link, without a session
-// cookie, as `curl` sends it. The links are signed by `signUploadLinkToken()` with the key of the database of the
-// worker, as the server signs them. The other rules are checked by e2e/file-upload-links.spec.ts and by
-// integration/file-upload-links.spec-tests.test.ts.
+// Tests of signed upload links written from the spec alone (spec/signed-file-links.md), for what only the running
+// server shows: the answers of the upload address to a `POST` by link, without a session cookie, as `curl` sends it.
+// The links are signed by `signUploadLinkToken()` with the key of the database of the worker, as the server signs them.
+// The other rules are checked by e2e/file-upload-links.spec.ts and by integration/file-upload-links.spec-tests.test.ts.
 import type { APIRequestContext, APIResponse } from "@playwright/test";
 
 import { NO_STORAGE_STATE } from "./support/auth";
@@ -37,7 +36,7 @@ function post(request: APIRequestContext, path: string, query: string, bytes: Ui
   });
 }
 
-// spec/signed-upload-links-requirements.md, R14: the answer of a stored upload, with the links of read_file
+// spec/signed-file-links.md, "The answer of an upload": the answer of a stored upload, with the links of read_file
 test("the answer of an upload by link holds the file as stored, with the same links as read_file", async ({
   request,
 }) => {
@@ -93,8 +92,8 @@ test("the answer of an upload by link holds the file as stored, with the same li
   }
 });
 
-// spec/signed-upload-links-requirements.md, R15: a broken, forged, expired or no longer accepted link gets one and the
-// same plain 404
+// spec/signed-file-links.md, "The answer of an upload": a broken, forged, expired or no longer accepted link gets
+// one and the same plain 404
 test("a broken link and a link whose app may no longer upload get the same status and body as an expired link, and store nothing", async ({
   request,
 }) => {

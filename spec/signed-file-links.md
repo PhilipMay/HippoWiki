@@ -1,36 +1,48 @@
 # HippoWiki – Signed File Links
 
 Signed file links as built: an AI app connected through MCP gets a short-lived link to the current version of an image
-or PDF of its folder with the read tool `get_file_download_link`, and downloads the file with it without a login. The
-link carries everything needed to check it, signed with a key only the wiki holds, and follows the access of its
-connected app: what the app may no longer read, its links no longer download. The addresses of files for people, which
-open only after a login, are described in `attachments.md`; MCP and its tools in `mcp.md`; the grants of connected
-apps in `connected-apps.md`.
+or PDF of its folder with the read tool `get_file_download_link`, and downloads the file with it without a login. A
+Writer or Manager connection gets a short-lived link for one upload with `get_file_upload_link`, and sends the bytes
+of a file to it with a `POST`, such as with `curl`, as a new file or a new version of a file. A link carries everything
+needed to check it, signed with a key only the wiki holds, and follows the access of its connected app: what the app
+may no longer read, its links no longer download, and where it may no longer upload, its links store nothing. The
+addresses of files for people, which open only after a login, and the upload in the browser are described in
+`attachments.md`; MCP and its tools in `mcp.md`; the grants of connected apps in `connected-apps.md`.
 
 Code:
 
-- `src/features/files/link-token.ts`: the token of a link, signed and checked, and its lifetime;
-- `src/features/files/link-service.ts`: the key of the links, the link that the tool hands out, and the read of a file
-  by a link;
-- `src/features/files/http.ts`: the file address, which checks a request with `token` by the token alone;
-- `src/proxy.ts`: lets a `GET` or `HEAD` of a file address with `token` pass without a session cookie;
+- `src/features/files/link-token.ts`: the tokens of both kinds of link, signed and checked, and their lifetime;
+- `src/features/files/link-service.ts`: the key of the links, the download link that the tool hands out, and the read
+  of a file by a link;
+- `src/features/files/upload-link-service.ts`: the upload link that the tool hands out, and the upload of a file by a
+  link, which stores it with `uploadFile()` of `src/features/files/service.ts`;
+- `src/features/files/http.ts`: the file address and the upload address, which check a request with `token` by the
+  token alone;
+- `src/proxy.ts`: lets a `GET` or `HEAD` of a file address with `token` pass without a session cookie; the upload
+  address is left out of the proxy anyway;
 - `callerOfGrant()` of `src/features/grants/service.ts`: whether the grant of a link is still accepted;
-- `get_file_download_link` in `src/features/mcp/server.ts`, `src/features/mcp/tools.ts` and
-  `src/features/mcp/tool-schemas.ts`;
+- `get_file_download_link` and `get_file_upload_link` in `src/features/mcp/server.ts`, `src/features/mcp/tools.ts`
+  and `src/features/mcp/tool-schemas.ts`;
+- `fileLinkPath()` and `uploadLinkPath()` of `src/lib/addresses.ts`;
 - `HIPPOWIKI_FILE_LINK_LIFETIME` in `src/lib/env.ts`, the table `FileLinkKey` in `prisma/schema.prisma`, and the log
   filter of the development server in `next.config.ts`.
 
 Tests:
 
 - unit: `src/features/files/link-token.test.ts`, `src/features/files/link-service.test.ts`,
+  `src/features/files/upload-link-service.test.ts`, `src/features/files/service.test.ts`,
   `src/features/files/http.test.ts`, `src/proxy.test.ts`, `src/lib/env.test.ts`, `src/lib/addresses.test.ts`,
   `src/features/grants/service.test.ts` and `src/features/mcp/tools.test.ts`;
 - integration: `integration/file-link-key.test.ts`, `integration/file-link-service.test.ts`,
+  `integration/file-upload-link-service.test.ts`, `integration/file-service.test.ts`,
   `integration/grant-service.test.ts`, `integration/oauth-service.test.ts` and the tests written from the spec alone,
-  `integration/file-download-links.spec-tests.test.ts`;
-- end to end: `e2e/file-download-links.spec.ts`, `e2e/access.spec.ts`, `e2e/mcp-read.spec.ts` and the tests written from
-  the spec alone, `e2e/file-download-links-spec-tests.spec.ts`. Their tokens are signed by `signFileLinkToken()` of
-  `e2e/support/database.ts` with the key of the test database, as the server signs them.
+  `integration/file-download-links.spec-tests.test.ts` and `integration/file-upload-links.spec-tests.test.ts`;
+- end to end: `e2e/file-download-links.spec.ts`, `e2e/file-upload-links.spec.ts`, `e2e/access.spec.ts`,
+  `e2e/mcp-read.spec.ts`, `e2e/mcp-write.spec.ts`, `e2e/mcp-manager.spec.ts` and the tests written from the spec alone,
+  `e2e/file-download-links-spec-tests.spec.ts` and `e2e/file-upload-links-spec-tests.spec.ts`. Their tokens are signed
+  by `signFileLinkToken()` and `signUploadLinkToken()` of `e2e/support/database.ts` with the key of the test database,
+  as the server signs them; the scenarios of `e2e/file-upload-links.spec.ts` "through MCP" get their links from the
+  tool and send the file with its `curl` command.
 
 ## The tool
 
@@ -106,6 +118,101 @@ Tests:
   request of the app with its access token. It has no rate limit of its own and does not count against the rate limit
   of MCP; each link needs a tool call, which counts.
 
+## The upload tool
+
+- A Writer and a Manager connection have the tool `get_file_upload_link`, with the hints of a tool that writes and
+  without `destructiveHint`, like `create_page`: a new version keeps the old ones, and a revert in the browser undoes
+  it. A Reader connection does not have it, and a call of it changes nothing. It is registered where the role may do
+  the function `editFile`, as a Writer, a Manager and an Owner upload in the browser.
+- It takes the tab, if any, the name of the file with its extension, the exact size of the file in bytes, and for a
+  new version the lock version of the file that `read_file` or `list_folder` gave (see "Tools" in `mcp.md`); without a
+  lock version the link is for a new file. It also takes the choice "Remove location and camera data" for an image,
+  on unless the app turns it off, as the browser offers it; a PDF is always stored byte for byte.
+- Before it hands out a link it checks everything that can be checked without the bytes, in the order of every
+  content write, and refuses with a tool error that says what to do next: the place (the folder itself, or a tab of it
+  that exists), the role, the name and its extension by the rules of file names (see "Files as items" in `attachments.md`), the
+  size against the size limit of the wiki, whether the files are on, for a new file that the name is free at the
+  place, and for a new version that the file exists there and still has the lock version stated. While the files are
+  off the error says that the server has no place to keep files.
+- The link is the full address of the upload address below `HIPPOWIKI_PUBLIC_URL`, with the token as its only query:
+  `/api/uploads/<folder>/[<tab>/]<name.ext>?token=<data>.<signature>`.
+- The result holds, in the structured data and in its text, first the field `note` (see "Prompt injection" in
+  `mcp.md`), then the name, the tab, the type and the stated size of the file, the link in `uploadLink`, the time it
+  expires in `expiresAt`, in ISO 8601 in UTC, a ready `curl` command that sends a file to the link with a placeholder
+  for its local path, and the wiki link and, for an image, the embed link that the file will have, the same texts as
+  `read_file` gives after the upload. The description of the tool ends with the same note, and that of `uploadLink`
+  says that it stores one upload and must never be written into a page.
+- The call is logged like every tool call, without the link or its token, and counts against the rate limit of MCP.
+- The instructions of a Writer and a Manager connection name the tool, say how a file is uploaded with it and added
+  to a page with its embed or wiki link, and warn that an upload link must never be written into a page, because it
+  lets anyone who reads it upload into the folder until it expires. Those of a Reader connection offer no uploading.
+  No connection is told any more that a file is uploaded only in the browser; moving, renaming, reverting and deleting
+  a single file still are.
+- Handing out a link stores nothing.
+
+## What an upload link holds
+
+- The token has the shape, the alphabet, the signature and the strict check of a download token (see "What a link
+  holds" and "Downloading with a link"), with a data part long enough for the longest valid name of a file.
+- Its data is the JSON of exactly these fields: `use`, always `"file-upload-link"`, and `v`, the format, `1`; `grant`,
+  the id of the grant of the connection, whose folder is the folder of the upload; `tab`, the id of the tab or `null`
+  for the folder itself; `name`, the name of the file with its extension; `size`, the exact size in bytes that the app
+  stated; `strip`, whether an image is written again without its location and camera data; `file` and `lockVersion`,
+  the id and the lock version of the file that a new version is based on, both `null` for a new file; and `exp`, when
+  the link expires, in whole seconds since 1970.
+- Both kinds of link are signed with the same key, and each kind names its own `use`, so that a download link never
+  passes as an upload link and an upload link never as a download link: each fails the data check of the other.
+- The link names the tab by its id, so that a tab renamed after the link was made is noticed, and the file by its id,
+  so that another file under the same name never takes the new version.
+
+## Uploading with a link
+
+- An app uploads the file by sending its bytes as the body of a `POST` to the link, without a login. A request to the
+  upload address with `token` is checked by the token alone, with or without a session cookie, and the session is not
+  read; a request without it by the session, as in the browser (see "Uploading" in `attachments.md`).
+- With `token` the query has no other key: `replace`, `strip`, a second `token` and every other query are refused and
+  store nothing, because every choice of the upload comes from the link.
+- An upload by link from a page of another site is refused as in the browser: a foreign `Origin` or `Sec-Fetch-Site:
+cross-site`. Unlike the browser, a request without `Origin`, as `curl` sends it, passes.
+- The token is checked as a download token is, in the same order: its shape, signature and data, then its expiry
+  against the lifetime, the grant, which must still be accepted at its MCP address, and whether the files are on. So
+  every reason that ends a download link ends an upload link (see "Downloading with a link"): revoking the app,
+  revoking all apps, changing the own password with the choice to disconnect the apps, the end of the grant, a role on
+  the folder lowered below the role of the grant or taken away, connecting the same app to the same address again,
+  OAuth off and a server without `HIPPOWIKI_PUBLIC_URL`.
+- The address must name the folder of the grant and the name of the link; another address is not accepted. A tab of
+  the link that was renamed or deleted is refused with that reason.
+- The file is stored as an upload in the browser is, with the actor of MCP of the grant, so that it passes the same
+  checks and gets the same treatment: the type detected from the content and only PNG, JPEG, GIF, WebP and PDF, an
+  image that decodes within the limits of untrusted input, the size limit of the wiki, a refusal when the disk is
+  full, and the same content stored once (see "Images" and "Storage and the operator" in `attachments.md`).
+- The link takes only a file of exactly the stated size and of the type of its extension, so that a leaked link cannot
+  store a larger or another file. The bytes are counted, whatever the request announces: a body with one byte more or
+  less is refused and stores nothing, and nothing after the stated size is kept.
+- The version records the user of the connection as its uploader and `mcp` as the way, on the details page, in the
+  list of versions and in `list_folder` and `read_file`, like a page changed through MCP.
+- A new version is stored only when the file still has the lock version of the link, which is the lock version of the
+  upload in the browser's `replace=<lock version>` (see `optimistic-locking.md`); a new file only when the name is
+  still free. A link for a new file never becomes a new version of a file uploaded under its name in the meantime.
+- A link stores at most one upload: after it, a second upload by the same link is refused and stores nothing, for a
+  new file because its name is now taken, for a new version because its lock version has changed.
+- An upload by link changes no page; the app adds the file to a page with the tools of pages.
+- An upload by link does not count against the rate limit of MCP and does not count as a use of the connected app:
+  "last used" on the account page stays the last request of the app with its access token. The tool call that hands
+  out the link counts, as every tool call does.
+
+## The answer of an upload
+
+- A stored upload answers `201` with JSON: the name, the tab, the type, the size and the version number of the file
+  as stored, the width and height of an image, its wiki link and, for an image, its embed link, the same texts as
+  `read_file` gives, so that the app can add the file to a page.
+- An upload by a valid link that is refused answers JSON with the status of the upload in the browser for the same
+  reason and a short message for the app that says why and what to do: the type does not match, the size is not the
+  stated one, the image does not decode, the disk is full, or in the meantime the name was taken, the file was changed
+  or the tab was renamed or deleted.
+- A link that is broken, forged, expired or no longer accepted, and a refused query or origin, get the same plain 404
+  as a download link, which tells nothing about why.
+
 ## The answer of a download
 
 - The file is sent with the type, the name, the length, the `ETag` and the strict headers of every file address
@@ -116,26 +223,31 @@ Tests:
 
 ## Logs
 
-- The wiki never writes a token to its log: not of a download, of a failed download, of a tool call or of an error.
+- The wiki never writes a token to its log: not of a download, an upload, a refused download or upload, a tool call or
+  an error.
 - Every successful `GET` and `HEAD` by link is logged at `info` with the grant, the user, the folder, the tab, the file
-  name and the version number, so that a download by whoever held the link can be traced like a tool call.
+  name and the version number, so that a download by whoever held the link can be traced like a tool call. Every
+  stored upload by link is logged at `info` with the same details.
 - A refused link is logged with the reason: at `warn` when its shape, signature or data fail, which only a broken or
-  forged link does; at `info` when a valid link no longer passes (expired, grant, files off, file, version).
-- The development server logs every incoming request with its address; it leaves out every file address with a query,
-  because the key of the query may also be written percent-encoded (`logging.incomingRequests` in `next.config.ts`). A
-  production server logs no requests.
+  forged link does; at `info` when a valid link no longer passes (expired, grant, files off, file, version, tab, name)
+  or the file of an upload is refused. The upload of the files service logs the refusals of an upload by link at
+  `info` as well (`refusalLevel` of `UploadOptions`), and those of the browser at `warn`.
+- The development server logs every incoming request with its address; it leaves out every file address and every
+  upload address with a query, because the key of the query may also be written percent-encoded
+  (`logging.incomingRequests` in `next.config.ts`). A production server logs no requests.
 
 ## Lifetime and key
 
-- A link lives 10 minutes by default. The operator sets another lifetime with `HIPPOWIKI_FILE_LINK_LIFETIME`, in whole
+- A link lives 10 minutes by default, a download link and an upload link alike. The operator sets another lifetime with `HIPPOWIKI_FILE_LINK_LIFETIME`, in whole
   seconds in plain decimal digits, from `60` to `3600` (`FILE_LINK_LIFETIME` in `src/lib/env.ts`, see "Configuration"
   in `container-image.md`). Any other value stops the server with an error that names the variable.
 - The links are signed with a key of their own, not with the secret of the session cookies: 32 random bytes, generated
   on first use and kept in the single row of the table `FileLinkKey`, the same way as the secret of the session
   cookies, so that all processes sign with the same key, a restart keeps the links valid, and a new key logs no user
   out.
-- Each process keeps the key in memory once read. The operator withdraws all links at once by deleting the row of
-  `FileLinkKey` and restarting the server; the next link generates a new key.
+- Both kinds of link are signed with this key. Each process keeps the key in memory once read. The operator withdraws
+  all download and upload links at once by deleting the row of `FileLinkKey` and restarting the server; the next link
+  generates a new key.
 
 ## Decisions
 
@@ -172,12 +284,58 @@ Tests:
   of Node.js skips characters outside its alphabet, so that a loose check would accept many spellings of one link.
   Rejected: only a bounded length and a 32-byte signature.
 - The download link has no hint of the addresses, because it is no address for people: it works without a login.
+- Uploads through MCP are for agents that have the bytes of a file and can send an HTTP request, such as Claude Code,
+  Cursor and Codex. Rejected: files inside a tool call as base64, which a model cannot reliably write for a file it
+  does not hold, costs an output token per character and fits only below the body limit of MCP; and files that the
+  model writes itself, which would need new types such as SVG or CSV.
+- A Writer and a Manager connection upload, as a Writer, a Manager and an Owner upload in the browser. Rejected:
+  Manager connections only.
+- An upload link uploads a new file or a new version of an existing file, based on its lock version as every change
+  through MCP is. Rejected: new files only. Moving, renaming, reverting and deleting a single file stay in the browser
+  for now.
+- The tool is named `get_file_upload_link`, next to `get_file_download_link`. Rejected: `create_file_upload_link`.
+- The tool carries the hints of a tool that writes and does not destroy, like `create_page`. Rejected:
+  `destructiveHint`.
+- The app states the lock version of a file that it read, as for every change of a page. Rejected: the tool binding
+  whatever lock version is current when the link is made, which misses a change between the read and the tool call.
+- A link takes only a file of the stated size and of the type of its extension. Rejected: binding the SHA-256 of the
+  content too, one more step for the agent that can go wrong; binding only the type, up to the size limit.
+- The tool takes the choice of removing location and camera data, on by default, as the browser does. Rejected:
+  always removing it.
+- The result of the tool carries a ready `curl` command and the links the file will have, so that the agent needs no
+  further call to send the file and to add it to a page. Rejected: only the link and its expiry.
+- The bytes go to the upload address of the browser with the token, so that every upload takes the same path, which is
+  already left out of the proxy and its cut of a body at 10 MB. Rejected: a `PUT` to the file address of the download
+  links, which answers only `GET` and `HEAD` and would need the proxy to let it pass.
+- With a token the upload address takes no other query, so that one link has one spelling and every choice of the
+  upload is signed. Rejected: ignoring other queries.
+- An upload by link from a page of another site is refused as in the browser; the `curl` of an agent sends neither
+  header. Rejected: accepting every origin because the token is the only credential.
+- A refused upload by a valid link says why, so that the agent can act on it; a link that is no longer valid tells
+  nothing, as a download link does. Rejected: the same plain answer for every failure.
+- A link stores at most one upload because of what it is bound to, and handing it out stores nothing. Rejected: a
+  table of links marked as used, which could withdraw a single link but needs the cleanup of expired rows.
+- An upload by link counts neither against the rate limit of MCP nor as a use of the app, as a download by link; each
+  link costs a tool call, and the log records the upload. Rejected: counting both.
+- An upload link lives as long as a download link, set by the same variable. Rejected: a variable of its own.
+- Upload links are signed with the key of the download links, and the signed data names its use, so that one step of
+  the operator withdraws all links and no link passes for the other kind. Rejected: a key of its own for uploads.
+- The instructions warn against writing an upload link into a page, as they do for download links. Rejected: no
+  warning.
+- A stored upload by link is logged at `info`, because anyone who holds the link can upload, as for downloads; the
+  refusals of its file too, so that `warn` marks only broken and forged links. Rejected: logging only the refusals;
+  the `warn` of the upload in the browser for the refused file of a link.
 
 ## Current limits
 
 - no links in the browser, and no links to pages
 - no link to an earlier version of a file: a link downloads only the version that was current when it was made
-- no withdrawing of a single link, and no single-use links; only all links at once, with the key
-- no content of a file in a tool result, and no uploads through MCP (see "Files through MCP" in `roadmap.md`)
-- no rate limit of downloads by link; a reverse proxy can limit them
-- a download by link does not show as a use of the connected app
+- no withdrawing of a single link, and no single-use download links; only all links at once, with the key
+- an upload link for a new file whose file is deleted within the lifetime of the link can store once more, because
+  the name is free again
+- no content of a file in a tool result (see "Files through MCP" in `roadmap.md`), no files sent inside a tool call,
+  and no file that the wiki fetches from an address that the app names
+- no uploads from chat clients that cannot send the bytes of a file themselves, such as claude.ai and Claude Desktop
+- no moving, renaming, reverting or deleting of a single file through MCP; these stay in the browser
+- no rate limit of downloads or uploads by link; a reverse proxy can limit them
+- a download or an upload by link does not show as a use of the connected app

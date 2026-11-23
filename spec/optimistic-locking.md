@@ -97,8 +97,14 @@ Files are protected as pages are, with their lock version (see "Terms" in `archi
   message, because the file is sent with `fetch()` and is not shown again by an address; uploading again stores it.
 - An upload under a taken name asks first whether to store a new version, and that question states the lock version of
   the file as the question showed it, so a change in between is refused in the same way.
+- An AI app states the lock version that `read_file` or `list_folder` gave when it asks `get_file_upload_link` for a
+  link for a new version; the tool refuses another lock version at once, and the link carries the lock version and
+  the id of the file, so that the upload by the link is based on them as an upload in the browser is based on
+  `replace=<lock version>`. A change of the file between the link and its upload refuses the upload with `file-changed`
+  (see "Uploading with a link" in `signed-file-links.md`).
 - Tests: `integration/file-service.test.ts` (a new version and a revert at the same time), `src/features/files/`
-  (`service.test.ts`, `actions.test.ts`, `file-query.test.ts`), `e2e/file-details.spec.ts`, `e2e/move-or-rename-file.spec.ts`.
+  (`service.test.ts`, `actions.test.ts`, `file-query.test.ts`), `e2e/file-details.spec.ts`, `e2e/move-or-rename-file.spec.ts`,
+  and for a new version by link `integration/file-upload-link-service.test.ts` and `e2e/file-upload-links.spec.ts`.
 
 ## Restoring
 

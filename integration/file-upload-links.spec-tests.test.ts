@@ -1,6 +1,6 @@
-// Tests of signed upload links written from the requirements alone (spec/signed-upload-links-requirements.md),
-// against the real services, the real MCP tools and the test database: a link handed out by `get_file_upload_link`
-// and the upload by it, as an app makes them. The other rules are checked by integration/file-upload-link-service.test.ts,
+// Tests of signed upload links written from the spec alone (spec/signed-file-links.md), against the real services, the
+// real MCP tools and the test database: a link handed out by `get_file_upload_link` and the upload by it, as an app
+// makes them. The other rules are checked by integration/file-upload-link-service.test.ts,
 // src/features/mcp/tools.test.ts, src/features/files/http.test.ts and e2e/file-upload-links.spec.ts.
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -179,7 +179,7 @@ function* chunksOf(bytes: Uint8Array, length: number): Generator<Uint8Array> {
 }
 
 describe("get_file_upload_link and the upload by its link", () => {
-  // spec/signed-upload-links-requirements.md, R20: handing out a link stores nothing
+  // spec/signed-file-links.md, "The upload tool": handing out a link stores nothing
   it("handing out a link for a new file and for a new version writes no row to the database", async () => {
     const manual = await createFile({ folder, name: "manual.pdf", editor: user });
     await getLinkKey();
@@ -191,7 +191,7 @@ describe("get_file_upload_link and the upload by its link", () => {
     expect(await allRows()).toEqual(before);
   });
 
-  // spec/signed-upload-links-requirements.md, R13: the choice is on unless the app turns it off
+  // spec/signed-file-links.md, "The upload tool": the choice is on unless the app turns it off
   it("an image uploaded by a link made without the choice of the metadata has no location and camera data", async () => {
     const photo = await phonePhoto();
 
@@ -202,7 +202,7 @@ describe("get_file_upload_link and the upload by its link", () => {
     expect((await sharp(stored).metadata()).exif).toBeUndefined();
   });
 
-  // spec/signed-upload-links-requirements.md, R13: the link carries the choice, and the upload follows it
+  // spec/signed-file-links.md, "The upload tool": the link carries the choice, and the upload follows it
   it("an image uploaded by a link made with the choice turned off keeps the bytes as sent", async () => {
     const photo = await phonePhoto();
 
@@ -213,7 +213,7 @@ describe("get_file_upload_link and the upload by its link", () => {
     expect(await storedBytes("guides", "photo.jpg")).toEqual(photo);
   });
 
-  // spec/signed-upload-links-requirements.md, R13: a PDF is always stored byte for byte
+  // spec/signed-file-links.md, "The upload tool": a PDF is always stored byte for byte
   it("a PDF uploaded by a link made with the choice turned on is stored byte for byte", async () => {
     const pdf = pdfBytes("A PDF with its own metadata");
 
@@ -224,7 +224,7 @@ describe("get_file_upload_link and the upload by its link", () => {
     expect(await storedBytes(null, "manual.pdf")).toEqual(pdf);
   });
 
-  // spec/signed-upload-links-requirements.md, R6: the user of the connection and MCP in list_folder and read_file
+  // spec/signed-file-links.md, "Uploading with a link": the user of the connection and MCP in list_folder and read_file
   it("list_folder and read_file show the user of the connection and the channel mcp for a file uploaded by link", async () => {
     await createFile({ tab: guides, name: "manual.pdf", editor: await createUser({ name: "bob" }) });
     const read = await called("read_file", { tab: "guides", file: "manual.pdf" });
@@ -251,7 +251,7 @@ describe("get_file_upload_link and the upload by its link", () => {
     });
   });
 
-  // spec/signed-upload-links-requirements.md, R5: the same content stored once
+  // spec/signed-file-links.md, "Uploading with a link": the same content stored once
   it("an upload by link of the content of another file stores that content once", async () => {
     const bytes = pdfBytes("The same content");
     const existing = await createFile({ folder, name: "manual.pdf", editor: user, versions: [{ bytes }] });
@@ -266,7 +266,7 @@ describe("get_file_upload_link and the upload by its link", () => {
 });
 
 describe("the size and the type of an upload by link", () => {
-  // spec/signed-upload-links-requirements.md, R12: the bytes are counted, whatever the request announces
+  // spec/signed-file-links.md, "Uploading with a link": the bytes are counted, whatever the request announces
   it("refuses a body with one byte more than stated although the request announces the stated size, and stores nothing", async () => {
     const bytes = await pngBytes();
     const token = await linkFor("diagram.png", bytes.length);
@@ -280,7 +280,7 @@ describe("the size and the type of an upload by link", () => {
     expect(await storedFiles()).toEqual(before);
   });
 
-  // spec/signed-upload-links-requirements.md, R12: the bytes are counted, whatever the request announces
+  // spec/signed-file-links.md, "Uploading with a link": the bytes are counted, whatever the request announces
   it("refuses a body with one byte less than stated although the request announces the stated size, and stores nothing", async () => {
     const bytes = await pngBytes();
     const token = await linkFor("diagram.png", bytes.length);
@@ -293,7 +293,7 @@ describe("the size and the type of an upload by link", () => {
     expect(await storedFiles()).toEqual(before);
   });
 
-  // spec/signed-upload-links-requirements.md, R12: the bytes are counted, whatever the request announces
+  // spec/signed-file-links.md, "Uploading with a link": the bytes are counted, whatever the request announces
   it("refuses a body without an announced length that runs past the stated size, and stores nothing", async () => {
     const bytes = await pngBytes();
     const token = await linkFor("diagram.png", bytes.length);
@@ -307,7 +307,7 @@ describe("the size and the type of an upload by link", () => {
     expect(await storedFiles()).toEqual(before);
   });
 
-  // spec/signed-upload-links-requirements.md, R12: a file of exactly the stated size is taken
+  // spec/signed-file-links.md, "Uploading with a link": a file of exactly the stated size is taken
   it("stores a body of exactly the stated size that arrives in many chunks without an announced length", async () => {
     const bytes = await pngBytes(30, 20);
     const token = await linkFor("diagram.png", bytes.length);
@@ -317,7 +317,7 @@ describe("the size and the type of an upload by link", () => {
     );
   });
 
-  // spec/signed-upload-links-requirements.md, R12: only a file of the type of its extension
+  // spec/signed-file-links.md, "Uploading with a link": only a file of the type of its extension
   it("refuses a PNG sent by a link for a .jpg name, and stores nothing", async () => {
     const png = await pngBytes();
     const token = await linkFor("photo.jpg", png.length);
@@ -333,7 +333,7 @@ describe("the size and the type of an upload by link", () => {
 });
 
 describe("the validity of an upload link", () => {
-  // spec/signed-upload-links-requirements.md, R18: a lower lifetime also shortens the links already handed out
+  // spec/signed-file-links.md, "Lifetime and key": a lower lifetime also shortens the links already handed out
   it("refuses a link older than a lifetime lowered after it was handed out, and stores nothing", async () => {
     const bytes = await pngBytes();
     const token = await linkFor("diagram.png", bytes.length);
@@ -348,7 +348,7 @@ describe("the validity of an upload link", () => {
     expect(await getTestDb().file.count()).toBe(0);
   });
 
-  // spec/signed-upload-links-requirements.md, R18: a link lives as long as the lifetime set by the operator
+  // spec/signed-file-links.md, "Lifetime and key": a link lives as long as the lifetime set by the operator
   it("takes a link handed out under a lowered lifetime before it expires", async () => {
     lifetime.seconds = 60;
     const bytes = await pngBytes();
@@ -360,7 +360,7 @@ describe("the validity of an upload link", () => {
     });
   });
 
-  // spec/signed-upload-links-requirements.md, R8: the role on the folder lowered below the role of the grant
+  // spec/signed-file-links.md, "Uploading with a link": the role on the folder lowered below the role of the grant
   it("refuses the link of a Manager connection once the role of its user is lowered to Writer, and stores nothing", async () => {
     const { grant: managerGrant } = await createGrant({ owner: user, folder, role: "manager" });
     const manager = inMcp(user, { grantId: managerGrant.id, folderId: folder.id, role: "manager" });
@@ -379,7 +379,7 @@ describe("the validity of an upload link", () => {
     expect(await getTestDb().file.count()).toBe(0);
   });
 
-  // spec/signed-upload-links-requirements.md, R8: a link works while its app may still upload into the folder
+  // spec/signed-file-links.md, "Uploading with a link": a link works while its app may still upload into the folder
   it("takes the link of a Writer connection once the role of its user is lowered to the role of the grant", async () => {
     const bytes = await pngBytes();
     const token = await linkFor("diagram.png", bytes.length);
@@ -410,7 +410,7 @@ describe("the log of upload links", () => {
     vi.restoreAllMocks();
   });
 
-  // spec/signed-upload-links-requirements.md, R11: never the token, of the tool call, an upload, a refused upload or
+  // spec/signed-file-links.md, "Logs": never the token, of the tool call, an upload, a refused upload or
   // an error
   it("writes no part of the token of a link, for the tool call, an upload, a refused upload and a forged link", async () => {
     const log = watchLog();
@@ -435,7 +435,7 @@ describe("the log of upload links", () => {
     expect(written).not.toContain(signature.slice(-24));
   });
 
-  // spec/signed-upload-links-requirements.md, R23: a forged link is logged at warn with its reason
+  // spec/signed-file-links.md, "Logs": a forged link is logged at warn with its reason
   it("logs a forged link in one line at warn with its reason", async () => {
     const bytes = await pngBytes();
     const token = await linkFor("diagram.png", bytes.length);
@@ -448,7 +448,7 @@ describe("the log of upload links", () => {
     expect(log.error).toHaveLength(0);
   });
 
-  // spec/signed-upload-links-requirements.md, R23: at info when a valid link no longer passes
+  // spec/signed-file-links.md, "Logs": at info when a valid link no longer passes
   it("logs an expired link at info with its reason, and nothing at warn", async () => {
     const bytes = await pngBytes();
     const token = await linkFor("diagram.png", bytes.length);
@@ -462,7 +462,7 @@ describe("the log of upload links", () => {
     expect(log.warn).toHaveLength(0);
   });
 
-  // spec/signed-upload-links-requirements.md, R23: at info when the file of a valid link is refused
+  // spec/signed-file-links.md, "Logs": at info when the file of a valid link is refused
   it("logs the refusal of the file of a valid link at info with its reason, and nothing at warn", async () => {
     const bytes = await pngBytes();
     const token = await linkFor("diagram.png", bytes.length);
@@ -476,7 +476,8 @@ describe("the log of upload links", () => {
     expect(log.warn).toEqual([]);
   });
 
-  // spec/signed-upload-links-requirements.md, R23 and R20: a second upload by the same link no longer passes, at info
+  // spec/signed-file-links.md, "Logs" and "Uploading with a link": a second upload by the same link no longer passes,
+  // at info
   it("logs the second upload by a link, refused because its name is taken, at info, and nothing at warn", async () => {
     const bytes = await pngBytes();
     const token = await linkFor("diagram.png", bytes.length);

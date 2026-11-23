@@ -50,8 +50,8 @@ listed first; there is no order across themes.
   (`attachments.md`, `attachments-ideas.md`).
 - Uploading from the editor: paste, drop and a toolbar button that upload a file and insert its link
   (`attachments.md`, `attachments-ideas.md`).
-- Files through MCP: uploads of files, and the content of files in tool results, images as images and PDFs as their
-  text; an app already downloads a file with a short-lived link (`attachments.md`, `mcp.md`, `signed-file-links.md`,
+- Files through MCP: the content of files in tool results, images as images and PDFs as their text; an app already
+  downloads and uploads a file with a short-lived link (`attachments.md`, `mcp.md`, `signed-file-links.md`,
   `attachments-ideas.md`).
 - Text of PDFs in search: find a PDF by the words inside it (`search.md`, `attachments-ideas.md`).
 - More types of files: SVG, Office and text files, as downloads or shown safely (`attachments.md`,

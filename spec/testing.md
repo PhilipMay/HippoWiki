@@ -517,10 +517,12 @@ How the code is tested. Commands are listed in `README.md`.
   and `e2e/delete-file.spec.ts` the moves, renames, deletes and restores; and `e2e/attachments-spec-tests.spec.ts` and
   `e2e/mcp-attachments-spec-tests.spec.ts` the tests written from the spec alone (see `attachments.md`).
 - The signed links to files have specs of their own: `e2e/file-download-links.spec.ts` the tool
-  `get_file_download_link` and the download by link without a cookie, and `e2e/file-download-links-spec-tests.spec.ts`
-  the tests written from the spec alone (see `signed-file-links.md`). A token that the server would not hand out, one
-  that has expired or is broken, is signed by `signFileLinkToken()` of `e2e/support/database.ts` with the key of the
-  database of the worker, which it generates as the server does when there is none.
+  `get_file_download_link` and the download by link without a cookie, `e2e/file-upload-links.spec.ts` the upload by
+  link without a cookie and the tool `get_file_upload_link`, whose `curl` command it runs in a shell, and
+  `e2e/file-download-links-spec-tests.spec.ts` and `e2e/file-upload-links-spec-tests.spec.ts` the tests written from
+  the spec alone (see `signed-file-links.md`). A token that the server would not hand out, one that has expired or is
+  broken, is signed by `signFileLinkToken()` or `signUploadLinkToken()` of `e2e/support/database.ts` with the key of
+  the database of the worker, which it generates as the server does when there is none.
 - `e2e/ai-apps.spec.ts` covers the folder view "AI apps" with its addresses per role and the copy button.
 - `e2e/search.spec.ts` covers the results view and its address, the search field on every view of a folder and where
   it is left out, and the messages of the limits. Chromium waits with a request for an address until a request for
