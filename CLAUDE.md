@@ -37,6 +37,8 @@ file itself holds.
   suggest for attachments in HippoWiki, its editor and MCP?
 - `spec/mcp-wiki-links-requirements.md`: Which requirements are gathered for telling AI apps that the addresses of the
   MCP tools need a login, and for returning the wiki links of pages and files?
+- `spec/mcp-wiki-links-steps.md`: In which steps are the login hint on the addresses of the MCP tools and the wiki
+  links of pages and files built?
 - `spec/issue-report.md`: How is an issue of a review of code or documents reported?
 - `spec/review-report-v2.md`: Which findings and questions of the reviews, checks and tests are open, in one part per
   review? A fixed finding is deleted, a part with its last finding, and the file with its last part.
