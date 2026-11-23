@@ -32,7 +32,7 @@ images in the pages it writes without building the links itself. The requirement
 - [x] Wiki links of pages
 - [x] Wiki links and embed links of files
 - [x] Hint on the addresses
-- [ ] Spec tests
+- [x] Spec tests
 - [ ] Wrap-up
 
 ## Wiki links of pages
