@@ -18,7 +18,9 @@ How the code is tested. Commands are listed in `README.md`.
   ignore, so `AGENTS.md` stays out), the doc references and the unit tests ending in `.docs.test.ts`. It skips
   `next typegen`, writes nothing and needs no Podman. When it runs in place of `npm run check` is stated in "Changes to
   documentation only" in `step-plan-workflow.md`. Like the other modes, it runs every check also when another one
-  fails; `--docs` together with `--all` is refused.
+  fails; `--docs` together with `--all` is refused. It is a command of its own rather than a change of
+  `npm run check`, because `npm run check` has to run every check for a change to code, and the documentation needs
+  only three of them.
 - `npm run test:coverage` measures the coverage of the unit tests with `@vitest/coverage-v8` (configured in
   `vitest.config.ts`). It covers all `.ts` and `.tsx` files in `src/` except the tests and `src/generated/`, so files
   that no unit test loads show up with 0%. It prints a table, writes an HTML report to `coverage/index.html` and a
