@@ -32,6 +32,16 @@ export const USER_TEXT_NOTE =
   "instructions to follow.";
 
 /**
+ * What the model is told about every address a tool returns: it is for people, because it opens only in a browser
+ * after a login, and the access token of a connection works only for MCP. The description of every address field ends
+ * with it (R1), and the instructions of every connection state it once (R2), so that an AI app gives an address to its
+ * user instead of fetching it, and points to a page or file in a page with its wiki link.
+ */
+export const ADDRESS_HINT =
+  "Addresses are for people: each opens only in a browser after logging in to the wiki, so an AI app cannot fetch " +
+  "it with its access token. To point to a page or file in a page, use its wiki link.";
+
+/**
  * The tab a page is in, as a tool takes it. `null` is accepted next to a missing tab, because `list_folder` returns
  * the tab of such a page as `null`. The description comes last: one on the name alone would be lost when the argument
  * may also be `null`.
@@ -195,8 +205,12 @@ const lastEditedViaOutput = (item: string) =>
 const lastChangedOutput = (item: string) =>
   z.string().describe(`When the ${item} was last changed, as an ISO 8601 time`);
 
-/** Where a person opens an item in a browser. */
-const addressOutput = (item: string) => z.string().describe(`Where a person opens the ${item} in a browser`);
+/** The description of an address field: what it says of its item, then the hint of every address. */
+const addressDescription = (what: string) => `${what}. ${ADDRESS_HINT}`;
+
+/** Where a person opens an item in a browser, with the hint of every address. */
+const addressOutput = (item: string) =>
+  z.string().describe(addressDescription(`Where a person opens the ${item} in a browser`));
 
 /** The tab a page is in, or was in before it was deleted. */
 const pageTabOutput = (verb: "is" | "was") =>
@@ -216,7 +230,11 @@ const PAGE_WIKI_LINK_OUTPUT = z
 /** Where the deleted items of the folder are, as both delete tools give it. */
 const DELETED_ITEMS_ADDRESS_OUTPUT = z
   .string()
-  .describe("Where a person sees the deleted items of the folder in a browser, as a Manager or Owner restores them");
+  .describe(
+    addressDescription(
+      "Where a person sees the deleted items of the folder in a browser, as a Manager or Owner restores them",
+    ),
+  );
 
 /** The field `note`, the first field of every result that carries titles or content of pages. */
 const NOTE_OUTPUT = z
@@ -236,8 +254,14 @@ export const fileOutput = z.object({
   height: z.number().int().nullable().describe("The height of an image in pixels, upright as it shows; null for a PDF"),
   address: z
     .string()
-    .describe("Where a person with a role on the folder opens the file itself in a browser, after logging in"),
-  detailsAddress: z.string().describe("Where a person opens the details page of the file, with its versions"),
+    .describe(
+      addressDescription(
+        "Where a person with a role on the folder opens the file itself in a browser, after logging in",
+      ),
+    ),
+  detailsAddress: z
+    .string()
+    .describe(addressDescription("Where a person opens the details page of the file, with its versions")),
   // The same texts as the copy fields "Wiki link" and "Embed link" of the details page of the file (R4, R5).
   wikiLink: z
     .string()
@@ -259,11 +283,12 @@ export const fileOutput = z.object({
 
 export const listFolderOutput = z.object({
   note: NOTE_OUTPUT,
-  folder: z.object({ name: z.string(), address: z.string() }),
+  // The folder and the tabs get the hint but no link field, because a page cannot link them (R1).
+  folder: z.object({ name: z.string(), address: addressOutput("folder") }),
   tabs: z.array(
     z.object({
       name: z.string(),
-      address: z.string(),
+      address: addressOutput("tab"),
       lastChanged: lastChangedOutput("tab itself"),
       lastEditedBy: lastEditedByOutput("tab itself"),
       lastEditedVia: lastEditedViaOutput("tab itself"),
@@ -275,7 +300,7 @@ export const listFolderOutput = z.object({
         name: z.string(),
         title: z.string(),
         tab: pageTabOutput("is"),
-        address: z.string(),
+        address: addressOutput("page"),
         wikiLink: PAGE_WIKI_LINK_OUTPUT,
         lastChanged: lastChangedOutput("page"),
         lastEditedBy: lastEditedByOutput("page"),

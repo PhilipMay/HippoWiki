@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { McpActor } from "@/features/folder-roles/actors";
 import { MCP_ROLES, mayDo, type FolderFunction } from "@/features/folder-roles/roles";
 import { createWikiServer, instructionsFor } from "@/features/mcp/server";
-import { USER_TEXT_NOTE } from "@/features/mcp/tool-schemas";
+import { ADDRESS_HINT, USER_TEXT_NOTE } from "@/features/mcp/tool-schemas";
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 import { analyseMarkdown } from "@/features/pages/markdown";
 import {
@@ -2055,6 +2055,82 @@ describe("the links of a file", () => {
           "![[tab/name.ext]] for an image in a tab, without a label; null for a PDF, which cannot be shown",
       );
     }
+  });
+});
+
+describe("the hint on the addresses", () => {
+  /** A JSON Schema as `tools/list` gives it, with only what the walk reads. */
+  type Schema = {
+    description?: string;
+    properties?: Record<string, Schema>;
+    items?: Schema;
+    anyOf?: Schema[];
+  };
+
+  /** Every field of the schema and its nested objects, by its name, with its own schema. */
+  function fieldsOf(schema: Schema | undefined): [string, Schema][] {
+    if (!schema) return [];
+    const own = Object.entries(schema.properties ?? {});
+    return [
+      ...own,
+      ...own.flatMap(([, field]) => fieldsOf(field)),
+      ...fieldsOf(schema.items),
+      ...(schema.anyOf ?? []).flatMap(fieldsOf),
+    ];
+  }
+
+  async function outputSchemas(): Promise<Map<string, Schema>> {
+    actor = MANAGER;
+    const answer = await send({ method: "tools/list" });
+    const tools = answer.result?.tools as { name: string; outputSchema: Schema }[];
+    return new Map(tools.map((tool) => [tool.name, tool.outputSchema]));
+  }
+
+  it("ends the description of every address field of every tool of a Manager connection, after what it says of its item", async () => {
+    const schemas = await outputSchemas();
+    expect(schemas.size).toBe(12);
+
+    const addresses = [...schemas].flatMap(([tool, schema]) =>
+      fieldsOf(schema)
+        .filter(([name]) => name === "address" || name.endsWith("Address"))
+        .map(([name, field]) => [tool, name, field.description ?? ""] as const),
+    );
+    // Every tool returns at least one address: of a page, a file, a tab, the folder or the deleted items.
+    expect(new Set(addresses.map(([tool]) => tool))).toEqual(new Set(schemas.keys()));
+    for (const [tool, name, description] of addresses) {
+      expect(description, `${tool}: ${name}`).toMatch(/^Where a person (opens|with a role|sees) .+\. /);
+      expect(description.endsWith(` ${ADDRESS_HINT}`), `${tool}: ${name}`).toBe(true);
+    }
+  });
+
+  it("gives the tabs, the folder and the deleted items the hint and no link field", async () => {
+    const schemas = await outputSchemas();
+    const listFolder = schemas.get("list_folder");
+
+    const withoutLinks = [
+      listFolder?.properties?.folder,
+      listFolder?.properties?.tabs?.items,
+      schemas.get("create_tab"),
+      schemas.get("rename_tab"),
+      schemas.get("delete_page"),
+      schemas.get("delete_tab"),
+    ];
+    for (const schema of withoutLinks) {
+      expect(fieldsOf(schema).some(([name]) => name === "address" || name === "deletedItemsAddress")).toBe(true);
+      expect(schema?.properties).not.toHaveProperty("wikiLink");
+      expect(schema?.properties).not.toHaveProperty("embedLink");
+    }
+  });
+
+  it.each(MCP_ROLES)("is stated in the instructions of a %s connection", (role) => {
+    expect(instructionsFor("handbook", role)).toContain(ADDRESS_HINT);
+  });
+
+  it("is the text of the hint, word for word", () => {
+    expect(ADDRESS_HINT).toBe(
+      "Addresses are for people: each opens only in a browser after logging in to the wiki, so an AI app cannot " +
+        "fetch it with its access token. To point to a page or file in a page, use its wiki link.",
+    );
   });
 });
 

@@ -2,7 +2,7 @@
 // their changes.
 import type { APIRequestContext } from "@playwright/test";
 
-import { USER_TEXT_NOTE } from "@/features/mcp/tool-schemas";
+import { ADDRESS_HINT, USER_TEXT_NOTE } from "@/features/mcp/tool-schemas";
 
 import { logIn, NO_STORAGE_STATE } from "./support/auth";
 import { createFile, createGrant, createPage, createTab, createUser, getTestDb } from "./support/database";
@@ -355,7 +355,14 @@ test.describe("the tools of a Manager connection", () => {
     const answer = await send(request, { method: "tools/list" }, manager, managerAddress);
     const tools = (
       (await answer.json()) as {
-        result: { tools: { name: string; description: string; annotations: Record<string, boolean> }[] };
+        result: {
+          tools: {
+            name: string;
+            description: string;
+            annotations: Record<string, boolean>;
+            outputSchema: { properties: Record<string, { description?: string }> };
+          }[];
+        };
       }
     ).result.tools;
 
@@ -391,6 +398,11 @@ test.describe("the tools of a Manager connection", () => {
     expect(tools.find(({ name }) => name === "delete_tab")?.description).toContain(
       "together with every page and every file (image or PDF) in it",
     );
+    // The address of the deleted items is for people as well, and delete_tab gives no link field.
+    const deleteTab = tools.find(({ name }) => name === "delete_tab")?.outputSchema.properties;
+    expect(deleteTab?.deletedItemsAddress?.description).toMatch(/^Where a person sees the deleted items of the folder/);
+    expect(deleteTab?.deletedItemsAddress?.description?.endsWith(` ${ADDRESS_HINT}`)).toBe(true);
+    expect(deleteTab).not.toHaveProperty("wikiLink");
   });
 
   test("initialize at the Manager address gives the instructions of a Manager connection", async ({ request }) => {
@@ -410,6 +422,7 @@ test.describe("the tools of a Manager connection", () => {
     expect(instructions).toContain("Use edit_page_content to change parts of a page");
     expect(instructions).toContain("Deleting a tab deletes all its pages and files with it.");
     expect(instructions).toContain("Deleted items can be neither seen nor restored through this connection");
+    expect(instructions).toContain(ADDRESS_HINT);
   });
 
   test("a call of delete_page, create_tab, rename_tab or delete_tab through a Writer or a Reader connection changes nothing", async ({

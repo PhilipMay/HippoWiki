@@ -3,7 +3,7 @@
 // `mcp-edit.spec.ts`; here it is only listed.
 import type { APIRequestContext } from "@playwright/test";
 
-import { USER_TEXT_NOTE } from "@/features/mcp/tool-schemas";
+import { ADDRESS_HINT, USER_TEXT_NOTE } from "@/features/mcp/tool-schemas";
 import { CONTENT_MAX_LENGTH, CONTENT_MAX_WIKI_LINKS } from "@/features/pages/limits";
 
 import { logIn, NO_STORAGE_STATE } from "./support/auth";
@@ -97,6 +97,22 @@ test.describe("the write tools", () => {
     });
     expect(await answer.json()).toMatchObject({ error: { code: -32602, message: "Tool create_page not found" } });
     expect(await storedPages()).toEqual([]);
+  });
+
+  test("initialize at the Writer address says that the addresses are for people", async ({ request }) => {
+    const response = await send(
+      request,
+      {
+        method: "initialize",
+        params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "e2e", version: "1" } },
+      },
+      writer,
+      writerAddress,
+    );
+
+    const { instructions } = ((await response.json()) as { result: { instructions: string } }).result;
+    expect(instructions).toContain('the folder "projects" with the role Writer');
+    expect(instructions).toContain(ADDRESS_HINT);
   });
 
   test("create_page without a name gives the page the suggested name; bad input is a tool error and creates nothing", async ({

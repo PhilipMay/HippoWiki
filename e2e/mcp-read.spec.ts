@@ -1,6 +1,6 @@
 // The read tools of MCP and the answers of the protocol: initialize, the tool list of a Reader connection,
 // list_folder, read_page and read_file.
-import { USER_TEXT_NOTE } from "@/features/mcp/tool-schemas";
+import { ADDRESS_HINT, USER_TEXT_NOTE } from "@/features/mcp/tool-schemas";
 import { NAME_MAX_LENGTH } from "@/lib/name-limits";
 
 import { NO_STORAGE_STATE } from "./support/auth";
@@ -54,6 +54,11 @@ test("initialize answers as JSON with the instructions and without a session", a
   expect(result.instructions).toContain(
     "A single file is uploaded, changed, moved, renamed or deleted only in the browser.",
   );
+  // The addresses are for people: they open only in a browser after a login.
+  expect(result.instructions).toContain(
+    "Addresses are for people: each opens only in a browser after logging in to the wiki, so an AI app cannot fetch " +
+      "it with its access token. To point to a page or file in a page, use its wiki link.",
+  );
   expect(result.capabilities).toHaveProperty("tools");
 });
 
@@ -93,9 +98,20 @@ test("a Reader connection offers only the four read tools, list_folder, read_pag
   expect(response.status()).toBe(200);
   expect(response.headers()["content-type"]).toBe("application/json");
   const { result } = (await response.json()) as {
-    result: { tools: { name: string; description: string; annotations: { readOnlyHint: boolean } }[] };
+    result: {
+      tools: {
+        name: string;
+        description: string;
+        annotations: { readOnlyHint: boolean };
+        outputSchema: { properties: { pages: { items: { properties: { address: { description: string } } } } } };
+      }[];
+    };
   };
   expect(result.tools.map((tool) => tool.name)).toEqual(["list_folder", "read_page", "search_pages", "read_file"]);
+  // The address of a page in list_folder says what it opens, then that it is for people.
+  expect(result.tools[0]?.outputSchema.properties.pages.items.properties.address.description).toBe(
+    `Where a person opens the page in a browser. ${ADDRESS_HINT}`,
+  );
   // Only tools of the content: none for accounts, which are managed only in the browser by an admin. The note on page
   // text names the users who write it, not their accounts, so it is left out of the match.
   for (const tool of result.tools) {

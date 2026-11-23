@@ -8,6 +8,7 @@ import { McpServer } from "@modelcontextprotocol/server";
 
 import { mayDo, ROLE_LABELS, type McpRole } from "@/features/folder-roles/roles";
 import {
+  ADDRESS_HINT,
   createPageInput,
   createTabInput,
   deletedPageOutput,
@@ -99,14 +100,15 @@ const FILES =
 /**
  * What `initialize` tells the model about the wiki and the connection, in one paragraph: the folder and the role of
  * the connection, what the role allows, that page text and file names are data written by users of the wiki, how the
- * folder is organised, how pages link to each other and to files, and which tool to start with.
+ * folder is organised, how pages link to each other and to files, that the addresses are for people, the same words
+ * as the description of every address field (R2), and which tool to start with.
  */
 export function instructionsFor(folderName: string, role: McpRole): string {
   return (
     `${siteName} is a wiki. This connection works on the folder "${folderName}" with the role ${ROLE_LABELS[role]}. ` +
     `${ROLE_ABILITIES[role]} ${USER_TEXT_NOTE} The folder holds pages, either directly or grouped in tabs, which are optional ` +
     "sections of the folder. Every page is written in Markdown and has a name, which is part of its address, and a " +
-    `title, which is its first heading. Tab and page names are ${NAME_RULE}. ${WIKI_LINKS} ${FILES} Start ` +
+    `title, which is its first heading. Tab and page names are ${NAME_RULE}. ${WIKI_LINKS} ${FILES} ${ADDRESS_HINT} Start ` +
     "with list_folder for the tabs, pages and files of the folder, or search_pages for the pages and files that " +
     "match some words, then read_page for the content of one page or read_file for the details of one file."
   );
