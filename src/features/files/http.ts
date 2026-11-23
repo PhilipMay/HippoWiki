@@ -307,8 +307,10 @@ function uploadRefusal(error: Exclude<fileService.UploadFileError, { code: "not-
           ? "The image has more than 100 megapixels, the limit."
           : "The image could not be read. It may be damaged.",
       );
+    // The browser states no exact size, so its upload is never refused for one.
+    case "wrong-size":
     case "failed":
-      return refused(500, error.code, null, UPLOAD_FAILED_MESSAGE);
+      return refused(500, "failed", null, UPLOAD_FAILED_MESSAGE);
   }
 }
 
@@ -340,6 +342,8 @@ export async function handleUploadRequest(request: Request, segments: FileSegmen
     contentLength: contentLengthOf(request),
     stripMetadata: query.stripMetadata,
     replace: query.replace,
+    size: null,
+    fileId: null,
   });
   if (!uploaded.ok) {
     // What an account may not change does not exist for it, as for every other write of the content.

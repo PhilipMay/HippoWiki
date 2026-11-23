@@ -31,6 +31,8 @@ describe("the metadata of an upload", () => {
       contentLength: bytes.length,
       stripMetadata: true,
       replace: null,
+      size: null,
+      fileId: null,
     });
 
     expect(result).toMatchObject({ ok: true, value: { name: "manual.pdf", type: "pdf" } });

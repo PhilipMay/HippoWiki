@@ -152,6 +152,8 @@ const CONTENT_WRITES: readonly ContentWrite[] = [
         contentLength: null,
         stripMetadata: true,
         replace: null,
+        size: null,
+        fileId: null,
       }),
     lowest: "writer",
     target: { folderId: FOLDER_ID, tabId: TAB_ID },

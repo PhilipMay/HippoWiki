@@ -121,7 +121,7 @@ const STORED_FILE = {
 };
 
 const PLACE = { folderId: FOLDER_ID, tabId: TAB_ID };
-const NEW_FILE = { contentLength: 1000, stripMetadata: true, replace: null };
+const NEW_FILE = { contentLength: 1000, stripMetadata: true, replace: null, size: null, fileId: null };
 
 /** A staged body of the given first bytes. */
 function staged(head: Uint8Array, sha256 = SHA) {
@@ -244,7 +244,10 @@ describe("uploadFile", () => {
   it("stores a new image without its metadata, with its size upright, and logs it", async () => {
     const result = await upload();
 
-    expect(result).toEqual({ ok: true, value: { ...STORED_FILE, lockVersion: 1 } });
+    expect(result).toEqual({
+      ok: true,
+      value: { ...STORED_FILE, lockVersion: 1, version: { number: 1, size: 800, width: 30, height: 40 } },
+    });
     expect(mocks.processImage).toHaveBeenCalledWith(`${DIR}/tmp/upload`, "png", { stripMetadata: true });
     // The received body with its metadata is removed; the image written again is the blob.
     expect(mocks.discardStaged).toHaveBeenCalledWith(staged(PNG_HEAD));
@@ -380,6 +383,70 @@ describe("uploadFile", () => {
     expect(mocks.fileCreate).not.toHaveBeenCalled();
   });
 
+  describe("with an exact size", () => {
+    const EXACT = { ...NEW_FILE, size: 1000 };
+
+    it("reads the body up to the exact size and stores a body of exactly that size", async () => {
+      await expect(upload("diagram.png", EXACT)).resolves.toMatchObject({ ok: true });
+
+      expect(mocks.receiveBlob).toHaveBeenCalledWith(DIR, [], { limit: 1000, contentLength: 1000 });
+    });
+
+    it("refuses a body one byte longer with wrong-size, and stores nothing", async () => {
+      // The store stops reading at its limit, the exact size, and keeps nothing of the body.
+      mocks.receiveBlob.mockResolvedValueOnce({ ok: false, error: { code: "too-large" } });
+
+      await expect(upload("diagram.png", EXACT)).resolves.toEqual({
+        ok: false,
+        error: { code: "wrong-size", expected: 1000 },
+      });
+      expect(mocks.commitBlob).not.toHaveBeenCalled();
+      expect(mocks.processImage).not.toHaveBeenCalled();
+      expect(mocks.fileCreate).not.toHaveBeenCalled();
+    });
+
+    it("refuses a body one byte shorter with wrong-size, removes it and stores nothing", async () => {
+      const short = { ...staged(PNG_HEAD), size: 999 };
+      mocks.receiveBlob.mockResolvedValueOnce({ ok: true, value: short });
+
+      await expect(upload("diagram.png", EXACT)).resolves.toEqual({
+        ok: false,
+        error: { code: "wrong-size", expected: 1000 },
+      });
+      expect(mocks.discardStaged).toHaveBeenCalledExactlyOnceWith(short);
+      expect(mocks.commitBlob).not.toHaveBeenCalled();
+      expect(mocks.processImage).not.toHaveBeenCalled();
+      expect(mocks.fileCreate).not.toHaveBeenCalled();
+    });
+
+    it("refuses an exact size over the size limit with the limit before it reads the body", async () => {
+      await expect(upload("diagram.png", { ...NEW_FILE, size: 26_214_401 })).resolves.toEqual({
+        ok: false,
+        error: { code: "too-large", limit: 26_214_400 },
+      });
+      expect(mocks.receiveBlob).not.toHaveBeenCalled();
+    });
+
+    it("keeps a full disk a full disk", async () => {
+      mocks.receiveBlob.mockResolvedValueOnce({ ok: false, error: { code: "disk-full" } });
+
+      await expect(upload("diagram.png", EXACT)).resolves.toEqual({ ok: false, error: { code: "disk-full" } });
+    });
+  });
+
+  it("refuses a new version of another file of the name than the given file, and stores nothing", async () => {
+    mocks.fileFindFirst.mockResolvedValue(STORED_ROW);
+
+    await expect(
+      upload("diagram.png", { ...NEW_FILE, replace: 3, fileId: "0a9b8c7d-6e5f-4a3b-8c2d-1e0f9a8b7c6d" }),
+    ).resolves.toEqual({ ok: false, error: { code: "file-changed", file: STORED_FILE } });
+    expect(mocks.receiveBlob).not.toHaveBeenCalled();
+
+    await expect(upload("diagram.png", { ...NEW_FILE, replace: 3, fileId: STORED_ROW.id })).resolves.toMatchObject({
+      ok: true,
+    });
+  });
+
   it("refuses content of no accepted type and content of another type than its name, and keeps nothing", async () => {
     mocks.receiveBlob.mockResolvedValueOnce({ ok: true, value: staged(HTML_HEAD) });
     await expect(upload()).resolves.toEqual({
@@ -464,7 +531,10 @@ describe("uploadFile", () => {
 
     const result = await upload("diagram.png", { ...NEW_FILE, replace: 3 });
 
-    expect(result).toEqual({ ok: true, value: { ...STORED_FILE, lockVersion: 4 } });
+    expect(result).toEqual({
+      ok: true,
+      value: { ...STORED_FILE, lockVersion: 4, version: { number: 3, size: 800, width: 30, height: 40 } },
+    });
     expect(mocks.fileUpdateMany.mock.calls[0]?.[0]).toMatchObject({
       data: { lockVersion: { increment: 1 }, lastEditedById: ACTOR_ID, lastEditedVia: "web" },
     });

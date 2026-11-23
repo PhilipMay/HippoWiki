@@ -34,7 +34,7 @@ beforeEach(async () => {
 });
 
 /** The options of an upload of a new file, with the metadata removed. */
-const NEW_FILE = { contentLength: null, stripMetadata: true, replace: null };
+const NEW_FILE = { contentLength: null, stripMetadata: true, replace: null, size: null, fileId: null };
 
 /** Every blob in the files directory, by its SHA-256. */
 async function blobs(): Promise<string[]> {

@@ -118,7 +118,7 @@ describe("getLinkedFileContent", () => {
       { folderId: folder.id, tabId: guides.id },
       "diagram.png",
       [await pngBytes(14, 14)],
-      { contentLength: null, stripMetadata: true, replace: file.lockVersion },
+      { contentLength: null, stripMetadata: true, replace: file.lockVersion, size: null, fileId: null },
     );
     expect(uploaded.ok).toBe(true);
 

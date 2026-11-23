@@ -41,7 +41,7 @@ way, so that the app can show it in the pages it writes. The plan is written fro
 
 - [x] Lock version of files in MCP
 - [x] Token of an upload link
-- [ ] Upload link service
+- [x] Upload link service
 - [ ] Upload address with a token
 - [ ] MCP tool get_file_upload_link
 - [ ] Spec tests
@@ -139,7 +139,8 @@ R13, R18, R20, R23).
     records the user of the connection and the channel `mcp` (R6), with the size, the choice of the metadata and the
     lock version of the link: `replace` is the lock version for a new version, and for a new file nothing, so that a
     name taken in the meantime is refused and never becomes a new version (R7, R20); for a new version it also checks
-    that the file of that name at the place is the file of the link;
+    that the file of that name at the place is the file of the link, through the id of the file in `UploadOptions`
+    (`fileId`, `null` in the browser), which `uploadFile()` compares with the lock version;
   - logs every refusal of a valid link at `info` with its reason, never the token.
 - Extend `uploadFile()` of `src/features/files/service.ts` with an exact size in `UploadOptions` (`null` in the
   browser): the body is read up to that size, and a body with fewer or more bytes is refused with a new error code
@@ -172,7 +173,8 @@ R13, R18, R20, R23).
   - HTML named `.png`, a PDF sent for a `.png` link and an image that does not decode are refused and store nothing
     (R5);
   - no page gets a new revision (R9).
-- No end-to-end spec: nothing that the app runs calls the service yet.
+- No end-to-end spec of the service: nothing that the app runs calls it yet. `uploadFile()` and the upload address of
+  the browser change with it, so the specs of uploads and files in the browser run.
 
 ## Upload address with a token
 

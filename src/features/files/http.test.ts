@@ -340,7 +340,7 @@ describe("handleUploadRequest", () => {
       { id: ACTOR_ID, name: "alice", type: "user", channel: "web" },
       { folderId: FOLDER_ID, tabId: TAB_ID },
       "diagram.png",
-      { contentLength: 4, stripMetadata: true, replace: null },
+      { contentLength: 4, stripMetadata: true, replace: null, size: null, fileId: null },
     ]);
     const chunks: Uint8Array[] = [];
     for await (const chunk of body as AsyncIterable<Uint8Array>) chunks.push(chunk);
@@ -354,7 +354,13 @@ describe("handleUploadRequest", () => {
 
     expect(mocks.getTab).not.toHaveBeenCalled();
     expect(mocks.uploadFile.mock.calls[0]?.[1]).toEqual({ folderId: FOLDER_ID, tabId: null });
-    expect(mocks.uploadFile.mock.calls[0]?.[4]).toEqual({ contentLength: null, stripMetadata: false, replace: 3 });
+    expect(mocks.uploadFile.mock.calls[0]?.[4]).toEqual({
+      contentLength: null,
+      stripMetadata: false,
+      replace: 3,
+      size: null,
+      fileId: null,
+    });
   });
 
   it("accepts the origin of the public URL behind a reverse proxy", async () => {

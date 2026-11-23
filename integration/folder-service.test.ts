@@ -1154,6 +1154,8 @@ describe("deleting a tab", () => {
         contentLength: null,
         stripMetadata: true,
         replace: null,
+        size: null,
+        fileId: null,
       }),
     );
 

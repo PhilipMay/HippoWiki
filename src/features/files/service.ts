@@ -164,6 +164,8 @@ type DiskFull = { code: "disk-full" };
 type FilesOff = { code: "files-off" };
 /** The image does not decode as an image of its type, or it has more pixels than allowed. */
 type InvalidImage = { code: "invalid-image"; reason: "unreadable" | "too-many-pixels" };
+/** The content has fewer or more bytes than the exact size of the upload (`UploadOptions.size`); nothing is stored. */
+type WrongSize = { code: "wrong-size"; expected: number };
 
 export type UploadFileError =
   | NotAllowed
@@ -178,6 +180,7 @@ export type UploadFileError =
   | TooLarge
   | DiskFull
   | InvalidImage
+  | WrongSize
   | Failed;
 
 /** The options of an upload, besides its place, its name and its body. */
@@ -191,7 +194,24 @@ export type UploadOptions = {
    * the upload is based on, as the dialog that asked whether to store a new version saw it.
    */
   replace: number | null;
+  /**
+   * The exact size of the content in bytes, or `null` for any size up to the size limit (the browser). With a size,
+   * the body is read up to it, and a body with fewer or more bytes is refused with `wrong-size`, whatever the request
+   * announced.
+   */
+  size: number | null;
+  /**
+   * The id of the file that a new version must be for, or `null` for the file of the name at the place, whichever it
+   * is (the browser). Another file of the name is refused as `file-changed`.
+   */
+  fileId: string | null;
 };
+
+/** The version that an upload stored: its number, its size in bytes, and the width and height of an image. */
+type UploadedVersion = { number: number; size: number; width: number | null; height: number | null };
+
+/** A file as an upload stored it, with the version it stored. */
+export type UploadedFile = StoredFile & { version: UploadedVersion };
 
 /** The place of a file: its folder and the id of its tab, or `null` for a file placed directly in the folder. */
 export type FilePlace = { folderId: string; tabId: string | null };
@@ -653,16 +673,16 @@ function versionData(content: VersionContent, editor: Editor, revertedTo: number
 
 /**
  * Stores a new version of the file in one transaction, based on the lock version: counts the lock version of the file
- * up, makes the actor its last editor and adds the version with the next number. Throws `FileChangedMeanwhile` when
- * the file was changed or deleted after that lock version.
+ * up, makes the actor its last editor and adds the version with the next number, which it returns with the file.
+ * Throws `FileChangedMeanwhile` when the file was changed or deleted after that lock version.
  */
 async function storeNewVersion(
   fileId: string,
   lockVersion: number,
   editor: Editor,
   data: ReturnType<typeof versionData>,
-): Promise<StoredFile> {
-  const file = await getDb().$transaction(async (tx) => {
+): Promise<{ file: StoredFile; number: number }> {
+  const { file, number } = await getDb().$transaction(async (tx) => {
     const { count } = await tx.file.updateMany({
       where: { id: fileId, lockVersion, deletedAt: null },
       data: { lockVersion: { increment: 1 }, ...editor },
@@ -674,24 +694,25 @@ async function storeNewVersion(
       select: { number: true },
       orderBy: { number: "desc" },
     });
-    await tx.fileVersion.create({ data: { ...data, fileId, number: (newest?.number ?? 0) + 1 } });
-    return tx.file.findUniqueOrThrow({ where: { id: fileId }, select: STORED_FILE_SELECT });
+    const number = (newest?.number ?? 0) + 1;
+    await tx.fileVersion.create({ data: { ...data, fileId, number } });
+    return { file: await tx.file.findUniqueOrThrow({ where: { id: fileId }, select: STORED_FILE_SELECT }), number };
   });
-  return withLastEditor(file);
+  return { file: withLastEditor(file), number };
 }
 
 /**
  * Uploads a file into the tab with the id `place.tabId` or, with `null`, directly into the folder with the id
- * `place.folderId`, under the given name, and returns it as stored. The body is the content itself. Without `replace`
- * it stores a new file with version 1; with `replace`, the lock version it is based on, a new version of the file of
- * that name at the place.
+ * `place.folderId`, under the given name, and returns it as stored, with the version it stored. The body is the
+ * content itself. Without `replace` it stores a new file with version 1; with `replace`, the lock version it is based
+ * on, a new version of the file of that name at the place, which must be the file `fileId` when it is given.
  *
  * The checks come in the order of every content write: the actor, the ids, the role `editFile`, the place, the name,
  * the file of the name at the place (taken without `replace`, missing or changed with it), the store, then the content:
- * its size against the limit while it is read, its type from its first bytes against the extension of the name, and an
- * image by its decode (`processImage()`). Only then is the file stored, with its version, in one transaction; when that
- * fails, the blob is removed again unless a version holds it. A new version is refused with `file-changed` when the
- * file was changed after its lock version, also while the upload ran.
+ * its size against the limit, or against the exact size, while it is read, its type from its first bytes against the
+ * extension of the name, and an image by its decode (`processImage()`). Only then is the file stored, with its
+ * version, in one transaction; when that fails, the blob is removed again unless a version holds it. A new version is
+ * refused with `file-changed` when the file was changed after its lock version, also while the upload ran.
  */
 export async function uploadFile(
   actor: ContentActor,
@@ -699,7 +720,7 @@ export async function uploadFile(
   name: string,
   body: AsyncIterable<Uint8Array> | Iterable<Uint8Array>,
   options: UploadOptions,
-): Promise<Result<StoredFile, UploadFileError>> {
+): Promise<Result<UploadedFile, UploadFileError>> {
   const opened = openContentWrite(actor, "file not uploaded");
   if (opened.refused) return opened.refused;
   const { editor } = opened;
@@ -726,9 +747,9 @@ export async function uploadFile(
       logger.warn({ ...ids, name: fileName.name }, "file of new version not found");
       return { ok: false, error: { code: "file-not-found" } };
     }
-    if (existing.value.lockVersion !== replace) {
+    if (existing.value.lockVersion !== replace || (options.fileId !== null && existing.value.id !== options.fileId)) {
       logger.warn(
-        { fileId: existing.value.id, lockVersion: options.replace },
+        { fileId: existing.value.id, lockVersion: options.replace, expectedFileId: options.fileId },
         "file of new version changed after the lock version the write is based on",
       );
       return { ok: false, error: { code: "file-changed", file: existing.value } };
@@ -742,12 +763,32 @@ export async function uploadFile(
   }
 
   const limit = getServerEnv().HIPPOWIKI_FILE_SIZE_LIMIT;
+  const { size } = options;
+  if (size !== null && size > limit) {
+    logger.warn({ ...ids, name: fileName.name, size, limit }, "uploaded file refused: exact size over the limit");
+    return { ok: false, error: { code: "too-large", limit } };
+  }
   let content: VersionContent;
   try {
-    const received = await receiveBlob(store.dir, body, { limit, contentLength: options.contentLength });
+    // With an exact size, the body is read up to it, so a longer one stops there.
+    const received = await receiveBlob(store.dir, body, { limit: size ?? limit, contentLength: options.contentLength });
     if (!received.ok) {
-      logger.warn({ ...ids, name: fileName.name, reason: received.error.code }, "uploaded file refused");
-      return { ok: false, error: received.error.code === "too-large" ? { code: "too-large", limit } : received.error };
+      const error: TooLarge | DiskFull | WrongSize =
+        received.error.code === "disk-full"
+          ? received.error
+          : size === null
+            ? { code: "too-large", limit }
+            : { code: "wrong-size", expected: size };
+      logger.warn({ ...ids, name: fileName.name, reason: error.code }, "uploaded file refused");
+      return { ok: false, error };
+    }
+    if (size !== null && received.value.size !== size) {
+      await discardStaged(received.value);
+      logger.warn(
+        { ...ids, name: fileName.name, size: received.value.size, expected: size },
+        "uploaded file refused: wrong size",
+      );
+      return { ok: false, error: { code: "wrong-size", expected: size } };
     }
     const detected = detectType(received.value.head);
     if (detected !== expected) {
@@ -777,9 +818,10 @@ export async function uploadFile(
     });
 
   let file: StoredFile;
+  let number = 1;
   try {
     if (existing.value && replace !== null) {
-      file = await storeNewVersion(existing.value.id, replace, editor, data);
+      ({ file, number } = await storeNewVersion(existing.value.id, replace, editor, data));
     } else {
       const created = await getDb().file.create({
         data: {
@@ -821,7 +863,10 @@ export async function uploadFile(
     { fileId: file.id, lockVersion: file.lockVersion, size: content.blob.size, ...channelOf(actor) },
     existing.value ? "file version uploaded" : "file uploaded",
   );
-  return { ok: true, value: file };
+  return {
+    ok: true,
+    value: { ...file, version: { number, size: content.blob.size, width: content.width, height: content.height } },
+  };
 }
 
 /** The version to revert to does not exist, or it is the current version, which a revert would not change. */
