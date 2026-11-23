@@ -33,7 +33,7 @@ vi.mock("@/lib/db", async () => {
 vi.mock(import("@/lib/env"), async (importOriginal) => {
   const { TEST_DATABASE_URL } = await import("../e2e/support/container");
   const original = await importOriginal();
-  const { FILE_SIZE_LIMIT, MCP_BODY_LIMIT, MCP_RATE_BURST, MCP_RATE_PER_MINUTE } = original;
+  const { FILE_LINK_LIFETIME, FILE_SIZE_LIMIT, MCP_BODY_LIMIT, MCP_RATE_BURST, MCP_RATE_PER_MINUTE } = original;
   return {
     ...original,
     getServerEnv: () => ({
@@ -45,6 +45,7 @@ vi.mock(import("@/lib/env"), async (importOriginal) => {
       HIPPOWIKI_MCP_RATE_BURST: MCP_RATE_BURST.default,
       HIPPOWIKI_MCP_RATE_PER_MINUTE: MCP_RATE_PER_MINUTE.default,
       HIPPOWIKI_FILE_SIZE_LIMIT: FILE_SIZE_LIMIT.default,
+      HIPPOWIKI_FILE_LINK_LIFETIME: FILE_LINK_LIFETIME.default,
       // The public address of the wiki, which the OAuth service needs for the address of the MCP endpoint.
       HIPPOWIKI_PUBLIC_URL: "https://wiki.example.com",
       HIPPOWIKI_FILES_DIR: process.env.HIPPOWIKI_TEST_FILES_DIR,

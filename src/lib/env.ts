@@ -44,6 +44,12 @@ export const MCP_RATE_PER_MINUTE: WholeNumberBounds = { min: 1, max: 100_000, de
 export const FILE_SIZE_LIMIT: WholeNumberBounds = { min: 1_048_576, max: 1_073_741_824, default: 26_214_400 };
 
 /**
+ * The lifetime of a signed link to a file in seconds (`HIPPOWIKI_FILE_LINK_LIFETIME`): 10 minutes by default, from one
+ * minute, so that an AI app has time to fetch it, to one hour, so that a leaked link stops working soon.
+ */
+export const FILE_LINK_LIFETIME: WholeNumberBounds = { min: 60, max: 3600, default: 600 };
+
+/**
  * An optional variable with a whole number within the bounds, its default when it is not set. Only plain decimal
  * digits are accepted: a sign, a fraction, an exponent, spaces, a unit such as `1MiB`, leading zeros or an empty value
  * stop the server, so that a typo does not change a limit.
@@ -104,6 +110,10 @@ export const serverEnvSchema = z.object({
   HIPPOWIKI_FILES_DIR: z.string().min(1, { error: "must be a path" }).optional(),
   // The size limit of an uploaded file (see `FILE_SIZE_LIMIT`).
   HIPPOWIKI_FILE_SIZE_LIMIT: wholeNumber(FILE_SIZE_LIMIT),
+  // The lifetime of the signed links to files that the MCP tool `get_file_download_link` hands out (see
+  // `FILE_LINK_LIFETIME`). A link whose expiry lies further away than it is refused, so lowering it also shortens the
+  // links handed out before.
+  HIPPOWIKI_FILE_LINK_LIFETIME: wholeNumber(FILE_LINK_LIFETIME),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

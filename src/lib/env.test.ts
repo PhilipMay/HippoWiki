@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { FILE_SIZE_LIMIT, MCP_BODY_LIMIT, MCP_RATE_BURST, MCP_RATE_PER_MINUTE, parseServerEnv } from "@/lib/env";
+import {
+  FILE_LINK_LIFETIME,
+  FILE_SIZE_LIMIT,
+  MCP_BODY_LIMIT,
+  MCP_RATE_BURST,
+  MCP_RATE_PER_MINUTE,
+  parseServerEnv,
+} from "@/lib/env";
 
 const databaseUrl = "postgresql://hippowiki:hippowiki@localhost:5432/hippowiki";
 
@@ -15,6 +22,7 @@ describe("parseServerEnv", () => {
       HIPPOWIKI_MCP_RATE_BURST: 60,
       HIPPOWIKI_MCP_RATE_PER_MINUTE: 300,
       HIPPOWIKI_FILE_SIZE_LIMIT: 26_214_400,
+      HIPPOWIKI_FILE_LINK_LIFETIME: 600,
     });
   });
 
@@ -186,6 +194,29 @@ describe("parseServerEnv", () => {
     );
   });
 
+  describe("the lifetime of the links to files", () => {
+    it("is 600 seconds without the variable", () => {
+      expect(parseServerEnv({ DATABASE_URL: databaseUrl }).HIPPOWIKI_FILE_LINK_LIFETIME).toBe(600);
+      expect(FILE_LINK_LIFETIME).toEqual({ min: 60, max: 3600, default: 600 });
+    });
+
+    it.each([60, 3600, 900])("accepts %i", (value) => {
+      expect(
+        parseServerEnv({ DATABASE_URL: databaseUrl, HIPPOWIKI_FILE_LINK_LIFETIME: String(value) })
+          .HIPPOWIKI_FILE_LINK_LIFETIME,
+      ).toBe(value);
+    });
+
+    it.each(["59", "3601", "0", "10m", "", "600.0", " 600", "0600", "-60"])(
+      "refuses %j with an error that names the variable",
+      (value) => {
+        expect(() => parseServerEnv({ DATABASE_URL: databaseUrl, HIPPOWIKI_FILE_LINK_LIFETIME: value })).toThrow(
+          /HIPPOWIKI_FILE_LINK_LIFETIME/,
+        );
+      },
+    );
+  });
+
   it("ignores unrelated variables", () => {
     expect(parseServerEnv({ DATABASE_URL: databaseUrl, HOME: "/home/someone" })).not.toHaveProperty("HOME");
   });
@@ -231,6 +262,7 @@ describe("getServerEnv", () => {
       HIPPOWIKI_MCP_RATE_BURST: 60,
       HIPPOWIKI_MCP_RATE_PER_MINUTE: 300,
       HIPPOWIKI_FILE_SIZE_LIMIT: 26_214_400,
+      HIPPOWIKI_FILE_LINK_LIFETIME: 600,
     });
   });
 
